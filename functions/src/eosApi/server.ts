@@ -31,6 +31,7 @@ import {
 } from "../adminPolicy/policyDatabase";
 import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
+import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 
 /**
  * The environment this service reads. Every one is injected; none is committed.
@@ -151,7 +152,22 @@ export async function startEosApi(
     },
   });
 
+  // A SECOND, domain-separated handler for the Operations transport (Cycle Count's operational
+  // capability read, and future bounded operational commands) -- never merged into the
+  // Administration operation list. Same repository, same pool: "one database connection", not a
+  // second connection or a second service.
+  const operationsHandler = createOperationsHttpHandler({
+    reader: repo,
+    pool,
+    verifyToken: options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
+    allowedOrigins: config.allowedOrigins,
+  });
+
   const server = createServer((req, res) => {
+    if ((req.url ?? "").split("?")[0].startsWith("/operations/")) {
+      void operationsHandler(req as never, res as never);
+      return;
+    }
     void handler(req as never, res as never);
   });
 

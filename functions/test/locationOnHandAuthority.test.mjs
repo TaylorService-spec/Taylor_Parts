@@ -10,6 +10,7 @@ import { join, relative } from "node:path";
 import {
   MOVEMENT_SIGN,
   signedQuantity,
+  isPhysicalMovementType,
   sumExactLocationOnHand,
   sumWarehouseAggregateOnHand,
   resolveCustodyWarehouseId,
@@ -113,4 +114,20 @@ test("signedQuantity: consumption counts, a commitment does not, a corrupt magni
   assert.equal(signedQuantity({ type: "WORK_ORDER_CONSUMPTION", quantity: -3 }), -3);
   assert.equal(signedQuantity({ type: "RESERVED", quantity: 3 }), 0);
   assert.equal(signedQuantity({ type: "TRANSFER_OUT", quantity: -3 }), 0);
+});
+
+// Reconciliation lock (P0 addendum, docs/design/eos-operational-data-plane-inventory-authority-cutover.md
+// §2a): the legacy inventoryService.ts commitment vocabulary (RESERVED/RELEASED/CONSUMED) must never
+// become a physical movement type by accident -- if it ever does, on-hand and commitment would silently
+// double-count the same event. This is the mechanical proof behind that doc's "physical movement event
+// types" / "commitment event types" partition -- the two sets are DISJOINT and their union is not the
+// full type space (a legacy row is intentionally in neither this ledger's physical sum nor a foreign key).
+test("commitment vocabulary (RESERVED/RELEASED/CONSUMED) is never a physical movement type", () => {
+  for (const legacyType of ["RESERVED", "RELEASED", "CONSUMED"]) {
+    assert.equal(isPhysicalMovementType(legacyType), false, `${legacyType} must stay commitment-only`);
+    assert.equal(signedQuantity({ type: legacyType, quantity: 5 }), 0);
+  }
+  // The one legacy-adjacent type that IS physical: Decision #171 made WORK_ORDER_CONSUMPTION a real
+  // physical decrement, distinct from inventoryService.ts's CONSUMED commitment-closure row.
+  assert.equal(isPhysicalMovementType("WORK_ORDER_CONSUMPTION"), true);
 });
