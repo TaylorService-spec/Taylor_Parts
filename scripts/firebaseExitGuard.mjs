@@ -32,7 +32,17 @@ const REPO_ROOT = process.cwd();
 const BASELINE_RELATIVE_PATH = "docs/architecture/firebase-exit-baseline.json";
 
 const SCAN_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
-const SKIP_DIRECTORIES = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", "lib"]);
+/**
+ * Only vendored/VCS directories that can never legitimately contain hand-authored business
+ * source under a scan root (field-ops-app-vite/src, functions/src). Do NOT add build-output
+ * names like "lib", "dist", "build", "coverage", or ".next" here: those collide by basename
+ * with real source subdirectories inside the scan roots -- e.g. field-ops-app-vite/src/lib/
+ * (firebaseSafe.js) and functions/src/coverage/ (coverageCallables.ts) both exist and both
+ * import forbidden business-runtime dependencies. A basename-only skip silently blinds the
+ * walk to an entire subtree, which is a bypass, not a filter: see
+ * docs/architecture/firebase-exit-ratchet.md.
+ */
+export const SKIP_DIRECTORIES = new Set([".git", "node_modules"]);
 
 /**
  * Any import/require/dynamic-import specifier, captured whichever form produced it.

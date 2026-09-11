@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   FORBIDDEN_CATEGORIES,
+  SKIP_DIRECTORIES,
   baselinePathsFor,
   classifyFile,
   evaluateGuard,
@@ -209,6 +210,37 @@ test("a baseline file crossing into a NEW forbidden category it was not recorded
 test("baselinePathsFor returns an empty set for a category with no baseline entries", () => {
   const baseline = makeBaseline();
   assert.deepEqual(baselinePathsFor(baseline, "server.firebase_functions_server"), new Set());
+});
+
+// ---------------------------------------------------------------------------------------------
+// Directory skip-list must never collide with a real source subdirectory name (bypass class)
+// ---------------------------------------------------------------------------------------------
+
+test("the directory skip-list contains no build-output basename that collides with a real " +
+  "source subdirectory under a scan root", () => {
+  // field-ops-app-vite/src/lib/ and functions/src/coverage/ are both real, hand-authored
+  // source directories that exist today and both import forbidden business-runtime
+  // dependencies. A skip-list entry matching "lib" or "coverage" by bare basename would
+  // silently blind walk() to that entire subtree -- a bypass, not a filter.
+  assert.equal(SKIP_DIRECTORIES.has("lib"), false);
+  assert.equal(SKIP_DIRECTORIES.has("coverage"), false);
+});
+
+test("scanTree walks into field-ops-app-vite/src/lib/ and finds its baselined Firestore import", () => {
+  const scanResults = scanTree(REPO_ROOT);
+  assert.ok(
+    scanResults.get("frontend.firestore_client").has("field-ops-app-vite/src/lib/firebaseSafe.js"),
+    "field-ops-app-vite/src/lib/firebaseSafe.js must be scanned, not skipped by directory name");
+});
+
+test("scanTree walks into functions/src/coverage/ and finds its baselined server imports", () => {
+  const scanResults = scanTree(REPO_ROOT);
+  assert.ok(
+    scanResults.get("server.firebase_functions_server").has("functions/src/coverage/coverageCallables.ts"),
+    "functions/src/coverage/coverageCallables.ts must be scanned, not skipped by directory name");
+  assert.ok(
+    scanResults.get("server.firebase_admin_firestore").has("functions/src/coverage/coverageReadCallables.ts"),
+    "functions/src/coverage/coverageReadCallables.ts must be scanned, not skipped by directory name");
 });
 
 // ---------------------------------------------------------------------------------------------
