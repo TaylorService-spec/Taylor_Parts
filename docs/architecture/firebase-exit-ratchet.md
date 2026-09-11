@@ -12,20 +12,48 @@ states, and dispositions.
 
 `docs/architecture/firebase-exit-baseline.json` is a deterministic, committed snapshot of every
 live-runtime file currently using one of the four business-runtime dependency classes.
-`scripts/firebaseExitGuard.mjs` compares the baseline against the tree on every change and
-enforces one rule:
+`scripts/firebaseExitGuard.mjs` enforces one rule:
 
 > **The set of files depending on a business-runtime class may only shrink. It may never grow.**
+
+That rule is enforced by two independent checks, both of which must pass:
+
+1. **Exact match** (`evaluateGuard`) -- the candidate baseline must describe **exactly** the
+   forbidden dependencies observed in the candidate source tree, in both directions:
+   - a file using a forbidden dependency the baseline doesn't record is a **violation**;
+   - a baseline entry the current scan no longer observes is a **stale entry**.
+
+   A stale entry is **not informational and is not tolerated** -- it must fail the check until
+   the baseline is edited to shrink in lockstep. The baseline is a floor precisely because every
+   entry in it is required to describe a real, currently-observed dependency; an entry that
+   outlived the dependency it once recorded is a live bypass, because the guard would otherwise
+   let that file reintroduce the dependency later without ever tripping a violation. The baseline
+   must shrink exactly when, and only when, source removal happens -- never ahead of it (that
+   would forbid tolerated files that still need it) and never behind it (that's the stale-entry
+   bypass).
+
+2. **Ratchet** (`evaluateRatchet`) -- the candidate baseline is compared against the **previously
+   accepted baseline** (the PR base commit, or the pre-push commit on `main`). For every
+   business-runtime class, candidate paths must be a subset of previous paths: additions are
+   forbidden, deletions are allowed. This check exists because the exact-match check above only
+   ever looks at the *candidate* baseline against the *candidate* tree -- a single PR could add a
+   new forbidden dependency **and** add the same path to the baseline in that same PR, and the
+   exact-match check alone would see a baseline that matches its own tree and pass. Comparing
+   against the previously accepted baseline is what closes that bypass. The first/bootstrap
+   baseline (no previous baseline exists) has nothing to ratchet against, so this check is
+   skipped for it -- but the exact-match check still applies in full.
 
 A file already in the baseline for a class is tolerated there -- the guard does not force a
 migration to happen in any particular change, and does not fail a PR for leaving an existing
 dependency untouched. What it refuses is a **new** file, or an existing file crossing into a
-**new** class it was not already recorded against.
+**new** class it was not already recorded against, or an **abandoned** baseline entry left behind
+after the dependency it recorded was removed.
 
-This is a ratchet, not a gate: it can only turn one direction. Every PR that removes a baseline
-entry moves the ratchet forward permanently -- there is no mechanism in the guard to add an entry
-back once it is gone, short of editing the baseline file itself, which is a deliberate, reviewable
-change to the floor, not something a feature PR does incidentally.
+This is a ratchet, not a gate: it can only turn one direction. Removing both a source dependency
+and its baseline entry in the same PR moves the ratchet forward permanently -- there is no
+mechanism in the guard to add an entry back once it is gone, short of editing the baseline file
+itself in a change that also reintroduces the dependency in source, which the ratchet check
+verifies against the previously accepted baseline.
 
 ## Why the baseline is a floor, not a to-do list
 

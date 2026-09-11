@@ -22,8 +22,21 @@
 //
 // docs/architecture/firebase-exit-baseline.json is a floor, not a target: every file already in
 // it is tolerated for its recorded category so migration can happen incrementally, but the set
-// may only shrink. A file NOT in the baseline for a category that starts using that category's
-// dependency is a new violation. See docs/architecture/firebase-exit-ratchet.md.
+// may only shrink. This is enforced by TWO independent checks, both of which must pass:
+//
+//   1. EXACT MATCH (evaluateGuard): the candidate baseline must describe exactly the forbidden
+//      dependencies observed in the candidate source tree right now -- no more (a violation: a
+//      file uses a forbidden dependency the baseline doesn't record) and no less (a stale entry:
+//      the baseline claims a file uses a dependency it no longer does). A stale entry is not
+//      informational -- it is a live bypass, because the guard would tolerate that file
+//      reintroducing the dependency later without ever tripping a violation.
+//
+//   2. RATCHET (evaluateRatchet): the candidate baseline, compared against the previously
+//      accepted baseline (the PR base / prior main commit), must never ADD a path to any
+//      category -- only remove. Without this, a single PR could add a new forbidden dependency
+//      AND add the same path to the baseline in the same change, defeating check 1 entirely.
+//
+// See docs/architecture/firebase-exit-ratchet.md.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -156,9 +169,14 @@ export function scanTree(absoluteRoot = REPO_ROOT) {
   return results;
 }
 
-export function loadBaseline(absoluteRoot = REPO_ROOT) {
-  const path = join(absoluteRoot, BASELINE_RELATIVE_PATH);
+/** Load a baseline JSON document from an arbitrary path (used for both the candidate baseline
+ * committed in the working tree and a previous baseline materialized to a temp file). */
+export function loadBaselineFromPath(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+export function loadBaseline(absoluteRoot = REPO_ROOT) {
+  return loadBaselineFromPath(join(absoluteRoot, BASELINE_RELATIVE_PATH));
 }
 
 export function baselinePathsFor(baseline, categoryKey) {
@@ -167,14 +185,19 @@ export function baselinePathsFor(baseline, categoryKey) {
 }
 
 /**
- * Compare a scan against the baseline. `violations` is the set that must never be
- * non-empty: a file not recorded in the baseline for a category, using that category's
- * dependency. `decreased` is the set of baseline entries no longer observed -- the ratchet
- * moving toward zero -- and is informational only, never a failure.
+ * Compare the candidate baseline against the candidate source scan. The candidate baseline must
+ * describe EXACTLY the forbidden dependencies currently observed -- both directions are a
+ * failure:
+ *
+ *   - `violations`: a file uses a forbidden dependency the baseline does not record for it.
+ *   - `staleEntries`: the baseline records a file/category the current scan no longer observes.
+ *     A stale entry is unsafe, not merely outdated -- the guard would otherwise tolerate that
+ *     file reintroducing the dependency later without ever tripping a violation. The baseline
+ *     must shrink in lockstep with source removal; see docs/architecture/firebase-exit-ratchet.md.
  */
 export function evaluateGuard(baseline, scanResults) {
   const violations = [];
-  const decreased = [];
+  const staleEntries = [];
   for (const category of FORBIDDEN_CATEGORIES) {
     const baselineSet = baselinePathsFor(baseline, category.key);
     const currentSet = scanResults.get(category.key) ?? new Set();
@@ -185,18 +208,67 @@ export function evaluateGuard(baseline, scanResults) {
     }
     for (const path of baselineSet) {
       if (!currentSet.has(path)) {
-        decreased.push({ category: category.key, path });
+        staleEntries.push({ category: category.key, label: category.label, path });
       }
     }
   }
-  return { violations, decreased };
+  return { violations, staleEntries };
+}
+
+/**
+ * Compare the candidate baseline against the previously accepted baseline (PR base sha / prior
+ * main commit). For every forbidden category, candidate paths must be a SUBSET of previous
+ * paths: additions are forbidden (that would let a PR add a new forbidden dependency and
+ * baseline it in the same change), deletions are allowed (the ratchet moving toward zero).
+ *
+ * `previousBaseline` is `null`/`undefined` when no previous baseline exists (bootstrap): the
+ * first committed baseline has nothing to ratchet against, so `additions` is always empty and
+ * `bootstrap` is `true`. Bootstrap is still constrained by `evaluateGuard`'s exact-match check.
+ */
+export function evaluateRatchet(previousBaseline, candidateBaseline) {
+  if (!previousBaseline) {
+    return { additions: [], bootstrap: true };
+  }
+  const additions = [];
+  for (const category of FORBIDDEN_CATEGORIES) {
+    const previousSet = baselinePathsFor(previousBaseline, category.key);
+    const candidateSet = baselinePathsFor(candidateBaseline, category.key);
+    for (const path of candidateSet) {
+      if (!previousSet.has(path)) {
+        additions.push({ category: category.key, label: category.label, path });
+      }
+    }
+  }
+  return { additions, bootstrap: false };
+}
+
+function parsePreviousBaselinePath(argv) {
+  for (const arg of argv) {
+    if (arg.startsWith("--previous-baseline=")) return arg.slice("--previous-baseline=".length);
+  }
+  return undefined;
+}
+
+/** Missing/unreadable previous-baseline path is bootstrap, not an error: the previous commit may
+ * genuinely predate this baseline file. */
+function loadPreviousBaseline(path) {
+  if (!path) return null;
+  try {
+    return loadBaselineFromPath(path);
+  } catch {
+    return null;
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]?.split(sep).join("/")}` ||
     process.argv[1]?.endsWith("firebaseExitGuard.mjs")) {
   const baseline = loadBaseline();
   const scanResults = scanTree();
-  const { violations, decreased } = evaluateGuard(baseline, scanResults);
+  const { violations, staleEntries } = evaluateGuard(baseline, scanResults);
+
+  const previousBaselinePath = parsePreviousBaselinePath(process.argv.slice(2));
+  const previousBaseline = loadPreviousBaseline(previousBaselinePath);
+  const { additions, bootstrap } = evaluateRatchet(previousBaseline, baseline);
 
   if (violations.length) {
     for (const violation of violations) {
@@ -204,19 +276,39 @@ if (import.meta.url === `file://${process.argv[1]?.split(sep).join("/")}` ||
         `::error file=${violation.path}::new Firebase business-runtime dependency ` +
         `(${violation.label}) not present in ${BASELINE_RELATIVE_PATH}`);
     }
+  }
+
+  if (staleEntries.length) {
+    for (const entry of staleEntries) {
+      console.error(
+        `::error file=${entry.path}::stale ${BASELINE_RELATIVE_PATH} entry -- ` +
+        `(${entry.label}) is recorded but no longer observed in the current tree`);
+    }
+  }
+
+  if (additions.length) {
+    for (const addition of additions) {
+      console.error(
+        `::error file=${addition.path}::${BASELINE_RELATIVE_PATH} adds a new entry ` +
+        `(${addition.label}) not present in the previously accepted baseline -- ` +
+        "baseline additions are not allowed in the same change as the dependency");
+    }
+  }
+
+  if (violations.length || staleEntries.length || additions.length) {
     console.error(
-      `\n${violations.length} file(s) introduce Firebase business-runtime dependencies beyond ` +
-      "the committed baseline. The baseline may only shrink -- see docs/architecture/firebase-exit-ratchet.md.\n" +
+      `\n${violations.length} new violation(s), ${staleEntries.length} stale baseline ` +
+      `entr(ies), ${additions.length} same-change baseline addition(s). The candidate baseline ` +
+      "must exactly match the current scan, and may only shrink relative to the previously " +
+      "accepted baseline -- see docs/architecture/firebase-exit-ratchet.md.\n" +
       "If this is genuinely sign-in identity or UID correlation (firebase/auth, firebase-admin/auth, " +
       "firebase-admin/app), it does not belong in this fence at all -- see " +
       "docs/architecture/firebase-exit-manifest.json.");
     process.exit(1);
   }
 
-  if (decreased.length) {
-    console.log(
-      `${decreased.length} baseline Firebase business-runtime reference(s) no longer observed ` +
-      "(ratchet moved toward zero).");
+  if (bootstrap) {
+    console.log("no previous baseline found -- bootstrap accepted (candidate baseline exactly matches scan)");
   }
   console.log("no new Firebase business-runtime dependencies beyond the committed baseline");
 }

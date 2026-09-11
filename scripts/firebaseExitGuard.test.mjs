@@ -6,10 +6,24 @@
 //     against GROWTH, so the exact set recorded in docs/architecture/firebase-exit-baseline.json
 //     produces zero violations;
 //
-//   * removing a baseline dependency passes -- the ratchet moves toward zero without the guard
-//     objecting, because a baseline entry is a ceiling, not a requirement;
+//   * a candidate baseline entry no longer observed in the scan (stale) FAILS -- it is a live
+//     bypass, not informational, because it would tolerate the dependency being reintroduced
+//     later without ever tripping a violation;
+//
+//   * removing a baseline dependency in lockstep with removing the source dependency passes;
 //
 //   * a NEW file using a forbidden dependency, absent from the baseline, fails;
+//
+//   * a NEW forbidden dependency introduced alongside a same-PR candidate baseline addition
+//     still fails once compared against the PREVIOUS accepted baseline -- the exact-match check
+//     alone cannot catch this, because the candidate baseline was expanded to match;
+//
+//   * a baseline-only addition (no matching source usage) fails;
+//
+//   * a baseline-only deletion (relative to the previous accepted baseline) is allowed;
+//
+//   * bootstrap (no previous baseline exists) is accepted only when the candidate baseline
+//     exactly matches the candidate scan;
 //
 //   * Firebase Auth identity-only usage (firebase/auth, firebase-admin/auth, firebase-admin/app)
 //     never trips the Firestore/Functions business-runtime fence, no matter how it is imported;
@@ -26,6 +40,7 @@ import {
   baselinePathsFor,
   classifyFile,
   evaluateGuard,
+  evaluateRatchet,
   extractImportSpecifiers,
   loadBaseline,
   scanTree,
@@ -139,10 +154,12 @@ test("a file mixing identity auth with a business dependency is flagged only for
 });
 
 // ---------------------------------------------------------------------------------------------
-// The ratchet: baseline is a ceiling, never a floor requirement, and never expands
+// evaluateGuard: exact-match between the candidate baseline and the candidate source scan
 // ---------------------------------------------------------------------------------------------
 
-test("an unchanged baseline produces zero violations", () => {
+// Requirement 1: candidate baseline exactly matching current scan passes.
+test("a candidate baseline that exactly matches the current scan produces zero violations and " +
+  "zero stale entries", () => {
   const baseline = makeBaseline({
     frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
   });
@@ -152,14 +169,35 @@ test("an unchanged baseline produces zero violations", () => {
     ["server.firebase_admin_firestore", new Set()],
     ["server.firebase_functions_server", new Set()],
   ]);
-  const { violations, decreased } = evaluateGuard(baseline, scanResults);
+  const { violations, staleEntries } = evaluateGuard(baseline, scanResults);
   assert.deepEqual(violations, []);
-  assert.deepEqual(decreased, []);
+  assert.deepEqual(staleEntries, []);
 });
 
-test("removing a baseline dependency passes and is reported as a decrease, not a violation", () => {
+// Requirement 2: a stale candidate baseline entry fails. This is DEFECT 1: a baseline entry the
+// current scan no longer observes is a live bypass (it would tolerate the dependency being
+// reintroduced silently later), not merely informational.
+test("a stale candidate baseline entry -- no longer observed in the scan -- fails", () => {
   const baseline = makeBaseline({
-    frontend: { firestore_client: ["a.js", "b.js"], firebase_functions_client: [], firebase_auth: [] },
+    frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const scanResults = new Map([
+    ["frontend.firestore_client", new Set()], // a.js no longer imports firebase/firestore
+    ["frontend.firebase_functions_client", new Set()],
+    ["server.firebase_admin_firestore", new Set()],
+    ["server.firebase_functions_server", new Set()],
+  ]);
+  const { violations, staleEntries } = evaluateGuard(baseline, scanResults);
+  assert.deepEqual(violations, []);
+  assert.deepEqual(staleEntries, [
+    { category: "frontend.firestore_client", label: FORBIDDEN_CATEGORIES[0].label, path: "a.js" },
+  ]);
+});
+
+// Requirement 3: source dependency removal + matching baseline deletion passes.
+test("removing a source dependency and deleting its baseline entry together passes", () => {
+  const baseline = makeBaseline({
+    frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] }, // b.js entry already deleted
   });
   const scanResults = new Map([
     ["frontend.firestore_client", new Set(["a.js"])], // b.js migrated off Firestore
@@ -167,11 +205,12 @@ test("removing a baseline dependency passes and is reported as a decrease, not a
     ["server.firebase_admin_firestore", new Set()],
     ["server.firebase_functions_server", new Set()],
   ]);
-  const { violations, decreased } = evaluateGuard(baseline, scanResults);
+  const { violations, staleEntries } = evaluateGuard(baseline, scanResults);
   assert.deepEqual(violations, []);
-  assert.deepEqual(decreased, [{ category: "frontend.firestore_client", path: "b.js" }]);
+  assert.deepEqual(staleEntries, []);
 });
 
+// Requirement 4: new source dependency without baseline addition fails.
 test("a new forbidden file absent from the baseline fails", () => {
   const baseline = makeBaseline({
     frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
@@ -213,6 +252,94 @@ test("baselinePathsFor returns an empty set for a category with no baseline entr
 });
 
 // ---------------------------------------------------------------------------------------------
+// evaluateRatchet: previous accepted baseline -> candidate baseline (DEFECT 2)
+// ---------------------------------------------------------------------------------------------
+
+// Requirement 5: new source dependency + SAME-PR candidate baseline addition also fails when
+// compared to the previous baseline. evaluateGuard alone cannot catch this -- the candidate
+// baseline was expanded to exactly match the candidate scan, so the exact-match check passes.
+// The ratchet check, comparing against the PREVIOUS accepted baseline, is what closes this.
+test("a same-PR baseline addition covering a new source dependency fails the ratchet check " +
+  "even though it passes the exact-match check", () => {
+  const previousBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const candidateBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js", "new-file.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const scanResults = new Map([
+    ["frontend.firestore_client", new Set(["a.js", "new-file.js"])],
+    ["frontend.firebase_functions_client", new Set()],
+    ["server.firebase_admin_firestore", new Set()],
+    ["server.firebase_functions_server", new Set()],
+  ]);
+
+  const { violations, staleEntries } = evaluateGuard(candidateBaseline, scanResults);
+  assert.deepEqual(violations, [], "exact-match check alone is fooled by the same-PR baseline addition");
+  assert.deepEqual(staleEntries, []);
+
+  const { additions } = evaluateRatchet(previousBaseline, candidateBaseline);
+  assert.deepEqual(additions, [
+    { category: "frontend.firestore_client", label: FORBIDDEN_CATEGORIES[0].label, path: "new-file.js" },
+  ]);
+});
+
+// Requirement 6: baseline-only addition (no matching source usage) fails.
+test("a baseline-only addition -- no corresponding source usage -- fails the ratchet check", () => {
+  const previousBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const candidateBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js", "unused-entry.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const { additions } = evaluateRatchet(previousBaseline, candidateBaseline);
+  assert.deepEqual(additions, [
+    { category: "frontend.firestore_client", label: FORBIDDEN_CATEGORIES[0].label, path: "unused-entry.js" },
+  ]);
+});
+
+// Requirement 7: baseline deletion is allowed.
+test("a baseline deletion relative to the previous accepted baseline is allowed", () => {
+  const previousBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js", "b.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const candidateBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+  const { additions } = evaluateRatchet(previousBaseline, candidateBaseline);
+  assert.deepEqual(additions, []);
+});
+
+// Requirement 8: bootstrap with no previous baseline works only when the candidate baseline
+// exactly matches the candidate scan.
+test("bootstrap (no previous baseline) reports no additions, but exact-match still applies", () => {
+  const candidateBaseline = makeBaseline({
+    frontend: { firestore_client: ["a.js"], firebase_functions_client: [], firebase_auth: [] },
+  });
+
+  const { additions, bootstrap } = evaluateRatchet(null, candidateBaseline);
+  assert.deepEqual(additions, []);
+  assert.equal(bootstrap, true);
+
+  const matchingScan = new Map([
+    ["frontend.firestore_client", new Set(["a.js"])],
+    ["frontend.firebase_functions_client", new Set()],
+    ["server.firebase_admin_firestore", new Set()],
+    ["server.firebase_functions_server", new Set()],
+  ]);
+  assert.deepEqual(evaluateGuard(candidateBaseline, matchingScan).violations, []);
+  assert.deepEqual(evaluateGuard(candidateBaseline, matchingScan).staleEntries, []);
+
+  const mismatchedScan = new Map([
+    ["frontend.firestore_client", new Set(["a.js", "other-file.js"])],
+    ["frontend.firebase_functions_client", new Set()],
+    ["server.firebase_admin_firestore", new Set()],
+    ["server.firebase_functions_server", new Set()],
+  ]);
+  assert.notDeepEqual(evaluateGuard(candidateBaseline, mismatchedScan).violations, []);
+});
+
+// ---------------------------------------------------------------------------------------------
 // Directory skip-list must never collide with a real source subdirectory name (bypass class)
 // ---------------------------------------------------------------------------------------------
 
@@ -247,11 +374,15 @@ test("scanTree walks into functions/src/coverage/ and finds its baselined server
 // The live repository, scanned today, against its own committed baseline
 // ---------------------------------------------------------------------------------------------
 
-test("the repository currently introduces no Firebase business-runtime dependency beyond its baseline", () => {
+test("the repository's committed baseline exactly matches its own current scan -- no " +
+  "violations, no stale entries", () => {
   const baseline = loadBaseline(REPO_ROOT);
   const scanResults = scanTree(REPO_ROOT);
-  const { violations } = evaluateGuard(baseline, scanResults);
+  const { violations, staleEntries } = evaluateGuard(baseline, scanResults);
   assert.deepEqual(violations, [],
     `unbaselined Firebase business-runtime dependenc(ies):\n${violations
+      .map((v) => `  ${v.path} — ${v.label}`).join("\n")}`);
+  assert.deepEqual(staleEntries, [],
+    `stale committed baseline entr(ies) no longer observed in the tree:\n${staleEntries
       .map((v) => `  ${v.path} — ${v.label}`).join("\n")}`);
 });

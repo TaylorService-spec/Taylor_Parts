@@ -47,7 +47,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Full history: the previous-baseline step below needs to `git show` the baseline file as
+      # it existed at the PR base sha (pull_request) or the pre-push commit (push to main), and a
+      # shallow checkout may not have that commit available.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -57,5 +62,76 @@ jobs:
       - name: Guard contract tests
         run: node --test scripts/firebaseExitGuard.test.mjs
 
+      # Resolve the previous accepted commit and fail closed if it can't be. An empty output
+      # means "no previous commit is expected" (branch-creation push, or workflow_dispatch on a
+      # root commit) -- the only cases where bootstrap is allowed without a resolvable sha. Any
+      # sha we *do* expect to resolve (PR base, push "before", dispatch HEAD^) MUST resolve, or
+      # the job fails; it must never be silently treated as "predates the baseline".
+      - name: Determine previous accepted commit
+        id: previous-commit
+        shell: bash
+        run: |
+          set -eu
+          ZERO_SHA="0000000000000000000000000000000000000000"
+          EVENT="${{ github.event_name }}"
+
+          if [ "$EVENT" = "pull_request" ]; then
+            SHA="${{ github.event.pull_request.base.sha }}"
+            if [ -z "$SHA" ] || ! git cat-file -e "${SHA}^{commit}" 2>/dev/null; then
+              echo "::error::Firebase exit guard: pull_request base sha '$SHA' could not be resolved. Failing closed." >&2
+              exit 1
+            fi
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          elif [ "$EVENT" = "push" ]; then
+            SHA="${{ github.event.before }}"
+            if [ "$SHA" = "$ZERO_SHA" ]; then
+              # Branch-creation push: genuinely no previous commit.
+              echo "sha=" >> "$GITHUB_OUTPUT"
+            elif [ -z "$SHA" ] || ! git cat-file -e "${SHA}^{commit}" 2>/dev/null; then
+              echo "::error::Firebase exit guard: push 'before' sha '$SHA' could not be resolved. Failing closed." >&2
+              exit 1
+            else
+              echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            fi
+
+          else
+            # workflow_dispatch: previous commit is HEAD^, if HEAD has one.
+            if PARENT_SHA="$(git rev-parse --verify -q HEAD^)"; then
+              echo "sha=$PARENT_SHA" >> "$GITHUB_OUTPUT"
+            elif git rev-list --max-parents=0 HEAD | grep -qx "$(git rev-parse HEAD)"; then
+              # HEAD is genuinely a root commit: no previous commit is expected.
+              echo "sha=" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Firebase exit guard: workflow_dispatch expected parent of HEAD could not be resolved. Failing closed." >&2
+              exit 1
+            fi
+          fi
+
+      # Materialize the previous accepted baseline (if any) to a temp file so the pure Node
+      # checker never has to shell out to git itself. The previous step already guaranteed that
+      # any non-empty sha resolves to a real commit, so the only remaining bootstrap case here is
+      # a resolvable commit that genuinely predates this baseline file.
+      - name: Materialize previous accepted baseline
+        id: previous-baseline
+        shell: bash
+        run: |
+          set -u
+          SHA="${{ steps.previous-commit.outputs.sha }}"
+          TMP="$(mktemp)"
+          if [ -n "$SHA" ] \
+              && git cat-file -e "$SHA:docs/architecture/firebase-exit-baseline.json" 2>/dev/null; then
+            git show "$SHA:docs/architecture/firebase-exit-baseline.json" > "$TMP"
+            echo "path=$TMP" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Scan the tracked repository
-        run: node scripts/firebaseExitGuard.mjs
+        shell: bash
+        run: |
+          if [ -n "${{ steps.previous-baseline.outputs.path }}" ]; then
+            node scripts/firebaseExitGuard.mjs --previous-baseline="${{ steps.previous-baseline.outputs.path }}"
+          else
+            node scripts/firebaseExitGuard.mjs
+          fi

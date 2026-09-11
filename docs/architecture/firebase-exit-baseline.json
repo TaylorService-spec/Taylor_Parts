@@ -85,7 +85,6 @@
         "field-ops-app-vite/src/access/useSalesOrderCapabilities.js",
         "field-ops-app-vite/src/access/useSerializedAssetAcquireCapability.js",
         "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
-        "field-ops-app-vite/src/domain/equipmentWrites.js",
         "field-ops-app-vite/src/domain/reporting/reportExecutionSeam.js",
         "field-ops-app-vite/src/domain/reporting/savedReportService.js",
         "field-ops-app-vite/src/firebase/firebase.js",
