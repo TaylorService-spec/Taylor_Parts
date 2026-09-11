@@ -1,0 +1,62 @@
+{
+  "schema": "eos.firebase-exit-manifest/1",
+  "generatedFrom": {
+    "baselineFile": "docs/architecture/firebase-exit-baseline.json",
+    "baselineSchema": "eos.firebase-exit-baseline/1",
+    "baseSha": "1fdef0b748e8ec98bcd957375ef9f3689daa1e59"
+  },
+
+  "targetArchitecture": {
+    "runtime": "Browser -> Vercel -> Firebase Auth token -> Render EOS API -> EOS authorization -> PostgreSQL",
+    "principle": "Firebase is permitted only for sign-in identity and Firebase UID correlation to an EOS Principal/Employee. All business data, business authorization, and business transport must run through the Render EOS API against PostgreSQL, not through Firestore or Firebase Functions."
+  },
+
+  "classification": {
+    "IDENTITY_ONLY": {
+      "description": "Firebase usage that establishes or verifies who the caller is (sign-in, ID token verification, custom-claims issuance) or correlates a Firebase UID to an EOS Principal/Employee. This is outside the BUSINESS_RUNTIME ratchet for the current business-runtime exit phase; eventual identity/auth migration is a separate future Firebase-exit concern, not decided here.",
+      "baselineKeys": [
+        "frontend.firebase_auth",
+        "server.firebase_auth",
+        "server.firebase_admin_app"
+      ],
+      "trendsToZero": false
+    },
+    "BUSINESS_RUNTIME": {
+      "description": "Firebase usage that transports, persists, authorizes, or executes EOS business logic: Firestore reads/writes, Firebase Functions callables/triggers, and firebase-admin Firestore persistence. Must trend to zero per the architecture ruling.",
+      "baselineKeys": [
+        "frontend.firestore_client",
+        "frontend.firebase_functions_client",
+        "server.firebase_admin_firestore",
+        "server.firebase_functions_server"
+      ],
+      "trendsToZero": true
+    }
+  },
+
+  "migrationStates": {
+    "NOT_STARTED": "No Render EOS API / PostgreSQL equivalent exists yet for this dependency.",
+    "DUAL_READ_TEST": "A Render EOS API / PostgreSQL equivalent exists and is being verified against the Firebase path; Firebase remains the system of record.",
+    "READY": "The Render EOS API / PostgreSQL equivalent has passed verification and cutover is authorized but not yet performed.",
+    "CUTOVER": "The Render EOS API / PostgreSQL path is the system of record; the Firebase path is inert in the live runtime.",
+    "RETIRED": "The Firebase business dependency has been removed from source and from the baseline."
+  },
+
+  "dispositions": {
+    "IDENTITY_ONLY": "This dependency is sign-in identity or UID correlation and is outside this business-runtime ratchet for the current exit phase; identity/auth migration, if any, is a separate future Firebase-exit concern.",
+    "MIGRATE_TO_POSTGRES_RENDER": "This dependency has (or will have) a live EOS business equivalent and must be re-pointed to the Render EOS API / PostgreSQL.",
+    "ARCHIVE": "This dependency serves data with no ongoing live business need; it is captured as read-only evidence/history rather than migrated forward.",
+    "RETIRE": "This dependency has no ongoing purpose and is deleted rather than migrated."
+  },
+
+  "ratchet": {
+    "rule": "For every baselineKey listed under classification.BUSINESS_RUNTIME.baselineKeys, the set of live-runtime files depending on it may only shrink relative to docs/architecture/firebase-exit-baseline.json. It may never grow. A file already in the baseline for a given key is temporarily tolerated so migration can proceed incrementally; a file NOT in the baseline for that key introducing that dependency is a new violation.",
+    "enforcedBy": "scripts/firebaseExitGuard.mjs",
+    "baselineIsAFloorNotATarget": true,
+    "documentation": "docs/architecture/firebase-exit-ratchet.md"
+  },
+
+  "domainMigrationWaveModel": {
+    "description": "Each baseline file belongs to exactly one domain: the first path segment beneath field-ops-app-vite/src or functions/src (for example functions/src/cycleCount/cycleCountCallables.ts belongs to domain 'cycleCount'). A migration wave groups one or more domains that move to the Render EOS API / PostgreSQL together. This manifest defines the model only -- it does not assign domains to waves, order waves, or assert a disposition per domain, because that scheduling decision belongs to the engineers and owners doing the migration work, not to this control document. Once a wave is scheduled, it is recorded here as an entry below with the domain names, its disposition (one of the values in `dispositions`), and its migrationState (one of the values in `migrationStates`).",
+    "waves": []
+  }
+}
