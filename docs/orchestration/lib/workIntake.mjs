@@ -13,6 +13,18 @@ export const AUTHORIZATION_STATE = Object.freeze([
 ]);
 export const RESULT_STATUS = Object.freeze(["COMPLETE", "FAILED"]);
 
+/**
+ * THE work-intake identifier. One pattern, one place.
+ *
+ * Every surface that accepts a requestId/workId/reviewId -- the validator below, the review
+ * authorization contract, and the external MCP intake tools -- tests against THIS constant. A
+ * second copy of the rule is how a boundary ends up accepting an id the ledger will not, which is
+ * exactly the case where a caller-supplied string stops naming an artifact and starts naming a
+ * path.
+ */
+export const WORK_INTAKE_ID = /^[A-Z0-9][A-Z0-9._-]{2,79}$/;
+export const isWorkIntakeId = (value) => typeof value === "string" && WORK_INTAKE_ID.test(value);
+
 const SHA256 = /^[0-9a-f]{64}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const REPO_LOCATION = /^docs\/orchestration\/work-intake\/[A-Za-z0-9._/-]+$/;
@@ -40,7 +52,7 @@ export function validateWorkIntake(a) {
   const need = (condition, message) => { if (!condition) errors.push(message); };
   need(a && typeof a === "object" && !Array.isArray(a), "artifact must be an object");
   if (!a || typeof a !== "object") return errors;
-  need(typeof a.requestId === "string" && /^[A-Z0-9][A-Z0-9._-]{2,79}$/.test(a.requestId), "requestId must be a stable 3-80 character uppercase identifier");
+  need(isWorkIntakeId(a.requestId), "requestId must be a stable 3-80 character uppercase identifier");
   need(typeof a.title === "string" && a.title.trim().length > 0, "title is required");
   need(typeof a.intent === "string" && a.intent.trim().length > 0, "intent is required");
   need(Array.isArray(a.scope) && a.scope.length > 0 && a.scope.every((v) => typeof v === "string" && v.length > 0), "scope must be a non-empty string array");
