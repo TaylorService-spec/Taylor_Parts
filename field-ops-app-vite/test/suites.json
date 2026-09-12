@@ -362,6 +362,10 @@
       "runner": "node"
     },
     {
+      "file": "test/inventoryActionRetirementContract.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/inventoryControlLifecycle.test.mjs",
       "runner": "node"
     },
