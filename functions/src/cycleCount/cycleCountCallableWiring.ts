@@ -1,7 +1,11 @@
 // Enterprise Inventory -- Cycle Count operating authority: the REAL production seams the callables wire
-// into the merged services. Mirrors transferCallableWiring.ts. Nothing here is granted: every
-// inventory.cycleCount.* capability is registered-but-UNGRANTED (active: false, no compatibility Role
-// holds it), so the governed resolver denies every principal until a separate grant + activation gate.
+// into the merged services. Mirrors transferCallableWiring.ts. Nothing here is granted -- this module
+// wires seams, it does not confer authority. The capabilities themselves are registered `active: false`
+// and, measured 2026-09-12, ARE granted: inventoryCycleCountCounter holds create/submit/cancel and
+// inventoryCycleCountReconciler holds reconcile (../access/governedBusinessRoles.ts), the separation
+// DECISIONS #111 requires. create/submit/reconcile are ACTIVATED in platform-sandbox AND
+// platform-certification, cancel in platform-sandbox only (config/environments.json). Production
+// neither activates nor grants them.
 
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission.js";

@@ -30,7 +30,10 @@ const RECEIVE_ROLE_CATALOG: Readonly<Record<string, Role>> = { ...COMPATIBILITY_
 
 // Governed authorization for inventory.stock.receive, read THROUGH the transaction so a concurrent
 // revocation conflicts the commit. Reads the actor's active roleAssignments + authoritative accessVersion,
-// then runs the merged pure resolver. Returns true only on decision === "ALLOW" (never today: UNGRANTED).
+// then runs the merged pure resolver. Returns true only on decision === "ALLOW". CORRECTED 2026-09-12:
+// this line used to end "(never today: UNGRANTED)", which contradicted the paragraph directly above it.
+// `inventory.stock.receive` is registered ACTIVE and granted to admin, dispatcher, owner and
+// inventoryReceivingClerk, so ALLOW is a real and expected outcome here.
 export async function resolveReceivePermissionThroughTxn(txn: Transaction, db: Firestore, actorId: string): Promise<boolean> {
   if (typeof actorId !== "string" || actorId.trim() === "") return false;
   const userSnap = await txn.get(db.collection(USERS_COLLECTION).doc(actorId));

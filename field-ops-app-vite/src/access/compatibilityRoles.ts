@@ -207,9 +207,17 @@ const ADMIN_CURATED_PERMISSIONS = [
     // ADMIN-only, deliberately NOT on SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS: dispatcher
     // gains nothing. Owner inherits via OWNER_PERMISSIONS composition.
     //
-    // MANAGE only, NOT inventory.catalog.activate. Creating and correcting reference data
-    // is a different authority from changing its lifecycle status, and activate stays with
-    // inventoryCatalogAdministrator. admin already holds inventory.catalog.read through the
+    // MANAGE only IN THIS CURATED LIST, not inventory.catalog.activate. Creating and correcting
+    // reference data is a different authority from changing its lifecycle status, and activate is
+    // withheld HERE so inventoryCatalogAdministrator is the Role that names it.
+    //
+    // THAT DISTINCTION DOES NOT SURVIVE ADMIN_ALL_PERMISSIONS, and saying so is the point.
+    // Measured 2026-09-12: the spread below adds every catalogue id admin does not already hold, so
+    // ADMIN_ROLE resolves `inventory.catalog.activate` too -- as it resolves all 147. This list is a
+    // record of INTENT, not of admin's effective holdings; read it as the latter and you will
+    // conclude admin cannot activate, which is false. Owner inherits the same way.
+    //
+    // admin already holds inventory.catalog.read through the
     // shared base, so read+manage is a coherent pair -- curating a Part against a
     // manufacturer list you cannot see is not (the same reasoning that added the read to
     // inventoryCatalogAdministrator).

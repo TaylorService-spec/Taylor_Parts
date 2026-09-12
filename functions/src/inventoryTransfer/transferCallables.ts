@@ -2,8 +2,10 @@
 // dispatchTransferOrder, receiveTransferOrder, cancelTransferOrder) and their exact, sanitized
 // request/response/error contracts. firebase-functions v2 onCall. Mirrors receivingCallables.ts. The
 // actor is derived ONLY from request.auth.uid; authorization is the merged governed resolver for each
-// UNGRANTED inventory.transfer.* capability (active: false), so every real user is denied until a
-// separate grant + activation gate. No production caller can supply an actor, resolver, or audit seam.
+// inventory.transfer.* capability. Measured 2026-09-12: all four are registered `active: false` but
+// ARE granted (inventoryTransferOperator; inventoryTransferReceiver for `.receive`) and ARE activated
+// in platform-sandbox -- so a holder in sandbox is ALLOWED, and every principal is denied wherever the
+// capability is not activated. No production caller can supply an actor, resolver, or audit seam.
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest, FunctionsErrorCode } from "firebase-functions/v2/https";

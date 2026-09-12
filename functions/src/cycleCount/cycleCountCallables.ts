@@ -6,9 +6,12 @@
 // Enterprise Inventory -- Cycle Count operating authority: the trusted CALLABLES (createCycleCount,
 // submitCycleCount, reconcileCycleCount, cancelCycleCount) and their exact, sanitized request/response/
 // error contracts. firebase-functions v2 onCall. Mirrors transferCallables.ts. The actor is derived ONLY
-// from request.auth.uid; authorization is the merged governed resolver for each UNGRANTED
-// inventory.cycleCount.* capability (active: false), so every real user is denied until a separate grant
-// + activation gate. No production caller can supply an actor, resolver, or audit seam.
+// from request.auth.uid; authorization is the merged governed resolver for each inventory.cycleCount.*
+// capability. Measured 2026-09-12: all four are registered `active: false` but ARE granted
+// (inventoryCycleCountCounter for create/submit/cancel, inventoryCycleCountReconciler for reconcile)
+// and ARE activated in platform-sandbox -- so a holder in sandbox is ALLOWED, and every principal is
+// denied wherever the capability is not activated. No production caller can supply an actor, resolver,
+// or audit seam.
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest, FunctionsErrorCode } from "firebase-functions/v2/https";

@@ -8,7 +8,11 @@
 //   • fail closed; caller identity comes from the authenticated principal (request.auth.uid), never a
 //     client-supplied employee id used as authorization;
 //   • authorization is the governed capability `opportunity.read`, resolved through the trusted effective-
-//     access feed (registered active:false ⇒ ungranted ⇒ deny for everyone until a separate Owner grant);
+//     access feed. Registered `active: false` -- the PRODUCTION posture: measured 2026-09-12,
+//     `opportunity.read` is held by ten governed business Roles (salesperson, salesManager,
+//     marketingManager, dispatcher and the finance/GM oversight Roles) and is ACTIVATED in
+//     platform-sandbox, so a sandbox holder is ALLOWED. Wherever it is not activated it denies
+//     every principal regardless of grant;
 //   • the projection returns ONLY fields the Sales operating experience needs — it preserves canonical
 //     Account/Contact/Location authority (returns `accountId`, does NOT copy Customer name/PII into the
 //     Opportunity for rendering), never exposes a raw Firebase UID as business identity, and invents no

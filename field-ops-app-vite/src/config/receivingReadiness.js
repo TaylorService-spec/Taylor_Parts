@@ -2,9 +2,14 @@
 // transport (LF1b).
 //
 // receiveInventoryStock and listReceivingLocationOptions are deployed and live (2026-08-06,
-// Decision #63). inventory.stock.receive is granted through governed role composition to admin,
-// dispatcher, and owner. RECEIVING_TRANSPORT_READY nonetheless remains FALSE because the
-// customer-facing Phase-F Hosting/readiness activation has not been authorized.
+// Decision #63). inventory.stock.receive is registered ACTIVE and granted through governed role
+// composition to admin, dispatcher, owner and inventoryReceivingClerk.
+//
+// RECEIVING_TRANSPORT_READY IS PER-ENVIRONMENT, NOT A SINGLE VALUE. Corrected 2026-09-12: this
+// paragraph used to say the flag "nonetheless remains FALSE", which contradicted the O-3 note at the
+// bottom of this file. config/environments.json sets it TRUE in platform-sandbox and FALSE in
+// local-emulator, platform-certification, platform-integration and taylor-parts-production. The
+// customer-facing Phase-F Hosting/readiness activation is what stays unauthorized for production.
 //
 // While false, the transport (services/receivingCallableClient.js) makes ZERO callable attempts
 // and fails closed. This is a compile-time constant, NOT a runtime probe -- the code never reaches

@@ -14,9 +14,11 @@
 // serializedAssetReadService.ts):
 //   • fail closed; caller identity comes from request.auth.uid, never a client-supplied id;
 //   • authorization is the governed capability `fulfillment.coordinatedVisit.read`, resolved through the
-//     trusted effective-access feed (registered active:false ⇒ ungranted ⇒ deny for everyone; this phase
-//     grants it to NO Role and adds NO per-environment activation override — same posture as
-//     inventory.serializedAsset.read's own introduction);
+//     trusted effective-access feed. Registered `active: false`, which is the PRODUCTION posture, not a
+//     universal one: measured 2026-09-12 it is held by dispatcher, fieldManager and operationsManager
+//     and ACTIVATED in platform-sandbox (config/environments.json). The introduction phase granted it to
+//     nobody; that is no longer true. Wherever it is not activated, `active: false` denies every
+//     principal regardless of grant;
 //   • the client does NOT receive direct `fieldops_wos` read access for this purpose (firestore.rules is
 //     UNCHANGED by this file); a trusted backend resolves the caller's governed scope, reads the canonical
 //     Work Order documents via the Admin SDK, and returns ONLY the minimal fields the two existing

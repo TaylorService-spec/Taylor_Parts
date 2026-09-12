@@ -78,15 +78,18 @@ export { getSalesAgreementContext, getSalesAgreementForOpportunity } from "./sal
 export { searchProductReferences } from "./salesAgreement/productReferenceSearchService";
 export { getManufacturerCatalog } from "./partMaster/manufacturerReadService";
 // Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability
-// `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role.
+// `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT). Measured 2026-09-12:
+// held by thirteen governed Roles and ACTIVATED in platform-sandbox; production neither activates nor grants it.
 export { getAvailableEquipment } from "./serializedAsset/serializedAssetReadService";
 // Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/
 // coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability
-// `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Role.
+// `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT). Measured 2026-09-12:
+// held by dispatcher/fieldManager/operationsManager and ACTIVATED in platform-sandbox; production neither.
 export { listCoordinatedOperations } from "./fulfillment/coordinatedVisitReadService";
 // Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for
 // WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability
-// `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role.
+// `inventory.location.display.read` registered active:false (REGISTER != GRANT). Measured 2026-09-12:
+// held by inventoryLookupReader and ACTIVATED in platform-sandbox; production neither activates nor grants it.
 export { getLocationDisplay } from "./inventoryLocation/locationDisplayReadService";
 // Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
 // active:false (REGISTER != GRANT).
@@ -96,7 +99,8 @@ export { allocateSalesOrder } from "./fulfillment/allocateSalesOrder";
 // Sales Order → Service seam (Cycle 7). EXPORT != DEPLOY; capability `salesOrder.service` active:false.
 export { createServiceForSalesOrder } from "./salesOrder/createServiceForSalesOrder";
 // Finance (Billing/AR) — governed invoice issuance. EXPORT != DEPLOY; capability `finance.invoice.issue`
-// active:false (ungranted); `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited.
+// active:false and ACTIVATED in platform-sandbox (granted to five governed Roles; production neither);
+// `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited.
 export { issueInvoice } from "./finance/invoiceCallables";
 // Finance (Billing/AR) — governed payment application. EXPORT != DEPLOY; capability `finance.payment.apply`
 // active:false; `payments`/`payment_applications` are Admin-SDK-only (deny-all client Rules). Sensitive/audited.
@@ -268,9 +272,12 @@ export {
 // Deployed and live in eos-platform-sandbox (2026-08-06, Decision #63). The governed
 // inventory.stock.receive capability is GRANTED to admin, dispatcher and owner (compatibilityRoles.ts,
 // Decisions #65/#68) -- it is NOT ungranted. The remaining gate is client transport readiness:
-// RECEIVING_TRANSPORT_READY (field-ops-app-vite/src/config/receivingReadiness.js) stays false until a
-// separate Owner authorization releases the Hosting bundle, so no client UI calls these today even
-// though the backend accepts calls from a granted principal. NO App Check requirement (matching every
+// RECEIVING_TRANSPORT_READY (field-ops-app-vite/src/config/receivingReadiness.js) is PER-ENVIRONMENT --
+// corrected 2026-09-12, this used to say it "stays false ... so no client UI calls these today", which is
+// false of sandbox. config/environments.json sets it TRUE in platform-sandbox and FALSE everywhere else,
+// so the client DOES call these in sandbox; production stays closed until a separate Owner authorization
+// releases the Hosting bundle. The capability is also granted to inventoryReceivingClerk, not only the
+// three Roles named above. NO App Check requirement (matching every
 // other callable here). The receive callable runs the pinned §3A ACTIVE-warehouse resolver; the option
 // callable serves sanitized eligible options from the trusted backend (no client warehouses read).
 // Firebase deploys each callable under its exported index property name, so these MUST be the exact
@@ -288,8 +295,10 @@ export {
 } from "./inventoryReceiving/receivingCallables";
 
 // --- Enterprise Inventory Phase 4 -- Transfer operating authority (functions/src/inventoryTransfer/*) ---
-// Every inventory.transfer.* capability is registered `active: false` and granted to NO Role, so every
-// principal is denied `noQualifyingGrant` until a later, separately-authorized grant + activation gate.
+// Every inventory.transfer.* capability is registered `active: false`. Measured 2026-09-12: all four are
+// held by inventoryTransferOperator (plus inventoryTransferReceiver for `.receive`) and all four are
+// ACTIVATED in platform-sandbox, so a sandbox holder is ALLOWED. Production neither activates nor grants
+// them, and wherever the capability is not activated every principal is denied.
 // Exporting a callable is not deployment authorization by itself -- see receiveInventoryStock above.
 export {
   createTransferOrderCallable as createTransferOrder,
@@ -324,9 +333,12 @@ export {
 // production project. NO UI wired to call them, NO App
 // Check requirement (matching every other callable here). Authorization is enforced INSIDE the command
 // against the actor's real governed roles -- inventory.catalog.manage for create/update,
-// inventory.catalog.activate for activate/deactivate. NO capability is granted here; activate/deactivate
-// currently fail closed because no STANDING role carries inventory.catalog.activate (a deferred protected
-// grant -- see docs/releases/supplier-master-rc-1.md). Firebase deploys each callable under its exported
+// inventory.catalog.activate for activate/deactivate. NO capability is granted BY THIS EXPORT; exporting a
+// callable confers nothing. CORRECTED 2026-09-12: this used to say activate/deactivate "currently fail
+// closed because no STANDING role carries inventory.catalog.activate". That standing Role now exists --
+// inventoryCatalogAdministrator (access/governedBusinessRoles.ts) carries both ids, and seven governed
+// Roles carry `.manage`. Both are registered ACTIVE, so a principal holding one of those Roles through a
+// governed roleAssignment is ALLOWED. See docs/releases/supplier-master-rc-1.md for the grant history. Firebase deploys each callable under its exported
 // index property name, so these MUST be the exact frozen public names (no "Callable" suffix); the
 // suffixed implementation consts are aliased here and are NOT otherwise exposed.
 export {
@@ -341,9 +353,11 @@ export {
 // production project. NO UI wired to call them yet, NO
 // App Check requirement (matching every other callable here). Authorization is enforced INSIDE the
 // command against the actor's real governed roles -- inventory.catalog.manage for create/update,
-// inventory.catalog.activate for changePartStatus (the accepted catalog authority / future durable
-// inventoryCatalogAdministrator role). NO capability is granted here; catalog capabilities are carried
-// by no standing role, so create/update/status fail closed until a deferred protected grant. Firebase
+// inventory.catalog.activate for changePartStatus (the accepted catalog authority). NO capability is
+// granted BY THIS EXPORT. CORRECTED 2026-09-12: this used to call inventoryCatalogAdministrator a "future
+// durable role" and say catalog capabilities "are carried by no standing role". It exists
+// (access/governedBusinessRoles.ts), carries both ids, and both ids are registered ACTIVE -- so a holder
+// is ALLOWED, not failed closed. The remaining client-side gate is PART_MASTER_WRITE_READY. Firebase
 // deploys each callable under its exported index property name, so these MUST be the exact frozen
 // public names (no "Callable" suffix); the suffixed impl consts are aliased here and NOT otherwise exposed.
 export {
@@ -356,9 +370,10 @@ export {
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
 // production project. NO UI wired yet, NO App Check. Authorization enforced
 // INSIDE the command against real governed roles -- inventory.catalog.manage for create/update,
-// inventory.catalog.activate for status (the SAME catalog authority Part/Supplier use; future durable
-// inventoryCatalogAdministrator). NO capability granted here; catalog capabilities are carried by no
-// standing role, so all three fail closed until a deferred protected grant. Closes the referential gap
+// inventory.catalog.activate for status (the SAME catalog authority Part/Supplier use). NO capability is
+// granted BY THIS EXPORT. CORRECTED 2026-09-12: inventoryCatalogAdministrator is no longer "future" --
+// it is a standing Role carrying both ids (access/governedBusinessRoles.ts), and both ids are registered
+// ACTIVE, so a holder is ALLOWED. The remaining client-side gate is MANUFACTURER_WRITE_READY. Closes the referential gap
 // Part write created (parts.manufacturerId -> a currently-unmanageable entity). Firebase deploys each
 // callable under its exported index property name -> frozen public names (no "Callable" suffix); the
 // suffixed impl consts are aliased here and NOT otherwise exposed.
@@ -392,8 +407,9 @@ export {
   listPartAliasesCallable as listPartAliases,
   probePartAliasCallable as probePartAlias,
   // Phase G. Gated on `inventory.catalog.alias.read`, NOT on `inventory.catalog.manage` -- alias
-  // lookup and alias administration have different audiences, and the read capability is registered
-  // INERT and granted to nobody, so this denies for every principal until separately authorized.
+  // lookup and alias administration have different audiences. The read capability is registered
+  // `active: false` but is held by inventoryLookupReader and inventoryStockRelocationOperator and is
+  // ACTIVATED in platform-sandbox (measured 2026-09-12); production neither activates nor grants it.
   resolveScannedPartIdentifierCallable as resolveScannedPartIdentifier,
   // The scanner's ONE governed Part read (Lookup + Move stock), replacing client-direct `parts` reads.
   lookupScannedPartCallable as lookupScannedPart,
@@ -402,7 +418,8 @@ export {
 // --- Returns INTAKE (Scanner Phase Q; DECISIONS #118) ---
 // Intake and disposition are SEPARATE authorities. This records that something came back and writes
 // NO ledger event -- which is exactly why `RETURNED` still has no writer. Gated on
-// inventory.returns.intake, registered INERT and granted to nobody. `inventory_returns` has no Rules
+// inventory.returns.intake, registered `active: false`, held by inventoryReturnsIntakeClerk and activated
+// in platform-sandbox only (measured 2026-09-12). `inventory_returns` has no Rules
 // match block, so it is deny-all to every client. EXPORT != DEPLOY.
 export { recordReturnIntakeCallable as recordReturnIntake } from "./inventoryReturns/returnCallables";
 
@@ -489,7 +506,9 @@ export {
 // A bin describes WHERE stock sits inside a warehouse; the warehouse still owns it. These author no
 // quantity and no ledger movement. Gated on inventory.location.bin.manage (write) and .read
 // (resolve/list) -- two capabilities because a put-away operator needs the check without the ability
-// to create racking. Both registered INERT and granted to nobody. `bins` has no Rules match block,
+// to create racking. Both registered `active: false`; measured 2026-09-12 `.manage` is held by
+// inventoryBinAdministrator and `.read` also by inventoryPutAwayOperator/inventoryStockRelocationOperator,
+// and both are ACTIVATED in platform-sandbox (production neither). `bins` has no Rules match block,
 // so it is deny-all to every client; these run on the Admin SDK. EXPORT != DEPLOY.
 export {
   createBinCallable as createBin,
@@ -512,12 +531,14 @@ export {
   recordPutAwayCallable as recordPutAway,
 } from "./inventoryLocation/binCallables";
 // BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN).
-// Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation.
+// Gated on inventory.stock.relocate, registered `active: false`; BIN-P4 (Owner ruling B1, 2026-09-10)
+// activated it in platform-sandbox ONLY and granted it through inventoryStockRelocationOperator alone.
 export { relocateStockCallable as relocateStock, listStockMovementLocationsCallable as listStockMovementLocations } from "./inventoryLocation/stockRelocationCallables.js";
 
 // --- Shared inventory BALANCE read (Scanner Phase H, general-purpose) ---
-// Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every
-// principal until separately authorized. EXPORT != DEPLOY.
+// Gated on `inventory.balance.read`, registered `active: false` but held by fifteen governed Roles and
+// ACTIVATED in platform-sandbox (measured 2026-09-12); production neither activates nor grants it.
+// EXPORT != DEPLOY.
 export { getPartBalanceCallable as getPartBalance } from "./inventory/partBalanceReadService";
 // The BATCHED sibling, for a page of parts. Same capability, same pure composition; one set of
 // reads instead of N. See partBalanceBatchReadService.ts for why the shared inputs dominate.
@@ -525,10 +546,12 @@ export { getPartBalancesCallable as getPartBalances } from "./inventory/partBala
 
 // --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
 // Deployed to eos-platform-sandbox under the per-environment activation program; NOT deployed to the
-// production project. NO UI wired yet, NO capability granted, NO App Check.
+// production project. NO UI wired yet, NO App Check. NO capability is granted BY THIS EXPORT.
 // Authorization enforced INSIDE the command against real governed roles -- inventory.catalog.manage for
 // create/update/setPreferred, inventory.catalog.activate for status (the SAME catalog authority the rest of
-// the catalog uses). All four fail closed until a deferred protected grant. Closes the procure-to-stock
+// the catalog uses). CORRECTED 2026-09-12: this used to say all four "fail closed until a deferred
+// protected grant". Both ids are registered ACTIVE and carried by inventoryCatalogAdministrator
+// (access/governedBusinessRoles.ts), so a holder is ALLOWED; undeployment is what closes production. Closes the procure-to-stock
 // gap (governed preferred-supplier + terms instead of free-form). The part_supplier_items READ stays served
 // by governed projections gated on R-1's inventory.catalog.read / .cost.read (partSupplierItemProjections.ts
 // is the pure contract; the read service is NOT activated here). Firebase deploys each callable under its
@@ -542,8 +565,9 @@ export {
 
 // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT:
 // exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered
-// active:false and granted to NO Role -- nothing runs in production until a separate deploy + Owner
-// grant + per-environment activation. `crm_activities` is Admin-SDK-only (no firestore.rules match block,
+// active:false; measured 2026-09-12 both are held by crmActivityContributor (and dispatcher/admin) and
+// ACTIVATED in platform-sandbox. Nothing runs in production: it neither activates nor grants them, and
+// production activation is triple-hard-blocked (access/environmentCapabilityOverrides.ts). `crm_activities` is Admin-SDK-only (no firestore.rules match block,
 // default deny); these two trusted callables are the only read/write path.
 export { createCrmActivity } from "./crmActivity/crmActivityCallables";
 export { getCrmActivities } from "./crmActivity/crmActivityReadService";

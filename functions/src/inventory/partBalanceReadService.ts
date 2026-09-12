@@ -353,8 +353,10 @@ export async function readPartBalance(
  * is the wrong audience for a warehouse balance question. `inventory.analytics.read` is a dashboard
  * projection, not a per-part answer.
  *
- * Registered `active: false` and granted to no Role: this denies for every principal until
- * activation and grant are separately authorized.
+ * Registered `active: false`. Measured 2026-09-12: held by fifteen governed business Roles
+ * (least-privilege: inventoryLookupReader -- access/governedBusinessRoles.ts) and ACTIVATED in
+ * platform-sandbox (config/environments.json). Production neither activates nor grants it, and in an
+ * environment with no activation override `active: false` denies every principal regardless of grant.
  */
 export const getPartBalanceCallable = onCall({ region: "us-central1" }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "Must be signed in.");

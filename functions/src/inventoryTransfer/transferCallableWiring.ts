@@ -1,7 +1,11 @@
 // Enterprise Inventory Phase 4 -- the REAL production seams the transfer callables wire into the
-// merged services. Mirrors receivingCallableWiring.ts. Nothing here is granted: every
-// inventory.transfer.* capability is registered-but-UNGRANTED (active: false, no compatibility Role
-// holds it), so the governed resolver denies every principal until a separate grant + activation gate.
+// merged services. Mirrors receivingCallableWiring.ts. Nothing here is granted -- this module wires
+// seams, it does not confer authority. The capabilities themselves are registered `active: false` and,
+// measured 2026-09-12, ARE granted: inventoryTransferOperator holds all four ids and
+// inventoryTransferReceiver holds `inventory.transfer.receive` (../access/governedBusinessRoles.ts),
+// and all four are ACTIVATED in platform-sandbox (config/environments.json). Production neither
+// activates nor grants them; where the capability is not activated the governed resolver denies every
+// principal regardless of grant.
 
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission.js";

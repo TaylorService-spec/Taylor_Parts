@@ -1,9 +1,14 @@
 // Shared inventory-balance read — the single fail-closed transport gate. Same shape and same
 // discipline as receivingReadiness.js and partIdentifierReadiness.js.
 //
-// `getPartBalance` is EXPORTED but NOT DEPLOYED, and `inventory.balance.read` is registered
-// `active: false` and granted to no Role. So there is nothing to reach and nobody to reach it, and
-// this constant is false in every environment.
+// `getPartBalance` is EXPORTED but NOT DEPLOYED, so there is nothing for this transport to reach, and
+// config/environments.json sets this constant false in EVERY environment (verified 2026-09-12).
+//
+// CORRECTED 2026-09-12: this paragraph used to add "and `inventory.balance.read` is registered
+// `active: false` and granted to no Role ... nobody to reach it". The grant half is false: the id is
+// held by fifteen governed business Roles (least-privilege inventoryLookupReader) and is ACTIVATED in
+// platform-sandbox (access/governedBusinessRoles.ts, config/environments.json). `active: false` is the
+// production posture. The undeployed callable and this transport gate are what close the seam.
 //
 // While false, services/inventoryBalanceCallableClient.js makes ZERO callable attempts. This is a
 // compile-time constant, NOT a runtime probe — the code never reaches Functions to guess. Flipping

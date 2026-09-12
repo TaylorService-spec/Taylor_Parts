@@ -10,8 +10,10 @@
 // Principles enforced here (identical to the Opportunity read service):
 //   • fail closed; caller identity comes from request.auth.uid, never a client-supplied id;
 //   • authorization is the governed capability `salesOrder.read`, resolved through the trusted
-//     effective-access feed (registered active:false ⇒ ungranted ⇒ deny for everyone until a
-//     separate Owner grant AND per-environment activation);
+//     effective-access feed. Registered `active: false` -- the PRODUCTION posture: measured
+//     2026-09-12, `salesOrder.read` is held by sixteen governed business Roles and is ACTIVATED in
+//     platform-sandbox (config/environments.json), so a sandbox holder is ALLOWED. Wherever it is
+//     not activated it denies every principal regardless of grant;
 //   • the projection returns ONLY facts already authoritative on the Sales Order document itself —
 //     no pricing policy, no quote state, no operatingCompanyId, no Ventana/D-5 semantics, no derived
 //     data without an authoritative source;

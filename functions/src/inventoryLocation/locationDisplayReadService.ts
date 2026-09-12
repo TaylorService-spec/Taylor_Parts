@@ -15,9 +15,14 @@
 // guess, not a fallback to a made-up type.
 //
 // Follows the salesOrder.read / inventory.catalog.read / inventory.serializedAsset.read pattern
-// exactly: a NEW governed capability (`inventory.location.display.read`), registered `active:false`
-// and granted to NO Role, so resolveEffectivePermission() denies every principal until a later,
-// separately authorized grant + activation gate. No client-direct `warehouses` widening (the existing
+// exactly: a NEW governed capability (`inventory.location.display.read`), registered `active:false`.
+// NOTE, corrected 2026-09-12: this comment used to add "and granted to NO Role, so
+// resolveEffectivePermission() denies every principal until a later, separately authorized grant +
+// activation gate". Both halves are now false -- the least-privilege inventoryLookupReader Role holds
+// it (access/governedBusinessRoles.ts) and it is ACTIVATED in platform-sandbox
+// (config/environments.json). Production neither activates nor grants it, and where it is not
+// activated `active: false` still denies every principal regardless of grant.
+// No client-direct `warehouses` widening (the existing
 // warehouses Rules are unchanged) and this service introduces no client-direct `mobile_locations`
 // widening. NOTE, corrected 2026-08-17: this comment previously asserted that `mobile_locations` has
 // no Rules match block and is default-deny. That is no longer true -- firestore.rules:1235-1238

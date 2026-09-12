@@ -2,9 +2,15 @@
 // callable transport. Same shape and same discipline as receivingReadiness.js.
 //
 // The five callables (createPartAlias, deactivatePartAlias, reactivatePartAlias, listPartAliases,
-// probePartAlias) are EXPORTED but NOT DEPLOYED by the slice that added them, and
-// `inventory.catalog.manage` is not granted to any standing role. So there is nothing to reach and
-// nobody to reach it, and this constant is false in every environment.
+// probePartAlias) are EXPORTED but NOT DEPLOYED by the slice that added them, so there is nothing for
+// this transport to reach, and config/environments.json sets this constant false in EVERY environment
+// (verified 2026-09-12).
+//
+// CORRECTED 2026-09-12: this paragraph used to add "and `inventory.catalog.manage` is not granted to
+// any standing role ... nobody to reach it". That is false. The id is registered ACTIVE and is held by
+// seven governed business Roles, including the durable standing inventoryCatalogAdministrator
+// (access/governedBusinessRoles.ts). The transport gate below is the only thing closing this seam --
+// which is the honest reason, and a stronger one than an imagined absence of grants.
 //
 // While false, services/partAliasCallableClient.js makes ZERO callable attempts. This is a
 // compile-time constant, NOT a runtime probe -- the code never reaches Functions to guess. Flipping

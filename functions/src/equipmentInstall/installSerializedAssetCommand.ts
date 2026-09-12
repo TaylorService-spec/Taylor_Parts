@@ -41,7 +41,11 @@ export const EQUIPMENT_COLLECTION = "equipment";
 export const ACCOUNTS_COLLECTION = "accounts";
 export const LOCATIONS_COLLECTION = "locations";
 
-/** The capability this command requires. Declared active:false; granted to no Role by default. */
+/**
+ * The capability this command requires. Declared `active: false`. Measured 2026-09-12: held by the
+ * purpose-built equipmentInstaller Role (access/governedBusinessRoles.ts) and ACTIVATED in
+ * platform-sandbox (config/environments.json); production neither activates nor grants it.
+ */
 export const EQUIPMENT_INSTALL_CAPABILITY = "equipment.install";
 
 /**

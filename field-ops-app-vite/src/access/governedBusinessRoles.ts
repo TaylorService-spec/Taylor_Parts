@@ -1023,9 +1023,18 @@ export const INVENTORY_CREATE_EXECUTOR_ROLE: Role = Object.freeze({
 // Least privilege, exactly two ids and nothing else. The pair is one coherent
 // resource authority (`resource: "inventory.catalog"`, actions `manage` +
 // `activate`), so granting both to one purpose-built role is the minimal
-// auditable unit. Catalog write deliberately stays OFF `admin`/`owner`
-// (see the `inventoryCreateExecutor` rationale above): catalog write is a
-// specific operational authority, not a title-based one.
+// auditable unit. Catalog write is deliberately not CURATED onto
+// `admin`/`owner` (see the `inventoryCreateExecutor` rationale above):
+// catalog write is a specific operational authority, not a title-based one.
+//
+// CORRECTED 2026-09-12: this used to read "deliberately stays OFF
+// `admin`/`owner`", which is false as a statement of what those Roles hold.
+// compatibilityRoles.ts's ADMIN_ALL_PERMISSIONS spreads every id in
+// PERMISSION_CATALOG, so admin -- and owner, by composition -- holds both
+// catalog ids along with all 147. What stays true is the design intent this
+// paragraph records, and the reason this Role exists: it is the
+// least-privilege way to give catalog authority to someone who should not
+// also be an administrator.
 //
 // Durable, unlike `inventoryCreateExecutor` -- that role is execution-scoped,
 // `.manage`-only, and revoked after one approved CREATE run. This one is a

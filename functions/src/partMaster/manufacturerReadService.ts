@@ -10,8 +10,10 @@
 // Principles enforced here (identical to the Opportunity/Sales Order read services):
 //   • fail closed; caller identity comes from request.auth.uid, never a client-supplied id;
 //   • authorization is the governed capability `inventory.catalog.read`, resolved through the
-//     trusted effective-access feed (registered active:false ⇒ ungranted ⇒ deny for everyone until
-//     a separate Owner grant AND per-environment activation);
+//     trusted effective-access feed. Registered `active: false` -- the PRODUCTION posture: measured
+//     2026-09-12, `inventory.catalog.read` is held by seventeen governed business Roles and ACTIVATED
+//     in platform-sandbox (config/environments.json), so a sandbox holder is ALLOWED. Wherever it is
+//     not activated it denies every principal regardless of grant;
 //   • the projection returns ONLY facts already authoritative on the Manufacturer document itself --
 //     no vendor/contract/financial fields (none exist on the doc today; this is a stated boundary
 //     for later, not a field currently being withheld);

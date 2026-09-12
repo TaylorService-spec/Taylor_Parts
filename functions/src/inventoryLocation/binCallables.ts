@@ -14,8 +14,12 @@
 // the mistake it avoids is the one the catalog exists to prevent, broadening a write capability to
 // serve a read.
 //
-// Both are registered active:false and granted to no Role, so both deny for every principal until
-// activation and grant are separately authorized. EXPORT != DEPLOY.
+// Both are registered active:false. Measured 2026-09-12: `inventory.location.bin.manage` is held by
+// inventoryBinAdministrator, and `.read` by inventoryBinAdministrator, inventoryPutAwayOperator and
+// inventoryStockRelocationOperator (access/governedBusinessRoles.ts); both are ACTIVATED in
+// platform-sandbox (config/environments.json). Production neither activates nor grants either, and
+// in an environment with no activation override `active: false` denies every principal regardless of
+// grant. EXPORT != DEPLOY.
 
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";

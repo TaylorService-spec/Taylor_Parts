@@ -5,7 +5,9 @@
 //
 // Every mutation: server-derived actor -> capability check via the REAL
 // Enterprise Access resolver (inventory.catalog.manage / .activate --
-// registered-but-ungranted, so real resolution DENIES today) -> PR 1.1 pure
+// both registered ACTIVE and, measured 2026-09-12, both granted: `.manage`
+// to seven governed Roles and `.activate` to inventoryCatalogAdministrator,
+// so a holder of one of those Roles is ALLOWED, not denied) -> PR 1.1 pure
 // domain validation -> one db.runTransaction covering read + version check
 // + idempotency check + mutation + atomically staged Audit Event (the
 // savedDefinitionCommands.ts pattern). Denials emit standalone "denied"
