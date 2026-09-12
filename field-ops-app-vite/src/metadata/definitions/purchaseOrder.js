@@ -129,14 +129,25 @@ import { PURCHASE_ORDERS_COLLECTION, PURCHASE_ORDER_STATUS } from "../../domain/
 // cross-request Purchasing surface, but through the joined reorder_requests+reorder_purchase_orders
 // view-model (domain/purchaseOrdersView.js), not through this metadata contract.
 //
-// NO RELATED LIST IS DECLARED. The one real parent relationship this record has — its link to the
-// Reorder Request that owns it — has no registered `reorderRequest` EntityDefinition anywhere in
-// this program to own a `reorderRequest.purchaseOrders`-shaped edge (domain/reporting/
-// reportCatalog.js's "reorderRequest" object exists only in the separate, inert governed-reporting
-// catalog, not as a metadata EntityDefinition). Declaring a relationship or a RELATED list against
-// an unregistered entity would target something this registry cannot validate, the same restraint
-// equipment.js applies to its own undeclared account.equipment edge. See REGISTRATION_PENDING in
-// this program's handoff.
+// NO RELATED LIST IS DECLARED, AND THE REASON CHANGED — the original one went stale and nothing
+// caught it. This header used to say the parent edge could not be declared because there was "no
+// registered `reorderRequest` EntityDefinition anywhere in this program", citing
+// domain/reporting/reportCatalog.js's inert "reorderRequest" object as the only thing of that name.
+// That was true when it was written (#1181, 2026-08-17) and false a week later: definitions/
+// reorderRequest.js landed in #1258 and is in ENTITY_REGISTRY, it declares `purchaseOrderId` as a
+// REFERENCE to this entity, and it declares the edge — `reorderRequest.purchaseOrder` — from the
+// side that owns the reference field. reorderRequest.js says so in its own header, and
+// test/metadataProcurementDefinitions.test.mjs asserts it CLOSES this file's REGISTRATION_PENDING
+// gap. Two definition files disagreed about whether an entity existed for three weeks, and the
+// stale one reached that conclusion by consulting the report catalog.
+//
+// So: the registration gap is CLOSED. No related list is declared here because a one-to-one parent
+// edge already stated on the parent does not need restating as a RELATED section on the child —
+// not because the entity is missing. THE REPORT CATALOG IS NOT A REGISTRY OF OBJECTS: it is a
+// capability-scoped reporting projection over a subset, it names three "objects" that have no
+// EntityDefinition at all, and nothing under src/metadata/ imports it. ENTITY_REGISTRY is the
+// answer to "does this object exist" — see ADR-013 §"Which registry names the objects", pinned by
+// test/objectListMetadataAuthority.test.mjs.
 
 export const purchaseOrderEntity = makeEntityDefinition({
   id: "purchaseOrder",
@@ -241,8 +252,9 @@ export const purchaseOrderEntity = makeEntityDefinition({
       description: "Epoch milliseconds (`Date.now()` in recordPurchaseOrder()), never a Firestore Timestamp. No updatedAt/updatedBy — this document is never updated after creation.",
     }),
   ],
-  // No relationships declared. The one real parent edge (Reorder Request -> Purchase Order) has
-  // no registered `reorderRequest` entity to own it — see the file header and REGISTRATION_PENDING.
+  // No relationships declared HERE. The one real parent edge (Reorder Request -> Purchase Order)
+  // is declared on reorderRequest.js, which owns the `purchaseOrderId` reference field — see the
+  // file header for why the older "no registered entity" reason was wrong.
   // KNOWN LIMITATIONS, AS DATA — see metadata/gapRegister.js. Carried forward from the Purchase
   // Order structured-list migration (#1443), whose findings turned out to describe a DIFFERENT
   // collection from the one this entity models. That is the single most useful thing that trace
