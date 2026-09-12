@@ -137,9 +137,10 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   // any of the three new tables.
   const forbidden = await query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'
-       AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances')`,
+       AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances',
+                          'locations', 'invoices', 'accounts')`,
   );
-  assert.deepEqual(forbidden.rows, [], "no stored balance table was created");
+  assert.deepEqual(forbidden.rows, [], "no stored balance table, and no copy of an authority this schema does not own");
 });
 
 test("eos_ops tables are FK-scoped to eos_policy.tenants -- an orphan tenant_id is refused", { skip: SKIP }, async () => {

@@ -23,11 +23,13 @@ import {
 } from "./objectAdministrationProfile.js";
 import { invoiceAdministrationProfile } from "./profiles/invoice.js";
 import { partAdministrationProfile } from "./profiles/part.js";
+import { paymentAdministrationProfile } from "./profiles/payment.js";
 
 /** Every declared profile, alphabetically by entity id so a screen has a stable order. */
 export const ADMINISTRATION_PROFILES = Object.freeze([
   invoiceAdministrationProfile,
   partAdministrationProfile,
+  paymentAdministrationProfile,
 ]);
 
 /** One profile by the entity it governs, or null. An unknown id is a question, not a fault. */

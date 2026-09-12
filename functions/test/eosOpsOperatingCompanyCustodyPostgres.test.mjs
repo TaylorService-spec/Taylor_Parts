@@ -174,6 +174,7 @@ test("operating_company_key is NOT NULL on all three authority-bearing tables", 
     assert.equal(row.data_type, "text", `${row.table_name}.operating_company_key is TEXT, not an enum`);
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key is mandatory`);
   }
+  assert.equal(carrying.includes("cycle_count_lines"), false, "a line inherits its sheet's authority");
 });
 
 test("there is NO SQL DEFAULT for the operating company -- a writer must decide", { skip: SKIP }, async () => {
