@@ -14,13 +14,13 @@
   ],
   "source": {
     "entities": 29,
-    "fields": 394
+    "fields": 395
   },
   "seeded": {
     "objects": 37,
     "objectsWithoutAnEntity": 8,
     "entities": 29,
-    "fields": 394
+    "fields": 395
   },
   "excluded": {
     "entities": 0,
@@ -1597,12 +1597,19 @@
     {
       "entityId": "payment",
       "label": "Payment",
-      "declaredFields": 11,
+      "declaredFields": 12,
       "status": "SEEDED",
       "exclusionReason": null,
       "objectKey": "payment",
       "objectSource": "MATRIX_AND_REGISTRY",
       "fields": [
+        {
+          "key": "paymentId",
+          "label": "Payment ID",
+          "dataType": "STRING",
+          "status": "SEEDED",
+          "exclusionReason": null
+        },
         {
           "key": "externalRef",
           "label": "Reference",

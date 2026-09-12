@@ -55,14 +55,20 @@ test("every source FIELD is SEEDED or EXCLUDED with a reason", () => {
   assert.equal(counted, ledger.source.fields, "the ledger covers every field");
 });
 
-test("the reconciliation adds up: 29 entities and 394 fields, all seeded", () => {
+test("the reconciliation adds up: 29 entities and 395 fields, all seeded", () => {
   // The numbers the Owner asked to see reconciled, pinned so a change to either side is a
   // deliberate edit here rather than a drift nobody notices.
+  //
+  // 394 -> 395 at the W1 integration: PR 1881 declared `payment.paymentId`. That lane updated the
+  // field-census literal in field-ops-app-vite/test/entityRegistry.test.mjs and did not know this
+  // SECOND copy of the same census existed on the functions side, so the two disagreed the moment
+  // the branches met. The delta is additive and there was exactly one of them; had several lanes
+  // each declared a field, the deltas would SUM here rather than one lane's number winning.
   assert.equal(ledger.source.entities, 29);
-  assert.equal(ledger.source.fields, 394);
+  assert.equal(ledger.source.fields, 395);
 
   assert.equal(ledger.seeded.entities, 29, "every entity became an object");
-  assert.equal(ledger.seeded.fields, 394, "every field was seeded");
+  assert.equal(ledger.seeded.fields, 395, "every field was seeded");
   assert.equal(ledger.excluded.entities, 0);
   assert.equal(ledger.excluded.fields, 0);
 

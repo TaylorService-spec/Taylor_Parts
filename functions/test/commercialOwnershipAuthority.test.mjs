@@ -47,7 +47,15 @@ const OPPORTUNITY = {
 
 test("008 is the newest migration and edits none of its predecessors", () => {
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "008 sorts last -- its timestamp is the newest");
+  // ORDER, NOT POSITION. This asserted that 008 "sorts last". Eleven additive migrations landed
+  // together at the W1 integration and only one of them can be last, so every lane that wrote this
+  // sentence about its own migration was asserting something that stops being true the moment a
+  // sibling lands. The claim that actually matters is ADDITIVE ORDER: this migration is present, and
+  // it applies after 007 -- the last migration that existed when it was written -- so it never
+  // renumbers or reorders a predecessor. A twelfth migration is then simply a twelfth migration.
+  assert.ok(files.includes(MIGRATION_FILE), "the migration is on disk under its own id");
+  assert.ok(MIGRATION_FILE > "1757980800000_operating-company-and-serialized-custody.sql",
+    "it applies after 007 -- additive, never renumbered in front of a predecessor");
   assert.equal(files[6], "1757980800000_operating-company-and-serialized-custody.sql", "007 is still seventh");
 
   // node-pg-migrate's own format, the same two sections every predecessor uses.
