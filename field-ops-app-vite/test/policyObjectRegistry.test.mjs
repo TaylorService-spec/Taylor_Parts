@@ -9,7 +9,7 @@
 // gap table may only use capabilities the matrix does not claim, and nothing may be dropped.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ENTITY_REGISTRY } from "../src/metadata/entityRegistry.js";
+import { ENTITY_REGISTRY, totalDeclaredFields } from "../src/metadata/entityRegistry.js";
 import { OBJECT_PERMISSIONS } from "../src/access/objectPermissionMap.js";
 import {
   ENTITY_BY_MATRIX_OBJECT,
@@ -46,7 +46,22 @@ test("the counts reconcile: 25 matrix rows + 29 entities, overlapping on 17, is 
   assert.equal(counts.registryOnly, 12, "an entity the matrix never had a row for");
   assert.equal(counts.fromMatrixAndRegistry + counts.matrixOnly, OBJECT_PERMISSIONS.length);
   assert.equal(counts.fromMatrixAndRegistry + counts.registryOnly, ENTITY_REGISTRY.length);
-  assert.equal(counts.fields, 394, "every declared field reaches the union");
+  // ════════════ THE FOURTH COPY OF THE FIELD CENSUS, NOW DERIVED ════════════
+  //
+  // This was the literal 394. PR #1881 declared `payment.paymentId` and moved the census to 395 in
+  // the THREE copies it knew about (entityRegistry.test.mjs, adminPolicySeedCoverage.test.mjs,
+  // adminPolicyActivation.test.mjs). There was a fourth, here, and nobody had it in view -- so the
+  // integrated tree said 395 in three places and 394 in one, and only CI could see it, because this
+  // file is not in test/suites.json and `npm test` therefore never runs it.
+  //
+  // Pinning 395 here would just reload the same gun. What this test is FOR is "the union drops
+  // nothing" -- so it now asserts exactly that, against the registry's own total. The model's size
+  // stays pinned where it belongs, in entityRegistry.test.mjs, which is the one place a deliberate
+  // change to the model should have to be written down.
+  assert.equal(
+    counts.fields, totalDeclaredFields(),
+    "every declared field reaches the union -- the union may add objects, never drop a field",
+  );
 });
 
 test("no object key is claimed twice", () => {
