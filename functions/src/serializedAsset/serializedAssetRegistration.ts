@@ -16,7 +16,11 @@
 // ownership transfer. Those remain blocked on Enterprise Inventory Phase 4 (Transfer Orders) and §H.
 
 import { createHash } from "node:crypto";
-import { SERIALIZED_ASSET_SCHEMA_VERSION, type SerializedAssetState } from "./types.js";
+import {
+  SERIALIZED_ASSET_SCHEMA_VERSION,
+  type SerializedAssetState,
+  type SerializedCustodyLocationType,
+} from "./types.js";
 
 // The lifecycle state a newly received unit enters. Specification §F: serial capture at receipt
 // "activates the Serialized Asset at its put-away location (RECEIVED)". Not AVAILABLE -- availability is
@@ -49,6 +53,12 @@ export interface SerializedAssetRegistrationInput {
   readonly partId: string;
   readonly serialNo: string;
   readonly locationId: string;
+  // The TYPE half of the put-away location. Required, and narrowed to a custody type by the caller --
+  // this builder will not accept a receiving location whose type cannot be a unit's custody, and it
+  // does not default one. Receiving currently admits WAREHOUSE only
+  // (inventoryReceiving/receivingCallables.ts), so this is WAREHOUSE today; it is passed rather than
+  // hard-coded so that widening receiving's endpoints cannot silently mislabel a received unit.
+  readonly locationType: SerializedCustodyLocationType;
   readonly receivingId: string;
   readonly actorId: string;
   readonly now: Date;
@@ -68,6 +78,7 @@ export function buildSerializedAssetForReceipt(input: SerializedAssetRegistratio
     serialNo: input.serialNo,
     partId: input.partId,
     currentLocationId: input.locationId,
+    currentLocationType: input.locationType,
     inventoryState: RECEIPT_INVENTORY_STATE,
     currentEquipmentId: null,
     ownership: RECEIPT_OWNERSHIP,

@@ -69,6 +69,12 @@ export function projectSerializedAsset(id: string, data: Record<string, unknown>
     serialNo: data.serialNo,
     partId: data.partId,
     currentLocationId: data.currentLocationId,
+    // Plucked so the stored type is actually VALIDATED (an unrecognized one fails the document closed
+    // rather than riding along unchecked). It is deliberately NOT added to the projection below: the
+    // Available Equipment projection's field list is described in the shared permission catalog, and
+    // widening the trusted read's shape is a separate, catalog-owning change. See
+    // docs/handoff/w1-c20-registrations.md.
+    currentLocationType: data.currentLocationType,
     inventoryState: data.inventoryState,
     currentEquipmentId: data.currentEquipmentId,
     ownership: data.ownership,

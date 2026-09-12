@@ -35,6 +35,7 @@ import { SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import { serializedAssetDocId } from "./serializedAssetRegistration.js";
 import { projectSerializedAsset } from "./serializedAssetReadService.js";
 import { SERIALIZED_ASSET_SCHEMA_VERSION } from "./types.js";
+import type { SerializedCustodyLocationType } from "./types.js";
 import type { SerializedAssetState } from "./types.js";
 
 /** The capability this command requires. High trust: it creates owned inventory with no purchase. */
@@ -69,6 +70,13 @@ export type AcquisitionReason = (typeof ACQUISITION_REASONS)[number];
  * exactly what AVAILABLE describes.
  */
 export const ACQUIRED_INITIAL_STATE: SerializedAssetState = "AVAILABLE";
+
+// The TYPE half of an acquired unit's location. Acquisition admits exactly one kind of place: the
+// command's own location resolver accepts an active WAREHOUSE and nothing else
+// (acquireCallableWiring.ts's makeResolveAcquireLocationActive, which calls resolveWarehouse). This
+// constant is that single statement of the fact -- the resolver and the stamped document both read
+// it, so the endpoint vocabulary and the recorded custody type cannot drift apart.
+export const ACQUIRED_LOCATION_TYPE: SerializedCustodyLocationType = "WAREHOUSE";
 
 /** Marks the asset's origin forever, so no report can mistake it for purchasing activity. */
 export const ACQUISITION_PROVENANCE = "NON_PO_ACQUISITION";
@@ -259,6 +267,7 @@ export async function acquireSerializedAsset(request: unknown, deps: AcquireComm
       serialNo: req.serialNo,
       partId: req.partId,
       currentLocationId: req.locationId,
+      currentLocationType: ACQUIRED_LOCATION_TYPE,
       inventoryState: ACQUIRED_INITIAL_STATE,
       currentEquipmentId: null,
       ownership: "COMPANY",

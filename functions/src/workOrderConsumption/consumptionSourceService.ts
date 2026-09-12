@@ -18,6 +18,7 @@ import {
   type WarehouseCandidate,
   type MobileCandidate,
 } from "./consumptionSourceOptions.js";
+import { readSerializedCustodyPair } from "../serializedAsset/types.js";
 
 export const BIN_PLACEMENTS_COLLECTION = "bin_placements";
 export const WAREHOUSES_COLLECTION = "warehouses";
@@ -119,10 +120,16 @@ export async function readSerializedCustody(
     : await db.collection(SERIALIZED_ASSETS_COLLECTION).where("partId", "==", partId).where("serialNo", "==", serialNo).get();
   if (snap.empty || snap.docs.length > 1) return null;
   const data = snap.docs[0].data() ?? {};
-  const locationId = typeof data.currentLocationId === "string" && data.currentLocationId.trim().length > 0 ? data.currentLocationId.trim() : null;
-  if (locationId === null) return null;
-  const type = typeof data.currentLocationType === "string" && data.currentLocationType.trim().length > 0 ? data.currentLocationType.trim() : "WAREHOUSE";
-  return { type, locationId };
+  // THE TYPED PAIR, OR NOTHING. This used to default a missing type to "WAREHOUSE" -- and since no
+  // writer stamped the field, the default was taken every time, including for a unit relocated into a
+  // BIN (stockRelocationCommand writes the bin id into currentLocationId). Work-Order consumption was
+  // therefore told "WAREHOUSE <bin id>": a location that does not exist, asserted with confidence.
+  //
+  // The default is gone. An unstamped or unrecognized type is an UNKNOWN custody, and unknown custody
+  // is exactly the case resolveConsumptionSource already refuses (SERIAL_CUSTODY_UNKNOWN, "letting
+  // someone assert a location would fabricate history"). Returning null hands it that case instead of
+  // manufacturing an answer -- the refusal path is reached honestly rather than being unreachable.
+  return readSerializedCustodyPair(data);
 }
 
 /**
