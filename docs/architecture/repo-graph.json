@@ -1,11 +1,11 @@
 {
  "schema": "taylor.repo-graph/1",
  "counts": {
-  "files": 4475,
-  "code": 2751,
+  "files": 4476,
+  "code": 2752,
   "docs": 857,
   "workflows": 144,
-  "tests": 1151,
+  "tests": 1152,
   "importEdges": 5110
  },
  "imports": {
@@ -25471,6 +25471,10 @@
    "functions/src/employeeIdentity",
    "functions/test/employeePrincipalLinkPlan.test.mjs",
    "functions/test/employeePrincipalLinkPostgres.test.mjs",
+   "functions/test/technicianIdentityTrap.test.mjs",
+   "functions/src/workOrderConsumption/consumptionSourceService.ts",
+   "functions/src/cycleCount/cycleCountSheetCallables.ts",
+   "functions/src/inventoryTransfer/transferReceivableRead.ts",
    "scripts/buildAdminPolicySeedSnapshot.mjs",
    "functions/package.json",
    "functions/package-lock.json",

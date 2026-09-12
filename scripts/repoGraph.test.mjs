@@ -59,6 +59,11 @@ test("isIgnored excludes vendor and build directories", () => {
   assert.equal(isIgnored("node_modules/x/index.js"), true);
   assert.equal(isIgnored("dist/app.js"), true);
   assert.equal(isIgnored("functions/src/app.ts"), false);
+  // ANCHORED, not by segment: functions/lib is tsc output, docs/orchestration/lib is authored.
+  // Blacklisting the bare segment "lib" would delete 20-odd real modules from the graph.
+  assert.equal(isIgnored("functions/lib/access/permissionCatalog.js"), true);
+  assert.equal(isIgnored("docs/orchestration/lib/contextMap.mjs"), false);
+  assert.equal(isIgnored("field-ops-app-vite/src/lib/format.js"), false);
 });
 
 test("buildGraph records import edges in both directions", () => {
