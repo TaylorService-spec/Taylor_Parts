@@ -164,13 +164,20 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
   assert.deepEqual(appliedAfter.rows, appliedBefore.rows, "and the migration is not recorded twice");
 });
 
+const MIGRATION_007 = "1757980800000_operating-company-and-serialized-custody.sql";
+const migrationFiles = () => readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort();
+const migrationFileCount = () => migrationFiles().length;
+
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL OF THEM, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
-  // that the newest migration undoes its predecessors' work, which it must not.
+  // that the newest migration undoes its predecessors' work, which it must not. The count is read
+  // from the directory rather than written down, so an additive migration does not silently turn
+  // this into a proof about a partial unwind.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(migrationFileCount()),
+    "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +197,11 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // Anything NEWER than 007 comes off first, so this stays a proof about the pair it names (007,
+  // then 006) however many additive migrations land after them.
+  const newerThan007 = migrationFiles().filter((f) => f > MIGRATION_007).length;
+  if (newerThan007 > 0) down(newerThan007);
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.

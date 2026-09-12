@@ -14,7 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import * as cc from "../lib/eosOps/cycleCountRepository.js";
@@ -29,7 +29,19 @@ const TENANT_A = "tenant-a";
 const COMPANY_A = "oc-alpha";
 
 const MIGRATION_FILE = "1757980800000_operating-company-and-serialized-custody.sql";
-const COMPANY_TABLES = ["inventory_movements", "serialized_custody", "cycle_count_sheets"];
+// Every eos_ops table that must state WHOSE inventory authority its rows belong to. Migration 007
+// created the first three (a location or a custody); migration 008 added `inventory_commitments` on
+// the same terms -- a commitment is netted directly against `inventory_movements`, so a claim
+// without a company could only be subtracted from every company's stock at once.
+const COMPANY_TABLES = ["inventory_movements", "serialized_custody", "cycle_count_sheets", "inventory_commitments"];
+
+// Unwind far enough that MIGRATION_FILE (007) is the next one to re-apply, whatever later migrations
+// exist. Counting the files instead of hard-coding "1" is what stops a later additive migration from
+// silently turning these two proofs into proofs about a different migration.
+const downThrough007 = () => migrate([
+  "down",
+  String(readdirSync("migrations").filter((f) => f.endsWith(".sql") && f >= MIGRATION_FILE).length),
+]);
 
 let pool = null;
 function repoPool() {
@@ -182,7 +194,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
   await reset();
   // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
   // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  downThrough007();
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -217,12 +229,15 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
     `SELECT count(*)::int n FROM information_schema.columns
       WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
   );
-  assert.equal(nowThere.rows[0].n, 3, "and then it applies to all three tables");
+  // Every company-bearing table, counted from the list rather than from a literal, so a later
+  // additive migration that adds one (008 added `inventory_commitments`) is included rather than
+  // silently turning this into a proof about a stale number.
+  assert.equal(nowThere.rows[0].n, COMPANY_TABLES.length, "and then it applies to every company-bearing table");
 });
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  downThrough007();
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)
