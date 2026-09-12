@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, SectionHeader, StatusIndicator, CompactMetric, Button } from "../../shared/ui/primitives";
 import { Field, FormError, FormStatus } from "../../shared/ui/form";
 import { binCommandClient } from "../../services/binCommandClient";
+import { WAREHOUSE_RACKING_GATE } from "../../access/shellCapabilityGates.js";
 import BinLabelsAndExport from "./BinLabelsAndExport";
 import { fetchWarehouses } from "../../services/operationsQueries";
 import { applyProposals, summarizeApply, APPLY_CONCURRENCY } from "../../services/rackingApply";
@@ -22,8 +23,10 @@ import {
 // ============================ THE HONEST PARTS ============================
 //
 // READ and MANAGE are gated INDEPENDENTLY, and the screen says which one it is missing. Both
-// `inventory.location.bin.read` and `inventory.location.bin.manage` are registered `active: false`
-// and granted to no Role, so today this screen renders its honest ungated state everywhere. That is
+// `inventory.location.bin.read` and `inventory.location.bin.manage` are registered `active: false`,
+// so today this screen renders its honest ungated state everywhere. (The line that used to stand
+// here said "and granted to no Role". That is no longer true and was the more misleading half:
+// inventoryBinAdministrator carries exactly these two ids -- access/governedBusinessRoles.ts.) That is
 // the truth, and it is stated rather than dressed up as "no bins configured" -- an empty list and a
 // refused read look identical to an operator, and only one of them means the rack is unconfigured.
 //
@@ -38,8 +41,13 @@ import {
 // NO QUANTITY, NO CUSTODY. This screen configures PLACES. What sits in them is the ledger's business
 // and appears nowhere here.
 
-const CAP_READ = "inventory.location.bin.read";
-const CAP_MANAGE = "inventory.location.bin.manage";
+// THE IDS COME FROM THE SHELL GATE DECLARATION, never from literals typed here. That is what
+// makes the trusted feed ask about them: `hasCapability` answers from `feed.decisions[id]`, and
+// an id absent from the request set has no entry, so it is `false` for everybody forever -- which
+// is exactly what happened to CAP_MANAGE and made every write control below dead for
+// inventoryBinAdministrator itself. See access/shellCapabilityGates.js for the full account.
+const CAP_READ = WAREHOUSE_RACKING_GATE.read;
+const CAP_MANAGE = WAREHOUSE_RACKING_GATE.manage;
 
 // The server refuses a larger batch rather than truncating it, so the client chunks to match.
 // Mirrors BIN_PREVIEW_MAX_PROPOSALS.
@@ -64,12 +72,19 @@ const intOr = (raw, fallback) => {
   return Number.isInteger(n) && n >= 0 ? n : fallback;
 };
 
-/** A capability this screen needs, stated plainly when it is not held. */
+/** A capability this screen needs, stated plainly when it is not held.
+ *
+ * WHAT THIS NO LONGER CLAIMS. It used to add "and is not granted to any role yet", which was a
+ * statement about the whole system made by a screen that can only see one decision. It is also
+ * false: inventoryBinAdministrator carries both ids, and platform-sandbox activates both
+ * (config/environments.json). Saying the capability is simply not held by THIS session is the only
+ * thing this component actually knows -- and it covers every real cause: no grant, an inactive
+ * capability, an environment that does not activate it, or an unreachable feed. */
 function Ungated({ what, capability }) {
   return (
     <StatusIndicator tone="neutral">
-      {what} is not available to you. It needs <code>{capability}</code>, which is not active for
-      this environment and is not granted to any role yet.
+      {what} is not available to you. It needs <code>{capability}</code>, which your account does
+      not currently hold.
     </StatusIndicator>
   );
 }

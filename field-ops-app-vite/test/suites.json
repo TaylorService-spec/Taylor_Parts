@@ -90,6 +90,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/capabilityRequestCoverage.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/changeHistoryModel.test.mjs",
       "runner": "node --test"
     },
