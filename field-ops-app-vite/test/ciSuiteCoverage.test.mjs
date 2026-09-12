@@ -32,6 +32,19 @@
 // registered in test/suites.json OR named by a workflow. There is deliberately NO allowlist on this
 // side -- the debt was five files, all of them passing, and all five were registered rather than
 // recorded. An allowlist seeded at zero is just a place for the next one to go.
+//
+// ============================ AND THE HOLE IN THE GUARD ITSELF ============================
+//
+// Every census here was a NON-RECURSIVE `readdirSync(test/)`. `test/__visual__/` -- 7 files -- was
+// therefore invisible to all of it: not exempted, not allowlisted, simply never looked at. A guard
+// with an unexamined directory is the same defect it was written to stop, one level up. The walk is
+// now recursive, so a suite cannot be hidden from CI by putting it in a folder.
+//
+// What the recursion found there is NOT unrun coverage. All 7 are render harnesses wrapped in
+// `describe.skipIf(!process.env.VISUAL)`: vitest's recursive `include` collects them, and with
+// VISUAL unset -- every CI run, every ordinary `npm run test:components` -- executes nothing inside
+// them. They assert nothing and are exempt from the naming rule for that reason alone, which the
+// __visual__ gate test below re-proves on every run.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -89,12 +102,43 @@ function namedByWorkflows() {
   return named;
 }
 
-const vitestSuites = () =>
-  readdirSync(here).filter((f) => f.endsWith(".test.jsx"));
+/**
+ * Every file under test/, AT ANY DEPTH, as a path relative to test/.
+ *
+ * This census used to be a non-recursive `readdirSync(here)`, and that is how the guard acquired a
+ * blind spot of its own: the 7 files in `test/__visual__/` were invisible to every assertion in
+ * this file. A guard that cannot see a directory cannot notice when it stops being run, which is
+ * the failure mode this file exists to make impossible.
+ */
+function walkTests(dir = here, prefix = "") {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) out.push(...walkTests(path.join(dir, entry.name), rel));
+    else out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * `test/__visual__/*.test.jsx` are RENDER HARNESSES, not assertion suites. Every one is wrapped in
+ * `describe.skipIf(!process.env.VISUAL)`, so with VISUAL unset — which is every CI run and every
+ * ordinary `npm run test:components` — vitest collects the file and executes nothing inside it.
+ * Naming them in a workflow would buy a green check for a suite that asserts nothing: precisely the
+ * false comfort this guard exists to deny. So they are exempt from the naming rule, and the test
+ * below re-earns that exemption on every run by proving the gate is still in place. Park a real
+ * suite in that directory and the gate assertion fails.
+ */
+const VISUAL_DIR = "__visual__";
+const isVisualHarness = (rel) => rel.split("/")[0] === VISUAL_DIR;
+
+const vitestSuites = () => walkTests().filter((f) => f.endsWith(".test.jsx"));
 
 test("every vitest suite is named by a workflow, or is known debt", () => {
   const named = namedByWorkflows();
-  const orphans = vitestSuites().filter((f) => !named.has(f) && !KNOWN_UNNAMED.has(f));
+  const orphans = vitestSuites()
+    .filter((f) => !isVisualHarness(f))
+    .filter((f) => !named.has(path.basename(f)) && !KNOWN_UNNAMED.has(path.basename(f)));
   assert.deepEqual(
     orphans,
     [],
@@ -105,7 +149,7 @@ test("every vitest suite is named by a workflow, or is known debt", () => {
 test("the allowlist may only SHRINK — every entry must still be a real, unnamed file", () => {
   // A stale entry is how an allowlist quietly becomes permission. If a suite was deleted or has
   // since been named, its line must go, so the list can never be padded back out.
-  const present = new Set(vitestSuites());
+  const present = new Set(vitestSuites().map((f) => path.basename(f)));
   const named = namedByWorkflows();
   const stale = [...KNOWN_UNNAMED].filter((f) => !present.has(f) || named.has(f));
   assert.deepEqual(
@@ -126,6 +170,26 @@ test("the debt is going DOWN, and the number is stated rather than implied", () 
   assert.ok(
     KNOWN_UNNAMED.size <= CEILING,
     `The unnamed-suite allowlist grew to ${KNOWN_UNNAMED.size}. It may only shrink.`,
+  );
+});
+
+test("the __visual__ exemption is EARNED — every harness there is still VISUAL-gated", () => {
+  // The exemption above rests entirely on `describe.skipIf(!process.env.VISUAL)`. If that gate is
+  // removed, or a real assertion suite is filed under test/__visual__/, the file becomes coverage
+  // that no workflow names and nothing here would otherwise catch — the original blind spot,
+  // re-opened by convention instead of by a missing readdir. So the gate is asserted, not assumed.
+  const harnesses = vitestSuites().filter(isVisualHarness);
+  assert.ok(
+    harnesses.length > 0,
+    "test/__visual__ contains no suites. Delete VISUAL_DIR and this test rather than leaving an exemption pointing at nothing.",
+  );
+  const ungated = harnesses.filter(
+    (rel) => !/describe\.skipIf\(\s*!process\.env\.VISUAL\s*\)/.test(readFileSync(path.join(here, rel), "utf8")),
+  );
+  assert.deepEqual(
+    ungated,
+    [],
+    `These test/__visual__ files are NOT VISUAL-gated, so they run for real and no workflow names them.\nEither restore the \`describe.skipIf(!process.env.VISUAL)\` gate, or move the file out of __visual__\nand name it in the workflow that owns its subsystem:\n  ${ungated.join("\n  ")}`,
   );
 });
 
@@ -153,9 +217,9 @@ function registeredSuites() {
 test("every node:test suite is run by SOMETHING — the manifest or a workflow", () => {
   const registered = registeredSuites();
   const named = namedByWorkflowsAnyRunner();
-  const orphans = readdirSync(here)
+  const orphans = walkTests()
     .filter((f) => f.endsWith(".test.mjs"))
-    .filter((f) => !registered.has(f) && !named.has(f));
+    .filter((f) => !registered.has(path.basename(f)) && !named.has(path.basename(f)));
   assert.deepEqual(
     orphans,
     [],
@@ -167,7 +231,7 @@ test("the manifest names no suite that does not exist", () => {
   // The mirror of the rule above, and the reason it matters: runSuites.mjs is what decides whether a
   // missing file is a failure or a silent skip. A manifest entry for a deleted file is a claim of
   // coverage with nothing behind it.
-  const present = new Set(readdirSync(here));
+  const present = new Set(walkTests().map((f) => path.basename(f)));
   const missing = [...registeredSuites()].filter((f) => !present.has(f));
   assert.deepEqual(missing, [], `test/suites.json names files that do not exist:\n  ${missing.join("\n  ")}`);
 });
