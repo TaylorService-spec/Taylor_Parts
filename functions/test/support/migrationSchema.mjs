@@ -132,3 +132,23 @@ export function tablesWithColumn(schema, column, files = migrationFiles(), dir =
   }
   return [...found].sort();
 }
+
+/**
+ * Every schema the migrations create, `eos_policy` and `eos_ops` included.
+ *
+ * What the Postgres resetters need. A `reset()` that drops only the schemas that existed when it was
+ * written, then drops `pgmigrations` and migrates up, leaves the newer schemas' tables standing and
+ * the re-`up` fails on `CREATE TABLE ... already exists`. Two W1 lanes hit exactly this and each
+ * patched in only its own schema name; derived, the list cannot fall behind again.
+ */
+export function declaredSchemas(files = migrationFiles(), dir = MIGRATIONS_DIR) {
+  const found = new Set();
+  for (const file of files) {
+    for (const raw of upSection(dir, file).split("\n")) {
+      const m = raw.trim().match(/^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/i);
+      if (m) found.add(m[1].toLowerCase());
+    }
+  }
+  for (const schema of declaredTables(files, dir).keys()) if (schema !== "public") found.add(schema);
+  return [...found].sort();
+}

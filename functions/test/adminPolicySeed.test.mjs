@@ -7,6 +7,7 @@
 // AND against real PostgreSQL when POLICY_TEST_DATABASE_URL is set -- because "idempotent" over a
 // store with unique constraints is a different claim from "idempotent" over a Map.
 import test from "node:test";
+import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
@@ -247,11 +248,14 @@ test("the seed runs over PostgreSQL, and is idempotent there too", { skip: PG_SK
   // eos_ops (migration 005) is a sibling schema in the same database and must be dropped too, or a
   // repeat migrateFromClean() in the same job fails with "already exists".
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
-  // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
-  // schema the migrations create, not only the two that existed when it was written: a surviving
-  // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
-  // still there.
-  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
+  // EVERY schema the migrations create, not only the two that existed when this reset was written.
+  // A surviving schema plus a dropped `pgmigrations` makes the next `up` re-run a migration against
+  // tables that are still there, and it fails. Two lanes hit this independently (eos_crm from the
+  // CRM migration, eos_commercial from the commercial one) and each added only its own; the union is
+  // what is correct, and `declaredSchemas()` keeps it correct for the next one without another edit.
+  for (const schema of declaredSchemas()) {
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   execFileSync(process.execPath, [
