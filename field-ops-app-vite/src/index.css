@@ -4,8 +4,10 @@
    Brand hierarchy expressed by this system:
      Verenward                — provisional working parent brand
      Enterprise Operations OS — the platform
-     Taylor Parts             — the first implementation (identified separately,
-                                never replaced by brand naming)
+     Taylor Freezer of Arizona — the workspace / Customer 1 (identified
+                                separately, never replaced by brand naming;
+                                shown short as "Taylor Arizona" where space
+                                requires it)
 
    Guardian of Living Systems · GUARD -> RENEW -> FLOURISH
 
@@ -1894,8 +1896,9 @@ button:hover {
 .fo-brand--onLight .fo-brand__platform { color: var(--color-text-secondary); opacity: 1; }
 
 /* Implementation identity. Deliberately a SEPARATE element from the brand
-   lockup: Taylor Parts identifies the deployment, and must never be replaced by
-   or merged into the parent-brand naming. */
+   lockup: Taylor Freezer of Arizona (shown short as "Taylor Arizona") identifies
+   the deployment, and must never be replaced by or merged into the
+   parent-brand naming. */
 .fo-implementation {
   display: flex; flex-direction: column; line-height: 1.2;
   padding-left: 14px; margin-left: 14px;

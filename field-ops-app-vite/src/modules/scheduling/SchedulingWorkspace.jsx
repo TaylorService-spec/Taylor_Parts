@@ -14,7 +14,7 @@ import {
 import { Button } from "../../shared/ui/primitives";
 
 // Service > Scheduling -- the WEEKLY dispatcher scheduling workspace (Enterprise Operations OS
-// platform-first; Taylor Parts flagship). A REAL operational planning surface, not a date/time form: it
+// platform-first; Taylor Freezer of Arizona flagship). A REAL operational planning surface, not a date/time form: it
 // composes the governed Work Order read + the governed technician entity into a technician x weekday board
 // so a dispatcher/Service Manager can see, at a glance, what is scheduled this week, who owns it, when,
 // how loaded each technician is, where the overlaps are, and what still needs scheduling.
