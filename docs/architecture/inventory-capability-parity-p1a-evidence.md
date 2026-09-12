@@ -104,7 +104,48 @@ data, so there is nothing for `eosOpsNoFirebase.test.mjs`'s guard to catch.
 
 ## 5. `CAPABILITY_PARITY_READY`
 
-A tenant is `CAPABILITY_PARITY_READY` (`buildInventoryCapabilityParityReport`'s
+> ### ⚠️ THIS SECTION DESCRIBED A PREDICATE THAT CERTIFIED VACUOUSLY. SUPERSEDED.
+>
+> **OBSERVED AT `64008d5ae0bdd9532909671b15a91122400accf1`.** The rule below was the shipped rule,
+> and it was **unsound**: `classify()` compared `legacyAllow === target.allow` *before* reading any
+> refusal, so **deny/deny scored `PASS` with `reason: "NONE"`** and every guard listed here — the
+> identity, role and catalog guards — sat behind reasons that are only set *after* that comparison,
+> making them unreachable whenever legacy denied.
+>
+> Three separate states therefore reported `CAPABILITY_PARITY_READY = true`, all executed and
+> measured: a principal holding **none** of the census capabilities; a principal **absent from
+> `eos_policy` entirely**; and a tenant with **no capability defined at all**. The CLI exits 0 in
+> each case. This was not a corner case — **13 of the 14 census keys are `active: false`**, so with
+> no activation override deny/deny is the *default* row shape, and the best case for a
+> fully-provisioned administrator was 18/18 PASS with **15 of 18 rows carrying no evidence**.
+>
+> The prior test suite **encoded** the defect: it asserted `classify(false, …) === PASS/NONE` and
+> passed 17/17.
+>
+> **Owner ruling G0-2 now governs:** deny/deny MAY be recorded as a **parity observation**; it is
+> **NOT proof of reachability.** Readiness requires explicit activation, explicit role grant,
+> explicit principal assignment, a demonstrated expected ALLOW, a demonstrated expected DENY,
+> environment isolation, and no production inheritance.
+>
+> The harness now emits three verdicts (`PASS` / `FAIL` / **`OBSERVATION`**) and **two separately
+> visible booleans — `inParity` and `reachabilityProven` — which are never merged.** At least one
+> non-vacuous pass is required before any readiness claim, and the legacy resolver's DENY reason is
+> **carried rather than discarded**, which is the only way `inactivePermission` (activation) can be
+> distinguished from `noQualifyingGrant` (grant). `readinessBlockers` and `readinessEvidenceGaps`
+> name what the harness cannot evidence instead of asserting it.
+>
+> **Deletion-condition 1 is no longer satisfied by this boolean alone.** It previously spent
+> `capabilityParityReady` as authority to delete the harness and re-point eight writers'
+> authorization — which a principal with no permissions could grant. It now additionally requires
+> the named evidence gaps be satisfied out of band.
+>
+> Two Owner questions are recorded in the harness header and are **not decided**: what evidence
+> standard the predicate should mean, and what it is entitled to gate. The conservative reading is
+> implemented pending a ruling.
+
+### The superseded rule, retained for the record
+
+A tenant was reported `CAPABILITY_PARITY_READY` (`buildInventoryCapabilityParityReport`'s
 `capabilityParityReady`) only when, over every (principal, operation) pair compared:
 
 - every row is `PASS` (`failed === 0`);
@@ -114,6 +155,8 @@ A tenant is `CAPABILITY_PARITY_READY` (`buildInventoryCapabilityParityReport`'s
   resolved);
 - no row's mismatch reason is `MISSING_ROLE` or `MISSING_CAPABILITY_CATALOG_ENTRY` (every role
   mapping and capability key resolved).
+
+**Every bullet after the first was unreachable in the deny/deny case.**
 
 This packet proves the tooling that CAN compute this rule. It does not run the harness against any
 real tenant's live data, and it does not switch runtime authorization for any of the 8 writers —
