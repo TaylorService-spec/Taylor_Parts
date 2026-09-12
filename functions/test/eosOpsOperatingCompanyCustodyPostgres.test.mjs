@@ -14,7 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import * as cc from "../lib/eosOps/cycleCountRepository.js";
@@ -41,6 +41,16 @@ function migrate(args) {
   return execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, encoding: "utf8", stdio: "pipe" });
+}
+
+/**
+ * Reverse every migration from the newest down to and including 007, so the next `up` is 007's own.
+ * The step count is COUNTED rather than written as `["down", "1"]`: "the newest migration" is
+ * whichever one was added last, and these two tests are about 007 specifically.
+ */
+function downToBefore007() {
+  const total = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+  migrate(["down", String(total - 6)]);
 }
 
 async function reset() {
@@ -180,9 +190,9 @@ test("the repository refuses a missing company key before it ever reaches SQL", 
 
 test("migration 007 ABORTS on a pre-existing row rather than inventing its operating company", { skip: SKIP }, async () => {
   await reset();
-  // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
-  // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  // Reverse back to 007, then 007 itself, so the tables are at their migration-005 shape -- then
+  // occupy one of them the way an unexpected pre-cutover writer would have.
+  downToBefore007();
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -222,7 +232,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  downToBefore007();
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)

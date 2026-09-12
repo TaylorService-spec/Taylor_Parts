@@ -34,8 +34,11 @@ function executableSql(source) {
 
 test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
+  // Pinned by POSITION, not by total count. This test is about 007 sitting immediately after 006,
+  // which stays true as later migrations are added; a `files.length === 7` assertion instead made
+  // every future migration edit this file, which is a tax with no proof attached.
+  assert.ok(files.length >= 7, "at least the seven migrations this suite knows about");
+  assert.equal(files[6], MIGRATION_FILE, "007 is the seventh -- its timestamp follows 006's");
   assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
   assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
 

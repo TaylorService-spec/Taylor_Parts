@@ -108,7 +108,10 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
     "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "exactly four foundation tables -- no balance table, no locations table");
+    // Migration 008's governed Supplier authority. Listed because this assertion is a CLOSED list:
+    // the point is that nothing unnamed appears in eos_ops, so every addition is stated here once.
+    "supplier_catalog_items", "suppliers",
+  ], "the four foundation tables plus 008's two -- no balance table, no locations table");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.

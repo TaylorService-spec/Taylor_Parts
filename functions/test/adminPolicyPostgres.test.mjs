@@ -164,13 +164,16 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
   assert.deepEqual(appliedAfter.rows, appliedBefore.rows, "and the migration is not recorded twice");
 });
 
+/** How many migrations exist. Counted, never hard-coded -- a literal would make every new migration edit this file. */
+const MIGRATION_COUNT = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL of them, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(MIGRATION_COUNT), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +193,10 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // Reverse everything ABOVE 007 first, so the step under test is 007's own. Counted rather than
+  // assumed: "the newest migration" is whichever one was added last, and this test is about 007.
+  if (MIGRATION_COUNT > 7) down(MIGRATION_COUNT - 7);
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.
