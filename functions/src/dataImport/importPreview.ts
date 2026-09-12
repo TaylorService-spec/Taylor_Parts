@@ -15,7 +15,12 @@
 //   ERROR    -- will NOT be imported, and is shown rather than hidden
 
 import type { FieldFinding } from "./contracts/partImportContract.js";
-import { entityContractFor, type ImportEntityType, type ImportContext } from "./contracts/entityContract.js";
+import {
+  compactIdentityKey,
+  entityContractFor,
+  type ImportEntityType,
+  type ImportContext,
+} from "./contracts/entityContract.js";
 import type { MappedRow } from "./importIntake.js";
 
 export type RowClassification = "READY" | "WARNING" | "ERROR";
@@ -56,9 +61,16 @@ function finding(severity: "ERROR" | "WARNING", field: string, code: string, mes
   return Object.freeze({ severity, field, code, message });
 }
 
-/** Identity normalization for duplicate comparison: case- and whitespace-insensitive. */
+/**
+ * Identity normalization for duplicate comparison: case- and whitespace-insensitive.
+ *
+ * DELEGATES; it does not restate the fold. This function and
+ * inventoryImportContract.partIdentityKeyForInventory used to hold byte-identical copies of
+ * it, on the two sides of the preview/writer seam -- the one place a divergence would show
+ * up as a row that previews READY and then fails.
+ */
 export function partIdentityKey(internalPartNumber: string): string {
-  return internalPartNumber.trim().toUpperCase().replace(/\s+/g, "");
+  return compactIdentityKey(internalPartNumber);
 }
 
 /**

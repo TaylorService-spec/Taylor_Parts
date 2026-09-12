@@ -35,14 +35,40 @@
 // operator sees which parts still need a different path, rather than finding a phantom
 // quantity later.
 
-import { registerEntityContract, naturalIdentityKey, type NormalizedRow, type ImportContext } from "./entityContract.js";
+import {
+  compactIdentityKey,
+  naturalIdentityKey,
+  registerEntityContract,
+  type NormalizedRow,
+  type ImportContext,
+} from "./entityContract.js";
 import type { CanonicalFieldSpec, FieldFinding } from "./partImportContract.js";
 import { normalizeText } from "./partImportContract.js";
 
 export const INVENTORY_IMPORT_CONTRACT_VERSION = 1;
 
-/** The reference names an inventory row depends on. */
-export const INVENTORY_REFERENCES = Object.freeze({ PART: "part", WAREHOUSE: "warehouse" });
+/**
+ * The reference names an inventory row depends on.
+ *
+ * WAREHOUSE_AMBIGUOUS IS A REFERENCE, NOT AN IMPLEMENTATION DETAIL, and it is why this list
+ * has three entries for two columns.
+ *
+ * An opening balance names its warehouse by DISPLAY NAME, and the writer has to turn that
+ * name into the `warehouseId` it writes into the movement ledger. When two ACTIVE warehouses
+ * carry one name, that name identifies nothing -- and the loader is the only thing that can
+ * see it, because a Set of names has already thrown the multiplicity away by the time preview
+ * looks at it. So the loader reports the ambiguous names SEPARATELY, and preview refuses the
+ * row on the same fact, for the same reason, in the same words the writer would use.
+ *
+ * Without it the two sides disagree structurally: preview finds the name present exactly once
+ * in a Set that deduplicated it, says READY, and the admin approves a row the writer then
+ * refuses. The screen an admin approves on must not be the optimistic one.
+ */
+export const INVENTORY_REFERENCES = Object.freeze({
+  PART: "part",
+  WAREHOUSE: "warehouse",
+  WAREHOUSE_AMBIGUOUS: "warehouseAmbiguous",
+});
 
 /** The location types an opening balance may be stated at, in P1. */
 export const OPENING_BALANCE_LOCATION_TYPE = "WAREHOUSE" as const;
@@ -206,7 +232,27 @@ export function inventoryContextFindings(
     );
   }
 
-  if (!warehouses || !warehouses.has(naturalIdentityKey(warehouseName))) {
+  // AMBIGUITY IS CHECKED FIRST, AND IT IS NOT ABSENCE.
+  //
+  // These two refusals used to be one. A name held by two ACTIVE warehouses resolved to no id,
+  // and the operator was told the warehouse "does not exist" -- which is not true, is not
+  // actionable, and points at the one correction that makes the problem worse: creating a
+  // third warehouse with the same name. What the operator has to do is distinguish the two
+  // that already exist, so the row says which one it means. Different cause, different
+  // sentence.
+  const ambiguous = context.references?.[INVENTORY_REFERENCES.WAREHOUSE_AMBIGUOUS];
+  const warehouseKey = naturalIdentityKey(warehouseName);
+
+  if (ambiguous?.has(warehouseKey)) {
+    findings.push(
+      err(
+        "warehouseName",
+        "WAREHOUSE_NAME_AMBIGUOUS",
+        `More than one ACTIVE warehouse is named "${warehouseName}". A name that identifies two places identifies neither, ` +
+          "and import will not choose between them. Rename the warehouses in EOS so each is distinct, then re-upload.",
+      ),
+    );
+  } else if (!warehouses || !warehouses.has(warehouseKey)) {
     findings.push(
       err(
         "warehouseName",
@@ -219,9 +265,16 @@ export function inventoryContextFindings(
   return Object.freeze(findings);
 }
 
-/** Part numbers compare with ALL whitespace removed, exactly as the Part contract does. */
+/**
+ * Part numbers compare with ALL whitespace removed, exactly as the Part contract does.
+ *
+ * "Exactly as" is now literal: this DELEGATES to the one shared fold rather than restating
+ * it. It previously held a byte-identical copy of the same four calls, which meant "exactly
+ * as the Part contract does" was a comment rather than a fact, and would have stopped being
+ * true the first time one of them was corrected.
+ */
 export function partIdentityKeyForInventory(internalPartNumber: string): string {
-  return internalPartNumber.trim().toUpperCase().replace(/\s+/g, "");
+  return compactIdentityKey(internalPartNumber);
 }
 
 /**
@@ -245,5 +298,5 @@ export const INVENTORY_IMPORT_CONTRACT = registerEntityContract({
   normalizeRow: (values) => normalizeInventoryRow(values) as NormalizedRow,
   contextFindings: inventoryContextFindings,
   identityKey: (draft) =>
-    `${partIdentityKeyForInventory(String(draft.internalPartNumber ?? ""))} @ ${naturalIdentityKey(String(draft.warehouseName ?? ""))}`,
+    `${partIdentityKeyForInventory(String(draft.internalPartNumber ?? ""))} @ ${naturalIdentityKey(draft.warehouseName)}`,
 });
