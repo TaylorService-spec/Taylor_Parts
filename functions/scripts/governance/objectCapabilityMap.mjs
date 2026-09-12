@@ -69,6 +69,38 @@ export const OBJECT_CAPABILITY_MAP = Object.freeze({
   // gave an administrator two contradictory ways to grant it. Voiding, ordering and progress
   // posting are transitions; the purchase order has no field-edit authority of its own.
   "Purchase Orders": { R: ["reorder.purchaseOrder.read"], C: ["reorder.purchaseOrder.create"], E: [], D: [] },
+  // Owner ruling D-5 (2026-09-08) split the Reorder Request out of Purchase Orders as its own
+  // canonical Object. `objectPermissionMap.js:78-80` got the row; this map never did, so every
+  // contract row, workbook sheet and precedence-sweep classification generated from here omitted the
+  // object outright and attributed its four data capabilities to NOTHING. Registering it grants
+  // nothing new -- all four ids are already advertised, already held and already active; what
+  // changes is that the generated governance artifacts stop being silent about which object they
+  // belong to. E and D are empty for the same reason they are empty on Purchase Orders: approve,
+  // reject, assign, start purchasing, post progress, record PO, mark received and cancel are
+  // WORKFLOW ACTIONS on the reorder request, banned from the CRUD matrix by D-5 and listed in
+  // objectPermissionMap.js's WORKFLOW_ACTION_CAPABILITIES.
+  //
+  // WHAT THIS ROW DOES NOT DO, measured rather than assumed. Registering it here changes NO
+  // generated artifact: re-running all five generators after adding it leaves `docs/governance/`
+  // byte-identical, and `role-capability-contract.json` still contains zero `reorder.request` ids.
+  // buildContract.mjs:38 enumerates `docs/assessments/detailed-crud.json` -- the workbook export,
+  // 456 rows over 24 objects -- and looks this map up BY THAT OBJECT NAME. The workbook predates
+  // D-5 and has no Reorder Requests column, so there is no row to look up. `reconcileCrudMatrix.mjs`
+  // is worse coupled still: its `OBJECTS` array is read positionally against `MATRIX`'s 24-code role
+  // rows (`OBJECTS.forEach((obj, i) => codes[i])`), so adding a 25th object without a 25th code per
+  // role yields `""` for every role and the object is dropped as "no access asked" -- a registration
+  // that reads as done and reports nothing.
+  //
+  // So the generated contract stops omitting this object only when the WORKBOOK gains its 19 role
+  // rows, and which access code each role gets for Reorder Requests is an Owner/workbook question,
+  // not a mechanical one. This row is still correct and still worth having: it is what
+  // objectPermissionMap.js:79 already advertises, it makes the two capability maps cover the same
+  // objects in both directions (administrationObjectDrift.test.mjs), and it grants nothing new.
+  "Reorder Requests": {
+    R: ["reorder.request.read.queue", "reorder.request.read.own"],
+    C: ["reorder.request.create.manual", "reorder.request.create.system"],
+    E: [], D: [],
+  },
   "Receiving": { R: [], C: ["inventory.stock.receive"], E: ["inventory.stock.receive"], D: [] },
   "Transfer Orders": { R: ["warehouse.transferOrder.read"], C: [], E: [], D: [] },
   "Serialized Assets": { R: ["inventory.serializedAsset.read"], C: [], E: [], D: [] },
