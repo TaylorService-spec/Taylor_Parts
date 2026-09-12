@@ -4664,7 +4664,7 @@
       "capabilityHints": [
         "inventory.serializedAsset.read"
       ],
-      "comment": "Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT), granted to NO Role."
+      "comment": "Serialized Asset trusted Available-Equipment read (Spec phase M.1). EXPORT != DEPLOY; capability `inventory.serializedAsset.read` registered active:false (REGISTER != GRANT). Measured 2026-09-12: held by thirteen governed Roles and ACTIVATED in platform-sandbox; production neither activates nor gran"
     },
     {
       "names": [
@@ -4674,7 +4674,7 @@
       "capabilityHints": [
         "fulfillment.coordinatedVisit.read"
       ],
-      "comment": "Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/ coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT), granted to NO Ro"
+      "comment": "Coordinated Operations trusted read (fidelity fix, 2026-08-15) -- serves the existing coordinatedVisit/ coordinatedFieldMission pure projections from real fieldops_wos data. EXPORT != DEPLOY; capability `fulfillment.coordinatedVisit.read` registered active:false (REGISTER != GRANT). Measured 2026-09"
     },
     {
       "names": [
@@ -4684,7 +4684,7 @@
       "capabilityHints": [
         "inventory.location.display.read"
       ],
-      "comment": "Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability `inventory.location.display.read` registered active:false (REGISTER != GRANT), granted to NO Role."
+      "comment": "Location-DISPLAY trusted resolver (sandbox-fidelity package PART 11A) -- id -> { type, label } for WAREHOUSE/MOBILE only, backing Available Equipment's location column. EXPORT != DEPLOY; capability `inventory.location.display.read` registered active:false (REGISTER != GRANT). Measured 2026-09-12: he"
     },
     {
       "names": [
@@ -4725,7 +4725,7 @@
       "capabilityHints": [
         "finance.invoice.issue"
       ],
-      "comment": "Finance (Billing/AR) — governed invoice issuance. EXPORT != DEPLOY; capability `finance.invoice.issue` active:false (ungranted); `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited."
+      "comment": "Finance (Billing/AR) — governed invoice issuance. EXPORT != DEPLOY; capability `finance.invoice.issue` active:false and ACTIVATED in platform-sandbox (granted to five governed Roles; production neither); `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited."
     },
     {
       "names": [
@@ -4850,7 +4850,7 @@
       ],
       "module": "./inventoryReturns/returnCallables",
       "capabilityHints": [],
-      "comment": "--- Returns INTAKE (Scanner Phase Q; DECISIONS #118) --- Intake and disposition are SEPARATE authorities. This records that something came back and writes NO ledger event -- which is exactly why `RETURNED` still has no writer. Gated on inventory.returns.intake, registered INERT and granted to nobody"
+      "comment": "--- Returns INTAKE (Scanner Phase Q; DECISIONS #118) --- Intake and disposition are SEPARATE authorities. This records that something came back and writes NO ledger event -- which is exactly why `RETURNED` still has no writer. Gated on inventory.returns.intake, registered `active: false`, held by in"
     },
     {
       "names": [
@@ -4877,7 +4877,7 @@
       ],
       "module": "./inventoryLocation/stockRelocationCallables.js",
       "capabilityHints": [],
-      "comment": "BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN). Gated on inventory.stock.relocate, registered inert; BIN-P4 owns activation."
+      "comment": "BIN-P6 / Decision #170 -- same-Warehouse stock relocation (RELOCATION_OUT / RELOCATION_IN). Gated on inventory.stock.relocate, registered `active: false`; BIN-P4 (Owner ruling B1, 2026-09-10) activated it in platform-sandbox ONLY and granted it through inventoryStockRelocationOperator alone."
     },
     {
       "names": [
@@ -4887,7 +4887,7 @@
       "capabilityHints": [
         "inventory.balance.read"
       ],
-      "comment": "--- Shared inventory BALANCE read (Scanner Phase H, general-purpose) --- Gated on `inventory.balance.read`, registered INERT and granted to nobody, so it denies for every principal until separately authorized. EXPORT != DEPLOY."
+      "comment": "--- Shared inventory BALANCE read (Scanner Phase H, general-purpose) --- Gated on `inventory.balance.read`, registered `active: false` but held by fifteen governed Roles and ACTIVATED in platform-sandbox (measured 2026-09-12); production neither activates nor grants it. EXPORT != DEPLOY."
     },
     {
       "names": [
@@ -4906,7 +4906,7 @@
         "crm.activity.create",
         "crm.activity.read"
       ],
-      "comment": "CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered active:false and granted to NO Role -- nothing runs in production until a separate deploy + Owner grant + p"
+      "comment": "CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4). EXPORT != DEPLOY, REGISTER != GRANT: exported for build/test only; `crm.activity.create` / `crm.activity.read` are both registered active:false; measured 2026-09-12 both are held by crmActivityContributor (and dispatcher/admin) and ACTIVA"
     },
     {
       "names": [
