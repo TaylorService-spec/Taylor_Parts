@@ -427,6 +427,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Commercial Coverage & Territory (#15) -- create durable Sales Territories + effective-dated coverage
   // assignments via the trusted coverage commands. Records only (no precedence/credit/commission). Registered
   // active:false (fail-closed). sales_territories / commercial_coverage_assignments are Admin-SDK-only.
+  // GRANT, stated precisely (measured 2026-09-12): both coverage ids are held by admin and owner through
+  // ADMIN_ALL_PERMISSIONS's derived whole-catalogue spread and by NO governed business Role -- granted to
+  // no job anyone actually does -- and no environment activates them, so every resolution denies.
   Object.freeze({
     id: "coverage.write",
     description:
@@ -1429,12 +1432,22 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // D4 -- Part-Equipment Compatibility trusted persistence (design package
   // docs/implementation-plans/equipment-compatibility-d4-trusted-persistence.md sec5).
-  // REGISTERED BUT NOT GRANTABLE: every entry is `active: false`, so
+  // REGISTERED AND INACTIVE: every entry is `active: false`, so
   // resolveEffectivePermission() denies unconditionally ahead of any Role
-  // check. D4 creates no Role, no grant and no client Rules path -- the
-  // five governed collections are client-closed (sec7). Activation is a
-  // later, separately authorized decision; declaring an id here changes
-  // no runtime authorization behavior.
+  // check, and no environment activates them. D4 creates no Role, no grant
+  // and no client Rules path -- the five governed collections are
+  // client-closed (sec7). Activation is a later, separately authorized
+  // decision; declaring an id here changes no runtime authorization behavior.
+  //
+  // CORRECTED 2026-09-12: this block used to say "REGISTERED BUT NOT GRANTABLE",
+  // which conflates activation with grant. All four ARE granted -- admin and owner
+  // hold them through ADMIN_ALL_PERMISSIONS's derived spread of this whole
+  // catalogue. The precise and still-useful statement is that no GOVERNED BUSINESS
+  // Role holds any of them: they are granted to no job anyone actually does. They
+  // are four of the twenty-one ids in that position (both coverage.*, all four
+  // equipment.compatibility.*, financialPolicy.profile.configure,
+  // report.definition.delete, finance.visibility.businessUnit/.company, both
+  // admin.dataImport.*, and the nine admin.* / report.* field ids).
   Object.freeze({
     id: "equipment.compatibility.view",
     description: "Read Part-Equipment compatibility relationships (future read service; no client read exists in D4).",

@@ -18,8 +18,10 @@
 // this surface "fails closed to the DENIED state in EVERY environment". Both halves were true when
 // written and neither is true now, measured rather than assumed:
 //
-//   * `access/governedBusinessRoles.ts` grants `inventory.serializedAsset.read` to eight governed
-//     Roles, and `inventory.location.display.read` to the least-privilege lookup Role.
+//   * `access/governedBusinessRoles.ts` grants `inventory.serializedAsset.read` to governed Roles --
+//     thirteen of them when this was last measured, on 2026-09-12; the count is a moving fact and the
+//     load-bearing one is that it is not zero -- and `inventory.location.display.read` to the
+//     least-privilege inventoryLookupReader Role.
 //   * `config/environments.json` lists BOTH in the sandbox `capabilityActivationOverrides`.
 //
 // The catalog's `active: false` is the PRODUCTION posture, not a universal one. So DENIED is ONE of

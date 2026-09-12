@@ -5,8 +5,10 @@
 //
 // READ, no client-side readiness flag -- `inventory.serializedAsset.read` authorization and its
 // per-environment activation are both enforced server-side (the callable throws permission-denied
-// when unauthorized or unactivated -- it is registered `active:false` and granted to NO Role as of
-// this build; see access/permissionCatalog.ts). Attempting the call and mapping whatever comes back
+// when unauthorized or unactivated -- it is registered `active:false`, the production posture; as of
+// 2026-09-12 it is held by thirteen governed Roles and activated in platform-sandbox, so
+// "unauthorized" and "unactivated" are both real and both environment-dependent; see
+// access/permissionCatalog.ts). Attempting the call and mapping whatever comes back
 // is the same governed-read pattern every other trusted-callable read client in this codebase uses:
 // this client does NOT special-case "not yet activated" -- that failure surfaces as an ordinary
 // permission-denied, exactly like any other unauthorized caller, and the UI's DENIED state already

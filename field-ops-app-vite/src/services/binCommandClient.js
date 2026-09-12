@@ -1,9 +1,13 @@
 // Descriptive bin registry + put-away — thin httpsCallable transport. Structure mirrors
 // services/transferCommandClient.js: it builds nothing, it just invokes the named onCall export.
 //
-// Every bin and placement capability is registered `active: false` and granted to NO Role, so today
-// every real call resolves `permission-denied` server-side. This client does not hide that; the
-// surface renders the refusal as a refusal, never as a fabricated success and never as "no bins".
+// Every bin and placement capability is registered `active: false` -- the production posture.
+// Corrected 2026-09-12: this used to add "and granted to NO Role, so today every real call resolves
+// permission-denied". inventoryBinAdministrator holds `.manage` and `.read`, inventoryPutAwayOperator
+// holds `.read` and `inventory.placement.record`, and all three ids are activated in platform-sandbox.
+// A holder there succeeds; a call in an environment without the activation is refused. This client
+// hides neither outcome; the surface renders a refusal as a refusal, never as a fabricated success
+// and never as "no bins".
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 

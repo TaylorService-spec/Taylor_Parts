@@ -37,10 +37,13 @@ import {
 // its own words, because it means the operator is in the wrong building, which is a different
 // problem from a code nobody registered.
 //
-// ============================ INERT TODAY ============================
+// ============================ INACTIVE IN PRODUCTION ============================
 //
-// `inventory.placement.record` and `inventory.location.bin.read` are both registered active:false
-// and granted to no Role, so both calls resolve permission-denied. Rendered as refusals.
+// `inventory.placement.record` and `inventory.location.bin.read` are both registered active:false --
+// the PRODUCTION posture. Corrected 2026-09-12: this block used to add "and granted to no Role, so
+// both calls resolve permission-denied". inventoryPutAwayOperator holds both (it is the Role this
+// workflow exists for), and both are ACTIVATED in platform-sandbox. A holder there succeeds; anyone
+// in an environment without the activation is refused. Refusals are rendered as refusals.
 
 const BLOCKER_TEXT = Object.freeze({
   [STOW_BLOCKED.NO_BIN]: "Scan the bin you are putting this into.",

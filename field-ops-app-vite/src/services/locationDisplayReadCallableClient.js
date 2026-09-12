@@ -5,8 +5,9 @@
 //
 // READ, no client-side readiness flag -- `inventory.location.display.read` authorization and its
 // per-environment activation are both enforced server-side (the callable throws permission-denied
-// when unauthorized or unactivated -- it is registered `active:false` and granted to NO Role as of
-// this build; see access/permissionCatalog.ts).
+// when unauthorized or unactivated -- it is registered `active:false`, the production posture; as of
+// 2026-09-12 it is held by inventoryLookupReader and activated in platform-sandbox, so "unauthorized"
+// and "unactivated" are both real and both environment-dependent; see access/permissionCatalog.ts).
 function mapErrorToStatus(err) {
   const raw = err && typeof err.code === "string" ? err.code : "";
   const code = raw.startsWith("functions/") ? raw.slice("functions/".length) : raw;

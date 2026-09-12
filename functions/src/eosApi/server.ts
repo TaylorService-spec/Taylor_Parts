@@ -16,11 +16,26 @@
 // custom claim or a document, and no answer it gave would be read as authority — every
 // authorization question is answered from PostgreSQL by the Administration API.
 //
-// ════════════════════ NOT DEPLOYED ════════════════════
+// ════════════════════ DEPLOYED TO NON-PRODUCTION ════════════════════
 //
-// This process is written, typechecked and proved locally. Nothing deploys it: there is no Render
-// service, and creating one needs Owner action. The required environment is listed in
-// docs/architecture/eos-policy-nonprod-activation.md.
+// CORRECTED 2026-09-12. This block used to read "NOT DEPLOYED ... Nothing deploys it: there is no
+// Render service, and creating one needs Owner action." That was true when written and is no longer
+// true. The Render service exists and runs this process:
+//
+//   service   eos-api-nonprod (srv-dah49f1t0dsc73egpvi0), starter, 1 instance, Oregon
+//   URL       https://eos-api-nonprod.onrender.com
+//   declared  render.yaml (Blueprint, non-production only)
+//   measured  docs/architecture/eos-real-nonprod-activation.md §0/§3 -- browser ->
+//             verenwardeos.vercel.app -> this API -> PostgreSQL, live end to end, accepted
+//             2026-09-10 at main 44f423c9
+//
+// PRODUCTION IS STILL UNTOUCHED, and that is the part that must not blur. There is no production
+// Blueprint in this repository, EOS_ENVIRONMENT is `nonprod`, and the process REFUSES TO START if it
+// is ever set to production (see readServiceConfig below) -- a check in the process, not a naming
+// convention.
+//
+// docs/architecture/eos-policy-nonprod-activation.md describes the pre-deployment state and its §5
+// environment requirements; eos-real-nonprod-activation.md supersedes its status claims.
 import { createServer } from "node:http";
 import { PostgresPolicyRepository } from "../adminPolicy/postgresPolicyRepository";
 import {

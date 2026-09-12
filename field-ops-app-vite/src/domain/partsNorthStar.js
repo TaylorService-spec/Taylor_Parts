@@ -175,7 +175,11 @@ export function partRecordRailSubset(part) {
 // ============================ THE THREE INACTIVE CAPABILITIES ============================
 //
 // Balances, serialized-asset detail and location display are each built, each governed, and each
-// registered active:false and granted to no role. A section whose read is switched off renders its
+// registered active:false -- the PRODUCTION posture. Corrected 2026-09-12: this used to add "and
+// granted to no role", which is false for all three. `inventory.balance.read` is held by fifteen
+// governed Roles, `inventory.serializedAsset.read` by thirteen, `inventory.location.display.read`
+// by inventoryLookupReader, and all three are activated in platform-sandbox. A section whose read
+// is switched off renders its
 // heading and this sentence — never nothing, which reads as "this part has none", and never a
 // placeholder, which reads as a fact.
 

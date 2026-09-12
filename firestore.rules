@@ -1706,8 +1706,19 @@ service cloud.firestore {
     // subject to these rules.
     //
     // The equipment.* capabilities registered alongside this block are all
-    // `active: false`, so no principal can be granted them either -- the closure
-    // here and the inactive catalog entries fail closed independently.
+    // `active: false`, so resolveEffectivePermission() denies them for every
+    // principal -- the closure here and the inactive catalog entries fail closed
+    // independently.
+    //
+    // CORRECTED 2026-09-12: this used to say "so no principal can be granted them
+    // either", which conflates ACTIVATION with GRANT. They are granted. admin and
+    // owner hold all four equipment.compatibility.* ids through
+    // ADMIN_ALL_PERMISSIONS's derived spread of the whole catalogue, and
+    // equipment.model.manage is additionally held by equipmentCatalogAdministrator.
+    // What is true, and is the warning worth keeping, is that no GOVERNED BUSINESS
+    // Role holds any equipment.compatibility.* id -- they are granted to no job
+    // anyone actually does -- and that `active: false` denies every holder anyway,
+    // in every environment, because no environment activates them.
     //
     // Deployment is the separate D10 gate and requires its own production
     // authorization; merging this block changes nothing in production.

@@ -4,9 +4,12 @@
 // and services/salesOrderCommandClient.js exactly: firebase is imported LAZILY (no import-time
 // initializeApp side effect), and this is the only place that invokes these callables.
 //
-// crm.activity.read / crm.activity.create are both registered active:false and granted to NO Role today
-// -- there is no client-side readiness flag here (matches every other governed-read/write client in this
-// codebase); a persona's authorization is resolved fail-closed server-side on every call.
+// crm.activity.read / crm.activity.create are both registered active:false -- the production posture.
+// Corrected 2026-09-12: this used to say "granted to NO Role today". crmActivityContributor holds both
+// (and admin/dispatcher hold them by their own governed grants), and both are activated in
+// platform-sandbox. There is still no client-side readiness flag here (matching every other
+// governed-read/write client in this codebase); a persona's authorization is resolved fail-closed
+// server-side on every call, which is why this client needs no opinion about grants at all.
 //
 // Never throws. Each method returns { result } on success or { errorStatus } on failure.
 import { mapCrmActivityErrorToStatus } from "../domain/crmActivityView.js";

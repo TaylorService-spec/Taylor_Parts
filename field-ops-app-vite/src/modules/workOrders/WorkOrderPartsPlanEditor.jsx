@@ -58,7 +58,11 @@ function PlanMessage({ tone, children }) {
 }
 
 // Fail-closed default: with no `capability` prop injected, the "Edit parts plan" affordance never
-// renders as live -- matching the server's own default deny for the (today ungranted) capability.
+// renders as live -- matching the server's own default deny for a principal who does not hold the
+// capability. (Corrected 2026-09-12: this used to call `workOrder.parts.plan` "today ungranted".
+// The purpose-built workOrderPartsPlanner Role holds it and it is activated in platform-sandbox;
+// `active: false` is the production posture. The fail-closed default is unchanged and is what makes
+// this correct either way.)
 const DEFAULT_CAPABILITY = { hasCapability: () => false, resolving: false };
 
 export default function WorkOrderPartsPlanEditor({ workOrder, onPlanSaved, deps, capability }) {

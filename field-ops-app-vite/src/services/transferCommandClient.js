@@ -1,9 +1,12 @@
 // Enterprise Inventory Phase 4 -- thin httpsCallable transport for the Transfer command family.
 // Mirrors services/truckRegistryCommandClient.js: builds nothing itself (request shaping lives in
 // domain/transferCommandRequest.js), just invokes the named onCall export. Every
-// inventory.transfer.* capability is registered `active: false` and granted to NO Role, so today
-// every real call resolves `permission-denied` server-side -- this client does not hide that; the
-// hook below surfaces it as an honest status, never a fabricated success.
+// inventory.transfer.* capability is registered `active: false` -- the production posture. Corrected
+// 2026-09-12: this used to add "and granted to NO Role, so today every real call resolves
+// permission-denied". inventoryTransferOperator holds all four and inventoryTransferReceiver holds
+// `.receive`, and all four are activated in platform-sandbox, so a holder there succeeds. This client
+// hides neither outcome; the hook below surfaces a refusal as an honest status, never a fabricated
+// success.
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 

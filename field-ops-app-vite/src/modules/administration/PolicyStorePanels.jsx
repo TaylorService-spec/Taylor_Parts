@@ -14,9 +14,15 @@
 //
 // ════════════════════ NOT CONFIGURED IS SAID OUT LOUD ════════════════════
 //
-// No EOS API is deployed anywhere today. Every panel therefore renders its own honest state rather
-// than an empty table: an empty table would read as "your tenant has no Roles", which is a lie about
-// the tenant rather than a statement about the connection.
+// Every panel renders its own honest state rather than an empty table whenever it has nowhere to ask
+// or is refused: an empty table would read as "your tenant has no Roles", which is a lie about the
+// tenant rather than a statement about the connection.
+//
+// CORRECTED 2026-09-12: this used to open "No EOS API is deployed anywhere today." That is false --
+// eos-api-nonprod is live and the non-production build is configured against it
+// (docs/architecture/eos-real-nonprod-activation.md). NOT CONFIGURED is now one of several states
+// these panels must render, not their permanent condition, which is exactly why each one is rendered
+// separately instead of collapsed into a blank grid.
 //
 // ════════════════════ NOTHING IS SHOWN UNTIL IT IS STORED ════════════════════
 //

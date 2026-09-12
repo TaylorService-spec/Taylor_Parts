@@ -9,11 +9,15 @@ import { LOCATION_DISPLAY_SOURCE_STATUS } from "../access/locationDisplaySource.
 // keyed by a stable "|"-joined string of the sorted ids -- avoids re-fetching on every render when
 // the caller passes a freshly-allocated array with the same contents.
 //
-// `inventory.location.display.read` is registered `active:false` and granted to no Role as of this
-// build (access/permissionCatalog.ts) -- until a later, separately authorized grant + per-environment
-// activation, this read fails closed with a DENIED status in every environment. Consumers must treat
-// that as expected, not a bug -- the location column renders its own honest fallback (the raw id via
-// composeAvailableRow) rather than blocking on this resolver.
+// `inventory.location.display.read` is registered `active:false` (access/permissionCatalog.ts), which
+// is the PRODUCTION posture. CORRECTED 2026-09-12 -- this comment used to say it was "granted to no
+// Role as of this build" and that the read "fails closed with a DENIED status in every environment",
+// the same stale pair modules/equipment/AvailableEquipment.jsx already corrected in its own header.
+// The least-privilege inventoryLookupReader Role holds it (access/governedBusinessRoles.ts) and it is
+// ACTIVATED in platform-sandbox (config/environments.json). DENIED is therefore one possible outcome,
+// not the condition of this hook. Consumers must still treat DENIED as expected rather than a bug --
+// the location column renders its own honest fallback (the raw id via composeAvailableRow) rather
+// than blocking on this resolver.
 export function useLocationDisplaySource(locationIds) {
   const ids = Array.isArray(locationIds) ? locationIds.filter((id) => typeof id === "string" && id.trim() !== "") : [];
   const dedupedIds = [...new Set(ids)].sort();

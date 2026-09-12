@@ -10,11 +10,15 @@ import { SERIALIZED_ASSET_SOURCE_STATUS } from "../access/serializedAssetSource.
 // so the consuming component's state-derivation logic (domain/availableEquipmentCatalogView.js) does
 // not need to know whether it is reading a live or an injected source.
 //
-// `inventory.serializedAsset.read` is registered `active:false` and granted to no Role as of this
-// build (access/permissionCatalog.ts) -- until a later, separately authorized grant + per-environment
-// activation, this read fails closed with a DENIED status in every environment. That is the expected,
-// correct behavior: the surface must render an honest "not authorized" state, never fabricated
-// inventory and never a silent fallback to the inert "registry doesn't exist" copy.
+// `inventory.serializedAsset.read` is registered `active:false` (access/permissionCatalog.ts), which
+// is the PRODUCTION posture. CORRECTED 2026-09-12 -- this comment used to say it was "granted to no
+// Role as of this build" and that the read "fails closed with a DENIED status in every environment".
+// modules/equipment/AvailableEquipment.jsx corrected exactly that pair in its own header and this
+// copy of it was missed: thirteen governed business Roles hold the id (least-privilege
+// inventoryLookupReader, access/governedBusinessRoles.ts) and it is ACTIVATED in platform-sandbox
+// (config/environments.json). DENIED is one of the outcomes this hook must render honestly, not the
+// condition of the surface: never fabricated inventory and never a silent fallback to the inert
+// "registry doesn't exist" copy.
 export function useAvailableEquipmentSource() {
   const [state, setState] = useState({ status: SERIALIZED_ASSET_SOURCE_STATUS.LOADING, assets: [] });
 

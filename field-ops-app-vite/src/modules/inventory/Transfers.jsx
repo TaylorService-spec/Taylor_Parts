@@ -32,12 +32,23 @@ import { Button } from "../../shared/ui/primitives/index.js";
 // actions through useTransferActions -> services/transferCommandClient (the four onCall
 // createTransferOrder/dispatchTransferOrder/receiveTransferOrder/cancelTransferOrder exports).
 //
-// HONEST POSTURE: every inventory.transfer.* capability is registered `active: false` and granted
-// to NO Role today, so every real action attempt resolves `permission-denied` server-side. The
-// controls render (so the workspace is reviewable and ready for the day the grant lands) but every
-// call is re-authorized by the trusted backend regardless of what this UI shows -- there is no
+// HONEST POSTURE, RESTATED 2026-09-12. This used to say every inventory.transfer.* capability is
+// "granted to NO Role today, so every real action attempt resolves permission-denied". That is now
+// false: inventoryTransferOperator holds all four ids, inventoryTransferReceiver holds
+// `inventory.transfer.receive` (access/governedBusinessRoles.ts), and all four are ACTIVATED in
+// platform-sandbox (config/environments.json). `active: false` is the PRODUCTION posture.
+//
+// So the outcome depends on who is asking and where: a holder in sandbox is allowed; everyone in an
+// environment that does not activate these is denied. The controls render either way, and every call
+// is re-authorized by the trusted backend regardless of what this UI shows -- there is no
 // client-side bypass. A denied action surfaces the honest mapped message, never a fabricated
 // success.
+//
+// NOT GATED ON CAPABILITY, DELIBERATELY RECORDED AS OPEN. The action buttons below carry only
+// `disabled={rowBusy}` and the New-transfer button carries no disabled state at all; `hasCapability`
+// is never passed to this component (App.jsx renders it with `accessVersion` alone). Display is
+// therefore fail-OPEN over a fail-CLOSED server. Adding the gate changes what users can see, so it
+// is left for an Owner ruling rather than folded into a comment correction.
 //
 // Access: the Inventory > Transfers nav item is admin/dispatcher (PLACEHOLDER_DEFAULT_ROLES),
 // matching the transfer_orders read rule's common path; a denied read fails closed to a
@@ -101,8 +112,10 @@ export default function Transfers({ accessVersion }) {
   const authorityNotice = (
     <>
       {/* SAY WHAT THE BACKEND WILL DO, BEFORE THE BUTTON IS PRESSED.
-          Every inventory.transfer.* capability is registered active:false and granted to no default
-          Role, so for almost everyone who can reach this page the write resolves permission-denied
+          Every inventory.transfer.* capability is registered active:false, which is the production
+          posture; in platform-sandbox they are activated and held by inventoryTransferOperator /
+          inventoryTransferReceiver. No DEFAULT Role carries them, so for most people who can reach
+          this page (the nav item is admin/dispatcher) the write resolves permission-denied
           server-side. The controls below were offered anyway, with the concession recorded only in a
           code comment nobody using the app can read.
           Receiving, with the identical posture, states its reason up front instead. This does the

@@ -45,11 +45,16 @@ import {
 //   - EVERYONE ELSE keeps useTransferOrders, the same authorized `transfer_orders` read the
 //     Operations surface uses, unchanged.
 //
-// ============================ INERT TODAY ============================
+// ============================ INACTIVE IN PRODUCTION ============================
 //
-// Every inventory.transfer.* capability is registered active:false and granted to no Role, so a real
-// submission resolves permission-denied server-side. This surface does not hide that: it renders the
-// refusal as a refusal, never as a fabricated success and never as "nothing to transfer".
+// Every inventory.transfer.* capability is registered active:false -- the PRODUCTION posture, not a
+// universal one. Corrected 2026-09-12: this block used to add "and granted to no Role, so a real
+// submission resolves permission-denied server-side". inventoryTransferOperator holds all four and
+// inventoryTransferReceiver holds `.receive` (access/governedBusinessRoles.ts), and all four are
+// ACTIVATED in platform-sandbox (config/environments.json), so a holder there submits successfully.
+// Where they are not activated, every principal is refused. This surface does not hide either
+// outcome: it renders the refusal as a refusal, never as a fabricated success and never as
+// "nothing to transfer".
 
 const BLOCKER_TEXT = Object.freeze({
   [BLOCKED_REASON.NOT_ACTIONABLE]: "This transfer is not waiting for anything right now.",

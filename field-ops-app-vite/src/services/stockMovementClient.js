@@ -1,8 +1,11 @@
 // Stock relocation -- thin httpsCallable transport over the BIN-P6 `relocateStock` command.
 //
 // Builds nothing and decides nothing: the server derives custody, checks the exact source and owns
-// idempotency. `inventory.stock.relocate` is registered active:false and granted to no Role, so today
-// every real call is refused server-side, and the screen renders that refusal as a refusal.
+// idempotency. `inventory.stock.relocate` is registered active:false -- the production posture.
+// Corrected 2026-09-12: this used to add "and granted to no Role, so today every real call is refused
+// server-side". BIN-P4 (Owner ruling B1, 2026-09-10) activates it in platform-sandbox ONLY and grants
+// it through inventoryStockRelocationOperator alone, so that Role's calls succeed in sandbox and every
+// call is refused where the id is not activated. Refusals are rendered as refusals.
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 

@@ -470,9 +470,13 @@ export default function SalesWorkspace({ readiness, onSaveSection, source, creat
       {/* FOUR DIFFERENT FACTS, NOT ONE. The source deliberately reports `ready | denied | unavailable
           | error` and the hook carries `loading` alongside them -- then every non-ready value was
           rendered as "the source is not connected yet". That sentence was actively misleading for the
-          most common case: `opportunity.read` is granted to NO Role today, so a real caller is
-          DENIED, and denial was being reported as a missing integration. One tells you to wait for a
-          later cycle; the other tells you to ask for access. They are not the same instruction.
+          most common case: a real caller who does not hold `opportunity.read` is DENIED, and denial
+          was being reported as a missing integration. One tells you to wait for a later cycle; the
+          other tells you to ask for access. They are not the same instruction. (Corrected 2026-09-12:
+          this paragraph used to justify itself with "`opportunity.read` is granted to NO Role today",
+          which is now false -- ten governed business Roles hold it and it is activated in
+          platform-sandbox. The distinction it draws is unaffected, and matters more, not less, now
+          that ALLOW is a reachable outcome.)
 
           Distinguishing them here matches AccountSalesOrdersSection, which already refuses to let
           denied or unavailable borrow the empty state's copy. */}

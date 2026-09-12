@@ -637,15 +637,21 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // service does not exist yet. No Firestore access, no writes.
   // Administration > Warehouse Racking -- describe a warehouse rack once and create its bins.
   // Both bin capabilities are threaded from the trusted feed and gated INDEPENDENTLY: the read
-  // (list + the trusted preview) and the manage (create/rename/deactivate) are different audiences,
-  // and today neither is active, which the screen states rather than rendering as an empty rack.
+  // (list + the trusted preview) and the manage (create/rename/deactivate) are different audiences.
+  // Corrected 2026-09-12: this used to say "today neither is active". Both bin ids are registered
+  // `active: false` (the production posture) but ARE activated in platform-sandbox and held by
+  // inventoryBinAdministrator / inventoryPutAwayOperator / inventoryStockRelocationOperator. The
+  // screen states whichever one the signed-in account lacks, rather than rendering an empty rack.
   if (domain.key === "administration" && item.key === "warehouseRacking") {
     return <AdminWarehouseRacking hasCapability={operationalContext?.hasCapability} />;
   }
   // Administration > Company Setup > Financial Policy -- the ONE place a company's accounting policy
-  // is configured. Financials links here and never edits. Both capabilities are registered
-  // active:false and granted to no Role, so the screen renders its honest ungated state today; the
-  // backend command enforces the lock regardless of what this screen renders.
+  // is configured. Financials links here and never edits. Corrected 2026-09-12: this used to say
+  // both capabilities are "registered active:false and granted to no Role". They are registered
+  // `active: false` -- the production posture -- but `financialPolicy.profile.read` is held by four
+  // governed business Roles, `.configure` by admin/owner, and both are activated in platform-sandbox.
+  // The screen renders its ungated state for an account that holds neither; the backend command
+  // enforces the lock regardless of what this screen renders.
   // Administration > Data Import -- the native file import surface. Both capabilities are gated by
   // the SAME previewer the nav uses, so the screen and the destination agree: an environment where
   // import is inactive shows no tab, and a principal who reaches the URL directly gets the screen's

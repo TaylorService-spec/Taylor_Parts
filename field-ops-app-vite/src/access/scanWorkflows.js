@@ -51,7 +51,10 @@ export const RECEIVE_CAPABILITY = "inventory.stock.receive";
  * who holds only one of them can still do useful work. So the workflow is offered when EITHER is
  * held, and the screen then offers only the action the selected transfer is actually waiting for.
  *
- * Both are registered active:false and granted to no Role today, so this denies for everyone.
+ * Both are registered active:false -- the production posture. Measured 2026-09-12:
+ * inventoryTransferOperator holds dispatch and receive, inventoryTransferReceiver holds receive, and
+ * both are activated in platform-sandbox. A holder there is offered the workflow; in an environment
+ * with no activation the capability resolves DENY for everyone regardless of grant.
  */
 export const TRANSFER_DISPATCH_CAPABILITY = "inventory.transfer.dispatch";
 export const TRANSFER_RECEIVE_CAPABILITY = "inventory.transfer.receive";
@@ -86,7 +89,9 @@ export const RETURNS_INTAKE_CAPABILITY = "inventory.returns.intake";
  * worker who may record where something was stowed may NOT, by that alone, move it. Bin read is also
  * required, because every bin in a move is resolved through the trusted bin read.
  *
- * Registered active:false and granted to no Role, so this is offered to nobody until BIN-P4.
+ * Registered active:false. BIN-P4 (Owner ruling B1, 2026-09-10) has since landed: it activates this
+ * id in platform-sandbox ONLY and grants it through inventoryStockRelocationOperator alone, so that
+ * Role is offered the workflow in sandbox and nobody is offered it in production.
  */
 export const STOCK_RELOCATE_CAPABILITY = "inventory.stock.relocate";
 
