@@ -4,6 +4,19 @@ name: Firebase Exit Guard
 # client, firebase-admin Firestore, firebase-functions server runtime) beyond the committed
 # baseline at docs/architecture/firebase-exit-baseline.json. The baseline may only shrink.
 #
+# TWO FENCES RUN HERE, and they cover different escapes:
+#
+#   1. the DIRECT-IMPORT fence (scripts/firebaseExitGuard.mjs) -- both the subpath form
+#      (from "firebase-admin/firestore") and the NAMESPACE form (a bare "firebase-admin" root
+#      import plus a Firestore access expression), which named no forbidden specifier and was a
+#      confirmed live bypass until it was closed;
+#
+#   2. the SHIM BOUNDARY (scripts/firebaseShimBoundary.mjs) -- the growth of the approved
+#      transitional Firestore re-export shims' consumer sets. The dependency IS fenced at each
+#      shim; what was unfenced is a NEW module reaching Firestore through one and appearing
+#      nowhere in the Firebase-exit ledger. Existing consumers are permitted by Owner ruling and
+#      are NOT marked.
+#
 # See docs/architecture/firebase-exit-manifest.json for the IDENTITY_ONLY vs BUSINESS_RUNTIME
 # classification and docs/architecture/firebase-exit-ratchet.md for why this is a ratchet.
 #
@@ -21,6 +34,9 @@ on:
       - "docs/architecture/firebase-exit-manifest.json"
       - "scripts/firebaseExitGuard.mjs"
       - "scripts/firebaseExitGuard.test.mjs"
+      - "scripts/firebaseShimBoundary.mjs"
+      - "scripts/firebaseShimBoundary.test.mjs"
+      - "docs/architecture/firebase-shim-consumer-census.json"
       - ".github/workflows/firebase-exit-guard.yml"
   push:
     branches: [main]
@@ -32,6 +48,9 @@ on:
       - "docs/architecture/firebase-exit-manifest.json"
       - "scripts/firebaseExitGuard.mjs"
       - "scripts/firebaseExitGuard.test.mjs"
+      - "scripts/firebaseShimBoundary.mjs"
+      - "scripts/firebaseShimBoundary.test.mjs"
+      - "docs/architecture/firebase-shim-consumer-census.json"
       - ".github/workflows/firebase-exit-guard.yml"
   workflow_dispatch:
 
@@ -45,7 +64,7 @@ permissions:
 
 jobs:
   firebase-exit-guard:
-    name: No new Firebase business-runtime dependencies beyond the baseline
+    name: No new Firebase business-runtime dependencies, directly or behind a transitional shim
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -63,6 +82,10 @@ jobs:
 
       - name: Guard contract tests
         run: node --test scripts/firebaseExitGuard.test.mjs
+
+      # The shim boundary's own contract tests. Separate step so a failure names which fence broke.
+      - name: Shim boundary contract tests
+        run: node --test scripts/firebaseShimBoundary.test.mjs
 
       # Resolve the previous accepted commit and fail closed if it can't be. An empty output
       # means "no previous commit is expected" (branch-creation push, or workflow_dispatch on a
@@ -136,4 +159,45 @@ jobs:
             node scripts/firebaseExitGuard.mjs --previous-baseline="${{ steps.previous-baseline.outputs.path }}"
           else
             node scripts/firebaseExitGuard.mjs
+          fi
+
+      # ================================ THE SHIM BOUNDARY ======================================
+      #
+      # The guard above is a DIRECT-IMPORT fence, so a Firestore handle re-exported from one module
+      # is invisible to it everywhere downstream. Owner ruling: the approved transitional
+      # re-export shims MAY REMAIN, and their existing consumers are NOT violations. What is
+      # governed here is therefore the GROWTH of those consumer sets, not the shims' existence --
+      # a new module reaching Firestore through a shim fails; an existing one does not.
+      #
+      # Same two-check shape as the guard, for the same reason: the committed census must match the
+      # tree exactly, AND it may only shrink relative to the previously accepted census, so one
+      # change cannot add a consumer and widen the census together.
+      #
+      # Retirement is not scheduled separately: a shim leaves the registry automatically when it
+      # stops carrying a guard-fenced Firestore dependency, and its census section must go with it.
+      - name: Materialize previous accepted shim census
+        id: previous-census
+        shell: bash
+        run: |
+          set -u
+          SHA="${{ steps.previous-commit.outputs.sha }}"
+          TMP="$(mktemp)"
+          if [ -n "$SHA" ] \
+              && git cat-file -e "$SHA:docs/architecture/firebase-shim-consumer-census.json" 2>/dev/null; then
+            git show "$SHA:docs/architecture/firebase-shim-consumer-census.json" > "$TMP"
+            echo "path=$TMP" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # NOTE the asymmetry with the guard, and it is deliberate: a bare run of the shim boundary
+      # ENFORCES the committed census. It never bootstraps one. Writing the census takes --write,
+      # explicitly, so "the job passed" can never mean "the census wrote itself a new floor".
+      - name: Enforce the transitional shim boundary
+        shell: bash
+        run: |
+          if [ -n "${{ steps.previous-census.outputs.path }}" ]; then
+            node scripts/firebaseShimBoundary.mjs --previous-census="${{ steps.previous-census.outputs.path }}"
+          else
+            node scripts/firebaseShimBoundary.mjs
           fi
