@@ -1,0 +1,79 @@
+# P3-B3 mirror-parity diff — recorded transcript
+#
+# Command (run from the repository root, verbatim as recorded in
+# P3B3-ADMIN-048 and P3B3-MGMT-044):
+#
+#   for f in permissionCatalog.ts governedBusinessRoles.ts compatibilityRoles.ts resolveEffectivePermission.ts bindingScopePolicy.ts; do diff functions/src/access/$f field-ops-app-vite/src/access/$f; done
+#
+# Recorded by lane P3-DIL-FIX on 2026-09-12 at worktree head a335fd6f (branch night/p3b3-activities-sales).
+# This transcript exists because P3-B3 shipped those two EXECUTED_PASS rows with no
+# committed transcript at all. The command is literal, deterministic, reads only files
+# already committed on this branch, and mutates nothing, so re-recording it here does
+# not depend on the unsettled capability catalog. probe.mts and matrix.mts were NOT
+# re-run: they resolve against the capability catalog that PR #1898 may change, so a
+# fresh run would measure an unsettled tree.
+#
+# 'diff' exits 1 when files differ; each per-file exit status is shown.
+#
+# BYTE-FAITHFUL. Five lines below are '> ' with a single trailing space: that is exactly
+# what diff prints for the blank line inside the six-line generated-file banner. They are
+# left as diff emitted them, so `git diff --check` reports trailing whitespace on this file.
+# That warning is accepted deliberately -- stripping the spaces would mean this transcript
+# is not what the recorded command printed, which is the exact failure mode lane P3-DIL-FIX
+# exists to correct. The repository has no trailing-whitespace gate (.pre-commit-config.yaml
+# runs gitleaks only), and it already keeps byte-exact audit evidence under '-text'
+# .gitattributes rules for the same reason.
+
+$ diff functions/src/access/permissionCatalog.ts field-ops-app-vite/src/access/permissionCatalog.ts
+0a1,6
+> // GENERATED FILE — DO NOT EDIT.
+> //
+> // Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+> // Edit the canonical source under functions/src/access/ and re-run the generator;
+> // edits made here are overwritten and CI fails on drift.
+> 
+(exit 1)
+
+$ diff functions/src/access/governedBusinessRoles.ts field-ops-app-vite/src/access/governedBusinessRoles.ts
+0a1,6
+> // GENERATED FILE — DO NOT EDIT.
+> //
+> // Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+> // Edit the canonical source under functions/src/access/ and re-run the generator;
+> // edits made here are overwritten and CI fails on drift.
+> 
+(exit 1)
+
+$ diff functions/src/access/compatibilityRoles.ts field-ops-app-vite/src/access/compatibilityRoles.ts
+0a1,6
+> // GENERATED FILE — DO NOT EDIT.
+> //
+> // Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+> // Edit the canonical source under functions/src/access/ and re-run the generator;
+> // edits made here are overwritten and CI fails on drift.
+> 
+36c42
+< import { PERMISSION_CATALOG } from "./permissionCatalog";
+---
+> import { PERMISSION_CATALOG } from "./permissionCatalog.ts";
+(exit 1)
+
+$ diff functions/src/access/resolveEffectivePermission.ts field-ops-app-vite/src/access/resolveEffectivePermission.ts
+0a1,6
+> // GENERATED FILE — DO NOT EDIT.
+> //
+> // Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+> // Edit the canonical source under functions/src/access/ and re-run the generator;
+> // edits made here are overwritten and CI fails on drift.
+> 
+(exit 1)
+
+$ diff functions/src/access/bindingScopePolicy.ts field-ops-app-vite/src/access/bindingScopePolicy.ts
+0a1,6
+> // GENERATED FILE — DO NOT EDIT.
+> //
+> // Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs.
+> // Edit the canonical source under functions/src/access/ and re-run the generator;
+> // edits made here are overwritten and CI fails on drift.
+> 
+(exit 1)

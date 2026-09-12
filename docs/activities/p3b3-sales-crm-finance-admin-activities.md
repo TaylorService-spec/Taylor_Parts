@@ -6,7 +6,10 @@
 `p3b3-financial-activities.json` (70), `p3b3-administration-activities.json` (60),
 `p3b3-management-activities.json` (50), `p3b3-adversarial-activities.json` (40).
 
-**Total: 350 activities.**
+**Total: 350 records / 349 distinct activities.** `P3B3-FIN-056` and `P3B3-MGMT-018` are the
+same activity recorded twice; both ids are retained and cross-referenced, and the activity is
+counted once. Across the whole Day-in-the-Life corpus: **1,010 records / 1,009 distinct
+activities** (P3-B1 330 + P3-B2 330 + P3-B3 350). See §8.
 
 ---
 
@@ -18,6 +21,23 @@ file and line where the authority actually lives today, and a `status` from the 
 below. **No activity is marked `EXECUTED_PASS` unless something was actually run and its
 output recorded.** Forty-two activities carry an `execution` block with the command and its
 output; the other 308 are honest traces.
+
+**Read the per-line evidence tier, not just the status.** Lane P3-DIL-FIX traced all 118
+`execution.output` lines against the committed transcripts in `p3b3-evidence/` and found that
+28 of them are not reproduced by any committed script. Every output line now carries an
+explicit tier in the JSON — `execution.output_evidence_tiers`, parallel to
+`execution.output`, with the reason in `execution.output_evidence_notes`:
+
+| Tier | Lines | Meaning |
+|---|---:|---|
+| `EXECUTED` | 90 | Reproduced by a committed transcript, verbatim or as a faithful reformatting/truncation |
+| `TRACED` | 6 | A source read at a citable location — verified, but not executed |
+| `INFERRED` | 22 | No committed transcript or script emits or entails the line |
+
+The 22 `EXECUTED_PASS` / 20 `EXECUTED_FAIL` statuses are **unchanged**: all 42 of those rows
+do carry a real `execution` block, and the 42-row set is exactly coextensive with the two
+`EXECUTED_*` statuses. What was wrong is the reproducibility of specific *output lines*, not
+the fact of execution. See §8.
 
 ### Status histogram
 
@@ -78,15 +98,30 @@ and CI fails on drift.
 
 ### The headline measurements
 
+Recorded script output, verbatim from the committed transcripts. Every line below appears in
+`p3b3-evidence/probe-run.txt` or `p3b3-evidence/matrix-run.txt` exactly as written:
+
 ```
-ROLES 48   CAPS 147
-SANDBOX_OVERRIDE_COUNT 92   PROD_OVERRIDE_COUNT 0
-109 of 147 capabilities registered active:false
+ROLE_COUNT 48
+SANDBOX_OVERRIDE_COUNT 92 PROD_OVERRIDE_COUNT 0
+ROLES 48 CAPS 147
 UNGRANTED (zero holders): 0 (none)
 ADMIN/OWNER-ONLY (no governed business role holds it): 21
 ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17
-ALLOWED ANYWHERE IN PRODUCTION: 37 of 147
+ALLOWED ANYWHERE IN PRODUCTION: 37
 ```
+
+**Not script output — a source count, stated separately because it was previously printed
+inside the block above as though a script had emitted it:** **109 of the 147 catalogue
+entries are registered `active: false`** (38 are active). No committed script prints this;
+`matrix.mts` never emits the string `109 of 147`. The figure is a count of
+`functions/src/access/permissionCatalog.ts`, independently re-derived by lane P3-DIL-FIX
+(comment-stripped parse: 147 ids, 109 with `active: false`) — so the number is right, and its
+tier is `TRACED`, not `EXECUTED`.
+
+Also note `ALLOWED ANYWHERE IN PRODUCTION: 37` counts capabilities for which **at least one
+role** resolves ALLOW in production. It is not a count for any single role, and the
+complementary figure 110 is `147 - 37` arithmetic rather than recorded output.
 
 ---
 
@@ -286,7 +321,8 @@ pipeline that has all four (`P3B3-ADV-012`).
 Ranked by how many activities each seam accounted for.
 
 1. **Activation, not grant** (49 `CAPABILITY_INACTIVE` citations). The single largest cause
-   by a wide margin. `109 of 147` capabilities are `active:false`, and the gate fires
+   by a wide margin. `109 of 147` capabilities are `active:false` (a source count of
+   `permissionCatalog.ts`, re-derived by lane P3-DIL-FIX; `TRACED`, not script output), and the gate fires
    *ahead of and regardless of* any role grant
    (`resolveEffectivePermission.ts:246-266`). The repository states GRANT != ACTIVATION in
    at least five separate comment blocks; the library's evidence is that the statement is
@@ -481,10 +517,20 @@ labelled honestly.
 - Every `(role, capability, environment)` resolution in this document. 48 roles × 147
   capabilities under the production and `platform-sandbox` activation sets, plus 52 named
   probe cases, against the shipped resolver and unmodified `config/environments.json`.
-- The five-file mirror parity diff.
-- The derived aggregates: 147 capabilities, 48 roles, 109 `active:false`, 92 sandbox
-  overrides, 0 production overrides, 0 ungranted, 21 admin/owner-only, 17 activated nowhere,
-  37 allowed anywhere in production.
+- The five-file mirror parity diff. **Corrected:** this shipped with no committed transcript
+  at all. Lane P3-DIL-FIX re-ran the exact literal `diff` and committed
+  `p3b3-evidence/mirror-diff-run.txt`; it reproduces both rows' claims, including the one
+  import-extension difference in `compatibilityRoles.ts`. `probe.mts` and `matrix.mts` were
+  deliberately NOT re-run — they resolve against a capability catalog PR #1898 may change.
+- The derived aggregates that a committed transcript actually prints: 147 capabilities,
+  48 roles, 92 sandbox overrides, 0 production overrides, 0 ungranted, 21 admin/owner-only,
+  17 activated nowhere, 37 allowed anywhere in production.
+- **Not in that list, and corrected here: `109 active:false`.** No committed script emits it.
+  It is a source count of `permissionCatalog.ts`, re-derived and confirmed as 109 of 147 by
+  lane P3-DIL-FIX, and its tier is `TRACED`, not `EXECUTED`.
+- **Also corrected here: 28 further `execution.output` lines** are not reproduced by any
+  committed script and are now tiered `INFERRED` (22) or `TRACED` (6) line by line in the
+  JSON. See §8.
 
 **Traced but NOT executed — everything else. Specifically:**
 
@@ -541,3 +587,155 @@ to the catch-all `admin`/`owner` roles, and that a grep-based audit will report 
 as ungranted. The stale belief has a true kernel — it is about the *absence of a job that
 holds the capability*, not the absence of a grant — and stating it that way makes it
 actionable instead of merely wrong.
+
+---
+
+## 8. Corrections applied by lane P3-DIL-FIX (2026-09-12)
+
+Baseline `night/p3b3-activities-sales @ a335fd6f`. **Evidence-description corrections only.**
+No activity's business content was re-authored: no `title`, `actor_role`, `trigger`,
+`narrative`, `objects_touched`, `authority_path`, `status`, `blocking_mechanism` or
+`owner_question` was changed, and no `execution.command`, `execution.output` line or
+`execution.note` was altered. Every change is additive metadata plus the corrections in this
+document. Every figure below was re-derived from the committed artifacts in this lane.
+
+### 8.1 Unanchored `execution.output` lines — now tiered per line
+
+All 118 `execution.output` lines across the 42 execution rows were traced against
+`p3b3-evidence/probe-run.txt`, `p3b3-evidence/matrix-run.txt`, and the `console.log`
+statements of `probe.mts` and `matrix.mts`.
+
+| | Lines |
+|---|---:|
+| Verbatim in a committed transcript | 49 |
+| Reformatted or truncated, but fully entailed by one | 36 |
+| Had **no** committed transcript; now anchored by the newly recorded `mirror-diff-run.txt` | 5 |
+| Downgraded to `INFERRED` — no committed transcript or script emits or entails them | 22 |
+| Downgraded to `TRACED` — a source read at a citable location, verified but not executed | 6 |
+| **Total** | **118** |
+
+The recurring causes, each verified mechanically:
+
+- **`matrix.mts` writes its per-capability detail to an *uncommitted* scratchpad
+  `matrix.json`.** It prints only aggregates plus the 21 admin/owner-only ids and the 17
+  dead-everywhere ids. So every `holders = …`, `prodAllow = …`, `sandboxAllow = …`,
+  `holders=7`, `active=True` claim about a capability *outside* those two printed lists has no
+  transcript behind it. Field names such as `prodAllow` appear nowhere in any transcript.
+- **`probe.mts` evaluates exactly 52 fixed `(role, capability)` cases**, and the committed
+  `probe-run.txt` contains exactly those 52 rows — verified identical to the script's `CASES`
+  array. Two output lines name pairs that are **not** among them and that `probe.mts`
+  therefore cannot emit: `salesperson | finance.read` (`P3B3-ADV-013`, `P3B3-FIN-021`) — the
+  only `finance.read` case is `financeManager` — and the `customer.record.update` and
+  `customer.governedField.write` holder lists (`P3B3-ADV-002`, `P3B3-CRM-009`).
+  `financeManager` likewise appears in exactly one probe case, which is why `P3B3-FIN-057`'s
+  "BOTH `accountingManager` and `financeManager`" claims are `INFERRED`.
+- **`109 of 147` is emitted by nothing.** It is a source count, and it is correct — re-derived
+  here as 109 `active: false` of 147 catalogue entries — so the figure stands at tier
+  `TRACED` (`P3B3-ADV-040`, `P3B3-FIN-059`, `P3B3-MGMT-046`, and the §2 fenced block above).
+
+**Rows carrying at least one downgraded line (19):** `P3B3-ADMIN-051`, `-060`;
+`P3B3-ADV-002`, `-013`, `-015`, `-022`, `-030`, `-037`, `-039`, `-040`; `P3B3-CRM-009`;
+`P3B3-FIN-021`, `-057`, `-059`, `-060`; `P3B3-MGMT-046`; `P3B3-SALES-063`; and
+`P3B3-ADMIN-048`, `P3B3-MGMT-044` — whose lines were unanchored on arrival and are now
+anchored (below).
+
+**One downgraded line is also substantively wrong, and is flagged rather than rewritten.**
+`P3B3-ADV-030` line 0 claims a literal scan found "17 of 147 capability ids have ZERO
+occurrences in the role definition files". Re-running that scan here yields **15** across
+`governedBusinessRoles.ts` and `compatibilityRoles.ts` together, or **27** in
+`governedBusinessRoles.ts` alone — never 17. The figure 17 is the size of `matrix-run.txt`'s
+dead-everywhere list, a different set. The row's methodology point (grant must be *resolved*,
+not grepped) still stands; the number does not. Line 1 of the same row claims all 17 are held
+by `owner` and `admin`, which the committed transcript contradicts: 5 of the 17
+(`workOrder.labor.record`, `workOrder.labor.correct`, `finance.visibility.self`,
+`finance.visibility.team`, `equipment.model.manage`) are absent from the ADMIN/OWNER-ONLY
+list, i.e. a governed business role holds them too.
+
+**Two rows had no committed transcript at all, and now have one.** `P3B3-ADMIN-048` and
+`P3B3-MGMT-044` record the five-file mirror-parity `diff`. That command is literal,
+deterministic, reads only files already committed on this branch and mutates nothing, so it
+was re-run and its output committed as `p3b3-evidence/mirror-diff-run.txt`. It reproduces both
+rows' claims exactly, including the one import-extension difference at
+`functions/src/access/compatibilityRoles.ts:36` vs
+`field-ops-app-vite/src/access/compatibilityRoles.ts:42`. Those lines stay `EXECUTED`.
+**`probe.mts` and `matrix.mts` were deliberately NOT re-run:** they resolve against a
+capability catalog that PR #1898 may change, so a fresh run would be measuring an unsettled
+tree rather than reproducing the recorded one.
+
+**A separate defect, recorded not fixed.** Twelve rows name only `matrix.mts` in
+`execution.command` while some of their output lines are anchored in `probe-run.txt`:
+`P3B3-ADMIN-046`, `P3B3-ADV-013`, `-024`, `-040`, `P3B3-CRM-029`, `P3B3-FIN-023`, `-051`,
+`-057`, `-060`, `P3B3-MGMT-038`, `-050`, `P3B3-SALES-063`. The evidence exists; the command
+string is incomplete. Each row's new `execution.transcript` field names the transcript that
+actually anchors it. The full list is in
+`corrections.fix1_evidenceTiers.commandOmitsEmittingScript` in every JSON file.
+
+**Where this lane disagreed with lane P3-DIL.** P3-DIL reported 54 verbatim / 30
+reformatted-anchored / 34 unanchored and named 19 rows. This lane's independent re-derivation
+gives 49 / 36 / 33 and also names 19 rows — but not the same 19. It **clears
+`P3B3-ADV-014`**, whose four lines are all anchored (line 0 verbatim in `matrix-run.txt`,
+lines 1–3 truncations of `probe-run.txt` rows that *are* among the 52 cases), and it **adds
+`P3B3-FIN-057`**, which P3-DIL missed. The verbatim/reformatted boundary differs because this
+lane required exact string equality after whitespace trim.
+
+### 8.2 The duplicate activity
+
+`P3B3-FIN-056` and `P3B3-MGMT-018` — *"Attribute an operational record to the company that
+performed the work"* — are the **same activity recorded twice**: byte-identical `title`, same
+`actor_role` (Operations Manager), same `objects_touched`, same `status` (`BLOCKED`), and the
+same `OWNER_DECISION_PENDING` blocker citing the same inert
+`config/ownership/operating-company-roots.sandbox.json`. Only the `trigger` and `narrative`
+phrasing and the breadth of the census citation differ. Re-derived here: this is the **only**
+duplicate title among all 350 P3-B3 records.
+
+**Both ids are retained** — they are cited elsewhere and stable ids matter — and each record
+now carries `duplicate_of` and `duplicate_note` pointing at the other. Counts corrected:
+
+| | Records | Distinct activities |
+|---|---:|---:|
+| P3-B3 (this library) | 350 | 349 |
+| Day-in-the-Life corpus (B1 330 + B2 330 + B3 350) | **1,010** | **1,009** |
+
+Per-file `count` values are unchanged — they are record counts and were already right. The
+JSON metadata now states `records`, `distinct_activities_in_file`, `lane_records`,
+`lane_distinct_activities`, `corpus_records` and `corpus_distinct_activities` explicitly.
+P3-B1's 330 was re-derived on `night/p3b1-activities-service`; **P3-B2's 330 is the programme
+figure and could not be re-derived — that library is in neither worktree this lane owns.**
+
+### 8.3 The `NOT_RUN` mislabel
+
+"968 `NOT_RUN`" is arithmetically right and mislabelled. State it as:
+
+> **968 not executed, of which 660 are labelled `NOT_RUN`.**
+
+| Library | Not executed | Labelled `NOT_RUN` |
+|---|---:|---:|
+| P3-B1 | 330 | 330 |
+| P3-B2 | 330 | 330 |
+| P3-B3 | 308 | **0** |
+| **Total** | **968** | **660** |
+
+P3-B3's 308 unexecuted rows (350 − 42 executed) carry five different statuses and the token
+`NOT_RUN` appears nowhere in the library: `IMPLEMENTED_UNEXECUTED` 141, `PARTIAL` 68,
+`BLOCKED` 64, `NOT_SUPPORTED` 26, `DESIGNED_ONLY` 9 = 308. Re-derived here. P3-B1's 330
+literal `NOT_RUN` was re-derived on the other branch; P3-B2's is the programme figure.
+
+### 8.4 Recorded, deliberately not fixed
+
+1. **Persona-identity collision.** *Marisol Vega* is `service_coordinator` in P3-B1 (49 rows,
+   re-derived) but **Parts Manager** in P3-B2 (65 rows, programme figure). *Priya Raman* is
+   `service_manager` in P3-B1 (60 rows, re-derived) but **Operations Manager** in P3-B2 (17
+   rows, programme figure). The same named humans hold two different jobs across libraries.
+   This is a **persona-registry reconciliation item for the Owner**. Nobody was renamed —
+   that would rewrite authored content.
+2. **Latent id-namespace hazard.** P3-B2 activity ids are un-namespaced (`S01-A01`) while
+   P3-B1 carries `P3B1-` and P3-B3 carries `P3B3-`. Cross-library uniqueness holds today
+   *only* because of that prefix: any consumer that strips or normalises it produces **330
+   collisions**. No id was changed.
+3. **P3-B3 has no operating-company field at all.** Re-derived by scanning every key of every
+   record: the complete key set is `id`, `title`, `actor_role`, `trigger`, `narrative`,
+   `objects_touched`, `authority_path`, `status`, `blocking_mechanism`, `owner_question`,
+   `crosses_into`, `execution` (plus the two `duplicate_*` keys added above). **Zero of 350
+   records carry an operating-company field of any kind**, so Ventana coverage is
+   *structurally unmeasurable* for this third of the corpus and no corpus-level
+   operating-company split can be stated for it. Known gap.

@@ -3,6 +3,72 @@
  "block": "adversarial",
  "generated": "2026-09-12",
  "count": 40,
+ "records": 40,
+ "distinct_activities_in_file": 40,
+ "lane_records": 350,
+ "lane_distinct_activities": 349,
+ "corpus_records": 1010,
+ "corpus_distinct_activities": 1009,
+ "corpus_not_executed": "968 not executed, of which 660 are labelled `NOT_RUN` (P3-B1 330 + P3-B2 330). P3-B3's 308 unexecuted rows use five other statuses and never say NOT_RUN.",
+ "operating_company_field": "ABSENT. No P3-B3 record carries an operating-company field of any kind, so Ventana coverage is structurally unmeasurable for this library. See corrections.recordedNotFixed.",
+ "corrections": {
+  "correctedBy": "lane P3-DIL-FIX",
+  "correctedOn": "2026-09-12",
+  "baseline": "night/p3b3-activities-sales @ a335fd6f",
+  "scope": "Evidence-description corrections only. No activity's business content was re-authored: no title, actor_role, trigger, narrative, objects_touched, authority_path, status, blocking_mechanism or owner_question was changed, and no execution.command, execution.output line or execution.note was altered.",
+  "fix1_evidenceTiers": {
+   "what": "Every execution.output line in P3-B3 was traced against the committed transcripts docs/activities/p3b3-evidence/{probe-run.txt,matrix-run.txt} and against the console.log statements of probe.mts/matrix.mts. Lines that no committed script can emit are now labelled per line.",
+   "fields": "execution.evidence_tier (row), execution.output_evidence_tiers (parallel to execution.output), execution.output_evidence_notes (reason, keyed by output index), execution.transcript (the committed transcript(s) that anchor this row's EXECUTED lines).",
+   "tiers": "EXECUTED = the line is reproduced by a committed transcript, verbatim or as a faithful reformatting/truncation. TRACED = the line is a source read at a citable location, verified but not executed. INFERRED = no committed transcript or script emits or entails the line.",
+   "derivation": "118 output lines across 42 rows. 49 are verbatim in a committed transcript; 36 are reformatted or truncated but fully entailed by one; 5 (the mirror-parity diff lines of P3B3-ADMIN-048 and P3B3-MGMT-044) had NO committed transcript at all and are now anchored by mirror-diff-run.txt, re-recorded in this lane; 28 are downgraded \u2014 22 INFERRED (no committed transcript or script emits or entails them) and 6 TRACED (source reads at citable locations, verified here but not executed). 49 + 36 + 5 + 22 + 6 = 118.",
+   "statusLabelsUnchanged": "The 22 EXECUTED_PASS / 20 EXECUTED_FAIL split is unchanged and must not change. Every one of those 42 rows does carry an execution block with non-empty command, output and note, and the 42-row set is exactly coextensive with the two EXECUTED_* statuses. What was wrong is the reproducibility of specific output lines, not the fact of execution.",
+   "notReRun": "probe.mts and matrix.mts were NOT re-run. They resolve against a capability catalog that PR #1898 may change, so a fresh run would measure an unsettled tree. Only the literal, deterministic mirror-parity diff was re-recorded (mirror-diff-run.txt).",
+   "commandOmitsEmittingScript": [
+    "P3B3-ADMIN-046 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-ADV-013 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-ADV-024 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-ADV-040 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-CRM-029 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-FIN-023 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-FIN-051 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-FIN-057 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-FIN-060 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-MGMT-038 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-MGMT-050 (output anchored in probe-run.txt; command names only matrix.mts)",
+    "P3B3-SALES-063 (output anchored in probe-run.txt; command names only matrix.mts)"
+   ],
+   "agreementWithLaneP3DIL": "Lane P3-DIL reported 54 verbatim / 30 reformatted-anchored / 34 unanchored and named 19 affected rows. This lane's independent re-derivation gives 49 / 36 / 33-not-anchored-to-the-two-original-transcripts, and also names 19 rows \u2014 but NOT the same 19. Agreements: all of P3B3-ADMIN-048, -051, -060, ADV-002, -013, -015, -022, -030, -037, -039, -040, CRM-009, FIN-021, -059, -060, MGMT-044, -046, SALES-063 confirmed. Disagreement 1: P3-DIL named P3B3-ADV-014, which this lane clears \u2014 all four of its output lines are anchored (line 0 is verbatim matrix-run.txt, lines 1-3 are truncations of probe-run.txt rows that ARE among probe.mts's 52 cases). Disagreement 2: P3-DIL missed P3B3-FIN-057 lines 2 and 3, which claim financeManager resolves ALLOW for finance.invoice.issue and finance.visibility.consolidated; financeManager appears in exactly ONE probe case (finance.read), so probe.mts cannot emit either claim. The verbatim/reformatted boundary differs because this lane required exact string equality after whitespace trim."
+  },
+  "fix2_duplicateActivity": {
+   "pair": [
+    "P3B3-FIN-056",
+    "P3B3-MGMT-018"
+   ],
+   "finding": "The same activity, recorded twice: byte-identical title, same actor_role (Operations Manager), same objects_touched, same status (BLOCKED), and the same OWNER_DECISION_PENDING blocker citing the same inert file config/ownership/operating-company-roots.sandbox.json. Only trigger and narrative phrasing, and the breadth of the census citation, differ. Re-derived in this lane: it is the ONLY duplicate title in all 350 P3-B3 records.",
+   "resolution": "Both ids are retained \u2014 they are cited elsewhere and stable ids matter \u2014 and are now cross-referenced as duplicates. Counts that treated them as two distinct activities are corrected.",
+   "laneTotals": {
+    "records": 350,
+    "distinctActivities": 349
+   },
+   "corpusTotals": {
+    "records": 1010,
+    "distinctActivities": 1009,
+    "composition": "P3-B1 330 + P3-B2 330 + P3-B3 350 = 1,010 records; 1,009 distinct activities after the P3B3-FIN-056 / P3B3-MGMT-018 duplicate is counted once.",
+    "derivedHere": "P3-B3's 350 and the single duplicate were re-derived in this lane. P3-B1's 330 was re-derived on branch night/p3b1-activities-service. P3-B2's 330 is not present in either worktree this lane owns and is taken from the programme figure."
+   }
+  },
+  "fix3_notRunLabel": {
+   "correctStatement": "968 not executed, of which 660 are labelled `NOT_RUN`.",
+   "wrongStatement": "968 NOT_RUN",
+   "derivation": "660 = P3-B1 330 + P3-B2 330, the rows carrying the literal NOT_RUN token. P3-B3's 308 unexecuted rows (350 - 42 executed) carry five different statuses and never say NOT_RUN: IMPLEMENTED_UNEXECUTED 141, PARTIAL 68, BLOCKED 64, NOT_SUPPORTED 26, DESIGNED_ONLY 9 = 308. 660 + 308 = 968, so the arithmetic was right and only the label was wrong.",
+   "verifiedHere": "P3-B3's 308/five-statuses and P3-B1's 330 literal NOT_RUN were re-derived in this lane. P3-B2 is outside the two worktrees this lane owns."
+  },
+  "recordedNotFixed": {
+   "personaIdentityCollision": "Marisol Vega is `service_coordinator` in P3-B1 (49 rows) and Parts Manager in P3-B2 (65 rows); Priya Raman is `service_manager` in P3-B1 (60 rows) and Operations Manager in P3-B2 (17 rows). The same named humans hold two different jobs across libraries. Recorded as a persona-registry reconciliation item. NOBODY WAS RENAMED \u2014 that would rewrite authored content. The P3-B1 row counts were re-derived in this lane; the P3-B2 counts are the programme figures and could not be re-derived here.",
+   "idNamespaceHazard": "P3-B2 activity ids are un-namespaced (S01-A01) while P3-B1 carries the P3B1- prefix. Cross-library uniqueness holds today only because of that prefix: any consumer that strips it produces 330 collisions. Recorded as a latent hazard; no id was changed.",
+   "p3b3NoOperatingCompanyField": "Zero of P3-B3's 350 records carry an operating-company field of any kind \u2014 re-derived in this lane by scanning every key of every record. Ventana coverage is therefore structurally unmeasurable for this third of the corpus, and no corpus-level operating-company split can be stated for it."
+  }
+ },
  "activities": [
   {
    "id": "P3B3-ADV-001",
@@ -43,6 +109,16 @@
      "customer.record.update | prodAllow = officeManager, salesManager, salesperson, generalManager, owner, admin, dispatcher",
      "Rules `isAdminOrDispatcher()` admits exactly two legacy role strings: \"admin\" and \"dispatcher\"."
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "INFERRED",
+     "TRACED"
+    ],
+    "output_evidence_notes": {
+     "1": "`customer.record.update` is not one of probe.mts's 52 (role, capability) cases and does not appear in either committed transcript, so the seven-role prodAllow list is unrecorded. `prodAllow` is a field of the uncommitted matrix.json, never printed by matrix.mts.",
+     "2": "Not script output: a read of firestore.rules:22-24. Re-verified in this lane \u2014 isAdminOrDispatcher() is `isSignedIn() && (userRole() == \"admin\" || userRole() == \"dispatcher\")`. Source-accurate, but traced rather than executed (no emulator run)."
+    },
     "note": "The capability resolution is executed; the Rules denial is read from the deployed ruleset, not executed against an emulator. Five of the seven capability holders (officeManager, salesManager, salesperson, generalManager, owner) are not admitted by the Rules helper."
    },
    "owner_question": "Five roles hold `customer.record.update` in the capability model and are refused by the Firestore Rules that actually govern the write (officeManager, salesManager, salesperson, generalManager, owner). Which is the intended authority for customer master data, and should the trusted server-side writer named in firestore.rules:1329-1331 be built before more roles are granted capabilities they cannot exercise?"
@@ -150,6 +226,12 @@
      "reportAuthor | report.definition.delete | SANDBOX=DENY/noQualifyingGrant",
      "admin | report.definition.delete | SANDBOX=ALLOW/qualifyingGrant"
     ],
+    "evidence_tier": "EXECUTED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
     "note": "noQualifyingGrant, not inactivePermission \u2014 the denial is a grant gap independent of activation."
    },
    "blocking_mechanism": "CAPABILITY_INACTIVE"
@@ -239,6 +321,19 @@
      "salesperson | finance.visibility.self | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
      "finance.visibility.self | sandboxAllow = []"
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "INFERRED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
+    "output_evidence_notes": {
+     "0": "`salesperson | finance.read` is NOT one of probe.mts's 52 cases (the only finance.read case is `financeManager`), and the pair appears in neither transcript. probe.mts provably cannot emit this line."
+    },
+    "transcript": [
+     "docs/activities/p3b3-evidence/matrix-run.txt",
+     "docs/activities/p3b3-evidence/probe-run.txt"
+    ],
     "note": "FIN-004 requires both; the salesperson has exactly one, in every environment."
    },
    "blocking_mechanism": "CAPABILITY_INACTIVE"
@@ -264,6 +359,16 @@
      "admin | inventory.catalog.alias.read | SANDBOX=ALLOW/qualifyingGrant",
      "admin | inventory.balance.read | SANDBOX=ALLOW/qualifyingGrant",
      "admin | inventory.returns.intake | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "evidence_tier": "EXECUTED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
+    "transcript": [
+     "docs/activities/p3b3-evidence/matrix-run.txt"
     ],
     "note": "An ALLOW is only reachable if a role HOLDS the capability, so the 'granted to nobody' comments are disproved by execution, not by reading."
    },
@@ -293,6 +398,18 @@
      "generalManager | salesOrder.fulfill | SANDBOX=DENY/noQualifyingGrant",
      "operationsManager | salesOrder.fulfill | SANDBOX=DENY/noQualifyingGrant"
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "INFERRED",
+     "INFERRED",
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
+    "output_evidence_notes": {
+     "0": "`salesOrder.fulfill` is not in matrix-run.txt's admin/owner-only list, so no committed transcript prints its holders; `holders =` and `sandboxAllow =` are fields of the uncommitted matrix.json. The transcripts do not establish that the holder set is exactly owner, admin, dispatcher.",
+     "1": "Same as line 0, for `salesOrder.service`."
+    },
     "note": "No governed business role \u2014 not warehouseManager, not operationsManager, not generalManager \u2014 holds either capability."
    },
    "blocking_mechanism": "CAPABILITY_INACTIVE",
@@ -332,6 +449,13 @@
     "command": "node --experimental-strip-types <scratchpad>/probe.mts",
     "output": [
      "technician | customer.record.read | PROD=DENY/noQualifyingGrant | SANDBOX=DENY/noQualifyingGrant"
+    ],
+    "evidence_tier": "EXECUTED",
+    "output_evidence_tiers": [
+     "EXECUTED"
+    ],
+    "transcript": [
+     "docs/activities/p3b3-evidence/probe-run.txt"
     ],
     "note": "Denied by grant, not by activation \u2014 the capability is live and the technician simply does not hold it. The Rules deny independently."
    },
@@ -418,6 +542,16 @@
      "salesOrder.fulfill | holders include dispatcher",
      "salesOrder.service | holders include dispatcher"
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "INFERRED",
+     "INFERRED"
+    ],
+    "output_evidence_notes": {
+     "1": "No committed transcript prints holders for `salesOrder.fulfill` (it is absent from matrix-run.txt's admin/owner-only list because it has a governed holder). Dispatcher membership of the holder set is unrecorded.",
+     "2": "Same as line 1, for `salesOrder.service`."
+    },
     "note": "Both results are executed. The asymmetry is real: the dispatcher is excluded from money and included in fulfilment."
    },
    "owner_question": "The dispatcher compatibility role is deliberately excluded from billing authority but holds `salesOrder.fulfill` and `salesOrder.service` \u2014 making it the only non-administrator role that can advance a booked order. Is fulfilment authority intended to sit with dispatch?"
@@ -442,6 +576,15 @@
      "admin | inventory.catalog.manage | PROD=ALLOW/qualifyingGrant",
      "admin | inventory.catalog.activate | PROD=ALLOW/qualifyingGrant",
      "admin | inventory.catalog.alias.read | PROD=DENY/inactivePermission"
+    ],
+    "evidence_tier": "EXECUTED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
+    "transcript": [
+     "docs/activities/p3b3-evidence/probe-run.txt"
     ],
     "note": "Catalog WRITE is live in production; catalog READ capabilities are not. The asymmetry is measured, not inferred."
    },
@@ -469,6 +612,16 @@
      "admin | coverage.write | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
      "admin | coverage.read | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
      "coverage.write, coverage.read | holders = owner, admin | sandboxAllow = []"
+    ],
+    "evidence_tier": "EXECUTED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
+    "transcript": [
+     "docs/activities/p3b3-evidence/matrix-run.txt",
+     "docs/activities/p3b3-evidence/probe-run.txt"
     ],
     "note": "Dead in every environment the repository declares, and held by no governed business role."
    },
@@ -570,6 +723,15 @@
      "Literal scan: 17 of 147 capability ids have ZERO occurrences in the role definition files.",
      "Resolver: UNGRANTED (zero holders): 0 (none) \u2014 every one of the 17 resolves as held by owner and admin."
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "INFERRED",
+     "INFERRED"
+    ],
+    "output_evidence_notes": {
+     "0": "The literal-occurrence scan's output was never committed, and re-running the described scan in this lane does not reproduce 17: 15 of the 147 catalogue ids have zero literal occurrence across governedBusinessRoles.ts AND compatibilityRoles.ts, and 27 have zero occurrence in governedBusinessRoles.ts alone. The figure 17 is the size of matrix-run.txt's ACTIVE:FALSE-AND-NOT-SANDBOX-ACTIVATED list, which is a different set. The methodology point the row makes still stands; the 17 does not.",
+     "1": "The 'UNGRANTED (zero holders): 0 (none)' clause is verbatim in matrix-run.txt, but the claim that every one of the 17 is held by owner and admin is not recorded and is contradicted by the committed transcript: 5 of the 17 (workOrder.labor.record, workOrder.labor.correct, finance.visibility.self, finance.visibility.team, equipment.model.manage) are absent from the ADMIN/OWNER-ONLY list, i.e. a governed business role holds them too."
+    },
     "note": "This is a methodology finding: I made exactly this mistake on my first pass, and so did one of my own research passes. Grant must be RESOLVED, not grepped."
    }
   },
@@ -658,6 +820,11 @@
      "reportViewer | report.customer.read | SANDBOX=ALLOW/qualifyingGrant",
      "reportFinanceViewer | report.customer.field.paymentTerms.read | SANDBOX=ALLOW/qualifyingGrant"
     ],
+    "evidence_tier": "EXECUTED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "EXECUTED"
+    ],
     "note": "The split is enforced by grant. I did NOT execute a traversal \u2014 reportExecutionService requires Firestore and was traced, not run."
    }
   },
@@ -699,6 +866,17 @@
      "Every finance.* capability: prodAllow = 0",
      "ALLOWED ANYWHERE IN PRODUCTION: 37 of 147 \u2014 no finance.*, no salesOrder.*, no opportunity.*, no report.* among them"
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "INFERRED",
+     "INFERRED",
+     "INFERRED"
+    ],
+    "output_evidence_notes": {
+     "0": "`finance.invoice.issue` is absent from matrix-run.txt's admin/owner-only list, so its holder count is printed nowhere; `holders=7` and `prodAllow=0` come from the uncommitted matrix.json.",
+     "1": "No committed transcript enumerates prodAllow per capability family. probe-run.txt records PROD=DENY for several finance ids under specific roles only, not for every finance capability across all 48 roles.",
+     "2": "'ALLOWED ANYWHERE IN PRODUCTION: 37' is verbatim in matrix-run.txt, but matrix.mts prints only the count \u2014 never the membership \u2014 so the 'no finance.*, no salesOrder.*, no opportunity.*, no report.*' exclusions are unrecorded."
+    },
     "note": "prodAllow counts roles that resolve ALLOW under the production activation set. For every finance capability it is zero."
    },
    "blocking_mechanism": "CAPABILITY_INACTIVE"
@@ -741,6 +919,16 @@
      "Legacy Rules surface: 44 enforced call sites across 22 collections (functions/src/access/legacyAuthorizationSurface.ts:52-74).",
      "Postgres administration authority: 4 actions over 3 role keys (administrationAuthority.ts:56-60, :41-45)."
     ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "TRACED",
+     "TRACED"
+    ],
+    "output_evidence_notes": {
+     "1": "Not script output: a read of functions/src/access/legacyAuthorizationSurface.ts. Re-verified in this lane \u2014 that file's own header records the 47 -> 44 shrink across 22 collections. Source-accurate, traced not executed.",
+     "2": "Not script output: a read of functions/src/adminPolicy/administrationAuthority.ts. Re-verified in this lane \u2014 ROLE_ASSIGNMENT_ROLE_KEYS holds 3 role keys (owner, generalManager, ADMIN_ROLE_KEY) and AdministrationAction has 4 members. Source-accurate, traced not executed."
+    },
     "note": "Only the 48x147 figure is executed; the 44-site figure is read from the repository's own machine-checked corpus, and the Postgres figures are read from source."
    },
    "owner_question": "EOS resolves 'may this person do this' three different ways \u2014 a legacy role string in Firestore Rules (44 sites), the governed capability engine (147 capabilities, 48 roles), and the Postgres object/field policy store. legacyAuthorizationSurface.ts:16-21 records an Owner constraint that a third authority must not be introduced. Which two are meant to survive?"
@@ -774,6 +962,23 @@
      "UNGRANTED (zero holders): 0",
      "ADMIN/OWNER-ONLY (no governed business role holds it): 21",
      "ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17"
+    ],
+    "evidence_tier": "EXECUTED_MIXED",
+    "output_evidence_tiers": [
+     "EXECUTED",
+     "TRACED",
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED",
+     "EXECUTED"
+    ],
+    "output_evidence_notes": {
+     "1": "No committed script emits '109 of 147'. The figure is a source count of permissionCatalog.ts, re-derived independently in this lane as 109 `active: false` of 147 catalogue entries (comment-stripped parse), so the number is right \u2014 but it is traced from source, not executed output."
+    },
+    "transcript": [
+     "docs/activities/p3b3-evidence/matrix-run.txt",
+     "docs/activities/p3b3-evidence/probe-run.txt"
     ],
     "note": "Every number here is from one execution of the shipped resolver against unmodified repository configuration."
    },
