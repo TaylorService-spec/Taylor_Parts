@@ -13,6 +13,13 @@ name: Part Identifier Administration Tests
 # WHY A SEPARATE VITEST JOB. The client's vitest suites run in CI by EXPLICIT NAME, not by glob, so a
 # suite nobody names here is silently never run.
 #
+# WHY THE PART MASTER COMMAND JOBS ARE HERE TOO. The same "named or never run" trap had already
+# caught two functions/ suites: `test:partMasterCommands` and `test:partReferenceCompatibility`
+# existed as npm scripts but were referenced by ZERO workflow, so they were neither green nor red --
+# they were unexercised, including across PR #1862's updatePart/controlType change. They need a
+# Firestore emulator, and this workflow is the Part Master lane that already stands one up, so they
+# are registered here rather than behind a new emulator apparatus.
+#
 # No deployment, no grant, no activation, no production access, no secrets.
 
 on:
@@ -27,6 +34,16 @@ on:
       - "functions/src/inventoryLocation/stockRelocationCallables.ts"
       - "functions/test/scannerGovernedReads.test.mjs"
       - "functions/test/partAliasCommands.test.mjs"
+      # The governed Part Master command/repository core and the static-catalog compatibility
+      # resolver -- the code partMasterCommands.test.mjs and partReferenceCompatibility.test.mjs
+      # actually exercise.
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/partMaster/partReferenceCompatibility.ts"
+      - "functions/src/partMaster/validation.ts"
+      - "functions/src/data/partsCatalog.ts"
+      - "functions/test/partMasterCommands.test.mjs"
+      - "functions/test/partReferenceCompatibility.test.mjs"
       - "functions/src/index.ts"
       - "functions/package.json"
       - "field-ops-app-vite/src/domain/partIdentifiers.js"
@@ -48,6 +65,14 @@ on:
       - "functions/src/partMaster/scannerPartLookup.ts"
       - "functions/src/inventoryLocation/stockRelocationCallables.ts"
       - "functions/test/scannerGovernedReads.test.mjs"
+      # The governed Part Master command/repository core and the compatibility resolver.
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/partMaster/partMasterRepository.ts"
+      - "functions/src/partMaster/partReferenceCompatibility.ts"
+      - "functions/src/partMaster/validation.ts"
+      - "functions/src/data/partsCatalog.ts"
+      - "functions/test/partMasterCommands.test.mjs"
+      - "functions/test/partReferenceCompatibility.test.mjs"
       - "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx"
       - "field-ops-app-vite/src/domain/partIdentifiers.js"
       - ".github/workflows/part-identifier-administration-tests.yml"
@@ -115,6 +140,115 @@ jobs:
         with:
           name: part-identifier-emulator-logs
           path: /tmp/part-identifier-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # TWO ISOLATED EMULATORS, deliberately -- these two suites cannot share one.
+  #
+  # partReferenceCompatibility.test.mjs asserts that resolvePartReference("TST-1002") reports
+  # PART_NOT_FOUND, and it WRITES fixed catalog SKUs (TST-1005, TST-1010) as real Part records to
+  # prove parity. partMasterCommands.test.mjs drives createPart/updatePart/changePartStatus over the
+  # same `parts` collection. Run back to back in one Firestore instance, one file's leftovers decide
+  # the other file's result, and the failure would have nothing to do with the change under test --
+  # the same lesson supplier-master-tests.yml already learned with its dedup fixtures. A separate
+  # emulator per suite is the cheap, honest fix.
+  part-master-commands-emulator:
+    name: Part Master commands (isolated Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/part-master-commands-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/part-master-commands-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/part-master-commands-emulator.log
+          exit 1
+        working-directory: functions
+
+      # Serialization round trip, the capability boundary (granted / ungranted / revoked), version
+      # conflicts, idempotency replay, the PART_STATUS transition table, controlType, and the
+      # domain-boundary refusal of tenant + foreign-authority fields.
+      - name: Part Master command + repository tests (build + run)
+        run: npm run test:partMasterCommands
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: part-master-commands-emulator-logs
+          path: |
+            /tmp/part-master-commands-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  part-reference-compatibility-emulator:
+    name: Part reference compatibility + parity (isolated Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/part-reference-compatibility-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/part-reference-compatibility-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/part-reference-compatibility-emulator.log
+          exit 1
+        working-directory: functions
+
+      # The PART_MASTER_REFERENCE flag stays OFF at the environment gate; the suite exercises the ON
+      # path only through the service's test-only __flagOverride seam. Nothing here enables a flag,
+      # deploys, or touches production.
+      - name: Part reference resolver + catalog parity tests (build + run)
+        run: npm run test:partReferenceCompatibility
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: part-reference-compatibility-emulator-logs
+          path: |
+            /tmp/part-reference-compatibility-emulator.log
+            functions/firestore-debug.log
           if-no-files-found: ignore
           retention-days: 7
 
