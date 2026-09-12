@@ -648,3 +648,196 @@ test("R-13: a reorder request derives its company from the WAREHOUSE, and a PO c
     (e) => e.code === "PO_COMPANY_UNRESOLVED",
   );
 });
+
+// ======================= C31: the matrix must describe, not assert =======================
+//
+// `ownerFields` is a DESCRIPTIVE column, not a prescriptive one. Five independent statements in
+// the substrate say so and none says otherwise:
+//
+//   ownershipMatrix.ts:29        "the EXISTING storage the typed owner derives from. Empty = no
+//                                 storage yet."
+//   ownershipCensus.ts:96-99     "A family with NO declared ownerFields is OWNERLESS by
+//                                 construction ... until `operatingCompanyId` exists"
+//   ownershipCensus.ts:157-163   an empty ownerFields yields the reason "family has no ownership
+//                                 storage yet"
+//   typedOwner.ts:190            "The matrix declares where ownership is STORED"
+//   ownershipHandoffCommand.ts:74-76  "there is no owner field to write to yet on most families,
+//                                 and the ones that have storage keep writing through their
+//                                 existing governed paths"
+//
+// That settles what a wrong value MEANS. A prescriptive column naming a field the type lacks would
+// be an unmet requirement; a descriptive one naming it is a FALSE STATEMENT OF FACT, and it is
+// worse, because the census reports a MODEL gap (the field does not exist) and a DATA gap (the
+// field exists and is unset) with different reason strings. Getting the column wrong swaps them,
+// and the swap is invisible -- both land in the same OWNERLESS bucket.
+//
+// The reason strings are also what makes this checkable. They are a FINGERPRINT of the
+// declaration: "family has no ownership storage yet" can only be produced by an EMPTY ownerFields,
+// and "no <field>" can only be produced by a declared one. So the measured census that this file's
+// header claims the matrix is "reconciled against" can be read back as an assertion about the
+// matrix, and a family that acquires storage on paper without acquiring it in the data fails here.
+//
+// LIMITATION, STATED: this proves the declaration against ONE measurement, taken 2026-08-30. It
+// cannot see a family that became resolved after it. A family whose census row is 100% RESOLVED
+// yields no reason line, so it is checked by the converse assertion instead.
+
+const CENSUS_EVIDENCE = "../../sb-evidence/ownership-census-sandbox-postbackfill-2026-08-30.txt";
+const NO_STORAGE_REASON = "family has no ownership storage yet";
+
+/** Parse the measured census into { collection -> { scanned, resolved, reasons: {reason: count} } }. */
+function readMeasuredCensus() {
+  const text = readFileSync(new URL(CENSUS_EVIDENCE, import.meta.url), "utf8");
+  const rows = new Map();
+
+  const [tablePart, reasonPart] = text.split("Reason classification (non-RESOLVED):");
+  assert.ok(reasonPart, "the census evidence must carry its reason classification");
+
+  for (const line of tablePart.split("\n")) {
+    const tokens = line.trim().split(/\s+/);
+    if (tokens.length < 7) continue;
+    const collection = tokens[0];
+    if (!/^[a-z_]+$/.test(collection)) continue;
+    const numbers = tokens.slice(-6).map(Number);
+    if (numbers.some((n) => !Number.isInteger(n))) continue;
+    rows.set(collection, { scanned: numbers[0], resolved: numbers[1], reasons: {} });
+  }
+  assert.ok(rows.size >= 20, `expected the full census table, parsed ${rows.size} rows`);
+
+  let current = null;
+  for (const line of reasonPart.split("\n")) {
+    if (line.startsWith("Family classification")) break;
+    const head = /^ {2}(\S+)\s*$/.exec(line);
+    if (head) {
+      current = rows.get(head[1]);
+      assert.ok(current, `reason block names ${head[1]}, which is not in the census table`);
+      continue;
+    }
+    const entry = /^\s+(\d+)\s+(.+?)\s*$/.exec(line);
+    if (entry && current) current.reasons[entry[2]] = Number(entry[1]);
+  }
+  return rows;
+}
+
+test("C31: no ownable family claims ownership storage the measured census says it does not have", () => {
+  const census = readMeasuredCensus();
+  let checked = 0;
+
+  for (const f of OWNERSHIP_MATRIX) {
+    const row = census.get(f.collection);
+    if (!row) continue;
+    const declared =
+      f.ownerClass === "PARTICIPATING_COMPANIES" ? (f.participatingFields ?? []) : f.ownerFields;
+    checked += 1;
+
+    // The reason a family has no storage is emitted ONLY for an EMPTY declaration. Seeing it beside
+    // a non-empty one means the matrix acquired a field after the measurement and nobody re-ran it.
+    if (row.reasons[NO_STORAGE_REASON] !== undefined) {
+      assert.deepEqual(
+        declared,
+        [],
+        `${f.family} (${f.collection}) declares storage ${JSON.stringify(declared)}, but the measured ` +
+          `census reports ${row.reasons[NO_STORAGE_REASON]} record(s) as "${NO_STORAGE_REASON}" -- a ` +
+          "reason only an EMPTY ownerFields can produce. The matrix is describing storage that does not exist.",
+      );
+    }
+
+    // The converse. A record can only RESOLVE through a declared field, so any resolution at all
+    // proves the declaration is non-empty -- this is what covers the 100%-resolved families, which
+    // emit no reason line.
+    if (row.resolved > 0) {
+      assert.notDeepEqual(
+        declared,
+        [],
+        `${f.family} (${f.collection}) declares no storage, yet the measured census resolved ` +
+          `${row.resolved} of ${row.scanned} records. A family with no ownerFields is OWNERLESS by construction.`,
+      );
+    }
+
+    // "no <field>" names the exact field the census read. It must be one the matrix declares.
+    for (const reason of Object.keys(row.reasons)) {
+      const named = /^no (\w+)$/.exec(reason);
+      if (!named) continue;
+      assert.ok(
+        declared.includes(named[1]),
+        `${f.family} (${f.collection}) was censused on "${named[1]}", which it does not declare`,
+      );
+    }
+  }
+
+  assert.ok(checked >= 20, `expected to check the censused families, checked ${checked}`);
+});
+
+test("C31: a ROOT family is never also declared a descendant of the derivation check", async () => {
+  // ownershipDerivationCheck.js:29 builds its known-root set from warehouses + mobile_locations.
+  // A family that is BOTH a root and a derivation rule is scanned as its own descendant: it
+  // double-counts itself, and worse, it invites "N/N DERIVABLE" to be read as a company plan for
+  // records whose company is authored configuration and cannot be derived at all.
+  const { DERIVATION_RULES } = await import("../lib/ownership/ownershipDerivation.js");
+  const roots = OWNERSHIP_MATRIX.filter((f) => f.inheritanceSource === "none -- this IS the root");
+  assert.ok(roots.length >= 2, "the matrix must still declare physical roots");
+
+  const derived = new Set(DERIVATION_RULES.map((r) => r.collection));
+  for (const root of roots) {
+    assert.ok(
+      !derived.has(root.collection),
+      `${root.family} (${root.collection}) is a physical root -- it has nothing to derive from, ` +
+        "and scanning it as a descendant makes it a known root and a candidate at the same time",
+    );
+  }
+
+  // Every derivation rule must still name a family the matrix knows, so a rule cannot drift onto a
+  // collection the model never classified.
+  for (const rule of DERIVATION_RULES) {
+    assert.ok(ownershipFamily(rule.family), `derivation rule ${rule.family} names no matrix family`);
+  }
+});
+
+test("C31: homeWarehouseId is not an operating-company source anywhere in the matrix", async () => {
+  // The settling case: all five cert-trk-01..05 carry homeWarehouseId "wh-main", wh-main is
+  // `taylor`, and the authored configuration assigns cert-trk-04/05 to `ventana`. Any matrix
+  // column that offers homeWarehouseId as a company source is wrong for 2 of the 5.
+  const cfg = JSON.parse(readFileSync(new URL("../../config/ownership/operating-company-roots.sandbox.json", import.meta.url), "utf8"));
+  const byId = new Map([...cfg.roots.warehouses, ...cfg.roots.mobile_locations].map((r) => [r.id, r.operatingCompanyId]));
+  const { CERT_TRUCKS } = await import("../scripts/certificationWorld/data/inventory.mjs");
+
+  const contradictions = CERT_TRUCKS.filter((t) => byId.get(t.homeWarehouseId) !== byId.get(t.id));
+  assert.deepEqual(
+    contradictions.map((t) => t.id),
+    ["cert-trk-04", "cert-trk-05"],
+    "the fixture world must keep the two vehicles whose authored company contradicts their depot's",
+  );
+
+  for (const f of OWNERSHIP_MATRIX) {
+    for (const column of [f.backfillSource, f.inheritanceSource]) {
+      if (typeof column !== "string") continue;
+      assert.ok(
+        !/homeWarehouseId/.test(column) || /NOT its home warehouse|never|forbid/i.test(column),
+        `${f.family} offers homeWarehouseId as a company source: ${column}`,
+      );
+    }
+  }
+});
+
+test("C31: the Work Order family labels match the collection the deployed writers use", async () => {
+  const { WORK_ORDERS_COLLECTION } = await import("../lib/constants/collections.js");
+  assert.equal(WORK_ORDERS_COLLECTION, "fieldops_wos");
+
+  // The canonical Work Order is the one the callables write. It was labelled `workOrderLegacy`.
+  assert.equal(ownershipFamily("workOrder").collection, WORK_ORDERS_COLLECTION);
+  assert.equal(ownershipFamily("workOrderLegacy").collection, "fieldops_jobs");
+
+  // Why the label is load-bearing: `family` becomes the handoff audit's targetType, and every
+  // deployed writer on fieldops_wos already stamps targetType "workOrder" (createWorkOrder.ts:197,
+  // transitionWorkOrder.ts:564, updateWorkOrderExecutionData.ts:265). Inverted labels would have
+  // split one record's audit trail across two vocabularies.
+  const event = buildOwnershipHandoff(
+    { family: "workOrder", recordId: "wo-1", previousOwner: null, newOwner: { type: "COMPANY", id: "ventana" }, source: "ADMIN_CORRECTION" },
+    { actorUid: "uid-admin" },
+  );
+  assert.equal(event.targetType, "workOrder");
+
+  // And the Work Order stores no company today, so it must not claim to. Nothing is stamped.
+  assert.deepEqual(ownershipFamily("workOrder").ownerFields, []);
+  assert.equal(ownershipFamily("workOrder").backfillSource, null);
+  assert.equal(classifyDocument(ownershipFamily("workOrder"), {}).reason, NO_STORAGE_REASON);
+});

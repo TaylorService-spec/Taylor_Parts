@@ -82,9 +82,23 @@ export const DERIVATION_RULES: readonly DerivationRule[] = Object.freeze([
     note: "A per-warehouse-per-part BALANCE record, not a physical place. It derives from its warehouse -- it is not a root, which is a correction to the first plan.",
   },
   {
+    // KEPT, WITH ITS CLAIM CORRECTED. The note used to read "A truck derives from its home
+    // warehouse -- a real governed reference, not a proxy", which states an OWNERSHIP derivation
+    // this module cannot perform and which the fixture data refutes: cert-trk-04/05 are `ventana`
+    // vehicles homed at `wh-main`, a `taylor` warehouse.
+    //
+    // The row stays because what it actually measures is legitimate and is still worth counting:
+    // whether a truck NAMES a warehouse that exists. deriveRoot() returns root IDS and never reads
+    // a company, so this cannot produce an operating company even by accident, and it writes
+    // nothing. What must not happen again is a reader promoting "DERIVABLE" into "its company is
+    // its depot's" -- so the note now says what the outcome means and what it does not.
     family: "truck", collection: "trucks",
     paths: ["homeWarehouseId"], multiRootIsExpected: false,
-    note: "A truck derives from its home warehouse -- a real governed reference, not a proxy.",
+    // The note below is deliberately free of any location name: the R-1 guard in
+    // ownershipModel.test.mjs strips comments and then asserts this module's remaining source
+    // mentions no root name at all, so the settling example stays in the comment above, where it
+    // belongs, rather than in a string the guard has to read.
+    note: "REFERENTIAL ONLY: does this record name a warehouse that exists? DERIVABLE says the reference resolves -- it does NOT say the operating company is that warehouse's. The matrix row for this family carries backfillSource: null for exactly that reason.",
   },
   {
     family: "reorderRequest", collection: "reorder_requests",
@@ -96,11 +110,28 @@ export const DERIVATION_RULES: readonly DerivationRule[] = Object.freeze([
     paths: [], multiRootIsExpected: false,
     note: "Reaches a root only through its Reorder Request, which has none. A two-hop derivation over a broken first hop is not a derivation.",
   },
-  {
-    family: "mobileLocation", collection: "mobile_locations",
-    paths: ["homeWarehouseId"], multiRootIsExpected: false,
-    note: "Stored mobile locations do not carry a home warehouse today; declared so the gap is counted.",
-  },
+  // REMOVED: `mobileLocation` / `mobile_locations`, paths ["homeWarehouseId"].
+  //
+  // It was a ROOT BEING SCANNED AS ITS OWN DESCENDANT. ownershipDerivationCheck.js:29 builds
+  // `knownRoots` from ROOT_COLLECTIONS = ["warehouses", "mobile_locations"], so every mobile
+  // location was in the root set AND in the descendant sweep at the same time. The matrix agrees
+  // it is a root -- `mobileLocation` declares inheritanceSource "none -- this IS the root" -- and
+  // a root has nothing to derive from. This check exists to classify DESCENDANTS (see the header:
+  // "It classifies every descendant into exactly one bucket"); a root in that list also
+  // double-counted itself in the scan total.
+  //
+  // Its note claimed the paths never fire ("Stored mobile locations do not carry a home warehouse
+  // today; declared so the gap is counted"), which is how it survived review. That is false:
+  // certificationWorld/data/inventory.mjs:49-55 seeds all five cert-trk-01..05 into
+  // mobile_locations WITH homeWarehouseId "wh-main" (build.mjs:237), and the census counts 7
+  // mobile locations. So the rule reported DERIVABLE -> wh-main for five records.
+  //
+  // AND THAT ANSWER IS WRONG WHERE IT MATTERS MOST. wh-main is `taylor`, while
+  // config/ownership/operating-company-roots.sandbox.json authors cert-trk-04 and cert-trk-05 as
+  // `ventana`. A reader taking "5/5 DERIVABLE" as a company plan gets 2 of 5 vehicles wrong -- the
+  // precise inference that file's header forbids ("THEY ARE NOT INFERRED, AND NO CODE MAY EVER
+  // INFER THEM"). Deleting the row removes the number rather than annotating it, because the
+  // number is what gets read.
 ]);
 
 /** Read a dotted path. Returns undefined for any missing link -- never throws on a partial shape. */
