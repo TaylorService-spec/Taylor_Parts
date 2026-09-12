@@ -3,6 +3,12 @@
 // outstanding = total − applied − credits + charges − writeoffs; AR position from outstanding + due date + now.
 // No PII: accountId only, no raw UID. Distinct honest states are the caller's job (denied/empty/unavailable);
 // this is the per-invoice shape. No I/O.
+//
+// EVERY FIGURE HERE CARRIES ITS OPERATING COMPANY. Money in this system belongs to one governed
+// operating company, stamped on the invoice from its Sales Order and never inferred; a total that
+// dissolves that dimension is a figure nobody can act on. So the projection carries `companyId` and
+// every aggregate below is available partitioned by it — exactly the discipline the per-currency
+// maps already follow, applied to the other dimension that must never be blended.
 
 const nn = (v: unknown): number => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : 0);
 const DAY = 24 * 60 * 60 * 1000;
@@ -10,6 +16,12 @@ const DAY = 24 * 60 * 60 * 1000;
 export interface StoredInvoiceLike {
   invoiceNumber?: string;
   accountId?: string;
+  /**
+   * The invoice's GOVERNED operating company, stamped from the Sales Order's operatingCompanyId by
+   * issueInvoice (invoiceCommands.ts — `companyId: soCompany`) and never caller-chosen. Read here as
+   * a fact; NEVER inferred from the account, the location, the warehouse or the caller.
+   */
+  companyId?: string;
   salesOrderId?: string;
   currency?: string;
   state?: string;
@@ -44,6 +56,8 @@ export interface InvoiceArRead {
   invoiceId: string;
   invoiceNumber: string | null;
   accountId: string | null;
+  /** The governed operating company this money belongs to. Null ONLY when the fact is absent. */
+  companyId: string | null;
   salesOrderId: string | null;
   currency: string | null;
   state: string | null; // payment lifecycle (ISSUED/PARTIALLY_PAID/PAID/VOID)
@@ -65,6 +79,7 @@ export function projectInvoiceAr(invoiceId: string, inv: StoredInvoiceLike, nowM
     invoiceId,
     invoiceNumber: typeof inv?.invoiceNumber === "string" ? inv.invoiceNumber : null,
     accountId: typeof inv?.accountId === "string" ? inv.accountId : null,
+    companyId: typeof inv?.companyId === "string" ? inv.companyId : null,
     salesOrderId: typeof inv?.salesOrderId === "string" ? inv.salesOrderId : null,
     currency: typeof inv?.currency === "string" ? inv.currency : null,
     state: typeof inv?.state === "string" ? inv.state : null,
@@ -133,6 +148,60 @@ export function summarizeArAging(reads: InvoiceArRead[], nowMillis: number): Rec
   return out;
 }
 
+// THE EXPLICIT KEY FOR "NO GOVERNED OPERATING COMPANY".
+//
+// A fact with no company is NOT dropped and NOT folded into a company. It gets its own key, for the
+// same reason `summarizeArAging` keeps `unagedMinor` beside the buckets: the per-company figures
+// plus this key reconcile EXACTLY to the consolidated totals, and that reconciliation is the only
+// thing that makes a company breakdown trustworthy. Omitting unattributed money would make the
+// parts quietly fail to add up to the whole, which is worse than showing it.
+export const UNATTRIBUTED_COMPANY = "UNATTRIBUTED";
+
+const companyKeyOf = (r: InvoiceArRead): string =>
+  typeof r?.companyId === "string" && r.companyId.trim().length > 0 ? r.companyId : UNATTRIBUTED_COMPANY;
+
+// A/R AGING PER OPERATING COMPANY.
+//
+// `summarizeArAging` ages the whole visible book at once. For a principal whose reach spans BOTH
+// governed companies (CONSOLIDATED, or two OPERATING_COMPANY grants), that single bucket row is a
+// figure that silently mixes Taylor and Ventana money: the reader cannot tell whose exposure is
+// 61+ days old. Operating company is never inferred in this system, so it must not be dissolved by
+// a rollup either.
+//
+// This does NOT re-decide what aging means. It partitions the reads by their OWN governed
+// `companyId` and hands each partition to the one bucketing rule above, so a company's buckets and
+// the consolidated buckets can never disagree about the same invoice.
+export function summarizeArAgingByCompany(
+  reads: InvoiceArRead[],
+  nowMillis: number,
+): Record<string, Record<string, ArAgingBucket>> {
+  const partitions = new Map<string, InvoiceArRead[]>();
+  for (const r of Array.isArray(reads) ? reads : []) {
+    const key = companyKeyOf(r);
+    const bucket = partitions.get(key);
+    if (bucket) bucket.push(r);
+    else partitions.set(key, [r]);
+  }
+  const out: Record<string, Record<string, ArAgingBucket>> = {};
+  for (const [key, list] of partitions) {
+    const aged = summarizeArAging(list, nowMillis);
+    // A company whose every invoice is settled ages nothing — it contributes no key rather than a
+    // row of zeroes, exactly as summarizeArAging omits a currency with nothing owed.
+    if (Object.keys(aged).length > 0) out[key] = aged;
+  }
+  return out;
+}
+
+/** One operating company's slice of an AR summary. Money stays per currency, never blended. */
+export interface CompanyArFigures {
+  count: number;
+  openCount: number;
+  overdueCount: number;
+  billedByCurrency: Record<string, number>;
+  collectedByCurrency: Record<string, number>;
+  outstandingByCurrency: Record<string, number>;
+}
+
 // Summarize a set of AR reads — honest counts plus the lifecycle totals, EACH PER CURRENCY.
 //
 // THE CONSOLIDATED TOTALS LIVE HERE, in the one canonical summary, for a specific reason: a client
@@ -147,6 +216,20 @@ export function summarizeArAging(reads: InvoiceArRead[], nowMillis: number): Rec
 //
 // Currencies are never blended: each is its own key, and a caller that wants one number must first
 // decide an FX policy this system does not have.
+//
+// NEITHER ARE OPERATING COMPANIES — and until this breakdown existed, they were. The consolidated
+// maps above answer "what does this account owe in total", which is a real question, but for a
+// principal who can reach both governed companies they were the ONLY answer available: one figure
+// silently spanning Taylor and Ventana, on rows that did not carry a company either. An account is
+// not partitioned by operating company (an invoice's company comes from its Sales Order, so one
+// account can trade with both), so this was not a theoretical blend.
+//
+// `byCompany` is that missing dimension, keyed by the invoice's OWN governed companyId with
+// UNATTRIBUTED_COMPANY for facts that carry none. It is a partition, not a second opinion: summing
+// its per-currency maps reproduces the consolidated maps EXACTLY, which is the property the tests
+// pin. A surface that must not mix companies now has a figure it can show; one that legitimately
+// wants the consolidated total still has it, and can now tell when that total spans more than one
+// company instead of having to assume it does not.
 export function summarizeAccountAr(reads: InvoiceArRead[]): {
   count: number;
   openCount: number;
@@ -154,22 +237,48 @@ export function summarizeAccountAr(reads: InvoiceArRead[]): {
   billedByCurrency: Record<string, number>;
   collectedByCurrency: Record<string, number>;
   outstandingByCurrency: Record<string, number>;
+  /** The same facts partitioned by governed operating company. Reconciles exactly to the maps above. */
+  byCompany: Record<string, CompanyArFigures>;
+  /** The governed companies actually present, sorted. UNATTRIBUTED_COMPANY appears when facts carry none. */
+  companyIds: string[];
+  /** True when the consolidated figures above span MORE THAN ONE key — the caller must say so. */
+  spansMultipleCompanies: boolean;
 } {
   const list = Array.isArray(reads) ? reads : [];
   const billedByCurrency: Record<string, number> = {};
   const collectedByCurrency: Record<string, number> = {};
   const outstandingByCurrency: Record<string, number> = {};
+  const byCompany: Record<string, CompanyArFigures> = {};
   let openCount = 0;
   let overdueCount = 0;
   for (const r of list) {
     const currency = r.currency ?? "UNSPECIFIED";
+    // The consolidated totals and the company slice are accumulated from the SAME row in the SAME
+    // pass, so the partition cannot drift from the whole it partitions.
+    const company = (byCompany[companyKeyOf(r)] ??= {
+      count: 0, openCount: 0, overdueCount: 0,
+      billedByCurrency: {}, collectedByCurrency: {}, outstandingByCurrency: {},
+    });
+    company.count += 1;
     billedByCurrency[currency] = (billedByCurrency[currency] ?? 0) + nn(r.totalMinor);
+    company.billedByCurrency[currency] = (company.billedByCurrency[currency] ?? 0) + nn(r.totalMinor);
     collectedByCurrency[currency] = (collectedByCurrency[currency] ?? 0) + nn(r.appliedMinor);
+    company.collectedByCurrency[currency] = (company.collectedByCurrency[currency] ?? 0) + nn(r.appliedMinor);
     if (r.outstandingMinor > 0) {
       openCount += 1;
+      company.openCount += 1;
       outstandingByCurrency[currency] = (outstandingByCurrency[currency] ?? 0) + r.outstandingMinor;
+      company.outstandingByCurrency[currency] = (company.outstandingByCurrency[currency] ?? 0) + r.outstandingMinor;
     }
-    if (r.arPosition === "OVERDUE") overdueCount += 1;
+    if (r.arPosition === "OVERDUE") {
+      overdueCount += 1;
+      company.overdueCount += 1;
+    }
   }
-  return { count: list.length, openCount, overdueCount, billedByCurrency, collectedByCurrency, outstandingByCurrency };
+  const companyIds = Object.keys(byCompany).sort();
+  return {
+    count: list.length, openCount, overdueCount,
+    billedByCurrency, collectedByCurrency, outstandingByCurrency,
+    byCompany, companyIds, spansMultipleCompanies: companyIds.length > 1,
+  };
 }
