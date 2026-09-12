@@ -1070,9 +1070,23 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // INV-1 Phase 1 PR 1.2 -- Part Master trusted write service (ADR-008 /
   // Decision #40; capability ids named by the accepted Part Master spec
-  // sec10). Registered-but-ungranted: no Role grants these yet, so every
-  // real resolution DENIES (unavailable-not-unsafe, same posture the
-  // report.* ids launched with).
+  // sec10).
+  //
+  // GRANT/ACTIVATION STATUS, measured 2026-09-12 against governedBusinessRoles.ts,
+  // compatibilityRoles.ts and config/environments.json. This block used to say
+  // "Registered-but-ungranted: no Role grants these yet, so every real resolution
+  // DENIES". BOTH HALVES ARE NOW FALSE. Neither id carries `active: false`, so both
+  // are ACTIVE in every environment, needing no activation override. And both are
+  // held by governed business Roles: `inventory.catalog.manage` by seven
+  // (inventoryCatalogAdministrator, inventoryCreateExecutor, partsManager,
+  // warehouseManager, fieldManager, generalManager, operationsManager),
+  // `inventory.catalog.activate` by inventoryCatalogAdministrator -- the durable
+  // standing Role whose absence this comment was written about and which now exists
+  // (governedBusinessRoles.ts). admin/owner additionally hold both through
+  // ADMIN_ALL_PERMISSIONS's derived whole-catalogue grant; that is true of all 147
+  // ids and is therefore never evidence about any particular one. A principal still
+  // resolves DENY until a governed, audited roleAssignment gives them one of those
+  // Roles -- declaring a Role is not granting it.
   Object.freeze({
     id: "inventory.catalog.manage",
     description: "Create and edit canonical Part and Manufacturer descriptive records (trusted Part Master service).",
@@ -1109,7 +1123,15 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Disposition -- return to stock, inspect/quarantine, repair, vendor RMA, scrap -- will need its
   // OWN capability when the policy exists. None is registered here, because none has been decided.
   //
-  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role.
+  // REGISTERED `active: false`, WHICH IS THE PRODUCTION POSTURE AND NOT A UNIVERSAL ONE.
+  // Measured 2026-09-12: held by the least-privilege governed Role inventoryReturnsIntakeClerk
+  // (governedBusinessRoles.ts), and ACTIVATED in platform-sandbox only
+  // (config/environments.json capabilityActivationOverrides). Production neither activates
+  // nor grants it, and production activation is triple-hard-blocked
+  // (environmentCapabilityOverrides.ts). admin/owner hold it via ADMIN_ALL_PERMISSIONS's
+  // derived whole-catalogue grant, which is true of every id here and proves nothing about
+  // this one. Where the capability is not activated, `active: false` denies every principal
+  // regardless of grant (DenialReason `inactivePermission`).
   Object.freeze({
     id: "inventory.returns.intake",
     description:
@@ -1129,7 +1151,12 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // `inventory.stock.receive`: receiving is a custody event that changes what the company has, and
   // reusing it would make every stow look like an authority to accept stock.
   //
-  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role.
+  // REGISTERED `active: false`, WHICH IS THE PRODUCTION POSTURE AND NOT A UNIVERSAL ONE.
+  // Measured 2026-09-12: held by the least-privilege governed Role inventoryPutAwayOperator
+  // (governedBusinessRoles.ts), and ACTIVATED in platform-sandbox only
+  // (config/environments.json). Production neither activates nor grants it. admin/owner hold
+  // it via the derived whole-catalogue grant, which is true of every id here. Where it is not
+  // activated, `active: false` denies every principal regardless of grant.
   Object.freeze({
     id: "inventory.placement.record",
     description:
@@ -1182,8 +1209,16 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // `bins` has NO firestore.rules match block, so it is deny-all to every client including admin.
   // That needed no Rules change: these run on the Admin SDK, which Rules do not govern.
   //
-  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: both `active: false`, granted to NO Role, no
-  // per-environment activation override.
+  // REGISTERED `active: false` -- THE PRODUCTION POSTURE, NOT A UNIVERSAL ONE. Measured
+  // 2026-09-12: `inventory.location.bin.manage` is held by inventoryBinAdministrator;
+  // `inventory.location.bin.read` by inventoryBinAdministrator, inventoryPutAwayOperator and
+  // inventoryStockRelocationOperator (governedBusinessRoles.ts -- the read/write audience split
+  // above is real and is expressed in the Roles). BOTH are ACTIVATED in platform-sandbox
+  // (config/environments.json). This block previously said "granted to NO Role, no
+  // per-environment activation override"; both halves are false. Production neither activates
+  // nor grants either id, and where a capability is not activated `active: false` denies every
+  // principal regardless of grant. admin/owner hold both through the derived whole-catalogue
+  // grant, which is true of every id here.
   Object.freeze({
     id: "inventory.location.bin.manage",
     description:
@@ -1215,9 +1250,13 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // `inventory.analytics.read` is a dashboard projection over the whole estate, not a per-part
   // answer. Neither fits, so this is the smallest id that does.
   //
-  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO Role, no
-  // per-environment activation override -- resolveEffectivePermission() denies for every principal
-  // until activation and grant are separately authorized.
+  // REGISTERED `active: false` -- THE PRODUCTION POSTURE, NOT A UNIVERSAL ONE. Measured
+  // 2026-09-12: held by fifteen governed business Roles (least-privilege: inventoryLookupReader;
+  // also the parts/warehouse/shop/sales/finance oversight Roles -- governedBusinessRoles.ts) and
+  // ACTIVATED in platform-sandbox (config/environments.json). This block previously said "granted
+  // to NO Role, no per-environment activation override"; both halves are false. In an environment
+  // with no override, `active: false` still denies every principal regardless of grant, and
+  // production is triple-hard-blocked from activation.
   Object.freeze({
     id: "inventory.balance.read",
     description:
@@ -1247,10 +1286,13 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // load-bearing for the write path), and it grants nothing about the Part record itself -- reading
   // the Part is separately governed by firestore.rules.
   //
-  // REGISTERED BUT UNGRANTED AND INERT BY DESIGN: `active: false`, granted to NO compatibility,
-  // default or operational Role, with no per-environment activation override, so
-  // resolveEffectivePermission() denies for every principal. Activation and grant are a separate
-  // Owner decision -- same posture as inventory.serializedAsset.read at its own introduction.
+  // REGISTERED `active: false` -- THE PRODUCTION POSTURE, NOT A UNIVERSAL ONE. Measured
+  // 2026-09-12: held by inventoryLookupReader and inventoryStockRelocationOperator
+  // (governedBusinessRoles.ts) and ACTIVATED in platform-sandbox (config/environments.json).
+  // This block previously said "granted to NO compatibility, default or operational Role, with
+  // no per-environment activation override"; both halves are false. Where it is not activated,
+  // `active: false` denies every principal regardless of grant, and production is triple-hard-
+  // blocked from activation.
   Object.freeze({
     id: "inventory.catalog.alias.read",
     description:
@@ -1262,10 +1304,12 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Serialized Asset registry, Spec phase M.1 (docs/specifications/serialized-asset-equipment-installation.md
   // §I / §M.1, ADR-010 + DECISIONS #59): trusted Available-Equipment read (functions/src/serializedAsset/
   // serializedAssetReadService.ts). Backend-resolved scope; no client-direct serialized_assets read (no
-  // firestore.rules match block exists for this collection -- default deny). REGISTERED BUT UNGRANTED BY
-  // DESIGN: this phase grants the capability to NO compatibility Role and adds NO per-environment activation
-  // override, so resolveEffectivePermission() denies for every principal until a later, separately
-  // authorized grant + activation gate -- same posture as inventory.catalog.read at its own introduction.
+  // firestore.rules match block exists for this collection -- default deny). REGISTERED `active: false`,
+  // WHICH IS THE PRODUCTION POSTURE AND NOT A UNIVERSAL ONE. Measured 2026-09-12: the introduction phase
+  // granted it to no Role, but it is now held by thirteen governed business Roles (least-privilege:
+  // inventoryLookupReader -- governedBusinessRoles.ts) and ACTIVATED in platform-sandbox
+  // (config/environments.json). Production neither activates nor grants it; where it is not activated,
+  // `active: false` denies every principal regardless of grant.
   Object.freeze({
     id: "inventory.serializedAsset.read",
     description:
@@ -1283,7 +1327,9 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   //
   // HIGH TRUST, and narrow by construction: it creates owned inventory with no procurement record,
   // and every acquisition must name a reason from a closed set in which "we bought it" does not
-  // appear. Registered active:false and granted to no Role.
+  // appear. Registered `active: false` -- the production posture. Measured 2026-09-12: held by the
+  // purpose-built inventorySerializedAssetAcquirer Role (governedBusinessRoles.ts) and ACTIVATED in
+  // platform-sandbox (config/environments.json); production neither activates nor grants it.
   Object.freeze({
     id: "inventory.serializedAsset.acquire",
     description: "Bring an already-owned serialized unit into managed custody without a purchase order (opening balance, legacy migration, existing company asset) via the trusted acquireSerializedAsset command. Creates no Equipment, no customer relationship and no purchasing history.",
@@ -1305,12 +1351,15 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   }),
   // Enterprise Inventory Phase 4 -- Transfer operating authority (functions/src/inventoryTransfer/*).
   // Closes the WAREHOUSE -> MOBILE/TRUCK -> WAREHOUSE loop over the already-merged transfer_orders read
-  // model + inventoryLedger TRANSFER_OUT/TRANSFER_IN contract. REGISTERED BUT UNGRANTED by design -- no
-  // compatibility/default/operational Role holds any of these four ids, no claims initializer/migration/
-  // fixture mints them, and there is no superuser/wildcard bypass, so resolveEffectivePermission() denies
-  // `noQualifyingGrant` for every principal until a later, separately-authorized grant gate. Same
-  // ungranted posture as inventory.stock.receive at its own introduction. CUSTOMER delivery is a separate,
-  // not-yet-authorized future capability -- not registered here.
+  // model + inventoryLedger TRANSFER_OUT/TRANSFER_IN contract. REGISTERED `active: false` -- THE
+  // PRODUCTION POSTURE, NOT A UNIVERSAL ONE. Measured 2026-09-12: the grant gate this block was written
+  // before has since landed. inventoryTransferOperator holds all four ids and inventoryTransferReceiver
+  // holds `inventory.transfer.receive` (governedBusinessRoles.ts), and ALL FOUR are ACTIVATED in
+  // platform-sandbox (config/environments.json). Production neither activates nor grants any of them and
+  // is triple-hard-blocked from activation; where the capability is not activated, `active: false` denies
+  // every principal regardless of grant. There is still no claims initializer/migration/fixture that mints
+  // these, and still no superuser/wildcard bypass. CUSTOMER delivery is a separate, not-yet-authorized
+  // future capability -- not registered here.
   Object.freeze({
     id: "inventory.transfer.create",
     description: "Create a governed Transfer Order between two active WAREHOUSE/MOBILE(truck) inventory locations (trusted Transfer service).",
@@ -1342,11 +1391,14 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // Enterprise Inventory -- Cycle Count operating authority (functions/src/cycleCount/*). Re-audited the
   // location-aware operational ledger PR #1032 made live for Transfer sufficiency and reused the SAME
   // authority as Cycle Count's expected-quantity source (never a second manually maintained on-hand
-  // number). REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds any
-  // of these four ids, no claims initializer/migration/fixture mints them, and there is no superuser/
-  // wildcard bypass, so resolveEffectivePermission() denies `noQualifyingGrant` for every principal until
-  // a later, separately-authorized grant gate. Same ungranted posture as inventory.transfer.* at its own
-  // introduction.
+  // number). REGISTERED `active: false` -- THE PRODUCTION POSTURE, NOT A UNIVERSAL ONE. Measured
+  // 2026-09-12: inventoryCycleCountCounter holds create/submit/cancel and inventoryCycleCountReconciler
+  // holds reconcile -- the separation DECISIONS #111 requires, expressed as two Roles rather than one
+  // (governedBusinessRoles.ts). create/submit/reconcile are ACTIVATED in platform-sandbox AND
+  // platform-certification; cancel in platform-sandbox only (config/environments.json). Production
+  // neither activates nor grants any of them. Where the capability is not activated, `active: false`
+  // denies every principal regardless of grant. Still no claims initializer/migration/fixture mints
+  // these, and still no superuser/wildcard bypass.
   Object.freeze({
     id: "inventory.cycleCount.create",
     description: "Start a governed Cycle Count sheet at an eligible location (an active WAREHOUSE or truck, or a BIN whose Warehouse passed the Bin conversion gate) and open one line per Part, each snapshotting its expected quantity/serials from the ledger/registry authority without disclosing it (trusted Cycle Count service, schema v2).",
@@ -1428,8 +1480,12 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // hands anything to a customer, and reusing one of them would put an irreversible customer
   // assignment behind an authority whose meaning is internal movement.
   //
-  // Registered active:false, fail-closed, and granted to NO Role here. Declaring a capability
-  // grants nothing; who may install is a separate Owner decision.
+  // Registered `active: false` and fail-closed. Measured 2026-09-12: the separate Owner decision
+  // this block deferred has since been taken -- the purpose-built equipmentInstaller Role holds it
+  // (governedBusinessRoles.ts) and it is ACTIVATED in platform-sandbox (config/environments.json).
+  // Production neither activates nor grants it. Declaring a capability still grants nothing, and
+  // declaring a Role still grants nothing: a principal holds it only through a governed,
+  // audited roleAssignment.
   Object.freeze({
     id: "equipment.install",
     description: "Install a company-held serialized asset as customer Equipment: creates the Equipment record and links the asset to it (trusted installSerializedAsset command). Irreversible under the current model -- Equipment accountId/locationId are immutable after create.",
@@ -1440,9 +1496,12 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // CRM Activity / Notes (Taylor EOS Wave 7 extension, PART 1.4) -- the SMALLEST domain-correct CRM
   // interaction authority. Create a governed, immutable-identity account-scoped activity/note record
   // (Sales Note / Call / Meeting / Relationship / General) via the trusted createCrmActivity command
-  // (functions/src/crmActivity/crmActivityCallables.ts). Registered active:false (fail-closed) and NOT
-  // granted to any Role -- hard DENY for everyone until a separate Owner grant AND per-environment
-  // activation. Does NOT expand account.notes (the existing single free-text blob); does NOT carry an
+  // (functions/src/crmActivity/crmActivityCallables.ts). Registered `active: false` (fail-closed).
+  // Measured 2026-09-12: the Owner grant and per-environment activation this block deferred have both
+  // landed -- crmActivityContributor holds it (governedBusinessRoles.ts), dispatcher holds it by its own
+  // governed assignment, and it is ACTIVATED in platform-sandbox (config/environments.json). Production
+  // neither activates nor grants it, and where it is not activated `active: false` denies everyone
+  // regardless of grant. Does NOT expand account.notes (the existing single free-text blob); does NOT carry an
   // assignee/due date/completion state (that is PART 1.5's separate, not-yet-authorized seam).
   Object.freeze({
     id: "crm.activity.create",
@@ -1469,10 +1528,12 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // (Service/Dispatch) and `Coordinated Mission` (Technician) -- functions/src/fulfillment/
   // coordinatedVisitReadService.ts. Serves the TWO ALREADY-EXISTING pure projections
   // (coordinatedVisit.ts / coordinatedFieldMission.ts) from real fieldops_wos data; no new coordination
-  // model, no new Job/Visit/WorkOrderGroup authority. REGISTERED BUT UNGRANTED BY DESIGN: this phase grants
-  // the capability to NO compatibility Role and adds NO per-environment activation override, so
-  // resolveEffectivePermission() denies for every principal until a later, separately authorized grant +
-  // activation gate -- same posture as inventory.serializedAsset.read's own introduction.
+  // model, no new Job/Visit/WorkOrderGroup authority. REGISTERED `active: false` -- THE PRODUCTION
+  // POSTURE, NOT A UNIVERSAL ONE. Measured 2026-09-12: the later grant + activation gate this phase
+  // deferred has landed -- dispatcher, fieldManager and operationsManager hold it
+  // (governedBusinessRoles.ts / compatibilityRoles.ts) and it is ACTIVATED in platform-sandbox
+  // (config/environments.json). Production neither activates nor grants it; where it is not activated,
+  // `active: false` denies every principal regardless of grant.
   Object.freeze({
     id: "fulfillment.coordinatedVisit.read",
     description:
@@ -1491,10 +1552,11 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
   // widening, and no client-direct mobile_locations widening introduced here. (Corrected 2026-08-17:
   // this previously said mobile_locations has no Rules match block and is default-deny.
   // firestore.rules:1235-1238 grants admin/dispatcher read on it and denies all client writes.)
-  // REGISTERED BUT UNGRANTED BY DESIGN: this phase grants the capability to NO compatibility Role and
-  // adds NO per-environment activation override, so resolveEffectivePermission() denies for every
-  // principal until a later, separately authorized grant + activation gate -- same posture as
-  // inventory.serializedAsset.read's own introduction.
+  // REGISTERED `active: false` -- THE PRODUCTION POSTURE, NOT A UNIVERSAL ONE. Measured 2026-09-12:
+  // the later grant + activation gate this phase deferred has landed -- the least-privilege
+  // inventoryLookupReader Role holds it (governedBusinessRoles.ts) and it is ACTIVATED in
+  // platform-sandbox (config/environments.json). Production neither activates nor grants it; where it
+  // is not activated, `active: false` denies every principal regardless of grant.
   Object.freeze({
     id: "inventory.location.display.read",
     description:
