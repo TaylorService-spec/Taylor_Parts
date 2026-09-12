@@ -93,6 +93,48 @@ test("deriveLegacyRoleGrants: inventoryReceivingClerk holds exactly inventory.st
   assert.deepEqual(receiveGrants.map((g) => g.capabilityKey), ["inventory.stock.receive"]);
 });
 
+// ════════════════════ the operator CLI's production refusal (P2-C1) ════════════════════
+//
+// NO DATABASE NEEDED, and that is the point: the refusal must fire BEFORE the pool is built, so it
+// holds even when DATABASE_URL points somewhere real. Asserted by running the CLI as a subprocess
+// with DATABASE_URL deliberately UNSET -- an exit code 2 with this message therefore proves the
+// guard ran first, because reaching the database step at all would fail differently.
+for (const label of ["production", "PROD", " Production "]) {
+  test(`the grant CLI refuses EOS_ENVIRONMENT=${JSON.stringify(label)} before touching any database`, () => {
+    const env = { ...process.env, EOS_ENVIRONMENT: label };
+    delete env.DATABASE_URL;
+    delete env.POLICY_DATABASE_URL;
+    delete env.POLICY_TEST_DATABASE_URL;
+    let status = 0;
+    let stderr = "";
+    try {
+      execFileSync(process.execPath, ["scripts/inventoryCapabilityGrantMigrationCli.js", "--tenant", "t", "--actor", "a", "--apply"],
+        { env, stdio: "pipe", encoding: "utf8" });
+    } catch (err) {
+      status = err.status;
+      stderr = String(err.stderr ?? "");
+    }
+    assert.equal(status, 2, "refusal exits 2, the same code scripts/bootstrapEosTenant.mjs uses");
+    assert.match(stderr, /REFUSED: EOS_ENVIRONMENT names production/);
+  });
+}
+
+test("the grant CLI does NOT refuse a non-production label -- the guard is narrow, not a blanket block", () => {
+  const env = { ...process.env, EOS_ENVIRONMENT: "nonprod" };
+  delete env.DATABASE_URL;
+  delete env.POLICY_DATABASE_URL;
+  delete env.POLICY_TEST_DATABASE_URL;
+  let stderr = "";
+  try {
+    execFileSync(process.execPath, ["scripts/inventoryCapabilityGrantMigrationCli.js", "--tenant", "t", "--actor", "a"],
+      { env, stdio: "pipe", encoding: "utf8" });
+  } catch (err) {
+    stderr = String(err.stderr ?? "");
+  }
+  // It gets PAST the guard and fails for the next reason instead (no database configured).
+  assert.doesNotMatch(stderr, /REFUSED: EOS_ENVIRONMENT names production/);
+});
+
 test("unknown tenant refuses outright", { skip: SKIP }, async () => {
   await reset();
   repo(); // ensures `pool` is initialized
