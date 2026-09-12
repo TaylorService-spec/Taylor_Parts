@@ -38,6 +38,22 @@ const actorFor = (tenantId) => ({ tenantId, uid: ACTOR.uid });
 
 let pool = null;
 
+/**
+ * The migration set, COUNTED rather than remembered.
+ *
+ * These proofs used to hardcode "reverse seven". Every migration added after them broke a test that
+ * was making a claim about reversal, not about how many migrations exist -- and the number is also
+ * the one thing several concurrent branches each change. Derived from the directory, the claims stay
+ * about what they are about.
+ */
+const MIGRATION_FILES = readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort();
+/** `down` steps that reverse everything from the newest through the migration at `prefix`, inclusive. */
+function stepsBackTo(prefix) {
+  const index = MIGRATION_FILES.findIndex((f) => f.startsWith(prefix));
+  assert.ok(index >= 0, `migration ${prefix} is present`);
+  return MIGRATION_FILES.length - index;
+}
+
 /** Re-run the migration from a clean schema, so every test starts from the same known state. */
 function migrateFromClean() {
   execFileSync(process.execPath, [
@@ -228,7 +244,10 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.
-  down(1);
+  //
+  // Reversed BY NAME, not by a literal step count: anything newer than 007 comes off with it, and
+  // this test stays a claim about 007 rather than about how many migrations happen to exist today.
+  down(stepsBackTo("1757980800000_"));
   const companyColumnGone = await query(
     "SELECT count(*)::int n FROM information_schema.columns WHERE table_schema = 'eos_ops'" +
     " AND column_name = 'operating_company_key'",

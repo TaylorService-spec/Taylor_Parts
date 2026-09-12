@@ -80,3 +80,55 @@ export const declaredTablesIn = (schema, files, dir) => declaredTables(files, di
 
 /** Migration files strictly newer than `file`, by the timestamp prefix their names sort on. */
 export const migrationsAfter = (file, dir) => migrationFiles(dir).filter((f) => f > file);
+
+/**
+ * Tables (in one schema) that the migrations give a named column, whether in the `CREATE TABLE` that
+ * introduces the table or in a later `ALTER TABLE ... ADD COLUMN`.
+ *
+ * ════════════════════ WHY THIS IS DERIVED AND NOT LISTED ════════════════════
+ *
+ * `operating_company_key` used to be pinned by a hand-written COMPANY_TABLES list naming the three
+ * tables migration 007 gave the column to. At the W1 integration, SEVEN further lanes added tables
+ * carrying it -- `mobile_locations`, `warehouses`, `suppliers`, `purchase_orders` and the rest -- and
+ * not one of them updated the list, because each lane's Postgres suites SKIP without a database and
+ * nobody ran them. The sweep that was supposed to catch "a new table carries this column NULLABLE"
+ * would instead have failed on every correct addition, which is the opposite of a useful guard.
+ *
+ * Derived from the files, the list cannot fall behind the migrations: a lane that adds a carrier is
+ * included automatically, and the NOT NULL / TEXT / no-default properties are still asserted on every
+ * row the live database returns.
+ */
+export function tablesWithColumn(schema, column, files = migrationFiles(), dir = MIGRATIONS_DIR) {
+  const found = new Set();
+  const col = column.toLowerCase();
+  for (const file of files) {
+    let current = "public";
+    let openTable = null;   // the CREATE TABLE body we are inside, if any
+    let depth = 0;
+    for (const raw of upSection(dir, file).split("\n")) {
+      const line = raw.trim();
+      const searchPath = line.match(/^SET\s+search_path\s*=\s*([a-z_][a-z0-9_]*)/i);
+      if (searchPath) { current = searchPath[1].toLowerCase(); continue; }
+
+      // ALTER TABLE <t> ADD COLUMN <c> -- how migration 007 gave the column to tables it did not create.
+      const alter = line.match(/^ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:([a-z_][a-z0-9_]*)\.)?([a-z_][a-z0-9_]*)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/i);
+      if (alter && alter[3].toLowerCase() === col && (alter[1]?.toLowerCase() ?? current) === schema) {
+        found.add(alter[2].toLowerCase());
+        continue;
+      }
+
+      if (openTable === null) {
+        const create = line.match(/^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:([a-z_][a-z0-9_]*)\.)?([a-z_][a-z0-9_]*)/i);
+        if (create) { openTable = { schema: create[1]?.toLowerCase() ?? current, table: create[2].toLowerCase() }; depth = 0; }
+      }
+      if (openTable !== null) {
+        depth += (line.match(/\(/g) ?? []).length - (line.match(/\)/g) ?? []).length;
+        // A column definition is `<name> <type> ...` at the top level of the table body.
+        const colDef = line.match(/^([a-z_][a-z0-9_]*)\s+[A-Za-z]/);
+        if (colDef && colDef[1].toLowerCase() === col && openTable.schema === schema) found.add(openTable.table);
+        if (depth <= 0 && /;\s*$/.test(line)) openTable = null;
+      }
+    }
+  }
+  return [...found].sort();
+}
