@@ -1,6 +1,14 @@
 name: Sales Order Number Backfill Tests
 
-# Offline tests for the sales-order reference backfill tooling.
+# Offline tests for the governed operator-CLI family that shares the X-BACKFILL-ENVIRONMENT-GUARD:
+# the sales-order number backfill, the phantom Sales Order link repair, the warehouse assignment
+# provisioning tool, and functions/scripts/sandboxTargetGuard.js (the one shared guard they all use).
+#
+# Two of these suites were registered in NO workflow and NO npm script. When commit 55041a07
+# (2026-08-30) added a third role:sandbox environment to config/environments.json, the guard's
+# "exactly one sandbox project" assumption expired and all three CLIs began throwing on every
+# `--environment sandbox` run. Nothing caught it, because nothing ran them -- and because the path
+# filter did not watch config/environments.json, the file that actually changed.
 #
 # A NEW subsystem needs its own path-filtered workflow or it is CI-uncovered: this repo
 # runs per-subsystem workflows on PRs, so a suite named in no workflow never runs.
@@ -15,6 +23,19 @@ on:
       - "functions/src/salesOrder/salesOrderNumberBackfill*.ts"
       - "functions/scripts/salesOrderNumberBackfillCli.js"
       - "functions/test/salesOrderNumberBackfill.test.mjs"
+      # The other two CLIs that share the SAME X-BACKFILL-ENVIRONMENT-GUARD, and the one shared
+      # implementation of it. Both were CI-uncovered; a registry change broke all three at once.
+      - "functions/scripts/sandboxTargetGuard.js"
+      - "functions/test/sandboxTargetGuard.test.mjs"
+      - "functions/scripts/phantomSalesOrderLinkRepairCli.js"
+      - "functions/test/phantomSalesOrderLinkRepair.test.mjs"
+      - "functions/src/repair/phantomSalesOrderLinkRepair*.ts"
+      - "functions/scripts/warehouseAssignmentProvisioningCli.js"
+      - "functions/test/warehouseAssignmentProvisioningCli.test.mjs"
+      # THE PATH THAT ACTUALLY BROKE IT. The guard reads config/environments.json, so a registry
+      # edit can break every CLI here while touching none of the files above. Registering
+      # platform-certification (55041a07, 2026-08-30) did exactly that and CI never ran.
+      - "config/environments.json"
       - ".github/workflows/sales-order-backfill-tests.yml"
   push:
     branches: [main]
@@ -22,6 +43,19 @@ on:
       - "functions/src/salesOrder/salesOrderNumberBackfill*.ts"
       - "functions/scripts/salesOrderNumberBackfillCli.js"
       - "functions/test/salesOrderNumberBackfill.test.mjs"
+      # The other two CLIs that share the SAME X-BACKFILL-ENVIRONMENT-GUARD, and the one shared
+      # implementation of it. Both were CI-uncovered; a registry change broke all three at once.
+      - "functions/scripts/sandboxTargetGuard.js"
+      - "functions/test/sandboxTargetGuard.test.mjs"
+      - "functions/scripts/phantomSalesOrderLinkRepairCli.js"
+      - "functions/test/phantomSalesOrderLinkRepair.test.mjs"
+      - "functions/src/repair/phantomSalesOrderLinkRepair*.ts"
+      - "functions/scripts/warehouseAssignmentProvisioningCli.js"
+      - "functions/test/warehouseAssignmentProvisioningCli.test.mjs"
+      # THE PATH THAT ACTUALLY BROKE IT. The guard reads config/environments.json, so a registry
+      # edit can break every CLI here while touching none of the files above. Registering
+      # platform-certification (55041a07, 2026-08-30) did exactly that and CI never ran.
+      - "config/environments.json"
       - ".github/workflows/sales-order-backfill-tests.yml"
   workflow_dispatch:
 
@@ -59,6 +93,29 @@ jobs:
       - name: Build functions
         run: npm run build
         working-directory: functions
+      # Fail loudly if a registered path stops existing: `node --test` exits 0 on a file that does
+      # not exist (it reports "# fail 0"), so a renamed or deleted suite would silently become a
+      # green no-op. This check is the difference between "registered" and "actually running".
+      - name: Registered suites must exist
+        run: |
+          set -euo pipefail
+          for f in test/salesOrderNumberBackfill.test.mjs \
+                   test/sandboxTargetGuard.test.mjs \
+                   test/phantomSalesOrderLinkRepair.test.mjs \
+                   test/warehouseAssignmentProvisioningCli.test.mjs; do
+            [ -f "$f" ] || { echo "registered suite missing: functions/$f"; exit 1; }
+          done
+        working-directory: functions
       - name: Backfill tooling tests (node:test)
         run: node --test test/salesOrderNumberBackfill.test.mjs
+        working-directory: functions
+      # Same guard, same defect class, previously registered NOWHERE.
+      - name: Shared sandbox target guard tests (node:test)
+        run: node --test test/sandboxTargetGuard.test.mjs
+        working-directory: functions
+      - name: Phantom Sales Order link repair tests (node:test)
+        run: node --test test/phantomSalesOrderLinkRepair.test.mjs
+        working-directory: functions
+      - name: Warehouse assignment provisioning tests (node:test)
+        run: node --test test/warehouseAssignmentProvisioningCli.test.mjs
         working-directory: functions
