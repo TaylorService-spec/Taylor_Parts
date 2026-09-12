@@ -60,8 +60,8 @@ Each activity is one thing a named person does, in one operating company, agains
 | DUPLICATE_DATA | 12 |
 | PERMISSION_DENIAL | 32 |
 | CROSS_COMPANY | 29 |
-| MOBILE | 119 |
-| DESKTOP | 213 |
+| MOBILE | 118 |
+| DESKTOP | 212 |
 | AFTER_HOURS | 10 |
 | BULK | 31 |
 | END_OF_DAY | 18 |
@@ -72,6 +72,10 @@ Each activity is one thing a named person does, in one operating company, agains
 | UNUSUAL_BUT_LEGITIMATE | 31 |
 
 *Activities carry more than one category, so the column sums above 330.*
+
+*`MOBILE` and `DESKTOP` were 119 and 213 on first publication — 332 against 330 activities,
+while the device-context split below read 212/118. Two activities carried both tags. Corrected
+by lane P3-DIL-FIX; see "Corrections" at the end of this document.*
 
 ### Role distribution
 
@@ -1978,7 +1982,7 @@ A Taylor C602 at Cactus Burger goes fully down at 09:30 and jumps the queue. Dal
 
 #### P3B1-S07-A05 — Cancel a committed job because the customer closed for a burst pipe
 
-*Dale Brackett (dispatcher) · taylor · DESKTOP · EXCEPTION, HANDOFF, MOBILE, DESKTOP*
+*Dale Brackett (dispatcher) · taylor · DESKTOP · EXCEPTION, HANDOFF, DESKTOP*
 
 **Account context.** Sonoran Scoops Creamery - Mill Ave
 
@@ -2917,7 +2921,7 @@ Curtis reads his phone in his driveway with the truck idling. Four jobs are disp
 
 #### P3B1-S10-A08 — Open the technician workspace on a desktop instead of a phone
 
-*Curtis Nally (field_technician) · taylor · MOBILE · DESKTOP, MOBILE*
+*Curtis Nally (field_technician) · taylor · MOBILE · MOBILE*
 
 **Account context.** QuikMart #418, 3900 W Indian School Rd Phoenix - Manitowoc IYT0500A ice machine
 
@@ -9868,3 +9872,107 @@ A result is the activity id, the tier it was attempted at, one verdict from the 
 
 This lane verified every `path:line` it cites. The following are explicitly **not** verified and are marked `UNPROVEN` in the activities that rest on them: whether the inbound queue distinguishes a replayed accept from a first accept; whether a decline reason can be corrected; whether detach-from-Work-Order exists; whether refused privileged actions are audited; whether any surface shows time-in-status or last-seen connectivity; whether the Work Order wizard is usable at phone width; whether execution data can still be written to a `COMPLETED` Work Order; whether the phone scan path attributes consumption to any location at all; whether a serialized quantity above one is handled; whether photo attachment exists on Work Order execution; whether parts consumed on a subsequently-cancelled Work Order reverse; whether warranty terms, PM intervals, serial-range search or goal-setting surfaces exist.
 
+
+---
+
+## Corrections
+
+Applied by lane **P3-DIL-FIX** on 2026-09-12, baseline `night/p3b1-activities-service @ c363fc00`.
+**Count- and evidence-description corrections only.** No activity's business content was
+re-authored: no `title`, `persona`, `role`, `operatingCompany`, `action`, `expected*`,
+`deviceContext`, `evidence`, `executionResult`, `behaviourClaim`, `frictionScore`,
+`defectsThisWouldCatch`, executability or core-assertion field was changed. Every figure below
+was re-derived from the rows in this lane.
+
+### 1. Device / coverage tag disagreement — fixed
+
+`byCoverageCategory` reported **DESKTOP 213 + MOBILE 119 = 332** across 330 activities, while
+`byDeviceContext` reported **DESKTOP 212 / MOBILE 118**. Both blocks reproduced exactly from
+the rows, so the artifact was internally consistent and externally wrong: **two activities
+carried both tags.**
+
+| Activity | `deviceContext` | Coverage tags before | After | Removed |
+|---|---|---|---|---|
+| `P3B1-S07-A05` | `DESKTOP` | EXCEPTION, HANDOFF, MOBILE, DESKTOP | EXCEPTION, HANDOFF, DESKTOP | `MOBILE` |
+| `P3B1-S10-A08` | `MOBILE` | DESKTOP, MOBILE | MOBILE | `DESKTOP` |
+
+Those two rows account for the whole discrepancy: +1 MOBILE from `S07-A05`, +1 DESKTOP from
+`S10-A08`. `byCoverageCategory` now reads DESKTOP 212 / MOBILE 118, identical to
+`byDeviceContext`, and 212 + 118 = 330. **All 15 `counts.*` blocks were recomputed from the
+rows after the edit and every one reproduces exactly.** Each corrected row keeps its original
+tag list in a new `coverageTagCorrection` object, so the record shows what was claimed.
+
+**One open question this lane did not resolve.** `P3B1-S10-A08` is titled *"Open the technician
+workspace on a desktop instead of a phone"* and its action is opening that workspace on a wide
+screen — yet its `deviceContext` is `MOBILE`. Making the tags agree with `deviceContext`
+therefore drops the `DESKTOP` tag from a desktop-centred activity. `deviceContext` was **not**
+changed, because that is authored content rather than a count. Either `deviceContext` is wrong
+for this row, or the row legitimately spans both surfaces and the coverage vocabulary needs a
+way to say so. **For the author / Owner.**
+
+**Three rows the brief named are not in this library.** `S17-A01` (device
+`HANDHELD_SCANNER`, tagged both), `S24-A04` (`HANDHELD_SCANNER`, no DESKTOP/MOBILE tag) and
+`S24-A06` (`DESKTOP`, no tag) are **P3-B2** rows — P3-B2 ids are un-namespaced. Re-derived
+here: P3-B1 has **no** row with `deviceContext` `HANDHELD_SCANNER` (the only values are
+DESKTOP 212 and MOBILE 118), and `P3B1-S17-A01`, `P3B1-S24-A04` and `P3B1-S24-A06` are all
+already consistent. P3-B2 is in neither worktree this lane owns, so **those three rows remain
+unfixed** and are handed to the controller.
+
+### 2. Corpus totals — the duplicate activity
+
+`P3B3-FIN-056` and `P3B3-MGMT-018` in the **P3-B3** library are the same activity recorded
+twice: byte-identical title, same `actor_role`, `objects_touched` and `status`, and the same
+`OWNER_DECISION_PENDING` blocker citing the same inert
+`config/ownership/operating-company-roots.sandbox.json`. Both ids are retained and
+cross-referenced there. **P3-B1 itself has no duplicate** — re-derived here, all 330
+`activityId`s, all 330 titles and all 330 (title, persona) pairs are distinct.
+
+| | Records | Distinct activities |
+|---|---:|---:|
+| P3-B1 (this library) | 330 | 330 |
+| P3-B2 | 330 | 330 |
+| P3-B3 | 350 | 349 |
+| **Day-in-the-Life corpus** | **1,010** | **1,009** |
+
+P3-B1's 330 was re-derived here; P3-B3's 350 and its single duplicate were re-derived on
+`night/p3b3-activities-sales`; **P3-B2's 330 is the programme figure** and could not be
+re-derived — that library is in neither worktree this lane owns.
+
+### 3. The `NOT_RUN` figure was mislabelled
+
+"968 `NOT_RUN`" is arithmetically right and mislabelled. State it as:
+
+> **968 not executed, of which 660 are labelled `NOT_RUN`.**
+
+| Library | Not executed | Labelled `NOT_RUN` |
+|---|---:|---:|
+| P3-B1 | 330 | 330 |
+| P3-B2 | 330 | 330 |
+| P3-B3 | 308 | **0** |
+| **Total** | **968** | **660** |
+
+Re-derived here: every one of this library's 330 activities has `executionResult` `NOT_RUN`
+and no other value appears. P3-B3's 308 unexecuted rows (350 − 42 executed) carry five
+different statuses and the token `NOT_RUN` appears nowhere in that library:
+`IMPLEMENTED_UNEXECUTED` 141, `PARTIAL` 68, `BLOCKED` 64, `NOT_SUPPORTED` 26,
+`DESIGNED_ONLY` 9 = 308. P3-B2's 330 is the programme figure.
+
+### 4. Recorded, deliberately not fixed
+
+1. **Persona-identity collision — a persona-registry reconciliation item for the Owner.**
+   *Marisol Vega* is `service_coordinator` here with **49** activities (re-derived) but **Parts
+   Manager** in P3-B2 with **65** (programme figure). *Priya Raman* is `service_manager` here
+   with **60** (re-derived) but **Operations Manager** in P3-B2 with **17** (programme figure).
+   The same named humans hold two different jobs across libraries. **Nobody was renamed** and
+   no persona entry was edited — that would rewrite authored content.
+2. **Latent id-namespace hazard.** P3-B1 `activityId`s carry the `P3B1-` prefix
+   (`P3B1-S01-A01`); P3-B2's are un-namespaced (`S01-A01`) over the same `S..-A..` shape.
+   Cross-library uniqueness holds today **only** because of that prefix: any consumer that
+   strips or normalises it collides all 330 P3-B1 ids with all 330 P3-B2 ids. No id was
+   changed. The hazard already bit this lane — three of the five rows the brief named for
+   correction 1 turned out to be P3-B2 rows written in the un-namespaced form.
+3. **P3-B3 has no operating-company field at all.** Zero of its 350 records carry one
+   (re-derived on `night/p3b3-activities-sales` by scanning every key of every record), so
+   Ventana coverage is *structurally unmeasurable* for that third of the corpus. This library
+   does carry `operatingCompany` on all 330 rows (taylor 290 / ventana 40), which means no
+   corpus-level operating-company split can be stated. **Known gap.**

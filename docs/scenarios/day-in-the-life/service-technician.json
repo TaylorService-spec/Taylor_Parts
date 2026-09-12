@@ -49,7 +49,7 @@
       "BAD_DATA": 51,
       "BULK": 31,
       "CROSS_COMPANY": 29,
-      "DESKTOP": 213,
+      "DESKTOP": 212,
       "DUPLICATE_DATA": 12,
       "END_OF_DAY": 18,
       "END_OF_MONTH": 39,
@@ -57,7 +57,7 @@
       "HANDOFF": 34,
       "MISSING_DATA": 94,
       "MISTAKE": 11,
-      "MOBILE": 119,
+      "MOBILE": 118,
       "NETWORK_INTERRUPTION": 15,
       "NORMAL": 74,
       "PERMISSION_DENIAL": 32,
@@ -4703,7 +4703,6 @@
       "coverageCategories": [
         "EXCEPTION",
         "HANDOFF",
-        "MOBILE",
         "DESKTOP"
       ],
       "aiOpportunityClassification": "NOISE",
@@ -4738,7 +4737,19 @@
       "fullActivityBlockedReason": "The activity is a persona acting through an application surface, which needs the app running against the Firestore emulator; the emulator hangs on the occupied port.",
       "coreAssertionExecutableToday": true,
       "coreAssertionMode": "PURE_UNIT_SERVER",
-      "coreAssertionNote": "The activity's central domain claim can be asserted tonight as a `node --test` .mjs unit suite over pure modules, with no emulator and no browser."
+      "coreAssertionNote": "The activity's central domain claim can be asserted tonight as a `node --test` .mjs unit suite over pure modules, with no emulator and no browser.",
+      "coverageTagCorrection": {
+        "correctedBy": "lane P3-DIL-FIX",
+        "correctedOn": "2026-09-12",
+        "originalCoverageCategories": [
+          "EXCEPTION",
+          "HANDOFF",
+          "MOBILE",
+          "DESKTOP"
+        ],
+        "removedTag": "MOBILE",
+        "reason": "This row's deviceContext is DESKTOP, but it also carried the MOBILE coverage tag. The double tag is why counts.byCoverageCategory reported DESKTOP 213 + MOBILE 119 = 332 against 330 activities while counts.byDeviceContext reported 212/118. The coverage tag was made to agree with deviceContext; the original tag list is preserved here. No other field of this activity was changed."
+      }
     },
     {
       "activityId": "P3B1-S07-A06",
@@ -6688,7 +6699,6 @@
       "exceptionRecoveryBehaviour": "A technician on a tablet in a truck may get either, depending on orientation.",
       "deviceContext": "MOBILE",
       "coverageCategories": [
-        "DESKTOP",
         "MOBILE"
       ],
       "aiOpportunityClassification": "NONE",
@@ -6722,7 +6732,18 @@
       "fullActivityBlockedReason": "Asserts rendered React behaviour. `node --test` cannot run .test.jsx, and the browser harness additionally needs the Firestore emulator.",
       "coreAssertionExecutableToday": false,
       "coreAssertionMode": "NOT_UNIT_ASSERTABLE",
-      "coreAssertionNote": "The activity's claim is about a surface, a Rules outcome, or stored data, and cannot be reduced to a pure-function assertion."
+      "coreAssertionNote": "The activity's claim is about a surface, a Rules outcome, or stored data, and cannot be reduced to a pure-function assertion.",
+      "coverageTagCorrection": {
+        "correctedBy": "lane P3-DIL-FIX",
+        "correctedOn": "2026-09-12",
+        "originalCoverageCategories": [
+          "DESKTOP",
+          "MOBILE"
+        ],
+        "removedTag": "DESKTOP",
+        "reason": "This row's deviceContext is MOBILE, but it also carried the DESKTOP coverage tag. The double tag is why counts.byCoverageCategory reported DESKTOP 213 + MOBILE 119 = 332 against 330 activities while counts.byDeviceContext reported 212/118. The coverage tag was made to agree with deviceContext; the original tag list is preserved here. No other field of this activity was changed.",
+        "openQuestionNotResolvedHere": "This activity's title and action are explicitly about opening the technician workspace ON A DESKTOP, yet its deviceContext is MOBILE. Making the tags agree with deviceContext therefore drops the DESKTOP tag from a desktop-centred activity. deviceContext was NOT changed, because that is authored content, not a count. Flagged for the author/Owner: either deviceContext is wrong for this row, or the row legitimately spans both surfaces and the coverage vocabulary needs a way to say so."
+      }
     },
     {
       "activityId": "P3B1-S10-A09",
@@ -20586,5 +20607,69 @@
       "coreAssertionMode": "PURE_UNIT_SERVER",
       "coreAssertionNote": "The activity's central domain claim can be asserted tonight as a `node --test` .mjs unit suite over pure modules, with no emulator and no browser."
     }
-  ]
+  ],
+  "corrections": {
+    "correctedBy": "lane P3-DIL-FIX",
+    "correctedOn": "2026-09-12",
+    "baseline": "night/p3b1-activities-service @ c363fc00",
+    "scope": "Evidence- and count-description corrections only. No activity's business content was re-authored: no title, persona, role, operatingCompany, action, expected*, deviceContext, evidence, executionResult, behaviourClaim, frictionScore, defectsThisWouldCatch, executability or coreAssertion field was changed. The only row-level change is the removal of one contradictory DESKTOP/MOBILE coverage tag from two activities, with the original tag list preserved in each row's coverageTagCorrection.",
+    "fix4_deviceCoverageTagAgreement": {
+      "symptom": "counts.byCoverageCategory reported DESKTOP 213 + MOBILE 119 = 332 across 330 activities while counts.byDeviceContext reported DESKTOP 212 / MOBILE 118. Both blocks reproduced exactly from the rows, so the artifact was internally consistent and externally wrong: two activities carried BOTH coverage tags.",
+      "rowsCorrectedInThisLibrary": [
+        {
+          "activityId": "P3B1-S07-A05",
+          "deviceContext": "DESKTOP",
+          "originalCoverageCategories": [
+            "EXCEPTION",
+            "HANDOFF",
+            "MOBILE",
+            "DESKTOP"
+          ],
+          "correctedCoverageCategories": [
+            "EXCEPTION",
+            "HANDOFF",
+            "DESKTOP"
+          ],
+          "removedTag": "MOBILE"
+        },
+        {
+          "activityId": "P3B1-S10-A08",
+          "deviceContext": "MOBILE",
+          "originalCoverageCategories": [
+            "DESKTOP",
+            "MOBILE"
+          ],
+          "correctedCoverageCategories": [
+            "MOBILE"
+          ],
+          "removedTag": "DESKTOP"
+        }
+      ],
+      "arithmeticNowCloses": "DESKTOP 212 and MOBILE 118 in byCoverageCategory, identical to byDeviceContext, and 212 + 118 = 330. All 15 counts blocks were recomputed from the rows after the edit and every one reproduces exactly.",
+      "rowsNamedByTheBriefThatAreNOTinThisLibrary": "The brief also named S17-A01 (device HANDHELD_SCANNER, tagged both), S24-A04 (HANDHELD_SCANNER, no DESKTOP/MOBILE tag) and S24-A06 (DESKTOP, no tag). Those are P3-B2 rows, not P3-B1 rows: P3-B2 ids are un-namespaced. Re-derived here — P3-B1 has NO row with deviceContext HANDHELD_SCANNER (the only values are DESKTOP 212 and MOBILE 118), and P3B1-S17-A01, P3B1-S24-A04 and P3B1-S24-A06 are all already consistent. P3-B2 is in neither worktree lane P3-DIL-FIX owns, so its three rows are UNFIXED and handed to the controller.",
+      "agreementWithLaneP3DIL": "Agreed on P3B1-S07-A05 and P3B1-S10-A08, including the direction of each tag. Disagreed on the framing: only 2 of the 5 named rows are in P3-B1, and those 2 alone fully account for the 213/119-vs-212/118 discrepancy (+1 MOBILE from S07-A05, +1 DESKTOP from S10-A08)."
+    },
+    "fix2_duplicateActivity": {
+      "finding": "P3B3-FIN-056 and P3B3-MGMT-018 in the P3-B3 library are the same activity recorded twice (byte-identical title, same actor_role, objects_touched, status, and the same OWNER_DECISION_PENDING blocker citing the same inert file). Both ids are retained and cross-referenced there. P3-B1 itself has NO duplicate: re-derived here, all 330 activityIds and all 330 (title, persona) pairs are distinct.",
+      "corpusTotals": {
+        "records": 1010,
+        "distinctActivities": 1009,
+        "composition": "P3-B1 330 + P3-B2 330 + P3-B3 350 = 1,010 records; 1,009 distinct activities once the P3-B3 duplicate is counted once.",
+        "derivedHere": "P3-B1's 330 was re-derived in this lane; P3-B3's 350 and its single duplicate were re-derived on night/p3b3-activities-sales; P3-B2's 330 is the programme figure and is in neither worktree this lane owns."
+      }
+    },
+    "fix3_notRunLabel": {
+      "correctStatement": "968 not executed, of which 660 are labelled `NOT_RUN`.",
+      "wrongStatement": "968 NOT_RUN",
+      "derivation": "660 = P3-B1 330 + P3-B2 330, the rows carrying the literal NOT_RUN token. P3-B1's 330 was re-derived here: every one of its 330 activities has executionResult == 'NOT_RUN', with no other value present. P3-B3's 308 unexecuted rows (350 - 42 executed) carry five different statuses and never say NOT_RUN: IMPLEMENTED_UNEXECUTED 141, PARTIAL 68, BLOCKED 64, NOT_SUPPORTED 26, DESIGNED_ONLY 9 = 308. 660 + 308 = 968, so the arithmetic was right and only the label was wrong."
+    },
+    "recordedNotFixed": {
+      "personaIdentityCollision": "Marisol Vega is role `service_coordinator` in this library with 49 activities (re-derived here) but is Parts Manager in P3-B2 with 65 activities (programme figure). Priya Raman is `service_manager` here with 60 activities (re-derived here) but Operations Manager in P3-B2 with 17 (programme figure). The same named humans hold two different jobs across libraries. This is a persona-registry reconciliation item for the Owner. NOBODY WAS RENAMED and no persona entry was edited — that would rewrite authored content.",
+      "idNamespaceHazard": "P3-B1 activityIds carry the P3B1- prefix (P3B1-S01-A01); P3-B2's are un-namespaced (S01-A01) over the same S..-A.. shape. Cross-library uniqueness holds today ONLY because of that prefix: any consumer that strips or normalises it collides all 330 P3-B1 ids with all 330 P3-B2 ids. Recorded as a latent hazard; no id was changed. It already bit this lane — three of the five rows the brief named for fix 4 were P3-B2 rows written in the un-namespaced form.",
+      "p3b3NoOperatingCompanyField": "P3-B3 carries no operating-company field on any of its 350 records (re-derived on night/p3b3-activities-sales by scanning every key of every record), so Ventana coverage is structurally unmeasurable for that third of the corpus. This library does carry operatingCompany on all 330 rows (taylor 290 / ventana 40), so no corpus-level operating-company split can be stated."
+    }
+  },
+  "corpusRecords": 1010,
+  "corpusDistinctActivities": 1009,
+  "corpusNotExecuted": "968 not executed, of which 660 are labelled `NOT_RUN` (P3-B1 330 + P3-B2 330). P3-B3's 308 unexecuted rows use five other statuses and never say NOT_RUN."
 }
