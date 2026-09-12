@@ -101,7 +101,35 @@ export function wiredEntityContracts(): readonly EntityImportContract[] {
   );
 }
 
-/** Shared normalization for a natural-identity key. */
+/**
+ * Shared normalization for a natural-identity key: whitespace COLLAPSED.
+ *
+ * For names a person writes as words -- a customer, a location, a warehouse. Two spaces
+ * between words is typing, not a different name; but the words themselves are the name, so
+ * the gap between them is kept.
+ */
 export function naturalIdentityKey(value: unknown): string {
   return String(value ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Shared normalization for a COMPACT identity key: whitespace REMOVED.
+ *
+ * For identifiers a person transcribes as one token -- a part number, a serial number off a
+ * plate. "TST 1001" and "TST1001" are one identifier written down twice, and treating them
+ * as two is the duplicate this exists to prevent.
+ *
+ * ONE DEFINITION, ON PURPOSE. This fold previously existed as five byte-identical copies:
+ * importPreview.partIdentityKey, inventoryImportContract.partIdentityKeyForInventory, the
+ * inline identityKey of the PARTS and EQUIPMENT contracts, and the serial fold in
+ * firestoreDataImportAdapters.loadExistingEquipmentSerials. Five copies is five chances for
+ * duplicate detection to mean five different things after the first of them is fixed -- and
+ * the two that matter most sit on OPPOSITE sides of the preview/writer seam, where a
+ * divergence shows up as a row that previews READY and fails at execution.
+ *
+ * It lives here, beside naturalIdentityKey, because the pair is the whole vocabulary: a key
+ * is either collapsed or compacted, and a contract picks one deliberately.
+ */
+export function compactIdentityKey(value: unknown): string {
+  return String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 }

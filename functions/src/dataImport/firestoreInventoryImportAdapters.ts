@@ -15,6 +15,7 @@ import { PARTS_COLLECTION } from "../partMaster/partMasterRepository.js";
 import { WAREHOUSES_COLLECTION } from "../constants/collections.js";
 import { controlTypeToTrackingMode } from "../partMaster/controlTypeTrackingMode.js";
 import { naturalIdentityKey } from "./contracts/entityContract.js";
+import { isCanonicalPartId } from "../eosOps/migration/partIdContract.js";
 import { derivePartId } from "./contracts/partImportContract.js";
 import {
   INVENTORY_REFERENCES,
@@ -43,16 +44,32 @@ export async function loadInventoryReferences(
     if (ipn) parts.add(partIdentityKeyForInventory(ipn));
   }
 
+  // COUNTED, NOT COLLECTED. A Set answers "is this name present" and silently discards how
+  // many warehouses answer to it -- which is the one fact preview needs in order to refuse a
+  // name that identifies two places. Counting here, in the single pass that already reads the
+  // register, is what lets preview and the writer refuse the same row for the same reason.
   const whSnap = await db.collection(WAREHOUSES_COLLECTION).where("status", "==", "ACTIVE").select("name").get();
-  const warehouses = new Set<string>();
+  const countByName = new Map<string, number>();
   for (const doc of whSnap.docs) {
     const name = String((doc.data() ?? {}).name ?? "").trim();
-    if (name) warehouses.add(naturalIdentityKey(name));
+    if (!name) continue;
+    const key = naturalIdentityKey(name);
+    countByName.set(key, (countByName.get(key) ?? 0) + 1);
+  }
+
+  const warehouses = new Set<string>();
+  const warehouseAmbiguous = new Set<string>();
+  for (const [key, count] of countByName) {
+    // A name held by two ACTIVE warehouses is NOT offered as resolvable. It goes only into the
+    // ambiguous set, so a row naming it can never fall through to "found".
+    if (count === 1) warehouses.add(key);
+    else warehouseAmbiguous.add(key);
   }
 
   return Object.freeze({
     [INVENTORY_REFERENCES.PART]: parts,
     [INVENTORY_REFERENCES.WAREHOUSE]: warehouses,
+    [INVENTORY_REFERENCES.WAREHOUSE_AMBIGUOUS]: warehouseAmbiguous,
   });
 }
 
@@ -96,16 +113,12 @@ export function firestoreOpeningBalanceWriter(
         const warehouseName = String(draft.warehouseName ?? "");
 
         const part = await resolvePartByNumber(db, partNumber);
-        if (!part) {
-          return { kind: "failed", code: "PART_NOT_FOUND", message: `No Part "${partNumber}" exists.` };
+        if (part.kind === "refused") {
+          return { kind: "failed", code: part.code, message: part.message };
         }
-        const warehouseId = await resolveActiveWarehouseIdByName(db, warehouseName);
-        if (!warehouseId) {
-          return {
-            kind: "failed",
-            code: "WAREHOUSE_NOT_FOUND",
-            message: `No ACTIVE warehouse named "${warehouseName}" exists.`,
-          };
+        const warehouse = await resolveActiveWarehouseIdByName(db, warehouseName);
+        if (warehouse.kind === "refused") {
+          return { kind: "failed", code: warehouse.code, message: warehouse.message };
         }
 
         const outcome = await db.runTransaction(async (txn) =>
@@ -119,7 +132,7 @@ export function firestoreOpeningBalanceWriter(
               sourceRowKey: idempotencyKey,
               partId: part.partId,
               trackingMode: part.trackingMode,
-              location: { type: OPENING_BALANCE_LOCATION_TYPE, locationId: warehouseId },
+              location: { type: OPENING_BALANCE_LOCATION_TYPE, locationId: warehouse.warehouseId },
               openingQuantity: Number(draft.openingQuantity ?? 0),
               actorUid,
               occurredAt: Date.now(),
@@ -152,36 +165,130 @@ export function firestoreOpeningBalanceWriter(
   };
 }
 
+/**
+ * WHAT A RESOLUTION IS ALLOWED TO BE.
+ *
+ * Two outcomes and no third: the identifier, or a NAMED reason there isn't one. There is
+ * deliberately no "best match" and no `| null` -- a null carries no reason, so the caller has
+ * to invent one, and the reason it invented for an ambiguous warehouse was "it does not exist".
+ */
+type Resolution<T> =
+  | ({ readonly kind: "resolved" } & T)
+  | { readonly kind: "refused"; readonly code: string; readonly message: string };
+
+/** A named refusal. The `code` is what the row result carries; it is never a fallback value. */
+function refuse(code: string, message: string): { kind: "refused"; code: string; message: string } {
+  return { kind: "refused", code, message };
+}
+
+/**
+ * The part whose identity goes into the ledger.
+ *
+ * ═══════════ THE IDENTITY IS THE DOCUMENT ID, AND IT IS GATED ═══════════
+ *
+ * `Part.partId` IS the `parts` document id. This used to return `data.partId ?? doc.id`,
+ * which is a SECOND authority on the same fact: a document whose stored `partId` field
+ * disagreed with its own id would put the field's value into inventory_transactions, where it
+ * joins to no Part and is only discoverable later as a reconciliation that does not balance.
+ * So the id is the answer, a stored field that contradicts it is a refusal, and the value is
+ * passed through isCanonicalPartId -- the one contract that says what a Part.partId is --
+ * before it reaches a ledger command that accepts any non-empty string.
+ *
+ * ═══════════ AND IT NO LONGER PICKS ═══════════
+ *
+ * The fallback query was `.limit(2)` followed by `.docs[0]`: two Parts sharing an Internal
+ * Part Number resolved to whichever Firestore returned first, and an opening balance landed
+ * on a coin flip. The `limit(2)` was there to SEE the second one; nothing looked. Two Parts
+ * with one part number is a question about the catalog, and an import boundary answers it by
+ * naming the row, not by choosing.
+ */
 async function resolvePartByNumber(
   db: Firestore,
   internalPartNumber: string,
-): Promise<{ partId: string; trackingMode: PartTrackingMode } | null> {
+): Promise<Resolution<{ partId: string; trackingMode: PartTrackingMode }>> {
   // BY THE DERIVED ID FIRST: that is where an imported Part lives, and it costs one read.
   const derived = await db.collection(PARTS_COLLECTION).doc(derivePartId(internalPartNumber)).get();
-  const doc = derived.exists
-    ? derived
-    : // Then by query, because a Part created through the Part Master screens carries an id
-      // nobody derived, and inventory must be importable against those too.
-      (
-        await db
-          .collection(PARTS_COLLECTION)
-          .where("internalPartNumber", "==", internalPartNumber.trim())
-          .limit(2)
-          .get()
-      ).docs[0];
 
-  if (!doc || !doc.exists) return null;
+  let doc = derived.exists ? derived : undefined;
+  if (!doc) {
+    // Then by query, because a Part created through the Part Master screens carries an id
+    // nobody derived, and inventory must be importable against those too.
+    const snap = await db
+      .collection(PARTS_COLLECTION)
+      .where("internalPartNumber", "==", internalPartNumber.trim())
+      .limit(2)
+      .get();
+    if (snap.size > 1) {
+      return refuse(
+        "PART_NUMBER_AMBIGUOUS",
+        `More than one Part carries the Internal Part Number "${internalPartNumber}". ` +
+          "A part number that identifies two Parts identifies neither, and import will not choose between them. " +
+          "Resolve the duplicate in Part Master, then re-upload.",
+      );
+    }
+    doc = snap.docs[0];
+  }
+
+  if (!doc || !doc.exists) {
+    return refuse("PART_NOT_FOUND", `No Part "${internalPartNumber}" exists.`);
+  }
+
   const data = doc.data() ?? {};
+  const storedPartId = data.partId;
+  if (typeof storedPartId === "string" && storedPartId !== doc.id) {
+    return refuse(
+      "PART_ID_CONFLICT",
+      `The Part for "${internalPartNumber}" stores a partId (${JSON.stringify(storedPartId)}) that is not its own ` +
+        "document id. Part identity is the document id; import will not guess which of the two the ledger meant.",
+    );
+  }
+  if (!isCanonicalPartId(doc.id)) {
+    return refuse(
+      "PART_ID_NOT_CANONICAL",
+      `The Part for "${internalPartNumber}" has an id (${JSON.stringify(doc.id)}) that is not a canonical ` +
+        "Part.partId. An opening balance may not put a non-canonical identity into the movement ledger.",
+    );
+  }
+
   return {
-    partId: String(data.partId ?? doc.id),
+    kind: "resolved",
+    partId: doc.id,
     trackingMode: controlTypeToTrackingMode(String(data.controlType ?? "STANDARD")) as PartTrackingMode,
   };
 }
 
-async function resolveActiveWarehouseIdByName(db: Firestore, name: string): Promise<string | null> {
+/**
+ * The warehouse whose id becomes `location.locationId` in the movement ledger.
+ *
+ * THIS IS A LOOKUP, NOT AN INVENTION -- and the distinction is the whole design. The location
+ * TYPE is never derived from the file: it is the compile-time constant
+ * OPENING_BALANCE_LOCATION_TYPE ("WAREHOUSE"), so the typed pair's type half is a decision the
+ * contract made, not a guess made from a spreadsheet. The id half is found by exact key
+ * against the governed ACTIVE warehouse register -- case- and whitespace-insensitive, because
+ * a person typed the name, but not by similarity, prefix, or nearest match.
+ *
+ * A file cannot carry the id half itself: EOS warehouse ids appear on no spreadsheet an
+ * operator has, so requiring one would refuse every real opening-balance file rather than
+ * refuse a guess. Name resolution stays. What changes is that an unresolvable name is refused
+ * BY ITS ACTUAL REASON: two ACTIVE warehouses with one name is AMBIGUOUS, not absent, and
+ * telling an operator a warehouse "does not exist" when two of them do points at exactly the
+ * wrong correction.
+ */
+async function resolveActiveWarehouseIdByName(
+  db: Firestore,
+  name: string,
+): Promise<Resolution<{ warehouseId: string }>> {
   const snap = await db.collection(WAREHOUSES_COLLECTION).where("status", "==", "ACTIVE").get();
   const wanted = naturalIdentityKey(name);
   const matches = snap.docs.filter((d) => naturalIdentityKey(String((d.data() ?? {}).name ?? "")) === wanted);
-  // Two ACTIVE warehouses with one name is a question, not a resolution.
-  return matches.length === 1 ? matches[0].id : null;
+
+  if (matches.length === 1) return { kind: "resolved", warehouseId: matches[0].id };
+  if (matches.length === 0) {
+    return refuse("WAREHOUSE_NOT_FOUND", `No ACTIVE warehouse named "${name}" exists.`);
+  }
+  return refuse(
+    "WAREHOUSE_NAME_AMBIGUOUS",
+    `${matches.length} ACTIVE warehouses are named "${name}". A name that identifies two places identifies ` +
+      "neither, and import will not choose between them. Rename them in EOS so each is distinct, then re-upload.",
+  );
 }
