@@ -16,6 +16,7 @@ import { makeResolveWarehouseLocationActive } from "../inventoryReceiving/receiv
 import { resolveReceivePartThroughTxn } from "../inventoryReceiving/receivingCallableWiring.js";
 import type { Role } from "../types/access.js";
 import type { AcquireAuditInput, ResolvedAcquirePart } from "./acquireSerializedAssetCommand.js";
+import { ACQUIRED_LOCATION_TYPE } from "./acquireSerializedAssetCommand.js";
 
 const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
@@ -64,7 +65,9 @@ export async function resolveAcquirePartThroughTxn(
 export function makeResolveAcquireLocationActive(db: Firestore) {
   const resolveWarehouse = makeResolveWarehouseLocationActive(db);
   return async function resolveLocationActive(txn: Transaction, locationId: string): Promise<boolean> {
-    return resolveWarehouse(txn, { type: "WAREHOUSE", locationId });
+    // Same constant the acquired document is stamped with, so the accepted endpoint type and the
+    // recorded custody type are one fact stated once.
+    return resolveWarehouse(txn, { type: ACQUIRED_LOCATION_TYPE, locationId });
   };
 }
 

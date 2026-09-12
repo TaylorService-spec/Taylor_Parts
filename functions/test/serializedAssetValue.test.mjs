@@ -41,7 +41,11 @@ test("validateSerializedAssetValue accepts a well-formed AVAILABLE, unlinked ass
   const result = validateSerializedAssetValue(baseValue());
   assert.equal(result.valid, true);
   assert.deepEqual(Object.keys(result.value).sort(), [
-    "currentEquipmentId", "currentLocationId", "inventoryState", "ownership", "partId", "serialNo",
+    // `currentLocationType` joins the value contract: location identity is the typed PAIR, and the
+    // type half had been declared nowhere, written by nothing, and defaulted to "WAREHOUSE" by its
+    // single reader. See serializedCustodyTypedPair.test.mjs for the pair's own rules.
+    "currentEquipmentId", "currentLocationId", "currentLocationType", "inventoryState", "ownership",
+    "partId", "serialNo",
   ]);
 });
 

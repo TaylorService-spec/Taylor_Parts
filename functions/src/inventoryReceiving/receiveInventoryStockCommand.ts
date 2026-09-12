@@ -32,6 +32,7 @@ import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import { serializedAssetDocId, buildSerializedAssetForReceipt } from "../serializedAsset/serializedAssetRegistration.js";
+import { toSerializedCustodyLocationType, type SerializedCustodyLocationType } from "../serializedAsset/types.js";
 import { stageOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
 import { RECEIVING_ORDERS_COLLECTION, RECEIVING_SOURCE_TYPES, CANONICAL_SOURCE_TYPE, type ReceivingActor } from "./receivingTypes.js";
 import {
@@ -331,6 +332,15 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     const ledgerStore = bufferedStore(INVENTORY_TRANSACTIONS_COLLECTION);
     const ledgerOutcomes: Array<{ outcome: string; docId: string }> = [];
     const serializedAssetIds: string[] = [];
+    // The TYPED half of the put-away location, resolved ONCE for this receipt and required before any
+    // Serialized Asset is activated. A receiving location whose type cannot be a unit's physical
+    // custody (the ledger's VENDOR/CUSTOMER/VIRTUAL) is refused here rather than written as a
+    // mislabelled custody -- the destination is already validated as active above, so the only way to
+    // reach this is a receiving endpoint that was widened without deciding what it means for a serial.
+    const receiptCustodyLocationType = toSerializedCustodyLocationType(value.receivingLocation.type);
+    if (receiptCustodyLocationType === null && value.lines.some((l) => l.trackingMode === "SERIAL")) {
+      throw new DestinationInvalidError("receiving location type cannot hold serialized custody");
+    }
     // FIN-BLOCK-003A -- the acquisition-cost facts this receipt produced. Empty is a legitimate and
     // common outcome (an unpriced purchase order), and it means UNKNOWN, not free.
     const acquisitionCostIds: string[] = [];
@@ -388,6 +398,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
                 partId: line.partId,
                 serialNo,
                 locationId: value.receivingLocation.locationId,
+                locationType: receiptCustodyLocationType as SerializedCustodyLocationType,
                 receivingId,
                 actorId: actor.id,
                 now,
