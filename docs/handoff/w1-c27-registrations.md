@@ -16,6 +16,11 @@
 > no overlap; it collapses only a provable EXACT replay (every field identical). The per-technician
 > `work_order_tech_locks` serialization is preserved.
 >
+> **Dimension 13 (“Target Postgres authority”) in §3 is overruled too** — it specified a `tstzrange`
+> exclusion constraint, which would re-impose the withdrawn refusal at the database. It is corrected
+> in place rather than left standing, because it is a forward specification a migration author would
+> act on, not a record of what this lane did.
+>
 > `functions/test/schedulingBlockedTimeExclusion.test.mjs` is now
 > `functions/test/schedulingBlockedTimeUnion.test.mjs`, and the function-scoped carve-out in
 > `schedulingPlacementAuthorityContract.test.mjs` is empty again — that command no longer raises a
@@ -99,7 +104,7 @@ today, all checkable against real code:
 | 10 | Firebase dependencies | Firestore + seven `onCall` adapters (`schedulingCallables.ts:53-62`). This PR adds none. |
 | 11 | Migration source | None exists; none added. See §1. |
 | 12 | Reconciliation proof | `functions/test/schedulingBlockedTimeExclusion.test.mjs` — 15 tests. *(Now `schedulingBlockedTimeUnion.test.mjs`, 26 tests, after the 2026-09-12 ruling.)* Existing: `schedulingAvailabilityModel.test.mjs` (30), `schedulingPlacementAuthorityContract.test.mjs` (11 after this PR), `workOrderAvailability.test.mjs` (7). Emulator suites (`test/e2e/schedulingCommandsEmulator.test.mjs`, `schedulingAvailabilityEmulator.test.mjs`) and the Rules suite `technicianAvailabilityRules.test.js` **cannot run in this environment** — see §6. |
-| 13 | Target Postgres authority | Not built. The eventual shape is named in §5 Q3 — a `tstzrange` exclusion constraint is the literal Postgres form of ND-25, which is why ND-25 was written as an exclusion rule rather than a reconciler. |
+| 13 | Target Postgres authority | Not built. **This row's original specification is WITHDRAWN by the 2026-09-12 ruling and must not be carried into a migration.** It named a `tstzrange` **exclusion constraint** as the Postgres form of ND-25 — that constraint *prevents* overlap, which is precisely the refusal the ruling withdrew. Encoding it would silently re-impose at the database the rule the application layer just stopped enforcing. The correct Postgres target stores overlapping rows freely (**no** `EXCLUDE USING gist`, no `btree_gist` dependency) and computes the **union** at read time; the union is the reader's job, as it now is in `availabilityModel.ts` and `dispatchBoardGeometry.js`. Per-technician serialization stays in `work_order_tech_locks`, not in a range constraint. |
 | 14 | Governed command / read boundary | Commands `schedulingCommands.ts`; read projection `schedulingReadService.ts:61`; sanitized boundary `errorMapping.ts:55`. Authorization is `caller.role` only (`schedulingCommands.ts:87`, `schedulingReadService.ts:63`) — it does **not** read `callerContext.technicianId`. |
 | 15 | Admin→Objects integration | §2. |
 
