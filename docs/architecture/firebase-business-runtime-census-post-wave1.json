@@ -1,0 +1,1871 @@
+{
+  "schema": "eos.firebase-business-runtime-census/1",
+  "baseSha": "64008d5ae0bdd9532909671b15a91122400accf1",
+  "priorBaseSha": "d104cf49",
+  "mode": "EVIDENCE_ONLY",
+  "classifier": {
+    "module": "scripts/firebaseExitGuard.mjs",
+    "atSha": "64008d5ae0bdd9532909671b15a91122400accf1",
+    "modified": false
+  },
+  "fileCensus": {
+    "uniqueBusinessRuntimeFiles": 296,
+    "importTypeOnly": 60,
+    "valueUsing": 236,
+    "priorClaim": {
+      "uniqueBusinessRuntimeFiles": 295,
+      "valueUsing": 235
+    },
+    "correction": "field-ops-app-vite/src/services/reorderCallableClient.js -- dynamic import nested in Promise.all",
+    "byCategory": {
+      "frontend.firestore_client": {
+        "total": 55,
+        "typeOnly": 3,
+        "value": 52
+      },
+      "frontend.firebase_functions_client": {
+        "total": 55,
+        "typeOnly": 0,
+        "value": 55
+      },
+      "server.firebase_admin_firestore": {
+        "total": 184,
+        "typeOnly": 57,
+        "value": 127
+      },
+      "server.firebase_functions_server": {
+        "total": 72,
+        "typeOnly": 0,
+        "value": 72
+      },
+      "emptyPinnedAtZero": 8
+    },
+    "unions": {
+      "frontend": 99,
+      "server": 197,
+      "grand": 296
+    },
+    "guard": {
+      "violations": 0,
+      "staleEntries": 0,
+      "atBothCommits": true
+    }
+  },
+  "endpointCensus": {
+    "total": 179,
+    "onCall": 178,
+    "onSchedule": 1,
+    "firestoreTriggers": 0,
+    "liveBusinessTransport": 152,
+    "noBrowserReference": 27,
+    "deadRetireable": 0,
+    "priorClaim": {
+      "live": 128,
+      "exportedButUnreachable": 42,
+      "inertRegistered": 9,
+      "dead": 0
+    },
+    "corrections": [
+      "inertRegistered=9 was a parser artifact: adapt() wrapper + aliased re-exports; all 9 are real onCall"
+    ],
+    "method": "exported name appears as a string literal in field-ops-app-vite/src after comment stripping",
+    "renderReplacement": {
+      "count": 1,
+      "names": [
+        "revokeRole"
+      ],
+      "renderNamedOperations": 25
+    }
+  },
+  "rulesCensus": {
+    "file": "firestore.rules",
+    "lines": 1876,
+    "allowStatements": 95,
+    "allowIfFalse": 60,
+    "byteIdenticalMirror": "field-ops-app-vite/firestore.rules",
+    "md5": "e10bc046d30e337ef8e95f3d5f96ee0f",
+    "businessAuthorizationSites": 69,
+    "trackedByConvergenceGate": 43,
+    "untracked": 26,
+    "clientWritableCollections": 9,
+    "pureIdentitySites": 0,
+    "customClaimChecks": 0,
+    "stateMachines": 3,
+    "priorClaimStateMachines": 2,
+    "unchangedAcrossWave1": true
+  },
+  "roleAssignments": {
+    "disposition": "TRANSITIONAL_RUNTIME_COMPATIBILITY_AUTHORITY",
+    "dead": false,
+    "futureAuthority": "PostgreSQL",
+    "soleSourceOfAllow": true,
+    "provenBy": "executed resolveEffectivePermission over all 147 permissions with assignments=[]; zero ALLOW",
+    "permissionCatalogSize": 147,
+    "governedBusinessRoles": 45,
+    "compatibilityRoles": 3,
+    "adminPermissions": 147,
+    "ownerPermissions": 147,
+    "dispatcherPermissions": 42,
+    "technicianPermissions": 8,
+    "serverReaderModules": 23,
+    "resolverCallSites": 20,
+    "consultedByFirestoreRules": false
+  },
+  "guardCoverageBoundary": {
+    "bareFirebaseAdminImporters": 1,
+    "bareFirebaseAdminFirestoreCalls": 0,
+    "bareImporterPath": "functions/src/eosApi/server.ts",
+    "bareImporterDisposition": "IDENTITY_ONLY",
+    "censusImpactOfClosingGap": "+1 file, and that file is the identity carve-out -- a naive fix records a false business dependency",
+    "transitiveOnlyReach": {
+      "functions/src": {
+        "files": 428,
+        "direct": 197,
+        "transitiveOnly": 48,
+        "never": 183
+      },
+      "field-ops-app-vite/src": {
+        "files": 825,
+        "direct": 99,
+        "transitiveOnly": 228,
+        "never": 498
+      },
+      "integrations": {
+        "files": 16,
+        "direct": 0,
+        "transitiveOnly": 0,
+        "never": 16
+      }
+    },
+    "shims": {
+      "field-ops-app-vite/src/firebase/firebase.js": 95,
+      "field-ops-app-vite/src/firebase/collectionStore.js": 13,
+      "field-ops-app-vite/src/lib/firebaseSafe.js": 5
+    },
+    "bareRunIsNotARatchet": true,
+    "ciSuppliesPreviousBaseline": true,
+    "unenforcedBaselineMetadata": [
+      "targets",
+      "rulesFiles",
+      "frontend.firebase_auth",
+      "server.firebase_auth",
+      "server.firebase_admin_app"
+    ],
+    "staleBaselineMetadata": {
+      "rulesFiles[firestore.rules].allowStatements": {
+        "recorded": 105,
+        "actual": 95
+      }
+    }
+  },
+  "wave1Delta": {
+    "addedFirebaseBusinessDependency": false,
+    "filesChanged": 39,
+    "businessRuntimeFilesChanged": 1,
+    "businessRuntimeFilesChangedList": [
+      "functions/src/scheduling/schedulingCommands.ts"
+    ],
+    "fencedImportLinesChanged": 0,
+    "commentStrippedFirestoreCallSites": {
+      "before": 31,
+      "after": 31
+    },
+    "collectionSetChanged": false,
+    "baselineChanged": false,
+    "rulesChanged": false,
+    "guardChanged": false,
+    "note": "a raw grep shows 31->32; the +1 is a comment line containing the word runTransaction"
+  },
+  "retirementPriority": [
+    {
+      "priority": 1,
+      "class": "rules_business_authorization",
+      "size": "69 sites / 9 client-writable collections / 3 state machines",
+      "namedReplacement": false,
+      "enforcementMechanism": "none"
+    },
+    {
+      "priority": 2,
+      "class": "browser_business_writes",
+      "size": "6 modules (4 domain + 2 shims); 18 shim consumers",
+      "namedReplacement": false
+    },
+    {
+      "priority": 3,
+      "class": "browser_authoritative_business_reads",
+      "size": "44 modules; 95 import the db shim",
+      "namedReplacement": false
+    },
+    {
+      "priority": 4,
+      "class": "functions_only_business_transport",
+      "size": "179 endpoints / 55 browser clients / 72 server modules",
+      "namedReplacement": "1 (revokeRole)"
+    },
+    {
+      "priority": 5,
+      "class": "roleAssignments_authority",
+      "size": "1 collection / 23 readers / 20 resolver call sites / 147 permissions",
+      "namedReplacement": "partial"
+    },
+    {
+      "priority": 6,
+      "class": "firebase_held_config_reference_authority",
+      "size": "33 authorities, 22 Firebase-only, of 74 runtime collections",
+      "namedReplacement": "partial (11 of 33 have a Postgres table)"
+    },
+    {
+      "priority": 7,
+      "class": "proven_dead_runtime",
+      "size": "4 self-declared+graph-confirmed; 28-30 unreachable; 0 dead endpoints",
+      "namedReplacement": null,
+      "note": "LAST by Owner ruling"
+    }
+  ],
+  "identityCarveOuts": [
+    {
+      "path": "field-ops-app-vite/src/auth/AuthContext.jsx",
+      "identityOnly": true
+    },
+    {
+      "path": "field-ops-app-vite/src/firebase/firebase.js",
+      "identityOnly": false
+    },
+    {
+      "path": "functions/src/access/adminCredentialCallables.ts",
+      "identityOnly": false
+    },
+    {
+      "path": "functions/src/access/claimsWriter.ts",
+      "identityOnly": true
+    },
+    {
+      "path": "functions/src/access/trustedWriterCommands.ts",
+      "identityOnly": false
+    },
+    {
+      "path": "functions/src/index.ts",
+      "identityOnly": true,
+      "note": "firebase-admin/app only, but is the deployment manifest for all 179 endpoints"
+    },
+    {
+      "path": "functions/src/eosApi/server.ts",
+      "identityOnly": true,
+      "note": "bare firebase-admin, not in the baseline at all, zero Firestore calls"
+    }
+  ],
+  "renderApi": {
+    "blueprint": "render.yaml",
+    "service": "eos-api-nonprod",
+    "database": "eos-policy-nonprod",
+    "namedOperations": 25,
+    "adminReadOperations": 9,
+    "adminMutationOperations": 15,
+    "operationsReadOperations": 1,
+    "frontendClients": [
+      "field-ops-app-vite/src/services/adminPolicyApiClient.js"
+    ],
+    "viteBaseUrlConfiguredInRepo": false,
+    "browserReachablePostgresAuthorities": 0,
+    "deploymentStateProven": false
+  },
+  "staleComments": [
+    {
+      "path": "functions/src/eosApi/server.ts",
+      "lines": "19-23",
+      "claim": "NOT DEPLOYED / there is no Render service",
+      "verdict": "WRONG -- render.yaml declares the service"
+    },
+    {
+      "path": "field-ops-app-vite/src/services/adminPolicyApiClient.js",
+      "lines": "26",
+      "claim": "no EOS API is deployed",
+      "verdict": "WRONG premise; conclusion (no base URL configured) happens to hold"
+    },
+    {
+      "path": "functions/src/access/resolveEffectivePermission.ts",
+      "lines": "8-11",
+      "claim": "no Rule or Function calls it yet",
+      "verdict": "WRONG -- 20 live call sites"
+    },
+    {
+      "path": "firestore.rules",
+      "lines": "1141-1143",
+      "claim": "same posture as reorder_requests create rule",
+      "verdict": "WRONG -- that rule is now allow create: if false (line 706)"
+    }
+  ],
+  "convergenceGate": {
+    "module": "functions/src/access/legacyAuthorizationSurface.ts",
+    "test": "functions/test/legacyAuthorizationSurface.test.mjs",
+    "executed": true,
+    "result": "7/7 pass, exit 0",
+    "totalLegacySites": 43,
+    "collections": 21,
+    "coverageGaps": 14,
+    "perRow": {
+      "row23": {
+        "collections": 3,
+        "sites": 9
+      },
+      "row24": {
+        "collections": 13,
+        "sites": 22
+      },
+      "row25": {
+        "collections": 4,
+        "sites": 11
+      },
+      "row26": {
+        "collections": 0,
+        "sites": 0
+      },
+      "unassigned": {
+        "collections": 1,
+        "sites": 1
+      }
+    },
+    "isTautology": false,
+    "tautologicalAssertions": [
+      "D3 (entailed by D1+D2)",
+      "D7 closing assertion (gaps.length <= corpus.length)"
+    ],
+    "mutationProof": [
+      {
+        "mutation": "extra isAdmin() in accounts",
+        "fails": "D1"
+      },
+      {
+        "mutation": "new match /brand_new_thing",
+        "fails": "D2"
+      }
+    ],
+    "realLimitation": "scope: tracks 43 of 69 Rules authorization sites; the 26 Employee operational-role and technician actor-binding grants are outside LEGACY_ROLE_HELPERS by construction"
+  },
+  "unproven": [
+    "whether the 4 DEAD_RETIREABLE files could be deleted without breaking the frozen Certification suite (functions/lib absent, not built)",
+    "whether the Render EOS API is actually deployed for nonprod",
+    "whether VITE_EOS_API_BASE_URL is set in the Vercel environment",
+    "which of the 44 browser reads are authoritative vs caches",
+    "the prior census 128/42/9 endpoint partition (no prior artifact in the repository)",
+    "live Firestore Rules behaviour (no emulator: no JRE; port 8080 held by unrelated uvicorn pid 187)",
+    "whether the 27 no-browser-reference endpoints are invoked by non-browser callers",
+    "runtime collection inventory completeness (static constants and literals only)",
+    "which of the 33 Firebase-held config authorities are still written vs only read"
+  ],
+  "endpoints": [
+    {
+      "name": "acceptInboundWork",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "acceptSalesAgreement",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesAgreement/salesAgreementCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/salesAgreementNorthStar.js",
+        "field-ops-app-vite/src/services/salesAgreementCommandClient.js"
+      ]
+    },
+    {
+      "name": "acquireSerializedAsset",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./serializedAsset/acquireCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/serializedAssetAcquireCallableClient.js"
+      ]
+    },
+    {
+      "name": "activateSupplier",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./supplierMaster/supplierMasterCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "allocateSalesOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./fulfillment/allocateSalesOrder",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/salesOrderGovernedRecommendation.js",
+        "field-ops-app-vite/src/services/salesOrderCommandClient.js"
+      ]
+    },
+    {
+      "name": "applyPayment",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./finance/paymentCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/administration/profiles/invoice.js",
+        "field-ops-app-vite/src/metadata/administration/profiles/payment.js"
+      ]
+    },
+    {
+      "name": "approveAccessRequest",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/types/access.ts"
+      ]
+    },
+    {
+      "name": "approvePerformanceGoal",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./performance/performanceGoalCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "assignApprovedRole",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/administrationUsersClient.js",
+        "field-ops-app-vite/src/types/access.ts"
+      ]
+    },
+    {
+      "name": "assignTruckDriverCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "attachInboundWorkToWorkOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "cancelCycleCountLine",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "cancelCycleCountSheet",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "cancelTransferOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryTransfer/transferCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/transferCommandClient.js"
+      ]
+    },
+    {
+      "name": "changeManufacturerStatus",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/manufacturerCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/manufacturerCommandClient.js"
+      ]
+    },
+    {
+      "name": "changePartStatus",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partMasterCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/administration/profiles/part.js",
+        "field-ops-app-vite/src/services/partMasterCommandClient.js"
+      ]
+    },
+    {
+      "name": "changePartSupplierItemStatus",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./partMaster/partSupplierItemCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "changeTruckHomeWarehouseCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "changeTruckStatusCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "closeCycleCountSheet",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "closeOpportunityAsWon",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/closeOpportunityAsWon",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/opportunityCommandClient.js"
+      ]
+    },
+    {
+      "name": "completeAssignedJob",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./completeAssignedJob",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/completionFlow.js"
+      ]
+    },
+    {
+      "name": "completeEmailConnectionAuthorization",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "correctWorkOrderLabor",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./workOrderLabor/laborCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createBin",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "createCoverageAssignment",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./coverage/coverageCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createCrmActivity",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./crmActivity/crmActivityCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/crmActivityCallableClient.js"
+      ]
+    },
+    {
+      "name": "createCycleCountSheet",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "createManufacturer",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/manufacturerCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/manufacturerCommandClient.js"
+      ]
+    },
+    {
+      "name": "createOpportunity",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/opportunityCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/opportunityCommandClient.js"
+      ]
+    },
+    {
+      "name": "createPart",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partMasterCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/administration/profiles/part.js",
+        "field-ops-app-vite/src/services/partMasterCommandClient.js"
+      ]
+    },
+    {
+      "name": "createPartAlias",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "createPartSupplierItem",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./partMaster/partSupplierItemCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createPerformanceGoalDraft",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./performance/performanceGoalCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createReorderRequest",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reorderRequest/reorderCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/reorderCallableClient.js"
+      ]
+    },
+    {
+      "name": "createSalesAgreement",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesAgreement/salesAgreementCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/salesAgreementCommandClient.js"
+      ]
+    },
+    {
+      "name": "createSalesOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesOrder/salesOrderCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/permissionCatalog.ts"
+      ]
+    },
+    {
+      "name": "createSalesOrderFromOpportunity",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./opportunity/createSalesOrderFromOpportunity",
+      "browserReferences": []
+    },
+    {
+      "name": "createSalesTerritory",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./coverage/coverageCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createSavedDefinitionCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/savedDefinitionCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/savedReportService.js"
+      ]
+    },
+    {
+      "name": "createServiceForSalesOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesOrder/createServiceForSalesOrder",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/salesOrderCommandClient.js"
+      ]
+    },
+    {
+      "name": "createSupplier",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./supplierMaster/supplierMasterCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createTechnicianBlockedTimeCallable",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "createTransferOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryTransfer/transferCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/transferCommandClient.js"
+      ]
+    },
+    {
+      "name": "createTruckCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "createWorkOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./createWorkOrder",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderService.ts"
+      ]
+    },
+    {
+      "name": "deactivateBin",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "deactivatePartAlias",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "deactivateSupplier",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./supplierMaster/supplierMasterCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "deactivateTruckCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "decidePrivilegedRoleRequest",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/privilegedApprovalClient.js"
+      ]
+    },
+    {
+      "name": "declineInboundWork",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "deleteSavedDefinitionCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/savedDefinitionCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/savedReportService.js"
+      ]
+    },
+    {
+      "name": "deleteTechnicianBlockedTimeCallable",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "deleteTruckCreatedInErrorCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "deliverInboundEmailMessage",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "detectInventoryEffects",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./inventoryEffectCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "disconnectEmailConnection",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "dispatchTransferOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryTransfer/transferCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/transferCommandClient.js"
+      ]
+    },
+    {
+      "name": "duplicateSavedDefinitionCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/savedDefinitionCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/savedReportService.js"
+      ]
+    },
+    {
+      "name": "executeDataImport",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./dataImport/dataImportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/dataImportClient.js"
+      ]
+    },
+    {
+      "name": "getAccountPortfolioSummary",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./account/accountPortfolioSummary",
+      "browserReferences": [
+        "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
+      ]
+    },
+    {
+      "name": "getAvailableEquipment",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./serializedAsset/serializedAssetReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/serializedAssetReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "getCrmActivities",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./crmActivity/crmActivityReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/crmActivityCallableClient.js"
+      ]
+    },
+    {
+      "name": "getCycleCountAssignedMobileLocation",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "getCycleCountSheet",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "getEmailIntakeConfiguration",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "getEmailProviderReadiness",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "getInboundWorkAttachment",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "getInboundWorkRequest",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "getInstallableEquipmentForWorkOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./workOrderInstall/workOrderInstallCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
+      ]
+    },
+    {
+      "name": "getInventoryAnalytics",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./inventoryAnalyticsCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "getLocationDisplay",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/locationDisplayReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/locationDisplayReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "getManufacturerCatalog",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/manufacturerReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/definitions/manufacturer.js",
+        "field-ops-app-vite/src/services/manufacturerReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "getOpportunityContext",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/opportunityReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/opportunityReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "getPartBalance",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventory/partBalanceReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/inventoryBalanceCallableClient.js"
+      ]
+    },
+    {
+      "name": "getPartBalances",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./inventory/partBalanceBatchReadService",
+      "browserReferences": []
+    },
+    {
+      "name": "getPurchaseOrderReceivingProgress",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryReceiving/receivingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/receivingTransport.js"
+      ]
+    },
+    {
+      "name": "getSalesAgreementContext",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesAgreement/salesAgreementReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/salesAgreementCommandClient.js"
+      ]
+    },
+    {
+      "name": "getSalesAgreementForOpportunity",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesAgreement/salesAgreementReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/definitions/salesAgreement.js",
+        "field-ops-app-vite/src/services/salesAgreementCommandClient.js"
+      ]
+    },
+    {
+      "name": "getSalesOrderContext",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesOrder/salesOrderReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/salesOrderReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "getSavedDefinitionCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/savedDefinitionCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/savedReportService.js"
+      ]
+    },
+    {
+      "name": "getWorkOrderFieldContext",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./getWorkOrderFieldContext",
+      "browserReferences": [
+        "field-ops-app-vite/src/hooks/useWorkOrderFieldContext.js"
+      ]
+    },
+    {
+      "name": "getWorkOrderLabor",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./workOrderLabor/laborCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderLaborCallableClient.js"
+      ]
+    },
+    {
+      "name": "getWorkOrderReadinessContext",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./ai/workOrderReadinessContext",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderReadinessContextClient.js"
+      ]
+    },
+    {
+      "name": "grantRole",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/types/access.ts"
+      ]
+    },
+    {
+      "name": "initiateAdminPasswordReset",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/adminCredentialCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/adminPasswordResetClient.js"
+      ]
+    },
+    {
+      "name": "installSerializedAsset",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./equipmentInstall/installCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/equipmentInstallCallableClient.js"
+      ]
+    },
+    {
+      "name": "interpretWorkOrderReadinessContext",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./ai/workOrderReadinessContext",
+      "browserReferences": []
+    },
+    {
+      "name": "issueInvoice",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./finance/invoiceCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/administration/profiles/invoice.js"
+      ]
+    },
+    {
+      "name": "listAccountInvoiceAr",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./finance/financeReadCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/administration/profiles/invoice.js",
+        "field-ops-app-vite/src/metadata/definitions/invoice.js",
+        "field-ops-app-vite/src/services/financeReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "listBins",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "listCoordinatedOperations",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./fulfillment/coordinatedVisitReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/coordinatedOperationsSource.js"
+      ]
+    },
+    {
+      "name": "listCurrentPerformanceGoals",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./performance/performanceGoalCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/performanceGoalClient.js"
+      ]
+    },
+    {
+      "name": "listCycleCountSheets",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "listDataImportJobs",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./dataImport/dataImportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/dataImportClient.js"
+      ]
+    },
+    {
+      "name": "listFinancialFacts",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./finance/financialReportingRead",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/financeReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "listGoalSubjects",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./performance/performanceGoalCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/performanceGoalClient.js"
+      ]
+    },
+    {
+      "name": "listImportedServiceHistory",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./dataImport/dataImportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/importedServiceHistorySource.js"
+      ]
+    },
+    {
+      "name": "listInboundWork",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "listMyReceivableTransfers",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryTransfer/transferCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/transferCommandClient.js"
+      ]
+    },
+    {
+      "name": "listOpportunitiesForAccount",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/opportunityReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/definitions/opportunity.js",
+        "field-ops-app-vite/src/services/accountOpportunitiesReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "listOpportunityContext",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/opportunityReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/opportunitySource.js",
+        "field-ops-app-vite/src/metadata/definitions/opportunity.js"
+      ]
+    },
+    {
+      "name": "listPartAliases",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "listPerformanceGoalVersions",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./performance/performanceGoalCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/performanceGoalClient.js"
+      ]
+    },
+    {
+      "name": "listPrivilegedRoleRequests",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/privilegedApprovalClient.js"
+      ]
+    },
+    {
+      "name": "listReceivablePurchaseOrders",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryReceiving/receivingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/receivingTransport.js"
+      ]
+    },
+    {
+      "name": "listReceivingLocationOptions",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryReceiving/receivingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/receivingTransport.js"
+      ]
+    },
+    {
+      "name": "listRecordChangeHistory",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/administrationUsersCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/administrationUsersClient.js"
+      ]
+    },
+    {
+      "name": "listReorderWarehouseOptions",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reorderRequest/reorderCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/reorderCallableClient.js"
+      ]
+    },
+    {
+      "name": "listResetEligibleUsers",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/adminCredentialCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/adminPasswordResetClient.js"
+      ]
+    },
+    {
+      "name": "listSalesOrderIndex",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesOrder/salesOrderReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/definitions/salesOrder.js"
+      ]
+    },
+    {
+      "name": "listSalesOrdersForAccount",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesOrder/salesOrderReadService",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
+        "field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js"
+      ]
+    },
+    {
+      "name": "listSavedDefinitionsCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/savedDefinitionCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/savedReportService.js"
+      ]
+    },
+    {
+      "name": "listStockMovementLocations",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/stockRelocationCallables.js",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/stockMovementClient.js"
+      ]
+    },
+    {
+      "name": "listWorkOrderConsumptionSources",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./workOrderConsumption/consumptionSourceCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderService.ts"
+      ]
+    },
+    {
+      "name": "lookupScannedPart",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "openCycleCountLine",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "pollEmailMailboxNow",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "pollEmailMailboxes",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./inboundWork/emailDeliverySchedule",
+      "browserReferences": []
+    },
+    {
+      "name": "previewBinCreates",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "probePartAlias",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "reactivateBin",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "reactivatePartAlias",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "reactivateTruckCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "readPrincipalAccessState",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/administrationUsersClient.js"
+      ]
+    },
+    {
+      "name": "readTechnicianAvailabilityCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/schedulingCommandClient.js"
+      ]
+    },
+    {
+      "name": "reassignScheduledWorkOrderCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/schedulingCommandClient.js"
+      ]
+    },
+    {
+      "name": "reassignTruckDriverCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "receiveInventoryStock",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryReceiving/receivingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/receivingTransport.js"
+      ]
+    },
+    {
+      "name": "receiveTransferOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryTransfer/transferCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/transferCommandClient.js"
+      ]
+    },
+    {
+      "name": "reconcileCycleCountLine",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "recordInvoiceAdjustment",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./finance/adjustmentCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "recordPutAway",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "recordRefund",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./finance/refundCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "recordReorderPurchaseOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reorderRequest/reorderCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/reorderCallableClient.js"
+      ]
+    },
+    {
+      "name": "recordReturnIntake",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryReturns/returnCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/returnCommandClient.js"
+      ]
+    },
+    {
+      "name": "recordWorkOrderEquipmentInstall",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./workOrderInstall/workOrderInstallCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderInstallCallableClient.js"
+      ]
+    },
+    {
+      "name": "recordWorkOrderLabor",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./workOrderLabor/laborCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderLaborCallableClient.js"
+      ]
+    },
+    {
+      "name": "rejectAccessRequest",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/types/access.ts"
+      ]
+    },
+    {
+      "name": "relocateStock",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/stockRelocationCallables.js",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/stockMovementClient.js"
+      ]
+    },
+    {
+      "name": "renameBin",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "renameSavedDefinitionCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/savedDefinitionCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/savedReportService.js"
+      ]
+    },
+    {
+      "name": "requestPrivilegedRole",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "rescheduleWorkOrderCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/schedulingCommandClient.js"
+      ]
+    },
+    {
+      "name": "resolveBin",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "resolveBinToken",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inventoryLocation/binCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/binCommandClient.js"
+      ]
+    },
+    {
+      "name": "resolveCoverageForContext",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./coverage/coverageReadCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "resolveEffectiveAccessCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/effectiveAccessFeedCallable",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/useEquipmentInstallCapability.js",
+        "field-ops-app-vite/src/access/useGovernedCapabilities.js",
+        "field-ops-app-vite/src/access/useOpportunityCapabilities.js",
+        "field-ops-app-vite/src/access/useReportCapabilities.js",
+        "field-ops-app-vite/src/access/useSalesOrderCapabilities.js",
+        "field-ops-app-vite/src/access/useSerializedAssetAcquireCapability.js",
+        "field-ops-app-vite/src/access/useWorkOrderPartsPlanCapability.js",
+        "field-ops-app-vite/src/metadata/definitions/accountPageComponents.js"
+      ]
+    },
+    {
+      "name": "resolveScannedPartIdentifier",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partAliasCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/partAliasCallableClient.js"
+      ]
+    },
+    {
+      "name": "retirePerformanceGoal",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./performance/performanceGoalCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "retryEmailDelivery",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "revokeRole",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/administrationUsersClient.js",
+        "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx",
+        "field-ops-app-vite/src/services/adminPolicyApiClient.js",
+        "field-ops-app-vite/src/types/access.ts"
+      ]
+    },
+    {
+      "name": "runReportDefinitionCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./reporting/runReportDefinitionCallable",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/reporting/reportExecutionSeam.js"
+      ]
+    },
+    {
+      "name": "saveEmailConnection",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "saveEmailMailbox",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "saveEmailRoutingRule",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/inboundWorkCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "searchProductReferences",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesAgreement/productReferenceSearchService",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/salesAgreementCommandClient.js"
+      ]
+    },
+    {
+      "name": "setPreferredSupplier",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./partMaster/partSupplierItemCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "setTechnicianWorkingAvailabilityCallable",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "setUserStatus",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/accessCommandCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/administrationUsersClient.js",
+        "field-ops-app-vite/src/types/access.ts"
+      ]
+    },
+    {
+      "name": "setWorkOrderEstimatedDurationCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./scheduling/schedulingCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/schedulingCommandClient.js"
+      ]
+    },
+    {
+      "name": "setWorkOrderPartsPlan",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./workOrderPartsPlan/setWorkOrderPartsPlan",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderService.ts"
+      ]
+    },
+    {
+      "name": "stageDataImport",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./dataImport/dataImportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/dataImportClient.js"
+      ]
+    },
+    {
+      "name": "startEmailConnectionAuthorization",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "submitCycleCountLine",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./cycleCount/cycleCountSheetCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/cycleCountCommandClient.js"
+      ]
+    },
+    {
+      "name": "testEmailConnection",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./inboundWork/emailTransportCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/inboundWorkSource.js"
+      ]
+    },
+    {
+      "name": "transitionOpportunity",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/opportunityCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/opportunityCommandClient.js"
+      ]
+    },
+    {
+      "name": "transitionSalesOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesOrder/salesOrderCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/salesOrderCommandClient.js"
+      ]
+    },
+    {
+      "name": "transitionWorkOrder",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./transitionWorkOrder",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderService.ts"
+      ]
+    },
+    {
+      "name": "unassignTruckDriverCallable",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./truckRegistry/truckRegistryCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/truckRegistryCommandClient.js"
+      ]
+    },
+    {
+      "name": "updateEmployeeProfile",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./access/administrationUsersCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/access/administrationUsersClient.js"
+      ]
+    },
+    {
+      "name": "updateManufacturer",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/manufacturerCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/manufacturerCommandClient.js"
+      ]
+    },
+    {
+      "name": "updateOpportunity",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./opportunity/opportunityCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/opportunityCommandClient.js"
+      ]
+    },
+    {
+      "name": "updatePart",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./partMaster/partMasterCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/metadata/administration/profiles/part.js",
+        "field-ops-app-vite/src/services/partMasterCommandClient.js"
+      ]
+    },
+    {
+      "name": "updatePartSupplierItem",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./partMaster/partSupplierItemCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "updateSalesAgreementDraft",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./salesAgreement/salesAgreementCallables",
+      "browserReferences": [
+        "field-ops-app-vite/src/domain/salesAgreementNorthStar.js",
+        "field-ops-app-vite/src/metadata/definitions/salesAgreementPage.js",
+        "field-ops-app-vite/src/services/salesAgreementCommandClient.js"
+      ]
+    },
+    {
+      "name": "updateSupplier",
+      "classification": "NO_BROWSER_REFERENCE",
+      "module": "./supplierMaster/supplierMasterCallables",
+      "browserReferences": []
+    },
+    {
+      "name": "updateWorkOrderExecutionData",
+      "classification": "LIVE_BUSINESS_TRANSPORT",
+      "module": "./updateWorkOrderExecutionData",
+      "browserReferences": [
+        "field-ops-app-vite/src/services/workOrderService.ts"
+      ]
+    }
+  ],
+  "configReferenceAuthority": {
+    "runtimeFirestoreCollectionNames": 74,
+    "centrallyDeclared": 29,
+    "centralModule": "functions/src/constants/collections.ts",
+    "configOrReferenceAuthorities": 33,
+    "withPostgresEquivalent": 11,
+    "firebaseOnly": 22,
+    "rulesDeclaredGhostsWithZeroRuntimeReads": [
+      "permissions",
+      "roles"
+    ],
+    "remoteConfigUsed": false,
+    "firebaseFunctionsParamsUsed": false,
+    "majorConfigAuthoritiesHeldInRepoNotFirestore": [
+      "admin policy seed (policySeedSnapshot.json, generated, written to Postgres)",
+      "object/field metadata (28 entities / 389 fields)",
+      "reporting object/field catalog",
+      "feature flags / readiness (config/environments.json)",
+      "Firebase Web project config (config/environments.json)",
+      "operating-company registry (hardcoded constant; operating_companies collection never read)"
+    ],
+    "groups": {
+      "numbering_sequence_state": [
+        "counters"
+      ],
+      "email_transport_routing": [
+        "email_connections",
+        "email_mailboxes",
+        "email_routing_rules"
+      ],
+      "financial_policy": [
+        "financial_policy_profiles"
+      ],
+      "scheduling_availability": [
+        "technician_working_availability",
+        "technician_blocked_time"
+      ],
+      "part_procurement_reference": [
+        "parts",
+        "part_aliases",
+        "part_supplier_items",
+        "manufacturers",
+        "supplier_catalog"
+      ],
+      "equipment_reference": [
+        "equipment_models",
+        "equipment_model_aliases",
+        "equipment_part_compatibility",
+        "equipment_compatibility_sources"
+      ],
+      "supplier_master": [
+        "suppliers"
+      ],
+      "location_custody_reference": [
+        "warehouses",
+        "bins",
+        "trucks",
+        "mobile_locations",
+        "fieldops_technicians"
+      ],
+      "access_identity_configuration": [
+        "users",
+        "roleAssignments",
+        "employees"
+      ],
+      "targets_coverage_saved_definitions": [
+        "performance_goals",
+        "sales_territories",
+        "commercial_coverage_assignments",
+        "reportDefinitions"
+      ],
+      "uniqueness_claim_registries": [
+        "employee_number_registry",
+        "usernames",
+        "bin_code_claims",
+        "location_truck_claims"
+      ]
+    },
+    "orphanedAuthority": "purchase_orders (Firestore) declared dormant at field-ops-app-vite/src/services/operationsQueries.ts:182,193; only server writer functions/src/procurementService.ts is unreachable; a live Postgres purchase_orders table exists"
+  },
+  "deadRetireable": {
+    "priorClaim": 4,
+    "reDerived": 4,
+    "definition": "self-declares non-liveness AND the import graph confirms it is unreachable at runtime",
+    "files": [
+      "functions/src/cycleCount/cycleCountCallables.ts",
+      "functions/src/cycleCount/cycleCountCommand.ts",
+      "functions/src/cycleCount/cycleCountCommandComposition.ts",
+      "functions/src/cycleCount/cycleCountRepository.ts"
+    ],
+    "marker": "FROZEN -- CERTIFICATION HISTORY ONLY (Decision #179)",
+    "allAbsentFromIndexTs": true,
+    "onlyCallers": "functions/scripts/certificationWorld/* (frozen Certification tooling) and its tests",
+    "alternativeDefinitions": {
+      "zeroImportersAnywhere": 2,
+      "unreachableFromAnyEntrypoint": 28,
+      "plusImportTypeErasureRuntimeDead": 30,
+      "naiveGraphWithoutLibToSrcRemap": 15
+    },
+    "entrypointsUsed": [
+      "functions/src/index.ts",
+      "field-ops-app-vite/src/main.jsx",
+      "functions/scripts/serveEosApi.mjs"
+    ],
+    "secondServerEntrypointReaches296": 0,
+    "selfDeclaredInertButProvablyLiveReachable": 11,
+    "deadEndpoints": 0
+  }
+}
