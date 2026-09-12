@@ -6,13 +6,30 @@
 // All the real logic lives in the service; this file is deliberately
 // thin so both stay independently testable.
 //
-// NOT WIRED to any client -- field-ops-app-vite/src/domain/reporting/
-// reportExecutionSeam.js (the client's gated run seam) is UNCHANGED by
-// this PR and still unconditionally resolves to the "unavailable"
-// outcome. Exporting this callable from functions/src/index.ts (same
-// file, next commit) is not itself a deployment or activation action --
-// same posture access/accessCommandCallables.ts's own header already
-// documents for Row 7's six commands ("export is not deployment").
+// ENG-E CORRECTION (main @ 64008d5ae0bdd9532909671b15a91122400accf1). The
+// paragraph that stood here said:
+//
+//   "NOT WIRED to any client -- field-ops-app-vite/src/domain/reporting/
+//    reportExecutionSeam.js (the client's gated run seam) is UNCHANGED by this
+//    PR and still unconditionally resolves to the 'unavailable' outcome."
+//
+// THAT IS FALSE. reportExecutionSeam.js:32-39 has no gate of any kind:
+// `runReport()` calls `httpsCallable(functions, RUN_REPORT_CALLABLE)`
+// UNCONDITIONALLY and maps whatever comes back. What resolves to "unavailable"
+// is a FAILED call (mapCallableError's default branch), which is error handling,
+// not a gate. The seam is wired; it simply has nothing to reach unless the
+// callable is deployed.
+//
+// Exporting this callable from functions/src/index.ts is still not itself a
+// deployment or activation action -- that part was and remains true, and matches
+// access/accessCommandCallables.ts's own header ("export is not deployment").
+//
+// NOTE for the client lane (ENG-E did not touch field-ops-app-vite): the service
+// can now return kind "company-unresolved", which is NOT in
+// reportRunOutcome.js's SERVICE_KINDS set, so mapServiceOutcome() maps it to
+// reportRunFailure(). That is FAIL-SAFE (no rows, safe copy) but it loses the
+// tenancy-specific explanation. Adding the kind to SERVICE_KINDS with its own
+// user-facing copy is a follow-up in that lane's surface, not this one's.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import {
   runReportDefinition,

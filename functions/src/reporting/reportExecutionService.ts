@@ -49,7 +49,11 @@ import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore } from "firebase-admin/firestore";
 import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles";
-import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission";
+// ENG-E: TargetContext is deliberately NOT imported here any more. This file
+// constructs no capability target of its own; reportRowScope.ts's
+// operatingCompanyScope() builds the only ones this service uses, from a named
+// governed company id. Nothing here can express "global" as a target.
+import { resolveEffectivePermission } from "../access/resolveEffectivePermission";
 import { resolveRuntimeCapabilityOverrides } from "../access/environmentCapabilityOverrides";
 import { isValidAccessVersionValue } from "../access/compactClaims";
 import { recordStandaloneAuditEvent } from "../access/auditEventWriter";
@@ -61,6 +65,14 @@ import {
   type ReportObject,
 } from "./reportCatalog";
 import { validateReportDefinition, resolveDefinitionField, type ReportDefinition } from "./reportQueryValidation";
+import {
+  reportRowScopeForCollection,
+  resolveCompanyReach,
+  operatingCompanyScope,
+  documentSatisfiesCompanyBound,
+  MAX_IN_FILTER_VALUES,
+  type ReportRowScope,
+} from "./reportRowScope";
 import { isFieldlessAggregate } from "./reportQueryModel";
 
 // ---------------------------------------------------------------------
@@ -183,6 +195,15 @@ export interface RunReportServiceOptions {
 
 export type RunReportOutcomeKind =
   | "permission-denied"
+  // ENG-E requirement 3. A TENANCY failure, deliberately DISTINCT from
+  // "permission-denied" so an operator cannot mistake it for a missing grant and
+  // go and grant a Role (which would not fix a valueless binding, and may
+  // over-grant while trying to). Fires when the runner's operating company
+  // cannot be resolved, or when the collection has no governed company bound at
+  // all. In every case the target collection is NEVER READ: no scan query and no
+  // join read is issued, which reportRowScopeBound.test.mjs proves from the
+  // recorded query log rather than from the returned row count.
+  | "company-unresolved"
   | "empty"
   | "partially-authorized"
   | "truncated-widened"
@@ -208,6 +229,18 @@ export interface RunReportOutcome {
   droppedFieldIds: string[];
   droppedPredicateFieldIds: string[];
   droppedPredicateCount: number;
+  // ENG-E. The governed operating companies this run was bound to, and how the
+  // row bound was expressed. Present so a caller (and an auditor) can see the
+  // bound that was actually applied rather than inferring it.
+  companyReach: string[];
+  rowScopeKind: ReportRowScope["kind"] | "unresolved";
+  // Non-null ONLY for kind "company-unresolved": why the run was refused on
+  // tenancy grounds. Never a row value, never a filter value.
+  companyBoundRefusal: string | null;
+  // ENG-E axis 3. Related objects whose one-hop join was REFUSED because their
+  // backing collection has no governed company bound (e.g. `employees`, which the
+  // ownership matrix classifies EXCLUDED). Those documents are never fetched.
+  refusedJoinObjectIds: string[];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -241,7 +274,20 @@ function readAuthoritativeAccessVersion(data: Record<string, unknown> | undefine
 // resulting {assignments, accessVersion} pair is reused (as ordinary
 // function parameters, never module-level state) for every subsequent
 // resolveEffectivePermission() call this run makes.
-async function loadRunnerAccessState(db: Firestore, runnerUid: string) {
+// ENG-E axis 4 (the ROOT CAUSE). This used to return `{accessVersion,
+// assignments}` and nothing else -- the run carried NO company identity, so
+// there was nothing available to bound anything with, which is why axes 1-3
+// were all unbounded at once. `companyReachFor()` below derives the reach for a
+// given capability from these assignments through the canonical resolver ONLY.
+// The operating company is NEVER inferred (not from a profile, a warehouse, a
+// job title, a display name, or the uid): `operatingCompanyId` is a governed
+// ACCESS-SCOPE fact and there is no uid->company resolver in this codebase.
+interface RunnerAccessState {
+  accessVersion: number;
+  assignments: never[];
+}
+
+async function loadRunnerAccessState(db: Firestore, runnerUid: string): Promise<RunnerAccessState> {
   const [userSnap, assignmentsSnap] = await Promise.all([
     db.collection(USERS_COLLECTION).doc(runnerUid).get(),
     db.collection(ROLE_ASSIGNMENTS_COLLECTION).where("principalUid", "==", runnerUid).where("status", "==", "active").get(),
@@ -251,10 +297,34 @@ async function loadRunnerAccessState(db: Firestore, runnerUid: string) {
   return { accessVersion, assignments };
 }
 
-function isAllowed(
+// The runner's governed company reach for one capability -- finance/
+// financeReadCallables.ts:119-123's pattern, delegated to reportRowScope.ts.
+function companyReachFor(
+  capabilityId: string,
+  runner: RunnerAccessState,
+  roles: Readonly<Record<string, Role>>,
+) {
+  return resolveCompanyReach({
+    capabilityId,
+    assignments: runner.assignments,
+    roles,
+    currentAccessVersion: runner.accessVersion,
+    activationOverrides: resolveRuntimeCapabilityOverrides() as ReadonlySet<string>,
+  });
+}
+
+// ENG-E: there is deliberately NO `target: TargetContext` parameter here any
+// more, and no TargetContext literal anywhere in this file. A capability is
+// checked AT A NAMED OPERATING COMPANY, and the target is constructed from that
+// company id by operatingCompanyScope() in reportRowScope.ts. That is what makes
+// the axis-1 defect (one hardcoded `{ scope: { type: "global" } }` reused for
+// every gate in the run) structurally unreachable rather than merely fixed:
+// there is no single target parameter left for a future edit to pin back to
+// global. reportRowScopeBound.test.mjs ratchets this as source text.
+function isAllowedAtCompany(
   permissionId: string,
-  runner: { assignments: never[]; accessVersion: number },
-  target: TargetContext,
+  runner: RunnerAccessState,
+  companyId: string,
   roles: Readonly<Record<string, Role>>,
 ): boolean {
   return (
@@ -263,16 +333,43 @@ function isAllowed(
       assignments: runner.assignments,
       roles,
       currentAccessVersion: runner.accessVersion,
-      target,
-      // 2C.6C (DECISIONS #167): the report.* family is ENVIRONMENT-ACTIVATED. Without the runtime
-      // activation set this service would deny every report capability in EVERY environment --
-      // including the sandbox where Reporting is live -- because the catalog now registers them
-      // active:false. Resolved from the runtime's own trusted project identity, exactly as
-      // effectiveAccessFeed.ts does. Production carries no overrides, so Reporting stays
-      // fail-closed there until a separate activation ruling.
+      target: { scope: operatingCompanyScope(companyId), condition: {} },
+      // 2C.6C (DECISIONS #167): the report.* family is ENVIRONMENT-ACTIVATED.
+      // Without the runtime activation set this service would deny every report
+      // capability in EVERY environment because the catalog registers them
+      // active:false. Resolved from the runtime's own trusted project identity,
+      // exactly as effectiveAccessFeed.ts does.
+      //
+      // ENG-E CORRECTION (main @ 64008d5a). The previous sentence here read
+      // "Production carries no overrides, so Reporting stays fail-closed there
+      // until a separate activation ruling." THAT IS FALSE AND WAS FALSE WHEN
+      // WRITTEN AGAINST THIS BASELINE. config/environments.json declares
+      // `productionCapabilityActivations` on taylor-parts-production -- a field
+      // DELIBERATELY DISTINCT from capabilityActivationOverrides
+      // (environmentCapabilityOverrides.ts:306) -- holding 25 ids, ALL of them
+      // report.*, and resolveRuntimeCapabilityOverrides() composes that
+      // production adoption set in (environmentCapabilityOverrides.ts:747-760).
+      // The reporting family IS production-activated. Reporting is NOT
+      // fail-closed in production by activation, and this service must not be
+      // written as though it were.
       activationOverrides: resolveRuntimeCapabilityOverrides(),
     }).decision === "ALLOW"
   );
+}
+
+// ENG-E: a capability is usable for a run only if it holds at EVERY company in
+// the run's reach. A run reads rows from all of `reach` at once, so a field
+// authorized at only one of them would put the other company's values in the
+// payload. Intersection semantics are the non-widening reading; the existing
+// column-drop/predicate-drop machinery then reports the narrowing honestly.
+function isAllowedAcrossReach(
+  permissionId: string,
+  runner: RunnerAccessState,
+  reach: readonly string[],
+  roles: Readonly<Record<string, Role>>,
+): boolean {
+  if (reach.length === 0) return false; // fail closed: no reach authorizes nothing
+  return reach.every((companyId) => isAllowedAtCompany(permissionId, runner, companyId, roles));
 }
 
 // Every field id (and, when the field is reached via a relationship, its
@@ -286,8 +383,10 @@ function isAllowed(
 function resolveFieldAuthorization(
   baseObjectId: string,
   referencedFieldIds: readonly string[],
-  runner: { assignments: never[]; accessVersion: number },
-  target: TargetContext,
+  runner: RunnerAccessState,
+  // ENG-E: the run's governed company reach, NOT a target. Every field
+  // capability is checked at every company the run reads from.
+  reach: readonly string[],
   roles: Readonly<Record<string, Role>>,
 ) {
   const authorized = new Set<string>();
@@ -296,7 +395,7 @@ function resolveFieldAuthorization(
 
   const checkCapability = (capabilityId: string): boolean => {
     if (!capabilityCache.has(capabilityId)) {
-      capabilityCache.set(capabilityId, isAllowed(capabilityId, runner, target, roles));
+      capabilityCache.set(capabilityId, isAllowedAcrossReach(capabilityId, runner, reach, roles));
     }
     return capabilityCache.get(capabilityId) as boolean;
   };
@@ -417,24 +516,46 @@ export async function runReportDefinition(
   }
 
   const runner = await loadRunnerAccessState(db, params.runnerUid);
-  const target: TargetContext = { scope: { type: "global" }, condition: {} };
 
-  // --- Object gate (Spec sec6: "a run requires the object's
-  // objectReadCapability; without it, nothing is read") ---
-  const objectAllowed = isAllowed(object.objectReadCapability, runner, target, roles);
-  if (!objectAllowed) {
+  // ===================== ENG-E: THE TENANCY AXIS =====================
+  //
+  // Resolved BEFORE any read of the reported collection, because both the
+  // authorization decision and the row predicate depend on it. Nothing below
+  // touches `object.collection` until this block has passed.
+  //
+  // Axis 1 is closed here: there is no `{ scope: { type: "global" } }` target any
+  // more. Reach is probed per governed company id through the canonical resolver
+  // (finance/financeReadCallables.ts:119-123's pattern), so an
+  // operatingCompany-scoped grant NOW WORKS -- at 64008d5a it was DENIED,
+  // because scopeMatches() value-matches operatingCompany exactly and such an
+  // assignment could never satisfy a global target. There was no such thing as a
+  // company-bounded report runner: the only way to run a report was a global
+  // grant, and a global grant returned everything.
+  const rowScope = reportRowScopeForCollection(object.collection);
+  const { reach: companyReach, heldSomewhere } = companyReachFor(
+    object.objectReadCapability,
+    runner,
+    roles,
+  );
+
+  // Shared refusal, so the two refusal kinds cannot drift apart in shape.
+  const refuse = async (
+    kind: "permission-denied" | "company-unresolved",
+    summary: string,
+    refusal: string | null,
+  ): Promise<RunReportOutcome> => {
     await recordStandaloneAuditEvent({
       actorUid: params.runnerUid,
       action: "runReportDefinition",
       targetType: "reportDefinition",
       targetId: definitionId,
       outcome: "denied",
-      summary: `Report run denied: object-level read capability not held for "${objectId}".`,
+      summary,
       objectId,
       accessVersionAfter: runner.accessVersion,
-    });
+    }, db);
     return {
-      kind: "permission-denied",
+      kind,
       objectId,
       rows: null,
       aggregates: null,
@@ -446,7 +567,63 @@ export async function runReportDefinition(
       droppedFieldIds: [],
       droppedPredicateFieldIds: [],
       droppedPredicateCount: 0,
+      companyReach: [...companyReach],
+      rowScopeKind: kind === "company-unresolved" ? "unresolved" : rowScope.kind,
+      companyBoundRefusal: refusal,
+      refusedJoinObjectIds: [],
     };
+  };
+
+  // --- Object gate (Spec sec6: "a run requires the object's
+  // objectReadCapability; without it, nothing is read") ---
+  //
+  // A non-empty reach IS the object gate: reach is populated only by companies at
+  // which resolveEffectivePermission() returned ALLOW for the object capability.
+  if (companyReach.length === 0 && !heldSomewhere) {
+    return refuse(
+      "permission-denied",
+      `Report run denied: object-level read capability not held for "${objectId}".`,
+      null,
+    );
+  }
+
+  // ENG-E requirement 3 -- FAIL CLOSED ON TENANCY, with a kind of its own.
+  //
+  // The grant EXISTS (heldSomewhere) but bound to no governed operating company:
+  // finance's "a valueless grant confers no reach", reported as a tenancy failure
+  // rather than a missing grant. The reported collection is never read.
+  if (companyReach.length === 0) {
+    return refuse(
+      "company-unresolved",
+      `Report run refused: the runner's operating company could not be resolved for "${objectId}"; ` +
+        "a grant exists but binds to no governed operating company, so no row bound can be applied.",
+      "the runner holds the object read capability, but no operatingCompany-scoped binding resolves " +
+        "for this principal; a valueless grant confers no reach, and an unbounded read is never the " +
+        "fallback",
+    );
+  }
+
+  // The collection itself may have no governed company bound. Refused for the
+  // same reason and with the same kind: the bound cannot be stated, so the read
+  // does not happen. `why` comes from the ownership matrix, never from this file.
+  if (rowScope.kind === "unsupported") {
+    return refuse(
+      "company-unresolved",
+      `Report run refused: no governed operating-company row bound exists for "${objectId}".`,
+      rowScope.why,
+    );
+  }
+
+  // A reach wider than Firestore's `in` cap cannot be expressed as one bounded
+  // query. Refuse rather than issue an invalid query (an opaque Firestore error)
+  // or trim the predicate to fit (which would silently under-report).
+  if (rowScope.kind === "company-bound" && companyReach.length > MAX_IN_FILTER_VALUES) {
+    return refuse(
+      "company-unresolved",
+      `Report run refused: the runner's company reach for "${objectId}" is too wide to express as a single bounded query.`,
+      `reach of ${companyReach.length} operating companies exceeds Firestore's ${MAX_IN_FILTER_VALUES}-value ` +
+        "`in` limit; the bound cannot be expressed in one query and will not be approximated by trimming it",
+    );
   }
 
   // --- Field/relationship gate (Spec sec6/sec2.5) ---
@@ -455,7 +632,7 @@ export async function runReportDefinition(
     objectId,
     referencedFieldIds,
     runner,
-    target,
+    companyReach,
     roles,
   );
 
@@ -494,10 +671,42 @@ export async function runReportDefinition(
   );
   const widened = droppedPredicateFieldIds.length > 0;
 
-  // --- Fetch (index-free: no server-side where(), bounded fetch, all
-  // filtering/grouping/aggregation/sort in-memory -- see maxScanDocs's
-  // module-level doc comment for why) ---
-  const snap = await db.collection(object.collection).limit(maxScanDocs + 1).get();
+  // ================== ENG-E AXIS 2: THE BOUNDED FETCH ==================
+  //
+  // At 64008d5a this line read
+  //   `db.collection(object.collection).limit(maxScanDocs + 1).get()`
+  // with NO where() of any kind, and its comment said so proudly:
+  // "index-free: no server-side where()". A recorded run issued
+  // `query equipment predicates=[] limit=51` -- every document of every
+  // operating company plus the documents carrying no company at all.
+  //
+  // THE PREDICATE MUST BE SERVER-SIDE. An in-memory post-filter would satisfy a
+  // row-count assertion while leaving the defect fully intact, because Firestore
+  // applies the scan cap BEFORE any in-memory pass: with 20,000 Taylor documents
+  // ahead of them, a Ventana runner's own rows would never be inside the page,
+  // and the runner would see a silently wrong report rather than a bounded one.
+  // That distinction is the difference between proving the fix and laundering it,
+  // so the test asserts on the QUERY ISSUED, not on the rows returned.
+  //
+  // STILL COMPOSITE-INDEX-FREE, which was the real constraint behind the old
+  // comment. A single-field equality (or a single-field `in`, which is a
+  // disjunction of equalities over one field) is served by Firestore's AUTOMATIC
+  // single-field index. No composite index is added by this change; every other
+  // filter/group/aggregate/sort stays in memory exactly as before.
+  const baseCollection = db.collection(object.collection);
+  const boundedQuery = rowScope.kind === "company-bound"
+    ? (companyReach.length === 1
+        ? baseCollection.where(rowScope.field, "==", companyReach[0])
+        : baseCollection.where(rowScope.field, "in", [...companyReach]))
+    // COMPANY_NEUTRAL (ruling R-15): the documents carry no company field, so
+    // there is no predicate to apply and inventing one would assert a fact the
+    // data does not contain -- `where("operatingCompanyId","==",x)` on `accounts`
+    // matches ZERO documents. The run is still gated on a non-empty reach above.
+    // This is OWNER QUESTION Q-ENGE-3 and is NOT decided here; see the lane
+    // verdict. It is recorded honestly in `rowScopeKind` rather than presented as
+    // a bound that exists.
+    : baseCollection;
+  const snap = await boundedQuery.limit(maxScanDocs + 1).get();
   const scanTruncated = snap.size > maxScanDocs;
 
   // --- Truncation honesty (census X-9) -- decided BEFORE any join read
@@ -519,7 +728,7 @@ export async function runReportDefinition(
       objectId,
       truncated: true,
       accessVersionAfter: runner.accessVersion,
-    });
+    }, db);
     throw new IncompleteAggregateScanError(
       `Aggregates for "${objectId}" cannot be computed: the scan exceeded ${maxScanDocs} documents, so any total would be lower than the truth. Narrow the report with filters, or run it without aggregates.`,
     );
@@ -547,9 +756,14 @@ export async function runReportDefinition(
     .map((id) => resolveDefinitionField(objectId, id))
     .filter((r): r is NonNullable<typeof r> => !!r);
   const relatedFieldsByBase = authorizedReferencedFields.filter((r) => !!r.relationship);
-  const joinedRaw = relatedFieldsByBase.length > 0
-    ? await joinRelatedDocs(db, objectId, rawDocs, relatedFieldsByBase)
-    : rawDocs;
+  // ENG-E AXIS 3. The join is now company-bounded too -- see joinRelatedDocs().
+  // Closing axis 2 alone would have left this route open for every base row that
+  // survives the predicate.
+  const joinResult = relatedFieldsByBase.length > 0
+    ? await joinRelatedDocs(db, objectId, rawDocs, relatedFieldsByBase, companyReach)
+    : { docs: rawDocs, refusedObjectIds: [] as string[] };
+  const joinedRaw = joinResult.docs;
+  const refusedJoinObjectIds = joinResult.refusedObjectIds;
 
   // --- Apply active filters in-memory (now against joined docs, so a
   // related-object predicate actually has a value to compare) ---
@@ -622,7 +836,7 @@ export async function runReportDefinition(
     droppedPredicateFieldIds: finalDroppedPredicateFieldIds.length > 0 ? finalDroppedPredicateFieldIds : undefined,
     truncated,
     accessVersionAfter: runner.accessVersion,
-  });
+  }, db);
 
   const kind: RunReportOutcomeKind =
     rowCount === 0
@@ -646,6 +860,10 @@ export async function runReportDefinition(
     droppedFieldIds: finalDroppedFieldIds,
     droppedPredicateFieldIds: finalDroppedPredicateFieldIds,
     droppedPredicateCount: finalDroppedPredicateFieldIds.length,
+    companyReach: [...companyReach],
+    rowScopeKind: rowScope.kind,
+    companyBoundRefusal: null,
+    refusedJoinObjectIds,
   };
 }
 
@@ -763,32 +981,61 @@ function computeAggregate(rows: Array<Record<string, unknown>>, objectId: string
   }
 }
 
+// ENG-E AXIS 3 -- the one-hop join, now company-bounded.
+//
+// At 64008d5a this fetched every related document by id with NO company check at
+// all. A recorded run over `equipment` selecting `location.name` and
+// `customer.name` issued six extra reads: `locations/loc-1`, `locations/loc-2`,
+// `locations/loc-3`, `accounts/acc-1`, `accounts/acc-2`, `accounts/acc-3` --
+// including the OTHER company's rows and the ownerless row's parents. A separate
+// leak route from the base query, and one that closing the base query alone
+// leaves wide open.
+//
+// Two closures, both read from the ownership matrix, never re-decided here:
+//   * `unsupported` related collection (e.g. `employees`, which the matrix
+//     classifies ownerClass EXCLUDED) -> the join is REFUSED and the documents
+//     are NEVER FETCHED. Reported in `refusedJoinObjectIds`.
+//   * `company-bound` related collection -> fetched by id (a `where` on document
+//     id PLUS a company field would require a composite index this task must not
+//     introduce), then VERIFIED against the run's reach and DROPPED rather than
+//     attached when it fails. No other company's field value can reach the
+//     caller, and an ownerless related document is never attached either.
+//   * `company-neutral` -> attached; no company predicate exists to apply (R-15).
 async function joinRelatedDocs(
   db: Firestore,
   baseObjectId: string,
   docs: Array<Record<string, unknown>>,
   relatedFields: Array<{ field: ReportField; relationship: NonNullable<ReturnType<typeof resolveDefinitionField>>["relationship"] }>,
-): Promise<Array<Record<string, unknown>>> {
+  reach: readonly string[],
+): Promise<{ docs: Array<Record<string, unknown>>; refusedObjectIds: string[] }> {
   // Group the related fields by the relationship they traverse (usually
   // one relationship, but a definition could select fields from more
   // than one related object).
-  const byRelationship = new Map<string, { toObjectId: string; toCollection: string; viaField: ReportField; fields: ReportField[] }>();
+  const byRelationship = new Map<string, { toObjectId: string; toCollection: string; viaField: ReportField; fields: ReportField[]; rowScope: ReportRowScope }>();
+  const refusedObjectIds = new Set<string>();
   for (const { field, relationship } of relatedFields) {
     if (!relationship) continue;
     const toObject = getReportObject(relationship.toObjectId);
     if (!toObject?.collection) continue;
     const viaField = getReportField(relationship.viaField);
     if (!viaField) continue;
+    // ENG-E: decided BEFORE the fetch loop, so a refused related collection is
+    // never read at all rather than read-then-discarded.
+    const relatedRowScope = reportRowScopeForCollection(toObject.collection);
+    if (relatedRowScope.kind === "unsupported") {
+      refusedObjectIds.add(relationship.toObjectId);
+      continue;
+    }
     const key = relationship.relationshipId;
     if (!byRelationship.has(key)) {
-      byRelationship.set(key, { toObjectId: relationship.toObjectId, toCollection: toObject.collection, viaField, fields: [] });
+      byRelationship.set(key, { toObjectId: relationship.toObjectId, toCollection: toObject.collection, viaField, fields: [], rowScope: relatedRowScope });
     }
     byRelationship.get(key)!.fields.push(field);
   }
-  if (byRelationship.size === 0) return docs;
+  if (byRelationship.size === 0) return { docs, refusedObjectIds: [...refusedObjectIds] };
 
   const joinedDocs = docs.map((d) => ({ ...d }));
-  for (const { toObjectId, toCollection, viaField } of byRelationship.values()) {
+  for (const { toObjectId, toCollection, viaField, rowScope: relatedRowScope } of byRelationship.values()) {
     const refIds = new Set<string>();
     for (const doc of joinedDocs) {
       const rawRef = getAtPath(doc, rawFieldPath(viaField));
@@ -799,8 +1046,19 @@ async function joinRelatedDocs(
       Array.from(refIds).map((id) => db.collection(toCollection).doc(id).get()),
     );
     const byId = new Map<string, Record<string, unknown>>();
+    const refIdList = Array.from(refIds);
     refDocs.forEach((snap, i) => {
-      if (snap.exists) byId.set(Array.from(refIds)[i], { id: snap.id, ...snap.data() } as Record<string, unknown>);
+      if (!snap.exists) return;
+      const related = { id: snap.id, ...snap.data() } as Record<string, unknown>;
+      // ENG-E: the related document is admitted ONLY if it satisfies the same
+      // company bound the base query was given. A company-bound related document
+      // outside the run's reach -- or carrying no company at all -- is dropped
+      // here and never attached, so its field values cannot reach the caller.
+      if (relatedRowScope.kind === "company-bound"
+        && !documentSatisfiesCompanyBound(related, relatedRowScope.field, reach)) {
+        return;
+      }
+      byId.set(refIdList[i], related);
     });
     for (const doc of joinedDocs) {
       const rawRef = getAtPath(doc, rawFieldPath(viaField));
@@ -809,7 +1067,7 @@ async function joinRelatedDocs(
       }
     }
   }
-  return joinedDocs;
+  return { docs: joinedDocs, refusedObjectIds: [...refusedObjectIds] };
 }
 
 // Independent-review finding (round 1): `sort` was authorization-filtered

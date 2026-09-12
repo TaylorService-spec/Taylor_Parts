@@ -24,8 +24,16 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/src/reporting/**"
+      # ENG-E: reportRowScope.ts reads the operating-company authority and the
+      # ownership matrix's companyScope column as the authority for the row bound,
+      # so a change there can silently change what a report may read.
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
+      - "functions/src/ownership/ownershipMatrix.ts"
+      - "config/environments.json"
       - "functions/test/reportCatalogParity.test.mjs"
       - "functions/test/reportExecutionService.test.mjs"
+      - "functions/test/reportRowScopeBound.test.mjs"
+      - "functions/test/reportTruncationHonesty.test.mjs"
       - "functions/test/savedDefinitionCommands.test.mjs"
       - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
@@ -40,8 +48,16 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/src/reporting/**"
+      # ENG-E: reportRowScope.ts reads the operating-company authority and the
+      # ownership matrix's companyScope column as the authority for the row bound,
+      # so a change there can silently change what a report may read.
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
+      - "functions/src/ownership/ownershipMatrix.ts"
+      - "config/environments.json"
       - "functions/test/reportCatalogParity.test.mjs"
       - "functions/test/reportExecutionService.test.mjs"
+      - "functions/test/reportRowScopeBound.test.mjs"
+      - "functions/test/reportTruncationHonesty.test.mjs"
       - "functions/test/savedDefinitionCommands.test.mjs"
       - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
@@ -93,6 +109,19 @@ jobs:
 
       - name: Catalog/query-model/validator parity vs. the client (no emulator)
         run: npm run build && node test/reportCatalogParity.test.mjs
+        working-directory: functions
+
+      # ENG-E. Deliberately placed BEFORE the emulator starts: the row-scope bound
+      # needs no emulator, so it must still be enforced when the emulator step
+      # fails. It asserts on the QUERY PREDICATE ISSUED, not on rows returned --
+      # Firestore applies the scan cap before any in-memory pass, so a row-count
+      # assertion would go green on an in-memory post-filter that fixes nothing.
+      - name: Report row-scope / operating-company bound (no emulator)
+        run: node --test test/reportRowScopeBound.test.mjs
+        working-directory: functions
+
+      - name: Truncation honesty (no emulator)
+        run: node --test test/reportTruncationHonesty.test.mjs
         working-directory: functions
 
       - name: Start Firestore emulator (background)
