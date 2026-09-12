@@ -211,6 +211,96 @@ where the next reader of that definition will find it.
 
 ---
 
+## Amendment, 2026-09-11 — Which registry names the objects
+
+**Status:** ACCEPTED as an extension of the original decision. Raised by the reporting lane's finding
+that the report catalog is effectively a second parallel object registry.
+
+This ADR settled which system owns object and **field definitions**. It did not settle the question
+underneath that one — **which list says an object exists** — because when it was written only one
+list plausibly claimed to. Two do.
+
+| | `metadata/entityRegistry.js` | `domain/reporting/reportCatalog.js` |
+|---|---|---|
+| objects | **29** | 12 (+1 derived, no collection) |
+| fields authored | **394** | 45, on 4 of the 12 |
+| concepts modelled | object + collection + fields + types + operators + capability per field | the same three |
+| mounted | 13 collection surfaces, record pages, Administration → Objects | **none — ships INERT** |
+| read path | the metadata list runtime | none (`reportExecutionService.ts`, separate, later) |
+| capability ids | declared per field, resolved by the capability architecture | `report.<id>.*`, **not in `permissionCatalog.ts`** |
+| index honesty | CI-enforced (`scripts/listIndexCoverage.mjs`) | n/a |
+| downstream | `access/policyObjectRegistry.js` unions it with the CRUD matrix to answer *"which objects can policy govern?"* | `functions/src/reporting/reportCatalog.ts`, a parity-proven server port |
+
+### The ruling
+
+> **`ENTITY_REGISTRY` is authoritative for object identity. The report catalog is a
+> capability-scoped reporting projection over a subset of it, and may not be the place an object
+> first appears.**
+
+Not because it is older or larger. Because it is the one that is **load-bearing**: thirteen
+collection surfaces render from it, `policyObjectRegistry.js` derives the governable-object set from
+it, and the field census is pinned by a test. The report catalog activates nothing, reads nothing,
+and mints capability strings the permission catalog does not carry. A registry nothing depends on is
+a document; a registry everything depends on is the registry.
+
+It is also not a third copy. `policyObjectRegistry.js` already proves the direction of authority by
+being **built from** `ENTITY_REGISTRY` rather than beside it, and nothing under `src/metadata/`
+imports the reporting catalog — the overlap is *citation*, in prose, not dependency.
+
+### The overlap is real, and it had already drifted
+
+`entityDefinition.js:9-17` names the report catalog as the prior art the entity model generalises.
+That citation is honest. It is also how the two lists came to be read as peers, and two
+disagreements followed:
+
+1. **`definitions/purchaseOrder.js` declined to declare its parent edge** because there was *"no
+   registered `reorderRequest` EntityDefinition anywhere in this program"*, citing the report
+   catalog's inert `reorderRequest` object as the only thing of that name. True when written
+   (#1181, 2026-08-17). **False a week later**: `definitions/reorderRequest.js` landed in #1258, is
+   in `ENTITY_REGISTRY`, declares `purchaseOrderId` as a REFERENCE to `purchaseOrder`, declares the
+   edge from the side that owns the reference field, and says in its own header that it closes that
+   gap — with `test/metadataProcurementDefinitions.test.mjs:144` asserting it. **Two definition files
+   disagreed about whether an entity existed for three weeks, and the stale one reached its
+   conclusion by consulting the report catalog.** Nothing failed, because nothing compared the two
+   lists. Corrected in this amendment's change.
+
+2. **`purchaseOrder` carries a label the report catalog rejected.** Both bind
+   `reorder_purchase_orders`. The report catalog deliberately relabelled it *"Reorder Purchase
+   Order"* because calling it *"Purchase Order"* *"made a reporting result claim a source it never
+   read"* — `purchase_orders` is a different authority. `purchaseOrderEntity.label` is still
+   `"Purchase Order"`, and Administration → Objects renders it. **Left as recorded divergence, not
+   corrected here**: which collection is the Purchase Order is
+   `PURCHASE_ORDER_MONEY_LIVES_ON_A_DIFFERENT_COLLECTION`, a Purchasing/Financial decision, and
+   renaming the object to settle a label would take that decision by accident.
+
+3. **Three reporting objects have no EntityDefinition at all** — `job` (`fieldops_jobs`),
+   `technician` (`fieldops_technicians`, superseded by the Owner's 2026-08-20 *"technician is a
+   role"* ruling) and `serviceHistory` (derived, `collection: null`, so it cannot have one by
+   construction). Recorded as a **closed ledger**. A fourth means the projection is where an object
+   first appeared.
+
+### What was NOT done, deliberately
+
+**No third registry, no merge, no unification layer, no re-pointing of the report catalog at
+`ENTITY_REGISTRY`.** The registration worth making is that one of the two is authoritative — and
+authority stated in prose is what produced the three-week disagreement above. So the ruling ships as
+**five guards** in `test/objectListMetadataAuthority.test.mjs`, each proven to fail on an injected
+violation:
+
+| Guard | Fails when |
+|---|---|
+| the report catalog may not name a new object | a report object's collection has no entity, and is not in the ledger |
+| the absent-entity ledger is closed | a ledger entry's entity has since been declared (the staleness half) |
+| one collection, one label | a second label divergence appears |
+| no definition claims a REGISTERED entity is unregistered | the exact class of stale claim that happened — a *quoted* claim is exempt, because a file recording what another file used to assert is writing attributed history |
+| the object model does not DEPEND on the projection | anything under `src/metadata/` imports `reporting/reportCatalog` |
+
+Converging the report catalog onto `ENTITY_REGISTRY` is a governed-reporting package (it would move
+`report.*` capability ids and the parity-proven server port with it), not a list-metadata one. This
+amendment fixes which list is believed, and makes believing the wrong one fail the build.
+
+---
+
 ## Carried forward, unresolved
 
 - **`CUSTOMER_NAME_NOT_SORTABLE_ON_RELATED_LISTS`** — needs a denormalized `customerNameLower` on

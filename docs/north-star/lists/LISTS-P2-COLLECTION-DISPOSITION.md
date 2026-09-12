@@ -781,3 +781,73 @@ Writing it caught four surfaces still on the old table treatment and two still u
 any of them reached the sweep — and three of its own first-draft assertions were wrong (a class-order
 match, a `\b` that treated `fo-table-scroll` as `fo-table`, and a tbody slice that read a detail
 pane's table as a collection's rows). Each is recorded where it was fixed.
+
+---
+
+## 11. Remaining-migration audit — 2026-09-11
+
+**Why this section exists.** This file was carried into the EOS object wave as *"the remaining North
+Star list migrations"*. It is not one. §8 and §9 declared the work complete on 2026-08-27, and a
+declaration is not a fact, so the set was re-derived from source rather than re-read from the
+summary. **An accurate disposition is the deliverable; there was no remaining migration to do.**
+
+Verified at `33945090`.
+
+### 11.1 — What is actually done
+
+All 14 MIGRATE families, and the guards that hold them, are real and green:
+
+```
+vitest run  test/listsP2StateContract.test.jsx   19 ✓   the 17 states, the seven empties, live record routes
+            test/listsP2Tranche1.test.jsx        24 ✓   catalog / reference
+            test/listsP2Tranche2.test.jsx        20 ✓   organization / location — no-route rule, exact-or-absent counts
+            test/listsP2Tranche3.test.jsx        14 ✓   movement — borrowed money, raw id as a label
+            test/listsP2Compose.test.jsx         16 ✓   the COMPOSE boundary (24 surfaces)
+            test/listsP2VisualContract.test.jsx  50 ✓   anatomy and grammar, post-Owner-correction
+            test/compositionConformance.test.jsx  9 ✓   GATE 2c / 2d / 2d²
+                                            152 / 152
+```
+
+`ciSuiteCoverage` is green, so none of the seven is a suite that exists but never runs.
+
+### 11.2 — What is outstanding, and none of it is a migration
+
+Every open item is a **missing authority or an unmade product decision**. Not one is closable by
+presentation work, which is the only kind of work this file governs. Listing them as "remaining
+migrations" would invite exactly the thing §5 forbids — manufacturing the authority that makes a
+surface conform.
+
+| Item | What it actually needs | Whose |
+| --- | --- | --- |
+| Job Assignments | **Product decision** — distinct assignment board, or an assignment *view* of Work Orders? Still nav-mounted at `/service/job-assignments`. Its *presentation* was corrected in §10; the product question is untouched and is not a rendering question. | Owner |
+| Contacts (global index) | A **route** and a **per-contact read**, both new. Neither exists; contacts stay account-scoped (#15). | product |
+| Returns register | A **register read**. Building one would imply stock effects the authority refuses. | product |
+| Audit Logs · Permission Preview | A **deployed Cloud Function read path**. Both still render `AdministrationUnavailable`. | platform |
+| Transfers → part label | A **list-level part-name projection**. The cell still states `Unresolved reference`; the id survives only in the href. | Parts |
+| Work Order view-chip counts (`LISTS-VIEW-CHIP-ROLLOUT` §4.1) | A **server-side aggregate per status**. Absence is the correct rendering until it exists. | Work Order |
+| `CUSTOMER_NAME_NOT_SORTABLE_ON_RELATED_LISTS` | A denormalized `customerNameLower` **plus a rename-propagation authority**. | Account |
+| `PART_LIST_BALANCE_N1_GAP` · `PART_CATALOGUE_WHOLE_COLLECTION_READ` | The queued PartsList scale + paging package. | Parts |
+| `PURCHASE_ORDER_MONEY_LIVES_ON_A_DIFFERENT_COLLECTION` | Which collection **is** the Purchase Order. | Financial |
+
+### 11.3 — One entry is obsolete, and one only looks it
+
+**Obsolete: `LISTS-VIEW-CHIP-ROLLOUT` §4.2, "PartsList has not had the collection pass."** It
+prescribes *"a collection pass on the page — identity, header, one collection"*. §1.1 of this file
+rules that `/inventory` **stays a workspace** and is explicitly not a List North Star collection
+page. The two cannot both be satisfied. The ruling is the later authority on the question of *what
+the page is*; the chip directive (2026-08-30) is later in date but speaks only to *how chips render*,
+and it already renders them correctly as `variant="chips"`. **No collection pass is owed.** Recorded
+here so a later pass does not "finish the migration" by flattening a workspace — the exact failure
+§1.1 was written to prevent.
+
+**Only looks obsolete: the BLOCKED set.** Several object lanes in this wave rewrote the authority
+beneath these lists. None of them supplies any of the reads or decisions in §11.2 — each of those is
+a *new* read, route or product call, and this wave's lanes are moving existing authority to
+PostgreSQL rather than creating capabilities. So the BLOCKED set is unchanged, not superseded.
+
+### 11.4 — The one thing that was genuinely wrong
+
+Not a list migration: **which registry says an object exists**. Two lists claimed to, and they had
+already disagreed in production source for three weeks. Ruled and guarded in
+[`ADR-013` §"Which registry names the objects"](../../architecture/ADR-013-object-list-metadata-authority.md).
+It belongs to this lane because the object-list metadata authority is exactly what it governs.
