@@ -49,6 +49,11 @@ async function reset() {
   await client.connect();
   await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
+  // schema the migrations create, not only the two that existed when it was written: a surviving
+  // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
+  // still there.
+  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();

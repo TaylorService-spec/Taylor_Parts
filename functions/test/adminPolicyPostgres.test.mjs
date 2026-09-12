@@ -72,6 +72,11 @@ async function reset() {
   // most recent when this reset was written; it must also drop eos_ops now, or a second migrateFromClean()
   // in the same job fails with "already exists" the moment eos_ops has any migration to re-run.
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
+  // schema the migrations create, not only the two that existed when it was written: a surviving
+  // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
+  // still there.
+  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();
@@ -211,7 +216,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
   assert.equal(back.rows[0].n, 22, "and up restores all twenty-two");
 });
 
-test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
+test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
   // The step that matters operationally: rolling back ONE migration must not take the ones under it
   // with it. Proved by reversing exactly one, then exactly one more, and counting what survives.
   await reset();
