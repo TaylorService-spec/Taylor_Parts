@@ -19,9 +19,17 @@ import {
 import {
   readActiveWarehouses,
   readAssignedMobileLocation,
+  readConsumptionTrackingModes,
   readPlacementsForWorkOrder,
 } from "./consumptionSourceService.js";
 import { INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections.js";
+import {
+  consumptionTrackingModeFor,
+  isQuantityTracked,
+  PART_NOT_QUANTITY_TRACKED,
+  partNotQuantityTrackedMessage,
+  WORK_ORDER_CONSUMPTION_TRACKING_MODE,
+} from "./consumptionPartTracking.js";
 
 export interface PlanInput {
   readonly workOrderId: string;
@@ -32,6 +40,13 @@ export interface PlanInput {
   readonly consumptionSources: ReadonlyArray<{ sku?: unknown; locationId?: unknown }>;
   readonly occurredAt: number;
   readonly commandKey: string;
+}
+
+/** The canonical Part id for a planned line. Legacy snapshot items carry only `sku`; that fallback
+ *  is unchanged here — this file resolves identity the way it always did, and only the TRACKING MODE
+ *  moved to the Part. */
+function partIdFor(snapshot: readonly InventorySnapshotItem[], sku: string): string {
+  return snapshot.find((i) => i.sku === sku)?.partId ?? sku;
 }
 
 /** Prior physical consumption for this Work Order, used to target corrections at the original source. */
@@ -60,6 +75,12 @@ export async function planPhysicalConsumption(
   // ALL READS FIRST — the enclosing transaction has not written yet, and must not while these run.
   const priorRows = await readPriorConsumption(tx, db, input.workOrderId);
   const needsSourceResolution = positives.length > 0;
+  // The PART decides how each added line is counted. Read here, with the other reads, because the
+  // enclosing transaction has not written yet — and read only for the POSITIVE lines, since a
+  // correction reverses the lineage that already exists rather than establishing a new one.
+  const trackingModes = needsSourceResolution
+    ? await readConsumptionTrackingModes(db, positives.map((u) => partIdFor(input.snapshot, u.sku)), tx)
+    : new Map();
   const [warehouses, mobileResult, placements] = needsSourceResolution
     ? await Promise.all([
         readActiveWarehouses(db, tx),
@@ -87,9 +108,18 @@ export async function planPhysicalConsumption(
 
   // ---------------------------------------------------------------- POSITIVE: stock leaves
   for (const update of positives) {
-    const item = input.snapshot.find((i) => i.sku === update.sku);
-    const partId = item?.partId ?? update.sku;
-    const trackingMode = "NONE"; // SERIAL usage has no serial identity in this workflow — see below.
+    const partId = partIdFor(input.snapshot, update.sku);
+    // WAS `const trackingMode = "NONE"`. A hardcoded mode is an answer to a question the Part owns,
+    // and posting it made a SERIALIZED part's usage arrive in the ledger as ordinary countable
+    // stock while serialized_assets still held the unit — see consumptionPartTracking.ts.
+    const trackingMode = consumptionTrackingModeFor(trackingModes, partId);
+    if (!isQuantityTracked(trackingMode)) {
+      throw new HttpsError("failed-precondition", partNotQuantityTrackedMessage(trackingMode), {
+        code: PART_NOT_QUANTITY_TRACKED,
+        sku: update.sku,
+        trackingMode,
+      });
+    }
     const resolved = resolveConsumptionSource({
       workOrderId: input.workOrderId,
       partId,
@@ -122,8 +152,7 @@ export async function planPhysicalConsumption(
 
   // ---------------------------------------------------------------- NEGATIVE: a correction
   for (const update of negatives) {
-    const item = input.snapshot.find((i) => i.sku === update.sku);
-    const partId = item?.partId ?? update.sku;
+    const partId = partIdFor(input.snapshot, update.sku);
     const outstanding = outstandingConsumptionByLocation(priorRows, input.workOrderId, partId);
     const totalOutstanding = outstanding.reduce((n, e) => n + e.outstanding, 0);
 
@@ -148,10 +177,13 @@ export async function planPhysicalConsumption(
       );
     }
     for (const target of plan.plan) {
-      movements.push({ part: { partId, trackingMode: "NONE" }, event: buildConsumptionMovement({
+      // The mode of the rows being REVERSED, which is what this lineage actually holds. A correction
+      // must match the movements it undoes, not re-derive a mode from a Part that may have been
+      // reclassified since — see the pre-authority ruling above.
+      movements.push({ part: { partId, trackingMode: WORK_ORDER_CONSUMPTION_TRACKING_MODE }, event: buildConsumptionMovement({
           workOrderId: input.workOrderId,
           partId,
-          trackingMode: "NONE",
+          trackingMode: WORK_ORDER_CONSUMPTION_TRACKING_MODE,
           quantity: target.quantity,
           locationType: target.locationType,
           locationId: target.locationId,

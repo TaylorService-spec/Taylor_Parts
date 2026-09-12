@@ -191,8 +191,11 @@ export interface ConsumptionSourceOptions {
   autoSourceUnavailableReason: string | null;
   mobileAmbiguous: boolean;
 }
+// `trackingMode`/`serialNo` are NOT in this contract. How a part is counted is the Part's fact, and
+// the server derives it -- a client that could assert it would be asserting authority it does not
+// have. No caller ever sent either field, so this is a removal, not a migration.
 const listConsumptionSourcesCallable = httpsCallable<
-  { workOrderId: string; partId: string; requestedQuantity?: number; trackingMode?: string; serialNo?: string },
+  { workOrderId: string; partId: string; requestedQuantity?: number },
   ConsumptionSourceOptions
 >(functions, "listWorkOrderConsumptionSources");
 
@@ -200,8 +203,6 @@ export async function listWorkOrderConsumptionSources(input: {
   workOrderId: string;
   partId: string;
   requestedQuantity?: number;
-  trackingMode?: string;
-  serialNo?: string;
 }): Promise<ConsumptionSourceOptions> {
   const result = await listConsumptionSourcesCallable(input);
   return result.data;

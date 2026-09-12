@@ -53,6 +53,17 @@ function PartSource({ item, options, selected, loading, onLoad, onSelect }) {
     );
   }
 
+  // The Part is not counted by quantity, so this screen has nothing it can record. Shown as a plain
+  // statement rather than an empty picker -- a select with no options is a control that cannot be
+  // satisfied, which reads as a bug rather than as an answer.
+  if (options.autoSourceUnavailableReason === "PART_NOT_QUANTITY_TRACKED") {
+    return (
+      <p className="fo-muted fo-execution-capture__source">
+        This part is tracked individually, so its usage cannot be recorded here.
+      </p>
+    );
+  }
+
   if (options.autoSourceUnavailableReason === "SERIAL_CUSTODY_UNKNOWN") {
     return (
       <p className="fo-muted fo-execution-capture__source">

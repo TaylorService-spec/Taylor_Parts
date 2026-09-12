@@ -19,6 +19,9 @@ import {
   type MobileCandidate,
 } from "./consumptionSourceOptions.js";
 import { readSerializedCustodyPair } from "../serializedAsset/types.js";
+import { PARTS_COLLECTION } from "../partMaster/partMasterRepository.js";
+import { trackingModeFromStoredControlType } from "./consumptionPartTracking.js";
+import type { ControlTypeTrackingMode } from "../partMaster/controlTypeTrackingMode.js";
 
 export const BIN_PLACEMENTS_COLLECTION = "bin_placements";
 export const WAREHOUSES_COLLECTION = "warehouses";
@@ -106,6 +109,38 @@ export async function readPlacementsForWorkOrder(
       quantity: typeof p.quantity === "number" ? p.quantity : 0,
       pickedForWorkOrderId: workOrderId,
     }));
+}
+
+/**
+ * THE PART AUTHORITY for a set of part ids, as tracking modes.
+ *
+ * How a part is counted is the Part's fact. This read exists because Work Order usage capture used
+ * to answer that question twice without ever asking: the writer hardcoded "NONE" and the callable
+ * took it off the request. See consumptionPartTracking.ts for what that cost.
+ *
+ * A part id ABSENT from the returned map means no Part document was found — deliberately distinct
+ * from "found, and quantity-tracked", so the caller can tell silence from an answer. Pass the
+ * enclosing transaction when one is open: these are reads, and they must land in the caller's
+ * reads-before-writes window.
+ */
+export async function readConsumptionTrackingModes(
+  db: Firestore,
+  partIds: readonly string[],
+  txn?: Transaction,
+): Promise<Map<string, ControlTypeTrackingMode>> {
+  const unique = [
+    ...new Set(
+      partIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()),
+    ),
+  ];
+  const modes = new Map<string, ControlTypeTrackingMode>();
+  for (const partId of unique) {
+    const ref = db.collection(PARTS_COLLECTION).doc(partId);
+    const snap = txn ? await txn.get(ref) : await ref.get();
+    if (!snap.exists) continue;
+    modes.set(partId, trackingModeFromStoredControlType((snap.data() ?? {}).controlType));
+  }
+  return modes;
 }
 
 /** A serialized unit's governed custody. Null when unknown — which #168 fails closed on. */
