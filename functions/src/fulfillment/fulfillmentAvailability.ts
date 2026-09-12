@@ -22,24 +22,26 @@ import type { Availability } from "./allocationProjection";
 
 const num0 = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 
-// Sum eligible ON_HAND for a part from its stock_locations rows, restricted to eligible (status==ACTIVE)
-// warehouses. `rows` are the stock_locations docs already filtered by partId (the callable supplies the read).
-// Returns null (UNKNOWN) when there is no stock_locations evidence for the part at all — never treated as 0.
-// Returns a known 0 when rows exist but none sit at an eligible warehouse (a real backorder, not missing
-// evidence). Extracted as a pure function so eligible-warehouse filtering is directly regression-tested
-// without the Firestore emulator (site-work #9).
-export function sumEligibleOnHand(rows: Array<{ warehouseId?: string; quantity?: number }>, eligibleWarehouseIds: Set<string>): number | null {
-  if (rows.length === 0) return null;
-  let onHand = 0;
-  let sawEligible = false;
-  for (const r of rows) {
-    if (typeof r.warehouseId === "string" && eligibleWarehouseIds.has(r.warehouseId)) {
-      sawEligible = true;
-      if (typeof r.quantity === "number" && Number.isFinite(r.quantity)) onHand += Math.max(0, r.quantity);
-    }
-  }
-  return sawEligible ? onHand : 0;
-}
+// sumEligibleOnHand() WAS HERE, and is deleted.
+//
+// It was the SUPERSEDED stock_locations derivation: it read a flat `warehouseId` string off a seeded
+// legacy projection that nothing in this platform ever writes, and it had no notion of the typed
+// location pair, of Model-A bin custody, of movement sign, or of SERIAL/LOT rows. The Owner-ratified
+// amendment of 2026-08-17 replaced it with sumLedgerEligibleOnHand() below, and allocateSalesOrder.ts
+// (:69), inventoryService.ts (:121), partBalanceReadService.ts (:144) and inventoryAnalyticsCallables.ts
+// (:78) have all read the ledger derivation since.
+//
+// Nothing in src/ has called it since that amendment. Its ONLY remaining caller was
+// test/allocateSalesOrderAllocation.test.mjs -- the gate for this very command -- whose header claimed
+// to replay "the production pipeline line for line" while actually replaying the derivation production
+// had stopped using. A gate that proves a function no caller runs is worse than no gate: it reports
+// green over the untested path. That suite is RETARGETED onto sumLedgerEligibleOnHand (typed
+// `location` rows, Model-A `binParentage`, the `${kind}:${ref}` pool key production uses), so its
+// coverage is not lost -- it now lands on the code that actually runs.
+//
+// This is the same disposal DECISIONS #165 applied to inventoryService.ts's sumGovernedLedger(): two
+// functions answering "how much is there" is the duplication that ruling exists to remove, so the
+// redundant one goes rather than lingering for a future caller to pick up.
 
 // Ledger-derived eligible physical ON_HAND for a part (Owner-ratified 2026-08-17, superseding the
 // stock_locations rule).
@@ -143,8 +145,9 @@ export function openWorkOrderReserved(
 // UNKNOWN (never 0). Otherwise KNOWN with ATP = onHand − openWoReserved − otherSoAllocated − selfAllocated,
 // floored at 0.
 //
-// IDEMPOTENCY (fix for site-work #1, so-alloc-overallocation-rerun): stock_locations.quantity is never
-// decremented by an SO allocation (non-forking — allocation lives ONLY on the Sales Order). `otherSoAllocated`
+// IDEMPOTENCY (fix for site-work #1, so-alloc-overallocation-rerun): an SO allocation writes NO ledger
+// movement at all, so the ledger-derived on-hand this function is handed is never decremented by it
+// (non-forking — allocation lives ONLY on the Sales Order). `otherSoAllocated`
 // already nets every OTHER active Sales Order's claim on this same pool, but THIS Sales Order's own prior
 // allocatedQty for this ref is equally a claim on that same physical pool and MUST also be netted here —
 // otherwise a re-run (retry, or a second legitimate call before the SO leaves CONFIRMED/IN_FULFILLMENT) sees
