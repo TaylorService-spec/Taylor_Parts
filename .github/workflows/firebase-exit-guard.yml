@@ -16,6 +16,7 @@ on:
     paths:
       - "field-ops-app-vite/src/**"
       - "functions/src/**"
+      - "integrations/**"
       - "docs/architecture/firebase-exit-baseline.json"
       - "docs/architecture/firebase-exit-manifest.json"
       - "scripts/firebaseExitGuard.mjs"
@@ -26,6 +27,7 @@ on:
     paths:
       - "field-ops-app-vite/src/**"
       - "functions/src/**"
+      - "integrations/**"
       - "docs/architecture/firebase-exit-baseline.json"
       - "docs/architecture/firebase-exit-manifest.json"
       - "scripts/firebaseExitGuard.mjs"
