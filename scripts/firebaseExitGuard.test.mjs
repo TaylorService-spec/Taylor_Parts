@@ -35,7 +35,7 @@
 //   * the live repository, scanned today, passes against its own committed baseline.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -436,4 +436,55 @@ test("the repository's committed baseline exactly matches its own current scan -
   assert.deepEqual(staleEntries, [],
     `stale committed baseline entr(ies) no longer observed in the tree:\n${staleEntries
       .map((v) => `  ${v.path} — ${v.label}`).join("\n")}`);
+});
+
+// ---------------------------------------------------------------------------------------------
+// W1-C21 RETIREMENT PINS. Deleting a Firebase business-runtime module shrinks the baseline, and
+// the shrunk baseline is what the exact-match check above compares against -- so a reintroduced
+// module WOULD already trip `violations`. That is a fence against the dependency, not against the
+// module: a file could come back at the same path reading Firestore through some future helper the
+// four FORBIDDEN_CATEGORIES do not match, and nothing would notice that a retirement was undone.
+//
+// These pins are therefore about the RETIREMENT DECISION, not the import: each path below was
+// proven unreachable (no importer, no caller, no runtime path) before deletion, and each is
+// asserted absent from BOTH the tree and the baseline. A path returning is not necessarily wrong
+// -- it is a decision that must be made again deliberately, by deleting the pin with the evidence
+// that justifies it, rather than by a merge nobody reviewed. See
+// docs/handoff/w1-c21-registrations.md for the per-path unreachability proof.
+const W1_C21_RETIRED = [
+  // Duplicate server-side Firebase supplier authority: read the same `suppliers` collection as
+  // the governed Supplier Master (functions/src/supplierMaster/*) under an ungoverned shape
+  // (contactEmail/leadTimeDays). No importer anywhere in functions/src; never exported from
+  // index.ts, so no deployed function could reach it.
+  "functions/src/supplierService.ts",
+  // Epic 8 "Operations Intelligence Unification Layer": a client Firestore reader whose every
+  // exported symbol had zero references repo-wide and on all twelve concurrent lane branches.
+  "field-ops-app-vite/src/analytics/operationsIntelligenceService.ts",
+  // F-RULES-1 scoped technician read of fieldops_jobs. Its one consumer, modules/mobile/
+  // FieldMode.jsx, no longer reads fieldops_jobs at all; the scoped READ rule in firestore.rules
+  // is unaffected and still fails closed on an unconstrained technician read.
+  "field-ops-app-vite/src/hooks/useAssignedJobs.js",
+];
+
+test("W1-C21 retired Firebase business-runtime modules stay retired -- absent from the tree", () => {
+  const returned = W1_C21_RETIRED.filter((path) => existsSync(join(REPO_ROOT, path)));
+  assert.deepEqual(returned, [],
+    "a module retired by W1-C21 is back on disk. It was deleted because it was proven " +
+    "unreachable -- no importer, no caller, no runtime path. Reintroducing it needs that proof " +
+    "re-examined and this pin removed deliberately; see docs/handoff/w1-c21-registrations.md:\n" +
+    returned.map((p) => `  ${p}`).join("\n"));
+});
+
+test("W1-C21 retired modules stay out of the baseline -- the ratchet never re-grows for them", () => {
+  const baseline = loadBaseline(REPO_ROOT);
+  const reentered = [];
+  for (const category of FORBIDDEN_CATEGORIES) {
+    const paths = baselinePathsFor(baseline, category.key);
+    for (const path of W1_C21_RETIRED) {
+      if (paths.has(path)) reentered.push(`${category.key}: ${path}`);
+    }
+  }
+  assert.deepEqual(reentered, [],
+    `a W1-C21-retired path is back in ${"docs/architecture/firebase-exit-baseline.json"} -- the ` +
+    "baseline is a floor that may only shrink:\n" + reentered.map((p) => `  ${p}`).join("\n"));
 });
