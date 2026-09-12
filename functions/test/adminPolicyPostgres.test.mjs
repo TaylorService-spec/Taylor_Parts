@@ -166,11 +166,11 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SIX, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "6", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +190,24 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
+  // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.
+  down(1);
+  const companyColumnGone = await query(
+    "SELECT count(*)::int n FROM information_schema.columns WHERE table_schema = 'eos_ops'" +
+    " AND column_name = 'operating_company_key'",
+  );
+  assert.equal(companyColumnGone.rows[0].n, 0, "no eos_ops table still carries the company column");
+  const custodyTypeGone = await query(
+    `SELECT count(*)::int n FROM pg_type t JOIN pg_namespace ns ON ns.oid = t.typnamespace
+      WHERE ns.nspname = 'eos_ops' AND t.typname = 'ops_custody_location_type'`,
+  );
+  assert.equal(custodyTypeGone.rows[0].n, 0, "the custody location type is gone with it");
+  const untouchedByOhSeven = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(untouchedByOhSeven.rows[0].n, 21, "eos_policy is untouched by reversing an eos_ops migration");
 
   // 006 off: the P1A capability vocabulary rows go (13 new keys), the table and the five
   // pre-existing Cycle Count rows stay -- migration 006 is catalog-only, no new table.

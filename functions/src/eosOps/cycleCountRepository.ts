@@ -33,11 +33,26 @@
 // itself owns rather than trusting a caller to have checked it first.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import {
+  type OperatingCompanyKey,
+  type OpsLocationType,
+  requireOperatingCompanyKey,
+} from "./operatingCompanyCustody.js";
 
 const SCHEMA = "eos_ops";
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`;
 
-export type OpsLocationType = "WAREHOUSE" | "BIN" | "MOBILE";
+// The PHYSICAL movement vocabulary, re-exported so existing importers are unaffected. Serialized
+// custody uses `OpsCustodyLocationType` instead -- see operatingCompanyCustody.ts for why the two
+// are deliberately not the same enum.
+export {
+  type OperatingCompanyKey,
+  type OpsLocationType,
+  type OpsCustodyLocationType,
+  type CustodyLocationRef,
+  type SerializedCustodyRecord,
+} from "./operatingCompanyCustody.js";
+
 export type OpsTrackingMode = "NONE" | "SERIAL";
 export type CycleCountSheetStatus = "OPEN" | "CLOSED" | "CANCELLED";
 export type CycleCountLineStatus = "OPEN" | "COUNTED" | "RECONCILED" | "REJECTED" | "CANCELLED";
@@ -62,6 +77,11 @@ export class CycleCountSelfApprovalError extends CycleCountRepositoryError {
 export interface CycleCountSheetRecord {
   readonly id: string;
   readonly tenantId: string;
+  /**
+   * MANDATORY inventory authority. Never defaulted, never inferred from the sheet's Warehouse, and
+   * never manufactured -- the caller states the governed key or `createSheet` refuses.
+   */
+  readonly operatingCompanyKey: OperatingCompanyKey;
   readonly location: LocationRef;
   readonly status: CycleCountSheetStatus;
 }
@@ -91,16 +111,20 @@ export async function createSheet(
   pool: Pool,
   tenantId: string,
   actorId: string,
+  operatingCompanyKey: OperatingCompanyKey,
   location: LocationRef,
 ): Promise<CycleCountSheetRecord> {
+  // Refused HERE as well as by the NOT NULL column, so a caller that omitted it gets the reason
+  // rather than a constraint name -- and so no code path can quietly supply a placeholder.
+  const companyKey = requireOperatingCompanyKey(operatingCompanyKey);
   const id = newId("ccs");
   await pool.query(
     `INSERT INTO ${SCHEMA}.cycle_count_sheets
-       (id, tenant_id, location_type, location_id, status, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, 'OPEN', $5, $5)`,
-    [id, tenantId, location.type, location.id, actorId],
+       (id, tenant_id, operating_company_key, location_type, location_id, status, created_by, updated_by)
+     VALUES ($1, $2, $3, $4, $5, 'OPEN', $6, $6)`,
+    [id, tenantId, companyKey, location.type, location.id, actorId],
   );
-  return { id, tenantId, location, status: "OPEN" };
+  return { id, tenantId, operatingCompanyKey: companyKey, location, status: "OPEN" };
 }
 
 /** Open a line with its server-computed blind snapshot. The snapshot is never accepted from a caller past this point. */
@@ -213,13 +237,17 @@ export async function reconcileLine(
     if (decision === "APPROVE" && (line.variance ?? 0) !== 0) {
       if (!reason) throw new CycleCountRepositoryError("REASON_REQUIRED", "a reconciliation reason is required for a non-zero variance");
       ledgerMovementId = newId("mov");
-      const sheet = await selectSheetLocation(client, tenantId, line.sheetId);
+      // The sheet is the governed parent authority for the whole count -- both the location and the
+      // operating company come from it, in the SAME read. Nothing here infers a company from the
+      // warehouse the sheet happens to name.
+      const sheet = await selectSheetAuthority(client, tenantId, line.sheetId);
       await client.query(
         `INSERT INTO ${SCHEMA}.inventory_movements
-           (id, tenant_id, part_id, tracking_mode, location_type, location_id, movement_type,
-            quantity_delta, source_kind, source_id, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, 'ADJUSTED', $7, 'CYCLE_COUNT_LINE', $8, $9)`,
-        [ledgerMovementId, tenantId, line.partId, line.trackingMode, sheet.type, sheet.id, line.variance, lineId, actorId],
+           (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+            movement_type, quantity_delta, source_kind, source_id, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'ADJUSTED', $8, 'CYCLE_COUNT_LINE', $9, $10)`,
+        [ledgerMovementId, tenantId, sheet.operatingCompanyKey, line.partId, line.trackingMode,
+         sheet.location.type, sheet.location.id, line.variance, lineId, actorId],
       );
     }
 
@@ -276,12 +304,23 @@ async function selectFull(
   };
 }
 
-async function selectSheetLocation(db: PoolClient, tenantId: string, sheetId: string): Promise<LocationRef> {
-  const { rows } = await db.query<{ location_type: OpsLocationType; location_id: string }>(
-    `SELECT location_type, location_id FROM ${SCHEMA}.cycle_count_sheets WHERE tenant_id = $1 AND id = $2`,
+/** The sheet's governed facts a line's ledger evidence must inherit: WHERE, and WHOSE inventory. */
+async function selectSheetAuthority(
+  db: PoolClient,
+  tenantId: string,
+  sheetId: string,
+): Promise<{ location: LocationRef; operatingCompanyKey: OperatingCompanyKey }> {
+  const { rows } = await db.query<{
+    location_type: OpsLocationType; location_id: string; operating_company_key: string;
+  }>(
+    `SELECT location_type, location_id, operating_company_key
+       FROM ${SCHEMA}.cycle_count_sheets WHERE tenant_id = $1 AND id = $2`,
     [tenantId, sheetId],
   );
   const row = rows[0];
   if (!row) throw new CycleCountRepositoryError("SHEET_NOT_FOUND", "cycle count sheet not found");
-  return { type: row.location_type, id: row.location_id };
+  return {
+    location: { type: row.location_type, id: row.location_id },
+    operatingCompanyKey: row.operating_company_key,
+  };
 }
