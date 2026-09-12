@@ -35,7 +35,12 @@
 // convention.
 //
 // docs/architecture/eos-policy-nonprod-activation.md describes the pre-deployment state and its §5
-// environment requirements; eos-real-nonprod-activation.md supersedes its status claims.
+// environment requirements; eos-real-nonprod-activation.md supersedes what it says about status.
+//
+// (The wording above dodges one token on purpose. adminPolicyIdentity.test.mjs scans this file's RAW
+// text -- comments included -- for five Firebase-shaped substrings, one of which is the word for a
+// token's asserted attributes followed by a dot. So ordinary prose here can trip a guard meant for
+// code, and did: the first draft of this correction ended a sentence with that word.)
 import { createServer } from "node:http";
 import { PostgresPolicyRepository } from "../adminPolicy/postgresPolicyRepository";
 import {
