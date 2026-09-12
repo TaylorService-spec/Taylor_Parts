@@ -16,7 +16,7 @@
 // adds the layer above them -- Objects, Fields, CRED, and Workflows -- which the existing contracts
 // do not express.
 //
-// NOT a second field-metadata model. The repository already has one: 29 entities and 394 field
+// NOT a second field-metadata model. The repository already has one: 28 entities and 389 field
 // definitions in field-ops-app-vite/src/metadata/definitions, with its own type vocabulary. That
 // registry stays the DESIGN-TIME description of shipped fields. `ObjectFieldRecord` below is the
 // RUN-TIME governance record: it carries what a tenant owns and what an administrator can change,

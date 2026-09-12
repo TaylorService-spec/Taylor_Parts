@@ -1,5 +1,29 @@
 # W1-C27 — Scheduling / Dispatch Authority: census, registrations, and ND-25
 
+> ## ⚠️ ND-25 WAS WITHDRAWN BY OWNER RULING, 2026-09-12
+>
+> This handoff is the record of what the W1-C27 lane did, and is kept as written. One of its
+> conclusions has since been overruled and must not be acted on from this document.
+>
+> **OVERLAPPING BLOCKED-TIME FACTS ARE LEGITIMATE.** A technician may be covered simultaneously by
+> more than one real unavailability fact — a COMPANY_CLOSURE overlapping a recurring LUNCH, PTO
+> overlapping a closure, training inside a broader closure. **UNAVAILABLE TIME = UNION OF BLOCKED
+> INTERVALS** — not the sum of every block's duration, and not "no two blocks may overlap".
+>
+> ND-25's blanket refusal of overlapping blocked-time records (§7 below, and the Q3 answer in §5) is
+> **not** the canonical business rule. The arithmetic divergence it diagnosed was real; the fix is now
+> at the READERS, which both merge intervals before measuring. `createTechnicianBlockedTime` refuses
+> no overlap; it collapses only a provable EXACT replay (every field identical). The per-technician
+> `work_order_tech_locks` serialization is preserved.
+>
+> `functions/test/schedulingBlockedTimeExclusion.test.mjs` is now
+> `functions/test/schedulingBlockedTimeUnion.test.mjs`, and the function-scoped carve-out in
+> `schedulingPlacementAuthorityContract.test.mjs` is empty again — that command no longer raises a
+> refusal the placement policy owns.
+>
+> Current statement of the rule: `docs/design/governed-scheduling-domain.md` § ND-25.
+
+
 Lane: C27 (scheduling / dispatch authority). Branch `impl/w1-scheduling-authority`.
 Scope: `functions/src/scheduling/`, `technician_working_availability`, `technician_blocked_time`,
 dispatch assignment, and the technician-recommendation surface.
@@ -55,6 +79,7 @@ today, all checkable against real code:
   `deleteTechnicianBlockedTime` (`functions/src/scheduling/schedulingCallables.ts:56-58`).
 - client reachability — none; `firestore.rules:1773,1776` deny read and write.
 - exclusion rule — ND-25, `functions/src/scheduling/schedulingCommands.ts` (`createTechnicianBlockedTime`).
+  **WITHDRAWN 2026-09-12 — see the banner at the top of this file.**
 
 ---
 
@@ -73,7 +98,7 @@ today, all checkable against real code:
 | 9 | Client dependencies | The board cannot read either availability collection; its only path is the `readTechnicianAvailability` callable (`useTechnicianAvailability.js:9-11`). Client *write* dependency remains on `fieldops_technicians` (`firestore.rules:407,418`) and on `fieldops_jobs` via `jobActions.js:106-124`. |
 | 10 | Firebase dependencies | Firestore + seven `onCall` adapters (`schedulingCallables.ts:53-62`). This PR adds none. |
 | 11 | Migration source | None exists; none added. See §1. |
-| 12 | Reconciliation proof | `functions/test/schedulingBlockedTimeExclusion.test.mjs` — 15 tests. Existing: `schedulingAvailabilityModel.test.mjs` (30), `schedulingPlacementAuthorityContract.test.mjs` (11 after this PR), `workOrderAvailability.test.mjs` (7). Emulator suites (`test/e2e/schedulingCommandsEmulator.test.mjs`, `schedulingAvailabilityEmulator.test.mjs`) and the Rules suite `technicianAvailabilityRules.test.js` **cannot run in this environment** — see §6. |
+| 12 | Reconciliation proof | `functions/test/schedulingBlockedTimeExclusion.test.mjs` — 15 tests. *(Now `schedulingBlockedTimeUnion.test.mjs`, 26 tests, after the 2026-09-12 ruling.)* Existing: `schedulingAvailabilityModel.test.mjs` (30), `schedulingPlacementAuthorityContract.test.mjs` (11 after this PR), `workOrderAvailability.test.mjs` (7). Emulator suites (`test/e2e/schedulingCommandsEmulator.test.mjs`, `schedulingAvailabilityEmulator.test.mjs`) and the Rules suite `technicianAvailabilityRules.test.js` **cannot run in this environment** — see §6. |
 | 13 | Target Postgres authority | Not built. The eventual shape is named in §5 Q3 — a `tstzrange` exclusion constraint is the literal Postgres form of ND-25, which is why ND-25 was written as an exclusion rule rather than a reconciler. |
 | 14 | Governed command / read boundary | Commands `schedulingCommands.ts`; read projection `schedulingReadService.ts:61`; sanitized boundary `errorMapping.ts:55`. Authorization is `caller.role` only (`schedulingCommands.ts:87`, `schedulingReadService.ts:63`) — it does **not** read `callerContext.technicianId`. |
 | 15 | Admin→Objects integration | §2. |
@@ -246,7 +271,10 @@ different arithmetics, over the same records (`availabilityModel.ts:287-307` uni
 
 ---
 
-## 7. What was implemented — ND-25
+## 7. What was implemented — ND-25 **(WITHDRAWN 2026-09-12 — see the banner at the top)**
+
+What follows is the record of what this lane shipped. The blanket overlap refusal it describes has
+since been overruled; the serialization it describes is preserved.
 
 One change, at the write path, in `functions/src/scheduling/schedulingCommands.ts`:
 

@@ -2045,11 +2045,10 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/policyObjectRegistry.js"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 3,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

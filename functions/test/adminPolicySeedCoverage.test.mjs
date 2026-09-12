@@ -55,7 +55,7 @@ test("every source FIELD is SEEDED or EXCLUDED with a reason", () => {
   assert.equal(counted, ledger.source.fields, "the ledger covers every field");
 });
 
-test("the reconciliation adds up: 29 entities and 395 fields, all seeded", () => {
+test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () => {
   // The numbers the Owner asked to see reconciled, pinned so a change to either side is a
   // deliberate edit here rather than a drift nobody notices.
   //
@@ -64,16 +64,22 @@ test("the reconciliation adds up: 29 entities and 395 fields, all seeded", () =>
   // SECOND copy of the same census existed on the functions side, so the two disagreed the moment
   // the branches met. The delta is additive and there was exactly one of them; had several lanes
   // each declared a field, the deltas would SUM here rather than one lane's number winning.
-  assert.equal(ledger.source.entities, 29);
-  assert.equal(ledger.source.fields, 395);
+  //
+  // 29/395 -> 28/389: OWNER RULING, 2026-09-12. `stock_locations` IS RETIRED AS AN OPERATIONAL
+  // AUTHORITY, so `stockLocationEntity` and its six declared fields left ENTITY_REGISTRY. This is a
+  // REMOVAL rather than a declaration, and it is the reason the seeded object count drops too: six
+  // field-policy rows governing a collection with no Rules match block, no query and no writer are
+  // not coverage, they are an administrator being invited to configure access to nothing.
+  assert.equal(ledger.source.entities, 28);
+  assert.equal(ledger.source.fields, 389);
 
-  assert.equal(ledger.seeded.entities, 29, "every entity became an object");
-  assert.equal(ledger.seeded.fields, 395, "every field was seeded");
+  assert.equal(ledger.seeded.entities, 28, "every entity became an object");
+  assert.equal(ledger.seeded.fields, 389, "every field was seeded");
   assert.equal(ledger.excluded.entities, 0);
   assert.equal(ledger.excluded.fields, 0);
 
-  // 37 objects = 29 entity-backed + 8 the CRUD matrix names with no EntityDefinition behind them.
-  assert.equal(ledger.seeded.objects, 37);
+  // 36 objects = 28 entity-backed + 8 the CRUD matrix names with no EntityDefinition behind them.
+  assert.equal(ledger.seeded.objects, 36);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 8);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity,
@@ -127,17 +133,22 @@ test("every seeded field appears in the snapshot object it was attributed to", (
   }
 });
 
-test("the thirteen previously-missed entities are now seeded, by name", () => {
+test("the twelve previously-missed entities that remain are seeded, by name", () => {
   // Named individually rather than counted, so a regression that dropped one would say WHICH.
+  //
+  // THIRTEEN -> TWELVE. `stockLocation` was one of the thirteen entities this seed reached for the
+  // first time. The Owner ruled (2026-09-12) that `stock_locations` is RETIRED as an operational
+  // authority, so it left ENTITY_REGISTRY entirely and there is no object to seed. Removed from the
+  // list rather than excused from it: an entity that is not declared is not a coverage gap.
   const MISSED = [
     "equipmentModel", "manufacturer", "mobileLocation", "partAlias", "purchaseOrderVoid",
-    "reorderRequest", "salesAgreement", "salesTerritory", "stockLocation", "supplier",
+    "reorderRequest", "salesAgreement", "salesTerritory", "supplier",
     "supplierCatalogItem", "truck", "warehouse",
   ];
   const seeded = new Set(ledger.entities.filter((e) => e.status === "SEEDED").map((e) => e.entityId));
   for (const id of MISSED) assert.ok(seeded.has(id), `${id} must be seeded`);
 
-  // TWELVE registry-only, not thirteen: the Owner ruling gave Reorder Request its own CRUD matrix
+  // ELEVEN registry-only: the Owner ruling gave Reorder Request its own CRUD matrix
   // row, so it is now MATRIX_AND_REGISTRY like any other first-class object. Its arrival in the
   // matrix is the ruling landing, not coverage being lost -- it is still seeded, which the loop
   // above asserts by name.
@@ -163,10 +174,15 @@ test("an object no capability governs is SEEDED, with every verb ungrantable", (
 });
 
 test("the capability gaps that WERE fillable are filled", () => {
-  // warehouse.record.read, warehouse.stockLocation.read and the four salesAgreement.* ids exist in
-  // the catalog and the matrix claims none of them. Mapping them is a coverage fix, not a policy
-  // decision.
-  assert.deepEqual([...ledger.capabilityGapsFilled].sort(), ["salesAgreement", "stockLocation", "warehouse"]);
+  // warehouse.record.read and the four salesAgreement.* ids exist in the catalog and the matrix
+  // claims none of them. Mapping them is a coverage fix, not a policy decision.
+  //
+  // `stockLocation` is no longer among them. `warehouse.stockLocation.read` still exists in the
+  // capability catalog, labelled there as a RETIRED authority and evaluated by nothing -- there is
+  // no read path left to authorize. With the entity retired (Owner ruling, 2026-09-12) there is no
+  // governable object to map it onto, and mapping a retired capability onto a live object is how
+  // historical evidence becomes a live runtime dependency.
+  assert.deepEqual([...ledger.capabilityGapsFilled].sort(), ["salesAgreement", "warehouse"]);
 
   const warehouse = snapshot.objects.find((o) => o.key === "warehouse");
   assert.deepEqual(warehouse.capabilitiesByVerb.R, ["warehouse.record.read"]);

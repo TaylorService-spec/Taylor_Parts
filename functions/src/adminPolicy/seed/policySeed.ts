@@ -3,7 +3,7 @@
 // ════════════════════ WHAT IT SEEDS, AND FROM WHERE ════════════════════
 //
 //   Objects + Fields   policySeedSnapshot.json, GENERATED from the client metadata registry
-//                      (29 entities / 394 declared fields) UNIONED with the Object x CRED map. One
+//                      (28 entities / 389 declared fields) UNIONED with the Object x CRED map. One
 //                      authority, one generated artifact, one drift guard -- never a second
 //                      hand-maintained field model.
 //   Roles              COMPATIBILITY_ROLES + GOVERNED_BUSINESS_ROLES, imported directly because

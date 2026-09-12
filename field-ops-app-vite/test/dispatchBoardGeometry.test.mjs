@@ -226,6 +226,83 @@ describe("blocked time is drawn from the governed read", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// UNAVAILABLE TIME IS A UNION, NEVER A SUM (Owner ruling, 2026-09-12)
+//
+// OVERLAPPING BLOCKED-TIME FACTS ARE LEGITIMATE: a multi-day COMPANY_CLOSURE straddles the daily
+// LUNCH, PTO is taken inside a closure, training sits inside a broader closure. The store holds all
+// of them, so this lane must measure the UNION of the intervals they cover rather than the sum of
+// their durations -- which is what the server's blockedMinutesInWindow has always reported, and what
+// this function used to contradict on the same lane line.
+//
+// The cross-package agreement itself is proven in functions/test/schedulingBlockedTimeUnion.test.mjs,
+// which imports BOTH this module and the server's and runs them over the same inputs. These cases
+// hold the board half where it lives.
+describe("blocked minutes are the union of overlapping facts, not their sum", () => {
+  const viewOf = (...blockedTime) => ({ blockedTime });
+
+  it("a COMPANY_CLOSURE covering a LUNCH counts the closure once", () => {
+    const v = viewOf(
+      { blockId: "closure", kind: "COMPANY_CLOSURE", startMillis: localAt(8), endMillis: localAt(16) },
+      { blockId: "lunch", kind: "LUNCH", startMillis: localAt(12), endMillis: localAt(13) },
+    );
+    // Summing would have said 9h on an 8h closure.
+    assert.equal(blockedMinutesInBand(v, BAND), 8 * 60);
+  });
+
+  it("two identical ranges do not double the unavailable duration", () => {
+    const v = viewOf(
+      { blockId: "b1", kind: "PTO", startMillis: localAt(9), endMillis: localAt(16) },
+      { blockId: "b2", kind: "PTO", startMillis: localAt(9), endMillis: localAt(16) },
+    );
+    assert.equal(blockedMinutesInBand(v, BAND), 7 * 60, "seven hours, once -- not fourteen");
+  });
+
+  it("partially overlapping intervals report the union", () => {
+    const v = viewOf(
+      { blockId: "b1", kind: "PTO", startMillis: localAt(9), endMillis: localAt(11) },
+      { blockId: "b2", kind: "TRAINING", startMillis: localAt(10), endMillis: localAt(12) },
+    );
+    assert.equal(blockedMinutesInBand(v, BAND), 180, "09:00-12:00");
+  });
+
+  it("back-to-back intervals still total correctly", () => {
+    const v = viewOf(
+      { blockId: "b1", kind: "MEETING", startMillis: localAt(9), endMillis: localAt(12) },
+      { blockId: "b2", kind: "TRAINING", startMillis: localAt(12), endMillis: localAt(15) },
+    );
+    assert.equal(blockedMinutesInBand(v, BAND), 360, "six hours, no seam lost and none counted twice");
+  });
+
+  it("still clamps a straddling interval to the band", () => {
+    const v = viewOf(
+      { blockId: "overnight", kind: "COMPANY_CLOSURE", startMillis: localAt(0), endMillis: localAt(9) },
+      { blockId: "inside", kind: "PTO", startMillis: localAt(8), endMillis: localAt(10) },
+    );
+    // Union is 00:00-10:00; the band starts at 07:00, so three hours are drawn.
+    assert.equal(blockedMinutesInBand(v, BAND), 180);
+  });
+
+  it("EVERY overlapping record is still DRAWN -- only the arithmetic de-duplicates", () => {
+    // The union is a measurement, not a filter. A dispatcher must still see that the closure and the
+    // lunch are two separate facts, each with its own kind and its own delete button.
+    const v = viewOf(
+      { blockId: "closure", kind: "COMPANY_CLOSURE", startMillis: localAt(8), endMillis: localAt(16) },
+      { blockId: "lunch", kind: "LUNCH", startMillis: localAt(12), endMillis: localAt(13) },
+    );
+    const placed = placedBlockedTime(v, BAND);
+    assert.deepEqual(placed.map((p) => p.block.blockId).sort(), ["closure", "lunch"]);
+  });
+
+  it("a malformed record contributes nothing rather than throwing", () => {
+    const v = viewOf(
+      { blockId: "reversed", kind: "PTO", startMillis: localAt(14), endMillis: localAt(9) },
+      { blockId: "good", kind: "PTO", startMillis: localAt(9), endMillis: localAt(10) },
+    );
+    assert.equal(blockedMinutesInBand(v, BAND), 60);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 describe("the shift line", () => {
   const weekly = { [new Date(BAND.startMillis).getDay()]: [{ start: "07:00", end: "12:00" }, { start: "13:00", end: "16:00" }] };
 

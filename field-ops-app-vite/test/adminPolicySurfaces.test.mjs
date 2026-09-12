@@ -220,7 +220,7 @@ test("NOT CONFIGURED shows no control that implies policy can be saved", () => {
 // ============================ no request storm ============================
 
 test("fields load per expanded object, and nothing loads per cell", () => {
-  // 37 objects and 394 fields is small. It is not so small that a read per checkbox is acceptable.
+  // 36 objects and 389 fields is small. It is not so small that a read per checkbox is acceptable.
   const perCellReads = (SURFACES.match(/usePolicyStore\(/g) ?? []).length;
   assert.ok(perCellReads <= 6, `${perCellReads} usePolicyStore call sites -- one per surface, not per cell`);
   assert.equal(SURFACES.includes("callPolicyApi("), false, "no panel bypasses the hook's re-read");

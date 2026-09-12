@@ -110,7 +110,7 @@ function Refusal({ result }) {
 /**
  * The stored CRED for one Role: every Object, expandable into every Field.
  *
- * Fields load PER EXPANDED OBJECT. 37 objects and 394 fields is small, but fetching every field of
+ * Fields load PER EXPANDED OBJECT. 36 objects and 389 fields is small, but fetching every field of
  * every object to render a collapsed row would be a request storm for data nobody is looking at.
  */
 export function RolesPermissionsSurface() {

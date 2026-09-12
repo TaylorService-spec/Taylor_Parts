@@ -1,7 +1,7 @@
 // THE GOVERNABLE OBJECT REGISTRY — its proofs.
 //
 // This union exists because two lists each claimed to be "the business objects" and neither was
-// complete: the CRUD matrix had 24 rows, the metadata registry 29 entities, and THIRTEEN entities
+// complete: the CRUD matrix had 24 rows, the metadata registry 29 entities (28 today), and THIRTEEN entities
 // carrying 166 fields were in the matrix's blind spot — Supplier, Warehouse, Truck, Reorder
 // Request, Sales Agreement and eight more. They reached no Administration screen and no policy seed.
 //
@@ -35,15 +35,21 @@ test("the union covers every matrix row AND every registry entity", () => {
   }
 });
 
-test("the counts reconcile: 25 matrix rows + 29 entities, overlapping on 17, is 37 objects", () => {
-  // 24 rows and 16 overlaps before the Owner ruling gave Reorder Request its own row. The TOTAL is
-  // unchanged at 37 -- the object simply moved from registry-only to being in both lists, which is
-  // what "it now has data authority of its own" looks like in these counts.
+test("the counts reconcile: 25 matrix rows + 28 entities, overlapping on 17, is 36 objects", () => {
+  // 24 rows and 16 overlaps before the Owner ruling gave Reorder Request its own row; the total was
+  // unchanged at 37 then, because that object simply moved from registry-only to being in both
+  // lists, which is what "it now has data authority of its own" looks like in these counts.
+  //
+  // 37 -> 36 at the Wave-1 integration, and this one IS a removal. OWNER RULING, 2026-09-12:
+  // `stock_locations` IS RETIRED AS AN OPERATIONAL AUTHORITY, so `stockLocationEntity` left
+  // ENTITY_REGISTRY (29 -> 28) and with it the registry-only governable object it produced
+  // (12 -> 11 registry-only). Nothing else moved: it was in no matrix row, so `matrixOnly` and
+  // `fromMatrixAndRegistry` are untouched.
   const counts = governableObjectCounts();
-  assert.equal(counts.objects, 37);
+  assert.equal(counts.objects, 36);
   assert.equal(counts.fromMatrixAndRegistry, 17, "in both lists");
   assert.equal(counts.matrixOnly, 8, "a matrix row with no EntityDefinition");
-  assert.equal(counts.registryOnly, 12, "an entity the matrix never had a row for");
+  assert.equal(counts.registryOnly, 11, "an entity the matrix never had a row for");
   assert.equal(counts.fromMatrixAndRegistry + counts.matrixOnly, OBJECT_PERMISSIONS.length);
   assert.equal(counts.fromMatrixAndRegistry + counts.registryOnly, ENTITY_REGISTRY.length);
   // ════════════ THE FOURTH COPY OF THE FIELD CENSUS, NOW DERIVED ════════════
@@ -111,8 +117,13 @@ test("the gap table only names objects the matrix has no row for", () => {
   }
 });
 
-test("the three fillable gaps are filled, and they are the only ones", () => {
-  assert.deepEqual(Object.keys(MATRIX_GAP_CAPABILITIES).sort(), ["salesAgreement", "stockLocation", "warehouse"]);
+test("the two fillable gaps are filled, and they are the only ones", () => {
+  // WAS three. `stockLocation` left this table when the Owner ruled (2026-09-12) that
+  // `stock_locations` is retired as an operational authority: there is no governable object for the
+  // gap row to extend any more. `warehouse.stockLocation.read` still exists in the capability
+  // catalog, labelled there as a RETIRED authority -- keeping it mapped onto a live object here is
+  // precisely how historical evidence turns into a live runtime dependency.
+  assert.deepEqual(Object.keys(MATRIX_GAP_CAPABILITIES).sort(), ["salesAgreement", "warehouse"]);
   assert.deepEqual(governedVerbs(findGovernableObject("warehouse")), { C: false, R: true, E: false, D: false });
   assert.deepEqual(governedVerbs(findGovernableObject("salesAgreement")), { C: true, R: true, E: true, D: false });
 });

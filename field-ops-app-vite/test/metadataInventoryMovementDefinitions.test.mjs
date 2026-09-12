@@ -1,10 +1,17 @@
-// Inventory Transaction + Stock Location entities — A-ENTITY-INVENTORY-MOVEMENT-DEFINITIONS,
+// Inventory Transaction entity — A-ENTITY-INVENTORY-MOVEMENT-DEFINITIONS,
 // A-HELD-DEFINITIONS-IDENTITY.
 //
 // Pins the intended behavior for the LIVE `inventory_transactions` ledger (two disjoint
-// stored shapes, both live) and the `stock_locations` collection (seeded, dead-code-backed,
-// no live writer anywhere in this repository). Honest about what each collection actually is
-// rather than idealizing it — see both definition files' headers for the full grounding.
+// stored shapes, both live). Honest about what the collection actually is rather than
+// idealizing it — see the definition file's header for the full grounding.
+//
+// ════════════════════ STOCK LOCATION IS GONE FROM THIS SUITE ════════════════════
+//
+// This file also covered `stockLocationEntity` and `stockLocationIndexList`. OWNER RULING,
+// 2026-09-12: `stock_locations` IS RETIRED AS AN OPERATIONAL AUTHORITY, so the entity, its index
+// list and its definition file are removed and there is nothing left here to pin. The retirement
+// itself is guarded by test/stockLocationSurfaceRetired.test.jsx, which holds the surface DELETED
+// rather than emptied — including, now, the metadata registration.
 //
 // Inventory Transaction was originally held because an earlier version nominated the shared
 // `type` enum as nameField — the Owner's ruling (A-IDENTITY-MODES,
@@ -16,7 +23,6 @@ import assert from "node:assert/strict";
 import { validateEntityDefinition, validateEntityRegistry, findField, resolveIdentityMode } from "../src/metadata/entityDefinition.js";
 import { validateListViewDefinition, requiredIndexes } from "../src/metadata/listViewDefinition.js";
 import { inventoryTransactionEntity } from "../src/metadata/definitions/inventoryTransaction.js";
-import { stockLocationEntity, stockLocationIndexList } from "../src/metadata/definitions/stockLocation.js";
 import { partEntity } from "../src/metadata/definitions/part.js";
 import { warehouseEntity } from "../src/metadata/definitions/warehouse.js";
 import { equipmentModelEntity } from "../src/metadata/definitions/equipmentModel.js";
@@ -30,21 +36,13 @@ test("the Inventory Transaction entity is valid against the contract", () => {
   assert.deepEqual(validateEntityDefinition(inventoryTransactionEntity), []);
 });
 
-test("the Stock Location entity is valid against the contract", () => {
-  assert.deepEqual(validateEntityDefinition(stockLocationEntity), []);
-});
-
-test("the Stock Location index list is valid against the entity", () => {
-  assert.deepEqual(validateListViewDefinition(stockLocationIndexList, stockLocationEntity), []);
-});
-
 test("REFERENCE fields resolve against the real registered part/warehouse entities", () => {
   // equipmentModelEntity is included because part.js's own equipmentModelId field is now a real
   // REFERENCE to it (#1253, upgraded on main after this test was first authored) — omitting it
   // would report a false "references unknown entity" problem that belongs to part.js, not to
   // either entity this suite actually covers. manufacturerEntity closes the same chain one hop
   // further: equipmentModel.js's own manufacturerId is a REFERENCE to it.
-  const registry = [inventoryTransactionEntity, stockLocationEntity, partEntity, warehouseEntity, equipmentModelEntity, manufacturerEntity];
+  const registry = [inventoryTransactionEntity, partEntity, warehouseEntity, equipmentModelEntity, manufacturerEntity];
   assert.deepEqual(validateEntityRegistry(registry), []);
 });
 
@@ -60,28 +58,10 @@ test("Inventory Transaction identity is SYSTEM_ONLY, explicitly declared -- per 
   assert.ok(findField(inventoryTransactionEntity, "type"));
 });
 
-test("Stock Location identity is a nameField only (binCode) -- caller-supplied, not server-allocated, so never referenceField", () => {
-  assert.equal(stockLocationEntity.identity.nameField, "binCode");
-  assert.equal(stockLocationEntity.identity.referenceField, null);
-});
-
-// ---------------------------------------------------------------------------------------------
-// readVia / readCapability -- role-gated in Rules, a matching capability exists but is unconsumed
-// ---------------------------------------------------------------------------------------------
-
 test("Inventory Transaction read is CLIENT_DIRECT with no capability -- a matching catalog id exists but nothing evaluates it on this read path", () => {
   assert.equal(inventoryTransactionEntity.readVia, "CLIENT_DIRECT");
   assert.equal(inventoryTransactionEntity.readCapability, null);
 });
-
-test("Stock Location read is CLIENT_DIRECT with no capability -- same finding as Inventory Transaction", () => {
-  assert.equal(stockLocationEntity.readVia, "CLIENT_DIRECT");
-  assert.equal(stockLocationEntity.readCapability, null);
-});
-
-// ---------------------------------------------------------------------------------------------
-// Inventory Transaction -- the two disjoint stored shapes
-// ---------------------------------------------------------------------------------------------
 
 test("fields shared by both stored shapes are declared: transactionId, partId, type, quantity", () => {
   for (const id of ["transactionId", "partId", "type", "quantity"]) {
@@ -146,58 +126,4 @@ test("no index list view is authored for Inventory Transaction -- no field is so
   // and vice versa (recordedAt), so no single defaultSort could ever order every stored row.
   assert.equal(findField(inventoryTransactionEntity, "timestamp").sortable, false);
   assert.equal(findField(inventoryTransactionEntity, "recordedAt").sortable, false);
-});
-
-// ---------------------------------------------------------------------------------------------
-// Stock Location -- seeded, no live writer
-// ---------------------------------------------------------------------------------------------
-
-test("Stock Location fields match the seeded/TypeScript shape exactly: id, warehouseId, partId, binCode, quantity, updatedAt", () => {
-  for (const id of ["id", "warehouseId", "partId", "binCode", "quantity", "updatedAt"]) {
-    assert.ok(findField(stockLocationEntity, id), id);
-  }
-  assert.equal(stockLocationEntity.fields.length, 6);
-});
-
-test("warehouseId and partId are REFERENCE fields to the registered warehouse/part entities", () => {
-  const warehouseId = findField(stockLocationEntity, "warehouseId");
-  assert.equal(warehouseId.type, "REFERENCE");
-  assert.equal(warehouseId.referenceTo, "warehouse");
-  const partId = findField(stockLocationEntity, "partId");
-  assert.equal(partId.type, "REFERENCE");
-  assert.equal(partId.referenceTo, "part");
-});
-
-test("no createdAt/createdBy/updatedBy exist -- updatedAt is the only provenance-shaped field in this schema", () => {
-  for (const id of ["createdAt", "createdBy", "updatedBy"]) {
-    assert.equal(findField(stockLocationEntity, id), null, id);
-  }
-  assert.equal(findField(stockLocationEntity, "updatedAt").type, "TIMESTAMP");
-});
-
-test("no relationships are declared on Stock Location -- the Warehouse -> Stock Locations edge belongs on warehouse.js", () => {
-  assert.equal(stockLocationEntity.relationships.length, 0);
-});
-
-test("the Stock Location index declares exactly one filter (warehouseId), matching the one real (dead) query this collection was built to serve", () => {
-  assert.equal(stockLocationIndexList.filters.length, 1);
-  assert.equal(stockLocationIndexList.filters[0].fieldId, "warehouseId");
-});
-
-test("default sort is binCode ASC, catalog order -- matching part.index's own idiom", () => {
-  assert.deepEqual(
-    stockLocationIndexList.defaultSort.map((s) => [s.fieldId, s.direction]),
-    [["binCode", "ASC"]]
-  );
-  assert.equal(stockLocationIndexList.tiebreaker, "__name__");
-});
-
-test("the Stock Location index demands exactly one net-new composite index: warehouseId + binCode + __name__", () => {
-  const required = requiredIndexes(stockLocationIndexList, stockLocationEntity);
-  assert.equal(required.length, 1);
-  assert.deepEqual(
-    required[0].fields.map((f) => f.fieldPath),
-    ["warehouseId", "binCode", "__name__"]
-  );
-  assert.equal(required[0].collectionGroup, "stock_locations");
 });

@@ -60,12 +60,20 @@ test("displayableFields excludes the fields no surface can render", () => {
 });
 
 test("the declared field count is what the census measured", () => {
-  // 395 across 29 entities. Pinned so a change to the model is a deliberate edit to this number
+  // 389 across 28 entities. Pinned so a change to the model is a deliberate edit to this number
   // rather than something that drifts past the reconciliation document unnoticed.
   //
   // 394 -> 395: `payment.paymentId`, the receipt's canonical identity. Declared even though the
   // Firestore document stores no such field, because an object whose identity is not a declared
   // field cannot have its identity RULE stated anywhere -- see definitions/payment.js's header.
-  assert.equal(ENTITY_REGISTRY.length, 29);
-  assert.equal(totalDeclaredFields(), 395);
+  //
+  // 29/395 -> 28/389: OWNER RULING, 2026-09-12. `stock_locations` IS RETIRED AS AN OPERATIONAL
+  // AUTHORITY, so `stockLocationEntity` and its six declared fields (id, warehouseId, partId,
+  // binCode, quantity, updatedAt) left the registry along with the definition file. This is the one
+  // direction this number has ever moved by REMOVAL, which is why it is spelled out: the collection
+  // has no Rules match block in either governed copy, no query in functions/src or
+  // field-ops-app-vite/src, and no writer, so an Administration Objects row and six seeded policy
+  // rows governed access to something nothing can read.
+  assert.equal(ENTITY_REGISTRY.length, 28);
+  assert.equal(totalDeclaredFields(), 389);
 });

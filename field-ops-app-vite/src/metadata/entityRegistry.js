@@ -2,7 +2,7 @@
 //
 // ════════════════════ WHY THIS DID NOT EXIST BEFORE ════════════════════
 //
-// Twenty-nine definitions across thirty-five files, and every consumer imported the one it wanted
+// Twenty-eight definitions across thirty-five files, and every consumer imported the one it wanted
 // by name. That is fine when a page needs one entity. It stops being fine the moment something
 // needs to answer a question ABOUT the model rather than about a record -- "which objects exist",
 // "what fields does Customer have", "which fields are reportable" -- because each such consumer
@@ -44,13 +44,34 @@ import { reorderRequestEntity } from "./definitions/reorderRequest.js";
 import { salesAgreementEntity } from "./definitions/salesAgreement.js";
 import { salesOrderEntity } from "./definitions/salesOrder.js";
 import { salesTerritoryEntity } from "./definitions/salesTerritory.js";
-import { stockLocationEntity } from "./definitions/stockLocation.js";
 import { supplierEntity } from "./definitions/supplier.js";
 import { supplierCatalogItemEntity } from "./definitions/supplierCatalogItem.js";
 import { transferOrderEntity } from "./definitions/transferOrder.js";
 import { truckEntity } from "./definitions/truck.js";
 import { warehouseEntity } from "./definitions/warehouse.js";
 import { workOrderEntity } from "./definitions/workOrder.js";
+
+// ════════════════════ stockLocation IS NOT HERE, AND THAT IS THE RULING ════════════════════
+//
+// OWNER RULING, 2026-09-12: `stock_locations` IS RETIRED AS AN OPERATIONAL AUTHORITY. The ownership
+// backfill was applied and measured 5/5 RESOLVED post-backfill; the client operational read and the
+// old producers were removed (BIN-P2R, Decision #160 / ADR-014); Warehouse/BIN authority has its
+// PostgreSQL destination; the obsolete composite index was removed and STAYS removed.
+//
+// Registering it here made it an ACTIVE object surface: the Administration Objects screen offered
+// it, and the admin-policy seed created field-level policy rows for six fields of a collection no
+// principal can reach -- there is no `match /stock_locations/` block in either governed Rules copy,
+// no query anywhere in functions/src or field-ops-app-vite/src, and no writer. An administrator
+// could configure access to something nothing can read.
+//
+// The historical record is preserved where it belongs and is NOT a live runtime dependency:
+// the executed backfill evidence (functions/src/ownership/ownershipBackfillRules.ts's rule and its
+// AUTHORIZED_WRITE_CAPS entry, reachable only from scripts), the ownership matrix/derivation rows,
+// the retired-authority label on `warehouse.stockLocation.read` in the capability catalog, the
+// sb-evidence captures, and field-ops-app-vite/test/stockLocationSurfaceRetired.test.jsx, which
+// holds the surface deleted rather than emptied.
+//
+// Canonical end state: HISTORICAL / RETIRED, not ACTIVE OPERATIONAL LIST AUTHORITY.
 
 /** Every declared entity, alphabetically by id so the Objects screen has a stable order. */
 export const ENTITY_REGISTRY = Object.freeze([
@@ -76,7 +97,6 @@ export const ENTITY_REGISTRY = Object.freeze([
   salesAgreementEntity,
   salesOrderEntity,
   salesTerritoryEntity,
-  stockLocationEntity,
   supplierEntity,
   supplierCatalogItemEntity,
   transferOrderEntity,

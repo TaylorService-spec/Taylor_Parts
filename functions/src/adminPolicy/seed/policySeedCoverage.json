@@ -13,14 +13,14 @@
     "NON_GOVERNABLE_SYSTEM_FIELD"
   ],
   "source": {
-    "entities": 29,
-    "fields": 395
+    "entities": 28,
+    "fields": 389
   },
   "seeded": {
-    "objects": 37,
+    "objects": 36,
     "objectsWithoutAnEntity": 8,
-    "entities": 29,
-    "fields": 395
+    "entities": 28,
+    "fields": 389
   },
   "excluded": {
     "entities": 0,
@@ -36,7 +36,6 @@
   },
   "capabilityGapsFilled": [
     "salesAgreement",
-    "stockLocation",
     "warehouse"
   ],
   "entities": [
@@ -2559,59 +2558,6 @@
           "key": "createdBy",
           "label": "Created By",
           "dataType": "STRING",
-          "status": "SEEDED",
-          "exclusionReason": null
-        }
-      ]
-    },
-    {
-      "entityId": "stockLocation",
-      "label": "Stock Location",
-      "declaredFields": 6,
-      "status": "SEEDED",
-      "exclusionReason": null,
-      "objectKey": "stockLocation",
-      "objectSource": "REGISTRY_ONLY",
-      "fields": [
-        {
-          "key": "id",
-          "label": "Stock Location ID",
-          "dataType": "ID",
-          "status": "SEEDED",
-          "exclusionReason": null
-        },
-        {
-          "key": "warehouseId",
-          "label": "Warehouse",
-          "dataType": "REFERENCE",
-          "status": "SEEDED",
-          "exclusionReason": null
-        },
-        {
-          "key": "partId",
-          "label": "Part",
-          "dataType": "REFERENCE",
-          "status": "SEEDED",
-          "exclusionReason": null
-        },
-        {
-          "key": "binCode",
-          "label": "Bin",
-          "dataType": "STRING",
-          "status": "SEEDED",
-          "exclusionReason": null
-        },
-        {
-          "key": "quantity",
-          "label": "Quantity",
-          "dataType": "NUMBER",
-          "status": "SEEDED",
-          "exclusionReason": null
-        },
-        {
-          "key": "updatedAt",
-          "label": "Updated",
-          "dataType": "TIMESTAMP",
           "status": "SEEDED",
           "exclusionReason": null
         }

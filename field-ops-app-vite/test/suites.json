@@ -514,10 +514,6 @@
       "runner": "node --test"
     },
     {
-      "file": "test/metadataStockLocationDefinition.test.mjs",
-      "runner": "node --test"
-    },
-    {
       "file": "test/metadataSupplierDefinition.test.mjs",
       "runner": "node --test"
     },

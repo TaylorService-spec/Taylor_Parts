@@ -142,7 +142,7 @@ test("no screen builds Firestore query constraints for a list of its own", () =>
 // underneath that one — WHICH LIST SAYS AN OBJECT EXISTS — because when it was written only one
 // list plausibly claimed to.
 //
-// Two do. `metadata/entityRegistry.js` holds 29 entities and is what `access/policyObjectRegistry.js`
+// Two do. `metadata/entityRegistry.js` holds 28 entities and is what `access/policyObjectRegistry.js`
 // unions with the CRUD matrix to answer "which objects can policy govern?". `domain/reporting/
 // reportCatalog.js` holds 12 objects with a collection, a read capability and per-field operators —
 // the same three concepts — and `metadata/entityDefinition.js`'s own PROVENANCE header cites it as

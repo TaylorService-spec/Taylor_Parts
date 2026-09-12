@@ -143,11 +143,17 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(first.seed.alreadySeeded, false, "and seeds it");
 
   // The measured model, arriving in a real database.
-  assert.equal(first.seed.created.objects, 37, "37 canonical objects");
+  assert.equal(first.seed.created.objects, 36, "36 canonical objects");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
-  assert.equal(first.seed.created.fields, 395, "395 canonical fields");
+  //
+  // 37/395 -> 36/389: OWNER RULING, 2026-09-12. `stock_locations` IS RETIRED AS AN OPERATIONAL
+  // AUTHORITY, so `stockLocationEntity` and its six fields left ENTITY_REGISTRY and the seed no
+  // longer creates that object or its field-policy rows. This is what the retirement looks like
+  // where it matters most -- in a real database, a tenant is no longer given six policy rows
+  // governing a collection that has no Rules match block, no query and no writer.
+  assert.equal(first.seed.created.fields, 389, "389 canonical fields");
   assert.ok(first.seed.created.roles >= 43, "the governed business roles, and the compatibility ones");
   assert.equal(first.seed.created.workflows, 5, "5 versioned state machines");
   assert.equal(first.seed.created.workflowVersions, 5);
@@ -160,7 +166,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(second.seed.created.fields, 0);
 
   const objects = await r.listObjects(first.tenant.id);
-  assert.equal(objects.length, 37, "still 37 after the rerun, not 74");
+  assert.equal(objects.length, 36, "still 36 after the rerun, not 72");
 });
 
 test("the seeded configuration version is recorded on the tenant", { skip: SKIP }, async () => {
@@ -1036,7 +1042,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
 
     // Configuration survives.
     const objects = await restarted.listObjects(tenant.id);
-    assert.equal(objects.length, 37);
+    assert.equal(objects.length, 36);
 
     const read = await executeAdminOperation({ repo: restarted }, asAdmin("readObjectWithFields", {
       objectKey: "account",

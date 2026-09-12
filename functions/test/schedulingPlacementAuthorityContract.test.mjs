@@ -66,24 +66,23 @@ const POLICY_REFUSALS_SHARED_WITH_OTHER_COMMANDS = ["TECHNICIAN_NOT_FOUND"];
 /**
  * Exported commands that live in a placement path's FILE but are not themselves placement paths.
  *
- * The same carve-out the TECHNICIAN_NOT_FOUND note above makes, applied at function granularity
- * because ND-25 needed it at function granularity. `createTechnicianBlockedTime` raises
- * BLOCKED_TIME_CONFLICT — but it is refusing a new ABSENCE that overlaps an existing absence, not a
- * PLACEMENT that lands in one. There is no Work Order involved, no window proposed by a dispatcher
- * dragging a job, and nothing of ND-20's collision table consulted: it reuses the one shared
- * `findBlockedTimeConflict` and the one shared blocked-time query, which is the opposite of keeping
- * a private copy of the policy.
+ * EMPTY, AND THAT IS A STRENGTHENING. This list held `createTechnicianBlockedTime` for exactly one
+ * reason: under ND-25 that command raised BLOCKED_TIME_CONFLICT itself, to refuse a new ABSENCE
+ * overlapping an existing one. The Owner ruling of 2026-09-12 withdrew ND-25 — overlapping
+ * blocked-time facts are legitimate — so the command no longer constructs any policy-owned refusal,
+ * and the carve-out that let it off the scan is no longer needed.
  *
- * Scoped by NAME rather than by adding the code to an exclusion list, deliberately. Excluding
- * BLOCKED_TIME_CONFLICT outright would stop this suite guarding the thing it exists to guard — a
- * placement path growing its own blocked-time refusal is precisely ND-24 returning. Removing one
- * named non-placement function keeps the guard at full strength everywhere it means anything, and
- * the cost of a new availability command is one line here.
+ * With the list empty, the BLOCKED_TIME_CONFLICT scan below runs over the WHOLE of
+ * schedulingCommands.ts again. A placement path growing its own blocked-time refusal is precisely
+ * ND-24 returning, and it is once more caught anywhere in the file rather than everywhere except one
+ * exempt function.
  *
- * `schedulingBlockedTimeExclusion.test.mjs` holds the other half: that the carved-out command really
- * does reach the shared overlap test rather than reimplementing one.
+ * The mechanism is kept (rather than deleted with its last entry) because the next genuinely
+ * non-placement command in a placement file will need it, and re-deriving it under time pressure is
+ * how carve-outs get made too wide. `schedulingBlockedTimeUnion.test.mjs` holds the other half of
+ * this file's claim: what `createTechnicianBlockedTime` refuses now, and what it no longer does.
  */
-const NON_PLACEMENT_COMMANDS = ["createTechnicianBlockedTime"];
+const NON_PLACEMENT_COMMANDS = [];
 
 /** `source` with the non-placement command bodies removed, so a scan sees only placement code. */
 function placementSurface(source) {
@@ -151,11 +150,11 @@ test("no placement path constructs a refusal the policy owns", () => {
   }
 });
 
-test("the non-placement carve-out still names a function that exists", () => {
+test("the non-placement carve-out excuses nothing it cannot account for", () => {
   // A carve-out that silently matches nothing is worse than no carve-out: it would keep this suite
   // green while the function it excuses was renamed, moved, or deleted, and nobody would learn that
-  // the exclusion had stopped meaning anything. Renaming createTechnicianBlockedTime must therefore
-  // turn this red and force a decision, not slide past.
+  // the exclusion had stopped meaning anything. So every name listed must exist, and listing a name
+  // must actually change what is scanned.
   const source = read("scheduling/schedulingCommands.ts");
   for (const name of NON_PLACEMENT_COMMANDS) {
     assert.ok(
@@ -163,7 +162,28 @@ test("the non-placement carve-out still names a function that exists", () => {
       `NON_PLACEMENT_COMMANDS names ${name}, which scheduling/schedulingCommands.ts no longer exports`,
     );
   }
+
+  if (NON_PLACEMENT_COMMANDS.length === 0) {
+    // The state since the Owner ruling of 2026-09-12 withdrew ND-25: nothing is excused, so the
+    // refusal scan runs over the WHOLE file. Asserted rather than merely allowed, because "the list
+    // happens to be empty" and "the scan really does cover everything" are different facts, and only
+    // the second one is the guarantee this suite sells.
+    assert.equal(placementSurface(source), source, "an empty carve-out must remove nothing");
+    return;
+  }
   assert.notEqual(placementSurface(source), source, "the carve-out must actually remove something");
+});
+
+test("createTechnicianBlockedTime is inside the scanned surface, not excused from it", () => {
+  // The specific consequence of the empty carve-out, pinned by name so re-adding the exemption is a
+  // deliberate edit to a red test. Under ND-25 this command raised BLOCKED_TIME_CONFLICT and had to
+  // be excused; the ruling withdrew that refusal, so it is ordinary scanned code again.
+  const source = read("scheduling/schedulingCommands.ts");
+  assert.ok(source.includes("export async function createTechnicianBlockedTime("), "the command still exists");
+  assert.ok(
+    placementSurface(source).includes("export async function createTechnicianBlockedTime("),
+    "createTechnicianBlockedTime must be scanned like the rest of the file",
+  );
 });
 
 test("the policy owns every refusal ND-20 assigns to a placement", () => {

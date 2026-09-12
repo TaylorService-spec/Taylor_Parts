@@ -212,6 +212,105 @@ await check("blocked time: an absence is recorded even when work is ALREADY sche
   assert.equal((await blockedTimeDocs(technicianId)).length, 1);
 });
 
+await check("blocked time: OVERLAPPING ABSENCES ARE LEGITIMATE, and the capacity answer is their UNION", async () => {
+  // Owner ruling, 2026-09-12. A technician may be covered simultaneously by more than one real
+  // unavailability fact -- here the case #1549 shipped: a multi-day COMPANY_CLOSURE straddling the
+  // daily recurring LUNCH. ND-25 refused the second record; that blanket refusal is withdrawn,
+  // because refusing it destroyed a fact the business holds and made the outcome depend on nothing
+  // but data-entry order.
+  //
+  // UNAVAILABLE TIME = UNION OF BLOCKED INTERVALS. Both records are stored, both are returned to the
+  // board, and the capacity figure counts the covered minutes ONCE.
+  const dispatcherUid = await seedDispatcher();
+  const { technicianId } = await seedTechnicianWithRecord();
+  const day = dayAhead(36);
+
+  await setTechnicianWorkingAvailabilityCallable.run(
+    callReq(dispatcherUid, { technicianId, timeZone: ZONE, weeklyHours: WEEKDAY_HOURS }),
+  );
+
+  // The recurring lunch, recorded first.
+  const { blockId: lunchId } = await createTechnicianBlockedTimeCallable.run(
+    callReq(dispatcherUid, { technicianId, kind: "LUNCH", startMillis: phoenix(day, 12), endMillis: phoenix(day, 13) }),
+  );
+  // A multi-day closure straddling it, recorded second. THIS is what ND-25 refused.
+  const { blockId: closureId } = await createTechnicianBlockedTimeCallable.run(
+    callReq(dispatcherUid, {
+      technicianId,
+      kind: "COMPANY_CLOSURE",
+      startMillis: day - 2 * DAY,
+      endMillis: phoenix(day, 16),
+    }),
+  );
+  assert.notEqual(closureId, lunchId, "two distinct facts, two distinct records");
+  assert.equal((await blockedTimeDocs(technicianId)).length, 2, "both absences are stored");
+
+  const view = (await readTechnicianAvailabilityCallable.run(
+    callReq(dispatcherUid, { technicianIds: [technicianId], startMillis: phoenix(day, 0), endMillis: phoenix(day, 24) }),
+  )).technicians[0];
+
+  assert.deepEqual(
+    view.blockedTime.map((b) => b.kind).sort(),
+    ["COMPANY_CLOSURE", "LUNCH"],
+    "the board is shown BOTH facts -- the union is a measurement, not a filter",
+  );
+  // Working hours are 07:00-16:00 (nine hours) and the closure covers all of them. The lunch adds
+  // nothing: the union is nine hours, not nine plus one.
+  assert.equal(view.availableMinutes, 0, "the closure takes the whole working day, ONCE");
+
+  // A second technician, with the closure only, must report the SAME availability -- which is the
+  // union claim stated as a comparison rather than as a constant.
+  const { technicianId: other } = await seedTechnicianWithRecord();
+  await setTechnicianWorkingAvailabilityCallable.run(
+    callReq(dispatcherUid, { technicianId: other, timeZone: ZONE, weeklyHours: WEEKDAY_HOURS }),
+  );
+  await createTechnicianBlockedTimeCallable.run(
+    callReq(dispatcherUid, { technicianId: other, kind: "COMPANY_CLOSURE", startMillis: day - 2 * DAY, endMillis: phoenix(day, 16) }),
+  );
+  const otherView = (await readTechnicianAvailabilityCallable.run(
+    callReq(dispatcherUid, { technicianIds: [other], startMillis: phoenix(day, 0), endMillis: phoenix(day, 24) }),
+  )).technicians[0];
+  assert.equal(otherView.availableMinutes, view.availableMinutes, "the overlapping LUNCH changed no minute");
+});
+
+await check("blocked time: an EXACT replay is idempotent -- and only an exact replay", async () => {
+  // The one thing still collapsed at the write path, and the ruling's limit on it: identity must be
+  // objectively provable. Same technician, same kind, same endpoints, same note is the SAME
+  // assertion, so a double-submitted form yields one record and one audit event. Anything else is a
+  // different fact and is recorded, however much it overlaps.
+  const dispatcherUid = await seedDispatcher();
+  const { technicianId } = await seedTechnicianWithRecord();
+  const day = dayAhead(37);
+  const start = phoenix(day, 9);
+
+  const first = await createTechnicianBlockedTimeCallable.run(
+    callReq(dispatcherUid, { technicianId, kind: "PTO", startMillis: start, endMillis: start + 4 * HOUR, note: "annual leave" }),
+  );
+  const replay = await createTechnicianBlockedTimeCallable.run(
+    callReq(dispatcherUid, { technicianId, kind: "PTO", startMillis: start, endMillis: start + 4 * HOUR, note: "annual leave" }),
+  );
+  assert.equal(replay.blockId, first.blockId, "the replay returns the record that already says this");
+  assert.equal((await blockedTimeDocs(technicianId)).length, 1, "one fact, one document");
+  assert.equal(
+    (await auditEvents({ action: "createTechnicianBlockedTime", targetId: technicianId })).length,
+    1,
+    "and the history says it happened once",
+  );
+
+  // Now every way of being a DIFFERENT fact, each of which overlaps the first and is still recorded.
+  const different = [
+    { kind: "TRAINING", startMillis: start, endMillis: start + 4 * HOUR, note: "annual leave" },
+    { kind: "PTO", startMillis: start + HOUR, endMillis: start + 4 * HOUR, note: "annual leave" },
+    { kind: "PTO", startMillis: start, endMillis: start + 5 * HOUR, note: "annual leave" },
+    { kind: "PTO", startMillis: start, endMillis: start + 4 * HOUR, note: "half day, corrected" },
+  ];
+  for (const input of different) {
+    const { blockId } = await createTechnicianBlockedTimeCallable.run(callReq(dispatcherUid, { technicianId, ...input }));
+    assert.notEqual(blockId, first.blockId, `a different ${JSON.stringify(input)} must be its own record`);
+  }
+  assert.equal((await blockedTimeDocs(technicianId)).length, 1 + different.length, "every distinct fact is kept");
+});
+
 await check("blocked time: an ungoverned kind, a reversed window and an unknown technician are REFUSED with nothing written", async () => {
   const dispatcherUid = await seedDispatcher();
   const { technicianId } = await seedTechnicianWithRecord();
