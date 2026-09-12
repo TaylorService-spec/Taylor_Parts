@@ -11,6 +11,12 @@
 // also trip on the word "firebase" in a comment (see field-ops-app-vite/src/domain/equipmentWrites.js,
 // which discusses firebase in prose but imports nothing).
 //
+// Those four classes are fenced at each business-runtime ROOT: field-ops-app-vite/src (the Vite
+// frontend), functions/src (the Cloud Functions deployment), and integrations (the standalone
+// Node ESM intake service). A category's `root` is a per-file filter -- a file is only ever
+// tested against the categories that own it -- so the roots stay independent and adding one
+// cannot make the others' categories fire. See categoryOwnsPath.
+//
 // ============================ WHAT THIS DOES NOT FENCE ============================
 //
 // firebase/auth, firebase-admin/auth, and firebase-admin/app are IDENTITY_ONLY: sign-in and UID
@@ -46,11 +52,19 @@ import { join, relative, sep } from "node:path";
 const REPO_ROOT = process.cwd();
 const BASELINE_RELATIVE_PATH = "docs/architecture/firebase-exit-baseline.json";
 
-const SCAN_EXTENSIONS = [".js", ".jsx", ".ts", ".tsx"];
+/**
+ * Every hand-authored source extension that can carry an import specifier under a scan root.
+ * ".mjs" is here because integrations/ is written entirely in ESM .mjs: without it the
+ * integration boundary was walked but every file in it was invisible to the classifier, which
+ * is a bypass, not a filter. The two original roots contain exactly one .mjs file
+ * (field-ops-app-vite/src/domain/inventoryControlLifecycle.cases.mjs) and it imports no
+ * Firebase module, so widening the extension set does not grow the baseline.
+ */
+export const SCAN_EXTENSIONS = [".js", ".jsx", ".mjs", ".ts", ".tsx"];
 /**
  * Only vendored/VCS directories that can never legitimately contain hand-authored business
- * source under a scan root (field-ops-app-vite/src, functions/src). Do NOT add build-output
- * names like "lib", "dist", "build", "coverage", or ".next" here: those collide by basename
+ * source under a scan root (field-ops-app-vite/src, functions/src, integrations). Do NOT add
+ * build-output names like "lib", "dist", "build", "coverage", or ".next" here: those collide by basename
  * with real source subdirectories inside the scan roots -- e.g. field-ops-app-vite/src/lib/
  * (firebaseSafe.js) and functions/src/coverage/ (coverageCallables.ts) both exist and both
  * import forbidden business-runtime dependencies. A basename-only skip silently blinds the
@@ -81,35 +95,35 @@ export function extractImportSpecifiers(text) {
 }
 
 /**
- * The four business-runtime dependency classes, keyed exactly as they are keyed in
- * docs/architecture/firebase-exit-baseline.json (`baseline.<root>.<key>`), so a category's
- * baseline set can be looked up directly by splitting `key` on ".".
+ * The four business-runtime dependency classes, named exactly as they are named in
+ * docs/architecture/firebase-exit-baseline.json (`baseline.<section>.<name>`).
+ *
+ * These are the four classes docs/architecture/firebase-exit-manifest.json requires to trend to
+ * zero. They are defined ONCE here and crossed with every business-runtime root below, because a
+ * dependency class does not stop being a Firebase business-runtime dependency because of which
+ * directory it appears in.
  */
-export const FORBIDDEN_CATEGORIES = [
+const BUSINESS_RUNTIME_CLASSES = [
   {
-    key: "frontend.firestore_client",
-    root: "field-ops-app-vite/src",
-    label: "firebase/firestore (frontend Firestore business client)",
+    name: "firestore_client",
+    label: "firebase/firestore (Firestore business client)",
     matchesSpecifier: (specifier) =>
       specifier === "firebase/firestore" || specifier.startsWith("firebase/firestore/"),
   },
   {
-    key: "frontend.firebase_functions_client",
-    root: "field-ops-app-vite/src",
-    label: "firebase/functions (frontend Firebase Functions business transport)",
+    name: "firebase_functions_client",
+    label: "firebase/functions (Firebase Functions business transport)",
     matchesSpecifier: (specifier) =>
       specifier === "firebase/functions" || specifier.startsWith("firebase/functions/"),
   },
   {
-    key: "server.firebase_admin_firestore",
-    root: "functions/src",
-    label: "firebase-admin/firestore (server Firestore business persistence)",
+    name: "firebase_admin_firestore",
+    label: "firebase-admin/firestore (Firestore business persistence)",
     matchesSpecifier: (specifier) =>
       specifier === "firebase-admin/firestore" || specifier.startsWith("firebase-admin/firestore/"),
   },
   {
-    key: "server.firebase_functions_server",
-    root: "functions/src",
+    name: "firebase_functions_server",
     label: "firebase-functions business runtime (v1/v2 triggers and callables)",
     // Deliberately excludes "firebase-functions/logger" and "firebase-functions/params":
     // those are not business transport or business persistence.
@@ -117,10 +131,78 @@ export const FORBIDDEN_CATEGORIES = [
   },
 ];
 
-export function classifyFile(text) {
+/**
+ * Every root that carries EOS business runtime, and the baseline section each is keyed under.
+ *
+ * `integrations` is the third root and the reason this file changed: the ChatGPT/MCP intake
+ * service is a standalone Node ESM process -- neither the Vite frontend nor the Cloud Functions
+ * deployment -- written entirely in .mjs. It was scanned by NO category and matched by NO
+ * extension, so a module there could have imported "firebase-admin/firestore" and the ratchet
+ * would never have seen it. The Firebase exit guarantee has to hold at every business-runtime
+ * boundary, not only at the two that happen to use .ts/.jsx.
+ *
+ * All four classes are fenced at all three roots rather than only the pairs observed today.
+ * Before this change `root` was not a per-file filter (see categoryOwnsPath), so every class was
+ * in fact evaluated against every file of every root; restricting a class to the root where it
+ * currently has entries would REMOVE coverage -- functions/src importing the web SDK
+ * "firebase/firestore", or field-ops-app-vite/src importing "firebase-admin/firestore", were
+ * both caught before and must stay caught. Crossing all classes with all roots keeps the new
+ * behaviour a strict superset of the old, and the eight cross sets that have no entries today
+ * are a ratchet pinned at zero: any such import at all is an immediate violation.
+ */
+const SCAN_ROOTS = [
+  { section: "frontend", root: "field-ops-app-vite/src" },
+  { section: "server", root: "functions/src" },
+  { section: "integrations", root: "integrations" },
+];
+
+/**
+ * The business-runtime classes crossed with the business-runtime roots. `key` is
+ * `<section>.<name>`, keyed exactly as docs/architecture/firebase-exit-baseline.json keys it
+ * (`baseline.<section>.<name>`), so a category's baseline set can be looked up directly by
+ * splitting `key` on "." -- a section or name absent from the committed baseline reads as the
+ * empty set, which is what the eight currently-empty cross categories rely on.
+ */
+export const FORBIDDEN_CATEGORIES = SCAN_ROOTS.flatMap(({ section, root }) =>
+  BUSINESS_RUNTIME_CLASSES.map((businessClass) => ({
+    key: `${section}.${businessClass.name}`,
+    root,
+    label: `${businessClass.label} in ${root}`,
+    matchesSpecifier: businessClass.matchesSpecifier,
+  })));
+
+/**
+ * Does `category` own `relativePath`? A category's `root` is a PER-FILE FILTER, not merely a
+ * hint about which directories to walk. It used to be the latter: scanTree collected the set of
+ * roots, walked them, and then evaluated EVERY category against EVERY file from EVERY root. That
+ * is harmless only while all categories happen to share the same two roots -- the moment a third
+ * root is added, the frontend categories start classifying server files and the integration
+ * categories start classifying field-ops-app-vite/src/types/workOrder.ts as an
+ * "integration-boundary Firestore client" (239 such false violations, measured). Ownership is
+ * path-prefix containment, so nested roots are both owners of a file in the inner one.
+ */
+export function categoryOwnsPath(category, relativePath) {
+  return relativePath === category.root || relativePath.startsWith(`${category.root}/`);
+}
+
+/** The categories whose root actually contains `relativePath` -- the only ones it may be
+ * classified against. */
+export function categoriesForPath(relativePath) {
+  return FORBIDDEN_CATEGORIES.filter((category) => categoryOwnsPath(category, relativePath));
+}
+
+/**
+ * Classify one file's text. When `relativePath` is supplied the file is tested only against the
+ * categories that OWN it (see categoryOwnsPath); scanTree always supplies it. Omitting it falls
+ * back to testing every category, which is the fail-CLOSED direction -- an unowned caller gets
+ * more findings, never fewer -- and is what the pure signature-matching unit tests use.
+ */
+export function classifyFile(text, relativePath) {
   const specifiers = extractImportSpecifiers(text);
+  const applicable =
+    relativePath === undefined ? FORBIDDEN_CATEGORIES : categoriesForPath(relativePath);
   const categories = new Set();
-  for (const category of FORBIDDEN_CATEGORIES) {
+  for (const category of applicable) {
     if (specifiers.some((specifier) => category.matchesSpecifier(specifier))) {
       categories.add(category.key);
     }
@@ -150,20 +232,30 @@ function walk(directory, found = []) {
   return found;
 }
 
-/** Scan the live-runtime roots and return { categoryKey => Set<relativePath> }. */
+/**
+ * Scan the live-runtime roots and return { categoryKey => Set<relativePath> }.
+ *
+ * Each file is classified ONLY against the categories whose root contains it, so adding a root
+ * widens coverage of that root alone and never leaks its categories onto the other roots (nor
+ * theirs onto it). Files are deduplicated by relative path so overlapping or repeated roots
+ * cannot double-visit one file.
+ */
 export function scanTree(absoluteRoot = REPO_ROOT) {
   const results = new Map(FORBIDDEN_CATEGORIES.map((category) => [category.key, new Set()]));
   const scanRoots = new Set(FORBIDDEN_CATEGORIES.map((category) => category.root));
+  const visited = new Set();
   for (const scanRoot of scanRoots) {
     for (const file of walk(join(absoluteRoot, scanRoot))) {
       const relativePath = relative(absoluteRoot, file).split(sep).join("/");
+      if (visited.has(relativePath)) continue;
+      visited.add(relativePath);
       let text;
       try {
         text = readFileSync(file, "utf8");
       } catch {
         continue;
       }
-      for (const key of classifyFile(text)) {
+      for (const key of classifyFile(text, relativePath)) {
         results.get(key).add(relativePath);
       }
     }
