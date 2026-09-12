@@ -56,6 +56,14 @@
 //   (b) narrow these three tools to eos-platform-sandbox by an explicit per-tool allowlist;
 //   (c) require a per-project acknowledgement flag, as executionTarget.mjs does with
 //       --apply-live-sandbox / --apply-live-certification.
+//
+// RECOMMENDED FOLLOW-UP, deliberately NOT done in this lane: refuse the customer production project
+// by NAME as well as by role, the way certificationWorld/executionTarget.mjs does. The allowlist
+// above is derived entirely from `role`, so it trusts one field in one file; a mislabelled entry (a
+// copy-paste into the wrong environment, a bad merge) would defeat it and nothing else would notice.
+// A second, registry-independent refusal would survive that. It was prototyped here and reverted
+// because it changes the refusal MESSAGE for taylor-parts and so rewrites ~12 existing assertions
+// across four suites -- worth doing, but as its own reviewable change, not folded into a hotfix.
 // ===============================================================================================
 //
 // NO I/O BEYOND ONE LOCAL JSON READ. config/environments.json is read with node:fs. Nothing here
