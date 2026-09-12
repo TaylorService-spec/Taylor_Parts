@@ -24,12 +24,13 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 // functions/src/access/permissionCatalog.ts registers `inventory.stock.receive`
 // ("Receive inbound stock into an inventory location against a reorder purchase order"), and
 // functions/src/access/compatibilityRoles.ts's COMPATIBILITY_BASE_PERMISSIONS grants it DIRECTLY to
-// admin + dispatcher (Owner-ratified, Codex round 1) — Owner inherits by composition, so the effective
-// holder set is {admin, dispatcher, owner}. This CONTRADICTS functions/src/index.ts's own export
-// comment above `receiveInventoryStock`/`listReceivingLocationOptions`
-// ("REGISTERED BUT UNGRANTED -- so every real user is denied until a separate grant gate") — that
-// comment describes an earlier state the grant in compatibilityRoles.ts has since superseded; recorded
-// here as a documentation-drift finding, not silently reconciled. Separately, and independently of the
+// admin + dispatcher (Owner-ratified, Codex round 1) — Owner inherits by composition, and
+// governedBusinessRoles.ts adds inventoryReceivingClerk, so the effective holder set is
+// {admin, dispatcher, owner, inventoryReceivingClerk} (re-measured 2026-09-12). This USED TO
+// CONTRADICT functions/src/index.ts's own export comment above `receiveInventoryStock` /
+// `listReceivingLocationOptions`, which still read "REGISTERED BUT UNGRANTED -- so every real user is
+// denied until a separate grant gate"; that drift was recorded here rather than silently reconciled,
+// and index.ts has since been corrected to match this paragraph. Separately, and independently of the
 // grant, "export is not deployment" (index.ts's own words) — the callable is not deployed to production.
 // None of this changes `readCapability`: `inventory.stock.receive` authorizes CREATING a receiving
 // order, never reading one back, so `readCapability` stays `null` rather than citing a capability that

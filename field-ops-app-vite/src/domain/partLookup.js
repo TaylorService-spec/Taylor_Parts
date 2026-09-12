@@ -140,9 +140,15 @@ export const READ_STATUS = Object.freeze({
 });
 
 /**
- * Capabilities that would have to be ACTIVATED before the corresponding rows could carry a value.
- * Named here so the reason is one fact in one place, and so a test can assert we did not quietly
- * start rendering a row whose capability is still inert.
+ * Capabilities that would have to be ACTIVATED IN THIS ENVIRONMENT before the corresponding rows
+ * could carry a value. Named here so the reason is one fact in one place, and so a test can assert
+ * we did not quietly start rendering a row whose capability is not resolvable.
+ *
+ * PER-ENVIRONMENT, not universal -- corrected 2026-09-12. Both ids are registered `active: false`,
+ * which is the production posture, and BOTH are activated in platform-sandbox
+ * (config/environments.json); `inventory.serializedAsset.read` is held by thirteen governed
+ * business Roles and `inventory.location.display.read` by inventoryLookupReader. So "inert" is true
+ * of production and false of sandbox, and the rows behave accordingly.
  *
  * NOT a grant list and NOT a request: activation is an Owner decision recorded in
  * docs/product/inventory-scanner-program-state.md.

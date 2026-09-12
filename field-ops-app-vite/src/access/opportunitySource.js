@@ -34,7 +34,10 @@ export function inertOpportunitySource() {
 // the minimal projection (accountId, no Customer PII, no raw UID), so this maps the four honest states the UI
 // must tell apart:
 //   • success payload {status:"ready"|"degraded", opportunities} → that status (empty list stays "ready");
-//   • a permission-denied error → "denied" (authorized principal lacks the ungranted opportunity.read);
+//   • a permission-denied error → "denied" (the authenticated principal does not resolve
+//     `opportunity.read` here -- either their Roles do not carry it or this environment does not
+//     activate it; corrected 2026-09-12, this used to call the id "ungranted", which is false:
+//     ten governed business Roles hold it and platform-sandbox activates it);
 //   • any other error → "unavailable" (read failed / not connected — NOT "zero opportunities").
 // accountNameById is intentionally empty: names resolve separately from the canonical Account authority, not
 // by copying Customer data into the Opportunity projection.

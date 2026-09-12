@@ -29,7 +29,9 @@ import { makeColumn, makeFilter, makeListViewDefinition, makeSavedView, makeSort
 // capability that touches this collection, `inventory.location.display.read`
 // (permissionCatalog.ts), is a DIFFERENT, narrower thing: a trusted bounded-point-read PROJECTION
 // service (functions/src/inventoryLocation/locationDisplayReadService.ts) resolving { locationId,
-// type, label } for a caller-supplied set of ids, registered but UNGRANTED (active:false) — it
+// type, label } for a caller-supplied set of ids, registered `active: false` (the production
+// posture; corrected 2026-09-12, this used to say "UNGRANTED" — inventoryLookupReader holds it and
+// platform-sandbox activates it) — it
 // does not gate this collection's own Rules-level read, and citing it as this entity's
 // readCapability would misattribute a different service's gate to this one. readCapability is
 // therefore null, the same finding truck.js and warehouse.js already record for their own
