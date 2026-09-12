@@ -184,32 +184,7 @@ test('O-4: every declared index is either live or explicitly listed as pending d
   //
   // A comparison against a MEASURED number, not a remembered one. When a deploy really lands,
   // both sides move together and the pending list shrinks.
-  // ════════════ W1 INTEGRATION: 35 -> 34, AND WHY THAT IS A MEASUREMENT, NOT A RELAXATION ════════════
-  //
-  // PR #1877 (W1-C3, warehouse/bin authority) REMOVED one declaration from firestore.indexes.json:
-  //
-  //     stock_locations|COLLECTION|warehouseId:ASCENDING,binCode:ASCENDING
-  //
-  // That is deliberate and decided elsewhere -- Decision #160 / ADR-014 retired `stock_locations`,
-  // its client read was retired by BIN-P2R, and no code in this tree queries that collection by
-  // (warehouseId, binCode) any more. The lane removed a declaration for a query nobody makes.
-  //
-  // The LIVE estate did not change: nothing was deployed, so it is still the 38 measured on
-  // 2026-08-24. What changed is the overlap between the two sets. The reconciliation is therefore:
-  //
-  //     38 live  -  42 declared  -  34 declared AND live  -  8 declared, not live (the pending list)
-  //     4 live and NOT declared: equipment_models x3, AND NOW stock_locations x1
-  //
-  // ════════ THE OPERATIONAL CONSEQUENCE, STATED RATHER THAN ABSORBED ════════
-  //
-  // `stock_locations|warehouseId,binCode` is LIVE and is no longer declared, so a future
-  // `firebase deploy --only firestore:indexes` WOULD DELETE IT. That is precisely the class of event
-  // this guard exists to make visible, and it stays visible: the destructive-deploy block above is
-  // untouched and still refuses an unacknowledged deletion. This number is updated because the
-  // estate genuinely moved, NOT to make a red guard green -- the deletion is still blocked, still
-  // requires explicit acknowledgement, and is recorded here by name so whoever runs that deploy is
-  // choosing it rather than discovering it.
-  assert.equal(expectedLive, 34, 'declared-minus-pending must match the live index count (34 declared AND live of 38 live)');
+  assert.equal(expectedLive, 35, 'declared-minus-pending must match the live index count (35 declared AND live of 38 live)');
   assert.equal(pending.length, PENDING_DEPLOY_INDEX_KEYS.size, 'a pending key was listed but not declared');
   assert.ok(declared.some((i) => i.collectionGroup === 'fieldops_jobs'));
 });
