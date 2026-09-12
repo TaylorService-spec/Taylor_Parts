@@ -31,6 +31,9 @@ import {
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 
+/** How many migrations exist, counted rather than remembered. See its callers for why. */
+const migrationCount = () => readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+
 const TENANT_A = "tenant-a";
 const TENANT_B = "tenant-b";
 const ACTOR = { uid: "uid-admin" };

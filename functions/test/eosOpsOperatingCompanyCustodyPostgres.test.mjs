@@ -146,6 +146,9 @@ test.after(async () => {
 
 test("operating_company_key is NOT NULL on all three authority-bearing tables", { skip: SKIP }, async () => {
   await reset();
+  // Scoped to MIGRATION 007's three tables. Later migrations add their own tables carrying the same
+  // column, and an unscoped query would turn this claim about 007 into a running inventory of every
+  // table that ever adopts the convention.
   const columns = await query(
     `SELECT table_name, data_type, is_nullable, column_default
        FROM information_schema.columns
@@ -262,9 +265,14 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
 
   // AND IT CHANGED NOTHING. A half-applied migration that left the column behind would be worse than
   // a clean refusal.
+  // Scoped to 007's own three tables: later migrations create their own tables carrying the same
+  // column, and counting every one of them would make this a claim about the repository's growth
+  // rather than about what the aborted run did.
   const columnAdded = await query(
     `SELECT count(*)::int n FROM information_schema.columns
-      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
+      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
+        AND table_name = ANY($1)`,
+    [[...COMPANY_TABLES]],
   );
   assert.equal(columnAdded.rows[0].n, 0, "no column was added by the aborted run");
   const recorded = await query("SELECT count(*)::int n FROM pgmigrations WHERE name = $1", [MIGRATION_FILE.replace(/\.sql$/, "")]);
