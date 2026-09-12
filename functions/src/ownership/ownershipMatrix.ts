@@ -140,9 +140,11 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     },
     {
       family: "opportunity", collection: "opportunities", ownerClass: "PERSON", ownerType: usr,
-      // Ruling R-8. NOT STORED TODAY -- this is the recorded company-scope gap: no commercial record
-      // carries an operating company, which is why every financial artifact downstream has a null
-      // backfillSource. Declared here so the axis exists in the model before anything depends on it.
+      // Ruling R-8. NOW STORED. The comment here used to read "NOT STORED TODAY -- no commercial
+      // record carries an operating company"; that stopped being true when the commercial axis
+      // landed. `commercialCompanyScope.ts` is the authority and the three commercial writers call
+      // it at creation: opportunityCommands.ts:175, salesAgreementCommands.ts:304,
+      // salesOrderCommands.ts:287. The company is EXPLICIT OR INHERITED, never inferred.
       companyScopeField: "operatingCompanyId",
       ownerFields: ["ownerEmployeeId"], inheritanceSource: "Customer (Account) owner", transfer: "HANDOFF",
       companyScope: "COMPANY_NEUTRAL",
@@ -189,7 +191,7 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
       transfer: "IMMUTABLE" as const, companyScope: "SINGLE_COMPANY" as const,
       backfillSource: null,
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
-      note: "Owner is the company whose books hold it -- NOT the salesperson it descends from. No source exists yet because no upstream commercial record stores an operating company either.",
+      note: "Owner is the company whose books hold it -- NOT the salesperson it descends from. The upstream commercial chain DOES carry a company now (commercialCompanyScope.ts), and invoiceCommands.ts:106 refuses to issue an invoice without its Sales Order's operatingCompanyId -- so new financial records get one at creation. backfillSource stays null on purpose: the pre-axis records have no Sales Order company to inherit, and choosing a company for a historical ledger entry is a business decision, not a derivation.",
     })),
 
     // ═══════════════════════ COMPANY — service (ruling D-13) ═══════════════════════
@@ -197,40 +199,76 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     // RECLASSIFIED from PERSON. The responsible operating company owns the job; the technician
     // performs it. That keeps the ownership/assignment distinction this whole model rests on, and
     // it is why assignedTechId is deliberately NOT an ownerField below.
+    //
+    // ---------------------- THE TWO FAMILY LABELS WERE INVERTED ----------------------
+    //
+    // Until this correction, `fieldops_jobs` was the row named `workOrder` and `fieldops_wos` was
+    // the row named `workOrderLegacy` -- exactly backwards, and backwards against the file's OWN
+    // reasoning, which already recorded that `fieldops_wos` is "THIS is the current Work Order
+    // authority; fieldops_jobs is a distinct legacy domain".
+    //
+    // The names are not cosmetic. `family` is the handoff command's audit `targetType`
+    // (ownershipHandoffCommand.ts:181), and every deployed Work Order writer already stamps
+    // `targetType: "workOrder"` on the fieldops_wos collection -- createWorkOrder.ts:197,206,
+    // transitionWorkOrder.ts:564,585,611, updateWorkOrderExecutionData.ts:265,
+    // inboundDecisionCommands.ts:216. An ownership handoff on a live Work Order would have filed
+    // itself under `workOrderLegacy` while every other event about the same record said
+    // `workOrder`, splitting one object's audit trail across two vocabularies.
     {
-      // Ruling R-3. The JOB is where the company enters the service lineage: explicit at creation, or
-      // inherited from a governed upstream service/commercial source. Never from the technician, the
-      // dispatcher, createdBy or assignedTo -- those are who DOES the work, which is precisely the
-      // distinction this model exists to hold.
-      family: "workOrder", collection: "fieldops_jobs", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: ["operatingCompanyId"], inheritanceSource: "explicit at creation, or the governed upstream service/commercial source company",
-      transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
-      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
-      note: "MEASURED: 41 of 45 sandbox jobs are certification fixtures and can be explicitly authored, as equipment was. The other 4 are not, and stay unresolved. assignedTechId remains ASSIGNMENT.",
-    },
-    {
-      // CORRECTED by DECISIONS #143. Ruling R-12 -- which would have added `fieldops_wos.jobId` and
-      // inherited company from a parent Job -- is WITHDRAWN. Its own condition ("if fieldops_jobs is
-      // the actual parent domain authority") is not met:
+      // THE CURRENT WORK ORDER AUTHORITY. constants/collections.ts:6 defines
+      // WORK_ORDERS_COLLECTION = "fieldops_wos" and the deployed createWorkOrder /
+      // transitionWorkOrder callables write it. completeAssignedJob.ts records that legacy
+      // fieldops_jobs carry a `workOrderId` field which is THEIR UPWARD LINK to fieldops_wos, so
+      // the legacy collection points at this one, not the other way round. (Ruling R-12, which
+      // would have added `fieldops_wos.jobId` and inherited company from a parent Job, is
+      // WITHDRAWN by DECISIONS #143 for that reason.)
       //
-      //   constants/collections.ts defines WORK_ORDERS_COLLECTION = "fieldops_wos"
-      //   the deployed createWorkOrder / transitionWorkOrder callables write THIS collection
-      //   completeAssignedJob.ts records that legacy fieldops_jobs carry a `workOrderId` field which
-      //     is THEIR UPWARD LINK to fieldops_wos
+      // A Work Order takes its company from its OWN governed context and stores it as a historical
+      // fact. Never from the technician, dispatcher, creator, assignedTo, customer owner, location
+      // name, lineOfBusiness, or a legacy Job coincidence.
       //
-      // So the link R-12 proposed points the opposite way to the one the code documents, and would
-      // have made the legacy collection the parent of the live one. THIS is the current Work Order
-      // authority; `fieldops_jobs` is a distinct legacy domain, not its parent.
+      // ownerFields IS EMPTY, AND THAT IS THE MEASURED TRUTH. This row declared
+      // ownerFields: ["operatingCompanyId"] until this correction. The Work Order carries no such
+      // field: not in its type, not in its create payload, not in any of its update writers, and
+      // ownershipBackfillRules.ts has no rule that would ever write one (the legacy Job does).
+      // The repo's own evidence proves the declaration was never measured -- the post-backfill
+      // census (sb-evidence/ownership-census-sandbox-postbackfill-2026-08-30.txt) reports all 30
+      // fieldops_wos records with the reason "family has no ownership storage yet", and that
+      // string is emitted ONLY by ownershipCensus.ts:157-163 when ownerFields is EMPTY. Had the
+      // non-empty declaration existed when the census ran, the reason would have read
+      // "no operatingCompanyId", as it does for fieldops_jobs, equipment and
+      // inventory_transactions. So the field was added to the matrix AFTER the reconciliation the
+      // file's header claims, and nothing has measured it since.
       //
-      // A Work Order therefore takes its company from its OWN governed context and stores it as a
-      // historical fact. Never from the technician, dispatcher, creator, assignedTo, customer owner,
-      // location name, lineOfBusiness, or a legacy Job coincidence.
-      family: "workOrderLegacy", collection: "fieldops_wos", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: ["operatingCompanyId"],
+      // Per this file's own column contract (line 29: "the EXISTING storage the typed owner
+      // derives from. Empty = no storage yet") the honest value is []. Emptying it is not a
+      // downgrade of the Work Order: it restores the distinction between a MODEL gap (the field
+      // does not exist) and a DATA gap (the field exists and is unset), which is the distinction
+      // the whole census is built to report. NOTHING IS STAMPED ON ANY RECORD.
+      family: "workOrder", collection: "fieldops_wos", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: [],
       inheritanceSource: "explicit at creation, or a governed upstream source that already carries one (e.g. a Sales Order)",
       transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
       unresolvedPolicy: "remains OWNERLESS -- NO_GOVERNED_COMPANY_SOURCE, which is a company-provenance gap and NOT a lineage defect",
-      note: "11 of 30 sandbox Work Orders carry a salesOrderId and become POTENTIALLY derivable once the commercial company axis is authored -- to be measured, never assumed. No jobId is added and no parent is invented.",
+      note: "MEASURED 0/30 -- the collection has no company storage at all. 11 of 30 sandbox Work Orders carry a salesOrderId and become POTENTIALLY derivable once that field exists AND the Sales Order company is read at creation -- to be measured, never assumed. No jobId is added and no parent is invented.",
+    },
+    {
+      // Ruling R-3. THE LEGACY SERVICE DOMAIN, not the current Work Order and not its parent. The
+      // JOB is where the company enters the legacy service lineage: explicit at creation, or
+      // inherited from a governed upstream service/commercial source. Never from the technician,
+      // the dispatcher, createdBy or assignedTo -- those are who DOES the work, which is precisely
+      // the distinction this model exists to hold.
+      //
+      // Unlike fieldops_wos above, this family's operatingCompanyId REALLY IS STORED: the
+      // authorized sandbox backfill wrote it on 41 records (ownershipBackfillRules.ts:118-128,
+      // AUTHORIZED_WRITE_CAPS.fieldops_jobs = 41) and the post-backfill census measures 41/45
+      // RESOLVED with the remaining 4 reported as "no operatingCompanyId". So the non-empty
+      // ownerFields below is a description of storage that exists, which is what the column means.
+      family: "workOrderLegacy", collection: "fieldops_jobs", ownerClass: "COMPANY", ownerType: cmp,
+      ownerFields: ["operatingCompanyId"], inheritanceSource: "explicit at creation, or the governed upstream service/commercial source company",
+      transfer: "HANDOFF", companyScope: "SINGLE_COMPANY", backfillSource: null,
+      unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
+      note: "MEASURED 41/45: 41 sandbox jobs are certification fixtures and were explicitly authored, as equipment was. The other 4 are not, and stay unresolved. assignedTechId remains ASSIGNMENT.",
     },
 
     // ═══════════════════════ COMPANY — inventory obligation (ruling D-14) ═══════════════════════
@@ -260,12 +298,16 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
     // stated as a primary business fact rather than derived from something else, so they are
     // populated from governed configuration and everything else in the inventory chain hangs off
     // them. Explicitly NOT from display names.
-    // MEASURED CORRECTION. The first plan listed four root families and 19 records. The derivation
-    // check found two of them are not roots at all:
-    //   stock_locations is a per-warehouse-per-part BALANCE record, not a place. 5/5 derive from
-    //     their warehouseId.
-    //   trucks carry homeWarehouseId. 2/2 derive from their home warehouse.
-    // Only warehouses and mobile_locations are primary. 12 root decisions, not 19.
+    // MEASURED CORRECTION. The first plan listed four root families and 19 records. Neither
+    // stock_locations nor trucks is a root, so only warehouses and mobile_locations are primary:
+    // 12 root decisions, not 19.
+    //
+    // NOT BEING A ROOT IS NOT THE SAME AS DERIVING A COMPANY, and the two families differ exactly
+    // there. A stock_location IS a per-warehouse-per-part BALANCE: the warehouse is part of what
+    // the record IS, so its company is constitutive, not inferred, and warehouseId stands as its
+    // source. A truck is a vehicle that PARKS at a depot -- a relationship, not an identity -- and
+    // it may belong to one company while working out of another's yard. cert-trk-04/05 are exactly
+    // that case, which is why the truck row below now carries backfillSource: null.
     ...(
       [
         ["warehouse", "warehouses"],
@@ -291,12 +333,40 @@ export const OWNERSHIP_MATRIX: readonly OwnershipFamily[] = Object.freeze(
       note: "Reclassified from root to derived. It is a per-warehouse-per-part balance, not a physical place.",
     },
     {
+      // CORRECTED. This row used to declare inheritanceSource "the truck's home warehouse" and
+      // backfillSource "homeWarehouseId -- a real governed reference, measured 2/2 DERIVABLE".
+      // Both are withdrawn: homeWarehouseId is NOT a source for an operating company, and the
+      // measurement that seemed to license it was a category slide.
+      //
+      // THE SLIDE. ownershipDerivation.ts answers ONE question -- does this record reference a
+      // known physical root? Its outcomes are root IDS; deriveRoot() cannot produce "taylor" and
+      // never sees a company. "2/2 DERIVABLE" therefore meant "both trucks name a warehouse that
+      // exists", which is a referential fact. Writing it into backfillSource converted it into
+      // "both trucks' companies can be read off their warehouse", which is an ownership claim the
+      // measurement never made.
+      //
+      // AND THE CLAIM IS FALSE. config/ownership/operating-company-roots.sandbox.json says so in
+      // its own header -- "THEY ARE NOT INFERRED, AND NO CODE MAY EVER INFER THEM ... If a rule
+      // appears to exist in the data below, it is a coincidence of authoring order and must not be
+      // implemented" -- and the fixture data proves it: all five cert-trk-01..05 carry
+      // homeWarehouseId "wh-main" (certificationWorld/data/inventory.mjs:49-55), wh-main is
+      // `taylor`, and the authored configuration assigns cert-trk-04 and cert-trk-05 to `ventana`.
+      // A homeWarehouseId-derived company is wrong for 2 of the 5 vehicles in the fixture world.
+      // It agreed 2/2 on the `trucks` collection only because that collection holds exactly two
+      // seed records whose depots happen to match; the sample was too small to disagree.
+      //
+      // ownerFields STAYS non-empty and NOTHING IS UNSTAMPED. The authorized sandbox backfill
+      // already wrote operatingCompanyId on both trucks (evidence: applied 1015/1015). Those two
+      // values are storage that exists, which is what ownerFields describes. What is withdrawn is
+      // the LICENCE to do it again on a larger fleet, where it is provably wrong.
       family: "truck", collection: "trucks", ownerClass: "COMPANY", ownerType: cmp,
-      ownerFields: ["operatingCompanyId"], inheritanceSource: "the truck's home warehouse", transfer: "HANDOFF",
+      ownerFields: ["operatingCompanyId"],
+      inheritanceSource: "explicit governed configuration for the vehicle -- NOT its home warehouse",
+      transfer: "HANDOFF",
       companyScope: "SINGLE_COMPANY",
-      backfillSource: "homeWarehouseId -- a real governed reference, measured 2/2 DERIVABLE",
+      backfillSource: null,
       unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED,
-      note: "Reclassified from root to derived. A truck belongs to the depot it works out of.",
+      note: "A truck works out of a depot; it does not thereby belong to the depot's company. cert-trk-04/05 are ventana vehicles homed at a taylor warehouse, which is the case that settles it.",
     },
     {
       // Owner ruling Q1: the company-scoped half of the supplier relationship. THE COLLECTION DOES
