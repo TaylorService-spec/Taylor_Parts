@@ -32,9 +32,12 @@
 // caller's Employee id through `resolveEmployeeIdForPrincipal()`
 // (`src/employeeIdentity/employeePrincipalLinkRepository.ts`), which has no fallback chain -- null
 // is a complete answer -- and it is a change to a deployed authorization path that has to be
-// sequenced with `firestore.rules:363` and `:406-409`. When that lands, the two "documents the
-// trap" cases below must be REWRITTEN, not deleted: they are the proof that the wrong id is no
-// longer spent.
+// sequenced with the two Rules predicates that route through `callerTechnicianId()`
+// (`firestore.rules:323-327`): the `fieldops_jobs` read at `:361-363` and the
+// `fieldops_technicians` read at `:401-404`. (The decision ledger cites the second as `:406-409`;
+// re-measured against this tree it is `:401-404` -- `:406-409` is the CREATE rule beneath it.)
+// When the cutover lands, the two "documents the trap" cases below must be REWRITTEN, not deleted:
+// they are the proof that the wrong id is no longer spent.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
