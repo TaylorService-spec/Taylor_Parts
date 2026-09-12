@@ -1,0 +1,966 @@
+{
+ "lane": "P3-B3",
+ "block": "sales",
+ "generated": "2026-09-12",
+ "count": 70,
+ "activities": [
+  {
+   "id": "P3B3-SALES-001",
+   "title": "Open an opportunity for a replacement soft-serve machine at a repeat Taylor account",
+   "actor_role": "Salesperson",
+   "trigger": "A Taylor Freezer of Arizona account manager calls in after a compressor failure and asks for replacement pricing rather than another repair.",
+   "narrative": "The salesperson opens a new Opportunity against the existing Account, names the expected close month and the equipment family in play. Nothing downstream is committed: the Opportunity is explicitly pre-commitment and writes nothing into inventory or service (firestore.rules:1734-1739). The Opportunity also takes an operating company at creation, copied from the explicit value or inherited \u2014 never inferred from the salesperson or the customer.",
+   "objects_touched": [
+    "Opportunity",
+    "Account",
+    "Employee (owner)",
+    "counters"
+   ],
+   "authority_path": "Cloud Function onCall `createOpportunity` functions/src/opportunity/opportunityCallables.ts:198, capability `opportunity.write` declared functions/src/opportunity/opportunityCallables.ts:34, registered functions/src/access/permissionCatalog.ts:154 with `active: false` at :159; exported functions/src/index.ts:42. Storage `opportunities`, client read AND write denied firestore.rules:1740-1742. Commercial operating-company axis functions/src/ownership/commercialCompanyScope.ts (resolver :59); the three commercial writers call it at functions/src/opportunity/opportunityCommands.ts:175, functions/src/salesAgreement/salesAgreementCommands.ts:304 and functions/src/salesOrder/salesOrderCommands.ts:287. Ownership matrix rows: opportunity functions/src/ownership/ownershipMatrix.ts:142-153, salesAgreement :155-162, salesOrder :163-174.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-002",
+   "title": "Refuse to open an opportunity on an ownerless account",
+   "actor_role": "Salesperson",
+   "trigger": "An account imported from the legacy system has never had an account owner assigned.",
+   "narrative": "The Opportunity inherits its owner from the parent Account owner. The ownership matrix records that an ownerless Account makes inherited Opportunity creation REFUSE, by design, and that ruling D-6 forbids inferring the Account owner from creator, territory, coverage, activity, sales history or auth uid. The salesperson must get the Account owned first; there is no fallback.",
+   "objects_touched": [
+    "Opportunity",
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "Ownership matrix account row functions/src/ownership/ownershipMatrix.ts:119-125 (`backfillSource: explicit assignment only -- ruling D-6 ...`, `note: an ownerless Account makes inherited Opportunity creation REFUSE, by design`); opportunity row :142-153 (`inheritanceSource: Customer (Account) owner`). Command Cloud Function onCall `createOpportunity` functions/src/opportunity/opportunityCallables.ts:198, capability `opportunity.write` declared functions/src/opportunity/opportunityCallables.ts:34, registered functions/src/access/permissionCatalog.ts:154 with `active: false` at :159; exported functions/src/index.ts:42. Storage `opportunities`, client read AND write denied firestore.rules:1740-1742.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-003",
+   "title": "Advance an opportunity from qualification to proposal after a site survey",
+   "actor_role": "Salesperson",
+   "trigger": "The technician's site survey confirms the door frame will take the larger cabinet.",
+   "narrative": "The salesperson moves the Opportunity one stage forward. The stage change is a governed transition, not a field edit, so it goes through transitionOpportunity rather than updateOpportunity \u2014 the two are separate callables sharing one capability.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "Cloud Function onCall `transitionOpportunity` functions/src/opportunity/opportunityCallables.ts:251 (same `opportunity.write` gate, opportunityCallables.ts:34). Lifecycle model functions/src/opportunity/opportunityLifecycle.ts. Storage `opportunities`, firestore.rules:1740-1742 deny-all.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-004",
+   "title": "Record the customer's stated budget ceiling on the opportunity",
+   "actor_role": "Salesperson",
+   "trigger": "The customer names a number on a call and the salesperson wants it on the record before the quote is built.",
+   "narrative": "A section save against the Opportunity, version-checked so two salespeople editing the same record cannot silently overwrite each other. This is a field edit, distinct from a stage transition.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "Cloud Function onCall `updateOpportunity` functions/src/opportunity/opportunityCallables.ts:363, capability `opportunity.write` (opportunityCallables.ts:34 / permissionCatalog.ts:154, active:false :159). Version-checked section save; UI hook field-ops-app-vite/src/hooks/useOpportunitySectionSave.js:32.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-005",
+   "title": "Reassign an opportunity to another salesperson when the original owner goes on leave",
+   "actor_role": "Sales Manager",
+   "trigger": "A salesperson starts a four-week medical leave with six open opportunities.",
+   "narrative": "Ownership of a commercial record is a PERSON-class ownership with transfer behaviour HANDOFF in the ownership matrix. The matrix declares the behaviour; what is traceable today is the field edit through updateOpportunity, not a dedicated governed handoff command for the commercial families.",
+   "objects_touched": [
+    "Opportunity",
+    "Employee"
+   ],
+   "authority_path": "Cloud Function onCall `updateOpportunity` functions/src/opportunity/opportunityCallables.ts:363, capability `opportunity.write` (opportunityCallables.ts:34 / permissionCatalog.ts:154, active:false :159). Version-checked section save; UI hook field-ops-app-vite/src/hooks/useOpportunitySectionSave.js:32. Ownership matrix declares `transfer: \"HANDOFF\"` for the opportunity family at functions/src/ownership/ownershipMatrix.ts:149; no dedicated commercial handoff callable is exported from functions/src/index.ts.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-006",
+   "title": "Close an opportunity LOST because the customer bought a competitor's unit",
+   "actor_role": "Salesperson",
+   "trigger": "The customer emails to say they signed with another distributor.",
+   "narrative": "A terminal outcome transition. The Opportunity keeps its history; nothing downstream was ever created, which is the point of the pre-commitment boundary.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "Cloud Function onCall `transitionOpportunity` functions/src/opportunity/opportunityCallables.ts:251 (same `opportunity.write` gate, opportunityCallables.ts:34). Lifecycle model functions/src/opportunity/opportunityLifecycle.ts. Storage `opportunities`, firestore.rules:1740-1742 deny-all.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-007",
+   "title": "List every open opportunity on one account before a quarterly review call",
+   "actor_role": "Sales Manager",
+   "trigger": "Preparing for a customer QBR at a multi-site Ventana account.",
+   "narrative": "Because client-direct reads of the opportunities collection are denied, the account page composes a trusted server projection instead. The projection is the only read path that exists.",
+   "objects_touched": [
+    "Opportunity",
+    "Account"
+   ],
+   "authority_path": "Trusted read projections `listOpportunitiesForAccount` functions/src/opportunity/opportunityReadService.ts:277 (permission check :294), `listOpportunityContext` :322 (:329), `getOpportunityContext` :467 (:480); capability `opportunity.read` opportunityReadService.ts:26 / permissionCatalog.ts:166, active:false :171. Client-direct reads are denied at firestore.rules:1741, which is why a projection exists at all.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-008",
+   "title": "Allocate the next opportunity number from the governed counter",
+   "actor_role": "Salesperson",
+   "trigger": "Any opportunity creation.",
+   "narrative": "Numbering is not a client concern: the counter document is unreadable and unwritable from a browser, so the number can only be minted inside the Admin-SDK transaction that creates the record. That is why a failed create cannot burn a visible number in the UI.",
+   "objects_touched": [
+    "Opportunity",
+    "counters"
+   ],
+   "authority_path": "Opportunity number allocation functions/src/opportunity/opportunityNumbering.ts, backed by the `counters` collection; `counters` is deny-all to clients at firestore.rules:512-515, so numbering only exists inside the Admin-SDK transaction in opportunityCallables.ts:198.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-009",
+   "title": "Draft the commercial agreement that IS the quote for a replacement compressor",
+   "actor_role": "Salesperson",
+   "trigger": "The customer asks for a written price.",
+   "narrative": "EOS has no Quote object. The instrument that carries priced terms to a customer is the Sales Agreement, drafted against the Opportunity. Anyone looking for 'quoting' in this system is looking for salesAgreement.create.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Opportunity",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesAgreement` functions/src/salesAgreement/salesAgreementCallables.ts:228, capability `salesAgreement.create` salesAgreementCallables.ts:59 gated at :230, registered permissionCatalog.ts:193 active:false :198; exported functions/src/index.ts:74. Storage `sales_agreements`, deny-all firestore.rules:1794-1796. NOT FOUND. There is no `quotes` or `sales_quotes` collection (no match block in firestore.rules), no quote table in functions/migrations/, and no quote callable in functions/src/index.ts. The only 'Quotes' artifact is a hidden PURCHASING nav stub field-ops-app-vite/src/navigation/navConfig.js:433 under the purchasing domain (navConfig.js:427-436), with no dispatch branch, so it falls through to `PlaceholderPage` field-ops-app-vite/src/App.jsx:161.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-010",
+   "title": "Search the part catalog for a line to put on the agreement",
+   "actor_role": "Salesperson",
+   "trigger": "Building the agreement lines and needing the canonical part reference.",
+   "narrative": "Product reference search deliberately reuses the existing inventory catalog read capability rather than minting a sales-specific one, so a salesperson's catalog reach on a quote is exactly their catalog reach everywhere else.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Part",
+    "Manufacturer"
+   ],
+   "authority_path": "Cloud Function onCall `searchProductReferences` functions/src/salesAgreement/productReferenceSearchService.ts:168 (permission resolved :180), gated on the EXISTING `inventory.catalog.read` (productReferenceSearchService.ts:57 / permissionCatalog.ts:1086, active:false) rather than a new sales capability; exported functions/src/index.ts:78.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-011",
+   "title": "Revise a draft agreement's pricing after the customer pushes back",
+   "actor_role": "Salesperson",
+   "trigger": "The customer counters on the labour line.",
+   "narrative": "Revision is an allowlisted edit that only applies while the agreement is DRAFT. Once accepted there is no amendment path at all \u2014 a renegotiation is a new agreement.",
+   "objects_touched": [
+    "Sales Agreement"
+   ],
+   "authority_path": "Cloud Function onCall `updateSalesAgreementDraft` functions/src/salesAgreement/salesAgreementCallables.ts:317, capability `salesAgreement.updateDraft` :61 gated :319, permissionCatalog.ts:201 active:false :206. Allowlisted DRAFT-only edit; lifecycle functions/src/salesAgreement/salesAgreementLifecycle.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-012",
+   "title": "Record the customer's acceptance of the agreement over the phone",
+   "actor_role": "Salesperson",
+   "trigger": "The customer verbally accepts and the salesperson records it.",
+   "narrative": "Acceptance is all-or-nothing per role: the role definition records, in its own comment, that there is no approval-limit or discount-authority model in this repository, so a Salesperson may bind exactly the same terms a General Manager can.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Opportunity"
+   ],
+   "authority_path": "Cloud Function onCall `acceptSalesAgreement` functions/src/salesAgreement/salesAgreementCallables.ts:413, capability `salesAgreement.accept` :60 gated :415, permissionCatalog.ts:209 active:false :214. No amendment path exists after ACCEPTED (salesAgreementLifecycle.ts). The absent approval-limit model is recorded on the role itself at functions/src/access/governedBusinessRoles.ts:388-394 (`ACCEPT IS GRANTED WITH A RECORDED CAVEAT: there is no approval-limit or discount-authority model in this repo ... That is a real governance gap`).",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "Should acceptance of a Sales Agreement carry a value threshold above which a Sales Manager or General Manager must be the accepting principal? The repository records the absence of any discount or approval-limit model as a known gap; today a Salesperson can bind the same terms as a General Manager."
+  },
+  {
+   "id": "P3B3-SALES-013",
+   "title": "Amend commercially agreed terms after the agreement went terminal",
+   "actor_role": "Sales Manager",
+   "trigger": "The customer wants the delivery window changed a week after signing.",
+   "narrative": "There is no path. The design register carries this as an open product decision \u2014 commercially agreed terms cannot change after an Agreement goes terminal \u2014 and no amendment callable is exported.",
+   "objects_touched": [
+    "Sales Agreement"
+   ],
+   "authority_path": "Open product decision ND-15 'Commercially agreed terms cannot change after an Agreement goes terminal', docs/design/north-star-open-product-decisions.md:404-430. No amendment callable exists: functions/src/index.ts:74 exports only create / updateDraft / accept.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "When a customer changes their mind after accepting a Sales Agreement, is the correct record a superseding Agreement that references the first, or a governed amendment on the original? The repository implements neither (ND-15)."
+  },
+  {
+   "id": "P3B3-SALES-014",
+   "title": "Decline an agreement on the customer's behalf",
+   "actor_role": "Salesperson",
+   "trigger": "The customer rejects the proposal in writing.",
+   "narrative": "DECLINED is a modelled Sales Agreement state that nothing in the system can produce \u2014 the design register records it as an open decision. The salesperson can only leave the agreement in DRAFT or close the Opportunity LOST around it.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Opportunity"
+   ],
+   "authority_path": "Open product decision ND-14 '`DECLINED` is a modelled Sales Agreement state that nothing can produce', docs/design/north-star-open-product-decisions.md:382-403. Lifecycle functions/src/salesAgreement/salesAgreementLifecycle.ts; no decline callable in functions/src/index.ts:74.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "Should a customer's refusal be recorded on the Sales Agreement as DECLINED, or only as a LOST outcome on the parent Opportunity? DECLINED exists in the model with no producer (ND-14)."
+  },
+  {
+   "id": "P3B3-SALES-015",
+   "title": "Open the agreement record to check what was actually committed before invoicing",
+   "actor_role": "Accounting Manager",
+   "trigger": "An invoice is queued and accounting wants to see the terms it rests on.",
+   "narrative": "Committed pricing is deliberately kept off the client: the Rules comment states that opening client reads would put committed pricing, margins-adjacent charges and trade-in values in front of every authenticated principal, scoped by nothing. The read goes through the governed projection.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Invoice"
+   ],
+   "authority_path": "Trusted projections `getSalesAgreementContext` functions/src/salesAgreement/salesAgreementReadService.ts:205 and `getSalesAgreementForOpportunity` :223, capability `salesAgreement.read` :40 (gate helper :163-173), permissionCatalog.ts:217 active:false :222. Client reads denied firestore.rules:1795 \u2014 deliberately, because the record carries committed pricing (firestore.rules:1791-1793).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-016",
+   "title": "Resolve an agreement from a link on the opportunity page",
+   "actor_role": "Sales Manager",
+   "trigger": "Reviewing an opportunity and wanting the agreement behind it.",
+   "narrative": "The design register records that a Sales Agreement has no resolvable reference \u2014 an open decision. The by-opportunity projection is the workaround that exists in code.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Opportunity"
+   ],
+   "authority_path": "Trusted projections `getSalesAgreementContext` functions/src/salesAgreement/salesAgreementReadService.ts:205 and `getSalesAgreementForOpportunity` :223, capability `salesAgreement.read` :40 (gate helper :163-173), permissionCatalog.ts:217 active:false :222. Client reads denied firestore.rules:1795 \u2014 deliberately, because the record carries committed pricing (firestore.rules:1791-1793). Open product decision ND-9 'A Sales Agreement has no resolvable reference', docs/design/north-star-open-product-decisions.md:167-180.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-017",
+   "title": "Build an agreement whose line widths match the approved record grammar",
+   "actor_role": "Sales Manager",
+   "trigger": "Reviewing the shipped agreement record against the approved design.",
+   "narrative": "The design register records that the Sales Agreement design and the shipped record grammar disagree on three widths. This is an open presentation decision, not an authority gap.",
+   "objects_touched": [
+    "Sales Agreement"
+   ],
+   "authority_path": "Open product decision ND-16, docs/design/north-star-open-product-decisions.md:431-462. Surface Route field-ops-app-vite/src/App.jsx:970 -> `SalesAgreementDetail` (lazy App.jsx:53); write wiring field-ops-app-vite/src/modules/sales/SalesAgreementDetail.jsx:162,165 over field-ops-app-vite/src/services/salesAgreementCommandClient.js:42,46.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-018",
+   "title": "Quote a mixed basket: two parts, one equipment model and an install service line",
+   "actor_role": "Salesperson",
+   "trigger": "A customer replacing a unit wants the machine, two spares and the install on one paper.",
+   "narrative": "The agreement's line references distinguish kinds, and the downstream Sales Order line carries `kind` explicitly so that fulfilment can be measured differently per kind \u2014 PART lines from inventory actuals, EQUIPMENT_MODEL and SERVICE lines from explicit technician acceptance.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Sales Order",
+    "Part",
+    "Equipment Model"
+   ],
+   "authority_path": "Line reference resolution functions/src/salesAgreement/salesAgreementLineReferences.ts; SO line shape functions/src/salesOrder/salesOrderCommands.ts:65-102; per-kind fulfilment measurement ruling docs/design/p1-fulfillment-billing-spine-spec.md:6. Cloud Function onCall `createSalesAgreement` functions/src/salesAgreement/salesAgreementCallables.ts:228, capability `salesAgreement.create` salesAgreementCallables.ts:59 gated at :230, registered permissionCatalog.ts:193 active:false :198; exported functions/src/index.ts:74. Storage `sales_agreements`, deny-all firestore.rules:1794-1796.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-019",
+   "title": "Convert an accepted agreement directly into a sales order",
+   "actor_role": "Salesperson",
+   "trigger": "The customer accepts and the salesperson wants the order booked in the same sitting.",
+   "narrative": "An agreement-to-order mapping exists in code, but the exported, capability-gated conversion callable is the opportunity-anchored one; the agreement path is a module without its own onCall export.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Sales Order",
+    "Opportunity"
+   ],
+   "authority_path": "Mapping module functions/src/salesAgreement/agreementToSalesOrder.ts. The exported conversion callables are opportunity-anchored: Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-020",
+   "title": "Allocate the next agreement number",
+   "actor_role": "Salesperson",
+   "trigger": "Any agreement creation.",
+   "narrative": "Same governed-counter discipline as the Opportunity: the counter is deny-all to clients so the number can only be minted server-side inside the creating transaction.",
+   "objects_touched": [
+    "Sales Agreement",
+    "counters"
+   ],
+   "authority_path": "functions/src/salesAgreement/salesAgreementNumbering.ts over the `counters` collection, deny-all firestore.rules:512-515. Cloud Function onCall `createSalesAgreement` functions/src/salesAgreement/salesAgreementCallables.ts:228, capability `salesAgreement.create` salesAgreementCallables.ts:59 gated at :230, registered permissionCatalog.ts:193 active:false :198; exported functions/src/index.ts:74. Storage `sales_agreements`, deny-all firestore.rules:1794-1796.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-021",
+   "title": "Close a WON opportunity and book the sales order in one atomic act",
+   "actor_role": "Salesperson",
+   "trigger": "The customer signs; the salesperson clicks through the WON path.",
+   "narrative": "Both the close and the order creation happen in one transaction, so the business can never end up with a WON opportunity and no order, or an order whose opportunity is still open. It is the one callable that resolves two capabilities before doing anything.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `closeOpportunityAsWon` functions/src/opportunity/closeOpportunityAsWon.ts:410; it resolves BOTH `opportunity.write` and `opportunity.createSalesOrder` at closeOpportunityAsWon.ts:396 (resolution :399). One transaction closes the Opportunity WON and creates its Sales Order; exported functions/src/index.ts:67.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-022",
+   "title": "Create the sales order from an already-WON opportunity a day later",
+   "actor_role": "Sales Manager",
+   "trigger": "The salesperson closed the opportunity WON on Friday; the order gets booked Monday.",
+   "narrative": "The separate path verifies outcome==='WON' and refuses otherwise, then dedupes on sourceOpportunityId inside the transaction so a double-click cannot create two orders. Lines, quantities and account are read off the Opportunity \u2014 the client cannot supply them.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37). Not-WON refusal, in-transaction sourceOpportunityId dedup and the Opportunity back-link are specified at docs/design/p1-fulfillment-billing-spine-spec.md:38.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-023",
+   "title": "Refuse to create a second sales order for an opportunity that already has one",
+   "actor_role": "Sales Manager",
+   "trigger": "Two coordinators both try to book the same won deal.",
+   "narrative": "The dedup query runs inside the transaction, so concurrency does not defeat it. The idempotency key gives a replay answer rather than a second order.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37). Dual idempotency (key replay plus sourceOpportunityId dedup) specified docs/design/p1-fulfillment-billing-spine-spec.md:39.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-024",
+   "title": "Refuse to create a sales order from an opportunity line with no quantity",
+   "actor_role": "Salesperson",
+   "trigger": "A hurried opportunity has a part on it with the qty left blank.",
+   "narrative": "The order builder fails closed rather than defaulting the quantity to one. Nothing is created; the salesperson must fix the opportunity.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37). Fail-closed on missing qty: docs/design/p1-fulfillment-billing-spine-spec.md:38 ('Opportunity line `qty` missing => fail-closed (do not default)').",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-025",
+   "title": "Book a sales order directly, without an opportunity, for a walk-in parts purchase",
+   "actor_role": "Parts Manager",
+   "trigger": "A long-standing customer calls the counter and just wants two gaskets shipped.",
+   "narrative": "The direct createSalesOrder path was deliberately kept alongside the opportunity-derived one. The spine spec is explicit that the direct path still needs the same hardening (verify / dedup / back-link) the governed path received.",
+   "objects_touched": [
+    "Sales Order",
+    "Account",
+    "Part"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrder` functions/src/salesOrder/salesOrderCallables.ts:181, capability `salesOrder.write` salesOrderCallables.ts:26 / permissionCatalog.ts:242 active:false :247; exported functions/src/index.ts:93. Line shape `{kind, ref, orderedQty, allocatedQty, fulfilledQty}` functions/src/salesOrder/salesOrderCommands.ts:65-102. Storage `sales_orders`, deny-all firestore.rules:1749-1751. Both SO-creation paths deliberately kept: docs/design/p1-fulfillment-billing-spine-spec.md:8; the direct path's outstanding hardening is recorded at :43.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-026",
+   "title": "Cancel a sales order the customer withdrew before anything shipped",
+   "actor_role": "Sales Manager",
+   "trigger": "The customer cancels 24 hours after booking.",
+   "narrative": "A lifecycle transition on the order. Because nothing has been allocated or fulfilled, no inventory or billing consequence needs unwinding.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `transitionSalesOrder` functions/src/salesOrder/salesOrderCallables.ts:214 (capability `salesOrder.write`, :26). State machine functions/src/salesOrder/salesOrderLifecycle.ts; the IN_FULFILLMENT->FULFILLED gate is `allLinesFulfilled` (salesOrderLifecycle.ts:61,72-74 per docs/design/p1-fulfillment-billing-spine-spec.md:13).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-027",
+   "title": "Advance a sales order into fulfilment once stock is committed",
+   "actor_role": "Sales Manager",
+   "trigger": "Allocation has succeeded on every line.",
+   "narrative": "The order state machine governs the move. Crossing into FULFILLED is gated on every line having fulfilledQty equal to orderedQty, which cannot be faked from the client because the order document denies all client writes.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `transitionSalesOrder` functions/src/salesOrder/salesOrderCallables.ts:214 (capability `salesOrder.write`, :26). State machine functions/src/salesOrder/salesOrderLifecycle.ts; the IN_FULFILLMENT->FULFILLED gate is `allLinesFulfilled` (salesOrderLifecycle.ts:61,72-74 per docs/design/p1-fulfillment-billing-spine-spec.md:13).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-028",
+   "title": "Allocate stock against a booked sales order",
+   "actor_role": "Warehouse Manager",
+   "trigger": "The order reaches the warehouse queue.",
+   "narrative": "Allocation draws only on eligible physical on-hand at ACTIVE warehouses; trucks, mobile locations and customer sites are separate collections and are deliberately not part of the pool. This activity crosses into the inventory domain owned by lane P3-B2 and is recorded here only for its sales-order side.",
+   "objects_touched": [
+    "Sales Order",
+    "Warehouse",
+    "Inventory Transaction"
+   ],
+   "authority_path": "Cloud Function onCall `allocateSalesOrder` functions/src/fulfillment/allocateSalesOrder.ts:96, capability `salesOrder.fulfill` :30 resolved :37, registered permissionCatalog.ts:253 active:false :258; exported functions/src/index.ts:95. Eligible ON_HAND pool is restricted to status==ACTIVE warehouses (allocateSalesOrder.ts:119).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-029",
+   "title": "Allocate a sales order whose lines repeat the same part reference twice",
+   "actor_role": "Warehouse Manager",
+   "trigger": "A salesperson put the same filter on two lines with different quantities.",
+   "narrative": "The spine spec records the duplicate-ref-within-one-allocation-call problem as an outstanding harden item (P1.7). The command exists; the duplicate case is named as unresolved.",
+   "objects_touched": [
+    "Sales Order",
+    "Part"
+   ],
+   "authority_path": "Cloud Function onCall `allocateSalesOrder` functions/src/fulfillment/allocateSalesOrder.ts:96, capability `salesOrder.fulfill` :30 resolved :37, registered permissionCatalog.ts:253 active:false :258; exported functions/src/index.ts:95. Eligible ON_HAND pool is restricted to status==ACTIVE warehouses (allocateSalesOrder.ts:119). P1.7 (allocateSalesOrder duplicate-ref within one call) recorded as outstanding: docs/design/p1-fulfillment-billing-spine-spec.md:44.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-030",
+   "title": "Raise the service work order that installs what the sales order sold",
+   "actor_role": "Operations Manager",
+   "trigger": "An equipment order needs an install visit scheduled.",
+   "narrative": "The seam creates a Service Work Order carrying quantity- and kind-bearing line references back to the order, and seeds the parts plan for PART lines with SKUs resolved from Part Master \u2014 never fabricated from the part id. One order produces at most one service work order today.",
+   "objects_touched": [
+    "Sales Order",
+    "Work Order",
+    "Part"
+   ],
+   "authority_path": "Cloud Function onCall `createServiceForSalesOrder` functions/src/salesOrder/createServiceForSalesOrder.ts:122, capability `salesOrder.service` :21 resolved :126, registered permissionCatalog.ts:264 active:false :269; exported functions/src/index.ts:97. One SO -> at most one Service WO (createServiceForSalesOrder.ts:60-64). Line-ref shape and fail-closed SKU resolution specified docs/design/p1-fulfillment-billing-spine-spec.md:22-23.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-031",
+   "title": "Write fulfilled quantities back to the order when the technician completes the work",
+   "actor_role": "Field Manager",
+   "trigger": "The technician marks the work order Complete.",
+   "narrative": "PART lines take their fulfilled quantity from the governed inventory snapshot's actual usage; equipment and service lines need an explicit technician declaration. Explicit acceptance overrides the derived parts value, and an acceptance that would exceed the remaining quantity fails the whole transaction rather than silently capping.",
+   "objects_touched": [
+    "Work Order",
+    "Sales Order"
+   ],
+   "authority_path": "Pure `applyFulfillmentAcceptance` functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts, invoked inside the Work Order Complete transaction (functions/src/transitionWorkOrder.ts) when the WO carries `salesOrderId`; design docs/design/p1-fulfillment-billing-spine-spec.md:27-33. Matching is on `(ref,kind)`, not bare ref (spec :29); over-remaining acceptance fails closed (spec :7).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-032",
+   "title": "Accumulate fulfilment across two work orders against one sales order",
+   "actor_role": "Field Manager",
+   "trigger": "A two-visit install: the machine lands on visit one, the plumbing on visit two.",
+   "narrative": "The write-back is additive and serialises on the shared order document, so two work orders completing against one order accumulate rather than race. The design is forward-compatible with multi-work-order orders even though only one is created today.",
+   "objects_touched": [
+    "Work Order",
+    "Sales Order"
+   ],
+   "authority_path": "Pure `applyFulfillmentAcceptance` functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts, invoked inside the Work Order Complete transaction (functions/src/transitionWorkOrder.ts) when the WO carries `salesOrderId`; design docs/design/p1-fulfillment-billing-spine-spec.md:27-33. Matching is on `(ref,kind)`, not bare ref (spec :29); over-remaining acceptance fails closed (spec :7). Cross-WO accumulation serialises on the shared soRef transaction conflict: docs/design/p1-fulfillment-billing-spine-spec.md:32.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-033",
+   "title": "Reject a technician acceptance that claims more units than the order remains owed",
+   "actor_role": "Field Manager",
+   "trigger": "A technician declares three units installed on a line that only had two remaining.",
+   "narrative": "The pure write-back throws rather than clamping. There is no placeholder overage array; the real overage path is an explicitly deferred future build.",
+   "objects_touched": [
+    "Work Order",
+    "Sales Order"
+   ],
+   "authority_path": "Pure `applyFulfillmentAcceptance` functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts, invoked inside the Work Order Complete transaction (functions/src/transitionWorkOrder.ts) when the WO carries `salesOrderId`; design docs/design/p1-fulfillment-billing-spine-spec.md:27-33. Matching is on `(ref,kind)`, not bare ref (spec :29); over-remaining acceptance fails closed (spec :7). Fail-closed overage with no silent cap and no interim placeholder: docs/design/p1-fulfillment-billing-spine-spec.md:7.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-034",
+   "title": "Read the sales order index to see what is booked but not yet fulfilled",
+   "actor_role": "Operations Manager",
+   "trigger": "Monday morning production planning.",
+   "narrative": "The index is a server projection with its own capability check. The list surface imports no command client at all, which is why it cannot be turned into an editing surface by accident.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Trusted projections `listSalesOrdersForAccount` functions/src/salesOrder/salesOrderReadService.ts:370 (permission :387), `getSalesOrderContext` :414 (:427), `listSalesOrderIndex` :666 (:721); capability `salesOrder.read` salesOrderReadService.ts:28 / permissionCatalog.ts:231 active:false :236. Client reads denied firestore.rules:1750. Surface field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx, dispatched App.jsx:458-459 from navConfig.js:131; it declares its own read callable `listSalesOrderIndex` at SalesOrdersList.jsx:30,70 and imports no command client \u2014 a read-only projection by construction.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-035",
+   "title": "Open one sales order and act on it from the record page",
+   "actor_role": "Sales Manager",
+   "trigger": "Following up on a stalled order.",
+   "narrative": "The detail page is the only sales surface that wires three commands at once \u2014 transition, allocate and create-service \u2014 through a single command client.",
+   "objects_touched": [
+    "Sales Order",
+    "Work Order"
+   ],
+   "authority_path": "Route field-ops-app-vite/src/App.jsx:966 -> `SalesOrderDetail` (lazy App.jsx:49); actions field-ops-app-vite/src/modules/sales/SalesOrderActions.jsx:39 -> field-ops-app-vite/src/hooks/useSalesOrderActions.js:31 -> field-ops-app-vite/src/services/salesOrderCommandClient.js:36,47,59 (transition / allocate / createService).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-036",
+   "title": "See when a sales order entered each lifecycle stage",
+   "actor_role": "Operations Manager",
+   "trigger": "Investigating why an order took eleven days to ship.",
+   "narrative": "The order records no lifecycle stage times. The design register carries this as an open decision, and without it cycle-time questions cannot be answered from the record.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Open product decision ND-8 'A Sales Order records no lifecycle stage times', docs/design/north-star-open-product-decisions.md:142-166. Order document shape functions/src/salesOrder/salesOrderCommands.ts:65-102 carries no stage timestamps.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "Should a Sales Order record the time it entered each lifecycle stage? Without it, order cycle time cannot be measured from the record at all (ND-8)."
+  },
+  {
+   "id": "P3B3-SALES-037",
+   "title": "Trust the sales order page as a live view",
+   "actor_role": "Sales Manager",
+   "trigger": "Watching an order during a customer call.",
+   "narrative": "The design register records that the Sales Order page cannot claim to be live. The read is a callable projection, not a subscription, so what is on screen is a point-in-time answer.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Open product decision ND-10 'The Sales Order page cannot claim to be live', docs/design/north-star-open-product-decisions.md:181-196. Read path Trusted projections `listSalesOrdersForAccount` functions/src/salesOrder/salesOrderReadService.ts:370 (permission :387), `getSalesOrderContext` :414 (:427), `listSalesOrderIndex` :666 (:721); capability `salesOrder.read` salesOrderReadService.ts:28 / permissionCatalog.ts:231 active:false :236. Client reads denied firestore.rules:1750.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-038",
+   "title": "Backfill sales order numbers on records created before numbering existed",
+   "actor_role": "Operations Manager",
+   "trigger": "Legacy orders in the sandbox show no order number.",
+   "narrative": "A dedicated backfill module with its own evidence file exists for exactly this. It is an operator tool, not a callable surfaced to the business.",
+   "objects_touched": [
+    "Sales Order",
+    "counters"
+   ],
+   "authority_path": "functions/src/salesOrder/salesOrderNumberBackfill.ts and functions/src/salesOrder/salesOrderNumberBackfillEvidence.ts; numbering functions/src/salesOrder/salesOrderNumbering.ts. No onCall export in functions/src/index.ts for either module.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-039",
+   "title": "Book an order against a customer purchase-order number for a government account",
+   "actor_role": "Salesperson",
+   "trigger": "A school district requires their PO number on every document.",
+   "narrative": "The opportunity-derived order creation accepts a customerPO on input alongside the sales channel and location. It is one of the few genuinely client-supplied fields on a path that otherwise derives everything server-side.",
+   "objects_touched": [
+    "Sales Order",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37). Input shape `{opportunityId, ownerEmployeeId, salesChannel, locationId?, customerPO?, idempotencyKey}` specified docs/design/p1-fulfillment-billing-spine-spec.md:37.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-040",
+   "title": "Book the order to a sales channel so the revenue lands in the right bucket",
+   "actor_role": "Salesperson",
+   "trigger": "Booking a deal that came through the manufacturer's referral program rather than direct.",
+   "narrative": "salesChannel is a required input on the governed order-creation path. Nothing in the repository yet consumes it as a reporting dimension for revenue attribution.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37). Financial attribution dimensions live in functions/src/finance/financialAttribution.ts; docs/financials/FIN-002_REPORTING_ATTRIBUTION_MODEL.md is the model.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-SALES-041",
+   "title": "Apply a volume discount to a repeat customer's agreement",
+   "actor_role": "Salesperson",
+   "trigger": "A customer who buys quarterly asks for their usual 8% off list.",
+   "narrative": "The agreement carries the price the salesperson types. There is no price list, no discount schedule and no approval limit anywhere in the repository \u2014 the role definition says so in its own words.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `updateSalesAgreementDraft` functions/src/salesAgreement/salesAgreementCallables.ts:317, capability `salesAgreement.updateDraft` :61 gated :319, permissionCatalog.ts:201 active:false :206. Allowlisted DRAFT-only edit; lifecycle functions/src/salesAgreement/salesAgreementLifecycle.ts. No pricing or discount authority exists: functions/src/access/governedBusinessRoles.ts:388-394 records that 'there is no approval-limit or discount-authority model in this repo, so acceptance is all-or-nothing per role'.",
+   "status": "PARTIAL",
+   "owner_question": "Is there a customer-specific or volume-based price list that EOS should hold, or is every price typed per agreement? No price-list object exists in the repository today."
+  },
+  {
+   "id": "P3B3-SALES-042",
+   "title": "Look up the last price this customer paid for the same part",
+   "actor_role": "Salesperson",
+   "trigger": "Quoting a repeat part and wanting consistency with the last sale.",
+   "narrative": "Nothing composes a price history per customer per part. Invoice lines exist, but there is no read path that answers 'what did this account last pay for this part'.",
+   "objects_touched": [
+    "Account",
+    "Part",
+    "Invoice"
+   ],
+   "authority_path": "NOT FOUND. Invoice lines are embedded in the invoice header document (functions/src/finance/invoiceCommands.ts:221) and the only AR read is account-scoped (functions/src/finance/financeReadCallables.ts:214 `listAccountInvoiceAr`); no part-grain price-history projection exists in functions/src/finance/ or functions/src/reporting/.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "Should a salesperson be able to see what an account last paid for a given part before quoting it again? No price-history read exists."
+  },
+  {
+   "id": "P3B3-SALES-043",
+   "title": "Create the North Valley sales territory",
+   "actor_role": "Sales Manager",
+   "trigger": "The business splits Phoenix into two territories.",
+   "narrative": "Territory is a durable record with no precedence, credit or commission semantics \u2014 the Rules comment states that explicitly. It exists to be referenced, not to decide anything yet.",
+   "objects_touched": [
+    "Sales Territory"
+   ],
+   "authority_path": "Cloud Functions onCall `createSalesTerritory` functions/src/coverage/coverageCallables.ts:41 and `createCoverageAssignment` :65, capability `coverage.write` coverageCallables.ts:17 resolved :28, registered permissionCatalog.ts:425 active:false :430; exported functions/src/index.ts:113. Storage `sales_territories` / `commercial_coverage_assignments`, deny-all firestore.rules:1832-1837.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 Registered `active: false` in the permission catalog. EXECUTED against the shipped resolver: every role resolves DENY/inactivePermission under the production environment's activation set, which is EMPTY \u2014 config/environments.json has no `capabilityActivationOverrides` key on `taylor-parts-production` (entry begins config/environments.json:257), and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. Gate line: functions/src/access/resolveEffectivePermission.ts (`permission.active === false && !input.activationOverrides?.has(...)`). EXECUTED additionally under the platform-sandbox activation set: `coverage.write` is NOT in the sandbox override list (config/environments.json:89-181), so the sandbox resolver ALSO returns DENY/inactivePermission for every one of the 48 roles. This capability is dead in every environment the repository declares."
+  },
+  {
+   "id": "P3B3-SALES-044",
+   "title": "Assign a salesperson to a territory with an effective date",
+   "actor_role": "Sales Manager",
+   "trigger": "A new hire takes over North Valley from the first of the month.",
+   "narrative": "Effective-dated coverage assignments are modelled and the command is written, but the capability is inactive everywhere \u2014 not merely in production \u2014 so no principal can create one today.",
+   "objects_touched": [
+    "Commercial Coverage Assignment",
+    "Sales Territory",
+    "Employee"
+   ],
+   "authority_path": "Cloud Functions onCall `createSalesTerritory` functions/src/coverage/coverageCallables.ts:41 and `createCoverageAssignment` :65, capability `coverage.write` coverageCallables.ts:17 resolved :28, registered permissionCatalog.ts:425 active:false :430; exported functions/src/index.ts:113. Storage `sales_territories` / `commercial_coverage_assignments`, deny-all firestore.rules:1832-1837.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 Registered `active: false` in the permission catalog. EXECUTED against the shipped resolver: every role resolves DENY/inactivePermission under the production environment's activation set, which is EMPTY \u2014 config/environments.json has no `capabilityActivationOverrides` key on `taylor-parts-production` (entry begins config/environments.json:257), and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. Gate line: functions/src/access/resolveEffectivePermission.ts (`permission.active === false && !input.activationOverrides?.has(...)`). `coverage.write` is absent from every `capabilityActivationOverrides` array in config/environments.json (sandbox :89-181, certification :224-228, production has no key)."
+  },
+  {
+   "id": "P3B3-SALES-045",
+   "title": "Resolve who covers this account before routing a lead",
+   "actor_role": "Marketing Manager",
+   "trigger": "An inbound web lead needs an owner.",
+   "narrative": "The coverage resolution read exists and is capability-gated, but the same inactive-everywhere condition applies to the read capability as to the write.",
+   "objects_touched": [
+    "Commercial Coverage Assignment",
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "Cloud Function onCall `resolveCoverageForContext` functions/src/coverage/coverageReadCallables.ts:46 (permission :21), capability `coverage.read` :16 / permissionCatalog.ts:436 active:false :441; exported functions/src/index.ts:116.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 Registered `active: false` in the permission catalog. EXECUTED against the shipped resolver: every role resolves DENY/inactivePermission under the production environment's activation set, which is EMPTY \u2014 config/environments.json has no `capabilityActivationOverrides` key on `taylor-parts-production` (entry begins config/environments.json:257), and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. Gate line: functions/src/access/resolveEffectivePermission.ts (`permission.active === false && !input.activationOverrides?.has(...)`). `coverage.read` (permissionCatalog.ts:436, active:false :441) is likewise absent from every environment override array."
+  },
+  {
+   "id": "P3B3-SALES-046",
+   "title": "Decide commission credit when two salespeople touched one deal",
+   "actor_role": "General Manager",
+   "trigger": "A house account closes with help from the territory rep.",
+   "narrative": "Coverage records who covers what and deliberately records nothing about precedence, credit or commission. There is no commission model in the repository at all.",
+   "objects_touched": [
+    "Commercial Coverage Assignment",
+    "Sales Order",
+    "Employee"
+   ],
+   "authority_path": "firestore.rules:1828-1831 states the coverage objects hold 'Records only (no precedence / credit / commission)'. No commission module exists in functions/src/.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "How should sales credit be split when more than one person contributed to a deal? Coverage explicitly records no precedence, credit or commission, and nothing else in EOS does either."
+  },
+  {
+   "id": "P3B3-SALES-047",
+   "title": "Report bookings by line of business for the quarter",
+   "actor_role": "General Manager",
+   "trigger": "Quarterly business review across service, parts and equipment.",
+   "narrative": "Line of business is an enum on the Account, not a governed dimension on any transaction. No sales order, agreement or invoice carries it, and the code explicitly forbids deriving anything from it.",
+   "objects_touched": [
+    "Account",
+    "Sales Order"
+   ],
+   "authority_path": "`lineOfBusiness` is a FIELD ENUM, not an authority: field-ops-app-vite/src/domain/constants.js:142 (`ACCOUNT_LINE_OF_BUSINESS`) and field-ops-app-vite/src/domain/wholeUnitAssetDisplay.js:47; read off the Account at field-ops-app-vite/src/domain/accountNorthStar.js:120,125,126. Backend references are prose-only and explicitly deny it authority \u2014 functions/src/ownership/commercialCompanyScope.ts:15 forbids deriving the operating company from it, and functions/src/ownership/ownershipMatrix.ts:45,228 repeat the prohibition. No collection, no table, no callable.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "Should line of business be a governed dimension on the commercial transaction (Opportunity / Agreement / Order), or does it remain an Account attribute only? Today it is an Account-level enum and no transaction carries it."
+  },
+  {
+   "id": "P3B3-SALES-048",
+   "title": "Start a quote from a saved sales template for a standard machine bundle",
+   "actor_role": "Salesperson",
+   "trigger": "The same three-item bundle is quoted most weeks.",
+   "narrative": "Sales templates are specified at length in a 2228-line wireframe and implemented nowhere. Every agreement is built from scratch.",
+   "objects_touched": [
+    "Sales Agreement"
+   ],
+   "authority_path": "NOT FOUND. Zero repository hits for `sales_templates` / `salesTemplate`. The only design source is docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md (2228 lines), which is a wireframe, not an implementation.",
+   "status": "DESIGNED_ONLY",
+   "owner_question": "Is a reusable sales template (a saved set of lines a salesperson starts a quote from) still wanted? It is designed in docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md and exists in no other form."
+  },
+  {
+   "id": "P3B3-SALES-049",
+   "title": "Book a Ventana deal on a Taylor salesperson's opportunity",
+   "actor_role": "Salesperson",
+   "trigger": "One salesperson legitimately transacts for both operating companies.",
+   "narrative": "The operating company is explicit or inherited, never derived from the salesperson, the account owner, the creator, the line of business or a display name \u2014 the ruling is written into the module. One salesperson and one customer may legitimately transact with either company.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Operating Company"
+   ],
+   "authority_path": "Commercial operating-company axis functions/src/ownership/commercialCompanyScope.ts (resolver :59); the three commercial writers call it at functions/src/opportunity/opportunityCommands.ts:175, functions/src/salesAgreement/salesAgreementCommands.ts:304 and functions/src/salesOrder/salesOrderCommands.ts:287. Ownership matrix rows: opportunity functions/src/ownership/ownershipMatrix.ts:142-153, salesAgreement :155-162, salesOrder :163-174. Ruling R-14 prohibition on inference: functions/src/ownership/commercialCompanyScope.ts:14-19; company ids functions/src/ownership/operatingCompanyAuthority.ts:22-24 (`taylor`, `ventana`), company records :37-50.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-050",
+   "title": "Correct the operating company on an opportunity after invoices were already issued",
+   "actor_role": "Controller",
+   "trigger": "An opportunity was booked to the wrong company and two invoices have shipped.",
+   "narrative": "The company is copied downstream at creation, not followed. Correcting the Opportunity cannot silently rewrite the company on invoices already issued against it \u2014 historical company responsibility stays historical.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Invoice",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:21-24 ('COPIED, NOT FOLLOWED ... correcting an Opportunity cannot silently rewrite the company on invoices that were already issued against it'). Cloud Function onCall `updateOpportunity` functions/src/opportunity/opportunityCallables.ts:363, capability `opportunity.write` (opportunityCallables.ts:34 / permissionCatalog.ts:154, active:false :159). Version-checked section save; UI hook field-ops-app-vite/src/hooks/useOpportunitySectionSave.js:32.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "When an Opportunity's operating company was wrong and invoices have already issued against it, what is the correcting act \u2014 a credit and re-invoice under the right company, or a recorded reclassification? The repository deliberately makes the downstream records immutable to the correction."
+  },
+  {
+   "id": "P3B3-SALES-051",
+   "title": "Book an opportunity with no operating company at all",
+   "actor_role": "Salesperson",
+   "trigger": "An older integration posts an opportunity without naming a company.",
+   "narrative": "The field is optional everywhere and a caller that supplies nothing gets null and behaves exactly as before. There is no enforcement, and the module states that none may be added until the census gate passes. What is refused is a bad value \u2014 an ungoverned company id is a caller error, not a reason to fall back to null.",
+   "objects_touched": [
+    "Opportunity",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:26-29 ('INERT AND BACKWARD-COMPATIBLE ... there is no enforcement, and none may be added until the census gate passes') and :59 resolver.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-052",
+   "title": "Default a production opportunity's company to Taylor when the salesperson leaves it blank",
+   "actor_role": "Salesperson",
+   "trigger": "A blank company field on a production record.",
+   "narrative": "There is no default in the module at all. Ruling R-14 is quoted in the source: do not silently default production Opportunities to Taylor. A synthetic fixture may declare one, and that declaration lives in visible fixture configuration.",
+   "objects_touched": [
+    "Opportunity",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:31-33 ('NO PRODUCTION DEFAULT. Ruling R-14').",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-SALES-053",
+   "title": "Give a customer a single operating company so the commercial chain resolves",
+   "actor_role": "Operations Manager",
+   "trigger": "Wanting to stop asking which company each deal belongs to.",
+   "narrative": "Ruling R-15 explicitly forbids it: a Customer must NOT carry a single operating company just to make this chain resolve, because the customer relationship and the transacting company are different questions and collapsing them would silently decide the second by answering the first.",
+   "objects_touched": [
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:16-19 (Ruling R-15).",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-SALES-054",
+   "title": "Write a sales order into the Postgres commercial authority",
+   "actor_role": "Operations Manager",
+   "trigger": "The data-plane cutover plan puts commercial ownership in Postgres.",
+   "narrative": "The schema, tables and repository all exist and nothing writes them. The migration's own header says the scope is ownership and identity only: no stage, outcome, state machine, line item, price, quantity, close date or channel columns.",
+   "objects_touched": [
+    "Sales Order",
+    "Opportunity",
+    "Sales Agreement"
+   ],
+   "authority_path": "Postgres schema `eos_commercial` functions/migrations/1758844800000_commercial-ownership-authority.sql:156; tables `opportunities` :177, `sales_agreements` :202, `sales_orders` :226, `ownership_handoffs` :256. Repository functions/src/eosCommercial/commercialOwnershipRepository.ts:37 and functions/src/eosCommercial/commercialOwnershipAuthority.ts:51-62 have ZERO non-test importers in functions/src/. Scope limits stated functions/migrations/1758844800000_commercial-ownership-authority.sql:25-31; 'nothing deployed writes these tables' :34-36.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 migration 1758844800000_commercial-ownership-authority.sql is #16 of 18 in functions/migrations/; nonprod Postgres is applied to 7 of 18, so `eos_commercial` does not exist there. Independently TRANSPORT_UNREACHABLE: no sales route is defined on the Render transport at all \u2014 functions/src/eosApi/server.ts:167-171 routes only `/operations/*` to functions/src/eosOps/eosOpsHttp.ts (single operation `resolveMyCapabilities`, eosOpsHttp.ts:76-77) and everything else to functions/src/adminPolicy/adminPolicyHttp.ts (which refuses any path but `/admin/policy`, :130)."
+  },
+  {
+   "id": "P3B3-SALES-055",
+   "title": "Hand off a sales order's ownership to another employee and keep the trail",
+   "actor_role": "Sales Manager",
+   "trigger": "A territory reshuffle moves twelve open orders.",
+   "narrative": "An ownership_handoffs table exists in the commercial migration with an append-only trigger, so the trail is designed to be immutable. It is unreachable for the same reason the rest of the commercial schema is.",
+   "objects_touched": [
+    "Sales Order",
+    "Ownership Handoff",
+    "Employee"
+   ],
+   "authority_path": "functions/migrations/1758844800000_commercial-ownership-authority.sql:256 `CREATE TABLE ownership_handoffs`, append-only trigger function :295 and trigger :303. Postgres schema `eos_commercial` functions/migrations/1758844800000_commercial-ownership-authority.sql:156; tables `opportunities` :177, `sales_agreements` :202, `sales_orders` :226, `ownership_handoffs` :256. Repository functions/src/eosCommercial/commercialOwnershipRepository.ts:37 and functions/src/eosCommercial/commercialOwnershipAuthority.ts:51-62 have ZERO non-test importers in functions/src/.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 same migration #16 of 18; `eos_commercial` absent in nonprod. No callable or HTTP route reaches it either (functions/src/eosApi/server.ts:167-171)."
+  },
+  {
+   "id": "P3B3-SALES-056",
+   "title": "Look at the sales pipeline sorted by expected close date",
+   "actor_role": "Sales Manager",
+   "trigger": "Weekly forecast call.",
+   "narrative": "The composite index for stage plus expected close date exists, so the query the pipeline view needs is supported at the storage layer. The read still has to travel through the capability-gated projection.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "Composite index firestore.indexes.json:229-241 (`opportunities` \u2014 stage ASC + expectedCloseAt ASC). Read path Trusted read projections `listOpportunitiesForAccount` functions/src/opportunity/opportunityReadService.ts:277 (permission check :294), `listOpportunityContext` :322 (:329), `getOpportunityContext` :467 (:480); capability `opportunity.read` opportunityReadService.ts:26 / permissionCatalog.ts:166, active:false :171. Client-direct reads are denied at firestore.rules:1741, which is why a projection exists at all.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-057",
+   "title": "Create an opportunity from the opportunities list without leaving the page",
+   "actor_role": "Salesperson",
+   "trigger": "A phone call during list review.",
+   "narrative": "The list surface mounts an inline create form whose readiness is gated on the real write capability rather than on a role name, so the form is offered only when the resolver would actually allow the write.",
+   "objects_touched": [
+    "Opportunity",
+    "Account"
+   ],
+   "authority_path": "Surface field-ops-app-vite/src/modules/sales/OpportunityList.jsx, mounted through the generic subnav dispatcher field-ops-app-vite/src/App.jsx:873-882 from nav item field-ops-app-vite/src/navigation/navConfig.js:119; create form wired OpportunityList.jsx:46,220 with write readiness gated on real `opportunity.write` at App.jsx:329-330.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-058",
+   "title": "Work the retired master-detail sales pipeline workspace",
+   "actor_role": "Sales Manager",
+   "trigger": "Muscle memory from the previous UI.",
+   "narrative": "The workspace was replaced by the opportunity list. It is unrouted but still in the tree and still wires write hooks \u2014 the design register carries exactly that as an open item.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "field-ops-app-vite/src/modules/sales/SalesWorkspace.jsx still wires write hooks (:9, :22, :24, :140, :143, :148) and is no longer mounted (replaced at field-ops-app-vite/src/App.jsx:319-321). Open product decision ND-17 'The retired workspace is unrouted but still in the tree', docs/design/north-star-open-product-decisions.md:351-381.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-SALES-059",
+   "title": "Read an opportunity from the browser without going through a callable",
+   "actor_role": "Sales Manager",
+   "trigger": "A developer or an integration attempting a direct Firestore read.",
+   "narrative": "Denied in Rules for every principal including admin. A governed client read model, if any, is recorded as a later and separately-authorized change.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "firestore.rules:1740-1742 `allow read, write: if false`, with the rationale at :1734-1739.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "RULES_DENY \u2014 firestore.rules:1741 denies read and write unconditionally for every principal; the comment at :1739 records that a governed client READ model is a later, separately-authorized change."
+  },
+  {
+   "id": "P3B3-SALES-060",
+   "title": "Confirm no sales surface can write Firestore directly",
+   "actor_role": "Operations Manager",
+   "trigger": "A quarterly architecture review.",
+   "narrative": "The sales module contains no Firestore SDK usage at all \u2014 every write and every read travels through a capability-gated callable. That is what makes the Rules deny-all posture load-bearing rather than decorative.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Sales Agreement"
+   ],
+   "authority_path": "Command clients field-ops-app-vite/src/services/opportunityCommandClient.js:36, salesOrderCommandClient.js:29 and salesAgreementCommandClient.js:22 are all `httpsCallable`; field-ops-app-vite/src/modules/sales/ contains no `collection(` / `setDoc` / `onSnapshot` usage (only a prose comment at SalesOrderDetail.jsx:62).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-061",
+   "title": "Show a salesperson which sales actions they may take before they click",
+   "actor_role": "Salesperson",
+   "trigger": "Opening a record and looking at the action bar.",
+   "narrative": "Client-side capability access modules compute advisory readiness. They are advisory only \u2014 the server resolver is the real gate, and the client mirror is generated from the canonical backend contract with CI drift enforcement.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Sales Agreement"
+   ],
+   "authority_path": "field-ops-app-vite/src/access/opportunityCapabilityAccess.js, salesOrderCapabilityAccess.js, salesAgreementCapabilityAccess.js and opportunityWriteReadiness.js. The mirror is generated: field-ops-app-vite/src/access/permissionCatalog.ts:1-6 ('GENERATED FILE \u2014 DO NOT EDIT \u2026 Generated from the canonical EOS access contract by scripts/syncAccessContracts.mjs \u2026 CI fails on drift').",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-062",
+   "title": "Verify a salesperson can actually reach the opportunity write path in the sandbox",
+   "actor_role": "Sales Manager",
+   "trigger": "Pre-activation readiness check before a sandbox pilot.",
+   "narrative": "Resolving the shipped permission resolver directly, with the sandbox activation set loaded from repository configuration, shows the Salesperson role ALLOWed for opportunity.write, opportunity.createSalesOrder, salesOrder.write and salesAgreement.accept \u2014 and DENIED for all four under the production activation set.",
+   "objects_touched": [
+    "Role",
+    "Capability",
+    "Environment"
+   ],
+   "authority_path": "Resolver field-ops-app-vite/src/access/resolveEffectivePermission.ts:246; roles field-ops-app-vite/src/access/governedBusinessRoles.ts:364 (SALESPERSON_ROLE); activation sets read from config/environments.json (`platform-sandbox` overrides :89-181; `taylor-parts-production` entry begins :257 and carries NO such key).",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts (loads field-ops-app-vite/src/access/resolveEffectivePermission.ts and config/environments.json unmodified)",
+    "output": [
+     "salesperson | opportunity.write | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "salesperson | opportunity.createSalesOrder | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "salesperson | salesOrder.write | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "salesperson | salesAgreement.accept | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "Pure resolver evaluation against repository files. No network, no Firestore, no deploy."
+   }
+  },
+  {
+   "id": "P3B3-SALES-063",
+   "title": "Have the sales manager who booked the order also allocate it",
+   "actor_role": "Sales Manager",
+   "trigger": "A small order the sales manager wants to push through end to end.",
+   "narrative": "They cannot. Executing the resolver across all 48 roles shows salesOrder.fulfill and salesOrder.service are held only by the compatibility roles admin and dispatcher plus owner. Sales Manager, General Manager, Operations Manager, Warehouse Manager and Salesperson all resolve DENY/noQualifyingGrant even with the sandbox activation set applied. The capability that moves a booked order into fulfilment belongs to no governed business role.",
+   "objects_touched": [
+    "Sales Order",
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "Capabilities `salesOrder.fulfill` functions/src/access/permissionCatalog.ts:253 and `salesOrder.service` :264. Commands Cloud Function onCall `allocateSalesOrder` functions/src/fulfillment/allocateSalesOrder.ts:96, capability `salesOrder.fulfill` :30 resolved :37, registered permissionCatalog.ts:253 active:false :258; exported functions/src/index.ts:95. Eligible ON_HAND pool is restricted to status==ACTIVE warehouses (allocateSalesOrder.ts:119). Cloud Function onCall `createServiceForSalesOrder` functions/src/salesOrder/createServiceForSalesOrder.ts:122, capability `salesOrder.service` :21 resolved :126, registered permissionCatalog.ts:264 active:false :269; exported functions/src/index.ts:97. One SO -> at most one Service WO (createServiceForSalesOrder.ts:60-64).",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts \u2014 resolves every one of the 48 roles against every one of the 147 catalogued capabilities under the production and platform-sandbox activation sets",
+    "output": [
+     "salesOrder.fulfill | holders = owner, admin, dispatcher | sandboxAllow = owner, admin, dispatcher",
+     "salesOrder.service | holders = owner, admin, dispatcher | sandboxAllow = owner, admin, dispatcher",
+     "salesperson | salesOrder.fulfill | PROD=DENY/inactivePermission | SANDBOX=DENY/noQualifyingGrant",
+     "generalManager | salesOrder.fulfill | PROD=DENY/inactivePermission | SANDBOX=DENY/noQualifyingGrant",
+     "operationsManager | salesOrder.fulfill | PROD=DENY/inactivePermission | SANDBOX=DENY/noQualifyingGrant"
+    ],
+    "note": "The DENY is real and is NOT the active:false gate \u2014 under the sandbox set the reason is noQualifyingGrant, i.e. nobody holds it."
+   },
+   "owner_question": "Which job actually allocates stock against a booked Sales Order and which raises its service visit? Today `salesOrder.fulfill` and `salesOrder.service` are held by no governed business role \u2014 only by the compatibility `admin`/`dispatcher` roles \u2014 so a Sales Manager, General Manager, Operations Manager or Warehouse Manager cannot perform either step."
+  },
+  {
+   "id": "P3B3-SALES-064",
+   "title": "See a sales order's remaining balance owed on the account it belongs to",
+   "actor_role": "Salesperson",
+   "trigger": "A customer asks what is still open on their account.",
+   "narrative": "The account page composes a sales-orders section from a governed projection. The financial side of the same question travels a different path with its own visibility requirements.",
+   "objects_touched": [
+    "Sales Order",
+    "Account"
+   ],
+   "authority_path": "Trusted projections `listSalesOrdersForAccount` functions/src/salesOrder/salesOrderReadService.ts:370 (permission :387), `getSalesOrderContext` :414 (:427), `listSalesOrderIndex` :666 (:721); capability `salesOrder.read` salesOrderReadService.ts:28 / permissionCatalog.ts:231 active:false :236. Client reads denied firestore.rules:1750. Account surface field-ops-app-vite/src/modules/accounts/AccountSalesOrdersSection.jsx via field-ops-app-vite/src/services/accountSalesOrdersReadCallableClient.js:21,29.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-065",
+   "title": "Query all sales orders in one state across every account",
+   "actor_role": "Operations Manager",
+   "trigger": "Finding everything stuck in fulfilment.",
+   "narrative": "The composite indexes for state plus order number, and for state plus account plus order number, exist, so the storage layer supports the query shape the operations view needs.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Composite indexes firestore.indexes.json:243-255 (state + salesOrderNumber DESC), :621-634 (accountId + salesOrderNumber DESC), :635-650 (state + accountId + salesOrderNumber DESC). Read Trusted projections `listSalesOrdersForAccount` functions/src/salesOrder/salesOrderReadService.ts:370 (permission :387), `getSalesOrderContext` :414 (:427), `listSalesOrderIndex` :666 (:721); capability `salesOrder.read` salesOrderReadService.ts:28 / permissionCatalog.ts:231 active:false :236. Client reads denied firestore.rules:1750.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-066",
+   "title": "Book an order for a customer site that belongs to a different account",
+   "actor_role": "Salesperson",
+   "trigger": "A franchise operator asks for delivery to a sibling location.",
+   "narrative": "The order creation path accepts an optional locationId. Equipment Rules enforce that a location belongs to its account, but the Sales Order path has no equivalent parentage check in code that was traced.",
+   "objects_touched": [
+    "Sales Order",
+    "Account",
+    "Customer Location"
+   ],
+   "authority_path": "Cloud Function onCall `createSalesOrderFromOpportunity` functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, capability `opportunity.createSalesOrder` declared :34 and resolved :291, registered permissionCatalog.ts:178 active:false :183; exported functions/src/index.ts:64. Lines/qty/account are server-derived from the Opportunity, never client-supplied (docs/design/p1-fulfillment-billing-spine-spec.md:37). Location-to-account parentage IS enforced for Equipment at firestore.rules:1508-1510 (`equipmentLocationBelongsToAccount`); no equivalent check was found on the Sales Order creation path in functions/src/opportunity/createSalesOrderFromOpportunity.ts or functions/src/salesOrder/salesOrderCommands.ts.",
+   "status": "PARTIAL",
+   "owner_question": "May a Sales Order ship to a Customer Location that belongs to a different Account (a sibling franchise site)? Equipment enforces account-location parentage in Rules; the Sales Order path does not appear to."
+  },
+  {
+   "id": "P3B3-SALES-067",
+   "title": "Publish the sales record page against the approved presentation standard",
+   "actor_role": "Sales Manager",
+   "trigger": "Design review of the sales record family.",
+   "narrative": "The structured-object presentation standard and the record grammar are repository documents the sales surfaces compose against. Three open decisions in the register touch sales presentation specifically.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Sales Agreement"
+   ],
+   "authority_path": "docs/design/eos-structured-object-presentation-standard.md; docs/design/eos-north-star-design-grammar.md; open items ND-8/ND-9/ND-10/ND-16 in docs/design/north-star-open-product-decisions.md:142-196, :431-462.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-SALES-068",
+   "title": "Retire the second opportunity composition so there is one record page",
+   "actor_role": "Sales Manager",
+   "trigger": "Two compositions of the same record existed and only one was the record.",
+   "narrative": "Resolved: the pane was retired on 2026-08-27. Recorded here because it is the kind of duplication that silently reappears, and the register is the place it was settled.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "Resolved product decision ND-13 'The Opportunity has two compositions, and only one of them is the record \u2014 RESOLVED 2026-08-27: the pane is retired', docs/design/north-star-open-product-decisions.md:315-350.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-SALES-069",
+   "title": "Record stage times on an opportunity so pipeline velocity can be measured",
+   "actor_role": "Sales Manager",
+   "trigger": "Wanting to know how long deals sit in each stage.",
+   "narrative": "The register recorded that an Opportunity captures no stage times except the close, then WITHDREW the item on 2026-08-26. The withdrawal is the answer of record; the measurement remains unavailable.",
+   "objects_touched": [
+    "Opportunity"
+   ],
+   "authority_path": "Withdrawn product decision ND-12 'An Opportunity records no stage times except the close \u2014 WITHDRAWN 2026-08-26', docs/design/north-star-open-product-decisions.md:297-314.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-SALES-070",
+   "title": "Drive the whole opportunity-to-order spine from the browser in the sandbox",
+   "actor_role": "Sales Manager",
+   "trigger": "A human tester wants to walk the flow end to end before activation is proposed for production.",
+   "narrative": "The activation spec wires the override into the frontend as well as the backend, precisely because the UI would otherwise stay fail-closed even where the backend would authorize. A production build's key is absent so an empty set is baked in at build time and cannot exist in a production bundle.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Agreement",
+    "Sales Order",
+    "Environment"
+   ],
+   "authority_path": "docs/design/per-environment-capability-activation-spec.md sections 'Design' item 4 (frontend injection via vite.config.js `define`, frozen constant field-ops-app-vite/src/config/capabilityActivationOverrides.js) and 'Triple production-hard-block'. Backend injection functions/src/access/environmentCapabilityOverrides.ts threaded through functions/src/access/effectiveAccessFeed.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  }
+ ]
+}

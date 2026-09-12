@@ -1,0 +1,1075 @@
+{
+ "lane": "P3-B3",
+ "block": "financial",
+ "generated": "2026-09-12",
+ "count": 70,
+ "activities": [
+  {
+   "id": "P3B3-FIN-001",
+   "title": "Issue the invoice for a completed compressor replacement",
+   "actor_role": "Accounting Manager",
+   "trigger": "The work order closed and the sales order shows every line fulfilled.",
+   "narrative": "Invoice issuance is a trusted server command. The client never writes invoices, mutates AR, allocates invoice numbers or computes authoritative tax \u2014 the Rules comment states each of those four prohibitions explicitly. Lines are embedded on the header document rather than living in a subcollection.",
+   "objects_touched": [
+    "Invoice",
+    "Sales Order",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `issueInvoice` functions/src/finance/invoiceCallables.ts:112 (capability constant :28), exported functions/src/index.ts:100; pure core functions/src/finance/invoiceCommands.ts (lines array :221, header subtotal :222, `state:\"ISSUED\"` :218, NO_LINES guard :266). Capability `finance.invoice.issue` functions/src/access/permissionCatalog.ts:278, `active:false` :283. Storage `invoices` \u2014 client read AND write denied firestore.rules:1803-1804, rationale :1798-1802.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. In platform-sandbox the id IS activated (config/environments.json:101) and EXECUTED resolution gives ALLOW for generalManager, partsManager, controller, accountingManager, financeManager, owner and admin."
+  },
+  {
+   "id": "P3B3-FIN-002",
+   "title": "Refuse to issue an invoice with no lines on it",
+   "actor_role": "Accounting Manager",
+   "trigger": "A billing clerk hits issue on an empty draft.",
+   "narrative": "The pure core guards it. An invoice with no lines is not a small invoice, it is a document that cannot be right, and the command fails rather than creating one.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Cloud Function onCall `issueInvoice` functions/src/finance/invoiceCallables.ts:112 (capability constant :28), exported functions/src/index.ts:100; pure core functions/src/finance/invoiceCommands.ts (lines array :221, header subtotal :222, `state:\"ISSUED\"` :218, NO_LINES guard :266). Capability `finance.invoice.issue` functions/src/access/permissionCatalog.ts:278, `active:false` :283. Storage `invoices` \u2014 client read AND write denied firestore.rules:1803-1804, rationale :1798-1802. NO_LINES guard functions/src/finance/invoiceCommands.ts:266.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-003",
+   "title": "Allocate the next invoice number for the Ventana company sequence",
+   "actor_role": "Accounting Manager",
+   "trigger": "Any invoice issuance.",
+   "narrative": "Numbering is per operating company, backed by a counter document that no client can read or write. The Postgres design carries the same shape with a unique-per-company constraint, so the two authorities agree on what an invoice number means.",
+   "objects_touched": [
+    "Invoice",
+    "Operating Company",
+    "counters"
+   ],
+   "authority_path": "functions/src/finance/invoiceNumbering.ts over `counters` (deny-all firestore.rules:512-515); per-company counter key `invoices_${companyId}`. Postgres mirror: `invoice_number` functions/migrations/1758931200000_invoice-authority.sql:159 with the unique-per-company constraint :182-183.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-004",
+   "title": "Void an invoice that was issued against the wrong customer",
+   "actor_role": "Controller",
+   "trigger": "A billing clerk invoiced the parent company instead of the franchise.",
+   "narrative": "There is no way to do it. The invoice carries void columns, the AR projection understands a VOID position, and the reconciliation module reads it \u2014 but no write path anywhere sets them. The migration says so in its own words.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Void columns functions/migrations/1758931200000_invoice-authority.sql:180 with the all-or-nothing CHECK :203-207; readers functions/src/finance/financeReadProjection.ts:41 and :47 (ArPosition includes VOID) and functions/src/finance/financialReconciliation.ts:142. The absence is stated at functions/migrations/1758931200000_invoice-authority.sql:94-99 ('NO WRITE PATH SETS IT TODAY ... a `voidInvoice` [command does not exist]'). Confirmed by grep across functions/: the only VOID write path is the PURCHASE-ORDER void (`reorder.purchaseOrder.void`, functions/src/access/permissionCatalog.ts:535), which is purchasing, not AR.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "An invoice issued against the wrong customer cannot be voided \u2014 the columns and the AR VOID position exist but no command sets them. Is the intended correction a full-value credit memo, or should a governed `voidInvoice` command be built?"
+  },
+  {
+   "id": "P3B3-FIN-005",
+   "title": "Correct a quantity on an issued invoice",
+   "actor_role": "Accounting Manager",
+   "trigger": "A line shipped two, the invoice says three.",
+   "narrative": "The issued invoice is never rewritten. The correction is a linked adjustment, and the AR outstanding is a transactionally-maintained projection of the invoice plus its adjustments rather than an editable number.",
+   "objects_touched": [
+    "Invoice",
+    "Invoice Adjustment"
+   ],
+   "authority_path": "Cloud Function onCall `recordInvoiceAdjustment` functions/src/finance/adjustmentCallables.ts:58, exported functions/src/index.ts:106; core functions/src/finance/adjustmentCommands.ts (types CREDIT_MEMO / DEBIT_CHARGE / WRITE_OFF :17, credit cap logic :94-105). Capability `finance.adjustment.record` functions/src/access/permissionCatalog.ts:302, `active:false` :307. Storage `invoice_adjustments` deny-all firestore.rules:1824, rationale :1819-1823 ('Adjustments never rewrite the issued invoice'). The 'adjustments never rewrite the issued invoice' rule is stated at firestore.rules:1821-1822.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `finance.adjustment.record` is `active:false` (functions/src/access/permissionCatalog.ts:307). EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`."
+  },
+  {
+   "id": "P3B3-FIN-006",
+   "title": "Read one invoice's detail from the financials surface",
+   "actor_role": "Accounting Manager",
+   "trigger": "A customer queries a charge.",
+   "narrative": "The invoice detail route exists and composes a read. It offers no write authority at all \u2014 the page can show the invoice and cannot change it.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-007",
+   "title": "Bill a service visit that has no sales order behind it",
+   "actor_role": "Accounting Manager",
+   "trigger": "A break-fix call that was never quoted.",
+   "narrative": "The billing queue is sales-order-anchored and carries no amounts. The readiness map names the gate plainly: service work is structurally absent from the billing spine, tracked as FIN-BLOCK-002.",
+   "objects_touched": [
+    "Work Order",
+    "Invoice",
+    "Sales Order"
+   ],
+   "authority_path": "Pure billing queue functions/src/finance/billingQueue.ts (statuses :20, `deriveBillingQueueEntry` :62) and billing eligibility functions/src/fulfillment/billingEligibility.ts (enum :15, `computeBillingEligibility` :43; the `min(orderedQty, fulfilledQty)` billing total is at :46 per docs/design/p1-fulfillment-billing-spine-spec.md:18). Surface field-ops-app-vite/src/modules/financials/FinancialsBillingQueue.jsx, whose :50 records that the action is disabled because the page has no governed command path wired to the invoice core. Readiness row docs/financials/F12_SURFACE_READINESS_MAP.md ('Billing Queue | billingQueue.ts (F4) \u2014 SO-anchored statuses, no amounts | service work structurally absent \u2014 FIN-BLOCK-002'); decision package docs/financials/FIN-BLOCK-002_SERVICE_BILLING_DECISION_PACKAGE.md; model docs/financials/SERVICE_BILLING_MODEL.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-002. The billing spine anchors on the Sales Order; a break-fix Work Order with no Sales Order has no route into it. Crosses into the Service domain owned by lane P3-B1.",
+   "owner_question": "How is a break-fix service visit with no Sales Order behind it billed? The billing queue is Sales-Order-anchored (billingQueue.ts:20) and FIN-BLOCK-002 records service billing as structurally absent."
+  },
+  {
+   "id": "P3B3-FIN-008",
+   "title": "Work the billing queue and issue from it",
+   "actor_role": "Accounting Manager",
+   "trigger": "Daily billing run.",
+   "narrative": "The queue renders and the invoice command core exists, but the page has no governed command path wired to it \u2014 the surface says so in its own comment. The queue is a to-do list you cannot act on from the page.",
+   "objects_touched": [
+    "Invoice",
+    "Sales Order"
+   ],
+   "authority_path": "Pure billing queue functions/src/finance/billingQueue.ts (statuses :20, `deriveBillingQueueEntry` :62) and billing eligibility functions/src/fulfillment/billingEligibility.ts (enum :15, `computeBillingEligibility` :43; the `min(orderedQty, fulfilledQty)` billing total is at :46 per docs/design/p1-fulfillment-billing-spine-spec.md:18). Surface field-ops-app-vite/src/modules/financials/FinancialsBillingQueue.jsx, whose :50 records that the action is disabled because the page has no governed command path wired to the invoice core.",
+   "status": "PARTIAL",
+   "owner_question": "The Billing Queue surface shows what is billable and cannot issue (FinancialsBillingQueue.jsx:50 \u2014 'the invoice command core exists, but this page has no governed command path wired to it'). Should that wiring be prioritised, and under which approval policy?"
+  },
+  {
+   "id": "P3B3-FIN-009",
+   "title": "Reconcile the Firestore invoice header totals against the Postgres line sum",
+   "actor_role": "Controller",
+   "trigger": "A cutover parity check.",
+   "narrative": "Two authorities hold the same invoice. Firestore keeps four totals on the header; Postgres derives the total as a SUM over lines through a view. The migration's own header records that the AR aging summary is the only one of the four with no reconciliation proof at all.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Postgres schema `eos_finance` functions/migrations/1758931200000_invoice-authority.sql:148; `CREATE TABLE invoices` :153 (invoice_number :159, unique-per-company :182-183, currency :198, void columns :180 and all-or-nothing CHECK :203-207), `CREATE TABLE invoice_lines` :225, `CREATE VIEW invoice_totals` :276. AR: functions/migrations/1759017600000_ar-cash-application-authority.sql \u2014 `CREATE TABLE payments` :167, `payment_applications` :217, `CREATE VIEW payment_balances` :426, `CREATE VIEW invoice_application_totals` :449. Repositories functions/src/eosOps/invoiceAuthority.ts:110, :223, :243, :261, :304 and functions/src/eosOps/cashApplicationAuthority.ts:144, :159, :176, :191. The four-header-totals / no-reconciliation-proof observation is at functions/migrations/1758931200000_invoice-authority.sql:19-30; reconcile helper functions/src/eosOps/invoiceAuthority.ts:304 `reconcileMigratedInvoice`; totals helper functions/src/eosOps/invoiceTotals.ts.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 migration 1758931200000_invoice-authority.sql is #17 of 18; nonprod Postgres is applied to 7 of 18, so `eos_finance` does not exist there."
+  },
+  {
+   "id": "P3B3-FIN-010",
+   "title": "Issue an invoice in a currency other than the customer's usual one",
+   "actor_role": "Accounting Manager",
+   "trigger": "An export sale.",
+   "narrative": "Currency identity is declared on the Postgres invoice table. Nothing in the reachable Firestore path exercises it, so a multi-currency invoice is a schema capability without a command behind it.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Currency identity functions/migrations/1758931200000_invoice-authority.sql:198. Firestore command Cloud Function onCall `issueInvoice` functions/src/finance/invoiceCallables.ts:112 (capability constant :28), exported functions/src/index.ts:100; pure core functions/src/finance/invoiceCommands.ts (lines array :221, header subtotal :222, `state:\"ISSUED\"` :218, NO_LINES guard :266). Capability `finance.invoice.issue` functions/src/access/permissionCatalog.ts:278, `active:false` :283. Storage `invoices` \u2014 client read AND write denied firestore.rules:1803-1804, rationale :1798-1802.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-011",
+   "title": "Carry a due date on the invoice so AR can age it",
+   "actor_role": "Accounting Manager",
+   "trigger": "Issuing an invoice on NET_30 terms.",
+   "narrative": "The due date is carried at issuance and never computed \u2014 there is no terms engine anywhere in EOS. The customer's payment terms are a governed enum on the Account, and translating that enum into a date is something the issuing act must do, not something the system derives later.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "'carried at issuance, never computed' \u2014 functions/migrations/1758931200000_invoice-authority.sql:167. Payment terms enum ['COD','NET_30','NET_60','NET_90'] validated firestore.rules:1291-1292. No terms-calculation module exists in functions/src/finance/.",
+   "status": "PARTIAL",
+   "owner_question": "There is no payment-terms engine: the invoice due date is carried at issuance and the Account's terms enum is never translated into one. Should EOS derive the due date from the customer's terms at issuance, or is that deliberately the issuer's act?"
+  },
+  {
+   "id": "P3B3-FIN-012",
+   "title": "Find every invoice for one account regardless of state",
+   "actor_role": "Controller",
+   "trigger": "Preparing a customer statement.",
+   "narrative": "The account-scoped AR read is the only invoice read that exists. There is no all-invoices query and no cross-account invoice list.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `listAccountInvoiceAr` functions/src/finance/financeReadCallables.ts:214, pure core `readAccountInvoiceAr` :181, visibility loader `loadFinancialVisibilityAuthority` :57; exported functions/src/index.ts:109. Capability `finance.read` functions/src/access/permissionCatalog.ts:313, `active:false` :319.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `finance.read` functions/src/access/permissionCatalog.ts:313 is `active:false` :319. EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. In sandbox EXECUTED ALLOW for 14 roles including salesManager, purchasingManager, shopManager, shopAssociate, salesperson, partsAssociate and fieldManager \u2014 but see FIN-021 on why that grant reaches nothing."
+  },
+  {
+   "id": "P3B3-FIN-013",
+   "title": "Produce a statement of account for a customer who owes across six invoices",
+   "actor_role": "Accounting Manager",
+   "trigger": "A customer asks what they owe in total.",
+   "narrative": "No statement object, no dunning, no reminder. Grepping for both terms across the repository returns nothing. The nearest thing is the per-account AR read with its aging summary.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "NOT FOUND \u2014 zero repository hits for `dunning` or `statement of account`. Nearest implementation Cloud Function onCall `listAccountInvoiceAr` functions/src/finance/financeReadCallables.ts:214, pure core `readAccountInvoiceAr` :181, visibility loader `loadFinancialVisibilityAuthority` :57; exported functions/src/index.ts:109. Capability `finance.read` functions/src/access/permissionCatalog.ts:313, `active:false` :319. Pure AR projection functions/src/finance/financeReadProjection.ts \u2014 outstanding derivation :37, `deriveArPosition` :46, `summarizeArAging` :124 (buckets current / 1-30 at :143-145), `summarizeArAgingByCompany` :174, `summarizeAccountAr` :233. It is a projection, not a callable: no onCall wraps it directly.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "Should EOS produce customer statements and dunning notices, or does that stay in the accounting system of record? Neither exists in the repository today."
+  },
+  {
+   "id": "P3B3-FIN-014",
+   "title": "Show the invoice line detail a customer is disputing",
+   "actor_role": "Accounting Manager",
+   "trigger": "A dispute on one line of a six-line invoice.",
+   "narrative": "Lines live embedded on the invoice header document in Firestore and as their own table in Postgres. There is no per-line dispute or hold state in either.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Firestore lines embedded functions/src/finance/invoiceCommands.ts:221; Postgres `CREATE TABLE invoice_lines` functions/migrations/1758931200000_invoice-authority.sql:225 with index :267. No dispute/hold state exists in either shape.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-015",
+   "title": "Apply a customer's cheque against three open invoices",
+   "actor_role": "Accounting Manager",
+   "trigger": "A single cheque arrives covering several invoices.",
+   "narrative": "Cash receipts and their applications are two records, and the AR outstanding balance is a transactionally-maintained projection of those facts \u2014 never a client-editable number. The Rules comment says exactly that.",
+   "objects_touched": [
+    "Payment",
+    "Payment Application",
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `applyPayment` functions/src/finance/paymentCallables.ts:62, exported functions/src/index.ts:103; core functions/src/finance/paymentCommands.ts (`deriveInvoiceStateFromFacts`, over-application rejection :129-130). Capability `finance.payment.apply` functions/src/access/permissionCatalog.ts:290, `active:false` :295. Storage `payments` firestore.rules:1812 and `payment_applications` :1815, both deny-all; rationale :1807-1811.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `finance.payment.apply` functions/src/access/permissionCatalog.ts:290, `active:false` :295. EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. Sandbox EXECUTED ALLOW for generalManager, controller, accountingManager, financeManager, owner and admin only."
+  },
+  {
+   "id": "P3B3-FIN-016",
+   "title": "Take a customer payment larger than the invoices it is applied to",
+   "actor_role": "Accounting Manager",
+   "trigger": "A customer overpays by rounding up.",
+   "narrative": "The command rejects it. Unapplied balances are not yet supported and the field is always written as zero \u2014 so an overpayment cannot be received at all, rather than being received and parked.",
+   "objects_touched": [
+    "Payment",
+    "Invoice"
+   ],
+   "authority_path": "Cloud Function onCall `applyPayment` functions/src/finance/paymentCallables.ts:62, exported functions/src/index.ts:103; core functions/src/finance/paymentCommands.ts (`deriveInvoiceStateFromFacts`, over-application rejection :129-130). Capability `finance.payment.apply` functions/src/access/permissionCatalog.ts:290, `active:false` :295. Storage `payments` firestore.rules:1812 and `payment_applications` :1815, both deny-all; rationale :1807-1811. Over-application rejection functions/src/finance/paymentCommands.ts:129-130 (error `OVER_APPLICATION`, message 'unapplied balances are not yet supported'); `unappliedMinor` always 0 at :150. Derivation helpers exist only on the unreachable Postgres side: functions/src/eosOps/cashApplicationAuthority.ts:176 `deriveUnappliedMinor`.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "A customer who overpays cannot have their payment recorded at all \u2014 `applyPayment` rejects over-application because unapplied cash is unsupported (paymentCommands.ts:129-130). Should EOS hold unapplied cash on account, and if so who may apply it later?"
+  },
+  {
+   "id": "P3B3-FIN-017",
+   "title": "Hold a customer deposit before any invoice exists",
+   "actor_role": "Accounting Manager",
+   "trigger": "A 50% deposit on an equipment order.",
+   "narrative": "Same absence. A payment must be applied to invoices on receipt, so money that arrives before the invoice has nowhere to sit.",
+   "objects_touched": [
+    "Payment",
+    "Sales Order"
+   ],
+   "authority_path": "Cloud Function onCall `applyPayment` functions/src/finance/paymentCallables.ts:62, exported functions/src/index.ts:103; core functions/src/finance/paymentCommands.ts (`deriveInvoiceStateFromFacts`, over-application rejection :129-130). Capability `finance.payment.apply` functions/src/access/permissionCatalog.ts:290, `active:false` :295. Storage `payments` firestore.rules:1812 and `payment_applications` :1815, both deny-all; rationale :1807-1811. Unapplied cash unsupported: functions/src/finance/paymentCommands.ts:129-130, :150.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "Deposits taken before invoicing have no home: `applyPayment` requires invoices to apply against and holds no unapplied balance. How should a pre-invoice deposit on an equipment order be recorded?"
+  },
+  {
+   "id": "P3B3-FIN-018",
+   "title": "Refund a customer who paid twice",
+   "actor_role": "Controller",
+   "trigger": "A duplicate payment.",
+   "narrative": "A refund is money returned after payment, deliberately distinct from a credit or a write-off, and it never rewrites the issued invoice. The command exists and is separately capability-gated.",
+   "objects_touched": [
+    "Refund",
+    "Payment",
+    "Invoice"
+   ],
+   "authority_path": "Cloud Function onCall `recordRefund` functions/src/finance/refundCallables.ts:57, exported functions/src/index.ts:119; core functions/src/finance/refundCommands.ts. Capability `finance.refund.record` functions/src/access/permissionCatalog.ts:374, `active:false` :379. Storage `refunds` deny-all firestore.rules:1843, rationale :1839-1842 ('Distinct from credits/write-offs; never rewrites the issued invoice').",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `finance.refund.record` functions/src/access/permissionCatalog.ts:374, `active:false` :379. EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`."
+  },
+  {
+   "id": "P3B3-FIN-019",
+   "title": "Write off a small balance that is not worth chasing",
+   "actor_role": "Controller",
+   "trigger": "A $12 residual on a closed account.",
+   "narrative": "A write-off is one of three adjustment types on the same command. The credit cap logic prevents a credit exceeding what is actually owed.",
+   "objects_touched": [
+    "Invoice Adjustment",
+    "Invoice"
+   ],
+   "authority_path": "Cloud Function onCall `recordInvoiceAdjustment` functions/src/finance/adjustmentCallables.ts:58, exported functions/src/index.ts:106; core functions/src/finance/adjustmentCommands.ts (types CREDIT_MEMO / DEBIT_CHARGE / WRITE_OFF :17, credit cap logic :94-105). Capability `finance.adjustment.record` functions/src/access/permissionCatalog.ts:302, `active:false` :307. Storage `invoice_adjustments` deny-all firestore.rules:1824, rationale :1819-1823 ('Adjustments never rewrite the issued invoice'). Credit cap logic functions/src/finance/adjustmentCommands.ts:94-105.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `finance.adjustment.record`, functions/src/access/permissionCatalog.ts:307. EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`."
+  },
+  {
+   "id": "P3B3-FIN-020",
+   "title": "Issue a credit memo for a part that came back",
+   "actor_role": "Parts Manager",
+   "trigger": "A customer returns an unopened part.",
+   "narrative": "Credit memo is the first of the three adjustment types. Notably the parts manager role holds invoice issuance and adjustment recording but not payment application \u2014 the money roles are split that way deliberately.",
+   "objects_touched": [
+    "Invoice Adjustment",
+    "Invoice",
+    "Part"
+   ],
+   "authority_path": "Cloud Function onCall `recordInvoiceAdjustment` functions/src/finance/adjustmentCallables.ts:58, exported functions/src/index.ts:106; core functions/src/finance/adjustmentCommands.ts (types CREDIT_MEMO / DEBIT_CHARGE / WRITE_OFF :17, credit cap logic :94-105). Capability `finance.adjustment.record` functions/src/access/permissionCatalog.ts:302, `active:false` :307. Storage `invoice_adjustments` deny-all firestore.rules:1824, rationale :1819-1823 ('Adjustments never rewrite the issued invoice'). Role split EXECUTED: `finance.adjustment.record` and `finance.invoice.issue` both include partsManager; `finance.payment.apply` does not.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 functions/src/access/permissionCatalog.ts:307. EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`."
+  },
+  {
+   "id": "P3B3-FIN-021",
+   "title": "Let a salesperson see the AR position on their own account",
+   "actor_role": "Salesperson",
+   "trigger": "A salesperson wants to know whether their customer is current before quoting.",
+   "narrative": "They cannot, in any environment. FIN-004 requires two things \u2014 the fact-family gate `finance.read` and a reach id \u2014 and the salesperson's reach is `finance.visibility.self`, which is registered inactive AND is absent from the sandbox activation array. Executing the resolver confirms it: the salesperson is ALLOWed `finance.read` in the sandbox and DENIED `finance.visibility.self` there with reason inactivePermission. Either alone reaches nothing, so the grant is real and the reach is zero.",
+   "objects_touched": [
+    "Invoice",
+    "Account",
+    "Capability"
+   ],
+   "authority_path": "Cloud Function onCall `listAccountInvoiceAr` functions/src/finance/financeReadCallables.ts:214, pure core `readAccountInvoiceAr` :181, visibility loader `loadFinancialVisibilityAuthority` :57; exported functions/src/index.ts:109. Capability `finance.read` functions/src/access/permissionCatalog.ts:313, `active:false` :319. FIN-004 reach model: `finance.read` is the FACT-FAMILY gate and a `finance.visibility.*` id is the REACH; both are required and either alone reaches nothing. Ids: `.self` functions/src/access/permissionCatalog.ts:330, `.team` :338, `.businessUnit` :346, `.company` :354, `.consolidated` :362 \u2014 all `active:false`. Composition enforced functions/src/finance/financialVisibility.ts; scope matching for operatingCompany/businessUnit is exact-value, documented at field-ops-app-vite/src/access/resolveEffectivePermission.ts:174-178. Model document docs/financials/FIN-004_FINANCIAL_VISIBILITY_MODEL.md.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts and <scratchpad>/matrix.mts",
+    "output": [
+     "salesperson | finance.read | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "salesperson | finance.visibility.self | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "salesManager | finance.visibility.team | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "finance.visibility.self | sandboxAllow = [] (zero roles, in the ONLY environment where finance is activated)"
+    ],
+    "note": "`finance.visibility.consolidated` IS in the sandbox override array (config/environments.json:127) but `.self`, `.team`, `.businessUnit` and `.company` are not. Consolidated is the only reach that resolves anywhere."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "In platform-sandbox \u2014 the only environment where finance is activated \u2014 `finance.visibility.consolidated` is activated but `.self`, `.team`, `.businessUnit` and `.company` are not. The practical effect is that a Salesperson and a Sales Manager can see NO financial fact at all while an Accounting Manager sees everything consolidated. Was the narrower reach deliberately withheld, or is this an omission in config/environments.json's override array?"
+  },
+  {
+   "id": "P3B3-FIN-022",
+   "title": "Let a sales manager see the team's receivables",
+   "actor_role": "Sales Manager",
+   "trigger": "A manager reviewing their team's collection exposure.",
+   "narrative": "The same structural gap one level up. The manager holds `finance.read` and the team reach, and the team reach is inactive in every environment the repository declares.",
+   "objects_touched": [
+    "Invoice",
+    "Employee",
+    "Capability"
+   ],
+   "authority_path": "FIN-004 reach model: `finance.read` is the FACT-FAMILY gate and a `finance.visibility.*` id is the REACH; both are required and either alone reaches nothing. Ids: `.self` functions/src/access/permissionCatalog.ts:330, `.team` :338, `.businessUnit` :346, `.company` :354, `.consolidated` :362 \u2014 all `active:false`. Composition enforced functions/src/finance/financialVisibility.ts; scope matching for operatingCompany/businessUnit is exact-value, documented at field-ops-app-vite/src/access/resolveEffectivePermission.ts:174-178. Model document docs/financials/FIN-004_FINANCIAL_VISIBILITY_MODEL.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `finance.visibility.team` functions/src/access/permissionCatalog.ts:338, `active:false` :343, and absent from every `capabilityActivationOverrides` array in config/environments.json. EXECUTED: DENY/inactivePermission for salesManager under BOTH the production and the sandbox sets."
+  },
+  {
+   "id": "P3B3-FIN-023",
+   "title": "Let a general manager see one business unit's numbers without seeing the rest",
+   "actor_role": "General Manager",
+   "trigger": "Reviewing one branch's performance.",
+   "narrative": "Business-unit and company reach are catalogued and held only by the catch-all admin and owner roles \u2014 no governed business role declares either. Both are also inactive in every environment. A scoped financial view below consolidated is not reachable by anyone.",
+   "objects_touched": [
+    "Capability",
+    "Role",
+    "Invoice"
+   ],
+   "authority_path": "FIN-004 reach model: `finance.read` is the FACT-FAMILY gate and a `finance.visibility.*` id is the REACH; both are required and either alone reaches nothing. Ids: `.self` functions/src/access/permissionCatalog.ts:330, `.team` :338, `.businessUnit` :346, `.company` :354, `.consolidated` :362 \u2014 all `active:false`. Composition enforced functions/src/finance/financialVisibility.ts; scope matching for operatingCompany/businessUnit is exact-value, documented at field-ops-app-vite/src/access/resolveEffectivePermission.ts:174-178. Model document docs/financials/FIN-004_FINANCIAL_VISIBILITY_MODEL.md.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "finance.visibility.businessUnit | active=false | holders = owner, admin | sandboxAllow = []",
+     "finance.visibility.company | active=false | holders = owner, admin | sandboxAllow = []",
+     "admin | finance.visibility.businessUnit | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission"
+    ],
+    "note": "These two are held ONLY through the admin role's catch-all catalog spread at functions/src/access/compatibilityRoles.ts:235-240, not by any explicit grant. Blocker recorded as FIN-BLOCK-001."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "`finance.visibility.businessUnit` and `.company` are declared by no governed business role and activated in no environment. Is a scoped financial view below consolidated still wanted (FIN-BLOCK-001), and which role should hold it?"
+  },
+  {
+   "id": "P3B3-FIN-024",
+   "title": "Age the receivables into buckets for a collections call",
+   "actor_role": "Accounting Manager",
+   "trigger": "Weekly collections review.",
+   "narrative": "The bucket code exists \u2014 current and 1-30 among them \u2014 and the projection's own header records a deployment-policy caveat: daysOverdue is factual, and the buckets are not deployed as policy. The Postgres header goes further and says the aging summary is the one figure with no reconciliation proof at all.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "Pure AR projection functions/src/finance/financeReadProjection.ts \u2014 outstanding derivation :37, `deriveArPosition` :46, `summarizeArAging` :124 (buckets current / 1-30 at :143-145), `summarizeArAgingByCompany` :174, `summarizeAccountAr` :233. It is a projection, not a callable: no onCall wraps it directly. Deployment-policy caveat functions/src/finance/financeReadProjection.ts:45 ('daysOverdue is factual; NO aging buckets (deployment policy)'); no-reconciliation-proof note functions/migrations/1758931200000_invoice-authority.sql:29-30.",
+   "status": "PARTIAL",
+   "owner_question": "AR aging buckets are implemented (financeReadProjection.ts:124, :143-145) but the module's own header records a deployment policy of 'no aging buckets'. Should the buckets ship, and at which boundaries?"
+  },
+  {
+   "id": "P3B3-FIN-025",
+   "title": "Roll AR aging up by operating company",
+   "actor_role": "Controller",
+   "trigger": "Board reporting across Taylor and Ventana.",
+   "narrative": "A by-company aging summariser exists in the projection. What it produces at the consolidated level is an unelimated sum, which the financial allocation module types explicitly rather than presenting as a clean consolidation.",
+   "objects_touched": [
+    "Invoice",
+    "Operating Company"
+   ],
+   "authority_path": "Pure AR projection functions/src/finance/financeReadProjection.ts \u2014 outstanding derivation :37, `deriveArPosition` :46, `summarizeArAging` :124 (buckets current / 1-30 at :143-145), `summarizeArAgingByCompany` :174, `summarizeAccountAr` :233. It is a projection, not a callable: no onCall wraps it directly. By-company roll-up functions/src/finance/financeReadProjection.ts:174 `summarizeArAgingByCompany`; consolidation typing functions/src/finance/financialAllocation.ts:83 (`consolidated: { status: \"UNELIMINATED_SUM\"; totalMinor }`) and :88 `summarizeByCompany`.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-026",
+   "title": "Read the AR block on a customer record",
+   "actor_role": "Accounting Manager",
+   "trigger": "Opening a customer with an overdue balance.",
+   "narrative": "The account page's AR section is the one place where the finance authority surfaces inside CRM. It composes the governed callable and renders a denial in place rather than disappearing, per the resolved design decision.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "Surface field-ops-app-vite/src/modules/accounts/AccountArSection.jsx:6; hook field-ops-app-vite/src/hooks/useAccountAr.js:11; pure view model field-ops-app-vite/src/domain/accountArView.js; the sibling section defers to it as authoritative at field-ops-app-vite/src/modules/accounts/AccountFinancialsSection.jsx:15. Callable Cloud Function onCall `listAccountInvoiceAr` functions/src/finance/financeReadCallables.ts:214, pure core `readAccountInvoiceAr` :181, visibility loader `loadFinancialVisibilityAuthority` :57; exported functions/src/index.ts:109. Capability `finance.read` functions/src/access/permissionCatalog.ts:313, `active:false` :319.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-027",
+   "title": "Record a supplier's bill so it can be paid",
+   "actor_role": "Accounting Manager",
+   "trigger": "A supplier invoice arrives for a purchase order.",
+   "narrative": "Accounts payable does not exist in any form. Purchasing records commitment and receipt \u2014 a purchase order and a receiving order \u2014 but neither is a bill and neither creates a payable.",
+   "objects_touched": [
+    "Supplier",
+    "Purchase Order"
+   ],
+   "authority_path": "NOT FOUND \u2014 zero repository hits across functions/ (TS and SQL) for `supplier_bill`, `supplierBill`, `accountsPayable`, `accounts_payable` or `vendorBill`. No AP collection in functions/src/constants/collections.ts, no match block in firestore.rules, no CREATE TABLE in functions/migrations/. Nearest: purchasing \u2014 `CREATE TABLE purchase_orders` functions/migrations/1758672000000_purchasing-object-authority.sql:210 and `receiving_orders` :295. Crosses into the Purchasing domain owned by lane P3-B2.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "EOS has no accounts payable of any kind \u2014 no supplier bill, no payable, no payment run. Is AP intended to stay in the accounting system of record, or does EOS eventually own it?"
+  },
+  {
+   "id": "P3B3-FIN-028",
+   "title": "Set payment terms with a supplier",
+   "actor_role": "Purchasing Manager",
+   "trigger": "Negotiating with a new supplier.",
+   "narrative": "The supplier record carries a payment-terms reference, and the migration is explicit that it is a label or reference, not a terms engine. Nothing computes a supplier due date from it.",
+   "objects_touched": [
+    "Supplier"
+   ],
+   "authority_path": "functions/src/supplierMaster/supplierMasterCommands.ts:70 (`paymentTermsRef?`) and :146; Postgres column `payment_terms_ref TEXT` functions/migrations/1758499200000_supplier-and-supplier-catalog-authority.sql:190 with the rationale at :116 ('a label/reference, not a terms engine'). Crosses into the Purchasing domain owned by lane P3-B2.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-029",
+   "title": "Derive an invoice's applied and outstanding amounts from the Postgres views",
+   "actor_role": "Controller",
+   "trigger": "Building the reconciliation report.",
+   "narrative": "The AR migration ships two views and a set of pure derivations that assert an application fits before it is written. This is the layer that would replace the Firestore projection at cutover.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Payment Application"
+   ],
+   "authority_path": "Views `payment_balances` functions/migrations/1759017600000_ar-cash-application-authority.sql:426 and `invoice_application_totals` :449; pure derivations functions/src/eosOps/cashApplicationAuthority.ts:144 `deriveAppliedMinor`, :159 `deriveReceiptBalance`, :176 `deriveUnappliedMinor`, :191 `assertApplicationFits`.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 migration 1759017600000_ar-cash-application-authority.sql is #18 of 18 in functions/migrations/; nonprod Postgres is applied to 7 of 18, so neither the tables nor the views exist there."
+  },
+  {
+   "id": "P3B3-FIN-030",
+   "title": "Reach the Postgres finance authority from a browser",
+   "actor_role": "Controller",
+   "trigger": "Any attempt to use the Postgres finance layer from the application.",
+   "narrative": "There is no route. The deployed Render service splits traffic two ways and refuses every path but two \u2014 the administration policy endpoint and one non-mutating inventory operation. No finance route is defined anywhere in the repository, let alone deployed.",
+   "objects_touched": [
+    "Invoice",
+    "Payment"
+   ],
+   "authority_path": "functions/src/eosApi/server.ts:166-171 creates one server that routes `/operations/*` to the operations handler and everything else to the administration handler. The administration handler refuses any path but `/admin/policy` (functions/src/adminPolicy/adminPolicyHttp.ts:130) plus `/health` (:122); the operations handler refuses any path but `/operations/inventory` (functions/src/eosOps/eosOpsHttp.ts:176) and its closed operation list holds exactly one entry, `resolveMyCapabilities` (:76-77, :85).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "TRANSPORT_UNREACHABLE \u2014 functions/src/eosApi/server.ts:167-171; functions/src/adminPolicy/adminPolicyHttp.ts:130; functions/src/eosOps/eosOpsHttp.ts:176. Every Postgres finance authority is behind a transport that exposes no finance route."
+  },
+  {
+   "id": "P3B3-FIN-031",
+   "title": "Open the Financials overview and see the business's money position",
+   "actor_role": "Controller",
+   "trigger": "Start of the month.",
+   "narrative": "Overview is a roll-up over everything below it, so every caveat below applies to it. It renders a real composition rather than a placeholder.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Overview (``) | rollups over the below | everything below; margin/consolidated caveats apply`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-032",
+   "title": "See total receivables outstanding across all customers",
+   "actor_role": "Accounting Manager",
+   "trigger": "Cash-flow planning.",
+   "narrative": "The AR surface binds to the scoped AR read plus the outstanding projection. Its named gate is the company and business-unit visibility scopes, which no role can resolve.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Accounts Receivable (`accounts-receivable`) | financeReadCallables.ts scoped AR read (F2) + outstanding projection | COMPANY/BU visibility scopes \u2014 FIN-BLOCK-001`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 FIN-BLOCK-001 \u2014 the COMPANY and BUSINESS_UNIT reach ids are held by no governed business role and activated in no environment; EXECUTED DENY/inactivePermission for admin under both sets."
+  },
+  {
+   "id": "P3B3-FIN-033",
+   "title": "Review payments received this week",
+   "actor_role": "Accounting Manager",
+   "trigger": "Weekly cash review.",
+   "narrative": "The payments surface binds to the payment command core plus the F3 attribution model. It is read-only; nothing on it applies cash.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Payments (`payments`) | paymentCommands.ts + F3 attribution | \u2014`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-034",
+   "title": "Review credits and adjustments issued this month",
+   "actor_role": "Controller",
+   "trigger": "Month-end control review.",
+   "narrative": "The surface binds to the adjustment and refund cores plus the FIN-007 approval machinery. Its named gate is that the approval policy values themselves have not been set.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Credits & Adjustments (`credits-adjustments`) | adjustmentCommands.ts / refundCommands.ts + F3 attribution; FIN-007 approval machinery | approval policy values (FIN-007 \u00a72)`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-007 \u00a72 approval policy values are unset \u2014 docs/financials/FIN-007_APPROVAL_GOVERNANCE_MODEL.md; the surface records the same at field-ops-app-vite/src/modules/financials/FinancialsCreditsAdjustments.jsx:8 and FinancialsPaymentDetail.jsx:199-201."
+  },
+  {
+   "id": "P3B3-FIN-035",
+   "title": "See one customer's complete financial picture",
+   "actor_role": "Sales Manager",
+   "trigger": "Before a difficult renewal conversation.",
+   "narrative": "Customer Financials binds the AR read at customer grain. For any principal below consolidated reach it shows nothing, because the reach ids below consolidated resolve nowhere.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Customer Financials (`customer-financials`) | AR read + attribution `customerId` grain | FIN-BLOCK-001 for non-consolidated principals`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 FIN-BLOCK-001. EXECUTED: `finance.visibility.self`/`.team` resolve DENY/inactivePermission even under the sandbox activation set."
+  },
+  {
+   "id": "P3B3-FIN-036",
+   "title": "Track a salesperson's bookings against their goal",
+   "actor_role": "Sales Manager",
+   "trigger": "Monthly one-to-one.",
+   "narrative": "Sales to Goal binds the plan-versus-actual core in GOAL mode. Its gates are plan storage, the approval authority for setting a plan, and the wiring of BOOKED facts.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Sales to Goal (`sales-to-goal`) | planVsActual.ts (F6, GOAL) | plan storage + approval authority (FIN-007); BOOKED facts wiring`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-037",
+   "title": "Track spend against budget for the parts department",
+   "actor_role": "Parts Manager",
+   "trigger": "Monthly cost review.",
+   "narrative": "Cost to Budget binds the same core in BUDGET mode on a cost basis. The named gate is absolute: cost facts do not exist, and until the Owner rules, the surface can only show UNKNOWN.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Cost to Budget (`cost-to-budget`) | planVsActual.ts (F6, BUDGET, COST basis) | **cost facts do not exist** \u2014 FIN-BLOCK-003; until ruled the surface can only show UNKNOWN`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-003 \u2014 docs/financials/FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md and docs/assessments/fin-block-003-cost-supply-reconciliation.md; cost engine functions/src/finance/inventoryCostEngine.ts and functions/src/finance/acquisitionCost.ts exist without a ruled cost authority."
+  },
+  {
+   "id": "P3B3-FIN-038",
+   "title": "Forecast next quarter's revenue",
+   "actor_role": "General Manager",
+   "trigger": "Quarterly planning.",
+   "narrative": "Forecasting binds the F7 core. Forecast storage and the methodology policy are both outstanding, so the core can compute and has nothing to persist to.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Forecasting (`forecasting`) | forecasting.ts (F7) | forecast storage; methodology policy`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-039",
+   "title": "See gross margin on a completed job",
+   "actor_role": "General Manager",
+   "trigger": "Judging whether the work was worth doing.",
+   "narrative": "Margin binds the F5 cost-margin core and is structurally UNKNOWN today. The readiness map is explicit that it must display as unknown and never as 0%.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Gross Margin & Profitability (`profitability`) | costMargin.ts (F5) | FIN-BLOCK-003 \u2014 structurally UNKNOWN today, and must display as unknown, never 0%`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-003. Core functions/src/finance/costMargin.ts; the display rule is stated in the readiness map's binding rule 3 ('UNKNOWN renders as unknown (never 0, never blank-as-zero)')."
+  },
+  {
+   "id": "P3B3-FIN-040",
+   "title": "Set next year's departmental budgets",
+   "actor_role": "Controller",
+   "trigger": "Annual planning.",
+   "narrative": "Budget Management binds plan records in BUDGET mode. Gates are plan storage and FIN-007 approval.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Budget Management (`budgets`) | planVsActual.ts plan records (BUDGET) | storage; FIN-007 approval`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-041",
+   "title": "Set a salesperson's annual goal",
+   "actor_role": "Sales Manager",
+   "trigger": "Annual goal-setting.",
+   "narrative": "Goal Management binds plan records in GOAL mode on the financial side. Separately, a governed performance-goal object with its own draft/approve/retire lifecycle exists and is capability-gated.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Goal Management (`goals`) | planVsActual.ts plan records (GOAL) | storage; FIN-007 approval`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-042",
+   "title": "Compare Taylor's and Ventana's performance side by side",
+   "actor_role": "Owner",
+   "trigger": "Board pack.",
+   "narrative": "Company performance binds the by-company summariser and the FIN-002 dimensions. The consolidated column is typed as an unelimated sum, not a consolidation \u2014 the typing is the honesty.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Company & BU Performance (`company-performance`) | summarizeByCompany (F10) + FIN-002 dimensions | Consolidated column is typed UNELIMINATED_SUM \u2014 FIN-BLOCK-004; BU scope binding \u2014 FIN-BLOCK-001`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-004 \u2014 no intercompany record type may exist until the Owner rules treatment. Typing functions/src/finance/financialAllocation.ts:83, :88 and functions/src/performance/performanceMetricRegistry.ts:490-496 (metric typed UNELIMINATED_SUM, blocker named FIN-BLOCK-004 at :496)."
+  },
+  {
+   "id": "P3B3-FIN-043",
+   "title": "Rank salespeople by revenue credited to them",
+   "actor_role": "Sales Manager",
+   "trigger": "Compensation review.",
+   "narrative": "Employee performance binds the credited-salesperson snapshots and the SELF and TEAM reach scopes \u2014 which are exactly the two reaches that resolve nowhere.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Salesperson & Employee Performance (`employee-performance`) | FIN-002 `creditedSalespersonId` snapshots + FIN-004 SELF/TEAM scopes | \u2014`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 The surface's declared gates are the SELF and TEAM reaches; EXECUTED, both resolve DENY/inactivePermission in every environment including platform-sandbox."
+  },
+  {
+   "id": "P3B3-FIN-044",
+   "title": "Investigate a drift between two financial figures",
+   "actor_role": "Controller",
+   "trigger": "A number does not tie.",
+   "narrative": "Reconciliation binds the F11 internal-drift module. External reconciliation waits on the selection of an authority of record.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Reconciliation & Exceptions (`reconciliation`) | financialReconciliation.ts (F11, internal drift) | external reconciliation awaits the authority-of-record selection (#145)`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-045",
+   "title": "Record an intercompany charge between Taylor and Ventana",
+   "actor_role": "Controller",
+   "trigger": "Ventana uses a Taylor technician.",
+   "narrative": "Deliberately nothing. The readiness map's entry for this section is the word 'none' followed by the reason: no intercompany record type may exist until the Owner rules treatment.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Intercompany (`intercompany`) | none \u2014 deliberately | FIN-BLOCK-004: no intercompany record type may exist until the Owner rules treatment`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-FIN-046",
+   "title": "Audit who changed a financial figure and when",
+   "actor_role": "Controller",
+   "trigger": "An audit request.",
+   "narrative": "Financial audit binds audit events plus the frozen attribution, approval and period records. It has no named gate beyond design.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Financial Audit & History (`audit`) | audit events + frozen attribution/approval/period records | \u2014`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-047",
+   "title": "Export the month's financial detail for the accountant",
+   "actor_role": "Controller",
+   "trigger": "Month-end handover.",
+   "narrative": "Reporting and exports bind the F13 reporting matrix. Invariant E is the governing constraint: a principal denied a fact must not receive it via an export.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Reporting & Exports (`reports`) | F13 reporting matrix (next phase) | export governance; invariant E (visibility follows the number into exports)`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-048",
+   "title": "Set the approval threshold above which a credit needs a second signature",
+   "actor_role": "Controller",
+   "trigger": "Establishing internal control.",
+   "narrative": "Financial settings binds the FIN-007 policy lines, the FIN-008 periods and the activation state. The Owner policy values themselves \u2014 thresholds and close cadence \u2014 are the gate.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "Readiness row, docs/financials/F12_SURFACE_READINESS_MAP.md: `Financial Settings & Governance (`governance`) | FIN-007 policy lines, FIN-008 periods, activation state | Owner policy values (approval thresholds, close cadence)`. Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472. Financials surfaces field-ops-app-vite/src/modules/financials/, dispatched from field-ops-app-vite/src/App.jsx:766, :769, :772, :775, :778, :781, :784, :787; record routes App.jsx:944 (`FinancialsInvoiceDetail`) and :947 (`FinancialsPaymentDetail`). Every one is READ-ONLY: the module contains no `httpsCallable` write call \u2014 the only matches for issueInvoice / applyPayment / recordRefund / recordInvoiceAdjustment are comments explaining the disabled state (FinancialsBillingQueue.jsx:50, FinancialsPaymentDetail.jsx:199-201, FinancialsCreditsAdjustments.jsx:8).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 Owner policy values unset \u2014 docs/financials/FIN-007_APPROVAL_GOVERNANCE_MODEL.md \u00a72 and docs/financials/FIN-008_PERIOD_CLOSE_MODEL.md."
+  },
+  {
+   "id": "P3B3-FIN-049",
+   "title": "Ship a financial screen without an approved design source",
+   "actor_role": "Controller",
+   "trigger": "Wanting the numbers on screen sooner.",
+   "narrative": "Refused by process, and recorded as a named blocker: under the three-authority model visual composition belongs to the Design authority, and minting twenty financial screens without approved design sources would be Design inventing itself in code. Every section keeps its honest placeholder until its design source exists.",
+   "objects_touched": [
+    "Invoice",
+    "Payment"
+   ],
+   "authority_path": "docs/financials/F12_SURFACE_READINESS_MAP.md header (FIN-BLOCK-005, DECISIONS #122); binding rule 4 in the same file ('Every new screen passes the impeccable + taste review bar, against an approved design source'). Design package docs/north-star/financials/DESIGN-HANDOFF-FINANCIALS-P1.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-005, docs/financials/F12_SURFACE_READINESS_MAP.md header. The 2026-09-01 update records the design direction as APPROVED with repo ingest of the Design package still pending."
+  },
+  {
+   "id": "P3B3-FIN-050",
+   "title": "Read the financial policy profile governing costing method and recognition point",
+   "actor_role": "Finance Manager",
+   "trigger": "Checking which costing method the numbers rest on.",
+   "narrative": "The money roles can see which costing method and recognition point govern the numbers they work with, and deliberately cannot change them \u2014 the Owner ruled that supplying or approving an accounting policy does not by itself confer EOS configuration authority.",
+   "objects_touched": [
+    "Financial Policy Profile"
+   ],
+   "authority_path": "Capability `financialPolicy.profile.read` functions/src/access/permissionCatalog.ts:406 (`active:false`), granted through MONEY_MANAGER_PERMISSIONS functions/src/access/governedBusinessRoles.ts:433-466; the read-not-configure ruling is recorded in that same constant's comment. Command functions/src/finance/financialPolicyProfileCommand.ts; model functions/src/finance/financialPolicyProfile.ts; surface field-ops-app-vite/src/modules/administration/AdminFinancialPolicy.jsx (branch field-ops-app-vite/src/App.jsx:656) over the pure view builder field-ops-app-vite/src/domain/financialPolicyView.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246): every one of the 48 roles resolves DENY/inactivePermission under the production activation set. That set is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key, and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. The id IS in the platform-sandbox override array, where EXECUTED resolution gives ALLOW for controller, accountingManager, financeManager, generalManager, owner and admin."
+  },
+  {
+   "id": "P3B3-FIN-051",
+   "title": "Change the costing method the business uses",
+   "actor_role": "Finance Manager",
+   "trigger": "An accounting policy change.",
+   "narrative": "Configuration stays with the administrative company authority, not with the money roles. Executing the resolver confirms the split: `financialPolicy.profile.configure` is held only by admin and owner, through the catch-all catalog spread rather than any explicit grant.",
+   "objects_touched": [
+    "Financial Policy Profile",
+    "Role"
+   ],
+   "authority_path": "Capability `financialPolicy.profile.configure` functions/src/access/permissionCatalog.ts:414, `active:false`. The deliberate withholding from the money roles is recorded in the MONEY_MANAGER_PERMISSIONS comment at functions/src/access/governedBusinessRoles.ts:433-466. Decision sheet docs/financials/CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "financialPolicy.profile.configure | active=false | holders = owner, admin | governed business roles holding it: NONE",
+     "admin | financialPolicy.profile.configure | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "The read/configure split the Owner ruled is real and measurable: `.read` is in MONEY_MANAGER_PERMISSIONS, `.configure` is in no governed role at all."
+   }
+  },
+  {
+   "id": "P3B3-FIN-052",
+   "title": "Close the accounting period so the numbers stop moving",
+   "actor_role": "Controller",
+   "trigger": "Month end.",
+   "narrative": "A financial periods module and a reporting calendar exist, and the calendar is deliberately shared between Taylor and Ventana on one reporting basis by Owner ruling. The close cadence itself is an unset policy value.",
+   "objects_touched": [
+    "Reporting Period",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/finance/financialPeriods.ts; reporting calendar functions/src/reportingPeriod/reportingCalendar.ts:62-78 (one shared Taylor/Ventana basis, Owner ruling G-05) with the UNELIMINATED_SUM note at :120; functions/src/reportingPeriod/reportingPeriod.ts. Model docs/financials/FIN-008_PERIOD_CLOSE_MODEL.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 close cadence is an unset Owner policy value, per the Financial Settings & Governance row in docs/financials/F12_SURFACE_READINESS_MAP.md."
+  },
+  {
+   "id": "P3B3-FIN-053",
+   "title": "Credit a sale to the salesperson who made it, frozen at the moment of issue",
+   "actor_role": "Accounting Manager",
+   "trigger": "Issuing an invoice on a deal a salesperson closed.",
+   "narrative": "Attribution is snapshotted onto the financial record rather than resolved live, so a later reassignment of the account cannot rewrite who earned last quarter's revenue.",
+   "objects_touched": [
+    "Invoice",
+    "Employee"
+   ],
+   "authority_path": "functions/src/finance/financialAttribution.ts; model docs/financials/FIN-002_REPORTING_ATTRIBUTION_MODEL.md. Frozen `creditedSalespersonId` snapshots are the declared binding for the employee-performance surface in docs/financials/F12_SURFACE_READINESS_MAP.md.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-054",
+   "title": "Allocate a shared cost across two operating companies",
+   "actor_role": "Controller",
+   "trigger": "One truck serving both companies.",
+   "narrative": "A financial allocation module exists whose own header calls the design honest consolidation. What it will not do is produce a clean consolidated figure \u2014 the consolidated shape is typed as an unelimated sum so the caveat travels with the number.",
+   "objects_touched": [
+    "Operating Company",
+    "Invoice"
+   ],
+   "authority_path": "functions/src/finance/financialAllocation.ts \u2014 module header :9-10 ('HONEST CONSOLIDATION'), consolidated type :83, `summarizeByCompany` :88, unelimated figure returned :109. Model docs/financials/FIN-009_ALLOCATION_INTERCOMPANY_MODEL.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-004; docs/north-star/financials/pages/17-intercompany.md:34 names FIN-009 as the classification schema and records it as not built."
+  },
+  {
+   "id": "P3B3-FIN-055",
+   "title": "Present a consolidated figure across both companies without eliminating intercompany",
+   "actor_role": "Owner",
+   "trigger": "A board pack that must not overstate revenue.",
+   "narrative": "The system will produce the number and will type it as an unelimated sum so nobody reads it as a consolidation. Elimination is explicitly outside EOS and belongs to an external authority.",
+   "objects_touched": [
+    "Operating Company"
+   ],
+   "authority_path": "Typing functions/src/finance/financialAllocation.ts:83; metric registry functions/src/performance/performanceMetricRegistry.ts:490-496; docs/north-star/financials/pages/14-company-performance.md:34 ('Consolidated = arithmetic operational consolidation \u2014 NOT ... intercompany elimination') and docs/north-star/financials/pages/17-intercompany.md:37 ('external authority for eliminations (never in EOS)').",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-056",
+   "title": "Attribute an operational record to the company that performed the work",
+   "actor_role": "Operations Manager",
+   "trigger": "Reporting operational volumes by company.",
+   "narrative": "Financial attribution by company is closed; operational attribution is an open authority gap. The metric registry records the reason in code: operational records carry no governed company provenance.",
+   "objects_touched": [
+    "Work Order",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/performance/performanceMetricRegistry.ts:120 (`NO_GOVERNED_COMPANY_SOURCE` \u2014 operational records have no governed company provenance, ownership model inert). Census row docs/assessments/eos-dashboard-reporting-authority-census.md:138 (K-12: financial CLOSED, operational AUTHORITY GAP).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 the ownership model that would supply operational company provenance is authored but inert: config/ownership/operating-company-roots.sandbox.json records that its assignments are 'configuration only, NOT applied to any record'."
+  },
+  {
+   "id": "P3B3-FIN-057",
+   "title": "Give the two money roles the same authority so they cannot drift",
+   "actor_role": "Administrator",
+   "trigger": "An access review of Accounting Manager versus Finance Manager.",
+   "narrative": "A real measured defect and its fix. On 2026-09-02 the Accounting Manager held 17 permissions and the Finance Manager held 5 \u2014 including every finance id, so the role named Finance Manager could not read a single financial fact. Both descriptions said intentionally identical the whole time, and the pinning test was directional so it passed while its own comment was false. The fix was one shared literal: two arrays that must be equal are two chances to be wrong, one array is zero.",
+   "objects_touched": [
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "functions/src/access/governedBusinessRoles.ts:433-466 \u2014 the MONEY_MANAGER_PERMISSIONS constant and the comment recording the drift, the directional-test failure and the Owner reversal of 2026-08-18 re-affirmed 2026-09-02. Roles ACCOUNTING_MANAGER_ROLE :475 and FINANCE_MANAGER_ROLE :491.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "accountingManager | finance.invoice.issue | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "financeManager | finance.read | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "finance.invoice.issue sandboxAllow includes BOTH accountingManager and financeManager",
+     "finance.visibility.consolidated sandboxAllow includes BOTH accountingManager and financeManager"
+    ],
+    "note": "The two roles now resolve identically for every finance id tested. The shared-constant fix holds."
+   }
+  },
+  {
+   "id": "P3B3-FIN-058",
+   "title": "Give an administrator billing authority without giving it to a dispatcher",
+   "actor_role": "Administrator",
+   "trigger": "Deciding who holds AR authority in the compatibility roles.",
+   "narrative": "The finance spine was granted on the administrator role only and deliberately not in the shared administrator-and-dispatcher base, so a dispatcher does not hold billing or AR authority. The Owner role inherits it by composition rather than by a second grant.",
+   "objects_touched": [
+    "Role",
+    "Invoice",
+    "Payment"
+   ],
+   "authority_path": "functions/src/access/compatibilityRoles.ts:162-173 \u2014 the finance ids are ADMIN-only, with the rationale recorded inline ('so DISPATCHER does not hold billing/AR authority; OWNER inherits these via OWNER_PERMISSIONS composition'). Owner composition functions/src/access/governedBusinessRoles.ts:83.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "owner | finance.invoice.issue | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "dispatcher | finance.invoice.issue | PROD=DENY/inactivePermission | SANDBOX=DENY/noQualifyingGrant",
+     "dispatcher | customer.record.create | PROD=ALLOW/qualifyingGrant | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "The dispatcher denial is noQualifyingGrant even in the sandbox \u2014 the exclusion is a real grant boundary, not the active:false gate."
+   }
+  },
+  {
+   "id": "P3B3-FIN-059",
+   "title": "Confirm that granting a finance capability does not activate it",
+   "actor_role": "Administrator",
+   "trigger": "An access review that assumes a grant means access.",
+   "narrative": "Grant and activation are two independent gates and the repository says so in five separate places. A role can hold every finance id and still resolve DENY, because the catalog's inactive flag is evaluated before any grant is considered.",
+   "objects_touched": [
+    "Role",
+    "Capability",
+    "Environment"
+   ],
+   "authority_path": "Resolver ordering field-ops-app-vite/src/access/resolveEffectivePermission.ts:246-266 \u2014 the `permission.active === false` gate fires 'ahead of and regardless of any Role grant'. The GRANT != ACTIVATION statement is repeated at functions/src/access/governedBusinessRoles.ts:369-374 (salesperson `finance.visibility.self`), :441-447 (money roles `finance.visibility.consolidated`) and functions/src/access/compatibilityRoles.ts:164-168 (admin finance grant).",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "CAPS 147 | ROLES 48",
+     "UNGRANTED (zero holders): 0 (none)",
+     "ALLOWED ANYWHERE IN PRODUCTION: 37 of 147",
+     "109 of 147 capabilities are registered active:false"
+    ],
+    "note": "Every one of the 147 catalogued capabilities is held by at least one role, and 110 of them still resolve DENY for every role in production. Grant is not access."
+   }
+  },
+  {
+   "id": "P3B3-FIN-060",
+   "title": "Verify no finance capability can be activated in production by editing configuration",
+   "actor_role": "Administrator",
+   "trigger": "A safety review of the activation mechanism.",
+   "narrative": "Three independent blocks. The production entry carries no override key; the code is keyed on the environment's ROLE rather than its project name and returns an empty set unconditionally for production; and the resolver's parameter is optional so omission can only narrow access. A fourth guard intersects any override with a hardcoded eligible set.",
+   "objects_touched": [
+    "Environment",
+    "Capability"
+   ],
+   "authority_path": "docs/design/per-environment-capability-activation-spec.md, 'Triple production-hard-block' section: data (prod entry lacks the key, with a test asserting every `role:\"production\"` env lacks it), code (role-keyed empty set, mirroring `resolveEnvironment.mjs:135` `isProductionEnvironment`), resolver (fail-closed default), and the eligible-set intersection against `SPINE_OVERRIDE_ELIGIBLE_IDS` in functions/src/access/environmentCapabilityOverrides.ts.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts \u2014 reads config/environments.json unmodified",
+    "output": [
+     "SANDBOX_OVERRIDE_COUNT 92 PROD_OVERRIDE_COUNT 0",
+     "Every finance.* id resolves DENY/inactivePermission for all 48 roles under the production set"
+    ],
+    "note": "I verified the DATA block (prod entry has no capabilityActivationOverrides key) and the RESOLVER block by execution. I did NOT execute functions/src/access/environmentCapabilityOverrides.ts itself \u2014 the role-keyed production hard-block is traced, not run. See UNPROVEN."
+   }
+  },
+  {
+   "id": "P3B3-FIN-061",
+   "title": "Have a technician's labour hours reach an invoice",
+   "actor_role": "Accounting Manager",
+   "trigger": "Billing a time-and-materials visit.",
+   "narrative": "Labour recording capabilities exist and are inactive in every environment \u2014 they are not in any activation override array. So even in the sandbox, labour cannot be recorded, and therefore cannot reach billing.",
+   "objects_touched": [
+    "Work Order",
+    "Invoice"
+   ],
+   "authority_path": "Capabilities `workOrder.labor.record` functions/src/access/permissionCatalog.ts:125 and `workOrder.labor.correct` :133, both `active:false`; callables `recordWorkOrderLabor` / `correctWorkOrderLabor` functions/src/index.ts:483-484 over functions/src/workOrderLabor/laborCallables.ts. Authority gap assessed docs/architecture/technician-labor-authority-gap.md. Crosses into the Service domain owned by lane P3-B1.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17 \u2014 the list begins workOrder.labor.record, workOrder.labor.correct"
+    ],
+    "note": "Both labour ids are absent from every capabilityActivationOverrides array in config/environments.json, so labour is unrecordable in every declared environment."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-FIN-062",
+   "title": "Put a cost on a part so margin can be computed",
+   "actor_role": "Controller",
+   "trigger": "Wanting to know what a job actually cost.",
+   "narrative": "A cost engine and an acquisition-cost module both exist. What does not exist is a ruled cost authority \u2014 which cost is THE cost \u2014 and until the Owner rules, margin is structurally unknown and must display as unknown.",
+   "objects_touched": [
+    "Part",
+    "Invoice"
+   ],
+   "authority_path": "functions/src/finance/inventoryCostEngine.ts and functions/src/finance/acquisitionCost.ts; margin core functions/src/finance/costMargin.ts. Decision package docs/financials/FIN-BLOCK-003_COST_AUTHORITY_DECISION_PACKAGE.md; reconciliation docs/assessments/fin-block-003-cost-supply-reconciliation.md; decision sheet docs/financials/CERT-FIN-02_INVENTORY_COST_AND_COGS_DECISION_SHEET.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-003. Also crosses into the Inventory domain owned by lane P3-B2."
+  },
+  {
+   "id": "P3B3-FIN-063",
+   "title": "Read financial facts through the reporting read path",
+   "actor_role": "Controller",
+   "trigger": "Assembling a financial report.",
+   "narrative": "A dedicated financial reporting read exists alongside the AR read. Both compose the same two-gate visibility model, so the reporting route cannot be used to walk around the reach requirement \u2014 that is invariant E.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Report Definition"
+   ],
+   "authority_path": "`listFinancialFacts` functions/src/finance/financialReportingRead.ts, exported functions/src/index.ts:110. Invariant E recorded field-ops-app-vite/src/navigation/navConfig.js:470-472 ('a principal denied a fact here must not receive it via Sales Order, Agreement, Customer, Work Order, dashboards, reports, exports, APIs, search, or notifications'). Reach model FIN-004 reach model: `finance.read` is the FACT-FAMILY gate and a `finance.visibility.*` id is the REACH; both are required and either alone reaches nothing. Ids: `.self` functions/src/access/permissionCatalog.ts:330, `.team` :338, `.businessUnit` :346, `.company` :354, `.consolidated` :362 \u2014 all `active:false`. Composition enforced functions/src/finance/financialVisibility.ts; scope matching for operatingCompany/businessUnit is exact-value, documented at field-ops-app-vite/src/access/resolveEffectivePermission.ts:174-178. Model document docs/financials/FIN-004_FINANCIAL_VISIBILITY_MODEL.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 requires `finance.read` plus a reach; EXECUTED, only `finance.visibility.consolidated` resolves anywhere, and only in platform-sandbox."
+  },
+  {
+   "id": "P3B3-FIN-064",
+   "title": "Show a denied financial figure as zero rather than as denied",
+   "actor_role": "Salesperson",
+   "trigger": "A surface deciding what to render when the reach fails.",
+   "narrative": "Forbidden by the binding rules: unknown renders as unknown, never as zero and never as blank-as-zero; an unelimated sum renders with its caveat; excluded facts render with their reasons. A zero where a denial belongs is a lie the reader cannot detect.",
+   "objects_touched": [
+    "Invoice"
+   ],
+   "authority_path": "Binding rule 3, docs/financials/F12_SURFACE_READINESS_MAP.md ('UNKNOWN renders as unknown (never 0, never blank-as-zero); UNELIMINATED_SUM renders with its caveat; excluded facts render with their reasons'). Resolved design decision A-D2 preserves the denied AR block's geography rather than hiding it, docs/design/north-star-open-product-decisions.md:265-278.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-065",
+   "title": "Make a financial surface visible in the navigation to someone who cannot see the data",
+   "actor_role": "Administrator",
+   "trigger": "Deciding nav visibility for the Financials domain.",
+   "narrative": "Deliberate and documented: none of the twenty Financials nav items declares a capability requirement, nav visibility falls to the placeholder default roles, and the comment states plainly that nav visibility is not financial data authority. Authorization stays server-side and fail-closed.",
+   "objects_touched": [
+    "Invoice",
+    "Role"
+   ],
+   "authority_path": "Navigation field-ops-app-vite/src/navigation/navConfig.js:474-499 \u2014 the Financials domain declares 20 subnav items. NONE declares a `capabilityAccess`; nav visibility falls to the placeholder default roles and is explicitly NOT financial data authority (note :448-455). The five governing financial invariants, including invariant E 'visibility follows the number everywhere', are recorded :457-472.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "All twenty Financials nav items are visible to the placeholder default roles with no capability gate (navConfig.js:448-455), so a principal who can see no financial fact still sees the whole Financials menu. Is that the intended experience, or should the nav follow the data?"
+  },
+  {
+   "id": "P3B3-FIN-066",
+   "title": "Compose an account's financial summary from the authoritative AR read",
+   "actor_role": "Sales Manager",
+   "trigger": "Opening an account with open invoices.",
+   "narrative": "Two sections on the account page could each claim to own the number. They do not: the financial summary section explicitly defers to the AR section as authoritative, so there is one answer on the page rather than two.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "field-ops-app-vite/src/modules/accounts/AccountFinancialsSection.jsx:15 defers to field-ops-app-vite/src/modules/accounts/AccountArSection.jsx:6 as authoritative; hook field-ops-app-vite/src/hooks/useAccountAr.js:11; view model field-ops-app-vite/src/domain/accountArView.js.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-067",
+   "title": "Compute billing totals without letting fulfilment quantities be pre-clamped",
+   "actor_role": "Accounting Manager",
+   "trigger": "Invoicing a partially fulfilled order.",
+   "narrative": "Billing takes the lesser of ordered and fulfilled quantity for its totals and does not mutate either. The spine spec is explicit that the fulfilment write-back must therefore not pre-clamp the fulfilled quantity downward \u2014 the clamp belongs to billing, once, at read time.",
+   "objects_touched": [
+    "Sales Order",
+    "Invoice"
+   ],
+   "authority_path": "functions/src/fulfillment/billingEligibility.ts:46 reads fulfilledQty and takes `min(orderedQty, fulfilledQty)` for billing totals only; the non-mutation rule is recorded at docs/design/p1-fulfillment-billing-spine-spec.md:18.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-FIN-068",
+   "title": "Have issueInvoice read the governed sales order and its billing eligibility",
+   "actor_role": "Accounting Manager",
+   "trigger": "Invoicing from the order rather than from typed lines.",
+   "narrative": "Named as outstanding in the spine spec's own harden list. Today the invoice command and the billing-eligibility core exist side by side without the former reading the latter.",
+   "objects_touched": [
+    "Invoice",
+    "Sales Order"
+   ],
+   "authority_path": "docs/design/p1-fulfillment-billing-spine-spec.md:44 ('P1.8 (issueInvoice reads governed SO + billing eligibility) remain for the harden phase'). Command Cloud Function onCall `issueInvoice` functions/src/finance/invoiceCallables.ts:112 (capability constant :28), exported functions/src/index.ts:100; pure core functions/src/finance/invoiceCommands.ts (lines array :221, header subtotal :222, `state:\"ISSUED\"` :218, NO_LINES guard :266). Capability `finance.invoice.issue` functions/src/access/permissionCatalog.ts:278, `active:false` :283. Storage `invoices` \u2014 client read AND write denied firestore.rules:1803-1804, rationale :1798-1802. Eligibility core functions/src/fulfillment/billingEligibility.ts:43.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-FIN-069",
+   "title": "Approve a credit above the threshold before it is recorded",
+   "actor_role": "Controller",
+   "trigger": "A large credit memo.",
+   "narrative": "Financial approvals machinery exists in code. The threshold values themselves are unset Owner policy, so the machinery has nothing to enforce against and the surfaces say so.",
+   "objects_touched": [
+    "Invoice Adjustment",
+    "Financial Approval"
+   ],
+   "authority_path": "functions/src/finance/financialApprovals.ts; model docs/financials/FIN-007_APPROVAL_GOVERNANCE_MODEL.md \u00a72. The unresolved-policy posture is stated on the surfaces at field-ops-app-vite/src/modules/financials/FinancialsPaymentDetail.jsx:199-201 and FinancialsCreditsAdjustments.jsx:8.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-007 \u00a72 approval policy values are unset.",
+   "owner_question": "What are the approval thresholds for credits, write-offs and refunds, and who is the second approver above each? The approval machinery (financialApprovals.ts) is built and has no policy values to enforce, which is why two financial surfaces ship with their write actions disabled."
+  },
+  {
+   "id": "P3B3-FIN-070",
+   "title": "Pick which system is the authority of record for the financial numbers",
+   "actor_role": "Owner",
+   "trigger": "Reconciliation needs something to reconcile against.",
+   "narrative": "External reconciliation waits on this single choice. Until it is made, the reconciliation module can only detect internal drift between EOS's own two representations of the same fact.",
+   "objects_touched": [
+    "Invoice",
+    "Payment"
+   ],
+   "authority_path": "Readiness row docs/financials/F12_SURFACE_READINESS_MAP.md ('external reconciliation awaits the authority-of-record selection (#145)'); module functions/src/finance/financialReconciliation.ts; model docs/financials/FIN-010_RECONCILIATION_MODEL.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 decision #145, the authority-of-record selection, is unmade.",
+   "owner_question": "Which system is the authority of record for financial figures \u2014 EOS, or the external accounting system? External reconciliation cannot be built until this is chosen (decision #145)."
+  }
+ ]
+}

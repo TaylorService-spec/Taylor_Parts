@@ -1,0 +1,874 @@
+{
+ "lane": "P3-B3",
+ "block": "administration",
+ "generated": "2026-09-12",
+ "count": 60,
+ "activities": [
+  {
+   "id": "P3B3-ADMIN-001",
+   "title": "List every governed object so an administrator can see what EOS models",
+   "actor_role": "Administrator",
+   "trigger": "Opening the Objects screen for the first time.",
+   "narrative": "Returns every Object record for the tenant. This is the one read that makes the Objects screen possible at all.",
+   "objects_touched": [
+    "Object"
+   ],
+   "authority_path": "Render API operation `listObjects`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:266; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/modules/administration/AdminObjects.jsx:18-19 (branch field-ops-app-vite/src/App.jsx:449, lazy import App.jsx:72) over field-ops-app-vite/src/access/AdminPolicySurfaces.jsx:455.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-002",
+   "title": "Open one object and read its field definitions",
+   "actor_role": "Administrator",
+   "trigger": "Checking which fields the Customer object carries.",
+   "narrative": "Returns the object plus its fields, and 404s cleanly on an unknown key rather than returning an empty object that reads like an object with no fields.",
+   "objects_touched": [
+    "Object",
+    "Custom Field"
+   ],
+   "authority_path": "Render API operation `readObjectWithFields`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:269; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/access/AdminPolicySurfaces.jsx:339 via AdminObjects.jsx:317, :343.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-003",
+   "title": "List every role defined for the tenant",
+   "actor_role": "Administrator",
+   "trigger": "An access review.",
+   "narrative": "The role list is the spine of the Roles and Permissions screen. Note this is the POSTGRES policy role catalog, a different authority from the 48 Firebase-side roles in functions/src/access/.",
+   "objects_touched": [
+    "Role"
+   ],
+   "authority_path": "Render API operation `listRoles`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:276; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx:12 (branch field-ops-app-vite/src/App.jsx:632, lazy App.jsx:67) over field-ops-app-vite/src/access/AdminPolicySurfaces.jsx:116-118, :221.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-004",
+   "title": "Read one role's object permissions and field overrides",
+   "actor_role": "Administrator",
+   "trigger": "Answering 'what exactly can a Dispatcher see'.",
+   "narrative": "Returns the role with its per-object permission cells and its per-field overrides. It is the only read that answers the question in one call.",
+   "objects_touched": [
+    "Role",
+    "Object",
+    "Custom Field"
+   ],
+   "authority_path": "Render API operation `readRolePolicy`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:279; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/access/AdminPolicySurfaces.jsx:221.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-005",
+   "title": "List the people who belong to this tenant",
+   "actor_role": "Administrator",
+   "trigger": "Opening the Users screen.",
+   "narrative": "Identity only \u2014 no roles and no permissions. It exists because the role-assignment read takes an opaque principal id and nothing else returns one; a Users screen could otherwise show a person's roles only if somebody already knew their id. That reasoning is recorded in the source rather than the read being added quietly.",
+   "objects_touched": [
+    "Principal",
+    "Tenant"
+   ],
+   "authority_path": "Render API operation `listTenantPrincipals`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:290; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/modules/administration/AdminUsers.jsx:12, rendered :170, over field-ops-app-vite/src/access/PolicyStorePanels.jsx:82-113.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-006",
+   "title": "See which roles one person holds and at what access version",
+   "actor_role": "Administrator",
+   "trigger": "Investigating why someone cannot see a screen.",
+   "narrative": "Returns the assignments, the role keys and the current access version. The access version is the number the resolver compares every assignment against, so it is the first thing to check when access looks stale.",
+   "objects_touched": [
+    "Principal",
+    "Role Assignment"
+   ],
+   "authority_path": "Render API operation `listPrincipalRoleAssignments`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:310; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/access/PolicyStorePanels.jsx:82-113.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-007",
+   "title": "List the workflows configured for each object",
+   "actor_role": "Administrator",
+   "trigger": "Reviewing what automation is configured.",
+   "narrative": "Returns every workflow with its version list, so a reviewer sees drafts and published versions together.",
+   "objects_touched": [
+    "Workflow"
+   ],
+   "authority_path": "Render API operation `listWorkflows`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:326; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx:4, rendered :277, over field-ops-app-vite/src/access/PolicyStorePanels.jsx:211-252 (branch field-ops-app-vite/src/App.jsx:455, lazy App.jsx:73).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-008",
+   "title": "Read one workflow version's steps, actions and role bindings",
+   "actor_role": "Administrator",
+   "trigger": "Before publishing a version.",
+   "narrative": "The full definition of one version. This is what a reviewer reads before the publish that makes it live.",
+   "objects_touched": [
+    "Workflow",
+    "Role"
+   ],
+   "authority_path": "Render API operation `readWorkflowVersion`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:338; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: field-ops-app-vite/src/access/PolicyStorePanels.jsx:211-252.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-009",
+   "title": "Read the recent policy audit history",
+   "actor_role": "Administrator",
+   "trigger": "Asking who changed a permission last week.",
+   "narrative": "The server read exists with a clamped limit. There is no client wired to it: the Audit Logs nav item routes to an honest unavailable state instead of a screen.",
+   "objects_touched": [
+    "Policy Audit Event"
+   ],
+   "authority_path": "Render API operation `readPolicyAuditHistory`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:341; declared in the closed read list ADMIN_READ_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:73-87. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. Reads are deliberately NOT authority-gated beyond tenant membership \u2014 rationale adminPolicyApi.ts:261-265. Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Surface: NO CLIENT WIRING \u2014 the Audit Logs nav item (field-ops-app-vite/src/navigation/navConfig.js:610) routes through field-ops-app-vite/src/App.jsx:690 to `AdministrationUnavailable` (lazy import App.jsx:65), the honest empty state.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-ADMIN-010",
+   "title": "Rename the Customer object's display label to match how the business speaks",
+   "actor_role": "Administrator",
+   "trigger": "The business calls them Customers; the model called them Accounts.",
+   "narrative": "The ONLY object mutation there is: label, plural and description. No key edit, no delete, no generic patch. It was added because 'Object definition editing is Admin-only' was a contract with no operation behind it, which made the Objects screen's claim to be editable false.",
+   "objects_touched": [
+    "Object"
+   ],
+   "authority_path": "Render API operation `updateObjectMetadata`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:352; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editObjectDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:359, authority check :364 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-011",
+   "title": "Add a custom field to the Customer object for a franchise group code",
+   "actor_role": "Administrator",
+   "trigger": "The business needs to group customers by franchise brand.",
+   "narrative": "Creates a field with its full metadata including sensitivity classification and reference target. Sensitivity is set at creation because a field that starts unclassified is a field somebody has to remember to classify later.",
+   "objects_touched": [
+    "Object",
+    "Custom Field"
+   ],
+   "authority_path": "Render API operation `createCustomField`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:361; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editObjectDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:162, authority check :167 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-012",
+   "title": "Reclassify an existing field as sensitive after a privacy review",
+   "actor_role": "Administrator",
+   "trigger": "A privacy review finds a free-text field holding personal data.",
+   "narrative": "Label, flags, sensitivity and lifecycle may change. The key and the data type never can \u2014 changing either would silently reinterpret every value already stored.",
+   "objects_touched": [
+    "Custom Field"
+   ],
+   "authority_path": "Render API operation `updateCustomFieldMetadata`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:382; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editObjectDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:246, authority check :251 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-013",
+   "title": "Create a Branch Manager role for a new operating structure",
+   "actor_role": "Administrator",
+   "trigger": "The business adds a branch tier between technician and general manager.",
+   "narrative": "Role definition is administrator-only \u2014 not owner, not general manager. The authority model draws that line deliberately and calls it an engine invariant rather than configurable policy.",
+   "objects_touched": [
+    "Role"
+   ],
+   "authority_path": "Render API operation `createRole`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:399; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editRoleDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:395, authority check :400 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-014",
+   "title": "Rename a role after the business renames the job",
+   "actor_role": "Administrator",
+   "trigger": "Service Manager becomes Field Operations Manager.",
+   "narrative": "The name and description move; the key does not. Every assignment in the system points at the key, so an immutable key is what makes a rename safe.",
+   "objects_touched": [
+    "Role"
+   ],
+   "authority_path": "Render API operation `updateRole`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:407; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editRoleDefinition`, re-checked next to the transaction at functions/src/adminPolicy/adminPolicyApi.ts:562 (`updateRoleMetadata`, defined :555) (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-015",
+   "title": "Give the Branch Manager role read access to the Sales Order object",
+   "actor_role": "Administrator",
+   "trigger": "Configuring the new role.",
+   "narrative": "Sets one create/read/edit/delete cell for one role on one object. This is the grain the whole Roles and Permissions screen is built from.",
+   "objects_touched": [
+    "Role",
+    "Object"
+   ],
+   "authority_path": "Render API operation `setObjectPermission`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:417; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editRoleDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:436, authority check :441 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-016",
+   "title": "Hide the customer credit-limit field from the Branch Manager role",
+   "actor_role": "Administrator",
+   "trigger": "A role that needs the customer record but not its commercial terms.",
+   "narrative": "A per-field override sitting under the object-level permission. Field-level denial is the mechanism that makes one object serve several audiences.",
+   "objects_touched": [
+    "Role",
+    "Custom Field"
+   ],
+   "authority_path": "Render API operation `setFieldPermissionOverride`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:425; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editRoleDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:484, authority check :489 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-017",
+   "title": "Remove a field override so the role falls back to the object default",
+   "actor_role": "Administrator",
+   "trigger": "An override that turned out to be unnecessary.",
+   "narrative": "Removal is the same command with an empty override \u2014 so there is one code path that writes and clears, and no second path to keep in step with the first.",
+   "objects_touched": [
+    "Role",
+    "Custom Field"
+   ],
+   "authority_path": "Render API operation `removeFieldPermissionOverride`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:433; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editRoleDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:489 (same command invoked with `{}`) (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-018",
+   "title": "Assign the Branch Manager role to a newly promoted employee",
+   "actor_role": "General Manager",
+   "trigger": "A promotion takes effect.",
+   "narrative": "Assignment is the one action the owner and the general manager may take alongside the administrator. Role DEFINITION stays administrator-only; role ASSIGNMENT is wider, and the split is the point.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal",
+    "Role"
+   ],
+   "authority_path": "Render API operation `assignRole`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:443; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `assignRole`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:560, authority check :565 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-019",
+   "title": "Revoke a role when someone changes jobs",
+   "actor_role": "General Manager",
+   "trigger": "An employee moves from sales to service.",
+   "narrative": "Revocation is by assignment id, so revoking one grant never disturbs another the same person holds.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal"
+   ],
+   "authority_path": "Render API operation `revokeRole`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:456; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `assignRole`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:625, authority check :630 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-020",
+   "title": "Draft a new approval workflow for the Sales Order object",
+   "actor_role": "Administrator",
+   "trigger": "The business wants large orders reviewed before release.",
+   "narrative": "Creates the workflow and its first draft version together, so a workflow never exists in a state with no version to edit.",
+   "objects_touched": [
+    "Workflow",
+    "Object"
+   ],
+   "authority_path": "Render API operation `createWorkflowDraft`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:462; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editWorkflowDefinition`, re-checked next to the transaction at functions/src/adminPolicy/workflowCommands.ts:112, authority check :117 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-021",
+   "title": "Create the next version of a workflow by copying the live one",
+   "actor_role": "Administrator",
+   "trigger": "Amending a published approval flow.",
+   "narrative": "A new version can start from an existing one, so an amendment is a diff against what is live rather than a retyped flow.",
+   "objects_touched": [
+    "Workflow"
+   ],
+   "authority_path": "Render API operation `createWorkflowVersion`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:472; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editWorkflowDefinition`, re-checked next to the transaction at functions/src/adminPolicy/workflowCommands.ts:175, authority check :180 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-022",
+   "title": "Edit a draft workflow's steps before publishing",
+   "actor_role": "Administrator",
+   "trigger": "Iterating on the draft.",
+   "narrative": "Replaces a DRAFT version's definition. Published versions are not editable, which is what makes a published version a stable thing to have bound roles to.",
+   "objects_touched": [
+    "Workflow"
+   ],
+   "authority_path": "Render API operation `updateWorkflowDefinition`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:480; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editWorkflowDefinition`, re-checked next to the transaction at functions/src/adminPolicy/workflowCommands.ts:236, authority check :241 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-023",
+   "title": "Bind the Controller role to a workflow's approve action",
+   "actor_role": "Administrator",
+   "trigger": "Deciding who may approve.",
+   "narrative": "Binds a role to an action key. The binding lives on the workflow version, so changing who approves is a versioned act with its own audit record.",
+   "objects_touched": [
+    "Workflow",
+    "Role"
+   ],
+   "authority_path": "Render API operation `setWorkflowRoleBinding`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:487; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editWorkflowDefinition`, re-checked next to the transaction at functions/src/adminPolicy/workflowCommands.ts:299, authority check :304 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-024",
+   "title": "Publish the workflow version so it takes effect",
+   "actor_role": "Administrator",
+   "trigger": "The draft is reviewed and agreed.",
+   "narrative": "Publication runs structural validation first. A workflow that references a step or a role that does not exist cannot become the live version.",
+   "objects_touched": [
+    "Workflow"
+   ],
+   "authority_path": "Render API operation `publishWorkflowVersion`, dispatched functions/src/adminPolicy/adminPolicyApi.ts:495; declared in the closed mutation list ADMIN_MUTATION_OPERATIONS functions/src/adminPolicy/adminPolicyApi.ts:89-108, exhaustiveness guard :503-508. Authority action `editWorkflowDefinition`, re-checked next to the transaction at functions/src/adminPolicy/policyCommands.ts:676, authority check :681 (rationale adminPolicyApi.ts:346-349). Authority model functions/src/adminPolicy/administrationAuthority.ts \u2014 `ADMIN_ROLE_KEY = \"admin\"` :32, `ROLE_ASSIGNMENT_ROLE_KEYS = [owner, generalManager, admin]` :41-45, `PROTECTED_ROLE_KEYS = [admin, owner]` :54, `hasAdministrationAuthority` :69-77 (assignRole accepts any of the three keys at :75, everything else requires `admin` at :76, an empty held-role list refuses at :73, and there is no default-allow). It is an engine invariant, not configurable policy (:3-12). Principal resolution functions/src/adminPolicy/principalContext.ts:92 with refusal codes :41-47; call site functions/src/adminPolicy/adminPolicyApi.ts:214-219, mapping UNKNOWN_PRINCIPAL to UNAUTHENTICATED and everything else to FORBIDDEN at :229-231. Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-025",
+   "title": "Grant a governed role to a newly hired salesperson",
+   "actor_role": "Administrator",
+   "trigger": "A new salesperson starts on Monday.",
+   "narrative": "The grant is a trusted server command. The actor can only ever be the authenticated caller \u2014 the command never reads an actor from the request payload, which is what stops a caller from granting as somebody else.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal",
+    "Role"
+   ],
+   "authority_path": "Firebase callables functions/src/index.ts:159-170 over functions/src/access/accessCommandCallables.ts, which are thin adapters onto functions/src/access/trustedWriterCommands.ts; `requireActorUid` functions/src/access/accessCommandCallables.ts:128-133 is the ONLY source of the actor id \u2014 never `request.data` (rationale :123-127). `grantRole` functions/src/access/accessCommandCallables.ts:139 over functions/src/access/trustedWriterCommands.ts:770; capability `admin.roleAssignment.write` resolved at trustedWriterCommands.ts:816, registered functions/src/access/permissionCatalog.ts:950 (ACTIVE \u2014 no `active:false`). Storage `roleAssignments` deny-all to clients firestore.rules:1684-1686.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-026",
+   "title": "Refuse an administrator granting themselves a role",
+   "actor_role": "Administrator",
+   "trigger": "An administrator tries to add a role to their own account.",
+   "narrative": "Self-grant is banned outright, before any privilege question is asked. It is the first of four checks that run in sequence on the grant path.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal"
+   ],
+   "authority_path": "Self-grant ban functions/src/access/trustedWriterCommands.ts:801-803, inside the four-part rule stated at :196-204 (keyed off `role.privileged`, not off an allowlist).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-027",
+   "title": "Require a second approver before granting a privileged role",
+   "actor_role": "Administrator",
+   "trigger": "Granting the administrator role itself.",
+   "narrative": "A privileged role needs a named approver, that approver must differ from both the actor and the subject, and the approver must independently resolve the same capability at global scope through the identical resolution path \u2014 and their own qualifying role must itself be privileged. Four separate conditions, each of which a single compromised account fails.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal",
+    "Role"
+   ],
+   "authority_path": "functions/src/access/trustedWriterCommands.ts:804-806 (approver required for a privileged role), :807-811 (approver distinct from actor and principal \u2014 the self-approval ban), :812 (`verifyApproverIsPrivileged`), with that function defined :455-470: the approver must independently resolve `admin.roleAssignment.write` at GLOBAL scope through `resolvePrincipalPermission` (:456-463) AND their qualifying role must itself carry `privileged` (:464-469). The admin role is marked privileged at functions/src/access/compatibilityRoles.ts:253-256.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-028",
+   "title": "Assign a pre-approved role on the single-administrator path",
+   "actor_role": "Administrator",
+   "trigger": "A routine, already-approved role assignment.",
+   "narrative": "The single-administrator path exists for ordinary assignments and refuses privileged roles entirely, so the fast path can never become the way a privileged role slips through.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal"
+   ],
+   "authority_path": "`assignApprovedRole` functions/src/access/accessCommandCallables.ts:171 over functions/src/access/trustedWriterCommands.ts:1836, capability resolved :1859; the privileged-role refusal on this path is recorded :206-208.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-029",
+   "title": "Request elevation to a privileged role",
+   "actor_role": "Sales Manager",
+   "trigger": "A manager needs temporary administrator authority for a migration.",
+   "narrative": "The request is a record, not a grant. It carries a tamper fingerprint so that what is approved is what was asked for.",
+   "objects_touched": [
+    "Privileged Role Request",
+    "Principal",
+    "Role"
+   ],
+   "authority_path": "`requestPrivilegedRole` functions/src/access/accessCommandCallables.ts:244 over functions/src/access/trustedWriterCommands.ts:1315, capability resolved :1338.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-030",
+   "title": "Decide a privileged role request as the approving administrator",
+   "actor_role": "Administrator",
+   "trigger": "A pending elevation request.",
+   "narrative": "The strongest control in the access layer, and it is structural rather than procedural: the decide callable has no approver parameter at all, so the approver can only ever be the authenticated caller. The target can never approve their own elevation, the decision may be taken only once, the request's fingerprint is checked for tampering, and the approver's authority is re-resolved at approval time rather than carried from when the request was made.",
+   "objects_touched": [
+    "Privileged Role Request",
+    "Role Assignment",
+    "Principal"
+   ],
+   "authority_path": "`decidePrivilegedRoleRequest` functions/src/access/accessCommandCallables.ts:260 \u2014 no approver parameter exists (:235-243, :265-266), the approver is `request.auth.uid`. Command functions/src/access/trustedWriterCommands.ts:1573: self-approval refused :1635-1638 (`SelfApprovalError`), decide-once :1620-1624, tamper fingerprint :1626-1633, authority re-resolved at approval time :1639-1646, role must still be privileged :1647-1651, capability :1642. MFA seam recorded accessCommandCallables.ts:272-277.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "The privileged-role decision path records an MFA seam (accessCommandCallables.ts:272-277) that is not implemented. Should a second factor be required at the moment an administrator approves an elevation to a privileged role?"
+  },
+  {
+   "id": "P3B3-ADMIN-031",
+   "title": "Disable a departing employee's access on their last day",
+   "actor_role": "Administrator",
+   "trigger": "An employee resigns.",
+   "narrative": "Setting user status is its own capability, separate from role assignment, so the person who closes an account need not be the person who grants roles.",
+   "objects_touched": [
+    "Principal",
+    "User"
+   ],
+   "authority_path": "`setUserStatus` functions/src/access/accessCommandCallables.ts:187 over functions/src/access/trustedWriterCommands.ts:2105, capability `admin.userStatus.write` resolved :2117, registered functions/src/access/permissionCatalog.ts:944 (ACTIVE). Storage `users` firestore.rules:427-475.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-032",
+   "title": "Approve an access request from someone who signed up",
+   "actor_role": "Administrator",
+   "trigger": "A new hire requests access.",
+   "narrative": "Approve and reject share one capability and one underlying decision command, so the two outcomes cannot drift apart in what they check.",
+   "objects_touched": [
+    "Access Request",
+    "Principal"
+   ],
+   "authority_path": "`approveAccessRequest` functions/src/access/accessCommandCallables.ts:202 and `rejectAccessRequest` :216, both onto functions/src/access/trustedWriterCommands.ts:2245 / :2258 (`decideAccessRequest`), capability `admin.accessRequest.decide` resolved :2187, registered functions/src/access/permissionCatalog.ts:1006 (ACTIVE). Storage `accessRequests` deny-all firestore.rules:1688-1690.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-033",
+   "title": "Read one principal's complete access state while investigating a complaint",
+   "actor_role": "Administrator",
+   "trigger": "Someone says they cannot see a screen they should.",
+   "narrative": "The trusted principal-access read is administrator-only and deliberately not given to dispatchers \u2014 the Users directory is visible to more people than another person's account status and role assignments should be. The owner inherits it through composition rather than a second grant.",
+   "objects_touched": [
+    "Principal",
+    "Role Assignment"
+   ],
+   "authority_path": "`readPrincipalAccessState` functions/src/access/accessCommandCallables.ts:294 over functions/src/access/trustedWriterCommands.ts:1450; capability `admin.principalAccess.read` functions/src/access/permissionCatalog.ts:975 (ACTIVE). The admin-only ruling of 2026-09-06 \u00a73 is recorded functions/src/access/compatibilityRoles.ts:157-161.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-034",
+   "title": "Update an employee's profile from the Users record page",
+   "actor_role": "Administrator",
+   "trigger": "A phone number change.",
+   "narrative": "Employee profile writes are a governed callable with their own capability, alongside a record-change-history read on the same surface \u2014 so the profile edit produces a trail the account edit does not.",
+   "objects_touched": [
+    "Employee",
+    "Principal"
+   ],
+   "authority_path": "`updateEmployeeProfile` and `listRecordChangeHistory` functions/src/index.ts:243-245 over functions/src/access/administrationUsersCallables.ts; commands functions/src/access/employeeProfileCommands.ts; history functions/src/access/recordChangeHistoryReadService.ts. Capability `admin.employeeProfile.write` functions/src/access/permissionCatalog.ts:999 (ACTIVE). Surface field-ops-app-vite/src/modules/administration/UserDetail.jsx:5 over field-ops-app-vite/src/access/administrationUsersClient.js; route field-ops-app-vite/src/App.jsx:1019-1020. Storage `employees` firestore.rules:476-505.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-035",
+   "title": "Reset a user's password when they are locked out",
+   "actor_role": "Administrator",
+   "trigger": "An employee cannot sign in.",
+   "narrative": "The credential-reset command exists with eligibility rules, dedupe on send and link-validity handling. The capability is inactive and is in no environment's activation array, so the administrator has no reset path today in any environment.",
+   "objects_touched": [
+    "Principal",
+    "User"
+   ],
+   "authority_path": "`initiateAdminPasswordReset` and `listResetEligibleUsers` functions/src/index.ts:224-226 over functions/src/access/adminCredentialCallables.ts; commands functions/src/access/adminCredentialCommands.ts; outbound functions/src/access/oobCodeOutbound.ts and functions/src/access/nativeResetSender.ts. Capability `admin.credentialReset.initiate` functions/src/access/permissionCatalog.ts:1053, `active:false`. Current-state assessment docs/assessments/admin-password-reset-current-state.md.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17 \u2014 the list includes admin.credentialReset.initiate"
+    ],
+    "note": "The id is absent from every capabilityActivationOverrides array in config/environments.json, so it denies in platform-sandbox and platform-certification as well as production."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "Administrator-initiated password reset is built end to end (eligibility, dedupe, link validity, outbound sender) and its capability is activated in no environment at all. Is it awaiting a security review, and what closes it?"
+  },
+  {
+   "id": "P3B3-ADMIN-036",
+   "title": "Read the audit event trail for a governed command",
+   "actor_role": "Administrator",
+   "trigger": "Reconstructing who did what.",
+   "narrative": "Audit event read is an active capability held by nine governed roles plus the compatibility roles. The events themselves are deny-all to clients and written only by the trusted writer.",
+   "objects_touched": [
+    "Audit Event"
+   ],
+   "authority_path": "Capability `audit.event.read` functions/src/access/permissionCatalog.ts:1060 (ACTIVE). Writer functions/src/access/auditEventWriter.ts. Storage `auditEvents` deny-all firestore.rules:1692-1694.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "admin | audit.event.read | PROD=ALLOW/qualifyingGrant | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "One of only 37 capabilities that resolve ALLOW for any role under the production activation set."
+   }
+  },
+  {
+   "id": "P3B3-ADMIN-037",
+   "title": "Preview what a role would be able to see before assigning it",
+   "actor_role": "Administrator",
+   "trigger": "Sanity-checking a new role before granting it to twelve people.",
+   "narrative": "The Permission Preview nav item exists and routes to an honest unavailable state rather than a screen. A client-side preview module exists in the access folder but nothing mounts it.",
+   "objects_touched": [
+    "Role",
+    "Object",
+    "Capability"
+   ],
+   "authority_path": "Nav item field-ops-app-vite/src/navigation/navConfig.js:576; branch field-ops-app-vite/src/App.jsx:690 routes it (with Audit Logs) to `AdministrationUnavailable` (lazy import App.jsx:65). Unmounted module field-ops-app-vite/src/access/navPermissionPreview.js. Backend equivalent: `resolveEffectiveAccessCallable` functions/src/index.ts:214 over functions/src/access/effectiveAccessFeedCallable.ts.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-ADMIN-038",
+   "title": "Bootstrap the first administrator into a fresh tenant",
+   "actor_role": "Administrator",
+   "trigger": "Standing up a new environment.",
+   "narrative": "Tenant bootstrap and a policy seed both exist, with a seed-coverage snapshot checked into the repository. In nonprod today a bootstrapped administrator resolves 256 object permissions and zero operational capabilities \u2014 the policy schema is applied and the operational-capability vocabulary is not.",
+   "objects_touched": [
+    "Tenant",
+    "Principal",
+    "Role",
+    "Object"
+   ],
+   "authority_path": "functions/src/adminPolicy/tenantBootstrap.ts; seed functions/src/adminPolicy/seed/policySeed.ts with coverage functions/src/adminPolicy/seed/policySeedCoverage.json and snapshot policySeedSnapshot.json; workflow seeds functions/src/adminPolicy/workflowSeeds.ts. Migration #1 functions/migrations/1757462400000_admin-policy.sql. BLOCKED in nonprod: the deployed Render service `eos-api-nonprod` (render.yaml:57-81, rootDir `functions` :63, startCommand `npm start` :74) is backed by a Postgres database applied to 7 of the 18 migration files in functions/migrations/. The administration policy schema is migration #1 (1757462400000_admin-policy.sql) and IS applied; the object/role/workflow surfaces therefore resolve, while a bootstrapped admin resolves 256 object permissions and ZERO operational capabilities because the operational-capability vocabulary migrations land later in the sequence.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-ADMIN-039",
+   "title": "Resolve which operational capabilities the signed-in user actually holds, over HTTP",
+   "actor_role": "Administrator",
+   "trigger": "A surface needing to know what the caller may do.",
+   "narrative": "This is the entire operations transport: one bounded, non-mutating capability read. It exists to prove the full path \u2014 HTTP, identity verification, EOS principal and tenant resolution, then Postgres capability authorization \u2014 without wiring a mutating command end to end, which the Owner ruling explicitly did not require.",
+   "objects_touched": [
+    "Principal",
+    "Capability",
+    "Tenant"
+   ],
+   "authority_path": "`resolveMyCapabilities`, the sole member of OPERATIONS_READ_OPERATIONS functions/src/eosOps/eosOpsHttp.ts:76-77 with the guard :85; route `POST /operations/inventory` :176 (documented :149), unknown operations 404 at :187 and :278; rationale :29-33. Server wiring functions/src/eosApi/server.ts:155-171. Authority functions/src/eosOps/capabilityAuthority.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-040",
+   "title": "Reach any other Postgres operational authority from the browser",
+   "actor_role": "Administrator",
+   "trigger": "Wanting to use the inventory, purchasing, custody or finance authorities that exist in Postgres.",
+   "narrative": "Every one of them is unreachable. The repository holds sixteen Postgres authority modules under functions/src/eosOps/ and functions/src/eosCommercial/, and the transport in front of them exposes exactly one non-mutating read plus the administration policy endpoint.",
+   "objects_touched": [
+    "Capability",
+    "Invoice",
+    "Purchase Order",
+    "Equipment",
+    "Warehouse"
+   ],
+   "authority_path": "Unreachable modules: functions/src/eosOps/invoiceAuthority.ts, cashApplicationAuthority.ts, purchasingRepository.ts, supplierCatalogRepository.ts, equipmentCustody.ts, operatingCompanyCustody.ts, inventoryCommitmentRepository.ts, warehouseBinRepository.ts, truckFleetRepository.ts, cycleCountRepository.ts, and functions/src/eosCommercial/commercialOwnershipRepository.ts. Transport: Render transport: functions/src/eosApi/server.ts:166-171 creates ONE http server that routes `/operations/*` to functions/src/eosOps/eosOpsHttp.ts and everything else to functions/src/adminPolicy/adminPolicyHttp.ts. The administration handler serves `GET /health` (:122) and `POST /admin/policy` (:96, :130) and 404s every other path. Browser client field-ops-app-vite/src/services/adminPolicyApiClient.js:130. and functions/src/eosOps/eosOpsHttp.ts:176.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "TRANSPORT_UNREACHABLE \u2014 functions/src/eosApi/server.ts:167-171 routes only two paths; functions/src/eosOps/eosOpsHttp.ts:76-77 declares a closed operation list with one entry. No route exists to any of these modules."
+  },
+  {
+   "id": "P3B3-ADMIN-041",
+   "title": "Stage a customer import from a spreadsheet and preview what it would do",
+   "actor_role": "Administrator",
+   "trigger": "Migrating customers off the legacy system.",
+   "narrative": "Staging previews rows without writing them. The job document holds the previewed rows including the source values of rows that failed \u2014 which is customer data an administrator uploaded, and is exactly why history is a callable and not a collection read.",
+   "objects_touched": [
+    "Data Import Job",
+    "Account"
+   ],
+   "authority_path": "`stageDataImport` functions/src/index.ts:585 over functions/src/dataImport/dataImportCallables.ts:258; capability `admin.dataImport.stage` (constant :94) registered functions/src/access/permissionCatalog.ts:1028, `active:false`. Preview functions/src/dataImport/importPreview.ts, intake importIntake.ts, reader xlsxReader.ts. Storage `data_import_jobs` deny-all firestore.rules:1857-1859 with the reason at :1850-1854.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 registered `active:false`. The id IS in the platform-sandbox override array, where EXECUTED resolution gives ALLOW for owner and admin only. Production is additionally refused BEFORE capability is evaluated \u2014 see ADMIN-043."
+  },
+  {
+   "id": "P3B3-ADMIN-042",
+   "title": "Execute a staged import after reviewing the preview",
+   "actor_role": "Administrator",
+   "trigger": "The preview looks right.",
+   "narrative": "Execution requires an explicit approval flag, claims the job atomically so two administrators cannot execute it twice, and refuses a job that was staged against a different project \u2014 so a preview taken in one environment cannot be executed in another.",
+   "objects_touched": [
+    "Data Import Job",
+    "Account",
+    "Part",
+    "Equipment"
+   ],
+   "authority_path": "`executeDataImport` functions/src/index.ts:586 over functions/src/dataImport/dataImportCallables.ts:359; explicit `approved === true` required :369-373, atomic job claim :378-384, cross-project refusal `assertExecutable(..., targetProjectId)` :377. Capability `admin.dataImport.execute` (constant :95) registered functions/src/access/permissionCatalog.ts:1036, `active:false`. Execution functions/src/dataImport/importExecution.ts; adapters firestoreDataImportAdapters.ts, firestoreInventoryImportAdapters.ts, firestoreServiceHistoryAdapters.ts.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 functions/src/access/permissionCatalog.ts:1036."
+  },
+  {
+   "id": "P3B3-ADMIN-043",
+   "title": "Run an import against the production project",
+   "actor_role": "Administrator",
+   "trigger": "Someone points the import tool at production.",
+   "narrative": "Refused before authority is even considered. The environment gate runs first and the capability gate second, and the code comment explains the ordering: answering the capability question second means a production principal's authority was never evaluated at all. The project id comes from the runtime's own environment variable, never from client input.",
+   "objects_touched": [
+    "Data Import Job",
+    "Environment"
+   ],
+   "authority_path": "Gate ordering proven in code: functions/src/dataImport/dataImportCallables.ts:260 calls `requireImportableTarget()` and :262 calls `requireCapability(...)` \u2014 target FIRST, capability SECOND; identically at :361 / :363 for execute and :403-407 for the history list. Guard functions/src/dataImport/importTargetGuard.ts (`PRODUCTION_PROJECT_ID = \"taylor-parts\"` :33, refusal codes :35-40, `ImportTargetRefusedError` :42-49, module doc :1-25); project id read from the runtime's own `GCLOUD_PROJECT` at dataImportCallables.ts:165, never client input. Rationale :12-16. The Rules file points at exactly this ordering at firestore.rules:1846-1849.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-044",
+   "title": "Import parts, equipment, inventory and service history as well as customers",
+   "actor_role": "Administrator",
+   "trigger": "A full legacy migration.",
+   "narrative": "Five entity contracts are registered, each with its own version, canonical field list and required set. The contract registry is the thing that makes an import refuse a column it does not recognise rather than silently dropping it.",
+   "objects_touched": [
+    "Data Import Job",
+    "Part",
+    "Account",
+    "Equipment",
+    "Imported Service History"
+   ],
+   "authority_path": "Registry functions/src/dataImport/contracts/entityContract.ts:22 (`IMPORT_ENTITY_TYPES = [PARTS, CUSTOMERS, EQUIPMENT, INVENTORY, SERVICE_HISTORY]`), registration helper :88, lookup :93. Contracts: partImportContract.ts (version :43, fields :79, required :177, registration :480); customerImportContract.ts (:30, :36, :105, :227); equipmentImportContract.ts (:41, :46, :119, :318); inventoryImportContract.ts (:48, `OPENING_BALANCE_LOCATION_TYPE` :74, fields :76, required :106); serviceHistoryImportContract.ts (:48, :53, :114, :281). Opening balances functions/src/dataImport/openingInventoryBalance.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-045",
+   "title": "Review which import jobs have been run and what they did",
+   "actor_role": "Administrator",
+   "trigger": "An audit of the migration.",
+   "narrative": "History is a callable rather than a collection read, precisely because a job document carries uploaded customer data including the failed rows' source values.",
+   "objects_touched": [
+    "Data Import Job"
+   ],
+   "authority_path": "`listDataImportJobs` functions/src/index.ts:587 over functions/src/dataImport/dataImportCallables.ts:403-407 (same target-then-capability ordering). Surface field-ops-app-vite/src/modules/administration/AdminDataImport.jsx:11 over field-ops-app-vite/src/access/dataImportClient.js; branch field-ops-app-vite/src/App.jsx:653; nav gate field-ops-app-vite/src/navigation/navConfig.js:603 (`capabilityAccess: [\"admin.dataImport.stage\"]`).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 gated on the same inactive stage/execute capabilities."
+  },
+  {
+   "id": "P3B3-ADMIN-046",
+   "title": "Activate the sales and finance spine in the sandbox so a human can test it",
+   "actor_role": "Administrator",
+   "trigger": "Preparing a sandbox pilot of the Opportunity-to-cash flow.",
+   "narrative": "The activation is a repository configuration edit plus a deploy, not a runtime switch. The sandbox entry lists ninety-two capability ids; the production entry carries no such key at all, and the absence is the point \u2014 an empty array would be a decision that could be edited, an absent key is a shape the code refuses to fill.",
+   "objects_touched": [
+    "Environment",
+    "Capability"
+   ],
+   "authority_path": "config/environments.json \u2014 `platform-sandbox` `capabilityActivationOverrides` array :89-181 with its explanatory comment :183; `platform-certification` array :224-228 (three cycle-count ids only, per Owner ruling CERT-CYCLE-11 of 2026-09-02, with the deliberate exclusion of `inventory.cycleCount.cancel` recorded at :229); `taylor-parts-production` entry begins :257 and carries NO such key. Spec docs/design/per-environment-capability-activation-spec.md. Code functions/src/access/environmentCapabilityOverrides.ts.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts \u2014 reads config/environments.json unmodified",
+    "output": [
+     "SANDBOX_OVERRIDE_COUNT 92 PROD_OVERRIDE_COUNT 0",
+     "ROLES 48 CAPS 147",
+     "ALLOWED ANYWHERE IN PRODUCTION: 37"
+    ],
+    "note": "92 ids activated in platform-sandbox; 0 in production. 37 of 147 capabilities resolve ALLOW for at least one role in production."
+   }
+  },
+  {
+   "id": "P3B3-ADMIN-047",
+   "title": "Activate exactly the cycle-count ceremony in the certification environment and nothing else",
+   "actor_role": "Administrator",
+   "trigger": "Certifying the cycle-count flow against synthetic data.",
+   "narrative": "Three ids, and the cancel capability is deliberately excluded because the ceremony never cancels a count \u2014 certification authority is widened only as far as the scenario requires. That is the discipline the whole activation mechanism exists to make possible.",
+   "objects_touched": [
+    "Environment",
+    "Capability"
+   ],
+   "authority_path": "config/environments.json `platform-certification` :197-231 \u2014 overrides array :224-228 (`inventory.cycleCount.create`, `.submit`, `.reconcile`), with the Owner ruling CERT-CYCLE-11 and the deliberate exclusion of `.cancel` recorded in the comment at :229; environment notes :231 (no Functions, Hosting or browser surface is deployed there). Crosses into the Inventory domain owned by lane P3-B2.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-048",
+   "title": "Keep the frontend and backend permission mirrors from drifting",
+   "actor_role": "Administrator",
+   "trigger": "Any change to the access contract.",
+   "narrative": "The frontend copies are generated from the canonical backend source and CI fails on drift. Diffing the five mirrored files shows they differ only by the generated-file banner and one import extension \u2014 the contract itself is byte-identical.",
+   "objects_touched": [
+    "Capability",
+    "Role"
+   ],
+   "authority_path": "Generator scripts/syncAccessContracts.mjs, declared in the banner at the head of each generated file (e.g. field-ops-app-vite/src/access/permissionCatalog.ts:1-6). Canonical sources functions/src/access/permissionCatalog.ts, governedBusinessRoles.ts, compatibilityRoles.ts, resolveEffectivePermission.ts, bindingScopePolicy.ts. Parity fixtures functions/src/access/parityFixtures.ts and harness shadowParityHarness.ts.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "for f in permissionCatalog.ts governedBusinessRoles.ts compatibilityRoles.ts resolveEffectivePermission.ts bindingScopePolicy.ts; do diff functions/src/access/$f field-ops-app-vite/src/access/$f; done",
+    "output": [
+     "Each file differs ONLY by the prepended 6-line 'GENERATED FILE \u2014 DO NOT EDIT' banner.",
+     "compatibilityRoles.ts additionally differs at one line: backend `import { PERMISSION_CATALOG } from \"./permissionCatalog\";` (functions/src/access/compatibilityRoles.ts:36) vs frontend `from \"./permissionCatalog.ts\"` (field-ops-app-vite/src/access/compatibilityRoles.ts:42).",
+     "No substantive divergence in any of the five files."
+    ],
+    "note": "The mirrors are in parity as of this run. This is why the resolver probe against the FRONTEND mirror is authoritative for the backend too."
+   }
+  },
+  {
+   "id": "P3B3-ADMIN-049",
+   "title": "Confirm that every catalogued capability is actually held by somebody",
+   "actor_role": "Administrator",
+   "trigger": "An assertion circulating in the programme that some capabilities are catalogued but granted to nobody.",
+   "narrative": "The assertion is false, and the reason is structural rather than curatorial: the administrator compatibility role is built as its curated list plus every remaining catalog id, so any capability added to the catalog is granted to the administrator the moment it is registered. Twenty-one capabilities are held ONLY that way, with no governed business role declaring them \u2014 which is a real finding, but it is not the same as ungranted.",
+   "objects_touched": [
+    "Capability",
+    "Role"
+   ],
+   "authority_path": "functions/src/access/compatibilityRoles.ts:235-240 \u2014 `ADMIN_ALL_PERMISSIONS = [...ADMIN_CURATED_PERMISSIONS, ...PERMISSION_CATALOG.map(p => p.id).filter(id => !ADMIN_CURATED_PERMISSIONS.includes(id))]`, applied to the admin role at :259; the curated list itself is :151-231, and the preceding comment :232-234 records the deliberate choice ('If internal controls should override the ruling for those specific ids, they belong in an explicit exclusion list here \u2014 not as an accident of the list being out of date'). Owner composition functions/src/access/governedBusinessRoles.ts:83.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "ROLES 48 CAPS 147",
+     "UNGRANTED (zero holders): 0 (none)",
+     "ADMIN/OWNER-ONLY (no governed business role holds it): 21 \u2014 finance.visibility.businessUnit, finance.visibility.company, financialPolicy.profile.configure, coverage.write, coverage.read, report.customer.field.notes.read, report.customer.field.accountOwner.read, report.location.field.accessNotes.read, report.definition.delete, admin.userStatus.write, admin.roleAssignment.write, admin.principalAccess.read, admin.employeeProfile.write, admin.accessRequest.decide, admin.dataImport.stage, admin.dataImport.execute, admin.credentialReset.initiate, equipment.compatibility.view/.import/.verify/.correct"
+    ],
+    "note": "Confirms lane P2-B3's correction: ZERO capabilities are inert-and-ungranted. Refines it: 21 are reachable ONLY through the catch-all admin/owner roles."
+   }
+  },
+  {
+   "id": "P3B3-ADMIN-050",
+   "title": "Correct the five source comments that claim capabilities are granted to nobody",
+   "actor_role": "Administrator",
+   "trigger": "Reading the exports file and believing what it says.",
+   "narrative": "Five comment blocks in the functions index assert that a capability is 'registered INERT and granted to nobody'. Every one of them is wrong: the administrator catalog spread grants all 147 ids. The capabilities in question do deny \u2014 but by the inactive flag, not by absence of a grant, and the distinction matters because the two are lifted by entirely different acts.",
+   "objects_touched": [
+    "Capability",
+    "Role"
+   ],
+   "authority_path": "Incorrect assertions: functions/src/index.ts:396 (`inventory.catalog.alias.read` \u2014 'registered INERT and granted to nobody'), :405 (`inventory.returns.intake`), :492 (the bin capabilities \u2014 'Both registered INERT and granted to nobody'), :515 (`inventory.stock.relocate` \u2014 'registered inert'), :519 (`inventory.balance.read` \u2014 'registered INERT and granted to nobody'). A sixth, equivalent claim sits in firestore.rules: the D4 comment block above :1714 states that the equipment.* capabilities are `active: false` 'so no principal can be granted them either' \u2014 grantability and activation are different gates. Contradicted by functions/src/access/compatibilityRoles.ts:235-240.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "admin | inventory.catalog.alias.read | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "admin | inventory.balance.read | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "admin | inventory.returns.intake | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "ALLOW in the sandbox is only possible if a role HOLDS the capability. The 'granted to nobody' comments are false; the ids are granted to admin and owner and denied by the active:false gate alone."
+   },
+   "owner_question": "Five comment blocks in functions/src/index.ts (:396, :405, :492, :515, :519) and one in firestore.rules assert that certain capabilities are 'granted to nobody'. They are granted to admin and owner via the catalog spread at compatibilityRoles.ts:235-240. Should the comments be corrected, or should those ids be explicitly excluded from ADMIN_ALL_PERMISSIONS as the code's own comment at :232-234 anticipates?"
+  },
+  {
+   "id": "P3B3-ADMIN-051",
+   "title": "Verify the administrator role really does hold every capability",
+   "actor_role": "Administrator",
+   "trigger": "A control review asking whether any single role is all-powerful.",
+   "narrative": "It is, by construction. Whether that is right is a business question the code itself raises: the comment above the spread says that if internal controls should override the ruling for specific ids, they belong in an explicit exclusion list rather than as an accident of the list being out of date.",
+   "objects_touched": [
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "functions/src/access/compatibilityRoles.ts:235-240 with the deliberate-choice comment :232-234; admin role marked `privileged: true` :253-256, so granting it requires a second distinct approver (functions/src/access/trustedWriterCommands.ts:804-812).",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "Every one of the 147 catalogued capabilities lists `admin` among its holders.",
+     "37 of them resolve ALLOW for admin under the production activation set; the other 110 resolve DENY/inactivePermission."
+    ],
+    "note": "Holding everything is not seeing everything: 110 of the 147 are inert in production regardless of the grant."
+   },
+   "owner_question": "The administrator compatibility role holds all 147 capabilities by construction. Should any be excluded by internal control \u2014 the code anticipates exactly this at compatibilityRoles.ts:232-234 \u2014 and if so which?"
+  },
+  {
+   "id": "P3B3-ADMIN-052",
+   "title": "Find the Company Settings screen",
+   "actor_role": "Administrator",
+   "trigger": "Looking for where company-level configuration lives.",
+   "narrative": "There is no branch for it, so it falls through to the generic placeholder. The same is true of Regions and Vehicles. All three are nav-hidden, so the placeholder is reached only by typing the URL.",
+   "objects_touched": [
+    "Operating Company"
+   ],
+   "authority_path": "Nav items field-ops-app-vite/src/navigation/navConfig.js:579 (companySettings), :578 (regions), :577 (vehicles), all `navHidden: true`. No dispatch branch exists for any of them in field-ops-app-vite/src/App.jsx, so each falls through to the generic `PlaceholderPage` return at field-ops-app-vite/src/App.jsx:829.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-ADMIN-053",
+   "title": "Read the administration overview to see what version is deployed where",
+   "actor_role": "Administrator",
+   "trigger": "Confirming a deploy landed.",
+   "narrative": "The overview reads a static deployment manifest rather than querying anything. It is the one administration surface backed by neither the Render API nor a Firebase callable.",
+   "objects_touched": [
+    "Environment"
+   ],
+   "authority_path": "field-ops-app-vite/src/modules/administration/AdministrationOverview.jsx:4 over field-ops-app-vite/src/domain/deploymentVersionInfo (a static manifest); branch field-ops-app-vite/src/App.jsx:612, lazy import App.jsx:64. Release-visibility design docs/design/c3-delivery-reliability-and-release-visibility.md.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-054",
+   "title": "Configure email intake so customer emails become inbound work",
+   "actor_role": "Administrator",
+   "trigger": "Turning on the shared service inbox.",
+   "narrative": "A full email transport exists: connection authorization, mailbox configuration, routing rules, delivery, polling and retry. The administration capabilities for it are inactive in production and activated in the sandbox.",
+   "objects_touched": [
+    "Email Connection",
+    "Email Mailbox",
+    "Inbound Work Request"
+   ],
+   "authority_path": "Callables functions/src/index.ts:615-626 (inboundWorkCallables.ts) and :641-649 (emailTransportCallables.ts), plus the scheduled poll `pollEmailMailboxes` :654. Capabilities `administration.emailIntake.read` functions/src/access/permissionCatalog.ts:1596 and `.manage` :1604, both `active:false`, held only by the `emailIntakeAdministrator` role (functions/src/access/governedBusinessRoles.ts:1653) plus admin/owner. Surface field-ops-app-vite/src/modules/administration/AdminEmailCommunications.jsx (branch field-ops-app-vite/src/App.jsx:485, lazy App.jsx:76) over field-ops-app-vite/src/access/inboundWorkSource.js:9-15; nav gate field-ops-app-vite/src/navigation/navConfig.js:608. Architecture docs/architecture/email-connections-and-inbound-work.md.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 both ids are `active:false`; they ARE in the platform-sandbox override array (config/environments.json:128-181) and absent from production."
+  },
+  {
+   "id": "P3B3-ADMIN-055",
+   "title": "Create warehouse racking from the administration surface",
+   "actor_role": "Administrator",
+   "trigger": "Standing up a new warehouse's bin structure.",
+   "narrative": "One of only three administration surfaces backed by live Firebase callables. It crosses into the warehouse domain owned by another lane and is recorded here because it lives under Administration in the navigation.",
+   "objects_touched": [
+    "Warehouse",
+    "Bin"
+   ],
+   "authority_path": "Surface field-ops-app-vite/src/modules/administration/AdminWarehouseRacking.jsx:4 over field-ops-app-vite/src/services/binCommandClient.js:7, :29 (`httpsCallable`); branch field-ops-app-vite/src/App.jsx:642, lazy App.jsx:69, nav field-ops-app-vite/src/navigation/navConfig.js:592. Callables functions/src/index.ts:494-513 (binCallables.ts); capability `inventory.location.bin.manage` functions/src/access/permissionCatalog.ts:1182, `active:false`. Crosses into the Warehouse domain owned by lane P3-B2.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 functions/src/access/permissionCatalog.ts:1182; present in the platform-sandbox override array."
+  },
+  {
+   "id": "P3B3-ADMIN-056",
+   "title": "Read the integrations catalogue to see what EOS connects to",
+   "actor_role": "Administrator",
+   "trigger": "A question about third-party connections.",
+   "narrative": "A static FAQ. It answers questions and connects to nothing.",
+   "objects_touched": [
+    "Integration"
+   ],
+   "authority_path": "field-ops-app-vite/src/modules/administration/IntegrationsFaq.jsx:1-3 (a static array); branch field-ops-app-vite/src/App.jsx:666, lazy App.jsx:75, nav field-ops-app-vite/src/navigation/navConfig.js:609.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-ADMIN-057",
+   "title": "Read policy configuration as any authenticated tenant member",
+   "actor_role": "Salesperson",
+   "trigger": "Any principal with a tenant context hitting a read operation.",
+   "narrative": "A deliberate asymmetry worth knowing about: the nine administration READ operations are not authority-gated beyond tenant membership. Any principal who belongs to the tenant can enumerate every object, every role, every role's permission matrix, every workflow and the policy audit history. Only the fifteen mutations require an administration authority.",
+   "objects_touched": [
+    "Object",
+    "Role",
+    "Workflow",
+    "Policy Audit Event"
+   ],
+   "authority_path": "functions/src/adminPolicy/adminPolicyApi.ts:261-265 records that any principal with a tenant context may read policy configuration; the authority check `requireAdministrationAuthority` (functions/src/adminPolicy/administrationAuthority.ts:86-91) is invoked only from the mutation commands (functions/src/adminPolicy/policyCommands.ts:364, :167, :251, :400, :441, :489, :565, :630, :681 and functions/src/adminPolicy/workflowCommands.ts:117, :180, :241, :304). Principal resolution still applies to every call: functions/src/adminPolicy/principalContext.ts:92.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "Any authenticated tenant member can read the entire policy configuration \u2014 every object, every role's permission matrix, every workflow and the policy audit history (adminPolicyApi.ts:261-265). Is that the intended posture, or should the reads carry at least a coarse administration gate?"
+  },
+  {
+   "id": "P3B3-ADMIN-058",
+   "title": "Separate role definition authority from role assignment authority",
+   "actor_role": "General Manager",
+   "trigger": "A general manager wants to assign a role but not invent one.",
+   "narrative": "The split is an engine invariant rather than configurable policy: defining a role is administrator-only, assigning one is open to owner, general manager or administrator. The design note records that this supersedes an earlier two-person route for privileged assignment on the Postgres side.",
+   "objects_touched": [
+    "Role",
+    "Role Assignment"
+   ],
+   "authority_path": "functions/src/adminPolicy/administrationAuthority.ts:69-77 \u2014 `assignRole` accepts any of `ROLE_ASSIGNMENT_ROLE_KEYS` (:41-45) at :75, every other action requires `ADMIN_ROLE_KEY` at :76; design note :3-12 and the ROLE DEFINITION vs ROLE ASSIGNMENT statement :18-19; supersession of the two-person route :23. Protected roles `PROTECTED_ROLE_KEYS = [admin, owner]` :54.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "On the Postgres administration path, role ASSIGNMENT accepts owner / generalManager / admin and the design note records that this supersedes the earlier two-person route (administrationAuthority.ts:23). On the Firebase path, granting a privileged role still requires a distinct second approver (trustedWriterCommands.ts:804-812). Are the two paths meant to differ on privileged assignment?"
+  },
+  {
+   "id": "P3B3-ADMIN-059",
+   "title": "Refuse a caller who claims a tenant they do not belong to",
+   "actor_role": "Administrator",
+   "trigger": "A request carrying a spoofed tenant id.",
+   "narrative": "Principal resolution runs before anything else and has seven distinct refusal outcomes \u2014 unknown principal, disabled principal, no membership, spoofed tenant, ambiguous tenant, inactive tenant. Only the unknown-principal case maps to unauthenticated; everything else is forbidden, so a probing caller learns nothing about which tenants exist.",
+   "objects_touched": [
+    "Principal",
+    "Tenant"
+   ],
+   "authority_path": "functions/src/adminPolicy/principalContext.ts:92 `resolvePrincipalContext` \u2014 refusal union :41-47, no subject :97, unknown principal :100-101, non-active principal :103, no active membership :106-109, spoofed tenant :114-116, ambiguous tenant :120, inactive tenant :127; held role keys taken only from QUALIFYING assignments :132-137. Mapping to HTTP outcomes functions/src/adminPolicy/adminPolicyApi.ts:229-231; human-readable refusals :656-661.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADMIN-060",
+   "title": "Reconcile the two role systems an administrator has to reason about",
+   "actor_role": "Administrator",
+   "trigger": "Being asked a simple question: what can this person do?",
+   "narrative": "There are two answers and two systems. The Firebase side has 48 roles and 147 capabilities resolved by the effective-permission resolver; the Postgres side has its own role catalog resolved by object and field permissions over the Render API. An administrator configuring the Roles and Permissions screen is editing the second, and the sales, finance and CRM commands all obey the first.",
+   "objects_touched": [
+    "Role",
+    "Capability",
+    "Object"
+   ],
+   "authority_path": "Firebase authority: functions/src/access/permissionCatalog.ts (147 capabilities), governedBusinessRoles.ts:1689 (`GOVERNED_BUSINESS_ROLES`) plus compatibilityRoles.ts:356 (`COMPATIBILITY_ROLES`), resolved by resolveEffectivePermission.ts:246. Postgres authority: functions/src/adminPolicy/policyRepository.ts / postgresPolicyRepository.ts with object and field permissions, resolved by functions/src/adminPolicy/effectiveObjectAccess.ts and surfaced by the Roles & Permissions screen (field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx, branch field-ops-app-vite/src/App.jsx:632). Reconciliation assessment docs/architecture/eos-admin-policy-workflow-reconciliation.md; two-list problem docs/architecture/two-list-metadata-systems.md.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "ROLES 48 CAPS 147 (the Firebase-side authority)",
+     "A bootstrapped administrator on the nonprod Postgres side resolves 256 OBJECT permissions and ZERO operational capabilities \u2014 a different number, in a different vocabulary, for the same person."
+    ],
+    "note": "The 48x147 figure is executed. The 256/0 nonprod figure is a programme-supplied measurement I did not re-run \u2014 see UNPROVEN."
+   },
+   "owner_question": "EOS has two role systems \u2014 48 Firebase roles over 147 capabilities, and a separate Postgres object/field policy store behind the Render API. An administrator editing 'Roles & Permissions' is editing the second while every sales, CRM and finance command obeys the first. Which is intended to be the authority of record, and what is the convergence plan?"
+  }
+ ]
+}

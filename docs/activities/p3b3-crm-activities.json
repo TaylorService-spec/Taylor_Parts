@@ -1,0 +1,836 @@
+{
+ "lane": "P3-B3",
+ "block": "crm",
+ "generated": "2026-09-12",
+ "count": 60,
+ "activities": [
+  {
+   "id": "P3B3-CRM-001",
+   "title": "Create a new Ventana prospect account after a trade-show lead",
+   "actor_role": "Office Manager",
+   "trigger": "A restaurant group asks for a quote at a trade show.",
+   "narrative": "The account is created straight from the browser into Firestore. A dispatcher may only create it at the governed baseline for payment terms and tax status; an admin may set any valid governed value at creation. Enum validity is enforced for everyone, admin included.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Firestore `accounts`, firestore.rules:1319-1339 \u2014 read gated on `isAdminOrDispatcher()` :1320; create :1332-1334 (a dispatcher may create only at the governed baseline, an admin at any valid governed value); update :1335-1337 (a dispatcher may write only if the governed fields are unchanged); `allow delete: if false` :1338. Governed-field helpers `accountGovernedFieldsValid` firestore.rules:1291-1292, `accountGovernedFieldsUnchanged` :1307, `accountGovernedCreateBaseline` :1310-1315. Client-direct Firestore writes: field-ops-app-vite/src/domain/accounts.js:78 `createAccount`, :82 `updateAccount`; collection constants field-ops-app-vite/src/domain/constants.js:59-61. Form field-ops-app-vite/src/modules/accounts/AccountForm.jsx, whose own header at :32-36 records the interim posture ('these are client-direct edits for now; once the audit log + trusted server-side writer ship, mutation moves there and direct client writes are denied').",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-002",
+   "title": "Change a customer from NET_30 to COD after two late payments",
+   "actor_role": "Accounting Manager",
+   "trigger": "AR flags a repeat late payer.",
+   "narrative": "Payment terms are one of the two governed fields on the Account. A dispatcher may edit every other field but cannot touch this one; only an admin-level principal may move it, and the value must be one of the four declared enums.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Firestore `accounts`, firestore.rules:1319-1339 \u2014 read gated on `isAdminOrDispatcher()` :1320; create :1332-1334 (a dispatcher may create only at the governed baseline, an admin at any valid governed value); update :1335-1337 (a dispatcher may write only if the governed fields are unchanged); `allow delete: if false` :1338. Governed-field helpers `accountGovernedFieldsValid` firestore.rules:1291-1292, `accountGovernedFieldsUnchanged` :1307, `accountGovernedCreateBaseline` :1310-1315. Payment-terms enum ['COD','NET_30','NET_60','NET_90'] validated at firestore.rules:1291-1292. Capability Capabilities `customer.record.read` functions/src/access/permissionCatalog.ts:67, `customer.record.create` :73, `customer.record.update` :79, `customer.governedField.write` :85 \u2014 all four OMIT `active`, and the catalog's own predicate treats an omitted flag as active (permissionCatalog.ts:1695 `return !!permission && permission.active !== false;`). These are among the 38 capabilities that resolve ALLOW in production.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-003",
+   "title": "Set a customer's tax status for a resale-exempt distributor",
+   "actor_role": "Accounting Manager",
+   "trigger": "The customer supplies a resale certificate.",
+   "narrative": "The second governed field. The same admin-only write applies, and the same enum validation applies to every principal including admin \u2014 an invalid enum is denied regardless of who writes it.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Firestore `accounts`, firestore.rules:1319-1339 \u2014 read gated on `isAdminOrDispatcher()` :1320; create :1332-1334 (a dispatcher may create only at the governed baseline, an admin at any valid governed value); update :1335-1337 (a dispatcher may write only if the governed fields are unchanged); `allow delete: if false` :1338. Governed-field helpers `accountGovernedFieldsValid` firestore.rules:1291-1292, `accountGovernedFieldsUnchanged` :1307, `accountGovernedCreateBaseline` :1310-1315.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-004",
+   "title": "Have a dispatcher correct a customer's phone number without touching their credit terms",
+   "actor_role": "Dispatcher",
+   "trigger": "A driver reports the number on file is disconnected.",
+   "narrative": "This is the shape the governed-field split exists for: a dispatcher keeps full edit rights on every ordinary field and is refused only if the governed fields changed in the same write. It is enforced in Rules, never by hiding controls in the UI.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Firestore `accounts`, firestore.rules:1319-1339 \u2014 read gated on `isAdminOrDispatcher()` :1320; create :1332-1334 (a dispatcher may create only at the governed baseline, an admin at any valid governed value); update :1335-1337 (a dispatcher may write only if the governed fields are unchanged); `allow delete: if false` :1338. Governed-field helpers `accountGovernedFieldsValid` firestore.rules:1291-1292, `accountGovernedFieldsUnchanged` :1307, `accountGovernedCreateBaseline` :1310-1315. The 'Enforced HERE, in Rules, never by UI hiding' statement is at firestore.rules:1328.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-005",
+   "title": "Delete a customer created in error",
+   "actor_role": "Office Manager",
+   "trigger": "A duplicate account was typed twice.",
+   "narrative": "There is no delete. The Rules refuse it unconditionally for every principal; the only correction available is to mark the account inactive or archived.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "firestore.rules:1338 `allow delete: if false` on `accounts`; the same posture applies to `contacts` (:1558) and `locations` (:1344).",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "When an Account, Contact or Customer Location is created in error, what is the correcting act? Physical delete is refused everywhere in CRM and no merge or void command exists."
+  },
+  {
+   "id": "P3B3-CRM-006",
+   "title": "Assign an account owner so opportunities can be created against it",
+   "actor_role": "Sales Manager",
+   "trigger": "An imported account has no owner and blocks opportunity creation.",
+   "narrative": "The Account is the root of the person-owned inheritance chain, which is why an ownerless account blocks the whole commercial chain downstream. It must be assigned explicitly; inferring it from the creator, territory, coverage, activity, sales history or auth uid is forbidden.",
+   "objects_touched": [
+    "Account",
+    "Employee",
+    "Opportunity"
+   ],
+   "authority_path": "Ownership matrix account row functions/src/ownership/ownershipMatrix.ts:119-125; the D-6 prohibition is quoted in `backfillSource` on that row. Write path Client-direct Firestore writes: field-ops-app-vite/src/domain/accounts.js:78 `createAccount`, :82 `updateAccount`; collection constants field-ops-app-vite/src/domain/constants.js:59-61. Form field-ops-app-vite/src/modules/accounts/AccountForm.jsx, whose own header at :32-36 records the interim posture ('these are client-direct edits for now; once the audit log + trusted server-side writer ship, mutation moves there and direct client writes are denied').",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-007",
+   "title": "Read the account portfolio summary on the dashboard",
+   "actor_role": "Salesperson",
+   "trigger": "Opening My Dashboard at the start of the day.",
+   "narrative": "The portfolio summary is one of very few CRM reads that go through a governed callable rather than a direct Firestore query. It deliberately reuses the plain record-read capability, so seeing a rolled-up portfolio requires no more authority than seeing the records it rolls up.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Cloud Function onCall `getAccountPortfolioSummary` functions/src/account/accountPortfolioSummary.ts:110 (capability resolution :119, deny :126); capability constant `ACCOUNT_PORTFOLIO_READ_CAPABILITY = \"customer.record.read\"` :43, deliberately reusing the record-read capability rather than minting a portfolio one (rationale :38-42). Collection constant :33; assembly :73; read :92. Exported functions/src/index.ts:17. Client hook field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js:29.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-008",
+   "title": "Read every customer in the system from a browser as a technician",
+   "actor_role": "Technician",
+   "trigger": "A technician tries to look up a customer they are not assigned to.",
+   "narrative": "Refused twice over. The Rules gate customer reads on admin-or-dispatcher, and the capability resolver independently denies the technician role for customer.record.read. The technician's own work-order context read is a separate, deliberately narrow path and is explicitly not a customer-lookup API.",
+   "objects_touched": [
+    "Account",
+    "Work Order"
+   ],
+   "authority_path": "Firestore `accounts`, firestore.rules:1319-1339 \u2014 read gated on `isAdminOrDispatcher()` :1320; create :1332-1334 (a dispatcher may create only at the governed baseline, an admin at any valid governed value); update :1335-1337 (a dispatcher may write only if the governed fields are unchanged); `allow delete: if false` :1338. Governed-field helpers `accountGovernedFieldsValid` firestore.rules:1291-1292, `accountGovernedFieldsUnchanged` :1307, `accountGovernedCreateBaseline` :1310-1315. Technician's narrow path: `getWorkOrderFieldContext` functions/src/getWorkOrderFieldContext.ts, rationale functions/src/index.ts:122-126.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "technician | customer.record.read | PROD=DENY/noQualifyingGrant | SANDBOX=DENY/noQualifyingGrant"
+    ],
+    "note": "The denial reason is noQualifyingGrant, not inactivePermission \u2014 the capability is ACTIVE; the technician role simply does not hold it."
+   }
+  },
+  {
+   "id": "P3B3-CRM-009",
+   "title": "Confirm which roles can actually edit a customer record today",
+   "actor_role": "Operations Manager",
+   "trigger": "An access review asking who can change customer data in production.",
+   "narrative": "Unlike the whole sales and finance spine, the customer capabilities are live in production. Executing the resolver across all 48 roles under the production activation set shows customer.record.update ALLOWed for seven roles.",
+   "objects_touched": [
+    "Account",
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "Capabilities `customer.record.read` functions/src/access/permissionCatalog.ts:67, `customer.record.create` :73, `customer.record.update` :79, `customer.governedField.write` :85 \u2014 all four OMIT `active`, and the catalog's own predicate treats an omitted flag as active (permissionCatalog.ts:1695 `return !!permission && permission.active !== false;`). These are among the 38 capabilities that resolve ALLOW in production.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts (48 roles x 147 capabilities against the production and sandbox activation sets)",
+    "output": [
+     "customer.record.update | active=True | holders=7 | prodAllow=7 | allow: officeManager, salesManager, salesperson, generalManager, owner, admin, dispatcher",
+     "customer.governedField.write | active=True | holders=4 | prodAllow=4 | allow: accountingManager, financeManager, owner, admin"
+    ],
+    "note": "Contrast: the Firestore Rules gate on `isAdminOrDispatcher()` (firestore.rules:1320), NOT on these capabilities. The two systems disagree \u2014 see the adversarial block."
+   }
+  },
+  {
+   "id": "P3B3-CRM-010",
+   "title": "Record a customer's structured billing address for invoicing",
+   "actor_role": "Office Manager",
+   "trigger": "An invoice bounced back from the wrong address.",
+   "narrative": "The structured address work is an assessed design item; the field exists on the account and on the report field catalog as a first-class reportable field.",
+   "objects_touched": [
+    "Account",
+    "Invoice"
+   ],
+   "authority_path": "Report field `report.customer.field.billingAddress.read` functions/src/access/permissionCatalog.ts:668. Assessment docs/assessments/customer-record-page-structured-address.md. Write path Client-direct Firestore writes: field-ops-app-vite/src/domain/accounts.js:78 `createAccount`, :82 `updateAccount`; collection constants field-ops-app-vite/src/domain/constants.js:59-61. Form field-ops-app-vite/src/modules/accounts/AccountForm.jsx, whose own header at :32-36 records the interim posture ('these are client-direct edits for now; once the audit log + trusted server-side writer ship, mutation moves there and direct client writes are denied').",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-011",
+   "title": "Give an account a lifecycle so its state is visible on the record",
+   "actor_role": "Sales Manager",
+   "trigger": "Wanting to distinguish prospect, active and dormant customers on the page.",
+   "narrative": "The design register records that an Account has no lifecycle to make visible. Postgres declares a four-value status enum, but that schema is unreachable and Firestore carries no equivalent governed lifecycle.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Open product decision ND-11 'An Account has no lifecycle to make visible', docs/design/north-star-open-product-decisions.md:197-221. Postgres declares `CREATE TYPE crm_account_status AS ENUM ('PROSPECT','ACTIVE','INACTIVE','ARCHIVED')` at functions/migrations/1758758400000_crm-account-contact-location.sql:164 \u2014 unreachable, see Postgres schema `eos_crm` functions/migrations/1758758400000_crm-account-contact-location.sql:150; `CREATE TABLE accounts` :170, `contacts` :203, `account_locations` :251; status enum :164. Repository functions/src/crm/customerRepository.ts states in its own header (:1-31) that it is NOT wired to any HTTP operation and NOT called by any deployed client, and that the Firestore collections remain authoritative.",
+   "status": "PARTIAL",
+   "owner_question": "Should an Account carry a governed lifecycle (Prospect / Active / Inactive / Archived)? Postgres declares exactly that enum; the authoritative Firestore record does not, and ND-11 is open."
+  },
+  {
+   "id": "P3B3-CRM-012",
+   "title": "Edit an archived account",
+   "actor_role": "Office Manager",
+   "trigger": "An archived customer calls with a correction.",
+   "narrative": "Resolved by the Account North Star package: Edit stays offered on an archived account. The ruling exists; the lifecycle it depends on does not, per the previous activity.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Resolved decision A-D3 'Archived account editing \u2014 RESOLVED: Edit stays offered', docs/design/north-star-open-product-decisions.md:279-287.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-CRM-013",
+   "title": "Compose a prospect's page differently from a customer's page",
+   "actor_role": "Sales Manager",
+   "trigger": "Prospects have no orders, invoices or equipment yet.",
+   "narrative": "Resolved: the same page. The decision was taken deliberately rather than allowed to fork into two compositions that would drift.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Resolved decision A-D4 'Prospect composition \u2014 RESOLVED: the same page', docs/design/north-star-open-product-decisions.md:288-296.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-CRM-014",
+   "title": "Subscribe the account page to live changes so two people editing see each other",
+   "actor_role": "Office Manager",
+   "trigger": "Two people editing the same customer.",
+   "narrative": "The design register records that the approved Account design says the account hook is not a subscription, and that it is one. That disagreement between the approved design and the shipped code is the open item.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Open product decision A-NS-1 'The approved Account design says `useAccount` is not a subscription; it is one', docs/design/north-star-open-product-decisions.md:222-245. Hook field-ops-app-vite/src/hooks/useAccount.js:65.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-015",
+   "title": "Show nothing on the account attention strip when there is nothing to say",
+   "actor_role": "Salesperson",
+   "trigger": "Opening a healthy account.",
+   "narrative": "Resolved: silence. An attention section that manufactures a reassuring message when nothing is wrong teaches people to stop reading it.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Resolved decision A-D1 'Attention silence \u2014 RESOLVED: silence', docs/design/north-star-open-product-decisions.md:252-264. Surface field-ops-app-vite/src/modules/accounts/AccountAttentionSection.jsx.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-016",
+   "title": "Show the AR block on an account to someone who may not see the numbers",
+   "actor_role": "Dispatcher",
+   "trigger": "A dispatcher opens a customer record.",
+   "narrative": "Resolved: preserve the geography. The block keeps its place and says it is denied, rather than vanishing \u2014 so a person cannot mistake a permission boundary for an empty receivable.",
+   "objects_touched": [
+    "Account",
+    "Invoice"
+   ],
+   "authority_path": "Resolved decision A-D2 'AR denied presentation \u2014 RESOLVED: preserve the geography', docs/design/north-star-open-product-decisions.md:265-278. Account AR composition field-ops-app-vite/src/modules/accounts/AccountArSection.jsx:6 over the `finance.read`-gated callable `listAccountInvoiceAr` (functions/src/finance/financeReadCallables.ts:214); hook field-ops-app-vite/src/hooks/useAccountAr.js:11; pure view model field-ops-app-vite/src/domain/accountArView.js.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-017",
+   "title": "Write an account into the Postgres CRM authority",
+   "actor_role": "Operations Manager",
+   "trigger": "The data-plane portability plan puts CRM in Postgres.",
+   "narrative": "The schema is complete, the repository contract is written, and nothing calls it. Its own header says so: not wired to any HTTP operation, not called by any deployed client, Firestore remains authoritative.",
+   "objects_touched": [
+    "Account",
+    "Contact",
+    "Customer Location"
+   ],
+   "authority_path": "Postgres schema `eos_crm` functions/migrations/1758758400000_crm-account-contact-location.sql:150; `CREATE TABLE accounts` :170, `contacts` :203, `account_locations` :251; status enum :164. Repository functions/src/crm/customerRepository.ts states in its own header (:1-31) that it is NOT wired to any HTTP operation and NOT called by any deployed client, and that the Firestore collections remain authoritative.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 migration 1758758400000_crm-account-contact-location.sql is #15 of the 18 files in functions/migrations/; nonprod Postgres is applied to 7 of 18, so `eos_crm` does not exist there. Independently TRANSPORT_UNREACHABLE: the Render service routes only `/admin/policy` (functions/src/adminPolicy/adminPolicyHttp.ts:130) and `/operations/inventory` (functions/src/eosOps/eosOpsHttp.ts:176) \u2014 no CRM route exists (functions/src/eosApi/server.ts:167-171)."
+  },
+  {
+   "id": "P3B3-CRM-018",
+   "title": "Keep CRM sites and warehouse locations from colliding in one namespace",
+   "actor_role": "Operations Manager",
+   "trigger": "A migration design review.",
+   "narrative": "A customer site is eos_crm.account_locations; a warehouse is an operations object. The migration records that there is deliberately no foreign key in either direction between the CRM and operations schemas, so neither can quietly become the other's parent.",
+   "objects_touched": [
+    "Customer Location",
+    "Warehouse"
+   ],
+   "authority_path": "functions/migrations/1758758400000_crm-account-contact-location.sql:20-88, specifically :66 ('a CRM site is `eos_crm.account_locations`') and :88 ('NO foreign key in either direction between `eos_crm` and `eos_ops`'). Firestore-side distinction recorded on the ownership matrix location row functions/src/ownership/ownershipMatrix.ts:134-141 ('A CUSTOMER site, not one of ours').",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-019",
+   "title": "Add the new kitchen manager as a contact on a restaurant account",
+   "actor_role": "Office Manager",
+   "trigger": "Staff turnover at the customer.",
+   "narrative": "Contacts carry no field governance at all \u2014 unlike the Account, every field is equally writable by admin or dispatcher. The contact inherits its owner from the parent account owner at creation.",
+   "objects_touched": [
+    "Contact",
+    "Account"
+   ],
+   "authority_path": "Firestore `contacts`, firestore.rules:1555-1559 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1558. No field governance at all. Client writes field-ops-app-vite/src/domain/contacts.js:28 `createContact`, :40 `updateContact`. Owner inheritance: ownership matrix contact row functions/src/ownership/ownershipMatrix.ts:127-133 (`inheritanceSource: parent Account owner at creation`).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-020",
+   "title": "Bulk-import a franchise group's forty site contacts from a spreadsheet",
+   "actor_role": "Office Manager",
+   "trigger": "A new multi-site customer supplies a contact list.",
+   "narrative": "A client-side batch write straight into Firestore. This is the largest client-direct write in CRM and it has no server-side validation, no audit event and no capability check beyond the Rules role gate.",
+   "objects_touched": [
+    "Contact",
+    "Account"
+   ],
+   "authority_path": "Client `writeBatch` field-ops-app-vite/src/domain/contactImport.js:20, :38; UI field-ops-app-vite/src/modules/accounts/ContactImportModal.jsx:20, :48. Rules gate Firestore `contacts`, firestore.rules:1555-1559 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1558. No field governance at all. Client writes field-ops-app-vite/src/domain/contacts.js:28 `createContact`, :40 `updateContact`.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "Should bulk contact import go through the governed Data Import pipeline (which gates on environment first, then capability, and writes an audit record) rather than a client-side Firestore batch write with no audit trail?"
+  },
+  {
+   "id": "P3B3-CRM-021",
+   "title": "Mark which contact is the billing contact for invoicing",
+   "actor_role": "Accounting Manager",
+   "trigger": "Invoices need to reach the right person.",
+   "narrative": "A billing-contact report field exists and is finance-scoped. The Postgres design records deliberately why there is no single primary billing contact column.",
+   "objects_touched": [
+    "Contact",
+    "Account",
+    "Invoice"
+   ],
+   "authority_path": "Report field `report.customer.field.billingContact.read` functions/src/access/permissionCatalog.ts:728, granted only to the `reportFinanceViewer` role. Postgres rationale functions/migrations/1758758400000_crm-account-contact-location.sql:215. Write path Firestore `contacts`, firestore.rules:1555-1559 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1558. No field governance at all. Client writes field-ops-app-vite/src/domain/contacts.js:28 `createContact`, :40 `updateContact`.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-022",
+   "title": "Find a contact's phone number from the reporting surface",
+   "actor_role": "Marketing Manager",
+   "trigger": "Building a call list.",
+   "narrative": "Contact name, email, phone, role and parent customer are each independently gated report fields. Every one of them is registered inactive, so the reporting path to contact data is closed until activation.",
+   "objects_touched": [
+    "Contact"
+   ],
+   "authority_path": "Report fields `report.contact.read` functions/src/access/permissionCatalog.ts:744, `.field.name.read` :751, `.field.email.read` :758, `.field.phone.read` :765, `.field.role.read` :772, `.field.customer.read` :779 \u2014 all `active:false`. Field catalog functions/src/reporting/reportCatalog.ts:145-151.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 Registered `active: false` in the permission catalog; EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246) every role resolves DENY/inactivePermission under the production activation set, which is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. These six ids ARE present in the platform-sandbox override array (config/environments.json:128-181), so the sandbox can exercise them; production cannot."
+  },
+  {
+   "id": "P3B3-CRM-023",
+   "title": "Delete a contact who left the company",
+   "actor_role": "Office Manager",
+   "trigger": "A contact resigns.",
+   "narrative": "Delete is refused. The record stays and the business has no governed way to mark it inactive either \u2014 there is no status field in the contact contract.",
+   "objects_touched": [
+    "Contact"
+   ],
+   "authority_path": "firestore.rules:1558 `allow delete: if false`. Contact import contract fields functions/src/dataImport/contracts/customerImportContract.ts declare no contact status.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-CRM-024",
+   "title": "Transfer a contact's ownership when the parent account changes hands",
+   "actor_role": "Sales Manager",
+   "trigger": "An account is reassigned to a different salesperson.",
+   "narrative": "The matrix declares contacts and locations inherit the account owner at creation and carry HANDOFF transfer behaviour, with the backfill source being the parent account owner via accountId \u2014 a real relationship rather than a proxy. What exists is the declaration; the handoff command covers the ownable families generally.",
+   "objects_touched": [
+    "Contact",
+    "Customer Location",
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "Ownership matrix contact row functions/src/ownership/ownershipMatrix.ts:127-133 and location row :134-141; handoff command functions/src/ownership/ownershipHandoffCommand.ts (D-5 explicit auditable handoff). No onCall export for it in functions/src/index.ts.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-025",
+   "title": "Leave a contact ownerless because its parent account has no owner",
+   "actor_role": "Office Manager",
+   "trigger": "Creating a contact under an unowned imported account.",
+   "narrative": "The matrix gives both contacts and locations the same unresolved policy: they stay ownerless until the upstream account is owned. Ownership propagates down, never sideways.",
+   "objects_touched": [
+    "Contact",
+    "Account"
+   ],
+   "authority_path": "`unresolvedPolicy: OWNERLESS_UNTIL_UPSTREAM` on the contact row functions/src/ownership/ownershipMatrix.ts:132 and the location row :139.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-026",
+   "title": "Import customers through the governed import pipeline instead of typing them",
+   "actor_role": "Administrator",
+   "trigger": "Migrating a customer list off the legacy system.",
+   "narrative": "A customer import contract exists with declared canonical fields and required fields. Notably, payment terms are deliberately excluded from the import contract \u2014 a governed field is not something an upload may set.",
+   "objects_touched": [
+    "Account",
+    "Data Import Job"
+   ],
+   "authority_path": "Contract functions/src/dataImport/contracts/customerImportContract.ts \u2014 version :30, statuses :33, fields :36, required :105, registration :227; payment terms deliberately excluded :11. Entity registry functions/src/dataImport/contracts/entityContract.ts:22 (`IMPORT_ENTITY_TYPES = [PARTS, CUSTOMERS, EQUIPMENT, INVENTORY, SERVICE_HISTORY]`).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `admin.dataImport.stage` functions/src/access/permissionCatalog.ts:1028 and `admin.dataImport.execute` :1036 are both `active:false`. Registered `active: false` in the permission catalog; EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246) every role resolves DENY/inactivePermission under the production activation set, which is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. The import path additionally refuses production outright BEFORE evaluating capability: functions/src/dataImport/dataImportCallables.ts:260 calls `requireImportableTarget()` before :262 `requireCapability(...)`, and `assertNonProductionImportTarget` in functions/src/dataImport/importTargetGuard.ts refuses `PRODUCTION_PROJECT_ID = \"taylor-parts\"` (:33)."
+  },
+  {
+   "id": "P3B3-CRM-027",
+   "title": "Deduplicate two customer records for the same restaurant",
+   "actor_role": "Administrator",
+   "trigger": "Two accounts exist for one customer after an import.",
+   "narrative": "A Duplicate Rules administration surface exists but every control on it is disabled and it imports no client at all \u2014 it renders a seeded, static ruleset. There is no merge command anywhere.",
+   "objects_touched": [
+    "Account",
+    "Contact"
+   ],
+   "authority_path": "Surface field-ops-app-vite/src/modules/administration/AdminDuplicateRules.jsx (branch field-ops-app-vite/src/App.jsx:659, lazy import App.jsx:68); its header :1-3 records the seeded/static posture and it imports no command client. No merge or dedupe callable is exported from functions/src/index.ts.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "When two Accounts turn out to be the same customer, what is the governed correcting act? There is no merge command, no delete, and the Duplicate Rules surface is a static display with every control disabled."
+  },
+  {
+   "id": "P3B3-CRM-028",
+   "title": "See the change history on a customer record",
+   "actor_role": "Accounting Manager",
+   "trigger": "A credit limit changed and nobody knows who changed it.",
+   "narrative": "A record-change-history read service exists on the access side and is surfaced for Users. For Accounts the write path is a raw client Firestore write, which produces no audit event at all \u2014 the Rules comment and the form header both record this as the reason the trusted writer is still owed.",
+   "objects_touched": [
+    "Account",
+    "Audit Event"
+   ],
+   "authority_path": "Read service functions/src/access/recordChangeHistoryReadService.ts, callable `listRecordChangeHistory` functions/src/index.ts:245. The missing audit on account writes is recorded at firestore.rules:1329-1331 and field-ops-app-vite/src/modules/accounts/AccountForm.jsx:32-36.",
+   "status": "PARTIAL",
+   "owner_question": "Customer master-data edits currently write straight from the browser to Firestore with no audit event. Should the trusted server-side writer (named as the interim plan in both firestore.rules:1329-1331 and AccountForm.jsx:32-36) be prioritised before more customer data lands?"
+  },
+  {
+   "id": "P3B3-CRM-029",
+   "title": "Read customer notes on the reporting surface",
+   "actor_role": "Sales Manager",
+   "trigger": "Wanting the free-text notes in a customer report.",
+   "narrative": "Customer notes are classified security-text in the report field catalog and the capability is registered inactive. Executing the resolver shows it denies even for admin under BOTH the production and the sandbox activation sets \u2014 it is one of the seventeen capabilities that no environment activates at all.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Field classification functions/src/reporting/reportCatalog.ts:134 (`notes` is `security-text`); capability `report.customer.field.notes.read` functions/src/access/permissionCatalog.ts:691, `active:false`.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "admin | report.customer.field.notes.read | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17 \u2014 including report.customer.field.notes.read, report.customer.field.accountOwner.read, report.location.field.accessNotes.read"
+    ],
+    "note": "This id is absent from every capabilityActivationOverrides array in config/environments.json, so no environment the repository declares can lift it."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-CRM-030",
+   "title": "Read who owns an account from the reporting surface",
+   "actor_role": "Sales Manager",
+   "trigger": "Building an ownership coverage report.",
+   "narrative": "The account-owner report field is deferred to a later reporting wave and, like customer notes, is inactive in every environment. A report that would answer 'which accounts have no owner' \u2014 the question the whole commercial chain depends on \u2014 cannot be built.",
+   "objects_touched": [
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "Capability `report.customer.field.accountOwner.read` functions/src/access/permissionCatalog.ts:735, `active:false`; the wave-4 deferral is named in the resolver comment at field-ops-app-vite/src/access/resolveEffectivePermission.ts (the `active:false` gate block cites `customer.accountOwner`'s wave-4 deferral by name).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 absent from every `capabilityActivationOverrides` array in config/environments.json; EXECUTED: DENY/inactivePermission for admin under both the production and sandbox sets.",
+   "owner_question": "Accounts without an owner block Opportunity creation by design, yet `report.customer.field.accountOwner.read` is inactive in every environment, so no report can list them. Should that field be activated for the reporting wave?"
+  },
+  {
+   "id": "P3B3-CRM-031",
+   "title": "Add a second site for a franchise customer opening a new store",
+   "actor_role": "Office Manager",
+   "trigger": "The customer opens a second restaurant.",
+   "narrative": "Customer locations carry no field governance and no validation beyond the role gate. The location is a customer site, deliberately distinct from warehouses and stock locations, which are company-owned physical roots.",
+   "objects_touched": [
+    "Customer Location",
+    "Account"
+   ],
+   "authority_path": "Firestore `locations` (CUSTOMER sites, not warehouses), firestore.rules:1341-1345 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1344. Client writes field-ops-app-vite/src/domain/locations.js:18 `createLocation`, :22 `updateLocation`.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-032",
+   "title": "Record site access notes so a technician is not locked out at 6am",
+   "actor_role": "Dispatcher",
+   "trigger": "A customer's loading dock needs a code.",
+   "narrative": "Access notes are writable on the location, but the report field that would expose them is inactive in every environment \u2014 so the note can be captured and cannot be reported on.",
+   "objects_touched": [
+    "Customer Location"
+   ],
+   "authority_path": "Firestore `locations` (CUSTOMER sites, not warehouses), firestore.rules:1341-1345 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1344. Client writes field-ops-app-vite/src/domain/locations.js:18 `createLocation`, :22 `updateLocation`. Report field catalog functions/src/reporting/reportCatalog.ts:153-161; capability `report.location.field.accessNotes.read` functions/src/access/permissionCatalog.ts:809, `active:false` and absent from every environment override array in config/environments.json.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-033",
+   "title": "Move a customer site to a different account after a franchise sale",
+   "actor_role": "Office Manager",
+   "trigger": "One franchisee sells a store to another.",
+   "narrative": "The location itself has no parentage lock and can be updated. The equipment standing at that location is a different matter: Rules forbid changing an equipment record's accountId or locationId at all.",
+   "objects_touched": [
+    "Customer Location",
+    "Account",
+    "Equipment"
+   ],
+   "authority_path": "Firestore `locations` (CUSTOMER sites, not warehouses), firestore.rules:1341-1345 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1344. Client writes field-ops-app-vite/src/domain/locations.js:18 `createLocation`, :22 `updateLocation`. Contrast the equipment lock: Firestore `equipment` (equipment at a customer), firestore.rules:1505-1554 with the rationale preamble :1347-1504 \u2014 read `isAdminOrDispatcher()` :1506; create :1508-1510 gated on `equipmentCreateShapeValid` AND `equipmentLocationBelongsToAccount`; update :1512-1521 restricted by `affectedKeys().hasOnly(...)` so `accountId`, `locationId`, `status` and `createdAt` can never be changed. Technicians are explicitly denied, rationale :1367-1381.",
+   "status": "PARTIAL",
+   "owner_question": "When a customer site changes hands between franchisees, the Location can be reparented but the Equipment standing on it cannot (firestore.rules:1512-1521 forbids changing accountId/locationId). What is the intended correcting act for the installed base?"
+  },
+  {
+   "id": "P3B3-CRM-034",
+   "title": "List every site for a multi-site customer before scheduling a route",
+   "actor_role": "Dispatcher",
+   "trigger": "Planning a multi-stop preventive-maintenance run.",
+   "narrative": "A straightforward client read under the admin-or-dispatcher gate, composed by a dedicated hook.",
+   "objects_touched": [
+    "Customer Location",
+    "Account"
+   ],
+   "authority_path": "Firestore `locations` (CUSTOMER sites, not warehouses), firestore.rules:1341-1345 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1344. Client writes field-ops-app-vite/src/domain/locations.js:18 `createLocation`, :22 `updateLocation`. Read hooks field-ops-app-vite/src/hooks/useLocationsForAccount.js:60, useLocationsForAccounts.js:44, useLocation.js:42, useLocationReferenceResolver.js:84.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-035",
+   "title": "Report on customer sites and their addresses",
+   "actor_role": "Operations Manager",
+   "trigger": "Building a service-coverage map.",
+   "narrative": "Location is one of only four reportable objects that actually have fields populated in the report catalog. The object and its name, address and customer fields are catalogued; access notes are the one field held back.",
+   "objects_touched": [
+    "Customer Location"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts:84-97 (12 objects; only customer, contact, location and equipment have fields) and :153-161 (LOCATION_FIELDS). Capabilities `report.location.read` functions/src/access/permissionCatalog.ts:787 and field reads :794, :801, :817, all `active:false`.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 Registered `active: false` in the permission catalog; EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246) every role resolves DENY/inactivePermission under the production activation set, which is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. `report.location.read`, `.field.name.read`, `.field.address.read` and `.field.customer.read` ARE in the platform-sandbox override array (config/environments.json:128-181); `.field.accessNotes.read` is not."
+  },
+  {
+   "id": "P3B3-CRM-036",
+   "title": "Look at a customer site's structured address on the record page",
+   "actor_role": "Office Manager",
+   "trigger": "Reading a service address before dispatching.",
+   "narrative": "The location metadata definition drives the record page. Address structure on the customer record is an assessed design item with its own document.",
+   "objects_touched": [
+    "Customer Location"
+   ],
+   "authority_path": "Metadata definition field-ops-app-vite/src/metadata/definitions/location.js:92; assessment docs/assessments/customer-record-page-structured-address.md. Read gate Firestore `locations` (CUSTOMER sites, not warehouses), firestore.rules:1341-1345 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1344. Client writes field-ops-app-vite/src/domain/locations.js:18 `createLocation`, :22 `updateLocation`.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-037",
+   "title": "Write a customer site into the Postgres CRM authority as an account_location",
+   "actor_role": "Operations Manager",
+   "trigger": "Data-plane cutover planning.",
+   "narrative": "The table exists with its indexes and its deliberate namespace separation from operations locations. Like the rest of eos_crm it is unreachable.",
+   "objects_touched": [
+    "Customer Location"
+   ],
+   "authority_path": "`CREATE TABLE account_locations` functions/migrations/1758758400000_crm-account-contact-location.sql:251, indexes :280, :281. Postgres schema `eos_crm` functions/migrations/1758758400000_crm-account-contact-location.sql:150; `CREATE TABLE accounts` :170, `contacts` :203, `account_locations` :251; status enum :164. Repository functions/src/crm/customerRepository.ts states in its own header (:1-31) that it is NOT wired to any HTTP operation and NOT called by any deployed client, and that the Firestore collections remain authoritative.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 migration #15 of 18; nonprod Postgres is at 7 of 18 applied, so `eos_crm` does not exist there."
+  },
+  {
+   "id": "P3B3-CRM-038",
+   "title": "Refuse to drop the CRM schema while it still holds records",
+   "actor_role": "Administrator",
+   "trigger": "A migration rollback in a shared environment.",
+   "narrative": "The down migration refuses to drop a non-empty schema. That is a small thing that prevents the largest possible accident in a shared nonprod database.",
+   "objects_touched": [
+    "Account",
+    "Contact",
+    "Customer Location"
+   ],
+   "authority_path": "functions/migrations/1758758400000_crm-account-contact-location.sql:302-319 (down migration refuses to drop a non-empty schema). Contrast the commercial migration, whose down section is an unconditional `DROP SCHEMA IF EXISTS eos_commercial CASCADE;` at functions/migrations/1758844800000_commercial-ownership-authority.sql:339.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "The CRM migration refuses to drop a non-empty schema (1758758400000:302-319) but the commercial migration's down section is an unconditional `DROP SCHEMA ... CASCADE` (1758844800000:339). Should the same non-empty guard be applied to eos_commercial, eos_finance and eos_ops?"
+  },
+  {
+   "id": "P3B3-CRM-039",
+   "title": "Distinguish a customer site from a warehouse when both appear in one picker",
+   "actor_role": "Dispatcher",
+   "trigger": "Choosing a destination for a delivery.",
+   "narrative": "The two are different collections with different ownership classes: a customer location is person-owned and company-neutral, a warehouse is a company-owned physical root. The picker must not blur them, and the ownership matrix is where that distinction is authoritative.",
+   "objects_touched": [
+    "Customer Location",
+    "Warehouse"
+   ],
+   "authority_path": "Ownership matrix location row functions/src/ownership/ownershipMatrix.ts:134-141 (note: 'A CUSTOMER site, not one of ours. Distinct from warehouses/stock_locations, which are company-owned physical roots'); warehouse root assignment functions/src/ownership/warehouseRootCompanyAssignment.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-040",
+   "title": "Delete a customer site that was entered twice",
+   "actor_role": "Office Manager",
+   "trigger": "A duplicate site record.",
+   "narrative": "Refused, like accounts and contacts. No deactivation flag exists on the location either.",
+   "objects_touched": [
+    "Customer Location"
+   ],
+   "authority_path": "firestore.rules:1344 `allow delete: if false` on `locations`.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-CRM-041",
+   "title": "Register the ice machine that was just installed at a customer site",
+   "actor_role": "Dispatcher",
+   "trigger": "An install visit completes.",
+   "narrative": "Equipment creation is validated in Rules on two axes: the record shape, and that the location genuinely belongs to the account. It is the only CRM object with a parentage check enforced at the storage layer.",
+   "objects_touched": [
+    "Equipment",
+    "Account",
+    "Customer Location"
+   ],
+   "authority_path": "Firestore `equipment` (equipment at a customer), firestore.rules:1505-1554 with the rationale preamble :1347-1504 \u2014 read `isAdminOrDispatcher()` :1506; create :1508-1510 gated on `equipmentCreateShapeValid` AND `equipmentLocationBelongsToAccount`; update :1512-1521 restricted by `affectedKeys().hasOnly(...)` so `accountId`, `locationId`, `status` and `createdAt` can never be changed. Technicians are explicitly denied, rationale :1367-1381.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-042",
+   "title": "Correct an equipment record's serial number without moving the machine",
+   "actor_role": "Dispatcher",
+   "trigger": "A typo in the serial captured at install.",
+   "narrative": "Allowed. The update rule restricts which keys may be touched at all, and identity fields that would silently relocate or reassign the asset are outside that set.",
+   "objects_touched": [
+    "Equipment"
+   ],
+   "authority_path": "Firestore `equipment` (equipment at a customer), firestore.rules:1505-1554 with the rationale preamble :1347-1504 \u2014 read `isAdminOrDispatcher()` :1506; create :1508-1510 gated on `equipmentCreateShapeValid` AND `equipmentLocationBelongsToAccount`; update :1512-1521 restricted by `affectedKeys().hasOnly(...)` so `accountId`, `locationId`, `status` and `createdAt` can never be changed. Technicians are explicitly denied, rationale :1367-1381.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-043",
+   "title": "Move an equipment record to a different customer after the machine is sold on",
+   "actor_role": "Office Manager",
+   "trigger": "A restaurant sells its used machine to another operator.",
+   "narrative": "Refused at the storage layer: the update rule's affected-keys restriction denies any change to accountId, locationId, status or createdAt. There is no re-parenting command either.",
+   "objects_touched": [
+    "Equipment",
+    "Account",
+    "Customer Location"
+   ],
+   "authority_path": "firestore.rules:1512-1521 \u2014 `affectedKeys().hasOnly(...)` denies any change to `accountId`, `locationId`, `status` or `createdAt`. No equipment re-parent callable exists in functions/src/index.ts.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "RULES_DENY \u2014 firestore.rules:1512-1521; and there is no server-side alternative, so this is not merely a client restriction.",
+   "owner_question": "When a customer sells a machine to another operator, how should the installed-base record follow it? Rules forbid changing accountId/locationId on an equipment record and no re-parent command exists."
+  },
+  {
+   "id": "P3B3-CRM-044",
+   "title": "Let a technician read the equipment at the site they are standing on",
+   "actor_role": "Technician",
+   "trigger": "Arriving at a site and needing the machine's history.",
+   "narrative": "Technicians are explicitly denied equipment reads in Rules, with a long recorded rationale. The technician's route to customer-bound facts is the narrow work-order field context, which is not a lookup API.",
+   "objects_touched": [
+    "Equipment",
+    "Work Order"
+   ],
+   "authority_path": "Firestore `equipment` (equipment at a customer), firestore.rules:1505-1554 with the rationale preamble :1347-1504 \u2014 read `isAdminOrDispatcher()` :1506; create :1508-1510 gated on `equipmentCreateShapeValid` AND `equipmentLocationBelongsToAccount`; update :1512-1521 restricted by `affectedKeys().hasOnly(...)` so `accountId`, `locationId`, `status` and `createdAt` can never be changed. Technicians are explicitly denied, rationale :1367-1381. Technician denial rationale firestore.rules:1367-1381. Technician's narrow path `getWorkOrderFieldContext` functions/src/getWorkOrderFieldContext.ts, rationale functions/src/index.ts:122-126. Crosses into the Service domain owned by lane P3-B1.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "RULES_DENY \u2014 firestore.rules:1506 gates equipment reads on `isAdminOrDispatcher()`; the technician exclusion is deliberate and documented at :1367-1381."
+  },
+  {
+   "id": "P3B3-CRM-045",
+   "title": "Report on a customer's installed base by equipment status",
+   "actor_role": "Field Manager",
+   "trigger": "Planning proactive replacement outreach.",
+   "narrative": "Equipment is the fourth and last reportable object with populated fields \u2014 nine of them, including status, identity, dates, notes, customer and location. All are inactive in production and all are sandbox-activated.",
+   "objects_touched": [
+    "Equipment",
+    "Account",
+    "Customer Location"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts:163-176 (EQUIPMENT_FIELDS). Capabilities `report.equipment.read` functions/src/access/permissionCatalog.ts:825 and field reads :832, :839, :846, :854, :861, :868, :875, :882 \u2014 all `active:false`.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 Registered `active: false` in the permission catalog; EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246) every role resolves DENY/inactivePermission under the production activation set, which is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. All nine equipment report ids ARE present in the platform-sandbox override array (config/environments.json:128-181)."
+  },
+  {
+   "id": "P3B3-CRM-046",
+   "title": "See what service has been performed on a customer's machine",
+   "actor_role": "Salesperson",
+   "trigger": "Preparing a replacement conversation.",
+   "narrative": "Service history is catalogued as a reportable object derived from work orders, but it is a wave-2 object with no fields populated \u2014 so it is declared and not yet readable. Imported service history from the legacy system is a separate, deny-all collection read only through a callable.",
+   "objects_touched": [
+    "Equipment",
+    "Work Order",
+    "Imported Service History"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts:92 (serviceHistory: no collection, derived from `fieldops_wos`, wave 2, fieldsPopulated false). Imported history: collection `imported_service_history` deny-all firestore.rules:1872, written only by functions/src/dataImport/firestoreServiceHistoryAdapters.ts, read via `listImportedServiceHistory` functions/src/index.ts:597; surface field-ops-app-vite/src/modules/accounts/ImportedServiceHistoryBlock.jsx.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-047",
+   "title": "Refuse to fabricate work orders out of imported legacy service records",
+   "actor_role": "Administrator",
+   "trigger": "Migrating five years of service history.",
+   "narrative": "The imported records deliberately do NOT land in the work order collection. A work order is a lifecycle, and a record dropped into a terminal state never had one \u2014 a fabricated work order would be indistinguishable from a real one in every metric that counts them.",
+   "objects_touched": [
+    "Imported Service History",
+    "Work Order"
+   ],
+   "authority_path": "firestore.rules:1861-1871 (the rationale block above `match /imported_service_history/{recordId}` at :1872), specifically the DELIBERATELY NOT fieldops_wos passage.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-048",
+   "title": "Log a call with a customer as a CRM activity",
+   "actor_role": "Salesperson",
+   "trigger": "A check-in call worth remembering.",
+   "narrative": "The CRM activity commands exist. The collection has no Rules match block at all, which is a deliberate default-deny asserted in the code comments rather than an oversight. The capabilities are inactive in production and activated in the sandbox.",
+   "objects_touched": [
+    "CRM Activity",
+    "Account",
+    "Contact"
+   ],
+   "authority_path": "Cloud Functions `createCrmActivity` and `getCrmActivities`, exported functions/src/index.ts:548-549, implemented functions/src/crmActivity/crmActivityCallables.ts and functions/src/crmActivity/crmActivityReadService.ts. Capabilities `crm.activity.create` functions/src/access/permissionCatalog.ts:1442 (active:false :1447) and `crm.activity.read` :1455 (active:false :1461). The `crm_activities` collection has NO match block in firestore.rules at all \u2014 deliberate default-deny, asserted in code at crmActivityCallables.ts:13 and crmActivityReadService.ts:5; collection constant functions/src/constants/collections.ts:102.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `crm.activity.create` functions/src/access/permissionCatalog.ts:1442 is `active:false` (:1447). Registered `active: false` in the permission catalog; EXECUTED against the shipped resolver (field-ops-app-vite/src/access/resolveEffectivePermission.ts:246) every role resolves DENY/inactivePermission under the production activation set, which is empty because config/environments.json's `taylor-parts-production` entry (begins :257) carries no `capabilityActivationOverrides` key and functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. EXECUTED: admin resolves DENY/inactivePermission in production and ALLOW/qualifyingGrant in the sandbox, where the id IS in the override array."
+  },
+  {
+   "id": "P3B3-CRM-049",
+   "title": "Read the activity trail on an account before a renewal conversation",
+   "actor_role": "Sales Manager",
+   "trigger": "Preparing for a renewal.",
+   "narrative": "Same posture as the write. The read capability is separately registered and separately inactive, and the account page composes a section for it.",
+   "objects_touched": [
+    "CRM Activity",
+    "Account"
+   ],
+   "authority_path": "Cloud Functions `createCrmActivity` and `getCrmActivities`, exported functions/src/index.ts:548-549, implemented functions/src/crmActivity/crmActivityCallables.ts and functions/src/crmActivity/crmActivityReadService.ts. Capabilities `crm.activity.create` functions/src/access/permissionCatalog.ts:1442 (active:false :1447) and `crm.activity.read` :1455 (active:false :1461). The `crm_activities` collection has NO match block in firestore.rules at all \u2014 deliberate default-deny, asserted in code at crmActivityCallables.ts:13 and crmActivityReadService.ts:5; collection constant functions/src/constants/collections.ts:102. Account surface field-ops-app-vite/src/modules/accounts/ActivityAndNotesSection.jsx.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `crm.activity.read` functions/src/access/permissionCatalog.ts:1455, `active:false` :1461."
+  },
+  {
+   "id": "P3B3-CRM-050",
+   "title": "Give an administrator the same CRM activity reach a dispatcher already has",
+   "actor_role": "Administrator",
+   "trigger": "An administrator could not see CRM notes a dispatcher could.",
+   "narrative": "A real closed finding: exactly one role carried the CRM activity ids, so a dispatcher holding that operational role could read CRM notes on an account while the administrator could not, and the Owner role inherited the same gap. The proposal explicitly rejected assigning the operational role to admin as the durable fix \u2014 that turns canonical authority into accumulated workarounds \u2014 and granted on the admin role instead.",
+   "objects_touched": [
+    "CRM Activity",
+    "Role"
+   ],
+   "authority_path": "functions/src/access/compatibilityRoles.ts:174-190 records the finding, the rejected fix and the Owner ruling of 2026-08-19; governance document docs/governance/crm-activity-admin-authority-proposal.md.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-051",
+   "title": "See a customer's whole relationship on one page: orders, AR, service and equipment",
+   "actor_role": "Sales Manager",
+   "trigger": "A quarterly business review.",
+   "narrative": "The account detail page composes ten distinct sections, each from a different authority \u2014 AR through a finance callable, opportunities and sales orders through their own projections, service activity and imported history through theirs. It is the single place in EOS where six domains meet on one screen, and each section can be independently denied.",
+   "objects_touched": [
+    "Account",
+    "Sales Order",
+    "Opportunity",
+    "Invoice",
+    "Work Order",
+    "Equipment"
+   ],
+   "authority_path": "Surfaces field-ops-app-vite/src/modules/accounts/. List branch field-ops-app-vite/src/App.jsx:410-412 (`AccountsList`, lazy import App.jsx:39) hosting the create modal; record route App.jsx:979 (`AccountDetail`, lazy App.jsx:62) with gating rationale App.jsx:925-934. Sections: AccountArSection.jsx (finance), AccountOpportunitiesSection.jsx, AccountSalesOrdersSection.jsx, AccountHealthStrip.jsx, FinancialSummarySection.jsx, FinancialForecastSection.jsx, ServiceActivitySection.jsx, ImportedServiceHistoryBlock.jsx, AccountAttentionSection.jsx, ActivityAndNotesSection.jsx \u2014 all under field-ops-app-vite/src/modules/accounts/.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-052",
+   "title": "Show a forecast of a customer's future spend on their record",
+   "actor_role": "Sales Manager",
+   "trigger": "Account planning.",
+   "narrative": "A forecast section exists on the account page and a forecasting core exists in finance, but forecast storage and the methodology policy are both named as outstanding gates.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Surface field-ops-app-vite/src/modules/accounts/FinancialForecastSection.jsx; core functions/src/finance/forecasting.ts; readiness row docs/financials/F12_SURFACE_READINESS_MAP.md ('Forecasting (`forecasting`) | `forecasting.ts` (F7) | forecast storage; methodology policy'). Assessment docs/assessments/account-commercial-profile-and-financial-forecast-horizons.md.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-053",
+   "title": "Find the Contacts list in the CRM navigation",
+   "actor_role": "Office Manager",
+   "trigger": "Looking for a contacts screen.",
+   "narrative": "There isn't one. The Contacts, Locations, Equipment and Service History subnav entries were removed from the CRM/Sales domain; contacts and locations are now reachable only from inside an account record. The retired URLs still redirect rather than 404.",
+   "objects_touched": [
+    "Contact",
+    "Customer Location",
+    "Equipment"
+   ],
+   "authority_path": "The Contacts, Locations, Equipment and Service History subnav entries were REMOVED from the CRM/Sales domain \u2014 rationale field-ops-app-vite/src/navigation/navConfig.js:98-111; the domain now carries only Customers :112, Opportunities :119 and Sales Orders :131. The retired URLs redirect: field-ops-app-vite/src/App.jsx:958-960.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-054",
+   "title": "Model a parent company with subsidiary customers",
+   "actor_role": "Sales Manager",
+   "trigger": "A franchise group with twelve operating entities.",
+   "narrative": "Customer hierarchy is an assessed design topic with its own document. No parent-child relationship exists on the account record, in the Rules, or in the Postgres schema.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Assessment docs/assessments/customer-hierarchy.md and docs/assessments/customer-account-business-model.md. No parent/child column exists on `CREATE TABLE accounts` functions/migrations/1758758400000_crm-account-contact-location.sql:170-191, and no hierarchy field is declared in field-ops-app-vite/src/metadata/definitions/account.js:67.",
+   "status": "DESIGNED_ONLY",
+   "owner_question": "Should EOS model a customer hierarchy (parent company with subsidiary operating entities)? It is assessed in docs/assessments/customer-hierarchy.md and exists in no schema."
+  },
+  {
+   "id": "P3B3-CRM-055",
+   "title": "Record a customer's commercial profile \u2014 credit limit, terms and relationship type",
+   "actor_role": "Accounting Manager",
+   "trigger": "Onboarding a large new account.",
+   "narrative": "Commercial profile fields are catalogued as finance-scoped report fields and are editable through the account form today. The Rules comment records the interim nature of that: PR 3b converts it to a trusted audited server-side writer and denies direct client mutation of every Commercial Profile field.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Interim posture stated firestore.rules:1329-1331. Finance-scoped report fields `report.customer.field.commercialProfile.read` functions/src/access/permissionCatalog.ts:720, `.paymentTerms.read` :706, `.taxStatus.read` :713, `.billingAddress.read` :668, `.billingContact.read` :728 \u2014 granted only to the `reportFinanceViewer` role. Assessment docs/assessments/account-commercial-profile-and-financial-forecast-horizons.md.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-CRM-056",
+   "title": "Split customer report fields between an ordinary viewer and a finance viewer",
+   "actor_role": "Administrator",
+   "trigger": "Deciding who may see a customer's payment terms in a report.",
+   "narrative": "The report field catalog splits customer fields into ordinary and finance-sensitive, and the two are granted to two different roles. Executing the resolver confirms the split holds: reportViewer resolves ALLOW for name and status, reportFinanceViewer for payment terms, and neither crosses into the other's set.",
+   "objects_touched": [
+    "Account",
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "Field classification functions/src/reporting/reportCatalog.ts:121-143 (`paymentTerms`/`taxStatus` are `governed` :136-137; three `commercial` fields :138-140). Roles `reportViewer` functions/src/access/governedBusinessRoles.ts:1373 and `reportFinanceViewer` :1417.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "reportViewer | report.customer.read | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "reportFinanceViewer | report.customer.field.paymentTerms.read | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "The split is real and enforced by grant, not by UI. Both are denied in production because the report family is active:false there."
+   }
+  },
+  {
+   "id": "P3B3-CRM-057",
+   "title": "Search for a customer by name across the whole book",
+   "actor_role": "Salesperson",
+   "trigger": "A caller gives a name and nothing else.",
+   "narrative": "A name-folding index exists on the Postgres side; today the browser reads account names directly under the role gate through a dedicated hook.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Client read hooks field-ops-app-vite/src/hooks/useAccountNames.js:84 and useAccountPicker.js:38 under Firestore `locations` (CUSTOMER sites, not warehouses), firestore.rules:1341-1345 \u2014 read and create/update gated on `isAdminOrDispatcher()`, `allow delete: if false` :1344. Postgres folded-name index functions/migrations/1758758400000_crm-account-contact-location.sql:195.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-CRM-058",
+   "title": "Export a customer's own operational data at their request",
+   "actor_role": "Administrator",
+   "trigger": "A customer asks for their data.",
+   "narrative": "Customer operability, data ownership and analytical export is an assessed topic with its own document. No export command exists; the reporting run path is the nearest thing and it is separately gated.",
+   "objects_touched": [
+    "Account",
+    "Report Definition"
+   ],
+   "authority_path": "Assessment docs/assessments/customer-operability-data-ownership-and-analytical-export.md. Nearest implementation: `runReportDefinitionCallable` functions/src/reporting/runReportDefinitionCallable.ts:24, which its own header (:9-15) records as NOT wired to any client.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-CRM-059",
+   "title": "Rely on the customer domain foundation document as the model of record",
+   "actor_role": "Operations Manager",
+   "trigger": "Onboarding a new engineer to the CRM domain.",
+   "narrative": "A foundation architecture document and a structured-list specification both exist for customers. They describe more of the domain than the Firestore collections implement \u2014 the gap between them is the honest measure of CRM completeness.",
+   "objects_touched": [
+    "Account",
+    "Contact",
+    "Customer Location"
+   ],
+   "authority_path": "docs/architecture/customer-domain-foundation.md and docs/architecture/customers-structured-list.md; field metadata docs/architecture/structured-object-field-metadata.md. Implemented storage is the three Firestore collections at firestore.rules:1319-1345 and :1555-1559.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-CRM-060",
+   "title": "Have one customer identity shared between CRM and operations",
+   "actor_role": "Operations Manager",
+   "trigger": "Reconciling a customer id across the two data planes.",
+   "narrative": "A customer identity module and a migration source exist on the CRM side. The namespace boundary is deliberate: there is no foreign key between the CRM and operations schemas in either direction, so a shared identity has to be established rather than assumed.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "functions/src/crm/customerIdentity.ts:25 (`CRM_ACCOUNT_STATUSES`) with the boundary note :1-15; functions/src/crm/customerMigrationSource.ts; the no-FK ruling functions/migrations/1758758400000_crm-account-contact-location.sql:88.",
+   "status": "PARTIAL"
+  }
+ ]
+}

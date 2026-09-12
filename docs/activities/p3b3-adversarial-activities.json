@@ -1,0 +1,784 @@
+{
+ "lane": "P3-B3",
+ "block": "adversarial",
+ "generated": "2026-09-12",
+ "count": 40,
+ "activities": [
+  {
+   "id": "P3B3-ADV-001",
+   "title": "A Ventana sales order is allocated from a Taylor warehouse and nothing refuses it",
+   "actor_role": "Warehouse Manager",
+   "crosses_into": "Inventory (lane P3-B2)",
+   "trigger": "A Ventana deal needs a part that only Main Distribution Center holds, and Main belongs to Taylor.",
+   "narrative": "The Sales Order genuinely carries an operating company \u2014 the commercial axis lands it there at creation. The warehouse genuinely belongs to an operating company too. Nothing compares them. The allocation command contains no reference to `operatingCompanyId` at all, and the commercial-company module states in its own source that the field is optional everywhere, that there is no enforcement, and that none may be added until the census gate passes. So the seam does not fail loudly: it succeeds, and the record of which company's stock satisfied which company's order is simply never made.",
+   "objects_touched": [
+    "Sales Order",
+    "Warehouse",
+    "Inventory Transaction",
+    "Operating Company"
+   ],
+   "authority_path": "Company on the order: functions/src/ownership/commercialCompanyScope.ts (copy chain :4-8, resolver :59), written by functions/src/salesOrder/salesOrderCommands.ts:287. Company on the warehouse: config/ownership/operating-company-roots.sandbox.json (wh-main -> taylor, wh-north -> ventana), assignment module functions/src/ownership/warehouseRootCompanyAssignment.ts. Allocation: functions/src/fulfillment/allocateSalesOrder.ts:96, whose eligible pool is 'status==ACTIVE warehouses' (:119) with NO company predicate \u2014 grep for `operatingCompanyId` across that file returns zero matches. The no-enforcement statement is functions/src/ownership/commercialCompanyScope.ts:26-29.",
+   "status": "PARTIAL",
+   "owner_question": "May a Sales Order booked to Ventana be fulfilled from a Taylor warehouse? Today the allocation command does not look at the operating company at all (allocateSalesOrder.ts has no reference to it), and commercialCompanyScope.ts:26-29 states that no enforcement may be added until the census gate passes. If the answer is 'yes, and it creates an intercompany obligation', that obligation has nowhere to be recorded \u2014 FIN-BLOCK-004 forbids an intercompany record type until the treatment is ruled."
+  },
+  {
+   "id": "P3B3-ADV-002",
+   "title": "A salesperson holds the capability to create a customer and Firestore refuses the write",
+   "actor_role": "Salesperson",
+   "crosses_into": "Administration",
+   "trigger": "A salesperson tries to add a prospect from the accounts list.",
+   "narrative": "Two authorities give two answers and the one that wins is the older one. The capability model says the Salesperson role holds `customer.record.create`, and it is one of only 37 capabilities that resolve ALLOW in production. The write path, however, is a client-direct Firestore write governed by a Rules helper that reads a single legacy string field on the user document and admits only 'admin' or 'dispatcher'. A salesperson whose user record does not carry one of those two strings is denied, capability or not. The repository knows: it maintains a machine-checked corpus of every remaining legacy call site precisely so this can be retired provably.",
+   "objects_touched": [
+    "Account",
+    "Role",
+    "Capability",
+    "User"
+   ],
+   "authority_path": "Capability side: `customer.record.create` functions/src/access/permissionCatalog.ts:73 (ACTIVE \u2014 no `active` key; predicate :1695), granted to salesperson at functions/src/access/governedBusinessRoles.ts:369-371. Rules side: `accounts` create gated on `isAdminOrDispatcher()` firestore.rules:1332-1334, that helper defined :22-24 reading `userRole()` :18-20 which is `users/{uid}.role` \u2014 a single legacy string, not the governed model. Write path is client-direct: field-ops-app-vite/src/domain/accounts.js:78. Corpus: functions/src/access/legacyAuthorizationSurface.ts:52-74 measures 44 enforced legacy call sites across 22 collections (was 47; the shrink is recorded :63-74), with `accounts` carrying 3 `isAdminOrDispatcher` and 2 `isAdmin` sites (:104-105); CI re-parses the real rules file to enforce the count (functions/test/legacyAuthorizationSurface.test.mjs).",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts, read against firestore.rules:22-24 and :1332-1334",
+    "output": [
+     "customer.record.create | active=True | prodAllow includes salesperson",
+     "customer.record.update | prodAllow = officeManager, salesManager, salesperson, generalManager, owner, admin, dispatcher",
+     "Rules `isAdminOrDispatcher()` admits exactly two legacy role strings: \"admin\" and \"dispatcher\"."
+    ],
+    "note": "The capability resolution is executed; the Rules denial is read from the deployed ruleset, not executed against an emulator. Five of the seven capability holders (officeManager, salesManager, salesperson, generalManager, owner) are not admitted by the Rules helper."
+   },
+   "owner_question": "Five roles hold `customer.record.update` in the capability model and are refused by the Firestore Rules that actually govern the write (officeManager, salesManager, salesperson, generalManager, owner). Which is the intended authority for customer master data, and should the trusted server-side writer named in firestore.rules:1329-1331 be built before more roles are granted capabilities they cannot exercise?"
+  },
+  {
+   "id": "P3B3-ADV-003",
+   "title": "A part is renamed in the catalog after it is quoted and before the work order completes",
+   "actor_role": "Parts Manager",
+   "crosses_into": "Inventory (lane P3-B2)",
+   "trigger": "A catalog administrator corrects an internal part number while an order is in fulfilment.",
+   "narrative": "The part number is captured twice at two different moments and compared later. When the service work order is raised, the parts plan is seeded with a SKU resolved from Part Master at that instant and deliberately never fabricated from the part id. When the technician completes, the fulfilment write-back derives the PART lines' quantities by matching that snapshot's SKU against the sales order line reference. Change the canonical internal part number in between and the two captures no longer describe the same string. The catalog capabilities that permit the rename are among the few live in production; the write-back that depends on the old value is not.",
+   "objects_touched": [
+    "Part",
+    "Sales Order",
+    "Work Order"
+   ],
+   "authority_path": "SKU captured at WO creation: functions/src/salesOrder/createServiceForSalesOrder.ts:105-114, fail-closed on `PART_NOT_FOUND` :107 and `SKU_UNRESOLVED` :109-110, with the never-fabricate rule stated :85-86 and :172-173. Matching at completion: functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts:63-75 (`keyOf(kind, ref)` :63-64, fallback match by `(ref,kind)` :75) \u2014 and note the header :7-15 records that matching is now PRIMARILY by a stable `lineId` with `(ref,kind)` only as a legacy fallback, which is a change beyond what docs/design/p1-fulfillment-billing-spine-spec.md:29 specifies. Rename authority: `inventory.catalog.manage` functions/src/access/permissionCatalog.ts:1071 (ACTIVE, resolves ALLOW in production) via `updatePart` functions/src/index.ts:351.",
+   "status": "PARTIAL",
+   "owner_question": "Nothing prevents a Part's internal part number being changed while a Sales Order referencing it is in fulfilment. Should `inventory.catalog.manage` refuse a rename on a part with open commitments, or should the fulfilment write-back key on the immutable part id rather than the mutable SKU?"
+  },
+  {
+   "id": "P3B3-ADV-004",
+   "title": "Cash from one customer settles a related customer's invoice",
+   "actor_role": "Accounting Manager",
+   "crosses_into": "CRM",
+   "trigger": "A franchise parent pays for three of its franchisees' invoices with one cheque.",
+   "narrative": "There is no customer hierarchy, so the two parties are unrelated records as far as EOS is concerned. The payment command requires the receipt to be fully applied to invoices on receipt \u2014 unapplied cash is explicitly unsupported \u2014 and nothing models one account paying another's debt. The practical effect is that the most common real-world payment pattern in a franchise business has no representation: either the cheque is recorded against the wrong customer, or it is not recorded at all.",
+   "objects_touched": [
+    "Payment",
+    "Payment Application",
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "Payment command functions/src/finance/paymentCallables.ts:62 over functions/src/finance/paymentCommands.ts; over-application rejected :129-130 ('unapplied balances are not yet supported'), `unappliedMinor` always 0 :150. No customer hierarchy exists: no parent/child column on `CREATE TABLE accounts` functions/migrations/1758758400000_crm-account-contact-location.sql:170-191, nothing in field-ops-app-vite/src/metadata/definitions/account.js:67; the topic is assessed only at docs/assessments/customer-hierarchy.md.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "How should a payment from a parent company covering several franchisees' invoices be recorded? EOS has no customer hierarchy and `applyPayment` binds a receipt to invoices on one account. Recording it against the payer misstates that account's AR; recording it against each franchisee misstates who paid."
+  },
+  {
+   "id": "P3B3-ADV-005",
+   "title": "An employee is disabled mid-work-order while still the assigned technician",
+   "actor_role": "Administrator",
+   "crosses_into": "Service (lane P3-B1)",
+   "trigger": "An employee walks off site and HR asks for access to be cut the same afternoon.",
+   "narrative": "Disabling access and reassigning work are different acts governed by different authorities, and only the first has a command. Setting user status is an active capability held by administrators and owners; nothing in that path examines whether the person is the assigned technician on open work. The work order keeps pointing at a principal who can no longer authenticate, and the reassignment is a separate scheduling act somebody has to remember to perform.",
+   "objects_touched": [
+    "Principal",
+    "Employee",
+    "Work Order"
+   ],
+   "authority_path": "Disable: `setUserStatus` functions/src/access/accessCommandCallables.ts:187 over functions/src/access/trustedWriterCommands.ts:2105, capability `admin.userStatus.write` resolved :2117, registered functions/src/access/permissionCatalog.ts:944 (ACTIVE \u2014 resolves ALLOW in production). Reassign: `reassignScheduledWorkOrderCallable` functions/src/index.ts:32 over functions/src/scheduling/schedulingCallables.ts. No coupling between them exists \u2014 grep for work-order or assignment references in functions/src/access/trustedWriterCommands.ts's setUserStatus path returns none.",
+   "status": "PARTIAL",
+   "owner_question": "Disabling a principal does not check whether they are the assigned technician on open work orders, and nothing reassigns that work. Should `setUserStatus` refuse, warn, or queue an exception when the subject holds open assignments?"
+  },
+  {
+   "id": "P3B3-ADV-006",
+   "title": "A report is run by a user whose role grant changed between the schedule and the execution",
+   "actor_role": "Sales Manager",
+   "crosses_into": "Administration",
+   "trigger": "A report is saved on Monday by a manager whose role is narrowed on Wednesday, and run on Friday.",
+   "narrative": "This seam is closed, and closed well \u2014 it is worth recording as the counter-example. A saved definition confers no data access. Every run reads the runner's access version and active assignments fresh from the database, then re-resolves the object capability, every field capability and every relationship traversal against that state. Memoization is scoped to the single call and nothing is cached across calls. The report shows the runner what the runner may see on Friday, not what the author could see on Monday.",
+   "objects_touched": [
+    "Report Definition",
+    "Role Assignment",
+    "Capability",
+    "Account"
+   ],
+   "authority_path": "functions/src/reporting/reportExecutionService.ts \u2014 fresh per-run read :246-253, authoritative access version :232-237 (malformed fails closed to 0 at :235), every gate resolved with `currentAccessVersion: runner.accessVersion` :265, object gate :420-423, field and traversal gates :288-320, call-scoped memoization only :295-302, no cross-call caching (module doc :36-46), denial audited :434, success audited :612-625 never with row data (:30-34). Saved-definition header functions/src/reporting/savedDefinitionCommands.ts:22-29 and :32-35.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADV-007",
+   "title": "An opportunity's operating company is corrected after invoices have already issued against it",
+   "actor_role": "Controller",
+   "crosses_into": "Financial",
+   "trigger": "A deal was booked to Taylor and should have been Ventana; two invoices have shipped.",
+   "narrative": "The system deliberately refuses to make the correction propagate. The company is copied downstream at creation, not followed, so correcting the Opportunity cannot silently rewrite the company on invoices already issued against it \u2014 historical company responsibility stays historical, exactly as ownership does. That is the right behaviour and it leaves the business with an unrepresentable state: two records that disagree about which company conducted the same deal, and no reclassification act to record why.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order",
+    "Invoice",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:21-24 ('COPIED, NOT FOLLOWED ... correcting an Opportunity cannot silently rewrite the company on invoices that were already issued against it'). Writers functions/src/opportunity/opportunityCommands.ts:175, functions/src/salesAgreement/salesAgreementCommands.ts:304, functions/src/salesOrder/salesOrderCommands.ts:287. No void path to reverse the invoices: functions/migrations/1758931200000_invoice-authority.sql:94-99.",
+   "status": "PARTIAL",
+   "owner_question": "When a deal was booked to the wrong operating company and invoices have issued, what is the correcting act? The company is deliberately immutable downstream, invoices cannot be voided, and there is no intercompany reclassification record (FIN-BLOCK-004)."
+  },
+  {
+   "id": "P3B3-ADV-008",
+   "title": "A saved report survives its author's departure and keeps naming them as owner",
+   "actor_role": "Administrator",
+   "crosses_into": "Management",
+   "trigger": "A manager leaves; their saved reports remain.",
+   "narrative": "The reports keep working for anyone else who can run them, because authorization is the runner's. What cannot happen is cleanup: the report author role can create, rename and duplicate definitions but cannot delete them, and delete is held only by administrators and owners. So the person best placed to tidy a departed colleague's reports is the one role that cannot.",
+   "objects_touched": [
+    "Report Definition",
+    "Principal",
+    "Role"
+   ],
+   "authority_path": "Ownership from a fresh read: functions/src/reporting/savedDefinitionCommands.ts:32-35. Capability split: `report.definition.create` functions/src/access/permissionCatalog.ts:907, `.rename` :921, `.duplicate` :928 all granted to `reportAuthor` (functions/src/access/governedBusinessRoles.ts:1439); `.delete` :935 is not.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "reportAuthor | report.definition.create | SANDBOX=ALLOW/qualifyingGrant",
+     "reportAuthor | report.definition.delete | SANDBOX=DENY/noQualifyingGrant",
+     "admin | report.definition.delete | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "noQualifyingGrant, not inactivePermission \u2014 the denial is a grant gap independent of activation."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-ADV-009",
+   "title": "An account owner is removed while open opportunities inherit from them",
+   "actor_role": "Sales Manager",
+   "crosses_into": "Sales",
+   "trigger": "A salesperson leaves and their accounts are un-assigned before the replacement starts.",
+   "narrative": "Removing the owner does not disturb the opportunities that already exist \u2014 the matrix is explicit that a downstream record takes ownership at creation and keeps it. What breaks is the future: new opportunities on that account refuse to be created, because the inheritance source has nothing to inherit from, and inferring a replacement from the creator or the territory is forbidden. The account becomes commercially inert until somebody explicitly assigns an owner.",
+   "objects_touched": [
+    "Account",
+    "Opportunity",
+    "Employee"
+   ],
+   "authority_path": "Account row functions/src/ownership/ownershipMatrix.ts:119-125 (`note`: 'An ownerless Account makes inherited Opportunity creation REFUSE, by design'; `backfillSource`: 'explicit assignment only -- ruling D-6 forbids inferring an Account owner from creator, territory, coverage, activity, sales history, or auth uid'). Opportunity row :142-153 (`inheritanceSource: Customer (Account) owner`). Creation resolution functions/src/ownership/creationOwnerResolution.ts (D-4). The report field that would list ownerless accounts is inactive everywhere: `report.customer.field.accountOwner.read` functions/src/access/permissionCatalog.ts:735.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADV-010",
+   "title": "Equipment is sold between two customers and the installed-base record cannot follow it",
+   "actor_role": "Office Manager",
+   "crosses_into": "Equipment",
+   "trigger": "One franchisee sells a used ice machine to another operator EOS also services.",
+   "narrative": "The Rules restrict an equipment update to a key set that deliberately excludes the account and the location, so the record cannot be reparented from the client. There is no server-side reparent command either, so this is not a client restriction with a governed alternative \u2014 it is an absence. The machine physically moves and the record cannot.",
+   "objects_touched": [
+    "Equipment",
+    "Account",
+    "Customer Location"
+   ],
+   "authority_path": "firestore.rules:1512-1521 \u2014 `affectedKeys().hasOnly(...)` denies any change to `accountId`, `locationId`, `status` or `createdAt`; create is separately gated on `equipmentLocationBelongsToAccount` :1508-1510. No reparent callable exists in functions/src/index.ts (the equipment exports are `installSerializedAsset` :423, `getInstallableEquipmentForWorkOrder` / `recordWorkOrderEquipmentInstall` :466-467, and the compatibility family \u2014 none reassigns an installed record).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "RULES_DENY \u2014 firestore.rules:1512-1521, with no server-side alternative.",
+   "owner_question": "An installed equipment record cannot change customer or location, and no command exists to move it. When a machine is sold between customers, is the intended act to retire the record and create a new one \u2014 losing its service history \u2014 or should a governed reparent command exist?"
+  },
+  {
+   "id": "P3B3-ADV-011",
+   "title": "An import is staged in the sandbox and executed against a different project",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "An administrator previews an import in one environment and runs it in another.",
+   "narrative": "This seam is closed twice. The execute path refuses a job that was staged against a different project, and independently the environment guard refuses production before the capability is even evaluated \u2014 the ordering is deliberate, because answering the capability question second means a production principal's authority was never evaluated at all. The project id comes from the runtime's own environment variable, so it cannot be supplied by the caller.",
+   "objects_touched": [
+    "Data Import Job",
+    "Environment",
+    "Account",
+    "Part"
+   ],
+   "authority_path": "Cross-project refusal: `assertExecutable(..., targetProjectId)` functions/src/dataImport/dataImportCallables.ts:377, inside the execute path :359-384 with the explicit approval flag :369-373 and the atomic job claim :378-384. Environment-first ordering: :260 before :262 (stage) and :361 before :363 (execute); guard functions/src/dataImport/importTargetGuard.ts (`PRODUCTION_PROJECT_ID = \"taylor-parts\"` :33, refusals :35-40); project id from the runtime's own `GCLOUD_PROJECT` :165; rationale :12-16. The Rules file points at this ordering at firestore.rules:1846-1849.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADV-012",
+   "title": "A bulk contact import walks around the governed import pipeline entirely",
+   "actor_role": "Office Manager",
+   "crosses_into": "Administration",
+   "trigger": "Forty contacts arrive as a spreadsheet and somebody uses the contact import modal.",
+   "narrative": "Two import paths exist and they are not comparable. The governed pipeline refuses production before it considers authority, validates against a registered entity contract, writes a job record and produces history. The contact import modal issues a client-side Firestore batch write under the legacy admin-or-dispatcher Rules gate, with no contract, no audit event, no job record and no environment check. It is the larger of the two in row count and the smaller in every control.",
+   "objects_touched": [
+    "Contact",
+    "Account",
+    "Data Import Job"
+   ],
+   "authority_path": "Ungoverned path: field-ops-app-vite/src/domain/contactImport.js:20, :38 (client `writeBatch`), UI field-ops-app-vite/src/modules/accounts/ContactImportModal.jsx:20, :48; authorized only by firestore.rules:1557 (`isAdminOrDispatcher()`). Governed path: functions/src/dataImport/dataImportCallables.ts:258 / :359 with the environment-then-capability ordering (:260/:262, :361/:363), contract registry functions/src/dataImport/contracts/entityContract.ts:22, customer contract customerImportContract.ts:227, job storage `data_import_jobs` deny-all firestore.rules:1857-1859.",
+   "status": "PARTIAL",
+   "owner_question": "Bulk contact import bypasses the governed Data Import pipeline (contactImport.js:20 writes a client Firestore batch). Should it be routed through stageDataImport/executeDataImport so it inherits the environment guard, the entity contract and the audit trail?"
+  },
+  {
+   "id": "P3B3-ADV-013",
+   "title": "A financial screen is visible to a principal who can see no financial fact",
+   "actor_role": "Salesperson",
+   "crosses_into": "Financial",
+   "trigger": "A salesperson opens the navigation.",
+   "narrative": "Twenty Financials sections are visible to the placeholder default roles because none declares a capability requirement \u2014 deliberately, with a comment saying nav visibility is not financial data authority. Combined with the reach gap, the result is that the role most likely to open Financials is the role guaranteed to see nothing in it: the salesperson holds `finance.read` and their only reach id resolves nowhere, in any environment.",
+   "objects_touched": [
+    "Invoice",
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "Nav field-ops-app-vite/src/navigation/navConfig.js:474-499 (20 items, none with `capabilityAccess`), posture note :448-455, invariant E :470-472. Reach: `finance.visibility.self` functions/src/access/permissionCatalog.ts:330 `active:false`, granted to salesperson at functions/src/access/governedBusinessRoles.ts:375, absent from every `capabilityActivationOverrides` array in config/environments.json.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "salesperson | finance.read | SANDBOX=ALLOW/qualifyingGrant",
+     "salesperson | finance.visibility.self | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "finance.visibility.self | sandboxAllow = []"
+    ],
+    "note": "FIN-004 requires both; the salesperson has exactly one, in every environment."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-ADV-014",
+   "title": "An administrator reads that a capability is granted to nobody and believes it",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "Reviewing the exports file to decide what is safe to activate.",
+   "narrative": "Five comments in the functions index and one in the Rules file assert that certain capabilities are granted to nobody. All are false, because the administrator role is constructed as its curated list plus every remaining catalog id. The consequence is not academic: someone deciding whether to flip an activation flag would conclude that activation alone changes nothing, when in fact it immediately grants the capability to every administrator and owner in the system.",
+   "objects_touched": [
+    "Capability",
+    "Role",
+    "Environment"
+   ],
+   "authority_path": "False assertions: functions/src/index.ts:396, :405, :492, :515, :519; plus the D4 block above firestore.rules:1714 ('The equipment.* capabilities registered alongside this block are all `active: false`, so no principal can be granted them either'). Contradicted by functions/src/access/compatibilityRoles.ts:235-240 (`ADMIN_ALL_PERMISSIONS` = curated list + every remaining `PERMISSION_CATALOG` id), applied at :259, with the deliberate-choice comment :232-234.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts and <scratchpad>/probe.mts",
+    "output": [
+     "UNGRANTED (zero holders): 0 (none) \u2014 across all 147 catalogued capabilities",
+     "admin | inventory.catalog.alias.read | SANDBOX=ALLOW/qualifyingGrant",
+     "admin | inventory.balance.read | SANDBOX=ALLOW/qualifyingGrant",
+     "admin | inventory.returns.intake | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "An ALLOW is only reachable if a role HOLDS the capability, so the 'granted to nobody' comments are disproved by execution, not by reading."
+   },
+   "owner_question": "Activating any capability immediately grants it to every administrator and owner, because ADMIN_ALL_PERMISSIONS spreads the whole catalog (compatibilityRoles.ts:235-240). Should activation and administrator grant be decoupled \u2014 the code's own comment at :232-234 anticipates an explicit exclusion list \u2014 before further activations are proposed?"
+  },
+  {
+   "id": "P3B3-ADV-015",
+   "title": "The role that books an order cannot move it and the role that can move it never sees it",
+   "actor_role": "Sales Manager",
+   "crosses_into": "Inventory (lane P3-B2)",
+   "trigger": "A booked order needs to be allocated and a service visit raised.",
+   "narrative": "Six governed roles can create a sales order or read it. None can advance it. Executing every role against both capabilities shows `salesOrder.fulfill` and `salesOrder.service` are held only by the two compatibility roles and the owner \u2014 the roles that exist to reproduce the old security matrix, not the roles the business actually names. The order-to-cash chain therefore has a step in the middle that belongs to nobody in the governed model.",
+   "objects_touched": [
+    "Sales Order",
+    "Work Order",
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "Capabilities `salesOrder.fulfill` functions/src/access/permissionCatalog.ts:253 and `salesOrder.service` :264. Commands functions/src/fulfillment/allocateSalesOrder.ts:96 and functions/src/salesOrder/createServiceForSalesOrder.ts:122. Contrast `salesOrder.write` :242, which IS granted to salesperson, salesManager and generalManager (functions/src/access/governedBusinessRoles.ts), and `salesOrder.read` :231, granted to thirteen roles.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "salesOrder.fulfill | holders = owner, admin, dispatcher | sandboxAllow = owner, admin, dispatcher",
+     "salesOrder.service | holders = owner, admin, dispatcher | sandboxAllow = owner, admin, dispatcher",
+     "salesperson | salesOrder.fulfill | SANDBOX=DENY/noQualifyingGrant",
+     "generalManager | salesOrder.fulfill | SANDBOX=DENY/noQualifyingGrant",
+     "operationsManager | salesOrder.fulfill | SANDBOX=DENY/noQualifyingGrant"
+    ],
+    "note": "No governed business role \u2014 not warehouseManager, not operationsManager, not generalManager \u2014 holds either capability."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "Which named job allocates stock against a booked Sales Order, and which raises its service visit? Both capabilities are held only by the compatibility `admin`/`dispatcher` roles and `owner`; no governed business role holds either."
+  },
+  {
+   "id": "P3B3-ADV-016",
+   "title": "A work order completes against a sales order and the invoice never learns of it",
+   "actor_role": "Accounting Manager",
+   "crosses_into": "Service (lane P3-B1)",
+   "trigger": "A technician completes an install and accounting looks for something to bill.",
+   "narrative": "The fulfilment write-back reaches the sales order and stops there. The billing eligibility core knows how to take the lesser of ordered and fulfilled, and the invoice command does not read it \u2014 the spine spec lists that as an outstanding harden item by name. So the chain from work to money has a joint that is specified, half-built, and currently traversed by a human reading a queue that cannot act.",
+   "objects_touched": [
+    "Work Order",
+    "Sales Order",
+    "Invoice"
+   ],
+   "authority_path": "Write-back functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts from functions/src/transitionWorkOrder.ts. Eligibility functions/src/fulfillment/billingEligibility.ts:43, with the `min(orderedQty, fulfilledQty)` rule at :46. The gap: docs/design/p1-fulfillment-billing-spine-spec.md:44 ('P1.8 (issueInvoice reads governed SO + billing eligibility) remain for the harden phase'). Invoice command functions/src/finance/invoiceCallables.ts:112. Queue surface field-ops-app-vite/src/modules/financials/FinancialsBillingQueue.jsx:50.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-ADV-017",
+   "title": "A technician can be told who the customer is and can never look one up",
+   "actor_role": "Technician",
+   "crosses_into": "Service (lane P3-B1)",
+   "trigger": "A technician on site needs the customer's account details.",
+   "narrative": "Two deliberate narrownesses meet. The Rules deny technicians every read of accounts, contacts, locations and equipment, and the capability model independently denies the technician role `customer.record.read`. The one path that exists is a work-order-scoped field context, and the exports file states in terms that it is explicitly not a customer-lookup API. The boundary is coherent; what it means operationally is that a technician standing in front of a machine cannot see its history.",
+   "objects_touched": [
+    "Account",
+    "Equipment",
+    "Work Order",
+    "Capability"
+   ],
+   "authority_path": "Rules: `accounts` read firestore.rules:1320, `contacts` :1556, `locations` :1342, `equipment` :1506 \u2014 all `isAdminOrDispatcher()`; the technician exclusion rationale is firestore.rules:1367-1381. Capability: `customer.record.read` functions/src/access/permissionCatalog.ts:67 is ACTIVE and the technician compatibility role does not hold it (functions/src/access/compatibilityRoles.ts:297). The narrow path: `getWorkOrderFieldContext` functions/src/getWorkOrderFieldContext.ts with the not-a-lookup-API statement functions/src/index.ts:122-126.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "technician | customer.record.read | PROD=DENY/noQualifyingGrant | SANDBOX=DENY/noQualifyingGrant"
+    ],
+    "note": "Denied by grant, not by activation \u2014 the capability is live and the technician simply does not hold it. The Rules deny independently."
+   },
+   "blocking_mechanism": "RULES_DENY"
+  },
+  {
+   "id": "P3B3-ADV-018",
+   "title": "A customer is archived in one data plane and has no lifecycle in the other",
+   "actor_role": "Office Manager",
+   "crosses_into": "Administration",
+   "trigger": "Trying to retire a dormant customer.",
+   "narrative": "Postgres declares a four-value account status enum including ARCHIVED. Firestore, which is authoritative, carries no governed lifecycle at all and refuses delete unconditionally. So a customer can be neither archived nor deleted in the system of record, while the system that is not the system of record has a word for it.",
+   "objects_touched": [
+    "Account"
+   ],
+   "authority_path": "Postgres: `CREATE TYPE crm_account_status AS ENUM ('PROSPECT','ACTIVE','INACTIVE','ARCHIVED')` functions/migrations/1758758400000_crm-account-contact-location.sql:164, table :170; the repository's own header states Firestore remains authoritative (functions/src/crm/customerRepository.ts:1-31). Firestore: `allow delete: if false` firestore.rules:1338; no lifecycle field \u2014 open product decision ND-11 'An Account has no lifecycle to make visible', docs/design/north-star-open-product-decisions.md:197-221. Vocabulary functions/src/crm/customerIdentity.ts:25.",
+   "status": "PARTIAL",
+   "owner_question": "Postgres models a four-state Account lifecycle and Firestore \u2014 the authority \u2014 models none, and refuses delete. How should a dormant or defunct customer be retired today?"
+  },
+  {
+   "id": "P3B3-ADV-019",
+   "title": "An invoice is issued for a sales order that was cancelled an hour earlier",
+   "actor_role": "Accounting Manager",
+   "crosses_into": "Sales",
+   "trigger": "A cancellation and a billing run cross in the same afternoon.",
+   "narrative": "Nothing couples them. The invoice command does not read the governed sales order at all \u2014 that is the named outstanding harden item \u2014 so it cannot observe that the order was cancelled. And once the invoice exists it cannot be voided, because no void write path exists anywhere despite the columns and the AR position being there to receive one. The only correction available is a full-value credit memo, which leaves two documents where the business had one mistake.",
+   "objects_touched": [
+    "Sales Order",
+    "Invoice",
+    "Invoice Adjustment"
+   ],
+   "authority_path": "Cancellation `transitionSalesOrder` functions/src/salesOrder/salesOrderCallables.ts:214 over functions/src/salesOrder/salesOrderLifecycle.ts. Invoice command functions/src/finance/invoiceCallables.ts:112 \u2014 the missing coupling is named at docs/design/p1-fulfillment-billing-spine-spec.md:44. No void: functions/migrations/1758931200000_invoice-authority.sql:94-99, with the unusable columns :180 and CHECK :203-207 and the readable VOID position functions/src/finance/financeReadProjection.ts:41, :47. Only correction: functions/src/finance/adjustmentCommands.ts:17 (CREDIT_MEMO).",
+   "status": "PARTIAL",
+   "owner_question": "`issueInvoice` does not read the governed Sales Order, so it cannot see a cancellation, and the resulting invoice cannot be voided. Should issuance be gated on the order's state, and should a governed `voidInvoice` exist for the window where it is not?"
+  },
+  {
+   "id": "P3B3-ADV-020",
+   "title": "Two administrators both approve the same privileged elevation",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "A pending elevation request sitting in front of two people.",
+   "narrative": "Closed, and closed structurally rather than by convention. The decision is once-only, the request carries a tamper fingerprint checked before the decision is honoured, the approver can only be the authenticated caller because the callable has no approver parameter at all, the target can never approve their own elevation, and the approver's authority is re-resolved at the moment of approval rather than trusted from when the request was raised.",
+   "objects_touched": [
+    "Privileged Role Request",
+    "Role Assignment",
+    "Principal"
+   ],
+   "authority_path": "functions/src/access/trustedWriterCommands.ts:1573 \u2014 decide-once :1620-1624, tamper fingerprint :1626-1633, authority re-resolved at approval time :1639-1646, self-approval refused :1635-1638, role must still be privileged :1647-1651, capability :1642. No approver parameter: functions/src/access/accessCommandCallables.ts:235-243 and :265-266.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADV-021",
+   "title": "A dispatcher gains CRM authority a general manager does not have",
+   "actor_role": "Dispatcher",
+   "crosses_into": "CRM",
+   "trigger": "A dispatcher holds an operational role alongside their compatibility role.",
+   "narrative": "A measured, closed finding worth keeping as a pattern. Exactly one role carried the CRM activity capabilities, so a dispatcher holding that operational role could read CRM notes on an account while the administrator could not \u2014 and the owner inherited the same gap through composition. The proposal explicitly rejected assigning the operational role to the administrator as the durable fix, on the grounds that it turns canonical authority into accumulated operational-role workarounds, and granted on the administrator role instead.",
+   "objects_touched": [
+    "CRM Activity",
+    "Role",
+    "Account"
+   ],
+   "authority_path": "functions/src/access/compatibilityRoles.ts:174-190 \u2014 the finding, the rejected fix and the Owner ruling of 2026-08-19; governance document docs/governance/crm-activity-admin-authority-proposal.md. Operational role `crmActivityContributor` functions/src/access/governedBusinessRoles.ts:1115. Capabilities functions/src/access/permissionCatalog.ts:1442, :1455.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-ADV-022",
+   "title": "A dispatcher who cannot be granted billing authority can still allocate and service an order",
+   "actor_role": "Dispatcher",
+   "crosses_into": "Financial",
+   "trigger": "Comparing what the dispatcher compatibility role can and cannot do in the order-to-cash chain.",
+   "narrative": "The finance capabilities were deliberately withheld from the shared administrator-and-dispatcher base so a dispatcher holds no billing or AR authority. The two sales-order fulfilment capabilities were not withheld the same way, so the dispatcher is the only non-administrator principal who can advance a booked order \u2014 and the roles that own the commercial relationship cannot. The two exclusions were made in different places for different reasons and they do not line up.",
+   "objects_touched": [
+    "Sales Order",
+    "Invoice",
+    "Role"
+   ],
+   "authority_path": "Finance withheld from the shared base: functions/src/access/compatibilityRoles.ts:162-173 (admin-only, with the rationale inline). `salesOrder.fulfill` / `salesOrder.service` are in the shared admin-and-dispatcher base, which is why the dispatcher resolves ALLOW for both; base constant functions/src/access/compatibilityRoles.ts (SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS, spread into ADMIN_CURATED_PERMISSIONS :152 and into DISPATCHER_ROLE :275).",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts and <scratchpad>/matrix.mts",
+    "output": [
+     "dispatcher | finance.invoice.issue | SANDBOX=DENY/noQualifyingGrant",
+     "salesOrder.fulfill | holders include dispatcher",
+     "salesOrder.service | holders include dispatcher"
+    ],
+    "note": "Both results are executed. The asymmetry is real: the dispatcher is excluded from money and included in fulfilment."
+   },
+   "owner_question": "The dispatcher compatibility role is deliberately excluded from billing authority but holds `salesOrder.fulfill` and `salesOrder.service` \u2014 making it the only non-administrator role that can advance a booked order. Is fulfilment authority intended to sit with dispatch?"
+  },
+  {
+   "id": "P3B3-ADV-023",
+   "title": "A part is quoted from the catalog and the catalog read is inactive",
+   "actor_role": "Salesperson",
+   "crosses_into": "Inventory (lane P3-B2)",
+   "trigger": "Adding a part line to a sales agreement.",
+   "narrative": "Product reference search deliberately reuses the inventory catalog read rather than minting a sales capability \u2014 a good decision that couples the two domains' activation. `inventory.catalog.read` is inactive, so quoting a part depends on an inventory capability being activated, while `inventory.catalog.manage`, which changes the same catalog, is live in production. The read is gated harder than the write.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Part",
+    "Capability"
+   ],
+   "authority_path": "`searchProductReferences` functions/src/salesAgreement/productReferenceSearchService.ts:168 (permission :180) gated on `inventory.catalog.read` (:57), registered functions/src/access/permissionCatalog.ts:1086 `active:false`. Contrast `inventory.catalog.manage` :1071 and `inventory.catalog.activate` :1077 \u2014 neither carries an `active` key, so both resolve ALLOW in production.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "admin | inventory.catalog.manage | PROD=ALLOW/qualifyingGrant",
+     "admin | inventory.catalog.activate | PROD=ALLOW/qualifyingGrant",
+     "admin | inventory.catalog.alias.read | PROD=DENY/inactivePermission"
+    ],
+    "note": "Catalog WRITE is live in production; catalog READ capabilities are not. The asymmetry is measured, not inferred."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "`inventory.catalog.manage` and `.activate` are live in production while `inventory.catalog.read` and `.alias.read` are inactive. A catalog that can be changed and not read is an unusual posture \u2014 is the read deliberately held back pending a review?"
+  },
+  {
+   "id": "P3B3-ADV-024",
+   "title": "A coverage assignment decides who a lead routes to and no coverage assignment can exist",
+   "actor_role": "Sales Manager",
+   "crosses_into": "Sales",
+   "trigger": "Routing an inbound lead by territory.",
+   "narrative": "Territory and coverage are modelled, stored, commanded and denied everywhere. Both capabilities are inactive and neither appears in any environment's activation array, so the feature is not merely unactivated in production \u2014 there is no environment in the repository where it could be exercised at all. Meanwhile the ownership model is explicit that territory may never be used to infer an account owner, so even a working coverage model would not close the ownerless-account problem.",
+   "objects_touched": [
+    "Sales Territory",
+    "Commercial Coverage Assignment",
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "Commands functions/src/coverage/coverageCallables.ts:41, :65; read functions/src/coverage/coverageReadCallables.ts:46; resolution functions/src/coverage/coverageResolution.ts. Capabilities `coverage.write` functions/src/access/permissionCatalog.ts:425 and `coverage.read` :436, both `active:false` and absent from every override array in config/environments.json. Storage deny-all firestore.rules:1832-1837, whose comment records 'Records only (no precedence / credit / commission)'. The territory-may-not-infer-ownership rule is functions/src/ownership/ownershipMatrix.ts:119-125 (ruling D-6) and functions/src/ownership/commercialCompanyScope.ts:14-19 (R-14). Assessment docs/assessments/commercial-coverage-territory-authority-model.md.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "admin | coverage.write | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "admin | coverage.read | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "coverage.write, coverage.read | holders = owner, admin | sandboxAllow = []"
+    ],
+    "note": "Dead in every environment the repository declares, and held by no governed business role."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-ADV-025",
+   "title": "An account's payment terms decide an invoice's due date and nothing connects them",
+   "actor_role": "Accounting Manager",
+   "crosses_into": "CRM",
+   "trigger": "Issuing an invoice for a NET_60 customer.",
+   "narrative": "The customer's terms are a governed enum on the account, editable only by an administrator-level principal and validated in Rules for everyone. The invoice's due date is carried at issuance and never computed. Between the two there is no terms engine, so the correctness of every due date depends on whoever issues the invoice looking up the account and doing the arithmetic.",
+   "objects_touched": [
+    "Account",
+    "Invoice"
+   ],
+   "authority_path": "Terms on the account: enum validated firestore.rules:1291-1292, governed-field write gated :1335-1337, capability `customer.governedField.write` functions/src/access/permissionCatalog.ts:85 (ACTIVE, held by the money roles and admin/owner). Due date on the invoice: 'carried at issuance, never computed' functions/migrations/1758931200000_invoice-authority.sql:167. No terms-calculation module exists anywhere in functions/src/finance/. Terms are also deliberately excluded from the import contract: functions/src/dataImport/contracts/customerImportContract.ts:11.",
+   "status": "PARTIAL",
+   "owner_question": "An invoice's due date is carried at issuance and the customer's payment-terms enum is never read to compute it. Should issuance derive the due date from the account's terms?"
+  },
+  {
+   "id": "P3B3-ADV-026",
+   "title": "AR ages an invoice by a due date that no system computed",
+   "actor_role": "Controller",
+   "crosses_into": "Financial",
+   "trigger": "Running the aging report.",
+   "narrative": "The consequence of the previous seam, one step downstream. Every aging bucket, every days-overdue figure and every collections priority rests on a date a human typed. The Postgres header records that the aging summary is the one figure among the four with no reconciliation proof at all \u2014 which is exactly what you would expect of a number derived from an unverified input.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "Aging functions/src/finance/financeReadProjection.ts:124 `summarizeArAging` with buckets :143-145 and the deployment-policy caveat :45; aging clock column functions/migrations/1758931200000_invoice-authority.sql:167; the no-reconciliation-proof statement :29-30.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-ADV-027",
+   "title": "An opportunity is created for a company the salesperson does not work for",
+   "actor_role": "Salesperson",
+   "crosses_into": "Management",
+   "trigger": "A salesperson selects Ventana on a Taylor deal, or leaves it blank.",
+   "narrative": "Both are accepted. The field is optional everywhere, an omission yields null and behaves as before, and there is no enforcement of any kind \u2014 the module says so and says why: none may be added until the census gate passes. What IS refused is a value that is not one of the two governed company ids, because an ungoverned company id is a caller error rather than a reason to fall back to null. The system will not accept nonsense and will accept the wrong answer.",
+   "objects_touched": [
+    "Opportunity",
+    "Operating Company",
+    "Employee"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:26-29 (optional everywhere, no enforcement, bad value still refused) and :59 (`resolveCommercialCompanyScope(explicit, inherited)`), error type :37. Governed ids functions/src/ownership/operatingCompanyAuthority.ts:22-25, resolver :76. Writer functions/src/opportunity/opportunityCommands.ts:175.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "What is the 'census gate' that commercialCompanyScope.ts:27 names as the precondition for enforcing the operating company on commercial records, and what closes it?"
+  },
+  {
+   "id": "P3B3-ADV-028",
+   "title": "An equipment install is recorded and the equipment record cannot be created by the installer",
+   "actor_role": "Technician",
+   "crosses_into": "Equipment",
+   "trigger": "A technician completes an install at a customer site.",
+   "narrative": "The install capability exists and is carried by exactly one purpose-built role. The equipment record itself is created client-side under the legacy admin-or-dispatcher Rules gate with a parentage check. So the install is governed by a capability and the record the install is about is governed by a legacy role string \u2014 the same two-authority split as customer data, one domain over.",
+   "objects_touched": [
+    "Equipment",
+    "Work Order",
+    "Serialized Asset",
+    "Customer Location"
+   ],
+   "authority_path": "Install: `installSerializedAsset` functions/src/index.ts:423 (rationale :409-422) and `recordWorkOrderEquipmentInstall` :466-467 over functions/src/workOrderInstall/workOrderInstallCallables.ts; capability `equipment.install` functions/src/access/permissionCatalog.ts:1428 `active:false`, carried by exactly one role, `equipmentInstaller` functions/src/access/governedBusinessRoles.ts:1550 (noted functions/src/index.ts:420-422). Record: firestore.rules:1505-1521 under `isAdminOrDispatcher()` with `equipmentLocationBelongsToAccount` :1508-1510. Policy docs/architecture/equipment-installation-recording-policy.md. Crosses into the Service domain owned by lane P3-B1.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-ADV-029",
+   "title": "An administrator edits Roles & Permissions and the sales commands ignore every change",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "An administrator narrows a role on the Roles & Permissions screen and expects it to take effect.",
+   "narrative": "It will not, for any sales, CRM or finance command. That screen edits the Postgres policy store over the Render API; every governed command in the application resolves against the Firebase capability model in the access folder. The two are different vocabularies with different role catalogs, and nothing in the UI says which one you are editing. The repository names the problem \u2014 the two authorities that exist are the deployed Rules and the governed Permission engine \u2014 and now there is a third store in play with its own screen.",
+   "objects_touched": [
+    "Role",
+    "Object",
+    "Capability"
+   ],
+   "authority_path": "Screen: field-ops-app-vite/src/modules/administration/AdminRolesPermissions.jsx (branch field-ops-app-vite/src/App.jsx:632) over field-ops-app-vite/src/services/adminPolicyApiClient.js:130 -> `POST /admin/policy` functions/src/adminPolicy/adminPolicyHttp.ts:130, operations `setObjectPermission` functions/src/adminPolicy/adminPolicyApi.ts:417 and `setFieldPermissionOverride` :425, stored by functions/src/adminPolicy/postgresPolicyRepository.ts and resolved by functions/src/adminPolicy/effectiveObjectAccess.ts. Commands: every sales/CRM/finance callable resolves through functions/src/access/resolveEffectivePermission.ts over functions/src/access/permissionCatalog.ts. The two-authority statement is functions/src/access/legacyAuthorizationSurface.ts:16-21. Reconciliation docs/architecture/eos-admin-policy-workflow-reconciliation.md; two-list problem docs/architecture/two-list-metadata-systems.md.",
+   "status": "PARTIAL",
+   "owner_question": "The Roles & Permissions screen edits the Postgres policy store while every sales, CRM and finance command resolves against the separate Firebase capability model. An administrator narrowing a role there changes nothing about what those commands allow. Which store is the authority of record, and what does the convergence look like?"
+  },
+  {
+   "id": "P3B3-ADV-030",
+   "title": "A capability grant is measured by grepping the role files and the answer is wrong",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "An access review done by searching the source for a capability id.",
+   "narrative": "Seventeen capability ids appear nowhere in either role definition file as a literal string, which makes a grep-based review report them as ungranted. They are granted, to the administrator and owner, by a spread over the whole catalog. Any audit of this system that reads for grants rather than resolving them will systematically miss the roles that hold the most.",
+   "objects_touched": [
+    "Capability",
+    "Role"
+   ],
+   "authority_path": "The spread: functions/src/access/compatibilityRoles.ts:235-240, applied :259. The seventeen ids with no literal occurrence in functions/src/access/governedBusinessRoles.ts or compatibilityRoles.ts: finance.visibility.businessUnit, finance.visibility.company, financialPolicy.profile.configure, coverage.write, coverage.read, report.customer.field.notes.read, report.customer.field.accountOwner.read, report.location.field.accessNotes.read, report.definition.delete, admin.employeeProfile.write, admin.dataImport.stage, admin.dataImport.execute, admin.credentialReset.initiate, equipment.compatibility.view/.import/.verify/.correct.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "A literal-occurrence scan of the two role files (17 ids with zero matches), then node --experimental-strip-types <scratchpad>/matrix.mts to resolve them properly",
+    "output": [
+     "Literal scan: 17 of 147 capability ids have ZERO occurrences in the role definition files.",
+     "Resolver: UNGRANTED (zero holders): 0 (none) \u2014 every one of the 17 resolves as held by owner and admin."
+    ],
+    "note": "This is a methodology finding: I made exactly this mistake on my first pass, and so did one of my own research passes. Grant must be RESOLVED, not grepped."
+   }
+  },
+  {
+   "id": "P3B3-ADV-031",
+   "title": "A sales order line references a part twice and the fulfilment write-back credits only the first",
+   "actor_role": "Field Manager",
+   "crosses_into": "Service (lane P3-B1)",
+   "trigger": "A salesperson put the same filter on two lines at different quantities and a technician completes against both.",
+   "narrative": "The spine spec specified matching on reference and kind. The shipped code has already moved past that: its header records that a bare reference-and-kind match returns only the FIRST such line, so a summed acceptance gets checked against just that one, and matching is now primarily by a stable line id with reference-and-kind kept only as a legacy fallback. The design document and the code no longer agree, and the document is the one that is wrong.",
+   "objects_touched": [
+    "Sales Order",
+    "Work Order",
+    "Part"
+   ],
+   "authority_path": "Shipped behaviour: functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts:7-15 (lineId-primary matching, the duplicate-(ref,kind) collision it fixes, and the additive-change note), fallback matcher :68-75, key function :63-64, acceptance shape :48-52. Specified behaviour: docs/design/p1-fulfillment-billing-spine-spec.md:29 ('additive increment of fulfilledQty per `(ref,kind)` match (NOT bare-ref ...)'). Allocation-side duplicate handling is separately named as outstanding at spec :44 (P1.7).",
+   "status": "PARTIAL",
+   "owner_question": "docs/design/p1-fulfillment-billing-spine-spec.md:29 specifies (ref,kind) matching for the fulfilment write-back; the shipped code (salesOrderFulfillmentWriteBack.ts:7-15) has moved to lineId-primary matching because (ref,kind) collides on duplicate lines. Should the spec be updated, and is the allocation-side duplicate case (P1.7) still open?"
+  },
+  {
+   "id": "P3B3-ADV-032",
+   "title": "A credit is recorded against an invoice whose sales order was fulfilled by another company",
+   "actor_role": "Controller",
+   "crosses_into": "Management",
+   "trigger": "Unwinding a cross-company fulfilment.",
+   "narrative": "Three absences compound. The allocation never recorded which company's stock was used; the invoice inherited its company from the opportunity, not from the fulfilment; and there is no intercompany record type in which the difference could be stated. The credit lands cleanly on the invoice and the cross-company obligation it was meant to unwind was never represented in the first place.",
+   "objects_touched": [
+    "Invoice Adjustment",
+    "Invoice",
+    "Sales Order",
+    "Operating Company"
+   ],
+   "authority_path": "No company on allocation: functions/src/fulfillment/allocateSalesOrder.ts has no `operatingCompanyId` reference. Company inherited from the opportunity: functions/src/ownership/commercialCompanyScope.ts:4-8. No intercompany record type: docs/assessments/eos-dashboard-reporting-authority-census.md:316 (F-9: 'none \u2014 deliberately. No intercompany record type may exist until the Owner rules treatment'); docs/north-star/financials/pages/17-intercompany.md:34, :37. Adjustment command functions/src/finance/adjustmentCallables.ts:58.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-ADV-033",
+   "title": "A sales agreement is accepted at a price a salesperson had no authority to bind",
+   "actor_role": "Salesperson",
+   "crosses_into": "Financial",
+   "trigger": "A salesperson accepts a heavily discounted six-figure agreement.",
+   "narrative": "Nothing stops it, and the code says so in its own voice: acceptance is all-or-nothing per role, a Salesperson may bind the same terms a General Manager can, and that is recorded as a real governance gap to close deliberately rather than a reason to withhold the capability. The financial approval machinery that would enforce a threshold exists one domain away and has no policy values set.",
+   "objects_touched": [
+    "Sales Agreement",
+    "Employee",
+    "Financial Approval"
+   ],
+   "authority_path": "The recorded caveat: functions/src/access/governedBusinessRoles.ts:388-394, on the salesperson role's own `salesAgreement.accept` grant. Command functions/src/salesAgreement/salesAgreementCallables.ts:413 (capability :60, gate :415). Unset approval machinery: functions/src/finance/financialApprovals.ts, policy values FIN-007 \u00a72 (docs/financials/FIN-007_APPROVAL_GOVERNANCE_MODEL.md), surfaced as disabled at field-ops-app-vite/src/modules/financials/FinancialsCreditsAdjustments.jsx:8.",
+   "status": "PARTIAL",
+   "owner_question": "Should Sales Agreement acceptance carry a value or discount threshold above which a more senior role must be the accepting principal? The repository records the absence as a deliberate governance gap (governedBusinessRoles.ts:388-394) and the approval machinery that would enforce it (financialApprovals.ts) has no policy values."
+  },
+  {
+   "id": "P3B3-ADV-034",
+   "title": "An account is edited from the browser and the audit trail has nothing to show",
+   "actor_role": "Accounting Manager",
+   "crosses_into": "Administration",
+   "trigger": "A customer's payment terms changed and nobody knows who changed them.",
+   "narrative": "Employee profile edits go through a governed callable and produce a record-change history. Account edits \u2014 including the two governed commercial fields \u2014 are client-direct Firestore writes and produce nothing. The Rules comment and the form header both name the trusted server-side writer as the interim plan; until it lands, the most commercially sensitive field in CRM is the one with the weakest trail.",
+   "objects_touched": [
+    "Account",
+    "Audit Event",
+    "Employee"
+   ],
+   "authority_path": "Ungoverned: field-ops-app-vite/src/domain/accounts.js:78, :82 under firestore.rules:1332-1337; the interim posture is stated firestore.rules:1329-1331 and field-ops-app-vite/src/modules/accounts/AccountForm.jsx:32-36. Governed counter-example: `updateEmployeeProfile` / `listRecordChangeHistory` functions/src/index.ts:243-245 over functions/src/access/administrationUsersCallables.ts with functions/src/access/recordChangeHistoryReadService.ts and the audit writer functions/src/access/auditEventWriter.ts.",
+   "status": "PARTIAL",
+   "owner_question": "Account edits \u2014 including payment terms and tax status \u2014 write straight from the browser with no audit event, while employee profile edits go through a governed callable with change history. Should the trusted account writer named at firestore.rules:1329-1331 be built before further commercial fields land on the Account?"
+  },
+  {
+   "id": "P3B3-ADV-035",
+   "title": "A report reaches a customer's payment terms by a route that was never reviewed",
+   "actor_role": "Report Viewer",
+   "crosses_into": "CRM",
+   "trigger": "A viewer builds a report joining contacts to their customer.",
+   "narrative": "The field split is real and enforced: ordinary customer fields go to the report viewer role and the finance-sensitive ones to the finance viewer. The traversal capabilities are the part worth watching, because a relationship hop is its own gate resolved at run time \u2014 so a viewer who can read contacts and traverse to the customer still meets the customer field gates one by one on arrival, and payment terms is not among the ones they hold.",
+   "objects_touched": [
+    "Report Definition",
+    "Account",
+    "Contact",
+    "Capability"
+   ],
+   "authority_path": "Field split: functions/src/reporting/reportCatalog.ts:121-143, with `paymentTerms` and `taxStatus` marked `governed` :136-137 and the three commercial fields :138-140; capabilities `report.customer.field.paymentTerms.read` functions/src/access/permissionCatalog.ts:706 and `.taxStatus.read` :713 granted only to `reportFinanceViewer` (functions/src/access/governedBusinessRoles.ts:1417). Traversals: `REPORT_RELATIONSHIPS` functions/src/reporting/reportCatalog.ts:203-210, each carrying `traversalCapability` :199, re-resolved per run at functions/src/reporting/reportExecutionService.ts:312-314.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "reportViewer | report.customer.read | SANDBOX=ALLOW/qualifyingGrant",
+     "reportFinanceViewer | report.customer.field.paymentTerms.read | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "The split is enforced by grant. I did NOT execute a traversal \u2014 reportExecutionService requires Firestore and was traced, not run."
+   }
+  },
+  {
+   "id": "P3B3-ADV-036",
+   "title": "An inbound customer email becomes work that no sales record ever learns about",
+   "actor_role": "Operations Manager",
+   "crosses_into": "Service (lane P3-B1)",
+   "trigger": "A customer emails asking for a machine to be looked at, and the request is accepted as work.",
+   "narrative": "The inbound-work pipeline creates or attaches a work order. Nothing connects that work order to an opportunity, an agreement or an order, so a service request that turns into a replacement sale has no path back into the commercial chain \u2014 the salesperson finds out when somebody tells them. The reverse direction exists: a sales order can raise a service work order. The forward direction does not.",
+   "objects_touched": [
+    "Inbound Work Request",
+    "Work Order",
+    "Opportunity"
+   ],
+   "authority_path": "Inbound pipeline functions/src/index.ts:615-626 over functions/src/inboundWork/inboundWorkCallables.ts (`acceptInboundWork`, `attachInboundWorkToWorkOrder`); capabilities functions/src/access/permissionCatalog.ts:1612-1643, all `active:false`. The reverse direction that DOES exist: `createServiceForSalesOrder` functions/src/salesOrder/createServiceForSalesOrder.ts:122, which writes `salesOrderLineRefs` onto the work order. No work-order-to-opportunity link exists \u2014 the opportunity write path (functions/src/opportunity/opportunityCallables.ts:198) takes no work order reference.",
+   "status": "NOT_SUPPORTED",
+   "owner_question": "A service visit that turns into a replacement sale has no path from the Work Order back into an Opportunity. Should a technician or dispatcher be able to raise an Opportunity from a Work Order?"
+  },
+  {
+   "id": "P3B3-ADV-037",
+   "title": "An invoice is issued in production and every capability it needs is denied",
+   "actor_role": "Accounting Manager",
+   "crosses_into": "Management",
+   "trigger": "Asking the simplest possible question: can this business bill a customer from EOS today?",
+   "narrative": "No. Not by any role, in the production environment, through any path. The invoice command is written, tested and deployed; its capability is registered inactive; production activates nothing; and the Financials surfaces are read-only by construction with their write actions disabled and commented as such. This is the single most consequential fact in this library and it is measurable rather than asserted.",
+   "objects_touched": [
+    "Invoice",
+    "Capability",
+    "Environment",
+    "Role"
+   ],
+   "authority_path": "Command functions/src/finance/invoiceCallables.ts:112. Capability functions/src/access/permissionCatalog.ts:278, `active:false` :283. Production activation: config/environments.json `taylor-parts-production` entry begins :257 with no `capabilityActivationOverrides` key; functions/src/access/environmentCapabilityOverrides.ts returns an empty Set unconditionally for `role:\"production\"`. Surface: field-ops-app-vite/src/modules/financials/FinancialsBillingQueue.jsx:50 ('the invoice command core (issueInvoice) exists, but this page has no governed command path wired to it').",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "finance.invoice.issue | active=False | holders=7 | prodAllow=0",
+     "Every finance.* capability: prodAllow = 0",
+     "ALLOWED ANYWHERE IN PRODUCTION: 37 of 147 \u2014 no finance.*, no salesOrder.*, no opportunity.*, no report.* among them"
+    ],
+    "note": "prodAllow counts roles that resolve ALLOW under the production activation set. For every finance capability it is zero."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-ADV-038",
+   "title": "Nonprod Postgres is asked to answer a CRM question and the schema is not there",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "Testing the data-plane cutover against the deployed nonprod service.",
+   "narrative": "Three of the four schemas the commercial and financial story depends on land in the last four migration files, and nonprod stops before them. So the environment that exists to rehearse the cutover cannot rehearse the part of it that matters: a bootstrapped administrator there resolves object permissions in the hundreds and operational capabilities in the zeros.",
+   "objects_touched": [
+    "Account",
+    "Sales Order",
+    "Invoice",
+    "Environment"
+   ],
+   "authority_path": "Migration sequence functions/migrations/ \u2014 18 files; `eos_crm` is #15 (1758758400000_crm-account-contact-location.sql:150), `eos_commercial` #16 (1758844800000_commercial-ownership-authority.sql:156), `eos_finance` #17 (1758931200000_invoice-authority.sql:148) and AR #18 (1759017600000_ar-cash-application-authority.sql). Migration #1 is the administration policy schema (1757462400000_admin-policy.sql), which IS applied \u2014 which is why the policy screens resolve and the operational ones do not. Service render.yaml:57-81 (`eos-api-nonprod`).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 nonprod Postgres is applied to 7 of the 18 files in functions/migrations/; eos_crm, eos_commercial and eos_finance are all created by migrations 15-18 and do not exist there. NOTE: the 7-of-18 figure is a programme-supplied measurement I did not re-run \u2014 see UNPROVEN."
+  },
+  {
+   "id": "P3B3-ADV-039",
+   "title": "Two authorities disagree about whether a capability exists and both are in the repository",
+   "actor_role": "Administrator",
+   "crosses_into": "Administration",
+   "trigger": "Counting how many ways EOS decides what someone may do.",
+   "narrative": "Three, not two. The deployed Firestore Rules resolve authorization from a single legacy role string on the user document, with 44 enforced call sites across 22 collections. The governed permission engine resolves 147 capabilities across 48 roles. The Postgres policy store resolves object and field permissions over its own role catalog. The repository's own corpus module names the first two and states as an Owner constraint that it must not introduce a third \u2014 and the third arrived through a different door.",
+   "objects_touched": [
+    "Capability",
+    "Role",
+    "Object"
+   ],
+   "authority_path": "Legacy Rules authority: functions/src/access/legacyAuthorizationSurface.ts:52-74 (44 enforced call sites across 22 collections, corrected down from 47 \u2014 the shrink recorded :63-74), with the two-authorities statement and the Owner constraint at :16-21, enforced by functions/test/legacyAuthorizationSurface.test.mjs re-parsing the real rules file. Governed engine: functions/src/access/resolveEffectivePermission.ts:246 over functions/src/access/permissionCatalog.ts (147) and the 48 roles in governedBusinessRoles.ts:1689 / compatibilityRoles.ts:356. Postgres policy store: functions/src/adminPolicy/policyRepository.ts, postgresPolicyRepository.ts, effectiveObjectAccess.ts, administrationAuthority.ts:69-77.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts, plus reads of legacyAuthorizationSurface.ts and administrationAuthority.ts",
+    "output": [
+     "Governed engine: ROLES 48, CAPS 147, 37 allowed anywhere in production.",
+     "Legacy Rules surface: 44 enforced call sites across 22 collections (functions/src/access/legacyAuthorizationSurface.ts:52-74).",
+     "Postgres administration authority: 4 actions over 3 role keys (administrationAuthority.ts:56-60, :41-45)."
+    ],
+    "note": "Only the 48x147 figure is executed; the 44-site figure is read from the repository's own machine-checked corpus, and the Postgres figures are read from source."
+   },
+   "owner_question": "EOS resolves 'may this person do this' three different ways \u2014 a legacy role string in Firestore Rules (44 sites), the governed capability engine (147 capabilities, 48 roles), and the Postgres object/field policy store. legacyAuthorizationSurface.ts:16-21 records an Owner constraint that a third authority must not be introduced. Which two are meant to survive?"
+  },
+  {
+   "id": "P3B3-ADV-040",
+   "title": "Everything needed to sell, fulfil and bill exists and none of it can run in production",
+   "actor_role": "Owner",
+   "crosses_into": "All domains",
+   "trigger": "The only question that matters.",
+   "narrative": "The order-to-cash spine is complete: opportunity, agreement, order, allocation, service seam, fulfilment write-back, invoice, payment, adjustment, refund and AR read are all written, all capability-gated, all fail-closed and all deployed. Every one of their capabilities is registered inactive, production activates none, and ninety-two of them are proven activatable in a sandbox that is not the business. The gap between what this system can do and what it does is not code \u2014 it is a set of activation decisions and a small number of grant gaps, and both are enumerable.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Agreement",
+    "Sales Order",
+    "Work Order",
+    "Invoice",
+    "Payment",
+    "Capability",
+    "Environment"
+   ],
+   "authority_path": "The spine: functions/src/opportunity/opportunityCallables.ts:198, functions/src/salesAgreement/salesAgreementCallables.ts:228, functions/src/opportunity/createSalesOrderFromOpportunity.ts:304, functions/src/salesOrder/salesOrderCallables.ts:181, functions/src/fulfillment/allocateSalesOrder.ts:96, functions/src/salesOrder/createServiceForSalesOrder.ts:122, functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts, functions/src/finance/invoiceCallables.ts:112, paymentCallables.ts:62, adjustmentCallables.ts:58, refundCallables.ts:57, financeReadCallables.ts:214. Their capabilities: functions/src/access/permissionCatalog.ts:154-379, all `active:false`. Activation: config/environments.json (sandbox :89-181, production entry :257 with no key); mechanism docs/design/per-environment-capability-activation-spec.md.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "ROLES 48 CAPS 147",
+     "109 of 147 registered active:false",
+     "ALLOWED ANYWHERE IN PRODUCTION: 37",
+     "SANDBOX_OVERRIDE_COUNT 92 PROD_OVERRIDE_COUNT 0",
+     "UNGRANTED (zero holders): 0",
+     "ADMIN/OWNER-ONLY (no governed business role holds it): 21",
+     "ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17"
+    ],
+    "note": "Every number here is from one execution of the shipped resolver against unmodified repository configuration."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "The full Opportunity-to-cash spine is built, granted and fail-closed, and production activates none of it. What is the sequence and the gating condition for activating it \u2014 and is platform-sandbox's 92-id array the intended production target, or a superset that needs trimming?"
+  }
+ ]
+}

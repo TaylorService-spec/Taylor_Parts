@@ -1,0 +1,43 @@
+ROLES 48 CAPS 147
+UNGRANTED (zero holders): 0 (none)
+ADMIN/OWNER-ONLY (no governed business role holds it): 21
+    finance.visibility.businessUnit active=false holders=owner,admin
+    finance.visibility.company active=false holders=owner,admin
+    financialPolicy.profile.configure active=false holders=owner,admin
+    coverage.write active=false holders=owner,admin
+    coverage.read active=false holders=owner,admin
+    report.customer.field.notes.read active=false holders=owner,admin
+    report.customer.field.accountOwner.read active=false holders=owner,admin
+    report.location.field.accessNotes.read active=false holders=owner,admin
+    report.definition.delete active=false holders=owner,admin
+    admin.userStatus.write active=true holders=owner,admin
+    admin.roleAssignment.write active=true holders=owner,admin
+    admin.principalAccess.read active=true holders=owner,admin
+    admin.employeeProfile.write active=true holders=owner,admin
+    admin.accessRequest.decide active=true holders=owner,admin
+    admin.dataImport.stage active=false holders=owner,admin
+    admin.dataImport.execute active=false holders=owner,admin
+    admin.credentialReset.initiate active=false holders=owner,admin
+    equipment.compatibility.view active=false holders=owner,admin
+    equipment.compatibility.import active=false holders=owner,admin
+    equipment.compatibility.verify active=false holders=owner,admin
+    equipment.compatibility.correct active=false holders=owner,admin
+ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17
+    workOrder.labor.record
+    workOrder.labor.correct
+    finance.visibility.self
+    finance.visibility.team
+    finance.visibility.businessUnit
+    finance.visibility.company
+    coverage.write
+    coverage.read
+    report.customer.field.notes.read
+    report.customer.field.accountOwner.read
+    report.location.field.accessNotes.read
+    admin.credentialReset.initiate
+    equipment.compatibility.view
+    equipment.compatibility.import
+    equipment.compatibility.verify
+    equipment.compatibility.correct
+    equipment.model.manage
+ALLOWED ANYWHERE IN PRODUCTION: 37

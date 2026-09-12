@@ -1,0 +1,743 @@
+{
+ "lane": "P3-B3",
+ "block": "management",
+ "generated": "2026-09-12",
+ "count": 50,
+ "activities": [
+  {
+   "id": "P3B3-MGMT-001",
+   "title": "Build a report listing every customer with their status and tags",
+   "actor_role": "General Manager",
+   "trigger": "Preparing a segmentation exercise.",
+   "narrative": "Customer is one of only four objects in the report catalog with fields actually populated. Twelve objects are declared; eight of them are declarations waiting for a later wave.",
+   "objects_touched": [
+    "Report Definition",
+    "Account"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts \u2014 `REPORT_OBJECTS` :84-97 declares 12 objects across 4 waves, and only the FIRST FOUR (customer :85, contact :86, location :87, equipment :88) have `fieldsPopulated` true; job :89, workOrder :90, technician :91, serviceHistory :92, reorderRequest :93, purchaseOrder :94, inventoryAction :95 and employee :96 are declared with no fields. Field factory :99-119 mints each field's read capability as `report.<objectId>.field.<group>.read` at :115. Field sets: CUSTOMER_FIELDS :121-143, CONTACT_FIELDS :145-151, LOCATION_FIELDS :153-161, EQUIPMENT_FIELDS :163-176; assembled :178-183. Relationships `REPORT_RELATIONSHIPS` :203-210 \u2014 six one-hop traversals, each carrying its own `traversalCapability` :199. Execution Report execution functions/src/reporting/reportExecutionService.ts \u2014 authoritative access version read :232-237 (a malformed value fails closed to 0 at :235), runner state loaded once per run by a FRESH Admin-SDK read of the user's accessVersion and active roleAssignments :246-253, every gate resolved through `resolveEffectivePermission` with `currentAccessVersion: runner.accessVersion` :265 and `activationOverrides: resolveRuntimeCapabilityOverrides()` :275, object gate :420-423, field and traversal gates :288-320 (field capability :311, traversal capability :312-314) memoized ONLY within a single call :295-302, denial audited with the access version :434, success audited :612-625 (never row data, :30-34). No cross-call caching of any kind \u2014 module doc :36-46. Callable `runReportDefinitionCallable` functions/src/reporting/runReportDefinitionCallable.ts:24 (auth check :25-27); it declares no capability of its own and is a thin adapter (:1-7).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 the whole `report.*` family is `active:false`. EXECUTED against the shipped resolver field-ops-app-vite/src/access/resolveEffectivePermission.ts:246: every one of the 48 roles resolves DENY/inactivePermission under the production activation set, which is empty (config/environments.json `taylor-parts-production` entry begins :257 and carries no `capabilityActivationOverrides` key). The customer, contact, location and equipment report ids ARE in the platform-sandbox override array (config/environments.json:128-181)."
+  },
+  {
+   "id": "P3B3-MGMT-002",
+   "title": "Build a report over work orders to see service volume by month",
+   "actor_role": "Operations Manager",
+   "trigger": "Capacity planning.",
+   "narrative": "Work order is catalogued as a wave-2 reportable object with no fields populated. The object is declared and there is nothing to select from it, so the report builder can name the object and produce no columns.",
+   "objects_touched": [
+    "Report Definition",
+    "Work Order"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts \u2014 `REPORT_OBJECTS` :84-97 declares 12 objects across 4 waves, and only the FIRST FOUR (customer :85, contact :86, location :87, equipment :88) have `fieldsPopulated` true; job :89, workOrder :90, technician :91, serviceHistory :92, reorderRequest :93, purchaseOrder :94, inventoryAction :95 and employee :96 are declared with no fields. Field factory :99-119 mints each field's read capability as `report.<objectId>.field.<group>.read` at :115. Field sets: CUSTOMER_FIELDS :121-143, CONTACT_FIELDS :145-151, LOCATION_FIELDS :153-161, EQUIPMENT_FIELDS :163-176; assembled :178-183. Relationships `REPORT_RELATIONSHIPS` :203-210 \u2014 six one-hop traversals, each carrying its own `traversalCapability` :199. workOrder is declared at functions/src/reporting/reportCatalog.ts:90 with `fieldsPopulated` false and no entry in REPORT_FIELDS (:178-183).",
+   "status": "PARTIAL",
+   "owner_question": "Eight of the twelve catalogued report objects (job, workOrder, technician, serviceHistory, reorderRequest, purchaseOrder, inventoryAction, employee) are declared with no fields. Which waves should be populated next, and in what order?"
+  },
+  {
+   "id": "P3B3-MGMT-003",
+   "title": "Save a report definition so the team can re-run it each month",
+   "actor_role": "Sales Manager",
+   "trigger": "A report worth keeping.",
+   "narrative": "Saved definitions were deliberately moved off a client-direct write path. Rules deny all read and write on the collection for every principal including admin, because Rules cannot see a live role assignment, cannot pair the mutation with an immutable audit event, and cannot validate the embedded definition server-side. The trusted service closes all three gaps.",
+   "objects_touched": [
+    "Report Definition"
+   ],
+   "authority_path": "Saved report definitions functions/src/reporting/savedDefinitionCommands.ts (its header :22-29 states that reportExecutionService always independently re-resolves every object and field capability at RUN time, and :32-35 that ownership and authorization come from a fresh read); callables functions/src/index.ts:196-203. Capabilities `report.definition.create` functions/src/access/permissionCatalog.ts:907, `.read` :914, `.rename` :921, `.duplicate` :928, `.delete` :935 \u2014 all `active:false`. Storage `reportDefinitions` deny-all for EVERY principal including admin, firestore.rules:1592-1594, with the full rationale :1561-1591 (Rules cannot see the resolver's decision, cannot pair the mutation with an audit event, and cannot validate the embedded definition).",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 `report.definition.create` functions/src/access/permissionCatalog.ts:907, `active:false`. EXECUTED against the shipped resolver field-ops-app-vite/src/access/resolveEffectivePermission.ts:246: every one of the 48 roles resolves DENY/inactivePermission under the production activation set, which is empty (config/environments.json `taylor-parts-production` entry begins :257 and carries no `capabilityActivationOverrides` key)."
+  },
+  {
+   "id": "P3B3-MGMT-004",
+   "title": "Delete a saved report that is no longer wanted",
+   "actor_role": "Sales Manager",
+   "trigger": "Cleaning up a stale report list.",
+   "narrative": "The report author who created it cannot delete it. Executing the resolver shows `report.definition.delete` is held only by admin and owner, while create, rename and duplicate are all held by the reportAuthor role. The author can make three kinds of mess and clean up none of them.",
+   "objects_touched": [
+    "Report Definition",
+    "Role"
+   ],
+   "authority_path": "Saved report definitions functions/src/reporting/savedDefinitionCommands.ts (its header :22-29 states that reportExecutionService always independently re-resolves every object and field capability at RUN time, and :32-35 that ownership and authorization come from a fresh read); callables functions/src/index.ts:196-203. Capabilities `report.definition.create` functions/src/access/permissionCatalog.ts:907, `.read` :914, `.rename` :921, `.duplicate` :928, `.delete` :935 \u2014 all `active:false`. Storage `reportDefinitions` deny-all for EVERY principal including admin, firestore.rules:1592-1594, with the full rationale :1561-1591 (Rules cannot see the resolver's decision, cannot pair the mutation with an audit event, and cannot validate the embedded definition).",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts and <scratchpad>/matrix.mts",
+    "output": [
+     "reportAuthor | report.definition.create | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "reportAuthor | report.definition.delete | PROD=DENY/inactivePermission | SANDBOX=DENY/noQualifyingGrant",
+     "admin | report.definition.delete | PROD=DENY/inactivePermission | SANDBOX=ALLOW/qualifyingGrant",
+     "report.definition.delete | holders = owner, admin (no governed business role)"
+    ],
+    "note": "The DENY for reportAuthor in the sandbox is noQualifyingGrant \u2014 a grant gap, not the activation gate. reportAuthor holds create, rename and duplicate but not delete."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE",
+   "owner_question": "The `reportAuthor` role can create, rename and duplicate saved report definitions but cannot delete them \u2014 `report.definition.delete` is held only by admin and owner (governedBusinessRoles.ts:1439 vs permissionCatalog.ts:935). Is that deliberate, or an omission from the role?"
+  },
+  {
+   "id": "P3B3-MGMT-005",
+   "title": "Run a saved report whose author's access was revoked yesterday",
+   "actor_role": "Sales Manager",
+   "trigger": "A report saved by someone who has since changed roles.",
+   "narrative": "A saved definition confers no data access whatsoever. Every object capability, every field capability and every relationship traversal is re-resolved at run time against a fresh read of the runner's own access version and assignments \u2014 so the report shows the runner what the runner may see, never what the author could.",
+   "objects_touched": [
+    "Report Definition",
+    "Principal",
+    "Capability"
+   ],
+   "authority_path": "Report execution functions/src/reporting/reportExecutionService.ts \u2014 authoritative access version read :232-237 (a malformed value fails closed to 0 at :235), runner state loaded once per run by a FRESH Admin-SDK read of the user's accessVersion and active roleAssignments :246-253, every gate resolved through `resolveEffectivePermission` with `currentAccessVersion: runner.accessVersion` :265 and `activationOverrides: resolveRuntimeCapabilityOverrides()` :275, object gate :420-423, field and traversal gates :288-320 (field capability :311, traversal capability :312-314) memoized ONLY within a single call :295-302, denial audited with the access version :434, success audited :612-625 (never row data, :30-34). No cross-call caching of any kind \u2014 module doc :36-46. Callable `runReportDefinitionCallable` functions/src/reporting/runReportDefinitionCallable.ts:24 (auth check :25-27); it declares no capability of its own and is a thin adapter (:1-7). Saved report definitions functions/src/reporting/savedDefinitionCommands.ts (its header :22-29 states that reportExecutionService always independently re-resolves every object and field capability at RUN time, and :32-35 that ownership and authorization come from a fresh read); callables functions/src/index.ts:196-203. Capabilities `report.definition.create` functions/src/access/permissionCatalog.ts:907, `.read` :914, `.rename` :921, `.duplicate` :928, `.delete` :935 \u2014 all `active:false`. Storage `reportDefinitions` deny-all for EVERY principal including admin, firestore.rules:1592-1594, with the full rationale :1561-1591 (Rules cannot see the resolver's decision, cannot pair the mutation with an audit event, and cannot validate the embedded definition).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-006",
+   "title": "Run a report while the runner's role grant is being changed mid-execution",
+   "actor_role": "Sales Manager",
+   "trigger": "An administrator revokes a role while a long report is running.",
+   "narrative": "The runner's access state is read once, at the start of the run, and held as locals for the duration. Within one call the field authorization is memoized; across calls nothing is cached at all. So a grant change during a run takes effect on the next run, not partway through this one \u2014 which is the only behaviour that yields a self-consistent result set.",
+   "objects_touched": [
+    "Report Definition",
+    "Role Assignment",
+    "Capability"
+   ],
+   "authority_path": "Report execution functions/src/reporting/reportExecutionService.ts \u2014 authoritative access version read :232-237 (a malformed value fails closed to 0 at :235), runner state loaded once per run by a FRESH Admin-SDK read of the user's accessVersion and active roleAssignments :246-253, every gate resolved through `resolveEffectivePermission` with `currentAccessVersion: runner.accessVersion` :265 and `activationOverrides: resolveRuntimeCapabilityOverrides()` :275, object gate :420-423, field and traversal gates :288-320 (field capability :311, traversal capability :312-314) memoized ONLY within a single call :295-302, denial audited with the access version :434, success audited :612-625 (never row data, :30-34). No cross-call caching of any kind \u2014 module doc :36-46. Callable `runReportDefinitionCallable` functions/src/reporting/runReportDefinitionCallable.ts:24 (auth check :25-27); it declares no capability of its own and is a thin adapter (:1-7). Specifically: runner state loaded once per run at functions/src/reporting/reportExecutionService.ts:246-253; memoization scoped to the single call :295-302; the no-cross-call-caching rule is stated in the module doc :36-46.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-007",
+   "title": "Traverse from a customer to its equipment inside one report",
+   "actor_role": "Field Manager",
+   "trigger": "A report of machines by customer.",
+   "narrative": "A traversal is its own gate. Six one-hop relationships are catalogued and each carries a traversal capability that is resolved at run time alongside the object and field capabilities \u2014 so reading across a relationship is never a side effect of reading either end.",
+   "objects_touched": [
+    "Report Definition",
+    "Account",
+    "Equipment"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts \u2014 `REPORT_OBJECTS` :84-97 declares 12 objects across 4 waves, and only the FIRST FOUR (customer :85, contact :86, location :87, equipment :88) have `fieldsPopulated` true; job :89, workOrder :90, technician :91, serviceHistory :92, reorderRequest :93, purchaseOrder :94, inventoryAction :95 and employee :96 are declared with no fields. Field factory :99-119 mints each field's read capability as `report.<objectId>.field.<group>.read` at :115. Field sets: CUSTOMER_FIELDS :121-143, CONTACT_FIELDS :145-151, LOCATION_FIELDS :153-161, EQUIPMENT_FIELDS :163-176; assembled :178-183. Relationships `REPORT_RELATIONSHIPS` :203-210 \u2014 six one-hop traversals, each carrying its own `traversalCapability` :199. Traversal gates resolved at functions/src/reporting/reportExecutionService.ts:312-314 inside `resolveFieldAuthorization` :288-320.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-008",
+   "title": "See row data in the audit trail of a report run",
+   "actor_role": "Controller",
+   "trigger": "An audit of what a report exposed.",
+   "narrative": "Deliberately impossible. The success audit records the run and the runner's access version and never the rows \u2014 an audit log that copies the data it is auditing doubles the exposure it exists to control.",
+   "objects_touched": [
+    "Report Definition",
+    "Audit Event"
+   ],
+   "authority_path": "functions/src/reporting/reportExecutionService.ts:612-625 (success audit block) with the never-row-data rule at :30-34; denial audit with `accessVersionAfter` :434; success `accessVersionAfter` :624.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-009",
+   "title": "Run a report from the browser",
+   "actor_role": "Sales Manager",
+   "trigger": "Opening Report Builder and pressing run.",
+   "narrative": "The run callable exists and its own header records that it is not wired to any client \u2014 the client seam still resolves unavailable. The builder and saved-reports nav items exist and are capability-gated.",
+   "objects_touched": [
+    "Report Definition"
+   ],
+   "authority_path": "functions/src/reporting/runReportDefinitionCallable.ts:24 with the not-wired note :9-15; error mapping :44-58. Nav items field-ops-app-vite/src/navigation/navConfig.js:515 (builder, gated on the wave-1 object read capabilities) and :520 (saved reports, gated on the definition read capability).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-010",
+   "title": "Find a ready-made report in the Executive or Financial reporting domain",
+   "actor_role": "General Manager",
+   "trigger": "Looking for a pre-built report.",
+   "narrative": "Eight reporting domain sections exist as nav-hidden placeholders, each carrying an honest explanation: reporting is built, this domain has no report definitions yet, build one in Report Builder. The sections are a promise of where reports will live rather than a claim that they exist.",
+   "objects_touched": [
+    "Report Definition"
+   ],
+   "authority_path": "field-ops-app-vite/src/navigation/navConfig.js:521-528 \u2014 executive, service, inventory, purchasing, warehouse, employees, customers and financial, all `navHidden: true` with the same `placeholderExplanation`.",
+   "status": "NOT_SUPPORTED"
+  },
+  {
+   "id": "P3B3-MGMT-011",
+   "title": "Read the reporting matrix that says which reports are possible",
+   "actor_role": "Controller",
+   "trigger": "Planning the reporting build.",
+   "narrative": "A financial reporting matrix exists as a design document and a dashboard reporting authority census exists as a measured assessment with a machine-readable companion. Together they are the honest statement of what can and cannot be reported today.",
+   "objects_touched": [
+    "Report Definition"
+   ],
+   "authority_path": "docs/financials/F13_REPORTING_MATRIX.md; census docs/assessments/eos-dashboard-reporting-authority-census.md with its JSON companion eos-dashboard-reporting-authority-census.json; metrics framework docs/architecture/enterprise-business-metrics-framework.md; governed report creator ADR docs/architecture/ADR-007-governed-object-based-report-creator.md.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-MGMT-012",
+   "title": "See the whole business on one dashboard as the owner",
+   "actor_role": "Owner",
+   "trigger": "Monday morning.",
+   "narrative": "The dashboard is composed client-side from four independently gated reads \u2014 goals, account portfolio, work orders and the composition module. There is no server-side dashboard service, so each tile can be denied on its own and the page degrades tile by tile rather than all at once.",
+   "objects_touched": [
+    "Account",
+    "Work Order",
+    "Performance Goal"
+   ],
+   "authority_path": "Dashboard composition: branch field-ops-app-vite/src/App.jsx:223-231 (`DashboardIndex` \u2014 technicians get `TechnicianDashboard` at :224, everyone else `MyDashboard` at :226), route render :399. `MyDashboard.jsx` composes field-ops-app-vite/src/domain/dashboardComposition.js (:45), usePerformanceGoals (:46), useAccountPortfolioSummary (:48) and useWorkOrders (:51); module field-ops-app-vite/src/modules/dashboard/. There is NO functions/src/dashboard/ \u2014 the dashboard is composed client-side from independently gated reads.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-013",
+   "title": "Give a technician a different dashboard from everyone else",
+   "actor_role": "Field Manager",
+   "trigger": "A technician signs in.",
+   "narrative": "The only role-conditional composition in the dashboard: technicians get their own surface, everyone else gets the shared one. Crosses into the Service domain owned by lane P3-B1.",
+   "objects_touched": [
+    "Work Order"
+   ],
+   "authority_path": "field-ops-app-vite/src/App.jsx:223-231 \u2014 `DashboardIndex` branches to `TechnicianDashboard` (lazy import App.jsx:38) for technicians and `MyDashboard` (import App.jsx:162) for everyone else; route render :399.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-014",
+   "title": "Set a salesperson's annual revenue goal and have them see it",
+   "actor_role": "Sales Manager",
+   "trigger": "Annual goal-setting.",
+   "narrative": "A governed performance goal object with a draft, approve, supersede and retire lifecycle. The read is granted widely and the authoring is not \u2014 the Owner's stated position is that employees do not automatically manage their own targets.",
+   "objects_touched": [
+    "Performance Goal",
+    "Employee"
+   ],
+   "authority_path": "Performance goals: read service functions/src/performance/performanceGoalReadService.ts (`listCurrentPerformanceGoals` :110, `listPerformanceGoalVersions` :194, `listGoalSubjects` :235, cap `MAX_TARGETS_PER_READ` :34), authority functions/src/performance/performanceGoalAuthority.ts, callables functions/src/performance/performanceGoalCallables.ts exported functions/src/index.ts:563-570. Capabilities `performance.goal.read` functions/src/access/permissionCatalog.ts:1533, `.create` :1541, `.approve` :1549, `.supersede` :1557, `.retire` :1565 \u2014 all `active:false`.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 all five `performance.goal.*` ids are `active:false` (functions/src/access/permissionCatalog.ts:1533-1569). They ARE in the platform-sandbox override array (config/environments.json:130-134)."
+  },
+  {
+   "id": "P3B3-MGMT-015",
+   "title": "Let a salesperson read their own goal without reading anyone else's",
+   "actor_role": "Salesperson",
+   "trigger": "Checking progress against target.",
+   "narrative": "Read is not reach. The salesperson role is a leaf in the role hierarchy, so its governed hierarchical visibility resolves to its own employee id and nothing else \u2014 holding the goal-read id at global scope still shows that person exactly one person's goals: their own.",
+   "objects_touched": [
+    "Performance Goal",
+    "Employee"
+   ],
+   "authority_path": "The read-is-not-reach reasoning is recorded on the role at functions/src/access/governedBusinessRoles.ts:404-410; hierarchy functions/src/access/roleHierarchy.ts; visibility functions/src/access/hierarchicalVisibility.ts. Performance goals: read service functions/src/performance/performanceGoalReadService.ts (`listCurrentPerformanceGoals` :110, `listPerformanceGoalVersions` :194, `listGoalSubjects` :235, cap `MAX_TARGETS_PER_READ` :34), authority functions/src/performance/performanceGoalAuthority.ts, callables functions/src/performance/performanceGoalCallables.ts exported functions/src/index.ts:563-570. Capabilities `performance.goal.read` functions/src/access/permissionCatalog.ts:1533, `.create` :1541, `.approve` :1549, `.supersede` :1557, `.retire` :1565 \u2014 all `active:false`.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-016",
+   "title": "Approve a goal a manager drafted",
+   "actor_role": "General Manager",
+   "trigger": "A drafted target needs sign-off.",
+   "narrative": "Create, approve, supersede and retire are held by six manager roles. A dedicated performanceGoalSubject role exists holding read alone, which is how a person who is measured sees their target without being able to author it.",
+   "objects_touched": [
+    "Performance Goal",
+    "Employee",
+    "Role"
+   ],
+   "authority_path": "Performance goals: read service functions/src/performance/performanceGoalReadService.ts (`listCurrentPerformanceGoals` :110, `listPerformanceGoalVersions` :194, `listGoalSubjects` :235, cap `MAX_TARGETS_PER_READ` :34), authority functions/src/performance/performanceGoalAuthority.ts, callables functions/src/performance/performanceGoalCallables.ts exported functions/src/index.ts:563-570. Capabilities `performance.goal.read` functions/src/access/permissionCatalog.ts:1533, `.create` :1541, `.approve` :1549, `.supersede` :1557, `.retire` :1565 \u2014 all `active:false`. Roles: `performanceGoalSubject` functions/src/access/governedBusinessRoles.ts:1630 holds read only; create/approve/supersede/retire are held by fieldManager, generalManager, operationsManager, partsManager, salesManager and warehouseManager.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 functions/src/access/permissionCatalog.ts:1549."
+  },
+  {
+   "id": "P3B3-MGMT-017",
+   "title": "Compare Taylor's and Ventana's month side by side",
+   "actor_role": "Owner",
+   "trigger": "Monthly review across both operating companies.",
+   "narrative": "Two companies, one reporting calendar. The shared basis is an Owner ruling rather than a convenience, and the consolidated column that results is typed as an unelimated sum so nobody reads it as a true consolidation.",
+   "objects_touched": [
+    "Operating Company",
+    "Invoice"
+   ],
+   "authority_path": "Companies functions/src/ownership/operatingCompanyAuthority.ts:22-25 and :37-50 (taylor / TAYLOR / 'Taylor Freezer of Arizona'; ventana / VENTANA / 'Ventana'). Shared calendar functions/src/reportingPeriod/reportingCalendar.ts:62-78 (Owner ruling G-05) with the UNELIMINATED_SUM note :120. Roll-up functions/src/finance/financialAllocation.ts:88.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 FIN-BLOCK-004; docs/assessments/eos-dashboard-reporting-authority-census.md:316 (F-9 Intercompany position: NO, 'none \u2014 deliberately. No intercompany record type may exist until the Owner rules treatment')."
+  },
+  {
+   "id": "P3B3-MGMT-018",
+   "title": "Attribute an operational record to the company that performed the work",
+   "actor_role": "Operations Manager",
+   "trigger": "Reporting service volume per company.",
+   "narrative": "The financial axis is closed and the operational axis is an authority gap. The metric registry records it in code: operational records carry no governed company provenance and the ownership model that would supply it is inert.",
+   "objects_touched": [
+    "Work Order",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/performance/performanceMetricRegistry.ts:120 (`NO_GOVERNED_COMPANY_SOURCE`); census row docs/assessments/eos-dashboard-reporting-authority-census.md:138 (K-12: financial CLOSED, operational AUTHORITY GAP) and :190 (S-17), :314 (F-7), dependency chain :443, blocker G-03 = FIN-BLOCK-004 :525.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "OWNER_DECISION_PENDING \u2014 the ownership assignments exist as authored configuration that has not been applied: config/ownership/operating-company-roots.sandbox.json records its own status as 'ASSIGNED by Owner ruling R-1, 2026-08-30 \u2014 configuration only, NOT applied to any record'."
+  },
+  {
+   "id": "P3B3-MGMT-019",
+   "title": "Assign every physical root to an operating company",
+   "actor_role": "Owner",
+   "trigger": "Standing up the ownership model.",
+   "narrative": "Twelve decisions, not nineteen. A referential derivation check found that stock locations derive from their warehouse and trucks derive from their home warehouse, so only warehouses and mobile locations are primary roots. The file also forbids, in the strongest terms, any code that would infer a company from a name or a number.",
+   "objects_touched": [
+    "Warehouse",
+    "Operating Company"
+   ],
+   "authority_path": "config/ownership/operating-company-roots.sandbox.json \u2014 governed company ids, five warehouse roots and seven mobile-location roots; the measured correction from 19 to 12 and the derivation findings are recorded in the file's own `$comment` and `derivedNotRoots` blocks; the no-inference prohibition ('There is no north means Ventana function ... and there must not be') is in the same comment. Assignment module functions/src/ownership/warehouseRootCompanyAssignment.ts (rulings R-19..R-23); derivation classifier functions/src/ownership/ownershipDerivation.ts:9-20.",
+   "status": "DESIGNED_ONLY"
+  },
+  {
+   "id": "P3B3-MGMT-020",
+   "title": "Refuse to infer an operating company from a warehouse name",
+   "actor_role": "Owner",
+   "trigger": "A tempting shortcut during implementation.",
+   "narrative": "Explicitly forbidden, twice over. The configuration file says no code may ever infer these, and warns that if a rule appears to exist in the data it is a coincidence of authoring order and must not be implemented. The commercial module carries the same prohibition for the sales chain.",
+   "objects_touched": [
+    "Operating Company",
+    "Warehouse",
+    "Opportunity"
+   ],
+   "authority_path": "config/ownership/operating-company-roots.sandbox.json `$comment` (no-inference ruling, plus the coincidence warning); commercial equivalent functions/src/ownership/commercialCompanyScope.ts:14-19 (Ruling R-14 forbids deriving it from the Account owner, the salesperson, the creator, `lineOfBusiness`, an equipment model or a display name; Ruling R-15 forbids giving the Customer a single company to make the chain resolve).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-021",
+   "title": "Model a transfer of stock from Taylor to Ventana",
+   "actor_role": "Warehouse Manager",
+   "trigger": "Moving stock between the two companies' warehouses.",
+   "narrative": "The transfer order is the only cross-company-capable family in the whole ownership matrix. It is deliberately given participating companies rather than a single owner, because both 'source always owns it' and 'destination always owns it' would record a company as responsible for a movement it may only have received.",
+   "objects_touched": [
+    "Transfer Order",
+    "Warehouse",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/ownershipMatrix.ts:447-458 \u2014 `ownerClass: \"PARTICIPATING_COMPANIES\"`, `participatingFields: [sourceOperatingCompanyId, destinationOperatingCompanyId]`, `companyScope: \"CROSS_COMPANY_CAPABLE\"`, `transfer: \"N_A\"` so the handoff command refuses the family; the rejected conventions are recorded :440-446 and the four-way validity note at :458. Accessor `crossCompanyFamilies()` :571-573. Crosses into the Inventory domain owned by lane P3-B2.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-022",
+   "title": "Change which companies participated in a transfer to correct where goods went",
+   "actor_role": "Warehouse Manager",
+   "trigger": "A transfer was recorded with the wrong destination.",
+   "narrative": "Not an ownership handoff. Changing a transfer's participants is transaction-domain state \u2014 correcting where goods went \u2014 and the matrix enforces the distinction structurally by marking the family non-transferable so the handoff command refuses it.",
+   "objects_touched": [
+    "Transfer Order",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/ownershipMatrix.ts:449-452 (the AND THE HANDOFF AUTHORITY MUST NOT TOUCH THESE passage) with `transfer: \"N_A\"` at :455 as the enforcement. Handoff command functions/src/ownership/ownershipHandoffCommand.ts (D-5).",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-023",
+   "title": "Raise one purchase order covering both companies' needs",
+   "actor_role": "Purchasing Manager",
+   "trigger": "Consolidating a supplier order.",
+   "narrative": "Ruling R-4 is that a mixed-company purchase order must be refused or split. The ruling is recorded in the ownership matrix; the purchase order family itself is single-company.",
+   "objects_touched": [
+    "Purchase Order",
+    "Operating Company"
+   ],
+   "authority_path": "Ruling R-4 recorded functions/src/ownership/ownershipMatrix.ts:430; purchaseOrder family :418-423 `companyScope: \"SINGLE_COMPANY\"`. Normalization functions/src/purchasing/purchaseOrderNormalization.ts:76, :238. Crosses into the Purchasing domain owned by lane P3-B2.",
+   "status": "PARTIAL",
+   "owner_question": "Ruling R-4 requires a mixed-company purchase order to be refused or split. Which is it \u2014 refuse at entry, or split into two orders \u2014 and where is that enforced?"
+  },
+  {
+   "id": "P3B3-MGMT-024",
+   "title": "Keep a customer's equipment record company-owned while the customer holds title",
+   "actor_role": "Field Manager",
+   "trigger": "A customer owns the machine EOS services.",
+   "narrative": "The equipment record stays company-owned and stays distinct from the explicit title holder \u2014 a customer may hold title without owning the internal record. No deterministic source exists for the company either, because every candidate on the record (customer, title holder, location name) is a prohibited proxy, so there is no mass assignment.",
+   "objects_touched": [
+    "Equipment",
+    "Account",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/ownershipMatrix.ts:461-470 \u2014 equipment family, `companyScope: \"SINGLE_COMPANY\"`, `unresolvedPolicy: OWNERLESS_UNTIL_SUPPLIED`, with the title-holder distinction and the prohibited-proxy reasoning in the row's `note`. Title chain functions/src/fulfillment/inventoryControlLifecycle.ts:76 (`OWNERSHIP = {VENTANA, TAYLOR, CUSTOMER, UNKNOWN}`) and :85-91 (`resolveVentanaChainTitle`, rulings D-1/D-2). Custody helper functions/src/eosOps/equipmentCustody.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-025",
+   "title": "Classify a ledger entry to the books it lands in rather than to a person",
+   "actor_role": "Controller",
+   "trigger": "A design question about who owns a financial record.",
+   "narrative": "Ruling D-15 reclassified the financial families from person-owned to company-owned, on the principle that a ledger entry belongs to the books it lands in, not to the person who caused it.",
+   "objects_touched": [
+    "Invoice",
+    "Payment",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/ownershipMatrix.ts:176-191 \u2014 the COMPANY-financial block (ruling D-15) with its reclassification rationale; the shared family factory at :188-191 gives `ownerClass: \"COMPANY\"`, `transfer: \"IMMUTABLE\"`, `companyScope: \"SINGLE_COMPANY\"`.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-026",
+   "title": "Keep commercial records company-neutral on the ownership axis while carrying a company on the commercial axis",
+   "actor_role": "Operations Manager",
+   "trigger": "Reading the ownership matrix and finding an apparent contradiction.",
+   "narrative": "Two independent axes on one record. `ownerEmployeeId` answers who owns the sale; `operatingCompanyId` answers which operating company is conducting it. A Sales Order owned by one person and booked to Taylor is one record with two true facts, and neither displaces the other \u2014 the ownership module never touches the company and the company module never touches ownership.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Agreement",
+    "Sales Order",
+    "Operating Company",
+    "Employee"
+   ],
+   "authority_path": "functions/src/ownership/commercialCompanyScope.ts:9-12 (the two-axes statement) and :4-8 (the copy chain Opportunity -> Agreement -> Order -> Invoice -> Payment/Adjustment/Refund). Matrix rows carrying `companyScopeField: \"operatingCompanyId\"` alongside `companyScope: \"COMPANY_NEUTRAL\"`: opportunity functions/src/ownership/ownershipMatrix.ts:142-153, salesAgreement :155-162, salesOrder :163-174.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-027",
+   "title": "Seed the operating companies into Firestore so something can read them",
+   "actor_role": "Administrator",
+   "trigger": "Making the two companies real records rather than constants.",
+   "narrative": "A seed script exists that would write both company documents. Its own comment records that nothing in the application reads the collection yet, and there is no operating-companies table in Postgres at all \u2014 the company lives as an opaque key column on several operational tables instead.",
+   "objects_touched": [
+    "Operating Company"
+   ],
+   "authority_path": "Seed functions/scripts/seedOperatingCompanies.js:7-8 (writes `operating_companies/taylor` and `/ventana`) with the not-yet-read note :15-17; collection constant functions/src/ownership/operatingCompanyAuthority.ts:52. NO Postgres table: grep for `CREATE TABLE operating_companies` across functions/migrations/ returns zero hits; what exists is an opaque `operating_company_key` column added to inventory_movements, serialized_custody and cycle_count_sheets at functions/migrations/1757980800000_operating-company-and-serialized-custody.sql:126-128 (refusal guard :114, 'OPAQUE authority data' note :9), plus inventory_commitments (1758067200000:168), mobile_locations (1758326400000:202) and employee_principal_links.operating_company_id (1758412800000:122).",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-028",
+   "title": "Link an employee to an EOS principal across the two data planes",
+   "actor_role": "Administrator",
+   "trigger": "Onboarding: the person exists in Firestore and needs a Postgres principal.",
+   "narrative": "The linkage table exists with a shape constraint and an operating-company column. The migration is number eleven of eighteen, which is past the nonprod cut, so the linkage cannot be exercised there.",
+   "objects_touched": [
+    "Employee",
+    "Principal",
+    "Operating Company"
+   ],
+   "authority_path": "functions/migrations/1758412800000_employee-principal-linkage.sql \u2014 `employee_principal_links.operating_company_id` :122, shape CHECK :161-162. Plan module functions/src/access/... and test functions/test/employeePrincipalLinkPlan.test.mjs.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "SCHEMA_ABSENT_NONPROD \u2014 migration 1758412800000_employee-principal-linkage.sql is #11 of 18 in functions/migrations/; nonprod Postgres is applied to 7 of 18."
+  },
+  {
+   "id": "P3B3-MGMT-029",
+   "title": "Run the ownership census to find records with no resolvable owner",
+   "actor_role": "Operations Manager",
+   "trigger": "Measuring how much of the estate is ownerless.",
+   "narrative": "A census module and a derivation classifier both exist, with five outcomes including a potentially-cross-company classification that flags the exact records a single-company assumption would get wrong.",
+   "objects_touched": [
+    "Account",
+    "Work Order",
+    "Warehouse",
+    "Operating Company"
+   ],
+   "authority_path": "functions/src/ownership/ownershipCensus.ts; classifier functions/src/ownership/ownershipDerivation.ts:9-20 (DERIVABLE / MISSING_REFERENCE / INVALID_REFERENCE / POTENTIALLY_CROSS_COMPANY / CONFLICT); backfill rules functions/src/ownership/ownershipBackfillRules.ts; matrix accessor `familiesWithoutBackfillSource()` functions/src/ownership/ownershipMatrix.ts:576. Reconciliation assessment docs/assessments/eos-ownership-model-reconciliation.md.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-030",
+   "title": "Hand off ownership of a record with an auditable trail",
+   "actor_role": "General Manager",
+   "trigger": "A territory reshuffle.",
+   "narrative": "An explicit auditable handoff command exists per ruling D-5, and the matrix marks which families accept it \u2014 financial families are IMMUTABLE and the transfer order is N_A. What does not exist is an onCall export, so the command has no caller.",
+   "objects_touched": [
+    "Account",
+    "Opportunity",
+    "Sales Order",
+    "Employee"
+   ],
+   "authority_path": "functions/src/ownership/ownershipHandoffCommand.ts (D-5); transferable families accessor functions/src/ownership/ownershipMatrix.ts:562 `transferableFamilies()`. No onCall export exists for it in functions/src/index.ts.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-031",
+   "title": "Resolve the owner of a record at creation time",
+   "actor_role": "Salesperson",
+   "trigger": "Creating any ownable record.",
+   "narrative": "A dedicated creation-owner resolution module implements ruling D-4. It is the mechanism behind the refusal that matters most commercially: an Opportunity created under an ownerless Account cannot resolve an owner and does not get created.",
+   "objects_touched": [
+    "Opportunity",
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "functions/src/ownership/creationOwnerResolution.ts (D-4); the account row's REFUSE note functions/src/ownership/ownershipMatrix.ts:119-125; typed owner functions/src/ownership/typedOwner.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-032",
+   "title": "Read the ownership model as one document rather than thirteen modules",
+   "actor_role": "Operations Manager",
+   "trigger": "Onboarding onto the ownership work.",
+   "narrative": "Twelve modules under the ownership folder implement rulings D-1 through D-15 and R-1 through R-27. The matrix is the index; the reconciliation assessment is the narrative.",
+   "objects_touched": [
+    "Operating Company"
+   ],
+   "authority_path": "Ownership matrix functions/src/ownership/ownershipMatrix.ts \u2014 `OWNERSHIP_MATRIX` :111, family accessors :542, :550, :557, :562, `crossCompanyFamilies()` :571-573. Company scope vocabulary :67 (`SINGLE_COMPANY` / `CROSS_COMPANY_CAPABLE` / `COMPANY_NEUTRAL`), owner classes :65, transfer behaviour :66. Companies functions/src/ownership/operatingCompanyAuthority.ts:22-25 (`taylor`, `ventana`) and :37-50. Modules: operatingCompanyAuthority.ts, typedOwner.ts, ownershipMatrix.ts, ownershipDerivation.ts, ownershipCensus.ts, ownershipBackfillRules.ts, ownershipHandoffCommand.ts, creationOwnerResolution.ts, commercialCompanyScope.ts, reorderRequestLocationAuthority.ts (R-13), warehouseRootCompanyAssignment.ts (R-19..R-23), warehouseCanonicalIdRepair.ts (R-27). Assessment docs/assessments/eos-ownership-model-reconciliation.md.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-033",
+   "title": "See which sales orders are stuck and why",
+   "actor_role": "Operations Manager",
+   "trigger": "A weekly exception review.",
+   "narrative": "The order index read exists and the order records no stage times, so 'stuck' can be inferred from state but not measured in days. That is the practical cost of the open decision on stage timestamps.",
+   "objects_touched": [
+    "Sales Order"
+   ],
+   "authority_path": "Read `listSalesOrderIndex` functions/src/salesOrder/salesOrderReadService.ts:666 (permission :721). No stage timestamps: open product decision ND-8, docs/design/north-star-open-product-decisions.md:142-166.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-034",
+   "title": "Catch an opportunity that was closed WON but never turned into an order",
+   "actor_role": "Sales Manager",
+   "trigger": "A monthly hygiene check.",
+   "narrative": "The back-link exists \u2014 the create path writes the sales order id onto the opportunity in the same transaction \u2014 so the exception is detectable in principle by reading opportunities with a WON outcome and no order id. No report or projection does it today.",
+   "objects_touched": [
+    "Opportunity",
+    "Sales Order"
+   ],
+   "authority_path": "Back-link written atomically per docs/design/p1-fulfillment-billing-spine-spec.md:38 (`tx.update(opportunityRef,{salesOrderId})`) in functions/src/opportunity/createSalesOrderFromOpportunity.ts:304. Read path functions/src/opportunity/opportunityReadService.ts:322. No exception projection exists for it.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-035",
+   "title": "Catch a fulfilled sales order that was never invoiced",
+   "actor_role": "Controller",
+   "trigger": "Revenue leakage check.",
+   "narrative": "The billing queue is exactly this exception list, derived from sales-order-anchored statuses. It carries no amounts, and the surface cannot act on it.",
+   "objects_touched": [
+    "Sales Order",
+    "Invoice"
+   ],
+   "authority_path": "functions/src/finance/billingQueue.ts:20 (statuses), :62 (`deriveBillingQueueEntry`); eligibility functions/src/fulfillment/billingEligibility.ts:43. Surface field-ops-app-vite/src/modules/financials/FinancialsBillingQueue.jsx:50 records that no governed command path is wired to it.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-036",
+   "title": "Catch an invoice that has been open past terms",
+   "actor_role": "Accounting Manager",
+   "trigger": "Collections review.",
+   "narrative": "Days overdue is factual and available in the projection; the aging buckets exist in code under a recorded deployment policy of not shipping them. The projection is reachable only through the account-scoped AR read, which needs a reach that resolves for almost nobody.",
+   "objects_touched": [
+    "Invoice",
+    "Account"
+   ],
+   "authority_path": "functions/src/finance/financeReadProjection.ts:37 (outstanding), :46 (`deriveArPosition`), :124 (`summarizeArAging`), with the deployment-policy caveat :45. Read gate functions/src/finance/financeReadCallables.ts:214.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 requires `finance.read` plus a reach; EXECUTED, only `finance.visibility.consolidated` resolves anywhere and only in platform-sandbox."
+  },
+  {
+   "id": "P3B3-MGMT-037",
+   "title": "Catch a work order completed against a sales order whose quantities do not tie",
+   "actor_role": "Field Manager",
+   "trigger": "A reconciliation between service delivery and the order.",
+   "narrative": "The write-back makes the mismatch impossible in the forward direction: an acceptance exceeding the remaining quantity fails the whole Complete transaction rather than writing a wrong number. The exception therefore surfaces as a refused completion, not as a silent discrepancy to find later.",
+   "objects_touched": [
+    "Work Order",
+    "Sales Order"
+   ],
+   "authority_path": "functions/src/salesOrder/salesOrderFulfillmentWriteBack.ts invoked from functions/src/transitionWorkOrder.ts; fail-closed overage docs/design/p1-fulfillment-billing-spine-spec.md:7 and :29. Crosses into the Service domain owned by lane P3-B1.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-038",
+   "title": "Catch a customer with no account owner",
+   "actor_role": "Sales Manager",
+   "trigger": "The commercial chain refuses to start on some accounts.",
+   "narrative": "The most consequential exception in the CRM domain and the hardest to see: an ownerless account blocks opportunity creation by design, and the report field that would list them is inactive in every environment.",
+   "objects_touched": [
+    "Account",
+    "Employee"
+   ],
+   "authority_path": "Refusal by design functions/src/ownership/ownershipMatrix.ts:119-125. The report field that would surface it: `report.customer.field.accountOwner.read` functions/src/access/permissionCatalog.ts:735, `active:false` and absent from every `capabilityActivationOverrides` array in config/environments.json.",
+   "status": "EXECUTED_FAIL",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "admin | report.customer.field.accountOwner.read | PROD=DENY/inactivePermission | SANDBOX=DENY/inactivePermission",
+     "report.customer.field.accountOwner.read | holders = owner, admin | sandboxAllow = []"
+    ],
+    "note": "No principal in any declared environment can read the account-owner field through reporting."
+   },
+   "blocking_mechanism": "CAPABILITY_INACTIVE"
+  },
+  {
+   "id": "P3B3-MGMT-039",
+   "title": "Review what an employee did across sales, service and inventory in one place",
+   "actor_role": "General Manager",
+   "trigger": "A performance conversation.",
+   "narrative": "Employee is a wave-4 reportable object with no fields populated. The hierarchical visibility module governs how far a manager's view reaches, and the audit event trail is the nearest thing to a cross-domain activity record.",
+   "objects_touched": [
+    "Employee",
+    "Audit Event"
+   ],
+   "authority_path": "Report catalog functions/src/reporting/reportCatalog.ts:96 (employee, wave 4, `fieldsPopulated` false). Hierarchical reach functions/src/access/hierarchicalVisibility.ts and functions/src/access/roleHierarchy.ts. Audit trail capability `audit.event.read` functions/src/access/permissionCatalog.ts:1060 (ACTIVE), writer functions/src/access/auditEventWriter.ts, storage deny-all firestore.rules:1692-1694.",
+   "status": "PARTIAL"
+  },
+  {
+   "id": "P3B3-MGMT-040",
+   "title": "Bound how far a manager's hierarchical visibility reaches",
+   "actor_role": "General Manager",
+   "trigger": "A manager asking why they cannot see a peer's team.",
+   "narrative": "Visibility is resolved from the role hierarchy rather than from a scope on the grant, which is why a leaf role holding a read capability at global scope still sees only itself. The two mechanisms are deliberately different: scope answers which targets an assignment reaches, hierarchy answers which people a manager's role resolves to.",
+   "objects_touched": [
+    "Employee",
+    "Role"
+   ],
+   "authority_path": "functions/src/access/hierarchicalVisibility.ts and functions/src/access/roleHierarchy.ts; the leaf-role consequence is recorded on the salesperson at functions/src/access/governedBusinessRoles.ts:404-410. Scope matching is separate: field-ops-app-vite/src/access/resolveEffectivePermission.ts:150-178.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-041",
+   "title": "Stop a tenant-scoped assignment from behaving like a global one",
+   "actor_role": "Administrator",
+   "trigger": "A security review of scope semantics.",
+   "narrative": "A real, recorded defect and its fix. An unconditional true on the tenant case made a tenant-scoped assignment match any target \u2014 functionally identical to global \u2014 which is exactly the widening the specification prohibits. The fix requires the target to declare a matching tenant scope and value, and since no caller constructs a tenant-scoped target, such an assignment now matches nothing.",
+   "objects_touched": [
+    "Role Assignment",
+    "Capability"
+   ],
+   "authority_path": "field-ops-app-vite/src/access/resolveEffectivePermission.ts:156-178 \u2014 the correction is documented inline ('an unconditional `true` made a tenant-scoped assignment match ANY target ... which is exactly the widening Spec \u00a710 prohibits'), with tenant, domain, location, operatingCompany and businessUnit all falling through to exact value matching. Binding-scope policy field-ops-app-vite/src/access/bindingScopePolicy.ts, applied at resolveEffectivePermission.ts:289.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-042",
+   "title": "Refuse a global manager assignment that R-32 forbids, even if it predates the rule",
+   "actor_role": "Administrator",
+   "trigger": "Historic role assignments written before the binding-scope policy existed.",
+   "narrative": "The check is placed at resolution rather than at grant time, and the reasoning is that assignments written before the rule existed are already in the database, so a grant-time check could never see them. Refusing at resolution is what makes the fix survive its own deployment.",
+   "objects_touched": [
+    "Role Assignment",
+    "Role",
+    "Capability"
+   ],
+   "authority_path": "field-ops-app-vite/src/access/resolveEffectivePermission.ts:289 with the rationale immediately above it ('AUTHORITATIVE by placement: RoleAssignments written before R-32 existed are already in Firestore, and a grant-time check can never see them, so a global manager assignment must be refused HERE or the bypass survives its own fix'). Policy functions/src/access/bindingScopePolicy.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-043",
+   "title": "Treat a stale access version as malformed rather than giving it the benefit of the doubt",
+   "actor_role": "Administrator",
+   "trigger": "An assignment whose grant-time access version exceeds the current one.",
+   "narrative": "Access version increases monotonically per principal on every access change, so an assignment whose grant-time snapshot exceeds the current value is impossible under a correctly operating writer. It is excluded, fail-closed, rather than being read charitably.",
+   "objects_touched": [
+    "Role Assignment",
+    "Principal"
+   ],
+   "authority_path": "field-ops-app-vite/src/access/resolveEffectivePermission.ts:131-147 \u2014 `isConsistentWithCurrentAccessVersion` implements 'consistent' as `accessVersionAtGrant <= currentAccessVersion`, with the interpretation recorded for Owner review; applied at :282-284.",
+   "status": "IMPLEMENTED_UNEXECUTED",
+   "owner_question": "The resolver records its own interpretation of 'consistent with the current accessVersion' as `accessVersionAtGrant <= currentAccessVersion` and notes it was recorded for Owner review (resolveEffectivePermission.ts:131-142). Has that interpretation been ratified?"
+  },
+  {
+   "id": "P3B3-MGMT-044",
+   "title": "Confirm an administrator sees the same answer in the browser as the server would give",
+   "actor_role": "Administrator",
+   "trigger": "A support call where the UI and the server disagree.",
+   "narrative": "A shadow parity harness and shared parity fixtures exist for exactly this, and the two resolver copies are generated from one source with CI drift enforcement. Diffing them shows no substantive divergence.",
+   "objects_touched": [
+    "Capability",
+    "Role"
+   ],
+   "authority_path": "Harness functions/src/access/shadowParityHarness.ts and its mirror field-ops-app-vite/src/access/shadowParityHarness.ts; fixtures functions/src/access/parityFixtures.ts. Generator scripts/syncAccessContracts.mjs per the banner at field-ops-app-vite/src/access/permissionCatalog.ts:1-6.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "for f in permissionCatalog.ts governedBusinessRoles.ts compatibilityRoles.ts resolveEffectivePermission.ts bindingScopePolicy.ts; do diff functions/src/access/$f field-ops-app-vite/src/access/$f; done",
+    "output": [
+     "All five differ only by the 6-line generated-file banner; compatibilityRoles.ts additionally differs by one import extension (`./permissionCatalog` vs `./permissionCatalog.ts`).",
+     "No substantive divergence."
+    ],
+    "note": "This is why the 48x147 matrix run against the frontend mirror is authoritative for the backend."
+   }
+  },
+  {
+   "id": "P3B3-MGMT-045",
+   "title": "Resolve a principal's whole effective access in one call for a support diagnosis",
+   "actor_role": "Administrator",
+   "trigger": "Diagnosing an access complaint.",
+   "narrative": "An effective-access feed exists as the choke point every spine callable uses, and it is where the per-environment activation overrides are threaded in. It is the single place to ask what a principal can actually do right now.",
+   "objects_touched": [
+    "Principal",
+    "Capability",
+    "Role Assignment"
+   ],
+   "authority_path": "`resolveEffectiveAccessCallable` functions/src/index.ts:214 over functions/src/access/effectiveAccessFeedCallable.ts; feed functions/src/access/effectiveAccessFeed.ts, described in docs/design/per-environment-capability-activation-spec.md as 'the choke point every spine callable uses' through which `resolveCapabilityOverrides` is threaded. Overrides module functions/src/access/environmentCapabilityOverrides.ts.",
+   "status": "IMPLEMENTED_UNEXECUTED"
+  },
+  {
+   "id": "P3B3-MGMT-046",
+   "title": "Measure how much of EOS is actually reachable in production today",
+   "actor_role": "Owner",
+   "trigger": "Asking what the business can do with the system right now.",
+   "narrative": "Thirty-seven of the one hundred and forty-seven catalogued capabilities resolve ALLOW for at least one role in production. The remaining hundred and ten are built, granted and inert. The sales, CRM-activity, finance, reporting, coverage, import, labour and equipment-compatibility families are all in the second group; what is live is customer records, work orders, reordering and purchasing, warehouse and inventory basics, the administration access commands and the audit read.",
+   "objects_touched": [
+    "Capability",
+    "Role",
+    "Environment"
+   ],
+   "authority_path": "Catalog functions/src/access/permissionCatalog.ts (147 entries; the active predicate is :1695). Roles functions/src/access/governedBusinessRoles.ts:1689 plus functions/src/access/compatibilityRoles.ts:356. Production activation set: config/environments.json `taylor-parts-production` entry begins :257 with no `capabilityActivationOverrides` key.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "ROLES 48 CAPS 147",
+     "ALLOWED ANYWHERE IN PRODUCTION: 37",
+     "109 of 147 registered active:false",
+     "UNGRANTED (zero holders): 0"
+    ],
+    "note": "110 capabilities resolve DENY for every role in production (109 active:false plus the arithmetic of 147-37). Production-live families: customer.record.*, customer.governedField.write, workOrder.create/transition/cancel, reorder.*, inventory.analytics/transaction/action.*, warehouse.*.read, admin.userStatus/roleAssignment/principalAccess/employeeProfile/accessRequest, audit.event.read, inventory.catalog.manage/activate, inventory.stock.receive."
+   }
+  },
+  {
+   "id": "P3B3-MGMT-047",
+   "title": "Confirm the inventory catalog capabilities are live, not inert",
+   "actor_role": "Operations Manager",
+   "trigger": "A long-circulating programme claim that the catalog capabilities are dead.",
+   "narrative": "They are live in production. Executing the resolver shows both catalog capabilities resolve ALLOW under the production activation set \u2014 they carry no inactive flag at all. Any statement that they are inert is wrong, and this one is worth stating plainly because it has circulated for some time.",
+   "objects_touched": [
+    "Capability",
+    "Part",
+    "Role"
+   ],
+   "authority_path": "`inventory.catalog.manage` functions/src/access/permissionCatalog.ts:1071 and `inventory.catalog.activate` :1077 \u2014 NEITHER carries an `active` key, and the catalog predicate at :1695 treats an omitted flag as active. Granted explicitly to five governed roles (functions/src/access/governedBusinessRoles.ts:522, :596, :680, :738, :819), to a dedicated catalog administrator role :1048-1051, to a temporary execution-scoped role :993-997, and to the admin compatibility role :210. Crosses into the Inventory domain owned by lane P3-B2.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/probe.mts",
+    "output": [
+     "admin | inventory.catalog.manage | PROD=ALLOW/qualifyingGrant | SANDBOX=ALLOW/qualifyingGrant",
+     "admin | inventory.catalog.activate | PROD=ALLOW/qualifyingGrant | SANDBOX=ALLOW/qualifyingGrant"
+    ],
+    "note": "Confirms lane P2-B3's correction by execution: both are ACTIVE and GRANTED, and they resolve ALLOW in production."
+   }
+  },
+  {
+   "id": "P3B3-MGMT-048",
+   "title": "Publish a coordinated operations view across service and fulfilment",
+   "actor_role": "Operations Manager",
+   "trigger": "A single visit that does several jobs.",
+   "narrative": "A coordinated-visit read exists and is granted to exactly the two operational manager roles. It is one of very few capabilities granted narrowly and deliberately rather than by the catch-all.",
+   "objects_touched": [
+    "Work Order",
+    "Sales Order",
+    "Coordinated Visit"
+   ],
+   "authority_path": "`listCoordinatedOperations` functions/src/index.ts:86 over functions/src/fulfillment/coordinatedVisitReadService.ts; capability `fulfillment.coordinatedVisit.read` functions/src/access/permissionCatalog.ts:1471, `active:false`, granted to `fieldManager` and `operationsManager` only. Nav field-ops-app-vite/src/navigation/navConfig.js:232. Designs docs/design/coordinated-operations-surfaces.md and docs/design/coordinated-field-mission-cycle9.md. Crosses into the Service domain owned by lane P3-B1.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 functions/src/access/permissionCatalog.ts:1471; the id IS in the platform-sandbox override array (config/environments.json:110)."
+  },
+  {
+   "id": "P3B3-MGMT-049",
+   "title": "Accept an emailed customer request as inbound work and turn it into a job",
+   "actor_role": "Operations Manager",
+   "trigger": "A customer emails the service inbox.",
+   "narrative": "A full inbound-work pipeline exists: list, read, accept, decline and attach-to-existing, each with its own capability, all held by one dedicated reviewer role. It is the cleanest example in the repository of a workflow given its own role rather than folded into an existing one.",
+   "objects_touched": [
+    "Inbound Work Request",
+    "Work Order",
+    "Email Connection"
+   ],
+   "authority_path": "Callables functions/src/index.ts:615-626 over functions/src/inboundWork/inboundWorkCallables.ts. Capabilities `service.inboundWork.read` functions/src/access/permissionCatalog.ts:1612, `.accept` :1620, `.decline` :1628, `.attachExisting` :1636 \u2014 all `active:false`, held by the `serviceInboundWorkReviewer` role (functions/src/access/governedBusinessRoles.ts:1668) plus admin/owner. Nav gate field-ops-app-vite/src/navigation/navConfig.js:198. Crosses into the Service domain owned by lane P3-B1.",
+   "status": "BLOCKED",
+   "blocking_mechanism": "CAPABILITY_INACTIVE \u2014 all four ids are `active:false`; all four ARE in the platform-sandbox override array (config/environments.json:174-181)."
+  },
+  {
+   "id": "P3B3-MGMT-050",
+   "title": "Decide what the business should activate next",
+   "actor_role": "Owner",
+   "trigger": "Choosing the next thing to make real.",
+   "narrative": "The activation decision is bounded and legible: ninety-two ids are already proven activatable in the sandbox, production activates none, and seventeen capabilities are activated nowhere at all. The seventeen are the interesting list, because they include two labour capabilities, four finance reach ids, both coverage ids, three report fields, administrator password reset and five equipment-compatibility ids \u2014 each of which was built and then left with no environment in which it can run.",
+   "objects_touched": [
+    "Capability",
+    "Environment"
+   ],
+   "authority_path": "Activation sets config/environments.json (`platform-sandbox` :89-181, `platform-certification` :224-228, `taylor-parts-production` entry begins :257 with no key). Eligible-set intersection and production hard-block functions/src/access/environmentCapabilityOverrides.ts. Spec docs/design/per-environment-capability-activation-spec.md.",
+   "status": "EXECUTED_PASS",
+   "execution": {
+    "command": "node --experimental-strip-types <scratchpad>/matrix.mts",
+    "output": [
+     "SANDBOX_OVERRIDE_COUNT 92 PROD_OVERRIDE_COUNT 0",
+     "ACTIVE:FALSE AND NOT SANDBOX-ACTIVATED (dead in every environment): 17 \u2014 workOrder.labor.record, workOrder.labor.correct, finance.visibility.self, finance.visibility.team, finance.visibility.businessUnit, finance.visibility.company, coverage.write, coverage.read, report.customer.field.notes.read, report.customer.field.accountOwner.read, report.location.field.accessNotes.read, admin.credentialReset.initiate, equipment.compatibility.view, equipment.compatibility.import, equipment.compatibility.verify, equipment.compatibility.correct, equipment.model.manage"
+    ],
+    "note": "Seventeen capabilities are built, granted, and activated in no environment the repository declares."
+   },
+   "owner_question": "Seventeen capabilities are registered active:false and appear in no environment's activation array, so they can run nowhere \u2014 including labour recording, four of the five finance reach scopes, both coverage capabilities, administrator password reset and the whole equipment-compatibility family. For each: is it awaiting a security review, awaiting a design, or abandoned?"
+  }
+ ]
+}
