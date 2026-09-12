@@ -29,6 +29,7 @@
 // No SQL beyond this file: a domain command asks `resolveOperationalCapabilities` for a Set and
 // never queries `role_capabilities` itself.
 import type { Pool } from "pg";
+export type { Pool } from "pg";
 import { getPolicyDatabasePool } from "../adminPolicy/policyDatabase";
 import { resolvePrincipalContext } from "../adminPolicy/principalContext";
 import type { PrincipalContext, ResolveContextInput } from "../adminPolicy/principalContext";
@@ -95,4 +96,16 @@ export async function capabilitiesForRoleKeys(
 /** Convenience for a command that needs the pool this module already knows how to build. */
 export function operationalCapabilityPool(): Pool {
   return getPolicyDatabasePool();
+}
+
+/**
+ * Every capability key the catalog currently declares. Exists so callers outside this module --
+ * the P1A inventory-authority capability parity harness (adminPolicy/migration/
+ * inventoryCapabilityParityHarness.ts) in particular -- never need their own SQL or their own
+ * `pg` import to answer "is this capability key known" -- exactly the same "no SQL beyond this
+ * file" rule the module header already states for `role_capabilities`.
+ */
+export async function listCapabilityKeys(pool: Pool): Promise<ReadonlySet<string>> {
+  const { rows } = await pool.query<{ key: string }>(`SELECT key FROM ${SCHEMA}.capabilities`);
+  return new Set(rows.map((r) => r.key));
 }
