@@ -12,6 +12,7 @@
 // multiple currencies is shown per-currency, never blindly summed.
 
 import { formatMoneyDisplay } from "./moneyDisplay.js";
+import { companyAttribution, companyAttributionLabel, UNATTRIBUTED_COMPANY } from "./companyAttribution.js";
 
 export const ACCOUNT_AR_STATE = {
   LOADING: "loading",
@@ -106,16 +107,38 @@ export function accountArView({ loading = false, errorStatus = null, result = nu
     ([currency, amountMinor]) => ({ currency, text: formatMinor(amountMinor, currency) })
   );
 
+  // THE COMPANY DIMENSION, CONSUMED — NEVER DERIVED.
+  //
+  // One account can genuinely hold both Taylor and Ventana invoices (the invoice's company comes
+  // from its Sales Order, and accounts are not company-partitioned), so `outstandingLines` above is
+  // a consolidated figure that may span both operating companies. `companyAttribution` reports that
+  // span from the SERVER'S OWN partition when the governed read supplies one, and reports `supplied:
+  // false` when it does not — in which case every consumer keeps today's consolidated rendering and
+  // claims no breakdown. See domain/companyAttribution.js.
+  const company = companyAttribution(summary);
+
   return {
     kind: ACCOUNT_AR_STATE.READY,
     openCount: summary.openCount ?? 0,
     overdueCount: summary.overdueCount ?? 0,
     outstandingLines,
+    company,
     rows: invoices.map((inv) => ({
       key: inv.invoiceId,
       invoiceNumber: inv.invoiceNumber ?? inv.invoiceId,
       salesOrderId: inv.salesOrderId,
       position: inv.arPosition,
+      // The governed company stamped on THIS invoice, and the words for it. Absent entirely on a
+      // response that predates the dimension (undefined); null when the read answered and the
+      // invoice genuinely carries none. Those are different facts and are kept apart: only the
+      // second is "unattributed", and neither is ever resolved into a company by guess.
+      companyId: typeof inv.companyId === "string" ? inv.companyId : inv.companyId === null ? null : undefined,
+      companyLabel:
+        typeof inv.companyId === "string"
+          ? companyAttributionLabel(inv.companyId)
+          : inv.companyId === null
+            ? companyAttributionLabel(UNATTRIBUTED_COMPANY)
+            : null,
       // The words a reader sees. `position` (the stored token) stays on the row because
       // accountAttentionProjection.js filters on it -- it is a discriminant, not display.
       positionWords: arPositionWords(inv.arPosition),

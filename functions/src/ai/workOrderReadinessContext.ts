@@ -58,8 +58,9 @@ export interface WorkOrderReadinessContextResult {
     warehouse: boolean;
     truckInventory: false;
     purchasing: boolean;
-    // Mirrors ONLY the existing READY reorder-create branch in firestore.rules. It creates no
-    // capability and grants nothing; the eventual client write is still independently rechecked.
+    // Governed eligibility for the EXISTING reorder-create action, resolved from the capability
+    // catalog. It creates no capability and grants nothing; the eventual write is still
+    // independently re-authorized, and this boolean is a suggestion gate, never an authorization.
     requestReorder: boolean;
   }>;
   readonly limitations: readonly string[];
@@ -73,10 +74,37 @@ interface PlannedInternalLine {
   readonly qtyUsed: number;
 }
 
+/**
+ * The governed capabilities this context authorizes against.
+ *
+ * Every id here is a REGISTERED capability in permissionCatalog.ts, resolved for the calling
+ * principal by resolveEffectivePermission through the effective-access feed -- the SAME engine that
+ * answers the question when a human reads the same fact through a governed surface. There is no
+ * second authorization model in this file and no AI-namespace capability: an assistant that decided
+ * its own reads would be an authorization bypass that leaves no trace in the surface it bypassed.
+ */
+export const PROCUREMENT_EVIDENCE_READ_CAPABILITY = "reorder.request.read.queue";
+export const REORDER_REQUEST_ELIGIBILITY_CAPABILITY = "reorder.request.create.system";
+
+export const WORK_ORDER_READINESS_CAPABILITIES: readonly string[] = Object.freeze([
+  INVENTORY_BALANCE_READ_CAPABILITY,
+  PROCUREMENT_EVIDENCE_READ_CAPABILITY,
+  REORDER_REQUEST_ELIGIBILITY_CAPABILITY,
+]);
+
 export interface WorkOrderReadinessContextDependencies {
   readonly loadCaller: (uid: string) => Promise<{ role: string | null; technicianId: string | null }>;
   readonly loadWorkOrder: (workOrderId: string) => Promise<Record<string, unknown> | null>;
-  readonly resolveInventoryBalanceAccess: (uid: string) => Promise<boolean>;
+  /**
+   * Resolve ALL of this context's capability questions against one principal-state snapshot.
+   *
+   * One call rather than one per dimension, so the three decisions cannot be resolved against
+   * different accessVersions and disagree with each other.
+   */
+  readonly resolveCapabilityDecisions: (
+    uid: string,
+    permissionIds: readonly string[],
+  ) => Promise<Readonly<Record<string, boolean>>>;
   readonly loadBalances: (partIds: readonly string[]) => Promise<readonly PartBalanceProjection[]>;
   readonly loadReservationRows: (workOrderId: string) => Promise<readonly Record<string, unknown>[]>;
   readonly loadReorderRows: (workOrderId: string) => Promise<readonly Record<string, unknown>[]>;
@@ -99,12 +127,20 @@ export async function assembleWorkOrderReadinessContext(
     assignedTechId: typeof workOrder.assignedTechId === "string" ? workOrder.assignedTechId : null,
   });
 
-  let inventoryBalanceReadable = false;
+  // Every capability question this context asks, answered once, by the governed engine. A resolver
+  // failure degrades to NO capability rather than to the caller's role -- falling back to a role
+  // string is precisely the second authorization path this module must not have.
+  let decisions: Readonly<Record<string, boolean>> = {};
   try {
-    inventoryBalanceReadable = await deps.resolveInventoryBalanceAccess(input.principalUid);
+    decisions = await deps.resolveCapabilityDecisions(
+      input.principalUid,
+      WORK_ORDER_READINESS_CAPABILITIES,
+    );
   } catch {
-    inventoryBalanceReadable = false;
+    decisions = {};
   }
+  const permitted = (permissionId: string): boolean => decisions[permissionId] === true;
+  const inventoryBalanceReadable = permitted(INVENTORY_BALANCE_READ_CAPABILITY);
 
   const access = resolveWorkOrderContextAccess({
     actor,
@@ -116,17 +152,20 @@ export async function assembleWorkOrderReadinessContext(
     },
   });
 
-  // Reorder Request client-read authority is broad only for admin/dispatcher. Other roles have
-  // request-specific predicates, so a server-side WO query could over-return for them. Until a
-  // dedicated governed procurement read exists, only this exact broad Rules branch is mirrored.
-  const procurementReadable = caller.role === "admin" || caller.role === "dispatcher";
+  // Procurement evidence is a GOVERNED read, resolved exactly as a human reading the reorder queue
+  // would be. This used to be `caller.role === "admin" || caller.role === "dispatcher"` -- a second
+  // authorization model, keyed on the legacy compatibility `users/{uid}.role` string, that the
+  // capability catalog never saw. A principal whose governed authority was revoked kept procurement
+  // visibility here for as long as the legacy field said "admin", and nothing in the reorder surface
+  // recorded that it had been read.
+  const procurementReadable = permitted(PROCUREMENT_EVIDENCE_READ_CAPABILITY);
 
-  // EXISTING ACTION ELIGIBILITY, NOT A NEW AUTHORITY. The READY reorder-request create branch in
-  // firestore.rules is admin/dispatcher-only. Exposing that boolean lets intelligence decide whether
-  // the already-existing requestReorderForRecommendation action may be PROPOSED. If a human accepts,
-  // firestore.rules evaluates the write again from current user state; this boolean is never trusted
-  // as authorization by the write path.
-  const requestReorderEligible = caller.role === "admin" || caller.role === "dispatcher";
+  // EXISTING ACTION ELIGIBILITY, NOT A NEW AUTHORITY. Whether the already-existing
+  // requestReorderForRecommendation action may be PROPOSED to this user -- resolved against the same
+  // governed capability the create itself is registered under, never against a role string. It is a
+  // suggestion gate and nothing more: the eventual write is independently re-authorized, and this
+  // boolean is never trusted as authorization by the write path.
+  const requestReorderEligible = permitted(REORDER_REQUEST_ELIGIBILITY_CAPABILITY);
 
   const internalPlan = plannedLines(workOrder);
   const canonicalPartIds = [...new Set(internalPlan
@@ -245,12 +284,12 @@ function realDependencies(db: Firestore): WorkOrderReadinessContextDependencies 
       const snap = await db.collection(WORK_ORDERS_COLLECTION).doc(workOrderId).get();
       return snap.exists ? (snap.data() as Record<string, unknown>) : null;
     },
-    resolveInventoryBalanceAccess: async (uid) => {
+    resolveCapabilityDecisions: async (uid, permissionIds) => {
       const { decisions } = await resolveEffectiveAccess({
         principalUid: uid,
-        permissionIds: [INVENTORY_BALANCE_READ_CAPABILITY],
+        permissionIds: [...permissionIds],
       }, { db });
-      return decisions[INVENTORY_BALANCE_READ_CAPABILITY] === true;
+      return decisions;
     },
     loadBalances: async (partIds) => {
       const repository = buildFirestorePartRepository(db);

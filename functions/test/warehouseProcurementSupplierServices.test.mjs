@@ -1,17 +1,24 @@
-// Firestore-emulator regression coverage for the otherwise-uncovered procurement/supplier services.
+// Firestore-emulator regression coverage for the otherwise-uncovered procurement service.
 //
 // BIN-P2: the warehouse-stock case that used to open this file is gone with warehouseService.ts.
 // It proved updateStockLocation refused to drive a stock_locations quantity below zero -- a guard on
 // a writer that Decision #160 retired, over a collection that is no longer an inventory authority.
+//
+// W1-C21: the supplier tie-break case that used to close this file is gone with supplierService.ts.
+// It proved findBestSupplierForPart broke an equal-price tie by shorter leadTimeDays -- a reader on
+// a module that had no importer anywhere in functions/src, and that read the same `suppliers`
+// collection as the governed Supplier Master (functions/src/supplierMaster/*) under a different,
+// ungoverned shape (contactEmail/leadTimeDays). The `supplier_catalog` collection it also read is
+// NOT retired: Operations.jsx's ProcurementPanel still reads it live through
+// field-ops-app-vite/src/services/operationsQueries.ts's fetchSupplierCatalog. Only the duplicate
+// server-side Firebase supplier authority went away. See docs/handoff/w1-c21-registrations.md.
 process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import admin from "firebase-admin";
 import { createPurchaseOrder, updatePurchaseOrderStatus } from "../lib/procurementService.js";
-import { findBestSupplierForPart } from "../lib/supplierService.js";
 
 admin.initializeApp({ projectId: "taylor-parts" });
-const db = admin.firestore();
 let sequence = 0;
 const id = (prefix) => `${prefix}-${Date.now()}-${++sequence}`;
 
@@ -48,13 +55,4 @@ test("purchase order creation rejects a negative unit price", async () => {
     createPurchaseOrder({ supplierId: id("supplier"), items: [{ partId: id("part"), quantity: 1, unitPrice: -5 }] }),
     /unitPrice must be a non-negative number/
   );
-});
-
-test("supplier selection breaks equal-price ties by shorter lead time", async () => {
-  const partId = id("part"), slow = id("slow"), fast = id("fast");
-  await db.collection("suppliers").doc(slow).set({ id: slow, name: "Slow", contactEmail: "slow@example.test", leadTimeDays: 8 });
-  await db.collection("suppliers").doc(fast).set({ id: fast, name: "Fast", contactEmail: "fast@example.test", leadTimeDays: 2 });
-  await db.collection("supplier_catalog").doc(id("item")).set({ id: id("item"), supplierId: slow, partId, unitPrice: 10, available: true });
-  await db.collection("supplier_catalog").doc(id("item")).set({ id: id("item"), supplierId: fast, partId, unitPrice: 10, available: true });
-  assert.equal((await findBestSupplierForPart(partId)).id, fast);
 });

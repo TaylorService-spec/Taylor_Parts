@@ -35,7 +35,6 @@ on:
       - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataFleetCatalogDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataBillingDefinitions.test.mjs"
-      - "field-ops-app-vite/test/metadataStockLocationDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataTerritoryMobileDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
@@ -113,7 +112,6 @@ on:
       - "field-ops-app-vite/test/metadataSupplierDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataFleetCatalogDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataBillingDefinitions.test.mjs"
-      - "field-ops-app-vite/test/metadataStockLocationDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataTerritoryMobileDefinitions.test.mjs"
       - "field-ops-app-vite/test/metadataTransferOrderDefinition.test.mjs"
       - "field-ops-app-vite/test/metadataInventoryMovementDefinitions.test.mjs"
@@ -289,9 +287,6 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Billing definition tests (node:test)
         run: node --test test/metadataBillingDefinitions.test.mjs
-        working-directory: field-ops-app-vite
-      - name: Stock Location definition tests (node:test)
-        run: node --test test/metadataStockLocationDefinition.test.mjs
         working-directory: field-ops-app-vite
       - name: Territory + mobile location definition tests (node:test)
         run: node --test test/metadataTerritoryMobileDefinitions.test.mjs

@@ -18,6 +18,10 @@ import {
   type WarehouseCandidate,
   type MobileCandidate,
 } from "./consumptionSourceOptions.js";
+import { readSerializedCustodyPair } from "../serializedAsset/types.js";
+import { PARTS_COLLECTION } from "../partMaster/partMasterRepository.js";
+import { trackingModeFromStoredControlType } from "./consumptionPartTracking.js";
+import type { ControlTypeTrackingMode } from "../partMaster/controlTypeTrackingMode.js";
 
 export const BIN_PLACEMENTS_COLLECTION = "bin_placements";
 export const WAREHOUSES_COLLECTION = "warehouses";
@@ -107,6 +111,38 @@ export async function readPlacementsForWorkOrder(
     }));
 }
 
+/**
+ * THE PART AUTHORITY for a set of part ids, as tracking modes.
+ *
+ * How a part is counted is the Part's fact. This read exists because Work Order usage capture used
+ * to answer that question twice without ever asking: the writer hardcoded "NONE" and the callable
+ * took it off the request. See consumptionPartTracking.ts for what that cost.
+ *
+ * A part id ABSENT from the returned map means no Part document was found — deliberately distinct
+ * from "found, and quantity-tracked", so the caller can tell silence from an answer. Pass the
+ * enclosing transaction when one is open: these are reads, and they must land in the caller's
+ * reads-before-writes window.
+ */
+export async function readConsumptionTrackingModes(
+  db: Firestore,
+  partIds: readonly string[],
+  txn?: Transaction,
+): Promise<Map<string, ControlTypeTrackingMode>> {
+  const unique = [
+    ...new Set(
+      partIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()),
+    ),
+  ];
+  const modes = new Map<string, ControlTypeTrackingMode>();
+  for (const partId of unique) {
+    const ref = db.collection(PARTS_COLLECTION).doc(partId);
+    const snap = txn ? await txn.get(ref) : await ref.get();
+    if (!snap.exists) continue;
+    modes.set(partId, trackingModeFromStoredControlType((snap.data() ?? {}).controlType));
+  }
+  return modes;
+}
+
 /** A serialized unit's governed custody. Null when unknown — which #168 fails closed on. */
 export async function readSerializedCustody(
   db: Firestore,
@@ -119,10 +155,16 @@ export async function readSerializedCustody(
     : await db.collection(SERIALIZED_ASSETS_COLLECTION).where("partId", "==", partId).where("serialNo", "==", serialNo).get();
   if (snap.empty || snap.docs.length > 1) return null;
   const data = snap.docs[0].data() ?? {};
-  const locationId = typeof data.currentLocationId === "string" && data.currentLocationId.trim().length > 0 ? data.currentLocationId.trim() : null;
-  if (locationId === null) return null;
-  const type = typeof data.currentLocationType === "string" && data.currentLocationType.trim().length > 0 ? data.currentLocationType.trim() : "WAREHOUSE";
-  return { type, locationId };
+  // THE TYPED PAIR, OR NOTHING. This used to default a missing type to "WAREHOUSE" -- and since no
+  // writer stamped the field, the default was taken every time, including for a unit relocated into a
+  // BIN (stockRelocationCommand writes the bin id into currentLocationId). Work-Order consumption was
+  // therefore told "WAREHOUSE <bin id>": a location that does not exist, asserted with confidence.
+  //
+  // The default is gone. An unstamped or unrecognized type is an UNKNOWN custody, and unknown custody
+  // is exactly the case resolveConsumptionSource already refuses (SERIAL_CUSTODY_UNKNOWN, "letting
+  // someone assert a location would fabricate history"). Returning null hands it that case instead of
+  // manufacturing an answer -- the refusal path is reached honestly rather than being unreachable.
+  return readSerializedCustodyPair(data);
 }
 
 /**

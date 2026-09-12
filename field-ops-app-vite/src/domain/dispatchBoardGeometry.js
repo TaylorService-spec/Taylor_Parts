@@ -218,10 +218,59 @@ export function placedBlockedTime(availabilityView, band) {
     .filter((b) => b.geometry !== null);
 }
 
-/** Total blocked minutes inside the band -- the lane line's "0.5h blocked". */
+/**
+ * The UNION of a lane's blocked-time records, as disjoint half-open intervals in ascending order.
+ *
+ * Mirrors `mergeBlockedIntervals` in functions/src/scheduling/availabilityModel.ts, deliberately and
+ * by hand: this package is a separate build with no module path into functions/. The two are held in
+ * agreement by functions/test/schedulingBlockedTimeUnion.test.mjs, which imports BOTH and runs the
+ * same inputs through each -- a real cross-package comparison, not a comment promising one.
+ *
+ * Malformed records (missing or reversed endpoints) are dropped: a bad record is not blocked time.
+ * Touching intervals merge -- 12:00 ends, 12:00 starts is one span with no minute between them.
+ */
+export function mergeBlockedIntervals(blocks) {
+  if (!Array.isArray(blocks)) return [];
+  const parsed = [];
+  for (const b of blocks) {
+    const startMillis = b?.startMillis;
+    const endMillis = b?.endMillis;
+    if (!Number.isFinite(startMillis) || !Number.isFinite(endMillis) || endMillis <= startMillis) continue;
+    parsed.push({ startMillis, endMillis });
+  }
+  parsed.sort((a, b) => a.startMillis - b.startMillis);
+
+  const merged = [];
+  for (const interval of parsed) {
+    const last = merged[merged.length - 1];
+    if (last && interval.startMillis <= last.endMillis) last.endMillis = Math.max(last.endMillis, interval.endMillis);
+    else merged.push({ ...interval });
+  }
+  return merged;
+}
+
+/**
+ * Total blocked minutes inside the band -- the lane line's "0.5h blocked".
+ *
+ * ════════════════════ UNAVAILABLE TIME IS A UNION, NEVER A SUM ════════════════════
+ *
+ * OVERLAPPING BLOCKED-TIME FACTS ARE LEGITIMATE (Owner ruling, 2026-09-12). A multi-day
+ * COMPANY_CLOSURE straddles the daily LUNCH; PTO is taken inside a closure; training sits inside a
+ * broader closure. Each is a real, separately-recorded fact, and the store holds all of them.
+ *
+ * This function used to clamp each record to the band and SUM the durations, which counted a minute
+ * once per record covering it. The server's `blockedMinutesInWindow` has always unioned. Both
+ * numbers are drawn on the SAME lane, so a closure over a lunch made the lane line read two hours
+ * blocked where the server -- the authority the placement policy actually enforces -- said one.
+ *
+ * It now merges first. Board and server therefore answer the same question with the same arithmetic
+ * for every set the store can contain, and the only remaining difference is deliberate: the server's
+ * capacity figure masks by recorded working hours, while this band figure is calendar time, because
+ * the lane draws a 03:00 closure whether or not the technician was rostered at 03:00.
+ */
 export function blockedMinutesInBand(availabilityView, band) {
   const blocks = Array.isArray(availabilityView?.blockedTime) ? availabilityView.blockedTime : [];
-  const total = blocks.reduce((sum, b) => {
+  const total = mergeBlockedIntervals(blocks).reduce((sum, b) => {
     const start = Math.max(b.startMillis, band.startMillis);
     const end = Math.min(b.endMillis, band.endMillis);
     return end > start ? sum + (end - start) / MS_PER_MINUTE : sum;

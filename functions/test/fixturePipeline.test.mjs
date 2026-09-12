@@ -83,18 +83,22 @@ check("idMapping: KEEP ids unchanged; REMAP deterministic + stable; collisions t
 
 // (6) required relationships resolve / dangling detected
 check("closure: validates required refs; detects dangling; requiredReferencedIds computes closure need", () => {
+  // equipment_part_compatibility is the two-required-edge exemplar. It replaced stock_locations
+  // here when that retired duplicate balance authority was removed from the fixture spec entirely
+  // (Decision #160 / ADR-014) -- the pipeline property under test is the closure, not the
+  // collection, so it is proved over a collection the spec still carries.
   const good = {
     parts: [{ partId: "P-1" }],
-    warehouses: [{ warehouseId: "W-1" }],
-    stock_locations: [{ warehouseId: "W-1", partId: "P-1", quantity: 3 }],
+    equipment_models: [{ equipmentModelId: "M-1" }],
+    equipment_part_compatibility: [{ equipmentModelId: "M-1", partId: "P-1" }],
   };
   assert.equal(validateClosure(good).ok, true);
-  const bad = { parts: [{ partId: "P-1" }], warehouses: [], stock_locations: [{ warehouseId: "W-MISSING", partId: "P-1", quantity: 3 }] };
+  const bad = { parts: [{ partId: "P-1" }], equipment_models: [], equipment_part_compatibility: [{ equipmentModelId: "M-MISSING", partId: "P-1" }] };
   const r = validateClosure(bad);
   assert.equal(r.ok, false);
-  assert.equal(r.danglingRequired[0].to, "warehouses");
-  const need = requiredReferencedIds({ stock_locations: [{ warehouseId: "W-9", partId: "P-9", quantity: 1 }] });
-  assert.ok(need.warehouses.has("W-9") && need.parts.has("P-9"));
+  assert.equal(r.danglingRequired[0].to, "equipment_models");
+  const need = requiredReferencedIds({ equipment_part_compatibility: [{ equipmentModelId: "M-9", partId: "P-9" }] });
+  assert.ok(need.equipment_models.has("M-9") && need.parts.has("P-9"));
 });
 
 // (7) canonical IDs remain semantically correct
@@ -108,14 +112,14 @@ check("identity: partId preserved (never partId==sku); assertPartIdentityIntact 
 check("planSeed: docIdIsId uses identity; composite uses a stable deterministic key (idempotent)", () => {
   const set = {
     parts: [{ partId: "P-1", internalPartNumber: "IPN-1" }],
-    stock_locations: [{ warehouseId: "W-1", partId: "P-1", quantity: 5, binCode: "A1" }],
+    part_aliases: [{ partId: "P-1", alias: "ALT-1" }],
   };
   const p1 = planSeed(set);
   const p2 = planSeed(set);
   const idOf = (p, coll) => p.writes.find((w) => w.collection === coll).docId;
   assert.equal(idOf(p1, "parts"), "P-1"); // identity
-  assert.match(idOf(p1, "stock_locations"), /^fx-stock_locations-/); // synthetic composite
-  assert.equal(idOf(p1, "stock_locations"), idOf(p2, "stock_locations")); // stable -> idempotent
+  assert.match(idOf(p1, "part_aliases"), /^fx-part_aliases-/); // synthetic composite
+  assert.equal(idOf(p1, "part_aliases"), idOf(p2, "part_aliases")); // stable -> idempotent
 });
 
 // (9) malformed data fails closed

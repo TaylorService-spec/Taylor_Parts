@@ -95,10 +95,22 @@ function arMetrics(arView) {
   }
   const lines = Array.isArray(arView.outstandingLines) ? arView.outstandingLines : [];
   const overdue = num(arView.overdueCount) ?? 0;
+  // MULTI-COMPANY IS SAID IN THE LABEL, for the same reason multi-currency is never summed.
+  //
+  // This tile is one figure, and an account's receivables can genuinely span Taylor and Ventana
+  // (the invoice's company comes from its Sales Order; accounts are not company-partitioned). Read
+  // as "Outstanding AR", a blended figure is indistinguishable from a single-company one. The tile
+  // deliberately does NOT split — the split belongs in the AR section this tile links to, which
+  // carries a Company column and names the companies. It only stops the figure from being
+  // mistaken for something narrower than it is.
+  //
+  // On a read that predates the company dimension, `supplied` is false and the label is exactly
+  // what it always was: no count is asserted for a partition that was never received.
+  const spansCompanies = arView.company?.supplied === true && arView.company.spansMultipleCompanies === true;
   return [
     {
       id: "outstandingAr",
-      label: "Outstanding AR",
+      label: spansCompanies ? `Outstanding AR · ${arView.company.spanLabel}` : "Outstanding AR",
       state: HEALTH_METRIC_STATE.READY,
       // Multi-currency is represented honestly rather than summed across currencies.
       value: lines.length === 0 ? "None" : lines.map((l) => l.text).join(" · "),

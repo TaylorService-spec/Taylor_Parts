@@ -4,10 +4,10 @@
 // ════════════════════ WHY A GENERATED SNAPSHOT ════════════════════
 //
 // The canonical object/field model lives in `field-ops-app-vite/src/metadata/definitions/*.js` --
-// 29 entities, 394 fields -- and the governable-object union in
+// 28 entities, 389 fields -- and the governable-object union in
 // `field-ops-app-vite/src/access/policyObjectRegistry.js`. Both are client-side ESM. `functions/`
 // cannot import across the two packages (no shared/monorepo tooling exists in this repo, which is
-// the same reason `types/access.ts` is mirrored by hand), and hand-mirroring 394 field definitions
+// the same reason `types/access.ts` is mirrored by hand), and hand-mirroring 389 field definitions
 // would create the second field-metadata model this work is explicitly forbidden to create.
 //
 // So: ONE authority, ONE generated artifact, ONE drift guard. This script reads the definitions and

@@ -362,6 +362,10 @@
       "runner": "node"
     },
     {
+      "file": "test/inventoryActionRetirementContract.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/inventoryControlLifecycle.test.mjs",
       "runner": "node"
     },
@@ -510,10 +514,6 @@
       "runner": "node --test"
     },
     {
-      "file": "test/metadataStockLocationDefinition.test.mjs",
-      "runner": "node --test"
-    },
-    {
       "file": "test/metadataSupplierDefinition.test.mjs",
       "runner": "node --test"
     },
@@ -560,6 +560,10 @@
     {
       "file": "test/notificationScopeVocabulary.test.mjs",
       "runner": "node"
+    },
+    {
+      "file": "test/objectAdministrationProfile.test.mjs",
+      "runner": "node --test"
     },
     {
       "file": "test/objectListMetadataAuthority.test.mjs",

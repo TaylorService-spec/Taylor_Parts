@@ -90,7 +90,7 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 // turns it back into an assertion that declared == live.
 // DECLARED BUT NOT LIVE — REGENERATED FROM A MEASUREMENT, 2026-08-24.
 //
-// This list previously named THIRTY-FIVE indexes as pending. Thirty-five of the declared indexes
+// This list previously named THIRTY-FIVE indexes as pending. Thirty-four of the declared indexes
 // are LIVE. The list had it almost exactly inverted: it was written when the estate held eight
 // composites and was never updated as the estate grew to thirty-eight, so it described a database
 // that had not existed for months.
@@ -102,8 +102,13 @@ test('O-4: gcloud output normalizes into comparable shape', () => {
 //
 // Re-measured with `firebase firestore:indexes --project eos-platform-sandbox`:
 //
-//     38 live  ·  43 declared  ·  35 declared AND live  ·  8 declared and NOT live
-//     3 live and NOT declared:  equipment_models × 3
+//     38 live  ·  44 declared  ·  34 declared AND live  ·  10 declared and NOT live
+//     4 live and NOT declared:  equipment_models × 3, stock_locations × 1
+//
+// (Was 38 / 43 / 35 / 8 with 3 undeclared, before the Wave-1 integration. The LIVE estate has not
+// moved -- nothing has been deployed -- so every change in those numbers is a change on the DECLARED
+// side. `stock_locations` joined the undeclared-but-live set when its declaration was removed; see
+// the note on that collection below.)
 //
 // THE THREE UNDECLARED equipment_models COMPOSITES STAY UNDECLARED. D4 governs that collection and
 // declares no compound index for it (functions/test/equipmentCompatibilityRegistry.test.mjs
@@ -166,8 +171,8 @@ test('O-4: every declared index is either live or explicitly listed as pending d
   // It said EIGHT, describing an estate from the sandbox convergence deployment. Re-measured
   // 2026-08-24 against `firebase firestore:indexes --project eos-platform-sandbox`:
   //
-  //     38 live  -  43 declared  -  35 declared AND live  -  8 declared, not live
-  //     3 live and NOT declared: equipment_models x3
+  //     38 live  -  44 declared  -  34 declared AND live  -  10 declared, not live
+  //     4 live and NOT declared: equipment_models x3, stock_locations x1
   //
   // The stale 8 passed only because declared-minus-pending happened to equal it, so the guard
   // asserted a coincidence rather than the estate. It is the guard that produced this programme's
@@ -182,9 +187,35 @@ test('O-4: every declared index is either live or explicitly listed as pending d
   // programme previously recorded, and the correction matters because it was the stated reason
   // index deploys stayed blocked.
   //
+  // ════════════ stock_locations: RETIRED, AND THE DELETION IS NAMED RATHER THAN ABSORBED ════════════
+  //
+  // PR #1877 (W1-C3) removed one declaration from firestore.indexes.json:
+  //
+  //     stock_locations|COLLECTION|warehouseId:ASCENDING,binCode:ASCENDING
+  //
+  // OWNER RULING, 2026-09-12: `stock_locations` IS RETIRED AS AN OPERATIONAL AUTHORITY. The ownership
+  // backfill was applied and measured 5/5 RESOLVED post-backfill; the client operational read and the
+  // old producers were removed (BIN-P2R, Decision #160 / ADR-014); Warehouse/BIN authority has its
+  // PostgreSQL destination. The composite index STAYS DELETED, and the registered list demand that
+  // used to require it is gone too (scripts/listIndexCoverage.mjs, and the retired
+  // `stockLocation.index` definition it pointed at). Nothing in this tree queries that collection by
+  // (warehouseId, binCode) any more.
+  //
+  // THE LIVE ESTATE DID NOT CHANGE. Nothing was deployed, so it is still the 38 measured on
+  // 2026-08-24. What moved is the overlap between the two sets, which is why this number moves with
+  // it. Updating it is a re-measurement, NOT a relaxation.
+  //
+  // THE OPERATIONAL CONSEQUENCE, STATED RATHER THAN ABSORBED: that index is LIVE and is no longer
+  // declared, so a future `firebase deploy --only firestore:indexes` WOULD DELETE IT. That is exactly
+  // the class of event this guard exists to make visible, and it stays visible -- the
+  // destructive-deploy block above is untouched and still refuses an unacknowledged deletion, still
+  // requires the deletion to be named rather than forced. It is recorded here by name so whoever runs
+  // that deploy is CHOOSING it rather than discovering it. For this collection that choice is the
+  // intended end state: the index serves no query.
+  //
   // A comparison against a MEASURED number, not a remembered one. When a deploy really lands,
   // both sides move together and the pending list shrinks.
-  assert.equal(expectedLive, 35, 'declared-minus-pending must match the live index count (35 declared AND live of 38 live)');
+  assert.equal(expectedLive, 34, 'declared-minus-pending must match the live index count (34 declared AND live of 38 live)');
   assert.equal(pending.length, PENDING_DEPLOY_INDEX_KEYS.size, 'a pending key was listed but not declared');
   assert.ok(declared.some((i) => i.collectionGroup === 'fieldops_jobs'));
 });

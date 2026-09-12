@@ -391,17 +391,22 @@ export const REGISTERED_LIST_DEMANDS = Object.freeze([
     ]),
     requiredBy: "truck.index",
   }),
-  // stockLocation.index (leaf definition, registered by the integration lane).
-  Object.freeze({
-    collectionGroup: "stock_locations",
-    queryScope: "COLLECTION",
-    fields: Object.freeze([
-      {fieldPath: "warehouseId", order: "ASCENDING"},
-      {fieldPath: "binCode", order: "ASCENDING"},
-      {fieldPath: "__name__", order: "ASCENDING"},
-    ]),
-    requiredBy: "stockLocation.index",
-  }),
+  // stockLocation.index IS DELIBERATELY ABSENT -- OWNER RULING, 2026-09-12.
+  //
+  // `stock_locations` IS RETIRED AS AN OPERATIONAL AUTHORITY. This demand required the composite
+  //
+  //     stock_locations (warehouseId ASC, binCode ASC)
+  //
+  // which PR #1877 (W1-C3) removed from firestore.indexes.json on the strength of Decision #160 /
+  // ADR-014, and which STAYS removed. The stale expectation is what is deleted here; the index is
+  // not coming back. The definition that demanded it (metadata/definitions/stockLocation.js) is gone
+  // with its entity, because a list view over a collection no principal can reach -- no Rules match
+  // block, no query anywhere in functions/src or field-ops-app-vite/src, no writer -- is not a
+  // coverage gap to close but a surface to retire.
+  //
+  // This is NOT an index-coverage exemption. Nothing registered demands that composite any more, so
+  // there is nothing here to exempt: re-registering a stock_locations list would make this check
+  // demand the index again, exactly as it should.
   // mobileLocation.index (leaf definition, registered by the integration lane).
   Object.freeze({
     collectionGroup: "mobile_locations",
@@ -519,7 +524,6 @@ export const REGISTERED_DEFINITION_SOURCES = Object.freeze([
   "field-ops-app-vite/src/metadata/definitions/equipmentModel.js",
   "field-ops-app-vite/src/metadata/definitions/invoice.js",
   "field-ops-app-vite/src/metadata/definitions/payment.js",
-  "field-ops-app-vite/src/metadata/definitions/stockLocation.js",
   "field-ops-app-vite/src/metadata/definitions/mobileLocation.js",
   "field-ops-app-vite/src/metadata/definitions/salesTerritory.js",
   "field-ops-app-vite/src/metadata/definitions/transferOrder.js",

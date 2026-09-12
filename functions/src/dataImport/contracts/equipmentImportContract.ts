@@ -34,7 +34,7 @@
 // machines, not about who the customer is, and inventing an account from a column would put
 // a customer in EOS that nobody decided to add.
 
-import { registerEntityContract, naturalIdentityKey, type NormalizedRow, type ImportContext } from "./entityContract.js";
+import { registerEntityContract, compactIdentityKey, naturalIdentityKey, type NormalizedRow, type ImportContext } from "./entityContract.js";
 import type { CanonicalFieldSpec, FieldFinding } from "./partImportContract.js";
 import { normalizeText } from "./partImportContract.js";
 
@@ -330,6 +330,8 @@ export const EQUIPMENT_IMPORT_CONTRACT = registerEntityContract({
   contextFindings: equipmentContextFindings,
   // ALL whitespace removed, like a part number and unlike a customer name: serials are
   // transcribed by hand from a plate on a machine, and "AB 12345" and "AB12345" are the same
-  // machine written down twice.
-  identityKey: (draft) => String(draft.serialNumber ?? "").trim().toUpperCase().replace(/\s+/g, ""),
+  // machine written down twice. COMPARISON ONLY -- the stored serialNumber is the one the
+  // operator typed (normalizeEquipmentRow trims it and nothing more), because the serial is
+  // custody identity and folding what gets STORED would rewrite the plate.
+  identityKey: (draft) => compactIdentityKey(draft.serialNumber),
 });

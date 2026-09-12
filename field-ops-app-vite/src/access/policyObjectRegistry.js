@@ -8,7 +8,7 @@
 //                            capability governs. Hand-maintained, and it predates several entities:
 //                            there is no Suppliers row and no Warehouses row, even though
 //                            `supplier.record.read` and `warehouse.record.read` both exist.
-//   entityRegistry.js        29 entities, 394 fields. The shipped object/field model.
+//   entityRegistry.js        28 entities, 389 fields. The shipped object/field model.
 //
 // Sixteen entities appear in both. THIRTEEN ENTITIES CARRYING 166 FIELDS APPEARED IN NEITHER the
 // policy seed nor the Administration grid -- Supplier, Warehouse, Truck, Reorder Request, Sales
@@ -115,6 +115,13 @@ function entityCapabilities(entity) {
  * table fills -- it is an ordinary matrix object, and adding it here would be the two-owners
  * defect this table exists to avoid.
  *
+ * STOCK LOCATION WAS LISTED HERE, and no longer is. The Owner ruled (2026-09-12) that
+ * `stock_locations` is RETIRED as an operational authority, so `stockLocationEntity` is no longer in
+ * ENTITY_REGISTRY and there is no object for this row to extend. `warehouse.stockLocation.read`
+ * remains in the capability catalog, labelled there as a retired authority -- it is historical
+ * evidence, and mapping it onto a governable object here is exactly how historical evidence becomes
+ * a live runtime dependency.
+ *
  * SUPPLIER, TRUCK, MOBILE LOCATION, PART ALIAS, MANUFACTURER, EQUIPMENT MODEL, SALES TERRITORY,
  * PURCHASE ORDER VOID, SUPPLIER CATALOG ITEM. Measured on this branch: no capability in the catalog
  * names them. They are seeded as governable objects with no grantable verb, which is the honest
@@ -122,7 +129,6 @@ function entityCapabilities(entity) {
  */
 export const MATRIX_GAP_CAPABILITIES = Object.freeze({
   warehouse: Object.freeze({ R: ["warehouse.record.read"] }),
-  stockLocation: Object.freeze({ R: ["warehouse.stockLocation.read"] }),
   salesAgreement: Object.freeze({
     C: ["salesAgreement.create"],
     R: ["salesAgreement.read"],

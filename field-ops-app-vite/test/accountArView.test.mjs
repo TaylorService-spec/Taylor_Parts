@@ -128,3 +128,111 @@ test("a row carries the words beside the token it is derived from", () => {
   assert.equal(view.rows[0].position, "OVERDUE");
   assert.equal(view.rows[0].positionWords, "Overdue");
 });
+
+// ════════════════════ THE OPERATING-COMPANY DIMENSION (lane C26) ════════════════════
+//
+// An account is not company-partitioned: `issueInvoice` stamps an invoice's `companyId` from its
+// Sales Order's governed operatingCompanyId, so one account can genuinely hold both Taylor and
+// Ventana receivables. This view had no company dimension at all, so a consolidated outstanding
+// figure looked exactly like a single-company one.
+//
+// The three claims below are the ones that must never regress, and the middle one is the
+// sequencing claim: the governed function and this bundle ship separately, so a response that
+// predates the dimension must render as it always did and must NOT imply a breakdown.
+
+const arResult = (invoices, summary) => ({ status: "ready", invoices, summary });
+
+test("a read WITHOUT the company dimension supplies no breakdown and claims none", () => {
+  const view = accountArView({
+    result: arResult(
+      [{ invoiceId: "i1", invoiceNumber: "INV-1", currency: "USD", outstandingMinor: 100, arPosition: "CURRENT" }],
+      { count: 1, openCount: 1, overdueCount: 0, outstandingByCurrency: { USD: 100 } },
+    ),
+  });
+  assert.equal(view.company.supplied, false);
+  assert.equal(view.company.spansMultipleCompanies, false);
+  assert.deepEqual(view.company.rows, []);
+  assert.equal(view.company.spanNote, null);
+  assert.equal(view.company.spanLabel, null);
+  // The row carries UNDEFINED, not null: "the read did not send a company" and "this invoice has
+  // no company" are different facts and only the second is unattributed.
+  assert.equal(view.rows[0].companyId, undefined);
+  assert.equal(view.rows[0].companyLabel, null);
+});
+
+test("a single-company read adds nothing — one company is not a disclosure", () => {
+  const view = accountArView({
+    result: arResult(
+      [{ invoiceId: "i1", invoiceNumber: "INV-1", companyId: "taylor", currency: "USD", outstandingMinor: 100, arPosition: "CURRENT" }],
+      {
+        count: 1, openCount: 1, overdueCount: 0, outstandingByCurrency: { USD: 100 },
+        byCompany: { taylor: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 100 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 100 } } },
+        companyIds: ["taylor"],
+        spansMultipleCompanies: false,
+      },
+    ),
+  });
+  assert.equal(view.company.supplied, true);
+  assert.equal(view.company.spansMultipleCompanies, false);
+  assert.equal(view.company.spanNote, null);
+  // The row still carries its company, so a surface that wants it has it; the SECTION just has
+  // nothing to disclose.
+  assert.equal(view.rows[0].companyId, "taylor");
+  assert.equal(view.rows[0].companyLabel, "Taylor Freezer of Arizona");
+});
+
+test("a blended read discloses both companies and never guesses the unattributed one", () => {
+  const view = accountArView({
+    result: arResult(
+      [
+        { invoiceId: "i1", invoiceNumber: "INV-1", companyId: "taylor", currency: "USD", outstandingMinor: 100, arPosition: "OVERDUE", daysOverdue: 9 },
+        { invoiceId: "i2", invoiceNumber: "INV-2", companyId: "ventana", currency: "USD", outstandingMinor: 250, arPosition: "CURRENT" },
+        { invoiceId: "i3", invoiceNumber: "INV-3", companyId: null, currency: "USD", outstandingMinor: 75, arPosition: "CURRENT" },
+      ],
+      {
+        count: 3, openCount: 3, overdueCount: 1, outstandingByCurrency: { USD: 425 },
+        byCompany: {
+          taylor: { count: 1, openCount: 1, overdueCount: 1, billedByCurrency: { USD: 100 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 100 } },
+          ventana: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 250 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 250 } },
+          UNATTRIBUTED: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 75 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 75 } },
+        },
+        companyIds: ["UNATTRIBUTED", "taylor", "ventana"],
+        spansMultipleCompanies: true,
+      },
+    ),
+  });
+  assert.equal(view.company.supplied, true);
+  assert.equal(view.company.spansMultipleCompanies, true);
+  assert.equal(view.company.unattributedPresent, true);
+  // UNATTRIBUTED is not counted as a company. "3 companies" would invent one.
+  assert.equal(view.company.spanLabel, "2 companies + unattributed");
+  assert.match(view.company.spanNote, /Taylor Freezer of Arizona/);
+  assert.match(view.company.spanNote, /Ventana/);
+  assert.match(view.company.spanNote, /never\s+inferred/);
+  // A null companyId is UNATTRIBUTED in words, never resolved onto Taylor or Ventana.
+  assert.equal(view.rows[2].companyId, null);
+  assert.equal(view.rows[2].companyLabel, "Not attributed to a company");
+  assert.equal(view.rows[0].companyLabel, "Taylor Freezer of Arizona");
+  assert.equal(view.rows[1].companyLabel, "Ventana");
+  // The consolidated figure this page has always shown is UNCHANGED — the disclosure is additive,
+  // and the per-company rows reconcile to it exactly (the server's own single-pass property).
+  assert.deepEqual(view.outstandingLines.map((l) => l.currency), ["USD"]);
+});
+
+test("the section reads the SERVER'S span flag, not a recomputed companyIds.length", () => {
+  // A server that reports several keys but does not set the flag must not be second-guessed here:
+  // the flag is the authority, and re-deriving it is how two surfaces come to disagree.
+  const view = accountArView({
+    result: arResult(
+      [{ invoiceId: "i1", invoiceNumber: "INV-1", companyId: "taylor", currency: "USD", outstandingMinor: 10, arPosition: "CURRENT" }],
+      {
+        count: 1, openCount: 1, overdueCount: 0, outstandingByCurrency: { USD: 10 },
+        byCompany: { taylor: {}, ventana: {} },
+        companyIds: ["taylor", "ventana"],
+        // deliberately absent: spansMultipleCompanies
+      },
+    ),
+  });
+  assert.equal(view.company.supplied, true);
+  assert.equal(view.company.spansMultipleCompanies, false);
+});

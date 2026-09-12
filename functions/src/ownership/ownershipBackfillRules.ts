@@ -97,7 +97,29 @@ export const BACKFILL_RULES: readonly BackfillRule[] = Object.freeze([
   { collection: "locations", fields: ["owner"], evaluate: personFromAccount },
 
   { collection: "stock_locations", fields: ["operatingCompanyId"], evaluate: companyFromRoot(["warehouseId"]) },
-  { collection: "trucks", fields: ["operatingCompanyId"], evaluate: companyFromRoot(["homeWarehouseId"]) },
+  // RETIRED, 2026-09-11: `{ collection: "trucks", evaluate: companyFromRoot(["homeWarehouseId"]) }`.
+  //
+  // The rule derived a truck's operating company from its home warehouse, and that derivation is not
+  // merely unprincipled -- it is PROVABLY WRONG on the data it was written for. All five
+  // `cert-trk-01`..`cert-trk-05` MOBILE locations carry `homeWarehouseId: "wh-main"`, a `taylor`
+  // warehouse, while config/ownership/operating-company-roots.sandbox.json AUTHORS `cert-trk-04` and
+  // `cert-trk-05` as `ventana`. Two of five would have been written with the wrong company, and a
+  // wrong operating company is indistinguishable after the fact from a deliberate assignment.
+  //
+  // That configuration file forbids the inference in its own header ("THEY ARE NOT INFERRED, AND NO
+  // CODE MAY EVER INFER THEM ... If a rule appears to exist in the data below, it is a coincidence of
+  // authoring order and must not be implemented"). Its `derivedNotRoots.trucks` note -- that 2/2
+  // trucks REFERENTIALLY derive from their home warehouse -- is the measurement explaining why trucks
+  // are not authored roots; it was never a licence to perform the derivation, and this rule read it
+  // as one. scripts/employeeTruckCrosswalk.lib.mjs:38-57 states the same refusal at length.
+  //
+  // It is DELETED rather than corrected because there is no correct version of it here: a truck has
+  // no authored company of its own. Company is an inventory authority and belongs to the MOBILE
+  // LOCATION that holds the stock, which is where
+  // functions/src/eosOps/migration/truckFleetMigrationSource.ts reads it from -- authored
+  // configuration in, company out, MISSING and CONFLICT refusing the migration rather than guessing.
+  // `mobile_locations` deliberately has no rule here either, for the same reason: this applier
+  // derives, and that fact must be authored.
   { collection: "cycle_counts", fields: ["operatingCompanyId"], evaluate: companyFromRoot(["location.locationId"]) },
   { collection: "receiving_orders", fields: ["operatingCompanyId"], evaluate: companyFromRoot(["receivingLocation.locationId"]) },
 
@@ -204,7 +226,8 @@ export const AUTHORIZED_WRITE_CAPS: Readonly<Record<string, number>> = Object.fr
   fieldops_jobs: 41,
   cycle_counts: 24,
   stock_locations: 5,
-  trucks: 2,
+  // `trucks: 2` removed together with its rule above. A cap without a rule would authorize writes
+  // nothing can produce, and would be the first thing a re-added rule quietly inherited.
   receiving_orders: 2,
 });
 

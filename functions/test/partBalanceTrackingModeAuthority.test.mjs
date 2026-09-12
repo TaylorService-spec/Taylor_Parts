@@ -59,6 +59,9 @@ test("ONE mapping, shared -- receiving and transfer no longer carry private copi
   for (const file of [
     "../src/inventoryReceiving/receivingCallableWiring.ts",
     "../src/inventoryTransfer/transferCallableWiring.ts",
+    // Cycle Count carried a third byte-identical copy. A Cycle Count line's ENTIRE tracking path --
+    // a blind serial snapshot or a blind quantity snapshot -- is chosen by this mapping.
+    "../src/cycleCount/cycleCountCallableWiring.ts",
   ]) {
     const src = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.doesNotMatch(src, /function controlTypeToTrackingMode/, `${file} must import the shared mapping, not redefine it`);

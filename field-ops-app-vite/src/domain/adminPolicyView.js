@@ -134,7 +134,7 @@ export function buildFieldRow({ key, label, effective = {}, objectCred = {}, ove
  * The whole grid for one Role: objects, each with its fields.
  *
  * Fields are attached to their object rather than returned flat, because the expand/collapse
- * affordance is the only thing that makes 394 field rows readable and a flat list would have to
+ * affordance is the only thing that makes 389 field rows readable and a flat list would have to
  * rebuild that grouping anyway.
  */
 export function buildRolePolicyGrid({ objects = [], fieldsByObjectKey = {} } = {}) {

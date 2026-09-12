@@ -8,6 +8,8 @@ import {
   interpretWorkOrderReadiness,
   runtimeSyntheticInterpretationPermitted,
   KEYSTONE_INTERPRETATION_TIMEOUT_MS,
+  PROCUREMENT_EVIDENCE_READ_CAPABILITY,
+  REORDER_REQUEST_ELIGIBILITY_CAPABILITY,
 } from "../lib/ai/workOrderReadinessContext.js";
 import { OperationalAIError } from "../lib/ai/operationalProvider.js";
 
@@ -39,13 +41,27 @@ function balance(partId, available, state = "KNOWN") {
   };
 }
 
+// Governed capability decisions, as the effective-access feed would return them. The dispatcher
+// persona below holds all three because the ADMIN/DISPATCHER compatibility Roles carry
+// reorder.request.read.queue and reorder.request.create.system -- but the CONTEXT never learns that
+// from a role string, only from the resolved decision map.
+const ALL_PERMITTED = Object.freeze({
+  "inventory.balance.read": true,
+  [PROCUREMENT_EVIDENCE_READ_CAPABILITY]: true,
+  [REORDER_REQUEST_ELIGIBILITY_CAPABILITY]: true,
+});
+
+function governedDecisions(overrides = {}) {
+  return async () => ({ ...ALL_PERMITTED, ...overrides });
+}
+
 function deps(overrides = {}) {
   const calls = { balances: 0, reservations: 0, reorders: 0 };
   const value = {
     calls,
     loadCaller: async () => ({ role: "dispatcher", technicianId: null }),
     loadWorkOrder: async () => ({ ...baseWorkOrder }),
-    resolveInventoryBalanceAccess: async () => true,
+    resolveCapabilityDecisions: governedDecisions(),
     loadBalances: async () => {
       calls.balances += 1;
       return [balance("part-1", 5), balance("part-2", 0)];
@@ -104,7 +120,7 @@ test("dispatcher context joins governed balance, this-WO reservation and procure
 });
 
 test("inventory balance denial does not read balance or reservation sources and returns unavailable warehouse", async () => {
-  const d = deps({ resolveInventoryBalanceAccess: async () => false });
+  const d = deps({ resolveCapabilityDecisions: governedDecisions({ "inventory.balance.read": false }) });
   const result = await assembleWorkOrderReadinessContext(
     { principalUid: "user-1", workOrderId: "raw-wo-id" },
     d,
@@ -121,6 +137,10 @@ test("inventory balance denial does not read balance or reservation sources and 
 test("technician own-WO read does not widen procurement or reorder authority", async () => {
   const d = deps({
     loadCaller: async () => ({ role: "technician", technicianId: "tech-1" }),
+    resolveCapabilityDecisions: governedDecisions({
+      [PROCUREMENT_EVIDENCE_READ_CAPABILITY]: false,
+      [REORDER_REQUEST_ELIGIBILITY_CAPABILITY]: false,
+    }),
   });
   const result = await assembleWorkOrderReadinessContext(
     { principalUid: "user-1", workOrderId: "raw-wo-id" },
@@ -177,7 +197,7 @@ test("output never exposes internal Work Order, customer or part ids", async () 
 });
 
 test("capability resolver failure degrades warehouse instead of widening access", async () => {
-  const d = deps({ resolveInventoryBalanceAccess: async () => { throw new Error("resolver unavailable"); } });
+  const d = deps({ resolveCapabilityDecisions: async () => { throw new Error("resolver unavailable"); } });
   const result = await assembleWorkOrderReadinessContext(
     { principalUid: "user-1", workOrderId: "raw-wo-id" },
     d,
@@ -244,7 +264,7 @@ function interpretationDeps({ permitted = true, provider = spyProvider().provide
     context: {
       loadCaller: async () => ({ role: "dispatcher", technicianId: null }),
       loadWorkOrder: async () => ({ ...baseWorkOrder }),
-      resolveInventoryBalanceAccess: async () => true,
+      resolveCapabilityDecisions: governedDecisions(),
       loadBalances: async () => [balance("part-1", 0)],
       loadReservationRows: async () => [],
       loadReorderRows: async () => [],
@@ -504,7 +524,7 @@ test("interpretation performs no write of any kind", async () => {
   const deps = interpretationDeps();
   assert.deepEqual(Object.keys(deps.context).sort(), [
     "loadBalances", "loadCaller", "loadReorderRows", "loadReservationRows",
-    "loadWorkOrder", "resolveInventoryBalanceAccess",
+    "loadWorkOrder", "resolveCapabilityDecisions",
   ]);
   for (const name of Object.keys(deps.context)) {
     assert.ok(/^(load|resolve)/.test(name), `${name} does not read like a read`);

@@ -119,7 +119,6 @@
     "opportunity.write",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate",
     "salesOrder.read",
     "salesOrder.write",
     "warehouse.transferOrder.read",
@@ -149,7 +148,6 @@
     "opportunity.write",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate",
     "salesOrder.read",
     "salesOrder.write",
     "warehouse.transferOrder.read",
@@ -479,7 +477,6 @@
     "inventory.transaction.read",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate",
     "salesOrder.read",
     "warehouse.transferOrder.read"
    ],
@@ -493,7 +490,6 @@
     "inventory.transaction.read",
     "reorder.purchaseOrder.create",
     "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate",
     "salesOrder.read",
     "warehouse.transferOrder.read"
    ],
@@ -981,8 +977,7 @@
    "accessCodeAgrees": true,
    "capabilityIds": [
     "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate"
+    "reorder.purchaseOrder.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise",
@@ -1337,8 +1332,7 @@
    "accessCodeAgrees": true,
    "capabilityIds": [
     "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate"
+    "reorder.purchaseOrder.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise",
@@ -4306,8 +4300,7 @@
    "accessCodeAgrees": true,
    "capabilityIds": [
     "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate"
+    "reorder.purchaseOrder.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise procurement",
@@ -5998,8 +5991,7 @@
    "accessCodeAgrees": true,
    "capabilityIds": [
     "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.read",
-    "reorder.request.postPurchasingUpdate"
+    "reorder.purchaseOrder.read"
    ],
    "governanceType": "CAPABILITY_GOVERNED",
    "scope": "Enterprise",

@@ -495,20 +495,6 @@
       ]
     },
     {
-      "collectionGroup": "stock_locations",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "warehouseId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "binCode",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "mobile_locations",
       "queryScope": "COLLECTION",
       "fields": [

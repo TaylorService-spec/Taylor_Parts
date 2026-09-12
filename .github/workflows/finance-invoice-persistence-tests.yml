@@ -56,6 +56,7 @@ on:
       - "functions/test/financeReadProjection.test.mjs"
       - "functions/test/financialReportingRead.test.mjs"
       - "functions/test/refundCommands.test.mjs"
+      - "functions/test/financialCompanyDimension.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
@@ -106,6 +107,7 @@ on:
       - "functions/test/financeReadProjection.test.mjs"
       - "functions/test/financialReportingRead.test.mjs"
       - "functions/test/refundCommands.test.mjs"
+      - "functions/test/financialCompanyDimension.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
       - "functions/test/financeReadCallables.test.mjs"
       - "functions/test/invoiceCallables.test.mjs"
@@ -153,7 +155,7 @@ jobs:
         working-directory: functions
 
       - name: Invoice command core + numbering (node:test)
-        run: node --test test/financialAttribution.test.mjs test/financialScopeBinding.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/costAuthorityAbsence.test.mjs test/planVsActual.test.mjs test/forecasting.test.mjs test/financialApprovals.test.mjs test/financialPeriods.test.mjs test/financialAllocation.test.mjs test/financialReconciliation.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/financialReportingRead.test.mjs test/refundCommands.test.mjs
+        run: node --test test/financialAttribution.test.mjs test/financialScopeBinding.test.mjs test/billingQueue.test.mjs test/costMargin.test.mjs test/costAuthorityAbsence.test.mjs test/planVsActual.test.mjs test/forecasting.test.mjs test/financialApprovals.test.mjs test/financialPeriods.test.mjs test/financialAllocation.test.mjs test/financialReconciliation.test.mjs test/financialVisibility.test.mjs test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/financialReportingRead.test.mjs test/refundCommands.test.mjs test/financialCompanyDimension.test.mjs
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)

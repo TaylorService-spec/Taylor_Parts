@@ -444,7 +444,15 @@ export async function relocateStock(request: unknown, deps: RelocationDeps): Pro
     for (const ref of assetRefs) {
       writes.push({
         op: "update", ref,
-        data: { currentLocationId: req.destination.locationId, updatedAtMillis: now.getTime(), updatedByUid: deps.actor.id },
+        // The TYPED PAIR moves together. Writing the id alone is what let a unit relocated into a BIN
+        // be read back as a WAREHOUSE whose id is a bin id; `req.destination.type` is already
+        // validated against RELOCATION_ENDPOINT_TYPES, so the type is known here and no longer discarded.
+        data: {
+          currentLocationId: req.destination.locationId,
+          currentLocationType: req.destination.type,
+          updatedAtMillis: now.getTime(),
+          updatedByUid: deps.actor.id,
+        },
       });
     }
     for (const e of placementEntries) {

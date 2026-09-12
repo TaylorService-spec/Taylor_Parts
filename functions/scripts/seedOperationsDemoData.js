@@ -87,21 +87,19 @@ async function seed(deps) {
   batch.set(whMain, { id: whMain.id, name: "Main Warehouse", location: "Dallas, TX" });
   batch.set(whSatellite, { id: whSatellite.id, name: "Satellite Depot", location: "Fort Worth, TX" });
 
-  // Stock locations (bin-level)
-  const stockLocs = [
-    { id: "sl-1", warehouseId: whMain.id, partId: PART_A, binCode: "A1", quantity: 12 },
-    { id: "sl-2", warehouseId: whSatellite.id, partId: PART_A, binCode: "B3", quantity: 3 },
-    { id: "sl-3", warehouseId: whMain.id, partId: PART_B, binCode: "A2", quantity: 2 },
-    { id: "sl-4", warehouseId: whMain.id, partId: PART_C, binCode: "A3", quantity: 0 },
-  ];
-  for (const loc of stockLocs) {
-    batch.set(db.collection("stock_locations").doc(loc.id), { ...loc, updatedAt: now });
-  }
+  // NO stock_locations. The per-(warehouse, part, bin) balance row this seed used to write was the
+  // last remaining producer of a retired duplicate authority (Decision #160 / ADR-014; see
+  // functions/src/constants/collections.ts, which removed the constant, and
+  // functions/src/types/warehouse.ts, which records that the seeded rows diverged from the ledger in
+  // BOTH directions -- three genuinely received units reading as 0, and 40 imaginary ones reading as
+  // present). Nothing in this repository read it; seeding it only manufactured a second answer to a
+  // question the ledger already answers. Physical on-hand is inventory_transactions (NONE) and
+  // serialized_assets (SERIAL), and a warehouse aggregate is direct + Sum(child bins) over those.
 
-  // Inventory ledger transactions (CONSUMED entries drive both the
-  // Inventory Health forecast and the Warehouse reconciliation
-  // comparison -- deliberately picked so PART_B shows up CRITICAL and
-  // PART_A shows a reconciliation variance).
+  // Inventory ledger transactions -- now the ONLY stock figures this seed writes. CONSUMED entries
+  // drive the Inventory Health forecast; PART_B is picked so it shows up CRITICAL. (This block once
+  // also fed a "warehouse reconciliation" comparison against stock_locations. That comparison was
+  // between the ledger and a row nothing maintained, so it is gone with the rows.)
   const transactions = [
     { id: "tx-1", workOrderId: "seed-wo-1", partId: PART_A, type: "CONSUMED", quantity: 6 },
     { id: "tx-2", workOrderId: "seed-wo-2", partId: PART_B, type: "CONSUMED", quantity: 3 },

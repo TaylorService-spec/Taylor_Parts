@@ -58,4 +58,80 @@ describe("AccountArSection", () => {
     expect(screen.getByText(/12d overdue/)).toBeTruthy();
     expect(screen.getByText(/1 open, 1 overdue/)).toBeTruthy();
   });
+
+  // ── The operating-company disclosure (lane C26) ──
+  //
+  // An account is not company-partitioned, so this table can genuinely list Taylor and Ventana
+  // receivables side by side. The column exists ONLY when the governed read itself says so.
+
+  it("adds no company column on a read that predates the company dimension", () => {
+    useAccountAr.mockReturnValue({
+      loading: false,
+      errorStatus: null,
+      result: {
+        status: "ready",
+        invoices: [{ invoiceId: "inv-1", invoiceNumber: "INV-1001", currency: "USD", outstandingMinor: 15000, arPosition: "CURRENT" }],
+        summary: { count: 1, openCount: 1, overdueCount: 0, outstandingByCurrency: { USD: 15000 } },
+      },
+    });
+    render(<AccountArSection accountId="acc-1" />);
+    // Nothing about companies may appear. A UI that asserts a breakdown it did not receive is
+    // worse than one that shows none.
+    expect(screen.queryByText("Company")).toBeNull();
+    expect(screen.queryByText(/operating company/i)).toBeNull();
+  });
+
+  it("adds no company column when the account's receivables are all one company", () => {
+    useAccountAr.mockReturnValue({
+      loading: false,
+      errorStatus: null,
+      result: {
+        status: "ready",
+        invoices: [{ invoiceId: "inv-1", invoiceNumber: "INV-1001", companyId: "taylor", currency: "USD", outstandingMinor: 15000, arPosition: "CURRENT" }],
+        summary: {
+          count: 1, openCount: 1, overdueCount: 0, outstandingByCurrency: { USD: 15000 },
+          byCompany: { taylor: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 15000 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 15000 } } },
+          companyIds: ["taylor"],
+          spansMultipleCompanies: false,
+        },
+      },
+    });
+    render(<AccountArSection accountId="acc-1" />);
+    expect(screen.queryByText("Company")).toBeNull();
+  });
+
+  it("names each invoice's company when the account spans two, and calls unattributed money unattributed", () => {
+    useAccountAr.mockReturnValue({
+      loading: false,
+      errorStatus: null,
+      result: {
+        status: "ready",
+        invoices: [
+          { invoiceId: "inv-1", invoiceNumber: "INV-1001", companyId: "taylor", currency: "USD", outstandingMinor: 10000, arPosition: "CURRENT" },
+          { invoiceId: "inv-2", invoiceNumber: "INV-1002", companyId: "ventana", currency: "USD", outstandingMinor: 5000, arPosition: "CURRENT" },
+          { invoiceId: "inv-3", invoiceNumber: "INV-1003", companyId: null, currency: "USD", outstandingMinor: 2500, arPosition: "CURRENT" },
+        ],
+        summary: {
+          count: 3, openCount: 3, overdueCount: 0, outstandingByCurrency: { USD: 17500 },
+          byCompany: {
+            taylor: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 10000 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 10000 } },
+            ventana: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 5000 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 5000 } },
+            UNATTRIBUTED: { count: 1, openCount: 1, overdueCount: 0, billedByCurrency: { USD: 2500 }, collectedByCurrency: {}, outstandingByCurrency: { USD: 2500 } },
+          },
+          companyIds: ["UNATTRIBUTED", "taylor", "ventana"],
+          spansMultipleCompanies: true,
+        },
+      },
+    });
+    const { container } = render(<AccountArSection accountId="acc-1" />);
+    expect(screen.getByText("Company")).toBeTruthy();
+    expect(screen.getByText("Taylor Freezer of Arizona")).toBeTruthy();
+    expect(screen.getByText("Ventana")).toBeTruthy();
+    // The null-company invoice is stated as unattributed — never guessed onto either company.
+    expect(screen.getByText("Not attributed to a company")).toBeTruthy();
+    expect(container.textContent).toMatch(/span more than one operating company/i);
+    expect(container.textContent).toMatch(/never inferred/i);
+    // The section still totals nothing: no consolidated figure was smuggled in with the column.
+    expect(container.textContent).not.toMatch(/\$175\.00/);
+  });
 });

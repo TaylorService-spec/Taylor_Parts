@@ -63,6 +63,26 @@ test("an AMBIGUOUS identifier resolves to nothing and lists what it hit", () => 
   assert.equal(r.candidates.length, 2);
 });
 
+test("a case-only collision between two canonical Part ids is AMBIGUOUS, never a silent pick", () => {
+  // THE LEAK THIS GUARDS. `Part.partId` is governed by the CASE-SENSITIVE ID_PATTERN
+  // (/^[A-Za-z0-9_-]{1,64}$/, functions/src/partMaster/validation.ts), so "prt-1001" and
+  // "PRT-1001" are two different Parts. The scanner's governed read deliberately fetches the
+  // scanned code AND its upper-cased form (functions/src/partMaster/scannerPartLookup.ts), so
+  // a single scan can legitimately hand both of them to this matcher.
+  //
+  // `r.part.partId` is what MoveStockScan puts into a relocateStock request, and
+  // stockRelocationCommand writes that value into RELOCATION_OUT / RELOCATION_IN ledger rows.
+  // If the matcher resolves one of the two rather than refusing, a canonical identifier the
+  // operator never chose reaches an authoritative record, and every downstream validator
+  // passes it because it IS well-formed. Refusal is the only safe answer.
+  const lower = part({ partId: "prt-1001", internalPartNumber: "prt-1001" });
+  const upper = part({ partId: "PRT-1001", internalPartNumber: "PRT-1001", name: "Other" });
+  const r = buildPartLookup({ catalogResult: ok(lower, upper), token: "prt-1001" });
+  assert.equal(r.state, LOOKUP_STATE.AMBIGUOUS);
+  assert.equal(r.part, null, "a case-only collision must not resolve to a picked Part");
+  assert.deepEqual(r.candidates.map((c) => c.entityId).sort(), ["PRT-1001", "prt-1001"]);
+});
+
 test("an INVALID token is distinguished from a missing one", () => {
   // Empty input has not been asked yet; garbage has been asked and cannot be read.
   assert.equal(buildPartLookup({ catalogResult: ok(part()), token: "   " }).state, LOOKUP_STATE.IDLE);

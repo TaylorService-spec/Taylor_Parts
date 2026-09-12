@@ -27,7 +27,7 @@ import {
 //                 registry, which is the same list the policy seed writes. It used to be the matrix
 //                 alone, and thirteen entities carrying 166 fields (Supplier, Warehouse, Truck,
 //                 Reorder Request, Sales Agreement and eight more) appeared on no Administration
-//                 screen at all. 37 objects now, not 24.
+//                 screen at all. 36 objects now, not 24.
 //   OBJECT CRED   the capability model, exactly as before for the matrix rows. An object no
 //                 capability governs shows a dash on every verb -- it exists and is real, and
 //                 nothing can be granted on it yet.
@@ -35,7 +35,7 @@ import {
 //                 lives in the EOS policy store, and until that store is stood up there are no
 //                 overrides for any Role. Every field row is therefore drawn as inherited, which is
 //                 not a placeholder -- it is what the system currently does.
-//   FIELD LIST    the metadata registry: 29 entities, 394 declared fields, the same definitions the
+//   FIELD LIST    the metadata registry: 28 entities, 389 declared fields, the same definitions the
 //                 record pages render from. Not a second field model.
 //
 // WHEN THE POLICY STORE ARRIVES, the only change here is that `override` stops being null. The

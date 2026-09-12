@@ -35,7 +35,14 @@ import {
   PAYMENTS_COLLECTION,
   PAYMENT_APPLICATIONS_COLLECTION,
 } from "../constants/collections";
-import { projectInvoiceAr, summarizeAccountAr, summarizeArAging, type InvoiceArRead, type ArAgingBucket } from "./financeReadProjection";
+import {
+  projectInvoiceAr,
+  summarizeAccountAr,
+  summarizeArAging,
+  summarizeArAgingByCompany,
+  type InvoiceArRead,
+  type ArAgingBucket,
+} from "./financeReadProjection";
 import { invoiceVisibilityFacts, type FinancialVisibilityAuthority } from "./financialVisibility";
 import { loadFinancialVisibilityAuthority } from "./financeReadCallables";
 
@@ -56,9 +63,15 @@ export interface FinancialFactsFilters {
   factTypes?: ReportingFactType[] | null;
 }
 
-/** One invoice, projected for reporting: the canonical AR read PLUS its frozen attribution dimensions. */
+/**
+ * One invoice, projected for reporting: the canonical AR read PLUS its frozen attribution dimensions.
+ *
+ * `companyId` is NOT redeclared here any more. It used to be, back when the canonical AR projection
+ * dropped the governed operating company entirely and this interface had to add it back — which
+ * meant the account-scoped read served company-blind figures while this one did not. The company is
+ * now part of `InvoiceArRead` itself, so both reads carry the same governed fact from the same place.
+ */
 export interface InvoiceReportRead extends InvoiceArRead {
-  companyId: string | null;
   creditedSalespersonId: string | null;
   businessUnitIds: string[];
   issuedAtMillis: number | null;
@@ -96,6 +109,14 @@ export interface FinancialFactsResult {
   summary: ReturnType<typeof summarizeAccountAr>;
   /** Server-derived A/R aging, per currency. The client never buckets outstanding balances. */
   agingByCurrency: Record<string, ArAgingBucket>;
+  /**
+   * The SAME aging, partitioned by governed operating company (UNATTRIBUTED_COMPANY for facts with
+   * none). `agingByCurrency` above is a consolidated row: for a principal who reaches both governed
+   * companies and has selected no company filter, it blends them, and nothing in the payload said
+   * so. This is the company dimension that blend was missing — the same buckets, from the same rule,
+   * per company.
+   */
+  agingByCompany: Record<string, Record<string, ArAgingBucket>>;
   /** Per-dimension rollups, derived HERE (server-side) so React never totals authoritative money. */
   byCompany: DimensionRollup[];
   byBusinessUnit: DimensionRollup[];
@@ -222,6 +243,7 @@ export async function readFinancialFacts(
     applications: [],
     summary: summarizeAccountAr([]),
     agingByCurrency: {},
+    agingByCompany: {},
     byCompany: [],
     byBusinessUnit: [],
     byCreditedSalesperson: [],
@@ -339,6 +361,7 @@ export async function readFinancialFacts(
       applications: wants("PAYMENT_APPLICATION") ? applications : [],
       summary: summarizeAccountAr(invoices),
       agingByCurrency: summarizeArAging(invoices, now),
+      agingByCompany: summarizeArAgingByCompany(invoices, now),
       byCompany: rollup(invoices, (r) => (nonEmpty(r.companyId) ? [r.companyId] : [])),
       byBusinessUnit: rollup(invoices, (r) => r.businessUnitIds),
       byCreditedSalesperson: rollup(invoices, (r) => (nonEmpty(r.creditedSalespersonId) ? [r.creditedSalespersonId] : [])),

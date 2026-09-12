@@ -75,6 +75,60 @@ export class InvalidReportDefinitionError extends Error {
 }
 export class UnknownReportObjectError extends Error {}
 
+// Truncation honesty (docs/assessments/eos-dashboard-reporting-authority-
+// census.md X-9, a BINDING rule, and the FIN-004 precedent it cites):
+//
+//   "A bounded read may return a page and say so; a TOTAL may not --
+//    bounding an aggregate produces a number smaller than the truth
+//    while still labelled 'Total', which is worse than the slow
+//    unbounded read it replaced."
+//
+// This service fetches at most `maxScanDocs` raw documents and then
+// filters/groups/aggregates them IN MEMORY. That is a defensible way to
+// page a LIST. It is not a defensible way to produce a SUM/AVG/MIN/MAX/
+// COUNT: once the raw scan was cut, every aggregate computed from it is
+// an arbitrary partial figure, and before this error existed it was
+// returned as the aggregate's value with only a `truncated: true`
+// boolean beside it. `kind` did not even reliably say so -- an
+// aggregate run whose truncated slice matched no rows resolved to
+// `"empty"`, and one with a dropped column to `"partially-authorized"`,
+// both of which outrank `"truncated-widened"` in the kind ladder below.
+// So the wrong number could arrive labelled "no results" or "partially
+// authorized", never "this total is incomplete".
+//
+// The governed answer is FIN-004's: refuse. "A page that would truncate
+// renders 'unavailable', never a partial 'ready'."
+export class IncompleteAggregateScanError extends Error {}
+
+export type ScanCompletenessVerdict = "complete" | "bounded-page" | "refuse-incomplete-total";
+
+// PURE. The whole X-9 judgement, isolated so it is testable without
+// Firestore (this file's stated design: every limit DECISION is a small
+// pure helper).
+//
+// Only SCAN truncation can corrupt an aggregate's value, and this is
+// why the other two caps are deliberately NOT refusals:
+//
+//   * rowCapTruncated -- caps the RETURNED rows. On an ungrouped run it
+//     pages a list. On a grouped run it caps how many GROUP rows come
+//     back; each returned group's total was still computed over that
+//     group's complete matched row set (groupDocuments() runs over all
+//     filtered docs, and only the resulting entry list is sliced).
+//   * groupCardinalityTruncated -- same shape: whole groups are
+//     omitted, but no returned total is understated.
+//
+// In both cases every number that IS returned is true, and `truncated`
+// honestly reports that the SET is a page. Under scan truncation
+// nothing of the sort holds: the population itself was cut before a
+// single filter ran.
+export function judgeScanCompleteness(input: {
+  scanTruncated: boolean;
+  hasAggregates: boolean;
+}): ScanCompletenessVerdict {
+  if (!input.scanTruncated) return "complete";
+  return input.hasAggregates ? "refuse-incomplete-total" : "bounded-page";
+}
+
 // Spec sec10's proposed conservative starting bounds (ADR-007 sec4 open
 // decision 3 -- the EXACT values remain an open Owner decision; these
 // are enforced as a maximum regardless, since a stricter cap can only
@@ -445,6 +499,32 @@ export async function runReportDefinition(
   // module-level doc comment for why) ---
   const snap = await db.collection(object.collection).limit(maxScanDocs + 1).get();
   const scanTruncated = snap.size > maxScanDocs;
+
+  // --- Truncation honesty (census X-9) -- decided BEFORE any join read
+  // and before a single aggregate is computed, so a refused run never
+  // produces a partial figure that some later branch could return. See
+  // judgeScanCompleteness()/IncompleteAggregateScanError above. ---
+  if (judgeScanCompleteness({ scanTruncated, hasAggregates: activeAggregates.length > 0 }) === "refuse-incomplete-total") {
+    // The run really happened (documents were read), so unlike a
+    // structurally invalid definition this IS an auditable outcome --
+    // recorded the same way the object-gate denial above is, with a
+    // fixed, row-data-free summary.
+    await recordStandaloneAuditEvent({
+      actorUid: params.runnerUid,
+      action: "runReportDefinition",
+      targetType: "reportDefinition",
+      targetId: definitionId,
+      outcome: "denied",
+      summary: `Report run refused: aggregates over "${objectId}" would be computed from a truncated scan and would understate the true totals.`,
+      objectId,
+      truncated: true,
+      accessVersionAfter: runner.accessVersion,
+    });
+    throw new IncompleteAggregateScanError(
+      `Aggregates for "${objectId}" cannot be computed: the scan exceeded ${maxScanDocs} documents, so any total would be lower than the truth. Narrow the report with filters, or run it without aggregates.`,
+    );
+  }
+
   const rawDocs = snap.docs.slice(0, maxScanDocs).map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>);
 
   // --- One-hop relationship join, BEFORE filtering/grouping/aggregation/

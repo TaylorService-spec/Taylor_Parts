@@ -175,4 +175,51 @@ check("#1094 — every ACCOUNT_AR_STATE value is handled by the strip", () => {
     assert.equal(metrics.find((m) => m.id === "outstandingAr").state, want, `kind ${kind}`);
   }
 });
+// ── The Outstanding AR tile when the account's money spans two operating companies (lane C26) ──
+//
+// The tile is ONE figure. An account is not company-partitioned, so that figure can span Taylor
+// and Ventana — and read as plain "Outstanding AR" it is indistinguishable from a single company's
+// exposure. The label says so; the tile deliberately does not split (the split is in the AR
+// section it links to). On a read with no company dimension the label is untouched, because a
+// count of companies that was never received must not be asserted.
+check("a company-blind read leaves the tile label exactly as it was", () => {
+  const metrics = buildAccountHealthStrip({
+    workOrderCount: { loading: false, value: 0 },
+    arView: readyAr(),
+  });
+  assert.equal(byId(metrics, "outstandingAr").label, "Outstanding AR");
+});
+
+check("a single-company read leaves the tile label exactly as it was", () => {
+  const metrics = buildAccountHealthStrip({
+    workOrderCount: { loading: false, value: 0 },
+    arView: readyAr({ company: { supplied: true, spansMultipleCompanies: false, spanLabel: null } }),
+  });
+  assert.equal(byId(metrics, "outstandingAr").label, "Outstanding AR");
+});
+
+check("a blended read says so on the tile, and still never sums across currencies", () => {
+  const metrics = buildAccountHealthStrip({
+    workOrderCount: { loading: false, value: 0 },
+    arView: readyAr({
+      outstandingLines: [{ currency: "USD", text: "$1,200.00" }, { currency: "CAD", text: "CA$40.00" }],
+      company: { supplied: true, spansMultipleCompanies: true, spanLabel: "2 companies" },
+    }),
+  });
+  const tile = byId(metrics, "outstandingAr");
+  assert.equal(tile.label, "Outstanding AR · 2 companies");
+  // The VALUE is untouched: the disclosure is a label, not a new derivation.
+  assert.equal(tile.value, "$1,200.00 · CA$40.00");
+});
+
+check("unattributed money is never counted as a company on the tile", () => {
+  const metrics = buildAccountHealthStrip({
+    workOrderCount: { loading: false, value: 0 },
+    arView: readyAr({
+      company: { supplied: true, spansMultipleCompanies: true, spanLabel: "1 company + unattributed" },
+    }),
+  });
+  assert.equal(byId(metrics, "outstandingAr").label, "Outstanding AR · 1 company + unattributed");
+});
+
 console.log(`\n${passed} passed, 0 failed`);

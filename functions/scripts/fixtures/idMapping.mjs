@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 
 // Operational identities that are safe to reuse verbatim in sandbox (no customer/personal data): part
 // numbers, warehouse ids, equipment model ids, truck/location ids. Preserving them keeps every reference
-// (stock_locations.partId/warehouseId, compatibility.partId/equipmentModelId, alias.partId) intact.
+// (compatibility.partId/equipmentModelId, alias.partId) intact.
 export const KEEP_ID_COLLECTIONS = new Set([
   "parts", "manufacturers", "warehouses", "equipment_models", "trucks", "mobile_locations",
 ]);

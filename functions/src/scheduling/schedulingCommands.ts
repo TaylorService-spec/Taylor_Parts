@@ -30,7 +30,7 @@ import { stageAuditEvent } from "../access/auditEventWriter";
 import type { AuditAction } from "../types/access";
 import type { WorkOrder } from "../types/workOrder";
 import { checkPlacement, PAST_START_TOLERANCE_MS } from "./placementPolicy";
-import { db, loadTechnician } from "./schedulingRepository";
+import { db, loadBlockedTime, loadTechnician } from "./schedulingRepository";
 import {
   TECHNICIAN_BLOCKED_TIME_COLLECTION,
   TECHNICIAN_WORKING_AVAILABILITY_COLLECTION,
@@ -98,6 +98,34 @@ function toMillisOrNull(value: unknown): number | null {
 function describeWindow(startMillis: number | null, endMillis: number | null): string {
   if (startMillis === null || endMillis === null) return "an unrecorded window";
   return `${new Date(startMillis).toISOString()} to ${new Date(endMillis).toISOString()}`;
+}
+
+/**
+ * Is `existing` a replay of the absence `input` asserts -- the SAME assertion, not merely an
+ * overlapping one?
+ *
+ * Every field a dispatcher can set must match: technician, kind, both endpoints, and the note. That
+ * is what makes the identity objectively provable from the records rather than inferred from their
+ * shapes. A closure covering a lunch differs in kind AND in both endpoints; two PTO days inside one
+ * PTO week differ in both endpoints; two MEETINGs sharing an hour differ in at least one. None of
+ * those is a replay, and all of them are recorded.
+ *
+ * `note` is compared after the same trim `validateBlockedTimeInput` applies on the way in, and an
+ * absent note and an empty note are the same absence of a note -- otherwise a resubmit of a form
+ * whose optional note field was cleared would look like a new fact.
+ */
+function isSameRecordedAbsence(
+  existing: { technicianId?: string; kind?: string; startMillis?: number; endMillis?: number; note?: string },
+  input: { technicianId: string; kind: string; startMillis: number; endMillis: number; note?: string },
+): boolean {
+  const note = (value: string | undefined) => (typeof value === "string" ? value.trim() : "");
+  return (
+    existing.technicianId === input.technicianId &&
+    existing.kind === input.kind &&
+    existing.startMillis === input.startMillis &&
+    existing.endMillis === input.endMillis &&
+    note(existing.note) === note(input.note)
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -403,21 +431,102 @@ export async function setTechnicianWorkingAvailability(actorUid: string, raw: un
   return { technicianId: input.technicianId };
 }
 
-/** Record one dated absence. Blocked time REFUSES an overlapping placement, so this is enforcement, not decoration. */
+/**
+ * Record one dated absence.
+ *
+ * Blocked time REFUSES an overlapping PLACEMENT (checkPlacement). It does NOT refuse an overlapping
+ * ABSENCE, and it does not refuse a placement that was already sitting in the window. See inline.
+ */
 export async function createTechnicianBlockedTime(actorUid: string, raw: unknown): Promise<{ blockId: string }> {
   const role = await requireDispatcher(actorUid);
   const input = unwrap(validateBlockedTimeInput(raw), "blockedTime");
   const ref = db().collection(TECHNICIAN_BLOCKED_TIME_COLLECTION).doc();
+  const lockRef = db().collection(TECH_LOCKS_COLLECTION).doc(input.technicianId);
+  let replayedBlockId: string | null = null;
 
   await db().runTransaction(async (tx) => {
+    // Reset per ATTEMPT. runTransaction retries this callback on contention, and a replay detected
+    // in an attempt that then aborted must not leak into the next one's answer.
+    replayedBlockId = null;
+
+    // Serialize against every other blocked-time write for this technician, on the SAME sentinel the
+    // placement commands take. This read is not optional and it is not defensive habit: the replay
+    // check below is a query-then-insert, and a transactional query locks only the documents it
+    // RETURNS. A record that does not exist yet is not in that set, so two concurrent creates would
+    // each query, each find nothing, and each commit -- the classic check-then-act race, with a guard
+    // in front of it that looks like protection and is not. Writing the sentinel below puts it in
+    // this transaction's WRITE set, which is what actually forces contention, so two simultaneous
+    // IDENTICAL submissions serialize and the loser re-reads and finds the winner's record.
+    //
+    // THE LOCK IS SERIALIZATION, NOT A PROHIBITION. It protects concurrent scheduling state; it is
+    // not a licence to refuse a legitimately overlapping absence, and the Owner ruling of 2026-09-12
+    // is explicit that it must not be used as one.
+    await tx.get(lockRef);
+
     const technician = await loadTechnician(tx, input.technicianId);
     if (!technician) {
       throw new SchedulingError("TECHNICIAN_NOT_FOUND", `No technician record exists at ${input.technicianId}.`);
     }
-    // Blocked time is NOT checked against existing scheduled work. Recording that someone is on PTO
-    // must never be refused because a job was already placed there -- the absence is the fact, and
-    // the placement is the problem. The board surfaces the collision so a dispatcher can move the
-    // job, which is a decision a person makes, not one this command should make for them.
+
+    // ════════════ OVERLAPPING ABSENCES ARE LEGITIMATE (Owner ruling, 2026-09-12) ════════════
+    //
+    // ND-25 refused any new absence overlapping an existing one. That blanket refusal is NOT the
+    // canonical business rule and has been withdrawn. A technician may genuinely be covered by more
+    // than one real unavailability fact at once:
+    //
+    //   a multi-day COMPANY_CLOSURE straddling the daily recurring LUNCH
+    //   PTO taken inside a closure
+    //   a TRAINING block inside a broader closure
+    //
+    // Each is a separate, true fact about WHY the technician is away, recorded by a different person
+    // for a different reason and deleted on a different day. Refusing the second one did not
+    // de-duplicate anything -- it destroyed a fact the business holds, and made recording a company
+    // closure depend on whether anyone had yet entered a lunch break.
+    //
+    // THE ARITHMETIC PROBLEM ND-25 WAS REALLY SOLVING IS FIXED AT THE READER, WHERE IT LIVED.
+    // UNAVAILABLE TIME = UNION OF BLOCKED INTERVALS. Both duration readers now compute that union
+    // through the same merge:
+    //
+    //   availabilityModel.blockedMinutesInWindow      mergeBlockedIntervals, masked by working hours
+    //   dispatchBoardGeometry.blockedMinutesInBand    mergeBlockedIntervals, clamped to the band
+    //
+    // so overlapping minutes are counted once by both, and the board and the server agree for every
+    // set the store can contain -- including the sets ND-25 used to make unreachable.
+    //
+    // WHAT IS STILL REFUSED HERE: nothing about overlap. See the replay check below, which is about
+    // provable IDENTITY and nothing else.
+    //
+    // Blocked time is still NOT checked against existing scheduled WORK, and that asymmetry is
+    // deliberate. Recording that someone is on PTO must never be refused because a job was already
+    // placed there -- the absence is the fact, and the placement is the problem. The board surfaces
+    // that collision so a dispatcher can move the job, which is a decision a person makes.
+    //
+    // ════════════ EXACT REPLAY, AND ONLY EXACT REPLAY ════════════
+    //
+    // There is no idempotency key on this callable, so a double-submitted form writes the record
+    // twice. Where the resubmission is byte-identical -- same technician, same kind, same start, same
+    // end, same note -- the second write records no fact the first did not, cannot be told apart from
+    // it by any reader, and would leave two documents that must both be deleted to undo one action.
+    // That identity is objectively provable from the record itself, so this command is IDEMPOTENT
+    // over it: it returns the existing blockId and writes nothing.
+    //
+    // This is deliberately NOT an overlap rule wearing a different hat. Any difference in kind, in
+    // either endpoint, or in the note makes a DIFFERENT fact, and a different fact is always
+    // recorded -- a LUNCH inside a CLOSURE, a PTO day inside a PTO week, two MEETINGs sharing an
+    // hour. Only a literal replay of the same assertion collapses.
+    //
+    // Reuses loadBlockedTime: the SAME transactional query and the SAME composite index
+    // (technicianId ASC, endMillis ASC) checkPlacement uses. No second query and no second index.
+    const existingBlocks = await loadBlockedTime(tx, input.technicianId, input.startMillis);
+    const replayed = existingBlocks.find((block) => isSameRecordedAbsence(block, input));
+    if (replayed) {
+      // No write, so no second document and no second audit event: the first create is the one that
+      // happened, and the history says so once.
+      replayedBlockId = replayed.blockId;
+      return;
+    }
+
+    tx.set(lockRef, { technicianId: input.technicianId, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(ref, {
       blockId: ref.id,
       technicianId: input.technicianId,
@@ -439,7 +548,7 @@ export async function createTechnicianBlockedTime(actorUid: string, raw: unknown
         `for technician ${input.technicianId} (block ${ref.id}).`,
     });
   }, SCHEDULING_TRANSACTION_OPTIONS);
-  return { blockId: ref.id };
+  return { blockId: replayedBlockId ?? ref.id };
 }
 
 /** Remove one blocked-time record. The deletion itself is audited, so a vanished absence is explicable. */
@@ -454,6 +563,19 @@ export async function deleteTechnicianBlockedTime(actorUid: string, raw: unknown
     if (!snap.exists) throw new SchedulingError("INVALID_INPUT", `No blocked-time record at ${blockId}.`);
     const block = snap.data() as { technicianId?: string; kind?: string; startMillis?: number; endMillis?: number };
 
+    // Removing an absence RELEASES a window, so it contends for the same sentinel the create above
+    // claims one on -- the same reason ND-18's Unschedule takes it (transitionWorkOrder.ts). Without
+    // this, a dispatcher correcting a mistake by deleting one record and adding a wider one could
+    // have the create read a snapshot in which the deleted block still exists and be refused for a
+    // window that is in fact free. Read before write, as Firestore requires; the id comes from the
+    // block document, which is why this read cannot be hoisted above it.
+    const lockRef = block.technicianId
+      ? db().collection(TECH_LOCKS_COLLECTION).doc(block.technicianId)
+      : null;
+    if (lockRef) {
+      await tx.get(lockRef);
+      tx.set(lockRef, { technicianId: block.technicianId, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
     tx.delete(ref);
     stageAuditEvent(tx, {
       actorUid,

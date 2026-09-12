@@ -173,8 +173,14 @@ export function resolveIdentityMode(identity) {
 
 const isPlainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** Recursively detect a function anywhere in a definition (§8). */
-function findExecutable(value, path = "") {
+/**
+ * Recursively detect a function anywhere in a definition (§8).
+ *
+ * EXPORTED so the sibling contracts in this layer share ONE §8 check. The object administration
+ * profile (metadata/administration/) needs exactly this and writing it again would give the
+ * boundary two implementations, which is how one of them ends up weaker than the other.
+ */
+export function findExecutable(value, path = "") {
   if (typeof value === "function") return path || "(root)";
   if (Array.isArray(value)) {
     for (let i = 0; i < value.length; i += 1) {

@@ -458,7 +458,16 @@ export async function receiveTransferOrder(request: unknown, deps: TransferComma
         writes.push({
           op: "update",
           ref: assetRef,
-          data: { currentLocationId: stored.value.destination.locationId, inventoryState: "AVAILABLE", updatedAtMillis: now.getTime(), updatedByUid: actor.id },
+          // The TYPED PAIR moves together: the destination's type is governed
+          // (TRANSFER_ENDPOINT_TYPES = WAREHOUSE|BIN|MOBILE) and is recorded beside the id, so a unit
+          // transferred onto a truck is not read back as a warehouse.
+          data: {
+            currentLocationId: stored.value.destination.locationId,
+            currentLocationType: stored.value.destination.type,
+            inventoryState: "AVAILABLE",
+            updatedAtMillis: now.getTime(),
+            updatedByUid: actor.id,
+          },
         });
       }
     }

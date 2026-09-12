@@ -23,7 +23,7 @@
 //   * whether it may be written (the trusted createPart command's authorization);
 //   * where it is stored (the data-plane adapter).
 
-import { registerEntityContract, type NormalizedRow } from "./entityContract.js";
+import { compactIdentityKey, registerEntityContract, type NormalizedRow } from "./entityContract.js";
 import {
   CONTROL_TYPES,
   PART_STATUSES,
@@ -35,6 +35,10 @@ import {
   type OemStatus,
 } from "../../partMaster/types.js";
 import { isUnitCode } from "../../partMaster/units.js";
+// The ONE definition of what a canonical Part.partId is. Pure (no firebase-admin, no
+// Firestore, no collection names), so importing it keeps this module's portability boundary
+// intact -- the same boundary partMaster/units.js above already sits inside.
+import { isCanonicalPartId } from "../../eosOps/migration/partIdContract.js";
 
 export const PART_IMPORT_CONTRACT_VERSION = 1;
 
@@ -411,12 +415,20 @@ export function normalizePartRow(values: Readonly<Record<string, unknown>>): Nor
 // partId derivation
 // ---------------------------------------------------------------------------
 
-/**
- * Characters a governed partId accepts (partMaster/validation.ts ID_PATTERN).
- * Duplicated as a constant rather than imported, because importing it would pull this
- * module across the portability boundary for a five-character regex.
- */
-const PART_ID_ALLOWED = /^[A-Za-z0-9_-]{1,64}$/;
+// The pattern a governed partId must match is NOT restated here. It used to be, as a local
+// `PART_ID_ALLOWED` regex copied from partMaster/validation.ts, justified in a comment by the
+// claim that importing the real definition "would pull this module across the portability
+// boundary".
+// That claim is false: eosOps/migration/partIdContract.ts and the partMaster/validation.ts it
+// borrows from are pure -- no firebase-admin, no Firestore, no collection names, verified
+// transitively through types.ts, normalization.ts, units.ts and equipmentModel.ts. So the
+// duplicate bought nothing and cost a second definition of "canonical Part.partId", which is
+// exactly what the part-identity ruling forbids.
+//
+// The sanitizer below still spells an alphabet, but it is a HEURISTIC for proposing an id and
+// not a definition of one -- and whatever it proposes is put to isCanonicalPartId before it
+// becomes anybody's identity, so the authority stays in one place even if the two spellings
+// ever drift.
 
 /**
  * The partId an imported Part will be created under.
@@ -438,7 +450,9 @@ const PART_ID_ALLOWED = /^[A-Za-z0-9_-]{1,64}$/;
  */
 export function derivePartId(internalPartNumber: string): string {
   const ipn = internalPartNumber.trim().toUpperCase();
-  if (PART_ID_ALLOWED.test(ipn)) return ipn;
+  // isCanonicalPartId, not a local regex: whether a string IS a Part.partId is the part-id
+  // contract's question, and this module asks it rather than answering it a second time.
+  if (isCanonicalPartId(ipn)) return ipn;
   const sanitized = ipn.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 55).replace(/-+$/, "");
   return `${sanitized || "PART"}-${shortDigest(ipn)}`;
 }
@@ -477,5 +491,5 @@ export const PART_IMPORT_CONTRACT = registerEntityContract({
   // Part numbers are compared with ALL whitespace removed rather than collapsed: "TST 1001"
   // and "TST1001" are the same part number written by two people, and treating them as two
   // Parts is the duplicate this exists to prevent.
-  identityKey: (draft) => String(draft.internalPartNumber ?? "").trim().toUpperCase().replace(/\s+/g, ""),
+  identityKey: (draft) => compactIdentityKey(draft.internalPartNumber),
 });

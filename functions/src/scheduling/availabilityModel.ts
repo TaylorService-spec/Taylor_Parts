@@ -180,6 +180,19 @@ export const MAX_ASSESSABLE_MINUTES = 60 * 24 * 31;
  * Half-open overlap (`start < otherEnd && otherStart < end`) -- the same test
  * `workOrderAvailability.findScheduleConflict` already uses for Work Order windows, so back-to-back
  * placements never collide with each other on either authority.
+ *
+ * ONE CALLER, ONE QUESTION: does a proposed WORK window land in time a technician is unavailable?
+ * `checkPlacement` asks it, and the answer refuses the placement.
+ *
+ * IT IS NOT A BLOCK-VS-BLOCK EXCLUSION RULE, and the Owner ruling of 2026-09-12 says so in terms:
+ * OVERLAPPING BLOCKED-TIME FACTS ARE LEGITIMATE. A COMPANY_CLOSURE may cover a recurring LUNCH; PTO
+ * may sit inside a closure; a training block may sit inside a broader closure. Each of those is a
+ * real, separately-recorded fact about why the technician is away, and refusing the second one
+ * (ND-25, now superseded) destroyed a fact the business actually holds.
+ *
+ * UNAVAILABLE TIME = UNION OF BLOCKED INTERVALS. Not the sum of their durations, and not "no two may
+ * overlap". `mergeBlockedIntervals` below is that union, and every duration reader in this domain --
+ * server and board alike -- goes through it.
  */
 export function findBlockedTimeConflict(
   blocks: readonly TechnicianBlockedTime[],
@@ -193,6 +206,86 @@ export function findBlockedTimeConflict(
     if (startMillis < blockEnd && blockStart < endMillis) return block;
   }
   return null;
+}
+
+/** An absolute-millis half-open interval. The shape the union below works in. */
+export interface BlockedInterval {
+  startMillis: number;
+  endMillis: number;
+}
+
+/**
+ * The UNION of a technician's blocked-time records, as disjoint half-open intervals in ascending
+ * order. Malformed records (non-finite, or end <= start) are dropped rather than thrown on -- a bad
+ * stored record is a data problem the caller reports, never a crash mid-transaction.
+ *
+ * THIS IS THE AVAILABILITY MODEL'S ONE DEFINITION OF "BLOCKED". The Owner ruling of 2026-09-12
+ * fixed the semantics at the READER rather than at the write path: overlapping facts are legitimate,
+ * so the arithmetic must stop double-counting them instead of the store refusing to hold them.
+ *
+ * Touching intervals MERGE (12:00 ends, 12:00 starts) -- there is no minute between them, so the
+ * union is one interval. That is the same half-open convention `findBlockedTimeConflict` uses, which
+ * is why back-to-back placements still do not collide: merging two ADJACENT absences into one span
+ * of unavailable time changes no minute's answer to "is the technician available at t?".
+ */
+export function mergeBlockedIntervals(
+  blocks: readonly (TechnicianBlockedTime | BlockedInterval | null | undefined)[] | undefined,
+): BlockedInterval[] {
+  if (!Array.isArray(blocks)) return [];
+  const parsed: BlockedInterval[] = [];
+  for (const block of blocks) {
+    if (!block) continue;
+    const { startMillis, endMillis } = block;
+    if (!Number.isFinite(startMillis) || !Number.isFinite(endMillis) || endMillis <= startMillis) continue;
+    parsed.push({ startMillis, endMillis });
+  }
+  parsed.sort((a, b) => a.startMillis - b.startMillis);
+
+  const merged: BlockedInterval[] = [];
+  for (const interval of parsed) {
+    const last = merged[merged.length - 1];
+    if (last && interval.startMillis <= last.endMillis) {
+      last.endMillis = Math.max(last.endMillis, interval.endMillis);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+  return merged;
+}
+
+/**
+ * Blocked minutes inside [startMillis, endMillis), counted ONCE per minute however many records
+ * cover it. The CALENDAR union -- no working-hours filter, because the board draws a lane's blocked
+ * span whether or not the technician was rostered for it.
+ *
+ * `blockedMinutesInWindow` below is the CAPACITY union: the same union intersected with recorded
+ * working hours, because a 03:00 closure takes no capacity from someone who does not work at 03:00.
+ * Two questions, one union; the difference between them is the working-hours mask and nothing else.
+ */
+export function unionBlockedMinutesInRange(
+  blocks: readonly (TechnicianBlockedTime | BlockedInterval | null | undefined)[] | undefined,
+  range: { startMillis: number; endMillis: number },
+): number {
+  const { startMillis, endMillis } = range;
+  if (!(endMillis > startMillis)) return 0;
+  let total = 0;
+  for (const interval of mergeBlockedIntervals(blocks)) {
+    const from = Math.max(interval.startMillis, startMillis);
+    const to = Math.min(interval.endMillis, endMillis);
+    if (to > from) total += (to - from) / 60_000;
+  }
+  return Math.round(total);
+}
+
+/** Is `atMillis` covered by any blocked-time record? The union asked one minute at a time. */
+export function isBlockedAt(
+  merged: readonly BlockedInterval[],
+  atMillis: number,
+): boolean {
+  for (const interval of merged) {
+    if (atMillis >= interval.startMillis && atMillis < interval.endMillis) return true;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -283,6 +376,12 @@ export function availableMinutesInWindow(
 /**
  * Working minutes in a window that blocked time has already taken. Subtracting these is what makes
  * "available" mean genuinely available rather than merely rostered.
+ *
+ * THE UNION, INTERSECTED WITH RECORDED WORKING HOURS. A minute covered by a COMPANY_CLOSURE and a
+ * LUNCH at once is one blocked minute, not two -- so two identical PTO records take the same eight
+ * hours a single one does, and a closure straddling a lunch takes the closure's span, not the
+ * closure plus the lunch. Runs through `mergeBlockedIntervals` so that is true by construction
+ * rather than by the minute walk happening to be idempotent.
  */
 export function blockedMinutesInWindow(
   availability: TechnicianWorkingAvailability | null | undefined,
@@ -295,6 +394,7 @@ export function blockedMinutesInWindow(
   const totalMinutes = Math.ceil((endMillis - startMillis) / 60_000);
   if (totalMinutes > MAX_ASSESSABLE_MINUTES) return null;
 
+  const merged = mergeBlockedIntervals(blocks);
   let blocked = 0;
   for (let i = 0; i < totalMinutes; i += 1) {
     const at = startMillis + i * 60_000;
@@ -302,7 +402,7 @@ export function blockedMinutesInWindow(
     if (!local) return null;
     const intervals = workingIntervalsFor(availability, local.weekday);
     if (!intervals.some((iv) => local.minutes >= iv.start && local.minutes < iv.end)) continue;
-    if (findBlockedTimeConflict(blocks, at, at + 60_000)) blocked += 1;
+    if (isBlockedAt(merged, at)) blocked += 1;
   }
   return blocked;
 }

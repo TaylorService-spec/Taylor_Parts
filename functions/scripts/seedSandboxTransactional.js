@@ -422,22 +422,13 @@ async function main() {
     dispatchedAt: now,
   }));
 
-  // --- Inventory position: in-stock, low-stock, SHORTAGE ----------------
-  // Ledger-derived truth (ADR-003) is append-only RESERVED/RELEASED/CONSUMED.
-  // These are the opening positions the scenario reasons about.
-  const stock = [
-    { part: "PRT-1005", wh: "wh-main", qty: 40, note: "healthy stock" },
-    { part: "PRT-1003", wh: "wh-main", qty: 6, note: "low stock" },
-    { part: "PRT-1004", wh: "wh-main", qty: 12, note: "healthy stock" },
-    { part: "PRT-1006", wh: "wh-north", qty: 3, note: "low stock, other warehouse" },
-    { part: "PRT-1001", wh: "wh-main", qty: 0, note: "SHORTAGE — drives the scenario" },
-  ];
-  for (const s of stock) {
-    await set("stock_locations", `${s.wh}__${s.part}`, {
-      warehouseId: s.wh, partId: s.part, quantityOnHand: s.qty,
-      scenarioId: SCENARIO_ID, note: s.note, updatedAt: now, updatedBy: by,
-    });
-  }
+  // --- Inventory position -----------------------------------------------
+  // NO stock_locations. Ledger-derived truth (ADR-003) is append-only RESERVED/RELEASED/CONSUMED,
+  // and this seed used to write a second, competing answer beside it: a per-(warehouse, part) row
+  // carrying `quantityOnHand`. That collection is a retired authority (Decision #160 / ADR-014) --
+  // functions/src/constants/collections.ts removed its constant, firestore.rules retired its client
+  // read, and no business code in this repository has ever written it. Seeding it made the sandbox
+  // disagree with itself; the scenario's opening positions come from the ledger.
 
   // --- Reorder requests across lifecycle states -------------------------
   // ORDERED — the canonical scenario's receiving candidate.

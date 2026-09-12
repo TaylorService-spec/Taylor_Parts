@@ -1,0 +1,48 @@
+name: Integrations intake tests
+
+# W1-C22 (required registration). `npm test` in integrations/chatgpt-eos-intake was invoked by NO
+# workflow. The only CI reference to the package was reciprocal-gpt-review.yml's `npm ci` under a
+# workflow_dispatch, install-only and gated on `mode == 'evidence'` -- so 28 tests, including the
+# external-boundary contract suite, were enforced by nothing at all. A suite that runs nowhere looks
+# like coverage in review and catches no regression.
+#
+# The two docs/orchestration/lib modules are named because the package IMPORTS them: a change there
+# can break this boundary without touching integrations/ at all.
+#
+# Pure logic: no emulator, no database, no deployment, no secrets.
+
+on:
+  pull_request:
+    paths:
+      - "integrations/**"
+      - "docs/orchestration/lib/workIntake.mjs"
+      - "docs/orchestration/lib/reviewAuthorization.mjs"
+      - ".github/workflows/integrations-intake-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "integrations/**"
+      - "docs/orchestration/lib/workIntake.mjs"
+      - "docs/orchestration/lib/reviewAuthorization.mjs"
+      - ".github/workflows/integrations-intake-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  intake-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install and test the intake package
+        working-directory: integrations/chatgpt-eos-intake
+        run: npm ci --ignore-scripts && npm test

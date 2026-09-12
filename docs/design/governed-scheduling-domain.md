@@ -136,6 +136,90 @@ Blocked time is **not** checked against existing scheduled work when it is recor
 PTO must never be refused because a job was already placed there — the absence is the fact and the
 placement is the problem. The board surfaces the collision; a person decides.
 
+### ND-25 — WITHDRAWN. Overlapping absences are legitimate; unavailable time is a UNION
+
+> **Owner ruling, 2026-09-12.** OVERLAPPING BLOCKED-TIME FACTS ARE LEGITIMATE. A technician may be
+> covered simultaneously by more than one real unavailability fact — a COMPANY_CLOSURE overlapping a
+> recurring LUNCH, PTO overlapping a closure, training inside a broader closure. The availability
+> model means **UNAVAILABLE TIME = UNION OF BLOCKED INTERVALS**. It is **not** the sum of every
+> block's duration, and it is **not** "no two blocks may overlap".
+>
+> **#1893's blanket refusal of overlapping blocked-time records is not the canonical business rule.**
+
+ND-25 refused any new absence overlapping an existing one. It was a correct diagnosis of a real
+defect with the fix applied to the wrong layer, and the record of both halves is kept here because
+the diagnosis is still worth having.
+
+**The real defect was arithmetic.** Two functions in this repository answered "how many minutes are
+blocked":
+
+| | | |
+|---|---|---|
+| `availabilityModel.blockedMinutesInWindow` | walks minutes | **union** |
+| `dispatchBoardGeometry.blockedMinutesInBand` | sums durations | **sum** |
+
+They agree exactly while no two blocks overlap, and only while that holds. Both numbers are drawn on
+the same lane, so a closure over a lunch made one line read two hours blocked where the server — the
+authority the placement policy actually enforces — said one.
+
+**What ND-25 got wrong** was fixing that by making the input unreachable. Forbidding overlap at the
+write path did make `sum == union` true by construction, and it cost a fact the business holds: a
+company closure could no longer be recorded over a lunch break, PTO could not be recorded inside a
+closure, and *which* of two real absences was refused depended on nothing but data-entry order. The
+model was refusing to represent something the world does.
+
+**The fix now lives where the defect did.** Both readers merge intervals before measuring:
+
+- `availabilityModel.mergeBlockedIntervals` is the one definition of the union — sorted, disjoint,
+  half-open, touching intervals merged.
+- `blockedMinutesInWindow` is that union masked by recorded working hours (capacity: a 03:00 closure
+  takes nothing from someone who does not work at 03:00).
+- `blockedMinutesInBand` is that union clamped to the drawn band (calendar time: the lane draws a
+  03:00 closure regardless).
+
+So the two agree for **every** set the store can contain, including all the sets ND-25 used to make
+impossible. Back to back stays legal and stays correctly measured: 09:00–12:00 and 12:00–15:00 are
+one six-hour span of unavailable time, and a job placed at exactly 12:00 still does not collide,
+because `findBlockedTimeConflict`'s half-open test is unchanged.
+
+**What `findBlockedTimeConflict` is for, restated.** One question: does a proposed WORK window land in
+time the technician is unavailable? `checkPlacement` asks it and refuses the placement. It is not a
+block-vs-block exclusion rule and `createTechnicianBlockedTime` no longer calls it.
+
+**The only thing still collapsed at the write path is an EXACT replay.** There is no idempotency key
+on the callable, so a double-submitted form writes twice. Where the resubmission is identical in every
+field a dispatcher can set — technician, kind, both endpoints, note — it asserts nothing the first
+record did not, cannot be distinguished from it by any reader, and would leave two documents that both
+have to be deleted to undo one action. That identity is objectively provable from the records, so the
+command returns the existing `blockId` and writes nothing: one fact, one document, one Audit Event.
+Any difference in kind, in either endpoint, or in the note is a **different** fact and is always
+recorded, however much it overlaps. This is deliberately not an overlap prohibition in a new costume.
+
+**The serialization is preserved, and it was never the prohibition.** A query-then-insert is the
+classic check-then-act race: a transactional query locks the documents it *returns*, and a record that
+does not exist yet is not among them. `createTechnicianBlockedTime` therefore still reads **and
+writes** `work_order_tech_locks/{technicianId}` — the same sentinel `applyScheduleChange` and
+`transitionWorkOrder`'s Schedule/Dispatch/Unschedule branches take — so two simultaneous identical
+submissions serialize and the loser re-reads and finds the winner's record instead of writing a copy
+of it. `deleteTechnicianBlockedTime` takes it too, for ND-18's reason: a release contends with a
+claim, so "delete the wrong record, add the right one" cannot be refused against a snapshot that still
+holds the deleted block.
+
+**Deletion is honest without the prohibition.** Deleting one of two genuinely different overlapping
+absences removes exactly that fact, and the union recomputes over what is left — the closure still
+covers the day after the lunch is deleted, because the closure still says so. What ND-25 worried
+about — deleting one of two *identical* records leaving the technician fully blocked while the audit
+says the absence was removed — is now unreachable for the reason that mattered: identical records are
+collapsed on creation, so there is never a second one to delete.
+
+Blocked time is still **not** checked against existing scheduled work when it is recorded, for the
+reason the paragraph above ND-25 gives.
+
+Proof: `functions/test/schedulingBlockedTimeUnion.test.mjs` (which imports the **real** board module
+cross-package and runs it against the real server module, so the agreement is measured rather than
+asserted about a copy), `field-ops-app-vite/test/dispatchBoardGeometry.test.mjs`, and the emulator
+checks in `functions/test/e2e/schedulingAvailabilityEmulator.test.mjs`.
+
 ## Historical integrity
 
 The handoff's rule was: current state may change, history may not. Each command carries the **prior**

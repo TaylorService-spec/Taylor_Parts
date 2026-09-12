@@ -32,7 +32,7 @@ import { derivePartId } from "./contracts/partImportContract.js";
 import type { RowWriter, WriteOutcome } from "./importExecution.js";
 import type { ImportJob } from "./importJob.js";
 import { partIdentityKey } from "./importPreview.js";
-import { naturalIdentityKey } from "./contracts/entityContract.js";
+import { compactIdentityKey, naturalIdentityKey } from "./contracts/entityContract.js";
 import {
   createAccountFromImport,
   normalizeAccountSearchName,
@@ -332,7 +332,10 @@ export async function loadExistingEquipmentSerials(
   const snap = await db.collection(EQUIPMENT_COLLECTION).select("serialNumber").get();
   for (const doc of snap.docs) {
     const serial = String((doc.data() ?? {}).serialNumber ?? "").trim();
-    if (serial) found.add(serial.toUpperCase().replace(/\s+/g, ""));
+    // compactIdentityKey, not a local copy of it: this set is compared against keys the
+    // EQUIPMENT contract produces, and the two folds must be ONE fold or the duplicate an
+    // operator is shown stops being the duplicate the command refuses.
+    if (serial) found.add(compactIdentityKey(serial));
   }
   return found;
 }

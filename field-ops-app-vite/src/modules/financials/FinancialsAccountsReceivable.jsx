@@ -22,6 +22,7 @@ import { AR_AGING_BUCKETS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, outstandingRows, agingSlots, unagedNote } from "../../domain/financialFactsView.js";
+import { agingCompanySpan } from "../../domain/companyAttribution.js";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
@@ -53,6 +54,13 @@ export default function FinancialsAccountsReceivable() {
   // The buckets are READ from the server's own derivation — this page buckets nothing.
   const aging = agingSlots(state, result);
   const unaged = answered ? unagedNote(result) : null;
+  // WHOSE EXPOSURE IS 61+ DAYS OLD. The bucket scorecard reads `agingByCurrency`, which under the
+  // Consolidated selection is ONE row of buckets spanning both operating companies — and the table
+  // below it already names a company per row, so the scorecard was the only figure on this page a
+  // reader could mistake for a single company's exposure. This states the span from the server's
+  // own `agingByCompany` and splits nothing; the buckets stay the server's single derivation. On a
+  // response without `agingByCompany`, `supplied` is false and no span is claimed.
+  const agingSpan = answered ? agingCompanySpan(result) : agingCompanySpan(null);
   const { byEmployeeId, loading: dirLoading, error: dirError } = useEmployeeDirectory();
   const names = useAccountNames(rows.map((r) => r.accountId).filter(Boolean));
 
@@ -104,6 +112,11 @@ export default function FinancialsAccountsReceivable() {
             </div>
           ))}
         </div>
+        {agingSpan.spansMultipleCompanies ? (
+          <p className="fin-truth-band" role="note">
+            <strong>These buckets span more than one operating company.</strong> {agingSpan.note}
+          </p>
+        ) : null}
         {unaged ? <p className="fin-section-note">{unaged}</p> : null}
         <p className="fin-section-note">
           One aging grammar, everywhere

@@ -1,6 +1,7 @@
-import { sha256Bytes, stableJson } from "./workIntake.mjs";
+import { sha256Bytes, stableJson, WORK_INTAKE_ID } from "./workIntake.mjs";
 
-const SAFE_ID = /^[A-Z0-9][A-Z0-9._-]{2,79}$/;
+// The ONE identifier rule, imported rather than restated -- see workIntake.mjs.
+const SAFE_ID = WORK_INTAKE_ID;
 const GIT_SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const verifiedArtifacts = new WeakSet();

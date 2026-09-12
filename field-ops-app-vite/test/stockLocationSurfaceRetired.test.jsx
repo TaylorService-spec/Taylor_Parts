@@ -100,6 +100,59 @@ describe("InventoryHealthPanel -- the bin-stock omission disclosure is gone with
   });
 });
 
+// ============================ THE METADATA REGISTRATION, RETIRED TOO ============================
+//
+// OWNER RULING, 2026-09-12: `stock_locations` IS RETIRED AS AN OPERATIONAL AUTHORITY, not merely
+// unread. BIN-P2R removed the operator surface and the client reader; what survived it was the
+// METADATA registration -- `stockLocationEntity` in ENTITY_REGISTRY and `stockLocationIndexList`,
+// a registered INDEX list view with a warehouseId EQUALS filter and a binCode sort.
+//
+// That registration was not inert. It put Stock Locations on the Administration Objects screen,
+// seeded six field-policy rows into every tenant, and demanded the composite index
+// `stock_locations (warehouseId, binCode)` -- the very index PR #1877 deleted, which is how three
+// guards came to contradict each other. An administrator could configure read access to a
+// collection that has no `match /stock_locations/` block in either governed Rules copy, no query
+// anywhere in functions/src or field-ops-app-vite/src, and no writer.
+//
+// So the registration is gone, the index stays deleted, and these tests hold it that way. Written
+// as SOURCE assertions rather than import assertions for the reason the whole file is: you cannot
+// import something to prove it is absent.
+describe("the metadata registration is retired, not merely unrendered", () => {
+  it("no stockLocation definition file exists", () => {
+    expect(() => src("src/metadata/definitions/stockLocation.js")).toThrow();
+  });
+
+  it("ENTITY_REGISTRY neither imports nor lists it", () => {
+    const source = src("src/metadata/entityRegistry.js");
+    expect(source).not.toMatch(/definitions\/stockLocation\.js/);
+    expect(source).not.toMatch(/stockLocationEntity/);
+    // And the neighbours this removal must not have taken with it.
+    expect(source).toMatch(/warehouseEntity/);
+    expect(source).toMatch(/transferOrderEntity/);
+    expect(source).toMatch(/mobileLocationEntity/);
+  });
+
+  it("the governable-object gap table no longer maps the retired read capability onto an object", () => {
+    // `warehouse.stockLocation.read` still exists in the capability catalog, labelled there as a
+    // retired authority with nothing evaluating it. Historical evidence is kept; what must not come
+    // back is a live object mapping that turns it into a grantable permission again.
+    const source = src("src/access/policyObjectRegistry.js");
+    expect(source).not.toMatch(/stockLocation:\s*Object\.freeze/);
+    expect(source).toMatch(/warehouse:\s*Object\.freeze/);
+  });
+
+  it("no list-index demand requires the deleted composite, and the composite stays deleted", () => {
+    const coverage = src("../scripts/listIndexCoverage.mjs");
+    expect(coverage).not.toMatch(/requiredBy:\s*"stockLocation\.index"/);
+    // The REGISTRATION entry, not any mention: that file explains the retirement in a comment, and
+    // a guard that failed on its own explanation would be deleted rather than believed.
+    expect(coverage).not.toMatch(/"field-ops-app-vite\/src\/metadata\/definitions\/stockLocation\.js"/);
+
+    const indexes = JSON.parse(src("../firestore.indexes.json"));
+    expect(indexes.indexes.some((i) => i.collectionGroup === "stock_locations")).toBe(false);
+  });
+});
+
 describe("the client cannot reach stock_locations at all", () => {
   it("operationsQueries exposes no stock_locations reader", () => {
     const source = src("src/services/operationsQueries.ts");
