@@ -415,6 +415,39 @@ Option 1 is the smaller change and matches what 1875 already shipped; **but it i
 authority decision and I am not making it.** I have deliberately left the assertion failing rather
 than deleting a guard one lane wrote on purpose.
 
+### RESOLVED — the Owner ruling, applied on `integration/wave-1`
+
+Neither option. **Invoice and Payment are ONE financial bounded context, and NEITHER belongs in
+`eos_ops`.** Both now live in a dedicated `eos_finance` schema holding exactly seven objects:
+
+| | |
+|---|---|
+| tables | `invoices`, `invoice_lines`, `payments`, `payment_applications` |
+| views | `invoice_totals`, `payment_balances`, `invoice_application_totals` |
+
+- Migration **1758931200000** (Invoice) **establishes** `eos_finance` and the Invoice authority;
+  migration **1759017600000** (Payment) **extends** the same schema. No migration was renumbered, no
+  predecessor was edited, and no third migration was added.
+- `payment_applications.invoice_id` **is now a real foreign key** —
+  `(tenant_id, invoice_id, currency) REFERENCES invoices (tenant_id, id, currency) ON DELETE
+  RESTRICT`. The reason it was opaque ("no invoices table to reference") no longer holds, and the
+  composite form makes settling another tenant's invoice, or settling an invoice in a currency the
+  cash was not received in, structurally unrepresentable rather than merely policed. An UNAPPLIED
+  receipt is still a receipt with **no** application row, so nothing requires a receipt to name an
+  invoice. `account_id` stays opaque: the Account authority is not in this schema, and no other
+  cross-schema foreign key was invented off the back of this ruling.
+- The guard was **strengthened, not deleted**. `eosOpsPostgres.test.mjs` no longer asserts the
+  one-sided, undecidable "`invoices` is not in `eos_ops`" (which passes identically whether the
+  authority is in the right schema or in none). It now proves both halves: every financial object
+  exists in `eos_finance`, and none of them — table or view — appears in `eos_ops`.
+
+The unrelated defect this exposed, and closed at the same time: `payments_append_only` and
+`payment_applications_append_only` were `BEFORE DELETE` only, so tables DECLARED append-only could
+have their history rewritten in place — `invoice_id` repointed at another obligation,
+`applied_amount_minor` lowered, `account_id` or `operating_company_key` re-attributed — leaving every
+derived balance perfectly correct about a history that never happened. Both triggers are now
+`BEFORE UPDATE OR DELETE`. A correction is a new financial fact.
+
 ---
 
 ## 7. Ready-to-run merge script

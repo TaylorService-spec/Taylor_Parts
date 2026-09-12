@@ -46,6 +46,9 @@ on:
       - "functions/scripts/certificationWorld/data/serviceJobCompany.mjs"
       - "functions/scripts/certificationWorld/data/equipmentAssets.mjs"
       - "config/ownership/**"
+      # W1-C31: the census gate reads a measured evidence artifact under sb-evidence/. A change
+      # to that measurement alone would not otherwise re-run the gate that consumes it.
+      - "sb-evidence/ownership-census-*.txt"
       - "functions/scripts/certificationWorld/seedAccountOwners.mjs"
       - "field-ops-app-vite/src/domain/typedOwner.js"
       - "field-ops-app-vite/src/domain/operatingCompanyAuthority.js"

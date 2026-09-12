@@ -70,6 +70,16 @@ on:
       - "functions/scripts/serveEosApi.mjs"
       - "render.yaml"
       - "functions/migrations/**"
+      # W1-C9 (required registration): the CRM customer namespace suites run in
+      # test:adminPolicy / test:adminPolicyPostgres but were named by no path filter, so a
+      # PR touching only functions/src/crm could not trigger the gate that covers it.
+      - "functions/src/crm/**"
+      - "functions/test/crmCustomerNamespace.test.mjs"
+      - "functions/test/crmCustomerPostgres.test.mjs"
+      # W1-C5: same gap, same two commands, for the employee-principal linkage.
+      - "functions/src/employeeIdentity/**"
+      - "functions/test/employeePrincipalLinkPlan.test.mjs"
+      - "functions/test/employeePrincipalLinkPostgres.test.mjs"
       - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -109,6 +119,16 @@ on:
       - "functions/src/eosApi/**"
       - "functions/src/eosOps/**"
       - "functions/migrations/**"
+      # W1-C9 (required registration): the CRM customer namespace suites run in
+      # test:adminPolicy / test:adminPolicyPostgres but were named by no path filter, so a
+      # PR touching only functions/src/crm could not trigger the gate that covers it.
+      - "functions/src/crm/**"
+      - "functions/test/crmCustomerNamespace.test.mjs"
+      - "functions/test/crmCustomerPostgres.test.mjs"
+      # W1-C5: same gap, same two commands, for the employee-principal linkage.
+      - "functions/src/employeeIdentity/**"
+      - "functions/test/employeePrincipalLinkPlan.test.mjs"
+      - "functions/test/employeePrincipalLinkPostgres.test.mjs"
       - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
       - "field-ops-app-vite/src/domain/adminPolicyView.js"
       - "field-ops-app-vite/src/metadata/entityRegistry.js"

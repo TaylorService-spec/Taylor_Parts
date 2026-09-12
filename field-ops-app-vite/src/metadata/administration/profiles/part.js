@@ -374,7 +374,9 @@ export const partAdministrationProfile = makeObjectAdministrationProfile({
         "src/modules/inventoryRole/WarehouseManagerHome.jsx",
         "src/hooks/useCanonicalPartNames.js",
         "src/domain/inventoryAnalyticsEngine.ts",
-        "src/analytics/operationsIntelligenceService.ts",
+        // src/analytics/operationsIntelligenceService.ts WAS a reader and was deleted by W1-C21.
+        // Removed here rather than left standing: a census of "who reads this" that names a file
+        // which no longer exists overstates the retirement blocker it is used to justify.
       ],
       blockedBy:
         "It is the ONLY warehouseQty baseline the availability math has, and its SKUs are not canonical " +

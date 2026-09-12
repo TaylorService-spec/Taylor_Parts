@@ -86,7 +86,29 @@ async function anOpportunity(overrides = {}) {
   });
 }
 
+// ════════════════════ THIS SUITE LEAVES THE DATABASE AS IT FOUND IT ════════════════════
+//
+// It used to end by closing the pool and nothing else, so every row it wrote SURVIVED the run. That
+// is not harmless here: this migration's down deliberately REFUSES while any ownership handoff is
+// recorded ("dropping them would destroy the ownership history"), which is correct and is proved by
+// this suite itself. A surviving handoff turns that correct refusal into a wall for every LATER
+// suite that legitimately peels migrations back past this one -- and the failure lands over there,
+// as employeePrincipalLinkPostgres reporting that it cannot reverse a commercial migration it has
+// never heard of.
+//
+// TRUNCATE, not DELETE, and that is itself a demonstration of the property under test:
+// `ownership_handoffs` REFUSES row-level DELETE ("a recorded handoff would destroy the ownership
+// history"), so there is no scoped delete to write -- TRUNCATE does not fire row triggers. All four
+// tables go together because they reference one another and Postgres refuses to truncate a
+// referenced table on its own. No schema is dropped: a resetter here would race the serialized
+// resetters, which is the very thing this suite is built not to need.
 test.after(async () => {
+  if (URL) {
+    await query(
+      "TRUNCATE eos_commercial.ownership_handoffs, eos_commercial.sales_orders," +
+      " eos_commercial.sales_agreements, eos_commercial.opportunities",
+    );
+  }
   if (pool) await pool.end();
 });
 

@@ -88,7 +88,7 @@ export const paymentAdministrationProfile = makeObjectAdministrationProfile({
     description:
       "Canonical identity is the `payments` document id, allocated by applyPayment via " +
       "db.collection(PAYMENTS_COLLECTION).doc() and never written onto the document. In the target " +
-      "authority it is eos_ops.payments.id, a TEXT PRIMARY KEY, where a stored/key divergence is " +
+      "authority it is eos_finance.payments.id, a TEXT PRIMARY KEY, where a stored/key divergence is " +
       "structurally impossible. There is no PAY-###### sequence anywhere in the program; inventing " +
       "one is a business decision, not a metadata one.",
   }),
@@ -326,7 +326,7 @@ export const paymentAdministrationProfile = makeObjectAdministrationProfile({
         "Nothing reads them (no read path exists), so retirement is not blocked by a consumer — it is " +
         "blocked by the absence of the thing that would replace them. Deleting them means the one " +
         "writer stops emitting them AND a derivation exists to answer the same question; " +
-        "eos_ops.payment_balances is that derivation, and it is not the authority yet.",
+        "eos_finance.payment_balances is that derivation, and it is not the authority yet.",
       description:
         "A second statement of an amount whose durable facts live in payment_applications. Written " +
         "once and never maintained: recordRefund reverses applied money on the invoice without " +
@@ -335,7 +335,7 @@ export const paymentAdministrationProfile = makeObjectAdministrationProfile({
     }),
     makeRepresentation({
       id: "eos-ops-payment-balances",
-      label: "eos_ops.payment_balances (Postgres)",
+      label: "eos_finance.payment_balances (Postgres)",
       disposition: REPRESENTATION_DISPOSITION.DERIVED,
       location: cite("functions/migrations/1759017600000_ar-cash-application-authority.sql", "payment_balances"),
       readBy: [],
@@ -351,18 +351,18 @@ export const paymentAdministrationProfile = makeObjectAdministrationProfile({
   migration: makeMigrationStatus({
     readiness: MIGRATION_READINESS.BLOCKED,
     targetAuthority:
-      "PostgreSQL eos_ops.payments + eos_ops.payment_applications (functions/migrations/1759017600000_ar-cash-application-authority.sql)",
+      "PostgreSQL eos_finance.payments + eos_finance.payment_applications (functions/migrations/1759017600000_ar-cash-application-authority.sql)",
     source: cite("functions/src/constants/collections.ts", "PAYMENTS_COLLECTION"),
     evaluator: null,
     blockedBy: [
       "No governed EOS server command writes the eos_ops tables — the schema exists and is proved, and nothing calls it. There is no repository, no HTTP operation and no client path.",
-      "No Postgres Invoice authority exists, so payment_applications.invoice_id is an opaque governed key with nothing to reconcile against inside the database. The comparison eos_ops.invoice_application_totals enables still has only one side.",
+      "The Postgres Invoice authority now exists in the SAME schema (eos_finance, migration 1758931200000), so payment_applications.invoice_id is a real tenant-scoped foreign key to eos_finance.invoices rather than an opaque governed key: an application settles an obligation that exists, in the same tenant, the same currency and the same operating company. What remains one-sided is the RECONCILIATION, not the reference -- eos_finance.invoice_application_totals states what cash was applied, and the invoice's own outstanding figure is still projected in Firestore by the deployed read path.",
       "recordRefund reverses applied money by rewriting the invoice's stored projection and writing a `refunds` row; the target schema has no representation for that reversal, and inventing one from the Payment side would be guessing another owner's shape.",
       "There is no Postgres Account authority either, so payments.account_id is likewise opaque.",
       "No reconciliation has ever been RUN. reconcileInvoiceProjection and reconcileReceipt are pure, tested, exported — and imported by nothing outside functions/test/financialReconciliation.test.mjs. There is no scheduler, no callable and no index.ts export.",
     ],
     reconciliation:
-      "Per invoice id, eos_ops.invoice_application_totals.applied_minor must equal the invoice authority's own applied figure; per receipt, eos_ops.payment_balances.applied_minor + unapplied_minor must equal amount_minor, which holds by construction rather than by check. Neither is a cutover proof on its own: a migration that moved receipts without their applications would satisfy the second trivially.",
+      "Per invoice id, eos_finance.invoice_application_totals.applied_minor must equal the invoice authority's own applied figure; per receipt, eos_finance.payment_balances.applied_minor + unapplied_minor must equal amount_minor, which holds by construction rather than by check. Neither is a cutover proof on its own: a migration that moved receipts without their applications would satisfy the second trivially.",
     description:
       "BLOCKED, not READY: a schema that is ready is not a schema that has been switched to, and this " +
       "is financial data. Nothing deployed reads or writes the eos_ops tables; the live path remains " +

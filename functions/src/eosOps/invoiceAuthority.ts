@@ -3,7 +3,7 @@
 //
 // ════════════════════ WHAT THIS IS, AND WHAT IT IS NOT ════════════════════
 //
-// This is the repository/transaction boundary for `eos_ops.invoices` + `eos_ops.invoice_lines`,
+// This is the repository/transaction boundary for `eos_finance.invoices` + `eos_finance.invoice_lines`,
 // in the same shape cycleCountRepository.ts established: it RECEIVES a Pool (it never opens a
 // connection and never reads DATABASE_URL), it owns the transaction boundary, and it is not wired
 // to any HTTP operation. Nothing deployed calls it yet, and no data has moved — the Firestore
@@ -42,7 +42,10 @@ import {
   type InvoiceTotals,
 } from "./invoiceTotals.js";
 
-const SCHEMA = "eos_ops";
+// OWNER RULING (W1 integration): Invoice and Payment are one financial bounded context and
+// neither belongs in eos_ops. Migration 1758931200000 establishes `eos_finance` and the Invoice
+// authority in it; 1759017600000 extends the same schema with receipts and applications.
+const SCHEMA = "eos_finance";
 const newId = (prefix: string): string => `${prefix}_${randomUUID()}`;
 
 export class InvoiceAuthorityError extends Error {

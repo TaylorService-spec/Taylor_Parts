@@ -1,4 +1,4 @@
-// eos_ops domain vocabulary — the AR CASH-APPLICATION authority (migration 008).
+// eos_finance domain vocabulary — the AR CASH-APPLICATION authority (migration 008).
 //
 // ════════════════════ WHAT THIS MODULE IS FOR ════════════════════
 //
@@ -94,7 +94,7 @@ export function requirePositiveMinorUnits(value: unknown, field: string): number
   return value;
 }
 
-/** One row of `eos_ops.payments` — a cash receipt. It carries NO applied or unapplied balance. */
+/** One row of `eos_finance.payments` — a cash receipt. It carries NO applied or unapplied balance. */
 export interface CashReceipt {
   readonly id: string;
   readonly tenantId: string;
@@ -104,7 +104,7 @@ export interface CashReceipt {
   readonly amountMinor: number;
 }
 
-/** One row of `eos_ops.payment_applications` — how some of one receipt was allocated. */
+/** One row of `eos_finance.payment_applications` — how some of one receipt was allocated. */
 export interface PaymentApplication {
   readonly id: string;
   readonly tenantId: string;
@@ -117,7 +117,7 @@ export interface PaymentApplication {
 /**
  * A receipt's position, computed from facts.
  *
- * The shape of `eos_ops.payment_balances`, and the reason that view is a view. Nothing produces
+ * The shape of `eos_finance.payment_balances`, and the reason that view is a view. Nothing produces
  * this object and stores it.
  */
 export interface ReceiptBalance {

@@ -761,15 +761,54 @@ test("the registered PostgreSQL script runs BOTH suites, serially", () => {
   assert.match(command, /npm run build/, "it must run against a fresh build, not a stale lib/");
 });
 
+/**
+ * A file RESETS the schema when it hands a `DROP SCHEMA` to a query, not when it merely contains
+ * those two words.
+ *
+ * ════════════════════ WHY THIS IS NARROWER THAN `/DROP SCHEMA/` ════════════════════
+ *
+ * The rule used to be "the file mentions DROP SCHEMA anywhere". That is a proxy for the real
+ * property, and it misfires in the one direction nobody expects: a test that PROVES a migration
+ * does NOT drop a schema has to name the statement it is forbidding, and was therefore classified
+ * as a resetter and demanded registration in a Postgres command it must never join --
+ * eosOpsCashApplication.test.mjs is a pure unit suite that opens no database at all.
+ *
+ * Registering a non-database suite in the serialized Postgres command to satisfy a proxy would be
+ * the guard training people to lie to it. So the proxy is replaced by the property: every one of
+ * the eight real resetters in this repository executes the statement the same way --
+ * `client.query("DROP SCHEMA ...")` or `query(`DROP SCHEMA ...`)` -- and that is what is matched.
+ *
+ * NOTHING IS EXEMPTED and no allowlist exists: a file that drops a schema through a query is caught
+ * exactly as before. `KNOWN_RESETTERS` below pins the floor so this narrowing cannot silently start
+ * detecting fewer files than it did when it was written.
+ */
+const executesSchemaDrop = (source) => /\bquery\(\s*[`'"]\s*DROP\s+SCHEMA\b/i.test(source);
+
+/** The resetters that existed when the rule above was tightened. The detector may never find FEWER. */
+const KNOWN_RESETTERS = [
+  "adminPolicyActivation.test.mjs",
+  "adminPolicyPostgres.test.mjs",
+  "adminPolicySeed.test.mjs",
+  "eosOpsInventoryCommitmentPostgres.test.mjs",
+  "eosOpsOperatingCompanyCustodyPostgres.test.mjs",
+  "eosOpsPostgres.test.mjs",
+  "eosOpsPurchasingPostgres.test.mjs",
+  "inventoryCapabilityGrantMigration.test.mjs",
+];
+
 test("every suite that resets the schema is covered by that one command", () => {
   // A third file that drops the schema and is NOT in the registered command would race the other
   // two exactly as these did. Found by looking for the reset itself rather than by remembering.
   const resetters = readdirSync("test")
     .filter((f) => f.endsWith(".test.mjs"))
-    .filter((f) => /DROP SCHEMA/i.test(readFileSync(join("test", f), "utf8")));
+    .filter((f) => executesSchemaDrop(readFileSync(join("test", f), "utf8")));
   const command = JSON.parse(readFileSync("package.json", "utf8")).scripts["test:adminPolicyPostgres"];
 
   assert.ok(resetters.length >= 2, `expected the two known resetters, found ${resetters.length}`);
+  for (const file of KNOWN_RESETTERS) {
+    assert.ok(resetters.includes(file),
+      `${file} resets the schema and the detector no longer sees it -- the rule has been narrowed too far`);
+  }
   for (const file of resetters) {
     assert.ok(command.includes(file), `${file} resets the schema but the registered command does not run it`);
   }

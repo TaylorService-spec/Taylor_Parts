@@ -97,12 +97,53 @@ test("the receipt's applied total is defined in exactly one place -- a SUM over 
 
 // ============================ it models no authority it does not own ============================
 
-test("invoice_id and account_id are opaque governed keys, never foreign keys to invented tables", () => {
-  assert.equal(/REFERENCES\s+invoices\b/i.test(SQL), false, "no invented invoices table");
-  assert.equal(/REFERENCES\s+accounts\b/i.test(SQL), false, "no invented accounts table");
+test("invoice_id IS a real foreign key -- the Invoice authority is in this schema", () => {
+  // ════════════ WHAT CHANGED, AND WHY THIS IS NOT A WEAKENING ════════════
+  //
+  // This test used to assert `REFERENCES invoices` NEVER appears. That assertion was correct for
+  // the premise it was written under -- "the Invoice authority's Postgres home does not exist yet"
+  // -- and it is the OPPOSITE of correct now that 1758931200000 puts `eos_finance.invoices` in the
+  // same integrated database. The rule the old assertion stood for was "model no authority you do
+  // not own", not "never use a foreign key". With the authority present and owned by the same
+  // bounded context, the honest form of that rule is a real reference.
+  //
+  // The proof is therefore INVERTED, not deleted, and it is strictly stronger: it now requires the
+  // reference, requires it to be tenant-scoped and currency-carrying, and STILL forbids the copy.
+  assert.match(
+    SQL,
+    /CONSTRAINT payment_application_settles_invoice\s*\n\s*FOREIGN KEY \(tenant_id, invoice_id, currency\)\s*\n\s*REFERENCES invoices \(tenant_id, id, currency\) ON DELETE RESTRICT/,
+    "an application must identify a REAL invoice, in its own tenant, in its own currency",
+  );
+  // Still no COPY of another authority's master table -- including invoices, which this migration
+  // references but must never create. Creating one here would fork the authority in two.
   assert.equal(/CREATE TABLE (invoices|accounts|companies)\b/i.test(SQL), false, "no copy of another authority's master");
   assert.match(SQL, /invoice_id\s+TEXT NOT NULL,/);
   assert.match(SQL, /account_id\s+TEXT NOT NULL,/);
+});
+
+test("account_id stays opaque -- no cross-schema FK was invented off the back of the invoice one", () => {
+  // The Account authority is NOT in eos_finance. Referencing it would be exactly the unmaintained
+  // copy the invoice ruling removed, reintroduced for a case where the authority really is
+  // elsewhere. One ruling, one reference -- not a licence to wire up every id-shaped column.
+  assert.equal(/REFERENCES\s+accounts\b/i.test(SQL), false, "no invented accounts table");
+  for (const elsewhere of ["sales_orders", "operating_companies", "companies", "locations", "warehouses", "parts"]) {
+    assert.equal(new RegExp(`REFERENCES\\s+${elsewhere}\\b`, "i").test(SQL), false,
+      `${elsewhere} is not this schema's authority to reference`);
+  }
+  // The only two REFERENCES clauses this migration may carry, plus the tenant scope every table has.
+  const refs = [...SQL.matchAll(/REFERENCES\s+([a-z_.]+)\s*\(/gi)].map((m) => m[1].toLowerCase()).sort();
+  assert.deepEqual(refs, ["eos_policy.tenants", "eos_policy.tenants", "invoices", "payments"]);
+});
+
+test("the financial tables live in eos_finance, never in eos_ops", () => {
+  // OWNER RULING: Invoice and Payment are ONE financial bounded context, and neither belongs in the
+  // operational data plane. `eos_ops` invariants are quantity invariants; these are money
+  // invariants.
+  assert.match(SQL, /SET search_path = eos_finance, public;/);
+  assert.equal(/eos_ops/.test(SQL), false, "no financial object may be created in or read from eos_ops");
+  // This migration EXTENDS the schema; it does not establish it. The Invoice migration does.
+  assert.equal(/CREATE SCHEMA/i.test(SQL), false,
+    "1758931200000 establishes eos_finance; a second CREATE SCHEMA here would hide its absence");
 });
 
 test("no deployment-specific vocabulary anywhere, and no DEFAULT on the operating company", () => {
@@ -139,7 +180,7 @@ test("the cross-row invariant is enforced by a trigger that locks the receipt ro
   assert.match(SQL, /CREATE FUNCTION assert_application_within_receipt\(\) RETURNS trigger/);
   assert.match(
     SQL,
-    /FROM eos_ops\.payments p\s*\n\s*WHERE p\.tenant_id = NEW\.tenant_id AND p\.id = NEW\.payment_id\s*\n\s*FOR UPDATE;/,
+    /FROM eos_finance\.payments p\s*\n\s*WHERE p\.tenant_id = NEW\.tenant_id AND p\.id = NEW\.payment_id\s*\n\s*FOR UPDATE;/,
     "without FOR UPDATE two concurrent applications both read a stale total and both pass",
   );
   assert.match(SQL, /CREATE TRIGGER payment_application_within_receipt\s*\n\s*AFTER INSERT OR UPDATE ON payment_applications/);
@@ -147,11 +188,44 @@ test("the cross-row invariant is enforced by a trigger that locks the receipt ro
   assert.match(SQL, /CREATE TRIGGER receipt_amount_covers_applications\s*\n\s*BEFORE UPDATE ON payments/);
 });
 
-test("both financial-fact tables are append-only", () => {
-  assert.match(SQL, /CREATE FUNCTION refuse_financial_fact_delete\(\) RETURNS trigger/);
+test("both financial-fact tables are append-only against UPDATE *and* DELETE", () => {
+  // ════════════ THE HOLE THIS TEST NOW CLOSES ════════════
+  //
+  // This asserted `BEFORE DELETE ON` and passed while UPDATE was wide open. A table that refuses
+  // DELETE and permits UPDATE is not append-only: its history can be rewritten in place, which is
+  // worse than deletion because a deletion at least leaves a gap. `invoice_id` could be repointed
+  // at another obligation, `applied_amount_minor` lowered, `account_id` or `operating_company_key`
+  // re-attributed -- each leaving every derived balance perfectly correct about a history that
+  // never happened. A correction is a NEW financial fact, not a mutation of an old one.
+  assert.match(SQL, /CREATE FUNCTION refuse_financial_fact_mutation\(\) RETURNS trigger/);
+  assert.equal(/refuse_financial_fact_delete/.test(SQL), false,
+    "the DELETE-only name is gone with the DELETE-only behaviour");
   for (const trigger of ["payments_append_only", "payment_applications_append_only"]) {
-    assert.match(SQL, new RegExp(`CREATE TRIGGER ${trigger}\\s*\\n\\s*BEFORE DELETE ON`));
+    assert.match(SQL, new RegExp(`CREATE TRIGGER ${trigger}\\s*\\n\\s*BEFORE UPDATE OR DELETE ON`),
+      `${trigger} must fire on UPDATE as well as DELETE`);
   }
+  // And no allow-list crept in: the refusal is unconditional, never "except these columns".
+  assert.equal(/OF \w+ ON (payments|payment_applications)/.test(SQL), false,
+    "a column allow-list would be a standing invitation to decide, one field at a time, which " +
+    "financial facts are rewritable");
+});
+
+test("an application may not settle an invoice on another company's books", () => {
+  // Operating-company authority, explicit and fail closed. The application carries no company of
+  // its own (a second copy is the only way two copies can disagree); it inherits the receipt's, and
+  // the new invoice FK makes a SECOND company reachable through the same row. The books that
+  // received the cash are the books that may settle the obligation.
+  assert.match(SQL, /SELECT i\.operating_company_key INTO invoice_company/);
+  assert.match(SQL, /IF receipt_company IS NULL OR invoice_company <> receipt_company THEN/);
+  // A NULL on either side is refused, never waved through: "we could not tell" must not read as
+  // "it matched". The invoice's absence gets its own sentence because the FK and this trigger may
+  // be reached in either order.
+  assert.match(SQL, /IF invoice_company IS NULL THEN\s*\n\s*RAISE EXCEPTION 'invoice % not found for tenant %'/);
+  assert.match(SQL, /cross-company application/);
+  // Still no company column ON the application -- the rule is enforced by comparing the two stated
+  // authorities, never by storing a third.
+  const body = SQL.match(/CREATE TABLE payment_applications \(([\s\S]*?)\n\);/)[1];
+  assert.equal(/^\s+operating_company_key\s/m.test(body), false);
 });
 
 test("the down migration removes everything the up migration created", () => {
@@ -159,13 +233,17 @@ test("the down migration removes everything the up migration created", () => {
   for (const created of ["payment_applications", "payments", "payment_balances", "invoice_application_totals"]) {
     assert.match(down, new RegExp(`DROP (TABLE|VIEW) IF EXISTS ${created};`));
   }
-  for (const fn of ["refuse_financial_fact_delete", "assert_receipt_covers_applications", "assert_application_within_receipt"]) {
+  for (const fn of ["refuse_financial_fact_mutation", "assert_receipt_covers_applications", "assert_application_within_receipt"]) {
     assert.match(down, new RegExp(`DROP FUNCTION IF EXISTS ${fn}\\(\\);`));
   }
   // Referencing side first, or the DROP fails.
   assert.ok(
     down.indexOf("DROP TABLE IF EXISTS payment_applications;") < down.indexOf("DROP TABLE IF EXISTS payments;"),
   );
+  // And it does NOT drop eos_finance: this migration EXTENDS a schema 1758931200000 established,
+  // and 1758931200000's own down removes it -- after this one, since node-pg-migrate unwinds
+  // newest-first. Dropping it here would take the Invoice authority with it.
+  assert.equal(/DROP SCHEMA/i.test(down), false, "the schema goes with the migration that created it");
 });
 
 // ============================ the domain layer derives what the views derive ============================
@@ -237,7 +315,7 @@ test("governed keys and minor-unit amounts are validated by SHAPE and never manu
   for (const bad of [0, -1, 1.5, "100", NaN, Number.MAX_SAFE_INTEGER + 2]) {
     assert.throws(() => requirePositiveMinorUnits(bad, "amountMinor"), (e) => e.code === "AMOUNT_INVALID");
   }
-  // Re-exported, not re-implemented: one operating-company rule for the whole eos_ops layer.
+  // Re-exported, not re-implemented: one operating-company rule for the whole EOS operational/financial layer.
   assert.equal(requireOperatingCompanyKey("oc-alpha"), "oc-alpha");
   assert.throws(() => requireOperatingCompanyKey(""), /never defaulted, inferred or manufactured/);
 });

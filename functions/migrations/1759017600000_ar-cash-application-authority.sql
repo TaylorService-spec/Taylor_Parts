@@ -59,17 +59,39 @@
 -- the number the invoice authority must agree with, and it is now computable from facts rather
 -- than asserted by a projection.
 --
--- ════════════════════ WHY invoice_id IS AN OPAQUE GOVERNED KEY, NOT A FOREIGN KEY ════════════════════
+-- ════════════════════ WHY invoice_id IS NOW A REAL FOREIGN KEY ════════════════════
 --
--- For the same reason migration 005 has no `locations` table and migration 007 carries
--- `operating_company_key` as TEXT: an authority this schema does not own is not modelled here. The
--- Invoice authority's Postgres home does not exist yet. Inventing an `invoices` table to hang a
--- REFERENCES clause on would create an unmaintained copy of a record whose original stays
--- authoritative elsewhere -- the "unclear authority" copy the Owner ruling forbids. `invoice_id` is
--- carried as data, validated by the EOS authority layer, never joined as identity by this schema.
+-- OWNER RULING (Wave 1 integration). Invoice and Payment are ONE financial bounded context. Both
+-- live in `eos_finance`: 1758931200000 establishes the schema and the Invoice authority, this
+-- migration extends it with receipts and applications.
 --
--- It is NOT NULL with no default: an application that cannot say which obligation it settled is not
--- an application, and there is no invoice this schema may substitute.
+-- This migration previously carried `invoice_id` as an opaque governed key, on the stated grounds
+-- that "the Invoice authority's Postgres home does not exist yet". THAT PREMISE IS NO LONGER TRUE.
+-- `eos_finance.invoices` is in the same integrated database, applied by the migration immediately
+-- before this one. The reason for the opacity was the ABSENCE of the authority, not a preference
+-- for opacity -- so with the authority present, carrying the key as untyped text would mean
+-- choosing to leave representable a row that settles an invoice which does not exist.
+--
+-- An UNAPPLIED RECEIPT IS STILL A FIRST-CLASS POSITION: it is a `payments` row with NO application
+-- row at all, and `payment_balances` reports it as unapplied cash. Nothing here requires a receipt
+-- to name an invoice. What this FK says is narrower and exact: if a `payment_applications` row
+-- EXISTS, it settles a real invoice. An application that cannot identify an obligation is not an
+-- application -- it is unapplied cash wearing an allocation's clothes.
+--
+-- The reference is COMPOSITE -- (tenant_id, invoice_id, currency) -> invoices (tenant_id, id,
+-- currency) -- which is the same idiom `payment_application_matches_receipt` already uses against
+-- the receipt. It makes two further things structurally impossible rather than merely policed:
+-- settling another tenant's invoice, and settling an invoice denominated in a currency the cash was
+-- not received in.
+--
+-- ON DELETE RESTRICT, matching `invoice_lines`: an invoice is not deleted out from under the cash
+-- applied to it.
+--
+-- WHAT IS DELIBERATELY *NOT* ADDED. `account_id` stays an opaque governed key and gains no FK. The
+-- Account authority is NOT in `eos_finance` and is not this migration's to model; inventing a
+-- cross-schema reference to it would be exactly the unmaintained-copy defect this ruling removed
+-- for Invoice, reintroduced for a case where the authority genuinely is elsewhere. Nor is any
+-- reference added to sales orders, companies or locations.
 --
 -- ════════════════════ WHY AN APPLICATION CARRIES NO SECOND COPY OF COMPANY OR ACCOUNT ════════════════════
 --
@@ -127,7 +149,12 @@
 -- EOS server command is built over them and a cutover is separately authorised. This is financial
 -- data; a schema that is ready is not a schema that has been switched to.
 
-SET search_path = eos_ops, public;
+-- `eos_finance` already exists: migration 1758931200000 created it along with the Invoice
+-- authority. It is deliberately NOT re-created here with IF NOT EXISTS -- this migration EXTENDS a
+-- schema it does not own the establishment of, and if the Invoice authority were somehow absent
+-- these statements should fail loudly rather than quietly conjure an empty schema for the FK below
+-- to fail against later.
+SET search_path = eos_finance, public;
 
 -- ============================ cash receipts: money received ============================
 --
@@ -208,7 +235,12 @@ CREATE TABLE payment_applications (
     -- Same tenant, same receipt, SAME CURRENCY. Cross-currency application: impossible.
     CONSTRAINT payment_application_matches_receipt
         FOREIGN KEY (tenant_id, payment_id, currency)
-        REFERENCES payments (tenant_id, id, currency)
+        REFERENCES payments (tenant_id, id, currency),
+    -- Same tenant, a REAL invoice, SAME CURRENCY. See the header: the Invoice authority is in this
+    -- schema, so the obligation an application settles is identified rather than asserted.
+    CONSTRAINT payment_application_settles_invoice
+        FOREIGN KEY (tenant_id, invoice_id, currency)
+        REFERENCES invoices (tenant_id, id, currency) ON DELETE RESTRICT
 );
 
 CREATE INDEX payment_applications_by_payment ON payment_applications (tenant_id, payment_id);
@@ -222,14 +254,16 @@ CREATE UNIQUE INDEX payment_applications_idempotency
 CREATE FUNCTION assert_application_within_receipt() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
-    receipt_amount BIGINT;
-    applied_total  BIGINT;
+    receipt_amount  BIGINT;
+    receipt_company TEXT;
+    invoice_company TEXT;
+    applied_total   BIGINT;
 BEGIN
     -- FOR UPDATE, not a plain read: without the row lock two concurrent applications of the same
     -- receipt each see the other's row as uncommitted under READ COMMITTED, both pass, and the
     -- invariant is violated by a pair of individually-valid writes.
-    SELECT p.amount_minor INTO receipt_amount
-      FROM eos_ops.payments p
+    SELECT p.amount_minor, p.operating_company_key INTO receipt_amount, receipt_company
+      FROM eos_finance.payments p
      WHERE p.tenant_id = NEW.tenant_id AND p.id = NEW.payment_id
        FOR UPDATE;
 
@@ -238,8 +272,47 @@ BEGIN
         RAISE EXCEPTION 'payment % not found for tenant %', NEW.payment_id, NEW.tenant_id;
     END IF;
 
+    -- ════════ OPERATING-COMPANY AUTHORITY, EXPLICIT AND FAIL-CLOSED ════════
+    --
+    -- An application carries no company of its own, deliberately -- a second copy of one fact is
+    -- the only way two copies can disagree. It inherits the RECEIPT's company. The new FK to
+    -- `invoices` makes a second company reachable through the same row, and the books are the
+    -- ownership authority for a financial record (ruling D-15): cash received into company A's
+    -- books cannot settle an obligation on company B's. Nothing infers or reconciles here; the
+    -- two stated keys must agree or the write is refused.
+    --
+    -- A NULL on either side is refused as a mismatch rather than waved through: both columns are
+    -- NOT NULL with no default, so a NULL means something upstream removed a stated company, and
+    -- "we could not tell" must never read as "it matched".
+    SELECT i.operating_company_key INTO invoice_company
+      FROM eos_finance.invoices i
+     WHERE i.tenant_id = NEW.tenant_id AND i.id = NEW.invoice_id;
+
+    -- Defensive, exactly like the receipt read above: `payment_application_settles_invoice`
+    -- already guarantees the invoice exists in this tenant. Whether this trigger or that FK is
+    -- reached first is not specified by Postgres, so both doors are shut and neither lets the row
+    -- through -- what differs is only which sentence the caller gets.
+    IF invoice_company IS NULL THEN
+        RAISE EXCEPTION 'invoice % not found for tenant %', NEW.invoice_id, NEW.tenant_id
+            USING ERRCODE = 'foreign_key_violation';
+    END IF;
+
+    IF receipt_company IS NULL OR invoice_company <> receipt_company THEN
+        RAISE EXCEPTION
+            'cross-company application: receipt % is held by % but invoice % is on the books of %',
+            NEW.payment_id, COALESCE(receipt_company, '<none>'),
+            NEW.invoice_id, invoice_company
+            USING ERRCODE = 'check_violation',
+                  HINT = 'The books that received the cash are the books that may settle the obligation. Record the receipt in the company that owes it.';
+    END IF;
+
+    -- NOTE: the ACCOUNT is deliberately NOT checked here. Whether one customer's cash may settle a
+    -- related customer's invoice (parent/child billing relationships) is business policy nobody in
+    -- this program has decided, and a schema that guesses it would be inventing authority. Named
+    -- as an open question, not silently answered in either direction.
+
     SELECT COALESCE(sum(a.applied_amount_minor), 0) INTO applied_total
-      FROM eos_ops.payment_applications a
+      FROM eos_finance.payment_applications a
      WHERE a.tenant_id = NEW.tenant_id AND a.payment_id = NEW.payment_id;
 
     IF applied_total > receipt_amount THEN
@@ -270,7 +343,7 @@ BEGIN
     END IF;
 
     SELECT COALESCE(sum(a.applied_amount_minor), 0) INTO applied_total
-      FROM eos_ops.payment_applications a
+      FROM eos_finance.payment_applications a
      WHERE a.tenant_id = OLD.tenant_id AND a.payment_id = OLD.id;
 
     IF NEW.amount_minor < applied_total THEN
@@ -289,26 +362,59 @@ CREATE TRIGGER receipt_amount_covers_applications
     BEFORE UPDATE ON payments
     FOR EACH ROW EXECUTE FUNCTION assert_receipt_covers_applications();
 
--- ============================ append-only ============================
+-- ============================ append-only, ON BOTH DOORS ============================
+--
+-- ════════════════════ THE HOLE THIS CLOSES ════════════════════
+--
+-- These two triggers were `BEFORE DELETE` only, while the schema DECLARED both tables append-only.
+-- An append-only table that refuses DELETE and permits UPDATE is not append-only -- it is a table
+-- whose history can be rewritten in place, which is strictly worse than one whose history can be
+-- deleted, because a deletion at least leaves a gap somebody can notice.
+--
+-- Concretely, with DELETE refused and UPDATE permitted, a single statement could:
+--
+--   * repoint `payment_applications.invoice_id` at a different obligation -- moving cash between
+--     invoices with no fact recording that it moved, and leaving `invoice_application_totals`
+--     perfectly correct about a history that never happened;
+--   * lower `applied_amount_minor`, silently un-applying money while every derived balance agrees;
+--   * rewrite `payments.account_id` or `payments.operating_company_key` -- re-attributing received
+--     cash to another customer or another set of books after the fact.
+--
+-- Every one of those is the SAME class of lie the derived-balance design exists to remove, arrived
+-- at from the other direction. A CORRECTION IS A NEW FINANCIAL FACT: a reversing or additional
+-- application, or a new receipt -- never a mutation of an existing one.
+--
+-- SO UPDATE IS REFUSED OUTRIGHT, not column-by-column. A column allow-list would be a standing
+-- invitation to grow ("surely the check number can be fixed"), and each addition would be a
+-- separate small decision about which financial facts are re-writable -- the decision this schema
+-- declines to make. The migration's own header already states the rule for the Firestore
+-- representation ("a new receipt, not an edit, is how a correction would be represented"); this is
+-- that claim enforced instead of merely written down.
+--
+-- NOTE ON `receipt_amount_covers_applications`: it is BEFORE UPDATE ON payments and is now
+-- unreachable in normal operation, because `payments_append_only` sorts first among that table's
+-- BEFORE-row triggers and refuses the statement. It is deliberately RETAINED rather than removed:
+-- it is a guard, it costs nothing, and it states the narrower invariant in a form that still holds
+-- if the append-only rule is ever revisited by a later, explicit decision.
 
-CREATE FUNCTION refuse_financial_fact_delete() RETURNS trigger
+CREATE FUNCTION refuse_financial_fact_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     RAISE EXCEPTION
-        'table %.% is append-only: a financial fact is corrected by a new fact, never by deletion',
-        TG_TABLE_SCHEMA, TG_TABLE_NAME
+        'table %.% is append-only: a financial fact is corrected by a NEW fact, never by % of an existing one',
+        TG_TABLE_SCHEMA, TG_TABLE_NAME, lower(TG_OP)
         USING ERRCODE = 'restrict_violation',
-              HINT = 'Deleting an application silently unapplies money and leaves every derived balance correct about a history that no longer exists.';
+              HINT = 'Deleting or editing an application silently moves money and leaves every derived balance correct about a history that no longer exists. Record a new application or a new receipt instead.';
 END
 $$;
 
 CREATE TRIGGER payments_append_only
-    BEFORE DELETE ON payments
-    FOR EACH ROW EXECUTE FUNCTION refuse_financial_fact_delete();
+    BEFORE UPDATE OR DELETE ON payments
+    FOR EACH ROW EXECUTE FUNCTION refuse_financial_fact_mutation();
 
 CREATE TRIGGER payment_applications_append_only
-    BEFORE DELETE ON payment_applications
-    FOR EACH ROW EXECUTE FUNCTION refuse_financial_fact_delete();
+    BEFORE UPDATE OR DELETE ON payment_applications
+    FOR EACH ROW EXECUTE FUNCTION refuse_financial_fact_mutation();
 
 -- ============================ the derived read model ============================
 --
@@ -327,12 +433,12 @@ SELECT p.tenant_id,
        COALESCE(a.applied_minor, 0)               AS applied_minor,
        p.amount_minor - COALESCE(a.applied_minor, 0) AS unapplied_minor,
        COALESCE(a.application_count, 0)           AS application_count
-  FROM eos_ops.payments p
+  FROM eos_finance.payments p
   LEFT JOIN (
         SELECT tenant_id, payment_id,
                sum(applied_amount_minor)::BIGINT AS applied_minor,
                count(*)::BIGINT                  AS application_count
-          FROM eos_ops.payment_applications
+          FROM eos_finance.payment_applications
          GROUP BY tenant_id, payment_id
   ) a ON a.tenant_id = p.tenant_id AND a.payment_id = p.id;
 
@@ -347,11 +453,13 @@ SELECT tenant_id,
        sum(applied_amount_minor)::BIGINT AS applied_minor,
        count(*)::BIGINT                  AS application_count,
        max(applied_at)                   AS last_applied_at
-  FROM eos_ops.payment_applications
+  FROM eos_finance.payment_applications
  GROUP BY tenant_id, invoice_id, currency;
 
 -- Down Migration
-SET search_path = eos_ops, public;
+-- `eos_finance` itself is NOT dropped here. It was established by 1758931200000 (the Invoice
+-- authority) and is removed by that migration's own down, which runs after this one.
+SET search_path = eos_finance, public;
 
 DROP VIEW IF EXISTS invoice_application_totals;
 DROP VIEW IF EXISTS payment_balances;
@@ -361,7 +469,7 @@ DROP TRIGGER IF EXISTS payments_append_only ON payments;
 DROP TRIGGER IF EXISTS receipt_amount_covers_applications ON payments;
 DROP TRIGGER IF EXISTS payment_application_within_receipt ON payment_applications;
 
-DROP FUNCTION IF EXISTS refuse_financial_fact_delete();
+DROP FUNCTION IF EXISTS refuse_financial_fact_mutation();
 DROP FUNCTION IF EXISTS assert_receipt_covers_applications();
 DROP FUNCTION IF EXISTS assert_application_within_receipt();
 

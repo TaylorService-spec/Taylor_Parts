@@ -88,7 +88,7 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 // answer that quietly turns into a display fallback. The honest content of the declaration is the
 // gap it records: in Firestore there is no stored value to compare against the key, so the
 // stored-equals-key invariant is undeclarable, not merely unenforced. In the target Postgres
-// authority the same identity is `eos_ops.payments.id`, a PRIMARY KEY, where the question cannot
+// authority the same identity is `eos_finance.payments.id`, a PRIMARY KEY, where the question cannot
 // arise. nameField stays externalRef -- paymentId is IDENTITY, not a human-legible name, and
 // promoting an opaque allocated id to a name is exactly what identity.js forbids.
 
@@ -112,7 +112,7 @@ export const paymentEntity = makeEntityDefinition({
         "document id allocated by db.collection(PAYMENTS_COLLECTION).doc() in applyPayment and is " +
         "NOT a stored document field -- so nothing can compare a stored value against the key, and " +
         "a divergence between the two is undetectable rather than refused (recorded as a gap, see " +
-        "the file header). In the target authority it is eos_ops.payments.id, a TEXT PRIMARY KEY " +
+        "the file header). In the target authority it is eos_finance.payments.id, a TEXT PRIMARY KEY " +
         "(functions/migrations/1759017600000_ar-cash-application-authority.sql), where the two " +
         "cannot differ because there is only one of them. Never substituted by externalRef.",
     }),

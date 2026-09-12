@@ -18,6 +18,14 @@ on:
       - "functions/src/access/**"
       - "field-ops-app-vite/src/access/**"
       - "functions/scripts/governance/**"
+      # W1-C18 (required registration): administrationObjectDrift.test.mjs reconciles these five
+      # SOURCES against the object/capability model. The suite was named here but its inputs were
+      # not, so a change to the one file that silently grants authority could miss this gate.
+      - "field-ops-app-vite/src/access/objectPermissionMap.js"
+      - "field-ops-app-vite/src/access/policyObjectRegistry.js"
+      - "field-ops-app-vite/src/domain/inventoryActions.js"
+      - "functions/scripts/governance/objectCapabilityMap.mjs"
+      - "scripts/reconcileCrudMatrix.mjs"
       # The precedence sweep pins a hash of DECISIONS.md, so a DECISIONS-only change leaves the
       # generated artifact stale unless this lane runs. That happened once already (#1545 edited
       # DECISIONS.md without regenerating, and the drift surfaced on an unrelated branch).
@@ -107,6 +115,14 @@ on:
       - "functions/src/access/**"
       - "field-ops-app-vite/src/access/**"
       - "functions/scripts/governance/**"
+      # W1-C18 (required registration): administrationObjectDrift.test.mjs reconciles these five
+      # SOURCES against the object/capability model. The suite was named here but its inputs were
+      # not, so a change to the one file that silently grants authority could miss this gate.
+      - "field-ops-app-vite/src/access/objectPermissionMap.js"
+      - "field-ops-app-vite/src/access/policyObjectRegistry.js"
+      - "field-ops-app-vite/src/domain/inventoryActions.js"
+      - "functions/scripts/governance/objectCapabilityMap.mjs"
+      - "scripts/reconcileCrudMatrix.mjs"
       # The precedence sweep pins a hash of DECISIONS.md, so a DECISIONS-only change leaves the
       # generated artifact stale unless this lane runs. That happened once already (#1545 edited
       # DECISIONS.md without regenerating, and the drift surfaced on an unrelated branch).

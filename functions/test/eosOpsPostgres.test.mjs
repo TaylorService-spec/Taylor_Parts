@@ -156,9 +156,111 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   const forbidden = await query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'
        AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances',
-                          'locations', 'invoices', 'accounts')`,
+                          'locations', 'accounts')`,
   );
   assert.deepEqual(forbidden.rows, [], "no stored balance table, and no copy of an authority this schema does not own");
+});
+
+// ============================ the financial boundary ============================
+
+test("financial authority lives in eos_finance, and does not leak into eos_ops", { skip: SKIP }, async () => {
+  // ════════════════════ WHAT THIS REPLACES, AND WHY IT IS STRONGER ════════════════════
+  //
+  // The eos_ops census above used to carry `'invoices'` in its forbidden list. That was the Payment
+  // lane asserting "the Invoice authority is not here", written while the Invoice lane was in
+  // parallel creating `eos_ops.invoices` -- a direct contradiction the W1 integration rehearsal
+  // correctly left failing rather than resolving by deleting one side.
+  //
+  // THE OWNER RULED: Invoice and Payment are ONE financial bounded context and NEITHER belongs in
+  // eos_ops. So the guard is not removed and not weakened -- it is replaced by the stronger, and
+  // now decidable, two-sided claim:
+  //
+  //     1. every financial object EXISTS, in eos_finance;
+  //     2. NO financial object exists in eos_ops.
+  //
+  // The old form could only ever prove half of (2) and nothing of (1): a guard saying "invoices are
+  // not here" passes identically whether the authority lives in the right schema or nowhere at all.
+  await reset();
+
+  const FINANCIAL_TABLES = ["invoice_lines", "invoices", "payment_applications", "payments"];
+  const FINANCIAL_VIEWS = ["invoice_application_totals", "invoice_totals", "payment_balances"];
+
+  // (1) The schema exists and holds EXACTLY the seven objects the ruling names -- derived from the
+  // migration files, in the same directory-derived way the eos_ops census above is derived, so a
+  // later financial migration is simply a later financial migration.
+  assert.ok(declaredSchemas().includes("eos_finance"), "the migrations declare eos_finance");
+  assert.deepEqual(declaredTablesIn("eos_finance"), FINANCIAL_TABLES);
+  assert.deepEqual(declaredViewsIn("eos_finance"), FINANCIAL_VIEWS);
+
+  const liveTables = await query(
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'eos_finance' AND table_type = 'BASE TABLE' ORDER BY 1`,
+  );
+  assert.deepEqual(liveTables.rows.map((r) => r.table_name), declaredTablesIn("eos_finance"),
+    "the live eos_finance schema is exactly what the migration files declare");
+  const liveViews = await query(
+    `SELECT table_name FROM information_schema.views WHERE table_schema = 'eos_finance' ORDER BY 1`,
+  );
+  assert.deepEqual(liveViews.rows.map((r) => r.table_name), declaredViewsIn("eos_finance"),
+    "the balances are VIEWS -- one that became a stored table would leave this list");
+
+  // (2) NOT ONE of them appears in eos_ops, as a table OR as a view. Named individually rather than
+  // as "whatever eos_finance happens to hold", so that moving a financial table back into the
+  // operational plane fails here even if it were ALSO removed from eos_finance.
+  const leaked = await query(
+    `SELECT table_name, table_type FROM information_schema.tables
+      WHERE table_schema = 'eos_ops' AND table_name = ANY($1) ORDER BY 1`,
+    [[...FINANCIAL_TABLES, ...FINANCIAL_VIEWS]],
+  );
+  assert.deepEqual(leaked.rows, [],
+    "a financial record in the operational data plane makes 'which authority owns this row' a " +
+    "question answered by reading the table name rather than by the schema");
+
+  // And no AR-AUTHORITY column crept into eos_ops under another name, which is how a bounded
+  // context actually leaks in practice -- not as a table helpfully called `invoices`.
+  //
+  // ════════════ WHY THIS IS NOT "NO MONEY IN eos_ops" ════════════
+  //
+  // `eos_ops.purchase_orders` legitimately carries `unit_price_minor` and `currency`: what a
+  // supplier charges for a part is procurement reference data on an operational document, it
+  // predates this ruling, and the Owner ruled about Invoice and Payment -- the AR context -- not
+  // about every column denominated in money. A guard that forbade all of it would be this
+  // integration inventing a boundary nobody drew, and would fail on a correct pre-existing design.
+  //
+  // So the list is the columns that are DISTINCTIVE to the invoice/payment authority: each one
+  // states a billed obligation or a cash application, and any of them appearing in the operational
+  // plane means the financial authority has been copied there whatever the table is called.
+  const leakedColumns = await query(
+    `SELECT table_name, column_name FROM information_schema.columns
+      WHERE table_schema = 'eos_ops'
+        AND column_name IN ('invoice_id', 'invoice_number', 'payment_id',
+                            'applied_minor', 'applied_amount_minor', 'unapplied_minor',
+                            'outstanding_minor', 'line_total_minor', 'taxable_base_minor')
+      ORDER BY 1, 2`,
+  );
+  assert.deepEqual(leakedColumns.rows, [],
+    "eos_ops holds quantities and what they cost to procure; eos_finance holds what is owed and what was paid");
+
+  // The operating-company authority survived the move: it is still NOT NULL with no default on
+  // both financial fact tables. A bounded context that loses its company scope on the way across
+  // is a bounded context that fails open.
+  // BASE TABLEs only: `invoice_totals` and `payment_balances` also expose the column, because they
+  // PROJECT it from the facts. A view has no nullability or default of its own to assert, and
+  // including one here would be checking the projection instead of the authority.
+  const company = await query(
+    `SELECT c.table_name, c.is_nullable, c.column_default
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'eos_finance' AND c.column_name = 'operating_company_key'
+        AND t.table_type = 'BASE TABLE'
+      ORDER BY 1`,
+  );
+  assert.deepEqual(company.rows.map((r) => r.table_name), ["invoices", "payments"]);
+  for (const row of company.rows) {
+    assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key must be NOT NULL`);
+    assert.equal(row.column_default, null, `${row.table_name}.operating_company_key must have no default`);
+  }
 });
 
 test("eos_ops tables are FK-scoped to eos_policy.tenants -- an orphan tenant_id is refused", { skip: SKIP }, async () => {

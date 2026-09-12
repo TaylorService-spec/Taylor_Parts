@@ -52,7 +52,7 @@ export const invoiceAdministrationProfile = makeObjectAdministrationProfile({
   // THE CANONICAL IDENTITY IS NOT A DECLARED FIELD, AND THAT IS THE HONEST ANSWER. The invoice's
   // identity is an opaque record id — `db.collection(INVOICES_COLLECTION).doc()` in
   // persistIssuedInvoice, which the code itself calls "canonical opaque identity, distinct from the
-  // number", and `eos_ops.invoices.id` in the Postgres authority. Neither is declared as a
+  // number", and `eos_finance.invoices.id` in the Postgres authority. Neither is declared as a
   // FieldDefinition on the invoice entity, so `idField` names the only identity-bearing field the
   // entity actually has: invoiceNumber, its declared reference field.
   //
@@ -68,7 +68,7 @@ export const invoiceAdministrationProfile = makeObjectAdministrationProfile({
     canonicalValidator: cite("functions/src/finance/invoiceNumbering.ts", "allocateInvoiceNumber"),
     neverSubstituted: [
       "the Sales Order id or number — the invoice's lineage, never its identity",
-      "the opaque record id (Firestore document id / eos_ops.invoices.id): it IS the canonical identity, and it is not this field",
+      "the opaque record id (Firestore document id / eos_finance.invoices.id): it IS the canonical identity, and it is not this field",
       "the `sequence` integer the number is formatted from — an internal numbering artifact",
       "the Account id, which scopes the only read query and identifies nothing",
       "a payment or payment_application id, which reference the invoice and are not it",
@@ -312,7 +312,7 @@ export const invoiceAdministrationProfile = makeObjectAdministrationProfile({
   // ── MIGRATION ──────────────────────────────────────────────────────────────────────────────
   migration: makeMigrationStatus({
     readiness: MIGRATION_READINESS.ANALYZED,
-    targetAuthority: "PostgreSQL eos_ops.invoices + eos_ops.invoice_lines + the eos_ops.invoice_totals view",
+    targetAuthority: "PostgreSQL eos_finance.invoices + eos_finance.invoice_lines + the eos_finance.invoice_totals view",
     source: "Firestore `invoices` (documents with an embedded InvoiceLineRecord[] `lines` array)",
     evaluator: cite("functions/src/eosOps/invoiceAuthority.ts", "insertIssuedInvoice"),
     reconciliation: cite("functions/src/eosOps/invoiceAuthority.ts", "reconcileMigratedInvoice"),

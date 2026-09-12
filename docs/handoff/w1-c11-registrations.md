@@ -113,4 +113,7 @@ the Firestore `invoices` authority is a cutover this packet does not perform.
   numbering) that nobody has decided.
 * **No AR overlay in the Postgres authority.** `payments`, `payment_applications`,
   `invoice_adjustments` and `refunds` are the Payment lane's. Migration 008 stops at what is
-  BILLED and leaves `eos_ops.invoice_totals` as the join surface that lane will need.
+  BILLED and leaves `eos_finance.invoice_totals` as the join surface that lane will need.
+  (Schema updated at the W1 integration: the Owner ruled Invoice and Payment into one
+  `eos_finance` bounded context. This lane's migration establishes it; the Payment lane's extends
+  it, and `payment_applications.invoice_id` is now a real foreign key into `eos_finance.invoices`.)

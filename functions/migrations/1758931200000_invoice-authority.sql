@@ -116,7 +116,37 @@
 -- `insertIssuedInvoice`). Recorded here rather than asserted: a header with no lines is possible
 -- at the SQL boundary alone, and `invoice_totals.line_count` is exposed so a reader can see it.
 
-SET search_path = eos_ops, public;
+-- ════════════════════ THE eos_finance SCHEMA — WHY INVOICE DOES NOT LIVE IN eos_ops ════════════════════
+--
+-- OWNER RULING (Wave 1 integration). Invoice and Payment are ONE financial bounded context, and
+-- NEITHER belongs in `eos_ops`.
+--
+-- `eos_ops` is the OPERATIONAL data plane: what is physically on hand, where it is, who has custody
+-- of it. Its invariants are quantity invariants. A financial record's invariants are money
+-- invariants -- currency agreement, applied-versus-received, append-only correction -- and they are
+-- not the same rules, not read by the same surfaces, and not granted by the same capabilities.
+-- Putting them in one schema makes "which authority owns this row" a question answered by reading
+-- the table name rather than by the schema, which is exactly the ambiguity a bounded context exists
+-- to remove.
+--
+-- THIS MIGRATION ESTABLISHES `eos_finance` and the INVOICE authority within it. The AR
+-- cash-application migration (1759017600000) EXTENDS the same schema with receipts and
+-- applications. The schema therefore holds exactly seven objects across the two migrations:
+--
+--     TABLES : invoices, invoice_lines, payments, payment_applications
+--     VIEWS  : invoice_totals, payment_balances, invoice_application_totals
+--
+-- and nothing else. `eos_finance` is created here, by the migration that puts the first object in
+-- it, and dropped here on the way back down -- after the cash-application migration has already
+-- reversed its own objects, because node-pg-migrate unwinds newest-first.
+--
+-- IDENTITY IS STILL OPAQUE. Moving the tables changes where they live, never what identifies them:
+-- `invoices.id` remains a minted opaque key carrying no account, no company, no tenant, no year and
+-- no location. `invoice_number` remains the human REFERENCE, unique per tenant per operating
+-- company because that is the scope it is allocated in. Money remains integer minor units.
+
+CREATE SCHEMA IF NOT EXISTS eos_finance;
+SET search_path = eos_finance, public;
 
 -- ============================ the invoice ============================
 
@@ -151,6 +181,21 @@ CREATE TABLE invoices (
     voided_by             TEXT,
     CONSTRAINT invoice_number_unique_per_company
         UNIQUE (tenant_id, operating_company_key, invoice_number),
+    -- THE TENANT-SCOPED, CURRENCY-CARRYING REFERENCE TARGET.
+    --
+    -- Redundant with the primary key on its own; it exists so that `payment_applications` can name
+    -- an invoice by (tenant_id, id, currency) rather than by id alone. That shape does two things a
+    -- bare `REFERENCES invoices(id)` cannot:
+    --
+    --   1. TENANT SCOPE IS STRUCTURAL. An application in tenant A cannot settle an invoice in
+    --      tenant B, because the pair must match -- not because a writer remembered to filter.
+    --   2. A CROSS-CURRENCY APPLICATION IS UNREPRESENTABLE. The receipt already pins the
+    --      application's currency (payments_currency_identity); this pins the invoice's to the same
+    --      value. USD cash cannot settle a EUR invoice at the SQL boundary at all.
+    --
+    -- It adds NO business meaning to identity: `id` is still the whole identity, and this is a
+    -- uniqueness statement about columns that are already unique.
+    CONSTRAINT invoices_currency_identity UNIQUE (tenant_id, id, currency),
     CONSTRAINT invoice_currency_present CHECK (length(btrim(currency)) > 0),
     CONSTRAINT invoice_number_present   CHECK (length(btrim(invoice_number)) > 0),
     CONSTRAINT invoice_company_present  CHECK (length(btrim(operating_company_key)) > 0),
@@ -251,7 +296,7 @@ LEFT JOIN invoice_lines l
 GROUP BY i.id;
 
 -- Down Migration
-SET search_path = eos_ops, public;
+SET search_path = eos_finance, public;
 
 -- Financial records are not dropped silently. The up migration adds tables nothing deployed writes
 -- yet; if that has changed by the time someone reverses it, the reversal destroys issued invoices
@@ -261,7 +306,7 @@ DO $$
 DECLARE
     occupied BIGINT;
 BEGIN
-    SELECT count(*) INTO occupied FROM eos_ops.invoices;
+    SELECT count(*) INTO occupied FROM eos_finance.invoices;
     IF occupied > 0 THEN
         RAISE EXCEPTION
             'migration 008 cannot be reversed: % invoice rows exist and would be destroyed',
@@ -274,3 +319,10 @@ $$;
 DROP VIEW  IF EXISTS invoice_totals;
 DROP TABLE IF EXISTS invoice_lines;
 DROP TABLE IF EXISTS invoices;
+
+-- The schema goes with the last object in it. This migration created `eos_finance`, so this
+-- migration removes it. By the time this runs, node-pg-migrate has ALREADY reversed
+-- 1759017600000 (it unwinds newest-first), so the receipts and applications that migration added
+-- are gone and this drop is removing an empty schema -- which is why the occupancy refusal above
+-- is the only guard needed here.
+DROP SCHEMA IF EXISTS eos_finance CASCADE;
