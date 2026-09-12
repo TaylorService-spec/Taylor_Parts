@@ -8951,8 +8951,7 @@
       "device": "HANDHELD_SCANNER",
       "coverage": [
         "NORMAL",
-        "MOBILE",
-        "DESKTOP"
+        "MOBILE"
       ],
       "ai_opportunity": "AI_NOISE",
       "ai_opportunity_note": "Route derivation is two lookups and a comparison.",
@@ -8979,7 +8978,17 @@
         "ownership_unclear": false
       },
       "execution_status": "NOT_RUN",
-      "execution_result": null
+      "execution_result": null,
+      "coverage_tag_correction": {
+        "corrected_by": "P3-DIL-FIX follow-up (controller)",
+        "date": "2026-09-12",
+        "original_coverage": [
+          "NORMAL",
+          "MOBILE",
+          "DESKTOP"
+        ],
+        "reason": "device is HANDHELD_SCANNER; the coverage vocabulary declares no HANDHELD_SCANNER category, so a handheld row carries MOBILE (the convention 67 of 69 handheld rows already follow). This row carried a spurious DESKTOP tag."
+      }
     },
     {
       "activity_id": "S17-A02",
@@ -12688,7 +12697,8 @@
       "coverage": [
         "CROSS_COMPANY",
         "NORMAL",
-        "PERMISSION_DENIAL"
+        "PERMISSION_DENIAL",
+        "MOBILE"
       ],
       "ai_opportunity": "AI_NOT_APPLICABLE",
       "ai_opportunity_note": "A dispatch scan.",
@@ -12715,7 +12725,17 @@
         "ownership_unclear": true
       },
       "execution_status": "NOT_RUN",
-      "execution_result": null
+      "execution_result": null,
+      "coverage_tag_correction": {
+        "corrected_by": "P3-DIL-FIX follow-up (controller)",
+        "date": "2026-09-12",
+        "original_coverage": [
+          "CROSS_COMPANY",
+          "NORMAL",
+          "PERMISSION_DENIAL"
+        ],
+        "reason": "device is HANDHELD_SCANNER; the coverage vocabulary declares no HANDHELD_SCANNER category, so a handheld row carries MOBILE (the convention 67 of 69 handheld rows already follow). This row carried no device tag at all."
+      }
     },
     {
       "activity_id": "S24-A05",
@@ -12792,7 +12812,8 @@
       "coverage": [
         "CROSS_COMPANY",
         "NORMAL",
-        "PERMISSION_DENIAL"
+        "PERMISSION_DENIAL",
+        "DESKTOP"
       ],
       "ai_opportunity": "AI_NOT_APPLICABLE",
       "ai_opportunity_note": "A receipt confirmation.",
@@ -12820,7 +12841,17 @@
         "ownership_unclear": true
       },
       "execution_status": "NOT_RUN",
-      "execution_result": null
+      "execution_result": null,
+      "coverage_tag_correction": {
+        "corrected_by": "P3-DIL-FIX follow-up (controller)",
+        "date": "2026-09-12",
+        "original_coverage": [
+          "CROSS_COMPANY",
+          "NORMAL",
+          "PERMISSION_DENIAL"
+        ],
+        "reason": "device is DESKTOP; the coverage vocabulary declares no HANDHELD_SCANNER category, so a handheld row carries MOBILE (the convention 67 of 69 handheld rows already follow). This row carried no device tag at all."
+      }
     },
     {
       "activity_id": "S24-A07",
