@@ -24,6 +24,7 @@ import admin from "firebase-admin";
 import {
   runReportDefinition,
   InvalidReportDefinitionError,
+  IncompleteAggregateScanError,
 } from "../lib/reporting/reportExecutionService.js";
 
 // 2C.6C (DECISIONS #167): Reporting is ENVIRONMENT-ACTIVATED -- report.* is registered
@@ -697,10 +698,58 @@ async function main() {
           filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
         },
       },
-      { roles: TEST_ROLES, maxGroupCardinality: 2, maxScanDocs: 100 },
+      // maxScanDocs is deliberately far above anything this emulator's
+      // `accounts` collection accumulates across a full run of this
+      // file. Since the census X-9 fix, an aggregate run whose SCAN was
+      // truncated is REFUSED (IncompleteAggregateScanError) rather than
+      // returning an understated total -- so a scan bound low enough to
+      // be hit here would turn this group-cardinality assertion into a
+      // thrown refusal. Group-cardinality truncation itself is still a
+      // page-and-say-so, which is exactly what this test pins.
+      { roles: TEST_ROLES, maxGroupCardinality: 2, maxScanDocs: 100_000 },
     );
     assert.equal(outcome.truncated, true);
     assert.ok(outcome.aggregates.length <= 2);
+  });
+
+  // --- Truncation honesty: an aggregate over a truncated scan is REFUSED
+  // (docs/assessments/eos-dashboard-reporting-authority-census.md X-9) ---
+  await check("an aggregate whose raw scan was truncated is REFUSED, never returned as an understated total", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("x9");
+    await seedCustomers(
+      Array.from({ length: 4 }, (_, i) => ({ name: `${marker}-${i}`, status: "Active", createdAt: now })),
+    );
+    await assert.rejects(
+      () => runReportDefinition(
+        {
+          runnerUid,
+          definition: {
+            objectId: "customer",
+            fields: ["customer.status"],
+            groupBy: ["customer.status"],
+            aggregates: [{ fn: "countRows" }],
+            filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
+          },
+        },
+        // maxScanDocs: 1 guarantees the raw scan is cut. The filter would
+        // have matched 4 rows; a bounded scan could only ever report a
+        // countRows smaller than the truth.
+        { roles: TEST_ROLES, maxScanDocs: 1 },
+      ),
+      IncompleteAggregateScanError,
+    );
+  });
+
+  await check("a NON-aggregate run over a truncated scan still returns a page and says so", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const outcome = await runReportDefinition(
+      { runnerUid, definition: { objectId: "customer", fields: ["customer.name"] } },
+      { roles: TEST_ROLES, maxScanDocs: 1 },
+    );
+    assert.equal(outcome.truncated, true, "a bounded LIST is allowed -- only a bounded TOTAL is refused");
   });
 
   // --- Cross-principal isolation (no caching) ---
