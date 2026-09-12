@@ -13,14 +13,27 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore } from "firebase-admin/firestore";
 import { getCallerContext } from "../callerContext.js";
 import { TERMINAL_STATUSES } from "../transitionEngine.js";
-import { resolveConsumptionSourceOptions, readWorkOrderForSourceLookup } from "./consumptionSourceService.js";
+import {
+  readConsumptionTrackingModes,
+  resolveConsumptionSourceOptions,
+  readWorkOrderForSourceLookup,
+} from "./consumptionSourceService.js";
+import {
+  consumptionTrackingModeFor,
+  isQuantityTracked,
+  PART_NOT_QUANTITY_TRACKED,
+  WORK_ORDER_CONSUMPTION_TRACKING_MODE,
+} from "./consumptionPartTracking.js";
 
+// `trackingMode` and `serialNo` USED TO BE ACCEPTED HERE, off the request, defaulting to "NONE".
+// They are gone rather than validated: how a part is counted is the Part's fact, so a caller-supplied
+// value was a second, forgeable answer to a question this service can simply ask. No shipped client
+// ever sent either field (ExecutionCapture.jsx sends workOrderId/partId/requestedQuantity), so
+// removing them regresses no caller — and an extra field on the wire is ignored, not an error.
 interface ListSourcesInput {
   workOrderId?: unknown;
   partId?: unknown;
   requestedQuantity?: unknown;
-  trackingMode?: unknown;
-  serialNo?: unknown;
 }
 
 export const listWorkOrderConsumptionSources = onCall({ region: "us-central1" }, async (request) => {
@@ -49,12 +62,29 @@ export const listWorkOrderConsumptionSources = onCall({ region: "us-central1" },
     throw new HttpsError("failed-precondition", "Execution data cannot be changed on a terminal Work Order.");
   }
 
+  // THE SAME AUTHORITY THE SUBMIT USES, ASKED THE SAME WAY. The picker and the writer now derive the
+  // mode from one place, so this screen cannot offer a selection the command would then refuse.
+  const trackingMode = consumptionTrackingModeFor(await readConsumptionTrackingModes(db, [partId]), partId);
+  if (!isQuantityTracked(trackingMode)) {
+    // Not "choose one" — there is nothing to choose, and nothing this workflow can record. Same
+    // shape as the resolver's other unavailable answers, so the client branches on a reason rather
+    // than on an error.
+    return {
+      autoSource: null,
+      selectableSources: [],
+      serializedSource: null,
+      sourceRequired: false,
+      autoSourceUnavailableReason: PART_NOT_QUANTITY_TRACKED,
+      mobileAmbiguous: false,
+    };
+  }
+
   const options = await resolveConsumptionSourceOptions(db, {
     workOrderId,
     partId,
     requestedQuantity: typeof data.requestedQuantity === "number" && data.requestedQuantity > 0 ? data.requestedQuantity : 1,
-    trackingMode: typeof data.trackingMode === "string" ? data.trackingMode : "NONE",
-    serialNo: typeof data.serialNo === "string" ? data.serialNo : null,
+    trackingMode: WORK_ORDER_CONSUMPTION_TRACKING_MODE,
+    serialNo: null,
     technicianId: caller.technicianId,
   });
 
