@@ -33,7 +33,6 @@ export const POLICY = {
     // Street address / free-text location is business-specific -> TRANSFORM to a generic sandbox label.
     transform: { address: (_v, w) => det("SBX-ADDR", w.warehouseId) },
   },
-  stock_locations: { keep: ["warehouseId", "partId", "quantity", "binCode"], transform: {} },
   trucks: {
     keep: ["truckId", "locationId", "homeWarehouseId", "status", "active", "vehicleNumber"],
     // Driver is EMPLOYEE identity -> REMOVE (dropped). Display label may embed a person/plate -> TRANSFORM.

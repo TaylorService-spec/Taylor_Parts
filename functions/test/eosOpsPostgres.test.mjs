@@ -10,6 +10,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import pg from "pg";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.js";
@@ -106,16 +108,38 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
-  assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    // Migration 005's four foundation tables, plus migration 008's two: the commitment ledger
-    // (a promise against stock, which is deliberately NOT a movement) and the Work Order
-    // inventory-effect replay authority. Still no balance table and no locations table.
-    "cycle_count_lines", "cycle_count_sheets", "inventory_commitments", "inventory_movements",
-    "serialized_custody", "work_order_inventory_effects",
-  ], "exactly the declared tables -- no balance table, no locations table");
+  // ════════════ THE RULE, NOT A LIST ════════════
+  //
+  // This was a closed, hand-written list of eos_ops tables. Every additive migration rewrote it, and
+  // at integration ELEVEN of them landed at once -- eleven lanes had each edited this one literal to
+  // describe a world containing only their own migration, so every version of it was wrong. The list
+  // is therefore replaced by the rule it always stood in for: the live eos_ops schema contains
+  // EXACTLY the tables the migration files declare -- no fewer (every declared table applied) and no
+  // more (nothing crept in that no migration creates) -- and, still closed and still literal below,
+  // nothing balance-shaped.
+  const declaredOpsTables = new Set();
+  for (const file of readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort()) {
+    const up = readFileSync(join("migrations", file), "utf8").split(/^-- Down Migration/m)[0];
+    for (const m of up.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?eos_ops\.([a-z_]+)/gi)) {
+      declaredOpsTables.add(m[1]);
+    }
+    for (const m of up.matchAll(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?eos_ops\.([a-z_]+)/gi)) {
+      declaredOpsTables.delete(m[1]);
+    }
+  }
+  assert.ok(declaredOpsTables.size >= 4, "the migration files declare eos_ops tables at all");
+  assert.deepEqual(tables.rows.map((r) => r.table_name), [...declaredOpsTables].sort(),
+    "the live eos_ops schema is exactly what the migration files declare -- nothing missing, nothing extra");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.
+  //
+  // Migration 008 added `warehouses`, `bins` and `bin_code_claims`. They are LOCATION REFERENCE
+  // DATA -- they say where a place is, never how much is in it -- so the rule below is unchanged
+  // and still binding: `stock_locations`, the legacy per-(warehouse, part, bin) row that carried
+  // both `quantity` and `quantityOnHand`, is exactly what it forbids. 008's own suite
+  // (eosOpsWarehouseBinPostgres.test.mjs) additionally proves no balance-shaped COLUMN exists on
+  // any of the three new tables.
   const forbidden = await query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'
        AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances')`,

@@ -33,7 +33,15 @@ const MIGRATION_FILE = "1757980800000_operating-company-and-serialized-custody.s
 // created the first three (a location or a custody); migration 008 added `inventory_commitments` on
 // the same terms -- a commitment is netted directly against `inventory_movements`, so a claim
 // without a company could only be subtracted from every company's stock at once.
-const COMPANY_TABLES = ["inventory_movements", "serialized_custody", "cycle_count_sheets", "inventory_commitments"];
+// EVERY table that carries `operating_company_key`, not just the three migration 007 introduced.
+// Grown by union at integration: each additive migration that puts the column on a new table appends
+// here, and the two assertions below (the NOT NULL sweep, and the post-re-`up` column count) are both
+// written against this list's LENGTH rather than a literal, so neither needs editing again.
+const COMPANY_TABLES = [
+  "inventory_movements", "serialized_custody", "cycle_count_sheets", // 007
+  "inventory_commitments",                                           // 008 (PR 1868)
+  "warehouses",                                                      // 009 (PR 1877)
+];
 
 // Unwind far enough that MIGRATION_FILE (007) is the next one to re-apply, whatever later migrations
 // exist. Counting the files instead of hard-coding "1" is what stops a later additive migration from
@@ -109,6 +117,11 @@ test("operating_company_key is NOT NULL on all three authority-bearing tables", 
       WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
       ORDER BY table_name`,
   );
+  // Migration 008 added a FOURTH carrier: `warehouses`, where the company is a PRIMARY fact rather
+  // than a carried one -- the Warehouse IS the company boundary root (ownership/ownershipMatrix.ts).
+  // It is asserted here alongside 007's three because the property being pinned is the same one
+  // (NOT NULL, no default, TEXT), and a new table that carried the column NULLABLE would otherwise
+  // slip past this check unnoticed.
   assert.deepEqual(columns.rows.map((r) => r.table_name), [...COMPANY_TABLES].sort());
   for (const row of columns.rows) {
     assert.equal(row.data_type, "text", `${row.table_name}.operating_company_key is TEXT, not an enum`);

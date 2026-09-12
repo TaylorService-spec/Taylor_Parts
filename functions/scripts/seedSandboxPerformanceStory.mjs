@@ -467,12 +467,11 @@ async function applyScenario(db, spec, { dryRun }) {
   }
 
   // --- inventory position ------------------------------------------------------------------
-  for (const s of spec.stock) {
-    await set("stock_locations", `${s.warehouseId}__${s.partId}`, {
-      warehouseId: s.warehouseId, partId: s.partId, quantityOnHand: s.qty,
-      note: s.note, scenarioId: "SBX-PERFSTORY-001", updatedAt: now, updatedBy: by,
-    });
-  }
+  // NO stock_locations. `spec.stock` still describes the story's intended opening positions for a
+  // reader, but writing them as per-(warehouse, part) `quantityOnHand` rows would recreate the
+  // retired duplicate balance authority (Decision #160 / ADR-014) that
+  // functions/src/constants/collections.ts and functions/src/types/warehouse.ts both record as
+  // having diverged from the ledger in both directions. On-hand comes from the ledger.
 
   // --- reorder requests (canonical shape -- every governed key present) --------------------
   for (const r of spec.reorderRequests) {

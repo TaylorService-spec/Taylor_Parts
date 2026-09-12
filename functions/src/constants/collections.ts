@@ -26,6 +26,14 @@ export const INVENTORY_SYNC_STATUS_COLLECTION = "inventory_sync_status";
 // that diverged from the ledger in BOTH directions wherever it had been seeded. Physical on-hand
 // comes from `inventory_transactions` (NONE) and `serialized_assets` (SERIAL). There is no second
 // balance table, and adding one back would recreate exactly the divergence that retired this one.
+//
+// The RETIREMENT IS NOW COMPLETE, not just the constant. BIN-P2 removed the name from here and the
+// client read from firestore.rules, but three sandbox seeds and the production-fixture pipeline
+// still produced the rows -- which is why the collection still had documents in it. Migration 008
+// (`1758240000000_warehouse-and-bin-location-authority.sql`) removed the last of them along with
+// the collection's dead composite index, so nothing in this repository writes, reads, indexes,
+// seeds or extracts `stock_locations` any more. `test/eosOpsWarehouseBinAuthority.test.mjs` proves
+// the absence by scanning for the write shapes rather than by remembering.
 export const WAREHOUSES_COLLECTION = "warehouses";
 export const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
 

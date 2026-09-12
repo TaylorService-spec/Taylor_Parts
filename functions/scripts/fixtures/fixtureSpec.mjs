@@ -8,7 +8,7 @@
 //
 // Sources (verified in-repo):
 //   parts, manufacturers, part_aliases, part_supplier_items  — functions/src/partMaster/*
-//   stock_locations, warehouses, inventory_transactions      — functions/src/constants/collections.ts
+//   warehouses, inventory_transactions                       — functions/src/constants/collections.ts
 //   mobile_locations, trucks                                 — functions/src/truckRegistry/*
 //   equipment                                                — field-ops EQUIPMENT_COLLECTION (installed asset register)
 //   equipment_models, equipment_model_aliases,
@@ -38,13 +38,13 @@ export const COLLECTIONS = {
 
   // ---- INVENTORY ----
   warehouses: { domain: "INVENTORY", idField: "warehouseId", docIdIsId: true, refs: [] },
-  stock_locations: {
-    domain: "INVENTORY", idField: null, docIdIsId: false,
-    refs: [
-      { field: "warehouseId", to: "warehouses", required: true },
-      { field: "partId", to: "parts", required: true },
-    ],
-  },
+  // stock_locations is DELIBERATELY ABSENT. It is a retired duplicate balance authority (Decision
+  // #160 / ADR-014): functions/src/constants/collections.ts removed its constant, firestore.rules
+  // retired its client read, and functions/src/types/warehouse.ts records that it diverged from the
+  // ledger in BOTH directions wherever it had been seeded. Extracting it into a fixture set and
+  // replaying it into a sandbox would reproduce that divergence on purpose. On-hand comes from
+  // inventory_transactions (NONE) and serialized_assets (SERIAL); a warehouse aggregate is direct +
+  // Sum(child bins) over those, never a stored row.
   // trucks are MOBILE inventory LOCATION identity (Truck Registry). mobile_locations mirror them.
   trucks: { domain: "INVENTORY", idField: "truckId", docIdIsId: true, refs: [{ field: "homeWarehouseId", to: "warehouses", required: false }] },
   mobile_locations: { domain: "INVENTORY", idField: "locationId", docIdIsId: true, refs: [] },
@@ -91,10 +91,6 @@ export const SELECTION_CRITERIA = {
   warehouses: [
     { key: "active", desc: "an ACTIVE warehouse", match: (w) => w.status === "ACTIVE" || w.active === true },
     { key: "any", desc: "any warehouse (location distribution)", match: () => true },
-  ],
-  stock_locations: [
-    { key: "positive", desc: "positive on-hand quantity", match: (s) => Number(s.quantity) > 0 },
-    { key: "zero", desc: "zero quantity", match: (s) => Number(s.quantity) === 0 },
   ],
   equipment_models: [
     { key: "any", desc: "distinct equipment models/types", match: () => true },
