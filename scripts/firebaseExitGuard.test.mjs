@@ -759,3 +759,249 @@ test("every category the live scan observes is covered by the committed baseline
     assert.equal(baselinePathsFor(baseline, key).size, scanResults.get(key).size);
   }
 });
+
+// =================================================================================================
+// THE NAMESPACE-ACCESS BYPASS
+//
+// Re-derived and re-closed against main at 64008d5ae0bdd9532909671b15a91122400accf1.
+//
+// WHAT WAS WRONG. Every class matched the SUBPATH specifier only. The package ROOT reaches the
+// identical Firestore business persistence and named no forbidden specifier, so it was invisible:
+//
+//     import admin from "firebase-admin";
+//     await admin.firestore().collection("workOrders").get();
+//
+// Measured, not inferred. A file of that shape written under functions/src produced ZERO
+// violations from a REAL ratchet run (`--previous-baseline` against the committed baseline, exit
+// 0) at 64008d5a; the same file written with "firebase-admin/firestore" produced one violation
+// (exit 1). Fifteen further shapes were equally invisible; the census below is the list, and every
+// one of them is asserted here.
+//
+// WHAT MUST NOT CHANGE. `matchesSource` is consulted ONLY when `matchesSpecifier` did not match, so
+// classification is a strict superset of the previous behaviour by construction. The committed
+// baseline's 366 guarded entries (55 + 55 + 184 + 72) are unchanged by this and that is asserted
+// against the real tree below, not assumed.
+//
+// WHAT MUST STILL PASS. Firebase Auth identity is permitted by Owner ruling.
+// functions/src/eosApi/server.ts imports the bare "firebase-admin" root purely to call
+// app.auth().verifyIdToken(). It is pinned to the REAL FILE here, not a fixture, because a fixture
+// would keep passing after the real file changed.
+// =================================================================================================
+
+import { readFileSync as readSourceFile } from "node:fs";
+import {
+  classifyFile as classify,
+  stripCommentsAndStringLiterals,
+  FORBIDDEN_CATEGORIES as CATEGORIES,
+  scanTree as scan,
+  loadBaseline as loadCommittedBaseline,
+  baselinePathsFor as baselineSetFor,
+} from "./firebaseExitGuard.mjs";
+
+const SERVER_PROBE = "functions/src/probe.ts";
+const FRONTEND_PROBE = "field-ops-app-vite/src/probe.jsx";
+
+/** Every evasion shape confirmed invisible at 64008d5a, with the category each must now produce. */
+const EVASION_CENSUS = [
+  ["default import + admin.firestore()", SERVER_PROBE,
+    'import admin from "firebase-admin";\nexport const r = () => admin.firestore().collection("workOrders").get();',
+    "server.firebase_admin_firestore"],
+  ["namespace import", SERVER_PROBE,
+    'import * as admin from "firebase-admin";\nexport const r = () => admin.firestore().doc("a/b").get();',
+    "server.firebase_admin_firestore"],
+  ["aliased namespace", SERVER_PROBE,
+    'import * as fb from "firebase-admin";\nexport const r = () => fb.firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["require()", SERVER_PROBE,
+    'const admin = require("firebase-admin");\nexport const r = () => admin.firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["chained require().firestore()", SERVER_PROBE,
+    'export const r = () => require("firebase-admin").firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["dynamic import()", SERVER_PROBE,
+    'export const r = async () => (await import("firebase-admin")).firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["admin.app().firestore()", SERVER_PROBE,
+    'import admin from "firebase-admin";\nexport const r = () => admin.app().firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["admin.firestore.FieldValue sentinel namespace", SERVER_PROBE,
+    'import admin from "firebase-admin";\nexport const s = () => admin.firestore.FieldValue.serverTimestamp();',
+    "server.firebase_admin_firestore"],
+  ["destructured handle", SERVER_PROBE,
+    'const { firestore } = require("firebase-admin");\nexport const r = () => firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["reassigned local alias", SERVER_PROBE,
+    'import admin from "firebase-admin";\nconst h = admin;\nexport const r = () => h.firestore().collection("x").get();',
+    "server.firebase_admin_firestore"],
+  ["frontend firebase/app + firebase.firestore()", FRONTEND_PROBE,
+    'import firebase from "firebase/app";\nexport const r = () => firebase.firestore().collection("jobs").get();',
+    "frontend.firestore_client"],
+  ["frontend bare firebase namespace", FRONTEND_PROBE,
+    'import firebase from "firebase";\nexport const r = () => firebase.firestore().collection("jobs").get();',
+    "frontend.firestore_client"],
+  ["frontend firebase/compat/firestore specifier", FRONTEND_PROBE,
+    'import "firebase/compat/firestore";\nexport const m = 1;',
+    "frontend.firestore_client"],
+  ["frontend firebase/compat/functions specifier", FRONTEND_PROBE,
+    'import "firebase/compat/functions";\nexport const m = 1;',
+    "frontend.firebase_functions_client"],
+  ["frontend firebase.functions() compat call", FRONTEND_PROBE,
+    'import firebase from "firebase/app";\nexport const c = (n) => firebase.functions().httpsCallable(n);',
+    "frontend.firebase_functions_client"],
+];
+
+for (const [shape, path, source, expectedCategory] of EVASION_CENSUS) {
+  test(`evasion shape is caught: ${shape}`, () => {
+    const categories = classify(source, path);
+    assert.ok(categories.has(expectedCategory),
+      `${shape} must classify as ${expectedCategory}; got [${[...categories].join(", ")}]`);
+  });
+}
+
+test("the bare firebase-functions package root is caught by SPECIFIER alone, which is why " +
+  "firebase_functions_server needs no matchesSource", () => {
+  const categories = classify(
+    'import functions from "firebase-functions";\nexport const f = functions.https.onCall(() => 1);',
+    SERVER_PROBE);
+  assert.ok(categories.has("server.firebase_functions_server"));
+  const serverFunctions = CATEGORIES.find((c) => c.key === "server.firebase_functions_server");
+  assert.equal(serverFunctions.matchesSource, undefined,
+    "if this class ever gains a matchesSource, the claim in its comment must be re-verified");
+});
+
+// ------------------------------- IDENTITY_ONLY MUST STILL PASS -----------------------------------
+
+test("the REAL functions/src/eosApi/server.ts -- the only bare-firebase-admin importer under a " +
+  "scan root -- is identity-only and must not trip any category", () => {
+  const relativePath = "functions/src/eosApi/server.ts";
+  const text = readSourceFile(join(REPO_ROOT, relativePath), "utf8");
+  assert.ok(/["']firebase-admin["']/.test(text),
+    "this test is only meaningful while server.ts still imports the bare firebase-admin root; if " +
+    "that changed, re-point it at whatever file now does, or delete it as obsolete");
+  assert.ok(/verifyIdToken/.test(text), "identity use is what makes this the carve-out");
+  assert.deepEqual([...classify(text, relativePath)], [],
+    "Firebase Auth identity is permitted by Owner ruling -- importing the firebase-admin root is " +
+    "not the violation; persisting business data through it is");
+});
+
+test("bare-admin identity code whose ONLY Firestore mention is in a comment, a string, or a " +
+  "template literal does not trip -- blanking is what keeps this from being a keyword scan", () => {
+  const source = [
+    'import admin from "firebase-admin";',
+    "// Migrated off admin.firestore.FieldValue.serverTimestamp() in wave 1.",
+    '/* The old path was admin.firestore().collection("x") -- kept for history. */',
+    'const note = "admin.firestore().collection(\'x\')";',
+    "const tmpl = `also ${\"admin.firestore()\"} in a template`;",
+    "export const v = async (t) => (await admin.auth().verifyIdToken(t)).uid;",
+    "export const notes = [note, tmpl];",
+  ].join("\n");
+  assert.deepEqual([...classify(source, SERVER_PROBE)], []);
+});
+
+test("the real repository file that discusses firebase in PROSE while importing nothing stays " +
+  "unflagged -- the case this module's header calls out by name", () => {
+  const relativePath = "field-ops-app-vite/src/domain/equipmentWrites.js";
+  const text = readSourceFile(join(REPO_ROOT, relativePath), "utf8");
+  assert.ok(/firebase/i.test(text), `${relativePath} no longer mentions firebase`);
+  assert.deepEqual([...classify(text, relativePath)], [], relativePath);
+});
+
+test("the two real files that mention admin.firestore in a COMMENT are classified by SPECIFIER " +
+  "only -- matchesSource adds nothing to them, so no entry is reclassified", () => {
+  // Both import `type { Timestamp }` from the Firestore subpath, which the specifier matcher
+  // deliberately matches (the `from` clause is unaffected by `type`), so both are already baseline
+  // entries. The point being pinned is that their prose mention of admin.firestore contributes
+  // NOTHING: the category set is exactly the one specifier matching alone produces.
+  const expected = {
+    "functions/src/types/workOrder.ts": ["server.firebase_admin_firestore"],
+    "field-ops-app-vite/src/types/workOrder.ts": ["frontend.firestore_client"],
+  };
+  for (const [relativePath, categories] of Object.entries(expected)) {
+    const text = readSourceFile(join(REPO_ROOT, relativePath), "utf8");
+    assert.ok(/admin\.firestore/.test(text), `${relativePath} no longer mentions admin.firestore`);
+    assert.ok(!/["']firebase-admin["']/.test(text),
+      `${relativePath} now imports the bare firebase-admin root -- re-derive this expectation`);
+    assert.deepEqual([...classify(text, relativePath)].sort(), categories, relativePath);
+  }
+});
+
+test("a Firestore access expression with NO firebase package-root import is not a violation -- " +
+  "half one of the conjunction is what stops this becoming a keyword scan", () => {
+  assert.deepEqual([...classify(
+    'import { thing } from "./local";\nexport const r = () => thing.firestore().get();',
+    SERVER_PROBE)], []);
+});
+
+test("firebase/app imported for identity only (initializeApp beside firebase/auth) does not trip", () => {
+  assert.deepEqual([...classify(
+    'import { initializeApp } from "firebase/app";\nimport { getAuth } from "firebase/auth";\n' +
+    "export const auth = getAuth(initializeApp({}));",
+    FRONTEND_PROBE)], []);
+});
+
+test("firebase-admin root imported for storage only is not one of the four fenced classes", () => {
+  assert.deepEqual([...classify(
+    'import admin from "firebase-admin";\nexport const b = () => admin.storage().bucket();',
+    SERVER_PROBE)], []);
+});
+
+test(".functions. member access on an unrelated object is not the Functions client -- the " +
+  "frontend Functions pattern is deliberately call-only", () => {
+  assert.deepEqual([...classify(
+    'import firebase from "firebase/app";\nexport const r = (c) => c.functions.region;',
+    FRONTEND_PROBE)], []);
+});
+
+// ------------------------------------ BLANKING ITSELF --------------------------------------------
+
+test("stripCommentsAndStringLiterals removes comment and literal contents and keeps code", () => {
+  assert.equal(stripCommentsAndStringLiterals('a; // b.firestore()\nc;'), "a; \nc;");
+  assert.equal(stripCommentsAndStringLiterals("a; /* b.firestore() */ c;"), "a;  c;");
+  assert.equal(stripCommentsAndStringLiterals('const x = "b.firestore()"; y;'), 'const x = ""; y;');
+  assert.equal(stripCommentsAndStringLiterals("const x = `${b.firestore()}`; y;"), "const x = ``; y;");
+  assert.equal(stripCommentsAndStringLiterals('a.firestore(); "z";'), 'a.firestore(); "";');
+});
+
+test("an escaped quote inside a string does not end the literal early, so code after it is not " +
+  "mistaken for literal content", () => {
+  assert.equal(stripCommentsAndStringLiterals('const x = "a\\"b"; y.firestore();'),
+    'const x = ""; y.firestore();');
+});
+
+// ------------------------- SUPERSET PROPERTY AND THE COMMITTED BASELINE --------------------------
+
+test("classification is a strict SUPERSET: every file the specifier matcher alone would classify " +
+  "is still classified identically with matchesSource wired in", () => {
+  for (const category of CATEGORIES) {
+    assert.equal(typeof category.matchesSpecifier, "function", category.key);
+    if (category.matchesSource !== undefined) {
+      assert.equal(typeof category.matchesSource, "function", category.key);
+    }
+  }
+  // A file matched by specifier is classified by specifier regardless of source shape: here the
+  // source has no access expression at all, so only the specifier path can be responsible.
+  assert.ok(classify('import { getFirestore } from "firebase-admin/firestore";\nexport const m = 1;',
+    SERVER_PROBE).has("server.firebase_admin_firestore"));
+});
+
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 366 " +
+  "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
+  const scanResults = scan(REPO_ROOT);
+  const baseline = loadCommittedBaseline(REPO_ROOT);
+  const expected = {
+    "frontend.firestore_client": 55,
+    "frontend.firebase_functions_client": 55,
+    "server.firebase_admin_firestore": 184,
+    "server.firebase_functions_server": 72,
+  };
+  let total = 0;
+  for (const category of CATEGORIES) {
+    const observed = scanResults.get(category.key);
+    total += observed.size;
+    assert.equal(observed.size, expected[category.key] ?? 0,
+      `${category.key} changed size -- the namespace fix must not grow or shrink the baseline`);
+    assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
+      `${category.key} membership changed`);
+  }
+  assert.equal(total, 366);
+});
