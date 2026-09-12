@@ -1,0 +1,93 @@
+# ON-HAND SIGN AUTHORITY (P2-J) — the derivation of physical on-hand, both sides of the wire.
+#
+# functions/src/inventoryLedger/locationOnHand.ts is the single place a ledger movement's effect on
+# on-hand is decided. It exists because that rule had been written out five times and the copies
+# drifted: when Decision #171 made WORK_ORDER_CONSUMPTION physical, only one of the five learned
+# about it. This workflow runs the three suites that keep that from happening again:
+#
+#   * the CLIENT derivation, which held a sixth copy and had drifted the same way (no RETURNED,
+#     SCRAPPED, RELOCATION pair or WORK_ORDER_CONSUMPTION) and added a static 200-row catalog
+#     baseline on top of real ledger movement;
+#   * the CYCLE COUNT expected quantity, which clamped an impossible negative ledger total to 0 and
+#     so turned a corrupt ledger into a surplus an ADJUSTED would be posted for;
+#   * the RATCHET, a source scan that fails when a seventh copy of the sign rule appears anywhere.
+#
+# NO EMULATOR. All three are pure: the client suite is vitest over pure functions, and the two
+# functions suites drive the real code through a fake transaction or read source text.
+
+name: On-hand sign authority tests
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/inventoryLedger/locationOnHand.ts"
+      - "functions/src/cycleCount/cycleCountExpectedQuantity.ts"
+      - "functions/test/cycleCountExpectedQuantityIntegrity.test.mjs"
+      - "functions/test/onHandSignAuthorityRatchet.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
+      - "field-ops-app-vite/test/onHandSignAuthority.test.jsx"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/on-hand-sign-authority-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/inventoryLedger/locationOnHand.ts"
+      - "functions/src/cycleCount/cycleCountExpectedQuantity.ts"
+      - "functions/test/cycleCountExpectedQuantityIntegrity.test.mjs"
+      - "functions/test/onHandSignAuthorityRatchet.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts"
+      - "field-ops-app-vite/test/onHandSignAuthority.test.jsx"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/on-hand-sign-authority-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  functions-side:
+    name: Cycle count expected quantity + sign-authority ratchet (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+        working-directory: functions
+      - run: npm run test:onHandSignAuthority
+        working-directory: functions
+
+  client-side:
+    name: Client on-hand derivation routes through the sign authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - run: npm ci
+        working-directory: field-ops-app-vite
+      # The suite imports functions/src/inventoryLedger/locationOnHand directly, so it is also the
+      # proof that the cross-package import resolves in a clean checkout.
+      - run: npx vitest run test/onHandSignAuthority.test.jsx
+        working-directory: field-ops-app-vite
+      - run: npm run typecheck
+        working-directory: field-ops-app-vite
