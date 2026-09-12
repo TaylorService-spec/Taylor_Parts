@@ -431,9 +431,18 @@ Cross-object collision is impossible, not improbable.
 - **Postgres:** `id TEXT PRIMARY KEY` — already the house pattern in every `eos_*` schema — plus the
   shape constraint in §8.
 
-**4. Retry-on-collision (belt and braces).** The minting library retries once on a unique-violation
-and fails loudly on the second. A collision is a bug or a broken RNG, and must page someone rather
-than be absorbed.
+**4. Retry-on-collision (belt and braces).** A create that fails on a unique-violation is retried
+once with a freshly minted id, and fails loudly on the second. A collision is a bug or a broken RNG,
+and must page someone rather than be absorbed.
+
+> **Correction (identity-verification lane).** This layer was previously written as "*the minting
+> library* retries once on a unique-violation". It cannot: `mintRecordId` takes no store, performs no
+> write, and cannot observe a unique-violation — §9.2 and the module header both state that it depends
+> on `node:crypto` and nothing else, deliberately, so that the data plane stays out of the domain
+> contract (ADR-015). Retry-on-collision is therefore a **requirement on each writer** (the trusted
+> command or repository that owns the `create()`), not a property of the library, and no code in the
+> tree implements it yet. Layers 1–3 are real today; layer 4 is unimplemented and must not be counted
+> as present.
 
 ---
 

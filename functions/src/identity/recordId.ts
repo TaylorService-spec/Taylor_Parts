@@ -95,6 +95,17 @@ export class RecordIdError extends Error {
  */
 export function encodePayload(bytes: Uint8Array): string {
   if (bytes.length !== 16) throw new RecordIdError(`payload must be 16 bytes, got ${bytes.length}`);
+  // The length check alone is not enough. A caller handing over a plain 16-element array (or a bad
+  // `fill`) whose elements are outside 0-255 used to be encoded silently: `(acc << 8) | 300` sets
+  // bits above the byte, the first emitted group stops being (2 zero pad bits | top 3 bits of
+  // byte 0), and the encoder returns a payload whose first character is outside 0-7 -- an id that
+  // fails the STRICT pattern the standard says every minted id satisfies. Reject the input instead.
+  for (let i = 0; i < 16; i += 1) {
+    const b = bytes[i]!;
+    if (!Number.isInteger(b) || b < 0 || b > 0xff) {
+      throw new RecordIdError(`payload byte ${i} is not an integer 0-255: ${String(b)}`);
+    }
+  }
   let out = "";
   let acc = 0;
   let bits = 2; // the two zero pad bits, present before any byte is read
@@ -110,6 +121,13 @@ export function encodePayload(bytes: Uint8Array): string {
   // 2 + 128 = 130 bits = exactly 26 groups, so nothing is left over.
   if (bits !== 0 || out.length !== PAYLOAD_LENGTH) {
     throw new RecordIdError(`encoder produced ${out.length} chars with ${bits} bits left over`);
+  }
+  // POSTCONDITION, not a defensive nicety: "the first payload character is 0-7" is the observable
+  // form of "the two leading pad bits are zero", and the standard (§3) states it as a fixed
+  // property of the format. Assert it here so the property is guaranteed by the encoder rather than
+  // merely emergent from its arithmetic.
+  if (out.charCodeAt(0) > 0x37 /* "7" */) {
+    throw new RecordIdError(`encoder produced a payload whose first character is ${JSON.stringify(out[0])}, outside 0-7`);
   }
   return out;
 }
@@ -292,6 +310,9 @@ export function assertRecordId(value: unknown, objectCode: string): string {
 // Crockford's decode-time ambiguity mapping, for the PAYLOAD ONLY.
 const AMBIGUITY: Readonly<Record<string, string>> = Object.freeze({ I: "1", L: "1", O: "0" });
 
+/** Any code point outside 7-bit ASCII. See `normalizeRecordId` for why this is checked first. */
+const NON_ASCII = /[^\x00-\x7F]/;
+
 /**
  * The §6.2 ingress normaliser, and the ONLY place the ambiguity mapping is ever applied.
  *
@@ -312,6 +333,14 @@ export function normalizeRecordId(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (trimmed.length !== RECORD_ID_LENGTH) return null;
+  // §3: "Encoding -- 7-bit ASCII; no Unicode, no normalisation forms". This gate must come BEFORE
+  // any case mapping, because `String.prototype.toUpperCase()` applies the full Unicode case
+  // mapping: U+0131 "ı" uppercases to "I" and U+017F "ſ" uppercases to "S". Without this check a
+  // non-ASCII input is not rejected but REPAIRED -- "ıCCT_…" normalises to "ICCT_…" and
+  // "ACCT_0123456ı89…" to "ACCT_0123456189…" -- silently resolving one caller's string onto a
+  // DIFFERENT record's canonical id. An ingress normaliser may repair case and Crockford
+  // ambiguity; it may not invent an identifier out of a homoglyph.
+  if (NON_ASCII.test(trimmed)) return null;
   if (trimmed[OBJECT_CODE_LENGTH] !== SEPARATOR) return null;
 
   const code = trimmed.slice(0, OBJECT_CODE_LENGTH).toUpperCase();

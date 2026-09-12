@@ -170,7 +170,7 @@ durable record. Ephemeral state is out of scope for record identity.
 | `IMPJ` | Data Import Job | PLATFORM | TIME | `IMP-<stamp>-<rand>` |
 | `RPTD` | Report Definition (saved) | PLATFORM | TIME | natural / ad-hoc |
 | `RPTX` | Report Execution | PLATFORM | TIME | ad-hoc |
-| `XWLK` | Record Identity Crosswalk entry | PLATFORM | TIME | **new** |
+| `CWLK` | Record Identity Crosswalk entry | PLATFORM | TIME | **new** |
 | `TOMB` | Record ID Tombstone | PLATFORM | TIME | **new** |
 
 ### 3.9 Retired — reserved forever, never reissued
@@ -183,10 +183,20 @@ durable record. Ephemeral state is out of scope for record identity.
 These two codes are allocated on the day the registry is created and are allocated to **nothing**.
 That is the point.
 
+> **Correction (identity-verification lane, Owner ruling §14).** This row was originally allocated
+> as `XWLK`. That put a **Verenward platform** object inside the **`X`** partition, which §2 reserves
+> for customer/tenant-defined objects and which §4.2 says the registrar must reject ("a Verenward
+> object claiming `X`"). It also falsified §3.10's own claim that no code above begins with `X`. It is
+> reallocated to `CWLK`, which is free. Nothing was minted under `XWLK`, so the reallocation costs
+> nothing; had it shipped, a later customer allocation of `XWLK` would have re-pointed crosswalk
+> history at the wrong object -- the exact failure the partition exists to prevent. **This
+> reallocation is a proposal awaiting ratification, like the rest of this file.**
+
 ### 3.10 Uniqueness
 
 All codes above are distinct, all are `[A-Z]{4}`, none begins with `X` or `Z`. A registry test must
-assert exactly this, so the property is checked rather than remembered.
+assert exactly this, so the property is checked rather than remembered — it is
+`functions/test/recordIdStandardProperties.test.mjs`, which parses §3.2–§3.9 out of this file.
 
 ---
 
