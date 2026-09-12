@@ -32,6 +32,17 @@
 //   * Firebase Auth identity-only usage (firebase/auth, firebase-admin/auth, firebase-admin/app)
 //     never trips the Firestore/Functions business-runtime fence, no matter how it is imported;
 //
+//   * the NAMESPACE-ACCESS form is fenced as well as the subpath form -- a bare
+//     `import admin from "firebase-admin"` followed by `admin.firestore()` reaches the same server
+//     Firestore business persistence as `from "firebase-admin/firestore"` and must trip the same
+//     category, in every variant (namespace import, require, chained require, dynamic import,
+//     `admin.app().firestore()`, destructured handle, `admin.firestore.FieldValue`);
+//
+//   * closing that bypass did NOT turn the fence into a keyword scan: a bare firebase-admin import
+//     whose only Firestore mention is in a comment, a string, or a template literal is NOT flagged,
+//     and neither is identity-only `admin.auth()` / `admin.app()` / `admin.initializeApp()` use --
+//     which is what the Owner ruling's transitional identity carve-out requires;
+//
 //   * the live repository, scanned today, passes against its own committed baseline.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -51,6 +62,7 @@ import {
   loadBaseline,
   loadPreviousBaseline,
   scanTree,
+  stripCommentsAndStringLiterals,
 } from "./firebaseExitGuard.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -436,4 +448,228 @@ test("the repository's committed baseline exactly matches its own current scan -
   assert.deepEqual(staleEntries, [],
     `stale committed baseline entr(ies) no longer observed in the tree:\n${staleEntries
       .map((v) => `  ${v.path} — ${v.label}`).join("\n")}`);
+});
+
+// =============================================================================================
+// THE NAMESPACE-ACCESS BYPASS (verified against origin/main 33945090 before it was closed)
+//
+// A bare `import admin from "firebase-admin"` names only the package root, so it produced NO
+// forbidden specifier and the `server.firebase_admin_firestore` category never fired -- even
+// though `admin.firestore()` is exactly the server Firestore business persistence that category
+// exists to fence. Empirically confirmed on that baseline: a file of this shape written under
+// functions/src produced ZERO violations from the real ratchet run
+// (`node scripts/firebaseExitGuard.mjs --previous-baseline=<committed baseline>`, exit 0), while
+// the same file written with the /firestore subpath produced one violation (exit 1).
+//
+// Every test below the first group is a regression fence on that bypass staying closed.
+// =============================================================================================
+
+test("stripCommentsAndStringLiterals removes line comments, block comments, and literal contents", () => {
+  assert.equal(
+    stripCommentsAndStringLiterals("const a = 1; // admin.firestore()\nconst b = 2;").includes("firestore"),
+    false);
+  assert.equal(
+    stripCommentsAndStringLiterals("/* admin.firestore().collection(\"x\") */ const a = 1;").includes("firestore"),
+    false);
+  assert.equal(
+    stripCommentsAndStringLiterals('const m = "admin.firestore()";').includes("firestore"),
+    false);
+  assert.equal(
+    stripCommentsAndStringLiterals("const m = `admin.firestore()`;").includes("firestore"),
+    false);
+});
+
+test("stripCommentsAndStringLiterals leaves real code intact", () => {
+  const stripped = stripCommentsAndStringLiterals(
+    'import admin from "firebase-admin";\nadmin.firestore().collection("workOrders").get();');
+  assert.ok(stripped.includes("admin.firestore()"),
+    "a real access expression must survive blanking, or the detector below cannot see it");
+  assert.equal(stripped.includes("firebase-admin"), false,
+    "specifiers are blanked in this view -- extractImportSpecifiers reads the RAW text instead");
+});
+
+test("stripCommentsAndStringLiterals does not let an escaped quote run the blanking past the literal", () => {
+  const stripped = stripCommentsAndStringLiterals(
+    'const m = "a \\" b"; admin.firestore();');
+  assert.ok(stripped.includes("admin.firestore()"));
+});
+
+// --- the bypass family: every variant must now be caught -------------------------------------
+
+const NAMESPACE_FIRESTORE_SHAPES = {
+  "default import + admin.firestore()":
+    'import admin from "firebase-admin";\nadmin.firestore().collection("x").get();',
+  "namespace import + admin.firestore()":
+    'import * as admin from "firebase-admin";\nadmin.firestore().doc("x").set({});',
+  "aliased namespace import":
+    'import * as fbAdmin from "firebase-admin";\nfbAdmin.firestore().collection("x").get();',
+  "require() then .firestore()":
+    'const admin = require("firebase-admin");\nadmin.firestore().collection("x").get();',
+  "chained require(\"firebase-admin\").firestore()":
+    'require("firebase-admin").firestore().collection("x").get();',
+  "dynamic import() then .firestore()":
+    'const admin = (await import("firebase-admin")).default;\nadmin.firestore().collection("x").get();',
+  "admin.app().firestore()":
+    'import admin from "firebase-admin";\nadmin.app().firestore().collection("x").get();',
+  "admin.firestore.FieldValue sentinel namespace (no call on firestore)":
+    'import admin from "firebase-admin";\nconst t = admin.firestore.FieldValue.serverTimestamp();',
+  "destructured firestore handle":
+    'const { firestore } = require("firebase-admin");\nfirestore().collection("x").get();',
+  "reassigned local alias":
+    'import admin from "firebase-admin";\nconst a = admin;\na.firestore().collection("x").get();',
+};
+
+for (const [shape, source] of Object.entries(NAMESPACE_FIRESTORE_SHAPES)) {
+  test(`bare firebase-admin namespace access is server Firestore persistence: ${shape}`, () => {
+    assert.deepEqual([...classifyFile(source)], ["server.firebase_admin_firestore"],
+      `${shape} reaches admin Firestore without naming the /firestore subpath and must be fenced`);
+  });
+}
+
+// --- and identity-only bare-admin use must still NOT be caught -------------------------------
+
+const IDENTITY_ONLY_BARE_ADMIN_SHAPES = {
+  "admin.auth().verifyIdToken only":
+    'import admin from "firebase-admin";\nawait admin.auth().verifyIdToken(token);',
+  "admin.initializeApp() only":
+    'import admin from "firebase-admin";\nadmin.initializeApp();',
+  "the real functions/src/eosApi/server.ts shape (dynamic CJS import, app().auth())":
+    'const imported = await import("firebase-admin");\n' +
+    'const admin = imported.default ?? imported;\n' +
+    'const app = admin.apps?.length ? admin.app() : admin.initializeApp();\n' +
+    'await app.auth().verifyIdToken(token);',
+  "admin.storage() -- Firebase Storage is not one of the four fenced classes":
+    'import admin from "firebase-admin";\nadmin.storage().bucket().file("x");',
+  "Firestore named only in a line comment":
+    'import admin from "firebase-admin";\n// migrated off admin.firestore() in wave 1\n' +
+    'await admin.auth().verifyIdToken(token);',
+  "Firestore named only in a block comment":
+    'import admin from "firebase-admin";\n/* was: admin.firestore().collection("x") */\n' +
+    'await admin.auth().verifyIdToken(token);',
+  "Firestore named only in a string literal":
+    'import admin from "firebase-admin";\nconst m = "never call admin.firestore() here";\n' +
+    'await admin.auth().verifyIdToken(token);',
+  "Firestore named only in a template literal":
+    'import admin from "firebase-admin";\nconst m = `never call admin.firestore() here`;\n' +
+    'await admin.auth().verifyIdToken(token);',
+};
+
+for (const [shape, source] of Object.entries(IDENTITY_ONLY_BARE_ADMIN_SHAPES)) {
+  test(`transitional identity use of bare firebase-admin is NOT fenced: ${shape}`, () => {
+    assert.deepEqual([...classifyFile(source)], [],
+      "Firebase Auth identity is permitted by the Owner ruling and is deliberately outside this " +
+      "business-runtime fence -- closing the namespace bypass must not reclassify it");
+  });
+}
+
+test("a Firestore access expression with NO firebase-admin import is not fenced -- the detector " +
+  "is a conjunction, not a keyword scan", () => {
+  assert.deepEqual([...classifyFile('import { db } from "./localDb";\ndb.firestore().collection("x").get();')], []);
+  assert.deepEqual([...classifyFile("// this module used to call admin.firestore()")], []);
+});
+
+test("a file mixing identity auth with NAMESPACE Firestore access is flagged only for Firestore", () => {
+  const mixed = [
+    'import admin from "firebase-admin";',
+    "await admin.auth().verifyIdToken(token);",
+    'await admin.firestore().collection("workOrders").get();',
+  ].join("\n");
+  assert.deepEqual([...classifyFile(mixed)], ["server.firebase_admin_firestore"]);
+});
+
+// --- the frontend mirror of the same bypass ---------------------------------------------------
+
+test("the frontend compat namespace reaches the Firestore and Functions clients and is fenced", () => {
+  assert.deepEqual(
+    [...classifyFile('import firebase from "firebase/app";\nfirebase.firestore().collection("x").get();')],
+    ["frontend.firestore_client"]);
+  assert.deepEqual(
+    [...classifyFile('import firebase from "firebase";\nfirebase.firestore().doc("x").get();')],
+    ["frontend.firestore_client"]);
+  assert.deepEqual(
+    [...classifyFile('import firebase from "firebase/app";\nfirebase.functions().httpsCallable("f");')],
+    ["frontend.firebase_functions_client"]);
+});
+
+test("firebase/compat/firestore and firebase/compat/functions are the same clients by another " +
+  "specifier and are fenced", () => {
+  assert.deepEqual([...classifyFile('import "firebase/compat/firestore";')], ["frontend.firestore_client"]);
+  assert.deepEqual([...classifyFile('import "firebase/compat/functions";')], ["frontend.firebase_functions_client"]);
+});
+
+test("firebase/app on its own is the identity entry point and is NOT fenced", () => {
+  const identityBootstrap = [
+    'import { initializeApp } from "firebase/app";',
+    'import { getAuth, onAuthStateChanged } from "firebase/auth";',
+    "initializeApp(config);",
+    "onAuthStateChanged(getAuth(), handler);",
+  ].join("\n");
+  assert.deepEqual([...classifyFile(identityBootstrap)], [],
+    "importing firebase/app is not a business-runtime dependency -- only Firestore/Functions " +
+    "access alongside it is");
+});
+
+test("an unrelated `.functions.` member chain beside firebase/app is not a Functions client", () => {
+  // "functions" is an ordinary identifier; "firestore" is not. The Functions detector matches a
+  // CALL only, precisely so that config/util member chains cannot manufacture a violation.
+  assert.deepEqual(
+    [...classifyFile('import { initializeApp } from "firebase/app";\nconst r = config.functions.region;')],
+    []);
+});
+
+// --- strict-superset and real-tree invariants -------------------------------------------------
+
+test("closing the bypass is a strict SUPERSET: every subpath form still classifies as before", () => {
+  assert.deepEqual([...classifyFile('import { doc } from "firebase/firestore";')],
+    ["frontend.firestore_client"]);
+  assert.deepEqual([...classifyFile('import { httpsCallable } from "firebase/functions";')],
+    ["frontend.firebase_functions_client"]);
+  assert.deepEqual([...classifyFile('import { getFirestore } from "firebase-admin/firestore";')],
+    ["server.firebase_admin_firestore"]);
+  assert.deepEqual([...classifyFile('import { onCall } from "firebase-functions/v2/https";')],
+    ["server.firebase_functions_server"]);
+  // Utility submodules and identity modules stay out, as before.
+  assert.deepEqual([...classifyFile('import { logger } from "firebase-functions/logger";')], []);
+  assert.deepEqual([...classifyFile('import { getAuth } from "firebase-admin/auth";')], []);
+});
+
+test("the bare firebase-functions package root was ALREADY fenced by specifier -- no " +
+  "matchesSource needed for that category", () => {
+  assert.deepEqual([...classifyFile('import functions from "firebase-functions";')],
+    ["server.firebase_functions_server"]);
+  assert.deepEqual([...classifyFile('const functions = require("firebase-functions");')],
+    ["server.firebase_functions_server"]);
+});
+
+test("functions/src/eosApi/server.ts -- the only file in the tree importing the bare " +
+  "firebase-admin root -- is identity-only and must not be in any fenced category", () => {
+  // This pins the transitional identity carve-out to REAL code, not just a synthetic string. The
+  // file imports "firebase-admin" dynamically to call app().auth().verifyIdToken(). If a future
+  // change gives it Firestore access, this test is the one that should start failing.
+  const scanResults = scanTree(REPO_ROOT);
+  for (const category of FORBIDDEN_CATEGORIES) {
+    assert.equal(
+      scanResults.get(category.key).has("functions/src/eosApi/server.ts"), false,
+      `functions/src/eosApi/server.ts must stay outside ${category.key}: it imports the bare ` +
+      "firebase-admin root purely for Firebase Auth ID-token verification");
+  }
+});
+
+test("a NAMESPACE-form Firestore dependency in an unbaselined file is a violation end to end", () => {
+  // The bypass, expressed through the checker the CI job actually runs.
+  const baseline = makeBaseline();
+  const scanResults = new Map(FORBIDDEN_CATEGORIES.map((category) => [category.key, new Set()]));
+  const namespaceSource =
+    'import admin from "firebase-admin";\nawait admin.firestore().collection("workOrders").get();';
+  for (const key of classifyFile(namespaceSource)) {
+    scanResults.get(key).add("functions/src/newDomain/newWriter.ts");
+  }
+  const { violations } = evaluateGuard(baseline, scanResults);
+  assert.deepEqual(violations, [
+    {
+      category: "server.firebase_admin_firestore",
+      label: FORBIDDEN_CATEGORIES[2].label,
+      path: "functions/src/newDomain/newWriter.ts",
+    },
+  ]);
 });
