@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { declaredTables, migrationFiles, migrationsAfter } from "./support/migrationSchema.mjs";
 import pg from "pg";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.js";
@@ -115,13 +116,15 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "capabilities", "object_fields", "objects", "principal_access_versions", "principals",
+    "audit_events", "capabilities", "employee_principal_links", "object_fields", "objects",
+    "principal_access_versions", "principals",
     "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
     "tenant_admin_bootstraps", "tenant_memberships", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-one tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
-     "(operational capabilities). Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
+  ], "twenty-two tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+     "(operational capabilities), one from 008 (the Employee <-> Principal linkage). Migration 005 " +
+     "(eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -165,7 +168,6 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 });
 
 const MIGRATION_007 = "1757980800000_operating-company-and-serialized-custody.sql";
-const migrationFiles = () => readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort();
 const migrationFileCount = () => migrationFiles().length;
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
@@ -187,7 +189,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 21, "and up restores all twenty-one");
+  assert.equal(back.rows[0].n, 22, "and up restores all twenty-two");
 });
 
 test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
@@ -203,24 +205,25 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const newerThan007 = migrationFiles().filter((f) => f > MIGRATION_007).length;
   if (newerThan007 > 0) down(newerThan007);
 
-  // AND THE UNWIND ACTUALLY REACHED THEM. Eleven additive migrations landed together at integration,
-  // and each lane had written its own "my three tables are gone" block here; eleven near-identical
-  // blocks is the thing that makes this file re-conflict forever. The rule every one of them stood
-  // in for is asserted ONCE instead, derived from the migration files rather than listed: no eos_ops
-  // table introduced by a migration NEWER than 007 may survive the step above. Each lane's own
-  // Postgres suite still proves its tables' specific down behaviour (refusals, cascades, data).
-  const createdBy = (file) => [...readFileSync(join("migrations", file), "utf8")
-    .split(/^-- Down Migration/m)[0]
-    .matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?eos_ops\.([a-z_]+)/gi)].map((m) => m[1]);
-  const postSevenTables = migrationFiles().filter((f) => f > MIGRATION_007).flatMap(createdBy);
-  if (postSevenTables.length > 0) {
+  // AND THE UNWIND ACTUALLY REACHED THEM. Eleven additive migrations landed together at the W1
+  // integration, and each lane had written its own "my tables are gone" block right here -- eleven
+  // near-identical blocks, each naming its own tables, is precisely what makes this file re-conflict
+  // at every future integration. The rule every one of them stood in for is asserted ONCE instead,
+  // derived from the migration files rather than listed: NO table introduced by a migration newer
+  // than 007 survives the step above, in ANY schema. Schema-agnostic on purpose -- post-007
+  // migrations create tables in eos_ops, in eos_policy (the Employee <-> Principal linkage) and in
+  // schemas that did not exist when this test was written (eos_crm, eos_commercial), and a rule that
+  // only looked at eos_ops would have silently stopped covering most of them.
+  // Each lane's own Postgres suite still proves its own tables' specific down behaviour.
+  const postSeven = migrationsAfter(MIGRATION_007);
+  for (const [schema, tables] of declaredTables(postSeven)) {
     const survivors = await query(
-      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'
-         AND table_name = ANY($1::text[]) ORDER BY 1`,
-      [postSevenTables],
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = $1 AND table_name = ANY($2::text[]) ORDER BY 1`,
+      [schema, tables],
     );
     assert.deepEqual(survivors.rows, [],
-      `every table a post-007 migration created is gone once those migrations are reversed`);
+      `every ${schema} table a post-007 migration created is gone once those migrations are reversed`);
   }
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
