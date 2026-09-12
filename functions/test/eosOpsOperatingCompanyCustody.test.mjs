@@ -32,10 +32,14 @@ function executableSql(source) {
 
 // ============================ the migration is additive and correctly ordered ============================
 
-test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
+test("007 is the SEVENTH migration, and 005 and 006 are untouched by it", () => {
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
+  // POSITION, not COUNT. This asserted `files.length === 7` and "007 sorts last", which was true
+  // only while 007 WAS the newest migration -- so every later migration, in any lane, failed a test
+  // that is about 007's own ordering and about 005/006 being untouched. Neither claim needs 007 to
+  // be last: what matters is that 007 still sits at index 6, directly after 005 and 006.
+  assert.ok(files.length >= 7, "at least the seven migrations this test knows about");
+  assert.equal(files.indexOf(MIGRATION_FILE), 6, "007 is the seventh migration by timestamp order");
   assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
   assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
 

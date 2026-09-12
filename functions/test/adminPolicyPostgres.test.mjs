@@ -115,13 +115,15 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "capabilities", "object_fields", "objects", "principal_access_versions", "principals",
+    "audit_events", "capabilities", "employee_principal_links", "object_fields", "objects",
+    "principal_access_versions", "principals",
     "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
     "tenant_admin_bootstraps", "tenant_memberships", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-one tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
-     "(operational capabilities). Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
+  ], "twenty-two tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+     "(operational capabilities), one from 008 (the Employee <-> Principal linkage). Migration 005 " +
+     "(eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -166,11 +168,11 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL EIGHT, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "8", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -180,7 +182,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 21, "and up restores all twenty-one");
+  assert.equal(back.rows[0].n, 22, "and up restores all twenty-two");
 });
 
 test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
@@ -190,6 +192,19 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 008 off FIRST -- it is the newest now. The Employee <-> Principal link table goes, and nothing
+  // else does: 008 adds no column to an existing table and no enum, so exactly one table disappears.
+  down(1);
+  const linkTableGone = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'" +
+    " AND table_name = 'employee_principal_links'",
+  );
+  assert.equal(linkTableGone.rows[0].n, 0, "the linkage table is gone");
+  const twentyOneAfter008 = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(twentyOneAfter008.rows[0].n, 21, "and it took nothing else with it");
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.

@@ -180,9 +180,10 @@ test("the repository refuses a missing company key before it ever reaches SQL", 
 
 test("migration 007 ABORTS on a pre-existing row rather than inventing its operating company", { skip: SKIP }, async () => {
   await reset();
-  // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
-  // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  // Reverse back to 007's predecessor so the tables are in their migration-005 shape, then occupy one
+  // of them the way an unexpected pre-cutover writer would have. TWO steps, not one: 007 is no longer
+  // the newest migration, so `down 1` would reverse 008 and leave 007 standing.
+  migrate(["down", "2"]);
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -222,7 +223,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  migrate(["down", "2"]); // 008 then 007 -- see the note in the previous test
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)
