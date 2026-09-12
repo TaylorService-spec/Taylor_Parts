@@ -179,7 +179,7 @@ whole boundary above.
 
 | Dependency | Firestore collection(s) | Classification | Why |
 |---|---|---|---|
-| Parts (+ tracking mode) | `partsCatalog` (via `data/partsCatalog.ts`) | AUTHORITATIVE REFERENCE | Identity and tracking-mode policy for every ledger row; not itself quantity-mutating |
+| Parts (+ tracking mode) | `parts` (via `partMaster/partMasterRepository.ts:19`) | AUTHORITATIVE REFERENCE | Identity for every ledger row; not itself quantity-mutating. **Corrected 2026-09-11 by P1B ruling R1** — this row previously named `partsCatalog` (`data/partsCatalog.ts`), which is a hardcoded array with no stock authority, not the Firestore reference. Tracking mode is **derived** from `parts.controlType` (`partMaster/controlTypeTrackingMode.ts:24-35`), not stored on the Part and not present on `PartCatalogItem` at all. See `docs/architecture/inventory-reference-authority-p1b-census.md` §R1/§R2. |
 | Warehouses | `warehouses` | AUTHORITATIVE REFERENCE (custody parent, ADR-014) | Governed §3A record; not migrated in this PR — no Postgres copy exists yet, deliberately (see migration 005's own header) |
 | BINs | `bins` (registry) | AUTHORITATIVE REFERENCE (physical position, ADR-014) | Elevated by ADR-014 to an authoritative inventory *position*, but bin identity/parentage itself stays Firestore's in this tranche |
 | MOBILE locations | technician/truck-scoped location identifiers, resolved via the existing location resolver | AUTHORITATIVE REFERENCE | Same resolver Transfer/Cycle Count already share |
