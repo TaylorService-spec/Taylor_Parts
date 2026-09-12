@@ -1,0 +1,61 @@
+name: Functions Test Registration Ratchet
+
+# Catches the quiet failure this repository had 38 instances of: a test file is written, reviewed and
+# merged, and then nothing ever runs it. It is not in any functions/package.json script, no runner
+# manifest lists it, and no workflow `run:` step names it -- so it is green forever, including on the
+# day the code it guards breaks.
+#
+# This gate fails ONLY when that set GROWS past the recorded baseline
+# (functions/test-registration-baseline.json). It deliberately does not demand that the existing
+# unregistered files be fixed: most of them need a live Firestore emulator, and a gate that is red on
+# arrival is a gate everyone learns to click past.
+#
+# No secrets, no emulator, no network, no build -- it reads package.json, the workflow YAML and the
+# test directory. See the header of functions/scripts/testRegistrationRatchet.mjs for what it counts
+# as "registered" and why a workflow `paths:` filter deliberately does not count.
+
+on:
+  pull_request:
+    paths:
+      - "functions/test/**"
+      - "functions/package.json"
+      - "functions/scripts/testRegistrationRatchet.mjs"
+      - "functions/scripts/rulesRegressionRunner.mjs"
+      - "functions/test-registration-baseline.json"
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - "functions/test/**"
+      - "functions/package.json"
+      - "functions/scripts/testRegistrationRatchet.mjs"
+      - "functions/scripts/rulesRegressionRunner.mjs"
+      - "functions/test-registration-baseline.json"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  registration-ratchet:
+    name: No newly unregistered functions test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No `npm ci`: the ratchet imports only node: builtins, on purpose, so this gate cannot be
+      # broken by a dependency problem in the package it is guarding.
+      - name: Check the registration ratchet
+        run: node functions/scripts/testRegistrationRatchet.mjs

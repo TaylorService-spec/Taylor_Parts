@@ -1,0 +1,22 @@
+{
+  "$comment": "Baseline for functions/scripts/testRegistrationRatchet.mjs: functions/test files that NOTHING runs -- no functions/package.json script, no runner manifest, no workflow run: step. This list may SHRINK (register a file, then rerun with --update). A file that lands here and is NOT already listed fails CI.",
+  "generatedBy": "node functions/scripts/testRegistrationRatchet.mjs --update",
+  "runsNowhere": [
+    "functions/test/accessCommandCallables.test.js",
+    "functions/test/auditSecurityRoleMirror.test.js",
+    "functions/test/backfillOperationalNumbering.test.mjs",
+    "functions/test/bootstrapIssue100VerificationFixtures.test.js",
+    "functions/test/createWorkOrderIdempotency.test.js",
+    "functions/test/d2HandoffStatic.test.js",
+    "functions/test/inventoryAnalyticsCallables.test.mjs",
+    "functions/test/operationalNumberingContention.test.mjs",
+    "functions/test/phantomSalesOrderLinkRepair.test.mjs",
+    "functions/test/provisionEmployeeAccessCaseDTransaction.test.js",
+    "functions/test/transitionWorkOrderAuditTrail.test.mjs",
+    "functions/test/transitionWorkOrderConcurrency.test.mjs",
+    "functions/test/transitionWorkOrderReassignment.test.mjs",
+    "functions/test/verifyIssue100ProductionRules.test.js",
+    "functions/test/warehouseAssignmentProvisioningCli.test.mjs",
+    "functions/test/warehouseProcurementSupplierServices.test.mjs"
+  ]
+}
