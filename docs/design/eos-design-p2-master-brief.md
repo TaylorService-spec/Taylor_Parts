@@ -18,15 +18,19 @@ evidence, the settlement is given. Where it was not settled, it is carried as un
 reason is stated. Where a figure is inherited and unverified, it is marked **UNPROVEN** in the body,
 not only in an appendix.
 
-**Read §6 before quoting any number from any EOS document.** Six figures in wide circulation mean
-something other than what they appear to mean, and each of them cost a lane a false finding tonight.
+**Read §6 before quoting any number or finding from any EOS document.** Seven claims in wide
+circulation mean something other than what they appear to mean. Six are figures whose denominator or
+predicate is not what a reader assumes; the seventh is a correct code reading taken from a branch that
+has not merged. Each cost a lane a false conclusion, and the last one cost an earlier draft of this
+brief a wrong precondition on its first decision.
 
 ---
 
 ## 0. Provenance
 
-This brief consolidates eleven documents produced by the Phase-2 and Phase-3 lanes. It adds no new
-measurement of its own; its contribution is the consolidation, the causal argument, and the ordering.
+This brief consolidates eleven documents produced by the Phase-2 and Phase-3 lanes, plus one executed
+correction received while it was being written. It adds no new measurement of its own; its contribution
+is the consolidation, the causal argument, and the ordering.
 
 | Input | What it contributes |
 |---|---|
@@ -40,6 +44,7 @@ measurement of its own; its contribution is the consolidation, the causal argume
 | `p3b3-*.json` (P3-B3) | 350 activities, Sales, CRM, Financial, Administration, Management, Adversarial. |
 | `phase2-open-decision-ledger.md` (P2-D) | 25 deduplicated open items from ~90 raised notes across 31 handoff documents, 18 migration headers and 3 integration commits; 20 distinct Owner questions. |
 | `verenward-global-record-identity-standard.md` + object-code registry + impact census (P3-0) | A proposed record-identity standard, its object-code registry, and the census of what adopting it would touch. |
+| Executed role-resolution correction (P2-N) | Settles the one finding this brief had carried as its highest-priority unknown: **the 45 governed business roles are live authority**, and the contrary claim was branch-local. Adds the eleven-role `audit.event.read` denial and two merge gates. See §2.2, §5.1, §6.7, C16, C17. |
 
 **The commit everything was checked against.** Every lane branched from `d104cf49`. The integrated
 head is `0ba8ab0d` on `integration/wave-1`. P3-D re-checked every defect it promoted against the
@@ -245,6 +250,18 @@ the place that decides is usually not the place the product shows people.
   objects marked `rulesOnly`. Twenty verb-level disagreements plus one object-level absence.
   **Eighteen of the twenty-one carry no recorded rationale anywhere.**
 
+- **A live instance of the class, found by executing the shipped service: eleven governed roles are
+  silently denied a capability they hold.** `recordChangeHistoryReadService.ts:284` and
+  `employeeProfileCommands.ts:454` default their role set to `COMPATIBILITY_ROLES`, and
+  `administrationUsersCallables.ts` never overrides it. So **eleven governed business roles that declare
+  `audit.event.read` — controller, financeManager, operationsManager, owner and seven others — are
+  refused by the deployed `listRecordChangeHistory`.** The capability resolves ALLOW; the service that
+  enforces it never sees the role. **Neither file records this as a decision** — which is exactly what
+  distinguishes it from `trustedWriterCommands.ts:1099-1110`, where the same narrowing is deliberate and
+  documented. Measured through the shipped service, not read. It compounds `WF-ADM-006`: an append-only
+  audit authority exists, governed commands write denials into it, and the people whose job is to read
+  it cannot.
+
 **The same cause at smaller scale, and this one is the cheapest thing in the brief to fix.**
 Five capability ids are gated in client components and are **absent from the list the client asks the
 trusted feed about** (`access/reportCapabilityAccess.js:30`, 44 ids). The feed is never asked, the
@@ -330,18 +347,31 @@ composes from `ADMIN_ROLE`, so `owner` is a second derived holder of everything.
    capabilities dead in every environment — the clearest case in the registry of a capability that is
    granted in the letter and reaches no job in the fact (`WF-EQP-005`).
 
-**And there is a third gate under all of this that nobody in the programme measured.** P3-B2 states
-the inventory authority model as **three gates, not one**: (1) the catalogue activation flag, which
-denies unconditionally; (2) the per-environment activation override; and (3) a qualifying role grant —
-with the warning in its own capitals: ***"ACTIVATION IS NOT A GRANT. Declaring a Role grants nothing; a
-principal holds it only via a governed, audited roleAssignment."*** Every capability figure in this
-brief — the 37, the 21, the 32, the 17 — describes what roles *declare*. **Not one lane checked
-whether any human being is actually assigned any of these roles in any environment.** P3-A2 flags it
-explicitly as unproven: *"whether any `inventoryPutAwayOperator` / `inventoryBinAdministrator` /
-`inventoryStockRelocationOperator` / `inventoryLookupReader` role assignment actually exists in a live
-environment — declarations were read; assignment data is runtime."* A governed business role that
-holds a capability and is assigned to nobody is operationally identical to one that holds nothing. See
-§5 and cutover condition C6.
+**And there is a third gate under all of this. It is real, it is enforced, and it is the honest limit
+of everything in this section.** P3-B2 states the inventory authority model as **three gates, not
+one**: (1) the catalogue activation flag, which denies unconditionally; (2) the per-environment
+activation override; and (3) a qualifying role grant — with the warning in its own capitals:
+***"ACTIVATION IS NOT A GRANT. Declaring a Role grants nothing; a principal holds it only via a
+governed, audited roleAssignment."***
+
+**The third gate has since been executed against the shipped code and it behaves exactly as designed.**
+`roleAssignments` is read per-request at nine or more sites and is the **sole** source of an ALLOW: no
+assignment resolves `DENY/noQualifyingGrant`; a disabled assignment denies; an assignment whose
+`accessVersionAtGrant` is stale denies. It is both read and written — the store is live infrastructure,
+not a declaration, and an either/or framing of "declared versus live" does not hold for it.
+
+**What that leaves genuinely open is narrower and should be stated exactly.** Every capability figure
+in this brief — the 37, the 21, the 32, the 17 — describes what roles *hold*, verified through the
+resolver. **What no lane has measured is whether any human being is actually assigned any of these
+roles in any environment**, because that requires reading live Firestore and no lane reached for it.
+P3-A2 flagged the same limit for four specific roles: *"whether any `inventoryPutAwayOperator` /
+`inventoryBinAdministrator` / `inventoryStockRelocationOperator` / `inventoryLookupReader` role
+assignment actually exists in a live environment — declarations were read; assignment data is
+runtime."*
+
+**The distinction to hold onto: capacity is proven, occupancy is unknown.** The roles can hold the
+capabilities and the store can carry the assignment; whether anybody is in the seat is the single
+highest-priority live-data measurement Design P2 should take. See §5.2 and cutover condition C6.
 
 **The measurement consequence, which cost this programme more than the governance gap did.** A grant
 cannot be read from the role file; it must be resolved. P3-A3 §2 states the rule that every lane
@@ -353,13 +383,37 @@ Resolved at the integrated head, its holders are `owner` and `admin`. **This is 
 is what happens every single time a grant is read from a role file instead of resolved through the
 resolver**, and it happened to the lane that had just written the warning.
 
-**One thing here is not proven and would change the picture if it were.** P3-A3 carries, as the
-highest-priority re-measurement in Administration: *whether `readGovernedList` resolves only against
-`COMPATIBILITY_ROLES`, which would make the 45 governed business roles declarations rather than live
-authority.* If that turns out to be true, then the entire distinction between "held by a governed
-business role" and "held by an administrator" is decorative on at least one path, and several findings
-in this brief become worse rather than better. **UNPROVEN. It should be the first thing Design P2
-measures.**
+**One claim that was carried as the domain's highest-priority unknown has since been resolved, and the
+answer is the reassuring one.** P3-A3 raised, as the most urgent re-measurement in Administration,
+*whether `readGovernedList` resolves only against `COMPATIBILITY_ROLES`, which would make the 45
+governed business roles declarations rather than live authority.* **Resolved by executing the shipped
+resolver: it does not. `readGovernedList` does not exist at the integrated head at all** — it lives on
+the divergent, unmerged branch `feat/rules-out-of-firebase` as
+`functions/src/access/governedListReadService.ts:387`, confirmed not an ancestor of the integrated head
+and contained by that branch alone. On that branch the finding is accurate (`:392` and `:535` both
+default `deps.roles ?? COMPATIBILITY_ROLES`). **P3-A3 generalised a branch-local finding to the
+mainline, and so did an earlier draft of this brief.**
+
+**At the integrated head the 45 governed business roles are live authority.** Executed: 3 compatibility
+roles plus 45 governed roles, 147 capabilities, 21 held only by `admin`/`owner`, 0 held by no role —
+reproducing the programme's headline figures exactly. **47 of the 48 roles resolve ALLOW for something**;
+the single inert one is `generalEmployee`, which declares zero permissions by design. And all 45
+governed roles are grantable — every one appears in `trustedWriterCommands`' `ASSIGNABLE_ROLES`
+allowlist, so **zero of them are unassignable.**
+
+**This matters for how the rest of this brief should be read.** Every role-level number in it describes
+a working system, not a model of one. The governance gaps in §2.2 are real gaps in a live authority
+engine — which makes them worse, not better, than they would have been if the role layer had turned out
+to be decorative.
+
+**Two corrections to standing counts fall out of the same run.** The governed-role total is **45**, not
+the 43 the reconciliation document states. And `trustedWriterCommands.ts:185`'s comment claiming "all
+15" is stale — the literal beneath it carries all 45. (Both are §2.5's pattern again: the comment is
+wrong and it understates what exists.)
+
+**The merge hazard this creates, and it should be gated.** If `feat/rules-out-of-firebase` merges as it
+stands, P3-A3's finding stops being branch-local and *becomes true of the mainline*. That branch must
+not merge without the default resolved. It is cutover condition **C16**.
 
 ### 2.3 Cause three — the build outran the ruling, and the design record was never committed
 
@@ -488,6 +542,9 @@ the next phase must read the codebase, and it is the reason several lanes produc
   anywhere in this repository reads back a `receiving_orders` document by id, by query, or in bulk."*
   Two of the readers are by query and one is in bulk. P3-A2 flags the hazard exactly: a future reader
   who believes that sentence is free to change the stored shape and silently break part balances.
+- **`functions/src/access/trustedWriterCommands.ts:185`** claims the assignable-role allowlist carries
+  "all 15". The literal beneath it carries all 45. Stale in the same direction as every other stale
+  claim in this repository: understating what exists.
 - **Four more source comments repeat the stale "granted to no Role" claim** —
   `services/binCommandClient.js:4`, `services/stockMovementClient.js:4`,
   `hooks/useLocationDisplaySource.js:12`, and `docs/implementation-plans/
@@ -594,10 +651,20 @@ opposite remedies depending on this answer**, and thirty-odd questions below inh
 
 **What it does not decide.** It does not decide who holds what. It decides where the answer lives.
 
-**Measure this first, before ruling.** P3-A3 carries as its highest-priority open measurement:
-*whether `readGovernedList` resolves only against `COMPATIBILITY_ROLES`, which would make the 45
-governed business roles declarations rather than live authority.* If that is true, one of the three
-candidates is partly a facade and the decision changes. **UNPROVEN.**
+**One thing that was a precondition on this decision no longer is.** P3-A3 raised *whether
+`readGovernedList` resolves only against `COMPATIBILITY_ROLES`*, which would have made the 45 governed
+business roles declarations rather than live authority and would have changed what D1 is choosing
+between. **Resolved by execution: it does not, and the function does not exist at the integrated head**
+— it is branch-local to the unmerged `feat/rules-out-of-firebase` (§2.2). **D1 is therefore a choice
+between three working authorities, not between one real one and two facades.** That makes it a harder
+decision and a cleaner one.
+
+**What D1 is actually choosing between, stated precisely.** Each of the three authorities reads a
+*different store* for the same principal's roles: Firestore Rules compares `users/{uid}.role` as a
+string; the capability engine reads `roleAssignments` per request; the Postgres path uses a different
+table again, `eos.user_role_assignments`. **Naming an authority of record therefore also names which
+role store is the truth**, and reconciling the other two — or retiring them — is the work the decision
+commits to.
 
 #### D2. Decouple activation from administrator grant, or accept the coupling in writing. `OQ-ACT-03`
 
@@ -914,6 +981,11 @@ Nothing in this programme has been executed against production, so **every "toda
 measurement of the repository at integrated head `0ba8ab0d`, not of the running system.** Establishing
 the same measurements against the running system is itself condition C13.
 
+**Seventeen conditions. Two of them are merge gates rather than cutover gates and come first** — C16
+(the branch that would make the governed role layer decorative) and C17 (services that silently narrow
+their role set without recording it). Both are cheap, both are checkable today, and both get more
+expensive the later they are taken.
+
 | # | Condition | How it is verified | Today |
 |---|---|---|---|
 | **C1** | **At least one complete commercial path resolves ALLOW at every step, in production, for a named governed business role that is not `admin` or `owner`.** | Run the shipped resolver over all roles × all capabilities under the production activation set from the unmodified `config/environments.json`, and record the output for the named path. | **False.** 37 of 147 capabilities are allowed to anyone anywhere in production and not one is commercial. |
@@ -921,7 +993,7 @@ the same measurements against the running system is itself condition C13.
 | **C3** | **One authority of record is named in one document, and the number of enforcement sites obeying a different authority is zero — or each exception is listed and waived in writing, with a date.** | Count the Rules sites branching on `users/{uid}.role`; diff the four object-capability tables against each other. | **False.** 44 Rules sites over 22 collections; four tables disagreeing 21 times, 18 of them with no recorded rationale. |
 | **C4** | **No capability id is gated in a client component and absent from the trusted request set — enforced by a guard that reads component source and is capable of failing.** | Extract every capability gate from `field-ops-app-vite/src` and diff against the resolved request set. Then mutate one gate and confirm the guard goes red. | **False.** Five ids. The registered guard asserts a subset relation that is true by construction and can never fail. |
 | **C5** | **No capability id is checked in server or client code and absent from the catalogue.** | Diff every checked id against the 147-id catalogue. | **False.** Six confirmed, including one whose own source comment admits *"referenced by string only."* |
-| **C6** | **Every capability that is active in production is held by at least one governed business role, and at least one real principal is assigned that role.** | Resolve holders excluding all three compatibility roles; then read the role-assignment data in the target environment. | **False on the first half** — nine active, production-live capabilities including the whole reorder approval chain reach no governed business role. **Unmeasured on the second half** — no lane checked whether any of these role assignments exists anywhere. |
+| **C6** | **Every capability that is active in production is held by at least one governed business role, and at least one real principal is assigned that role in the target environment.** | Resolve holders excluding all three compatibility roles; then read `roleAssignments` in the target environment and count live, enabled, current-`accessVersion` holders per role. | **False on the first half** — nine active, production-live capabilities including the whole reorder approval chain reach no governed business role. **Unmeasured on the second half, and this is the highest-priority live-data measurement in the brief.** The authority engine is proven to work: 47 of 48 roles resolve ALLOW, all 45 governed roles are grantable, and `roleAssignments` is the sole source of an ALLOW, read per request at 9+ sites. **Capacity is proven; occupancy is unknown.** |
 | **C7** | **Every object Administration renders is either capability-expressible or explicitly marked Rules-governed, and the marker survives into the tenant policy store.** | Read `objectPermissionMap.js` for empty verb lists; read the seeded policy store for the `rulesOnly` marker. | **False.** Three objects have empty verb lists; the seed drops the marker, so a Rules-governed object is indistinguishable from an unmodelled one. |
 | **C8** | **The applied-migration count in the target environment is measured by connecting to the database and reading its migration table, and recorded with the date and the connection used.** | Connect; read; record. | **Unmeasured.** `functions/migrations/` holds exactly 18 files. The circulating figure of "7 of 18 applied in nonprod" is inherited and **unverified by every lane including P3-D**, and does not appear in the Phase-2 decision ledger at all. |
 | **C9** | **Firestore Rules have been evaluated by the emulator against the persona matrix and the results recorded.** | Run the emulator suites. | **False.** The emulator has never been run in this programme — no JRE on the machine, and port 8080 held by an unrelated process. **Every `RULES_DENY` finding in the registry is a reading of ruleset text, not an evaluation.** |
@@ -931,6 +1003,8 @@ the same measurements against the running system is itself condition C13.
 | **C13** | **Every claim in the cutover decision has been re-measured against the running target environment, not against the repository.** | Re-run each check above against the environment being cut over to. | **False by construction.** No lane made production contact, invoked a Cloud Function, evaluated Rules, connected to Postgres or reached the API service. |
 | **C14** | **Every figure in the cutover decision states its file, the predicate that produced it, and the definition of its denominator.** | Read the decision document. | **False today across the programme.** Three live denominators exist for the same advertised-capability count, and one lane's own first measurement was wrong by ten because ten matches were comment prose. |
 | **C15** | **No workflow is blocked on `OWNER_DECISION_PENDING` — or each remaining one carries a dated decision to defer, with the consequence of deferring stated.** | Read the registry. | **False.** 15 of 86. |
+| **C16** | **The `feat/rules-out-of-firebase` branch has not merged with `governedListReadService.ts`'s role default unresolved.** | `git merge-base --is-ancestor`; then read `:392` and `:535` for `deps.roles ?? COMPATIBILITY_ROLES` and confirm every caller passes the governed set. | **True today, and fragile.** The branch is confirmed not an ancestor of the integrated head, so the mainline's 45 governed roles are live authority. **If that branch merges as it stands, the governed role layer becomes decorative on the governed-list read path** — P3-A3's withdrawn finding becomes true. This is a merge gate, not a cutover gate, and it comes first. |
+| **C17** | **No deployed service silently narrows its role set to `COMPATIBILITY_ROLES` without a recorded decision.** | Grep every service for a `COMPATIBILITY_ROLES` default; for each hit, require either a caller that overrides it or a documented rationale at the site. | **False.** `recordChangeHistoryReadService.ts:284` and `employeeProfileCommands.ts:454` default to it and `administrationUsersCallables.ts` never overrides, denying 11 governed roles a capability they hold. `trustedWriterCommands.ts:1099-1110` does the same thing deliberately and says so — that is the shape the others must match. |
 
 **Two conditions deliberately not included, and why.**
 
@@ -951,7 +1025,10 @@ appendix, and not only in the report that accompanied it.
 
 ### 5.1 What was actually executed — the complete list
 
-**One thing was executed in this entire programme.** Capability resolution: the shipped resolver,
+**Two things have now been executed, and nothing else.** Both are capability resolution against the
+shipped resolver; neither touched a running system.
+
+**The first, by the consolidation lane.** Capability resolution: the shipped resolver,
 `governedBusinessRoles.ts`, `compatibilityRoles.ts` and `permissionCatalog.ts` loaded directly from
 the integrated-head worktree, evaluated for **all 48 roles × all 147 capabilities** under the
 production and `platform-sandbox` activation sets from the unmodified `config/environments.json`. No
@@ -962,6 +1039,20 @@ roles plus 3 compatibility roles; 109 registered inactive; 92 sandbox activation
 certification; **0 production**; **0** capabilities with zero holders; **21** held only by `owner` and
 `admin`; **32** held by no governed business role; **17** dead in every environment; **37** allowed
 anywhere in production. Plus catalogue membership: the six ids named in code and absent from the 147.
+
+**The second, by a later lane, resolving the one finding this brief had carried as its highest-priority
+unknown.** Executed against the shipped resolver at the integrated head: 3 compatibility roles + 45
+governed business roles, 147 capabilities, 21 held only by `admin`/`owner`, 0 held by no role —
+reproducing the first run's figures exactly and independently. Plus: **47 of 48 roles resolve ALLOW**
+(the one that does not is `generalEmployee`, which declares nothing by design); **all 45 governed roles
+appear in `ASSIGNABLE_ROLES`**, so none is unassignable; **`readGovernedList` does not exist at the
+integrated head** and is branch-local to the unmerged `feat/rules-out-of-firebase`; and the
+`roleAssignments` store is read per request at 9+ sites as the sole source of an ALLOW, denying on
+absence, on disablement and on a stale `accessVersionAtGrant`. The eleven-role `audit.event.read`
+denial in §2.1 was measured through the shipped service.
+
+**The conclusion that follows, and it should be stated without hedging: the role layer is a working
+system, not a model of one.** Every role-level figure in this brief describes live authority.
 
 **Everything else in this brief is a reading of source at a named commit.** That is a good standard
 and it is not the same standard.
@@ -980,8 +1071,11 @@ and it is not the same standard.
 - **No test suite was run.** `node_modules` is absent in the lane worktrees.
 - **No production contact of any kind was made, by any lane, at any point.** No deploy, no mutation,
   no read.
-- **No role-assignment data was read in any environment.** Every grant figure describes what roles
-  declare, not what any person holds.
+- **No role-assignment data was read in any environment.** The `roleAssignments` mechanism is proven to
+  work and to be the sole source of an ALLOW; **whether any principal is assigned any of the 45 governed
+  roles is unmeasured**, because it needs live Firestore and no lane reached for it. Capacity is proven;
+  occupancy is unknown. **This is the highest-priority live-data measurement Design P2 should take**
+  (C6).
 
 ### 5.3 Figures that are contested and remain unresolved
 
@@ -1035,10 +1129,11 @@ Both are in circulation in the programme and are stated here so nobody treats th
 
 ---
 
-## 6. Six numbers you will hear, and what each actually measures
+## 6. Seven claims you will hear, and what each actually measures
 
-Read this before quoting any figure from any EOS document. Each of the six cost a lane a false finding
-in a single night, and several of them cost more than one lane.
+Read this before quoting any figure or finding from any EOS document. Each of the seven cost a lane a
+false conclusion in a single night, several of them cost more than one lane, and the last one cost this
+brief a wrong precondition on its first decision.
 
 ### 6.1 "No role holds capability X" — false, always, and not a claim a search can support
 
@@ -1143,6 +1238,30 @@ something false.
 *what state is it in?* on what looks like one scale, so 141 `IMPLEMENTED_UNEXECUTED` rows read as a
 middling outcome when they are an epistemic statement about 141 perfectly ordinary built things.
 
+### 6.7 "Lane X found Y in the code" — ask which branch
+
+One of the most consequential findings this brief originally carried was *"`readGovernedList` defaults
+its role set to `COMPATIBILITY_ROLES`, which would make the 45 governed business roles declarations
+rather than live authority."* It was raised as the single highest-priority re-measurement in
+Administration, and an earlier draft of this document made it a precondition on the first decision in
+§3.
+
+**The finding is accurate. It is accurate about a branch that has not merged.** `readGovernedList` does
+not exist at the integrated head; it lives in `governedListReadService.ts:387` on
+`feat/rules-out-of-firebase`, confirmed not an ancestor of the integrated head and contained by that
+branch alone. On that branch, `:392` and `:535` both default `deps.roles ?? COMPATIBILITY_ROLES`
+exactly as reported.
+
+**The trap is generalisation from a working copy to the mainline**, and it is easy to fall into when
+several lanes work in several worktrees over several branches at once. It is distinct from the stale-
+comment trap (§2.5) and from the grep trap (§6.1): the reading was correct, the code was there, and the
+conclusion was still false of the system.
+
+**The rule: a code finding must state the commit or branch it was read at.** Every citation in this
+brief carries the integrated head `0ba8ab0d` for exactly this reason. And note which way this one
+resolved — the answer was **better** than the finding, which is the fifth time in this brief that a
+programme claim turned out to understate what exists.
+
 ---
 
 ## 7. Closing
@@ -1159,15 +1278,16 @@ Thirty-five of 86 workflows stop because a next step was never written, and most
 written because something was correctly not decided. Fifteen stop on an Owner decision outright. One
 configuration file with no entry in it accounts for most of the rest.
 
-**And nothing in this programme has been run.** Eighty-six workflows were mapped and none was
-executed; 1,010 activities were modelled and 42 were run; one resolver was executed and every other
-claim in this brief is a careful reading of source at a named commit. **The first thing Design P2
-should buy itself is an environment that can run the emulator, invoke a callable, and read a role
-assignment** — because until then, every number in this document, including the good ones, is a
-statement about a repository rather than about a business.
-
----
-
+**Almost nothing in this programme has been run.** Eighty-six workflows were mapped and none was
+executed; 1,010 activities were modelled and 42 were run; two independent runs of one resolver proved
+the authority engine works, and every other claim in this brief is a careful reading of source at a
+named commit. What those two runs established is worth holding onto, because it is the best news in the
+document: **the role layer is a working system, not a model of one** — 47 of 48 roles resolve, all 45
+governed roles are grantable, and the assignment store is the sole source of an ALLOW. **What nobody
+has measured is whether anyone is in the seat.** Capacity is proven; occupancy is unknown. **The first
+thing Design P2 should buy itself is an environment that can run the emulator, invoke a callable, and
+read a role assignment** — because until then, every number in this document, including the good ones,
+is a statement about a repository rather than about a business.
 
 ---
 
@@ -1190,6 +1310,7 @@ All paths are read-only inputs; this lane modified none of them.
 | P3-0 | `docs/architecture/verenward-global-record-identity-standard.md` |
 | P3-0 | `docs/architecture/verenward-object-code-registry-proposed.md` |
 | P3-0 | `docs/architecture/record-id-migration-impact-census.md` |
+| P2-N | Executed resolution of the `readGovernedList` / `COMPATIBILITY_ROLES` question, the `ASSIGNABLE_ROLES` and `roleAssignments` findings, and the eleven-role `audit.event.read` denial. Received as a coordinator correction to this lane; it settles §2.2's standing unknown and adds conditions C16 and C17. |
 
 **Verification base.** All lanes branched from `d104cf49`; every defect carried into this brief was
 re-checked by P3-D at integrated head `0ba8ab0d` on `integration/wave-1`. Six defects true at the lane
