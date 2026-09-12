@@ -15,8 +15,24 @@
 // facts (accountId/currency/per-line committed unitPrice/billing-eligible qty) must match the SO or issuance
 // is rejected. It reuses computeBillingEligibility (billingEligibility.ts) — the fulfillment→finance seam —
 // rather than re-deriving eligibility rules here.
+//
+// P-INV (invoice-authority packet, migration 008): the per-line arithmetic and the header
+// aggregates are NO LONGER computed here. They come from the ONE shared derivation,
+// eosOps/invoiceTotals.ts, which the Postgres authority's GENERATED ALWAYS columns and the
+// `invoice_totals` view express in SQL and which financialReconciliation.ts now uses to prove a
+// stored header against its own lines. Four inline `out.reduce(...)` calls and a duplicated
+// per-line formula lived here; a second copy of an arithmetic rule is how two layers come to
+// disagree about the same invoice's money. The refusal CODES are unchanged (LINE_INVALID /
+// UNPRICED / TAX_REQUIRES_REVIEW), re-thrown as InvoiceCommandError so every existing caller and
+// error mapping is untouched.
 import { computeBillingEligibility, type BillingEligibilityInput } from "../fulfillment/billingEligibility";
 import { buildFinancialAttributionSnapshot, type FinancialAttributionSnapshot } from "./financialAttribution";
+import {
+  deriveInvoiceLineAmounts,
+  sumInvoiceLineAmounts,
+  InvoiceTotalsError,
+  type InvoiceLineAmounts,
+} from "../eosOps/invoiceTotals";
 
 export class InvoiceCommandError extends Error {
   code: string;
@@ -24,8 +40,18 @@ export class InvoiceCommandError extends Error {
 }
 
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v);
-const isPosInt = (v: unknown): v is number => isInt(v) && v > 0;
-const isNonNegInt = (v: unknown): v is number => isInt(v) && v >= 0;
+
+// The shared derivation refuses with its own error type. Translating rather than letting it escape
+// keeps this module's contract exactly what it was: callers (and invoiceCallables.ts's
+// mapCommandError) see InvoiceCommandError with the same codes they always did.
+function deriveLineAmountsOrRefuse(line: IssueInvoiceLineInput, index: number): InvoiceLineAmounts {
+  try {
+    return deriveInvoiceLineAmounts(line, `line ${index}`);
+  } catch (err) {
+    if (err instanceof InvoiceTotalsError) throw new InvoiceCommandError(err.code, err.message);
+    throw err;
+  }
+}
 
 export interface IssueInvoiceLineInput {
   salesOrderLineId: string;
@@ -245,28 +271,20 @@ export function buildInvoiceRecord(
     if (typeof l?.salesOrderLineId !== "string" || l.salesOrderLineId.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} salesOrderLineId required`);
     if (typeof l?.kind !== "string" || l.kind.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} kind required`);
     if (typeof l?.ref !== "string" || l.ref.trim().length === 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} ref required`);
-    if (!isPosInt(l.billableQty)) throw new InvoiceCommandError("LINE_INVALID", `line ${i} billableQty must be a positive integer`);
-    if (!isNonNegInt(l.unitPriceMinor)) throw new InvoiceCommandError("UNPRICED", `line ${i} has no committed unit price (unitPriceMinor)`);
-    const discountMinor = l.discountMinor === undefined ? 0 : l.discountMinor;
-    if (!isNonNegInt(discountMinor)) throw new InvoiceCommandError("LINE_INVALID", `line ${i} discountMinor must be a non-negative integer`);
-    // Tax is the INJECTED determination (§2). Absent ⇒ cannot issue (REQUIRES_REVIEW), never invented.
-    if (!isNonNegInt(l.taxMinor)) throw new InvoiceCommandError("TAX_REQUIRES_REVIEW", `line ${i} has no tax determination`);
-    const subtotalMinor = l.unitPriceMinor * l.billableQty; // authoritative — recomputed, not trusted from client
-    const taxableBaseMinor = subtotalMinor - discountMinor;
-    if (taxableBaseMinor < 0) throw new InvoiceCommandError("LINE_INVALID", `line ${i} discount exceeds subtotal`);
-    const lineTotalMinor = taxableBaseMinor + l.taxMinor;
+    // AUTHORITATIVE amounts — recomputed by the ONE shared derivation, never trusted from the
+    // client. Tax is the INJECTED determination (§2): absent ⇒ TAX_REQUIRES_REVIEW, never invented.
+    const amounts: InvoiceLineAmounts = deriveLineAmountsOrRefuse(l, i);
+    const { subtotalMinor, discountMinor, taxableBaseMinor, lineTotalMinor } = amounts;
     // Business unit comes from the GOVERNED SO line, matched by lineId — a client cannot label its
     // own billing. Absent snapshot / absent stamp ⇒ null, honestly.
     const soLine = deps.so?.lines?.find((s) => s.lineId === l.salesOrderLineId);
     const businessUnitId = typeof soLine?.businessUnitId === "string" && soLine.businessUnitId.length > 0
       ? soLine.businessUnitId : null;
-    out.push({ salesOrderLineId: l.salesOrderLineId, kind: l.kind, ref: l.ref, businessUnitId, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: l.taxMinor, lineTotalMinor });
+    out.push({ salesOrderLineId: l.salesOrderLineId, kind: l.kind, ref: l.ref, businessUnitId, billableQty: l.billableQty, unitPriceMinor: l.unitPriceMinor, subtotalMinor, discountMinor, taxableBaseMinor, taxMinor: amounts.taxMinor, lineTotalMinor });
   }
 
-  const subtotalMinor = out.reduce((s, l) => s + l.subtotalMinor, 0);
-  const discountMinor = out.reduce((s, l) => s + l.discountMinor, 0);
-  const taxMinor = out.reduce((s, l) => s + l.taxMinor, 0);
-  const totalMinor = out.reduce((s, l) => s + l.lineTotalMinor, 0);
+  // The header aggregates, from the SAME summation the Postgres `invoice_totals` view performs.
+  const { subtotalMinor, discountMinor, taxMinor, totalMinor } = sumInvoiceLineAmounts(out);
 
   return {
     invoiceNumber: deps.invoiceNumber,

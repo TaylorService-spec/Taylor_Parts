@@ -21,10 +21,12 @@ import {
   validateObjectAdministrationProfile,
   validateProfileAgainstEntity,
 } from "./objectAdministrationProfile.js";
+import { invoiceAdministrationProfile } from "./profiles/invoice.js";
 import { partAdministrationProfile } from "./profiles/part.js";
 
 /** Every declared profile, alphabetically by entity id so a screen has a stable order. */
 export const ADMINISTRATION_PROFILES = Object.freeze([
+  invoiceAdministrationProfile,
   partAdministrationProfile,
 ]);
 

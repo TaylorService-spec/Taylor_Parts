@@ -11,6 +11,10 @@
 // internal drift detection now; external reconciliation arrives with the authority-of-record selection.
 // Integer minor units; pure; no I/O.
 import { deriveOutstandingMinor, deriveInvoiceStateFromFacts } from "./paymentCommands";
+import {
+  reconcileInvoiceTotalsAgainstLines,
+  type InvoiceLineAmounts,
+} from "../eosOps/invoiceTotals";
 
 export class ReconciliationError extends Error {
   code: string;
@@ -19,6 +23,40 @@ export class ReconciliationError extends Error {
 
 const isInt = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v);
 const nn = (v: unknown): number => (isInt(v) && v >= 0 ? v : 0);
+
+/**
+ * THE GAP THIS FILE USED TO HAVE.
+ *
+ * `reconcileInvoiceProjection` below proves the AR OVERLAY — applied, credits, charges,
+ * write-offs, outstanding, state — against the durable payment/adjustment/refund facts. It takes
+ * `stored.totalMinor` as its GIVEN basis (see `derivedFacts`), and nothing anywhere proved THAT.
+ *
+ * So the one number every AR figure is computed from — billed, outstanding, and every aging bucket
+ * in financeReadProjection.ts — was the only one with no proof against the lines it summarises. A
+ * header that disagrees with its own lines passes `reconcileInvoiceProjection` cleanly and reports
+ * IN_SYNC, because the disagreement is upstream of everything that function compares.
+ *
+ * This closes it. The stored header aggregate is diffed against the invoice's own embedded lines,
+ * through the same shared derivation (eosOps/invoiceTotals.ts) that issuance now uses and that the
+ * Postgres authority expresses as GENERATED ALWAYS columns. It is a SEPARATE function, not folded
+ * into the projection reconciler, because the two answer different questions and a caller that has
+ * lines is not the same caller as one that has payment facts.
+ */
+export function reconcileInvoiceTotals(
+  stored: { invoiceId: string; subtotalMinor?: number; discountMinor?: number; taxMinor?: number; totalMinor?: number },
+  lines: readonly InvoiceLineAmounts[],
+): ReconciliationResult {
+  if (!stored || typeof stored.invoiceId !== "string" || stored.invoiceId.length === 0) {
+    throw new ReconciliationError("INVOICE_REQUIRED", "a stored invoice with invoiceId is required");
+  }
+  if (!Array.isArray(lines)) {
+    // An invoice with no lines readable is not an invoice reconciled to zero — it is a
+    // reconciliation that cannot be performed, and saying IN_SYNC about it would be a lie.
+    throw new ReconciliationError("LINES_REQUIRED", `invoice ${stored.invoiceId} has no readable lines to reconcile its total against`);
+  }
+  const { status, differences } = reconcileInvoiceTotalsAgainstLines(stored, lines);
+  return { recordId: stored.invoiceId, status, differences };
+}
 
 export interface StoredInvoiceProjection {
   invoiceId: string;
@@ -58,6 +96,10 @@ export function reconcileInvoiceProjection(
   if (!stored || typeof stored.invoiceId !== "string" || stored.invoiceId.length === 0) {
     throw new ReconciliationError("INVOICE_REQUIRED", "a stored invoice projection with invoiceId is required");
   }
+  // NOTE THE BOUNDARY: totalMinor is checked for SHAPE here and taken as the basis for everything
+  // below. Whether it actually equals the sum of the invoice's lines is a different question, and
+  // it is `reconcileInvoiceTotals` above that answers it — this function cannot, because a payment
+  // fact set says nothing about what was billed.
   if (!isInt(stored.totalMinor)) throw new ReconciliationError("PROJECTION_INVALID", "stored totalMinor must be an integer");
   const applications = Array.isArray(facts?.applications) ? facts.applications : [];
   const adjustments = Array.isArray(facts?.adjustments) ? facts.adjustments : [];
