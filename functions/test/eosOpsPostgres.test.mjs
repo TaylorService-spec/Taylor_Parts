@@ -107,8 +107,10 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "exactly four foundation tables -- no balance table, no locations table");
+    "cycle_count_lines", "cycle_count_sheets", "equipment", "equipment_models",
+    "inventory_movements", "serialized_custody",
+  ], "the migration-005 foundation plus migration 008's Equipment pair -- still no balance table,"
+   + " and still no inventory `locations` table");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.

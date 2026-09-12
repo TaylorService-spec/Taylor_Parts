@@ -14,7 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import * as cc from "../lib/eosOps/cycleCountRepository.js";
@@ -36,6 +36,15 @@ function repoPool() {
   pool ??= new pg.Pool({ connectionString: URL, max: 4 });
   return pool;
 }
+
+/**
+ * The migration set, COUNTED rather than remembered -- see adminPolicyPostgres.test.mjs for why.
+ * These proofs are about MIGRATION 007; anything layered on top of it must come off first, and
+ * naming 007 keeps that true as later migrations are added.
+ */
+const MIGRATION_FILES = readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort();
+const STEPS_BACK_TO_007 =
+  MIGRATION_FILES.length - MIGRATION_FILES.findIndex((f) => f === MIGRATION_FILE);
 
 function migrate(args) {
   return execFileSync(process.execPath, [
@@ -74,6 +83,18 @@ const insertCustody = (id, status, locationType, locationId, company = COMPANY_A
   [id, TENANT_A, company, status, locationType, locationId],
 );
 
+// Migration 008 gave the EQUIPMENT custody label a referent: `serialized_custody.equipment_id` is
+// generated from `location_id` and carries a tenant-scoped foreign key into `eos_ops.equipment`. A
+// proof about the INSTALLED biconditional therefore has to install into an Equipment record that
+// EXISTS -- which is the point of that key, not an obstacle to it.
+const insertEquipment = (id) => query(
+  `INSERT INTO eos_ops.equipment
+     (id, tenant_id, operating_company_key, account_id, customer_location_id, name, status,
+      created_by, updated_by)
+   VALUES ($1, $2, $3, 'acct-1', 'cust-loc-1', 'Unit', 'ACTIVE', 'u', 'u')`,
+  [id, TENANT_A, COMPANY_A],
+);
+
 const enumLabels = (typeName) => query(
   `SELECT e.enumlabel FROM pg_enum e
      JOIN pg_type t ON t.oid = e.enumtypid
@@ -95,7 +116,9 @@ test("operating_company_key is NOT NULL on all three authority-bearing tables", 
     `SELECT table_name, data_type, is_nullable, column_default
        FROM information_schema.columns
       WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
+        AND table_name = ANY($1)
       ORDER BY table_name`,
+    [COMPANY_TABLES],
   );
   assert.deepEqual(columns.rows.map((r) => r.table_name), [...COMPANY_TABLES].sort());
   for (const row of columns.rows) {
@@ -180,9 +203,9 @@ test("the repository refuses a missing company key before it ever reaches SQL", 
 
 test("migration 007 ABORTS on a pre-existing row rather than inventing its operating company", { skip: SKIP }, async () => {
   await reset();
-  // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
-  // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  // Reverse 007 (and anything above it) so the tables are back to their migration-005 shape, then
+  // occupy one of them the way an unexpected pre-cutover writer would have.
+  migrate(["down", String(STEPS_BACK_TO_007)]);
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -213,16 +236,21 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
   // Clearing the unknown-authority rows is what unblocks it -- not a backfill.
   await query("DELETE FROM eos_ops.serialized_custody");
   migrate(["up"]);
+  // Scoped to 007's OWN three tables. Later migrations carry the same mandatory authority onto
+  // their own records (008's `equipment` does), and a bare count would turn this claim about 007
+  // into a claim about how many tables in eos_ops happen to record an operating company.
   const nowThere = await query(
     `SELECT count(*)::int n FROM information_schema.columns
-      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
+      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
+        AND table_name = ANY($1)`,
+    [COMPANY_TABLES],
   );
   assert.equal(nowThere.rows[0].n, 3, "and then it applies to all three tables");
 });
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  migrate(["down", String(STEPS_BACK_TO_007)]);
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)
@@ -341,6 +369,7 @@ test("the three physical custody values still round-trip on the real table", { s
 
 test("INSTALLED custody at an EQUIPMENT id is accepted, and location_id IS the Equipment id", { skip: SKIP }, async () => {
   await reset();
+  await insertEquipment("eq_abc123");
   await insertCustody("sc-installed", "INSTALLED", "EQUIPMENT", "eq_abc123");
   const row = await query(
     "SELECT status::text AS s, location_type::text AS lt, location_id FROM eos_ops.serialized_custody WHERE id = 'sc-installed'",
@@ -380,6 +409,7 @@ test("EQUIPMENT custody on a NON-INSTALLED status is REFUSED too -- the rule is 
 test("an INSTALLED unit cannot be UPDATED back into physical custody without also leaving INSTALLED", { skip: SKIP }, async () => {
   // The constraint is a table CHECK, so it holds on every write, not only on insert.
   await reset();
+  await insertEquipment("eq_abc123");
   await insertCustody("sc-u", "INSTALLED", "EQUIPMENT", "eq_abc123");
   await assert.rejects(
     () => query("UPDATE eos_ops.serialized_custody SET location_type = 'WAREHOUSE' WHERE id = 'sc-u'"),

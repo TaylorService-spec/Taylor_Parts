@@ -32,12 +32,15 @@ function executableSql(source) {
 
 // ============================ the migration is additive and correctly ordered ============================
 
-test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
+test("007 follows 006, and 005 and 006 are untouched by it", () => {
+  // ORDERING, not a headcount. This used to assert "seven migrations", which made every later
+  // migration in the repository fail a test that is about where 007 sits relative to its two
+  // predecessors -- a fact that does not change when an eighth is added on top.
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
-  assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
-  assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
+  const index = files.indexOf(MIGRATION_FILE);
+  assert.ok(index >= 0, "007 is present");
+  assert.equal(files[index - 2], "1757808000000_eos-ops-foundation.sql");
+  assert.equal(files[index - 1], "1757894400000_operational-capability-vocabulary.sql");
 
   // node-pg-migrate's own format, the same two sections every predecessor uses.
   assert.match(migrationSource, /^-- Up Migration/);
