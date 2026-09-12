@@ -17,8 +17,11 @@ import { buildFinancialPolicyView, VIEW_STATE } from "../../domain/financialPoli
 //
 // ============================ THE HONEST PARTS ============================
 //
-// BOTH capabilities are registered `active: false` and granted to no Role, so today this screen
-// renders its ungated state everywhere. That is stated rather than dressed up as "no policy
+// BOTH capabilities are registered `active: false` -- the PRODUCTION posture, not a universal one.
+// Measured 2026-09-12: `financialPolicy.profile.read` is held by accountingManager, controller,
+// financeManager and generalManager, `.configure` by admin/owner only, and both are ACTIVATED in
+// platform-sandbox. So the ungated state is what an unheld account sees, not the condition of the
+// screen. Either way it is stated rather than dressed up as "no policy
 // configured" -- an empty policy and a refused read look identical to an operator, and only one of
 // them means the company still needs configuring.
 //
@@ -39,11 +42,18 @@ import { buildFinancialPolicyView, VIEW_STATE } from "../../domain/financialPoli
 const CAP_READ = "financialPolicy.profile.read";
 const CAP_CONFIGURE = "financialPolicy.profile.configure";
 
+/**
+ * SAY ONLY WHAT THIS COMPONENT CAN SEE. Corrected 2026-09-12: this used to end "which is not active
+ * for this environment and is not granted to any role yet". Both halves were false --
+ * `financialPolicy.profile.read` is held by five governed business Roles and `.configure` by
+ * admin/owner, and both are activated in platform-sandbox -- and neither is a fact this component
+ * could ever establish. All it has is one boolean from `hasCapability` for one signed-in principal.
+ */
 function Ungated({ capability }) {
   return (
     <StatusIndicator tone="neutral">
-      Financial policy is not available to you. It needs <code>{capability}</code>, which is not
-      active for this environment and is not granted to any role yet.
+      Financial policy is not available to you. It needs <code>{capability}</code>, which your
+      account does not hold in this environment. An administrator can tell you which role carries it.
     </StatusIndicator>
   );
 }

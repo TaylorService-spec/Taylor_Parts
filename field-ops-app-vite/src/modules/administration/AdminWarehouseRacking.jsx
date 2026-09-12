@@ -22,10 +22,13 @@ import {
 // ============================ THE HONEST PARTS ============================
 //
 // READ and MANAGE are gated INDEPENDENTLY, and the screen says which one it is missing. Both
-// `inventory.location.bin.read` and `inventory.location.bin.manage` are registered `active: false`
-// and granted to no Role, so today this screen renders its honest ungated state everywhere. That is
-// the truth, and it is stated rather than dressed up as "no bins configured" -- an empty list and a
-// refused read look identical to an operator, and only one of them means the rack is unconfigured.
+// `inventory.location.bin.read` and `inventory.location.bin.manage` are registered `active: false`,
+// which is the PRODUCTION posture and not a universal one: measured 2026-09-12 they are held by
+// inventoryBinAdministrator (and `.read` also by inventoryPutAwayOperator and
+// inventoryStockRelocationOperator) and both are ACTIVATED in platform-sandbox. So the ungated state
+// is what an unheld account sees, not the condition of the screen. Either way it is stated rather
+// than dressed up as "no bins configured" -- an empty list and a refused read look identical to an
+// operator, and only one of them means the rack is unconfigured.
 //
 // NOTHING here is a preview the client computed. The classification beside every proposed bin, and
 // the code shown for it, come from the trusted `previewBinCreates` read. The client cannot see
@@ -64,12 +67,22 @@ const intOr = (raw, fallback) => {
   return Number.isInteger(n) && n >= 0 ? n : fallback;
 };
 
-/** A capability this screen needs, stated plainly when it is not held. */
+/**
+ * A capability this screen needs, stated plainly when it is not held.
+ *
+ * SAY ONLY WHAT THIS COMPONENT CAN SEE. Corrected 2026-09-12: this used to end "which is not active
+ * for this environment and is not granted to any role yet". Both halves were false -- both bin ids
+ * are held by inventoryBinAdministrator (and `.read` also by inventoryPutAwayOperator and
+ * inventoryStockRelocationOperator), and both are activated in platform-sandbox -- and neither is
+ * a fact this component could ever establish. All it has is one boolean from `hasCapability` for
+ * one signed-in principal: whether THIS account resolved the capability HERE. A component that
+ * reports its own denial as a system-wide absence tells the reader to stop asking for access.
+ */
 function Ungated({ what, capability }) {
   return (
     <StatusIndicator tone="neutral">
-      {what} is not available to you. It needs <code>{capability}</code>, which is not active for
-      this environment and is not granted to any role yet.
+      {what} is not available to you. It needs <code>{capability}</code>, which your account does
+      not hold in this environment. An administrator can tell you which role carries it.
     </StatusIndicator>
   );
 }
