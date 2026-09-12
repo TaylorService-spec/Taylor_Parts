@@ -18,6 +18,7 @@ import {
   runReportDefinition,
   InvalidReportDefinitionError,
   UnknownReportObjectError,
+  IncompleteAggregateScanError,
 } from "./reportExecutionService";
 
 export const runReportDefinitionCallable = onCall({ region: "us-central1" }, async (request) => {
@@ -45,6 +46,15 @@ export const runReportDefinitionCallable = onCall({ region: "us-central1" }, asy
     }
     if (err instanceof UnknownReportObjectError) {
       throw new HttpsError("failed-precondition", err.message);
+    }
+    // Truncation honesty (census X-9): an aggregate whose scan was cut
+    // is REFUSED, never returned as a partial figure. "resource-
+    // exhausted" is the honest code -- the request was well-formed and
+    // authorized; the engine's own scan bound is what it exceeded. The
+    // message is actionable (narrow the report, or drop the aggregates)
+    // and carries no row data.
+    if (err instanceof IncompleteAggregateScanError) {
+      throw new HttpsError("resource-exhausted", err.message);
     }
     throw new HttpsError("internal", "The report could not run.");
   }
