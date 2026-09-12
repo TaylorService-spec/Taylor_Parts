@@ -106,17 +106,24 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
-  assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "exactly four foundation tables -- no balance table, no locations table");
+  // The four migration-005 FOUNDATION tables. Containment rather than equality, because later
+  // packets legitimately add their own eos_ops tables (008's payments / payment_applications) and an
+  // exhaustive list here would turn every one of those into a false regression in this file. What
+  // must stay exhaustive is the FORBIDDEN list below -- "no stored balance table" is the claim, and
+  // it is asserted by name against the whole schema, not by counting what happens to be there.
+  const names = tables.rows.map((r) => r.table_name);
+  for (const foundation of ["cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody"]) {
+    assert.ok(names.includes(foundation), `migration 005's ${foundation} exists`);
+  }
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.
   const forbidden = await query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'
-       AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances')`,
+       AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances',
+                          'locations', 'invoices', 'accounts')`,
   );
-  assert.deepEqual(forbidden.rows, [], "no stored balance table was created");
+  assert.deepEqual(forbidden.rows, [], "no stored balance table, and no copy of an authority this schema does not own");
 });
 
 test("eos_ops tables are FK-scoped to eos_policy.tenants -- an orphan tenant_id is refused", { skip: SKIP }, async () => {

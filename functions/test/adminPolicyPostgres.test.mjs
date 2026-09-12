@@ -166,11 +166,14 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL OF THEM, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
-  // that the newest migration undoes its predecessors' work, which it must not.
+  // that the newest migration undoes its predecessors' work, which it must not. The count is READ
+  // from the directory rather than hardcoded, so a later packet adding a migration does not make
+  // this test fail for a reason that has nothing to do with what it proves.
+  const allMigrations = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(allMigrations), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -183,13 +186,20 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
   assert.equal(back.rows[0].n, 21, "and up restores all twenty-one");
 });
 
-test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
+test("migration 007 reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
   // The step that matters operationally: rolling back ONE migration must not take the ones under it
   // with it. Proved by reversing exactly one, then exactly one more, and counting what survives.
   await reset();
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // Anything ABOVE 007 comes off first, so this test keeps proving the 007/006 pair it was written
+  // for instead of silently re-aiming itself at whichever packet landed most recently -- a moving
+  // target would make it pass while proving something nobody chose.
+  const migrations = readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort();
+  const above007 = migrations.length - 1 - migrations.indexOf("1757980800000_operating-company-and-serialized-custody.sql");
+  if (above007 > 0) down(above007);
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.

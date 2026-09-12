@@ -79,6 +79,19 @@ import { makeEntityDefinition, makeFieldDefinition, makeIdentity } from "../enti
 // false` there; here there is simply no update call anywhere in the writer, since Rules deny ALL
 // direct writes regardless and the trusted command never issues one).
 
+// IDENTITY IS DECLARED AS A FIELD (paymentId) EVEN THOUGH FIRESTORE STORES NO SUCH FIELD. The
+// receipt's identity is the `payments` document id; applyPayment allocates it with
+// `db.collection(PAYMENTS_COLLECTION).doc()` and writes no copy of it onto the document. That is
+// precisely why it is declared rather than left implicit: an object whose identity is not a
+// declared field cannot have its identity RULE stated anywhere (which id is canonical, what must
+// never be substituted for it, where a divergence would be refused), and "the document id" is the
+// answer that quietly turns into a display fallback. The honest content of the declaration is the
+// gap it records: in Firestore there is no stored value to compare against the key, so the
+// stored-equals-key invariant is undeclarable, not merely unenforced. In the target Postgres
+// authority the same identity is `eos_ops.payments.id`, a PRIMARY KEY, where the question cannot
+// arise. nameField stays externalRef -- paymentId is IDENTITY, not a human-legible name, and
+// promoting an opaque allocated id to a name is exactly what identity.js forbids.
+
 export const paymentEntity = makeEntityDefinition({
   id: "payment",
   label: "Payment",
@@ -89,6 +102,20 @@ export const paymentEntity = makeEntityDefinition({
   identity: makeIdentity({ nameField: "externalRef" }),
   description: "A cash receipt recorded by the trusted applyPayment command — money received, distinct from how it is applied (see payment_applications, out of scope here). Deny-all in Rules; no read path of any kind exists today.",
   fields: [
+    makeFieldDefinition({
+      id: "paymentId",
+      entityId: "payment",
+      label: "Payment ID",
+      type: "STRING",
+      description:
+        "The receipt's canonical identity. In the Firestore representation it is the `payments` " +
+        "document id allocated by db.collection(PAYMENTS_COLLECTION).doc() in applyPayment and is " +
+        "NOT a stored document field -- so nothing can compare a stored value against the key, and " +
+        "a divergence between the two is undetectable rather than refused (recorded as a gap, see " +
+        "the file header). In the target authority it is eos_ops.payments.id, a TEXT PRIMARY KEY " +
+        "(functions/migrations/1759017600000_ar-cash-application-authority.sql), where the two " +
+        "cannot differ because there is only one of them. Never substituted by externalRef.",
+    }),
     makeFieldDefinition({
       id: "externalRef",
       entityId: "payment",

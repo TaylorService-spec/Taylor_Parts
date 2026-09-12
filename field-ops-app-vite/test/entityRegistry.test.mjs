@@ -60,8 +60,12 @@ test("displayableFields excludes the fields no surface can render", () => {
 });
 
 test("the declared field count is what the census measured", () => {
-  // 394 across 29 entities. Pinned so a change to the model is a deliberate edit to this number
+  // 395 across 29 entities. Pinned so a change to the model is a deliberate edit to this number
   // rather than something that drifts past the reconciliation document unnoticed.
+  //
+  // 394 -> 395: `payment.paymentId`, the receipt's canonical identity. Declared even though the
+  // Firestore document stores no such field, because an object whose identity is not a declared
+  // field cannot have its identity RULE stated anywhere -- see definitions/payment.js's header.
   assert.equal(ENTITY_REGISTRY.length, 29);
-  assert.equal(totalDeclaredFields(), 394);
+  assert.equal(totalDeclaredFields(), 395);
 });

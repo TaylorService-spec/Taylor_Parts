@@ -14,7 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import * as cc from "../lib/eosOps/cycleCountRepository.js";
@@ -41,6 +41,31 @@ function migrate(args) {
   return execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, encoding: "utf8", stdio: "pipe" });
+}
+
+/**
+ * Reverse every migration from 007 upward, so the NEXT `up` is 007 itself.
+ *
+ * `down 1` used to be enough because 007 was the newest. It is not a fact about 007 that it is the
+ * newest, so the step count is computed from the directory: the tests below are about what 007
+ * refuses, and they must keep asking 007 that question however many packets land above it.
+ */
+function downThrough007() {
+  const files = readdirSync("migrations").filter((f) => f.endsWith(".sql")).sort();
+  migrate(["down", String(files.length - files.indexOf(MIGRATION_FILE))]);
+}
+
+/** How many eos_ops tables carry the operating company once every migration is applied. */
+async function companyColumnCount() {
+  const { rows } = await query(
+    `SELECT count(*)::int n
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'eos_ops' AND c.column_name = 'operating_company_key'
+        AND t.table_type = 'BASE TABLE'`,
+  );
+  return rows[0].n;
 }
 
 async function reset() {
@@ -91,17 +116,34 @@ test.after(async () => {
 
 test("operating_company_key is NOT NULL on all three authority-bearing tables", { skip: SKIP }, async () => {
   await reset();
+  // BASE TABLE only. information_schema.columns also describes VIEWS, whose columns are always
+  // reported nullable regardless of the underlying column -- a view that merely PROJECTS the company
+  // key (migration 008's payment_balances does) is not a place the constraint could live.
   const columns = await query(
-    `SELECT table_name, data_type, is_nullable, column_default
-       FROM information_schema.columns
-      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
-      ORDER BY table_name`,
+    `SELECT c.table_name, c.data_type, c.is_nullable, c.column_default
+       FROM information_schema.columns c
+       JOIN information_schema.tables t
+         ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+      WHERE c.table_schema = 'eos_ops' AND c.column_name = 'operating_company_key'
+        AND t.table_type = 'BASE TABLE'
+      ORDER BY c.table_name`,
   );
-  assert.deepEqual(columns.rows.map((r) => r.table_name), [...COMPANY_TABLES].sort());
+  const carrying = columns.rows.map((r) => r.table_name);
+  for (const table of COMPANY_TABLES) {
+    assert.ok(carrying.includes(table), `${table} carries the operating company`);
+  }
+  // NOT an exhaustive list: the Owner ruling requires the column on every LATER eos_ops record that
+  // asserts an authority too (migration 008's `payments` is the first), so pinning the set here
+  // would mean the ruling being followed looks like this file regressing. The two claims that must
+  // stay exhaustive are kept, and they are the ones that carry the meaning:
+  //   * every table that has the column has it as TEXT NOT NULL -- no table gets a weaker version;
+  //   * cycle_count_lines does NOT have it, because a line inherits its sheet's authority and a
+  //     second copy of one fact is the only way the two can ever disagree.
   for (const row of columns.rows) {
     assert.equal(row.data_type, "text", `${row.table_name}.operating_company_key is TEXT, not an enum`);
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key is mandatory`);
   }
+  assert.equal(carrying.includes("cycle_count_lines"), false, "a line inherits its sheet's authority");
 });
 
 test("there is NO SQL DEFAULT for the operating company -- a writer must decide", { skip: SKIP }, async () => {
@@ -180,9 +222,9 @@ test("the repository refuses a missing company key before it ever reaches SQL", 
 
 test("migration 007 ABORTS on a pre-existing row rather than inventing its operating company", { skip: SKIP }, async () => {
   await reset();
-  // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
-  // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  // Reverse 007 (and anything above it) so the tables are back to their migration-005 shape, then
+  // occupy one of them the way an unexpected pre-cutover writer would have.
+  downThrough007();
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -213,16 +255,15 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
   // Clearing the unknown-authority rows is what unblocks it -- not a backfill.
   await query("DELETE FROM eos_ops.serialized_custody");
   migrate(["up"]);
-  const nowThere = await query(
-    `SELECT count(*)::int n FROM information_schema.columns
-      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
-  );
-  assert.equal(nowThere.rows[0].n, 3, "and then it applies to all three tables");
+  // At least 007's three. Not exactly three: `up` also applies every migration above 007, and those
+  // carry the same mandatory column onto their own authority-bearing tables -- see the note on the
+  // first test in this file.
+  assert.ok(await companyColumnCount() >= 3, "and then it applies to all three tables");
 });
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  downThrough007();
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)
