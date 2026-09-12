@@ -106,9 +106,17 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
-  assert.deepEqual(tables.rows.map((r) => r.table_name), [
+  // The FOUNDATION four are all present. This is deliberately a subset check, not an equality one:
+  // later additive migrations put their own objects in this schema, and an equality assertion would
+  // make every one of them edit a claim about migration 005. What migration 005 must NOT have
+  // created is pinned separately, and by name, below -- which is the half that was ever load-bearing.
+  const present = tables.rows.map((r) => r.table_name);
+  for (const table of [
     "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "exactly four foundation tables -- no balance table, no locations table");
+  ]) {
+    assert.ok(present.includes(table), `the foundation table ${table} exists`);
+  }
+  assert.equal(present.includes("locations"), false, "no locations table -- reference authority is not owned here");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.

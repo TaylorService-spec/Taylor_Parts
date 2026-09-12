@@ -30,6 +30,9 @@ import {
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 
+/** How many migrations exist, counted rather than remembered. See its callers for why. */
+const migrationCount = () => readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+
 const TENANT_A = "tenant-a";
 const TENANT_B = "tenant-b";
 const ACTOR = { uid: "uid-admin" };
@@ -166,11 +169,16 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL OF THEM, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
+  //
+  // The count is READ FROM THE DIRECTORY rather than written here. It used to be the literal 7, which
+  // made every later additive migration silently turn this into "reverse all but the last" -- a test
+  // that still passed its first assertion for the wrong reason.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(migrationCount()),
+    "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +198,12 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // Reverse anything ADDED AFTER 007 first, in one step, so the two steps below still describe 007
+  // and 006 coming off in turn. The claim here is about THOSE TWO migrations, not about whichever
+  // one happens to be newest today.
+  const afterOhSeven = migrationCount() - 7;
+  if (afterOhSeven > 0) down(afterOhSeven);
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.

@@ -14,7 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import * as cc from "../lib/eosOps/cycleCountRepository.js";
@@ -42,6 +42,18 @@ function migrate(args) {
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, encoding: "utf8", stdio: "pipe" });
 }
+
+/**
+ * Reverse 007 AND anything applied after it, leaving 001-006 -- so the tables are back to their
+ * migration-005 shape whatever else the repository has since added.
+ *
+ * This used to be a literal `down 1`, which silently became "reverse the NEWEST migration" the
+ * moment a later one existed, and then set up the test against the wrong schema shape.
+ */
+const reverseOhSevenAndLater = () => {
+  const total = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+  migrate(["down", String(total - 6)]);
+};
 
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
@@ -91,11 +103,16 @@ test.after(async () => {
 
 test("operating_company_key is NOT NULL on all three authority-bearing tables", { skip: SKIP }, async () => {
   await reset();
+  // Scoped to MIGRATION 007's three tables. Later migrations add their own tables carrying the same
+  // column, and an unscoped query would turn this claim about 007 into a running inventory of every
+  // table that ever adopts the convention.
   const columns = await query(
     `SELECT table_name, data_type, is_nullable, column_default
        FROM information_schema.columns
       WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
+        AND table_name = ANY($1)
       ORDER BY table_name`,
+    [[...COMPANY_TABLES]],
   );
   assert.deepEqual(columns.rows.map((r) => r.table_name), [...COMPANY_TABLES].sort());
   for (const row of columns.rows) {
@@ -182,7 +199,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
   await reset();
   // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
   // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  reverseOhSevenAndLater();
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -199,9 +216,14 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
 
   // AND IT CHANGED NOTHING. A half-applied migration that left the column behind would be worse than
   // a clean refusal.
+  // Scoped to 007's own three tables: later migrations create their own tables carrying the same
+  // column, and counting every one of them would make this a claim about the repository's growth
+  // rather than about what the aborted run did.
   const columnAdded = await query(
     `SELECT count(*)::int n FROM information_schema.columns
-      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
+      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
+        AND table_name = ANY($1)`,
+    [[...COMPANY_TABLES]],
   );
   assert.equal(columnAdded.rows[0].n, 0, "no column was added by the aborted run");
   const recorded = await query("SELECT count(*)::int n FROM pgmigrations WHERE name = $1", [MIGRATION_FILE.replace(/\.sql$/, "")]);
@@ -215,14 +237,16 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
   migrate(["up"]);
   const nowThere = await query(
     `SELECT count(*)::int n FROM information_schema.columns
-      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
+      WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
+        AND table_name = ANY($1)`,
+    [[...COMPANY_TABLES]],
   );
   assert.equal(nowThere.rows[0].n, 3, "and then it applies to all three tables");
 });
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  reverseOhSevenAndLater();
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)

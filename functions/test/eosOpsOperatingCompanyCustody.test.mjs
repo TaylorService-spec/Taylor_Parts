@@ -32,10 +32,13 @@ function executableSql(source) {
 
 // ============================ the migration is additive and correctly ordered ============================
 
-test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
+test("007 follows 005 and 006 in order, and leaves both untouched", () => {
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
+  // The claim is 007's POSITION, not that it is the newest migration in the repository. It was both
+  // when it was written; only the first is a property of 007. Asserting "sorts last" made every
+  // later additive migration edit this line, which turns an invariant about 007 into a counter of
+  // everything that came after it.
+  assert.equal(files.indexOf(MIGRATION_FILE), 6, "007 is the seventh migration in timestamp order");
   assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
   assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
 
