@@ -1,5 +1,5 @@
 import { resolveWorkIntake, statusPointer, resultPointer } from "../../../docs/orchestration/lib/workIntake.mjs";
-import { intakeLocation, serializeArtifact, verifyResultManifest } from "./artifacts.mjs";
+import { intakeLocation, resultDirectory, serializeArtifact, verifyResultManifest } from "./artifacts.mjs";
 import { authorizationPointer, serializeReviewAuthorization } from "../../../docs/orchestration/lib/reviewAuthorization.mjs";
 
 export class GitHubApiError extends Error {
@@ -77,7 +77,7 @@ export class GitHubArtifactStore {
   }
 
   async result(requestId) {
-    const directory = `docs/orchestration/work-intake/results/${requestId}`;
+    const directory = resultDirectory(requestId);
     let entries;
     try { entries = await this.api(`/contents/${directory}?ref=${encodeURIComponent(this.defaultBranch)}`); }
     catch (error) { if (error.status === 404) return { pointer: resultPointer(requestId), requestId, status: "PENDING" }; throw error; }

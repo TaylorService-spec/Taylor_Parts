@@ -4,6 +4,18 @@ import * as z from "zod/v4";
 import { SCOPES, requireScope } from "./auth.mjs";
 import { buildIntake, compactSubmitResponse } from "./artifacts.mjs";
 import { buildReviewAuthorization } from "../../../docs/orchestration/lib/reviewAuthorization.mjs";
+import { WORK_INTAKE_ID } from "../../../docs/orchestration/lib/workIntake.mjs";
+
+/**
+ * THE identifier schema every tool on this boundary uses -- write AND read.
+ *
+ * The submit and authorize tools already pinned their ids; the two READ tools took a bare minimum
+ * length, and a read id is interpolated into a GitHub REST path exactly like a write one. A weaker
+ * rule on the read side is not a smaller version of the same rule, it is a different rule, and the
+ * boundary is only as pinned as its loosest tool. `WORK_INTAKE_ID` is imported, not restated, so
+ * this can never drift from what the artifact validator accepts.
+ */
+const intakeId = () => z.string().regex(WORK_INTAKE_ID);
 
 const response = (value) => ({
   content: [{ type: "text", text: value.pointer || value.submit || JSON.stringify(value) }],
@@ -18,7 +30,7 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
     title: "Submit governed EOS work",
     description: "Writes one authenticated, hash-pinned work artifact to a GitHub pull request. This does not authorize execution.",
     inputSchema: {
-      requestId: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{2,79}$/),
+      requestId: intakeId(),
       title: z.string().min(1), intent: z.string().min(1),
       scope: z.array(z.string().min(1)).min(1), contextScope: z.array(z.string().min(1)).min(1),
       provenance: z.string().min(1),
@@ -39,7 +51,7 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
   server.registerTool("get_work_status", {
     title: "Get governed EOS work status",
     description: "Reads and hash-verifies the exact GitHub-backed intake artifact.",
-    inputSchema: { requestId: z.string().min(3) },
+    inputSchema: { requestId: intakeId() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ requestId }, extra) => {
     requireScope(extra, SCOPES.read);
@@ -49,7 +61,7 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
   server.registerTool("get_work_result", {
     title: "Get governed EOS work result pointer",
     description: "Reads the newest valid content-addressed result manifest from GitHub and returns a compact pointer.",
-    inputSchema: { requestId: z.string().min(3) },
+    inputSchema: { requestId: intakeId() },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ requestId }, extra) => {
     requireScope(extra, SCOPES.read);
@@ -60,8 +72,8 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
     title: "Authorize a governed OpenAI review",
     description: "Creates a reviewed GitHub authority artifact with a maximum spend ceiling. It never resolves a credential or invokes OpenAI.",
     inputSchema: {
-      workId: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{2,79}$/),
-      reviewId: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{2,79}$/),
+      workId: intakeId(),
+      reviewId: intakeId(),
       maxSpendUsd: z.number().positive().finite(),
       sourceCommit: z.string().regex(/^[0-9a-f]{40}$/),
       workArtifactSha256: z.string().regex(/^[0-9a-f]{64}$/),
