@@ -136,6 +136,49 @@ Blocked time is **not** checked against existing scheduled work when it is recor
 PTO must never be refused because a job was already placed there — the absence is the fact and the
 placement is the problem. The board surfaces the collision; a person decides.
 
+### ND-25 — one technician's absences may not overlap each other
+
+Blocked time **is** now checked against the technician's OTHER blocked time, and the asymmetry with
+the paragraph above is the whole argument. A block colliding with WORK leaves a dispatcher a decision
+to make: move the job. A block colliding with ANOTHER BLOCK leaves nobody anything to decide — there
+is no job, and the second record adds no availability information, because every consumer in this
+domain reads the set as a union.
+
+What it does add is arithmetic that disagrees with itself. Two functions in this repository answer
+"how many minutes are blocked":
+
+| | | |
+|---|---|---|
+| `availabilityModel.blockedMinutesInWindow` | walks minutes | **union** |
+| `dispatchBoardGeometry.blockedMinutesInBand` | sums durations | **sum** |
+
+They agree exactly while no two blocks overlap, and only while that holds. Both numbers are drawn on
+the same lane. `createTechnicianBlockedTime` had no uniqueness rule, no exclusion rule and no
+idempotency key, so a double-clicked PTO form was enough to make an eight-hour day report sixteen
+hours blocked on one line and eight on another — the "board fed by a different calculation than the
+one the server enforces" failure `availabilityModel.ts` opens by naming.
+
+The fix is at the **write path**, not on either reader: with overlap impossible, `sum == union` holds
+by construction and both readers are correct without either being rewritten. No reconciler is left
+behind to rot. The refusal reuses `loadBlockedTime` (same transactional query, same composite index
+`technicianId ASC, endMillis ASC`) and `findBlockedTimeConflict` (same half-open test), and raises the
+existing `BLOCKED_TIME_CONFLICT` — no second overlap rule, no new index, no new failure code. Back to
+back stays legal: 09:00–12:00 and 12:00–15:00 share an instant and no minute, exactly as for
+placements.
+
+It also makes deletion honest. Under overlap, deleting one of two identical PTO records left the
+technician still fully blocked while staging an Audit Event saying the absence was removed — current
+state and history disagreeing, which is the one thing this domain's audit contract exists to prevent.
+
+**The guard is a serialization, not a check.** A query-then-insert is the classic check-then-act race:
+a transactional query locks the documents it *returns*, and a record that does not exist yet is not
+among them, so two concurrent creates would each query, each find nothing, and each commit. Both
+commands therefore read **and write** `work_order_tech_locks/{technicianId}` — the same sentinel
+`applyScheduleChange` and `transitionWorkOrder`'s Schedule/Dispatch/Unschedule branches already take.
+`deleteTechnicianBlockedTime` takes it too, for ND-18's reason: a release contends with a claim, so
+"delete the wrong record, add the right one" cannot be refused against a snapshot that still holds the
+deleted block.
+
 ## Historical integrity
 
 The handoff's rule was: current state may change, history may not. Each command carries the **prior**

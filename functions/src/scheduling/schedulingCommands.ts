@@ -29,8 +29,9 @@ import { findScheduleConflict } from "../workOrderAvailability";
 import { stageAuditEvent } from "../access/auditEventWriter";
 import type { AuditAction } from "../types/access";
 import type { WorkOrder } from "../types/workOrder";
+import { findBlockedTimeConflict } from "./availabilityModel";
 import { checkPlacement, PAST_START_TOLERANCE_MS } from "./placementPolicy";
-import { db, loadTechnician } from "./schedulingRepository";
+import { db, loadBlockedTime, loadTechnician } from "./schedulingRepository";
 import {
   TECHNICIAN_BLOCKED_TIME_COLLECTION,
   TECHNICIAN_WORKING_AVAILABILITY_COLLECTION,
@@ -403,21 +404,77 @@ export async function setTechnicianWorkingAvailability(actorUid: string, raw: un
   return { technicianId: input.technicianId };
 }
 
-/** Record one dated absence. Blocked time REFUSES an overlapping placement, so this is enforcement, not decoration. */
+/**
+ * Record one dated absence.
+ *
+ * Enforcement in both directions, and they are not symmetric. Blocked time REFUSES an overlapping
+ * PLACEMENT (checkPlacement), and since ND-25 an overlapping ABSENCE is refused here -- but a
+ * placement already sitting in the window is not, and must not be. See the reasoning inline.
+ */
 export async function createTechnicianBlockedTime(actorUid: string, raw: unknown): Promise<{ blockId: string }> {
   const role = await requireDispatcher(actorUid);
   const input = unwrap(validateBlockedTimeInput(raw), "blockedTime");
   const ref = db().collection(TECHNICIAN_BLOCKED_TIME_COLLECTION).doc();
+  const lockRef = db().collection(TECH_LOCKS_COLLECTION).doc(input.technicianId);
 
   await db().runTransaction(async (tx) => {
+    // Serialize against every other blocked-time write for this technician, on the SAME sentinel the
+    // placement commands take. This read is not optional and it is not defensive habit: the overlap
+    // check below is a query-then-insert, and a transactional query locks only the documents it
+    // RETURNS. A record that does not exist yet is not in that set, so two concurrent creates would
+    // each query, each find nothing, and each commit -- the classic check-then-act race, with a guard
+    // in front of it that looks like protection and is not. Writing the sentinel below puts it in
+    // this transaction's WRITE set, which is what actually forces contention.
+    await tx.get(lockRef);
+
     const technician = await loadTechnician(tx, input.technicianId);
     if (!technician) {
       throw new SchedulingError("TECHNICIAN_NOT_FOUND", `No technician record exists at ${input.technicianId}.`);
     }
-    // Blocked time is NOT checked against existing scheduled work. Recording that someone is on PTO
-    // must never be refused because a job was already placed there -- the absence is the fact, and
-    // the placement is the problem. The board surfaces the collision so a dispatcher can move the
-    // job, which is a decision a person makes, not one this command should make for them.
+
+    // ND-25: one technician's absences may not overlap each other.
+    //
+    // This is not new business policy, it is the model refusing a record it cannot represent. A
+    // blocked-time record asserts exactly one fact -- "this technician is unavailable from A to B".
+    // A second record overlapping the first asserts that same fact again with a different label, and
+    // every consumer in this domain reads the set as a UNION, so the second one adds no availability
+    // information at all. What it does add is arithmetic that disagrees with itself:
+    //
+    //   availabilityModel.blockedMinutesInWindow  walks minutes, so it DE-DUPLICATES the overlap
+    //   dispatchBoardGeometry.blockedMinutesInBand  sums durations, so it DOUBLE-COUNTS it
+    //
+    // Both numbers are drawn on the same lane. A duplicate PTO record from a double-clicked form --
+    // there is no idempotency key on this command and nothing else stops one -- makes an eight-hour
+    // day report sixteen hours blocked on one line and eight on another. Removing the overlap at the
+    // write path makes sum == union by construction, which fixes both readers at once and does not
+    // leave a reconciler behind to rot.
+    //
+    // It also makes deletion honest. Under overlap, deleting one of two identical PTO records leaves
+    // the technician still fully blocked while staging an Audit Event that says the absence was
+    // removed -- current state and history disagreeing, which is the one thing this domain's audit
+    // contract exists to prevent.
+    //
+    // Reuses loadBlockedTime + findBlockedTimeConflict: the SAME query, the SAME composite index
+    // (technicianId ASC, endMillis ASC) and the SAME half-open overlap test checkPlacement uses to
+    // refuse a PLACEMENT into blocked time. No second overlap rule, and no second index.
+    const existingBlocks = await loadBlockedTime(tx, input.technicianId, input.startMillis);
+    const overlapping = findBlockedTimeConflict(existingBlocks, input.startMillis, input.endMillis);
+    if (overlapping) {
+      throw new SchedulingError(
+        "BLOCKED_TIME_CONFLICT",
+        `Technician ${input.technicianId} already has ${overlapping.kind} blocked time ` +
+          `${describeWindow(overlapping.startMillis, overlapping.endMillis)} overlapping that window ` +
+          `(block ${overlapping.blockId}).`,
+      );
+    }
+
+    // Blocked time is still NOT checked against existing scheduled WORK, and that asymmetry is
+    // deliberate. Recording that someone is on PTO must never be refused because a job was already
+    // placed there -- the absence is the fact, and the placement is the problem. The board surfaces
+    // that collision so a dispatcher can move the job, which is a decision a person makes. An
+    // absence colliding with ANOTHER ABSENCE is a different situation entirely: there is no job to
+    // move and no decision to make, only a record that says nothing new.
+    tx.set(lockRef, { technicianId: input.technicianId, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(ref, {
       blockId: ref.id,
       technicianId: input.technicianId,
@@ -454,6 +511,19 @@ export async function deleteTechnicianBlockedTime(actorUid: string, raw: unknown
     if (!snap.exists) throw new SchedulingError("INVALID_INPUT", `No blocked-time record at ${blockId}.`);
     const block = snap.data() as { technicianId?: string; kind?: string; startMillis?: number; endMillis?: number };
 
+    // Removing an absence RELEASES a window, so it contends for the same sentinel the create above
+    // claims one on -- the same reason ND-18's Unschedule takes it (transitionWorkOrder.ts). Without
+    // this, a dispatcher correcting a mistake by deleting one record and adding a wider one could
+    // have the create read a snapshot in which the deleted block still exists and be refused for a
+    // window that is in fact free. Read before write, as Firestore requires; the id comes from the
+    // block document, which is why this read cannot be hoisted above it.
+    const lockRef = block.technicianId
+      ? db().collection(TECH_LOCKS_COLLECTION).doc(block.technicianId)
+      : null;
+    if (lockRef) {
+      await tx.get(lockRef);
+      tx.set(lockRef, { technicianId: block.technicianId, touchedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
     tx.delete(ref);
     stageAuditEvent(tx, {
       actorUid,
