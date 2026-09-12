@@ -107,11 +107,19 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "exactly four foundation tables -- no balance table, no locations table");
+    "bin_code_claims", "bins", "cycle_count_lines", "cycle_count_sheets", "inventory_movements",
+    "serialized_custody", "warehouses",
+  ], "the four foundation tables plus migration 008's location authority -- and still no balance table");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.
+  //
+  // Migration 008 added `warehouses`, `bins` and `bin_code_claims`. They are LOCATION REFERENCE
+  // DATA -- they say where a place is, never how much is in it -- so the rule below is unchanged
+  // and still binding: `stock_locations`, the legacy per-(warehouse, part, bin) row that carried
+  // both `quantity` and `quantityOnHand`, is exactly what it forbids. 008's own suite
+  // (eosOpsWarehouseBinPostgres.test.mjs) additionally proves no balance-shaped COLUMN exists on
+  // any of the three new tables.
   const forbidden = await query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'
        AND table_name IN ('inventory_balances', 'stock_locations', 'bin_balances', 'warehouse_balances')`,

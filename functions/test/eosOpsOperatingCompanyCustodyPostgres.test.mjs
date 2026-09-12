@@ -97,7 +97,12 @@ test("operating_company_key is NOT NULL on all three authority-bearing tables", 
       WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'
       ORDER BY table_name`,
   );
-  assert.deepEqual(columns.rows.map((r) => r.table_name), [...COMPANY_TABLES].sort());
+  // Migration 008 added a FOURTH carrier: `warehouses`, where the company is a PRIMARY fact rather
+  // than a carried one -- the Warehouse IS the company boundary root (ownership/ownershipMatrix.ts).
+  // It is asserted here alongside 007's three because the property being pinned is the same one
+  // (NOT NULL, no default, TEXT), and a new table that carried the column NULLABLE would otherwise
+  // slip past this check unnoticed.
+  assert.deepEqual(columns.rows.map((r) => r.table_name), [...COMPANY_TABLES, "warehouses"].sort());
   for (const row of columns.rows) {
     assert.equal(row.data_type, "text", `${row.table_name}.operating_company_key is TEXT, not an enum`);
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key is mandatory`);
@@ -180,9 +185,10 @@ test("the repository refuses a missing company key before it ever reaches SQL", 
 
 test("migration 007 ABORTS on a pre-existing row rather than inventing its operating company", { skip: SKIP }, async () => {
   await reset();
-  // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
-  // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  // Reverse 008 AND 007 so the tables are back to their migration-005 shape, then occupy one of them
+  // the way an unexpected pre-cutover writer would have. Two steps, not one: 008 is now the newest,
+  // and reversing it is what uncovers 007.
+  migrate(["down", "2"]);
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -217,12 +223,14 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
     `SELECT count(*)::int n FROM information_schema.columns
       WHERE table_schema = 'eos_ops' AND column_name = 'operating_company_key'`,
   );
-  assert.equal(nowThere.rows[0].n, 3, "and then it applies to all three tables");
+  // Three from 007, plus `warehouses` from 008 -- both migrations reapply in the same `up`.
+  assert.equal(nowThere.rows[0].n, 4, "and then it applies to all three tables 007 governs, beside 008's root");
 });
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  // Two steps for the same reason as above: 008 sits on top of 007.
+  migrate(["down", "2"]);
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)

@@ -31,7 +31,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // respectively — deferred to a later fixture version). Target/closure collections are included.
 export const V1_SELECTED = [
   "parts", "manufacturers", "part_aliases",
-  "warehouses", "stock_locations", "trucks", "mobile_locations",
+  "warehouses", "trucks", "mobile_locations",
   "equipment_models", "equipment_model_aliases", "equipment_part_compatibility", "equipment",
 ];
 

@@ -166,11 +166,11 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL EIGHT, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "8", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +190,20 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 008 off FIRST -- it is now the newest. Its three location-authority tables go, in the SIBLING
+  // eos_ops schema; its own down REFUSES if any of them still holds reference data, which after a
+  // reset they do not. eos_policy must not notice at all.
+  down(1);
+  const locationTablesGone = await query(
+    `SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_ops'
+       AND table_name IN ('warehouses', 'bins', 'bin_code_claims')`,
+  );
+  assert.equal(locationTablesGone.rows[0].n, 0, "the location authority is gone with 008");
+  const untouchedByOhEight = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(untouchedByOhEight.rows[0].n, 21, "eos_policy is untouched by reversing an eos_ops migration");
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.
