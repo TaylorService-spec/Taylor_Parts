@@ -449,3 +449,157 @@ test("an externalRef the deployed function did not send is UNSUPPLIED, not 'none
   assert.ok(paymentIdentity({ paymentId, ...noRef }, "Churn").length > 0);
   assert.equal(paymentContext({ paymentId, ...noRef }, []), null);
 });
+
+// ════════════════════ OPERATING-COMPANY DISCLOSURE (lane C26) ════════════════════
+//
+// domain/companyAttribution.js is the client's ONE vocabulary for "whose money is this?". It is
+// exercised here, beside the reporting view model whose summary it reads, because the two travel
+// together on every Financials surface and must never word the same fact differently.
+//
+// THE SEQUENCING CLAIM these cases pin hardest: the governed function and this bundle ship
+// separately. A response that predates the company dimension must produce `supplied: false` and
+// leave every surface rendering exactly as it does today — a UI that asserts a breakdown it did
+// not receive is worse than one that shows none.
+import {
+  companyAttribution,
+  companyAttributionLabel,
+  agingCompanySpan,
+  UNATTRIBUTED_COMPANY,
+} from "../src/domain/companyAttribution.js";
+
+const figures = (over = {}) => ({
+  count: 1, openCount: 1, overdueCount: 0,
+  billedByCurrency: {}, collectedByCurrency: {}, outstandingByCurrency: {},
+  ...over,
+});
+
+test("the client mirrors the server's explicit unattributed key exactly", () => {
+  // It is a contract with functions/src/finance/financeReadProjection.ts. If the two drift, real
+  // money silently becomes an "unrecognised company" row.
+  assert.equal(UNATTRIBUTED_COMPANY, "UNATTRIBUTED");
+});
+
+test("a summary with no company dimension supplies nothing and asserts nothing", () => {
+  for (const summary of [undefined, null, {}, { companyIds: ["taylor"] }, { byCompany: { taylor: {} } }]) {
+    const a = companyAttribution(summary);
+    assert.equal(a.supplied, false, JSON.stringify(summary));
+    assert.equal(a.spansMultipleCompanies, false);
+    assert.deepEqual(a.rows, []);
+    assert.equal(a.spanNote, null);
+    assert.equal(a.unattributedNote, null);
+  }
+  // A partition needs BOTH halves. Rows carrying a companyId while the summary carries no
+  // partition must not tempt a surface into building one — that is client-side money arithmetic.
+});
+
+test("company words come from the governed authority, never from a guess", () => {
+  assert.equal(companyAttributionLabel("taylor"), "Taylor Freezer of Arizona");
+  assert.equal(companyAttributionLabel("ventana"), "Ventana");
+  assert.equal(companyAttributionLabel(UNATTRIBUTED_COMPANY), "Not attributed to a company");
+  // A shape-valid id from a newer seed list is REAL governed money. It is named and kept visible
+  // with the id it actually carries rather than hidden or silently renamed.
+  assert.match(companyAttributionLabel("northgate"), /Unrecognised company \(northgate\)/);
+  assert.match(companyAttributionLabel(undefined), /Unrecognised company \(no id\)/);
+  // The code and the display name are NOT the id namespace — passing either must not resolve.
+  assert.match(companyAttributionLabel("TAYLOR"), /Unrecognised company/);
+});
+
+test("a blended summary partitions without arithmetic, and unattributed keeps its own row", () => {
+  const a = companyAttribution({
+    count: 3, openCount: 3, overdueCount: 1,
+    billedByCurrency: { USD: 42_500 },
+    collectedByCurrency: { USD: 10_000 },
+    outstandingByCurrency: { USD: 32_500 },
+    byCompany: {
+      taylor: figures({ count: 1, billedByCurrency: { USD: 20_000 }, collectedByCurrency: { USD: 10_000 }, outstandingByCurrency: { USD: 10_000 } }),
+      ventana: figures({ count: 1, billedByCurrency: { USD: 15_000 }, outstandingByCurrency: { USD: 15_000 } }),
+      [UNATTRIBUTED_COMPANY]: figures({ count: 1, billedByCurrency: { USD: 7_500 }, outstandingByCurrency: { USD: 7_500 } }),
+    },
+    companyIds: ["UNATTRIBUTED", "taylor", "ventana"],
+    spansMultipleCompanies: true,
+  });
+  assert.equal(a.supplied, true);
+  assert.equal(a.spansMultipleCompanies, true);
+  assert.equal(a.unattributedPresent, true);
+  assert.equal(a.spanLabel, "2 companies + unattributed");
+  assert.deepEqual(a.rows.map((r) => r.label), [
+    "Not attributed to a company",
+    "Taylor Freezer of Arizona",
+    "Ventana",
+  ]);
+  // Every amount is the SERVER'S, formatted. $100.00 + $150.00 + $75.00 = the $325.00 consolidated
+  // figure the page also shows — the reconciliation is the server's single-pass property, and the
+  // point of the assertion is that nothing here recomputed it.
+  assert.deepEqual(a.rows.map((r) => r.outstandingText), ["$75.00", "$100.00", "$150.00"]);
+  assert.equal(a.rows[1].collectedText, "$100.00");
+  // A company with nothing collected renders the honest dash, never "$0.00".
+  assert.equal(a.rows[2].collectedText, "—");
+  assert.match(a.unattributedNote, /^\$75\.00 outstanding carries no governed operating company/);
+  assert.match(a.unattributedNote, /never|rather than placed on Taylor or Ventana/);
+});
+
+test("one company, or one company's worth of keys, adds no UI noise", () => {
+  const a = companyAttribution({
+    byCompany: { taylor: figures({ outstandingByCurrency: { USD: 100 } }) },
+    companyIds: ["taylor"],
+    spansMultipleCompanies: false,
+  });
+  assert.equal(a.supplied, true);
+  assert.equal(a.spansMultipleCompanies, false);
+  assert.equal(a.spanNote, null);
+  assert.equal(a.spanLabel, null);
+  assert.equal(a.unattributedNote, null);
+  // The row is still available to a surface that wants it; it simply has nothing to disclose.
+  assert.equal(a.rows.length, 1);
+});
+
+test("aging company span reports the server's partition and splits no buckets", () => {
+  assert.equal(agingCompanySpan(null).supplied, false);
+  assert.equal(agingCompanySpan({}).supplied, false);
+  assert.equal(agingCompanySpan({ agingByCompany: {} }).spansMultipleCompanies, false);
+
+  const one = agingCompanySpan({ agingByCompany: { taylor: { USD: {} } } });
+  assert.equal(one.supplied, true);
+  assert.equal(one.spansMultipleCompanies, false);
+  assert.equal(one.note, null);
+
+  const two = agingCompanySpan({ agingByCompany: { ventana: { USD: {} }, taylor: { USD: {} } } });
+  assert.equal(two.spansMultipleCompanies, true);
+  assert.deepEqual(two.companyIds, ["taylor", "ventana"]);
+  assert.match(two.note, /Taylor Freezer of Arizona, Ventana/);
+  assert.match(two.note, /this page ages nothing/);
+  // No amounts. The buckets on screen stay the server's ONE consolidated derivation, correctly
+  // labelled — a per-company bucket assembled here would be client-side money arithmetic.
+  assert.equal(JSON.stringify(two).includes("Minor"), false);
+});
+
+test("Customer Financials discloses the company span instead of filtering, and never blends silently", () => {
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsCustomerFinancials.jsx", import.meta.url), "utf8");
+  // The disclosure is gated on the SERVER'S flag through the shared view model — not on a
+  // companyIds.length the page recomputed, and not on a per-row companyId.
+  assert.ok(/companyAttribution\(summary\)/.test(src), "the page must read the shared view model");
+  assert.ok(/company\.supplied && company\.spansMultipleCompanies/.test(src), "gated on supplied AND the server's span flag");
+  assert.ok(/showCompany \? \(/.test(src), "the breakdown must be conditional, never unconditional");
+  // The five consolidated figures are UNCHANGED: the fix is disclosure, not a re-derivation.
+  assert.ok(/billed: "billedByCurrency", collected: "collectedByCurrency", outstanding: "outstandingByCurrency"/.test(src));
+  // No client-side money arithmetic may appear on a page that renders authoritative totals.
+  assert.ok(!/reduce\(/.test(src), "no client-side summation may appear on this page");
+});
+
+test("the A/R aging scorecard states its company span rather than implying one company", () => {
+  const src = readFileSync(new URL("../src/modules/financials/FinancialsAccountsReceivable.jsx", import.meta.url), "utf8");
+  assert.ok(/agingCompanySpan\(result\)/.test(src), "the page must read the server's own aging partition");
+  assert.ok(/agingSpan\.spansMultipleCompanies \?/.test(src), "the note must be conditional on a real span");
+  // The buckets themselves are still read, never bucketed here.
+  assert.ok(/agingSlots\(state, result\)/.test(src));
+  assert.ok(!/reduce\(/.test(src), "no client-side bucketing may appear on this page");
+});
+
+test("the Account AR section shows a company column only when the read says it spans companies", () => {
+  const src = readFileSync(new URL("../src/modules/accounts/AccountArSection.jsx", import.meta.url), "utf8");
+  assert.ok(/view\.company\?\.supplied === true && view\.company\.spansMultipleCompanies === true/.test(src));
+  assert.ok(/\{showCompany \? <th scope="col">Company<\/th> : null\}/.test(src), "the header cell must be conditional");
+  assert.ok(/row\.companyLabel/.test(src), "rows must render the shared words, never a raw governed id");
+  // The section still totals nothing — the disclosure must not have smuggled in a total.
+  assert.ok(!/reduce\(/.test(src));
+});

@@ -19,6 +19,7 @@ import { FinancialsPageFrame, FinAnnotation, FinancialFigure } from "./Financial
 import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
+import { companyAttribution } from "../../domain/companyAttribution.js";
 
 // THE FIVE SUMMARY FIGURES the approved handoff specifies: Booked / Billed / Collected /
 // Outstanding / Credits.
@@ -48,6 +49,23 @@ export default function FinancialsCustomerFinancials() {
   const { state: factsState, result: factsResult } = financialFactsState(facts);
   const factsAnswered = factsState === FACTS_STATE.READY || factsState === FACTS_STATE.EMPTY;
   const summary = factsAnswered ? (factsResult?.summary ?? {}) : {};
+
+  // WHOSE MONEY THESE FIVE FIGURES ARE.
+  //
+  // This page has no Company control — unlike every other Financials page, which carries the shared
+  // filter rail — and it never had one, because it is the CUSTOMER's page and a customer is not a
+  // company. But an account is not company-partitioned either: an invoice's operating company is
+  // stamped from its Sales Order, so a customer who buys from both operating companies produces a
+  // Billed/Collected/Outstanding figure here that silently spans Taylor and Ventana, with nothing on
+  // screen saying so. That is a number a salesperson acts on.
+  //
+  // The fix is DISCLOSURE, not a filter: the consolidated totals stay (they are a real answer to a
+  // real question), and the server's own partition — accumulated in the same pass, so it reconciles
+  // to them exactly — is stated beside them. Nothing here adds, nets or splits money; if the
+  // governed read supplies no partition, `supplied` is false and the page renders precisely as it
+  // does today rather than asserting a breakdown it never received.
+  const company = companyAttribution(summary);
+  const showCompany = company.supplied && company.spansMultipleCompanies;
 
   // Each slot reads ONE server-computed per-currency total, or names its own absence. Booked is not
   // an invoice fact and Credits has no governed read — neither is approximated from what is here.
@@ -134,6 +152,62 @@ export default function FinancialsCustomerFinancials() {
               currencies here. Booked and Credits keep their places and state why they are absent.
             </p>
           </section>
+
+          {/* THE DISCLOSURE. Rendered only when the governed read's OWN summary says the figures
+              span more than one operating company. A single-company customer gets nothing added —
+              one company is not a disclosure — and a read that carries no company dimension at all
+              gets nothing added either, because a breakdown that was never received must not be
+              implied. Every amount below is the server's; this table selects and formats. */}
+          {showCompany ? (
+            <section className="ns-section" aria-label="Operating company breakdown">
+              <div className="ns-section__head">
+                <h2 className="ns-section__title">By operating company</h2>
+                <span className="ns-section__meta">· governed company per invoice, never inferred</span>
+              </div>
+              <p className="fin-truth-band" role="note">
+                <strong>The figures above span more than one operating company.</strong> {company.spanNote}
+                <FinAnnotation tip="An invoice's operating company is stamped from its Sales Order's governed operatingCompanyId and is never inferred from the account, its owner, its salesperson, its line of business or a display name. The split below is the server's own partition of the same facts, accumulated in the same pass as the consolidated totals, so the rows reconcile to them exactly." />
+              </p>
+              <div className="ns-table-wrap">
+                <table className="ns-table">
+                  <caption className="fo-sr-only">
+                    This customer&rsquo;s billed, collected and outstanding totals per operating company
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Operating company</th>
+                      <th scope="col" className="ns-num">Invoices</th>
+                      <th scope="col" className="ns-num">Billed</th>
+                      <th scope="col" className="ns-num">Collected</th>
+                      <th scope="col" className="ns-num">Outstanding</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {company.rows.map((row) => (
+                      <tr key={row.key}>
+                        {/* Unattributed money keeps its OWN row rather than being folded into a
+                            company or dropped. Without it the parts would quietly fail to add up
+                            to the consolidated totals above, which is what makes them trustworthy. */}
+                        <th scope="row">{row.label}</th>
+                        <td className="ns-num">{row.invoiceCount ?? "—"}</td>
+                        <td className="ns-num">{row.billedText}</td>
+                        <td className="ns-num">{row.collectedText}</td>
+                        <td className="ns-num">{row.outstandingText}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {company.unattributedNote ? (
+                <p className="fin-section-note">{company.unattributedNote}</p>
+              ) : null}
+              <p className="fin-section-note">
+                This page has no Company filter: it answers a question about a customer, and a
+                customer is not a company. The rows are stated rather than selected, and no total
+                here is assembled in the browser.
+              </p>
+            </section>
+          ) : null}
 
           <div className="fin-overview-grid">
             <div>
