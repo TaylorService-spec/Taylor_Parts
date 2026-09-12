@@ -26,6 +26,7 @@ import {
   VersionConflictError,
   IdempotencyConflictError,
   InvalidStatusTransitionError,
+  ControlTypeImmutableError,
   type UpdatePartInput,
 } from "./partMasterCommands.js";
 import type { PartInput } from "./validation.js";
@@ -43,6 +44,9 @@ export function mapError(err: unknown): HttpsError {
   if (err instanceof VersionConflictError) return new HttpsError("aborted", "The record changed since you loaded it. Reload and retry.");
   if (err instanceof IdempotencyConflictError) return new HttpsError("aborted", "That idempotency key was already used for a different request.");
   if (err instanceof InvalidStatusTransitionError) return new HttpsError("failed-precondition", "That status change is not allowed.");
+  // P1B R2: a governed refusal, not a malformed request -- the field exists and the value is a legal
+  // controlType; it is the CHANGE that is not allowed. Same shape as the status-transition refusal.
+  if (err instanceof ControlTypeImmutableError) return new HttpsError("failed-precondition", "A part's control type cannot be changed after it is created.");
   // Named explicitly for readers tracing a malformed stored record, though it maps to the same
   // generic "internal" response as the catch-all below (a stored-shape problem is never surfaced).
   if (err instanceof MalformedStoredRecordError) return new HttpsError("internal", "The request could not be completed.");

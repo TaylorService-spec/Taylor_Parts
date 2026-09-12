@@ -43,7 +43,7 @@ import {
 import { parseManufacturerId, parsePartId, validatePart, type PartInput } from "./validation";
 import { EQUIPMENT_MODELS_COLLECTION } from "../equipmentCompatibility/repository";
 import { MANUFACTURER_STATUSES, PART_STATUSES } from "./types";
-import type { Manufacturer, ManufacturerStatus, Part, PartStatus } from "./types";
+import type { ControlType, Manufacturer, ManufacturerStatus, Part, PartStatus } from "./types";
 
 export const CAP_CATALOG_MANAGE = "inventory.catalog.manage";
 export const CAP_CATALOG_ACTIVATE = "inventory.catalog.activate";
@@ -56,6 +56,7 @@ export class AlreadyExistsError extends Error {}
 export class VersionConflictError extends Error {}
 export class IdempotencyConflictError extends Error {}
 export class InvalidStatusTransitionError extends Error {}
+export class ControlTypeImmutableError extends Error {}
 
 export const PART_STATUS_TRANSITIONS: Readonly<Record<PartStatus, readonly PartStatus[]>> = {
   DRAFT: ["ACTIVE"],
@@ -188,6 +189,41 @@ export async function assertEquipmentModelExists(
 }
 
 // ---------------------------------------------------------------------------
+// P1B R2 -- `controlType` is IMMUTABLE after Part creation (TRANSITION RULE).
+//
+// A Movement's `tracking_mode` is historical EVIDENCE: it records how a given
+// quantity was actually controlled at the moment it moved. `Part.controlType`
+// is POLICY for FUTURE operations. The two must never be conflated, because
+// re-reading history through today's policy silently reinterprets movements
+// that were recorded under a different one -- a STANDARD receipt would become
+// a serial-tracked receipt with no serials, or a SERIALIZED issue would become
+// countable stock.
+//
+// The safe-looking alternative -- "allow the change only when no history
+// exists" -- is DELIBERATELY NOT IMPLEMENTED. It would require a ledger query
+// (inventory movements / serialized assets) from this command, which grows the
+// very Firebase dependency the exit ratchet is shrinking, and it answers a
+// question that is ambiguous during migration anyway: "no history" in Firestore
+// does not mean "no history", because the ledger is mid-cutover to Postgres.
+// A blanket refusal is the only answer that is correct under BOTH authorities.
+//
+// This is a TRANSITION rule, not a permanent one: a future GOVERNED conversion
+// command (explicit actor, explicit reason, its own audit action, and a
+// migration-complete ledger to interrogate) may relax it. Until that command
+// exists, the answer is no.
+//
+// PURE + exported so the rule is testable without Firestore (the
+// assertEquipmentModelExists precedent). Same-value is NOT a change: an update
+// that re-sends the stored controlType, or omits it entirely, is idempotent and
+// must not refuse.
+export function assertControlTypeImmutable(stored: ControlType, requested: ControlType): void {
+  if (requested === stored) return;
+  throw new ControlTypeImmutableError(
+    `controlType is immutable after part creation (stored "${stored}", requested "${requested}")`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Part commands
 // ---------------------------------------------------------------------------
 export interface CreatePartInput {
@@ -245,6 +281,11 @@ export async function createPart(input: CreatePartInput, deps?: PartMasterDeps):
 // Explicit update allowlist (descriptive authority only). partId/createdAt/
 // createdBy/version/audit metadata are never updatable; identity mutation is
 // structurally impossible (partId comes from the stored record).
+// `controlType` REMAINS in the allowlist on purpose: a caller that re-sends the
+// stored value (or a full-object update) must still succeed. The immutability
+// rule is a VALUE comparison against the stored record inside the transaction
+// (assertControlTypeImmutable), not a missing key -- removing it from the
+// allowlist would turn an idempotent no-op resend into a refusal.
 export interface UpdatePartInput {
   actorUid: string;
   idempotencyKey: string;
@@ -288,6 +329,13 @@ export async function updatePart(input: UpdatePartInput, deps?: PartMasterDeps):
     if (!merged.valid) {
       throw new InvalidInputError(`invalid update: ${merged.errors.map((e) => `${e.path}:${e.code}`).join(",")}`);
     }
+    // P1B R2 -- controlType is immutable after creation. Checked on the MERGED value, so an omitted
+    // controlType (which inherits the stored one) and a same-value resend both pass untouched, while a
+    // real change refuses BEFORE any read or staged write. Deliberately AFTER validatePart, so an
+    // unknown controlType still refuses through the existing domain-validation path (INVALID_ENUM)
+    // rather than being reported as an immutability violation. No ledger query: see
+    // assertControlTypeImmutable.
+    assertControlTypeImmutable(existing.part.controlType, merged.value.controlType);
     // Referential integrity for the (possibly changed) equipment-model FK — read before any staged write.
     await assertEquipmentModelExists(merged.value.equipmentModelId, async (id) => (await txn.get(db.collection(EQUIPMENT_MODELS_COLLECTION).doc(id))).exists);
     // INV-1 PR 1.3 -- internalPartNumber historical-alias backfill (the

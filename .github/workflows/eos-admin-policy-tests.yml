@@ -64,6 +64,8 @@ on:
       - "functions/test/eosOpsPostgres.test.mjs"
       - "functions/test/eosOpsNoFirebase.test.mjs"
       - "functions/test/eosOpsApiShape.test.mjs"
+      - "functions/test/eosOpsOperatingCompanyCustody.test.mjs"
+      - "functions/test/eosOpsOperatingCompanyCustodyPostgres.test.mjs"
       - "functions/scripts/bootstrapEosTenant.mjs"
       - "functions/scripts/serveEosApi.mjs"
       - "render.yaml"
