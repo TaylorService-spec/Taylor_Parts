@@ -32,12 +32,16 @@ function executableSql(source) {
 
 // ============================ the migration is additive and correctly ordered ============================
 
-test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
+// The original assertion here was `files.length === 7` plus "007 sorts last". Both were really one
+// claim -- that 007 is ordered immediately after 006 -- expressed in a way that also asserted no
+// eighth migration would ever exist, which made every later packet edit this test to say the same
+// thing about a different number. It is stated positionally instead, so a migration 008 is simply a
+// migration 008 and this test still proves exactly what it was written to prove.
+test("007 is ordered immediately after 005 and 006, which are untouched by it", () => {
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
   assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
   assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
+  assert.equal(files[6], MIGRATION_FILE, "007 follows 006 -- its timestamp is the next one");
 
   // node-pg-migrate's own format, the same two sections every predecessor uses.
   assert.match(migrationSource, /^-- Up Migration/);
