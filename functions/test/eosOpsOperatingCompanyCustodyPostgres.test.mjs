@@ -14,7 +14,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";
 import * as cc from "../lib/eosOps/cycleCountRepository.js";
@@ -37,6 +37,19 @@ function repoPool() {
   return pool;
 }
 
+/**
+ * Reverse 007 -- and anything stacked on top of it first.
+ *
+ * This used to be a bare `down 1`, which was the same thing only while 007 was the newest
+ * migration. It stopped being the newest when 008 landed, and a step count is not what these proofs
+ * are about: they are about what 007 itself does and undoes.
+ */
+function downThrough007() {
+  const total = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+  const seventh = 7;
+  migrate(["down", String(total - seventh + 1)]);
+}
+
 function migrate(args) {
   return execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations",
@@ -49,6 +62,11 @@ async function reset() {
   await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
   await client.query("DROP SCHEMA IF EXISTS eos_ops_conversion_probe CASCADE");
+  // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
+  // schema the migrations create, not only the two that existed when it was written: a surviving
+  // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
+  // still there.
+  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrate(["up"]);
@@ -182,7 +200,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
   await reset();
   // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
   // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  downThrough007();
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -222,7 +240,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  downThrough007();
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)

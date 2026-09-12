@@ -30,6 +30,9 @@ import {
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 
+/** How many migrations exist, read from the directory so "all of them" keeps meaning all of them. */
+const MIGRATION_COUNT = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+
 const TENANT_A = "tenant-a";
 const TENANT_B = "tenant-b";
 const ACTOR = { uid: "uid-admin" };
@@ -52,6 +55,11 @@ async function reset() {
   // most recent when this reset was written; it must also drop eos_ops now, or a second migrateFromClean()
   // in the same job fails with "already exists" the moment eos_ops has any migration to re-run.
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
+  // schema the migrations create, not only the two that existed when it was written: a surviving
+  // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
+  // still there.
+  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();
@@ -166,11 +174,15 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL OF THEM, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
+  //
+  // Counted from the directory rather than hard-coded at seven: the number of migrations is not the
+  // claim, "all of them" is, and a hard-coded count silently stops meaning "all" the next time one
+  // is added.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(MIGRATION_COUNT), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -183,13 +195,19 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
   assert.equal(back.rows[0].n, 21, "and up restores all twenty-one");
 });
 
-test("the newest migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
+test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {
   // The step that matters operationally: rolling back ONE migration must not take the ones under it
   // with it. Proved by reversing exactly one, then exactly one more, and counting what survives.
   await reset();
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // The walk below is about 007 and 006 specifically, so anything NEWER than 007 comes off first.
+  // This used to be "the newest migration"; 007 stopped being the newest when 008 landed, and the
+  // property being proved was never about newest-ness -- it is that reversing one step reverses one
+  // migration.
+  if (MIGRATION_COUNT > 7) down(MIGRATION_COUNT - 7);
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.

@@ -32,10 +32,14 @@ function executableSql(source) {
 
 // ============================ the migration is additive and correctly ordered ============================
 
-test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
+test("007 is the SEVENTH migration, and 005 and 006 are untouched by it", () => {
+  // BY POSITION, NOT BY TOTAL. This asserted "seven migrations" and "007 sorts last" until
+  // migration 008 landed, which made both statements false without making anything about 007 wrong.
+  // What 007 actually claims is that it is the seventh and that it follows 005 and 006 -- so that
+  // is what is asserted, and a ninth migration will not disturb it either.
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
+  assert.ok(files.length >= 7, "at least the seven migrations 007 belongs to");
+  assert.equal(files[6], MIGRATION_FILE, "007 is the seventh by timestamp");
   assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
   assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
 
