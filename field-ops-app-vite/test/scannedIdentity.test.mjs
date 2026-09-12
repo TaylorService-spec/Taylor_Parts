@@ -86,6 +86,24 @@ test("the same entity in two candidate lists is not a false ambiguity", () => {
   assert.equal(r.entityId, "PRT-1001");
 });
 
+test("two Parts whose ids differ only in case are AMBIGUOUS, never a silent pick", () => {
+  // `Part.partId` is governed by ID_PATTERN (/^[A-Za-z0-9_-]{1,64}$/) in
+  // functions/src/partMaster/validation.ts, which is CASE-SENSITIVE -- so "prt-1001" and
+  // "PRT-1001" are two different canonical Parts, and the scanner's governed read
+  // (lookupScannedPart) deliberately fetches both the scanned code and its upper-cased form.
+  //
+  // Matching stays case-insensitive; DEDUPLICATION must not be, or the two collapse and the
+  // scan resolves to whichever was listed first. That picked partId is what MoveStockScan
+  // hands to relocateStock, which writes it into RELOCATION_OUT/RELOCATION_IN ledger rows --
+  // so a fold here is a non-chosen canonical identifier reaching an authoritative record.
+  const r = resolveScannedIdentity("prt-1001", {
+    parts: [{ partId: "prt-1001", sku: "prt-1001" }, { partId: "PRT-1001", sku: "PRT-1001" }],
+  });
+  assert.equal(r.resolutionState, SCAN_RESOLUTION.AMBIGUOUS);
+  assert.equal(r.entityId, null, "ambiguity must not silently pick a canonical identity");
+  assert.deepEqual(r.candidates.map((c) => c.entityId).sort(), ["PRT-1001", "prt-1001"]);
+});
+
 test("a well-formed Work Order number that matches nothing is NOT_FOUND, never fabricated", () => {
   const r = resolveScannedIdentity("WO-2026-NOTREAL", CANDIDATES);
   assert.equal(r.resolutionState, SCAN_RESOLUTION.NOT_FOUND);
