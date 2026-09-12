@@ -10,6 +10,12 @@ name: Access Operator Script Tests
 # secrets. NOT a production activation workflow -- this script requires
 # an interactive human to type the exact --ownerAuthorization phrase and
 # pass --execute; nothing here runs it against a real project.
+#
+# ALSO enforces the environment fence across the operator-script surface
+# (functions/test/operatorScriptEnvironmentFence.test.mjs): NO EXPLICIT ENVIRONMENT =
+# REFUSE, production named twice or not at all, and every refusal proved to precede SDK
+# construction. Those cases assert refusals only, so they contact nothing and need no
+# emulator, no credentials and no secrets.
 
 on:
   pull_request:
@@ -19,6 +25,14 @@ on:
       - "functions/scripts/operatorAccessCommand.js"
       - "functions/test/operatorAccessCommand.test.js"
       - "functions/test/operatorAccessCommandExecute.test.js"
+      - "functions/scripts/projectTargetGuard.js"
+      - "functions/scripts/generatePasswordResetLink.js"
+      - "functions/scripts/assignTechnicianToUser.js"
+      - "functions/scripts/provisionEmployeeAccess.js"
+      - "functions/scripts/d1SmokeCompleteAssignedJob.js"
+      - "functions/scripts/d2SmokeRulesVerification.js"
+      - "functions/scripts/d3SmokeUiVerification.js"
+      - "functions/test/operatorScriptEnvironmentFence.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -31,6 +45,14 @@ on:
       - "functions/scripts/operatorAccessCommand.js"
       - "functions/test/operatorAccessCommand.test.js"
       - "functions/test/operatorAccessCommandExecute.test.js"
+      - "functions/scripts/projectTargetGuard.js"
+      - "functions/scripts/generatePasswordResetLink.js"
+      - "functions/scripts/assignTechnicianToUser.js"
+      - "functions/scripts/provisionEmployeeAccess.js"
+      - "functions/scripts/d1SmokeCompleteAssignedJob.js"
+      - "functions/scripts/d2SmokeRulesVerification.js"
+      - "functions/scripts/d3SmokeUiVerification.js"
+      - "functions/test/operatorScriptEnvironmentFence.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -71,6 +93,15 @@ jobs:
 
       - name: Pure-logic tests (no emulator)
         run: npm run test:operatorAccess
+        working-directory: functions
+
+      # ENVIRONMENT FENCE. Subprocess tests proving every operator script under this workflow's
+      # surface REFUSES when no environment is named, and refuses production unless production is
+      # named a second time as an explicit per-run confirmation -- with each refusal proved to fire
+      # before any client library is even loaded, so no SDK client can have existed. Needs no
+      # emulator and no build: every case is a refusal, so nothing is ever contacted.
+      - name: Operator environment fence (no emulator, contacts nothing)
+        run: npm run test:operatorEnvironmentFence
         working-directory: functions
 
       - name: Start Firestore + Auth emulators (background)

@@ -19,6 +19,34 @@
 
 const { writeFileSync, mkdirSync } = require("node:fs");
 const { join } = require("node:path");
+// ============================ PRODUCTION MUST BE NAMED, PER RUN ============================
+//
+// PROJECT_ID below is hardcoded to the customer production project, and correctly so -- this tool's
+// whole purpose is to verify what is actually deployed THERE, and its callable URL, REST base and web
+// API key are all bound to that same project. The defect was not the constant; it was that
+// `admin.initializeApp({ projectId: PROJECT_ID })` ran unconditionally at MODULE LOAD. Simply invoking
+// `node scripts/d3SmokeUiVerification.js` -- or mistyping the mode -- constructed a production-bound
+// Admin SDK client before a single guard had run, with production named nowhere on the line the
+// operator actually typed.
+//
+// So the confirmation is a per-run act, and it is checked HERE -- above the firebase-admin require, not
+// merely above initializeApp(). A refused invocation therefore never loads the Admin SDK at all, so
+// there is no client in the process that could have contacted anything. The flag value is compared
+// against the SHARED PRODUCTION_PROJECT_ID rather than a local literal.
+//
+// It is deliberately NOT satisfiable by an environment variable, a stored setting, ambient credentials,
+// or anything else the machine can supply -- only by an argument on the line being run.
+const { PRODUCTION_PROJECT_ID } = require("./projectTargetGuard.js");
+if (process.argv.indexOf("--confirm-production") === -1
+    || process.argv[process.argv.indexOf("--confirm-production") + 1] !== PRODUCTION_PROJECT_ID) {
+  console.error(
+    `REFUSED: D3 smoke targets the production project "${PRODUCTION_PROJECT_ID}". Re-run naming it explicitly:\n`
+    + `  node scripts/d3SmokeUiVerification.js <seed|verify|cleanup> --confirm-production ${PRODUCTION_PROJECT_ID}\n`
+    + "No Firebase SDK has been loaded, no client created, and nothing contacted."
+  );
+  process.exit(2);
+}
+
 const admin = require("firebase-admin");
 
 const PROJECT_ID = "taylor-parts";
