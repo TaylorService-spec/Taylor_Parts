@@ -562,6 +562,10 @@
       "runner": "node"
     },
     {
+      "file": "test/objectAdministrationProfile.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/objectListMetadataAuthority.test.mjs",
       "runner": "node"
     },

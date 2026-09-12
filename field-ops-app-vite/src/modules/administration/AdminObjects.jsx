@@ -3,6 +3,8 @@ import { GOVERNED_BUSINESS_ROLES } from "../../access/governedBusinessRoles.ts";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles.ts";
 import { PERMISSION_CATALOG } from "../../access/permissionCatalog.ts";
 import { OBJECT_PERMISSIONS, VERBS, VERB_LABEL, cellState, cellCapabilities } from "../../access/objectPermissionMap.js";
+import { matrixObjectKey } from "../../access/policyObjectRegistry.js";
+import ObjectAdministrationPanel from "./ObjectAdministrationPanel.jsx";
 import { objectAccessAll, objectDiagnostics } from "../../access/roleAccessModel.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -184,6 +186,12 @@ function ByObject({ roles }) {
                         );
                       })}
                     </div>
+                    {/* The verbs above say who may act. This says what the object IS -- its id rule,
+                        which fields can change after creation and through which governed command,
+                        its ownership, and how far its migration has got. Keyed by the SAME
+                        matrix-object -> entity-id mapping the policy seed uses, so the two surfaces
+                        cannot disagree about which entity a row means. */}
+                    <ObjectAdministrationPanel entityId={matrixObjectKey(row.object)} />
                   </td>
                 </tr>
               );
