@@ -378,6 +378,26 @@ test("entities with no profile are counted, not hidden", () => {
 
 // ════════════════════════════ 3. CITATIONS RESOLVE ════════════════════════════
 
+/**
+ * A file's CODE, with comments stripped.
+ *
+ * The citation check used to run `.includes()` over the raw file, which meant a citation could
+ * "resolve" by matching a word in a prose comment -- the module's own header, say -- while the
+ * symbol it names does not exist. That made "cite, don't restate" weaker than it claims: a stale
+ * citation survives as long as somebody once wrote the name in English nearby. Stripping comments
+ * first means a citation has to match something the language actually sees.
+ *
+ * Deliberately conservative: "//" preceded by ":" is left alone so a URL in code is not mistaken
+ * for a comment. This is a lint, not a parser -- it only has to be stricter than matching prose.
+ */
+function codeOf(fullPath) {
+  return readFileSync(fullPath, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .split("\n")
+    .map((line) => line.replace(/(^|[^:])\/\/.*$/, "$1"))
+    .join("\n");
+}
+
 test("every citation in every profile resolves to a real file containing that symbol", () => {
   const unresolved = [];
   for (const profile of ADMINISTRATION_PROFILES) {
@@ -387,7 +407,7 @@ test("every citation in every profile resolves to a real file containing that sy
         unresolved.push(`${profile.entityId}: ${citation.path} does not exist`);
         continue;
       }
-      if (!readFileSync(full, "utf8").includes(citation.symbol)) {
+      if (!codeOf(full).includes(citation.symbol)) {
         unresolved.push(`${profile.entityId}: ${citation.path} does not contain "${citation.symbol}"`);
       }
     }
