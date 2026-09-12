@@ -17,6 +17,7 @@ const path = require("node:path");
 const { VerificationError, sha256, assertEvidenceSecretFree } = require("./firestoreDeploymentVerificationShared");
 const { RECEIVING_ORDERS_DOC, REGION } = require("./receivingE2VerificationMatrix");
 const core = require("./verifyReceivingE2Deployment");
+const { assertResolvedProjectId } = require("./environmentTargetShared.js");
 
 function parseArgs(argv) {
   const args = {};
@@ -117,7 +118,15 @@ async function run(deps, argv) {
   return { pass, evidenceDir: dir, matrixTotal: report.matrix_total };
 }
 
-// Lazily build real production deps. Node 20 global fetch; gcloud/ADC from the ambient authenticated env.
+// Lazily build real production deps. Node 20 global fetch; gcloud/ADC supplies the CREDENTIAL only.
+//
+// X-TARGETING-GUARD: this used to call a bare `admin.initializeApp()`, which let ambient
+// credentials (an `authorized_user` ADC's quota_project_id, GCLOUD_PROJECT, the gcloud/firebase
+// default) choose the project -- so `--confirm-project taylor-parts` validated a STRING while the
+// Admin SDK could read some entirely different project, and the verdict would carry production's
+// name over another environment's data. Binding initializeApp to the config's pinned projectId
+// (assertConfig requires it to be "taylor-parts", matching --confirm-project) and asserting the
+// SDK's OWN resolved projectId closes that gap. Mirrors warehouseBackupRestoreCli.js.
 function buildProductionDeps(args) {
   // eslint-disable-next-line global-require
   const admin = require("firebase-admin");
@@ -128,7 +137,8 @@ function buildProductionDeps(args) {
   const testEmail = process.env[config.testEmailEnv];
   const testPassword = process.env[config.testPasswordEnv];
   if (!webApiKey || !testEmail || !testPassword) throw new VerificationError("web API key + test-persona email/password env vars must be present (never committed/logged)");
-  if (!admin.apps.length) admin.initializeApp();
+  if (!admin.apps.length) admin.initializeApp({ projectId: config.projectId });
+  assertResolvedProjectId(admin.app().options.projectId, config.projectId);
   const db = admin.firestore();
   const REST = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents`;
 

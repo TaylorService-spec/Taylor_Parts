@@ -65,6 +65,11 @@ const {
 } = require("../lib/adminPolicy/principalContext.js");
 const { capabilitiesForRoleKeys, listCapabilityKeys } = require("../lib/eosOps/capabilityAuthority.js");
 const { WRITER_CAPABILITY_CENSUS } = require("../lib/eosOps/migration/inventoryWriterCapabilityCensus.js");
+const {
+  assertProjectTarget,
+  assertResolvedProjectId,
+  assertCapabilityActivationProject,
+} = require("./environmentTargetShared.js");
 
 // The legacy resolver's target is GLOBAL scope for every one of these writers -- none is scoped
 // narrower (ownAssignment/location/businessUnit/etc). Confirmed by direct read of every wiring
@@ -105,6 +110,19 @@ async function legacyDecisionForPrincipal(db, op, subject) {
     roles: LEGACY_ROLE_CATALOG,
     currentAccessVersion: accessVersion,
     target: GLOBAL_TARGET,
+    // ════════════ THE GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT OVERRIDE TRAP ════════════
+    // resolveRuntimeCapabilityOverrides() is keyed on
+    // `GCLOUD_PROJECT ?? GOOGLE_CLOUD_PROJECT ?? null`. A deployed Cloud Function
+    // always has GCLOUD_PROJECT set by the runtime; an operator laptop usually has
+    // NEITHER. With neither set the override set is EMPTY, every capability
+    // registered `active: false` resolves DENY, and this harness reports
+    // `EXTRA_POSTGRES_GRANT` for 12 of the 18 census operations -- grants that are
+    // entirely legitimate in the sandbox those principals actually live in.
+    //
+    // DO NOT "fix" such a report by removing eos_policy grants. The CLI below
+    // refuses to run unless the activation project is stated explicitly, so this
+    // call can no longer silently see `null`. See
+    // docs/architecture/environment-selection-fail-closed.md.
     activationOverrides: resolveRuntimeCapabilityOverrides(),
   });
   return { allow: result.decision === "ALLOW" };
@@ -252,14 +270,37 @@ module.exports = {
 };
 
 if (require.main === module) {
-  // Operator CLI: node scripts/inventoryCapabilityParityHarness.js --tenant <id> --subject <uid> [--subject <uid> ...]
+  // Operator CLI:
+  //   GCLOUD_PROJECT=eos-platform-sandbox node scripts/inventoryCapabilityParityHarness.js \
+  //     --projectId eos-platform-sandbox --tenant <id> --subject <uid> [--subject <uid> ...]
+  //
   // Requires `npm run build` first (reads compiled lib/), POLICY_TEST_DATABASE_URL or an
-  // equivalent connection string wired through the standard policyDatabase config, and a live
+  // equivalent connection string wired through the standard policyDatabase config, and a
   // Firestore credential (GOOGLE_APPLICATION_CREDENTIALS / ADC).
+  //
+  // FAIL-CLOSED TARGET SELECTION. Two separate things must be stated, and both must agree:
+  //   --projectId                        which project's Firestore is READ (production also
+  //                                      requires a matching --confirmProduction)
+  //   GCLOUD_PROJECT/GOOGLE_CLOUD_PROJECT which environment's capability ACTIVATION rules apply
+  // Credentials authenticate the caller; they never choose either one. See the override-trap
+  // note above and docs/architecture/environment-selection-fail-closed.md.
   (async () => {
     const { getPolicyDatabasePool } = require("../lib/adminPolicy/policyDatabase.js");
     const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
     const args = process.argv.slice(2);
+
+    function flag(name) {
+      const i = args.indexOf(`--${name}`);
+      return i === -1 ? undefined : args[i + 1];
+    }
+
+    // Target first, before any Firestore/Postgres client is built.
+    const projectId = assertProjectTarget({
+      projectId: flag("projectId"),
+      confirmProduction: flag("confirmProduction"),
+    });
+    assertCapabilityActivationProject(process.env, projectId);
+
     const tenantIndex = args.indexOf("--tenant");
     if (tenantIndex === -1 || !args[tenantIndex + 1]) throw new Error("--tenant <id> is required");
     const tenantId = args[tenantIndex + 1];
@@ -269,9 +310,17 @@ if (require.main === module) {
     }
     if (subjects.length === 0) throw new Error("at least one --subject <uid> is required");
 
+    // Bind Firestore to the CONFIRMED project and verify the SDK agreed. Previously this
+    // reached getFirestore() with no app of its own, i.e. whatever the ambient environment
+    // had already initialised -- the exact ambient-targeting hole this guard closes.
+    const admin = require("firebase-admin");
+    if (!admin.apps.length) admin.initializeApp({ projectId });
+    assertResolvedProjectId(admin.app().options.projectId, projectId);
+    const db = admin.firestore();
+
     const pool = getPolicyDatabasePool();
     const reader = new PostgresPolicyRepository(pool);
-    const report = await buildInventoryCapabilityParityReport(reader, pool, tenantId, subjects);
+    const report = await buildInventoryCapabilityParityReport(reader, pool, tenantId, subjects, { db });
     // eslint-disable-next-line no-console
     console.log(describeCapabilityParity(report));
     process.exitCode = report.capabilityParityReady ? 0 : 1;

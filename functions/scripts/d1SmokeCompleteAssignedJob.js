@@ -186,10 +186,39 @@ async function cleanup() {
   console.log("d1-smoke fixture documents and auth users removed (audit events retained, append-only)");
 }
 
-const mode = process.argv[2];
+// FAIL-CLOSED TARGET CONFIRMATION. This tool writes to the customer's PRODUCTION
+// project -- PROJECT_ID is a hardcoded production constant, so the operator never
+// states a target and nothing distinguishes "I meant to do this to production" from
+// a stray shell-history re-run. Every other production-touching operator command in
+// this tree (provisionEmployeeAccess.js, warehouseBackupRestoreCli.js,
+// receivingE2VerifierCli.js) requires a matching per-run confirmation; this one now
+// does too. It changes nothing about WHAT the tool does -- only that it refuses to
+// do it unless the target is named out loud on the same command line.
+//
+//   node scripts/d1SmokeCompleteAssignedJob.js --confirm-project {PROJECT_ID} <seed|run|cleanup>
+const confirmIndex = process.argv.indexOf("--confirm-project");
+const confirmedProject = confirmIndex === -1 ? null : process.argv[confirmIndex + 1];
+if (confirmedProject !== PROJECT_ID) {
+  console.error(
+    `REFUSING TO RUN: this smoke tool targets ${PROJECT_ID} (production). Pass an explicit, matching ` +
+      `--confirm-project ${PROJECT_ID} as a deliberate, per-run confirmation. There is no default target.`
+  );
+  process.exit(2);
+}
+// Belt and braces: the SDK must actually be bound to the project just confirmed, so
+// ambient credentials cannot silently redirect the run somewhere else.
+if (admin.app().options.projectId !== PROJECT_ID) {
+  console.error(
+    `REFUSING TO RUN: firebase-admin resolved projectId '${admin.app().options.projectId}' does not match ` +
+      `the confirmed target '${PROJECT_ID}'.`
+  );
+  process.exit(2);
+}
+
+const mode = process.argv.filter((a, i) => i >= 2 && a !== "--confirm-project" && process.argv[i - 1] !== "--confirm-project")[0];
 const modes = { seed, run, cleanup };
 if (!modes[mode]) {
-  console.error("usage: node scripts/d1SmokeCompleteAssignedJob.js <seed|run|cleanup>");
+  console.error("usage: node scripts/d1SmokeCompleteAssignedJob.js --confirm-project {PROJECT_ID} <seed|run|cleanup>".replace("{PROJECT_ID}", PROJECT_ID));
   process.exit(2);
 }
 modes[mode]().catch((e) => { console.error("D1 SMOKE ERROR:", e.message); process.exit(1); });

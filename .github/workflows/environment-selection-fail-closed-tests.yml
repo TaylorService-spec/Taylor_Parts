@@ -1,0 +1,85 @@
+name: Environment Selection Fail-Closed Tests
+
+# The ADC / project / environment-selection safety gate.
+#
+# Enforces one rule across every operator entry point that can reach real
+# business data: NO EXPLICIT ENVIRONMENT = REFUSE. The target must be named by
+# the human who ran the command -- never by the active gcloud project, the active
+# firebase project (.firebaserc "default" is `taylor-parts`), Application Default
+# Credentials (a `gcloud auth application-default login` ADC carries a
+# quota_project_id that firebase-admin's transitive clients will adopt), the
+# working directory, or a default baked into a script.
+#
+# Three layers: unit tests of functions/scripts/environmentTargetShared.js; a
+# static RATCHET over functions/scripts/** and scripts/** that fails when a new
+# ambiently-targetable entry point appears; and behavioural tests that actually
+# spawn the converted CLIs with no arguments and require them to refuse.
+#
+# NO production access, NO emulator, NO network, NO repository secrets. Every
+# command this workflow spawns refuses before it constructs any SDK client.
+#
+# See docs/architecture/environment-selection-fail-closed.md.
+
+on:
+  pull_request:
+    paths:
+      - "functions/scripts/**"
+      - "scripts/**"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
+      - "functions/test/environmentSelectionFailClosed.test.mjs"
+      - "config/environments.json"
+      - ".firebaserc"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "docs/architecture/environment-selection-fail-closed.md"
+      - ".github/workflows/environment-selection-fail-closed-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/scripts/**"
+      - "scripts/**"
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts"
+      - "functions/test/environmentSelectionFailClosed.test.mjs"
+      - "config/environments.json"
+      - ".firebaserc"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "docs/architecture/environment-selection-fail-closed.md"
+      - ".github/workflows/environment-selection-fail-closed-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  environment-selection-fail-closed-tests:
+    name: Environment selection fail-closed gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      # Deliberately runs with NO GCLOUD_PROJECT, NO GOOGLE_CLOUD_PROJECT and no
+      # credentials of any kind -- the exact laptop-shaped environment in which an
+      # ambiently-targeted command would previously have picked production.
+      - name: Environment selection fail-closed gate (build + run)
+        run: npm run test:environmentSelection
+        working-directory: functions

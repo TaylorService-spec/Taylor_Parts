@@ -51,7 +51,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 
-const PRODUCTION_PROJECT_ID = "taylor-parts";
+const { PRODUCTION_PROJECT_ID, assertProjectTarget: requireExplicitProjectTarget } = require("./environmentTargetShared.js");
 const OWNER_AUTHORIZATION_PHRASE = "I CONFIRM OWNER AUTHORIZATION FOR THIS ACCESS CHANGE";
 const DEFAULT_RESULT_DIR = ".production-verification-results";
 const REGION = "us-central1";
@@ -81,21 +81,11 @@ function parseArgs(argv) {
   return args;
 }
 
-function assertProjectTarget(args) {
-  if (!args.projectId) {
-    throw new Error(
-      "--projectId is required (no default target -- e.g. --projectId taylor-parts, or a non-production id for testing)."
-    );
-  }
-  if (args.projectId === PRODUCTION_PROJECT_ID && args.confirmProduction !== PRODUCTION_PROJECT_ID) {
-    throw new Error(
-      `--projectId "${PRODUCTION_PROJECT_ID}" targets the production project -- this requires an explicit, ` +
-        `matching --confirmProduction ${PRODUCTION_PROJECT_ID} flag as a deliberate, per-run confirmation. ` +
-        `Use a different --projectId for emulator/non-production testing to skip this requirement.`
-    );
-  }
-  return args.projectId;
-}
+// Promoted to functions/scripts/environmentTargetShared.js -- the one shared,
+// fail-closed answer to "which environment is this command about to touch?".
+// Behaviour is unchanged (same checks, same order, same error text); this file
+// keeps re-exporting it because other scripts import it from here.
+const assertProjectTarget = requireExplicitProjectTarget;
 
 function assertOwnerAuthorized(args) {
   if (args.ownerAuthorization !== OWNER_AUTHORIZATION_PHRASE) {

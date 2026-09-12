@@ -24,21 +24,40 @@
 // Does not touch the React app, firebase.js, AuthContext.jsx, or
 // firestore.rules in any way.
 //
-// Run locally, per test account, against the live project:
+// TARGET SELECTION IS EXPLICIT AND FAIL-CLOSED. This mints a working credential-
+// recovery link for a real account, so which directory it reads matters more here
+// than almost anywhere else in this tree. --projectId is REQUIRED (no default) and
+// production additionally requires a matching --confirmProduction, the same fence
+// provisionEmployeeAccess.js has always applied. It used to hardcode
+// `initializeApp({ projectId: "taylor-parts" })`, i.e. one mistyped email away
+// from a production reset link with no per-run confirmation at all. The projectId
+// is also re-checked against the SDK's own resolved value, so ambient credentials
+// (an `authorized_user` ADC's quota_project_id, GCLOUD_PROJECT, a gcloud/firebase
+// default) cannot silently bind a different directory than the one confirmed.
+//
+// Run locally, per test account:
 //   cd functions
-//   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/generatePasswordResetLink.js <email>
-// (or `gcloud auth application-default login` first, then just
-//  `node scripts/generatePasswordResetLink.js <email>` with no env var --
-//  either way you need real credentials for the "taylor-parts" project,
-//  same as assignTechnicianToUser.js.)
+//   node scripts/generatePasswordResetLink.js --projectId eos-platform-sandbox <email>
+//   node scripts/generatePasswordResetLink.js --projectId taylor-parts --confirmProduction taylor-parts <email>
+// (Credentials come from GOOGLE_APPLICATION_CREDENTIALS or
+//  `gcloud auth application-default login`; they authenticate the caller, they do
+//  NOT choose the target -- --projectId does, and only --projectId.)
 //
 // See docs/DevelopmentSetup.md's "Testing multiple roles" section for
 // the full walkthrough.
-const { initializeApp } = require("firebase-admin/app");
+const { initializeApp, getApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
+const {
+  assertProjectTarget,
+  assertResolvedProjectId,
+} = require("./environmentTargetShared.js");
 
-async function generatePasswordResetLink(email) {
-  initializeApp({ projectId: "taylor-parts" });
+async function generatePasswordResetLink(email, projectId) {
+  if (!projectId) {
+    throw new Error("generatePasswordResetLink requires an explicit projectId -- there is no default target.");
+  }
+  initializeApp({ projectId });
+  assertResolvedProjectId(getApp().options.projectId, projectId);
   const auth = getAuth();
 
   // Fails loudly rather than silently generating a link for a
@@ -55,15 +74,55 @@ async function generatePasswordResetLink(email) {
   console.log("This link was NOT emailed anywhere -- open it yourself, or relay it manually to whoever needs it.");
 }
 
-const [, , email] = process.argv;
-if (!email) {
-  console.error("Usage: node scripts/generatePasswordResetLink.js <email>");
-  process.exitCode = 1;
-} else {
-  generatePasswordResetLink(email).catch((err) => {
-    console.error("Failed:", err.message);
-    process.exitCode = 1;
-  });
+/**
+ * Split `--flag value` pairs out of argv, leaving the positional arguments.
+ * Deliberately tiny and local -- it only has to recognise the two target flags.
+ */
+function parseArgs(argv) {
+  const flags = {};
+  const positionals = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i].startsWith("--")) {
+      const key = argv[i].slice(2);
+      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
+      flags[key] = value;
+      if (value !== "true") i += 1;
+    } else {
+      positionals.push(argv[i]);
+    }
+  }
+  return { flags, positionals };
 }
 
-module.exports = { generatePasswordResetLink };
+const USAGE =
+  "Usage: node scripts/generatePasswordResetLink.js --projectId <id> [--confirmProduction taylor-parts] <email>";
+
+if (require.main === module) {
+  const { flags, positionals } = parseArgs(process.argv.slice(2));
+  const [email] = positionals;
+
+  // The target is decided BEFORE any Firebase SDK call, so a missing/unconfirmed
+  // target can never reach getUserByEmail() against whatever ADC happens to name.
+  let projectId;
+  try {
+    projectId = assertProjectTarget(flags);
+  } catch (err) {
+    console.error(`REFUSING TO RUN: ${err.message}`);
+    console.error(USAGE);
+    process.exitCode = 1;
+  }
+
+  if (projectId) {
+    if (!email) {
+      console.error(USAGE);
+      process.exitCode = 1;
+    } else {
+      generatePasswordResetLink(email, projectId).catch((err) => {
+        console.error("Failed:", err.message);
+        process.exitCode = 1;
+      });
+    }
+  }
+}
+
+module.exports = { generatePasswordResetLink, parseArgs };

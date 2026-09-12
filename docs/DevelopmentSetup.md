@@ -61,9 +61,18 @@ Role is read from `users/{uid}.role` in Firestore (`admin`/`dispatcher`/`technic
 
 ```bash
 cd functions
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/generatePasswordResetLink.js someone@example.com
+node scripts/generatePasswordResetLink.js --projectId eos-platform-sandbox someone@example.com
+
+# The production directory additionally requires an explicit, matching confirmation:
+node scripts/generatePasswordResetLink.js --projectId taylor-parts --confirmProduction taylor-parts someone@example.com
 ```
 
-(or `gcloud auth application-default login` first, then omit the env var — either way you need real Admin SDK credentials for the `taylor-parts` project).
+`--projectId` is **required** — there is no default target, and the script refuses to run
+without one. Credentials (`GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json`, or
+`gcloud auth application-default login`) authenticate *you*; they do **not** choose the target.
+That separation is deliberate: an Application Default Credential carries a `quota_project_id`
+that the Google client libraries will happily adopt as the project, so a script that does not
+name its own target can silently bind to whichever project the machine's ADC happens to name.
+See [`docs/architecture/environment-selection-fail-closed.md`](architecture/environment-selection-fail-closed.md).
 
 This prints a Firebase password-reset link to your terminal — it does **not** send any email, and does not change how the app's own (not-yet-built) Forgot Password flow would behave for a real user, because it doesn't touch `firebase.js`, `AuthContext.jsx`, or Firebase Auth configuration at all. Open the printed link yourself to set a new password for that test account, then sign in normally. There is deliberately no "send this to a different address" option — this tool only ever generates a link; a human decides what to do with it.

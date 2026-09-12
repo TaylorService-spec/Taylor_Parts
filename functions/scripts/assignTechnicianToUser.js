@@ -15,12 +15,23 @@
 // technician's login). This script is that minimal, explicit,
 // manual-safe utility.
 //
-// Run once, locally, per technician, against the live project:
+// TARGET SELECTION IS EXPLICIT AND FAIL-CLOSED. --projectId is REQUIRED (there is
+// no default), and production additionally requires a matching
+// --confirmProduction, exactly as provisionEmployeeAccess.js has always required.
+// This used to hardcode `initializeApp({ projectId: "taylor-parts" })`, so a run
+// that merely typo'd a uid wrote to the customer's live data with no per-run
+// confirmation of any kind. The projectId is also passed to initializeApp AND
+// re-checked against the SDK's own resolved value, so ambient credentials (an
+// `authorized_user` ADC's quota_project_id, GCLOUD_PROJECT, a gcloud/firebase
+// default) cannot silently bind a different project than the one confirmed.
+//
+// Run once, locally, per technician:
 //   cd functions
-//   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/assignTechnicianToUser.js <uid> <technicianId>
-// (or `gcloud auth application-default login` first, then just
-//  `node scripts/assignTechnicianToUser.js <uid> <technicianId>` with no env var --
-//  either way you need real credentials for the "taylor-parts" project.)
+//   node scripts/assignTechnicianToUser.js --projectId eos-platform-sandbox <uid> <technicianId>
+//   node scripts/assignTechnicianToUser.js --projectId taylor-parts --confirmProduction taylor-parts <uid> <technicianId>
+// (Credentials come from GOOGLE_APPLICATION_CREDENTIALS or
+//  `gcloud auth application-default login`; they authenticate the caller, they do
+//  NOT choose the target -- --projectId does, and only --projectId.)
 //
 // Validates both docs exist before writing (fails loudly rather than
 // silently creating a dangling reference). Idempotent: merge:true, so
@@ -29,14 +40,22 @@
 // technician changing which account they use, or a data-entry
 // correction) -- it does not touch role, or any other field on the
 // users/{uid} doc.
-const { initializeApp } = require("firebase-admin/app");
+const { initializeApp, getApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
+const {
+  assertProjectTarget,
+  assertResolvedProjectId,
+} = require("./environmentTargetShared.js");
 
 const USERS_COLLECTION = "users";
 const TECHNICIANS_COLLECTION = "fieldops_technicians";
 
-async function assignTechnicianToUser(uid, technicianId) {
-  initializeApp({ projectId: "taylor-parts" });
+async function assignTechnicianToUser(uid, technicianId, projectId) {
+  if (!projectId) {
+    throw new Error("assignTechnicianToUser requires an explicit projectId -- there is no default target.");
+  }
+  initializeApp({ projectId });
+  assertResolvedProjectId(getApp().options.projectId, projectId);
   const db = getFirestore();
 
   const [userSnap, techSnap] = await Promise.all([
@@ -63,15 +82,55 @@ async function assignTechnicianToUser(uid, technicianId) {
   console.log(`OK: users/${uid}.technicianId = "${technicianId}"`);
 }
 
-const [, , uid, technicianId] = process.argv;
-if (!uid || !technicianId) {
-  console.error("Usage: node scripts/assignTechnicianToUser.js <uid> <technicianId>");
-  process.exitCode = 1;
-} else {
-  assignTechnicianToUser(uid, technicianId).catch((err) => {
-    console.error("Failed:", err.message);
-    process.exitCode = 1;
-  });
+/**
+ * Split `--flag value` pairs out of argv, leaving the positional arguments.
+ * Deliberately tiny and local -- it only has to recognise the two target flags.
+ */
+function parseArgs(argv) {
+  const flags = {};
+  const positionals = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i].startsWith("--")) {
+      const key = argv[i].slice(2);
+      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
+      flags[key] = value;
+      if (value !== "true") i += 1;
+    } else {
+      positionals.push(argv[i]);
+    }
+  }
+  return { flags, positionals };
 }
 
-module.exports = { assignTechnicianToUser };
+const USAGE =
+  "Usage: node scripts/assignTechnicianToUser.js --projectId <id> [--confirmProduction taylor-parts] <uid> <technicianId>";
+
+if (require.main === module) {
+  const { flags, positionals } = parseArgs(process.argv.slice(2));
+  const [uid, technicianId] = positionals;
+
+  // The target is decided BEFORE any Firebase SDK call. A missing/unconfirmed
+  // target must fail here, loudly, not partway through a write.
+  let projectId;
+  try {
+    projectId = assertProjectTarget(flags);
+  } catch (err) {
+    console.error(`REFUSING TO RUN: ${err.message}`);
+    console.error(USAGE);
+    process.exitCode = 1;
+  }
+
+  if (projectId) {
+    if (!uid || !technicianId) {
+      console.error(USAGE);
+      process.exitCode = 1;
+    } else {
+      assignTechnicianToUser(uid, technicianId, projectId).catch((err) => {
+        console.error("Failed:", err.message);
+        process.exitCode = 1;
+      });
+    }
+  }
+}
+
+module.exports = { assignTechnicianToUser, parseArgs };
