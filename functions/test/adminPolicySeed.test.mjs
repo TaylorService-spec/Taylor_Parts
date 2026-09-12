@@ -247,6 +247,7 @@ test("the seed runs over PostgreSQL, and is idempotent there too", { skip: PG_SK
   // eos_ops (migration 005) is a sibling schema in the same database and must be dropped too, or a
   // repeat migrateFromClean() in the same job fails with "already exists".
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  await client.query("DROP SCHEMA IF EXISTS eos_commercial CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   execFileSync(process.execPath, [

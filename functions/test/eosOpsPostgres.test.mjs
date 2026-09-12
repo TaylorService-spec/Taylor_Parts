@@ -48,6 +48,7 @@ async function reset() {
   await client.connect();
   await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  await client.query("DROP SCHEMA IF EXISTS eos_commercial CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();

@@ -48,6 +48,7 @@ async function reset() {
   await client.connect();
   await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  await client.query("DROP SCHEMA IF EXISTS eos_commercial CASCADE");
   await client.query("DROP SCHEMA IF EXISTS eos_ops_conversion_probe CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
@@ -180,9 +181,11 @@ test("the repository refuses a missing company key before it ever reaches SQL", 
 
 test("migration 007 ABORTS on a pre-existing row rather than inventing its operating company", { skip: SKIP }, async () => {
   await reset();
-  // Reverse 007 so the tables are back to their migration-005 shape, then occupy one of them the way
-  // an unexpected pre-cutover writer would have.
-  migrate(["down", "1"]);
+  // Reverse 008 and then 007, so the tables are back to their migration-005 shape, then occupy one
+  // of them the way an unexpected pre-cutover writer would have. TWO steps, not one: migration 008
+  // (eos_commercial) now sits on top, and it is not this suite's subject -- reversing one would
+  // reverse the wrong migration and leave 007's column in place.
+  migrate(["down", "2"]);
   await query(
     `INSERT INTO eos_ops.serialized_custody
        (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
@@ -222,7 +225,7 @@ test("migration 007 ABORTS on a pre-existing row rather than inventing its opera
 
 test("every one of the three tables is checked, not just the first", { skip: SKIP }, async () => {
   await reset();
-  migrate(["down", "1"]);
+  migrate(["down", "2"]);
   await query(
     `INSERT INTO eos_ops.cycle_count_sheets
        (id, tenant_id, location_type, location_id, status, created_by, updated_by)

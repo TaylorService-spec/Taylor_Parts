@@ -52,6 +52,7 @@ async function reset() {
   // most recent when this reset was written; it must also drop eos_ops now, or a second migrateFromClean()
   // in the same job fails with "already exists" the moment eos_ops has any migration to re-run.
   await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  await client.query("DROP SCHEMA IF EXISTS eos_commercial CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();
@@ -166,11 +167,11 @@ test("a SECOND migrate changes nothing", { skip: SKIP }, async () => {
 
 test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }, async () => {
   await reset();
-  // ALL SEVEN, and the count is the point: `down` reverses ONE by default, so a single call leaves
+  // ALL EIGHT, and the count is the point: `down` reverses ONE by default, so a single call leaves
   // the earlier migrations standing. A test that expected zero after one step would be asserting
   // that the newest migration undoes its predecessors' work, which it must not.
   execFileSync(process.execPath, [
-    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "7", "--migrations-dir", "migrations",
+    "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "8", "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
   const gone = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
@@ -190,6 +191,24 @@ test("the newest migration reverses alone, leaving its predecessors intact", { s
   const down = (count) => execFileSync(process.execPath, [
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
+
+  // 008 off: the commercial ownership schema -- a THIRD sibling -- disappears entirely. Neither
+  // eos_policy nor eos_ops may notice: 008 adds nothing to either. It reverses cleanly here only
+  // because no handoff has been recorded; with history present its down half refuses, which is
+  // proved in commercialOwnershipPostgres.test.mjs.
+  down(1);
+  const commercialGone = await query(
+    "SELECT count(*)::int n FROM information_schema.schemata WHERE schema_name = 'eos_commercial'",
+  );
+  assert.equal(commercialGone.rows[0].n, 0, "eos_commercial is gone");
+  const opsSurvives008 = await query(
+    "SELECT count(*)::int n FROM information_schema.schemata WHERE schema_name = 'eos_ops'",
+  );
+  assert.equal(opsSurvives008.rows[0].n, 1, "eos_ops is untouched by reversing a third sibling schema");
+  const untouchedByOhEight = await query(
+    "SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'",
+  );
+  assert.equal(untouchedByOhEight.rows[0].n, 21, "and so is eos_policy");
 
   // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
   // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.

@@ -33,9 +33,15 @@ function executableSql(source) {
 // ============================ the migration is additive and correctly ordered ============================
 
 test("007 is the NEXT migration, and 005 and 006 are untouched by it", () => {
+  // POSITION, not "last". This asserted `files.length === 7` and "007 sorts last" until migration
+  // 008 (eos_commercial) was added -- at which point it would have failed for a migration that
+  // changes nothing about 007. What 007's ordering claim actually needs is that it sits directly
+  // after 006 and that its two predecessors are where it expects them; a successor stacked on top
+  // is not a violation of that, it is the normal case. So the position is pinned and the count is
+  // only required to reach it.
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  assert.equal(files.length, 7, "seven migrations");
-  assert.equal(files[files.length - 1], MIGRATION_FILE, "007 sorts last -- its timestamp is the newest");
+  assert.ok(files.length >= 7, `at least seven migrations, found ${files.length}`);
+  assert.equal(files[6], MIGRATION_FILE, "007 sorts seventh -- directly after 006");
   assert.equal(files[4], "1757808000000_eos-ops-foundation.sql");
   assert.equal(files[5], "1757894400000_operational-capability-vocabulary.sql");
 
