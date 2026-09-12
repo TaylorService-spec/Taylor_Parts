@@ -63,6 +63,16 @@ function migrate(args) {
   ], { env: { ...process.env, DATABASE_URL: URL }, encoding: "utf8", stdio: "pipe" });
 }
 
+/**
+ * Reverse every migration from the newest down to and including 007, so the next `up` is 007's own.
+ * The step count is COUNTED rather than written as `["down", "1"]`: "the newest migration" is
+ * whichever one was added last, and these two tests are about 007 specifically.
+ */
+function downToBefore007() {
+  const total = readdirSync("migrations").filter((f) => f.endsWith(".sql")).length;
+  migrate(["down", String(total - 6)]);
+}
+
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
