@@ -17,6 +17,8 @@
 // state" is only a property if the uniqueness that stops them is real. Every claim below is either a
 // constraint the server enforces or a derivation the server computes.
 import test from "node:test";
+import { declaredTablesIn } from "./support/migrationSchema.mjs";
+import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
@@ -49,8 +51,16 @@ function migrate(args) {
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
-  await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
-  await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  // EVERY schema the migrations create, read from functions/migrations rather than listed here.
+  //
+  // Each of these resetters carried its own hand-written list, and at the W1 integration no two of
+  // them agreed: some dropped eos_crm, some eos_commercial, most neither. A schema left standing
+  // while `pgmigrations` is dropped makes the next `up` re-run its migration against objects that
+  // still exist -- the failure is `type "commercial_handoff_source" already exists`, 48 tests deep in
+  // a suite that has nothing to do with the commercial schema. Derived, the list cannot drift again.
+  for (const schema of declaredSchemas()) {
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrate(["up"]);
@@ -96,10 +106,19 @@ test("clean database -> migrate -> the commitment and replay tables exist beside
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
-  assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "cycle_count_lines", "cycle_count_sheets", "inventory_commitments", "inventory_movements",
-    "serialized_custody", "work_order_inventory_effects",
-  ], "migration 008 adds exactly two tables and removes none");
+  // THE RULE, NOT A LIST. An exhaustive eos_ops list here became wrong as soon as any sibling lane
+  // added an operational table, and eleven did. What this test claims is about THIS migration: it
+  // contributes exactly its own two tables, and it removes none of migration 005's four.
+  const names = tables.rows.map((r) => r.table_name);
+  assert.deepEqual(declaredTablesIn("eos_ops", ["1758067200000_inventory-commitment-and-work-order-replay.sql"]),
+    ["inventory_commitments", "work_order_inventory_effects"],
+    "this migration declares exactly its own two tables");
+  for (const mine of ["inventory_commitments", "work_order_inventory_effects"]) {
+    assert.ok(names.includes(mine), `${mine} was created`);
+  }
+  for (const foundation of ["cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody"]) {
+    assert.ok(names.includes(foundation), `migration 005's ${foundation} survives -- this migration removes none`);
+  }
 });
 
 test("the commitment vocabulary and the movement vocabulary stay disjoint IN THE DATABASE", { skip: SKIP }, async () => {

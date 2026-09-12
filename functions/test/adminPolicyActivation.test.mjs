@@ -144,7 +144,10 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
 
   // The measured model, arriving in a real database.
   assert.equal(first.seed.created.objects, 37, "37 canonical objects");
-  assert.equal(first.seed.created.fields, 394, "394 canonical fields");
+  // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
+  // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
+  // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
+  assert.equal(first.seed.created.fields, 395, "395 canonical fields");
   assert.ok(first.seed.created.roles >= 43, "the governed business roles, and the compatibility ones");
   assert.equal(first.seed.created.workflows, 5, "5 versioned state machines");
   assert.equal(first.seed.created.workflowVersions, 5);

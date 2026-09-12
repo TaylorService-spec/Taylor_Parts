@@ -87,6 +87,28 @@ test.after(async () => {
 
 // ============================ the schema ============================
 
+/**
+ * Reverse every migration that sorts STRICTLY NEWER than this lane's own, so that a single
+ * `node-pg-migrate down` once again reverses THIS migration.
+ *
+ * A lane suite proving "my down refuses while my tables still hold data" runs one `down` step. That
+ * reverses whichever migration is newest -- this lane's own only while this lane's own is last. It
+ * was last on the branch and is not last on main: eleven migrations landed together at the W1
+ * integration, and this test was reversing a stranger's migration and reporting
+ * "Missing expected exception" while the refusal it checks worked perfectly.
+ *
+ * Driven by what is APPLIED (pgmigrations) rather than by a file count, so calling it twice in one
+ * test is a no-op the second time instead of digging past the migration under test.
+ */
+async function peelMigrationsNewerThan(prefix) {
+  for (;;) {
+    const applied = await query("SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1");
+    const newest = applied.rows[0]?.name;
+    if (!newest || newest.startsWith(prefix) || newest < prefix) return;
+    migrate(["down"]);
+  }
+}
+
 test("migration 008 lands warehouses, bins and bin_code_claims beside the foundation tables", { skip: SKIP }, async () => {
   await fresh();
   const tables = await query(
@@ -394,6 +416,7 @@ test("retiring a warehouse or a bin keeps it resolvable -- history stays readabl
 test("migration 008 REFUSES to reverse while it still holds location reference data", { skip: SKIP }, async () => {
   await fresh();
   await warehouse("wh-main");
+  await peelMigrationsNewerThan("1758240000000_");
   assert.throws(() => migrate(["down"]), /still hold location reference data that has no other authority/);
   // The refusal is transactional: the tables are untouched.
   const rows = await query("SELECT count(*)::int AS n FROM eos_ops.warehouses");

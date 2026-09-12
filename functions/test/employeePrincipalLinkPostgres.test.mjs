@@ -135,6 +135,28 @@ const linkInput = (overrides) => ({
   ...overrides,
 });
 
+/**
+ * Reverse every migration that sorts STRICTLY NEWER than this lane's own, so that a single
+ * `node-pg-migrate down` once again reverses THIS migration.
+ *
+ * A lane suite proving "my down refuses while my tables still hold data" runs one `down` step. That
+ * reverses whichever migration is newest -- this lane's own only while this lane's own is last. It
+ * was last on the branch and is not last on main: eleven migrations landed together at the W1
+ * integration, and this test was reversing a stranger's migration and reporting
+ * "Missing expected exception" while the refusal it checks worked perfectly.
+ *
+ * Driven by what is APPLIED (pgmigrations) rather than by a file count, so calling it twice in one
+ * test is a no-op the second time instead of digging past the migration under test.
+ */
+async function peelMigrationsNewerThan(prefix) {
+  for (;;) {
+    const applied = await db().query("SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1");
+    const newest = applied.rows[0]?.name;
+    if (!newest || newest.startsWith(prefix) || newest < prefix) return;
+    migrate(["down"]);
+  }
+}
+
 test("employee ↔ principal linkage, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await t.test("a link is established, read back, and resolves the Employee for the principal", async () => {
     await reset();
@@ -377,6 +399,7 @@ test("employee ↔ principal linkage, in PostgreSQL", { skip: SKIP, concurrency:
     const principalId = await makeMember(TENANT_A, "uid-1");
     await establishLink(db(), linkInput({ principalId }));
 
+    await peelMigrationsNewerThan("1758412800000_");
     migrate(["down"]);
     const gone = await db().query(
       "SELECT to_regclass('eos_policy.employee_principal_links') AS present",

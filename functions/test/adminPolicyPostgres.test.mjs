@@ -14,6 +14,7 @@
 // EACH TEST OWNS ITS OWN SCHEMA STATE. The migration is re-run from clean at the start, so a test
 // that leaves rows behind cannot make the next one pass.
 import test from "node:test";
+import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
@@ -67,16 +68,23 @@ function migrateFromClean() {
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
-  await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
+  // EVERY schema the migrations create, read from functions/migrations rather than listed here.
+  //
+  // Each of these resetters carried its own hand-written list, and at the W1 integration no two of
+  // them agreed: some dropped eos_crm, some eos_commercial, most neither. A schema left standing
+  // while `pgmigrations` is dropped makes the next `up` re-run its migration against objects that
+  // still exist -- the failure is `type "commercial_handoff_source" already exists`, 48 tests deep in
+  // a suite that has nothing to do with the commercial schema. Derived, the list cannot drift again.
+  for (const schema of declaredSchemas()) {
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
   // eos_ops (migration 005) is a sibling schema in the same database. Migration 003 was still the
   // most recent when this reset was written; it must also drop eos_ops now, or a second migrateFromClean()
   // in the same job fails with "already exists" the moment eos_ops has any migration to re-run.
-  await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
   // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
   // schema the migrations create, not only the two that existed when it was written: a surviving
   // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
   // still there.
-  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();
@@ -224,23 +232,32 @@ test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP
     "node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", String(count), "--migrations-dir", "migrations",
   ], { env: { ...process.env, DATABASE_URL: URL }, stdio: "pipe" });
 
-  // Anything NEWER than 007 comes off first, so this stays a proof about the pair it names (007,
-  // then 006) however many additive migrations land after them.
-  const newerThan007 = migrationFiles().filter((f) => f > MIGRATION_007).length;
-  if (newerThan007 > 0) down(newerThan007);
+  // ════════════ ONE UNWIND, BY NAME, NOT TWO ════════════
+  //
+  // `stepsBackTo("1757980800000_")` already reverses 007 AND everything above it in a single call --
+  // it is the canonical "steps back to this migration" form, computed from the file list. An earlier
+  // integration pass ALSO pre-reversed the post-007 migrations here, and the two unwinds compounded:
+  // 11 steps plus 12 steps took 001-006 down too and eos_policy came back empty (0 !== 21). The
+  // pre-unwind is gone; the single named unwind below is the one that runs.
+
+  // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
+  // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.
+  //
+  // Reversed BY NAME, not by a literal step count: anything newer than 007 comes off with it, and
+  // this test stays a claim about 007 rather than about how many migrations happen to exist today.
+  down(stepsBackTo("1757980800000_"));
 
   // AND THE UNWIND ACTUALLY REACHED THEM. Eleven additive migrations landed together at the W1
   // integration, and each lane had written its own "my tables are gone" block right here -- eleven
   // near-identical blocks, each naming its own tables, is precisely what makes this file re-conflict
   // at every future integration. The rule every one of them stood in for is asserted ONCE instead,
   // derived from the migration files rather than listed: NO table introduced by a migration newer
-  // than 007 survives the step above, in ANY schema. Schema-agnostic on purpose -- post-007
-  // migrations create tables in eos_ops, in eos_policy (the Employee <-> Principal linkage) and in
-  // schemas that did not exist when this test was written (eos_crm, eos_commercial), and a rule that
-  // only looked at eos_ops would have silently stopped covering most of them.
+  // than 007 survives the unwind, in ANY schema. Schema-agnostic on purpose -- post-007 migrations
+  // create tables in eos_ops, in eos_policy (the Employee <-> Principal linkage) and in schemas that
+  // did not exist when this test was written (eos_crm, eos_commercial), and a rule that only looked
+  // at eos_ops would have silently stopped covering most of them.
   // Each lane's own Postgres suite still proves its own tables' specific down behaviour.
-  const postSeven = migrationsAfter(MIGRATION_007);
-  for (const [schema, tables] of declaredTables(postSeven)) {
+  for (const [schema, tables] of declaredTables(migrationsAfter(MIGRATION_007))) {
     const survivors = await query(
       `SELECT table_name FROM information_schema.tables
         WHERE table_schema = $1 AND table_name = ANY($2::text[]) ORDER BY 1`,
@@ -249,13 +266,6 @@ test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP
     assert.deepEqual(survivors.rows, [],
       `every ${schema} table a post-007 migration created is gone once those migrations are reversed`);
   }
-
-  // 007 off: the operating-company column and the custody location type go, in the SIBLING eos_ops
-  // schema. eos_policy must not notice at all -- 007 adds no eos_policy table, column or enum.
-  //
-  // Reversed BY NAME, not by a literal step count: anything newer than 007 comes off with it, and
-  // this test stays a claim about 007 rather than about how many migrations happen to exist today.
-  down(stepsBackTo("1757980800000_"));
   const companyColumnGone = await query(
     "SELECT count(*)::int n FROM information_schema.columns WHERE table_schema = 'eos_ops'" +
     " AND column_name = 'operating_company_key'",

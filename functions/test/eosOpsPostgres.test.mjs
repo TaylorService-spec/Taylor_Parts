@@ -8,9 +8,10 @@
 // must never run concurrently, and `every suite that resets the schema is covered by that one
 // command` (adminPolicyPostgres.test.mjs) mechanically enforces that this file stays registered.
 import test from "node:test";
+import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { declaredTablesIn } from "./support/migrationSchema.mjs";
+import { declaredTablesIn, declaredViewsIn } from "./support/migrationSchema.mjs";
 import pg from "pg";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.js";
@@ -47,13 +48,20 @@ function migrateFromClean() {
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
-  await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
-  await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  // EVERY schema the migrations create, read from functions/migrations rather than listed here.
+  //
+  // Each of these resetters carried its own hand-written list, and at the W1 integration no two of
+  // them agreed: some dropped eos_crm, some eos_commercial, most neither. A schema left standing
+  // while `pgmigrations` is dropped makes the next `up` re-run its migration against objects that
+  // still exist -- the failure is `type "commercial_handoff_source" already exists`, 48 tests deep in
+  // a suite that has nothing to do with the commercial schema. Derived, the list cannot drift again.
+  for (const schema of declaredSchemas()) {
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
   // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
   // schema the migrations create, not only the two that existed when it was written: a surviving
   // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
   // still there.
-  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrateFromClean();
@@ -109,8 +117,15 @@ async function makeCapableActor(tenantId, subject, capabilityKeys) {
 
 test("clean database -> migrate -> eos_ops exists beside eos_policy, named exactly", { skip: SKIP }, async () => {
   await reset();
+  // BASE TABLE only. `information_schema.tables` lists views alongside tables, and the invoice and
+  // cash-application migrations deliberately ship balances as VIEWS over facts; lumping the two
+  // together would let a stored balance COLUMN hide behind a name that looks like a projection.
   const tables = await query(
-    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
+    `SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'eos_ops' AND table_type = 'BASE TABLE' ORDER BY 1`,
+  );
+  const views = await query(
+    `SELECT table_name FROM information_schema.views WHERE table_schema = 'eos_ops' ORDER BY 1`,
   );
   // ════════════ THE RULE, NOT A LIST ════════════
   //
@@ -125,6 +140,9 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
   assert.ok(declared.length >= 4, "the migration files declare eos_ops tables at all");
   assert.deepEqual(tables.rows.map((r) => r.table_name), declared,
     "the live eos_ops schema is exactly what the migration files declare -- nothing missing, nothing extra");
+  assert.deepEqual(views.rows.map((r) => r.table_name), declaredViewsIn("eos_ops"),
+    "and the views are exactly the declared ones -- a balance that became a stored table would " +
+    "leave the view list, which is the whole point of separating the two");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.

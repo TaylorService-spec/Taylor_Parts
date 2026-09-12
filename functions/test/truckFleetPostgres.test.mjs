@@ -91,6 +91,28 @@ test.after(async () => {
 
 // ============================ identity is the typed pair ============================
 
+/**
+ * Reverse every migration that sorts STRICTLY NEWER than this lane's own, so that a single
+ * `node-pg-migrate down` once again reverses THIS migration.
+ *
+ * A lane suite proving "my down refuses while my tables still hold data" runs one `down` step. That
+ * reverses whichever migration is newest -- this lane's own only while this lane's own is last. It
+ * was last on the branch and is not last on main: eleven migrations landed together at the W1
+ * integration, and this test was reversing a stranger's migration and reporting
+ * "Missing expected exception" while the refusal it checks worked perfectly.
+ *
+ * Driven by what is APPLIED (pgmigrations) rather than by a file count, so calling it twice in one
+ * test is a no-op the second time instead of digging past the migration under test.
+ */
+async function peelMigrationsNewerThan(prefix) {
+  for (;;) {
+    const applied = await query("SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1");
+    const newest = applied.rows[0]?.name;
+    if (!newest || newest.startsWith(prefix) || newest < prefix) return;
+    migrateDownOne();
+  }
+}
+
 test("a MOBILE location's primary key is (tenant, location_type, location_id)", { skip: SKIP }, async () => {
   await clean();
   const created = await createMobileLocation(repoPool(), TENANT, ACTOR, {
@@ -386,6 +408,7 @@ test("the down migration refuses while the registries hold rows, and succeeds on
   await clean();
   await createMobileLocation(repoPool(), TENANT, ACTOR, { locationId: "m-1", operatingCompanyKey: COMPANY_A, displayLabel: "M1" });
 
+  await peelMigrationsNewerThan("1758326400000_");
   assert.throws(migrateDownOne, (error) => {
     const output = `${error.stdout ?? ""}${error.stderr ?? ""}`;
     assert.match(output, /migration 008 cannot be reversed/);

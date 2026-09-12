@@ -152,3 +152,54 @@ export function declaredSchemas(files = migrationFiles(), dir = MIGRATIONS_DIR) 
   for (const schema of declaredTables(files, dir).keys()) if (schema !== "public") found.add(schema);
   return [...found].sort();
 }
+
+/**
+ * Views declared by the migrations, as a Map of schema -> sorted view names.
+ *
+ * Kept separate from `declaredTables` because `information_schema.tables` does NOT keep them
+ * separate: it lists views alongside base tables, so a schema assertion written against it silently
+ * mixes "what is stored" with "what is projected". The W1 cash-application and invoice migrations
+ * are exactly where that matters -- their whole design claim is that balances are VIEWS over facts
+ * and never stored columns, so a check that cannot tell a view from a table cannot see that claim.
+ */
+export function declaredViews(files = migrationFiles(), dir = MIGRATIONS_DIR) {
+  const bySchema = new Map();
+  for (const file of files) {
+    let current = "public";
+    for (const raw of upSection(dir, file).split("\n")) {
+      const line = raw.trim();
+      const sp = line.match(/^SET\s+search_path\s*=\s*([a-z_][a-z0-9_]*)/i);
+      if (sp) { current = sp[1].toLowerCase(); continue; }
+      const cv = line.match(/^CREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:([a-z_][a-z0-9_]*)\.)?([a-z_][a-z0-9_]*)/i);
+      if (cv) {
+        const schema = (cv[1] ?? current).toLowerCase();
+        if (!bySchema.has(schema)) bySchema.set(schema, new Set());
+        bySchema.get(schema).add(cv[2].toLowerCase());
+        continue;
+      }
+      const dv = line.match(/^DROP\s+VIEW\s+(?:IF\s+EXISTS\s+)?(?:([a-z_][a-z0-9_]*)\.)?([a-z_][a-z0-9_]*)/i);
+      if (dv) bySchema.get((dv[1] ?? current).toLowerCase())?.delete(dv[2].toLowerCase());
+    }
+  }
+  return new Map([...bySchema].map(([s, v]) => [s, [...v].sort()]));
+}
+
+/** Sorted view names one schema's migrations declare. */
+export const declaredViewsIn = (schema, files, dir) => declaredViews(files, dir).get(schema) ?? [];
+
+/**
+ * How many migrations sort STRICTLY NEWER than the one whose filename starts with `prefix`.
+ *
+ * ════════════════════ THE UNWIND-DEPTH RULE ════════════════════
+ *
+ * A lane suite that wants to prove "MY migration's down refuses while it still holds data" runs a
+ * single `node-pg-migrate down`, which reverses whichever migration is currently newest. That is the
+ * lane's own only while the lane's own is last -- true on a branch cut from main, false the moment a
+ * sibling lands. Eleven siblings landed at the W1 integration, and every one of these suites was
+ * then reversing somebody else's migration and reporting "Missing expected exception".
+ *
+ * Peeling exactly this many migrations first restores the precondition the test was written under,
+ * without hardcoding a depth that the next migration invalidates again.
+ */
+export const stepsNewerThan = (prefix, dir) =>
+  migrationFiles(dir).filter((f) => f > prefix && !f.startsWith(prefix)).length;

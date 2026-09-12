@@ -106,9 +106,18 @@ test("eos_crm stands beside eos_policy and eos_ops, with exactly three tables", 
   const ops = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
-  assert.deepEqual(ops.rows.map((r) => r.table_name), [
-    "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "no customer-site table was added to the operational schema");
+  // THE RULE, NOT A LIST. This named the four migration-005 tables and read as "eos_ops contains
+  // exactly these", which stopped being true the moment any sibling lane added an operational table
+  // -- eleven did. The claim this test is actually making is narrower and survives all of them: the
+  // CRM address book lives in eos_crm, and NO table of that family was put in the operational schema.
+  const opsNames = ops.rows.map((r) => r.table_name);
+  for (const crmFamily of ["accounts", "contacts", "account_locations", "customer_sites", "sites"]) {
+    assert.equal(opsNames.includes(crmFamily), false,
+      `${crmFamily} belongs to eos_crm -- a copy in eos_ops is the second authority this split exists to prevent`);
+  }
+  for (const foundation of ["cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody"]) {
+    assert.ok(opsNames.includes(foundation), `migration 005's ${foundation} is still there`);
+  }
 });
 
 // ============================ the namespace separation, structurally ============================
@@ -269,9 +278,15 @@ test("NO eos_crm table carries an operating company -- all three families are CO
     `SELECT t.typname, e.enumlabel FROM pg_enum e
        JOIN pg_type t ON t.oid = e.enumtypid
        JOIN pg_namespace n ON n.oid = t.typnamespace
-      WHERE n.nspname = 'eos_crm'`,
+      WHERE n.nspname = 'eos_crm'
+      ORDER BY t.typname, e.enumsortorder`,
   );
   assert.deepEqual(enums.rows.filter((r) => /taylor|ventana/i.test(`${r.typname} ${r.enumlabel}`)), []);
+  // ORDERED BY enumsortorder -- the DECLARATION order, which for a lifecycle enum is the meaning.
+  // This query carried no ORDER BY and passed on the lane branch purely on the order Postgres
+  // happened to return rows in; with eleven migrations creating types ahead of it, that order
+  // changed and the assertion failed while the schema was entirely correct. An unordered read
+  // compared against an ordered literal is a flaky test, not a proof.
   assert.deepEqual(enums.rows.map((r) => r.enumlabel), ["PROSPECT", "ACTIVE", "INACTIVE", "ARCHIVED"]);
 });
 

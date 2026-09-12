@@ -12,6 +12,7 @@
 // The claims proved here are STRUCTURAL on purpose. "The writers will remember to pass an operating
 // company" is not a property; "the database refuses a row without one" is.
 import test from "node:test";
+import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
@@ -89,15 +90,21 @@ function downToBefore007() {
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
-  await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
-  await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
-  await client.query("DROP SCHEMA IF EXISTS eos_commercial CASCADE");
+  // EVERY schema the migrations create, read from functions/migrations rather than listed here.
+  //
+  // Each of these resetters carried its own hand-written list, and at the W1 integration no two of
+  // them agreed: some dropped eos_crm, some eos_commercial, most neither. A schema left standing
+  // while `pgmigrations` is dropped makes the next `up` re-run its migration against objects that
+  // still exist -- the failure is `type "commercial_handoff_source" already exists`, 48 tests deep in
+  // a suite that has nothing to do with the commercial schema. Derived, the list cannot drift again.
+  for (const schema of declaredSchemas()) {
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
   await client.query("DROP SCHEMA IF EXISTS eos_ops_conversion_probe CASCADE");
   // Migration 008 created a THIRD schema. A reset that re-migrates from clean has to drop every
   // schema the migrations create, not only the two that existed when it was written: a surviving
   // eos_crm plus a dropped `pgmigrations` makes the next `up` re-run 008 against tables that are
   // still there.
-  await client.query("DROP SCHEMA IF EXISTS eos_crm CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
   migrate(["up"]);
@@ -152,9 +159,9 @@ test.after(async () => {
 
 test("operating_company_key is NOT NULL on all three authority-bearing tables", { skip: SKIP }, async () => {
   await reset();
-  // Scoped to MIGRATION 007's three tables. Later migrations add their own tables carrying the same
-  // column, and an unscoped query would turn this claim about 007 into a running inventory of every
-  // table that ever adopts the convention.
+  // Scoped to the DECLARED carriers (see COMPANY_TABLES above), so the claim stays "every table the
+  // migrations say carries this column really does, correctly" rather than drifting into a running
+  // inventory of whatever happens to be in eos_ops.
   const columns = await query(
     `SELECT table_name, data_type, is_nullable, column_default
        FROM information_schema.columns
@@ -174,7 +181,15 @@ test("operating_company_key is NOT NULL on all three authority-bearing tables", 
     assert.equal(row.data_type, "text", `${row.table_name}.operating_company_key is TEXT, not an enum`);
     assert.equal(row.is_nullable, "NO", `${row.table_name}.operating_company_key is mandatory`);
   }
-  assert.equal(carrying.includes("cycle_count_lines"), false, "a line inherits its sheet's authority");
+  // A CYCLE COUNT LINE MUST NOT CARRY ITS OWN COMPANY. It inherits its sheet's authority, and a
+  // line free to disagree with its sheet is the divergence the column exists to prevent.
+  //
+  // Asserted against the DERIVED carrier list, not against this query's rows: the query is already
+  // scoped to COMPANY_TABLES, so asking it whether it returned cycle_count_lines could only ever
+  // answer "no". Read from the migrations, the check actually fires if some future migration gives
+  // the line table the column. (The `carrying` local this replaced lost its definition in the W1
+  // integration merge while its use survived -- the suite failed with `carrying is not defined`.)
+  assert.equal(COMPANY_TABLES.includes("cycle_count_lines"), false, "a line inherits its sheet's authority");
 });
 
 test("there is NO SQL DEFAULT for the operating company -- a writer must decide", { skip: SKIP }, async () => {

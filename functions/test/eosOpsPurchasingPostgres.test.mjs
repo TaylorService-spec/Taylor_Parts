@@ -12,6 +12,7 @@
 // immutable" is not a property; "the table has no column an update could be recorded in, and the
 // repository exposes no function that could write one" is.
 import test from "node:test";
+import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -47,8 +48,16 @@ function migrate(args) {
 async function reset() {
   const client = new pg.Client({ connectionString: URL });
   await client.connect();
-  await client.query("DROP SCHEMA IF EXISTS eos_policy CASCADE");
-  await client.query("DROP SCHEMA IF EXISTS eos_ops CASCADE");
+  // EVERY schema the migrations create, read from functions/migrations rather than listed here.
+  //
+  // Each of these resetters carried its own hand-written list, and at the W1 integration no two of
+  // them agreed: some dropped eos_crm, some eos_commercial, most neither. A schema left standing
+  // while `pgmigrations` is dropped makes the next `up` re-run its migration against objects that
+  // still exist -- the failure is `type "commercial_handoff_source" already exists`, 48 tests deep in
+  // a suite that has nothing to do with the commercial schema. Derived, the list cannot drift again.
+  for (const schema of declaredSchemas()) {
+    await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  }
   await client.query("DROP SCHEMA IF EXISTS eos_ops_conversion_probe CASCADE");
   await client.query("DROP TABLE IF EXISTS pgmigrations");
   await client.end();
@@ -97,6 +106,28 @@ test.after(async () => {
 });
 
 // ============================ RULING 1: the purchase order is IMMUTABLE ============================
+
+/**
+ * Reverse every migration that sorts STRICTLY NEWER than this lane's own, so that a single
+ * `node-pg-migrate down` once again reverses THIS migration.
+ *
+ * A lane suite proving "my down refuses while my tables still hold data" runs one `down` step. That
+ * reverses whichever migration is newest -- this lane's own only while this lane's own is last. It
+ * was last on the branch and is not last on main: eleven migrations landed together at the W1
+ * integration, and this test was reversing a stranger's migration and reporting
+ * "Missing expected exception" while the refusal it checks worked perfectly.
+ *
+ * Driven by what is APPLIED (pgmigrations) rather than by a file count, so calling it twice in one
+ * test is a no-op the second time instead of digging past the migration under test.
+ */
+async function peelMigrationsNewerThan(prefix) {
+  for (;;) {
+    const applied = await query("SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1");
+    const newest = applied.rows[0]?.name;
+    if (!newest || newest.startsWith(prefix) || newest < prefix) return;
+    migrate(["down"]);
+  }
+}
 
 test("purchase_orders has no column an update could be recorded in", { skip: SKIP }, async () => {
   await reset();
@@ -577,6 +608,7 @@ test("the whole migration set is reversible from a populated purchasing schema",
   await po.voidPurchaseOrder(repoPool(), TENANT, "u-3", order.purchaseOrderId, "supplier cancelled");
   // Down then up: the purchasing tables are the migration's own and carry no pre-cutover rows it
   // would have to refuse to invent an authority for.
+  await peelMigrationsNewerThan("1758672000000_");
   migrate(["down"]);
   const { rows } = await query(
     `SELECT count(*)::int AS n FROM information_schema.tables
