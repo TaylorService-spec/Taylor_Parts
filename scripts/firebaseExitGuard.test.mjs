@@ -113,18 +113,25 @@ test("mentioning firebase in prose does not produce an import specifier", () => 
 // Exact signature matching, not keyword scanning
 // ---------------------------------------------------------------------------------------------
 
+// The second argument is the file's repo-relative path: every business-runtime class is fenced
+// at every business-runtime root, so the ROOT is what decides which of the three keys for a
+// given class applies. See "root is a per-file filter" further down.
 test("classifyFile flags each forbidden category by its own exact signature", () => {
   assert.deepEqual(
-    [...classifyFile('import { doc } from "firebase/firestore";')],
+    [...classifyFile('import { doc } from "firebase/firestore";',
+      "field-ops-app-vite/src/services/workOrders.js")],
     ["frontend.firestore_client"]);
   assert.deepEqual(
-    [...classifyFile('import { httpsCallable } from "firebase/functions";')],
+    [...classifyFile('import { httpsCallable } from "firebase/functions";',
+      "field-ops-app-vite/src/services/workOrders.js")],
     ["frontend.firebase_functions_client"]);
   assert.deepEqual(
-    [...classifyFile('import { getFirestore } from "firebase-admin/firestore";')],
+    [...classifyFile('import { getFirestore } from "firebase-admin/firestore";',
+      "functions/src/inventory/inventoryWrites.ts")],
     ["server.firebase_admin_firestore"]);
   assert.deepEqual(
-    [...classifyFile('import { onCall } from "firebase-functions/v2/https";')],
+    [...classifyFile('import { onCall } from "firebase-functions/v2/https";',
+      "functions/src/inventory/inventoryCallables.ts")],
     ["server.firebase_functions_server"]);
 });
 
@@ -157,7 +164,9 @@ test("a file mixing identity auth with a business dependency is flagged only for
     'import { getAuth } from "firebase-admin/auth";',
     'import { getFirestore } from "firebase-admin/firestore";',
   ].join("\n");
-  assert.deepEqual([...classifyFile(mixed)], ["server.firebase_admin_firestore"]);
+  assert.deepEqual(
+    [...classifyFile(mixed, "functions/src/inventory/inventoryWrites.ts")],
+    ["server.firebase_admin_firestore"]);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -487,4 +496,266 @@ test("W1-C21 retired modules stay out of the baseline -- the ratchet never re-gr
   assert.deepEqual(reentered, [],
     `a W1-C21-retired path is back in ${"docs/architecture/firebase-exit-baseline.json"} -- the ` +
     "baseline is a floor that may only shrink:\n" + reentered.map((p) => `  ${p}`).join("\n"));
+});
+
+// =============================================================================================
+// SCAN COVERAGE: category.root as a real per-file filter, .mjs, and the integrations/ boundary
+// =============================================================================================
+//
+// What is being proven here:
+//
+//   * `root` is a PER-FILE FILTER, not just a list of directories to walk. Before this, scanTree
+//     collected the roots, walked them, and evaluated EVERY category against EVERY file from
+//     EVERY root. With two roots that was invisible; adding a third made
+//     field-ops-app-vite/src/types/workOrder.ts report as an "integration-boundary Firestore
+//     client" (239 such false violations, measured). A file is now only tested against the
+//     categories whose root actually contains it;
+//
+//   * widening coverage never narrows it: all four business-runtime classes are fenced at all
+//     three roots, so nothing the previous unfiltered classifier caught is now unfenced;
+//
+//   * .mjs is scanned -- integrations/ is written entirely in ESM .mjs, so without this the
+//     root would be walked and every file in it would still be invisible to the classifier;
+//
+//   * a Firebase business-runtime import placed under integrations/ IS caught (the negative
+//     test: this is the hole the whole change exists to close);
+//
+//   * integrations/ has no Firebase business-runtime dependency today, so closing the hole does
+//     not grow docs/architecture/firebase-exit-baseline.json.
+import { mkdirSync, readdirSync } from "node:fs";
+
+import {
+  SCAN_EXTENSIONS,
+  categoriesForPath,
+  categoryOwnsPath,
+} from "./firebaseExitGuard.mjs";
+
+const SCAN_ROOT_PATHS = ["field-ops-app-vite/src", "functions/src", "integrations"];
+const BUSINESS_RUNTIME_CLASS_NAMES = [
+  "firestore_client",
+  "firebase_functions_client",
+  "firebase_admin_firestore",
+  "firebase_functions_server",
+];
+const SPECIFIER_FOR_CLASS = {
+  firestore_client: "firebase/firestore",
+  firebase_functions_client: "firebase/functions",
+  firebase_admin_firestore: "firebase-admin/firestore",
+  firebase_functions_server: "firebase-functions/v2/https",
+};
+
+/** Build a throwaway source tree so scanTree can be exercised end-to-end without touching the
+ * repository under test. */
+function withFixtureTree(files, body) {
+  const dir = mkdtempSync(join(tmpdir(), "firebase-exit-guard-tree-"));
+  try {
+    for (const [relativePath, contents] of Object.entries(files)) {
+      const full = join(dir, ...relativePath.split("/"));
+      mkdirSync(join(full, ".."), { recursive: true });
+      writeFileSync(full, contents);
+    }
+    return body(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// root is a per-file filter
+// ---------------------------------------------------------------------------------------------
+
+test("categoryOwnsPath matches only a file genuinely inside the root, never a bare string prefix", () => {
+  const integrations = FORBIDDEN_CATEGORIES.find((category) => category.root === "integrations");
+  assert.equal(categoryOwnsPath(integrations, "integrations/chatgpt-eos-intake/src/app.mjs"), true);
+  // "integrations-archive" starts with "integrations" as a string but is a different directory.
+  assert.equal(categoryOwnsPath(integrations, "integrations-archive/src/app.mjs"), false);
+  assert.equal(categoryOwnsPath(integrations, "docs/integrations/notes.js"), false);
+
+  const server = FORBIDDEN_CATEGORIES.find((category) => category.root === "functions/src");
+  assert.equal(categoryOwnsPath(server, "functions/src/coverage/coverageCallables.ts"), true);
+  assert.equal(categoryOwnsPath(server, "functions/srcfoo/x.ts"), false);
+  assert.equal(categoryOwnsPath(server, "functions/scripts/x.js"), false);
+});
+
+test("categoriesForPath returns exactly the categories of the root that contains the file", () => {
+  for (const root of SCAN_ROOT_PATHS) {
+    const categories = categoriesForPath(`${root}/some/module.ts`);
+    assert.deepEqual(
+      categories.map((category) => category.root),
+      new Array(BUSINESS_RUNTIME_CLASS_NAMES.length).fill(root),
+      `${root} files must only be classified against ${root} categories`);
+  }
+  // A file under no business-runtime root is classified against nothing at all.
+  assert.deepEqual(categoriesForPath("scripts/firebaseExitGuard.mjs"), []);
+  assert.deepEqual(categoriesForPath("docs/architecture/firebase-exit-ratchet.md"), []);
+});
+
+// THE TRAP. Adding a third root without making `root` a per-file filter reported
+// field-ops-app-vite/src/types/workOrder.ts as an integration-boundary Firestore client, because
+// `root` only ever contributed to the set of directories WALKED -- every category was then
+// evaluated against every file from every root.
+test("a frontend file is classified only under its own root's category, never under another " +
+  "root's category", () => {
+  const categories = classifyFile(
+    'import type { DocumentData } from "firebase/firestore";',
+    "field-ops-app-vite/src/types/workOrder.ts");
+  assert.deepEqual([...categories], ["frontend.firestore_client"]);
+
+  const serverCategories = classifyFile(
+    'import { getFirestore } from "firebase-admin/firestore";',
+    "functions/src/inventory/inventoryWrites.ts");
+  assert.deepEqual([...serverCategories], ["server.firebase_admin_firestore"]);
+
+  const integrationCategories = classifyFile(
+    'import { getFirestore } from "firebase-admin/firestore";',
+    "integrations/chatgpt-eos-intake/src/store.mjs");
+  assert.deepEqual([...integrationCategories], ["integrations.firebase_admin_firestore"]);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Widening coverage must never narrow it
+// ---------------------------------------------------------------------------------------------
+
+test("every business-runtime dependency class is fenced at every business-runtime root", () => {
+  const expected = SCAN_ROOT_PATHS.flatMap((root) =>
+    BUSINESS_RUNTIME_CLASS_NAMES.map((name) => `${root} :: ${name}`));
+  const actual = FORBIDDEN_CATEGORIES.map(
+    (category) => `${category.root} :: ${category.key.split(".")[1]}`);
+  assert.deepEqual(actual.sort(), expected.sort(),
+    "a class fenced at one root but not another is a hole: restricting a class to the root where " +
+    "it happens to have baseline entries today would REMOVE coverage the unfiltered classifier had");
+});
+
+test("each root/class pair actually fires on its own specifier and on nothing else", () => {
+  for (const root of SCAN_ROOT_PATHS) {
+    for (const name of BUSINESS_RUNTIME_CLASS_NAMES) {
+      const source = `import * as x from "${SPECIFIER_FOR_CLASS[name]}";`;
+      const categories = [...classifyFile(source, `${root}/module.mjs`)];
+      assert.equal(categories.length, 1, `${root} + ${name} must produce exactly one category`);
+      assert.equal(categories[0].endsWith(`.${name}`), true,
+        `${root} + ${name} produced ${categories[0]}`);
+      assert.equal(
+        FORBIDDEN_CATEGORIES.find((category) => category.key === categories[0]).root, root);
+    }
+  }
+});
+
+test("identity-only Firebase imports stay unfenced at the integrations root too", () => {
+  const identitySource = [
+    'import { getAuth } from "firebase-admin/auth";',
+    'import { initializeApp } from "firebase-admin/app";',
+    'import { logger } from "firebase-functions/logger";',
+  ].join("\n");
+  assert.deepEqual(
+    [...classifyFile(identitySource, "integrations/chatgpt-eos-intake/src/auth.mjs")], []);
+});
+
+// ---------------------------------------------------------------------------------------------
+// .mjs is scanned
+// ---------------------------------------------------------------------------------------------
+
+test("SCAN_EXTENSIONS includes .mjs -- integrations/ is written entirely in ESM .mjs", () => {
+  assert.equal(SCAN_EXTENSIONS.includes(".mjs"), true);
+  const integrationSources = readdirSync(join(REPO_ROOT, "integrations/chatgpt-eos-intake/src"));
+  assert.ok(
+    integrationSources.some((entry) => entry.endsWith(".mjs")),
+    "integrations/chatgpt-eos-intake/src must still be .mjs -- if it is not, this guard's " +
+    "extension coverage needs rechecking, not this assertion relaxing");
+  assert.ok(
+    integrationSources.every(
+      (entry) => SCAN_EXTENSIONS.some((extension) => entry.endsWith(extension))),
+    "every hand-authored integrations source file must match a scanned extension");
+});
+
+// ---------------------------------------------------------------------------------------------
+// THE NEGATIVE TEST: a Firebase business-runtime import under integrations/ is now caught
+// ---------------------------------------------------------------------------------------------
+
+test("a firebase-admin/firestore import placed under integrations/ is a violation against an " +
+  "empty baseline", () => {
+  withFixtureTree({
+    "integrations/chatgpt-eos-intake/src/store.mjs":
+      'import { getFirestore } from "firebase-admin/firestore";\nexport const db = getFirestore();\n',
+  }, (root) => {
+    const scanResults = scanTree(root);
+    assert.deepEqual(
+      [...scanResults.get("integrations.firebase_admin_firestore")],
+      ["integrations/chatgpt-eos-intake/src/store.mjs"],
+      "an .mjs module under integrations/ importing firebase-admin/firestore must be seen");
+
+    const { violations } = evaluateGuard(makeBaseline(), scanResults);
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].category, "integrations.firebase_admin_firestore");
+    assert.equal(violations[0].path, "integrations/chatgpt-eos-intake/src/store.mjs");
+  });
+});
+
+test("each forbidden class placed under integrations/ is caught, including the callable " +
+  "transports", () => {
+  for (const name of BUSINESS_RUNTIME_CLASS_NAMES) {
+    withFixtureTree({
+      "integrations/chatgpt-eos-intake/src/probe.mjs":
+        `import * as x from "${SPECIFIER_FOR_CLASS[name]}";\nexport default x;\n`,
+    }, (root) => {
+      const { violations } = evaluateGuard(makeBaseline(), scanTree(root));
+      assert.deepEqual(
+        violations.map((violation) => violation.category),
+        [`integrations.${name}`],
+        `${SPECIFIER_FOR_CLASS[name]} under integrations/ must be a violation`);
+    });
+  }
+});
+
+test("widening to integrations/ produces no violation for files in the other roots -- the " +
+  "239-false-violation trap stays closed", () => {
+  withFixtureTree({
+    "field-ops-app-vite/src/types/workOrder.ts":
+      'import type { DocumentData } from "firebase/firestore";\nexport type T = DocumentData;\n',
+    "functions/src/inventory/writes.ts":
+      'import { getFirestore } from "firebase-admin/firestore";\nexport const db = getFirestore();\n',
+    "integrations/chatgpt-eos-intake/src/app.mjs":
+      'import express from "express";\nexport default express();\n',
+  }, (root) => {
+    const { violations } = evaluateGuard(makeBaseline(), scanTree(root));
+    assert.deepEqual(
+      violations.map((violation) => `${violation.category} ${violation.path}`).sort(),
+      [
+        "frontend.firestore_client field-ops-app-vite/src/types/workOrder.ts",
+        "server.firebase_admin_firestore functions/src/inventory/writes.ts",
+      ],
+      "each file must be reported exactly once, under the category of the root that owns it");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Closing the hole must not grow the baseline
+// ---------------------------------------------------------------------------------------------
+
+test("integrations/ has no Firebase business-runtime dependency today, so scanning it adds " +
+  "nothing to the baseline", () => {
+  const scanResults = scanTree(REPO_ROOT);
+  for (const category of FORBIDDEN_CATEGORIES) {
+    if (category.root !== "integrations") continue;
+    assert.deepEqual([...scanResults.get(category.key)], [],
+      `${category.key} must be empty -- if a real dependency appeared here it is a violation to ` +
+      "migrate off, never a baseline entry to add");
+  }
+});
+
+test("every category the live scan observes is covered by the committed baseline, and the " +
+  "eight zero-entry cross categories stay at zero", () => {
+  const baseline = loadBaseline(REPO_ROOT);
+  const scanResults = scanTree(REPO_ROOT);
+  const populated = FORBIDDEN_CATEGORIES
+    .filter((category) => scanResults.get(category.key).size > 0)
+    .map((category) => category.key);
+  assert.deepEqual(populated.sort(), [
+    "frontend.firebase_functions_client",
+    "frontend.firestore_client",
+    "server.firebase_admin_firestore",
+    "server.firebase_functions_server",
+  ], "a newly populated category is a new Firebase dependency, not a baseline update");
+  for (const key of populated) {
+    assert.equal(baselinePathsFor(baseline, key).size, scanResults.get(key).size);
+  }
 });
