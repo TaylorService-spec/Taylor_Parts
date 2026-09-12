@@ -1932,7 +1932,6 @@
       "supportsDelete": false,
       "capabilitiesByVerb": {
         "C": [
-          "inventory.action.create",
           "inventory.cycleCount.create"
         ],
         "R": [

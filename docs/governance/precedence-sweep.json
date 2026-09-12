@@ -7,10 +7,10 @@
  ],
  "totals": {
   "EXPLICIT_OWNER_DECISION": 103,
-  "CANONICAL_MATRIX": 116,
+  "CANONICAL_MATRIX": 114,
+  "UNJUSTIFIED": 6,
   "WORKFLOW_REQUIRED": 4,
-  "LEGACY_COMPATIBILITY_ONLY": 2,
-  "UNJUSTIFIED": 4
+  "LEGACY_COMPATIBILITY_ONLY": 2
  },
  "rows": [
   {
@@ -348,8 +348,8 @@
   {
    "roleId": "generalManager",
    "capability": "reorder.request.postPurchasingUpdate",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
    "alsoHeldBy": [
     "purchasingManager"
    ]
@@ -1939,8 +1939,8 @@
   {
    "roleId": "purchasingManager",
    "capability": "reorder.request.postPurchasingUpdate",
-   "classification": "CANONICAL_MATRIX",
-   "basis": "Detailed CRUD row",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
    "alsoHeldBy": [
     "generalManager"
    ]

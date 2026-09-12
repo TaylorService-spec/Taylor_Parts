@@ -51,8 +51,14 @@ export const OBJECT_PERMISSIONS = Object.freeze([
     C: [], R: ["inventory.catalog.read"], E: ["inventory.catalog.manage", "inventory.catalog.activate"], D: [] },
   { object: "Inventory Stock", domain: "Inventory",
     C: [], R: ["inventory.transaction.read", "inventory.analytics.read"], E: ["inventory.stock.receive"], D: [] },
+  // `inventory.action.create` REMOVED: it advertised a Create nothing can perform. Its only writer,
+  // domain/inventoryActions.js `recordInventoryAction()`, throws unconditionally (Owner ruling
+  // 2026-08-30) and the `.add()`-capable store handle was deleted with it. The catalog still carries
+  // the id as active, so a grid that listed it told an administrator to request authority for an
+  // operation with no code behind it. functions/scripts/governance/objectCapabilityMap.mjs already
+  // recorded `C: []` here, so the two tables disagreed in the repository as shipped.
   { object: "Inventory Adjustments", domain: "Inventory",
-    C: ["inventory.action.create", "inventory.cycleCount.create"], R: ["inventory.action.read"],
+    C: ["inventory.cycleCount.create"], R: ["inventory.action.read"],
     E: ["inventory.cycleCount.submit", "inventory.cycleCount.reconcile", "inventory.cycleCount.cancel"], D: [] },
   // REORDER REQUEST AND PURCHASE ORDER ARE SEPARATE OBJECTS (Owner ruling, 2026-09-08).
   //
