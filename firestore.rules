@@ -514,6 +514,17 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // BUSINESS NUMBER CLAIM LEDGER (functions/src/numbering/businessNumber.ts). One document per
+    // issued human-facing document number (WO-2026-000001, SO-2026-000014, INV-000007, ...), created
+    // by the allocator inside the same transaction that issues the number. Its `create` is what makes
+    // a duplicate number impossible even if the counter document is lost, so a client that could
+    // write here could manufacture or block a business number. Same posture as `counters` above:
+    // Admin-SDK-only, fully closed to clients including reads.
+    match /business_number_claims/{businessNumber} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
     // Epic 2D Inventory Trigger System (docs/architecture/ADR-003).
     // Admin-SDK-only writes, same posture as counters above. Read
     // access opened to admin/dispatcher when the Operations dashboard

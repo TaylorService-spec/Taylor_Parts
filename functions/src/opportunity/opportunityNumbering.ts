@@ -36,14 +36,9 @@
 //     together or not at all, so a reference is never allocated without its record
 //     appearing, and a record never appears without its reference.
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "../constants/collections";
-
-interface CounterDoc {
-  year: number;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
-}
+import { allocateBusinessNumber, applyPendingWrites } from "../numbering/businessNumber";
 
 /** Counter doc id. Distinct from work_orders_YYYY so the two sequences never interact. */
 export function opportunityCounterDocId(year: number): string {
@@ -78,16 +73,11 @@ export async function allocateOpportunityNumber(
   tx: Transaction,
   year: number
 ): Promise<AllocatedOpportunityNumber> {
-  const ref = counterRef(year);
-  const snap = await tx.get(ref);
-
-  const sequence = snap.exists ? (snap.data() as CounterDoc).sequence + 1 : 1;
-
-  tx.set(ref, {
-    year,
-    sequence,
-    updatedAt: FieldValue.serverTimestamp(),
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: counterRef(year),
+    format: (sequence) => formatOpportunityNumber(year, sequence),
+    counterFields: { year },
   });
-
-  return { opportunityNumber: formatOpportunityNumber(year, sequence), sequence };
+  applyPendingWrites(tx, allocated.pendingWrites);
+  return { opportunityNumber: allocated.number, sequence: allocated.sequence };
 }

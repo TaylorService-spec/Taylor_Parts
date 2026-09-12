@@ -39,14 +39,9 @@
 // Opportunity's number, or the Sales Order it later produces. Those are different entities with
 // their own lifecycles; an Agreement's identity must not be borrowed from any of them.
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "../constants/collections";
-
-interface CounterDoc {
-  year: number;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
-}
+import { allocateBusinessNumber, applyPendingWrites } from "../numbering/businessNumber";
 
 /** Counter doc id. Distinct from sales_orders_YYYY / opportunities_YYYY so the sequences never interact. */
 export function salesAgreementCounterDocId(year: number): string {
@@ -80,16 +75,11 @@ export async function allocateSalesAgreementNumber(
   tx: Transaction,
   year: number,
 ): Promise<AllocatedSalesAgreementNumber> {
-  const ref = counterRef(year);
-  const snap = await tx.get(ref);
-
-  const sequence = snap.exists ? (snap.data() as CounterDoc).sequence + 1 : 1;
-
-  tx.set(ref, {
-    year,
-    sequence,
-    updatedAt: FieldValue.serverTimestamp(),
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: counterRef(year),
+    format: (sequence) => formatSalesAgreementNumber(year, sequence),
+    counterFields: { year },
   });
-
-  return { salesAgreementNumber: formatSalesAgreementNumber(year, sequence), sequence };
+  applyPendingWrites(tx, allocated.pendingWrites);
+  return { salesAgreementNumber: allocated.number, sequence: allocated.sequence };
 }

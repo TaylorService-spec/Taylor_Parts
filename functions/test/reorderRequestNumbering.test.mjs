@@ -47,18 +47,46 @@ await ok("the counter is per-year and distinct from every other family's counter
   assert.notEqual(reorderRequestCounterDocId(2026), reorderRequestCounterDocId(2027));
 });
 
-function fakeTx({ exists = false, sequence = 0 } = {}) {
+// Updated for the hardened allocator (functions/src/numbering/businessNumber.ts). Allocation is no
+// longer one read + one write: the allocator also PROBES the business-number claim ledger (reads) and
+// CLAIMS the number it takes (a `create`, which is the hard duplicate barrier). The assertions below
+// still pin "exactly one counter read and one counter write" -- they just count the counter's reads
+// and writes specifically rather than every read and write on the transaction.
+const CLAIMS = "business_number_claims";
+const isClaim = (ref) => ref.path.startsWith(`${CLAIMS}/`);
+
+function fakeTx({ exists = false, sequence = 0, claimed = new Set() } = {}) {
   const writes = [];
   const reads = [];
+  const counterReads = [];
+  const claimReads = [];
+  const counterWrites = [];
+  const claimWrites = [];
+  const snapFor = (ref) => {
+    reads.push(ref);
+    if (isClaim(ref)) {
+      claimReads.push(ref);
+      return { exists: claimed.has(ref.id), id: ref.id, ref, data: () => ({}) };
+    }
+    counterReads.push(ref);
+    return { exists, id: ref.id, ref, data: () => ({ year: 2026, sequence }) };
+  };
   return {
-    writes,
-    reads,
-    async get(ref) {
-      reads.push(ref);
-      return { exists, data: () => ({ year: 2026, sequence }) };
-    },
+    writes, reads, counterReads, claimReads, counterWrites, claimWrites,
+    async get(ref) { return snapFor(ref); },
+    async getAll(...refs) { return refs.flat().map(snapFor); },
     set(ref, value) {
       writes.push({ ref, value });
+      (isClaim(ref) ? claimWrites : counterWrites).push({ ref, value });
+    },
+    create(ref, value) {
+      if (isClaim(ref) && claimed.has(ref.id)) {
+        const err = new Error(`6 ALREADY_EXISTS: entity already exists: ${ref.path}`);
+        err.code = 6;
+        throw err;
+      }
+      writes.push({ ref, value });
+      (isClaim(ref) ? claimWrites : counterWrites).push({ ref, value });
     },
   };
 }
@@ -80,15 +108,16 @@ await ok("an existing counter increments — a sequence value is never reissued"
 await ok("allocation is concurrency-safe: exactly one read and one write, both on the caller's transaction", async () => {
   const tx = fakeTx({ exists: true, sequence: 7 });
   await allocateReorderRequestNumber(tx, 2026);
-  assert.equal(tx.reads.length, 1, "one counter read");
-  assert.equal(tx.writes.length, 1, "one counter write");
+  assert.equal(tx.counterReads.length, 1, "one counter read");
+  assert.equal(tx.counterWrites.length, 1, "one counter write");
+  assert.equal(tx.claimWrites.length, 1, "and exactly one claim, so the number can never be reissued");
 });
 
 await ok("the counter write records the year it belongs to", async () => {
   const tx = fakeTx({ exists: false });
   await allocateReorderRequestNumber(tx, 2026);
-  assert.equal(tx.writes[0].value.year, 2026);
-  assert.equal(tx.writes[0].value.sequence, 1);
+  assert.equal(tx.counterWrites[0].value.year, 2026);
+  assert.equal(tx.counterWrites[0].value.sequence, 1);
 });
 
 await ok("nothing is committed here — the caller owns the boundary", async () => {
@@ -106,8 +135,8 @@ await ok("the number is never derived from the document id, a Work Order number,
   const tx = fakeTx({ exists: true, sequence: 54 });
   const { reorderRequestNumber } = await allocateReorderRequestNumber(tx, 2026);
   assert.equal(reorderRequestNumber, "RR-2026-000055");
-  assert.equal(tx.reads.length, 1, "the allocator reads only the counter doc, never a Reorder Request/Work/Transfer/Receiving Order or ledger doc");
-  assert.equal(tx.reads[0].id, reorderRequestCounterDocId(2026), "the one read is the reorder-request counter, not another entity's document");
+  assert.equal(tx.counterReads.length, 1, "the allocator reads only the counter doc, never a Reorder Request/Work/Transfer/Receiving Order or ledger doc");
+  assert.equal(tx.counterReads[0].id, reorderRequestCounterDocId(2026), "the one read is the reorder-request counter, not another entity's document");
 });
 
 await ok("a second allocation against the same counter state never reuses the first number", async () => {

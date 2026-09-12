@@ -5,14 +5,9 @@
 // it but the invoice's canonical document identity stays separate (the Firestore doc id). Numbers are NOT
 // derived from a Sales Order id, Work Order id, timestamp, or a client counter.
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "../constants/collections";
-
-interface InvoiceCounterDoc {
-  companyId: string;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
-}
+import { allocateBusinessNumber, applyPendingWrites } from "../numbering/businessNumber";
 
 // One counter document per company (keyed inside the already-Admin-SDK-only `counters` collection). Distinct
 // from the Work Order year-counters; the key namespace prevents collision.
@@ -45,9 +40,11 @@ export async function allocateInvoiceNumber(
   if (typeof companyId !== "string" || companyId.trim().length === 0) {
     throw new InvoiceNumberingError("companyId is required to allocate a per-company invoice number");
   }
-  const ref = invoiceCounterRef(companyId);
-  const snap = await tx.get(ref);
-  const sequence = snap.exists ? (snap.data() as InvoiceCounterDoc).sequence + 1 : 1;
-  tx.set(ref, { companyId, sequence, updatedAt: FieldValue.serverTimestamp() });
-  return { invoiceNumber: formatInvoiceNumber(sequence, opts), sequence };
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: invoiceCounterRef(companyId),
+    format: (sequence) => formatInvoiceNumber(sequence, opts),
+    counterFields: { companyId },
+  });
+  applyPendingWrites(tx, allocated.pendingWrites);
+  return { invoiceNumber: allocated.number, sequence: allocated.sequence };
 }

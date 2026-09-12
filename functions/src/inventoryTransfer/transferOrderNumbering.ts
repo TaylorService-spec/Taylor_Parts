@@ -26,14 +26,9 @@
 // its own counter document (`transfer_orders_{year}`), entirely independent of every other identity in
 // the system.
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "../constants/collections.js";
-
-interface CounterDoc {
-  year: number;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
-}
+import { allocateBusinessNumber, applyPendingWrites } from "../numbering/businessNumber.js";
 
 /** Counter doc id. Distinct from opportunities_YYYY / work_orders_YYYY / sales_orders_YYYY / receiving_orders_YYYY so no sequence ever interacts with another family's. */
 export function transferOrderCounterDocId(year: number): string {
@@ -72,16 +67,11 @@ export async function allocateTransferOrderNumber(
   tx: Transaction,
   year: number
 ): Promise<AllocatedTransferOrderNumber> {
-  const ref = counterRef(year);
-  const snap = await tx.get(ref);
-
-  const sequence = snap.exists ? (snap.data() as CounterDoc).sequence + 1 : 1;
-
-  tx.set(ref, {
-    year,
-    sequence,
-    updatedAt: FieldValue.serverTimestamp(),
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: counterRef(year),
+    format: (sequence) => formatTransferOrderNumber(year, sequence),
+    counterFields: { year },
   });
-
-  return { transferOrderNumber: formatTransferOrderNumber(year, sequence), sequence };
+  applyPendingWrites(tx, allocated.pendingWrites);
+  return { transferOrderNumber: allocated.number, sequence: allocated.sequence };
 }

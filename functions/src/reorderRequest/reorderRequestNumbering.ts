@@ -35,14 +35,9 @@
 // server-derived reference, which this lane's charter explicitly treats as a protected Tier-2 change and
 // does not authorize. Flagged in the handoff as REGISTRATION_PENDING, not silently worked around.
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "../constants/collections.js";
-
-interface CounterDoc {
-  year: number;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
-}
+import { allocateBusinessNumber, applyPendingWrites } from "../numbering/businessNumber.js";
 
 /** Counter doc id. Distinct from every other family's counter so no sequence ever interacts with another's. */
 export function reorderRequestCounterDocId(year: number): string {
@@ -76,16 +71,11 @@ export async function allocateReorderRequestNumber(
   tx: Transaction,
   year: number
 ): Promise<AllocatedReorderRequestNumber> {
-  const ref = counterRef(year);
-  const snap = await tx.get(ref);
-
-  const sequence = snap.exists ? (snap.data() as CounterDoc).sequence + 1 : 1;
-
-  tx.set(ref, {
-    year,
-    sequence,
-    updatedAt: FieldValue.serverTimestamp(),
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: counterRef(year),
+    format: (sequence) => formatReorderRequestNumber(year, sequence),
+    counterFields: { year },
   });
-
-  return { reorderRequestNumber: formatReorderRequestNumber(year, sequence), sequence };
+  applyPendingWrites(tx, allocated.pendingWrites);
+  return { reorderRequestNumber: allocated.number, sequence: allocated.sequence };
 }

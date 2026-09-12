@@ -55,16 +55,33 @@ await ok("the counter is per-year and distinct from every other family's counter
 // commit the counter write itself (a regression back toward the other allocators' immediate-commit
 // style), calling .set on this stub throws, failing the test loudly instead of silently reintroducing the
 // read-after-write ordering bug this module exists to avoid.
-function readOnlyTx({ exists = false, sequence = 0 } = {}) {
+const CLAIMS = "business_number_claims";
+const isClaim = (ref) => ref.path.startsWith(`${CLAIMS}/`);
+
+function readOnlyTx({ exists = false, sequence = 0, claimed = new Set() } = {}) {
   const reads = [];
+  const counterReads = [];
+  const claimReads = [];
+  const snapFor = (ref) => {
+    reads.push(ref);
+    if (isClaim(ref)) {
+      claimReads.push(ref);
+      return { exists: claimed.has(ref.id), id: ref.id, ref, data: () => ({}) };
+    }
+    counterReads.push(ref);
+    return { exists, id: ref.id, ref, data: () => ({ year: 2026, sequence }) };
+  };
   return {
     reads,
-    async get(ref) {
-      reads.push(ref);
-      return { exists, data: () => ({ year: 2026, sequence }) };
-    },
+    counterReads,
+    claimReads,
+    async get(ref) { return snapFor(ref); },
+    async getAll(...refs) { return refs.flat().map(snapFor); },
     set() {
       throw new Error("allocateReceivingOrderNumber must never call tx.set itself -- the counter write must be returned for the caller to buffer");
+    },
+    create() {
+      throw new Error("allocateReceivingOrderNumber must never call tx.create itself -- the claim write must be returned for the caller to buffer");
     },
   };
 }
@@ -93,8 +110,8 @@ await ok("allocation performs exactly one read, on the caller's transaction, and
   // count and target explicitly.
   const tx = readOnlyTx({ exists: true, sequence: 7 });
   const { counterWrite } = await allocateReceivingOrderNumber(tx, 2026);
-  assert.equal(tx.reads.length, 1, "one counter read");
-  assert.equal(tx.reads[0].id, receivingOrderCounterDocId(2026), "the one read is the receiving-order counter, not another entity's document");
+  assert.equal(tx.counterReads.length, 1, "one counter read");
+  assert.equal(tx.counterReads[0].id, receivingOrderCounterDocId(2026), "the one read is the receiving-order counter, not another entity's document");
   assert.equal(counterWrite.ref.id, receivingOrderCounterDocId(2026), "the pending write targets the same counter doc that was read");
 });
 
@@ -103,16 +120,25 @@ await ok("a caller that commits the returned counterWrite reproduces the same on
   // buffer, then flush with tx.set. Proves the deferred split still adds up to exactly one read + one
   // write against the counter doc once the caller finishes the job this function stopped short of.
   const writes = [];
+  const counterReads = [];
   const tx = {
-    reads: [],
-    async get(ref) { this.reads.push(ref); return { exists: false, data: () => ({}) }; },
-    set(ref, data) { writes.push({ ref, data }); },
+    async get(ref) { counterReads.push(ref); return { exists: false, id: ref.id, ref, data: () => ({}) }; },
+    async getAll(...refs) { return refs.flat().map((ref) => ({ exists: false, id: ref.id, ref, data: () => ({}) })); },
+    set(ref, data) { writes.push({ op: "set", ref, data }); },
+    create(ref, data) { writes.push({ op: "create", ref, data }); },
   };
-  const { counterWrite } = await allocateReceivingOrderNumber(tx, 2026);
-  tx.set(counterWrite.ref, counterWrite.data); // caller's own flush step
-  assert.equal(tx.reads.length, 1);
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].data.sequence, 1);
+  const { counterWrite, pendingWrites } = await allocateReceivingOrderNumber(tx, 2026);
+  // The real caller flushes EVERY pending write -- the claim as well as the counter.
+  for (const w of pendingWrites) (w.op === "create" ? tx.create : tx.set)(w.ref, w.data);
+  assert.equal(counterReads.length, 1, "exactly one counter read");
+  assert.equal(writes.length, 2, "a claim create and a counter set");
+  const counterSet = writes.find((w) => w.op === "set");
+  const claimCreate = writes.find((w) => w.op === "create");
+  assert.equal(counterSet.data.sequence, 1);
+  assert.equal(counterSet.ref.id, receivingOrderCounterDocId(2026));
+  assert.equal(claimCreate.ref.id, "RO-2026-000001", "the claim is keyed on the human-facing number itself");
+  assert.equal(counterWrite.ref.id, counterSet.ref.id, "counterWrite still names the same counter doc");
+  assert.equal(counterWrite.data.sequence, 1);
 });
 
 await ok("the number is never derived from the document id, a Work Order number, a Transfer Order number, or an inventory transaction id", async () => {

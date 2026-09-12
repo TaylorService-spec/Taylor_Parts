@@ -319,7 +319,9 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     if (receivingOutcome.outcome === "applied") {
       const allocated = await allocateReceivingOrderNumber(txn, now.getUTCFullYear());
       writes[receivingWriteIndex].data.receivingOrderNumber = allocated.receivingOrderNumber;
-      writes.push({ op: "set", ref: allocated.counterWrite.ref, data: allocated.counterWrite.data });
+      // Flush EVERY pending write the allocator produced -- the business-number CLAIM as well as the
+      // counter set. Flushing only the counter would drop the duplicate defence (businessNumber.ts).
+      for (const w of allocated.pendingWrites) writes.push({ op: w.op, ref: w.ref, data: { ...w.data } });
     }
 
     // ---- 9. stage the RECEIVED ledger effect(s), PER LINE ----

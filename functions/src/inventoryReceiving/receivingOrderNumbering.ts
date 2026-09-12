@@ -29,14 +29,10 @@
 // counter document (`receiving_orders_{year}`), entirely independent of every other identity in the
 // system.
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "../constants/collections.js";
-
-interface CounterDoc {
-  year: number;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
-}
+import { allocateBusinessNumber } from "../numbering/businessNumber.js";
+import type { PendingWrite } from "../numbering/businessNumber.js";
 
 /** Counter doc id. Distinct from opportunities_YYYY / work_orders_YYYY / sales_orders_YYYY / transfer_orders_YYYY so no sequence ever interacts with another family's. */
 export function receivingOrderCounterDocId(year: number): string {
@@ -79,18 +75,21 @@ export interface PendingCounterWrite {
 export async function allocateReceivingOrderNumber(
   tx: Transaction,
   year: number
-): Promise<AllocatedReceivingOrderNumber & { counterWrite: PendingCounterWrite }> {
-  const ref = counterRef(year);
-  const snap = await tx.get(ref);
-
-  const sequence = snap.exists ? (snap.data() as CounterDoc).sequence + 1 : 1;
-
+): Promise<AllocatedReceivingOrderNumber & { counterWrite: PendingCounterWrite; pendingWrites: readonly PendingWrite[] }> {
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: counterRef(year),
+    format: (sequence) => formatReceivingOrderNumber(year, sequence),
+    counterFields: { year },
+  });
+  // The counter `set` is always the LAST pending write (see businessNumber.ts); `counterWrite` keeps
+  // the original single-write shape for any caller that still reads it, but a caller that flushes
+  // ONLY `counterWrite` would drop the CLAIM and lose the duplicate defence -- so flush
+  // `pendingWrites` instead. receiveInventoryStockCommand.ts does.
+  const counterSet = allocated.pendingWrites[allocated.pendingWrites.length - 1];
   return {
-    receivingOrderNumber: formatReceivingOrderNumber(year, sequence),
-    sequence,
-    counterWrite: {
-      ref,
-      data: { year, sequence, updatedAt: FieldValue.serverTimestamp() },
-    },
+    receivingOrderNumber: allocated.number,
+    sequence: allocated.sequence,
+    pendingWrites: allocated.pendingWrites,
+    counterWrite: { ref: counterSet.ref, data: counterSet.data },
   };
 }

@@ -124,6 +124,7 @@
     "test:supplierMigrationExecuteEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs",
     "test:reorderTrustedCommands": "npm run build && node --test test/reorderTrustedCommands.test.mjs test/bindingScopePolicy.test.mjs",
     "test:reorderRequestNumbering": "npm run build && node test/reorderRequestNumbering.test.mjs",
+    "test:businessNumbering": "npm run build && node --test test/businessNumberCollision.test.mjs test/businessNumberAllocatorRatchet.test.mjs test/invoiceNumbering.test.mjs && node test/opportunityNumbering.test.mjs && node test/salesOrderNumbering.test.mjs && node test/transferOrderNumbering.test.mjs && node test/receivingOrderNumbering.test.mjs && node test/reorderRequestNumbering.test.mjs",
     "test:partMasterCallables": "npm run build && node test/partMasterCallablesExport.test.mjs && node test/partMasterCallables.test.mjs",
     "test:manufacturerCallables": "npm run build && node test/manufacturerCallablesExport.test.mjs && node test/manufacturerCallables.test.mjs",
     "test:manufacturerRead": "npm run build && node --test test/manufacturerReadService.test.mjs",

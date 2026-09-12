@@ -18,17 +18,26 @@
 //   together or not at all, so a WO number is never allocated without
 //   its WO doc appearing (or vice versa).
 import type { Transaction, DocumentReference } from "firebase-admin/firestore";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { COUNTERS_COLLECTION } from "./constants/collections";
+import { allocateBusinessNumber, applyPendingWrites } from "./numbering/businessNumber";
 
-interface CounterDoc {
-  year: number;
-  sequence: number;
-  updatedAt: FirebaseFirestore.FieldValue;
+/** Counter doc id. Distinct from every other family's so no sequence ever interacts with another's. */
+export function workOrderCounterDocId(year: number): string {
+  return `work_orders_${year}`;
 }
 
 function counterRef(year: number): DocumentReference {
-  return getFirestore().collection(COUNTERS_COLLECTION).doc(`work_orders_${year}`);
+  return getFirestore().collection(COUNTERS_COLLECTION).doc(workOrderCounterDocId(year));
+}
+
+/**
+ * Pure formatter, exported separately so the format can be tested -- and the backfill tool can reuse
+ * the ONE format authority -- without a Firestore transaction anywhere near it. The shape
+ * `WO-YYYY-######` is what operators read, speak and file by; it must not change.
+ */
+export function formatWorkOrderNumber(year: number, sequence: number): string {
+  return `WO-${year}-${String(sequence).padStart(6, "0")}`;
 }
 
 export interface AllocatedWorkOrderNumber {
@@ -44,17 +53,11 @@ export async function allocateWorkOrderNumber(
   tx: Transaction,
   year: number
 ): Promise<AllocatedWorkOrderNumber> {
-  const ref = counterRef(year);
-  const snap = await tx.get(ref);
-
-  const sequence = snap.exists ? (snap.data() as CounterDoc).sequence + 1 : 1;
-
-  tx.set(ref, {
-    year,
-    sequence,
-    updatedAt: FieldValue.serverTimestamp(),
+  const allocated = await allocateBusinessNumber(tx, {
+    counterRef: counterRef(year),
+    format: (sequence) => formatWorkOrderNumber(year, sequence),
+    counterFields: { year },
   });
-
-  const woNumber = `WO-${year}-${String(sequence).padStart(6, "0")}`;
-  return { woNumber, sequence };
+  applyPendingWrites(tx, allocated.pendingWrites);
+  return { woNumber: allocated.number, sequence: allocated.sequence };
 }

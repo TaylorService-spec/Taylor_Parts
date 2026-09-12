@@ -1,8 +1,13 @@
 // Operational reference numbering — LEGACY BACKFILL tool (OPERATOR-RUN, DRY-RUN BY DEFAULT).
 //
-// Covers all three families this lane's Owner ruling introduced: Transfer Order (TO-YYYY-######,
-// transfer_orders.transferOrderNumber), Receiving Order (RO-YYYY-######, receiving_orders.
-// receivingOrderNumber), and Reorder Request (RR-YYYY-######, reorder_requests.reorderRequestNumber).
+// Covers every per-year business-number family in the system: Work Order (WO-YYYY-######,
+// fieldops_wos.woNumber), Opportunity (OPP-), Sales Order (SO-), Sales Agreement (SA-), Transfer Order
+// (TO-), Receiving Order (RO-) and Reorder Request (RR-). The three TO/RO/RR families came from this
+// lane's original Owner ruling; Sales Order was added by the full-site certification; Work Order,
+// Opportunity and Sales Agreement were added by P3-0B, which found they had been left out for scope
+// reasons rather than because they were safe. Invoice (INV-) is deliberately NOT here: its counter is
+// keyed per COMPANY, not per year, so it does not fit this tool's (family, year) shape -- see the
+// Owner question in P3-0B's handoff before adding it.
 //
 // WHAT THIS DOES NOT DO. It never runs at create time — new records get their reference from
 // transferOrderNumbering.ts / receivingOrderNumbering.ts / reorderRequestNumbering.ts, inside the SAME
@@ -60,7 +65,11 @@ const { formatTransferOrderNumber, transferOrderCounterDocId } = await import(".
 const { formatReceivingOrderNumber, receivingOrderCounterDocId } = await import("../lib/inventoryReceiving/receivingOrderNumbering.js");
 const { formatReorderRequestNumber, reorderRequestCounterDocId } = await import("../lib/reorderRequest/reorderRequestNumbering.js");
 const { formatSalesOrderNumber, salesOrderCounterDocId } = await import("../lib/salesOrder/salesOrderNumbering.js");
+const { formatWorkOrderNumber, workOrderCounterDocId } = await import("../lib/woNumbering.js");
+const { formatOpportunityNumber, opportunityCounterDocId } = await import("../lib/opportunity/opportunityNumbering.js");
+const { formatSalesAgreementNumber, salesAgreementCounterDocId } = await import("../lib/salesAgreement/salesAgreementNumbering.js");
 const { COUNTERS_COLLECTION } = await import("../lib/constants/collections.js");
+const { BUSINESS_NUMBER_CLAIMS_COLLECTION, claimDocId } = await import("../lib/numbering/businessNumber.js");
 
 // ---- family registry: the one place that ties a collection to its field/format/counter -----------------
 const FAMILIES = {
@@ -83,6 +92,37 @@ const FAMILIES = {
     field: "salesOrderNumber",
     counterDocId: salesOrderCounterDocId,
     format: formatSalesOrderNumber,
+  },
+  // WORK ORDER. Added by P3-0B. Work Orders were the one family this tool did not cover, even though
+  // WO-YYYY-###### is the most-spoken business number in the system and woNumbering.ts had the same
+  // counter-loss defect as every other allocator. Nothing about the tool needed to change to accept it:
+  // it is a per-year counter and a PREFIX-YYYY-###### format like the rest, and the format/counter-id
+  // authorities are imported from the compiled lib/ so there is still exactly ONE definition of what a
+  // Work Order number looks like.
+  //
+  // WHY IT WAS EXCLUDED BEFORE (established, not guessed): this tool was written by the lane that
+  // introduced the Transfer Order / Receiving Order / Reorder Request families -- its own header says
+  // "covers all three families this lane's Owner ruling introduced" -- and Sales Order was added later
+  // by the full-site certification for a DIFFERENT reason (an unnumbered Sales Order is invisible to an
+  // .orderBy() list read). Work Orders were never in either lane's scope. The exclusion was scope, not
+  // a judgement that Work Orders were safe.
+  workOrder: {
+    collection: "fieldops_wos",
+    field: "woNumber",
+    counterDocId: workOrderCounterDocId,
+    format: formatWorkOrderNumber,
+  },
+  opportunity: {
+    collection: "opportunities",
+    field: "opportunityNumber",
+    counterDocId: opportunityCounterDocId,
+    format: formatOpportunityNumber,
+  },
+  salesAgreement: {
+    collection: "sales_agreements",
+    field: "salesAgreementNumber",
+    counterDocId: salesAgreementCounterDocId,
+    format: formatSalesAgreementNumber,
   },
   transferOrder: {
     collection: "transfer_orders",
@@ -293,6 +333,24 @@ async function assignOne(db, family, id) {
       return { id, outcome: "SKIPPED_COLLISION", candidate };
     }
 
+    // CLAIM LEDGER (functions/src/numbering/businessNumber.ts). The live allocators claim every number
+    // they issue, which is what makes a counter loss unable to reissue one. A number this tool assigns
+    // must be claimed too -- otherwise a backfilled WO-2026-000001 would be invisible to the live
+    // allocator's probe and could be handed out a second time. Read first (this transaction has not
+    // written yet), so an already-claimed candidate SKIPS this one record instead of aborting the batch.
+    const claimRef = db.collection(BUSINESS_NUMBER_CLAIMS_COLLECTION).doc(claimDocId(candidate));
+    const claimSnap = await txn.get(claimRef);
+    if (claimSnap.exists) {
+      return { id, outcome: "SKIPPED_COLLISION", candidate };
+    }
+
+    txn.create(claimRef, {
+      businessNumber: candidate,
+      counterPath: `${COUNTERS_COLLECTION}/${family.counterDocId(year)}`,
+      sequence,
+      claimedAt: FieldValue.serverTimestamp(),
+      claimedBy: "backfillOperationalNumbering",
+    });
     txn.set(counterRef, { year, sequence, updatedAt: FieldValue.serverTimestamp() });
     txn.update(ref, { [family.field]: candidate });
     return { id, outcome: "ASSIGNED", number: candidate };
