@@ -12,6 +12,11 @@ import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles.js";
 import type { Role } from "../types/access.js";
 import { stageAuditEvent } from "../access/auditEventWriter.js";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
+// THE ONE controlType -> trackingMode mapping. This file carried a byte-identical private copy of it,
+// which is exactly the shape that module exists to prevent: two answers to "is this Part counted by
+// quantity or by serial", and a Cycle Count line's whole tracking path -- blind serial snapshot versus
+// quantity snapshot -- hangs on that answer.
+import { controlTypeToTrackingMode } from "../partMaster/controlTypeTrackingMode.js";
 import type { PartId } from "../partMaster/types.js";
 import type { ResolvedCycleCountPart, CycleCountAuditInput } from "./cycleCountCommand.js";
 
@@ -54,19 +59,6 @@ export function makeResolveCycleCountPermissionThroughTxn(capability: string) {
     });
     return result.decision === "ALLOW";
   };
-}
-
-function controlTypeToTrackingMode(controlType: string): string {
-  switch (controlType) {
-    case "STANDARD":
-      return "NONE";
-    case "SERIALIZED":
-      return "SERIAL";
-    case "LOT":
-      return "LOT";
-    default:
-      return "LOT";
-  }
 }
 
 export async function resolveCycleCountPartThroughTxn(txn: Transaction, db: Firestore, partId: string): Promise<ResolvedCycleCountPart | null> {
