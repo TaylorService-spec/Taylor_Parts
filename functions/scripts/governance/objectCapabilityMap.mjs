@@ -62,7 +62,13 @@ export const OBJECT_CAPABILITY_MAP = Object.freeze({
   "Parts Catalog": { R: ["inventory.catalog.read"], C: ["inventory.catalog.manage"], E: ["inventory.catalog.manage"], D: [] },
   "Inventory Stock": { R: ["inventory.balance.read", "inventory.transaction.read"], C: [], E: [], D: [] },
   "Inventory Adjustments": { R: ["inventory.action.read"], C: [], E: [], D: [] },
-  "Purchase Orders": { R: ["reorder.purchaseOrder.read"], C: ["reorder.purchaseOrder.create"], E: ["reorder.request.postPurchasingUpdate"], D: [] },
+  // E EMPTIED. `reorder.request.postPurchasingUpdate` is a Parts / Purchasing WORKFLOW ACTION, and
+  // Owner ruling D-5 (2026-09-08) bans every such id from the CRUD matrix -- it is listed in
+  // objectPermissionMap.js's WORKFLOW_ACTION_CAPABILITIES for exactly that reason. It is also a
+  // REORDER REQUEST transition, so carrying it here attributed one capability to two objects and
+  // gave an administrator two contradictory ways to grant it. Voiding, ordering and progress
+  // posting are transitions; the purchase order has no field-edit authority of its own.
+  "Purchase Orders": { R: ["reorder.purchaseOrder.read"], C: ["reorder.purchaseOrder.create"], E: [], D: [] },
   "Receiving": { R: [], C: ["inventory.stock.receive"], E: ["inventory.stock.receive"], D: [] },
   "Transfer Orders": { R: ["warehouse.transferOrder.read"], C: [], E: [], D: [] },
   "Serialized Assets": { R: ["inventory.serializedAsset.read"], C: [], E: [], D: [] },

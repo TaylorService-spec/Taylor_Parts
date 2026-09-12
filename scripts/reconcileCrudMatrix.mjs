@@ -110,8 +110,12 @@ const OBJECTS = [
   { object: "Technician Time / Non-work", domain: "Service", missing: true },
   { object: "Parts Catalog", domain: "Inventory", C: [], R: ["inventory.catalog.read"], E: ["inventory.catalog.manage", "inventory.catalog.activate"] },
   { object: "Inventory Stock", domain: "Inventory", C: [], R: ["inventory.transaction.read", "inventory.analytics.read"], E: ["inventory.stock.receive"] },
-  { object: "Inventory Adjustments", domain: "Inventory", C: ["inventory.action.create"], R: ["inventory.action.read"], E: ["inventory.cycleCount.reconcile"] },
-  { object: "Purchase Orders", domain: "Procurement", C: ["reorder.purchaseOrder.create"], R: ["reorder.purchaseOrder.read"], E: ["reorder.purchaseOrder.void"] },
+  // `inventory.action.create` REMOVED -- its only writer throws unconditionally (Owner ruling
+  // 2026-08-30); see objectPermissionMap.js's note on the same row.
+  { object: "Inventory Adjustments", domain: "Inventory", C: [], R: ["inventory.action.read"], E: ["inventory.cycleCount.reconcile"] },
+  // `reorder.purchaseOrder.void` REMOVED -- a WORKFLOW ACTION (ORDERED -> VOIDED), banned from the
+  // CRUD matrix by Owner ruling D-5 (2026-09-08) and listed in WORKFLOW_ACTION_CAPABILITIES.
+  { object: "Purchase Orders", domain: "Procurement", C: ["reorder.purchaseOrder.create"], R: ["reorder.purchaseOrder.read"], E: [] },
   { object: "Receiving", domain: "Inventory", C: [], R: [], E: ["inventory.stock.receive"] },
   { object: "Transfer Orders", domain: "Inventory", C: ["inventory.transfer.create"], R: ["warehouse.transferOrder.read"], E: ["inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"] },
   { object: "Serialized Assets", domain: "Inventory", C: [], R: ["inventory.serializedAsset.read"], E: [] },
