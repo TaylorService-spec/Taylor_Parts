@@ -107,8 +107,12 @@ test("clean database -> migrate -> eos_ops exists beside eos_policy, named exact
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "cycle_count_lines", "cycle_count_sheets", "inventory_movements", "serialized_custody",
-  ], "exactly four foundation tables -- no balance table, no locations table");
+    // Migration 005's four foundation tables, plus migration 008's two: the commitment ledger
+    // (a promise against stock, which is deliberately NOT a movement) and the Work Order
+    // inventory-effect replay authority. Still no balance table and no locations table.
+    "cycle_count_lines", "cycle_count_sheets", "inventory_commitments", "inventory_movements",
+    "serialized_custody", "work_order_inventory_effects",
+  ], "exactly the declared tables -- no balance table, no locations table");
 
   // ONE-QUANTITY-AUTHORITY, STRUCTURALLY: no second balance-shaped table exists to disagree with the
   // ledger. Naming what must NOT exist, not just what does.
