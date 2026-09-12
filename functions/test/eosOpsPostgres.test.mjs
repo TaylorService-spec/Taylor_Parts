@@ -21,6 +21,9 @@ const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 
 const TENANT_A = "tenant-a";
+// An OPAQUE governed key, exactly as migration 007 stores it. Deliberately not a real company name:
+// nothing in this schema or these tests may depend on which companies a deployment happens to have.
+const COMPANY_A = "oc-alpha";
 const TENANT_B = "tenant-b";
 const ACTOR = { uid: "uid-admin" };
 const actorFor = (tenantId) => ({ tenantId, uid: ACTOR.uid });
@@ -121,9 +124,9 @@ test("eos_ops tables are FK-scoped to eos_policy.tenants -- an orphan tenant_id 
   await assert.rejects(
     () => query(
       `INSERT INTO eos_ops.inventory_movements
-         (id, tenant_id, part_id, tracking_mode, location_type, location_id, movement_type,
-          quantity_delta, source_kind, source_id, created_by)
-       VALUES ('m1', 'no-such-tenant', 'p1', 'NONE', 'WAREHOUSE', 'wh1', 'RECEIVED', 5, 'TEST', 's1', 'u')`,
+         (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+          movement_type, quantity_delta, source_kind, source_id, created_by)
+       VALUES ('m1', 'no-such-tenant', 'oc-alpha', 'p1', 'NONE', 'WAREHOUSE', 'wh1', 'RECEIVED', 5, 'TEST', 's1', 'u')`,
     ),
     /violates foreign key constraint/,
   );
@@ -134,9 +137,9 @@ test("a zero-quantity movement is refused BY THE DATABASE", { skip: SKIP }, asyn
   await assert.rejects(
     () => query(
       `INSERT INTO eos_ops.inventory_movements
-         (id, tenant_id, part_id, tracking_mode, location_type, location_id, movement_type,
-          quantity_delta, source_kind, source_id, created_by)
-       VALUES ('m1', $1, 'p1', 'NONE', 'WAREHOUSE', 'wh1', 'RECEIVED', 0, 'TEST', 's1', 'u')`,
+         (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+          movement_type, quantity_delta, source_kind, source_id, created_by)
+       VALUES ('m1', $1, 'oc-alpha', 'p1', 'NONE', 'WAREHOUSE', 'wh1', 'RECEIVED', 0, 'TEST', 's1', 'u')`,
       [TENANT_A],
     ),
     /movement_quantity_nonzero/,
@@ -148,9 +151,9 @@ test("a SERIAL movement without a serial number is refused BY THE DATABASE", { s
   await assert.rejects(
     () => query(
       `INSERT INTO eos_ops.inventory_movements
-         (id, tenant_id, part_id, tracking_mode, location_type, location_id, movement_type,
-          quantity_delta, source_kind, source_id, created_by)
-       VALUES ('m1', $1, 'p1', 'SERIAL', 'WAREHOUSE', 'wh1', 'RECEIVED', 1, 'TEST', 's1', 'u')`,
+         (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+          movement_type, quantity_delta, source_kind, source_id, created_by)
+       VALUES ('m1', $1, 'oc-alpha', 'p1', 'SERIAL', 'WAREHOUSE', 'wh1', 'RECEIVED', 1, 'TEST', 's1', 'u')`,
       [TENANT_A],
     ),
     /movement_serial_matches_tracking/,
@@ -160,14 +163,14 @@ test("a SERIAL movement without a serial number is refused BY THE DATABASE", { s
 test("serialized custody is unique per (tenant, part, serial) -- a duplicate is refused", { skip: SKIP }, async () => {
   await reset();
   await query(
-    `INSERT INTO eos_ops.serialized_custody (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
-     VALUES ('sc1', $1, 'p1', 'SN-001', 'AVAILABLE', 'WAREHOUSE', 'wh1', 'u')`,
+    `INSERT INTO eos_ops.serialized_custody (id, tenant_id, operating_company_key, part_id, serial_number, status, location_type, location_id, updated_by)
+     VALUES ('sc1', $1, 'oc-alpha', 'p1', 'SN-001', 'AVAILABLE', 'WAREHOUSE', 'wh1', 'u')`,
     [TENANT_A],
   );
   await assert.rejects(
     () => query(
-      `INSERT INTO eos_ops.serialized_custody (id, tenant_id, part_id, serial_number, status, location_type, location_id, updated_by)
-       VALUES ('sc2', $1, 'p1', 'SN-001', 'AVAILABLE', 'WAREHOUSE', 'wh1', 'u')`,
+      `INSERT INTO eos_ops.serialized_custody (id, tenant_id, operating_company_key, part_id, serial_number, status, location_type, location_id, updated_by)
+       VALUES ('sc2', $1, 'oc-alpha', 'p1', 'SN-001', 'AVAILABLE', 'WAREHOUSE', 'wh1', 'u')`,
       [TENANT_A],
     ),
     /serialized_custody_unique/,
@@ -178,10 +181,10 @@ test("the WAREHOUSE aggregate is direct + child BIN balances, derived by SUM (AD
   await reset();
   const insert = (id, locType, locId, qty) => query(
     `INSERT INTO eos_ops.inventory_movements
-       (id, tenant_id, part_id, tracking_mode, location_type, location_id, movement_type,
-        quantity_delta, source_kind, source_id, created_by)
-     VALUES ($1, $2, 'p1', 'NONE', $3, $4, 'RECEIVED', $5, 'TEST', 's1', 'u')`,
-    [id, TENANT_A, locType, locId, qty],
+       (id, tenant_id, operating_company_key, part_id, tracking_mode, location_type, location_id,
+        movement_type, quantity_delta, source_kind, source_id, created_by)
+     VALUES ($1, $2, $3, 'p1', 'NONE', $4, $5, 'RECEIVED', $6, 'TEST', 's1', 'u')`,
+    [id, TENANT_A, COMPANY_A, locType, locId, qty],
   );
   await insert("m1", "WAREHOUSE", "wh1", 10); // direct/unbinned
   await insert("m2", "BIN", "bin-a01", 4);
@@ -282,7 +285,7 @@ test("job title, Firebase claims and Firestore document access grant nothing -- 
 test("blind contract: a line read before submission never carries the expected snapshot", { skip: SKIP }, async () => {
   await reset();
   const pool = repoPool();
-  const sheet = await cc.createSheet(pool, TENANT_A, "u1", { type: "WAREHOUSE", id: "wh1" });
+  const sheet = await cc.createSheet(pool, TENANT_A, "u1", COMPANY_A, { type: "WAREHOUSE", id: "wh1" });
   const line = await cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 42, []);
   assert.equal(line.expectedQuantity, undefined, "the blind view type carries no expected field at all");
 
@@ -298,7 +301,7 @@ test("blind contract: a line read before submission never carries the expected s
 test("submit reveals the expected snapshot for the FIRST time, in the same call's own response", { skip: SKIP }, async () => {
   await reset();
   const pool = repoPool();
-  const sheet = await cc.createSheet(pool, TENANT_A, "u1", { type: "WAREHOUSE", id: "wh1" });
+  const sheet = await cc.createSheet(pool, TENANT_A, "u1", COMPANY_A, { type: "WAREHOUSE", id: "wh1" });
   const line = await cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 42, []);
   const submitted = await cc.submitCount(pool, TENANT_A, "counter-1", line.id, 40, []);
   assert.equal(submitted.status, "COUNTED");
@@ -310,7 +313,7 @@ test("submit reveals the expected snapshot for the FIRST time, in the same call'
 test("reconcile APPROVE with non-zero variance stages ONE ledger row atomically with the line update", { skip: SKIP }, async () => {
   await reset();
   const pool = repoPool();
-  const sheet = await cc.createSheet(pool, TENANT_A, "u1", { type: "WAREHOUSE", id: "wh1" });
+  const sheet = await cc.createSheet(pool, TENANT_A, "u1", COMPANY_A, { type: "WAREHOUSE", id: "wh1" });
   const line = await cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 42, []);
   await cc.submitCount(pool, TENANT_A, "counter-1", line.id, 40, []);
   const reconciled = await cc.reconcileLine(pool, TENANT_A, "manager-1", line.id, "APPROVE", "shrinkage");
@@ -329,7 +332,7 @@ test("reconcile APPROVE with non-zero variance stages ONE ledger row atomically 
 test("reconcile REJECT stages NO ledger evidence -- expected-quantity authority is left untouched", { skip: SKIP }, async () => {
   await reset();
   const pool = repoPool();
-  const sheet = await cc.createSheet(pool, TENANT_A, "u1", { type: "WAREHOUSE", id: "wh1" });
+  const sheet = await cc.createSheet(pool, TENANT_A, "u1", COMPANY_A, { type: "WAREHOUSE", id: "wh1" });
   const line = await cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 42, []);
   await cc.submitCount(pool, TENANT_A, "counter-1", line.id, 40, []);
   const rejected = await cc.reconcileLine(pool, TENANT_A, "manager-1", line.id, "REJECT", null);
@@ -342,7 +345,7 @@ test("reconcile REJECT stages NO ledger evidence -- expected-quantity authority 
 test("separation of duties: the submitter cannot reconcile their own non-zero variance", { skip: SKIP }, async () => {
   await reset();
   const pool = repoPool();
-  const sheet = await cc.createSheet(pool, TENANT_A, "u1", { type: "WAREHOUSE", id: "wh1" });
+  const sheet = await cc.createSheet(pool, TENANT_A, "u1", COMPANY_A, { type: "WAREHOUSE", id: "wh1" });
   const line = await cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 42, []);
   await cc.submitCount(pool, TENANT_A, "same-person", line.id, 40, []);
   await assert.rejects(
@@ -356,7 +359,7 @@ test("separation of duties: the submitter cannot reconcile their own non-zero va
 test("one line per Part per sheet -- a duplicate is refused BY THE DATABASE", { skip: SKIP }, async () => {
   await reset();
   const pool = repoPool();
-  const sheet = await cc.createSheet(pool, TENANT_A, "u1", { type: "WAREHOUSE", id: "wh1" });
+  const sheet = await cc.createSheet(pool, TENANT_A, "u1", COMPANY_A, { type: "WAREHOUSE", id: "wh1" });
   await cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 42, []);
   await assert.rejects(
     () => cc.openLine(pool, TENANT_A, "u1", sheet.id, "p1", "NONE", 10, []),
