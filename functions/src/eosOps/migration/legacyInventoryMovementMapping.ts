@@ -76,12 +76,11 @@
 // trust a legacy part field blindly.
 //
 // This module does NOT own canonicalization and deliberately does NOT invent a second
-// canonicalization algorithm. It takes a single INJECTED seam, `PartIdAuthority`, and ships a
-// deliberately minimal default that checks DOCUMENT-ID SHAPE ONLY (see shapeOnlyPartIdAuthority).
-// INTEGRATION POINT: once the canonical `requireCanonicalPartId` lands, adopt it by passing
-// `{ partIdAuthority: adaptThrowingPartIdAuthority(requireCanonicalPartId) }` to
-// mapLegacyInventoryMovement / mapLegacyInventoryMovements. Nothing else in this file changes, and
-// the default is then never used in an import run.
+// canonicalization algorithm. It takes a single INJECTED seam, `PartIdAuthority`, whose DEFAULT is
+// the canonical contract from `partIdContract.ts` (`canonicalPartIdAuthority`). An import run that
+// injects nothing therefore still gets canonical validation -- shape-only is NOT the production
+// default. `shapeOnlyPartIdAuthority` remains exported for tests and specialised callers that
+// deliberately want document-id shape checking without the canonical contract.
 
 import {
   LEGACY_TRANSACTION_TYPES,
@@ -93,6 +92,7 @@ import {
 } from "../../inventoryLedger/operationalMovementTypes.js";
 import { MOVEMENT_SIGN, isPhysicalMovementType } from "../../inventoryLedger/locationOnHand.js";
 import { isOperatingCompanyIdShape } from "../../ownership/operatingCompanyAuthority.js";
+import { requireCanonicalPartId } from "./partIdContract.js";
 
 // ---------------------------------------------------------------------------------------------
 // Target vocabulary (mirrors migrations/1757808000000_eos-ops-foundation.sql, which this module
@@ -301,8 +301,9 @@ export type PartIdAuthority = (value: unknown) => PartIdResolution;
  *   · not "." or ".." and not of the reserved __...__ form;
  *   · at most 1500 bytes.
  *
- * Anything that passes is only SHAPE-plausible; it is NOT proven canonical. An import run must
- * inject the real authority (see this file's header, INTEGRATION POINT).
+ * Anything that passes is only SHAPE-plausible; it is NOT proven canonical. This is NOT the
+ * mapper's default -- `canonicalPartIdAuthority` is. Kept exported for tests and specialised
+ * callers that deliberately want shape-only checking.
  */
 export function shapeOnlyPartIdAuthority(value: unknown): PartIdResolution {
   if (value === undefined || value === null) return { ok: false, code: "MISSING_PART_ID", detail: "no part identity on the row" };
@@ -342,8 +343,29 @@ export function adaptThrowingPartIdAuthority(require_: (value: unknown) => strin
   };
 }
 
+/**
+ * The DEFAULT Part-id authority for this mapper: the canonical contract shipped by
+ * `partIdContract.ts` (ruling R1 -- part_id IS the `parts` document id). This module still owns
+ * no canonicalization of its own; it delegates. A caller may inject a different authority for
+ * tests or a specialised run, but the default is canonical, so an import run cannot accidentally
+ * receive shape-only validation.
+ */
+export const canonicalPartIdAuthority: PartIdAuthority = (value) => {
+  // Shape gate FIRST -- it owns two things the canonical contract does not express, and this
+  // composes the two EXISTING authorities rather than inventing a third:
+  //   1. MISSING_PART_ID vs INVALID_PART_ID. requireCanonicalPartId refuses both as one condition,
+  //      but the reject bucket must tell an absent identity apart from a malformed one.
+  //   2. Firestore RESERVED document-id forms. `__name__` satisfies the Part business-key grammar
+  //      (letters/digits/underscore/hyphen) yet can never name a real `parts` document, so the
+  //      canonical contract alone accepts it. Verified mechanically, not assumed.
+  const shape = shapeOnlyPartIdAuthority(value);
+  if (!shape.ok) return shape;
+  return adaptThrowingPartIdAuthority(requireCanonicalPartId)(value);
+};
+
+
 export interface MappingDeps {
-  /** Defaults to shapeOnlyPartIdAuthority. An import run MUST inject the canonical authority. */
+  /** Defaults to `canonicalPartIdAuthority` (the R1 contract). Inject only to override it. */
   readonly partIdAuthority?: PartIdAuthority;
 }
 
@@ -479,7 +501,7 @@ export function mapLegacyInventoryMovement(row: unknown, deps: MappingDeps = {})
   const operatingCompanyKey = rawCompany;
 
   // ---- 3. part id, through the injected authority.
-  const partIdAuthority = deps.partIdAuthority ?? shapeOnlyPartIdAuthority;
+  const partIdAuthority = deps.partIdAuthority ?? canonicalPartIdAuthority;
   const part = partIdAuthority(row.partId);
   if (!part.ok) {
     return refuse(part.code, sourceTransactionId, part.detail, { partId: token(row.partId) });

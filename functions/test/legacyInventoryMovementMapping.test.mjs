@@ -7,7 +7,7 @@
 // double-negate a work-order consumption correction.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 
 import {
@@ -221,14 +221,16 @@ test("an invalid part id is refused -- a display SKU or spreadsheet name is not 
   assert.equal(refusedCode(row("RECEIVED", { partId: ".." })), "INVALID_PART_ID");
 });
 
-test("the default part-id seam is SHAPE-only and says so by accepting a shape-plausible id", () => {
+test("shapeOnlyPartIdAuthority stays exported for specialised callers -- it is NOT the default", () => {
   assert.deepEqual(shapeOnlyPartIdAuthority("part_abc123"), { ok: true, partId: "part_abc123" });
   assert.equal(shapeOnlyPartIdAuthority(undefined).code, "MISSING_PART_ID");
   assert.equal(shapeOnlyPartIdAuthority("a b").code, "INVALID_PART_ID");
 });
 
-test("INTEGRATION POINT: a throwing canonical authority can be injected without touching the mapper", () => {
-  // This is exactly how `requireCanonicalPartId` is adopted once it lands.
+test("a stricter throwing authority can still be injected over the canonical default", () => {
+  // The real `requireCanonicalPartId` is now the DEFAULT (see canonicalPartIdAuthority). This
+  // stub is deliberately STRICTER than it, to prove the injection seam still overrides the
+  // default rather than being bypassed by it.
   const requireCanonicalPartId = (value) => {
     if (value === "part_canonical_1") return "part_canonical_1";
     throw new Error("not the canonical parts document id");
@@ -239,7 +241,9 @@ test("INTEGRATION POINT: a throwing canonical authority can be injected without 
   assert.equal(ok.mapped, true);
   assert.equal(ok.candidate.partId, "part_canonical_1");
 
-  // A shape-plausible but non-canonical id passes the DEFAULT seam and is refused by the injected one.
+  // "alias-77" is a syntactically valid document id, so the canonical DEFAULT accepts it -- the
+  // contract refuses malformed identity, and deliberately performs no Firestore lookup (R1), so it
+  // cannot know the value is an alias. The stricter injected authority refuses it.
   assert.equal(mapLegacyInventoryMovement(row("RECEIVED", { partId: "alias-77" })).mapped, true);
   const refused = mapLegacyInventoryMovement(row("RECEIVED", { partId: "alias-77" }), deps);
   assert.equal(refused.mapped, false);
@@ -511,10 +515,25 @@ test("the mapper reads no clock, no environment and no randomness", () => {
 
 // ============================ the module opens no store ============================
 
+/**
+ * Resolve a relative specifier the way CommonJS `require` does. `node:path.resolve` alone is not
+ * enough: this package is CommonJS, so a compiled `require("../../partMaster/validation")` is
+ * legal WITHOUT a ".js" suffix, and a path-only resolver stops at the first such edge and silently
+ * under-reports the graph. Trying the literal path, then ".js", then "/index.js" keeps the purity
+ * assertions below honest across both import styles.
+ */
+function resolveModule(...parts) {
+  const base = resolvePath(...parts);
+  for (const candidate of [base, `${base}.js`, `${base}/index.js`]) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  }
+  throw new Error(`unresolvable module specifier: ${base}`);
+}
+
 /** Every module reachable from the compiled mapper, transitively. */
 function importGraph(entry) {
   const seen = new Set();
-  const queue = [resolvePath(entry)];
+  const queue = [resolveModule(entry)];
   const externals = new Set();
   while (queue.length > 0) {
     const file = queue.pop();
@@ -525,7 +544,7 @@ function importGraph(entry) {
     let match;
     while ((match = pattern.exec(source)) !== null) {
       const specifier = match[1] ?? match[2] ?? match[3];
-      if (specifier.startsWith(".")) queue.push(resolvePath(dirname(file), specifier));
+      if (specifier.startsWith(".")) queue.push(resolveModule(dirname(file), specifier));
       else externals.add(specifier);
     }
   }
