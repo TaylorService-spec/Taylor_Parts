@@ -217,10 +217,27 @@ export function resolveScannedIdentity(raw, candidates = {}) {
 
   // Deduplicate identical (type,id) hits before declaring ambiguity, so the same
   // entity appearing in two candidate lists is not a false ambiguity.
+  //
+  // THE KEY IS THE EXACT CANONICAL IDENTIFIER, NOT A CASE-FOLDED ONE.
+  //
+  // MATCHING is case-insensitive on purpose: a label printed "prt-1001" and one printed
+  // "PRT-1001" should both find the Part. IDENTITY is not. `Part.partId` is governed by
+  // ID_PATTERN (/^[A-Za-z0-9_-]{1,64}$/, partMaster/validation.ts), which is case-SENSITIVE,
+  // so "prt-1001" and "PRT-1001" are two different Parts and either may be written into a
+  // ledger row. Folding the key here made those two collapse into one and the scan RESOLVE
+  // to whichever the governed read happened to list first — a silent pick of a canonical id
+  // the operator never chose. `lookupScannedPart` deliberately fetches BOTH the scanned code
+  // and its upper-cased form (partMaster/scannerPartLookup.ts), so this is the exact pair it
+  // can hand over.
+  //
+  // Two distinct governed identities behind one scan is AMBIGUOUS, which is the answer this
+  // module already gives everywhere else: a scanner that guesses is worse than one that says
+  // it does not know. The same entity arriving from two candidate lists carries the SAME id
+  // string, so it still dedupes.
   const unique = [];
   const seen = new Set();
   for (const m of matches) {
-    const k = `${m.entityType}:${String(m.entityId).toLowerCase()}`;
+    const k = `${m.entityType}:${String(m.entityId)}`;
     if (seen.has(k)) continue;
     seen.add(k);
     unique.push(m);
