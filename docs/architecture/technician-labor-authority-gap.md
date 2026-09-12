@@ -1,7 +1,27 @@
 # `TECHNICIAN LABOR AUTHORITY GAP`
 
-**Status: OPEN. No labor UI was built.** Traced 2026-08-23 as WO-02 §1 required, before touching any
-technician labor screen.
+> **SUPERSEDED 2026-09-12. The gap this document traces has since been closed, and everything below
+> is a record of the state on 2026-08-23, not of the platform today.** What now ships, measured
+> against the tree rather than remembered:
+>
+> | this document says | what is true on 2026-09-12 |
+> |---|---|
+> | "No labor collection." | `work_order_labor_entries` — `functions/src/workOrderLabor/workOrderLaborCommand.ts` `LABOR_ENTRIES_COLLECTION`. No `firestore.rules` match block, so it is Admin-SDK-only. |
+> | "`grep` across `functions/src` for `LABOR_` … returns nothing." | `LABOR_RECORD_CAPABILITY`, `LABOR_CORRECT_CAPABILITY`, `LABOR_ENTRIES_COLLECTION`, `LABOR_TYPES` — `functions/src/workOrderLabor/laborCallables.ts`. |
+> | "who may correct it and when" is an open business decision | Two capabilities, and two Roles: `workOrder.labor.record` (technicianLaborRecorder) and `workOrder.labor.correct` (workOrderLaborCorrector) — `functions/src/access/permissionCatalog.ts`, `functions/src/access/governedBusinessRoles.ts`. Recording and correcting are separate authorities. |
+> | "No labor UI was built." | `field-ops-app-vite/src/modules/mobile/JobLabor.jsx`, over the `recordWorkOrderLabor` / `getWorkOrderLabor` callables exported from `functions/src/index.ts`. |
+>
+> WHAT REMAINS TRUE, and is the reason the screen still refuses: both capabilities are registered
+> `active: false` and **no environment activates them** — `config/environments.json` lists neither in
+> any `capabilityActivationOverrides` set. So `JobLabor.jsx` denies for every principal everywhere,
+> which is what its own header says, correctly. The capabilities are also held only by their two
+> purpose-built Roles plus admin/owner's derived whole-catalogue grant.
+>
+> The register item this document points at — the cost/rate/billable package — is a genuinely
+> separate scope and is still open. The *authority* gap is not.
+
+**Status: SUPERSEDED. Recorded here as the 2026-08-23 trace.** Traced 2026-08-23 as WO-02 §1
+required, before touching any technician labor screen.
 
 ---
 
