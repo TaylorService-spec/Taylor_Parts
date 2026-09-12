@@ -180,6 +180,12 @@ export const MAX_ASSESSABLE_MINUTES = 60 * 24 * 31;
  * Half-open overlap (`start < otherEnd && otherStart < end`) -- the same test
  * `workOrderAvailability.findScheduleConflict` already uses for Work Order windows, so back-to-back
  * placements never collide with each other on either authority.
+ *
+ * TWO CALLERS, ONE RULE. `checkPlacement` asks it whether a WORK window collides with an absence;
+ * `createTechnicianBlockedTime` asks it whether a new ABSENCE collides with an existing one (ND-25).
+ * Both are the same question about the same half-open intervals, so both ask the same function --
+ * a second copy specialised for block-vs-block is how "back to back is fine" would come to mean one
+ * thing for a job and another for a lunch break.
  */
 export function findBlockedTimeConflict(
   blocks: readonly TechnicianBlockedTime[],

@@ -63,6 +63,40 @@ const POLICY_OWNED_REFUSALS = [
 /** Raised by the policy, but not exclusively — see the note above. Still must exist there. */
 const POLICY_REFUSALS_SHARED_WITH_OTHER_COMMANDS = ["TECHNICIAN_NOT_FOUND"];
 
+/**
+ * Exported commands that live in a placement path's FILE but are not themselves placement paths.
+ *
+ * The same carve-out the TECHNICIAN_NOT_FOUND note above makes, applied at function granularity
+ * because ND-25 needed it at function granularity. `createTechnicianBlockedTime` raises
+ * BLOCKED_TIME_CONFLICT — but it is refusing a new ABSENCE that overlaps an existing absence, not a
+ * PLACEMENT that lands in one. There is no Work Order involved, no window proposed by a dispatcher
+ * dragging a job, and nothing of ND-20's collision table consulted: it reuses the one shared
+ * `findBlockedTimeConflict` and the one shared blocked-time query, which is the opposite of keeping
+ * a private copy of the policy.
+ *
+ * Scoped by NAME rather than by adding the code to an exclusion list, deliberately. Excluding
+ * BLOCKED_TIME_CONFLICT outright would stop this suite guarding the thing it exists to guard — a
+ * placement path growing its own blocked-time refusal is precisely ND-24 returning. Removing one
+ * named non-placement function keeps the guard at full strength everywhere it means anything, and
+ * the cost of a new availability command is one line here.
+ *
+ * `schedulingBlockedTimeExclusion.test.mjs` holds the other half: that the carved-out command really
+ * does reach the shared overlap test rather than reimplementing one.
+ */
+const NON_PLACEMENT_COMMANDS = ["createTechnicianBlockedTime"];
+
+/** `source` with the non-placement command bodies removed, so a scan sees only placement code. */
+function placementSurface(source) {
+  let out = source;
+  for (const name of NON_PLACEMENT_COMMANDS) {
+    const start = out.indexOf(`export async function ${name}(`);
+    if (start === -1) continue;
+    const after = out.indexOf("\nexport ", start + 1);
+    out = out.slice(0, start) + (after === -1 ? "" : out.slice(after));
+  }
+  return out;
+}
+
 test("the placement policy defines checkPlacement and exports it", () => {
   const policy = read(POLICY);
   assert.match(policy, /export async function checkPlacement\(/, `${POLICY} must export checkPlacement`);
@@ -105,7 +139,7 @@ test("every placement path actually calls the shared policy", () => {
 
 test("no placement path constructs a refusal the policy owns", () => {
   for (const { file, what } of PLACEMENT_PATHS) {
-    const source = read(file);
+    const source = placementSurface(read(file));
     for (const code of POLICY_OWNED_REFUSALS) {
       assert.doesNotMatch(
         source,
@@ -115,6 +149,21 @@ test("no placement path constructs a refusal the policy owns", () => {
       );
     }
   }
+});
+
+test("the non-placement carve-out still names a function that exists", () => {
+  // A carve-out that silently matches nothing is worse than no carve-out: it would keep this suite
+  // green while the function it excuses was renamed, moved, or deleted, and nobody would learn that
+  // the exclusion had stopped meaning anything. Renaming createTechnicianBlockedTime must therefore
+  // turn this red and force a decision, not slide past.
+  const source = read("scheduling/schedulingCommands.ts");
+  for (const name of NON_PLACEMENT_COMMANDS) {
+    assert.ok(
+      source.includes(`export async function ${name}(`),
+      `NON_PLACEMENT_COMMANDS names ${name}, which scheduling/schedulingCommands.ts no longer exports`,
+    );
+  }
+  assert.notEqual(placementSurface(source), source, "the carve-out must actually remove something");
 });
 
 test("the policy owns every refusal ND-20 assigns to a placement", () => {
