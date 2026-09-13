@@ -6428,3 +6428,89 @@ predates #170. It is preserved and reconciled against current main on a new bran
    write, no Transfer authority, no bin management, no Cycle Count and no adjustment authority.
 6. **Production** remains unauthorized for activation, grants, deployment, Rules, Functions, Hosting,
    inventory conversion and Cycle Count migration.
+
+## #180 — OWNER RULING: OD-1 — ACCOUNTABLE PERSON is a distinct first-class axis (2026-09-13)
+
+**APPROVED.** EOS will model **ACCOUNTABLE PERSON** independently from **RECORD OWNER · ASSIGNEE /
+EXECUTOR · MANAGER · ESCALATION OWNER · OPERATING COMPANY · DOMAIN STEWARD · JOB ROLE · SECURITY ROLE.**
+
+This is the Owner's ruling on `OD-1`, the gating decision of the Employee / End-to-End Ownership program.
+**This entry is canonical for the ruling.** The question, evidence, options and recommendation it was ruled
+on are preserved unaltered in `docs/operating-model/EMPLOYEE-OPEN-DECISIONS.md` §1 and in the decision
+packet `docs/operating-model/owner-decisions/OD-PACKET-001-006-007.md`; **neither was rewritten.**
+
+### Business definition
+
+ACCOUNTABLE PERSON answers: **"Who is personally responsible for making sure the next required outcome
+happens?"**
+
+For every **ACTIONABLE** business item, EOS must be able to identify **exactly one accountable person at
+every point in time**, unless an explicit, separately Owner-approved exception defines otherwise.
+
+It is **not** the same as any of these, and they may all be different people or facts on one record:
+
+| Axis | Answers |
+|---|---|
+| **RECORD OWNER** | who owns / stewards the record or relationship |
+| **ASSIGNEE** | who is currently performing a task |
+| **MANAGER** | who manages an employee |
+| **ESCALATION OWNER** | who assumes or oversees responsibility when normal execution fails |
+| **OPERATING COMPANY** | which company has business authority / economic responsibility |
+
+### Worked examples, as the Owner gave them
+
+**Account** — Record Owner: a Retail Sales employee · Accountable Person: potentially that same
+salesperson, for the relationship outcome · Assignee: the employee performing a specific follow-up task.
+
+**Work Order** — record / company ownership may remain Taylor or Ventana · Accountable Person: the
+employee responsible for ensuring the service outcome · Assignee: the technician performing the current
+service work · Escalation Owner: the service manager if execution fails.
+
+**Purchase / Parts workflow** — record / company ownership may remain company-based · Accountable Person:
+the employee responsible for ensuring the required material reaches the needed state · Assignee: the
+person performing the current purchasing or warehouse action.
+
+### Hard invariants
+
+1. **ACTIONABLE WORK MUST NEVER HAVE ACCOUNTABLE PERSON = NONE.**
+2. Reassigning execution does **not** automatically change accountability.
+3. Changing accountability does **not** automatically change record ownership.
+4. Manager involvement does **not** automatically change accountability.
+5. Escalation does **not** automatically change record ownership.
+6. **Historical accountability must remain auditable.**
+7. **Handoff semantics must guarantee no responsibility gap.**
+8. A record may legitimately have **COMPANY** ownership while still requiring a **PERSON** as the
+   accountable person for active work.
+9. Reference / master-data objects do **not** automatically require an accountable person merely because
+   the field exists. Their stewardship model must be defined separately.
+10. **Do NOT implement one generic `ownerId` / `accountableId` shortcut across all families.**
+
+### Relationship to earlier rulings — nothing here is reversed
+
+This ruling **composes with** and does not disturb: typed ownership · company ownership ≠ person
+ownership · creation-owner resolution **EXPLICIT → INHERIT GOVERNED UPSTREAM OWNER → REFUSE** · creator ≠
+owner · no implicit cascade of historical ownership · D-13 / D-14 / D-15 classifying service and inventory
+work as COMPANY-owned. Invariant 8 is what makes that composition coherent: **the COMPANY classification
+was never the error — the missing third axis was.**
+
+Invariants 2 and 4 restate, on the accountability axis, the substance recorded at **#142**
+(`docs/DECISIONS.md:3277-3279`, non-collapse at `:3307-3310`) and **#110** (`:1601-1606`). Noted because a
+program audit found the phrase *"reassignment ≠ ownership transfer"* appears in **no** document — the
+substance is real and these are its citations.
+
+### What this ruling does NOT do
+
+**IMPLEMENTATION IS NOT AUTHORIZED.** No ACCOUNTABLE PERSON **storage, migration, enforcement, handoff or
+backfill** may begin until **`OD-6`** resolves person-reference validity and census behaviour and the
+remaining dependency decisions are reconciled.
+
+**Invariant 10 means this ruling does not license adding a field.** The engineering decomposition
+(`docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md`, 29 items) remains
+`IMPLEMENTATION STATUS = NOT AUTHORIZED` in its entirety.
+
+**Invariant 1 is not currently detectable.** At `64008d5a` the ownership census cannot report an invalid
+person owner through any channel — blocking, advisory or diagnostic — so *"actionable work never has
+ACCOUNTABLE PERSON = NONE"* is an invariant EOS could violate silently today. Closing that measurement gap
+is `OD-6`'s subject, which is why `OD-6` is the gate on implementation rather than a follow-up.
+
+**Invariant 9 does not settle REFERENCE stewardship**; that is a separate decision.
