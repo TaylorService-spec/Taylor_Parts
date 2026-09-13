@@ -262,6 +262,57 @@ under the standing rulings.
 48 removed lines are `main`'s content the branch has not seen. On a 123+/48- change to the capability
 catalogue, "rebase and re-run the tests" is not sufficient review.
 
+### 8.1 A live TIER-2 defect that NO candidate branch fixes
+
+Surfaced by the OWN-ENGINEERING-GAP lane and independently verified here by reading
+`firestore.rules` at the baseline. It is recorded in this register because the register's job is to say
+what integration covers, and **nothing in A1, A2 or the TIER-2 HOLD set touches it.**
+
+**`firestore.rules:381-384` — `fieldops_jobs` update, admin/dispatcher branch:**
+
+```
+allow update: if resource.data.status != 'complete'
+  && (
+    (isAdminOrDispatcher()
+      && isValidJobTransition(resource.data.status, request.resource.data.status))
+```
+
+There is **no `affectedKeys().hasOnly(...)` allowlist on this branch.** The technician branch below it
+has one — `jobStatusOnlyChange()` — and the block's own comment explains that it "makes
+technicianId/workOrderId/customer/address/completedAt/completedBy or any other field client-immutable
+**in this transition**." That qualifier is doing more work than it looks: the immutability applies to the
+*technician* path only. An admin/dispatcher performing any valid status or assignment transition may
+rewrite **every other field on the document in the same write**, including `operatingCompanyId` — a
+populated ownership field.
+
+This is the standing ruling *reassignment ≠ ownership transfer* violated in shipped Rules, and it is a
+better example than the one this program had been citing.
+
+**Correcting what this program had been citing instead.** I have repeatedly named
+`firestore.rules:765-790` on `reorder_requests` as the site where ownership moves with assignment. That
+was wrong in two independent ways, and both matter:
+
+1. **Wrong lines.** The `allow update: if` opens at `:763`. The **Approve/Reject** branch (`:764`ff)
+   changes `currentOwner` with **no assignee named at all** — a counter-example. The branch that moves
+   `currentOwner` *and* `assignedToUserId` together is the **Assign** branch, whose allowlist is
+   `hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"])`.
+2. **Wrong field semantics, which is the more serious error.** `currentOwner` on `reorder_requests`
+   holds a **role string** — the literal values in the Rules are `"PARTS_MANAGER"` and
+   `"PARTS_ASSOCIATE"`. It is a workflow **baton**, not a record owner, and
+   `ownershipMatrix.ts:286-288` accordingly does not treat it as an ownership field. Moving a baton
+   alongside an assignment is the correct behaviour for a queue hand-off. **There was no defect at that
+   site.** Citing it made a correct Rules block look like a ruling violation while the real violation sat
+   uncited a few hundred lines above.
+
+**Disposition:** TIER-2, no candidate, no authorization. It needs a `firestore.rules` change and
+therefore an Owner ruling, and it must not be folded into any A1 or A2 merge.
+
+**UNPROVEN:** that the write is reachable in practice — this is a static read of the Rules, and the
+Firestore emulator could not be run in this environment (no JRE available; port 8080 held by an
+unrelated process). Whether an `operatingCompanyId` rewrite through this branch actually succeeds
+against deployed Rules has **not** been executed. Both the `hasOnly` absence and the role-valued
+`currentOwner` were read directly from the file at `64008d5a`.
+
 ## 9. Discarded
 
 | Branch | Why |
