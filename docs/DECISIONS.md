@@ -6859,3 +6859,106 @@ assignment) where invariant 7 has no content.
 **IMPLEMENTATION REMAINS NOT AUTHORIZED.** All 42 items in
 `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` stay
 `IMPLEMENTATION STATUS = NOT AUTHORIZED`.
+
+## #184 — OWNER RULING: OD-7 — governed orchestration is the authoritative handoff boundary (2026-09-13)
+
+**`OD-7` RULED AND CLOSED.** Placement: **OPTION (e) — GOVERNED ORCHESTRATION IS THE AUTHORITATIVE HANDOFF
+BOUNDARY.**
+
+The question put to the Owner: *does `OD-7` require a second, writer-side authoritative enforcement layer for
+bypass paths?* **Answer: NO.**
+
+**Option (e) was not on the original ballot.** The packet offered (a) writer consults the ownership matrix,
+(b) writer rejects unless staged through the builder, (c) both, (d) neither yet. `(d-place)` was eliminated
+by `#182`'s Status naming `OD-7` as the gate on the implementation backlog. `(e)` emerged from separating the
+five concerns the ruling now fixes: the three original options were found to **differ only on pure
+validation and audit writing, while the real gap was authoritative resolution and orchestration.**
+
+### Division of responsibility
+
+| Layer | Responsibility |
+|---|---|
+| **Governed orchestration / command boundary** | **the authoritative handoff boundary** — authoritative fact resolution, caller authorization, Layer-1/eligibility verification, atomicity |
+| **Pure family/axis builder** | **RETAINED** — pure business validation, no I/O |
+| **Audit writer** | audit construction and staging |
+
+**Do NOT duplicate authoritative Employee/person lookups inside the writer.**
+
+### Canonical handoff sequence
+
+**A. AUTHORITATIVE FACT RESOLUTION** — resolve every authoritative fact the handoff requires. For a PERSON
+target this includes the **`OD-6` person-authority result**.
+
+**B. GOVERNED ORCHESTRATION**, within the command/transaction boundary — read authoritative state · determine
+the requested responsibility-axis change · **verify the caller may perform it** · verify the target satisfies
+applicable Layer-1 / current eligibility · **preserve current responsibility until the governed transition
+commits**.
+
+**C. PURE FAMILY / AXIS VALIDATION** — supported family · supported axis · owner/person/company type
+compatibility · no-op refusal · immutable-family constraints · structural transition rules.
+
+**D. AUDIT** — stage the required audit evidence.
+
+**E. ATOMIC COMMIT** — responsibility change and audit commit atomically.
+
+**On any failure: ZERO HANDOFF MUTATION · ZERO PARTIAL AUDIT · ZERO RESPONSIBILITY GAP.**
+
+### Why no second authority lookup in the writer
+
+Authoritative person resolution belongs at the governed orchestration / read boundary. **Duplicating that
+lookup in a lower writer would create two authority decisions that could drift.**
+
+Defence in depth is provided instead by: **a single governed mutation entry point · pure family/axis
+validation · caller authorization · transaction atomicity · audit · and tests that prohibit bypass mutation
+paths** — **not** by a second independent authority lookup.
+
+This is consistent with the measured constraint recorded in **#183**: `assertValid`
+(`functions/src/access/auditEventWriter.ts:460`) is synchronous and returns `void`, so the writer could not
+perform the lookup even if asked to.
+
+### Bypass paths are DEFECTS
+
+**Any runtime mutation path capable of changing governed RECORD OWNERSHIP or ACCOUNTABILITY without passing
+through the governed orchestration boundary is a DEFECT. Do not make the writer compensate for a bypass —
+eliminate or refuse the bypass.**
+
+**Required before implementation authorization: an end-to-end call-path census.**
+
+```
+PUBLIC / API ENTRY → ORCHESTRATOR → AUTHORITY READ → PURE VALIDATOR → WRITE → AUDIT → COMMIT
+```
+
+Every mutation path classified **GOVERNED · INERT · LEGACY · BYPASS DEFECT · NOT APPLICABLE**. Known
+candidate at the baseline: `OwnerSelect.jsx` → `updateOpportunity` moves ownership in production and emits
+**no** `OWNERSHIP_HANDOFF` at all (`opportunityCallables.ts:337-350` writes a free-text `summary`), which on
+this ruling is a **bypass defect** rather than merely an unwired path.
+
+### Assignment remains separate
+
+**This ruling does NOT turn ordinary work assignment into an ownership or accountability handoff.**
+ASSIGNMENT · ACCOUNTABILITY · RECORD OWNERSHIP remain distinct axes. A single governed transaction may change
+more than one axis **only when the business command explicitly requests each change.** Never infer
+*assignment changed → accountability changed*, nor *accountability changed → ownership changed.* (This
+restates `#180` invariants 2 and 3 at the transaction boundary.)
+
+### Status and what is still blocked
+
+`OD-7` **RULED / CLOSED** · placement **GOVERNED ORCHESTRATION BOUNDARY** · pure family/axis validation
+**RETAIN** · writer-side second authoritative lookup **NOT REQUIRED** · bypass mutations **DEFECT, must be
+removed or refused**.
+
+**`OD-7` closure does NOT authorize implementation.** The next blocking architecture gap is the
+**PERSON AUTHORITY GAP** — `OD-6` requires authoritative person resolution and **no current candidate
+satisfies the full contract.** Per `#183`, an existing compatibility collection must not be promoted merely
+because it is easy to query, and `users`, `fieldops_technicians`, Firebase Auth and `eos_policy.principals`
+must not become the canonical Employee authority because one holds overlapping data.
+
+**Standing program distinction, now binding on that design:** **BUSINESS EMPLOYEE** is the canonical
+operational person concept; **SECURITY PRINCIPAL** is the canonical authenticated/security identity concept;
+**they are not the same object.** The target zero-Firebase architecture must support
+**EMPLOYEE ↔ governed identity/principal linkage without making authentication identity equal business
+identity.**
+
+All **42** items in `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` remain
+`IMPLEMENTATION STATUS = NOT AUTHORIZED` until the person-authority architecture is settled and the revised
+Employee / Atlas design is reconciled where UI behaviour is affected.
