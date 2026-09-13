@@ -57,6 +57,30 @@ provenance cell.**
 
 ### `OD-1` — Is ACCOUNTABLE PERSON an axis distinct from ownership and assignment?
 
+> ## RULED BY THE OWNER — 2026-09-13 — APPROVED
+>
+> **ACCOUNTABLE PERSON IS A DISTINCT FIRST-CLASS AXIS.** Option **(a)**.
+>
+> Modelled independently from RECORD OWNER · ASSIGNEE/EXECUTOR · MANAGER · ESCALATION OWNER ·
+> OPERATING COMPANY · DOMAIN STEWARD · JOB ROLE · SECURITY ROLE.
+>
+> **It answers:** *"Who is personally responsible for making sure the next required outcome happens?"*
+> For every **ACTIONABLE** business item EOS must be able to identify **exactly one** accountable person
+> **at every point in time**, unless an explicit, separately Owner-approved exception defines otherwise.
+>
+> **This row is now SETTLED AUTHORITY, not an open question.** The full ruling — business definition, the
+> three worked examples, and all ten hard invariants — is recorded in
+> [`../../DECISIONS.md`](../../DECISIONS.md) **#180**, which is canonical for it.
+>
+> **IMPLEMENTATION IS NOT AUTHORIZED.** No ACCOUNTABLE PERSON storage, migration, enforcement, handoff or
+> backfill until `OD-6` resolves person-reference validity and census behaviour and the remaining
+> dependency decisions are reconciled. **Invariant 10 forbids a generic `ownerId`/`accountableId`
+> shortcut across families**, so the ruling does **not** license adding a field.
+>
+> **Nothing below this banner has been altered.** The question, evidence, options, the recommendation as
+> the recommending lane made it, and the UNPROVEN items are preserved exactly as they were when the
+> decision was open — they are the basis on which it was ruled, and they stay auditable.
+
 **PROVENANCE:** EMP-ACCOUNTABILITY `OD-EMP-001` (its stated gate on all others) · OWN-DESIGN `MI-1`
 (*"the central question of this lane"*) · OWN-E2E `OD-OWN-012` · EMP-EXPERIENCE concept 2 /
 `OD-EMP-001` · EMP-INFORMATION §7.0(a) · EMP-ROLE F-2 · EMP-WORK §5.1.
