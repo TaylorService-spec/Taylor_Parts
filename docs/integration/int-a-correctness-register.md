@@ -452,6 +452,77 @@ Two further corrections while verifying it, both affecting figures quoted all ru
   **then** the preference (`:774`). A declared-but-ineligible id is silently dropped. Today 25 of 25
   survive, so the gate is invisible — which is exactly how it would be missed if it ever bit.
 
+## 12.3 Triage of four newly reported defects — three shrink under verification
+
+Triage only, as instructed: classify and assign, **do not implement everything merely because it was
+discovered.** Each was re-read at `64008d5a` before being written down, and three of the four turned out
+to be materially smaller than reported. That is the point of triaging before implementing.
+
+| # | Reported | Verified | Class | Assigned |
+|---|---|---|---|---|
+| A | `opportunityCallables.ts:228` — attacker-controlled `request.data` spread influences `operatingCompanyId` in a finance authorization key | **SUBSTANTIALLY WRONG** — see §12.3.A | **AUTHORITY GAP**, narrow | **DEFERRED** |
+| B | `coverageReadCallables.ts` — caller-supplied `companyId` scopes the query; returns `status:"ready"` + zero rows on failure | **HALF WRONG** — the `"ready"` half is false; the scope half is real | **LATENT** + **AUTHORITY GAP** | **DEFERRED** (capability inactive) |
+| C | `operatingCompanyAuthority.ts` — `resolveOperatingCompany` returns `INACTIVE`, `deriveCompanyOwner` discards it | **CONTESTED** — discarding may be deliberate policy | **MODEL GAP** | **OWNER DECISION** (folds into OD-6) |
+| D | `inventoryCapabilityParityHarness.js` — ambient ADC binding | **CONFIRMED** | **TEST/HARNESS SAFETY** + **AUTHORITY GAP** | **A2-3** (already sequenced) |
+
+### 12.3.A The spread is real; the injection is not
+
+`opportunityCallables.ts:228` does spread caller data — `buildCreateOpportunity({ ...data, inheritedOwner }, …)`.
+Two things blunt it. `inheritedOwner` is appended **after** the spread, so a caller cannot override it. And
+`operatingCompanyId` does not pass through raw: `opportunityCommands.ts:175` routes it through
+`resolveCommercialCompanyScope`, which at `commercialCompanyScope.ts:59-72` resolves the value against the
+governed operating-company registry and **throws `CommercialCompanyScopeError` for anything not governed** —
+with the message *"It is never inferred from the account owner, the salesperson, lineOfBusiness, or a
+display name."*
+
+**So arbitrary values cannot reach the authorization key.** The claim as reported is withdrawn.
+
+**What remains is real but much narrower:** the resolver validates that the company **exists and is
+governed**, not that **this caller is entitled to it**. A caller may therefore book an Opportunity to any
+governed operating company, including one they have no relationship with. With two companies in the
+registry the blast radius is one alternative. **DEFERRED** — it is an entitlement question, not an
+injection, and it belongs with the company-scope authority work rather than in a correctness merge.
+
+### 12.3.B The honest half, and the real half
+
+The reported *"`status:"ready"` with zero rows for every thrown error"* is **false.** The handler's `catch`
+returns **`status: "unavailable"`** with an empty array, and the truncation branch at `:64-66` likewise
+returns `"unavailable"` with the comment *"A bounded resolver must never label a truncated result as
+complete."* **That is the standing invariant being honoured, not violated** — and it is a pattern worth
+copying to the surfaces that do violate it, so it is recorded here as a **positive control**, not a defect.
+
+The real half stands: `:51` requires a `companyId` from `request.data` and `:58` uses it directly as
+`where("companyId", "==", data.companyId)` with **no membership or entitlement check**. A caller who names
+another company's id reads that company's coverage assignments. **LATENT** — `coverage.read` is inactive and
+not production-activated, so no caller can reach it today. Classified separately from live defects, as
+instructed. It must not be activated before the check exists.
+
+### 12.3.C Discarding `INACTIVE` may be the policy, not a bug
+
+`commercialCompanyScope.ts:64-67` **deliberately accepts `INACTIVE`**, and gives a sound reason: *"a record
+booked to a company that has since been deactivated still landed on that company's books, and rejecting it
+would rewrite history to tidy a registry."* That is the same standing principle as *historical stays
+historical*.
+
+So there are two readings and this register picks neither:
+
+- **Defect** — `deriveCompanyOwner` (`typedOwner.ts:137-143`) throws away a distinction
+  `resolveOperatingCompany` computed (`operatingCompanyAuthority.ts:54,80`), so the census cannot see that an
+  owner's company is deactivated.
+- **Policy** — discarding is *consistent with* `commercialCompanyScope.ts:64-67`: company ownership is
+  deliberately existence-checked, not activity-checked, for the same historical-integrity reason.
+
+Both readings are carried. **This is an OD-6 input, not an engineering fix**, because the whole question OD-6
+asks is what a resolver owes the census about an owner's current validity — and the answer for the person
+axis should not be chosen while the company axis's answer is undecided. **Do not "fix" this before OD-6.**
+
+### 12.3.D Confirmed, already placed
+
+`inventoryCapabilityParityHarness.js` takes no project or environment argument and binds Firestore from
+ambient ADC — see §7.1. Already **A2-3**; nothing further to assign.
+
+**None of A–D is implemented, and none is authorized.**
+
 ## 13. What this register does NOT establish
 
 - **That any A1 or A2 branch still passes.** Every "EXECUTED (own lane)" grade is evidence from that
