@@ -811,3 +811,422 @@ supplying a counterweight of comparable strength in the opposite direction**.
 schema, field name, enum name, migration, backfill, handoff activation, Rules change, wiring or
 implementation was performed or designed. `OD-PACKET-001-006-007.md` was not modified. No census
 architecture was designed (`MI-P` reserved it). No person authority was chosen (`MI-X` is open).
+
+---
+---
+
+# REVISION 3 — OD-7-POST-M4 LANE (appended 2026-09-13, baseline `64008d5a`)
+
+> **APPEND ONLY. REVISION 1 (§0–§13) and REVISION 2 (§14–§17) ARE NOT MODIFIED, NOT DELETED, AND NOT
+> SILENTLY RESTATED.** Where this revision contradicts them, both are cited and the contradiction is
+> marked **LOUDLY**.
+>
+> **TRIGGER:** the Owner's `M-4` ruling of 2026-09-13 — **`M-4` IS CLOSED. Answer: (iii) BOTH, at
+> different layers.**
+>
+> **WHAT THIS REVISION DOES NOT DO.** It does not choose an option merely from the ruling — the Owner
+> forbade that in terms. It does not resolve the person-authority source (**PERSON AUTHORITY GAP**
+> is preserved; no collection is named). It does not propose a field or enum name, does not design
+> the census architecture (`MI-P` reserved it), does not wire, deploy, mutate, migrate, or touch
+> Rules. `OD-PACKET-001-006-007.md` was not modified.
+
+## 18. THE RULING AS RECEIVED, AND THE FOUR THINGS IT SETTLES
+
+| # | Ruled | Where it lands in this brief |
+|---|---|---|
+| **`R-1`** | **NON-EXISTENT EMPLOYEE → INVALID PERSON REFERENCE → NOT ELIGIBLE AS HANDOFF TARGET. That is a Layer-1 failure.** | Closes `M-4` on the Layer-1 half |
+| **`R-2`** | **A governed handoff command MUST REFUSE TO COMMIT a handoff whose target person failed Layer-1 resolution; it must require successful authoritative person resolution before mutation. This does NOT mean the pure builder performs the lookup. The command/orchestration boundary must supply a validated target fact.** | Closes `M-4` on the handoff-boundary half, **and relocates the obligation to a layer no option contains** — §20, §21 |
+| **`R-3`** | **DO NOT put authoritative Employee existence lookup inside the synchronous audit writer or the pure builder.** | **Ratifies `X-15` and `X-18` and goes further**: what those two established as *impossible at the writer / possible at the builder* is now **forbidden at BOTH** |
+| **`R-4`** | Preferred sequence: `TRANSACTION / COMMAND READ PHASE` → resolve target Employee via the canonical person authority → evaluate OD-6 eligibility → construct validated handoff input → **pure family/axis validation** → mutation → audit → **commit atomically**. **If resolution fails: REFUSE BEFORE WRITE.** | §20 `N-19`: **this sequence already exists in the repository, has already executed, and was built without any of (a)/(b)/(c)** |
+
+### 18.1 WHERE THE RULING CONTRADICTS THIS BRIEF — STATED LOUDLY
+
+| # | REVISION 2 said | The ruling says | Resolution |
+|---|---|---|---|
+| **`Z-5`** | **`X-18` / §14.2 HOW PERSON EXISTENCE IS CHECKED — *"this is the only one of the three placements that CAN host such a check … the builder is called BY the caller, so the caller can perform the Employee read … and hand the fact in."* This was recorded as *"the first evidence-derived discriminator on this field … and it favours (b)."*** | **`R-3`: do not put the lookup in the pure builder.** | **THE DISCRIMINATOR IS VOID — and it was this brief's only discriminator that favoured (b) on the person field.** REVISION 2's *mechanism* survives intact (the caller reads, the pure layer consumes), but its *attribution* was wrong: the capability belongs to the **caller**, i.e. to concern **B**, and REVISION 2 credited it to **(b)** because (b) names the builder. **(b) does not own the caller.** Neither does (a) or (c). **Cited both: §14.2 and `X-18` say (b); `R-2`/`R-3` say the orchestration boundary.** The ruling is authority; REVISION 2 is corrected |
+| **`Z-6`** | §14.4 and §17 — recommendation `NONE` because **two ruling-derived discriminators oppose each other at comparable strength** (axis-awareness → (b); measured compatibility → (a)) | The ruling does not adjudicate either | **BOTH DISCRIMINATORS SURVIVE AND BOTH ARE STRENGTHENED — see §20.4.** The opposition is not resolved; it is sharpened on both sides. `NONE` is **not** retained by inertia, and the reason it is retained has changed again |
+| **`Z-7`** | §14.2 / `X-14` — *"(b) makes the validated carrier HARDER to reach … which is precisely what production already does (`opportunityCallables.ts:341-348`)"*, describing production as using **the field-change carrier** | — | **WRONG, AND THIS REVISION FOUND IT INDEPENDENTLY OF THE RULING. See `Y-6`.** The live path uses **neither** carrier |
+
+## 19. RE-VERIFICATION OF EVERY CARRIED CLAIM — `[OBSERVED AT: 64008d5a]`
+
+> Each row was re-read from `git show 64008d5a:<path>` in this pass. **Five carried claims are wrong
+> and are corrected here.** Corrections carry `Y-`/`X-` numbers continuing REVISION 2's series.
+
+| Carried claim | Re-verified result | Verdict |
+|---|---|---|
+| `assertValid` is **synchronous, returns `void`** | `function assertValid(input: RecordAuditEventInput): void` — no `async`, no `await` in body | **CONFIRMED** — `access/auditEventWriter.ts:460` |
+| `assertValid` is the **first statement** of the write paths | `stageAuditEvent`: `assertValid(input)` **before** `getFirestore()` `:786` and `.doc()` `:787`. `stageAuditEventWithId`: id guard `:817-819` → `assertValid` `:820`. Third path `recordStandaloneAuditEvent` `:840-849` reaches it via `stageAuditEvent` `:846` | **CONFIRMED** — `:785`, `:820`, `:846` |
+| `X-6` — the matrix imports **only** `./typedOwner`, which the writer already imports | `ownershipMatrix.ts:49` is its **sole** import line. `auditEventWriter.ts:58` already imports `../ownership/typedOwner`. Adding the matrix to the writer therefore introduces **exactly one** new module, whose only dependency is **already present** | **CONFIRMED AND SLIGHTLY STRENGTHENED** |
+| `U-NEW-2` — `buildOwnershipHandoff` returns an **unmarked plain object** | `:178-190` returns an object literal typed `RecordAuditEventInput`; no brand, no symbol, no marker, no class | **CONFIRMED** — `ownership/ownershipHandoffCommand.ts:178-190` |
+| `X-12` — (c) is **not unprecedented** | *"a no-op handoff → enforced in the audit writer, **restated here** so the caller gets the error before staging"* | **CONFIRMED — and the DIRECTION matters, see `X-19`** — `ownershipHandoffCommand.ts:22-23` |
+| `M-2` carriers | handoff carrier `:387-390` (`previousOwner` `:387`, `newOwner` `:388`, `handoffReason` `:389`, `handoffSource` `:390`); field-change carrier `:405-407`; `FIELD_CHANGE_ACTIONS` `:414-416` with its **one** member `"updateEmployeeProfile"` at `:415` | **CONFIRMED** (`Y-4`/`Y-5` ranges hold) |
+| **PATH** of the writer | The writer is at **`functions/src/access/auditEventWriter.ts`** (929 lines). `functions/src/audit/auditEventWriter.ts` **does not exist at `64008d5a`** | **`Y-7` — CITATION CORRECTION.** All line numbers in the lane brief were right; the directory was not |
+
+### 19.1 `U-NEW-1` — **THE DENOMINATOR IS WRONG, AND THE HEADLINE IS WRONG REPO-WIDE**
+
+| Measure | Carried as | Re-measured at `64008d5a` | Method |
+|---|---|---|---|
+| files **importing** `auditEventWriter` | **44** | **44** ✅ | `git grep -l -E "from ['\"].*auditEventWriter" 64008d5a -- functions/src` |
+| files **mentioning** it | **50** | **50** ✅ (mention-only gap = **6**) | same, without the `from` anchor |
+| **write-capable** importers | **42** | **40** ❌ | of the 44, those also referencing `stageAuditEvent` / `stageAuditEventWithId` / `recordAuditEvent` / `recordStandaloneAuditEvent` |
+| write-capable importers that **can pass `OWNERSHIP_HANDOFF`** | **ZERO** | **ONE** ❌ | `ownershipHandoffCommand.ts` is itself one of the 40 (it imports `stageAuditEvent` `:36`) and it passes `action: "OWNERSHIP_HANDOFF"` `:180`. `employeeProfileCommands.ts` was the only other hit and it is a **comment** (`:252-257`); it passes `UPDATE_ACTION` at `:483` and `:628` |
+
+> ### **`X-20` — `U-NEW-1`'s HEADLINE IS FALSE REPO-WIDE, AND THE COUNTEREXAMPLE MATTERS MORE THAN THE ARITHMETIC**
+>
+> **Corrected statement:** *of the **40** write-capable `auditEventWriter` importers in
+> `functions/src`, **39** cannot pass `OWNERSHIP_HANDOFF` without a source change; the 40th is the
+> handoff builder itself.* **44 import, 50 mention — both confirmed.**
+>
+> **But `OWNERSHIP_HANDOFF` is not unreachable, and it is not unexercised.**
+> `functions/scripts/assignWarehouseRootCompany.js:234` calls
+> `stageOwnershipHandoff(txn, assignmentHandoffInput(d), { actorUid })` **inside a real
+> `db.runTransaction`** opened at `:214`, and
+> `docs/specifications/reorder-trusted-command-authority.md:208` records that **five real
+> `OWNERSHIP_HANDOFF` events were actually written** in sandbox under `R-28`, *"each with one
+> `OWNERSHIP_HANDOFF` (`previousOwner: null`)"*, a re-run writing 0.
+>
+> **Consequence for this decision:** every option's MIGRATION field in §14 was assessed against a
+> population of callers that was implicitly **empty**. It is not empty. **There is one live producer
+> of the action, it sits outside `functions/src`, and it is not counted by any importer census in
+> this brief.** `X-9` (*"(b) has no working precedent for a transfer"*) **still stands** — that
+> producer pins `previousOwner: null` (`warehouseRootCompanyAssignment.ts:376,387`) — but
+> *"(b) has no working precedent"* unqualified would now be false: **the builder path is exactly what
+> the one live producer uses**, which is a point **for** (b) that REVISION 2 recorded only as
+> *"the one live caller already complies (`N-18`)"* without connecting it to the count.
+
+### 19.2 `X-21` — "EVERY MODULE IN `functions/src/ownership/` DECLARES ITSELF **PURE**, EACH BY ITS OWN HEADER" IS **NOT TRUE AS STATED**
+
+| Wording actually used | Modules |
+|---|---|
+| **`PURE`** explicitly | `creationOwnerResolution.ts:25` · `operatingCompanyAuthority.ts:6` · `ownershipBackfillRules.ts:27` · `ownershipDerivation.ts:26` · `warehouseCanonicalIdRepair.ts:4` · `warehouseRootCompanyAssignment.ts:4` |
+| *"stays pure"* (a clause, not a header declaration) | `commercialCompanyScope.ts:52` · `reorderRequestLocationAuthority.ts:53` |
+| *"a **pure** builder … Pure: no Firestore, no I/O, no clock"* | `ownershipHandoffCommand.ts:4, 73` |
+| **`READ-ONLY BY CONSTRUCTION`** — a *different* claim (it takes documents; it cannot write) | `ownershipCensus.ts:9-10` |
+| **`INERT, DERIVED, READ-NORMALIZED`** — a *third* wording | `typedOwner.ts:7-8` |
+| **NO PURITY OR I/O DECLARATION AT ALL** | **`ownershipMatrix.ts`** — its 48-line header is about the census reconciliation and the four owner classes; purity is nowhere asserted. It is nonetheless a frozen literal with **one** import (`:49`) and **zero** `async`/`await`/`getFirestore`/`.collection(` |
+
+> **Severity: MEDIUM, and it cuts against the strongest form of the argument.** The *substance*
+> (nothing in `functions/src/ownership/` performs I/O) holds at baseline. The *form* — *"each by its
+> own header"* — does not: **the one module option (a) would import into the writer is the one module
+> that never declares the property (a) depends on.** `R-3`'s prohibition is unaffected either way,
+> because `R-3` forbids the lookup rather than relying on a header. **Cited both:** the lane brief and
+> REVISION 2 `X-15`/`X-18` state the uniform version; `ownershipMatrix.ts` (header, 48 lines) is the
+> counterexample.
+
+### 19.3 `X-22` — (b)'s MEASURED BREAKAGE: THE **SHAPE** IS RIGHT, THE **NUMBERS** ARE NOT
+
+| Measure | `X-14` carried | Re-counted at `64008d5a` |
+|---|---|---|
+| `ownershipHandoffAudit.test.mjs` tests | **6** | **7** (`:47`, `:58`, `:108`, `:112`, `:119`, `:123`, `:129`) |
+| …of which exercise `stageAuditEvent` with a **hand-rolled** input | (not distinguished) | **5.** `:47` and `:58` are **static source-text** checks and touch no writer function |
+| assertions / refusal patterns broken under (b) | **~12 / 6** | **11 `refuses(...)` invocations** (`:109`, `:113-116`×4, `:120`, `:125-126`×2, `:131`, `:136`, `:141`) **+ 1 `assert.deepEqual` `:124`** = **12 assertions**, across **6 distinct refusal regexes** |
+| the hand-rolling method | `:90-101`, `:105` | **CONFIRMED VERBATIM** — `validHandoff()` `:89-100` is a literal; `refuses` `:102-106` calls `stageAuditEvent(rejectingWriter, input)` directly |
+
+> **Net: `X-14` is directionally right and numerically off by one test.** The corrected figure is
+> **7 tests, 5 writer-exercising, 12 assertions, 6 refusal regexes.** **(b) remains the only option
+> with measured present-day breakage, and the only one changing the writer's public surface.**
+
+### 19.4 `X-23` — A **NEW** MEASUREMENT THAT **REDUCES** (b)'s COST, FOUND IN THIS PASS
+
+**Eight tests in two files call `buildOwnershipHandoff`** — `ownershipModel.test.mjs:215, 344, 367,
+384, 398, 440, 821` and `warehouseRootCompanyAssignment.test.mjs:251` — carrying **36 assertions**
+(29 + 7). **Not one of them asserts a whole-object `deepEqual` on the builder's return.** Every
+assertion is field-by-field: `event.action` `:256`, `event.targetType` `:257`, `event.previousOwner`
+`:259`, `assert.deepEqual(event.newOwner, …)` `:260`, `event.actorUid` `:261`,
+`assert.match(event.summary, …)` `:262`; likewise `ownershipModel.test.mjs:360-361`.
+
+> **Consequence:** **adding a provenance marker to `buildOwnershipHandoff`'s return (`:178-190`)
+> would break ZERO of those 36 assertions.** `U-NEW-2`'s *remediation* cost is therefore smaller
+> than REVISION 2 implied — the gap is a **design** gap, not a test-migration gap. This is the first
+> finding in three revisions that **lowers** a measured cost for (b). It does **not** touch `U-NEW-5`
+> (whether such a marker can be made unforgeable), which is the objection that actually matters and
+> which §20.3 now makes worse.
+
+## 20. TASK 1 — THE THREE OPTIONS AGAINST THE RULED SEQUENCE
+
+### 20.1 `N-19` — **THE RULED SEQUENCE ALREADY EXISTS, HAS ALREADY RUN, AND CONTAINS NONE OF (a), (b) OR (c)**
+
+`functions/scripts/assignWarehouseRootCompany.js`, read verbatim at `64008d5a`:
+
+| `R-4` step | Where it is, in that file | Line |
+|---|---|---|
+| authoritative facts assembled, refuse if they do not reconcile | `assertAuthoredFacts()` → `resolveAuthoredWarehouseAssignments(config)`; throws `REFUSING:` unless `MATCHED` | `:131-141` |
+| read phase (pre-plan) | `db.collection(WAREHOUSES).doc(id).get()` for every candidate | `:172-173` |
+| evaluate eligibility, **purely** | `planWarehouseRootCompanyAssignment(authored, candidates)` — `warehouseRootCompanyAssignment.ts`, **PURE by its own header** `:4` | `:175` |
+| **REFUSE BEFORE WRITE** | *"BLOCKED … Zero writes. The whole batch is validated before anything is mutated, so a refusal anywhere stops all of it rather than leaving a partial assignment behind."* | `:189-195` |
+| **ONE governed transaction** | `await db.runTransaction(async (txn) => {` — *"the patches and their audit events commit together or not at all"* | `:209-214` |
+| **TRANSACTION READ PHASE** — re-read inside the transaction | `txn.get(ref)` for every target; *"a warehouse that changed between the plan and the commit fails closed rather than being overwritten on stale evidence"* | `:210-216` |
+| in-transaction re-validation, fail closed | `ABORTING: … disappeared between plan and commit` · `ABORTING: … gained a company … between plan and commit` | `:218-227` |
+| construct validated handoff input | `assignmentHandoffInput(d)` — **PURE**, returns the input shape only | `:234` → `warehouseRootCompanyAssignment.ts:373-395` |
+| **pure family/axis validation** | `stageOwnershipHandoff` → `buildOwnershipHandoff` `:78-191` (family known `:89-95`, participating `:101-106`, ownable `:110-115`, IMMUTABLE `:116-121`, owner-type compat `:126-134`, `previousOwner` explicitness `:137-142`, no-op `:153-158`, source closed `:161-166`) | `:234` |
+| mutation | `txn.update(refs[i], assignmentPatch(d))` | `:231` |
+| audit, staged onto the **same** writer | `stageOwnershipHandoff(txn, …)` — *"The writer seam is anything with `.set(ref, data)` -- a Transaction is one, which is how the audit event commits with the patch rather than beside it"* | `:232-234` |
+| **commit atomically** | the `runTransaction` boundary closes | `:237` |
+
+**And it has executed:** `docs/specifications/reorder-trusted-command-authority.md:208`.
+
+**The idiom is not exotic.** In `functions/src` alone, **61** modules call `runTransaction`, and
+**33** of those **also** import `auditEventWriter` — i.e. 33 existing governed commands already run
+`READ → VALIDATE → WRITE → AUDIT → COMMIT` on one transaction.
+`access/trustedWriterCommands.ts:1966` states the ruling's refusal rule in the repo's own words:
+*"refuse BEFORE any write (no audit against the mismatched project)."*
+The pure-consumer contract is likewise pre-stated: `ownership/creationOwnerResolution.ts:25-26` —
+*"PURE: no Firestore, no I/O. The caller reads the upstream document (inside its own transaction, so
+the inherited owner cannot drift between the read and the write) and hands the derivation in."*
+
+> #### **WHAT `N-19` PROVES, AND ITS ONE LIMIT**
+>
+> **Proves:** `R-4` is implementable at this baseline, is already implemented once end-to-end, and
+> **required no change to the audit writer, no change to the builder's signature, and no new refusal
+> in either.** It was built entirely in the **orchestrator**. **`R-4` therefore does not select among
+> (a), (b) and (c) — it is satisfied by a layer none of them occupies.**
+>
+> **Limit, and it is exactly the `PERSON AUTHORITY GAP`:** that precedent resolves a **COMPANY** fact,
+> and it resolves it from an **authored JSON config cross-checked against a pinned expectation**
+> (`:131-141`, `config/ownership/operating-company-roots.sandbox.json`) — **not** from a live
+> authority. `R-4`'s first step says *"resolve target Employee using the canonical person authority."*
+> **No authored file and no authority can play that role for a person at this baseline**, and naming
+> one is outside this lane. **So the precedent proves the SHAPE and leaves `R-4` step 1 with no
+> referent.**
+
+### 20.2 THE OWNER'S ELIMINATION TEST, APPLIED WITH THE THREE OUTCOMES DISTINGUISHED
+
+> **Test:** *"any option that cannot accommodate a governed pre-write read/validation phase cannot
+> independently satisfy the complete handoff contract."*
+>
+> **"INDEPENDENTLY", DEFINED PRECISELY, BECAUSE THE WHOLE RESULT TURNS ON IT.** An option satisfies
+> the contract **independently** iff, with that option in place and **no other layer changed**, a
+> handoff to a non-existent Employee is refused before mutation. **All three fail that.** The
+> question the test actually decides is therefore the *weaker* one the lane brief specifies: whether
+> the option is **incompatible** with an orchestration layer that hosts the phase — and that is a
+> different question with a different answer.
+
+| | **Can the option HOST the pre-write read?** | **Is it INCOMPATIBLE with an orchestrator that hosts it?** | **Independently satisfies the complete contract?** | **Outcome** |
+|---|---|---|---|---|
+| **(a)** writer consults the matrix | **NO, twice over.** `assertValid` is sync `void` (`:460`) and runs in the transaction **write** phase (`U-NEW-6`, source-read only) — and `R-3` **forbids** it regardless | **NO.** (a) is a synchronous shape/table check on an input the orchestrator has already validated. It neither performs nor prevents any read; `ownershipMatrix.ts` has zero `await` | **NO** | **SURVIVING — orchestrator (concern B) as a NAMED DEPENDENCY** |
+| **(b)** writer rejects unless staged through the builder | **NO.** (b) is a rule *at the writer*; the writer still cannot read. The **builder** cannot host it either — `R-3` forbids it, ending `X-18`'s route (`Z-5`) | **NO — and it is the only option that makes the orchestrator STRUCTURALLY MANDATORY**, since the sole permitted route runs `stageOwnershipHandoff:200-206` → `buildOwnershipHandoff`, which a caller must invoke | **NO** | **SURVIVING — orchestrator as a NAMED AND ENFORCED DEPENDENCY** |
+| **(c)** both | **NO** (union of two NOs) | **NO** | **NO** | **SURVIVING — orchestrator as a NAMED DEPENDENCY** |
+
+> ### **`X-24` — THE TEST ELIMINATES NOTHING AMONG (a), (b) AND (c). IT ELIMINATES THE CLAIM.**
+>
+> **No option is eliminated. No option can host the phase. All three are identically dependent on
+> concern B, and `R-3` is the reason — it removes the two layers the options are about from
+> contention for the read, so the read was never theirs to win.**
+>
+> **What the test does eliminate is the premise of `OD-7` as framed:** that one of these three
+> placements could *"satisfy the complete handoff contract."* After `R-2` and `R-3`, **none can, and
+> none was ever going to** — which is a correction to the packet's framing, not to any option.
+
+### 20.3 `X-25` — THE RULING **WORSENS** (b), AND IT IS A NEW *SOUNDNESS* OBJECTION, NOT A COST
+
+`R-2` moves the load-bearing guarantee from *"the builder ran"* to *"the orchestration boundary
+supplied a **validated target fact**."* Ask what the writer could verify about that property:
+
+| Candidate | Result |
+|---|---|
+| perform the resolving read itself | **FORBIDDEN** by `R-3`; **and impossible** — `assertValid` is sync `void` `:460` in the write phase |
+| inspect the input's shape | Possible, and it is what the writer already does — `:540-570` validates the four handoff fields unconditionally. **But shape is exactly what `R-2` says is insufficient**: the builder *"must consume an already-resolved person fact rather than pretending a string id proves Employee existence"*, and `TypedOwner` is `{ type, id }` with `id: string` (`typedOwner.ts:19-22`) |
+| trust a marker the builder attaches | The only remaining route — and it is `U-NEW-5` verbatim: **a forgeable marker fails OPEN**, accepting a hand-rolled handoff while reporting that provenance is enforced |
+
+> **`U-NEW-2` was a gap (the mechanism is absent). `U-NEW-5` was a risk (it might be forgeable).
+> `R-2`/`R-3` together make it a CATEGORY LIMIT: the property (b) would enforce — that an
+> authoritative resolution happened upstream — is UNVERIFIABLE at the writer in principle, because
+> verifying it requires either the read the writer may not perform or trust in a marker the writer
+> cannot authenticate.** (b) can still soundly enforce *"the pure checks ran"*; it can **never**
+> soundly enforce *"the target was resolved."* **That is a downgrade in what (b) buys, delivered by
+> the ruling, and it is the sharpest answer this lane can give to the lane brief's question about
+> `U-NEW-2`.**
+>
+> **`U-NEW-2` — DOES THE RULED SEQUENCE CLOSE IT, MAKE IT IRRELEVANT, OR LEAVE IT OPEN? ANSWER: it
+> makes it IRRELEVANT TO THE CONTRACT and leaves it OPEN AS A DESIGN QUESTION.** Irrelevant, because
+> under `R-4` the fact's provenance is guaranteed by the orchestrator's in-transaction read
+> (`N-19` `:210-216`) — the place `creationOwnerResolution.ts:25-26` already says drift is prevented —
+> so nothing in the *contract* now depends on the writer recognising the builder. Open, because if
+> the Owner still wants a writer-side provenance gate as defence in depth, the mechanism remains
+> undesigned and `U-NEW-5` remains unresolved. **It is not closed.**
+
+### 20.4 `X-26` — THE RULING **STRENGTHENS (a)'s** POSITION TOO, SO §14.4's OPPOSITION SURVIVES
+
+| Direction | New ruling-derived evidence |
+|---|---|
+| **toward (b)** | `R-4` makes the pure builder a **named stage** of the governed sequence (*"→ pure family/axis validation →"*), and `R-2` makes the orchestrator mandatory — so (b)'s rule *"responsibility-moving events are staged through their governed authority"* is the structure `R-4` describes. **And `X-20` supplies what REVISION 2 missed: the one live producer of the action already uses that route** (`assignWarehouseRootCompany.js:234`) |
+| **toward (a)** | `R-4` allocates *"supported family · supported axis"* to the **pure builder**, and **the builder already does all of it** (`:89-121`, `:126-166`). So the writer-side family check (a) proposes is **redundant with the ruled allocation** — which reads against (a)… **except that `X-19` shows the repo's shipped precedent runs the OTHER WAY**: `ownershipHandoffCommand.ts:22-23` records the **no-op** as *"enforced in the audit writer, restated here"* — **authority at the writer, convenience copy in the builder.** That is (a)'s topology, already shipped, for one handoff invariant, with a written rationale. `X-12` established (c) is not unprecedented; **`X-19` adds that the precedent's DIRECTION is (a)'s.** And (a) alone survives a caller that skips the builder — which matters precisely because `R-1`'s defect is a bad target reaching the write |
+| **unchanged** | `X-15` (a) can never host the person check · `X-13` (a)'s refusals ride a code-less class no mapper reads · `X-22` (b) is the only measured breakage · `X-23` (b)'s marker breaks no builder test |
+
+> **§14.4's symmetry HOLDS. Both poles moved outward, neither crossed.** `Z-6` is the record of that.
+
+## 21. TASK 2 — THE FIVE CONCERNS, SEPARATED. **NOT COLLAPSED.**
+
+| | Concern | **What exists at `64008d5a` (`file:line`)** | **What is missing** | **Which of (a)/(b)/(c) touches it** | **In `OD-7` scope?** |
+|---|---|---|---|---|---|
+| **A** | **PERSON AUTHORITY RESOLUTION** | **Nothing authoritative.** `typedOwner.ts:7-8` — *"INERT, DERIVED, READ-NORMALIZED. No setter, no writer, no persistence"*; `TypedOwner = { type, id }` `:19-22`; `isTypedOwner` is **shape only**, used at `ownershipHandoffCommand.ts:126,144` and `auditEventWriter.ts:541,554`. The matrix declares **two** rows claiming person authority (`ownershipMatrix.ts:514,515`) and **no single** one (`X-17`) | **Everything in the `PERSON AUTHORITY GAP`**: stable Employee/business-person identity · namespace · **existence** · employment/current-status · historical identity preservation · Principal/Firebase linkage · technician relation · operating-company context | **NONE.** `R-3` forbids A in the writer **and** in the builder; (a)/(b)/(c) are those two layers | **NO.** Named dependency, not solvable here |
+| **B** | **HANDOFF COMMAND ORCHESTRATION** | **The idiom is pervasive and the ruled sequence is implemented once end-to-end.** 61 `functions/src` modules call `runTransaction`; **33** also import `auditEventWriter`. `trustedWriterCommands.ts:1966` — *"refuse BEFORE any write."* `creationOwnerResolution.ts:25-26` states the pure-consumer contract. **The full `R-4` sequence, executed:** `scripts/assignWarehouseRootCompany.js:131-141, 172-175, 189-195, 209-237` (`N-19`), five real events per `docs/specifications/reorder-trusted-command-authority.md:208` | **A handoff orchestrator in `functions/src`** — there is none; the only one is an operator script outside it, it is not exported from `index.ts`, and it resolves a **COMPANY** fact from an **authored config** (`:131-141`), never a person from an authority. **`R-4` step 1 has no referent** (depends on **A**) | **NONE.** No option adds, changes or constrains an orchestrator. **(b) makes one structurally mandatory without supplying it** | **NO — and this is where `R-2` puts the obligation.** **THE GAP IS HERE** |
+| **C** | **PURE FAMILY/AXIS VALIDATION** | **Implemented, and it already matches `R-4`'s enumerated builder contract.** `ownershipHandoffCommand.ts` — family known `:89-95` · participating-companies refusal `:101-106` · not-ownable `:110-115` · **IMMUTABLE** `:116-121` · owner/family type compatibility `:126-134`, `:147-152` · `previousOwner` explicit-vs-forgotten `:137-142` · **no-op** `:153-158` · closed source set `:161-166`. Table: `ownershipMatrix.ts` (578 lines), `ownershipFamily()` an O(1) `Map.get` | **AXIS — the word appears 0 times in `ownershipHandoffCommand.ts`** (4 times in `ownershipMatrix.ts`), so *"supported axis"* has no implementation. **And `R-2`'s consumption contract is unmet:** the builder takes `newOwner: TypedOwner` (`:58`), a bare `{type,id}` — the *"string id pretending to prove Employee existence"* the ruling names | **(b)** makes C a mandatory route; **(a)** duplicates C's family half at the writer; **(c)** both | **YES** |
+| **D** | **AUDIT WRITING** | **Complete for the handoff, and closed both ways.** Four handoff fields `:387-390`; validated **unconditionally** for the action `:540-570`; refused for every other action `:571-582`; `objectId` required `:520-536`; `handoffReason` length + secret guards `:586-600`. `assertValid` `:460`, first statement at `:785`/`:820`/`:846`. Writer **stages, never commits** — `AuditEventWriter` is `{ set() }` (`:769-771`), append-only by design (`:773-777`) | **Nothing for `R-4`.** The writer already commits with the caller's mutation by construction (`:765-771`) | **ALL THREE.** This is the only file (a), (b) and (c) each edit | **YES** |
+| **E** | **TRANSACTION COMMIT** | **Owned by the caller, deliberately.** `:765-771` — *"a caller passes either one, **already holding its own business-mutation writes**, so this Audit Event write commits (or aborts) exactly WITH those writes, never independently."* The writer's **only** committer is `recordStandaloneAuditEvent:840-849`, for audit-only events. The 33 modules in **B** commit; `N-19` commits at `:237` | **No handoff committer in `functions/src`** — a restatement of **B**, not a separate gap | **NONE.** No option commits anything or changes who does | **NO** |
+
+> ## **`X-27` — THE FINDING THE FIVE-WAY SEPARATION PRODUCES, STATED PLAINLY AS THE LANE BRIEF REQUIRES**
+>
+> **THE THREE OPTIONS DIFFER ONLY ON `C` AND `D`. THE REAL GAP IS `A` AND `B`.**
+>
+> - **`C` is already satisfied** against `R-4`'s own enumeration of the pure builder's contract —
+>   family, immutability, owner/person type compatibility, current/next structure, no-op refusal are
+>   all implemented at `ownershipHandoffCommand.ts:89-166`. What is missing from `C` is **axis**
+>   (0 occurrences) and **the resolved-person input type** — and **neither of those is what (a), (b)
+>   or (c) proposes.**
+> - **`D` is already complete** for the handoff and is closed in both directions (`:540-582`).
+> - **`A` is empty** and `R-3` bars the options' two layers from filling it.
+> - **`B` is where `R-2` puts the obligation**, has 33 in-repo precedents plus one executed
+>   end-to-end instance, and **no option touches it.**
+>
+> **So the ruling narrows `OD-7` exactly as the lane brief anticipated: from "where does validation
+> live" to "what must the orchestration boundary guarantee" — and the second question is not a choice
+> among (a), (b) and (c).**
+
+## 22. DOES THE THREE-OPTION FRAME STILL FIT? **NO — AND THE MISSING SHAPE MUST BE NAMED**
+
+| | Assessment |
+|---|---|
+| **Why it no longer fits** | The frame asks **where family-level handoff validation must live** and offers three answers spanning **C** and **D**. `R-2` relocates the contract's load-bearing requirement to **B**; `R-3` bars **A** from **C** and **D**; `R-4` allocates **C** to the builder, **where it already is**. The frame's three answers are therefore all answers to a question that is **no longer the binding one** |
+| **What the frame cannot express** | That **C stays exactly where it is** (`ownershipHandoffCommand.ts:89-166`), **D is left unchanged**, and `OD-7`'s substance moves to a constraint on **B**. That is a **positive placement** — *"family/axis validation lives in the pure builder; the writer is not a second family authority"* — and **it is not `(d)`**, which was *"neither, yet — wire nothing"* (§5, §6.3 `(d-place)`/`(d-wire)`). `(d-place)` was eliminated in REVISION 2 §6.3. **This shape is a ruling, not a deferral, and the packet's four options do not contain it** |
+| **How it is recorded** | As **`(e)` — a fourth live shape, surfaced, not chosen.** Consistent with `X-27` and with `N-19`, which shows it is the shape the one executed handoff already has. **This lane does not select it**, because the Owner forbade choosing from the ruling and because the question *"is a second writer-side family authority still wanted as defence in depth?"* is a governance preference no evidence in this brief settles |
+| **Is surfacing `(e)` within lane?** | Yes. The lane brief requires *"whether the three options are even still the right frame"* and forbids collapsing the five concerns *"merely to preserve an old three-option framing."* `(e)` names no field, no enum, no collection, no authority, and designs no architecture |
+
+## 23. `M-1`…`M-4` UNDER THE RULING — NO OWNER ANSWER INFERRED
+
+| | Status after the ruling | Evidence |
+|---|---|---|
+| **`M-4`** | **CLOSED by the Owner — (iii) BOTH, at different layers** (`R-1`, `R-2`). Recorded; not reinterpreted | `R-1`–`R-4` |
+| **`M-1`** — which axis/axes | **STILL OPEN, with new evidence that sharpens it.** `R-4` puts *"supported **axis**"* in the pure builder's contract and forbids *"owner/accountability conflation"* — so the ruling **presupposes more than one axis** and presupposes the builder knows which are supported. **At baseline the builder has no axis concept whatever: `axis` appears 0 times in `ownershipHandoffCommand.ts`** (4 times in `ownershipMatrix.ts`), and `accountablePerson` appears in **0** files under `functions/src`. **The ruling therefore adds evidence that `M-1`'s answer is "more than ownership" without saying which axes** — and it does so without touching `MI-P`'s reservation. **`M-1` is not answered and this lane does not lean** | `ownershipHandoffCommand.ts` (grep `axis` = 0) · `ownershipMatrix.ts` (4) · `accountablePerson` = 0 files |
+| **`M-2`** — which carrier | **THE RULING CONSTRAINS IT, WEAKLY BUT REALLY — BY EXCLUSION, AND WITHOUT NAMING A CARRIER. STATED EITHER WAY BELOW** | see §23.1 |
+| **`M-3`** — architecture only, or authorizes wiring | **STILL OPEN. The ruling supplies evidence for BOTH readings and this lane declines to infer.** **Toward "authorizes wiring":** `R-2` and `R-4` are imperative (*"must refuse to commit"*, *"must require"*) and `R-4` is specific enough to implement as written — `N-19` proves an implementation of that shape is achievable at this baseline with no new authority. **Toward "architecture only":** `R-4`'s **step 1 has no referent** — *"resolve target Employee using the canonical person authority"* names something that does not exist (**A** is empty; `ownershipMatrix.ts:514,515` claim person authority **twice**, `X-17`), so the sequence cannot be wired however imperative its verbs; and the ruling **explicitly declines to select a placement** (*"Do not automatically choose an option merely from this ruling"*), which is the very act `M-3` asks about. **On evidence the unmet precondition is the harder fact, but "harder fact" is not the Owner's answer and `M-3` is about intent.** `M-3` STAYS OPEN | `R-2`, `R-4` · §21 row **A** · `X-17` |
+
+### 23.1 `M-2` — WHAT THE RULING DOES AND DOES NOT CONSTRAIN
+
+> `R-4` says **"WRITE AUDIT"** and names **no carrier**. Both readings are carried.
+
+| Reading | Case |
+|---|---|
+| **The ruling DOES constrain `M-2`** | `R-4` requires the audit write **inside the one governed transaction, after the responsibility mutation, before commit.** At this baseline only **one** carrier can satisfy that for a handoff: the field-change carrier is refused for any action outside `FIELD_CHANGE_ACTIONS` (`auditEventWriter.ts:661-670`), whose **sole** member is `"updateEmployeeProfile"` (`:415`); and the four handoff fields are refused for any action but `OWNERSHIP_HANDOFF` (`:571-582`). **The two carriers are mutually exclusive by construction.** Admitting a handoff to the field-change carrier would require adding an action to `FIELD_CHANGE_ACTIONS` — **an enum change `#182` §3 withholds and this lane may not propose.** So `R-4` **rules out the field-change carrier by exclusion**, leaving the handoff carrier as the only satisfiable one — **without the Owner naming it** |
+| **The ruling does NOT constrain `M-2`** | `R-4` is silent on the carrier, and `M-2`'s **sharpened** form (§15.2) is a **prior** question — *"does `#181`'s ONE GOVERNED OPERATION mean one AUDIT EVENT or one TRANSACTION?"* **`R-4` answers that prior question in favour of ONE TRANSACTION** (`READ · VALIDATE · WRITE · WRITE AUDIT · COMMIT` is a transaction, not an event) — and the one-transaction reading was already *"satisfiable today with no schema change"*, so the ruling relieves the pressure on `M-2` without deciding which carrier a responsibility move must use. **And `M-2`'s live half is untouched** (`Y-6`) |
+
+> ### **`Y-6` — CORRECTION TO `X-5` / §2.5 / §14.2, FOUND IN THIS PASS AND INDEPENDENT OF THE RULING**
+>
+> REVISION 2 §14.2 says the incentive under (b) is to record ownership moves on *"the unvalidated
+> **field-change carrier** … which is precisely what production already does
+> (`opportunityCallables.ts:341-348`)."* **That is wrong, and the mechanism makes it impossible.**
+> `functions/src/opportunity/opportunityCallables.ts:337-350` stages
+> `action: "updateOpportunity"` carrying **`actorUid`, `targetType`, `targetId`, `outcome` and a
+> `summary` string listing changed field NAMES** — **no `fieldKey`, no `previousValue`, no
+> `newValue`.** It **cannot** carry them: `:661-670` refuses all three for any action outside
+> `FIELD_CHANGE_ACTIONS`, and `updateOpportunity` is not a member (`:415`). The module says so itself
+> at `:343-348` — *"`RecordAuditEventInput` has no metadata/detail field, so BEFORE/AFTER VALUES
+> CANNOT BE RECORDED without altering the governed audit schema."*
+>
+> **Corrected:** the live ungoverned ownership move uses **neither** `M-2` carrier — it uses a
+> **free-text `summary` naming the changed field**. **Severity: MEDIUM.** It **sharpens** `M-2` (the
+> real competitor to the handoff carrier is not carrier #2 but an unparseable sentence) and it
+> **weakens** REVISION 2's *"(b) pushes moves toward the carrier nothing governs"* argument — there
+> is no such carrier to be pushed toward; there is only a summary string, which is equally available
+> under (a) and (c). **Cited both:** §14.2 / `X-5` say field-change carrier; `:337-350` and `:661-670`
+> say otherwise.
+
+## 24. THE VERDICT
+
+> # **OWNER DECISION STILL REQUIRED.**
+>
+> **RECOMMENDATION REMAINS `NONE` between (a), (b) and (c) — for the third time, and for a third,
+> narrower reason.** REVISION 1: no discriminators. REVISION 2: two discriminators in opposition.
+> **REVISION 3: the ruling moved the binding requirement to a layer none of the three options
+> occupies, so the choice among them no longer decides whether the handoff contract is satisfied.**
+>
+> **THIS IS NOT CLINGING TO `NONE`.** The lane brief's instruction was to declare dominance if the
+> ruling produced it. It did not, and the reason is structural rather than evidential: `R-3` removed
+> both candidate layers from contention for the person check, `R-4` allocated family/axis to the
+> builder **where it already lives** (`ownershipHandoffCommand.ts:89-166`), and `N-19` shows the ruled
+> sequence was **already built once, end to end, without any of the three** — so no option gained
+> the ability to satisfy anything it could not satisfy before, and none lost it either.
+>
+> **WHAT DID CHANGE, AND IT IS SUBSTANTIVE:**
+>
+> | # | Change | Direction |
+> |---|---|---|
+> | **1** | **The complete handoff contract is satisfied at `B`, which no option touches** (`X-27`) | Demotes the whole (a)/(b)/(c) question from *"does handoff validation exist"* to *"is redundant defence wanted on one carrier"* |
+> | **2** | **`X-18`/§14.2's person-existence discriminator for (b) is VOID** (`Z-5`) — `R-3` forbids the builder-side check the argument depended on | Removes the only discriminator that favoured (b) on the ruled defect |
+> | **3** | **`U-NEW-2` becomes a SOUNDNESS limit, not a gap** (`X-25`) — the writer can never verify that an authoritative resolution happened | Against (b), and stronger than any prior objection to it |
+> | **4** | **`X-23` — a provenance marker breaks ZERO of the 36 builder-test assertions** | For (b): the first measured cost *reduction* in three revisions |
+> | **5** | **`X-19` — the repo's shipped duplication precedent runs in (a)'s direction** (authority at the writer, restatement in the builder, `:22-23`) | For (a), and it is the flip side of `X-12` |
+> | **6** | **`X-20` — `OWNERSHIP_HANDOFF` has one live producer and five events actually written**; `U-NEW-1`'s "zero" was a `functions/src` artefact | For (b) (the live producer uses the builder route); against every MIGRATION assessment that assumed an empty caller population |
+> | **7** | **The three-option frame no longer fits; `(e)` is surfaced** (§22) | Reframes, selects nothing |
+>
+> ## THE RESIDUAL QUESTION — ONE QUESTION, NARROWER THAN BEFORE
+>
+> > **Given that `R-2` places the complete handoff contract at the orchestration boundary (`B`) and
+> > `R-4` allocates family/axis validation to the pure builder — where it is already fully
+> > implemented (`ownershipHandoffCommand.ts:89-166`) — does `OD-7` still require a SECOND,
+> > WRITER-SIDE enforcement for paths that bypass the builder?**
+> >
+> > **IF NO → `(e)`:** `C` stays in the builder, `auditEventWriter.ts` is unchanged, and `OD-7`'s
+> > ruling is a constraint on `B`. *(A positive placement, not `(d)`. `(d-place)` remains eliminated.)*
+> >
+> > **IF YES → then and only then does the (a)/(b)/(c) choice arise**, and it arises as a
+> > **defence-in-depth** question on **one** carrier, with §14.4's opposition intact and `X-25`
+> > added: **(a)** an independent matrix check — sound, zero measured breakage, cannot host `A`,
+> > refusals ride a code-less class no mapper reads (`X-13`), precedent-aligned (`X-19`);
+> > **(b)** a provenance gate — soundly enforces only *"the pure checks ran"*, **never** *"the target
+> > was resolved"* (`X-25`), the only measured breakage (`X-22`: 5 tests, 12 assertions, 6 regexes),
+> > the only public-surface change, mechanism still undesigned (`U-NEW-5`); **(c)** the union.
+>
+> ## WHAT WOULD HAVE TO BE TRUE FOR ANY OPTION TO BECOME DOMINANT
+>
+> | For | Requires |
+> |---|---|
+> | **(a)** | That the Owner wants family semantics enforced for callers that bypass the builder — i.e. answers the residual question **YES** and values bypass-resistance over the builder's coded refusals. Also requires accepting that `AuditEventValidationError` carries no code (`:354`) and that **0** `functions/src` files catch it (`N-5`) |
+> | **(b)** | The residual question answered **YES**, **plus** a resolution of `U-NEW-5` showing the marker is unforgeable, **plus** acceptance that what it enforces is only *"the pure checks ran"* (`X-25`), **plus** the `X-22` rewrite |
+> | **(c)** | Everything (b) requires, plus (a)'s coupling, plus a written read-order constraint (§14.3) so the two refusal sites cannot invite the placement `R-3` forbids |
+> | **`(e)`** | The residual question answered **NO** — and an Owner ruling that `OD-7` is discharged by constraining `B`. **Requires `A`.** This lane does not select it |
+
+## 25. `UNPROVEN` · `NOT_RUN` · `MISSING INPUT` — REVISION 3 DELTA
+
+| # | Item | Status |
+|---|---|---|
+| **`U-NEW-8`** | **NEW.** Whether the `R-4` sequence can be instantiated for a **PERSON** target at all. `N-19` proves the shape for a **COMPANY** target resolved from an **authored config** (`assignWarehouseRootCompany.js:131-141`). `R-4` step 1 requires *"the canonical person authority"*, and **`A` is empty** | **UNPROVEN — and it is a dependency on `A`, not a defect of any option** |
+| **`U-NEW-9`** | **NEW.** Whether a writer-side provenance marker can convey *"an authoritative resolution occurred upstream"* soundly. `X-25` argues it cannot in principle at that layer. **Reasoned from source, not executed** | **UNPROVEN — strictly worse than `U-NEW-5`, which only asks whether a marker is forgeable** |
+| **`U-NEW-10`** | **NEW.** Whether the 33 `functions/src` modules that combine `runTransaction` with `auditEventWriter` all perform their reads **before** their writes as `R-4` requires. **Counted by grep; not individually read.** Only `trustedWriterCommands.ts:1966`, `creationOwnerResolution.ts:25-26` and `N-19` were read verbatim | **PARTIALLY VERIFIED — the count is exact, the per-module conformance is not claimed** |
+| **`U-NEW-5`** · **`U-NEW-6`** · **`U-NEW-7`** | Unchanged. `U-NEW-6` remains **`[SOURCE READ — NOT EXECUTED]`** — no emulator (**`java` ABSENT**, port 8080 held); never relabelled | **UNPROVEN / SOURCE READ** |
+| **`U-NEW-4`** | Re-checked this pass: **`functions/lib` ABSENT · `functions/node_modules` ABSENT.** Every handoff contract test imports `../lib/...` (`ownershipHandoffAudit.test.mjs:80-82`, `warehouseRootCompanyAssignment.test.mjs:28`), so all of them require a build, and **borrowing `functions/lib` is prohibited by lane contract.** Every count in §19 and §21 is **`[EXECUTED — git grep / git show over the 64008d5a tree]`**; every semantic claim is **`[SOURCE READ]`** | **`NOT_RUN` — unchanged, not relabelled** |
+| **`M-1`** | **OPEN**, with new evidence (§23): `R-4` presupposes an axis concept the builder does not have (`axis` = 0 occurrences) | **`MISSING INPUT`** |
+| **`M-2`** | **OPEN**, now **constrained by exclusion** (§23.1) and **sharpened** by `Y-6` — the live competitor is a free-text `summary`, not carrier #2 | **`MISSING INPUT`** |
+| **`M-3`** | **OPEN.** Both readings carried with the ruling's evidence attached to each. **No Owner intent inferred** | **`MISSING INPUT`** |
+| **`M-4`** | **CLOSED by the Owner, 2026-09-13 — (iii) BOTH** | **ANSWERED** |
+| **`M-5`** · **`M-6`** · **`M-7`** | Unchanged. `M-5` re-confirmed at `warehouseRootCompanyAssignment.ts:389-393` | **`MISSING INPUT`** |
+| **`M-8`** | **NEW — THE RESIDUAL QUESTION OF §24.** *Given `R-2` places the contract at `B` and `R-4` allocates family/axis to the pure builder where it is already implemented, does `OD-7` still require a second, writer-side enforcement for paths that bypass the builder — and if so, (a), (b) or (c); and if not, is `(e)` the ruling?* **Only the Owner can answer: it is a governance preference about redundant defence, and no evidence in three revisions settles it** | **`MISSING INPUT`** |
+| **`PERSON AUTHORITY GAP`** | **PRESERVED AS A NAMED DEPENDENCY. NOT RESOLVED, NOT NARROWED, NO COLLECTION NAMED.** `R-3` makes it **structurally out of reach** of every option in `OD-7` | **NAMED DEPENDENCY** |
+| **Recommendation** | **`NONE` between (a), (b) and (c) — third revision, third reason.** The ruling moved the binding requirement to a layer no option occupies (`X-27`); it strengthened both poles of §14.4's opposition without breaking it (`X-26`); and it made the three-option frame the wrong frame (§22) | **`OWNER DECISION STILL REQUIRED`** |
+
+### 25.1 CORRECTIONS ADDED BY REVISION 3
+
+| # | Target | Finding | Severity |
+|---|---|---|---|
+| **`X-20`** | `U-NEW-1` (lane brief, §4, §14 all three MIGRATION rows) | **Denominator 42 → 40.** *"ZERO can pass `OWNERSHIP_HANDOFF`"* → **39 of 40 cannot; the 40th is the builder.** **And repo-wide the headline is FALSE**: `scripts/assignWarehouseRootCompany.js:234` produces the action and **five real events exist** (`docs/specifications/reorder-trusted-command-authority.md:208`). **44 import / 50 mention confirmed** | **HIGH** |
+| **`X-21`** | lane brief; `X-15`; `X-18` | *"every module in `functions/src/ownership/` declares itself **PURE**, each by its own header"* — **NOT TRUE AS STATED.** Six say `PURE`; two say *"stays pure"*; `ownershipCensus.ts:9-10` says `READ-ONLY BY CONSTRUCTION`; `typedOwner.ts:7-8` says `INERT, DERIVED, READ-NORMALIZED`; **`ownershipMatrix.ts` declares nothing** — and it is the one module (a) would import | **MEDIUM** |
+| **`X-22`** | `X-14`, §14.2, §14.4 | (b)'s measured breakage: **7 tests (5 writer-exercising), 12 assertions, 6 regexes** — not *"6 tests / ~12 assertions / 6 patterns"*. **Direction unchanged; (b) remains the only measured breakage** | **LOW** |
+| **`X-23`** | `U-NEW-2`, §14.2 | **NEW MEASUREMENT.** 8 tests / 36 assertions call `buildOwnershipHandoff` and **none** asserts a whole-object `deepEqual`, so a provenance marker on `:178-190` breaks **zero** of them. `U-NEW-2` is a design gap, not a test-migration gap | **MEDIUM — the only cost reduction for (b) in three revisions** |
+| **`Y-6`** | `X-5`, §2.5, §14.2 | The live ungoverned ownership move uses **neither** `M-2` carrier — `opportunityCallables.ts:337-350` records changed field **names in a `summary`**, and `:661-670` + `:415` make the field-change carrier **structurally unreachable** for `updateOpportunity` | **MEDIUM** |
+| **`Y-7`** | lane brief | The writer is `functions/src/**access**/auditEventWriter.ts`, not `functions/src/audit/…`. All cited line numbers were correct | **LOW** |
+| **`Z-5`** | `X-18`, §14.2 | **`R-3` VOIDS** the builder-side person-check capability that was recorded as (b)'s only discriminator on that field. The mechanism survives; the **attribution** was wrong — it belongs to **B** | **HIGH** |
+| **`X-19`** | `X-12`, §14.3 | `X-12` established (c) is not unprecedented. **The precedent's DIRECTION is (a)'s**: `ownershipHandoffCommand.ts:22-23` — the no-op is *"enforced in the audit writer, restated here"*, i.e. **authority at the writer**, convenience copy in the builder | **MEDIUM — a point for (a) that three revisions recorded as a point for (c)** |
+| **`X-24`** | packet framing; the Owner's elimination test | The test **eliminates no option**. All three fail to satisfy the contract independently and **none is incompatible** with an orchestrator that does. What it eliminates is the premise that any of the three **could** | **HIGH** |
+| **`X-25`** | `U-NEW-2`, `U-NEW-5`, §14.2 | `R-2`+`R-3` convert (b)'s gap into a **soundness limit**: the writer can verify shape, never the provenance of a read it may not perform | **HIGH** |
+| **`X-26`** | §14.4 | The ruling strengthens **both** poles of the opposition; neither crosses. `Z-6` | **MEDIUM** |
+| **`X-27`** | §5, §14, packet §4 | **The three options differ only on `C` and `D`; the real gap is `A` and `B`.** Stated plainly, as the lane brief requires | **HIGH — it is the finding of this revision** |
+
+**REVISION 3 evidence discipline.** No emulator was run (**`java` ABSENT**; port 8080 held).
+`functions/lib` and `functions/node_modules` are **ABSENT** and `functions/lib` was **not borrowed**.
+No production system was contacted. No test suite was executed — every figure is `git grep` / `git
+show` over the `64008d5a` tree, labelled **`[EXECUTED — git grep / git show]`**, with semantic claims
+labelled **`[SOURCE READ]`**; nothing was relabelled. No schema, field name, enum name, migration,
+backfill, handoff activation, Rules change, wiring or implementation was performed or designed.
+`OD-PACKET-001-006-007.md` was **not modified**. No census architecture was designed (`MI-P`).
+**No person authority was named or chosen — the `PERSON AUTHORITY GAP` is preserved intact.**
+**No option was selected, and none was selected merely from the ruling.**
