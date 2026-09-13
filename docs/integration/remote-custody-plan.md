@@ -150,3 +150,116 @@ DISCARD-CLASS: `scratch/p1b-integration-dryrun` — 7 of its 11 code files are b
   also be local-only. **UNPROVEN**, and out of scope here.
 - **Anything about PR or CI state.** Needs the API.
 - **That the remote is a sufficient backup.** It is one copy in one place, and it is the same account.
+
+## 8. Owner authorization of 2026-09-13, safety verification, and the blocked execution
+
+**The Owner authorized this push on 2026-09-13** for remote custody only — explicitly **not** merge,
+deploy, production change, A-MIN, Rules change, capability activation, data mutation or schema
+migration. **The push has NOT happened.** It was refused by this session's own tool-permission layer
+(`Out-of-Place Publication`), not by the Owner and not by the remote. The authorization stands; the
+execution is blocked and needs either a Bash permission rule for `git push` or the Owner running it.
+
+### 8.1 §13 safety verification — completed, all gates passed
+
+| Check | Result |
+|---|---|
+| Authorized branches assembled from this register | **54** |
+| Worktrees dirty among the set | **0** |
+| Uncommitted changes to be pushed | **0** — every branch pushed at its committed HEAD |
+| Credential/secret **filenames** (`.env`, `credential*`, `service-account*`, `*.pem/p12/pfx/key`, `id_rsa`, `secrets.*`, `application_default*`) | **0 hits** |
+| Secret **content** in added lines (private keys, `"private_key"`, `"client_secret"`, `AIza…`, `ghp_`/`github_pat_`, `sk-…`, `xox[baprs]-`, `AKIA…`, certificates) | **0 hits** |
+| Already at remote at the exact SHA | **0** — none would be a duplicate |
+| Force push / branch rewriting | **none** — every ref is a new remote head, fast-forward by construction |
+| Workflows a branch push would trigger | **0** (see §2) |
+| Binary additions | **19**, all accounted for below |
+
+**The 19 binary additions are accounted for, and one is a real defect.** 18 are recovered design PNGs
+on `archaeology/recovered-design-evidence` — largest **496 KB**, whole branch **4.7 MB across 67
+files**. Legitimate, in scope, and the reason that branch is the highest-priority custody target.
+No Git LFS is introduced or required.
+
+**The nineteenth is not a binary asset — it is a source file with 2 NUL bytes in it.**
+`functions/scripts/testRegistrationRatchet.mjs` on `night/p2l-functions-test-registration` (11,308
+bytes, new file) contains **exactly 2 NUL bytes**, which is why `git diff --numstat` reports it as
+`- -`. It is otherwise ordinary text. **Custody is unaffected and the push is still correct** — it is
+committed, it is no kind of secret, and losing it is worse than pushing it. **But it must be repaired
+before A1-1 merges**, and A1-1 is sequenced first precisely because every later merge depends on it:
+**a ratchet that git treats as binary cannot be reviewed in a diff**, which is the worst possible
+property for the file that guards every other merge. Recorded as a merge-blocking defect, not a
+custody-blocking one.
+
+### 8.2 The verified push set — 54 branches, exact names
+
+Push form, one ref at a time, no force, no tags, never to `main`:
+`git push origin refs/heads/<branch>:refs/heads/<branch>`
+
+Then verify each by comparing `git rev-parse <branch>` against
+`git ls-remote origin refs/heads/<branch>`, and report MATCH / MISMATCH / ABSENT per branch.
+
+| # | Branch | HEAD | Class |
+|---:|---|---|---|
+| 1 | `phase3/operational-reality-evidence` | `9d33c338` | evidence |
+| 2 | `int/a-correctness-register` | `e5c4e983` | evidence |
+| 3 | `emp/own-synthesis` | `c3994744` | evidence |
+| 4 | `ext/census-acceptance` | `7afc632d` | evidence |
+| 5 | `archaeology/recovered-design-evidence` | `ea9ddcaf` | evidence |
+| 6 | `ext/tier2-rules-packet` | `dfba383d` | evidence |
+| 7 | `ext/reporting-reconcile` | `e50b390e` | evidence |
+| 8 | `ext/ux-honest-absence` | `b8c70a0d` | evidence |
+| 9 | `ext/ux-kpi-drill` | `ecbe4342` | evidence |
+| 10 | `ext/own-engineering-gap` | `7792c1ba` | evidence |
+| 11 | `fix/crash-diagnostics-flake` | `bcb91387` | A1 |
+| 12 | `emp/accountability` | `69cb2824` | evidence |
+| 13 | `emp/experience` | `e5847dab` | evidence |
+| 14 | `emp/information` | `ca755a3b` | evidence |
+| 15 | `emp/performance` | `c8c77911` | evidence |
+| 16 | `emp/role-map` | `01023fc0` | evidence |
+| 17 | `emp/work-matrix` | `73be0ef2` | evidence |
+| 18 | `own/design-reconciliation` | `14598745` | evidence |
+| 19 | `own/e2e-census` | `9c24c951` | evidence |
+| 20 | `atlas/eng-impl-reporting-company-scope` | `64bb65c6` | evidence |
+| 21 | `atlas/p3arch-source-unavailable` | `8831738b` | evidence |
+| 22 | `post/p3-fb-census` | `feed0459` | evidence |
+| 23 | `post/p3-mig-reality` | `8429358a` | evidence |
+| 24 | `post/p3-wf-registry` | `3fdb3ee5` | evidence |
+| 25 | `rpt/p0-blast-radius` | `379961ff` | evidence |
+| 26 | `night/p2b1-runtime-census` | `5e10bde7` | evidence |
+| 27 | `night/p2b2-rules-browser` | `0091488b` | evidence |
+| 28 | `night/p2b3-functions-transport` | `50ccd0c6` | evidence |
+| 29 | `night/p2c3-nonprod-readiness` | `c03e5daf` | evidence |
+| 30 | `night/p2d-decision-ledger` | `4f252569` | evidence |
+| 31 | `night/p3a1-archaeology-service` | `79d21d7d` | evidence |
+| 32 | `night/p3a2-archaeology-inventory` | `72c34c94` | evidence |
+| 33 | `night/p3a3-archaeology-sales` | `0a1a6d49` | evidence |
+| 34 | `night/p3b1-activities-service` | `f7b3d0a9` | evidence |
+| 35 | `night/p3b2-activities-inventory` | `96427a07` | evidence |
+| 36 | `night/p3b3-activities-sales` | `c193866f` | evidence |
+| 37 | `night/p3c-design-master-brief` | `a15c6df0` | evidence |
+| 38 | `night/p3d-workflow-registry` | `131baa2f` | evidence |
+| 39 | `phase2/firebase-retirement-census` | `80d2dc50` | evidence |
+| 40 | `phase2/nonprod-activation-readiness` | `7453d4d1` | evidence |
+| 41 | `night/p2l-functions-test-registration` | `5013f8a3` | A1 |
+| 42 | `post/eng-a-audit-read` | `acdd87b9` | A1 |
+| 43 | `post/eng-c-parity-vacuity` | `276e0417` | A1 |
+| 44 | `night/p2c1-parity` | `ab61540c` | A1 |
+| 45 | `night/p2n-governed-role-resolution` | `7cbca122` | A1 |
+| 46 | `night/p2k-finance-detectors` | `d9b63963` | A1 |
+| 47 | `night/p2j-onhand-derivation` | `3c554144` | A1 |
+| 48 | `night/p2f-nonprod-blockers` | `f1ddf2b7` | A1 |
+| 49 | `night/p2g-capability-request-blindness` | `17a96ed3` | A1 |
+| 50 | `atlas/p30b-identity-verification` | `8af319d0` | A1 |
+| 51 | `post/eng-b-firebase-guard` | `bccf0759` | **A2** |
+| 52 | `post/eng-d-environment-fence` | `129c485d` | **A2** |
+| 53 | `night/p2c2-adc-failclosed` | `5981645c` | **A2** |
+| 54 | `night/p2m-sandbox-project-resolution` | `2aeee87c` | **A2** |
+
+### 8.3 Deliberately excluded
+
+| Branch | Why |
+|---|---|
+| `ext/own-decision-packet` | **A lane was writing to it when this set was assembled.** Pushing a branch mid-write risks custodying a half-finished state and recording it as complete. Push it in a second wave once that lane has committed. |
+| `rpt/client-outcome-honesty` | **REMOTE_CUSTODY_ALREADY_SATISFIED** — identical SHA `8e28e32d` is at the remote as `rpt/reporting-remediation`. No duplicate branch created. |
+| `night/p2i-stale-authority-claims` · `night/p30b-business-numbers` | **TIER-2 HOLD** — both edit `firestore.rules`. Not named in the authorization's priority set, and the authorization explicitly excludes Rules changes. Custody value is real (56 and 21 code files); **needs a one-line Owner decision** rather than my inference. |
+| `post/eng-e-report-scope` · `rpt/false-empty-and-audit` · `night/p2h-report-scope-bound` · `night/p30-identity-standard` · `atlas/guard-admin-firestore` | **SUPERSEDED** (§6). Their content survives in the branches that supersede them, all of which are in the set. |
+| `scratch/p1b-integration-dryrun` | **Discarded** (§9) — 7 of 11 code files byte-identical to `main`. |
+| the 8 absorbed branches + 32 `impl/w1-*` | Already durable: ancestors of `origin/main`, which is at the remote. |
