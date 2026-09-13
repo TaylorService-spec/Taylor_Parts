@@ -25,6 +25,54 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Lifecycle stage:     <DESIGNED|SANDBOX BUILD|SANDBOX VERIFIED|INTEGRATION|RELEASE CANDIDATE|OWNER REVIEW|PRODUCTION AUTHORIZED|OPERATIONALLY VERIFIED|RETIRED>
 ```
 
+### Bounded lanes — the one-line form (added 2026-09-13)
+
+**Why this exists.** The template above is the right shape for a *capability* — an eleven-field row is
+proportionate when an agent will own paths for days and reach protected boundaries. It is the wrong
+shape for a **bounded lane**: a short-lived, single-purpose worker that reads the repository and writes
+at most one file, of which a recent multi-agent run produced roughly thirty. Every one of them was
+required by §8 to declare here before writing. **None did.** The rule was not ignored on purpose; the
+cost of the row exceeded the life of the lane, so the registry recorded nothing rather than something,
+and the coordination surface was blind to thirty writers.
+
+A rule that is uneconomic to follow does not protect a shared file. This is the forward-only fix: a
+bounded lane declares **one line**, and that line carries the only two facts collision avoidance
+actually needs — *which branch* and *which paths*.
+
+**A bounded lane is one that satisfies ALL of:** it lives on its own branch off a named base commit; it
+writes **only** paths no other active lane declares; it reaches **no** protected boundary (no
+`firestore.rules`, no capability activation, no Role grant, no migration, no deploy, no production
+contact); and it finishes within a single run.
+
+**Anything else is a capability and takes the full row above.** In particular, a lane that turns out to
+need a shared file, or to touch a protected boundary, **stops being a bounded lane at that moment** and
+must be promoted to a full row before it writes.
+
+```
+- <LANE-ID> · <MODE: READ_ONLY|EVIDENCE_WRITE|CODE_WRITE> · `<branch>` @ `<base sha>` · writes: <paths, or NONE> · <one-line purpose>
+```
+
+`READ_ONLY` lanes declare `writes: NONE` and still declare — a reader that reports on a file another
+lane is rewriting produces a correct reading of a tree that no longer exists, which is the failure this
+registry exists to prevent, and it costs one line to make visible.
+
+Bounded lanes go under **Bounded lanes (in flight)** below and are **deleted** when the run ends, not
+moved to *Recently completed*. They are coordination state, not history; `DECISIONS.md` and the run's
+own artifacts are the durable record.
+
+## Bounded lanes (in flight)
+
+Base commit for all five: `64008d5ae0bdd9532909671b15a91122400accf1` (`ATLAS-BASE-2026-09-12-A`).
+
+- INT-A-CORRECTNESS · CODE_WRITE · `int/a-correctness-register` · writes: `docs/integration/int-a-correctness-register.md` · `docs/engineering/ACTIVE_WORKSTREAMS.md` (this section) · classify every program branch against `main` into A1 / A2 / TIER-2 HOLD / SUPERSEDED / ABSORBED
+- OWN-DECISION-PACKET · EVIDENCE_WRITE · `ext/own-decision-packet` · writes: `docs/operating-model/owner-decisions/OD-PACKET-001-006-007.md` · prepare exactly three ownership decisions for Owner ruling
+- OWN-ENGINEERING-GAP · EVIDENCE_WRITE · `ext/own-engineering-gap` · writes: `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` · decompose what implementation the Owner decisions would unblock; nothing authorized
+- UX-HONEST-ABSENCE · EVIDENCE_WRITE · `ext/ux-honest-absence` · writes: `docs/atlas/engineering-implications/ENG-IMPL-003-honest-absence.md` · engineering contract for never rendering unproven absence as proven empty
+- UX-KPI-DRILL · EVIDENCE_WRITE · `ext/ux-kpi-drill` · writes: `docs/atlas/engineering-implications/ENG-IMPL-004-kpi-drill-through.md` · engineering contract for KPI provenance and drill-through integrity
+
+The five write-sets are disjoint by construction and no lane reaches a protected boundary. `INT-A-CORRECTNESS`
+is the run's **single integration writer**; the other four write one file each and merge nothing.
+
 ## Active
 
 - Capability:          Email Connections phase 2 — REAL Microsoft 365 / Google Workspace delivery and attachment byte custody, on top of the phase 1 intake capability (PR #1811)
