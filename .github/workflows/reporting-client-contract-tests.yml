@@ -1,0 +1,110 @@
+name: Reporting Client Outcome Contract Tests
+
+# RPT-CLIENT. The client half of the reporting outcome contract, and the RATCHET
+# that fails when the two halves drift apart.
+#
+# WHY THIS LANE EXISTS RATHER THAN A PATH FILTER ON AN EXISTING ONE.
+#
+# The client's reporting suites were already registered in
+# field-ops-app-vite/test/suites.json, which client-suite-manifest-tests.yml runs on
+# any change under `field-ops-app-vite/**`. That is coverage for a CLIENT change --
+# and it is exactly the wrong shape for this defect class, because the drift this
+# ratchet catches ARRIVES FROM THE SERVER:
+#
+#   * ENG-E added RunReportOutcomeKind "company-unresolved" in functions/**. No
+#     field-ops-app-vite file changed, so no client lane ran, and the client's closed
+#     SERVICE_KINDS set silently began failing a tenancy refusal closed into a
+#     generic "something went wrong".
+#   * RPT-FIX made runReportDefinitionCallable.ts throw "resource-exhausted" for an
+#     unproven-absence refusal. Again no client file changed, and the client went on
+#     telling the user "Nothing was read or changed." -- which is FALSE for that
+#     refusal: documents WERE read.
+#
+# So this lane is filtered on the SERVER contract as well as the client mirror. A PR
+# that touches functions/src/reporting/** now runs the client ratchet, which is the
+# only place the mismatch is visible.
+#
+# No emulator, no browser, no network, no credentials, no repository secrets: every
+# suite here is a pure node:test over pure modules plus a TEXT PARSE of the server's
+# TypeScript in the same checkout.
+
+on:
+  pull_request:
+    paths:
+      # the client mirror and its renderers
+      - "field-ops-app-vite/src/domain/reporting/**"
+      - "field-ops-app-vite/test/reportRunOutcome.test.mjs"
+      - "field-ops-app-vite/test/reportResultState.test.mjs"
+      - "field-ops-app-vite/test/reportOutcomeContractRatchet.test.mjs"
+      - "field-ops-app-vite/test/suites.json"
+      - "field-ops-app-vite/package.json"
+      # THE SERVER CONTRACT the ratchet parses. RunReportOutcomeKind and
+      # ScanCompleteness live in reportExecutionService.ts; the HttpsError codes the
+      # client must branch on live in runReportDefinitionCallable.ts. A change to
+      # either is a change to what the client must render.
+      - "functions/src/reporting/reportExecutionService.ts"
+      - "functions/src/reporting/runReportDefinitionCallable.ts"
+      - ".github/workflows/reporting-client-contract-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/reporting/**"
+      - "field-ops-app-vite/test/reportRunOutcome.test.mjs"
+      - "field-ops-app-vite/test/reportResultState.test.mjs"
+      - "field-ops-app-vite/test/reportOutcomeContractRatchet.test.mjs"
+      - "field-ops-app-vite/test/suites.json"
+      - "field-ops-app-vite/package.json"
+      - "functions/src/reporting/reportExecutionService.ts"
+      - "functions/src/reporting/runReportDefinitionCallable.ts"
+      - ".github/workflows/reporting-client-contract-tests.yml"
+  workflow_dispatch:
+
+# CI-V2-1. Cancel a superseded PR validation; NEVER cancel a main run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  reporting-client-contract:
+    name: Client run-outcome honesty + server/client drift ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # DELIBERATELY NO `npm install`. All three suites are pure node:test over pure
+      # ES modules -- no firebase, no vite, no vitest, no browser. Installing nothing
+      # means this lane still enforces the contract when a dependency install fails,
+      # and it cannot be weakened by a lockfile change.
+      #
+      # ONE PATH PER INVOCATION, and each on its own step. `node --test` silently
+      # DROPS a non-matching path argument when the other arguments resolve, so a typo
+      # inside a multi-path invocation reduces coverage WITHOUT failing the step
+      # (measured on this estate: `node --test <real> <bogus>` -> exit 0, 17 tests).
+      # These three files use the house `ok()`/`passed` convention rather than
+      # node:test, so they are run as plain scripts, one per step, and each prints its
+      # own pass count.
+      - name: Run-outcome mappers -- server kinds, refusal codes, completeness axis
+        run: node test/reportRunOutcome.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Result-state copy -- proven vs. unproven absence, tenancy refusal, scan refusal
+        run: node test/reportResultState.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: DRIFT RATCHET -- the client's mirrors vs. the server's closed vocabularies
+        run: node test/reportOutcomeContractRatchet.test.mjs
+        working-directory: field-ops-app-vite
+
+      # The guard that stops the next unregistered suite. node:test runner.
+      - name: CI coverage guard -- no test may be added that CI never runs
+        run: node --test test/ciSuiteCoverage.test.mjs
+        working-directory: field-ops-app-vite
