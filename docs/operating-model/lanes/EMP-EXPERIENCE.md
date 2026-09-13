@@ -290,6 +290,18 @@ merged:
 | **0** humans hold any of them in production (2026-09-02) | **MEASURED** | Every role-keyed queue is empty until someone is granted |
 | **29 of 45** Roles have no corpus job label, and **51%** of authored work names no Role at all | **MEASURED** (§2.1) | Even after granting, there is no mapping from the job to the Role |
 
+**Sandbox is the opposite, and the contrast is the finding.** Sibling lane OWN-E2E reports **86
+assignments across 30 Roles in sandbox** against **zero in production**. So the role model has been
+exercised — the queues have been *seen* to fill — in the one environment whose activation overrides
+(92 ids) also lift the capability gate. **Nothing about that sandbox experience transfers**: production
+carries **0** activation overrides (measured: `config/environments.json` — `platform-sandbox` 92,
+`platform-certification` 3, `taylor-parts-production` **0**, and the file's own comment states *"NO
+role:production environment may carry this key"* with a test asserting absence).
+
+**Provenance, stated precisely so this is not over-read.** This is a **committed census artifact**
+(`readOnly`, `writesPerformed: 0`), i.e. source-derived evidence *about* production — **not a live read
+by this lane.** No lane in this run made production contact.
+
 **UNKNOWN — REVERIFY:** the census is a 2026-09-02 snapshot and this baseline is 2026-09-12. Occupancy
 may have changed. No lane may re-measure it without production authorisation. → **`OD-EMP-002`**
 
@@ -304,7 +316,7 @@ buckets key on six of the nine concepts, and at this baseline **three of the six
 
 | Bucket | Keyed on (concept #) | The key field, at this baseline | Buildable now? | When it matters |
 |---|---|---|---|---|
-| **MY OWNED RELATIONSHIPS** | RECORD OWNER (1) | four different field names — `accountOwner.assignedToEmployeeId`, `contacts.owner`, `locations.owner`, `ownerEmployeeId` | **PARTIAL** — no single key; a union query across four shapes | Continuously, for anyone who carries a book of accounts. This is a **standing** list, not a to-do list, and must never be merged with work |
+| **MY OWNED RELATIONSHIPS** | RECORD OWNER (1) | four different field names — `accountOwner.assignedToEmployeeId`, `contacts.owner`, `locations.owner`, `ownerEmployeeId` | **PARTIAL + UNGOVERNED** — no single key (a union across four shapes), and the key itself is **client-writable, unaudited, by any admin or dispatcher** (§3.4) | Continuously, for anyone who carries a book of accounts. This is a **standing** list, not a to-do list, and must never be merged with work |
 | **MY ACCOUNTABILITIES** | ACCOUNTABLE PERSON (2) — **collapsed** | none. Nearest is a role-keyed state (`READY_FOR_PARTS_MANAGER`) | **MISSING (MODEL GAP)** + empty on occupancy | When something is *mine to see through* without being assigned to me — the case the corpus names as *"Marisol needs to know this is hers now"* |
 | **MY ASSIGNED WORK** | ASSIGNEE / EXECUTOR (3) | `assignedTechId`/`technicianId`, `assignedToEmployeeId`, per-domain assignee | **PARTIAL** — per-domain assembly, no uniform field | The technician's and parts associate's whole day. This is the only bucket with a real, working key today |
 | **MY APPROVALS** | SECURITY ROLE (8) + ACCOUNTABLE PERSON (2) | `roleAssignments` → capability | **AVAILABLE as capacity / EMPTY in production** | At the moment someone else is blocked waiting for me. **Separation of duties lives here** — `S27-A05`: *"A counter cannot approve their own material variance. This is a control, not a permissions problem"* |
@@ -370,6 +382,25 @@ stored — `functions/src/ownership/ownershipMatrix.ts` with per-family `ownerFi
 key to query it by**, plus a live read path: every `opportunity.*` id resolves DENY for all 48 roles
 under the production activation set. So this lane classifies it **PARTIAL (MODEL: heterogeneous keys) +
 MISSING (production transport)** rather than "not stored."
+
+**And the disagreement narrows further on a fact measured after the first draft of this section.** The
+owner value is stored, and **it is not governed on the write path it actually ships on.**
+
+| Measured at `64008d5a` | Evidence |
+|---|---|
+| `/accounts/{accountId}` allows **client-direct update** by any admin **or dispatcher** | `firestore.rules:1336-1338` — `allow update: if isAdminOrDispatcher() && accountGovernedFieldsValid(…) && (isAdmin() \|\| accountGovernedFieldsUnchanged())` |
+| The only fields Rules treat as **governed** are `paymentTerms` and `taxStatus` | `firestore.rules:1307-1308`. **`accountOwner` is not among them**, and the block's own comment says a dispatcher *"keep[s] full edit rights on **every other field**"* |
+| `/locations/{locationId}` has **no field guard at all** | `firestore.rules:1341-1345` — `allow create, update: if isAdminOrDispatcher()` |
+| The client ships the owner write | `AccountForm.jsx:84` (state), `:104`/`:226` (submitted payload) |
+| Rules record this as **interim** | *"INTERIM path: PR 3b converts this to the trusted audited server-side writer and denies direct client mutation of every Commercial Profile field"* |
+| Production's **single** active principal holds exactly that role | §2.3 — `activeAssignments: ["admin@global"]` |
+
+**The experience consequence:** *a surface that displays a record owner is displaying a value any admin
+or dispatcher can silently change through a generic client write, with no audit event.* So
+MY OWNED RELATIONSHIPS is not merely hard to key — **its key is not trustworthy at this baseline.** This
+lane therefore reclassifies it **PARTIAL (heterogeneous keys) + MISSING (production transport) +
+UNGOVERNED (write path)**, which is closer to EMP-WORK's reading than this section's first draft was.
+→ **`OD-EMP-015`**
 
 **Where both lanes agree, and it is the governing sentence for this document:** *the distinction the
 Owner is asking to preserve is correct and currently unrepresentable.* This document therefore states
@@ -686,7 +717,7 @@ gap). Additional gaps are named in §2, §3 and §5 and are **not** counted here
 
 | Class | Count over EXP-001…EXP-103 | The defining examples |
 |---|---:|---|
-| **ENGINEERING GAP** — the fact exists and does not reach the surface | **36** | the five never-requested capability ids (5 ids · 5 gate sites · 4 pages) · `VITE_EOS_API_BASE_URL` absent everywhere · assistant module wired to nothing (`index.ts` has no assistant export) · owner-handoff command with no `onCall` export · session-only activity feed · time-in-status not shown · poll timestamp not shown · viewport-chosen technician surface · `billingQueue.ts` with zero importers · `financialReconciliation.ts` *"a detector that is never run"* |
+| **ENGINEERING GAP** — the fact exists and does not reach the surface | **36** | the five never-requested capability ids (5 ids · 5 gate sites · 4 pages) · `VITE_EOS_API_BASE_URL` absent everywhere · assistant module wired to nothing (`index.ts` has no assistant export) · owner-handoff command with no `onCall` export · session-only activity feed · time-in-status not shown · poll timestamp not shown · viewport-chosen technician surface · `billingQueue.ts` with zero importers · `financialReconciliation.ts` *"a detector that is never run"* · **the record-owner write path: client-direct, unaudited, admin-or-dispatcher, with Rules recording it as *"INTERIM"*** |
 | **MODEL GAP** — the fact has no home | **32** | ESCALATION OWNER (nothing) · ACCOUNTABLE PERSON (collapsed into owner) · DOMAIN STEWARD (nothing) · team entity (nothing) · `operatingCompanyId` on operational records · route/sequence · proficiency · stage timestamps · field-level visibility (G35) · saved views · inventory owner dimension · escalation target on a refusal |
 | **WORKFLOW GAP** — no next step exists | **11** | governed non-completion (*"I could not do this"*) · technician→technician handoff · dispatcher shift handover · reassignment after a stage · uninstall/return/replacement · returns disposition out of `AWAITING_DISPOSITION` · short-receipt close · post-acceptance agreement revision · period reopen · `Arrive` correction |
 | **AUTHORITY GAP** — a capability or grant decision | **10** | reorder approve/reject/cancel reach no governed Role · `finance.invoice.issue` inactive · `workOrder.labor.record` inactive **and absent from every activation array** · every `opportunity.*` DENY for all 48 roles · every `report.*` inactive · `salesOrder.fulfill`/`.service` held by no governed Role · eleven Roles' `audit.event.read` refused by the service · cost authority unruled |
@@ -746,6 +777,8 @@ This bites EXP-011, EXP-017, EXP-040, EXP-063, EXP-069 and EXP-103 directly.
 | **OD-EMP-010** | **Is proficiency/certification modelled?** `P3B1-S17-A06` completes an uncertified job and *"Nothing warns."* | Safety and liability decision | EXP-067, EXP-068 |
 | **OD-EMP-011** | **Is route/sequence authority in scope?** A technician's *"first and most valuable decision"* is sequencing his day; EOS has no travel, sequence, ETA or location authority and the handheld's central idea (*"a route, not a list"*) was never built. | It is a build-or-decline decision with real cost | EXP-001 |
 | **OD-EMP-012** | **Do saved views become authority?** Deferred from every list *"for the same reason each time: needs somewhere to persist a named view. That is new authority"*, and there is **no administration surface for list/view configuration at all**. | It is a new authority | EXP-082, and the usability of every queue in §4.2 |
+| **OD-EMP-014** | **Which production-capability denominator is authoritative — 37, 39 or 61?** Three measurements are in circulation over overlapping-but-different sets (§11.1), and the 61's `report.*` component is **refuted** at this baseline (all 39 `report.*` ids are `active: false`; production carries zero activation overrides). | It is a measurement-governance decision: the programme keeps re-deriving the number and no lane states its denominator in another's terms | Nothing in §4 directly; everything that quotes a headline reach figure |
+| **OD-EMP-015** | **Is a displayed record owner authoritative?** Today `accountOwner`, `contacts.owner` and `locations.owner` are writable client-direct by any admin **or dispatcher**, unaudited, and only `paymentTerms`/`taxStatus` are Rules-governed on `/accounts`. Production's single active principal holds exactly that admin role. Rules call this an *"INTERIM path"* pending a trusted audited writer. | Whether an owner is a governed fact or a convenience field determines whether MY OWNED RELATIONSHIPS may exist as a bucket at all | §3.1, §3.4, EXP-029, EXP-049 |
 | **OD-EMP-013** | **Which single surface answers "what is this person's onboarding state?"** Seven records must be correct before a technician can tap Accept, with **no single view**, and the most common failure presents as an empty jobs list. | It crosses Administration, Service and Inventory ownership | EXP-003, EXP-066 |
 
 ---
@@ -793,7 +826,9 @@ Stated plainly. Nothing in this list may be restated as a fact.
 | U-13 | Whether the **coordinated-visit pipeline** is granted or deployed anywhere | UNPROVEN (P3-A1 §8) |
 | U-14 | **Dashboard composition Rules 2, 4, 7, 8 and 10** were not verified per tile | UNPROVEN (P3-A3 §6.3) |
 | U-15 | The **outside-EOS channel** findings (phone / verbal / paper / spreadsheet) rest **entirely on authored narrative** | Hypothesis to test |
-| U-16 | This lane's **38 registered-active** static count differs by one from the registry's executed **37 allowed anywhere in production**; the 1-id delta is unattributed. This lane cites **147 / 109 inactive / 37 ALLOW** and did **not** re-run the 48×147 resolver | Stated, not reconciled |
+| U-16 | This lane's **39 default-active** static count (147 entries, 108 `active: false`) differs from the registry's executed **37 allowed anywhere in production** and from a sibling's **109/38**. This lane did **not** re-run the 48×147 resolver and attributes none of the deltas | Stated, not reconciled — see §11.1 |
+| U-18 | Whether any mechanism adopts a `report.*` capability in production. This lane measured all 39 as `active: false` and production overrides as 0, and **could not reproduce** the reported 25 production-adopted `report.*` ids | Refuted at this baseline; recorded in case the reporting lane measured a mechanism this lane did not find |
+| U-19 | Whether the sandbox's **86 assignments across 30 Roles** exercised any *experience* rather than any *authority*. Sandbox is the only environment with both occupancy and activation, so it is the only place a role-shaped queue has ever been non-empty — and no lane ran a workflow there either | UNPROVEN |
 | U-17 | Whether the honest-state vocabulary (`EMPTY` / `NO_MATCHES` / `CAPABILITY_NOT_ENABLED`) is applied on every surface, or only on the technician jobs list where the corpus observed it | UNPROVEN — and EXP-003/§3.3 depend on it |
 
 ---
@@ -804,7 +839,7 @@ Five errors and three imprecisions, each measured at `64008d5a`.
 
 | # | The brief says | Measured | Consequence |
 |---|---|---|---|
-| **C-1** | *"62 of 147 capabilities resolve ALLOW in production"* | **37.** The figure **62 appears in no document in any worktree.** The master brief §1.1 says *"37 of its 147 capabilities are allowed to anyone anywhere in production, and not one of them is commercial"*; `eos-workflow-registry.json` `executed_evidence.results_at_0ba8ab0d.allowed_anywhere_in_production = 37`; corpus `P3B3-MGMT-046` (**EXECUTED_PASS**) says *"Thirty-seven of the one hundred and forty-seven."* Static recount: 147 ids, **109** `active: false`, **38** registered active | **The brief overstates production reach by 25 capabilities.** Use 37 |
+| **C-1** | *"62 of 147 capabilities resolve ALLOW in production"* | **Not 62 — and the replacement figure is itself contested. Three live numbers, none reconciled (§11.1).** The figure **62 appears in no document in any worktree.** | **Do not quote a single number without its denominator.** See §11.1 |
 | **C-2** | *"Governed-role occupancy is unknown … no lane has established whether any human holds any of them"* | **A production census exists and is committed.** `docs/assessments/r32-production-exposure-census.json` (`be1e5579`, 2026-09-02, read-only, 0 writes): **2** `roleAssignments` total, **1** active assignment (compatibility `admin`, `employeeId: null`), **0** holders of any of the 45 governed Roles, `uniqueExposedPrincipals: 0` | **Stronger, not weaker.** Occupancy is not unknown; it is **zero**. Every role-keyed queue is measured-empty, not possibly-empty |
 | **C-3** | *"45 governed business Roles are live authority"* — used as the security-Role count | **48 security Roles: 45 governed + 3 compatibility** (`admin`, `dispatcher`, `technician`, `compatibilityRoles.ts:350`). Confirmed by sibling lane EMP-ROLE and by the master brief's executed run (*"all 48 roles × all 147 capabilities"*) | Using 45 makes **~10% of authored work (101 activities under `dispatcher`/`technician`) falsely appear roleless** |
 | **C-4** | *"Five built surfaces are unreachable"* | **Five capability ids at five gate sites spanning four pages** — Financial Policy contributes two ids (`.read` + `.configure`). Re-measured: `REPORT_CAPABILITY_REQUEST` = **44** unique ids | *"Five surfaces"* over-counts if "surface" means "page". The registry itself says *"3 records + one section"* when mapped to workflows |
@@ -813,7 +848,30 @@ Five errors and three imprecisions, each measured at `64008d5a`.
 | **C-7** | Corpus path `p3c-design-master-brief` | The worktree is **`p3c-design-brief`**; the P3-B3 corpus is **six** files (`p3b3-{sales,crm,financial,management,administration,adversarial}-activities.json`), not one glob of 350 in one file; the **86-workflow registry is not in this worktree** — it is `p3d-workflow-registry/docs/architecture/eos-workflow-registry.{json,md}` on branch `night/p3d-workflow-registry` | Path corrections only. The registry declares itself verified at `0ba8ab0d`, which **is** an ancestor of this baseline, so its figures are compatible |
 | **C-8** | *"`roleAssignments` is the sole source of an ALLOW"* — implied as one read site | **True, and read at 15+ independent sites**, each declaring its own `ROLE_ASSIGNMENTS_COLLECTION` (`effectiveAccessFeed.ts:49` is the client-facing feed; plus finance, reporting, partMaster, performance ×2, workOrderLabor, receiving, transfer, cycleCount, dataImport ×2, reorder, employeeProfile), and `firestore.rules:1684` | The claim is confirmed and **understated**. It also means a queue's authority answer is assembled per domain, which compounds §3.1 |
 
-### 11.1 One thing in the brief this lane could not verify and does not dispute
+### 11.1 The production-capability denominator: three numbers, none reconciled
+
+This is the master brief's own §6.5 trap (*"three live denominators, none reconciled"*) recurring on a
+new axis. All three are recorded; **this lane picks no winner.**
+
+| Figure | What it measures | Source | Reproducible by this lane? |
+|---|---:|---|---|
+| **37** | capabilities *"allowed anywhere in production"* under the shipped resolver, all 48 roles × all 147 caps | Master brief §1.1 + `eos-workflow-registry.json` `executed_evidence.results_at_0ba8ab0d.allowed_anywhere_in_production` + corpus `P3B3-MGMT-046` (**EXECUTED_PASS**) | **No** — requires re-running the 48×147 resolver, which this lane did not do |
+| **39** *(reported elsewhere as 38)* | catalog entries **not** carrying `active: false`, i.e. active by default | This lane, by parsing `functions/src/access/permissionCatalog.ts`: **147** entries · **108** `active: false` · **39** default-active. A sibling measurement reports 109/38 | **Yes** — but it is a *static* count, not a resolution, and it differs from 37 by 2 |
+| **61** | reported as 36 catalog-active + 25 "production-adopted" `report.*` ids, zero overlap | Sibling lane (via controller) | **No — and the component is refuted.** Measured here: **all 39 `report.*` ids carry `active: false`**, and `taylor-parts-production` carries **`capabilityActivationOverrides` = 0** (`config/environments.json`; sandbox 92, certification 3, production 0, with the file's own comment forbidding the key in any production-role environment and a test asserting absence). This lane found **no mechanism by which a `report.*` id is adopted in production** |
+
+**What is safe to restate, and what every figure agrees on:** **147** catalogued capabilities;
+**~108–109** registered inactive; **0** production activation overrides; and — unchanged across all
+three measurements — ***not one of the production-reachable capabilities is commercial.*** One caveat
+worth carrying: the default-active set **does** include the full `reorder.request.*` / `reorder.purchaseOrder.*`
+purchasing family and `customer.governedField.write` (which governs `paymentTerms`/`taxStatus`), so
+*"not one is commercial"* is exactly true of the **revenue** spine and over-strong if a reader counts
+purchase orders or payment terms as commercial. → **`OD-EMP-014`**
+
+**The bearing on this document is small and must be said:** no requirement in §4 turns on 37 vs 39 vs 61.
+Every commercial requirement (EXP-012, EXP-040, EXP-065, EXP-084, and all of §5.4) is blocked by an
+`active: false` on a **named** id, not by a count.
+
+### 11.2 One thing in the brief this lane could not verify and does not dispute
 
 The brief's *"27 work with gaps, 31 break midway, 23 cannot start, 5 have no implementation"* is
 **exactly confirmed** by an independent recount of the registry's `workflows[]` array (86 records) and
