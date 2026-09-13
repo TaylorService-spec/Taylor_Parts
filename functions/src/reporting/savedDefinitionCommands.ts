@@ -227,7 +227,7 @@ async function requireMutationCapabilityOrAudit(
     objectId,
     outcome: "denied",
     summary: denialSummary,
-  });
+  }, db);
   throw new UnauthorizedActorError(`actor is not authorized for "${capabilityId}"`);
 }
 
@@ -259,6 +259,11 @@ async function loadDefinitionForMutation(
 // caller distinguish "not mine" from "not allowed"). Audits a denial
 // exactly like requireMutationCapabilityOrAudit does.
 async function requireOwnershipOrAudit(
+  // RPT-FIX: this helper took NO data context at 92db1d19, so its denial Audit
+  // Event was minted on the AMBIENT Firestore even when every other write in the
+  // command went to the caller's injected instance. `db` is now required, which
+  // is what makes this path testable without an emulator at all.
+  db: Firestore,
   actorUid: string,
   action: AuditAction,
   definitionId: string,
@@ -274,7 +279,7 @@ async function requireOwnershipOrAudit(
     objectId,
     outcome: "denied",
     summary: `Denied: actor does not own saved definition "${definitionId}".`,
-  });
+  }, db);
   // Deliberately the same NotOwnerError regardless of whether the caller
   // could otherwise read this id -- never confirms existence of a
   // cross-principal document beyond what the Audit Event (a trusted-
@@ -344,7 +349,7 @@ export async function createSavedDefinition(
       objectId,
       outcome: "applied",
       summary: `Saved report definition "${params.name}" created for object "${objectId}".`,
-    });
+    }, db);
     if (options.__simulateFailureAfterStage) {
       throw options.__simulateFailureAfterStage;
     }
@@ -440,7 +445,7 @@ export async function renameSavedDefinition(
   );
 
   const { ref, data, objectId } = await loadDefinitionForMutation(db, params.definitionId);
-  await requireOwnershipOrAudit(params.actorUid, "renameReportDefinition", params.definitionId, objectId, data);
+  await requireOwnershipOrAudit(db, params.actorUid, "renameReportDefinition", params.definitionId, objectId, data);
 
   await db.runTransaction(async (txn: Transaction) => {
     txn.update(ref, { name: params.name, updatedAt: FieldValue.serverTimestamp() });
@@ -452,7 +457,7 @@ export async function renameSavedDefinition(
       objectId,
       outcome: "applied",
       summary: `Saved report definition "${ref.id}" renamed to "${params.name}".`,
-    });
+    }, db);
     if (options.__simulateFailureAfterStage) {
       throw options.__simulateFailureAfterStage;
     }
@@ -491,7 +496,7 @@ export async function duplicateSavedDefinition(
   );
 
   const { data: source, objectId } = await loadDefinitionForMutation(db, params.definitionId);
-  await requireOwnershipOrAudit(params.actorUid, "duplicateReportDefinition", params.definitionId, objectId, source);
+  await requireOwnershipOrAudit(db, params.actorUid, "duplicateReportDefinition", params.definitionId, objectId, source);
 
   const name = params.name !== undefined ? params.name : `${source.name} (copy)`;
   assertValidName(name);
@@ -516,7 +521,7 @@ export async function duplicateSavedDefinition(
       objectId,
       outcome: "applied",
       summary: `Saved report definition "${params.definitionId}" duplicated to "${ref.id}".`,
-    });
+    }, db);
     if (options.__simulateFailureAfterStage) {
       throw options.__simulateFailureAfterStage;
     }
@@ -554,7 +559,7 @@ export async function deleteSavedDefinition(
   );
 
   const { ref, data, objectId } = await loadDefinitionForMutation(db, params.definitionId);
-  await requireOwnershipOrAudit(params.actorUid, "deleteReportDefinition", params.definitionId, objectId, data);
+  await requireOwnershipOrAudit(db, params.actorUid, "deleteReportDefinition", params.definitionId, objectId, data);
 
   await db.runTransaction(async (txn: Transaction) => {
     txn.delete(ref);
@@ -566,7 +571,7 @@ export async function deleteSavedDefinition(
       objectId,
       outcome: "applied",
       summary: `Saved report definition "${ref.id}" deleted.`,
-    });
+    }, db);
     if (options.__simulateFailureAfterStage) {
       throw options.__simulateFailureAfterStage;
     }
