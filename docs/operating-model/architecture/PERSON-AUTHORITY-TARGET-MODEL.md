@@ -2,6 +2,7 @@
 artifact_type: target-architecture-proposal
 lane: PERSON-AUTHORITY-DESIGN
 status: ARCHITECTURE PROPOSED. NOT AUTHORIZED. NOT IMPLEMENTED.
+ruled: 2026-09-13 — MI-iota RULED and CLOSED by DECISIONS #185 (ref int/a-correctness-register): BUSINESS EMPLOYEE IS BUSINESS DATA; canonical Employee authority belongs in EOS-owned PostgreSQL. Section 3's target reading is RATIFIED. B-2 is WITHDRAWN BY THAT RULING. Section 9 adds the PostgreSQL target work, items A-J, every one NOT AUTHORIZED.
 date: 2026-09-13
 owner: Claude Code (lane PERSON-AUTHORITY-DESIGN, EVIDENCE + ARCHITECTURE)
 baseline: 64008d5ae0bdd9532909671b15a91122400accf1
@@ -38,6 +39,34 @@ production contact was made and no code was executed (see §6 `NOT_RUN`).
 
 ---
 
+> ## ⚠⚠ `MI-ι` IS RULED. READ THIS BEFORE §0.
+>
+> **`docs/DECISIONS.md` #185 (ref `int/a-correctness-register`, 2026-09-13) RULES AND CLOSES `MI-ι`:**
+> **BUSINESS EMPLOYEE IS BUSINESS DATA. The canonical Employee authority belongs in EOS-owned
+> PostgreSQL.** Read at source, not from a brief.
+>
+> **Three consequences for this document, marked in place below and not edited away:**
+>
+> 1. **§3's target is RATIFIED.** `MI-ι` in §4.2 and conflict **`C-7`** in §7 are **CLOSED**; `C-7`
+>    **Reading B** (*"Employee is identity, therefore Firestore `employees` is permanent"*) is **VOID BY
+>    RULING**. §1.4's finding stands.
+> 2. **`B-2` IS WITHDRAWN BY THE RULING.** `#185`, verbatim: *"`trendsToZero: false` is **NOT a permanence
+>    claim**, and this program over-read it. … **A prior report in this program stated that Firebase Auth is
+>    retained permanently on the strength of that flag. That over-read the manifest and is withdrawn.**"*
+>    **That prior report is this document.** See the struck `B-2` row and §0.3.
+> 3. **The ruling adds a documentation defect this document did not find:** the word **`/Employee`** in the
+>    identity carve-out of **both** `docs/architecture/firebase-exit-manifest.json` and
+>    `docs/architecture/firebase-exit-ratchet.md:4` is now **WRONG**, and
+>    `firebase-exit-ratchet.md:70-71`'s *"identity is the one Firebase capability this architecture keeps on
+>    purpose"* **overstates its own source**. Reconciliation is **documentation-correctness work, not
+>    implemented here.**
+>
+> **§9 (NEW) carries the PostgreSQL target work — items A–J — and every one is `NOT AUTHORIZED`.**
+> `#185` Status, verbatim: *"**IMPLEMENTATION REMAINS NOT AUTHORIZED** — items A–J of `MI-ι` §11 are
+> prepared only."*
+
+---
+
 ## 0. NINE CORRECTIONS TO THE BRIEF, BEFORE THE ARCHITECTURE
 
 Correcting the brief was declared in scope and expected. Nine items; two of them change the
@@ -46,7 +75,7 @@ architecture, not merely a line number.
 | # | The brief said | Evidence at `64008d5a` | Consequence |
 |---|---|---|---|
 | **B-1** | Allowed surface is `docs/operating-model/architecture/…`, and the two input docs sit beside it | **Neither input doc is at that path.** They are `docs/operating-model/owner-decisions/MI-X-PERSON-AUTHORITY-OPTIONS.md` (511 lines) and `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` (1219 lines). `docs/operating-model/` contained only `engineering/` and `owner-decisions/` | The output directory had to be **created**. Done, as the contract permits. No input doc was modified |
-| **B-2** | **"The target zero-Firebase architecture must support…"** | **"Zero-Firebase" is already scoped by a governing control document, and it is not zero Firebase.** `docs/architecture/firebase-exit-manifest.json:13-20` classes Firebase Auth + UID→Principal/Employee correlation as **`IDENTITY_ONLY`** with **`"trendsToZero": false`**; `:22-38` classes Firestore + Functions as **`BUSINESS_RUNTIME`** with **`"trendsToZero": true`** | **This is the single most load-bearing correction in this document.** The end state retains Firebase Auth *permanently* as credential authority and drives *Firestore* to zero. §3 is built on it. It also means the Owner's distinction is already half-implemented in governance |
+| **B-2** ⚠ **WITHDRAWN BY `#185`** | **"The target zero-Firebase architecture must support…"** | ~~**"Zero-Firebase" is already scoped by a governing control document, and it is not zero Firebase.**~~ The **classification** facts are exact — `docs/architecture/firebase-exit-manifest.json:13-20` classes Firebase Auth + UID→Principal/Employee correlation `IDENTITY_ONLY` with `"trendsToZero": false`; `:22-38` classes Firestore + Functions `BUSINESS_RUNTIME` with `"trendsToZero": true`. **The INFERENCE drawn from them is withdrawn** — `#185`: *"`trendsToZero: false` is **NOT a permanence claim**, and this program over-read it. … A prior report in this program stated that Firebase Auth is retained permanently on the strength of that flag. **That over-read the manifest and is withdrawn.**"* The manifest itself says `IDENTITY_ONLY` is outside the ratchet *"for the current business-runtime exit phase"* and that identity migration is *"**not decided here**"* | ~~**the single most load-bearing correction in this document**~~ → **NOT a permanence finding.** `trendsToZero: false` means **out of scope for this ratchet**, not *retained forever*. **What survives, and it is what §3 actually needs:** Firestore is `BUSINESS_RUNTIME` and **must trend to zero**, so `employees` cannot be the permanent authority (§1.4). **What does not survive:** every use of the word *"permanently"* about Firebase Auth in §0.2, §1.7, §3.2, §3.7 — read those as *"credential authority for this exit phase; its own migration is a separate undecided question."* And `#185` rules that **`/Employee` must be struck** from the identity carve-out in the manifest and in `firebase-exit-ratchet.md:4`, and that `firebase-exit-ratchet.md:70-71`'s *"keeps on purpose"* **overstates its source** |
 | **B-3** | Three trusted files deny `fieldops_technicians` the identity role | **FOUR.** The brief's three are exact (`employeePrincipalLinkPlan.ts:24-25`, `employeePrincipalLink.ts:46-47`, `scripts/employeeTruckCrosswalk.lib.mjs:25-26`) plus **`functions/migrations/1758412800000_employee-principal-linkage.sql:90`** — "`fieldops_technicians` is compatibility data that must not remain employee-identity authority." | The omitted one is the **strongest**: it is DDL, and it backs the ruling with a `CHECK` constraint a future migration would have to edit in a reviewable diff (`:86-92`). `MI-X:180` omits it too |
 | **B-4** | `employee_principal_links` "has an `employee_id` column but **no FK**" | **Correct on `employee_id`, incomplete on the table.** The table declares exactly one FK and it is deliberately *not* onto `principals`: `…1758412800000:133-135` `FOREIGN KEY (tenant_id, principal_id) REFERENCES tenant_memberships (tenant_id, principal_id)`, rationale `:39-42` — "A key onto `principals` alone would prove the principal EXISTS. It would not prevent tenant A's Employee from being linked to a principal who belongs only to tenant B — a **cross-tenant identity leak** rather than a dangling row." `employee_id` gets a shape `CHECK` only (`:157-158`) | The link relation is **tenant-scoped**, and it already carries the exact retention discipline §3 needs: two *partial* unique indexes (`:169-175`) enforce 1↔1 **among active rows only**, so revoked links accumulate as history. **The target pattern is already built — on the link, not on the person** |
 | **B-5** | "The referential-integrity mechanism is already shipped twice… **plus twice in Rules** (`:112-121`, `:491-496`)" | **Four times in Rules, not twice.** `grep -n "documents/employees" firestore.rules` → **`:61`** (`linkedEmployeeData()`), **`:92`** (reciprocal-link check), **`:114`** (`isActiveOperationalRole()`), **`:141`** (inlined WAREHOUSE_MANAGER variant). And **three** trusted-side validators, not two: truck driver (`truckRegistryRepository.ts:196-200`), manager (`employeeProfileCommands.ts:531-541`), **and** scheduling technician existence (`scheduling/placementPolicy.ts:82`, `TECHNICIAN_NOT_FOUND`) | The mechanism is **more** entrenched than the brief claims — 7 trusted gating reads across 5 files plus 4 Rules sites = **11 gating sites**. This *raises* the migration cost of the Firestore option rather than lowering it (§3.6) |
@@ -546,13 +575,20 @@ edit (blocked on `C-1`); any deletion of any collection; any production contact.
 | **`MI-ζ`** *(carried)* | Is the Employee authority answered **for now** in Firestore with the PostgreSQL move left to `BA-7`, or must both be decided together? | They **can** be sequenced (migration 008 pre-shaped the FK). Whether they **should** is the Owner's. §1.4's finding — that the defect is already reproduced in the PostgreSQL schema — is new input to this question |
 | **`MI-η`** *(NEW, this lane)* | **Is AUTHORITY-UNAVAILABLE / CANNOT-ASK a fifth resolution outcome, distinct from state C?** | §3.5. Collapsing it into C makes an authority outage or a namespace mismatch indistinguishable from "this person does not exist", and the frozen attribution snapshot is never revisited, so a false C is permanent. `#182` as quoted names four **states**; whether it also constrains **outcomes** is not answerable by a lane |
 | **`MI-θ`** *(NEW, this lane)* | **Is technician linkage in the minimum model at all?** It is the one required capability **no candidate supplies** (§1.3), inference is forbidden in four files, and no `OD-6` state depends on it | This lane's position is that it is **not** in the minimum. But `MI-R` says further constraints are "per family, never global", and whether any family's accountability requires a technician linkage is a family-by-family Owner question |
-| **`MI-ι`** *(NEW, this lane)* | **Is a business Employee "business data" (→ PostgreSQL) or "identity" (→ carved out of the exit)?** | The manifest does not say. `:10` sends all **business data** to PostgreSQL; `:13-14` carves out **identity** and says migration of it is "**not decided here**". The Owner's own EMPLOYEE/PRINCIPAL distinction implies Employee is business data — **but the manifest has not been told so**, and `PROJECT_ARCHITECTURE.md:88` still says Firestore is the source of truth for all operational data (§7 `C-7`). **§3 is built on the reading that Employee is business data; if the Owner rules otherwise, §3's target collapses to "Firestore `employees` is permanent" and §1.4 is void** |
+| ~~**`MI-ι`**~~ **RULED / CLOSED — `#185`** | **Is a business Employee "business data" (→ PostgreSQL) or "identity" (→ carved out of the exit)?** | **ANSWERED: BUSINESS DATA.** `#185`, verbatim: *"**BUSINESS EMPLOYEE IS BUSINESS DATA. The canonical Employee authority belongs in EOS-owned PostgreSQL.** The Employee business record must **not** be classified `IDENTITY_ONLY` merely because an Employee may be linked to an authenticated user or principal."* **§3's target reading is RATIFIED and §1.4's finding stands.** The ruling also resolves the manifest gap this row identified — it rules **`/Employee` out of the identity carve-out** in both control documents. **It is no longer *"the one to answer first"*; it is answered.** The target work it authorizes to be *prepared* is **§9, items A–J, all `NOT AUTHORIZED`** |
 | **`MI-V`** *(already registered)* | Does Layer 1 extend to `creditedSalespersonId` / `responsibleEmployeeId` — and now, to the **15 person references at §5.1**? | `…DECOMPOSITION.md:1182`, `:1108`. §5.1 makes this materially larger than two fields |
 | **`MI-J`** *(already registered)* | Which employee fact is authoritative for "this person can no longer act"? | `employmentStatus` is the only candidate, and the repo warns against conflating it with account state (`SYSTEM_AUTHORITIES.md:121`) |
 | **`MI-α`** *(carried)* | The label. This question is registered as `OI-39` / `V-15` / `X-13` / `BA-7`. Which governs, and is a new ref to be issued? | Naming a register item is the Owner's |
 
-**`MI-ι` is the one to answer first.** Every other question is downstream of it, and §3's entire
-target rests on one reading of it.
+~~**`MI-ι` is the one to answer first.** Every other question is downstream of it, and §3's entire
+target rests on one reading of it.~~
+
+> **⚠ ANSWERED 2026-09-13 — `#185`.** `MI-ι` is **RULED / CLOSED**: **BUSINESS EMPLOYEE IS BUSINESS DATA;
+> the canonical Employee authority belongs in EOS-owned PostgreSQL.** §3's reading is **RATIFIED**, and the
+> prepared-not-implemented target work it authorizes is **§9, items A–J, every one `NOT AUTHORIZED`**.
+> The remaining rows above stand **open and unchanged**, except that **`MI-η` is now NAMED AND DEFERRED
+> BY RULING** rather than raised by a lane — `#185`: *"AUTHORITY UNAVAILABLE **if later ruled
+> separately**"*. **`MI-λ`** and **`MI-κ`** are added at §9.8.
 
 ---
 
@@ -599,7 +635,7 @@ scheduling technician existence (`placementPolicy.ts:82`, `TECHNICIAN_NOT_FOUND`
 
 | # | Item | Why |
 |---|---|---|
-| **U-1** | Whether `#182`/`#183`/`#184`'s actual text says anything about Layer 1's **location**, `O-1`'s supersession, or whether the four states constrain **outcomes** as well as states | They are on `int/a-correctness-register`; this branch ends at `#179` (`docs/DECISIONS.md:6410`). **Only the brief's quotations were available.** Every reading of them here is a reading of the brief |
+| ~~**U-1**~~ **PARTLY DISCHARGED — see §9.10** | Whether `#182`/`#183`/`#184`'s actual text says anything about Layer 1's **location**, `O-1`'s supersession, or whether the four states constrain **outcomes** as well as states | ~~Only the brief's quotations were available.~~ **`#182`, `#183`, `#184` and `#185` have now been read AT SOURCE** from `int/a-correctness-register:docs/DECISIONS.md`, so every reading in **§9** is a reading of the rulings. **What remains unproven:** `#182` does not state Layer 1's *location* (**`#184` does** — option (e), the governed orchestration boundary; `MI-β` remains the formal question), and whether the four states constrain **outcomes** as well as states is **named and deferred** by `#185`, not answered | Discharged for §9; §1–§8 above were written from the brief and are marked where a ruling moved them |
 | **U-2** | Whether migrations **004–018** (incl. 008) are applied in **any** live environment | Three statements say the consumer is not deployed (§1.5); the only activation record shows `migrations: 3` |
 | **U-3** | Whether any row exists in `employee_principal_links` anywhere | No environment was contacted |
 | **U-4** | Whether the **production** `employees` population exhibits the nonprod `userId` bijection | The production census (`be1e5579`) measured role exposure, not linkage completeness, and reported one un-linked principal. **Dated 2026-09-02; not re-read live** |
@@ -622,7 +658,7 @@ scheduling technician existence (`placementPolicy.ts:82`, `TECHNICIAN_NOT_FOUND`
 | **C-4** *(carried, fenced off)* | `…p1b-census.md:816`: zero employee matches in migrations | **STALE** — **7** migration files match at `64008d5a`; `1758412800000` has **44** hits. **Independently re-verified this lane** | Measured at an earlier base per its own `:11`; a snapshot artifact. **Being fixed separately; not touched** |
 | **C-5** *(carried, partially resolved)* | `SYSTEM_AUTHORITIES.md:54` "**NOT DEPLOYED**" vs `eos-real-nonprod-activation.md:112` "Render — **EXISTS**" | Three independent statements say the policy service is not deployed (§1.5) | One activation doc says a Render service exists with a live health probe. **Either way Cloud Functions has no PostgreSQL path**, so §1.5's conclusion is unaffected |
 | **C-6** *(carried)* | `docs/DataModel.md:126`: any signed-in user can write `fieldops_technicians` | **STALE** — contradicted by `firestore.rules:397-423`, which gates on `isAdminOrDispatcher()` | If current, Option 3 is worse still. **Either way it is disqualified** |
-| **C-7** *(NEW, this lane — and it is `MI-ι`)* | Where does the **business person** live in the target? | `firebase-exit-manifest.json:10` — "**All business data** … must run through the Render EOS API against **PostgreSQL, not through Firestore**". An Employee is business data, so **R1 in PostgreSQL** | `docs/PROJECT_ARCHITECTURE.md:88` — "**Firestore is the source of truth for all operational data**", and `firebase-exit-manifest.json:13-14` carves **identity** out of the exit entirely, saying its migration is "**not decided here**". If Employee is identity rather than business data, **Firestore `employees` is permanent and §1.4's finding is void.** **§3 is built on reading A. The Owner must rule** |
+| ~~**C-7**~~ **RESOLVED BY RULING — `#185`** | Where does the **business person** live in the target? | **READING A IS RULED.** `firebase-exit-manifest.json:10` — "**All business data** … must run through the Render EOS API against **PostgreSQL, not through Firestore**" — and `#185` rules an Employee **is** business data. **R1 in PostgreSQL.** | **READING B IS VOID BY RULING.** `docs/PROJECT_ARCHITECTURE.md:88` (*"Firestore is the source of truth for all operational data"*) and the manifest's `:13-14` identity carve-out no longer support *"Employee is identity, therefore Firestore `employees` is permanent"*: `#185` rules Firestore `employees` **transitional business compatibility** and strikes `/Employee` from the carve-out. **`PROJECT_ARCHITECTURE.md:88` is now a document to reconcile, not a reading to carry** — recorded, not edited (outside this lane's surface) |
 | **C-8** *(NEW, this lane)* | Is the `OD-7` boundary a **relocation** or a **construction**? | The brief and `OD-7` speak of governed orchestration as the boundary, implying it exists to be used | **The phrase appears nowhere in the repository, and on the Firestore side the seam is explicitly uncalled** — `ownershipHandoffCommand.ts:197` "**Nothing calls this yet**". The only boundary in `OD-7`'s shape is in **PostgreSQL** (`commercialOwnershipRepository.ts:193`). **This changes §4.1's ordering: step 4 is a build, not a move** |
 
 ---
@@ -635,11 +671,493 @@ scheduling technician existence (`placementPolicy.ts:82`, `TECHNICIAN_NOT_FOUND`
 - **No field name or enum name for the `OD-6` person-reference states.** §3.5 names **capabilities**
   and **relationships** only. Every field name in this document is **quoted from code existing at
   `64008d5a`**.
-- **No answer to any `MI-` item in §4.2**, including the three this lane raised (`MI-η`, `MI-θ`,
-  `MI-ι`).
+- **No answer to any `MI-` item in §4.2** — **except `MI-ι`, which the Owner RULED at `#185`** and which is
+  therefore recorded as CLOSED rather than answered here. `MI-η` and `MI-θ` stand open; `MI-η` is now **named
+  and deferred by ruling**. **§9 adds `MI-λ` and cross-registers `MI-κ`, and answers neither.**
 - **No `ownershipMatrix.ts` edit and no claim that one is required** — `C-1` is unresolved and its two
   readings disagree about whether the file is defective at all.
 - **No repair of the stale documents** in §7 (`C-3`, `C-4`, `C-6`) — fenced off by the lane contract.
 - **No retirement of, or deletion from, any collection** — including `fieldops_technicians`, whose
   unique facts must be re-homed first.
 - **No resolution of `MI-J`, `MI-V`, `BA-7`, `O-1`, or this question's register placement.**
+
+---
+
+# 9. THE POSTGRESQL TARGET WORK — `MI-ι` / `#185`, PREPARED NOT IMPLEMENTED
+
+**OBSERVED AT: `64008d5ae0bdd9532909671b15a91122400accf1`** for every code and DDL claim. **#185** read at
+source from `int/a-correctness-register:docs/DECISIONS.md`.
+
+> ## ⚠ EVERY ITEM IN §9 CARRIES `IMPLEMENTATION STATUS = NOT AUTHORIZED`.
+>
+> `#185` Status, verbatim: *"**IMPLEMENTATION REMAINS NOT AUTHORIZED** — items A–J of `MI-ι` §11 are
+> **prepared only**, and all 42 items in
+> `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` keep
+> `IMPLEMENTATION STATUS = NOT AUTHORIZED` until the remaining authority decisions are settled and the
+> architecture-authority conflict above is reconciled."*
+>
+> **No DDL is written to any migration file. No migration is executed. No backfill. No Rules change. No
+> deploy. No production contact. No data mutation.** §9 specifies **relations and constraints at the
+> architectural level**, which is what this lane was asked for, and nothing below is a migration.
+>
+> **NAMING IS NOT FROZEN.** `#182` §3: *"Exact enum and schema names are NOT authorized by this ruling."*
+> `#185`: *"**Naming is explicitly not frozen by this ruling.**"* §9 therefore names **capabilities,
+> relations and semantic states**. Every identifier that appears in a code font below is **quoted from DDL or
+> code that exists at `64008d5a`** — `employee_principal_links`, `employee_id`, `owner_employee_id`,
+> `eos_policy.principals`, `tenant_memberships` — never proposed. **R1 is referred to as "the Employee
+> relation", not by a table name.**
+
+### 9.0 Provenance of items A–J — read this before relying on the lettering
+
+**`#185` confirms items A–J exist and are "prepared only". It does not enumerate them.** No `MI-ι` document
+exists at any ref in this repository (`git log --all --diff-filter=A --name-only` finds no file matching
+`iota`, `MI-I`, `BUSINESS-EMPLOYEE` or `EMPLOYEE-BUSINESS`; the only `MI-` packet is
+`docs/operating-model/owner-decisions/MI-X-PERSON-AUTHORITY-OPTIONS.md`, and `MI-ι` was raised in **§4.2 of
+this document as a single table row**, which has no §6/§9/§10/§11).
+
+| | |
+|---|---|
+| **A–J titles** | **`SOURCE: LANE BRIEF. NOT VERIFIED AT SOURCE.`** Registered as `U-10` (§9.10) |
+| **The ruled content each item must satisfy** | **VERIFIED AT SOURCE** — every clause in §9 is quoted from `#185`, `#184`, `#183`, `#182`, `#181` or `#180` as read on `int/a-correctness-register` |
+| **`#185`'s own internal citations (`MI-ι` §6, §11)** | point to the same unlocatable document. Recorded, not resolved |
+
+**If the Owner's A–J lettering differs, the content below is unaffected — only the labels are.**
+
+---
+
+## 9.1 REQUIRED POSTGRESQL RELATIONS — architectural level, no DDL
+
+`#185` fixes the target in one table:
+
+| Concept | `#185`'s canonical target | State at `64008d5a` |
+|---|---|---|
+| **EMPLOYEE** — business person authority | **"PostgreSQL Employee relation"** | **DOES NOT EXIST.** `functions/migrations/1758412800000_employee-principal-linkage.sql:46`: *"**THERE IS NO `employees` TABLE IN POSTGRESQL YET.**"* Among **54** `CREATE TABLE` statements across **18** migrations there is no business-person relation — no `employees`, `persons` or `people` — and no employment-status concept in any of them |
+| **PRINCIPAL** — security principal authority | **`eos_policy.principals`** | **EXISTS.** `1757548800000_tenant-and-identity.sql:79-93`. **No change proposed by this document or by `#185`** |
+| **CROSSWALK** — governed EMPLOYEE ↔ PRINCIPAL link | **`employee_principal_links`, "made referentially sound with real foreign keys"** | **EXISTS AND IS PARTLY RIGHT ALREADY.** `1758412800000:117-160`. One FK, deliberate and composite; `employee_id` unconstrained beyond shape |
+| **CREDENTIAL** | the credential provider, **authentication only** | Firebase Auth. `#185`: *"transitional credential source"* — and per `#185`'s withdrawal of `B-2`, **not** ruled permanent |
+
+**The three relations `#185` requires, stated as capabilities (§1.6's R1/R2/R3, now ruled rather than
+proposed):**
+
+| | Relation | Must carry (capability, not column) | Must NOT carry |
+|---|---|---|---|
+| **R1** | **the PostgreSQL Employee relation** — canonical business person | an EOS-native, immutable, opaque identifier that is **never a credential key**; an **existence** fact only this relation may assert; **one** governed employment-status fact from a closed vocabulary with a single writer; **retention across the end of employment as an invariant**; operating-company context; tenant context | any credential or authentication fact; any dispatch/scheduling state; skills; contact details; HR data; a second status axis; any Role, permission or Condition |
+| **R2** | **`employee_principal_links`** — the crosswalk | which Employee and which principal are the same person; the **provenance** of that assertion from a closed vocabulary; whether the link is live or superseded, **superseded links retained**; the tenant the link holds in | *"nothing else about either side"* — already written into the DDL at `1758412800000:107-111`: *"No `external_subject`, no `identity_provider`, no `display_name`, no `employment_status`, no `technician_id`, no `skills`… The link table says **WHICH TWO THINGS ARE THE SAME PERSON, and nothing else about either of them**"* |
+| **R3** | **`eos_policy.principals`** | exists; **no change** | — |
+
+**No fourth relation.** Technician linkage is deliberately not in R1 or R2 (§1.6) and remains `MI-θ`.
+
+---
+
+## 9.2 REUSE vs NEW — the part to get right
+
+**Three categories, and the middle one is the one this program keeps collapsing into the other two.**
+
+| Category | What is in it | Why |
+|---|---|---|
+| **NEW STORAGE — exactly one relation** | **R1, the Employee relation** | No business-person relation exists among the 54 tables, and the DDL says so in the imperative (`1758412800000:46`). **This is the only new storage the target requires.** |
+| **REUSE AND CONSTRAIN — already built, needs constraining, NOT creating** | **`employee_principal_links`** (`1758412800000:117-160`) | The table exists with an `employee_id` column *already of the right name, type and cardinality*, and its own header pre-shaped the follow-up: `:55-57` — *"When an `employees` table does arrive, this column is already the right name, the right type and the right cardinality to take a foreign key with no restructuring — **the constraint is the only thing that has to be added**, and that is a follow-up this header names rather than one a reader has to infer."* |
+| **REUSE UNCHANGED** | **`eos_policy.principals`** (`1757548800000:79-93`), **`tenant_memberships`** (the target of R2's existing composite FK) | `#185` names `principals` canonical and proposes no change. `tenant_memberships` already declares the `UNIQUE (tenant_id, principal_id)` R2's FK targets |
+| **CONSTRAIN EXISTING BUSINESS RELATIONS — exists, defective, must not be created again** | the **nine** unconstrained person columns of §9.4 | They are already in PostgreSQL DDL. The target work is **adding constraints to shipped tables**, not adding tables |
+
+### 9.2a What is already correct in `employee_principal_links`, precisely
+
+**Getting reuse right means not "improving" the parts that are already right.** Four properties are built and
+must survive:
+
+| Property | Where | Why it must not be changed |
+|---|---|---|
+| The FK is **composite and deliberately not onto `principals`** | `1758412800000:133-135` — `FOREIGN KEY (tenant_id, principal_id) REFERENCES tenant_memberships (tenant_id, principal_id)` | Rationale at `:39-42`: *"A key onto `principals` alone would prove the principal EXISTS. It would not prevent tenant A's Employee from being linked to a principal who belongs only to tenant B — a **cross-tenant identity leak** rather than a dangling row."* **Adding a simple `REFERENCES principals(id)` would be a regression, not an improvement** |
+| **Retention discipline is already in the indexes** | `:169-172` and `:173-176` — two **PARTIAL** unique indexes, `WHERE status = 'active'` | *"PARTIAL on `status = 'active'`: **history survives, ambiguity does not**"* (`:167-168`). 1↔1 is enforced among **active rows only**, so revoked links accumulate as history. **This is the retention pattern item C needs, already built — on the link, not on the person** |
+| **Closed provenance vocabulary** | `:139-140` — `CHECK (link_source IN ('RECIPROCAL_FIREBASE_UID_LINK', 'OPERATOR_ASSERTED'))` | `:138` — *"a `link_source` with free text means nothing after the third value somebody invents — and the third value somebody would invent is the technician id."* The closure is the point |
+| **An assertion always has an author and a reason** | `:146-155` | *"Enforced by the database, because the caller that would forget is exactly the caller that is guessing"* |
+
+### 9.2b Reuse vs new, per item A–J
+
+| Item | New storage? | Reuse and constrain? | Reuse unchanged? |
+|---|---|---|---|
+| **A** Employee relation authority | **YES — R1. The only new relation** | — | — |
+| **B** Employee status model | on R1 (part of A) | — | the shipped closed vocabulary is the input (§9.3 B) |
+| **C** historical retention semantics | **NO — needs an invariant and a test, not storage** | R2's partial-index pattern is the precedent | Firestore-side retention is already de facto true |
+| **D** `employee_principal_links` FK integrity | **NO** | **YES — this is the canonical reuse-and-constrain item** | the existing composite FK, the partial indexes, the `link_source` closure |
+| **E** migration / crosswalk from Firestore `employees` | **NO** — E moves rows into A, it creates nothing | **YES — the nine unconstrained person columns (§9.4)** | — |
+| **F** compatibility for `fieldops_technicians` | **NO storage until its unique facts are re-homed**, and that is out of the minimum (`MI-θ`) | — | — |
+| **G** server-side person-resolution adapter | **NO** | the port from §3.4 / §4.1 step 3 | `commercialOwnershipRepository.ts:193` is the shipped boundary shape |
+| **H** `OD-6` acceptance tests | **NO** | — | the fake-authority test pattern (`ownershipCensus.ts:5-7`) |
+| **I** `OD-7` orchestration integration | **NO** | — | the `BEGIN/COMMIT`-on-one-`PoolClient` property (`commercialOwnershipRepository.ts:12-19`) |
+| **J** census / responsibility-integrity integration | **NO** | — | `ownershipCensus.ts`; **but which shape is `MI-X`'s, unanswered** |
+
+> **Nine of the ten items require no new storage.** The target is **one relation, one added constraint on the
+> crosswalk, and constraints on nine already-shipped columns.** Anything larger is not this ruling.
+
+---
+
+## 9.3 ITEMS A–J
+
+**Every item: `IMPLEMENTATION STATUS = NOT AUTHORIZED`.**
+
+### A — Employee relation authority (R1)
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: *"The canonical Employee authority belongs in EOS-owned PostgreSQL"*; *"PostgreSQL Employee relation = business person authority"* |
+| **Required relations** | **R1 — new.** One relation, tenant-scoped, server-only, transactionally writable behind the Render EOS API |
+| **Required constraints, architectural level** | a primary key that is **EOS-native, immutable, opaque and never a credential key** (the `principals.id` discipline one level up — `SYSTEM_AUTHORITIES.md:54`: *"`principals.id` is EOS-native and `(identity_provider, external_subject)` is the MAPPING to whatever proved the identity"*); tenant scoping consistent with `tenant_memberships`' composite discipline so that a cross-tenant Employee reference is **unrepresentable**, not merely refused; **exactly one** governed status fact, from a closed vocabulary, enforced by the database; **no delete path** (item C); an existence fact only R1 may assert |
+| **Reuse vs new** | **NEW. The only new storage in the target.** `1758412800000:46` |
+| **Crosswalk changes** | none of its own; it is what D's FK points at |
+| **Migration implications** | R1 must exist before D and before E. It requires the **EOS API to be deployed at all** — `functions/src/eosApi/server.ts:19-23`: *"**NOT DEPLOYED** — there is no Render service, and creating one needs Owner action"*; `docs/architecture/eos-policy-nonprod-activation.md:3-8`: *"**MERGED TO `main`. NOT DEPLOYED.** … Merged code is not running code."* |
+| **Compatibility surfaces** | Firestore `employees` remains the interim bearer with **11 gating sites** (`B-5`: 7 trusted reads across 5 files + 4 Rules sites `:61`, `:92`, `:114`, `:141`) |
+| **Tests / proofs** | existence is assertable **only** through R1; a credential or principal id is **rejected as an Employee key** (`#185`: *"Never Firebase user → therefore Employee"*); a cross-tenant Employee reference is unrepresentable; the status vocabulary is closed at the database, not only in code |
+| **Remaining Owner decisions** | **`MI-ζ`** (sequence R1 with the Firestore answer, or decide both together) · **`MI-ε`** (does Layer 1 fail closed on the people `employees` does not represent?) · **`MI-α`** (the register label) |
+| **Status** | **NOT AUTHORIZED** |
+
+### B — Employee status model
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: Layer 1 must establish *"employee status"* and *"current eligibility facts required by the caller"*. `#182` §4 / `MI-R`: *"at minimum it must consider **governed employment / person status**"*; *"Additional company or domain constraints are **per family — do not invent them globally**"* |
+| **Required relations** | one status fact **on R1**. **Not a second relation, not a second axis** |
+| **Required constraints** | a **closed vocabulary enforced by the database**; **exactly one** status axis; **one writer**. The vocabulary shipped today has six members — `EMPLOYMENT_STATUS_VALUES` at `functions/src/access/employeeProfileCommands.ts:122-129`: `ACTIVE`, `ON_LEAVE`, `INACTIVE`, `TERMINATED`, `RETIRED`, `CONTRACTOR` — and it is **not proposed here as R1's vocabulary**; it is the measured input to the Owner's choice |
+| **Reuse vs new** | part of A. No new relation |
+| **Crosswalk changes** | **none — and this is a constraint, not an absence.** `1758412800000:107-111` forbids `employment_status` on R2 by design: *"a copy here would be a second place for the same fact to be stated, which is the only way two places can ever disagree"* |
+| **Migration implications** | the vocabulary must be decided **before** E moves any row, or E writes values R1 must later re-map |
+| **Compatibility surfaces** | **four `firestore.rules` sites enforce `employmentStatus == "ACTIVE"` inside the security boundary** (`:61`, `:92`, `:114`, `:141`). **No PostgreSQL relation can ever be read from `firestore.rules`**, so any eligibility enforced there must be re-homed to the EOS API at cutover — `MI-δ`, and §3.7 calls it the transition's largest un-priced cost |
+| **Tests / proofs** | `#182` proofs **P1**–**P4**: valid-current · inactive · terminated · non-existent. Each must be a **distinct** outcome, and `#182` §2 is explicit: *"**INACTIVE · TERMINATED · FORMER EMPLOYEE are NOT the same condition as NON-EXISTENT / INVALID**"* and *"`UNRESOLVED` must NOT be the automatic representation for every inactive or terminated employee"* |
+| **Remaining Owner decisions** | **`MI-S`** (is state **B** a distinct outcome or `RESOLVED` + a carried eligibility fact, and must INACTIVE be distinguishable from TERMINATED inside it?) · **`MI-J`** (which fact is authoritative for *"can no longer act"* — and `SYSTEM_AUTHORITIES.md:121` warns against conflating it with account state) · **`MI-δ`** |
+| **Status** | **NOT AUTHORIZED** |
+
+### C — historical retention semantics
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: Layer 1 must establish *"historical identity preservation"*. `#182` §2: EOS *"**must preserve the historical reference**"* and must not rewrite historical ownership, accountability or attribution because an Employee later becomes inactive or terminated. `#180` invariant 6: *"Historical accountability must remain auditable."* |
+| **Required relations** | **none. This item needs an invariant and a test, not storage** |
+| **Required constraints** | on R1: **no delete path, as a stated invariant rather than an emergent one**. On R2: the **existing** partial-unique-index pattern, retained (`1758412800000:169-176`) |
+| **Reuse vs new** | **NO new storage. The one item in A–J that requires none** |
+| **Crosswalk changes** | none — R2's retention is already correct and must be **protected, not extended** |
+| **Migration implications** | E must be **additive**: it may not delete a Firestore `employees` document, and the Firestore side becomes `ARCHIVE` (read-only evidence), never a deletion |
+| **Compatibility surfaces** | Retention is **satisfied de facto today and it is verified**: `firestore.rules:497` is `allow create, update, delete: if false;` on `/employees/{employeeId}`, and **no delete path exists in the trusted tree** (a search of `functions/src` and `functions/scripts` for a `.delete()` on an `employees` document at `64008d5a` returns **zero**). **It is satisfied by accident, not by contract** — which is precisely why C is the cheapest item and the one most worth doing early |
+| **Tests / proofs** | a test that **fails if a delete path is introduced** on either bearer; `#182`'s two historical proofs (**P2**, **P3**) must prove **HISTORY PRESERVED**; the two-channel model of §3.6 asserted — **the act** (immutable audit with a snapshot of the identity facts) **and the reference** (live, resolving against a retained record). §3.6's warning is a required negative control: **channel (1) without channel (2) is the `financialAttribution` defect** — a frozen, permanent snapshot (`financialAttribution.ts:225` `Object.freeze`, `:184` *"history, not state"*) of a person id that was never validated |
+| **Remaining Owner decisions** | **none for the invariant itself.** `MI-S` governs how state **B** is *represented*, not whether history is *retained* |
+| **Register note** | **`OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` contains no `OI-nn` for this** — `OI-07`/`OI-31` cover state B's representation, not retention's guarantee. Recorded there as correction **X-16**; carried here |
+| **Status** | **NOT AUTHORIZED** |
+
+### D — `employee_principal_links` FK integrity
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: *"`employee_principal_links` = **governed crosswalk**, made referentially sound with **real foreign keys**"* |
+| **Required relations** | **none new.** R2 exists |
+| **Required constraints, architectural level** | ① a **real referential constraint from R2's employee reference onto R1** — and, to match the discipline already in the file, **composite and tenant-scoped**, so that tenant A's link cannot name tenant B's Employee. A simple single-column key onto R1 would prove existence and **reintroduce exactly the cross-tenant leak `:39-42` was written to make unrepresentable.** ② the existing composite FK onto `tenant_memberships` (`:133-135`) **retained unchanged**. ③ the shape `CHECK` at `:157-158` **retained or migrated into R1's key domain** — it currently encodes *"`employee_id` is a Firestore document id today"*, which after cutover is no longer true, so it is a **transitional constraint with an expiry**, not a permanent one |
+| **Reuse vs new** | **REUSE AND CONSTRAIN. This is the canonical instance.** *"The constraint is the only thing that has to be added"* (`:55-57`) — written in 2026 as a named follow-up, and `#185` is the ruling that asks for it |
+| **Crosswalk changes** | **three, and one is not in the brief.** (i) the FK above. (ii) the shape `CHECK`'s expiry. (iii) **`link_source`'s closed vocabulary contains a value `#185` rules transitional.** `:140` admits exactly `'RECIPROCAL_FIREBASE_UID_LINK'` and `'OPERATOR_ASSERTED'`, and `:80` documents the first as *"`employees/{id}.userId` and `users/{uid}.employeeId` agree"* — which is **precisely** what `#185` forbids the crosswalk from relying on permanently: *"The crosswalk must not rely permanently on matching strings · Firebase uid coincidence · `users/{uid}.employeeId`."* **So one of only two admitted provenances is a compatibility mechanism.** The target needs a governed successor provenance, or `RECIPROCAL_FIREBASE_UID_LINK` needs a declared retirement — **and `:138`'s own reasoning is why this must be decided rather than drifted into**: the closure exists so a third value is a deliberate act |
+| **Migration implications** | **D is impossible before A.** And D is **blocking on data**: an FK cannot be added while any row's employee reference does not resolve in R1, so **D forces E's completeness question into the open** — which is the correct order, because an FK that cannot be added is a measurement of exactly how incomplete the crosswalk is |
+| **Compatibility surfaces** | `users/{uid}.employeeId` and `employees/{id}.userId` remain the reciprocal mechanism during transition; `#185` classes `users` *"transitional identity compatibility"* |
+| **Tests / proofs** | a link naming a non-existent Employee is **refused by the database**, not by a caller; a link naming another tenant's Employee is **unrepresentable**; **revoked links survive** the new constraint (the partial indexes still admit history); the existing `tenant_memberships` FK still refuses a principal who is not a member of that tenant; and the `link_source` vocabulary change, whichever way it goes, is a **reviewable diff in DDL** — which is the property `B-3` identified as the strongest form of this repository's discipline |
+| **Remaining Owner decisions** | **`MI-γ`** (must a person reference resolve an Employee **only**, or an Employee **and** a live link? — this decides whether D's FK is on Layer 1's critical path or beside it) · **`MI-ε`** (the unlinked population) · the `link_source` successor question above, which is **new and unregistered** |
+| **Status** | **NOT AUTHORIZED** |
+
+### E — migration / crosswalk from Firestore `employees`
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: Firestore `employees` = *"transitional business compatibility"*; *"**No big-bang migration**"* required; *"**One authoritative implementation at a time. No long-lived dual authority.**"* `#182` §10: *"**No backfill authorized.**"* |
+| **Required relations** | none new. E populates R1 |
+| **Required constraints** | E is **additive and idempotent**, and it is **not a backfill in `#182`'s sense** — the distinction must be stated, because the words collide. `#182` forbids *backfill as a mechanism for fixing historical inactive or terminated references* and forbids propagating an unvalidated upstream owner (`ownershipBackfillRules.ts:71` `ALREADY_SET` ⇒ no repair path; `:74-77` writes an unvalidated `{ type: "USER", id }` onto every child). **E is a datastore move of an existing governed record, not a repair of a reference.** Whether that distinction is the Owner's is stated as a decision below rather than assumed |
+| **Reuse vs new** | reuse. **And E is where the already-reproduced defect must be stopped — §9.4** |
+| **Crosswalk changes** | E must **not** create links; links are D's and are governed by provenance. A row moved by E with no resolvable principal link is a **measured incompleteness**, never an inferred link |
+| **Migration implications** | **`#185` removes the big-bang requirement and replaces it with a harder constraint: one authority at a time.** So E is not *"copy then switch"*; it is *"copy, verify, switch, and make the old bearer unreachable as an authority"*. The verification step is not optional under *"no silent fallback"* (§9.6) |
+| **Compatibility surfaces** | Firestore `employees` → `ARCHIVE` (read-only evidence/history), never deleted (item C). `users` → RETIRE, superseded by `principals` + R2. `fieldops_technicians` → item F |
+| **Tests / proofs** | every Firestore `employees` document resolves in R1 **or** is enumerated as a named exception; **no document is deleted**; re-running E writes zero (the idempotence property `assignWarehouseRootCompany` already demonstrates — *"a re-run wrote 0"*, `docs/specifications/reorder-trusted-command-authority.md:208`); and **after cutover, a read of the old bearer for authority purposes fails a test** (§9.6) |
+| **Remaining Owner decisions** | **`MI-ε`** — **this is the decision E cannot proceed without.** `employees` is **not the complete person population** (~15% of technicians unrepresented; `tech-sbx-02` *"exists in no other collection"*; one **production** principal that can act has no employee link). E must either **fail closed on those people — declaring real actors non-existent — or treat completeness as a precondition.** That is a product decision about real people being refused. Also: **is E a "backfill" under `#182` §10, or a datastore move?** Unregistered; raised below as **`MI-λ`** |
+| **Status** | **NOT AUTHORIZED** |
+
+### F — compatibility strategy for `fieldops_technicians`
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: *"`fieldops_technicians` = **legacy operational compatibility**"*; *"**Never collapse** EMPLOYEE into … `fieldops_technicians`"*; *"a technician id"* is **insufficient** as proof an Employee exists; the crosswalk must not rely permanently on *"`fieldops_technicians` identity"* |
+| **Required relations** | **none in the minimum.** Technician linkage is a **third** relationship between a business Employee and a dispatch resource record, and forcing it into R1 or R2 re-creates the conflation **four** trusted artifacts forbid — `employeePrincipalLinkPlan.ts:24-25`, `employeePrincipalLink.ts:46-47`, `scripts/employeeTruckCrosswalk.lib.mjs:25-26`, and the strongest, **DDL**: `1758412800000_employee-principal-linkage.sql:90` — *"`fieldops_technicians` is compatibility data that must not remain employee-identity authority"*, backed by a `CHECK` at `:86-92` |
+| **Required constraints** | **no `technician_id` on R2** — already forbidden at `:107-111`, and `:138` names it as *"the third value somebody would invent"* for `link_source` |
+| **Reuse vs new** | **no new storage until its unique facts are re-homed** — `TECHNICIAN_ONLY_BUSINESS_FACT` (`employeePrincipalLink.ts:81-83`), skills and dispatch status |
+| **Crosswalk changes** | none. F's whole content is **what must not be added** |
+| **Migration implications** | retirement is **last**: `inventory-reference-authority-p1b-census.md:1044` — *"**RETIRE** — subject to OR-4 preserving `skills` / dispatch status onto Employee first"* |
+| **Compatibility surfaces** | it **is** the compatibility surface. It has **no schema artifact at all** (`U-6`: no zod — `zod` is not a dependency of the Functions package; no converter; the only TS type is `{id, status}` at `schedulingRepository.ts:23-26`) |
+| **Tests / proofs** | a technician id is **refused** as an Employee reference; the four prohibitions are asserted rather than trusted; nothing in R1 or R2 carries a technician fact |
+| **Remaining Owner decisions** | **`MI-θ`** — is technician linkage in the minimum model at all? This lane's position is **no**, because **no `OD-6` state depends on it**; but `MI-R` says further constraints are *"per family, never global"*, so whether any family's accountability requires it is family-by-family and the Owner's |
+| **Status** | **NOT AUTHORIZED** |
+
+### G — server-side person-resolution adapter (the port)
+
+| | |
+|---|---|
+| **Ruled by** | `#185`: *"The governed person-resolution port must allow a current transitional implementation to be replaced by the PostgreSQL implementation **without changing `OD-7` orchestration semantics**. **One authoritative implementation at a time. No long-lived dual authority. No silent fallback from PostgreSQL to Firestore after cutover.** The interface must **hide storage** from governed business commands"* |
+| **Required relations** | none. G is an interface and one adapter at a time |
+| **Required constraints** | the port is **server-side only**; it is the **single** place the authority is consulted; it is consulted **exactly once per mutation**, inside the transaction (`#184` stage A/B); it returns **semantic states**, never storage shapes; **no caller may hold two implementations** |
+| **Reuse vs new** | reuse of §3.4's design and §4.1 step 3's ordering. The boundary shape already exists in PostgreSQL: `functions/src/eosCommercial/commercialOwnershipRepository.ts:193` `transferCommercialOwnership`, one function, one transaction — *"they share one explicit `BEGIN/COMMIT` on one `PoolClient`"* (`:12-19`) — composed over a pure builder declaring `NO I/O` (`commercialOwnershipAuthority.ts:5-8`) |
+| **Crosswalk changes** | G is what traverses the chain `#185` ruled: **CREDENTIAL → PRINCIPAL → EMPLOYEE LINK → EMPLOYEE**. **It may never shortcut it** — `#185`: *"Never Firebase user → therefore Employee"*, and *"**Principal existence alone**"* is insufficient |
+| **Migration implications** | **G must precede any implementation, or the cutover cost is locked in** (§4.1 step 3; `MI-X §4.7`'s *"second cutover cost"*). Behind one port the cost is **one adapter**; without it, a re-audit of every reference |
+| **Compatibility surfaces** | the transitional adapter reads Firestore `employees`; the target adapter reads R1. **Exactly one is live** |
+| **Tests / proofs** | §9.5 and §9.6 in full — the semantic-equivalence suite and the single-authority guard |
+| **Remaining Owner decisions** | **`MI-β`** (does `#182` Layer 1 supersede `O-1`'s exclusion of cross-collection lookup, or does `O-1` stand with resolution at the governed entry point? — **#184(e) and #185's storage-hiding clause both compose only with the latter, and this lane recommends it and cannot rule it**) · **`MI-η`** (is AUTHORITY UNAVAILABLE a distinct outcome? — **`#185` names it and defers it**: *"AUTHORITY UNAVAILABLE **if later ruled separately**"*) · **`MI-S`**, **`MI-U`** (the rest of the return set) · **`MI-V`** (does the port serve the other person references? — §5.1's **fifteen**) |
+| **Status** | **NOT AUTHORIZED** |
+
+### H — `OD-6` acceptance tests
+
+| | |
+|---|---|
+| **Ruled by** | `#182` §11's thirteen required proofs; `#182`: *"Historical cases must prove **HISTORY PRESERVED**. Current-actionability cases must prove **INVALID CURRENT RESPONSIBILITY DOES NOT PASS THE GATE**."* |
+| **Required relations** | none |
+| **Required constraints** | the suite must be **storage-agnostic**, so that it passes unchanged against both adapters. That is the mechanical proof that `#185`'s swap requirement is met (§9.5) |
+| **Reuse vs new** | reuse of the shipped fake-authority pattern — `ownershipCensus.ts:5-7`, *"a fake document source, with no emulator and no credentials"* |
+| **Crosswalk changes** | none |
+| **Migration implications** | **H is the cutover's acceptance gate**, so it must exist before the swap, not after |
+| **Compatibility surfaces** | none — a fake authority is neither bearer, which is the point |
+| **Tests / proofs** | the 13 proofs, with the coverage map at §15 of the decomposition as the starting arithmetic: **2 FULL** (P1, P4) · **2 split across layers** (P2, P3) · **3 partial** (P5, P12, P13) · **6 not covered by any existing item** (P6–P11). Plus the controls this program has established as load-bearing: a **negative control** proving today's resolvers return `RESOLVED` for all person states; a **mutation check** (deleting the authority read must fail ≥1 case); a **poisoned-getter** control proving the read was actually attempted |
+| **Remaining Owner decisions** | **`MI-S`**, **`MI-T`**, **`MI-U`** — the suite cannot assert against a state set that is not fixed. `#182` §3 withholds the names and `#185` confirms *"Naming is explicitly not frozen"* |
+| **Status** | **NOT AUTHORIZED** |
+
+### I — `OD-7` orchestration integration
+
+| | |
+|---|---|
+| **Ruled by** | `#184`: `OD-7` **option (e)** — *"**GOVERNED ORCHESTRATION IS THE AUTHORITATIVE HANDOFF BOUNDARY**"*; the writer does **not** independently query Employee authority because *"duplicating that lookup in a lower writer would create two authority decisions that could drift"*; *"**Any runtime mutation path capable of changing governed RECORD OWNERSHIP or ACCOUNTABILITY without passing through the governed orchestration boundary is a DEFECT.**"* `#183`: *"**DO NOT** put authoritative Employee existence lookup inside the synchronous audit writer or the pure builder"* |
+| **Required relations** | none |
+| **Required constraints** | `#184`'s five stages, in order — **A** authoritative fact resolution · **B** governed orchestration (read state, determine the axis change, **verify the caller may perform it**, verify Layer-1/eligibility, **preserve current responsibility until the transition commits**) · **C** pure family/axis validation · **D** audit · **E** atomic commit. *"On any failure: **ZERO HANDOFF MUTATION · ZERO PARTIAL AUDIT · ZERO RESPONSIBILITY GAP**"* |
+| **Reuse vs new** | **the boundary is a CONSTRUCTION on the Firestore side, not a relocation** — conflict `C-8`. `ownershipHandoffCommand.ts:197`: *"**Nothing calls this yet**"*; `:9-14` not exported from `index.ts`. **The one place the boundary already exists in `OD-7`'s shape is PostgreSQL** (`commercialOwnershipRepository.ts:193`), which is a genuine architectural advantage of the ruled target: the cutover moves toward the datastore that already hosts the ruled shape |
+| **Crosswalk changes** | none of its own; I consumes G |
+| **Migration implications** | **`#185`'s swap requirement binds here**: the adapter change must not change stage semantics. §9.5 states what must be true |
+| **Compatibility surfaces** | `#184` names a **bypass defect** at the baseline: `OwnerSelect.jsx` → `updateOpportunity` *"moves ownership in production and emits **no** `OWNERSHIP_HANDOFF` at all"* (`opportunityCallables.ts:337-350` writes a free-text `summary`). *"Do not make the writer compensate for a bypass — **eliminate or refuse the bypass**"* |
+| **Tests / proofs** | `#184` requires, **before implementation authorization**, an **end-to-end call-path census**: `PUBLIC / API ENTRY → ORCHESTRATOR → AUTHORITY READ → PURE VALIDATOR → WRITE → AUDIT → COMMIT`, with every mutation path classified **GOVERNED · INERT · LEGACY · BYPASS DEFECT · NOT APPLICABLE**. Plus the bypass-prohibition tests `#184` names as the defence in depth: the writer holds **no authority handle**; the builder remains **pure**; no path reaches a mutation except through the entry point |
+| **Remaining Owner decisions** | **`M-1`** (axis scope), **`M-2`** (which carrier owns the handoff fact), **`M-3`** (whether selecting a placement authorizes wiring or only settles architecture) — **all three explicitly left OPEN by `#183`.** Note `M-1`…`M-4` here are **not** the `M-n` of `#179`, which concerns `cycle_counts` migration |
+| **Status** | **NOT AUTHORIZED** |
+
+### J — census / responsibility-integrity integration
+
+| | |
+|---|---|
+| **Ruled by** | `#182` §6 (`MI-P` CLOSED): accountability **must** be measured, but *"`accountablePerson` must **NOT** be put into `ownershipMatrix.ownerFields` merely to make the existing ownership census see it"*; acceptable directions are **a multi-axis responsibility census** **or** a **dedicated accountability census composed into the enforcement gate**. `#182` §9: *"**The gate may NOT close on a census structurally incapable of detecting:** non-existent person owner · invalid person owner · missing accountable person · invalid accountable person"* |
+| **Required relations** | none. J measures |
+| **Required constraints** | the census must read the port's **semantic** outcome, never a storage shape — which is what makes the same census valid before and after cutover. New outcomes get their **own counts**, and gate treatment is a **declared constant with a rationale in one named place** |
+| **Reuse vs new** | reuse. And the structural defect is measured: `ownershipCensus.ts:165` maps only `family.ownerFields` and `:157-163` returns OWNERLESS when it is empty, so the census is **single-axis by construction** |
+| **Crosswalk changes** | none |
+| **Migration implications** | J is the gate on `OI-24` / `W6`, and §12.6 of the decomposition records that gate as **further** from closable than the pre-ruling analysis found |
+| **Compatibility surfaces** | none |
+| **Tests / proofs** | `#182` **proof 10** — ACCOUNTABLE PERSON missing on an **ACTIONABLE** item — is the weld proof and requires the actionable discriminator, the accountable reference **and** the census axis. And a property testable today with **no employee data at all**: `assessable` (`ownershipCensus.ts:240`) cannot go false at any quantity of person orphans, because an orphan yields `RESOLVED` (`typedOwner.ts:108`, `:124`) → bucket `"resolved"` (`ownershipCensus.ts:81-82`) → none of `blocking`'s four terms (`:231`) |
+| **Remaining Owner decisions** | **`MI-X`** — *which* of `MI-P`'s two architectures. `#182` §6: *"Prepare the smallest design consistent with this ruling; **do not implement the final architecture**."* **A lane choosing would be designing the architecture the ruling reserved.** Also **`MI-W`** (is there an Owner exception list to *"exactly one accountable person"*?), which leaves the family envelope at **9 or 12** |
+| **Status** | **NOT AUTHORIZED** |
+
+---
+
+## 9.4 THE LAYER-1 DEFECT IS ALREADY IN THE TARGET SCHEMA — and what that means for E
+
+**Measured at `64008d5a` across all 18 migrations. Nine person columns in PostgreSQL, zero referential
+constraints on any of them:**
+
+| Column(s) | Migration, line | Constraint |
+|---|---|---|
+| `owner_employee_id` on `accounts` | `1758758400000_crm-account-contact-location.sql:176` | **none** (indexed at `:192`) |
+| `owner_employee_id` on `contacts` | `1758758400000:219` | **none** (indexed at `:232`) |
+| `owner_employee_id` on `account_locations` | `1758758400000:262` | **none** (indexed at `:281`) |
+| `owner_employee_id` on `opportunities` | `1758844800000_commercial-ownership-authority.sql:184` (`NOT NULL`) | **none** |
+| `owner_employee_id` on `sales_agreements` | `1758844800000:208` (`NOT NULL`) | **none** |
+| `owner_employee_id` on `sales_orders` | `1758844800000:233` (`NOT NULL`) | **none** |
+| **`previous_owner_employee_id` on `ownership_handoffs`** | `1758844800000:262` | **none** |
+| **`new_owner_employee_id` on `ownership_handoffs`** | `1758844800000:263` (`NOT NULL`) | **none** |
+| `employee_id` on `employee_principal_links` | `1758412800000:121` | **shape `CHECK` only** (`:157-158`) |
+
+**And the asymmetry is stark on the very table `OD-1` invariants 6 and 7 are about.** In the same
+`CREATE TABLE ownership_handoffs`, **four** columns are FK-constrained and the **two person columns are not**:
+
+```
+:258   tenant_id                  TEXT NOT NULL REFERENCES eos_policy.tenants(id),
+:259   opportunity_id             TEXT          REFERENCES opportunities(id),
+:260   sales_agreement_id         TEXT          REFERENCES sales_agreements(id),
+:261   sales_order_id             TEXT          REFERENCES sales_orders(id),
+:262   previous_owner_employee_id TEXT,                      -- no FK, no CHECK
+:263   new_owner_employee_id      TEXT NOT NULL,             -- no FK, no CHECK
+```
+
+**Zero `REFERENCES` onto any person relation exists anywhere:**
+`grep -rniE 'REFERENCES[[:space:]]+(eos_policy\.)?[a-z_]*employee' functions/migrations/` → **0 hits**.
+Broadening to any `REFERENCES` line mentioning employee/person/people returns **3**, and none is a person
+key: `1758412800000:32` and `:37` are header comments, `:135` is the composite key onto
+`tenant_memberships`. **[OBSERVED AT: `64008d5a`]**
+
+### 9.4a What this means for E — four consequences, stated as constraints on E
+
+| # | Consequence |
+|---|---|
+| **1** | **E is not a copy, it is a repair boundary.** Migrating Firestore `employees` into R1 while leaving these nine columns unconstrained carries the `OD-6` Layer-1 defect **across the datastore boundary** and leaves it in the target. The `owner_employee_id` columns are not future storage — **they are already storage**, and they are the same shape-only defect `#182` §1 ruled insufficient: *"A PERSON reference is **not** valid merely because it is a non-empty string."* |
+| **2** | **`ownership_handoffs` is the worst place for it to be, and that is a ruling-level fact.** `#183` ruled *"**NON-EXISTENT EMPLOYEE → INVALID PERSON REFERENCE → NOT ELIGIBLE AS HANDOFF TARGET**"*, and `#184` made the governed orchestration boundary responsible for establishing it. This table is **append-only and trigger-protected** (`refuse_ownership_history_mutation`, `1758844800000:295-301`: *"a correction is a NEW handoff row … not an edit to the old one"*). **So an unvalidated person id written here is permanent by design** — the same trap as `financialAttribution`'s frozen snapshot, reached through a different door. **E must not be allowed to run before this column is constrained**, because history that cannot be edited cannot be repaired |
+| **3** | **E's ordering is therefore forced, not chosen:** A (R1 exists) → D (crosswalk FK) → **constrain the nine columns** → E (move rows) → cutover. **Constraining before moving is the only order in which an FK failure is a measurement rather than an outage.** §4.1 listed the nine columns as step **10**, *after* the FK at step 9; **§9.4 tightens that: they must be constrained before E populates or repoints anything that writes them.** Recorded as a revision to §4.1's ordering, not a contradiction of it |
+| **4** | **The constraint work is itself a measurement.** Adding a referential constraint to a column that already holds rows **cannot succeed** while any value fails to resolve — so the attempt is the census. This is the same property `#182` §9 requires of the gate, obtained from the database instead of from a script, and it is why this lane recommends the constraints be specified with A rather than deferred behind E |
+
+**A caution that belongs with this finding.** `#182` §10 forbids backfill and `#182` §8 forbids rewriting
+history automatically. **Constraining a column is not rewriting it**, but a constraint that cannot be added
+creates pressure to "fix" the offending rows — and **that** pressure is what `#182` §10 exists to refuse.
+**E must have a declared answer for a non-resolving row that is neither a rewrite nor a silent drop**, and
+what that answer is belongs to `MI-ε` and to the new question **`MI-λ`** below.
+
+---
+
+## 9.5 WHAT MUST BE TRUE FOR THE PORT TO SWAP WITHOUT CHANGING `OD-7` SEMANTICS
+
+`#185`, verbatim: *"The governed person-resolution port must allow a current transitional implementation to be
+replaced by the PostgreSQL implementation **without changing `OD-7` orchestration semantics**."* `#184` fixes
+what those semantics are. **Six conditions, each stated so it is checkable rather than intended:**
+
+| # | Condition | Why `#184` / `#185` requires it | How it is checked |
+|---|---|---|---|
+| **1** | **The port's contract is expressed only in semantic states, never in storage shapes.** No document reference, no row, no snapshot, no `DocumentSnapshot`, no `PoolClient` crosses it | `#185`: *"The interface must **hide storage** from governed business commands"* | A type-level boundary test: the port's signature mentions no datastore type. The negative control is `typedOwner.ts`, whose `OwnerDerivation` has **nowhere to put** a non-shape fact — the obstruction §12.3c of the decomposition records as discharged by `#182`'s two layers |
+| **2** | **Resolution happens exactly once per mutation, at `#184` stage A, inside the transaction** | `#184`: duplicating the lookup *"would create two authority decisions that could drift"*; `#183`: the writer's `assertValid` (`auditEventWriter.ts:460`) is **synchronous and returns `void`**, so it **could not** perform the lookup even if asked | A test that the writer and the builder **hold no authority handle**. This is structural, not disciplinary: the writer cannot drift because it never receives the handle, and the builder cannot because its purity forecloses it |
+| **3** | **The failure mode is identical across adapters: refuse before write.** `#183`: *"**If resolution fails: REFUSE BEFORE WRITE.** No ownership, accountability or assignment mutation may occur"* | `#184`: *"On any failure: **ZERO HANDOFF MUTATION · ZERO PARTIAL AUDIT · ZERO RESPONSIBILITY GAP**"* | The `OD-6` acceptance suite (item H) **passes unchanged against both adapters.** That is the operational definition of *"without changing `OD-7` semantics"* — if the suite needs editing for the swap, the swap changed semantics |
+| **4** | **Atomicity is provided by the host transaction, and both adapters participate in the caller's transaction rather than opening their own** | `#183`: the handoff must be *"one governed transactional operation: `READ AUTHORITATIVE FACTS · VALIDATE · WRITE RESPONSIBILITY CHANGE · WRITE AUDIT · COMMIT`"* | The shipped precedent is the property to preserve: `commercialOwnershipRepository.ts:12-19` — *"they share **one explicit `BEGIN/COMMIT` on one `PoolClient`**"* — and `ownershipHandoffCommand.ts:194-198`, staged *"onto a caller-supplied transaction or batch… **never independently**"*. **A Firestore transaction and a PostgreSQL transaction are not interchangeable objects, so condition 4 is the one that does real design work**: the port must take the transaction from the caller as an opaque handle, or the adapters are not substitutable |
+| **5** | **The transitional adapter's outcomes are a subset of the target adapter's, never a different set.** A state the Firestore adapter cannot produce must be **absent, not approximated** | `#182` §1: NON-EXISTENT and DELETED/UNRESOLVABLE *"must **not** produce the same authoritative `RESOLVED` result as a real Employee"* — approximating one state with another is exactly the defect | For each semantic state, an assertion that the transitional adapter either **produces it** or **declares it unproducible**; never that it maps it onto a neighbour. The tombstone question (`U-5`/`U-10`) is the live instance, and §1.2 established it is **not** on `OD-6`'s critical path — states **C**'s *never-existed* and *removed* are already fused by `#182` |
+| **6** | **`OD-7`'s five stages are ordered by the orchestrator, not by the adapter.** The adapter answers a question; it never decides when it is asked | `#184` stage **B**: *"**preserve current responsibility until the governed transition commits**"* — a sequencing guarantee the adapter cannot make | A call-order assertion in the orchestrator's tests, with the poisoned-getter technique as the control: if stage A is skipped, the read was never attempted and the test must fail |
+
+> **The single most important of the six is 4.** Conditions 1–3, 5 and 6 are satisfiable by interface
+> discipline. **Condition 4 is where a Firestore-to-PostgreSQL swap can silently change `OD-7` semantics
+> even with an unchanged signature**, because Firestore transaction semantics and PostgreSQL
+> `BEGIN/COMMIT` + `FOR UPDATE` semantics differ in what they serialize. `commercialOwnershipRepository.ts`
+> uses `FOR UPDATE` specifically so that *"the second one records the first one's new owner as its previous
+> owner instead of overwriting it"* (`:185-188`) — **a guarantee the Firestore adapter must be proved to
+> provide, not assumed to.** Registered as `U-11` (§9.10).
+
+---
+
+## 9.6 HOW "NO SILENT FALLBACK AFTER CUTOVER" IS ENFORCED RATHER THAN INTENDED
+
+`#185`, verbatim: *"**One authoritative implementation at a time. No long-lived dual authority. No silent
+fallback from PostgreSQL to Firestore after cutover.**"*
+
+**"No silent fallback" is a property that review cannot hold.** A fallback is added by someone solving an
+outage under pressure, and it is invisible precisely because it works. So the enforcement must be
+**structural or ratcheted**, and this repository already owns both mechanisms.
+
+| Mechanism | What it makes impossible | Precedent that exists at `64008d5a` |
+|---|---|---|
+| **① Exactly one adapter is constructible at a time** — the authoritative implementation is selected once, at composition, and **no code path can hold both** | A `catch` that reaches the other bearer, because the other bearer's client is not reachable from the call site at all | The strongest form of this already holds by accident and is measured: the transitive import closure from `functions/src/index.ts` over `src/` reaches **297 files, ZERO of which import `pg`** (§1.5). **Unreachability is a real, verified, testable property in this codebase — not an aspiration** |
+| **② An import ratchet with a pinned count** — the set of modules that may import the non-authoritative bearer's client is enumerated and asserted, so adding one is a **failing test and a visible diff**, not a deploy | A new caller quietly acquiring the retired bearer | `scripts/firebaseExitGuard.mjs`, the `BUSINESS_RUNTIME` ratchet with `"baselineIsAFloorNotATarget": true` (`firebase-exit-manifest.json:56-57`); `ownershipMatrix.ts:97-100`'s R-1 source guard; the ENG-B ratchet |
+| **③ The authority answer carries its provenance, and a mismatch is a refusal, not a log line** | A degraded answer being consumed as authoritative | `#182` §1's whole premise: *"Before EOS describes a person reference as authoritatively resolved it must establish that the referenced Employee **exists in the governed Employee authority**"* |
+| **④ A distinct AUTHORITY-UNAVAILABLE outcome that fails closed on mutation** | An outage becoming *"this person does not exist"* — which is what a fallback is usually added to avoid, so **removing the motive is part of the enforcement** | §3.5's fifth outcome. **`#185` names it and defers it**: *"AUTHORITY UNAVAILABLE **if later ruled separately**." So ④ is the one mechanism of the five that is not yet available by ruling* — `MI-η` |
+| **⑤ The old bearer is demoted in Rules and in code, not merely unused** | Any client or trusted path treating the archive as current | `firestore.rules:497` already denies **all** client writes to `/employees/{employeeId}` (`allow create, update, delete: if false;`), so the Firestore bearer is **already** write-closed to clients. Cutover adds: no trusted path reads it **for authority**, only for evidence |
+
+**Stated as the acceptance test the cutover must pass:**
+
+> **A test that fails if any module reachable from the deployed entrypoint can obtain a person-authority
+> answer from the non-authoritative bearer — asserted by import closure and by a pinned count, not by
+> reading the code.** Plus: a test that an authority outage produces the unavailable outcome and **refuses
+> the mutation**, and a test that the archive bearer is read only on evidence paths.
+
+**Two honest limits.** ④ depends on a ruling `#185` explicitly deferred, so until `MI-η` is answered the
+enforcement is four mechanisms, not five — and the missing one is the one that removes the *motive* for a
+fallback. And ①'s strongest form is currently an **accident** of deployment topology (`eosApi/server.ts` is
+not reachable from `index.ts`, and is **not deployed** at all); **after cutover that accident inverts**, and
+what was unreachable becomes the authority while what was the authority must be made unreachable.
+**Nobody has designed that inversion, and it is not designed here.** Registered as `U-12`.
+
+---
+
+## 9.7 CROSSWALK CHANGES — consolidated
+
+| # | Change | Item | Kind | Basis |
+|---|---|---|---|---|
+| **1** | A **real referential constraint** from R2's employee reference onto R1, **composite and tenant-scoped** | **D** | **ADD** | `#185` *"real foreign keys"*; `1758412800000:55-57`, and `:39-42` for why composite |
+| **2** | The existing composite FK onto `tenant_memberships` (`:133-135`) | **D** | **RETAIN UNCHANGED** | `:39-42` — a simple key onto `principals` would permit a cross-tenant identity leak |
+| **3** | The two **partial** unique indexes (`:169-176`) | **C**, **D** | **RETAIN UNCHANGED** | `:167-168` *"history survives, ambiguity does not"* — this is the retention pattern, already built |
+| **4** | The `employee_id` shape `CHECK` (`:157-158`) | **D** | **RETAIN WITH A DECLARED EXPIRY** | It encodes *"`employee_id` is a Firestore document id today"* (`:60-61`), which ceases to be true at cutover. It is a transitional constraint, and saying so is the difference between retiring it and forgetting it |
+| **5** | **The `link_source` closed vocabulary contains a transitional provenance.** `:140` admits exactly `'RECIPROCAL_FIREBASE_UID_LINK'` and `'OPERATOR_ASSERTED'`; `:80` documents the first as *"`employees/{id}.userId` and `users/{uid}.employeeId` agree"* | **D**, **E** | **DECIDE — a governed successor, or a declared retirement** | `#185`: the crosswalk *"must not rely permanently on matching strings · Firebase uid coincidence · **`users/{uid}.employeeId`**"*. **NOT IN THE BRIEF; this lane's finding.** `:138`'s own reasoning — the closure exists so a third value is a deliberate act — is why this must be decided rather than drifted into |
+| **6** | **No `technician_id`, no `employment_status`, no `display_name`, no `external_subject`, no `identity_provider`, no `skills` on R2** | **B**, **F** | **PROHIBITION, RETAINED** | `:107-111` — *"a copy here would be a second place for the same fact to be stated, which is the only way two places can ever disagree"* |
+| **7** | **E creates no links.** A moved Employee with no resolvable principal link is a **measured incompleteness**, never an inferred link | **E** | **PROHIBITION** | `#185`: *"Never Firebase user → therefore Employee"*; the crosswalk may not rest on *"client-side linkage"* |
+
+---
+
+## 9.8 REMAINING OWNER DECISIONS
+
+**CLOSED and marked so throughout §9:** `OD-1` (#180) · `MI-N` (#181) · `OD-6`, `MI-P`, `MI-Q`, `MI-R`
+(#182) · `M-4` (#183) · `OD-7` (#184) · **`MI-ι` (#185)**.
+
+| Ref | Question | Blocks | Status |
+|---|---|---|---|
+| **`MI-S`** | Is state **B** a distinct resolution outcome, or `RESOLVED` + a separately carried eligibility fact — and must INACTIVE be distinguishable from TERMINATED inside it? | **B**, **G**, **H**, and 10 of the 42 register items | OPEN |
+| **`MI-U`** | Is state **C** (`MISSING / INVALID_REFERENCE`) **one** state or **two**? Today *missing* blocks the gate (`ownershipCensus.ts:231`) and *invalid reference* cannot block at any quantity — **opposite treatment for one ruled state** | **G**, **H**, **J** | OPEN |
+| **`MI-T` / `MI-η`** | Is **AUTHORITY UNAVAILABLE** a fifth outcome distinct from **C**? | **G**, **H**, and enforcement mechanism ④ of §9.6 | **OPEN, and now NAMED-AND-DEFERRED by `#185`** — *"AUTHORITY UNAVAILABLE **if later ruled separately**"*. It is no longer a lane's invention; it is a deferred ruling |
+| **`MI-X`** | Which of `MI-P`'s **two** acceptable census architectures? | **J**, and 7 register items | OPEN. **Note the label collides** with `MI-X-PERSON-AUTHORITY-OPTIONS.md`; `MI-α` should settle it |
+| **`MI-ε`** | `employees` is **not the complete person population**. Does Layer 1 **fail closed** on those people — declaring real actors non-existent — or is completeness a **precondition**? | **A**, **D**, **E** — **E cannot proceed without it** | OPEN. A product decision about real people being refused |
+| **`MI-δ`** | Must any part of Layer 1 be enforceable in `firestore.rules`? | **B**, and the whole cutover sequence | OPEN. If yes, **no PostgreSQL relation can ever serve it**, and four Rules sites (`:61`, `:92`, `:114`, `:141`) must be re-homed out of the security boundary |
+| **`MI-γ`** | Must a person reference resolve an **Employee only**, or an Employee **and** a live principal link? | **D** (whether its FK is on Layer 1's critical path), **G** | OPEN |
+| **`MI-β`** | Does `#182` Layer 1 supersede `O-1`'s exclusion of cross-collection lookup, or does `O-1` stand with resolution at the governed entry point? | **G** | OPEN. **`#184`(e) and `#185`'s storage-hiding clause both compose only with the latter.** This lane recommends it and cannot rule it |
+| **`MI-ζ`** | Sequence R1 with the Firestore answer, or decide both together? | **A**, **E** | OPEN. **`#185` supplies the missing input**: §9.4's finding that the defect is already reproduced in the PostgreSQL schema argues for deciding together |
+| **`MI-θ`** | Is technician linkage in the minimum model at all? | **F** | OPEN. This lane's position: **no** — no `OD-6` state depends on it |
+| **`MI-V`** | Does Layer 1 extend to the **fifteen** person references of §5.1, including `creditedSalespersonId` and `responsibleEmployeeId` on `person()`'s `nonEmpty`-only floor (`financialAttribution.ts:205-209`)? | **G**'s scope | OPEN. `#185` rules the **authority**, not the **scope**; extension remains **by analogy, not by ruling** |
+| **`MI-J`** | Which employee fact is authoritative for *"this person can no longer act"*? | **B** | OPEN. `SYSTEM_AUTHORITIES.md:121` warns against conflating it with account state |
+| **`MI-W`** | Is there an Owner exception list to *"exactly one accountable person"*? | **J**, `OI-01` | OPEN. Leaves the family envelope at **9 or 12** |
+| **`MI-α`** | The register label for the person-authority question | all of §9's citations | OPEN |
+| **`MI-λ`** *(NEW, this lane)* | **Is item E a "backfill" under `#182` §10, or a governed datastore move of an existing record?** And **what is the declared disposition of a row whose person reference does not resolve when the constraints of §9.4 are added** — given that it may be neither a rewrite (`#182` §8: do not rewrite history automatically) nor a silent drop (`#180` invariant 6: historical accountability must remain auditable)? | **E**, and the ordering of §9.4a(3) | **OPEN.** `#182` §10 forbids backfill in terms aimed at *repairing references*; E moves records. **The words collide and a lane may not choose which one governs a migration.** Without an answer, E has no legal action for a non-resolving row, and §9.4's constraint attempt has no defined outcome |
+| **`MI-κ`** *(registered in the decomposition, §23)* | What is the governed **job-role vocabulary**, and who may occupy it? | `OI-04`; nothing can **name** an accountable person without it | OPEN |
+
+**Plus the documentation reconciliation `#185` itself directs, and which is not implemented here:** strike
+**`/Employee`** from the identity carve-out in `docs/architecture/firebase-exit-manifest.json` and
+`docs/architecture/firebase-exit-ratchet.md:4`, leaving `Principal`; correct
+`firebase-exit-ratchet.md:70-71`'s *"identity is the one Firebase capability this architecture keeps on
+purpose"* to the manifest's own *"not decided here"*; and record that `OD-6` Layer 1 **cannot** be satisfied
+through the identity exception. `#185` notes that `firebase/auth`, `firebase-admin/auth` and
+`firebase-admin/app` staying outside `FORBIDDEN_CATEGORIES` (`firebase-exit-ratchet.md:66-72`) is
+**unaffected**. **Both files are outside this lane's allowed surface and neither was touched.** And
+`docs/PROJECT_ARCHITECTURE.md:88` (*"Firestore is the source of truth for all operational data"*) now
+requires reconciliation too — recorded, not edited.
+
+---
+
+## 9.9 SEQUENCE — §4.1 REVISED, WITH THE ORDERING §9.4 FORCES
+
+**§4.1's twelve steps stand. Two revisions, and every step remains `NOT AUTHORIZED`:**
+
+| Revision | §4.1 as written | §9 |
+|---|---|---|
+| **R-i** | Step **10** constrains the nine PostgreSQL person columns **after** step 9's crosswalk FK | **The nine columns must be constrained before E populates or repoints anything that writes them** (§9.4a(3)). `ownership_handoffs` is append-only and trigger-protected, so an unvalidated id written there is **permanent by design**. Constraining before moving is the only order in which an FK failure is a measurement rather than an outage |
+| **R-ii** | Step **1** records the six-candidate classification, blocked on conflict `C-1` | **`#185` supersedes the classification question**: all three matrix "authority" rows (`ownershipMatrix.ts:513`, `:514`, `:515`) are ruled **transitional**, so the classification to record is the ruling's, not this lane's. **`C-1` still blocks editing `ownershipMatrix.ts`** — the two readings still disagree about whether that file is defective at all — so step 1 becomes *"record the ruling where the trusted tree can see it"* and the matrix edit stays blocked |
+
+---
+
+## 9.10 UNPROVEN — §9 additions
+
+`U-1` … `U-9` of §6 stand. **`U-1` is partly discharged**: `#182`, `#183`, `#184` **and** `#185` have now been
+read at source on `int/a-correctness-register`, so §9's readings are readings of the **rulings**, not of a
+brief. What `U-1` still covers: `#182` does not state Layer 1's *location* (`#184` does, and `MI-β` remains
+the formal question), and whether the four states constrain **outcomes** as well as states is **named and
+deferred** by `#185` rather than answered.
+
+| # | Unproven | Why | What would prove it |
+|---|---|---|---|
+| **U-10** | The enumeration and exact wording of **`MI-ι` §11 items A–J** | **No `MI-ι` document exists at any ref** (§9.0). `#185` confirms A–J exist and are *"prepared only"*; it does not list them | The Owner publishing the `MI-ι` packet, or `#185` being amended to enumerate A–J |
+| **U-11** | That a Firestore adapter can provide the serialization guarantee the PostgreSQL boundary provides with `FOR UPDATE` (`commercialOwnershipRepository.ts:185-188`) | No code was executed and no transaction semantics were tested. **This is condition 4 of §9.5 and the one place a signature-identical swap can change `OD-7` semantics** | A concurrency test against both adapters asserting the same previous-owner outcome under two simultaneous handoffs |
+| **U-12** | That the post-cutover **inversion** of §9.6 mechanism ① is designable — what is now unreachable (`eosApi/server.ts`, not reachable from `index.ts`, and **not deployed**) becomes the authority, and what is now the authority must be made unreachable | No such design exists and none is proposed here | A cutover design that states the import-closure invariant in both directions, with the ratchet that holds it |
+| **U-13** | Whether migrations **004–018** — including `1758412800000` and `1758844800000` — are applied in **any** environment, i.e. whether §9.4's nine unconstrained columns exist as **rows** or only as **DDL** | No environment was contacted. `U-2` records the only activation evidence as `migrations: 3` | A migration-state read under whatever authority governs it. **Load-bearing for E**: it changes the cost of §9.4a by an order of magnitude, and it decides whether the constraints of §9.4a(3) are a schema edit or a data reconciliation |
+| **U-14** | Whether any row exists in `employee_principal_links` anywhere (`U-3`, restated because **D's FK cannot be added over non-resolving rows**) | No environment was contacted | The same read |
+| **NOT_RUN** | **No test, typecheck, build, lint, or emulator was executed. No `java`. No `functions/lib` was consulted for any claim and it was excluded from every search. No `functions/node_modules` was borrowed. No production or non-production environment was contacted. No schema, migration, backfill, or Rules change was written. No DDL was added to any file.** Every §9 measurement is a file read in a git worktree at `64008d5a`, plus four `git show` reads of `int/a-correctness-register:docs/DECISIONS.md` | — |
+
+---
+
+## 9.11 WHAT §9 DELIBERATELY DOES NOT CONTAIN
+
+- **No DDL.** Not in a migration file, not in a fenced block presented as schema. The one fenced block in
+  §9.4 is **quoted from `1758844800000:258-263` as it exists**, to show the asymmetry — it is evidence, not a
+  proposal.
+- **No migration executed, no backfill, no repair path, no data mutation, no Rules change, no deploy, no
+  production contact.**
+- **No table name, column name, enum name, index name or interface name proposed.** R1 is *"the Employee
+  relation"* throughout. `#182` §3 withholds the names and `#185` says *"Naming is explicitly not frozen by
+  this ruling"* — **including the person-authority interface's naming, which is expressly not frozen here.**
+- **No answer to `MI-S`, `MI-T`/`MI-η`, `MI-U`, `MI-V`, `MI-W`, `MI-X`, `MI-β`, `MI-γ`, `MI-δ`, `MI-ε`,
+  `MI-ζ`, `MI-θ`, `MI-J`, `MI-α`, `MI-κ`, `MI-λ`, `O-1`, `M-1`, `M-2`, `M-3`, `OD-8`, `OD-13` or `OD-16`** —
+  and **no choice between `MI-P`'s two architectures.**
+- **No edit to `docs/architecture/firebase-exit-manifest.json`, `docs/architecture/firebase-exit-ratchet.md`,
+  `docs/PROJECT_ARCHITECTURE.md` or `functions/src/ownership/ownershipMatrix.ts`** — all outside this lane's
+  allowed surface, and the matrix additionally blocked on conflict `C-1`.
+- **No retirement of, or deletion from, any collection or table** — `employees` becomes `ARCHIVE`, never a
+  deletion (item C), and `fieldops_technicians`' unique facts must be re-homed first (item F).
+- **No schedule.** `firebase-exit-manifest.json:60-62` is `"waves": []`, and the wave model says ordering
+  *"belongs to the engineers and owners doing the migration work, not to this control document."* §9.9 states
+  **dependencies**, not dates.

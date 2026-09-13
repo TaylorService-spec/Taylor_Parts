@@ -5,6 +5,7 @@ baseline: 64008d5ae0bdd9532909671b15a91122400accf1
 date: 2026-09-13
 implementation_status: NOT AUTHORIZED
 reassessed: 2026-09-13 — PART II reassesses all 29 items against DECISIONS #180/#181/#182 + MI-N/MI-P/MI-Q/MI-R (ref int/a-correctness-register). Part I is UNCHANGED.
+reclassified: 2026-09-13 — PART III is the ONE authorized reclassification of all 42 items against DECISIONS #180/#181/#182/#183/#184/#185 (OD-1, MI-N, OD-6+MI-P/MI-Q/MI-R, M-4, OD-7, MI-iota), read at source on int/a-correctness-register. PART I and PART II are UNCHANGED; PART III section 20 governs every ruling-status reference.
 extends: docs/operating-model/EMPLOYEE-ENGINEERING-IMPLICATIONS.md (EI-01 … EI-45)
 ---
 
@@ -21,6 +22,17 @@ extends: docs/operating-model/EMPLOYEE-ENGINEERING-IMPLICATIONS.md (EI-01 … EI
 >
 > Where the honest content of an item is *"this cannot be decomposed further until `OD-n` is
 > ruled"*, that is what the item says, and the item stops there.
+
+> ## ⚠⚠ READ PART III FIRST. IT IS THE ONE AUTHORIZED RECLASSIFICATION.
+>
+> **PART III (§20 onward) reclassifies all 42 items exactly once** against **#180** (`OD-1`), **#181**
+> (`MI-N`), **#182** (`OD-6` + `MI-P`/`MI-Q`/`MI-R`), **#183** (`M-4`), **#184** (`OD-7`) and **#185**
+> (`MI-ι`) — every one read **at source** on `int/a-correctness-register`, not from a brief.
+> **`OD-7` and `MI-ι` are now CLOSED; PART II calls `OD-7` OPEN in several rows and §20 supersedes those.**
+> **6 items are `READY FOR ENGINEERING` · 28 `BLOCKED BY OWNER DECISION` · 5 `BLOCKED BY DESIGN` ·
+> 2 `BLOCKED BY MIGRATION` · 1 `DEFERRED`.** `READY` means the design is settled and the work **could** be
+> authorized — **all 42 remain `IMPLEMENTATION STATUS = NOT AUTHORIZED`** (`#185` Status, verbatim).
+> **A second reclassification is not authorized.** PART I and PART II are retained unedited.
 
 > ## ⚠ READ PART II FIRST IF YOU ARE ACTING ON THIS DOCUMENT.
 >
@@ -1038,6 +1050,11 @@ the only gates, exactly as Part I recorded.
 
 ## 13. STATUS TABLE — ALL 29 ITEMS REASSESSED
 
+> **⚠ SUPERSEDED FOR BUCKETING BY PART III §21 (2026-09-13).** Every row's *substance* stands. But this
+> table was written while **`OD-7`** and **`MI-ι`** were OPEN; both are now **RULED / CLOSED** (**#184**,
+> **#185**). **Wherever a row below names `OD-7` as open, PART III §20 governs**, and §21 assigns the
+> single reclassification bucket. Rows here are NOT edited except to strike the `OD-7` OPEN markers.
+
 `IMPLEMENTATION STATUS = NOT AUTHORIZED` for **every row**. Revised fields shown only where a ruling
 moved them; otherwise Part I §6/§6a stand.
 
@@ -1058,10 +1075,10 @@ moved them; otherwise Part I §6/§6a stand.
 | **OI-13** | **CONFIRMED, UNCHANGED (tier); NARROWED and WIDENED (character)** | `OD-8` | **TIER-2** | — | Proof unchanged. **V-7 independently confirms the defect; V-9 confirms `operatingCompanyId` is never read for authority on that family** — which narrows the blast radius to silent corruption of a measured-but-unread fact **and** widens the case for fixing it. **BLOCKED — no emulator** |
 | **OI-14** | **CONFIRMED, UNCHANGED** | `OD-8` | **TIER-2** | **OI-17 first** — unchanged | Unchanged. **V-12 strengthens the finding**: `firestore.rules:1303-1305` **documents** that a non-admin may freely edit `accountOwner`. **`#182`'s no-backfill ruling REMOVES the pressure to move this earlier** (§12.6a). **BLOCKED — no emulator** |
 | **OI-15** | **CONFIRMED, UNCHANGED** | `OD-8` | **TIER-2** | none | Unchanged. Still the safe first Tier-2 exercise. **BLOCKED — no emulator** |
-| **OI-16** | **CONFIRMED, UNCHANGED — and WIDENED by `#181`** | `OD-7` (still **OPEN**) | normal | OI-19 | Unchanged, **plus**: `#181` rules that owner and accountable changes *"never cascade silently into each other"* and an action intending both is **one explicit governed operation recording both**. `updateOpportunity` applies `ownerEmployeeId` through the **generic `record()` helper** (`opportunityCommands.ts:312-318`) — **the opposite of an explicit governed operation.** The three-family inconsistency (**N5**) is now joined by **V-14** (`salesAgreement` does not use `resolveCreationOwner` at all) → **OI-34** |
+| **OI-16** | **CONFIRMED, UNCHANGED — and WIDENED by `#181`** | ~~`OD-7` (still **OPEN**)~~ → **`OD-7` RULED / CLOSED (#184); see PART III §21–§22** | normal | OI-19 | Unchanged, **plus**: `#181` rules that owner and accountable changes *"never cascade silently into each other"* and an action intending both is **one explicit governed operation recording both**. `updateOpportunity` applies `ownerEmployeeId` through the **generic `record()` helper** (`opportunityCommands.ts:312-318`) — **the opposite of an explicit governed operation.** The three-family inconsistency (**N5**) is now joined by **V-14** (`salesAgreement` does not use `resolveCreationOwner` at all) → **OI-34** |
 | **OI-17** | **CONFIRMED, UNCHANGED** | `OD-8` + EI-44's datastore confirmation | normal | datastore target first | Unchanged. *"**Do not run any backfill against it**"* is now **doubly binding** — `#182`: **No backfill authorized** |
 | **OI-18** | **CONFIRMED, UNCHANGED — and its design is now VALIDATED** | none (it only measures) | normal | the matrix as-is | Unchanged, **and V-10/V-11 are a hand-run of exactly this guard**: 25 update-granting statements → 7 client-writable → 4 owner-field exposures = **exactly R2–R5**. **This closes half of `U-9`** and demonstrates the guard's positive control (`equipment` `:1542`) and negative controls (`:381`, `:1335`, `:1343`, `:1557`) |
-| **OI-19** | **CONFIRMED, UNCHANGED** | **`OD-7` — STILL OPEN** | normal | none — **still first** | Unchanged. **All five rulings leave W1 untouched**: both shapes add refusals only and neither enables a write. Positive control (`assignWarehouseRootCompany.js:72`, `:234`) stands; `U-11` stands |
+| **OI-19** | **CONFIRMED, UNCHANGED** | ~~**`OD-7` — STILL OPEN**~~ → **`OD-7` RULED / CLOSED (#184); PART III §22 records that `#184`(e) RELOCATED W1's refusal out of the writer** | normal | none — **still first** | Unchanged. **All five rulings leave W1 untouched**: both shapes add refusals only and neither enables a write. Positive control (`assignWarehouseRootCompany.js:72`, `:234`) stands; `U-11` stands |
 | **OI-20** | **CONFIRMED, UNCHANGED** | — | normal | OI-19 | Unchanged |
 | **OI-21** | **WIDENED** | **`#182`** | normal | OI-06..OI-11, **+OI-30/OI-31/OI-37** | Part I: *"a handoff to a terminated employee validates cleanly."* Under `#182` that splits — **Layer 1** must refuse a **non-existent** newOwner; a **terminated** newOwner is **state B**, a **Layer 2 eligibility** refusal, and `#182` says the reference must be **preserved, not invalidated**. **So OI-21's single refusal becomes two refusals of different kinds in different layers.** The negative control (*"proves it is accepted today"*) stands for both |
 | **OI-22** | **WIDENED** | `OD-7` + **`#180`** (was `OD-1`, now ruled) | normal | OI-19 | **`#181`** + **`#180` invariant 6**: an action intending both changes is **one explicit governed operation recording both**, and historical accountability **must remain auditable**. So the proof widens from `previousOwner` to a **governed pair**. The CLI's `previousOwner: null` first-assignment case still passes → detail at **OI-36** |
@@ -1090,6 +1107,12 @@ RULING`.**
 ---
 
 ## 14. NEW ITEMS — `OI-30` … `OI-42`
+
+> **⚠ RECLASSIFIED IN PART III §21 (2026-09-13).** `OI-39`'s question is **answered by #185** — all three
+> matrix "authority" rows are ruled **transitional** and the canonical authority is a PostgreSQL relation
+> that does not exist — so `OI-39` becomes **BLOCKED BY MIGRATION**. **`OI-42`'s *"PROOF POSSIBLE TODAY"*
+> does NOT survive re-check** (§21, `X-16` context): it is a property of `OI-26`'s diff assertion and
+> `OI-26` is product-gated. `OI-33` and `OI-41` **do** survive and are **READY FOR ENGINEERING**.
 
 Created **only** where a ruling or a required proof has no Part I home. **Every one is
 `IMPLEMENTATION STATUS = NOT AUTHORIZED`.** **No field, enum, collection or schema is named** — `#182`
@@ -1171,6 +1194,11 @@ Part I's `U-1` … `U-11` stand unchanged except where noted.
 
 ## 17. MISSING INPUT — Owner only
 
+> **⚠ EXTENDED IN PART III §23 (2026-09-13).** **`MI-ι` is now RULED / CLOSED (#185)** and `M-4`/`OD-7` are
+> **CLOSED** (**#183**/**#184**). `MI-S` … `MI-X` below stand **open and unchanged**; **`MI-κ`** (the
+> job-role vocabulary `OI-04` requires) is added in §23. §23 also flags that **`MI-X` denotes two different
+> things** in this program.
+
 **`MI-N`, `MI-P`, `MI-Q` and `MI-R` are CLOSED** and are marked so wherever they appear above. They
 are **not** reopened here. The items below are **new** questions the five rulings create or leave.
 
@@ -1217,3 +1245,299 @@ Part I's **X-1 … X-9** stand unchanged. Additions:
 - **No production contact, no deploy, no data mutation, no Firestore read or write, no emulator run.**
   Every Part II measurement is a **file read in a git worktree at `64008d5a`**, and every claim that
   could not be made that way is recorded in §16 as **UNPROVEN**.
+
+---
+
+# PART III — THE SINGLE AUTHORIZED RECLASSIFICATION (`MI-ι` / `#185`)
+
+**OBSERVED AT: `64008d5ae0bdd9532909671b15a91122400accf1`** for every code claim. Rulings **#180–#185**
+read **at source** from `int/a-correctness-register:docs/DECISIONS.md` (this branch's `docs/DECISIONS.md`
+still ends at **#179**, `:6410`), not from any brief or summary.
+
+**This is the ONE authorized reclassification pass.** Per the Owner: *"Do not perform a second speculative
+reclassification."* Every one of `OI-01` … `OI-42` receives **exactly one** bucket in §21. No item is
+hedged into a "revisit later" bucket, and **no new `OI-nn` is created** — the register stays at 42.
+
+**`IMPLEMENTATION STATUS = NOT AUTHORIZED` for all 42, without exception.** `#185` Status, verbatim:
+
+> "**IMPLEMENTATION REMAINS NOT AUTHORIZED** — items A–J of `MI-ι` §11 are prepared only, and all 42 items
+> in `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` keep
+> `IMPLEMENTATION STATUS = NOT AUTHORIZED` until the remaining authority decisions are settled and the
+> architecture-authority conflict above is reconciled."
+
+**`READY FOR ENGINEERING` means the design is settled and the work could be authorized. It does NOT mean
+authorized.** Nothing in §21 licenses a single line of code.
+
+---
+
+## 20. RULING STATUS — every reference in this document, corrected in one place
+
+**PART I and PART II are not rewritten.** Where either marks one of the following OPEN, **this section
+governs.**
+
+| Ref | Status | Ruling | Where PART I / PART II still says otherwise |
+|---|---|---|---|
+| **`OD-1`** | **RULED / CLOSED** | **#180** | already marked |
+| **`MI-N`** | **CLOSED** | **#181** | already marked |
+| **`OD-6`** | **RULED / CLOSED** | **#182** | already marked |
+| **`MI-P` · `MI-Q` · `MI-R`** | **CLOSED** | **#182** | already marked |
+| **`M-4`** | **RULED / CLOSED** — answer **(iii) BOTH**, at different layers | **#183** | not present in PART II |
+| **`OD-7`** | **RULED / CLOSED** — placement **OPTION (e), GOVERNED ORCHESTRATION IS THE AUTHORITATIVE HANDOFF BOUNDARY** | **#184** | **§13 says `OD-7` "still **OPEN**"** at **OI-16**, **OI-19**, and implicitly at OI-22 / OI-24 / OI-25 / OI-36 / OI-37. **All of those are now CLOSED-gated. §21 supersedes them.** |
+| **`MI-ι`** | **RULED / CLOSED** — **BUSINESS EMPLOYEE IS BUSINESS DATA; canonical authority is EOS-owned PostgreSQL** | **#185** | raised as OPEN in `PERSON-AUTHORITY-TARGET-MODEL.md` §4.2 / §7 `C-7`; marked CLOSED there in this pass |
+| **`M-1` (axis scope) · `M-2` · `M-3`** | **OPEN** | **#183**: *"`M-1` (axis scope), `M-2` (which carrier owns the handoff fact) and `M-3` (whether selecting a placement authorizes wiring or only settles architecture) **remain open**."* | — |
+| **`OD-8` · `OD-13` · `OD-16`** | **OPEN** — no ruling #180–#185 touches any of them | — | — |
+| **`O-1`** | **OPEN**, and **partially answered in the target only** by #185's resolution chain (§20.2) | — | — |
+| **`MI-S` · `MI-T` · `MI-U` · `MI-V` · `MI-W` · `MI-X`** (§17) | **all OPEN** | — | — |
+| **`MI-β` · `MI-γ` · `MI-δ` · `MI-ε` · `MI-ζ` · `MI-η` · `MI-θ`** | **OPEN**; `MI-β` is **effectively answered structurally** by #184(e) + #185's port (§20.2) | — | — |
+| **`MI-J` · `MI-α`** | **OPEN** | — | — |
+| **`MI-κ`** *(NEW, §23)* | **OPEN** — the job-role vocabulary `OI-04` requires has no register ref | — | — |
+
+### 20.1 `MI-ι` / `#185` — what was ruled, quoted at source
+
+| Ruled | Verbatim from `#185` |
+|---|---|
+| The classification | "**BUSINESS EMPLOYEE IS BUSINESS DATA. The canonical Employee authority belongs in EOS-owned PostgreSQL.** The Employee business record must **not** be classified `IDENTITY_ONLY` merely because an Employee may be linked to an authenticated user or principal." |
+| Three permanently separate concepts | **EMPLOYEE** → "PostgreSQL Employee relation" · **PRINCIPAL** → "`eos_policy.principals`" · **CREDENTIAL / AUTHENTICATION** → "the credential provider, **authentication only**". "**Never collapse** EMPLOYEE into PRINCIPAL, Firebase Auth, Firestore `users`, or `fieldops_technicians`." |
+| The chain | "**Resolution chain: CREDENTIAL → PRINCIPAL → EMPLOYEE LINK → EMPLOYEE.** Never *Firebase user → therefore Employee.*" |
+| The crosswalk | "`employee_principal_links` = **governed crosswalk**, made referentially sound with **real foreign keys**" |
+| Transitional, none permanent | "Firestore `employees` = transitional business compatibility · Firestore `users` = transitional identity compatibility · `fieldops_technicians` = legacy operational compatibility · Firebase Auth = transitional credential source." |
+| What the crosswalk may not rest on | "**The crosswalk must not rely permanently on** matching strings · Firebase uid coincidence · `users/{uid}.employeeId` · `fieldops_technicians` identity · client-side linkage." |
+| `OD-6` Layer 1 | "Layer-1 authoritative person resolution must **ultimately resolve against the PostgreSQL Employee authority**, establishing at least: **employee exists · employee identity is authoritative · employee status · historical identity preservation · current eligibility facts required by the caller.**" |
+| Each insufficient | "**Insufficient as proof that an Employee exists:** a non-empty string · a Firebase uid · a technician id · **Principal existence alone.**" |
+| Interim | "The governed person-resolution port must allow a **current transitional implementation** to be replaced by the **PostgreSQL implementation without changing `OD-7` orchestration semantics.** **One authoritative implementation at a time. No long-lived dual authority. No silent fallback from PostgreSQL to Firestore after cutover.** The interface must hide storage from governed business commands, and must return semantic states supporting `OD-6` — VALID CURRENT · VALID HISTORICAL / NOT CURRENTLY ELIGIBLE · INVALID / MISSING · AUTHORITY UNAVAILABLE **if later ruled separately**." |
+| Naming | "**Naming is explicitly not frozen by this ruling.**" |
+
+### 20.2 Four consequences of reading #180–#185 at source that change item placement
+
+**(a) `#184`(e) + `#185`'s port together answer `MI-β` structurally, and they INVERT `OI-06`'s premise.**
+`OI-06`'s missing thing is stated as *"person-owner derivation never reads the person authority."* Under
+**#184**'s division of responsibility the **pure family/axis builder** is `RETAINED` and the authoritative
+resolution sits at the **governed orchestration / command boundary**; under **#183** the placement ruling is
+*"**DO NOT** put authoritative Employee existence lookup inside the synchronous audit writer or the pure
+builder"*; and under **#185** *"the interface must hide storage from governed business commands."* So the
+derivation must **never** read the authority — it must **consume an already-resolved person fact**. `#183`:
+*"it must consume an already-resolved person fact rather than pretending a string id proves Employee
+existence."* **`OI-06`'s contract survives; its placement is inverted.** `MI-β` reading (ii) is what all
+three rulings compose with; the Owner has still not said so in a ruling, so `MI-β` stays registered.
+
+**(b) `#185` answers `OI-39`'s target and only its target.** The matrix's three EXCLUDED "authority" rows
+(`ownershipMatrix.ts:513-515`) are *all* now classified **transitional** by ruling — `users`, `employees`
+and `fieldops_technicians` alike. So `OI-39`'s question *"which of these is the person authority"* has the
+answer **none of them, permanently** — the authority is a PostgreSQL relation that **does not exist**
+(`functions/migrations/1758412800000_employee-principal-linkage.sql:46`: "**THERE IS NO `employees` TABLE IN
+POSTGRESQL YET.**"). That converts `OI-39` from an Owner question into a **migration** dependency (§21).
+
+**(c) `#185` gives `O-1` a target-side answer that the interim does not inherit.** *"Never Firebase user →
+therefore Employee"* plus *"Principal existence alone"* being insufficient means, in the target, a
+credential- or principal-space id is **not** an Employee id and must be traversed through the link. Today
+`typedOwner`'s person arm accepts an `OWNER_TYPES.USER` id on `nonEmptyString` alone (`typedOwner.ts:67`),
+and `O-1` (`typedOwner.ts:4-5`) is the open question of whether the `USER` namespace **is** the Employee
+namespace. **#185 rules that it is not, in the target.** It does not say what the interim must do with the
+ids already stored, which is `MI-γ` (Employee only, or Employee **and** a live principal link?). So
+`OI-08` is gated on `MI-γ` / `O-1`, not discharged.
+
+**(d) `#185` withdraws a load-bearing claim this branch published.** Verbatim: *"**`trendsToZero: false` is
+NOT a permanence claim, and this program over-read it.** … **A prior report in this program stated that
+Firebase Auth is retained permanently on the strength of that flag. That over-read the manifest and is
+withdrawn.**"* That report is **this branch's own**
+`docs/operating-model/architecture/PERSON-AUTHORITY-TARGET-MODEL.md` `B-2`, which calls the claim *"the
+single most load-bearing correction in this document."* It is marked withdrawn in place there in this pass.
+**No item in §21 moves as a result** — no `OI-nn` rests on Firebase Auth's permanence — but the correction
+is recorded here because a reader arriving from PART II would otherwise carry it forward.
+
+---
+
+## 21. RECLASSIFICATION — ALL 42 ITEMS, ONE BUCKET EACH
+
+**Buckets:** `READY FOR ENGINEERING` · `BLOCKED BY OWNER DECISION` (named) · `BLOCKED BY DESIGN` ·
+`BLOCKED BY MIGRATION` · `DEFERRED`.
+
+| ID | AREA | BUCKET | GATING FACT — one line |
+|---|---|---|---|
+| **OI-01** | A | **BLOCKED BY OWNER DECISION — `MI-W`** | The proof must *"reproduce the **9**-family set"*, and `MI-W` (is there an Owner exception list under `#180`?) plus unproven liveness (`U-4`, `U-5`, `U-17`) leave the envelope at **9 or 12** — a test cannot reproduce an indeterminate set |
+| **OI-02** | A | **BLOCKED BY OWNER DECISION — `MI-X`** | `#182` `MI-P` ratified the `ownerFields` prohibition, but *where* a family declares accountability is fixed by which of `MI-P`'s two architectures is chosen, and `MI-X` is unanswered |
+| **OI-03** | A | **BLOCKED BY OWNER DECISION — `MI-X`** | The per-family open/closed **predicate** is buildable today over the nine existing status vocabularies (§1.2); its contracted proof is a **counting** proof (*"counted differently"*), and the counting home is `MI-X`'s choice via `OI-32` |
+| **OI-04** | A | **BLOCKED BY OWNER DECISION — a role grant (AUTHORITY tier) + `MI-κ`** | Two independent non-engineering prerequisites: zero holders of 45 governed Roles needs an Owner **grant**, and the job-role vocabulary has no ruling and, until now, no register ref (**`MI-κ`**, §23). `MI-R` narrowed what eligibility *means* and supplied **no occupant** |
+| **OI-05** | A | **BLOCKED BY OWNER DECISION — `OD-16`** (+ `MI-X` via `OI-02`) | `transferOrder`'s family classification is `OD-16`, untouched by #180–#185; and the item is the acceptance case for an architecture `MI-X` has not selected |
+| **OI-06** | B | **BLOCKED BY OWNER DECISION — `MI-S`, `MI-U`** | The port's **return set** cannot be specified: `#182` §3 withholds names, `MI-S` (is state **B** an outcome or `RESOLVED`+a carried fact?) and `MI-U` (is state **C** one state or two?) are open, and `#185` defers AUTHORITY UNAVAILABLE *"if later ruled separately"*. **Placement inverted — see §20.2(a)** |
+| **OI-07** | B | **BLOCKED BY OWNER DECISION — `MI-S`, `MI-U`** | This item **is** the state table. `MI-S` and `MI-U` are literally its two unresolved rows; `#182` §3: *"Exact enum and schema names are NOT authorized by this ruling"*, and `#185`: *"Naming is explicitly not frozen"* |
+| **OI-08** | B | **BLOCKED BY OWNER DECISION — `MI-γ`, `O-1`** | `#185` rules the **target** namespace chain (§20.2c) but not what the interim must do with stored `USER`-space ids; `MI-γ` (Employee only, or Employee **and** a live link?) decides whether a namespace miss is even askable |
+| **OI-09** | B | **BLOCKED BY OWNER DECISION — `MI-T` / `MI-η`** | `#185` names AUTHORITY UNAVAILABLE and then **explicitly defers it** — *"if later ruled separately"*. `OI-09` is that state; `#182` names four and provides for no fifth |
+| **OI-10** | B | **BLOCKED BY OWNER DECISION — `MI-U`, `MI-S`** | New outcomes need their **own counts** and a **declared** gate constant; which counts exist depends on the state set. **The negative control is available today** — `assessable` (`ownershipCensus.ts:240`) cannot go false at any quantity of person orphans because `typedOwner.ts:108`/`:124` return `RESOLVED` → bucket `"resolved"` (`ownershipCensus.ts:81-82`) → none of `blocking`'s four terms (`:231`) — but pinning the defect is not the item |
+| **OI-11** | B | **BLOCKED BY OWNER DECISION — `MI-S`** | Layer 1 is trusted-side-only by construction (`typedOwner.ts:1-8`), so `C-B7` is answered for Layer 1; the parity question that remains is **Layer 2's**, and Layer 2's representation is `MI-S` |
+| **OI-12** | C | **BLOCKED BY OWNER DECISION — `OD-8`** (+ the unissued `currentOwner` vocabulary decision) | TIER-2. `OD-8` is open, and **no ruling #180–#185 touches the `currentOwner` vocabulary collision** (`domain/inventoryReorderRequests.js:225` vs `ownershipMatrix.ts:286`), which PART I requires be settled *before* behaviour changes |
+| **OI-13** | C | **BLOCKED BY OWNER DECISION — `OD-8`** | Design fully settled — copy `equipmentEditableKeys()` (`firestore.rules:1396-1401`, `:1543`) onto the `fieldops_jobs` admin/dispatcher branch (`:381-384`). Only the Tier-2 authorization (`OD-8`) is missing; the emulator absence (`U-1`) blocks the **proof**, not the design |
+| **OI-14** | C | **BLOCKED BY OWNER DECISION — `OD-8`** | Same pattern, plus an ordering constraint (`OI-17` first, or the only working path is removed). `#182`'s no-backfill ruling **removed** the pressure to move this earlier |
+| **OI-15** | C | **BLOCKED BY OWNER DECISION — `OD-8`** | The cheapest and safest Tier-2 exercise — `contacts` / `locations` have **no shipped surface to preserve** — and still `OD-8`, because `firestore.rules` is hash-anchored to the live deploy and carries its own authorization |
+| **OI-16** | C | **BLOCKED BY DESIGN** | `OD-7` is now **CLOSED** and `#184` names this exact path a **bypass defect** (*"`OwnerSelect.jsx` → `updateOpportunity` … is a **bypass defect** rather than merely an unwired path"*). But the boundary the change must route **into does not exist on the Firestore side**, and the enrich-in-place alternative is structurally refused: `auditEventWriter.ts:571-581` rejects `previousOwner`/`newOwner`/`handoffSource` on any non-handoff action and `:532-535` rejects `objectId` |
+| **OI-17** | C | **BLOCKED BY MIGRATION** | Its first of three facts is *"confirm the datastore target"*, and `#185` makes that a **cutover** question, not an engineering one: `owner_employee_id` exists in PostgreSQL `accounts` / `contacts` / `account_locations` (`1758758400000:176`, `:219`, `:262`) **and** in Firestore, and `#185` forbids *"long-lived dual authority"*. Exposure remains `OD-8` |
+| **OI-18** | C | **READY FOR ENGINEERING** | **No gate.** *"UNBLOCKED BY: none — it only measures."* The guard enumerates client-writable collections against `ownershipMatrix`'s `ownerFields`; **V-10/V-11 are a hand-run of exactly it** (25 update-granting statements → 7 client-writable → 4 owner-field exposures = exactly R2–R5), positive control `equipment` (`firestore.rules:1542`), negative controls `:381`, `:1335`, `:1343`, `:1557`. Static text analysis: no emulator, no person authority, no naming, no storage |
+| **OI-19** | D | **BLOCKED BY DESIGN** | `OD-7`'s closure **relocated the responsibility this item assigned to the writer.** `#184`: the writer does *"audit construction and staging"*; family/axis validation is the **pure builder's**; and `#183` warns that `ownershipMatrix.ts` *"states no purity contract at all — and it is the one module a writer-side placement would have had to import."* W1's refusal now belongs at the governed entry point, **which is a construction, not a relocation** (`ownershipHandoffCommand.ts:197`: *"Nothing calls this yet"*) |
+| **OI-20** | D | **READY FOR ENGINEERING** | **No gate.** A static import-census ratchet: **41** modules under `functions/src` import `stageAuditEvent*` (re-verified at `64008d5a`: `grep -rlE 'stageAuditEvent' functions/src --include=*.ts --include=*.js \| wc -l` → **41**), and `OWNERSHIP_HANDOFF` ∈ `AUDIT_ACTIONS` (`auditEventWriter.ts:256`). Pinning 41 makes a 42nd a visible diff **today**; precedent `ownershipMatrix.ts:97-100`. PART II lists `OI-19` as a dependency — that is a dependency of **purpose**, not of feasibility, and is stated here so the reordering is visible |
+| **OI-21** | D | **BLOCKED BY OWNER DECISION — `MI-S`** | Under `#182` the single refusal becomes **two refusals in two layers**: non-existent target = Layer 1; **terminated** target = state **B**, a Layer-2 eligibility refusal whose representation is exactly `MI-S`, and `#182` requires the reference be *"preserved, not invalidated"* |
+| **OI-22** | D | **BLOCKED BY DESIGN** | `#184` stage **B** requires *"read authoritative state"* inside the boundary; deriving `previousOwner` transactionally at commit therefore needs the boundary, which does not exist on the Firestore side. The pattern is already shipped in **PostgreSQL** (`commercialOwnershipRepository.ts:185-188`: `FOR UPDATE` *"serializes two concurrent handoffs … so the second one records the first one's new owner as its previous owner"*), which is evidence the design is right and unhosted |
+| **OI-23** | D | **BLOCKED BY OWNER DECISION — `OD-8`** | The ordering gate is *"no activation until `OI-12`…`OI-15` are closed **and deployed**"*; all four are `OD-8`, so this is `OD-8` four times over. `#180` invariant 7 adds a second justification (a responsibility gap, not merely an audit gap) and no new gate |
+| **OI-24** | D | **DEFERRED** | **`W6`. NOT AUTHORIZED. DO NOT ACTIVATE OWNERSHIP HANDOFF.** Its gate list (`OD-7` ✓ closed, `#180` ✓, `OD-8` ✗, `assessable === true` ✗) is the union of every other item's; `#182` §9 says the gate *"may NOT close on a census structurally incapable of detecting … missing/invalid accountable person"* and `ownershipCensus.ts:165` maps only `family.ownerFields`. **Recorded so the end state is visible, not scheduled** |
+| **OI-25** | D | **READY FOR ENGINEERING** | **Its only blocker was `OD-7`, now CLOSED (#184).** And #184 **promotes** the second authority rather than merely tolerating it: the one existing instance of the ruled boundary is `commercialOwnershipRepository.ts:193`, composed over `commercialOwnershipAuthority`'s `assertFamilyIsGovernedHere` (`:115`), which consults the matrix and declares `NO I/O` (`:5-8`). The proof is a **pure matrix-iteration agreement test** — no emulator, no person data, no naming. That file's own principle applies: *"the only thing two authorities can do that one cannot is disagree"* (`:19-20`) |
+| **OI-26** | E | **BLOCKED BY OWNER DECISION — `OD-13` + Owner PRODUCT approval** | `#180` invariant 2 **promoted** `G1` from an observation to a ruled invariant and `MI-R` foreclosed a would-be blocker, so the engineering is more settled than before — but `G6` makes it a **state-machine transition**, and `transitionEngine.ts:38`: *"Any future reverse edge is its own decision and may not appeal to this one."* **Product, not engineering** |
+| **OI-27** | E | **BLOCKED BY OWNER DECISION — `OD-13` + Owner product approval** | A governed *"I could not do this"* outcome is a new business outcome. `MI-R`'s eligibility ≠ execution-authority distinction independently supports keeping it **separate** from `OI-26`, and changes no gate |
+| **OI-28** | E | **BLOCKED BY OWNER DECISION — `OD-13`** | Rides with `OI-26`, which is product-gated. `#180` invariant 6 (*historical accountability must remain auditable*) makes it a **ruled** requirement rather than a nicety, and `schedulingCommands.ts:242-256` is the shipped pattern |
+| **OI-29** | E | **READY FOR ENGINEERING** | **No gate.** The guard is a derivable invariant over the **existing** table: every action whose target status is reachable by more than one action must appear in `ACTION_ALLOWED_FROM` (`functions/src/transitionEngine.ts:123`), whose own header states the defect it prevented once already — *"adding the reverse edge `SCHEDULED -> READY_TO_DISPATCH` would silently make `MarkReady` legal from `SCHEDULED` as well"* (`:111-122`). It needs **no new edge** and therefore no product decision; it is what makes `OI-26` safe to write later |
+| **OI-30** | B | **BLOCKED BY OWNER DECISION — `MI-S`, `MI-U`** | The accountable Layer-1 contract *does not exist at all* (**V-5**: 0 hits / 12 modules), so **every** part of it is a name `#182` §3 and `#185` both decline to fix. `SPECIFICATION ONLY` stands |
+| **OI-31** | B | **BLOCKED BY OWNER DECISION — `MI-S`, `MI-J`** | Layer 2 must distinguish **A** from **B** *while preserving the reference*; `MI-S` is that representation and `MI-J` (which employee fact is authoritative for *"can no longer act"*) is the predicate. `MI-R` gives the floor (governed employment/person status) and nothing above it |
+| **OI-32** | A/B | **BLOCKED BY OWNER DECISION — `MI-X`** | `MI-P` left **two** acceptable architectures and `#182` §6 says *"Prepare the smallest design consistent with this ruling; do not implement the final architecture."* `MI-X` is the choice; a lane choosing would be designing the architecture the ruling reserved |
+| **OI-33** | B | **READY FOR ENGINEERING** | **No gate, and `#182` §8 ruled it in.** `resolveOperatingCompany` returns a 4-state union including `INACTIVE` (`operatingCompanyAuthority.ts:54`, produced at `:80` — `company.active ? "RESOLVED" : "INACTIVE"`), and `deriveCompanyOwner` branches on **only** `INVALID` (`typedOwner.ts:138`) and `UNKNOWN` (`:139`) — so `INACTIVE` **falls through to `RESOLVED`** (`:143`) and is discarded. Pure unit test over the existing resolver; the **company** axis has shipped names, so `#182` §3's withholding does not reach it. Satisfies proofs **P11** and **P12** |
+| **OI-34** | C | **BLOCKED BY DESIGN** | `MI-Q` is **CLOSED** and rules the shape, but adopting it gives Sales Agreement an **INHERIT** branch it does not have today (`salesAgreementCommands.ts:280` `OWNER_REQUIRED`, `nonEmpty` only; no inheritance at `:301`), and `#181` states the exact hazard: *"a rule of this shape implemented on today's resolver would **inherit an initial accountable person from a terminated, deactivated or non-existent employee** and report it as governed. The pattern is right; the predicate it depends on is not yet trustworthy."* **Landing the ruled shape before the predicate would be a regression authorized by a ruling** |
+| **OI-35** | A | **BLOCKED BY OWNER DECISION — `MI-X`, `MI-S`** | The accountable-person fact has no declared home (`OI-02` → `MI-X`) and no validity representation (`MI-S`); `#182` §5: *"The word VALID is load-bearing. It may not be implemented using today's shape-only USER resolution."* Target: `creationOwnerResolution.ts:63-64`, `:67-74` (**V-13**) |
+| **OI-36** | D | **BLOCKED BY DESIGN** | One governed operation recording **both** an owner and an accountability change requires (i) an accountability axis that does not exist and (ii) an audit event the writer structurally refuses — `auditEventWriter.ts:571-581`, `:532-535`, the same obstruction as `OI-16`. `#181` ruled the requirement; nothing hosts it |
+| **OI-37** | D | **BLOCKED BY OWNER DECISION — `MI-X`, `MI-S`** | `#180` invariant 7 is binding, and the step must assert the record's accountable person is **not** in state **B**, **C** or **D** at commit — three representations `MI-S` / `MI-U` have not fixed, measured on a census axis `MI-X` has not chosen |
+| **OI-38** | B | **BLOCKED BY OWNER DECISION — `MI-V`** | `#182` names `typedOwner`'s shape-only USER resolution, **not** `financialAttribution`; extending Layer 1 to `creditedSalespersonId` (`:228`) and `responsibleEmployeeId` (`:229`) on the `nonEmpty`-only floor of `person()` (`:205-209`) is an **extension by analogy, not by ruling**. `#185` does not reach it either — it rules the **authority**, not the **scope** |
+| **OI-39** | B | **BLOCKED BY MIGRATION** | **`#185` answers the question and the answer is storage that does not exist.** All three matrix "authority" rows (`ownershipMatrix.ts:513`, `:514`, `:515`) are now ruled **transitional**; the canonical authority is a PostgreSQL Employee relation, and `1758412800000:46` states in the imperative *"**THERE IS NO `employees` TABLE IN POSTGRESQL YET.**"* Until it exists, any authority this item could name is a compatibility surface. The residual `ownershipMatrix.ts:513-515` reconciliation is separately blocked on conflict `C-1` |
+| **OI-40** | A+B | **BLOCKED BY OWNER DECISION — `MI-W`, `MI-X`, `MI-S`** | The weld proof needs the actionable discriminator (`OI-01`/`OI-03` → `MI-W`, `MI-X`), the accountable reference (`OI-30` → `MI-S`) **and** the census axis (`OI-32` → `MI-X`). It is the one proof that cannot be partially satisfied |
+| **OI-41** | C | **READY FOR ENGINEERING** | **No gate — `#182` §10 ruled the prohibition verbatim** (*"**No backfill authorized**"*), so the item is a standing prohibition plus its guard, never a repair. Re-verified at `64008d5a`: `ownershipBackfillRules.ts:71` returns `ALREADY_SET` when `doc.data.owner !== undefined` — **so no repair path exists** — and `:74-77` writes an **unvalidated** upstream `{ type: "USER", id: employeeId }` onto every child. A unit test pinning both, plus a guard asserting the propagation is not invoked. **Provenance: this finding is NOT PART I's (`X-11`)** |
+| **OI-42** | E | **BLOCKED BY OWNER DECISION — `OD-13` + Owner product approval, and `MI-W` via `OI-01`** | **Re-checked, and PART II's *"PROOF POSSIBLE TODAY"* does NOT survive as a standalone.** `G8` is a required property **of `OI-26`'s diff assertion**, and `OI-26` is product-gated; written alone it is the *"vacuous assertion"* the item itself warns of (**V-5**: the axis has 0 occurrences), and which fields it must cover is `OI-01`'s answer, gated on `MI-W`. **The proof is achievable; it has no authorized host and no field list** |
+
+### 21.1 Counts per bucket
+
+| Bucket | Count | Items |
+|---|---|---|
+| **READY FOR ENGINEERING** | **6** | `OI-18`, `OI-20`, `OI-25`, `OI-29`, `OI-33`, `OI-41` |
+| **BLOCKED BY OWNER DECISION** | **28** | `OI-01`, `OI-02`, `OI-03`, `OI-04`, `OI-05`, `OI-06`, `OI-07`, `OI-08`, `OI-09`, `OI-10`, `OI-11`, `OI-12`, `OI-13`, `OI-14`, `OI-15`, `OI-21`, `OI-23`, `OI-26`, `OI-27`, `OI-28`, `OI-30`, `OI-31`, `OI-32`, `OI-35`, `OI-37`, `OI-38`, `OI-40`, `OI-42` |
+| **BLOCKED BY DESIGN** | **5** | `OI-16`, `OI-19`, `OI-22`, `OI-34`, `OI-36` |
+| **BLOCKED BY MIGRATION** | **2** | `OI-17`, `OI-39` |
+| **DEFERRED** | **1** | `OI-24` |
+| **TOTAL** | **42** | — |
+
+**Which Owner decision blocks how many** (an item may be gated by more than one, so the column sums above 28):
+
+| Owner decision | Items gated | Which |
+|---|---|---|
+| **`MI-S`** — is state **B** an outcome, or `RESOLVED` + a separately carried eligibility fact? | **10** | `OI-06`, `OI-07`, `OI-10`, `OI-11`, `OI-21`, `OI-30`, `OI-31`, `OI-35`, `OI-37`, `OI-40` |
+| **`MI-X`** — which of `MI-P`'s two acceptable census architectures? | **7** | `OI-02`, `OI-03`, `OI-32`, `OI-35`, `OI-37`, `OI-40`; `OI-05` secondarily |
+| **`OD-8`** — Tier-2 Rules authorization | **5** | `OI-12`, `OI-13`, `OI-14`, `OI-15`, `OI-23` |
+| **`MI-U`** — is state **C** one state or two? | **4** | `OI-06`, `OI-07`, `OI-10`, `OI-30` |
+| **`OD-13`** + Owner **product** approval | **4** | `OI-26`, `OI-27`, `OI-28`, `OI-42` |
+| **`MI-W`** — is there an Owner exception list under `#180`? | **3** | `OI-01`, `OI-40`, `OI-42` |
+| **`MI-γ`** / **`O-1`** · **`MI-T`**/**`MI-η`** · **`MI-V`** · **`MI-J`** · **`OD-16`** · a role **grant** + **`MI-κ`** | **1 each** | `OI-08` · `OI-09` · `OI-38` · `OI-31` · `OI-05` · `OI-04` |
+
+> **`MI-S` and `MI-X` between them gate more than half the register, and neither is a large question.**
+> `MI-S` is one sentence about whether state **B** is an outcome or a carried fact; `MI-X` is a choice
+> between two architectures `MI-P` already declared both acceptable. **They are the cheapest two answers
+> in the program by a wide margin, and they unblock more than `OD-8`, `OD-13` and `OD-16` combined.**
+
+### 21.2 The four questions the lane contract asked to be decided, not assumed
+
+| Question | Decision | Why |
+|---|---|---|
+| **`OD-7` is ruled but the boundary does not exist. Area D: ready, or BLOCKED BY MIGRATION?** | **Neither wholesale. `BLOCKED BY DESIGN` for `OI-16`, `OI-19`, `OI-22`, `OI-36`; `READY` for `OI-20` and `OI-25`; `OD-8` for `OI-23`; `DEFERRED` for `OI-24`.** | **`BLOCKED BY MIGRATION` would be wrong**: the Firestore-side boundary needs **no datastore move** — it is a new orchestration seam over the transaction Firestore already provides. What blocks it is that `#184` named a boundary that must be **constructed** (`C-8`: *"step 4 is a build, not a move"*), and the construction must consume a Layer-1 outcome set that is unruled. That is a **design** blocker. And it does not block the two Area D items whose proofs are static or pure — which is why a blanket answer would have been wrong in both directions |
+| **`MI-ι` makes Firestore `employees` transitional. Does an item whose proof reads it become `BLOCKED BY MIGRATION`?** | **No — and the premise is counterfactual: no `OI-nn` acceptance proof reads Firestore `employees`.** | `OI-06`'s proof is explicitly *"a pure test over a **fake** person authority"* (the `ownershipCensus.ts:5-7` pattern — *"a fake document source, with no emulator and no credentials"*); `OI-07`'s is fixtures; `OI-17`'s reads `accounts`/`contacts`, not `employees`. **`#185` makes this structurally safe by ruling**: *"the interface must hide storage from governed business commands"*, so a proof written against the port proves nothing about Firestore. `BLOCKED BY MIGRATION` therefore applies to exactly the items whose **content is the storage choice** — `OI-39` (which authority) and `OI-17` (which datastore) — and to nothing else |
+| **Retention (state B) is de facto satisfied — does that make at least one item ready?** | **No, and the reason is a register gap worth recording: none of the 42 is the retention item.** | Retention is verified: `firestore.rules:497` is `allow create, update, delete: if false;` on `/employees/{employeeId}`, and no delete path exists in the trusted tree (`grep` for a `.delete()` on an `employees` doc over `functions/src` and `functions/scripts` → **0**). `#182` §2 needs it and `#185` lists *"historical identity preservation"* among Layer 1's minimums. But `OI-07` / `OI-31` cover state **B**'s *representation*, not retention's *guarantee* — **making retention a governed invariant with a test has no `OI-nn`.** It is `PERSON-AUTHORITY-TARGET-MODEL.md` §4.1 step 2 and target-work item **C**, and it is the **one A–J item requiring no storage**. Per the no-new-items constraint it is **not** added here; it is recorded as a gap (**X-16**, §24) and carried in item **C** |
+| **`OI-33`, `OI-41`, `OI-42` — does "proof achievable today" still hold?** | **`OI-33` YES · `OI-41` YES · `OI-42` NO.** | `OI-33` and `OI-41` were re-verified line by line at `64008d5a` and both are pure unit tests over shipped resolvers with rulings behind them (`#182` §8 and §10). **`OI-42` does not survive**: its proof is a property of `OI-26`'s diff assertion, `OI-26` is gated on Owner **product** approval, and standing alone the assertion is vacuous (**V-5**) over a field list `OI-01` has not produced. **The three became two, and `OI-25`, `OI-29`, `OI-20` and `OI-18` joined them from elsewhere — a net of six** |
+
+### 21.3 Area C's Rules items — the brief's gating claim, corrected
+
+The brief stated Area C's Rules items are *"additionally gated on the `fieldops_jobs` A/B, which is
+**BUSINESS CASE NOT ESTABLISHED**."* **Both halves are wrong, measured:**
+
+- **`grep -rn 'BUSINESS CASE' docs/` → zero hits.** The phrase *"BUSINESS CASE NOT ESTABLISHED"* exists
+  nowhere in `docs/` at `64008d5a`.
+- **There is no `fieldops_jobs` A/B.** The only `A/B` in this document is **`OI-32`'s AREA column** (`:1102`),
+  where it means *"Areas A and B"*. `fieldops_jobs` is **`OI-13`**, and its gates are `OD-8` (Tier-2
+  authorization) and the emulator (`U-1`) — not a business-case test.
+
+**The correct statement:** all five Tier-2 items (`OI-12`, `OI-13`, `OI-14`, `OI-15`, `OI-23`) are gated on
+**`OD-8`**; `OI-12` additionally on the unissued `currentOwner` vocabulary decision; `OI-14` additionally on
+`OI-17`; `OI-23` on all four being **closed and deployed**. Recorded as **X-17** (§24).
+
+### 21.4 Area E needs Owner PRODUCT approval — confirmed, and it is not an engineering gate
+
+`OI-26`, `OI-27`, `OI-28` and `OI-42` are gated on `OD-13` **plus Owner product approval**, sourced in the
+code itself: `functions/src/transitionEngine.ts:38` — *"Any future reverse edge is its own decision and may
+not appeal to this one."* `#180` invariant 2 and `MI-R` made the *engineering* case stronger, not the
+authorization easier. **`OI-29` is the exception and is READY**: it constrains the existing table and needs
+no new edge.
+
+---
+
+## 22. `OD-7` CLOSURE — what moved, and what did not
+
+| Item | PART II said | After `#184` |
+|---|---|---|
+| `OI-16` | `OD-7` **still OPEN** | `OD-7` **CLOSED**; the path is a named **bypass defect**; blocker becomes the absent boundary → `BLOCKED BY DESIGN` |
+| `OI-19` | `OD-7` **STILL OPEN**; *"all five rulings leave W1 untouched"* | **That no longer holds.** `#184`(e) reassigns family/axis validation to the **pure builder** and leaves the writer at audit construction; `#183` warns against the writer importing `ownershipMatrix.ts`, which *"states no purity contract at all."* → `BLOCKED BY DESIGN` |
+| `OI-22` | `OD-7` + `#180` | `OD-7` **CLOSED**; `#184` stage **B** ruled *"read authoritative state"* → `BLOCKED BY DESIGN` (no boundary to read in) |
+| `OI-24` | gate list | `OD-7` ✓ struck from the gate list; `OD-8` and `assessable === true` remain → `DEFERRED` |
+| `OI-25` | `OD-7` | **`OD-7` CLOSED discharges its only blocker**, and `#184` promotes the second authority to the reference instance of the ruled boundary → **`READY`** |
+| `OI-36` | `OD-7` (**OPEN**) | `OD-7` **CLOSED**; blockers are the absent axis and the writer's structural refusal → `BLOCKED BY DESIGN` |
+| `OI-37` | `#180` + `OD-7` (**OPEN**) | `OD-7` **CLOSED**; blockers become `MI-X` / `MI-S` → `BLOCKED BY OWNER DECISION` |
+
+**`OD-7`'s closure moved exactly one item into `READY` (`OI-25`) and re-characterised four as design-blocked
+rather than decision-blocked.** It did not unblock Area D, because `#184`'s own Status says so: *"The next
+blocking architecture gap is the **PERSON AUTHORITY GAP**."* `#185` then names that authority and places it
+in storage that does not exist.
+
+---
+
+## 23. MISSING INPUT — PART III additions
+
+`MI-N`, `MI-P`, `MI-Q`, `MI-R`, `M-4`, `OD-1`, `OD-6`, `OD-7` and **`MI-ι`** are **CLOSED** and are marked so
+throughout §20–§22. `MI-S`, `MI-T`, `MI-U`, `MI-V`, `MI-W`, `MI-X` (§17) stand **unchanged and open**. One
+addition:
+
+| # | Question only the Owner can answer | Why it blocks | Raised by |
+|---|---|---|---|
+| **`MI-κ`** *(NEW)* | **What is the governed JOB-ROLE vocabulary, and who may occupy it?** `OI-04` has carried *"a job-role ruling"* as a prerequisite since PART I with **no register ref**, and `SERVICE_MANAGER` has no consumer under any of the four contested readings. `#180` invariant 9 and `MI-R` both decline it — `MI-R` fixes the *floor* (governed employment/person status) and says further constraints are *"per family, never global"*, supplying no vocabulary and no occupant | `OI-04` cannot leave `AUTHORITY` tier without it, and it is one of only two prerequisites (the other is an Owner **grant**) for anything to be able to **name** an accountable person | §21, `OI-04` |
+
+**Label collision, flagged not resolved:** **`MI-X` denotes two different things** — the §17 MISSING INPUT
+*"which of `MI-P`'s two acceptable architectures?"* and the document
+`docs/operating-model/owner-decisions/MI-X-PERSON-AUTHORITY-OPTIONS.md` (the six-candidate person-authority
+packet, `RECOMMENDATION: NONE`). §21 uses `MI-X` **only** in the §17 sense. This is the same class of problem
+`MI-α` already registers and the Owner should settle with it.
+
+---
+
+## 24. CORRECTIONS — PART III. Things found wrong, including in the rulings' own citations
+
+`X-1` … `X-15` stand unchanged. Additions:
+
+| # | Claim | Measured at `64008d5a` / at source | Correction |
+|---|---|---|---|
+| **X-16** | The lane brief: *"Retention (state B) is already satisfied de facto … **That should make at least one item ready**: it needs a governed invariant and a test, not storage."* | **The retention premise is CONFIRMED** — `firestore.rules:497` `allow create, update, delete: if false;` on `/employees/{employeeId}`, and zero `.delete()` paths onto an `employees` document in `functions/src` or `functions/scripts`. **But no `OI-nn` is the retention item.** `OI-07` and `OI-31` cover state **B**'s *representation*; the register contains **no** item for making retention a governed invariant with a test | **The conclusion does not follow, and the reason is a register gap.** Retention makes target-work item **C** the one A–J item requiring no storage; it makes **none of the 42 ready**. Per the no-new-items constraint of this pass, **no `OI-43` is created** — the gap is recorded here and carried in `PERSON-AUTHORITY-TARGET-MODEL.md` item **C** |
+| **X-17** | The lane brief: *"**Area C's Rules items** are Tier-2 and additionally gated on the `fieldops_jobs` **A/B**, which is **BUSINESS CASE NOT ESTABLISHED**."* | **`grep -rn 'BUSINESS CASE' docs/` → 0 hits.** The only `A/B` in this document is `OI-32`'s **AREA** value at `:1102`, meaning *"Areas A and B"*. `fieldops_jobs` is `OI-13`, gated on `OD-8` + the emulator | **Two conflated artifacts.** The correct gating is §21.3. *"`fieldops_jobs` A/B"* and *"BUSINESS CASE NOT ESTABLISHED"* are not findings of this register and should not be carried forward |
+| **X-18** | The lane brief cites **`MI-ι` §9** (interim), **§10** (*"do not freeze naming"*) and **§11** (A–J, and the `NOT AUTHORIZED` reconfirmation); `#185` itself cites **`MI-ι` §6** and **§11** | **No `MI-ι` document exists at any ref.** `git log --all --diff-filter=A --name-only` over the whole history finds no file matching `iota`, `MI-I`, `BUSINESS-EMPLOYEE` or `EMPLOYEE-BUSINESS`; the only `MI-` packet is `MI-X-PERSON-AUTHORITY-OPTIONS.md`, and `MI-ι` was **raised as a single table row** in `PERSON-AUTHORITY-TARGET-MODEL.md` §4.2 — a row has no §9/§10/§11 | **The substance is verified at source and the section numbers are not.** Each quoted clause **is** in `#185`, but in named subsections: the interim clauses are under *"Interim path — no big-bang migration"*, *"Naming is explicitly not frozen by this ruling"* is in that same subsection (not §10), and the `NOT AUTHORIZED` reconfirmation is in **Status** (not §11). **A–J reaches this lane only through the brief** — `#185` confirms items A–J exist and are *"prepared only"* but **does not enumerate them.** Every A–J heading in `PERSON-AUTHORITY-TARGET-MODEL.md` §9 is therefore marked `SOURCE: LANE BRIEF, NOT VERIFIED AT SOURCE` |
+| **X-19** | `PERSON-AUTHORITY-TARGET-MODEL.md` `B-2` / §0.2 / §3.7: Firebase Auth is *"retained **permanently** as credential authority"* on the strength of `firebase-exit-manifest.json`'s `"trendsToZero": false`, called *"the single most load-bearing correction in this document"* | **`#185` withdraws exactly this.** Verbatim: *"`trendsToZero: false` is **NOT a permanence claim**, and this program over-read it. … **A prior report in this program stated that Firebase Auth is retained permanently on the strength of that flag. That over-read the manifest and is withdrawn.**"* The manifest's own description says `IDENTITY_ONLY` is outside the ratchet *"for the current business-runtime exit phase"* and that identity migration is *"**not decided here**"* | **WITHDRAWN BY RULING, and it is this branch's own claim.** Marked in place in `PERSON-AUTHORITY-TARGET-MODEL.md`. **No `OI-nn` moves** — none rests on Firebase Auth's permanence — but `#185` additionally rules that **`/Employee` in the identity carve-out of both `firebase-exit-manifest.json` and `firebase-exit-ratchet.md:4` is now WRONG**, and that `firebase-exit-ratchet.md:70-71`'s *"identity is the one Firebase capability this architecture keeps on purpose"* **overstates its source** |
+| **X-20** | `OI-26` / `OI-29` cite `transitionEngine.ts:111-126` and `:38` | **The file is `functions/src/transitionEngine.ts`**, not `functions/src/fieldOps/transitionEngine.ts`. `ACTION_ALLOWED_FROM` is **declared at `:123`**; `:111-122` is the `ND-18` rationale comment; `:38` is exact (*"Any future reverse edge is its own decision"*) | **Citations are substantively right, off in span and unqualified in path.** Cite `functions/src/transitionEngine.ts:123` for the table and `:111-122` for the rationale it rests on |
+| **X-21** | The lane brief: *"`employee_principal_links` **exists** with an `employee_id` column and **no FK**"*, and *"there are zero `REFERENCES …employee` in any of the 18 migrations"* | **Second half CONFIRMED exactly.** `grep -rniE 'REFERENCES[[:space:]]+(eos_policy\.)?[a-z_]*employee' functions/migrations/` → **0 hits**; broadening to any `REFERENCES` line mentioning employee/person/people yields **3**, all non-person (`1758412800000:32` and `:37` are comments; `:135` is `REFERENCES tenant_memberships`). **First half incomplete, as `B-4` already recorded**: the table declares **one** FK, composite and deliberate — `1758412800000:133-135` `FOREIGN KEY (tenant_id, principal_id) REFERENCES tenant_memberships (tenant_id, principal_id)` — while `employee_id` gets a **shape `CHECK` only** (`:157-158`) | **Say "no FK on `employee_id`", never "no FK".** `#185`'s *"real foreign **keys**"* (plural) is consistent with keeping the existing composite key and **adding** one; `1758412800000:55-57` pre-shaped it: *"the constraint is the only thing that has to be added"* |
+| **X-22** | The brief: *"`ownership_handoffs` FK-constrains `tenant_id`, `opportunity_id`, `sales_agreement_id` and `sales_order_id` but leaves `previous_owner_employee_id` and `new_owner_employee_id` unconstrained"* | **CONFIRMED VERBATIM, line by line.** `1758844800000_commercial-ownership-authority.sql:258` `tenant_id … REFERENCES eos_policy.tenants(id)` · `:259` `REFERENCES opportunities(id)` · `:260` `REFERENCES sales_agreements(id)` · `:261` `REFERENCES sales_orders(id)` · **`:262` `previous_owner_employee_id TEXT,`** and **`:263` `new_owner_employee_id TEXT NOT NULL,`** — no `REFERENCES`, no `CHECK` | **No correction; the brief is exact.** Recorded with line numbers because it is the load-bearing fact for target-work item **E** |
+| **X-23** | `#183` lists *"`M-1` (axis scope)"* as **open**, while this branch's `docs/DECISIONS.md` `#179` is titled *"OWNER RULINGS: **M-1 Option A**, …"* | **Not a contradiction — two registers reuse the label.** `#179`'s `M-1` is *"The 25 persisted v1 `cycle_counts` (24 sandbox, 1 certification) are **not migrated**"* (`docs/DECISIONS.md`, `#179` item 1). `#183`'s `M-1` is the `OD-7` axis-scope question | **Disambiguate on sight.** `M-1`, `M-2`, `M-3`, `M-4` in the `OD-7` register are **not** the `M-n` of `#179`. A reader citing *"`M-1` is ruled"* against `OD-7` would be citing a cycle-count migration ruling |
+
+---
+
+## 25. UNPROVEN — PART III additions
+
+`U-1` … `U-17` stand. Additions:
+
+| # | Unproven | Why it could not be proven here | What would prove it |
+|---|---|---|---|
+| **U-18** *(NEW)* | The enumeration and exact wording of **`MI-ι` §11 items A–J** | **`MI-ι` does not exist as a document at any ref** (`X-18`). `#185` confirms A–J exist and are *"prepared only"*; it does not list them | The Owner publishing the `MI-ι` packet, or `#185` being amended to enumerate A–J |
+| **U-19** *(NEW)* | Whether migrations **004–018** — including `008` (`1758412800000`) and the commercial one (`1758844800000`) — are applied in **any** environment | No environment contacted (hard constraint). `PERSON-AUTHORITY-TARGET-MODEL.md` `U-2` records the only activation evidence as `migrations: 3` | A migration-state read under whatever authority governs it. **Load-bearing for item E**: whether the unconstrained columns exist as rows or only as DDL changes the crosswalk's cost by an order of magnitude |
+| **U-20** *(NEW)* | Whether `#185`'s *"no silent fallback from PostgreSQL to Firestore after cutover"* is **enforceable by a guard** or only by review | No implementation exists to test, and `#185` states the requirement without naming a mechanism | The design in `PERSON-AUTHORITY-TARGET-MODEL.md` §9 item **G** being reviewed and either ratified or replaced. **This lane proposes a mechanism there and cannot prove it is sufficient** |
+| **U-21** *(NEW)* | Whether the **41** `stageAuditEvent*` importers is the right ratchet denominator for `OI-20`, as opposed to the count of modules that can *reach* the handoff action | **41 is re-verified** (`grep -rlE 'stageAuditEvent' functions/src --include=*.ts --include=*.js \| wc -l` → 41), but reachability of the `OWNERSHIP_HANDOFF` action specifically was not re-derived by this lane | `OI-20`'s own implementation, which must pin whichever count it asserts. **Does not change the bucket** — the ratchet is ready under either denominator; it changes the literal it pins |
+
+---
+
+## 26. WHAT PART III DELIBERATELY DOES NOT CONTAIN
+
+- **No implementation, no schema, no migration, no backfill, no Rules change, no deploy, no production
+  contact, no data mutation, no emulator run.** Every measurement is a file read in a git worktree at
+  `64008d5a`. `functions/lib` was never consulted and no `java` was invoked.
+- **No second reclassification.** §21 is the one authorized pass; every item has exactly one bucket and
+  there is no "revisit later" bucket.
+- **No new `OI-nn`.** The register stays at **42**, including where PART III found a genuine gap
+  (`X-16`, retention) — the gap is recorded, not filled.
+- **No field, enum, collection, column or index name for the `OD-6` states or the person-authority
+  interface.** `#182` §3 withholds them and `#185` says *"Naming is explicitly not frozen by this ruling."*
+  §21 names **capabilities and semantic states** only.
+- **No answer to `MI-S`, `MI-T`, `MI-U`, `MI-V`, `MI-W`, `MI-X`, `MI-κ`, `MI-β`…`MI-θ`, `MI-J`, `MI-α`,
+  `O-1`, `OD-8`, `OD-13` or `OD-16`** — and no choice between `MI-P`'s two architectures.
+- **No edit to PART I or PART II.** Both are preserved; §20 and §24 mark and append.
