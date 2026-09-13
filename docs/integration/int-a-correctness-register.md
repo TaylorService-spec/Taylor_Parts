@@ -557,7 +557,7 @@ instructed. It must not be activated before the check exists.
 
 ### 12.3.C Discarding `INACTIVE` may be the policy, not a bug
 
-`commercialCompanyScope.ts:64-67` **deliberately accepts `INACTIVE`**, and gives a sound reason: *"a record
+`commercialCompanyScope.ts:63-68` **deliberately accepts `INACTIVE`**, and gives a sound reason: *"a record
 booked to a company that has since been deactivated still landed on that company's books, and rejecting it
 would rewrite history to tidy a registry."* That is the same standing principle as *historical stays
 historical*.
@@ -567,8 +567,16 @@ So there are two readings and this register picks neither:
 - **Defect** — `deriveCompanyOwner` (`typedOwner.ts:137-143`) throws away a distinction
   `resolveOperatingCompany` computed (`operatingCompanyAuthority.ts:54,80`), so the census cannot see that an
   owner's company is deactivated.
-- **Policy** — discarding is *consistent with* `commercialCompanyScope.ts:64-67`: company ownership is
+- **Policy** — discarding is *consistent with* `commercialCompanyScope.ts:63-68`: company ownership is
   deliberately existence-checked, not activity-checked, for the same historical-integrity reason.
+
+**And there are FOUR sites that accept `INACTIVE`, not one — the fourth by a different mechanism, which is
+why it was missed.** `typedOwner.ts:206` re-checks a COMPANY owner as
+`resolveOperatingCompany(value.id).company === null`. An INACTIVE company **has** a company object, so it
+**passes** — the acceptance is a side effect of testing for existence by null-check rather than an explicit
+`state === "INACTIVE"` branch. So the "policy" reading is stronger than §12.3.C first credited: the
+behaviour is consistent across four sites. But it is **emergent at this one**, not declared, which is a
+different thing from deliberate — and it is the site the census actually dispatches for stored owners.
 
 Both readings are carried. **This is an OD-6 input, not an engineering fix**, because the whole question OD-6
 asks is what a resolver owes the census about an owner's current validity — and the answer for the person
