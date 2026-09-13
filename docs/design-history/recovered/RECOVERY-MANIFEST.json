@@ -1,0 +1,2065 @@
+{
+ "lane": "ARCH-RECOVER",
+ "baseline": "64008d5ae0bdd9532909671b15a91122400accf1",
+ "recovery_date": "2026-09-13",
+ "classification": {
+  "class": "RECOVERED HISTORICAL DESIGN EVIDENCE",
+  "is_not": [
+   "current North Star",
+   "current implementation authority",
+   "permission to redesign",
+   "proof that current EOS still conforms"
+  ],
+  "current_authority_status": "NONE"
+ },
+ "totals": {
+  "archives": 22,
+  "archive_bytes": 9884937,
+  "contained_entries": 184,
+  "contained_bytes": 11480254,
+  "entries_already_in_repo_by_content": 123,
+  "entries_recovered": 61,
+  "recovered_bytes": 4336161,
+  "distinct_blobs_recovered": 57,
+  "distinct_blob_bytes": 4263393,
+  "sha256_defects": 0
+ },
+ "archives": [
+  {
+   "archive": "Customer North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Customer North Star P1v1.zip",
+   "bytes": 10680,
+   "sha256": "b959f42ab2a644d2e43f0b680051d760bbb882c76e011fb3c44cd1a6db49123b",
+   "entries": 2,
+   "recovered": 2,
+   "already_in_repo": 0
+  },
+  {
+   "archive": "Dispatch and Schedule North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Dispatch and Schedule North Star P1v1.zip",
+   "bytes": 9636,
+   "sha256": "3d3dda12a65cde168973ea25f4612cb51cf6facf9f38aa626538fb74cf2dd0be",
+   "entries": 2,
+   "recovered": 0,
+   "already_in_repo": 2
+  },
+  {
+   "archive": "Equipment North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Equipment North Star P1v1.zip",
+   "bytes": 9726,
+   "sha256": "65d6f595a03833a51311577efaea45abf8735875f93592bfa50643399b4dc7b9",
+   "entries": 2,
+   "recovered": 1,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Equipment North Star P1v2.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Equipment North Star P1v2.zip",
+   "bytes": 19309,
+   "sha256": "2837a10b385815b994e24e409c8d4eef6c3149449e2be7d71f87c87b85a6644f",
+   "entries": 3,
+   "recovered": 2,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Equipment North Star P1v3.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Equipment North Star P1v3.zip",
+   "bytes": 19874,
+   "sha256": "de1303909cdadfc6dde05d9aeb32e58128a5b685946093d0f3c79a6c275f71a6",
+   "entries": 3,
+   "recovered": 0,
+   "already_in_repo": 3
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Financials North Star P1v1.zip",
+   "bytes": 5737337,
+   "sha256": "30fabe0e5fe55fcda01c89d229c6686ccbd32aec3e506866e466793a4ab097fb",
+   "entries": 95,
+   "recovered": 2,
+   "already_in_repo": 93
+  },
+  {
+   "archive": "Lists and States North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Lists and States North Star P1v1.zip",
+   "bytes": 10730,
+   "sha256": "baaa45fb6130034d786bac0fbf4b4a215c1202b9736b04b053577292dd352989",
+   "entries": 2,
+   "recovered": 1,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Lists and States North Star P2v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Lists and States North Star P2v1.zip",
+   "bytes": 24459,
+   "sha256": "338e961da3346d4ba1377f575cd85eef3bc8ff10c7020422ef6ccbfd8f8a0b1f",
+   "entries": 3,
+   "recovered": 0,
+   "already_in_repo": 3
+  },
+  {
+   "archive": "Opportunity North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v1.zip",
+   "bytes": 10018,
+   "sha256": "7da93372fd81dc53c9b83fa281e497deb778077ee63e7ddade90cf5c684e0e18",
+   "entries": 2,
+   "recovered": 1,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Opportunity North Star P1v2.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v2.zip",
+   "bytes": 18463,
+   "sha256": "8805e61dbb55ee52b2c7083b57f4d1d3381e457b562ce5775308c192c44b5474",
+   "entries": 3,
+   "recovered": 0,
+   "already_in_repo": 3
+  },
+  {
+   "archive": "Opportunity North Star P1v3.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v3.zip",
+   "bytes": 6885,
+   "sha256": "54f7f493062a2bfabe28330e66ee243193e7be777d2821c1588ba99d4d4d5a1a",
+   "entries": 2,
+   "recovered": 2,
+   "already_in_repo": 0
+  },
+  {
+   "archive": "Opportunity North Star P1v4.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v4.zip",
+   "bytes": 14315,
+   "sha256": "74c1e5756223dcea7a8eb107951db98659a7373be8c31564c930fbd5ca114c43",
+   "entries": 3,
+   "recovered": 1,
+   "already_in_repo": 2
+  },
+  {
+   "archive": "Parts North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Parts North Star P1v1.zip",
+   "bytes": 9725,
+   "sha256": "0b3830a72c0d6320cf943048908dadaf34b3347c54a9269567ecc06fc748eae9",
+   "entries": 2,
+   "recovered": 0,
+   "already_in_repo": 2
+  },
+  {
+   "archive": "Parts North Star P1v2.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Parts North Star P1v2.zip",
+   "bytes": 1310202,
+   "sha256": "81a26421e718ca9ccac3de1e37473fffe2a92a29f06ebadbd2e22cb34e0e5803",
+   "entries": 9,
+   "recovered": 6,
+   "already_in_repo": 3
+  },
+  {
+   "archive": "Receiving North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Receiving North Star P1v1.zip",
+   "bytes": 30007,
+   "sha256": "7a420f161467fd7bd083711194d3bff3c1908a70433e470b129d49e586951f05",
+   "entries": 3,
+   "recovered": 1,
+   "already_in_repo": 2
+  },
+  {
+   "archive": "Sales Agreement P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales Agreement P1v1.zip",
+   "bytes": 10588,
+   "sha256": "ad4983e08e5fd706168f987cc444606942ddb34543a5165fa2a2653087892694",
+   "entries": 2,
+   "recovered": 2,
+   "already_in_repo": 0
+  },
+  {
+   "archive": "Sales Order North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales Order North Star P1v1.zip",
+   "bytes": 8276,
+   "sha256": "4c7a635a073ce4a5ac1f639cf87d1de296fb94812c21e13c00fb19c6d543b986",
+   "entries": 2,
+   "recovered": 2,
+   "already_in_repo": 0
+  },
+  {
+   "archive": "Sales and Inventory Dashboards North Star P1v1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales and Inventory Dashboards North Star P1v1.zip",
+   "bytes": 838355,
+   "sha256": "afcd9793e465f5dc5808326bf63064fa76d691069b421b671e2de961f23eaad1",
+   "entries": 10,
+   "recovered": 9,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Sales and Inventory Dashboards North Star P1v2.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales and Inventory Dashboards North Star P1v2.zip",
+   "bytes": 1674928,
+   "sha256": "acf172dff7c966eee2393a997ae48a547c4064c607ce2671d4433d068f03877c",
+   "entries": 16,
+   "recovered": 15,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Scoping answers needed P1.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Scoping answers needed P1.zip",
+   "bytes": 44758,
+   "sha256": "bcf78f023e9eec82bcedfffd8dd3346fb4b5aa7ddcc335f17de799f43132f650",
+   "entries": 7,
+   "recovered": 6,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Scoping answers needed P1v2.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Scoping answers needed P1v2.zip",
+   "bytes": 51591,
+   "sha256": "1476cb30cf1187edc158e89298fc4e59099da082f9d4f534937da91ba6809ac8",
+   "entries": 8,
+   "recovered": 7,
+   "already_in_repo": 1
+  },
+  {
+   "archive": "Service Operations North Star.zip",
+   "path": "/mnt/d/Taylor_Parts/Claude Design Docs/Service Operations North Star.zip",
+   "bytes": 15075,
+   "sha256": "4c528b6b3d578da6b63ae5237bd7af25dcc466f0b5ed45f1948aed30a383f415",
+   "entries": 3,
+   "recovered": 1,
+   "already_in_repo": 2
+  }
+ ],
+ "packages": [
+  {
+   "family": "Customer-Account",
+   "package": "Customer-North-Star-P1v1",
+   "archive": "Customer North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Customer North Star P1v1.zip",
+   "archive_sha256": "b959f42ab2a644d2e43f0b680051d760bbb882c76e011fb3c44cd1a6db49123b",
+   "page": "Account record (Customer 360)",
+   "historical_acceptance_status": "DECISIONS #128 (2026-08-26) reconciled the Account against this artifact. Migration ledger family 3, first pass `:135` and second pass `:174-176`, both read **AWAITING_OWNER_VISUAL_ACCEPTANCE**. No closed Owner visual acceptance rests on it.",
+   "prior_p3arch_classification": "register \u00a73.2 row 5 \u2014 SOURCE_UNAVAILABLE; \u00a75.5 \u2014 *affected, but the acceptance never closed*",
+   "load_bearing_acceptance_evidence": "YES \u2014 named visual authority of a Tier-1 decision (#128); acceptance never closed",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_account/North Star - Account P1.dc.html",
+     "recovered_path": "docs/design-history/recovered/Customer-Account/Customer-North-Star-P1v1/design_handoff_account/North Star - Account P1.dc.html",
+     "bytes": 28636,
+     "sha256": "23a03ffc1cea19a2c4bf386128b421cc95dbdb809133c60dec0035336e33d122"
+    },
+    {
+     "member": "design_handoff_account/README.md",
+     "recovered_path": "docs/design-history/recovered/Customer-Account/Customer-North-Star-P1v1/design_handoff_account/README.md",
+     "bytes": 10829,
+     "sha256": "a7f5119fdcdd8c48518cc528f2aa5a1af86052dcfb2c03a84e662bd2e8fed7fd"
+    }
+   ]
+  },
+  {
+   "family": "Dashboards",
+   "package": "Sales-and-Inventory-Dashboards-North-Star-P1v2",
+   "archive": "Sales and Inventory Dashboards North Star P1v2.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales and Inventory Dashboards North Star P1v2.zip",
+   "archive_sha256": "acf172dff7c966eee2393a997ae48a547c4064c607ce2671d4433d068f03877c",
+   "page": "My Dashboard (Owner / Dispatch-Technician / Parts-Sales-Finance personas)",
+   "historical_acceptance_status": "`docs/north-star/my-dashboard/DESIGN-HANDOFF-MY-DASHBOARD-P1v2.md` \u2014 **CLOSED / OWNER ACCEPTED 2026-09-03**, correctives live-verified 2026-09-04 (per P3-A3 \u00a76.3). That handoff at `:605-607` records an **open Owner item**: *\"if the P1v2 artboard should also be repo-resident as a `.dc.html` canvas alongside the other nine families, it needs to be exported and committed. This document does not stand in for the visual comp.\"*",
+   "prior_p3arch_classification": "**NOT IN THE ARCHAEOLOGY SET AT ALL.** No archaeology lane classified these. The handoff `.md` was present, so the lanes read the family as \"current\"; the three canvases and ten frames it declines to stand in for were absent and unclassified.",
+   "load_bearing_acceptance_evidence": "YES \u2014 the visual comp behind a CLOSED Owner acceptance (2026-09-03), never classified as missing",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_my_dashboard/North Star - My Dashboard P1v2 Dispatch Technician.dc.html",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/North Star - My Dashboard P1v2 Dispatch Technician.dc.html",
+     "bytes": 26356,
+     "sha256": "f6ac1dd9af7280ec016b9c48aaa74b1569908a1a44ee9e74d12dc3ba6fb6e7a6"
+    },
+    {
+     "member": "design_handoff_my_dashboard/North Star - My Dashboard P1v2 Owner.dc.html",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/North Star - My Dashboard P1v2 Owner.dc.html",
+     "bytes": 31059,
+     "sha256": "63756204837c894719ec5ef8f6450025c5a6d5da77eacaf0a0437c97448a22af"
+    },
+    {
+     "member": "design_handoff_my_dashboard/North Star - My Dashboard P1v2 Parts Sales Finance.dc.html",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/North Star - My Dashboard P1v2 Parts Sales Finance.dc.html",
+     "bytes": 28222,
+     "sha256": "7dcb0b48cc121040810c35a51da4fe60d0468505dff09c5d84aafb66e04729f2"
+    },
+    {
+     "member": "design_handoff_my_dashboard/README.md",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/README.md",
+     "bytes": 7745,
+     "sha256": "32e28e3f4be0c67f065969bf900968f3cfc24d3e3c484fcb4a216c6302672bfd"
+    },
+    {
+     "member": "design_handoff_my_dashboard/census-mapping.md",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/census-mapping.md",
+     "bytes": 6888,
+     "sha256": "e352252d99609257b036d593c45e3602345db860328f301e6a80efa94eea4cc8"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/01-owner-populated-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/01-owner-populated-1440.png",
+     "bytes": 332497,
+     "sha256": "506087348014bc3307333be6d60ddf98253a215b41adaf45f2b59a28b2f26d7b"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/02-owner-quiet-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/02-owner-quiet-1440.png",
+     "bytes": 106794,
+     "sha256": "107ff3c8d4d7cef15d350eb12e6ea4039fbf95cb6f51694a5ee71964a345b9c9"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/03-dispatcher-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/03-dispatcher-1440.png",
+     "bytes": 271455,
+     "sha256": "64831cc65b906153ebb3105650351e9ad1abb183b467f46ae47954f72b1e221a"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/04-technician-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/04-technician-1440.png",
+     "bytes": 163436,
+     "sha256": "4e4e9c67d992bc62d653f14cd104fa64efcf66593e9e4017918404df96b9a7ca"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/05-parts-manager-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/05-parts-manager-1440.png",
+     "bytes": 260278,
+     "sha256": "0dbba12426f7867efc66c1feb63dfe236e36980536f36253b0ef43fe7b4e7bd3"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/06-salesperson-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/06-salesperson-1440.png",
+     "bytes": 144112,
+     "sha256": "66ea6ed104550dd2da7bfd7afb1fbb48be5d10bae82a542ba973e59642cbbc47"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/07-finance-gated-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/07-finance-gated-1440.png",
+     "bytes": 121319,
+     "sha256": "a44fdf164f154a3caea84141274861db9fce347ccb5e0aeb1cd0ffc7ac8f526e"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/08-technician-375.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/08-technician-375.png",
+     "bytes": 77496,
+     "sha256": "cc8202a8f2bfed046faa44f65240377bda9c680d77a48055fba567822ef605dd"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/09-parts-375.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/09-parts-375.png",
+     "bytes": 66474,
+     "sha256": "f9091e7ac92098f2da493b0de545a4122779b83e63009db66a98dd30b63dc024"
+    },
+    {
+     "member": "design_handoff_my_dashboard/frames/10-owner-375.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v2/design_handoff_my_dashboard/frames/10-owner-375.png",
+     "bytes": 81663,
+     "sha256": "134ea39041e490d833458c7cb67b7fd0be0ad5a73468ee373d7f54f82971f6d9"
+    }
+   ]
+  },
+  {
+   "family": "Parts",
+   "package": "Parts-North-Star-P1v2",
+   "archive": "Parts North Star P1v2.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Parts North Star P1v2.zip",
+   "archive_sha256": "81a26421e718ca9ccac3de1e37473fffe2a92a29f06ebadbd2e22cb34e0e5803",
+   "page": "Parts workspace + Part record",
+   "historical_acceptance_status": "`IMPLEMENTATION-DELTA-PARTS-P1v2.md:33-37`: Design authority = `DESIGN-HANDOFF-PARTS-P1v2.md` + frames `1a`,`1a-m`,`1b`,`1b-m`; Acceptance authority = the four frames. `:20-22`: **Owner ruled on all seven items 2026-08-31 \u2014 design direction APPROVED with authority corrections.** Surface shipped; deployed `9848ec9d`.",
+   "prior_p3arch_classification": "register \u00a73.5 rows 20\u201321 \u2014 SOURCE_UNAVAILABLE; \u00a75.3 \u2014 *a shipped, Owner-accepted surface whose acceptance authority is unavailable*, \"no fallback exists\"",
+   "load_bearing_acceptance_evidence": "YES \u2014 design authority AND acceptance authority of a shipped surface",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_parts/DESIGN-HANDOFF-PARTS-P1v2.md",
+     "recovered_path": "docs/design-history/recovered/Parts/Parts-North-Star-P1v2/design_handoff_parts/DESIGN-HANDOFF-PARTS-P1v2.md",
+     "bytes": 5347,
+     "sha256": "d61c56a60a2eba48fc8b984ee915e119253271fd5a73a105c270ae669e79de76"
+    },
+    {
+     "member": "design_handoff_parts/North Star - Parts P1v2.dc.html",
+     "recovered_path": "docs/design-history/recovered/Parts/Parts-North-Star-P1v2/design_handoff_parts/North Star - Parts P1v2.dc.html",
+     "bytes": 32308,
+     "sha256": "f87b54791b3a92b844348c26682394dad168b637c4f9f7086c06fdfa2196cebf"
+    },
+    {
+     "member": "design_handoff_parts/frames/1a-m-workspace-375.png",
+     "recovered_path": "docs/design-history/recovered/Parts/Parts-North-Star-P1v2/design_handoff_parts/frames/1a-m-workspace-375.png",
+     "bytes": 146570,
+     "sha256": "1f3ee8b837a2b4a07e8c3b15427bb8ccb297ca59e98ee36e4ea3bd0a05b04e37"
+    },
+    {
+     "member": "design_handoff_parts/frames/1a-workspace-1440.png",
+     "recovered_path": "docs/design-history/recovered/Parts/Parts-North-Star-P1v2/design_handoff_parts/frames/1a-workspace-1440.png",
+     "bytes": 394332,
+     "sha256": "2f47bf5ec51fd09276816b15e805aa75314e867739747fcfbfe7495c023bc81c"
+    },
+    {
+     "member": "design_handoff_parts/frames/1b-m-record-375.png",
+     "recovered_path": "docs/design-history/recovered/Parts/Parts-North-Star-P1v2/design_handoff_parts/frames/1b-m-record-375.png",
+     "bytes": 234063,
+     "sha256": "cab06b21d88bbc7b70697963940986ee3ee8325438ba9228b8d25bcd0244cd86"
+    },
+    {
+     "member": "design_handoff_parts/frames/1b-record-1440.png",
+     "recovered_path": "docs/design-history/recovered/Parts/Parts-North-Star-P1v2/design_handoff_parts/frames/1b-record-1440.png",
+     "bytes": 495970,
+     "sha256": "8c1e30008b6b81d905da4ea83877c068b5b10047ba712c420a679006aa1ffd30"
+    }
+   ]
+  },
+  {
+   "family": "Sales-Order",
+   "package": "Sales-Order-North-Star-P1v1",
+   "archive": "Sales Order North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales Order North Star P1v1.zip",
+   "archive_sha256": "4c7a635a073ce4a5ac1f639cf87d1de296fb94812c21e13c00fb19c6d543b986",
+   "page": "Sales Order detail (Family 2)",
+   "historical_acceptance_status": "DECISIONS #125 (2026-08-26) built family 2 *\"with **no Design artifact in hand**\"* and set `AWAITING_OWNER_VISUAL_ACCEPTANCE`. Register \u00a73.3 row 7 records `Proposed - Sales Order.dc.html` as *\"NEVER HANDED TO THIS REPOSITORY.\"* This archive (dated 2026-08-25 22:54, the day before #125) holds an **`Implementation Render - Sales Order.html`** \u2014 **not** `Proposed - Sales Order.dc.html`.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NEEDS OWNER REVIEW \u2014 see \u00a77 finding F4",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_sales_order/Implementation Render - Sales Order.html",
+     "recovered_path": "docs/design-history/recovered/Sales-Order/Sales-Order-North-Star-P1v1/design_handoff_sales_order/Implementation Render - Sales Order.html",
+     "bytes": 13453,
+     "sha256": "5794defdc62ac8604719ecddab424bbe9d73b24b9cc359bd9ee2ce9af4e10b92"
+    },
+    {
+     "member": "design_handoff_sales_order/README.md",
+     "recovered_path": "docs/design-history/recovered/Sales-Order/Sales-Order-North-Star-P1v1/design_handoff_sales_order/README.md",
+     "bytes": 8733,
+     "sha256": "85ce99efecf76f535077c9703bb1b8a01b9557a93cad8e9f64ee9aac064b6548"
+    }
+   ]
+  },
+  {
+   "family": "Scoping",
+   "package": "Scoping-answers-needed-P1",
+   "archive": "Scoping answers needed P1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Scoping answers needed P1.zip",
+   "archive_sha256": "bcf78f023e9eec82bcedfffd8dd3346fb4b5aa7ddcc335f17de799f43132f650",
+   "page": "Work Order detail (Family 1)",
+   "historical_acceptance_status": "Migration ledger `:34-41`: visual authority = `North Star - Work Order.dc.html` + `Implementation Render - Work Order.html`; **Acceptance: Closed 2026-08-25**. DECISIONS #123 (2026-08-25) is the ruling; `docs/architecture/SYSTEM_AUTHORITIES.md:19` carries it as a live authority row.",
+   "prior_p3arch_classification": "register \u00a73.2 rows 3\u20134 and \u00a73.3 row 6 \u2014 SOURCE_UNAVAILABLE; \u00a75.2 \u2014 *the only CLOSED acceptance resting on unavailable authority*",
+   "load_bearing_acceptance_evidence": "YES \u2014 the single most load-bearing row in the register",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_work_order/North Star - Work Order.dc.html",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1/design_handoff_work_order/North Star - Work Order.dc.html",
+     "bytes": 21515,
+     "sha256": "f5cf78052a9d9a8eb023ee5875aabce5798d356c0efd3307cf96301862199ffb"
+    },
+    {
+     "member": "design_handoff_work_order/NorthStarWorkOrderDetailPage.jsx",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1/design_handoff_work_order/NorthStarWorkOrderDetailPage.jsx",
+     "bytes": 13852,
+     "sha256": "0531f303dbae2b18d01c1d34863e77d72a573b296b465c6a78f6ac23bf19834f"
+    },
+    {
+     "member": "design_handoff_work_order/Proposed - Work Order.dc.html",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1/design_handoff_work_order/Proposed - Work Order.dc.html",
+     "bytes": 23807,
+     "sha256": "633f6c83b2e77754f9ef091f6b03a6a24ae4b95774fde070b984db45bde0d5fd"
+    },
+    {
+     "member": "design_handoff_work_order/README.md",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1/design_handoff_work_order/README.md",
+     "bytes": 12097,
+     "sha256": "694c4155c5a5b9bb5084e4b74bb997f203ca2cb4d3612d243a0667beb2b59056"
+    },
+    {
+     "member": "design_handoff_work_order/ns-workorder.css",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1/design_handoff_work_order/ns-workorder.css",
+     "bytes": 7696,
+     "sha256": "36fea0ebfb71003b30deb1ec43f9ec544ed34c1d38622a0c57b22cd854018cb2"
+    },
+    {
+     "member": "design_handoff_work_order/pilot-menu.js",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1/design_handoff_work_order/pilot-menu.js",
+     "bytes": 7196,
+     "sha256": "eb41fbe3c53c7175ef6a01e69ef50d4ef331d13175d71d3e0131ff4063391858"
+    }
+   ]
+  },
+  {
+   "family": "Scoping",
+   "package": "Scoping-answers-needed-P1v2",
+   "archive": "Scoping answers needed P1v2.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Scoping answers needed P1v2.zip",
+   "archive_sha256": "1476cb30cf1187edc158e89298fc4e59099da082f9d4f534937da91ba6809ac8",
+   "page": "Work Order detail (Family 1)",
+   "historical_acceptance_status": "Same acceptance as P1. This archive additionally holds `Implementation Render - Work Order.html`, the second of the two artifacts DECISIONS #123 names, and later revisions of the JSX and CSS.",
+   "prior_p3arch_classification": "register \u00a73.2 rows 3\u20134 and \u00a73.3 row 6 \u2014 SOURCE_UNAVAILABLE; \u00a75.2",
+   "load_bearing_acceptance_evidence": "YES \u2014 supplies the *pixel target* artifact, register row 4",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_work_order/Implementation Render - Work Order.html",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/Implementation Render - Work Order.html",
+     "bytes": 8561,
+     "sha256": "2265dc3319b18193c5ac07d3624c884757429918c4d3a2ffe91f3518adfb5714"
+    },
+    {
+     "member": "design_handoff_work_order/North Star - Work Order.dc.html",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/North Star - Work Order.dc.html",
+     "bytes": 21515,
+     "sha256": "f5cf78052a9d9a8eb023ee5875aabce5798d356c0efd3307cf96301862199ffb"
+    },
+    {
+     "member": "design_handoff_work_order/NorthStarWorkOrderDetailPage.jsx",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/NorthStarWorkOrderDetailPage.jsx",
+     "bytes": 17407,
+     "sha256": "63a1ef8223e9971a41cc2a3818697e4e2ce7d087fe9cb09c0ed90fb9ddb45dec"
+    },
+    {
+     "member": "design_handoff_work_order/Proposed - Work Order.dc.html",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/Proposed - Work Order.dc.html",
+     "bytes": 23807,
+     "sha256": "633f6c83b2e77754f9ef091f6b03a6a24ae4b95774fde070b984db45bde0d5fd"
+    },
+    {
+     "member": "design_handoff_work_order/README.md",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/README.md",
+     "bytes": 16273,
+     "sha256": "fd22cd89d58c2566c357dd4ed9c42b1cf6070efc5b69e87cc0fa66ac9834c494"
+    },
+    {
+     "member": "design_handoff_work_order/ns-workorder.css",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/ns-workorder.css",
+     "bytes": 11254,
+     "sha256": "699f4a2811d4980bb49f0cd8267616609706e1c7075863fc2e25cbdb9ef10cdc"
+    },
+    {
+     "member": "design_handoff_work_order/pilot-menu.js",
+     "recovered_path": "docs/design-history/recovered/Scoping/Scoping-answers-needed-P1v2/design_handoff_work_order/pilot-menu.js",
+     "bytes": 7196,
+     "sha256": "eb41fbe3c53c7175ef6a01e69ef50d4ef331d13175d71d3e0131ff4063391858"
+    }
+   ]
+  },
+  {
+   "family": "Dashboards",
+   "package": "Sales-and-Inventory-Dashboards-North-Star-P1v1",
+   "archive": "Sales and Inventory Dashboards North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales and Inventory Dashboards North Star P1v1.zip",
+   "archive_sha256": "afcd9793e465f5dc5808326bf63064fa76d691069b421b671e2de961f23eaad1",
+   "page": "Sales Dashboard, Inventory Dashboard",
+   "historical_acceptance_status": "No acceptance record found at baseline for either canvas. Superseded in direction by the P1v2 My Dashboard persona model.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_dashboards/North Star - Inventory Dashboard.dc.html",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/North Star - Inventory Dashboard.dc.html",
+     "bytes": 26640,
+     "sha256": "5597215e27c378fad8c567e440aa35b3080cf6c10431c4bdec0afbe31dd64e71"
+    },
+    {
+     "member": "design_handoff_dashboards/North Star - Sales Dashboard.dc.html",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/North Star - Sales Dashboard.dc.html",
+     "bytes": 28818,
+     "sha256": "382afb85c82290c95e88d9512c119b4d3c252b89e082a0e8405381cc03a1a46d"
+    },
+    {
+     "member": "design_handoff_dashboards/README.md",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/README.md",
+     "bytes": 1255,
+     "sha256": "2692a6d691d901c61c3d66578249897d53592495a757e054fd5cbcff53ee21e0"
+    },
+    {
+     "member": "design_handoff_dashboards/frames/inventory-dashboard-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/frames/inventory-dashboard-1440.png",
+     "bytes": 336758,
+     "sha256": "800b0e24889f6c73b3213e49eb23c23d3fae9e8ab8e5fa8acb3e90780dc30ac7"
+    },
+    {
+     "member": "design_handoff_dashboards/frames/inventory-dashboard-375.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/frames/inventory-dashboard-375.png",
+     "bytes": 64860,
+     "sha256": "aea31c65ccc8b1448143c19ea115098c6175c7e4e0bb0e233f4070f51325b045"
+    },
+    {
+     "member": "design_handoff_dashboards/frames/sales-dashboard-1440.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/frames/sales-dashboard-1440.png",
+     "bytes": 339760,
+     "sha256": "d78f4fdaa4803b9f4a9b5dd6aae91ce03786cf2b5965a9d83c892ef9f0941a4e"
+    },
+    {
+     "member": "design_handoff_dashboards/frames/sales-dashboard-375.png",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/frames/sales-dashboard-375.png",
+     "bytes": 59533,
+     "sha256": "da90438d5a788f62d67b7a8741caec787494c2f0e7d2d9f3eb174cb95f3d55e1"
+    },
+    {
+     "member": "design_handoff_dashboards/pages/inventory-dashboard.md",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/pages/inventory-dashboard.md",
+     "bytes": 2890,
+     "sha256": "e32e104697b3c1bdbb2465a3148351a3ec39b52d235908fd51d6474ae3ab95f1"
+    },
+    {
+     "member": "design_handoff_dashboards/pages/sales-dashboard.md",
+     "recovered_path": "docs/design-history/recovered/Dashboards/Sales-and-Inventory-Dashboards-North-Star-P1v1/design_handoff_dashboards/pages/sales-dashboard.md",
+     "bytes": 2904,
+     "sha256": "0d187b26f516a77ae7f33e7132830e5872640f4beef253b8f8b48b87821aedf2"
+    }
+   ]
+  },
+  {
+   "family": "Equipment",
+   "package": "Equipment-North-Star-P1v1",
+   "archive": "Equipment North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Equipment North Star P1v1.zip",
+   "archive_sha256": "65d6f595a03833a51311577efaea45abf8735875f93592bfa50643399b4dc7b9",
+   "page": "Equipment record",
+   "historical_acceptance_status": "`North Star - Equipment P1.dc.html` is already vendored. The repo carries only the P1v3-era `DESIGN-HANDOFF-EQUIPMENT-P1v2.1.md`; this is the P1v1-era package README.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_equipment/README.md",
+     "recovered_path": "docs/design-history/recovered/Equipment/Equipment-North-Star-P1v1/design_handoff_equipment/README.md",
+     "bytes": 5605,
+     "sha256": "118b3f354410706bd3a251c35c05848b2a89082d8441b85e55005184079a8c75"
+    }
+   ]
+  },
+  {
+   "family": "Equipment",
+   "package": "Equipment-North-Star-P1v2",
+   "archive": "Equipment North Star P1v2.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Equipment North Star P1v2.zip",
+   "archive_sha256": "2837a10b385815b994e24e409c8d4eef6c3149449e2be7d71f87c87b85a6644f",
+   "page": "Equipment record",
+   "historical_acceptance_status": "**Byte-divergence finding D1.** The repo's `docs/north-star/equipment/North Star - Equipment P1v2.dc.html` (32,950 B) is the copy shipped in `Equipment North Star P1v3.zip`, **not** the copy in the P1v2 archive (32,718 B). The same filename carries two different revisions.",
+   "prior_p3arch_classification": "not in the archaeology set \u2014 the register treated `North Star - Equipment P1v2.dc.html` as simply *present*",
+   "load_bearing_acceptance_evidence": "NO \u2014 but see divergence finding D1",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_equipment/North Star - Equipment P1v2.dc.html",
+     "recovered_path": "docs/design-history/recovered/Equipment/Equipment-North-Star-P1v2/design_handoff_equipment/North Star - Equipment P1v2.dc.html",
+     "bytes": 32718,
+     "sha256": "3527a0ddc352433a21c00dd51d5050fa887cbad92003c62e356e1788bbdc2133"
+    },
+    {
+     "member": "design_handoff_equipment/README.md",
+     "recovered_path": "docs/design-history/recovered/Equipment/Equipment-North-Star-P1v2/design_handoff_equipment/README.md",
+     "bytes": 8983,
+     "sha256": "a9ac99ef2ff830108c933dbf56f2b7792ba89e8354259f3fcfd34b76a4a29cf3"
+    }
+   ]
+  },
+  {
+   "family": "Financials",
+   "package": "Financials-North-Star-P1v1",
+   "archive": "Financials North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Financials North Star P1v1.zip",
+   "archive_sha256": "30fabe0e5fe55fcda01c89d229c6686ccbd32aec3e506866e466793a4ab097fb",
+   "page": "Financials 16 Reconciliation, 20 Governance",
+   "historical_acceptance_status": "**Byte-divergence findings D2 and D3.** 48 of the 50 Financials canvases/frames are byte-identical to the repo. Two canvases are not: the repo's copies are **larger** than the delivered copies (16: 12,244 B vs 10,273 B; 20: 13,391 B vs 12,022 B), i.e. edited after vendoring or replaced by a later revision under the same name.",
+   "prior_p3arch_classification": "not in the archaeology set \u2014 the register counted all 20 Financials canvases as present",
+   "load_bearing_acceptance_evidence": "NO \u2014 but see divergence findings D2, D3",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_financials/North Star - Financials 16 Reconciliation.dc.html",
+     "recovered_path": "docs/design-history/recovered/Financials/Financials-North-Star-P1v1/design_handoff_financials/North Star - Financials 16 Reconciliation.dc.html",
+     "bytes": 10273,
+     "sha256": "67864d644bb627bb8ac921df2b090b2059a601cc3f8e9bfe2bd28cfe9a5f0ef3"
+    },
+    {
+     "member": "design_handoff_financials/North Star - Financials 20 Governance.dc.html",
+     "recovered_path": "docs/design-history/recovered/Financials/Financials-North-Star-P1v1/design_handoff_financials/North Star - Financials 20 Governance.dc.html",
+     "bytes": 12022,
+     "sha256": "4e1b2c40eb11a63c1a2adf68c30601a5af7069ad152b7fcac355148687fac403"
+    }
+   ]
+  },
+  {
+   "family": "Lists",
+   "package": "Lists-and-States-North-Star-P1v1",
+   "archive": "Lists and States North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Lists and States North Star P1v1.zip",
+   "archive_sha256": "baaa45fb6130034d786bac0fbf4b4a215c1202b9736b04b053577292dd352989",
+   "page": "Dense list + honest states, P1",
+   "historical_acceptance_status": "`Lists-North-Star-P1.dc.html` is already vendored (byte-identical, renamed). The repo carries `DESIGN-HANDOFF-LISTS-P2.md` but no P1 handoff; the P1 package README is that missing document.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_lists/README.md",
+     "recovered_path": "docs/design-history/recovered/Lists/Lists-and-States-North-Star-P1v1/design_handoff_lists/README.md",
+     "bytes": 6645,
+     "sha256": "d06e50429d2f3eb2690fc13cd09e47becde535d8868b75349323f782c29e4c64"
+    }
+   ]
+  },
+  {
+   "family": "Opportunity",
+   "package": "Opportunity-North-Star-P1v1",
+   "archive": "Opportunity North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v1.zip",
+   "archive_sha256": "7da93372fd81dc53c9b83fa281e497deb778077ee63e7ddade90cf5c684e0e18",
+   "page": "Opportunity detail",
+   "historical_acceptance_status": "`Opportunity-North-Star-P1v1.dc.html` is already vendored (byte-identical, renamed). Only the package handoff README is new.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_opportunity/README.md",
+     "recovered_path": "docs/design-history/recovered/Opportunity/Opportunity-North-Star-P1v1/design_handoff_opportunity/README.md",
+     "bytes": 8756,
+     "sha256": "a6a62757c0259bebbaa3af2db848a8acf92a396a3c7f725fd1c4b071b839192d"
+    }
+   ]
+  },
+  {
+   "family": "Opportunity",
+   "package": "Opportunity-North-Star-P1v3",
+   "archive": "Opportunity North Star P1v3.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v3.zip",
+   "archive_sha256": "54f7f493062a2bfabe28330e66ee243193e7be777d2821c1588ba99d4d4d5a1a",
+   "page": "Opportunity workspace (list-plus-record)",
+   "historical_acceptance_status": "No acceptance record at baseline for the workspace canvas. `Opportunity-North-Star-List-P1v4.dc.html` (its successor) is present.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_opportunity_workspace/North Star - Opportunity Workspace P1.dc.html",
+     "recovered_path": "docs/design-history/recovered/Opportunity/Opportunity-North-Star-P1v3/design_handoff_opportunity_workspace/North Star - Opportunity Workspace P1.dc.html",
+     "bytes": 20250,
+     "sha256": "a10bb6cae0e7017202d1221f680b0a0c6b3fa84650ca322d946e5a6fd102933c"
+    },
+    {
+     "member": "design_handoff_opportunity_workspace/README.md",
+     "recovered_path": "docs/design-history/recovered/Opportunity/Opportunity-North-Star-P1v3/design_handoff_opportunity_workspace/README.md",
+     "bytes": 4819,
+     "sha256": "b23b7915d06a7b3076b9218c378b5863cb13a041c713d8d71c83a2ce0e8a57e9"
+    }
+   ]
+  },
+  {
+   "family": "Opportunity",
+   "package": "Opportunity-North-Star-P1v4",
+   "archive": "Opportunity North Star P1v4.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Opportunity North Star P1v4.zip",
+   "archive_sha256": "74c1e5756223dcea7a8eb107951db98659a7373be8c31564c930fbd5ca114c43",
+   "page": "Opportunity workspace / list",
+   "historical_acceptance_status": "`Opportunity-North-Star-List-P1v4.dc.html` is already vendored (byte-identical, renamed). Only the workspace canvas is new here.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_opportunity_workspace/North Star - Opportunity Workspace P1.dc.html",
+     "recovered_path": "docs/design-history/recovered/Opportunity/Opportunity-North-Star-P1v4/design_handoff_opportunity_workspace/North Star - Opportunity Workspace P1.dc.html",
+     "bytes": 20250,
+     "sha256": "a10bb6cae0e7017202d1221f680b0a0c6b3fa84650ca322d946e5a6fd102933c"
+    }
+   ]
+  },
+  {
+   "family": "Receiving",
+   "package": "Receiving-North-Star-P1v1",
+   "archive": "Receiving North Star P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Receiving North Star P1v1.zip",
+   "archive_sha256": "7a420f161467fd7bd083711194d3bff3c1908a70433e470b129d49e586951f05",
+   "page": "Receiving",
+   "historical_acceptance_status": "`North Star - Receiving P1.dc.html` is already vendored. The repo's `DESIGN-HANDOFF-RECEIVING-P1.md` is a **different document** from this package README (content differs).",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_receiving/README.md",
+     "recovered_path": "docs/design-history/recovered/Receiving/Receiving-North-Star-P1v1/design_handoff_receiving/README.md",
+     "bytes": 4859,
+     "sha256": "5128c11b1a636ea3c0772c0e427f8a303ec934c6f8fb61e351ef367c1ac4af88"
+    }
+   ]
+  },
+  {
+   "family": "Sales-Agreement",
+   "package": "Sales-Agreement-P1v1",
+   "archive": "Sales Agreement P1v1.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Sales Agreement P1v1.zip",
+   "archive_sha256": "ad4983e08e5fd706168f987cc444606942ddb34543a5165fa2a2653087892694",
+   "page": "Sales Agreement record",
+   "historical_acceptance_status": "`North Star - Sales Agreement P1v2.dc.html` **is present** at `docs/north-star/sales-agreement/`; this is its P1 predecessor. Register \u00a73.4 row 17 notes the record surface was superseded 2026-08-26.",
+   "prior_p3arch_classification": "not in the archaeology set (only the `Subpages - Commercial.dc.html` ancestor was)",
+   "load_bearing_acceptance_evidence": "NO \u2014 superseded by a present successor",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_sales_agreement/North Star - Sales Agreement P1.dc.html",
+     "recovered_path": "docs/design-history/recovered/Sales-Agreement/Sales-Agreement-P1v1/design_handoff_sales_agreement/North Star - Sales Agreement P1.dc.html",
+     "bytes": 28227,
+     "sha256": "f63f00e254a373327ed055384fb0e74d3f05fc773a81b1b17c012be1d3c9fe90"
+    },
+    {
+     "member": "design_handoff_sales_agreement/README.md",
+     "recovered_path": "docs/design-history/recovered/Sales-Agreement/Sales-Agreement-P1v1/design_handoff_sales_agreement/README.md",
+     "bytes": 9760,
+     "sha256": "b69af6c72eb08f94dd366eb665350f2eb0042ffefd5b52f9dd2bd05a734a5b43"
+    }
+   ]
+  },
+  {
+   "family": "Service-Operations",
+   "package": "Service-Operations-North-Star",
+   "archive": "Service Operations North Star.zip",
+   "archive_path": "/mnt/d/Taylor_Parts/Claude Design Docs/Service Operations North Star.zip",
+   "archive_sha256": "4c528b6b3d578da6b63ae5237bd7af25dcc466f0b5ed45f1948aed30a383f415",
+   "page": "Service Operations P1",
+   "historical_acceptance_status": "`North Star - Service Operations P1.dc.html` and the package README are already vendored byte-identically. `CLAUDE-CODE-HANDOFF.md` is a distinct implementation-handoff document not in the repo.",
+   "prior_p3arch_classification": "not in the archaeology set",
+   "load_bearing_acceptance_evidence": "NO",
+   "current_authority_status": "NONE",
+   "files": [
+    {
+     "member": "design_handoff_service_operations/CLAUDE-CODE-HANDOFF.md",
+     "recovered_path": "docs/design-history/recovered/Service-Operations/Service-Operations-North-Star/design_handoff_service_operations/CLAUDE-CODE-HANDOFF.md",
+     "bytes": 11365,
+     "sha256": "7a70b54a140ba83451caa53aa1a94a0843e561fcea49c70ca66679203806a837"
+    }
+   ]
+  }
+ ],
+ "already_in_repo_by_content": [
+  {
+   "archive": "Dispatch and Schedule North Star P1v1.zip",
+   "member": "design_handoff_dispatch_board/North Star - Dispatch Board P1.dc.html",
+   "bytes": 28764,
+   "sha256": "41c94032dd0b22f1244c3c2e2cd48a4e1843885901a0e59c5afb3cc7b00b1150",
+   "repo_paths": [
+    "docs/north-star/dispatch-board/North Star - Dispatch Board P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Dispatch and Schedule North Star P1v1.zip",
+   "member": "design_handoff_dispatch_board/README.md",
+   "bytes": 5349,
+   "sha256": "650b40741f6f48bccec7157ca35beb07bd04db4f7a2f8afc3a323098d7e944f8",
+   "repo_paths": [
+    "docs/north-star/dispatch-board/DESIGN-HANDOFF-DISPATCH-BOARD-P1.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Equipment North Star P1v1.zip",
+   "member": "design_handoff_equipment/North Star - Equipment P1.dc.html",
+   "bytes": 26063,
+   "sha256": "1d666e56efc2a7de66dba1c4ba6fdfe8d44bfd5e4df2253f0337a4b6b4ea44af",
+   "repo_paths": [
+    "docs/north-star/equipment/North Star - Equipment P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Equipment North Star P1v2.zip",
+   "member": "design_handoff_equipment/North Star - Equipment P1.dc.html",
+   "bytes": 26063,
+   "sha256": "1d666e56efc2a7de66dba1c4ba6fdfe8d44bfd5e4df2253f0337a4b6b4ea44af",
+   "repo_paths": [
+    "docs/north-star/equipment/North Star - Equipment P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Equipment North Star P1v3.zip",
+   "member": "design_handoff_equipment/North Star - Equipment P1.dc.html",
+   "bytes": 26063,
+   "sha256": "1d666e56efc2a7de66dba1c4ba6fdfe8d44bfd5e4df2253f0337a4b6b4ea44af",
+   "repo_paths": [
+    "docs/north-star/equipment/North Star - Equipment P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Equipment North Star P1v3.zip",
+   "member": "design_handoff_equipment/North Star - Equipment P1v2.dc.html",
+   "bytes": 32950,
+   "sha256": "bf78f0351a92d1d60f9e9ee07e5c53405ddf3688bc36665aadf11a0835fbdfc2",
+   "repo_paths": [
+    "docs/north-star/equipment/North Star - Equipment P1v2.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Equipment North Star P1v3.zip",
+   "member": "design_handoff_equipment/README.md",
+   "bytes": 10626,
+   "sha256": "bcf5732243c58c42ab355b2806855827cf8719b3b39cc659f0be5e9645dcb39e",
+   "repo_paths": [
+    "docs/north-star/equipment/DESIGN-HANDOFF-EQUIPMENT-P1v2.1.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/DESIGN-HANDOFF-FINANCIALS-P1.md",
+   "bytes": 80569,
+   "sha256": "250e2c85a02a8d4a7c57e1dfe9ce8cf62ba216125d0eb929eae683b80ef80e4f",
+   "repo_paths": [
+    "docs/north-star/financials/DESIGN-HANDOFF-FINANCIALS-P1.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/FINANCIALS-NORTH-STAR-P1-DESIGN-REVIEW-PACKAGE.md",
+   "bytes": 95017,
+   "sha256": "3455f9e78b65a42bafe0cb9f1db322c114539eae50296f45856e61b90f31bfbd",
+   "repo_paths": [
+    "docs/north-star/financials/FINANCIALS-NORTH-STAR-P1-DESIGN-REVIEW-PACKAGE.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 01 Overview.dc.html",
+   "bytes": 23086,
+   "sha256": "f8676e8abdef0dd9f0bdd6f2557abf343be2ad7b5dfb097bb43d630d3c119123",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 01 Overview.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 02 Billing Queue.dc.html",
+   "bytes": 23128,
+   "sha256": "f48b84dd57063f44993a170a9b09a47ca6ed865939062c2d9cf56c9006b1fc40",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 02 Billing Queue.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 03 Invoices.dc.html",
+   "bytes": 22767,
+   "sha256": "b7621d93787af986e1e998c9e665798eb678373a54a9374be379ea9ffa1aa397",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 03 Invoices.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 04 Accounts Receivable.dc.html",
+   "bytes": 16596,
+   "sha256": "7e7dd825fbd0d282ce7edcacb80414d6fb44820d0f5e524fdc1d785b3c3137a0",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 04 Accounts Receivable.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 05 Payments.dc.html",
+   "bytes": 20289,
+   "sha256": "e72ecc1ab7d83796b6b9a6979ef3072c29c9fe35ba587f01b5b46a0c757925ca",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 05 Payments.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 06 Credits Adjustments.dc.html",
+   "bytes": 14492,
+   "sha256": "9a494db545bb061b3d57b636230c96f000db4adb910f217aa5cecb5351c2a306",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 06 Credits Adjustments.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 07 Customer Financials.dc.html",
+   "bytes": 17038,
+   "sha256": "2a1f09a57f330b51886fb2d824632d013848faad66fc3cd2f0e83be8d3e314b0",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 07 Customer Financials.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 08 Sales to Goal.dc.html",
+   "bytes": 14629,
+   "sha256": "62a2d18309b8296b0e383e96423ef3f52f9755225011aa7bfaef8da88070606e",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 08 Sales to Goal.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 09 Cost to Budget.dc.html",
+   "bytes": 13048,
+   "sha256": "f306239104cdd30aa51f0d9b734f78dbf8ad131c8d3dec10c40c956a951ee92f",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 09 Cost to Budget.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 10 Forecasting.dc.html",
+   "bytes": 15090,
+   "sha256": "e4814e733adb4b9c215ed8ff4ed0249368046baadb27f8c00fb27122f783ea0b",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 10 Forecasting.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 11 Profitability.dc.html",
+   "bytes": 12703,
+   "sha256": "a04df870f4972f301ebd70e53a8035146a608afdf4764bdaf2a0c15d321b34f8",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 11 Profitability.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 12 Budget Management.dc.html",
+   "bytes": 18609,
+   "sha256": "211796a835c06f83ae169fe02a2932cb537833c4390ff40984375f17be472974",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 12 Budget Management.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 13 Goal Management.dc.html",
+   "bytes": 17463,
+   "sha256": "f9ca9ea9c3e5fa62233f0fcfa90dda85c48cfcde2605c41c12f46c3b584b89b1",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 13 Goal Management.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 14 Company Performance.dc.html",
+   "bytes": 14631,
+   "sha256": "a44064dd990f72613c353dcbe8387edcb057b8fc253ae72b74a8038fdd1dff95",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 14 Company Performance.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 15 Employee Performance.dc.html",
+   "bytes": 13802,
+   "sha256": "ee8457a7e080b35dcd953d22d03db3b4a599472900d02ce5f385f1c556f99b6b",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 15 Employee Performance.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 17 Intercompany.dc.html",
+   "bytes": 11781,
+   "sha256": "155abe37eaff854cfc615b33bbbf1a37be60c5c77ecfd1967ca80a74c20ebe1f",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 17 Intercompany.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 18 Audit History.dc.html",
+   "bytes": 11967,
+   "sha256": "073e31d5035a4693ab2041eb40524abc5c0bf139a8997c217f0b69fb20a05977",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 18 Audit History.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/North Star - Financials 19 Reports Exports.dc.html",
+   "bytes": 13103,
+   "sha256": "15d00ec27ce533934ad55cce75ebc1436bbb73da81465b124a7456bf6ff57035",
+   "repo_paths": [
+    "docs/north-star/financials/North Star - Financials 19 Reports Exports.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/README.md",
+   "bytes": 3205,
+   "sha256": "5e2a5d026dadc28977743570a452003ffca2d5aa300895a0d78166aba5abbc94",
+   "repo_paths": [
+    "docs/north-star/financials/README.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/01-overview-1440.png",
+   "bytes": 241578,
+   "sha256": "c70e2b32129e5efd6736b2fba26a6275af2aff9151a520cfa05293a8c7721583",
+   "repo_paths": [
+    "docs/north-star/financials/frames/01-overview-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/01-overview-375.png",
+   "bytes": 80649,
+   "sha256": "19bf760a77f9778b328bf160cd8f64564d7e62a9b228dbf7c738d8f0fe2b2821",
+   "repo_paths": [
+    "docs/north-star/financials/frames/01-overview-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/02-billing-queue-1440.png",
+   "bytes": 213674,
+   "sha256": "0d3199578aca10a40a5cdab5b347d532f3e146109d4c3f20721d76fef994e708",
+   "repo_paths": [
+    "docs/north-star/financials/frames/02-billing-queue-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/02-billing-queue-375.png",
+   "bytes": 60459,
+   "sha256": "c3cf378387229414e1c411eed797cc949009bc5f560329e0afc6361352351889",
+   "repo_paths": [
+    "docs/north-star/financials/frames/02-billing-queue-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/02-billing-queue-item-1440.png",
+   "bytes": 97784,
+   "sha256": "1211935a695583064c3c89cdc7804ed9c0863dd125159e5df2bc7ab0f47da7e1",
+   "repo_paths": [
+    "docs/north-star/financials/frames/02-billing-queue-item-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/02-billing-queue-item-375.png",
+   "bytes": 43944,
+   "sha256": "d75fbb6a751a2473f5857b7cdaa419e4d14aae4ec5fbddd5df1207b951b3b8fb",
+   "repo_paths": [
+    "docs/north-star/financials/frames/02-billing-queue-item-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/03-invoice-record-1440.png",
+   "bytes": 141877,
+   "sha256": "f8d58c5773b04a613050795c1cef509d4dd6ef6822321ffae35aeb10b2a7afce",
+   "repo_paths": [
+    "docs/north-star/financials/frames/03-invoice-record-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/03-invoice-record-375.png",
+   "bytes": 48926,
+   "sha256": "8515e0078d16370055ca156a747dbfd5b9b98e347fe8c9f0b4b317e7330c61cd",
+   "repo_paths": [
+    "docs/north-star/financials/frames/03-invoice-record-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/03-invoices-1440.png",
+   "bytes": 182285,
+   "sha256": "18e2869433301570f3225c26c90a89f5379a627e2de290da245c988500471c35",
+   "repo_paths": [
+    "docs/north-star/financials/frames/03-invoices-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/03-invoices-375.png",
+   "bytes": 44866,
+   "sha256": "89b22850329a99eea85be9aa191f987c4b5e75d9e105b3a61df554d2c63f50de",
+   "repo_paths": [
+    "docs/north-star/financials/frames/03-invoices-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/04-accounts-receivable-1440.png",
+   "bytes": 203492,
+   "sha256": "d5df2cba8dfddc5f6dd3a0861750512d6350e292b2f53b7b698eec3b9788d272",
+   "repo_paths": [
+    "docs/north-star/financials/frames/04-accounts-receivable-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/04-accounts-receivable-375.png",
+   "bytes": 54955,
+   "sha256": "62e5abe9b19ad96c9beffe055e0fba3135a4f4d7450a9829c92b802c56cc8d19",
+   "repo_paths": [
+    "docs/north-star/financials/frames/04-accounts-receivable-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/05-payment-record-1440.png",
+   "bytes": 116798,
+   "sha256": "1b839c55ec22a3601167095a668633d8e2bcd63da5523722e15f30aa585ecca5",
+   "repo_paths": [
+    "docs/north-star/financials/frames/05-payment-record-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/05-payment-record-375.png",
+   "bytes": 39411,
+   "sha256": "e3744cc07540f262803400ac2ed9bf6b44330cdd07f56c3a1ac453bcb7370098",
+   "repo_paths": [
+    "docs/north-star/financials/frames/05-payment-record-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/05-payments-1440.png",
+   "bytes": 172671,
+   "sha256": "5bd6f27762bed2c182905b4bf966273ea7537bb42720f07606a9ddf43e6babd9",
+   "repo_paths": [
+    "docs/north-star/financials/frames/05-payments-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/05-payments-375.png",
+   "bytes": 47818,
+   "sha256": "ca5e0924c65e5f8ad546333af472b816dd3c7c3d695f2871bc303b69fc0a4aaf",
+   "repo_paths": [
+    "docs/north-star/financials/frames/05-payments-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/06-credits-adjustments-1440.png",
+   "bytes": 188558,
+   "sha256": "64143a85d82310728eb724d69838bcd1133de428563af73ebeacce7ff70b971c",
+   "repo_paths": [
+    "docs/north-star/financials/frames/06-credits-adjustments-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/06-credits-adjustments-375.png",
+   "bytes": 50182,
+   "sha256": "a8f74bcaa8b68ad3983ffaea21f6606f64203b3d61fcb78c2d41bfd42f22a930",
+   "repo_paths": [
+    "docs/north-star/financials/frames/06-credits-adjustments-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/07-customer-financials-1440.png",
+   "bytes": 222589,
+   "sha256": "cd2e6e2f647a64b4e7f5b4a13699eb1c8223f6298e97e5a7d4b59558d03e4720",
+   "repo_paths": [
+    "docs/north-star/financials/frames/07-customer-financials-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/07-customer-financials-375.png",
+   "bytes": 62222,
+   "sha256": "50f97a8f223d47086d986389fb06eaf6c47b0f9282107dd6db77915b06337d59",
+   "repo_paths": [
+    "docs/north-star/financials/frames/07-customer-financials-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/08-sales-to-goal-1440.png",
+   "bytes": 197962,
+   "sha256": "767f6f230bcc15743ea5e561a0b01f7d51805b7c5f0d224eba31b4d16f3f47eb",
+   "repo_paths": [
+    "docs/north-star/financials/frames/08-sales-to-goal-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/08-sales-to-goal-375.png",
+   "bytes": 49941,
+   "sha256": "5918d06698d95328cc02553702ae9d6cd8cf47bbda4cba26dd0628c32936402f",
+   "repo_paths": [
+    "docs/north-star/financials/frames/08-sales-to-goal-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/09-cost-to-budget-1440.png",
+   "bytes": 167339,
+   "sha256": "a0ef4be55d307aa4e49d4cf10bc2a8e3823e4a34b6b5ddd530fc96581a9dea3a",
+   "repo_paths": [
+    "docs/north-star/financials/frames/09-cost-to-budget-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/09-cost-to-budget-375.png",
+   "bytes": 50638,
+   "sha256": "b03f236c91a08475688d840101b8c507e23c7c82125198d69964180d4ac191fc",
+   "repo_paths": [
+    "docs/north-star/financials/frames/09-cost-to-budget-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/10-forecasting-1440.png",
+   "bytes": 224844,
+   "sha256": "edce5be38e1dd4bef525946726ea2538435845300c1da5a22d6ae5ef61a42011",
+   "repo_paths": [
+    "docs/north-star/financials/frames/10-forecasting-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/10-forecasting-375.png",
+   "bytes": 49488,
+   "sha256": "e4f14768504cbabe3734b1dd6ef37b99310ba4f26b8a6a18b8784ffae02ffab8",
+   "repo_paths": [
+    "docs/north-star/financials/frames/10-forecasting-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/11-profitability-1440.png",
+   "bytes": 214370,
+   "sha256": "906421b6bde44e12ea5ee5449f8b39fb81c4657dbc5dc95439c431a021a61514",
+   "repo_paths": [
+    "docs/north-star/financials/frames/11-profitability-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/11-profitability-375.png",
+   "bytes": 46880,
+   "sha256": "9354078d91bdbddd0dcfda101855ee6b0268c2c98fbf8791e7a5487b7af5c112",
+   "repo_paths": [
+    "docs/north-star/financials/frames/11-profitability-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/12-budget-review-375.png",
+   "bytes": 36122,
+   "sha256": "698e2a762a701f4bbc22b32a7293edb8643dab5dde156fc1b5189a6c77556e1f",
+   "repo_paths": [
+    "docs/north-star/financials/frames/12-budget-review-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/12-budget-revise-1440.png",
+   "bytes": 82004,
+   "sha256": "337baa681be50fcfbd4d4581cc465ba8e4a5e8305af0c2316f3bfdaea861c5c3",
+   "repo_paths": [
+    "docs/north-star/financials/frames/12-budget-revise-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/12-budgets-1440.png",
+   "bytes": 162127,
+   "sha256": "0b35ddd37ec0fed159d891512ae7a40b13e077d4284d9b86c8561e01fdf42e05",
+   "repo_paths": [
+    "docs/north-star/financials/frames/12-budgets-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/12-budgets-375.png",
+   "bytes": 41373,
+   "sha256": "f00f414a146338de4f1f5b209344b1471512318f1d68ad70a2523e4439ea9b28",
+   "repo_paths": [
+    "docs/north-star/financials/frames/12-budgets-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/13-goal-create-1440.png",
+   "bytes": 56825,
+   "sha256": "bc351b5c6839a1a189471ec7ea8e11f46d3ceeda48228a53009641e3ca04e590",
+   "repo_paths": [
+    "docs/north-star/financials/frames/13-goal-create-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/13-goal-review-375.png",
+   "bytes": 25944,
+   "sha256": "b559e83d329a0d1ca0758bf60c125e2f669012438710def1d98d43d4ec5c0cea",
+   "repo_paths": [
+    "docs/north-star/financials/frames/13-goal-review-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/13-goals-1440.png",
+   "bytes": 154920,
+   "sha256": "93c1e4b0ad7a9dce0e8f6bc4196e56f2ad690f4e58876c8f0303cfd3509f55a3",
+   "repo_paths": [
+    "docs/north-star/financials/frames/13-goals-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/13-goals-375.png",
+   "bytes": 37104,
+   "sha256": "969d1aa750fadcbf505ab5702d67c33ae19c70bb8331fa6347cc761340a42ff4",
+   "repo_paths": [
+    "docs/north-star/financials/frames/13-goals-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/14-company-performance-1440.png",
+   "bytes": 207443,
+   "sha256": "7daaef0e28d708d9f79a44e48d695fffb9cd7a53a4fe07d304edea4d71ef8fca",
+   "repo_paths": [
+    "docs/north-star/financials/frames/14-company-performance-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/14-company-performance-375.png",
+   "bytes": 54814,
+   "sha256": "a8072683cba34d816aa3fa40796c661fe53f06773298711b42d89f765934a28f",
+   "repo_paths": [
+    "docs/north-star/financials/frames/14-company-performance-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/15-employee-performance-1440.png",
+   "bytes": 192590,
+   "sha256": "9d8ce291dea2d9d9dae9f2043304cff1fec9b14b8041dacd5d9cbe47dd6e8e00",
+   "repo_paths": [
+    "docs/north-star/financials/frames/15-employee-performance-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/15-employee-performance-375-self.png",
+   "bytes": 54276,
+   "sha256": "b4831cea40008cee7648f3a940040574d13e77775c85c9f5f488c4ad7e25a0ca",
+   "repo_paths": [
+    "docs/north-star/financials/frames/15-employee-performance-375-self.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/16-reconciliation-1440.png",
+   "bytes": 155661,
+   "sha256": "92f023455ba3a791568b60732d42abf77d07d76987d6954a0327634ec7a90411",
+   "repo_paths": [
+    "docs/north-star/financials/frames/16-reconciliation-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/16-reconciliation-375.png",
+   "bytes": 43450,
+   "sha256": "8476ab8b991f8dfc51bd96daeeabc073ba97ca276eb1b63dd0d9409ca0b96523",
+   "repo_paths": [
+    "docs/north-star/financials/frames/16-reconciliation-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/17-intercompany-1440.png",
+   "bytes": 155730,
+   "sha256": "5d038cd2be35243db04be56a1d49b000dcdc240a579a14706d0ef0d4d14f14db",
+   "repo_paths": [
+    "docs/north-star/financials/frames/17-intercompany-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/17-intercompany-375.png",
+   "bytes": 40679,
+   "sha256": "9d7949d2ee69bbcc3dc1b5f0975162e5bdfae62e644353e9705182b28d5b9e16",
+   "repo_paths": [
+    "docs/north-star/financials/frames/17-intercompany-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/18-audit-1440.png",
+   "bytes": 180527,
+   "sha256": "39ea101799b7f7dc02f242d66400e5212aadbc457f1b4feecb41f29621c3ebf9",
+   "repo_paths": [
+    "docs/north-star/financials/frames/18-audit-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/18-audit-375.png",
+   "bytes": 49670,
+   "sha256": "01553cfeb85b59ea851dfb2ccb09b613d691e9886095114972a2c6e3be6d0d45",
+   "repo_paths": [
+    "docs/north-star/financials/frames/18-audit-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/19-reports-1440.png",
+   "bytes": 214707,
+   "sha256": "66626cabb57a798bd98fe62f27231eefacefca37111f9a5c276883fb7a273aef",
+   "repo_paths": [
+    "docs/north-star/financials/frames/19-reports-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/19-reports-375.png",
+   "bytes": 48296,
+   "sha256": "91317e0dca469a255a966ad0c03522411a6bf3b502fb6b9e67d6b9c335717bd9",
+   "repo_paths": [
+    "docs/north-star/financials/frames/19-reports-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/20-governance-1440.png",
+   "bytes": 189132,
+   "sha256": "45fc42dc62d8f1888751104c1d977f4bb8e2d001c6224311d303167f8d1c115c",
+   "repo_paths": [
+    "docs/north-star/financials/frames/20-governance-1440.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/20-governance-375.png",
+   "bytes": 43726,
+   "sha256": "0b01f2d3c5fad05f2986e069717e57df9a82c5917d6b5e672f5d5e3c6adadb94",
+   "repo_paths": [
+    "docs/north-star/financials/frames/20-governance-375.png"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/frames/README.md",
+   "bytes": 2629,
+   "sha256": "6e3629bac88e95e9220549e65d399f5c77de153178477abe46fe3678413e696e",
+   "repo_paths": [
+    "docs/north-star/financials/frames/README.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/01-overview.md",
+   "bytes": 4603,
+   "sha256": "484b09112de618165224fe98b4240e637bd7ee5cbfc085f90411501d536fdb1a",
+   "repo_paths": [
+    "docs/north-star/financials/pages/01-overview.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/02-billing-queue.md",
+   "bytes": 4513,
+   "sha256": "08bd29b316920d2e23317efac6dc867279486c15ba5ffeb7329be4aed578d852",
+   "repo_paths": [
+    "docs/north-star/financials/pages/02-billing-queue.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/03-invoices.md",
+   "bytes": 4610,
+   "sha256": "f92467aa61449be91f858d7bcee3c90bed1e36e7d3e32dac19344df1ad534be6",
+   "repo_paths": [
+    "docs/north-star/financials/pages/03-invoices.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/04-accounts-receivable.md",
+   "bytes": 3952,
+   "sha256": "f2163229c796df6fe70d8fa3e32f3a6a837a7921f7a83fc030f20ed9ba321adf",
+   "repo_paths": [
+    "docs/north-star/financials/pages/04-accounts-receivable.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/05-payments.md",
+   "bytes": 4279,
+   "sha256": "7bac971c287a3983acc6e8e803ee2720db911bbb16fc77e9ef93528c016b0777",
+   "repo_paths": [
+    "docs/north-star/financials/pages/05-payments.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/06-credits-adjustments.md",
+   "bytes": 4103,
+   "sha256": "51cce5fe556464f2edc94895b2b6cd46e1141e68ea05255c32928fe75a3de850",
+   "repo_paths": [
+    "docs/north-star/financials/pages/06-credits-adjustments.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/07-customer-financials.md",
+   "bytes": 3901,
+   "sha256": "73ca25aa8bfe7b648208b6c5da1f893548ad858bff5931eed7f9400fc25eb638",
+   "repo_paths": [
+    "docs/north-star/financials/pages/07-customer-financials.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/08-sales-to-goal.md",
+   "bytes": 3688,
+   "sha256": "ef9176c182b496399bc2c2ed268c8e3d4d6d2b85a36e67e12b4e580fa9010a80",
+   "repo_paths": [
+    "docs/north-star/financials/pages/08-sales-to-goal.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/09-cost-to-budget.md",
+   "bytes": 3597,
+   "sha256": "6e6ed0b511237c09ba79191058aec706d46798d3374fa9c5719261112c6f870c",
+   "repo_paths": [
+    "docs/north-star/financials/pages/09-cost-to-budget.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/10-forecasting.md",
+   "bytes": 3990,
+   "sha256": "88ce5779471f3dfc0b32517b501281c818ba4dc93e678ce396f47a4560886914",
+   "repo_paths": [
+    "docs/north-star/financials/pages/10-forecasting.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/11-profitability.md",
+   "bytes": 3697,
+   "sha256": "5cd8ce5a584027a8b4920a1fdf5f6124292f003db883c436473cba1afa52a379",
+   "repo_paths": [
+    "docs/north-star/financials/pages/11-profitability.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/12-budgets.md",
+   "bytes": 4039,
+   "sha256": "e663499c84fc434c26f097cf3f830cd7be47684d99f3aa7abc4b6a1fd2efa1e7",
+   "repo_paths": [
+    "docs/north-star/financials/pages/12-budgets.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/13-goals.md",
+   "bytes": 3725,
+   "sha256": "0519e1a2f5a429ab0aaaf8e8b99327d69eb5f6e05d95804e9f56abf2559a190b",
+   "repo_paths": [
+    "docs/north-star/financials/pages/13-goals.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/14-company-performance.md",
+   "bytes": 3959,
+   "sha256": "7521f66033931cea17eeeeb09875e043bff4eb58b1bb37846754fd6f3c4a8d10",
+   "repo_paths": [
+    "docs/north-star/financials/pages/14-company-performance.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/15-employee-performance.md",
+   "bytes": 4178,
+   "sha256": "67e7541022fbb4f3e0392b41159eb160922da7ff9f50cc2c3e65b08920038a00",
+   "repo_paths": [
+    "docs/north-star/financials/pages/15-employee-performance.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/16-reconciliation.md",
+   "bytes": 3722,
+   "sha256": "9fbc9499140221637a28b6c36d211b8a76753a24d5c5dab8501c7981768360cd",
+   "repo_paths": [
+    "docs/north-star/financials/pages/16-reconciliation.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/17-intercompany.md",
+   "bytes": 3690,
+   "sha256": "a3b31dd16ab20e70ff6e252c91ec3568bea4dd3241d1a0053ad2f55359ca415b",
+   "repo_paths": [
+    "docs/north-star/financials/pages/17-intercompany.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/18-audit.md",
+   "bytes": 3812,
+   "sha256": "14736eefa96e463217834112ed8a1bccf56f2b327bb404d83029a5f2427d3963",
+   "repo_paths": [
+    "docs/north-star/financials/pages/18-audit.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/19-reports.md",
+   "bytes": 3794,
+   "sha256": "8e757cb1918806d8a3e69841404ad317424ca3be5f5af6daaafe85f2f8f69944",
+   "repo_paths": [
+    "docs/north-star/financials/pages/19-reports.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/pages/20-governance.md",
+   "bytes": 3949,
+   "sha256": "209391a324606f12633e3ac4ba6d9f717d0c2402abfc9e17e033bb5652bb809f",
+   "repo_paths": [
+    "docs/north-star/financials/pages/20-governance.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Financials North Star P1v1.zip",
+   "member": "design_handoff_financials/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Lists and States North Star P1v1.zip",
+   "member": "design_handoff_lists/North Star - Lists P1.dc.html",
+   "bytes": 33435,
+   "sha256": "2759261852318d7ec6d2794c51d6c2fb3fa9ebc70ac7fc521db04482f020d22e",
+   "repo_paths": [
+    "docs/north-star/lists/Lists-North-Star-P1.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Lists and States North Star P2v1.zip",
+   "member": "design_handoff_lists/North Star - Lists P1.dc.html",
+   "bytes": 33435,
+   "sha256": "2759261852318d7ec6d2794c51d6c2fb3fa9ebc70ac7fc521db04482f020d22e",
+   "repo_paths": [
+    "docs/north-star/lists/Lists-North-Star-P1.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Lists and States North Star P2v1.zip",
+   "member": "design_handoff_lists/North Star - Lists P2.dc.html",
+   "bytes": 56317,
+   "sha256": "c870a3130690165cfbb39ffa9779681386869b6c33a9377e7f1a6f7deea3761e",
+   "repo_paths": [
+    "docs/north-star/lists/Lists-North-Star-P2.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Lists and States North Star P2v1.zip",
+   "member": "design_handoff_lists/README.md",
+   "bytes": 7466,
+   "sha256": "9b90651596dd9f0d58974c5e11cf1107e044c0fa72740c5889948fc4975a2abd",
+   "repo_paths": [
+    "docs/north-star/lists/DESIGN-HANDOFF-LISTS-P2.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Opportunity North Star P1v1.zip",
+   "member": "design_handoff_opportunity/North Star - Opportunity P1.dc.html",
+   "bytes": 24341,
+   "sha256": "c17f5c6ac1244ecebf51893fa09e49fa653003241c488be9ea74205f9539eeca",
+   "repo_paths": [
+    "docs/north-star/opportunity/Opportunity-North-Star-P1v1.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Opportunity North Star P1v2.zip",
+   "member": "design_handoff_opportunity/North Star - Opportunity P1.dc.html",
+   "bytes": 24341,
+   "sha256": "c17f5c6ac1244ecebf51893fa09e49fa653003241c488be9ea74205f9539eeca",
+   "repo_paths": [
+    "docs/north-star/opportunity/Opportunity-North-Star-P1v1.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Opportunity North Star P1v2.zip",
+   "member": "design_handoff_opportunity/North Star - Opportunity P1v2.dc.html",
+   "bytes": 29063,
+   "sha256": "d81d76d414609c080bd85cae9481ad5e1f3206cc2f80326bbced51cb21ee114a",
+   "repo_paths": [
+    "docs/north-star/opportunity/Opportunity-North-Star-P1v2.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Opportunity North Star P1v2.zip",
+   "member": "design_handoff_opportunity/README.md",
+   "bytes": 13205,
+   "sha256": "b62899b3712f4070feb4520d38758e813311498437365a984c416e6f1caf3fc2",
+   "repo_paths": [
+    "docs/north-star/opportunity/DESIGN-HANDOFF-P1v2.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Opportunity North Star P1v4.zip",
+   "member": "design_handoff_opportunity_workspace/North Star - Opportunity List P1v4.dc.html",
+   "bytes": 34406,
+   "sha256": "6ec0450368cccf0e20bca4eab64ba9f04e51420279373d274a3b75c1825c7b8c",
+   "repo_paths": [
+    "docs/north-star/opportunity/Opportunity-North-Star-List-P1v4.dc.html"
+   ],
+   "basename_status": "NEW"
+  },
+  {
+   "archive": "Opportunity North Star P1v4.zip",
+   "member": "design_handoff_opportunity_workspace/README.md",
+   "bytes": 6364,
+   "sha256": "1227c2f5d44081b4ac78147e74c544f9f3b0e3ae53e29ef2b0ae8b40a8ad86bc",
+   "repo_paths": [
+    "docs/north-star/opportunity/DESIGN-HANDOFF-LIST-P1v4.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Parts North Star P1v1.zip",
+   "member": "design_handoff_parts/North Star - Parts P1.dc.html",
+   "bytes": 28839,
+   "sha256": "38ec3abb0457292e091c755ed6a2472a0633ad6b3166ea063f22febae911ec46",
+   "repo_paths": [
+    "docs/north-star/parts/North Star - Parts P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Parts North Star P1v1.zip",
+   "member": "design_handoff_parts/README.md",
+   "bytes": 6166,
+   "sha256": "e77297749cc01cd3d82f0929e4cea23a9f3d90cfb17bd9029a657991249eb09d",
+   "repo_paths": [
+    "docs/north-star/parts/DESIGN-HANDOFF-PARTS-P1.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Parts North Star P1v2.zip",
+   "member": "design_handoff_parts/North Star - Parts P1.dc.html",
+   "bytes": 28839,
+   "sha256": "38ec3abb0457292e091c755ed6a2472a0633ad6b3166ea063f22febae911ec46",
+   "repo_paths": [
+    "docs/north-star/parts/North Star - Parts P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Parts North Star P1v2.zip",
+   "member": "design_handoff_parts/README.md",
+   "bytes": 6166,
+   "sha256": "e77297749cc01cd3d82f0929e4cea23a9f3d90cfb17bd9029a657991249eb09d",
+   "repo_paths": [
+    "docs/north-star/parts/DESIGN-HANDOFF-PARTS-P1.md"
+   ],
+   "basename_status": "EXISTS_DIVERGENT"
+  },
+  {
+   "archive": "Parts North Star P1v2.zip",
+   "member": "design_handoff_parts/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Receiving North Star P1v1.zip",
+   "member": "design_handoff_receiving/North Star - Receiving P1.dc.html",
+   "bytes": 39437,
+   "sha256": "0962874e1d5210b6c4c8d11915289e185dbb591ecc0d4ab1b4d8a15a7deed52f",
+   "repo_paths": [
+    "docs/north-star/receiving/North Star - Receiving P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Receiving North Star P1v1.zip",
+   "member": "design_handoff_receiving/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Sales and Inventory Dashboards North Star P1v1.zip",
+   "member": "design_handoff_dashboards/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Sales and Inventory Dashboards North Star P1v2.zip",
+   "member": "design_handoff_my_dashboard/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Scoping answers needed P1.zip",
+   "member": "design_handoff_work_order/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Scoping answers needed P1v2.zip",
+   "member": "design_handoff_work_order/support.js",
+   "bytes": 69150,
+   "sha256": "8fe7df74405f3c55f49b7249c74ea1397e65d07dea2b1bd3b4a489bec2e28cbe",
+   "repo_paths": [
+    "docs/north-star/financials/support.js"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Service Operations North Star.zip",
+   "member": "design_handoff_service_operations/North Star - Service Operations P1.dc.html",
+   "bytes": 27931,
+   "sha256": "792b715b65187ac7a07950f2b16d3391ccda8229daba179c8dc67fd21b94391c",
+   "repo_paths": [
+    "docs/north-star/service-operations/North Star - Service Operations P1.dc.html"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  },
+  {
+   "archive": "Service Operations North Star.zip",
+   "member": "design_handoff_service_operations/README.md",
+   "bytes": 5651,
+   "sha256": "a22ffa98d7754f67b03d3b350e65e6cdb3fe81030bee0d5363a8c31a8a56915b",
+   "repo_paths": [
+    "docs/north-star/service-operations/README.md"
+   ],
+   "basename_status": "EXISTS_IDENTICAL"
+  }
+ ]
+}
