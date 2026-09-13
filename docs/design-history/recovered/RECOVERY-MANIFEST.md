@@ -55,8 +55,8 @@ Source: **22 `.zip` archives** in local custody at `/mnt/d/Taylor_Parts/Claude D
 
 **Comparison method, and why it matters.** Presence was decided by **SHA-256 over every one of the
 4,519 files tracked at baseline**, not by filename. Filename matching is wrong in both directions here:
-it reports package `README.md` files as "present" because the repo has 78 unrelated READMEs, and it
-reports already-vendored canvases as "new" because the repo renamed them on vendoring
+it reports package `README.md` files as "present" because the repo has 44 `README.md` files of its own,
+and it reports already-vendored canvases as "new" because the repo renamed them on vendoring
 (`North Star - Lists P1.dc.html` → `Lists-North-Star-P1.dc.html`). See §4 for the corrections this
 produced to the inherited census figures.
 
@@ -697,17 +697,21 @@ figures are exact and the "genuinely new" figures are not.
 | Contained files already in the repo **by basename** | 132 (7,070,127 B) | **132 (7,070,127 B)** | correct as stated — but see below, the predicate is wrong |
 | Genuinely new | **44 files, 4,258,035 B** | **61 entries / 57 distinct blobs, 4,336,161 B written / 4,263,393 B distinct** | **understated** |
 | New `.dc.html` (`new_dc.txt`) | 16 | **11 genuinely new; 5 already vendored under renamed paths** | **overstated by 5** |
+| Package `README.md` entries in the archives | not stated | **23 — 13 absent by content, 10 already present** | — |
+| Repository's own `README.md` files at baseline | not stated | **44** | — |
 
 Also independently re-verified: **`census.json` is byte-accurate.** Every archive SHA-256, every
 member SHA-256 and every byte count in it was recomputed from the archives and matched with **zero
 discrepancies**. The census is sound; the *inference drawn from it* is what needed correcting.
 
 **Correction 1 — basename matching is wrong in both directions.** The "132 already exist" figure
-counts every package `README.md` as present because the repository contains 78 unrelated `README.md`
-files. A package `README.md` is the design-handoff document for that package; it is not the repo's
-README. Sixteen of them are genuinely absent from the repo and are recovered here. Conversely, seven
-package READMEs **are** already in the repo — renamed on vendoring to `DESIGN-HANDOFF-*.md`, which
-basename matching cannot see either.
+counts every package `README.md` as present because the repository contains **44** `README.md` files
+of its own. A package `README.md` is the design-handoff document for that package; it is not the repo's
+README. The archives hold **23** `README.md` entries: **13 are genuinely absent** from the repo by
+content and are recovered here, and **10 are already present** — 7 of those renamed on vendoring to
+`DESIGN-HANDOFF-*.md` (Dispatch Board P1, Equipment P1v2.1, Lists P2, Opportunity P1v2, Opportunity
+List P1v4, and Parts P1 twice), which basename matching cannot see either, plus 3 vendored as
+`README.md` (Financials, Financials `frames/`, Service Operations).
 
 **Correction 2 — five of the sixteen `.dc.html` in `new_dc.txt` are already vendored**, byte-identical,
 under renamed paths. They are not recovered here because there is nothing to recover:
