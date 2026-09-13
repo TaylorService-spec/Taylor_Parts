@@ -6736,3 +6736,94 @@ RESPONSIBILITY DOES NOT PASS THE GATE.**
 **ENGINEERING IMPLEMENTATION NOT YET AUTHORIZED.** The 29 accountability implementation items
 (`docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md`) are to be reassessed against
 this ruling and **remain unimplemented until `OD-7` and any directly dependent decisions are reconciled.**
+
+## #183 — OWNER RULING: OD-7 / M-4 — a handoff to a non-existent Employee is BOTH defects, at different layers (2026-09-13)
+
+**`M-4` RULED AND CLOSED. Answer: (iii) BOTH** — a **Layer-1 person-reference defect** *and* a **handoff-validation
+defect** — **but the two responsibilities live at different layers.**
+
+### The fundamental defect
+
+**The person reference cannot be authoritatively resolved.** `OD-6` (**#182**) already established that a
+non-empty USER/person id is not sufficient. So:
+
+> **NON-EXISTENT EMPLOYEE → INVALID PERSON REFERENCE → NOT ELIGIBLE AS HANDOFF TARGET.**
+
+That is a **Layer-1** failure.
+
+### The handoff-boundary responsibility
+
+A governed handoff command **must refuse to commit** a handoff whose target person failed Layer-1
+resolution: it **must require successful authoritative person resolution before mutation.**
+
+**This does NOT mean the pure handoff builder performs the lookup. The command / orchestration boundary
+must supply a validated target fact.**
+
+### Placement consequence — ruled, not inferred
+
+> **DO NOT put authoritative Employee existence lookup inside the synchronous audit writer or the pure
+> builder.**
+
+This ruling is grounded in a measured property of the code, not a preference. `assertValid`
+(`functions/src/access/auditEventWriter.ts:460`) is **synchronous and returns `void`**, and is the first
+statement of the write paths at `:785` and `:820`; and **every module in `functions/src/ownership/` declares
+itself PURE, each by its own header** — `typedOwner.ts:7` · `operatingCompanyAuthority.ts:6` ·
+`ownershipCensus.ts:9-10` · `creationOwnerResolution.ts:25-26` · `ownershipBackfillRules.ts:27` ·
+`ownershipHandoffCommand.ts:12-13`. **Neither location can perform I/O.** The ruling therefore matches the
+architecture rather than fighting it, and it is consistent with ruling **O-1**, cited in code at
+`typedOwner.ts:44-48` as excluding *"a fallible cross-collection lookup into otherwise deterministic
+ownership resolution."*
+
+### Preferred architectural sequence
+
+```
+TRANSACTION / COMMAND READ PHASE
+  → resolve target Employee using the canonical person authority
+  → evaluate current eligibility required by OD-6
+  → construct validated handoff input
+  → pure family / axis validation
+  → mutation
+  → audit
+  → commit atomically
+```
+
+**If resolution fails: REFUSE BEFORE WRITE.** No ownership, accountability or assignment mutation may occur.
+
+### Pure builder contract
+
+The pure builder **may** still enforce invariants that need no I/O: supported family · supported axis · no
+forbidden owner/accountability conflation · current/next value structure · no-op refusal · immutable family
+rule · company/person type compatibility **where already resolved**.
+
+**But it must consume an already-resolved person fact rather than pretending a string id proves Employee
+existence.** At the baseline it does the latter: `newOwner` is checked by `isTypedOwner` — **shape only** —
+at the writer (`auditEventWriter.ts:541`) and the builder (`ownershipHandoffCommand.ts:126`), and the person
+arm of `isTypedOwner` applies only `nonEmptyString` (`typedOwner.ts:67`) where the company arm applies a
+format regex (`:68`).
+
+### Atomicity
+
+The handoff must be **one governed transactional operation**:
+`READ AUTHORITATIVE FACTS · VALIDATE · WRITE RESPONSIBILITY CHANGE · WRITE AUDIT · COMMIT`.
+
+On any validation failure: **zero responsibility mutation · zero partial handoff · zero responsibility gap.**
+This preserves the standing invariant that **"WHO IS RESPONSIBLE FOR MAKING SURE THE NEXT THING HAPPENS?"
+must remain answerable throughout the operation** — i.e. `OD-1` invariant 7 (**#180**).
+
+### What this ruling does NOT do
+
+**It does not choose an `OD-7` placement option.** `M-1` (axis scope), `M-2` (which carrier owns the handoff
+fact) and `M-3` (whether selecting a placement authorizes wiring or only settles architecture) **remain
+open.**
+
+**It does not name the canonical person authority.** That is preserved as the **PERSON AUTHORITY GAP**: no
+candidate at the baseline satisfies `OD-6` Layer 1. The eventual authority must establish **stable
+Employee / business-person identity · namespace · existence · employment and current-status facts ·
+historical identity preservation · Principal/Firebase identity linkage where required · technician relation
+where required · operating-company context where applicable.** **`users`, `fieldops_technicians`, Firebase
+Auth and `eos_policy.principals` must NOT become the canonical Employee authority merely because one
+contains a useful subset.**
+
+**IMPLEMENTATION REMAINS NOT AUTHORIZED.** All 42 items in
+`docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` stay
+`IMPLEMENTATION STATUS = NOT AUTHORIZED`.
