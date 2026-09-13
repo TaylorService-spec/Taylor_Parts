@@ -373,6 +373,85 @@ here: `ext/own-decision-packet`, `ext/own-engineering-gap`, `ext/ux-honest-absen
 **16 branches carry code that `main` does not have and should.** Two more carry code `main` should
 probably have but cannot receive without an Owner ruling.
 
+## 12.1 REPORTING IS ACTIVATED IN PRODUCTION — a withdrawal, and a raised risk on A1-12
+
+Surfaced by the UX-KPI-DRILL lane. Two lanes reached opposite conclusions on it, so every link was
+re-verified here, at `64008d5a`, before anything was written down.
+
+**The program has repeatedly stated that nothing is reachable in production and that reporting stays
+fail-closed there. For the `report.*` family that is false.** The whole chain holds:
+
+| # | Link | Verified |
+|---|---|---|
+| 1 | The environment named `taylor-parts-production` declares **25** `productionCapabilityActivations`, all `report.*` | `:679` — counted, all 25 match `report.*` |
+| 2 | Its `role` is `"production"`, so the production authority applies | `:667`, gate at `:748` |
+| 3 | Each declared id must pass `PRODUCTION_ACTIVATION_ELIGIBLE_IDS` | `:755`. That set holds **exactly 25** entries and the 25 declared ids are exactly those. **25 of 25 survive; none dropped** |
+| 4 | The resolver **prefers** the production set over the non-production one | `:774` (see §12.2) |
+| 5 | The report engine passes the resolved set into the permission resolver | `reportExecutionService.ts:273` |
+| 6 | Presence of the id **suppresses the `active: false` deny** | `resolveEffectivePermission.ts:264` |
+| 7 | `runReportDefinitionCallable` is **deployed and ACTIVE** in `projects/taylor-parts` | committed `gcloud functions describe` output: `docs/audits/functions-live-state/2026-07-21/function-describes/runReportDefinitionCallable.json` → `state = ACTIVE`, `environment = GEN_2`, `updateTime 2026-07-21T05:07:33Z`. Also present in `docs/audits/sandbox-provisioning-20260806/prod-functions.json` |
+
+**A comment in shipped code is wrong about the code it annotates.**
+`reportExecutionService.ts:271-272` reads *"Production carries no overrides, so Reporting stays
+fail-closed there until a separate activation ruling."* Production carries **25** overrides. The
+environment registry's own comment at `:83-85` states the opposite of the program's position and is the
+correct one: *"production ACTIVATION was never reviewed, and `runReportDefinitionCallable` is already
+deployed there."*
+
+**What is left standing after the deny is lifted** is only the ordinary Role/Scope/Condition/accessVersion
+check, which `resolveEffectivePermission.ts` leaves unchanged — so a lifted capability with no qualifying
+grant still denies. But `ADMIN_ALL_PERMISSIONS` (`compatibilityRoles.ts:235`) spreads the whole catalogue
+onto `admin`, and the single production principal is `admin@global`. **So the reachable-by-admin path
+for reporting in production is live, not theoretical.**
+
+**Withdrawn:** "reporting stays fail-closed in production" and the unqualified "nothing is reachable in
+production." The second was always about *commercial* surfaces and stays true of those; stated without
+that qualifier it is false, because reporting is reachable and reporting reads customer data.
+
+**Consequence for this register: A1-12 is the highest-risk merge in the sequence, not merely the last.**
+`rpt/client-outcome-honesty` changes the behaviour of the one family a production caller can actually
+reach. Its A1-12 position stands — the test-registration ratchet must be in place first — but it must be
+reviewed as a production-reachable behaviour change, not as a test-honesty cleanup.
+
+**Two live defects recorded, not fixed, and not covered by any candidate:**
+`coverageReadCallables.ts:59-60` takes a **caller-supplied `companyId` as the query scope with no
+membership check**, and `:72-74` returns `status: "ready"` with zero rows for **every thrown error** —
+"no rows for that company" as a response to a failure, which is the exact false-empty the standing
+invariant forbids. Latent today: `coverage.read` is inactive and not production-activated. And
+`createOpportunity` spreads attacker-controlled `request.data` (`opportunityCallables.ts:228`), so
+`operatingCompanyId` flows unchecked into a downstream finance authorization key.
+
+**UNPROVEN, and it is the load-bearing gap.** Deployment rests on committed snapshots dated **2026-07-21**
+and **2026-08-06** — real observations by a credentialed operator, not static source reading, but **not
+re-verified in this run and now weeks old.** A function deployed then may have been deleted since.
+Whether a report has ever actually been *run* in production is also unproven, as is whether
+`effectiveAccessFeed.ts` passes the production activation set to the client. **No production contact was
+made and none is authorized.** The correct standing is: *activated and deployed on the strength of dated
+committed evidence, awaiting live re-verification* — not *proven reachable today*.
+
+## 12.2 Activation composition is a PREFERENCE, not a union
+
+`environmentCapabilityOverrides.ts:774` — `cachedOverrides = production.size > 0 ? production : nonProduction;`
+
+The comment at `:770-771` calls it a union: *"The union is therefore a statement of intent, not an
+overlap to reason about."* **It is a ternary.** If the production set is non-empty the non-production set
+is **discarded entirely**, not merged. That is harmless today only because the registry happens to
+populate one field per environment — a fact about the registry's contents, not an invariant the code
+enforces.
+
+This program has said throughout that the two fields *"compose"*. **That word is withdrawn**; it implies
+a union and the code implements precedence.
+
+Two further corrections while verifying it, both affecting figures quoted all run:
+
+- **The resolver keys on `projectId`, not the environment name** (`:742`). The environment *named*
+  `taylor-parts-production` carries `firebase.projectId: "taylor-parts"` (`:667`). "25 entries on
+  `taylor-parts-production`" describes the record correctly and the lookup key incorrectly.
+- **There is a third gate, previously unrecorded.** Production activation passes
+  `role === "production"` (`:748`), **then** the `PRODUCTION_ACTIVATION_ELIGIBLE_IDS` allowlist (`:755`),
+  **then** the preference (`:774`). A declared-but-ineligible id is silently dropped. Today 25 of 25
+  survive, so the gate is invisible — which is exactly how it would be missed if it ever bit.
+
 ## 13. What this register does NOT establish
 
 - **That any A1 or A2 branch still passes.** Every "EXECUTED (own lane)" grade is evidence from that
