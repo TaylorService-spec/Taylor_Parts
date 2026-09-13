@@ -104,4 +104,132 @@ ok("the unavailable outcome is safe, frozen, and self-consistent", () => {
   assert.deepEqual(mapCallableError({ code: "not-found" }), u);
 });
 
+
+// ============================================================================
+// RPT-CLIENT -- the three outcome-honesty defects. Baseline:
+// rpt/false-empty-and-audit @ 8521cd88 (chain 92db1d19 -> 64008d5a).
+//
+// Every expectation below is taken from the SERVER source in this same
+// checkout, not from a description of it:
+//   functions/src/reporting/reportExecutionService.ts   (RunReportOutcomeKind,
+//     ScanCompleteness, UnprovenAbsenceError, judgeAbsenceProvenance)
+//   functions/src/reporting/runReportDefinitionCallable.ts  (HttpsError codes)
+// ============================================================================
+
+// ---- Defect 1: SERVICE_KINDS was behind the server's closed kind set -------
+//
+// ENG-E added "company-unresolved": a TENANCY refusal deliberately DISTINCT
+// from "permission-denied" so an operator cannot mistake it for a missing
+// grant and go and grant a Role. At baseline it was absent from SERVICE_KINDS,
+// so mapServiceOutcome() fell through to reportRunFailure() and the tenancy
+// refusal rendered as a generic "something went wrong".
+ok("a `company-unresolved` payload is RECOGNISED, not failed-closed into a generic failure", () => {
+  const out = mapServiceOutcome({
+    kind: "company-unresolved", objectId: "customer", rows: null, aggregates: null,
+    rowCount: 0, rowCap: 10000, truncated: false,
+    completeness: "not-attempted", scanTruncated: false, widened: false,
+    droppedColumnLabels: [], droppedPredicateCount: 0,
+    companyReach: [], rowScopeKind: "unresolved",
+    companyBoundRefusal: "the runner holds the object read capability, but no operatingCompany-scoped binding resolves",
+  });
+  assert.equal(out.kind, "company-unresolved",
+    "a kind the server can emit must not be swallowed as `failure` -- that loses the tenancy explanation");
+  assert.equal(out.ok, false, "a refusal is not ok");
+  assert.equal(out.rows, null);
+});
+
+ok("the server's refusal PROSE is never carried into the client outcome", () => {
+  // companyBoundRefusal is audit-facing server prose (it names Firestore's `in`
+  // limit, reach counts, binding vocabulary). It is not UI copy and must not
+  // travel to a renderer that would print it.
+  const out = mapServiceOutcome({
+    kind: "company-unresolved", rows: null,
+    companyBoundRefusal: "reach of 31 operating companies exceeds Firestore's 30-value `in` limit",
+  });
+  assert.equal(out.companyBoundRefusal, undefined);
+  assert.doesNotMatch(JSON.stringify(out), /Firestore/i);
+});
+
+// ---- The orthogonal completeness axis must survive the mapper --------------
+//
+// completeness + scanTruncated are present on EVERY server outcome and are
+// deliberately NOT kinds (the client ladder is single-winner and has already
+// collapsed once). A mapper that drops them makes it impossible for any
+// renderer to read them, which is the same collapse by another route.
+ok("the completeness axis (completeness + scanTruncated) is carried through, never inferred", () => {
+  const bounded = mapServiceOutcome({
+    kind: "results", rows: [{ a: 1 }], rowCount: 1, rowCap: 10000,
+    truncated: true, completeness: "bounded-page", scanTruncated: true,
+  });
+  assert.equal(bounded.completeness, "bounded-page");
+  assert.equal(bounded.scanTruncated, true);
+
+  const complete = mapServiceOutcome({
+    kind: "results", rows: [{ a: 1 }], rowCount: 1, completeness: "proven-complete", scanTruncated: false,
+  });
+  assert.equal(complete.completeness, "proven-complete");
+  assert.equal(complete.scanTruncated, false);
+
+  // "not-attempted" means INAPPLICABLE -- a refusal that returned before any
+  // collection read. It must survive verbatim; it must never become "complete".
+  const refused = mapServiceOutcome({ kind: "company-unresolved", rows: null, completeness: "not-attempted" });
+  assert.equal(refused.completeness, "not-attempted");
+});
+
+ok("a missing or unrecognised completeness is reported as UNKNOWN (null), never as proven-complete", () => {
+  // Asserting completeness we were never told is the exact sin this lane exists
+  // to remove. `null` is "the server did not say", which the renderer then
+  // resolves conservatively from the truncation flags.
+  const silent = mapServiceOutcome({ kind: "results", rows: [], rowCount: 0 });
+  assert.equal(silent.completeness, null);
+  const junk = mapServiceOutcome({ kind: "results", rows: [], completeness: "totally-fine" });
+  assert.equal(junk.completeness, null);
+});
+
+// ---- Defect 2: the FACTUALLY FALSE one ------------------------------------
+//
+// runReportDefinitionCallable.ts maps BOTH server refusals --
+// IncompleteAggregateScanError (the aggregate refusal that already shipped) and
+// UnprovenAbsenceError (RPT-FIX) -- to HttpsError("resource-exhausted").
+// At baseline mapCallableError() had no branch for it, so both landed in
+// `default:` and produced reportRunUnavailable(), whose copy is, VERBATIM:
+const BASELINE_FALSE_COPY = "Running reports isn't available yet. Nothing was read or changed.";
+// For an unproven-absence refusal that sentence is FALSE: documents WERE read
+// (the scan exceeded maxScanDocs, which is why the answer could not be proven).
+// It also hides the one actionable instruction the server supplied: narrow the
+// report.
+ok("a `resource-exhausted` refusal must NOT claim \"Nothing was read or changed\" -- documents WERE read", () => {
+  const out = mapCallableError({ code: "resource-exhausted", message: "raw server prose with \"customer\" in it" });
+  assert.notEqual(out.kind, "unavailable",
+    "the engine was reachable and it ran -- rendering this as \"not available yet\" is false");
+  assert.notEqual(out.message, BASELINE_FALSE_COPY,
+    "this is the baseline copy and it is factually wrong for a refusal: documents were read");
+  assert.equal(out.ok, false);
+  assert.equal(out.rows, null);
+});
+
+ok("the refusal outcome says what happened and what to do, without a raw code or server prose", () => {
+  const out = mapCallableError({ code: "functions/resource-exhausted", message: "Aggregates for \"customer\" cannot be computed: the scan exceeded 20000 documents" });
+  assert.equal(typeof out.message, "string");
+  assert.ok(out.message.length > 0);
+  // the two facts the user needs
+  assert.match(out.message, /read/i, "must state that records WERE read");
+  assert.match(out.message, /complete/i, "must state the answer could not be proven complete");
+  // the one action the user can take
+  assert.match(out.message, /narrow|filter/i, "must carry the actionable instruction");
+  // and nothing from the wire
+  assert.doesNotMatch(out.message, RAW_LEAKS);
+  assert.doesNotMatch(out.message, /resource-exhausted/);
+  assert.doesNotMatch(out.message, /20000|maxScanDocs|customer/);
+});
+
+ok("both server refusals share one code, so they share one client outcome", () => {
+  // IncompleteAggregateScanError and UnprovenAbsenceError both throw
+  // resource-exhausted (runReportDefinitionCallable.ts:95 and :106) and the
+  // client cannot tell them apart -- so the copy must be true of BOTH.
+  const a = mapCallableError({ code: "resource-exhausted" });
+  const b = mapCallableError({ code: "functions/resource-exhausted" });
+  assert.deepEqual(a, b);
+});
+
 console.log(`\n${passed} passed, 0 failed`);

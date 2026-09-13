@@ -20,6 +20,9 @@ import { mapServiceOutcome, mapCallableError } from "./reportRunOutcome.js";
 export {
   REPORT_RUN_UNAVAILABLE_REASON, reportRunUnavailable,
   reportRunPermissionDenied, reportRunUnsupported, reportRunFailure,
+  // RPT-CLIENT: the scan-bound refusal state, re-exported on the same seam so a
+  // caller that fixtures the other outcomes can fixture this one too.
+  reportRunIncompleteScan,
 } from "./reportRunOutcome.js";
 
 // D-FN's onCall export name (functions/src/index.ts), region us-central1 (firebase.js binds the

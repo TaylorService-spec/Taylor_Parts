@@ -13,7 +13,67 @@
 const KINDS = new Set([
   "idle", "loading", "empty", "permission-denied", "partially-authorized",
   "unsupported", "truncated-widened", "failure", "unavailable", "results",
+  // RPT-CLIENT. Two states the client could not render at 8521cd88:
+  //   company-unresolved -- a SERVER kind (ENG-E): the run was refused because the
+  //     runner's operating company could not be established. Unrecognised here, it
+  //     fell through to "failure" and the tenancy explanation was lost.
+  //   incomplete-scan    -- a CLIENT-SIDE state (like "unavailable", "unsupported"
+  //     and "failure"), produced by reportRunOutcome.js from the server's
+  //     "resource-exhausted" refusal. It is NOT a server kind and must never be
+  //     added to SERVICE_KINDS.
+  "company-unresolved", "incomplete-scan",
 ]);
+// NOTE the asymmetry, which is deliberate. "empty-unproven" is an OUTPUT-ONLY
+// display state -- the `empty` branch returns it when the completeness axis says the
+// absence was never proven -- and it is NOT in KINDS, because no OUTCOME ever has
+// that kind. KINDS is the set of INPUT kinds this categorizer accepts; adding an
+// output-only state to it would accept a value no producer can make and then drop it
+// through to `default:` anyway.
+
+// ---------------------------------------------------------------------------
+// The ORTHOGONAL COMPLETENESS AXIS (reportExecutionService.ts's ScanCompleteness),
+// read here instead of being inferred from the winning kind.
+//
+// The server publishes `completeness` and `scanTruncated` on EVERY outcome
+// precisely so no consumer has to read the population verdict out of `kind` -- the
+// kind ladder is single-winner and has already collapsed once. So this file reads
+// the axis directly, and it does NOT turn the axis into a kind of its own on the
+// outcome: the only thing it selects is which DISPLAY descriptor to return.
+//
+// `null`/absent completeness means "the server did not say" (see
+// reportRunOutcome.js). It is resolved CONSERVATIVELY from the truncation flags,
+// never upward to "complete".
+// ---------------------------------------------------------------------------
+
+/**
+ * "complete" | "bounded" | "not-attempted" -- a DISPLAY verdict, not a wire value.
+ *
+ * RESIDUAL, stated rather than hidden: an outcome that carries NO completeness and
+ * NO truncation flag at all still resolves to "complete". The live server states
+ * completeness on every outcome it builds (the ratchet asserts that), so such a
+ * payload can now only be a fixture or a hand-built object -- and reading a
+ * fixture that asserts nothing as a proven absence preserves the pre-existing
+ * behaviour of this branch rather than silently reclassifying every existing
+ * fixture. It is the one case left where absence is inferred rather than read.
+ */
+function populationVerdict(outcome) {
+  const c = outcome?.completeness;
+  if (c === "not-attempted") return "not-attempted";
+  if (c === "bounded-page") return "bounded";
+  if (c === "proven-complete") return "complete";
+  // Not stated. Only SCAN truncation cuts the population, but a client fixture may
+  // carry only the coarse `truncated` OR-of-three-bounds; the server's own
+  // reasoning is that neither of the other two bounds can coexist with a zero-row
+  // result, so treating `truncated` as a population cut here can only be
+  // conservative, never over-claiming.
+  if (outcome?.scanTruncated === true || outcome?.truncated === true) return "bounded";
+  return "complete";
+}
+
+/** True when the population this outcome was drawn from was cut short. */
+function populationWasCut(outcome) {
+  return populationVerdict(outcome) === "bounded";
+}
 
 export function describeRunOutcome(outcome) {
   const kind = outcome && KINDS.has(outcome.kind) ? outcome.kind : "failure";
@@ -23,14 +83,71 @@ export function describeRunOutcome(outcome) {
         "Choose an object and fields, then run the report.");
     case "loading":
       return d("loading", "info", "status", null, "Running the report…");
-    case "empty":
-      // Not an error -- a valid report with no matching rows.
+    case "empty": {
+      // RPT-CLIENT defect 3. At 8521cd88 this branch read NO completeness flag and
+      // said "This report ran successfully but no records matched." for every
+      // `empty` outcome -- a PROVEN-ABSENCE claim. Its own partially-authorized
+      // sibling below already reads outcome.truncated for exactly this reason.
+      //
+      // A LIVE run can no longer reach a false `empty` (the server refuses with
+      // UnprovenAbsenceError), but this branch is also FIXTURE-driven (Spec §12),
+      // so a fixture can still assert an absence that was never proven.
+      const verdict = populationVerdict(outcome);
+      if (verdict === "not-attempted") {
+        // No scan was issued at all, so there is no absence to report -- proven or
+        // otherwise. An outcome that claims `empty` while stating that nothing was
+        // read is incoherent, and this file's standing convention for an incoherent
+        // outcome is to fail closed to the generic failure state. Deliberately NOT
+        // rendered as an absence of any kind.
+        return d("failure", "error", "alert", "This report couldn't run",
+          "No records were read, so this report can't say whether any match. Try running it again.");
+      }
+      if (verdict === "bounded") {
+        // Visually distinct (a warning tone and a notes list, so ReportBuilder's
+        // ResultArea cannot route it down the plain EmptyState path) and textually
+        // distinct: it states that records WERE read, withholds the absence claim,
+        // and says what the reader can do about it.
+        return d("empty-unproven", "warning", "status", "No matches in the records we could read", null, [
+          "This report read records but couldn't check all of them, so \u201Cno matching records\u201D isn't proven — matches may exist outside what was read.",
+          "Narrow the report — add a filter or a shorter date range — and run it again for a complete answer.",
+        ]);
+      }
+      // A PROVEN absence: the one case where this sentence is true.
       return d("empty", "info", "status", "No matching records",
         "This report ran successfully but no records matched.");
+    }
     case "permission-denied":
       // Whole-object denial. Reads as access, never a field enumeration (Spec §12).
       return d("permission-denied", "error", "alert", "You don't have access to this report",
         "Your role doesn't allow viewing this data. Ask an administrator if you need access.");
+    case "company-unresolved":
+      // RPT-CLIENT defect 1, at the render layer. A TENANCY refusal, NOT a missing
+      // permission -- ENG-E made it a distinct kind for exactly that reason: an
+      // operator who reads "no access" goes and grants a Role, which does not fix a
+      // valueless binding and may over-grant while trying to. So this copy must
+      // never borrow permission-denied's wording above.
+      //
+      // The target collection was NEVER READ on this path, so saying so is true.
+      // outcome.companyBoundRefusal is server prose (it names Firestore internals)
+      // and is not carried to the client at all -- see reportRunOutcome.js.
+      return d("company-unresolved", "error", "alert", "We couldn't establish which operating company this report is for",
+        "Your access doesn't resolve to an operating company for this data, so the report wasn't run and nothing was read. " +
+        "Ask an administrator to confirm which operating company your access applies to.");
+    case "incomplete-scan":
+      // RPT-CLIENT defect 2, at the render layer. The server's scan-bound refusal.
+      //
+      // The copy is FIXED here and outcome.message is deliberately NOT consulted
+      // (unlike "unavailable" below, which has always echoed it). This state has to
+      // carry three things every time -- records WERE read, the result is not proven
+      // complete, and the one action that fixes it -- and an outcome.message that a
+      // fixture supplied, or that a future payload shortened, could silently drop
+      // any of them. ReportBuilder renders an error tone through FailureState, which
+      // shows only the title and message and discards notes, so the action cannot be
+      // demoted to a note either.
+      return d("incomplete-scan", "error", "alert", "This report couldn't be completed",
+        "This report read records but there were too many to finish checking, so the result " +
+        "couldn't be proven complete and isn't shown. Narrow the report — add a filter or a " +
+        "shorter date range — and run it again. Nothing was changed.");
     case "partially-authorized": {
       // Columns the RUNNER selected may be named back to them; dropped PREDICATES are surfaced
       // as a count only -- a shared report's hidden filter may reference a field the runner may
@@ -53,7 +170,10 @@ export function describeRunOutcome(outcome) {
       if (outcome.widened && !(preds > 0)) {
         notes.push("Some filters weren't applied, so this result is wider than the saved report.");
       }
-      if (outcome.truncated) {
+      // RPT-CLIENT: the ORTHOGONAL axis, not only the coarse `truncated` OR. A
+      // fixture (or a future payload) that states completeness "bounded-page" while
+      // leaving `truncated` unset would otherwise lose the population cut entirely.
+      if (outcome.truncated || populationWasCut(outcome)) {
         const cap = Number.isInteger(outcome.rowCap) ? outcome.rowCap : null;
         notes.push(cap
           ? `Showing the first ${cap.toLocaleString()} rows — this result was cut off and isn't complete.`
@@ -69,7 +189,7 @@ export function describeRunOutcome(outcome) {
     case "truncated-widened": {
       const notes = [];
       if (outcome.widened) notes.push("Some filters weren't applied, so this result is wider than the saved report.");
-      if (outcome.truncated) {
+      if (outcome.truncated || populationWasCut(outcome)) {
         const cap = Number.isInteger(outcome.rowCap) ? outcome.rowCap : null;
         notes.push(cap
           ? `Showing the first ${cap.toLocaleString()} rows — this result was cut off and isn't complete.`
