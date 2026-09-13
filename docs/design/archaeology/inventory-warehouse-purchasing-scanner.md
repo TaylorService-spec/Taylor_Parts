@@ -71,7 +71,15 @@ none of them is in any commit on any ref (`git log --all --name-only` over the f
 
 | Lost artifact | Cited by | Why it matters |
 |---|---|---|
-| **`DESIGN-HANDOFF-PARTS-P1v2.md` + frames `1a`, `1a-m`, `1b`, `1b-m`** | `docs/north-star/parts/IMPLEMENTATION-DELTA-PARTS-P1v2.md:34` names it as **"Design authority"** and `:35` names the four frames as **"Acceptance authority"** | **The visual authority the currently-shipped Parts workspace and Part record were accepted against does not exist in this repository.** The delta and the ledger describe it; the artifact itself is gone. `Parts North Star P1v3.zip` was byte-identical to P1v2 (`IMPLEMENTATION-DELTA-PARTS-P1v2.md:28-30`) so nothing else carries it either. |
+| **`DESIGN-HANDOFF-PARTS-P1v2.md` + frames `1a`, `1a-m`, `1b`, `1b-m`** **· RECOVERED 2026-09-13** | `docs/north-star/parts/IMPLEMENTATION-DELTA-PARTS-P1v2.md:34` names it as **"Design authority"** and `:35` names the four frames as **"Acceptance authority"** | ~~**The visual authority the currently-shipped Parts workspace and Part record were accepted against does not exist in this repository.** The delta and the ledger describe it; the artifact itself is gone. `Parts North Star P1v3.zip` was byte-identical to P1v2 (`IMPLEMENTATION-DELTA-PARTS-P1v2.md:28-30`) so nothing else carries it either.~~ → **SUPERSEDED 2026-09-13: all five files recovered** from `Parts North Star P1v2.zip`, at `docs/design-history/recovered/Parts/`. The first sentence re-verifies as a statement about *this repository* and is still true of it. The `Parts North Star P1v3.zip` reasoning was **correct and is the clue that mattered** — the authority travelled with the `.zip` deliveries, and one of them was still in local custody. **Conformance of the shipped surface is unaudited**, and the historic `audit-*.png` captures the P1v2 brief was built on are **still unavailable**, so a present-day mismatch could not be attributed to drift rather than intended change. |
+
+> **SUPERSEDED IN PART — 2026-09-13, lane ARCH-RECOVER.** The first row above is **RECOVERED**; the
+> other rows in this table are **unchanged** — `parts-ux-redesign-blueprint.md` and the four
+> `audit-*.png` are in no archive. The sweep that produced this table was sound and re-verifies today;
+> the artifacts were in delivery archives at `/mnt/d/Taylor_Parts/Claude Design Docs/`, outside this
+> lane's authority to search. **Correct about the repository, incomplete about the world.**
+>
+> **RECOVERED HISTORICAL DESIGN EVIDENCE** — **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not proof that current EOS still conforms.** The Owner ruling of 2026-08-31 is neither re-opened nor re-confirmed by recovery. See `docs/design-history/recovered/RECOVERY-MANIFEST.md` and the recovery index at `historical-acceptance-evidence-register.md` §0.4.
 | **`parts-ux-redesign-blueprint.md`** | `docs/ai/memory-archive/project_parts_ux_redesign.md:20` — the Wave-6 audit package delivered by four parallel Explore agents, containing §14d (manufacturer read authority), §14e (Action Center attention-item model) and §14g (queue dedup analysis) | The whole Wave-6 Parts UX analysis. Only its abstract survives, in the memory archive. |
 | **`audit-workspace-1440.png` / `audit-workspace-375.png` / `audit-record-1440.png` / `audit-record-375.png`** | `docs/north-star/parts/DESIGN-BRIEF-PARTS-P1v2.md:29-34` | The deployed-state captures the P1v2 brief was built on. |
 | **`docs/implementation-plans/cycle-count-multi-part-and-scheduling.md`** | `docs/specifications/cycle-count-multi-part-sheet.md:18` | Preserved **only** at tag `archive/cycle-count-a1-spec-f585125d`, explicitly "not yet on `main`". |
@@ -1834,6 +1842,15 @@ Everything this lane could not establish from the worktree alone.
 11. **The accepted visual authority for the shipped Parts pages does not exist in this repository.**
     Should `DESIGN-HANDOFF-PARTS-P1v2.md` and its four frames be re-obtained and committed, so a
     future reader can see what was accepted?
+
+    **ANSWERED IN PART 2026-09-13 — they have been re-obtained.** All five files were recovered from
+    `Parts North Star P1v2.zip` and committed as **historical evidence** at
+    `docs/design-history/recovered/Parts/Parts-North-Star-P1v2/`, so a future reader *can* now see what
+    was accepted. **They were deliberately NOT committed as current authority.** Whether they should be
+    promoted to repo-resident *design authority* under `docs/north-star/parts/` is the Owner question
+    this item raised, and it remains open. **RECOVERED HISTORICAL DESIGN EVIDENCE** — **not** current
+    North Star, **not** current implementation authority, **not** permission to redesign, **not proof
+    that current EOS still conforms.**
 12. **Nothing in this platform produces a pick list**, and the design for one has existed since
     2026-07. Is that a gap or a decision?
 

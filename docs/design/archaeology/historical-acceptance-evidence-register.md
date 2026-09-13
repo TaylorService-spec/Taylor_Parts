@@ -10,6 +10,38 @@ clone. *Standing rule in this programme: a correct code reading from the wrong b
 false statement about the product.* If you re-run these commands from a different head, re-read the
 verdicts.
 
+---
+
+> ## SUPERSEDED IN PART — 2026-09-13, lane ARCH-RECOVER
+>
+> **Six of the twenty-five SOURCE_UNAVAILABLE rows are now RECOVERED.** Nineteen are not. Twenty-two
+> delivery archives held in local custody at `/mnt/d/Taylor_Parts/Claude Design Docs/` — outside this
+> repository, and outside every archaeology lane's authority to search — were read on 2026-09-13.
+> Nine of the twenty-nine named files are recovered, byte-verified, and committed at
+> `docs/design-history/recovered/`. Manifest: `docs/design-history/recovered/RECOVERY-MANIFEST.md`.
+>
+> **Nothing in this register has been deleted or rewritten.** Every original row, count and verdict
+> stands as written, marked superseded where a later measurement changed it, with the reason given.
+> The absence finding was **correct about the repository and incomplete about the world** — see §1.4.
+> This register's own §8 listed external survival as UNPROVEN and recommended pursuing it (R10); the
+> recovery executes that recommendation and is evidence the recommendation was right.
+>
+> **Classification of every recovered artifact:**
+>
+> **RECOVERED HISTORICAL DESIGN EVIDENCE.**
+> **NOT:** current North Star · current implementation authority · permission to redesign ·
+> **proof that current EOS still conforms.**
+>
+> Recovering a visual authority restores the ability to **audit** a historical acceptance. It does not
+> re-open that acceptance, does not make the artifact a current target, and is **not** evidence that
+> today's EOS matches it. **No conformance comparison has been run against any recovered artifact**
+> (§8.1). Owner ruling G0-3 stands unchanged: a future Owner-accepted North Star still supersedes
+> historic visual authority, recovered or not.
+>
+> Index of what changed: **§0.4**. Residual: **§3.8**.
+
+---
+
 ## 0. The ruling this register executes
 
 > Some previously accepted design artifacts cannot be found on any known branch. Classify them:
@@ -40,6 +72,7 @@ source. It is provenance.
 | **HISTORY_ONLY** | Not at baseline, but recoverable from a named commit or tag. **Not lost.** | **Is** an Atlas input. Retrieval command given. |
 | **BRANCH_ONLY** | Exists on a named unmerged branch. **Not lost.** | **Is** an Atlas input. Retrieval command given. |
 | **UNPROVEN** | Status could not be established. Blocker named. | Treat as unavailable until proven otherwise; do not assume loss. |
+| **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** *(added 2026-09-13)* | Absent from this repository's object database, and **produced from custody outside it**. The artifact can now be read. Byte-verified by SHA-256 against its delivery archive. | Does not become an Atlas input or a current target by being recovered. It restores **auditability** of a past acceptance, nothing more. Any promotion to current authority is an Owner decision, not a consequence of recovery. |
 
 ### 0.3 Naming
 
@@ -47,6 +80,43 @@ Existing `NS2-*` / `North Star - *` artifact identities are preserved verbatim, 
 artifacts that no longer exist. **No North Star artifact is renamed because the internal process is
 now called Atlas.** Atlas is an internal programme name and appears in this internal document only;
 it must never appear on a customer-facing product surface.
+
+### 0.4 Recovery index — 2026-09-13
+
+Full provenance, per-file SHA-256 and the four-status separation (ORIGINAL ARTIFACT · RECOVERED COPY ·
+HISTORICAL ACCEPTANCE STATUS · CURRENT AUTHORITY STATUS) are in
+`docs/design-history/recovered/RECOVERY-MANIFEST.md`.
+
+| Row(s) | Artifact(s) | New class | Recovered from |
+|---|---|---|---|
+| **3** | `North Star - Work Order.dc.html` | RECOVERED | `Scoping answers needed P1.zip` (also P1v2) |
+| **4** | `Implementation Render - Work Order.html` | RECOVERED | `Scoping answers needed P1v2.zip` |
+| **5** | `North Star - Account P1.dc.html` | RECOVERED | `Customer North Star P1v1.zip` |
+| **6** | `Proposed - Work Order.dc.html` | RECOVERED | `Scoping answers needed P1.zip` (also P1v2) |
+| **20** | `DESIGN-HANDOFF-PARTS-P1v2.md` | RECOVERED | `Parts North Star P1v2.zip` |
+| **21** | frames `1a`, `1a-m`, `1b`, `1b-m` (4 files) | RECOVERED | `Parts North Star P1v2.zip` |
+| **24** | the five `Before-After` filenames | artifacts still SOURCE_UNAVAILABLE; **UNPROVEN → PROVEN** | `pilot-menu.js` in the Scoping archives |
+| **25** | `Current - *.dc.html` membership | artifacts still SOURCE_UNAVAILABLE; **UNPROVEN → PROVEN — six named files** | `pilot-menu.js` in the Scoping archives |
+| 1, 2, 7–19 | 15 named artifacts | **unchanged** — names corroborated by the delivered index; **no file recovered** | — |
+| 22, 23 | `parts-ux-redesign-blueprint.md`; four `audit-*.png` | **unchanged** — in no archive | — |
+
+**Where the archive that settled §3.6 was hiding, and why that is the finding.** §3.6 and §8 named
+`HTML Site Scoping answers needed.zip` as the only thing that could settle the `Current - *` count —
+and §2.1 records `Scoping answers needed P1.zip` as part of the corpus never vendored here. That
+archive does not contain the eleven comparison canvases. It contains
+`design_handoff_work_order/pilot-menu.js`, a delivered navigation component whose `LINKS` table
+**indexes the entire pilot corpus by filename.** It is a delivered manifest, not a reconstruction, and
+it settles both UNPROVEN items in §8 while confirming the artifacts themselves are still gone.
+
+**Three artifacts recovered here were never in this register**, because no lane had cause to look for
+them — most consequentially the **My Dashboard P1v2** artboards and ten frames, behind a **CLOSED
+Owner acceptance of 2026-09-03**. The repository held that family's handoff document, so the lanes
+read the family as current; the handoff itself says at
+`docs/north-star/my-dashboard/DESIGN-HANDOFF-MY-DASHBOARD-P1v2.md:605-607` that it *"does not stand in
+for the visual comp"* and asks the Owner whether the artboard should be made repo-resident. So §5.2's
+*"the only acceptance in the register that is CLOSED against unavailable authority"* is correct
+**within this register's set** and incomplete as a statement about the programme. Recorded in
+`RECOVERY-MANIFEST.md` §7 F3; the open Owner item is **not** closed by the recovery.
 
 ---
 
@@ -100,6 +170,32 @@ The sweep separates cleanly: **25 named artifacts return zero hits** (SOURCE_UNA
 **3** artifacts the sibling lanes reported as recoverable **do** return hits and were then pinned to
 exact SHAs, branches and tags (§4). That split is itself the evidence that the method discriminates.
 
+### 1.4 What the method proved, and where its boundary was — added 2026-09-13
+
+**The absence finding was correct about the repository and incomplete about the world.** Nothing in
+§1 is withdrawn. The three sweeps were sound, the method validation was sound, and every negative was
+a real negative *about this object database*. Re-measured on 2026-09-13: the nine recovered files are
+still in **no** tree object on **any** ref. §1's claim was never falsified — it was never a claim
+about custody outside git.
+
+**Every lane was correctly scoped to git refs, and the archives were outside every lane's authority to
+search.** That is the whole of the error, and it is a scoping error, not a measurement error. This
+register said so itself, twice: §8 lists *"whether any lost artifact survives **outside** this
+repository (Downloads folders, delivery zips, Owner decision-record attachments)"* as **UNPROVEN**,
+notes the corpus had been recovered from a Downloads-folder zip **once before**, calls external
+survival *"plausible and worth pursuing"*, and raises it as **R10**. §8's closing note insisted the
+correct class was *"SOURCE UNAVAILABLE, not 'never existed' or 'destroyed.'"* **That restraint is why
+this recovery reads as a completion of the register's own recommendation rather than a refutation of
+it.** Had the register written "lost" or "destroyed," it would now be wrong.
+
+**The lesson for future lanes, stated so it can be acted on:** a git-scoped absence proof is the
+strongest claim available *inside* a repository and is not a claim about the world. When an artifact's
+own provenance record says it arrived from outside the repository — as
+`eos-north-star-sources.md:5-8` does — a git sweep cannot close the question, and the lane should say
+so in its verdict and name the external custody to search. **R10 was the right recommendation and
+should have been a blocker on the word "permanently," which appears in derived statements of this
+lane's findings and was never justified by the method.**
+
 ---
 
 ## 2. Headline counts — and the corrections to the inherited numbers
@@ -138,6 +234,26 @@ lanes double-counts `EOS UX Pilot.dc.html`, `North Star - Subpage Expansion.dc.h
 count of distinct lost design artifacts is **29 named files**, not 34; and three artifacts the
 inherited framing implied were lost are **not lost at all** (§4).
 
+### 2.0 Recovery delta — 2026-09-13
+
+The counts above stand as the measurement of **absence from this repository**. After recovery:
+
+| Measure | As registered (2026-09-12) | After recovery (2026-09-13) |
+|---|---|---|
+| SOURCE_UNAVAILABLE rows | **25** | **19** |
+| RECOVERED rows | — | **6** |
+| Named files SOURCE_UNAVAILABLE | **29** | **20** |
+| Named files recovered | — | **9** |
+| Artifact classes of indeterminate membership | **2** (§3.6) | **0 indeterminate — both now enumerated**; all 11 members still unavailable |
+| Individually-named design artifacts still unavailable | 29 + 2 classes | **31** (20 previously named + 11 newly named) |
+| BRANCH_ONLY / HISTORY_ONLY (§4) | **5** | **5 — unchanged** |
+
+**Do not read "19 rows remain" as a small residue.** The recovered nine are concentrated in the
+load-bearing rows precisely because those artifacts were delivered as *handoff packages*, which is
+what the archives contain. The pilot corpus — §3.1, §3.3, §3.4, §3.6, twenty of the remaining files —
+was delivered as the single `HTML Site Scoping answers needed.zip` that is **not** in this custody.
+Of the **36 filenames** the recovered index enumerates, **34 remain unavailable.**
+
 ### 2.1 Provenance of the whole lost corpus — one zip, never vendored
 
 All of §3.1–§3.6 came from a single delivery and the register says plainly why it is not here:
@@ -165,10 +281,10 @@ baseline, the acceptance record, surviving derivative documentation, and what cu
 
 ### 3.1 Programme reports — the design language itself
 
-| # | Artifact (exact name as cited) | Cited at (`file:line`, baseline `33945090`) |
-|---|---|---|
-| 1 | `EOS UX Pilot.dc.html` | `docs/design/eos-north-star-sources.md:94` |
-| 2 | `North Star - Subpage Expansion.dc.html` | `docs/design/eos-north-star-sources.md:95` |
+| # | Artifact (exact name as cited) | Cited at (`file:line`, baseline `33945090`) | Status (2026-09-13) |
+|---|---|---|---|
+| 1 | `EOS UX Pilot.dc.html` | `docs/design/eos-north-star-sources.md:94` | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 2 | `North Star - Subpage Expansion.dc.html` | `docs/design/eos-north-star-sources.md:95` | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
 
 **Acceptance record.** No individual acceptance. Both sit under the register's blanket status line
 (`docs/design/eos-north-star-sources.md:3`): *"Status: **AUTHORITATIVE VISUAL/COMPOSITIONAL
@@ -201,6 +317,13 @@ unknown completeness survives at a known location.** The sales lane's phrasing �
 nowhere else" — is too strong as written; §8 exists. The service lane's phrasing — that the grammar
 is *"a derivative of them, not the artifacts"* — is exact and is the reading this register adopts.
 
+**SUPERSEDED IN PART, 2026-09-13 — the five surfaces are now named.** Both artifacts remain
+SOURCE_UNAVAILABLE; neither is in any archive. But this section noted of artifact 1 that *"the five
+surfaces are not enumerated at that line."* The recovered `pilot-menu.js` index names them:
+**Account, Opportunity, Sales Order, Work Order, Parts** (§0.4). The scoring rubric is **still not
+recovered**, and §8's UNPROVEN item on whether the grammar's §8 is the whole AI continuity model
+**stands unchanged** — both artifacts are still unreadable. Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
+
 **Atlas consequence.** Do not block. Not an Atlas input. Atlas inherits the grammar as its stated
 design language; it does **not** inherit an auditable trail back to the pilot evidence. Any Atlas
 North Star that wants to *change* a pattern, archetype or the AI model may do so on its own
@@ -212,27 +335,43 @@ reconcile against them. Record the change against the grammar section, not again
 These are the sharpest findings in the lane. Each is an artifact an Owner acceptance **names as the
 authority the work was accepted against**, and none can be produced. Full treatment in §5.
 
-| # | Artifact | Cited at (`file:line`) |
-|---|---|---|
-| 3 | `North Star - Work Order.dc.html` | `docs/DECISIONS.md:1957`; `docs/design/eos-north-star-sources.md:101,186,194`; `docs/design/north-star-migration-ledger.md:37`; `docs/architecture/SYSTEM_AUTHORITIES.md:19` |
-| 4 | `Implementation Render - Work Order.html` | `docs/DECISIONS.md:1957`; `docs/design/eos-north-star-sources.md:195`; `docs/design/north-star-migration-ledger.md:37`; `docs/architecture/SYSTEM_AUTHORITIES.md:19` |
-| 5 | `North Star - Account P1.dc.html` | `docs/DECISIONS.md:2168`; `docs/design/north-star-migration-ledger.md:130,175,180` |
+| # | Artifact | Cited at (`file:line`) | Status (2026-09-13) |
+|---|---|---|---|
+| 3 | `North Star - Work Order.dc.html` | `docs/DECISIONS.md:1957`; `docs/design/eos-north-star-sources.md:101,186,194`; `docs/design/north-star-migration-ledger.md:37`; `docs/architecture/SYSTEM_AUTHORITIES.md:19` | **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** (2026-09-13). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms. §0.4 |
+| 4 | `Implementation Render - Work Order.html` | `docs/DECISIONS.md:1957`; `docs/design/eos-north-star-sources.md:195`; `docs/design/north-star-migration-ledger.md:37`; `docs/architecture/SYSTEM_AUTHORITIES.md:19` | **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** (2026-09-13). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms. §0.4 |
+| 5 | `North Star - Account P1.dc.html` | `docs/DECISIONS.md:2168`; `docs/design/north-star-migration-ledger.md:130,175,180` | **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** (2026-09-13). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms. §0.4 |
+
+**SUPERSEDED 2026-09-13 — all three of the load-bearing three are RECOVERED.** *"These are the
+sharpest findings in the lane … and none can be produced"* was true at baseline and is no longer true.
+All three are now readable at `docs/design-history/recovered/` (§0.4). **§5 remains the correct
+reading of the acceptances themselves** — recovery changes the *availability* of each authority, not
+the *state* of any acceptance:
+
+- Family 1 is **still closed** (2026-08-25), and its conformance is now auditable **in principle
+  only** — nobody has run the audit (§8.1).
+- The Account acceptance is **still `AWAITING_OWNER_VISUAL_ACCEPTANCE`**. Recovery does not close it.
+- §5.5's flag that `DECISIONS.md:2168` cites `design_handoff_account/North Star - Account P1.dc.html`
+  — *"a delivery-folder path, not a repository path"* — is **explained**: that is the exact internal
+  path inside `Customer North Star P1v1.zip`. The citation was correct; it pointed into a delivery
+  that was never vendored.
+
+Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
 
 ### 3.3 The `Proposed - *` pilot corpus
 
-| # | Artifact | Cited at | Surface it governed, per the surviving register |
-|---|---|---|---|
-| 6 | `Proposed - Work Order.dc.html` | `eos-north-star-sources.md:101,189,196`; `DECISIONS.md:1958`; `SYSTEM_AUTHORITIES.md:19` | Work Order detail, Pilot 1. Superseded 2026-08-25 as visual truth; *"kept for history"* (`:196`) — the history it was kept for is unavailable. Its technician run-sheet concept is still named as reference for a later family. |
-| 7 | `Proposed - Sales Order.dc.html` | `eos-north-star-sources.md:102`; `DECISIONS.md:2030` | Sales Order detail, Pilot 2. **The register itself already declared this one lost** — see below. |
-| 8 | `Proposed - Account.dc.html` | `eos-north-star-sources.md:103` | Customer 360. *"Ceiling set by capability activation."* |
-| 9 | `Proposed - Account -Broadsheet-.dc.html` | `eos-north-star-sources.md:238` | The broadsheet styling experiment — the one file of 27 that linked the `_ds/broadsheet-…/` stylesheet. Exploratory; low loss, and the register says why Broadsheet is *not* the EOS language (`:237-245`). |
-| 10 | `Proposed - Opportunity.dc.html` | `eos-north-star-sources.md:104` | Opportunity detail. **Superseded 2026-08-26** by `Opportunity-North-Star-P1v2.dc.html`, which **is present** at `docs/north-star/opportunity/`. Low loss. |
-| 11 | `Proposed - Parts.dc.html` | `eos-north-star-sources.md:105` | Parts workspace — *"Persona-scoped queues."* |
-| 12 | `Proposed - Dispatch Board.dc.html` | `eos-north-star-sources.md:106` | Dispatch — *"Densest board; drag-scheduling with refusal reasons."* The present `North Star - Dispatch Board P1.dc.html` is the elevation of this; the base is unavailable. |
-| 13 | `Proposed - Dispatch Map.html` | `eos-north-star-sources.md:106` | The Dispatch map concept. Its design intent survives as the one clause quoted at `:106` and nothing more. |
-| 14 | `Proposed - Technician Mobile.dc.html` | `eos-north-star-sources.md:107` | Handheld, technician — *"Four moments of a field day."* **The four moments are not enumerated anywhere at baseline.** |
-| 15 | `Proposed - Warehouse Mobile.dc.html` | `eos-north-star-sources.md:108` | Handheld, warehouse — *"Pick / receive / count."* |
-| 16 | `Proposed - Equipment.dc.html` | `docs/north-star/equipment/DESIGN-HANDOFF-EQUIPMENT-P1v2.1.md:83`; `North Star - Equipment P1.dc.html:229`; `North Star - Equipment P1v2.dc.html:274` | The superseded Equipment concept. **Best-preserved lost artifact in the register** — see below. |
+| # | Artifact | Cited at | Surface it governed, per the surviving register | Status (2026-09-13) |
+|---|---|---|---|---|
+| 6 | `Proposed - Work Order.dc.html` | `eos-north-star-sources.md:101,189,196`; `DECISIONS.md:1958`; `SYSTEM_AUTHORITIES.md:19` | Work Order detail, Pilot 1. Superseded 2026-08-25 as visual truth; *"kept for history"* (`:196`) — the history it was kept for is unavailable. Its technician run-sheet concept is still named as reference for a later family. | **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** (2026-09-13). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms. §0.4 |
+| 7 | `Proposed - Sales Order.dc.html` | `eos-north-star-sources.md:102`; `DECISIONS.md:2030` | Sales Order detail, Pilot 2. **The register itself already declared this one lost** — see below. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 8 | `Proposed - Account.dc.html` | `eos-north-star-sources.md:103` | Customer 360. *"Ceiling set by capability activation."* | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 9 | `Proposed - Account -Broadsheet-.dc.html` | `eos-north-star-sources.md:238` | The broadsheet styling experiment — the one file of 27 that linked the `_ds/broadsheet-…/` stylesheet. Exploratory; low loss, and the register says why Broadsheet is *not* the EOS language (`:237-245`). | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 10 | `Proposed - Opportunity.dc.html` | `eos-north-star-sources.md:104` | Opportunity detail. **Superseded 2026-08-26** by `Opportunity-North-Star-P1v2.dc.html`, which **is present** at `docs/north-star/opportunity/`. Low loss. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 11 | `Proposed - Parts.dc.html` | `eos-north-star-sources.md:105` | Parts workspace — *"Persona-scoped queues."* | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 12 | `Proposed - Dispatch Board.dc.html` | `eos-north-star-sources.md:106` | Dispatch — *"Densest board; drag-scheduling with refusal reasons."* The present `North Star - Dispatch Board P1.dc.html` is the elevation of this; the base is unavailable. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 13 | `Proposed - Dispatch Map.html` | `eos-north-star-sources.md:106` | The Dispatch map concept. Its design intent survives as the one clause quoted at `:106` and nothing more. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 14 | `Proposed - Technician Mobile.dc.html` | `eos-north-star-sources.md:107` | Handheld, technician — *"Four moments of a field day."* **The four moments are not enumerated anywhere at baseline.** | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 15 | `Proposed - Warehouse Mobile.dc.html` | `eos-north-star-sources.md:108` | Handheld, warehouse — *"Pick / receive / count."* | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 16 | `Proposed - Equipment.dc.html` | `docs/north-star/equipment/DESIGN-HANDOFF-EQUIPMENT-P1v2.1.md:83`; `North Star - Equipment P1.dc.html:229`; `North Star - Equipment P1v2.dc.html:274` | The superseded Equipment concept. **Best-preserved lost artifact in the register** — see below. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
 
 **Artifact 7 is a special case worth naming: the register recorded its own loss.**
 `eos-north-star-sources.md:102` states *"**NEVER HANDED TO THIS REPOSITORY.** … If this artifact
@@ -268,6 +407,18 @@ flagging); every block is dispositioned in frame 1e — named, never silently ke
 dispositioned in a present, locked artifact, and its successor is present. This is the model for how
 a superseded artifact should be retired, and it is the one row in §3 that needs no follow-up.
 
+**SUPERSEDED IN PART, 2026-09-13.** Artifact 6 is **RECOVERED** — and the note that *"the history it
+was kept for is unavailable"* no longer holds: `Proposed - Work Order.dc.html` and its successor
+`North Star - Work Order.dc.html` were delivered in the same archive and are both readable, so the
+supersession DECISIONS #123 records is now inspectable on both sides. Its technician run-sheet
+concept, named as reference for a later family, is **readable again**. Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
+
+**Artifacts 7–16 are unchanged: still SOURCE_UNAVAILABLE.** Every one of the ten is named in the
+recovered `pilot-menu.js` index, which **independently corroborates that this register's names were
+accurate** — they were transcribed from prose citations and now match a delivered manifest exactly.
+Corroborating a name is not recovering a file. **Artifact 14 remains the highest-value gap** (§5.4):
+the technician handheld still has no design artifact.
+
 **Atlas consequence, §3.3.** None block Atlas; none is an Atlas input. For 6, 8, 11, 12, 13, 14, 15
 the successor authority is either already present (12 → `North Star - Dispatch Board P1.dc.html`) or
 is **Atlas's to produce** — and per the ruling a future Owner-accepted North Star supersedes the
@@ -276,11 +427,15 @@ highest-value gap**: the technician handheld has no recoverable design artifact 
 
 ### 3.4 The `Subpages - *` corpus
 
-| # | Artifact | Cited at | What the surviving register says it covered |
-|---|---|---|---|
-| 17 | `Subpages - Commercial.dc.html` | `eos-north-star-sources.md:109` | *"Sales Agreement edit / accepted / states … Hardest commercial surface."* **Superseded 2026-08-26** for the *record* surface by `North Star - Sales Agreement P1v2.dc.html`, which **is present**. The register is explicit about the residue: *"Whatever else this artifact covers has not been seen here."* The **edit surface** and the state set beyond the record are unavailable. |
-| 18 | `Subpages - Operations.dc.html` | `eos-north-star-sources.md:110` | *"Receiving, scheduling, exception, balances — Cross-object consequence."* Cited by two lanes. The **balances** treatment is the earliest financial-surface design in the programme; the cross-object scheduling-consequence design has no successor. |
-| 19 | `Subpages - Lists and States.dc.html` | `eos-north-star-sources.md:111` | *"142-row list + 12 honest states — The density floor and the state vocabulary."* `Lists-North-Star-P2.dc.html` (present) carries the extracted grammar; the **142-row density-floor specimen itself** is unavailable. |
+| # | Artifact | Cited at | What the surviving register says it covered | Status (2026-09-13) |
+|---|---|---|---|---|
+| 17 | `Subpages - Commercial.dc.html` | `eos-north-star-sources.md:109` | *"Sales Agreement edit / accepted / states … Hardest commercial surface."* **Superseded 2026-08-26** for the *record* surface by `North Star - Sales Agreement P1v2.dc.html`, which **is present**. The register is explicit about the residue: *"Whatever else this artifact covers has not been seen here."* The **edit surface** and the state set beyond the record are unavailable. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 18 | `Subpages - Operations.dc.html` | `eos-north-star-sources.md:110` | *"Receiving, scheduling, exception, balances — Cross-object consequence."* Cited by two lanes. The **balances** treatment is the earliest financial-surface design in the programme; the cross-object scheduling-consequence design has no successor. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+| 19 | `Subpages - Lists and States.dc.html` | `eos-north-star-sources.md:111` | *"142-row list + 12 honest states — The density floor and the state vocabulary."* `Lists-North-Star-P2.dc.html` (present) carries the extracted grammar; the **142-row density-floor specimen itself** is unavailable. | SOURCE_UNAVAILABLE — **unchanged.** Name independently corroborated 2026-09-13 (§0.4); no file recovered. |
+
+**Unchanged 2026-09-13 — all three remain SOURCE_UNAVAILABLE.** All three are named in the recovered
+index; none is in any archive. The **142-row density-floor specimen** (19) and the cross-object
+scheduling-consequence design (18) are still unavailable, and §3.4's reading below stands in full.
 
 **Atlas consequence.** None block Atlas. For 19, note precisely what is and is not lost: the *rule*
 survives in Lists P2 and in `eos-north-star-design-grammar.md` §5 honest-state model; the
@@ -291,12 +446,25 @@ therefore has a stated rule but **no worked reference example**, and must set it
 
 | # | Artifact | Cited at | Status |
 |---|---|---|---|
-| 20 | `DESIGN-HANDOFF-PARTS-P1v2.md` | `docs/north-star/parts/IMPLEMENTATION-DELTA-PARTS-P1v2.md:34` — named **"Design authority"** | SOURCE_UNAVAILABLE |
-| 21 | Frames `1a`, `1a-m`, `1b`, `1b-m` (4 files) | `IMPLEMENTATION-DELTA-PARTS-P1v2.md:35` — named **"Acceptance authority"** | SOURCE_UNAVAILABLE |
+| 20 | `DESIGN-HANDOFF-PARTS-P1v2.md` | `docs/north-star/parts/IMPLEMENTATION-DELTA-PARTS-P1v2.md:34` — named **"Design authority"** | ~~SOURCE_UNAVAILABLE~~ → **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** (2026-09-13). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms. §0.4 |
+| 21 | Frames `1a`, `1a-m`, `1b`, `1b-m` (4 files) | `IMPLEMENTATION-DELTA-PARTS-P1v2.md:35` — named **"Acceptance authority"** | ~~SOURCE_UNAVAILABLE~~ → **RECOVERED — HISTORICAL OWNER-ACCEPTED VISUAL AUTHORITY AVAILABLE** (2026-09-13). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms. §0.4 |
 | 22 | `parts-ux-redesign-blueprint.md` | `docs/ai/memory-archive/project_parts_ux_redesign.md:21` | SOURCE_UNAVAILABLE |
 | 23 | `audit-workspace-1440.png`, `audit-workspace-375.png`, `audit-record-1440.png`, `audit-record-375.png` (4 files) | `docs/north-star/parts/DESIGN-BRIEF-PARTS-P1v2.md:31-34` | SOURCE_UNAVAILABLE — **but reproducible; see below** |
 
 Artifacts 20 and 21 are load-bearing; full treatment in §5.3.
+
+**SUPERSEDED 2026-09-13 — rows 20 and 21 are RECOVERED; rows 22 and 23 are not.** The design authority
+and all four acceptance-authority frames were recovered from `Parts North Star P1v2.zip`, at their
+delivered filenames `1a-workspace-1440.png`, `1a-m-workspace-375.png`, `1b-record-1440.png`,
+`1b-m-record-375.png`. §5.3's *"no fallback exists"* no longer holds.
+
+**What has not changed, and it matters for this row specifically.** The Parts surface **shipped**, and
+it has changed since the deployed `9848ec9d` the acceptance was measured against. The recovered frames
+show the **accepted** state, not the current one. A mismatch found today would not distinguish drift
+from an intended later change, because **row 23 — the four `audit-*.png` deployed-state captures — is
+still SOURCE_UNAVAILABLE**, and it was the historic baseline. §3.5's REGENERABLE caveat stands
+verbatim: a fresh capture serves Atlas and **cannot** re-audit the 2026-08-31 acceptance. Row 22,
+`parts-ux-redesign-blueprint.md`, is in no archive and is **unchanged**. Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
 
 **Artifact 22 — the surviving abstract is substantial.** `docs/ai/memory-archive/project_parts_ux_redesign.md`
 preserves the Wave-6 package's headline finding, its recommendations and its outcome
@@ -325,8 +493,46 @@ acceptance it is **not** sufficient. Classified SOURCE_UNAVAILABLE for the histo
 
 | # | Artifact class | Cited at | Status |
 |---|---|---|---|
-| 24 | `1–5 * Before-After.dc.html` (**5** files; individual names never recorded) | `eos-north-star-sources.md:228` | SOURCE_UNAVAILABLE (class). Individual filenames **UNPROVEN** — no document at baseline enumerates them. |
-| 25 | `Current - *.dc.html` (count **UNPROVEN**) | `eos-north-star-sources.md:229` | SOURCE_UNAVAILABLE (class) |
+| 24 | `1–5 * Before-After.dc.html` (**5** files; individual names never recorded) | `eos-north-star-sources.md:228` | SOURCE_UNAVAILABLE (class). Individual filenames **UNPROVEN** — no document at baseline enumerates them. **AMENDED 2026-09-13: the class is unchanged and no file was recovered; the filenames are now PROVEN** from a delivered index held outside the repository — all five named below. |
+| 25 | `Current - *.dc.html` (count **UNPROVEN**) | `eos-north-star-sources.md:229` | SOURCE_UNAVAILABLE — **unchanged, no file recovered.** ~~count **UNPROVEN**~~ → **PROVEN 2026-09-13: six files**, all named below |
+
+**SUPERSEDED IN PART, 2026-09-13 — the enumeration is settled; the eleven files are still gone.**
+The blocker named below was *"the only document that could settle the count is the delivered package
+`HTML Site Scoping answers needed.zip` … Unless that zip is produced from outside the repository, this
+count cannot be established."* **The reasoning was right and the named document was not the only one.**
+`Scoping answers needed P1.zip` — from the same delivery day, 2026-08-25, and recovered into local
+custody — contains `design_handoff_work_order/pilot-menu.js`, whose `LINKS` table indexes the entire
+pilot corpus by filename. A delivered manifest, not a reconstruction.
+
+**Row 24 — the five filenames, UNPROVEN → PROVEN:**
+
+1. `1 - Account Before-After.dc.html`
+2. `2 - Opportunity Before-After.dc.html`
+3. `3 - Sales Order Before-After.dc.html`
+4. `4 - Work Order Before-After.dc.html`
+5. `5 - Parts Before-After.dc.html`
+
+**Row 25 — the membership, UNPROVEN → PROVEN. It is six, not "roughly four":**
+
+1. `Current - Account Detail.dc.html`
+2. `Current - Opportunities.dc.html`
+3. `Current - Sales Order.dc.html`
+4. `Current - Work Order.dc.html`
+5. `Current - Parts List.dc.html`
+6. `Current - Part Detail.dc.html`
+
+**A correction this forces, recorded rather than buried.** The residue arithmetic below inferred
+*"roughly **4** unnamed files"* from the 27-HTML-file total at `:237`. The count is **6**, and the
+recovered index enumerates **36** distinct filenames in total. So either `:237`'s "27 HTML files" is
+wrong, or the delivered package was a subset of what the menu linked. **This register's instruction
+"do not publish a number" was the correct call on the evidence it had**; the number is now 6, on
+delivered evidence. The 27-file total is moved to **UNPROVEN** (§8).
+
+**What is still lost here, unchanged and stated plainly.** **Not one of the eleven files was
+recovered**, and no scoring rubric was recovered. The **severity-graded audit of the then-current
+Customers, Sales Order and Account surfaces** — this section's central loss — is **still gone.** We
+now know exactly what to look for and exactly what is missing. Recommendation **R9** stands in full.
+Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
 
 **Evidence about the class**, from `eos-north-star-sources.md:227-230`: *"`1–5 * Before-After.dc.html`
 pair each current surface with its proposal plus a severity-graded audit. `Current - *.dc.html` are
@@ -396,6 +602,45 @@ but that reconstruction is inference and is not asserted as fact.
 
 ---
 
+## 3.8 The residual after recovery — what is still genuinely unavailable (2026-09-13)
+
+**This recovery does not resolve §3.** Nineteen of twenty-five rows stand. Listing them together so no
+reader can mistake a partial recovery for a closed one.
+
+| # | Still unavailable | Row | Note |
+|---|---|---|---|
+| 1 | `EOS UX Pilot.dc.html` | §3.1 r1 | name + its five audited surfaces now known; **no file** |
+| 2 | `North Star - Subpage Expansion.dc.html` | §3.1 r2 | name corroborated; **no file** |
+| 3 | `Proposed - Sales Order.dc.html` | §3.3 r7 | the register already recorded its own loss; unchanged |
+| 4 | `Proposed - Account.dc.html` | §3.3 r8 | |
+| 5 | `Proposed - Account -Broadsheet-.dc.html` | §3.3 r9 | exploratory; low loss |
+| 6 | `Proposed - Opportunity.dc.html` | §3.3 r10 | successor present; low loss |
+| 7 | `Proposed - Parts.dc.html` | §3.3 r11 | |
+| 8 | `Proposed - Dispatch Board.dc.html` | §3.3 r12 | successor present |
+| 9 | `Proposed - Dispatch Map.html` | §3.3 r13 | design intent survives as one quoted clause |
+| 10 | `Proposed - Technician Mobile.dc.html` | §3.3 r14 | **highest-value gap.** The handheld still has no design artifact; the "four moments" are still unenumerated |
+| 11 | `Proposed - Warehouse Mobile.dc.html` | §3.3 r15 | |
+| 12 | `Proposed - Equipment.dc.html` | §3.3 r16 | fully dispositioned in a present frame; needs no follow-up |
+| 13 | `Subpages - Commercial.dc.html` | §3.4 r17 | the edit surface and state set remain unavailable |
+| 14 | `Subpages - Operations.dc.html` | §3.4 r18 | no successor for the cross-object scheduling consequence |
+| 15 | `Subpages - Lists and States.dc.html` | §3.4 r19 | the 142-row density specimen |
+| 16 | `parts-ux-redesign-blueprint.md` | §3.5 r22 | in no archive |
+| 17 | `audit-workspace-1440.png`, `audit-workspace-375.png`, `audit-record-1440.png`, `audit-record-375.png` | §3.5 r23 | 4 files. REGENERABLE for Atlas; **not** for re-auditing 2026-08-31 |
+| 18 | `1 - Account Before-After.dc.html` … `5 - Parts Before-After.dc.html` | §3.6 r24 | 5 files, **now named** |
+| 19 | `Current - Account Detail.dc.html`, `… Opportunities`, `… Sales Order`, `… Work Order`, `… Parts List`, `… Part Detail` | §3.6 r25 | 6 files, **now named and counted** |
+
+**Arithmetic, so it can be checked.** 29 named SOURCE_UNAVAILABLE files − 9 recovered = **20 still
+unavailable under their original names**; plus **11 newly named** members of rows 24–25 = **31
+individual design artifacts still genuinely unavailable.** Of the **36 filenames** the recovered index
+enumerates, **34 remain unavailable.** §4's five BRANCH_ONLY / HISTORY_ONLY artifacts are unaffected.
+
+**The one custody searched is not the only custody.** `HTML Site Scoping answers needed.zip` — the
+source of §3.1, §3.3, §3.4 and §3.6, and of twenty of the thirty-one remaining files — is **not** in
+`/mnt/d/Taylor_Parts/Claude Design Docs/`. **R10 is not discharged.** It is now partially executed
+with a demonstrated method and a demonstrated yield.
+
+---
+
 ## 4. NOT LOST — artifacts the inherited framing implied were unavailable
 
 **These five must not be filed as lost.** Each is retrievable today with the command given. Three
@@ -453,6 +698,24 @@ authority cannot be produced. Each claim in the lane contract was checked; one n
 | **Design Grammar** — *"TRANSLATION CONTRACT, Owner-approved 2026-08-25"* | 2026-08-25 | the whole recovered corpus, via the register | corpus SOURCE_UNAVAILABLE | **AFFECTED — widest blast radius.** See §5.1. |
 | **DECISIONS #125** — Sales Order composed from the grammar | 2026-08-26 | *explicitly none* | n/a | **NOT AFFECTED.** Handled correctly at the time; the precedent to reuse. |
 
+**SUPERSEDED IN PART, 2026-09-13 — the authorities are available; the acceptance states are not changed.**
+Read the two columns separately: *authority status* changed for four rows, *verdict* changed for none.
+
+| Acceptance | Authority status now | Acceptance state now | Still not established |
+|---|---|---|---|
+| **Family 1 — Work Order**, closed 2026-08-25 | **both RECOVERED** — `North Star - Work Order.dc.html` + `Implementation Render - Work Order.html` | **still Closed 2026-08-25.** Unchanged | **Whether the shipped surface conforms. Nobody has run the comparison** (§8.1) |
+| **DECISIONS #123** — Work Order visual source ruling | **both RECOVERED** | still a standing Tier-1 authority | It no longer points at nothing. Whether the *implementation* matches it is unmeasured |
+| **Parts P1v2** — seven Owner rulings, shipped | **handoff + all four frames RECOVERED** | still *"design direction APPROVED"* 2026-08-31 | Surface changed since `9848ec9d`; the historic `audit-*.png` baseline is **still unavailable** (§3.5 r23) |
+| **DECISIONS #128** — Account | **RECOVERED** | **still `AWAITING_OWNER_VISUAL_ACCEPTANCE`.** Recovery does not close an acceptance | Conformance unmeasured; the acceptance is the Owner's to move |
+| **Design Grammar** — translation contract | **unchanged.** `EOS UX Pilot.dc.html` and `North Star - Subpage Expansion.dc.html` are **still unavailable**; 34 of 36 pilot files remain gone | unchanged | §5.1 stands in full. **The widest-reach finding is not repaired by this recovery** |
+| **DECISIONS #125** — Sales Order | n/a — `Proposed - Sales Order.dc.html` still unavailable. An `Implementation Render - Sales Order.html` was recovered (`RECOVERY-MANIFEST.md` §7 F4) | **NOT AFFECTED**, unchanged | Whether an implementation render carries any authority is an **Owner** question, not a documentary one |
+
+**One addition to this table's scope, recorded in §0.4 and not corrected away.** *"The only acceptance
+in the register that is CLOSED against unavailable authority"* is accurate for this register's set.
+A **second** closed Owner acceptance — **My Dashboard P1v2, 2026-09-03** — also rested on visual
+authority absent from the repository, and **no lane classified it**, because the family's handoff
+document was present. Its artboards are now recovered. Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
+
 ### 5.1 The Design Grammar's evidencing chain is broken — the finding with the widest reach
 
 This is the finding no sibling lane reports, and it is the one that matters most, because the grammar
@@ -503,6 +766,18 @@ verification route. That is a documentation change in another lane's scope; **no
 (this lane may write only under `docs/design/archaeology/`). Raised to the controller in §6.
 
 ### 5.2 Family 1 — Work Order: closed against two artifacts that do not exist
+
+> **SUPERSEDED 2026-09-13 — both artifacts are RECOVERED.** The heading is kept as the record of what
+> was believed and measured on 2026-09-12. `North Star - Work Order.dc.html` and
+> `Implementation Render - Work Order.html` were both in `Scoping answers needed P1.zip` / `P1v2.zip`
+> and are readable at `docs/design-history/recovered/Scoping/`. **This section's reasoning was right
+> about everything except availability** — in particular its correction that the acceptance rests on
+> **two** unavailable artifacts, not one, is why the recovery had to produce both, and did.
+>
+> **The acceptance is still Closed 2026-08-25, and no one has audited it.** Derived statements that
+> visual conformance is *"permanently unauditable"* are **withdrawn** — the word "permanently" was
+> never supported by a git-scoped method (§1.4). The accurate statement is: **conformance is now
+> auditable and remains unaudited** (§8.1). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
 
 **Contract claim:** *"`North Star - Work Order.dc.html` (the approved Family-1 source work was closed
 against on 2026-08-25)."* **VERIFIED, and it is worse than stated — the acceptance rests on two
@@ -561,6 +836,17 @@ and **restores an auditable pixel target** — which is a net gain, not a recove
 owed to `North Star - Work Order.dc.html` in that pass.
 
 ### 5.3 Parts P1v2 — a shipped, Owner-accepted surface whose acceptance authority is unavailable
+
+> **SUPERSEDED 2026-09-13 — the design authority and all four acceptance frames are RECOVERED**, from
+> `Parts North Star P1v2.zip`. Heading kept as the record of what was measured on 2026-09-12.
+> Statements that *"no fallback exists"* are **withdrawn as to availability.**
+>
+> **Two things did not change.** The Owner ruling of 2026-08-31 stands as it was; recovery neither
+> re-opens nor re-confirms it. And the shipped surface has changed since the deployed `9848ec9d` the
+> acceptance was measured against, while the historic deployed-state captures (§3.5 row 23) are
+> **still unavailable** — so a present-day mismatch against the frames would not distinguish drift
+> from an intended change. **This is not evidence that the shipped Parts workspace conforms**
+> (§8.1). Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
 
 **Contract claim:** *"`DESIGN-HANDOFF-PARTS-P1v2.md` plus four frames (the visual authority the
 shipped Parts workspace was Owner-accepted against)."* **VERIFIED exactly as stated.**
@@ -661,6 +947,16 @@ is the one where a new Owner-accepted North Star adds the most and costs the lea
 
 ### 5.5 `North Star - Account P1.dc.html` — affected, but the acceptance never closed
 
+> **SUPERSEDED 2026-09-13 — RECOVERED**, from `Customer North Star P1v1.zip`, at the internal path
+> `design_handoff_account/North Star - Account P1.dc.html`. **This section's sharpest observation is
+> now explained rather than corrected:** it flagged that `DECISIONS.md:2168` cites a *"delivery-folder
+> path, not a repository path."* That is the exact path inside the delivery archive. The citation was
+> right; it pointed outside the repository, which is precisely the boundary §1.4 records.
+>
+> **The acceptance is still `AWAITING_OWNER_VISUAL_ACCEPTANCE`, in both ledger rows.** Recovery does
+> not close an acceptance and does not move a column only the Owner may move. This section's judgement
+> that the exposure is *"materially lighter"* than family 1's **stands unchanged.** Historical evidence only: **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not** proof that current EOS conforms.
+
 **Contract claim:** *"`North Star - Account P1.dc.html`."* **VERIFIED absent — and the acceptance
 exposure is materially lighter than the contract's framing implies. Recorded because understating
 this would be as wrong as overstating it.**
@@ -751,17 +1047,52 @@ Per Owner ruling **G0-3**, and applying to every row in §3:
    every block — §3.3).
 6. **`NS2-*` and `North Star - *` identities are unchanged.** No artifact was renamed for Atlas.
 
+**Added 2026-09-13, after the recovery. G0-3 is unchanged; these are additions, not amendments.**
+
+7. **Recovery does not create an Atlas input, and does not create a conformance target.** The nine
+   recovered files are **RECOVERED HISTORICAL DESIGN EVIDENCE** — **not** current North Star, **not**
+   current implementation authority, **not** permission to redesign, and **not proof that current EOS
+   still conforms.** They live at `docs/design-history/recovered/`, deliberately **not** at
+   `docs/north-star/`. Point 2 of this section is undisturbed: a future Owner-accepted North Star
+   still supersedes historic visual authority, **recovered or not**, and an Atlas pass still owes no
+   reconciliation against any of it.
+8. **What recovery *does* change is auditability, for three acceptances, and nothing has been
+   audited.** If the controller wants a conformance verdict on Family 1 Work Order, Parts P1v2 or the
+   Account, that is **new work against a now-available yardstick**, and its result is unknown today.
+   Do not let "the authority was recovered" travel as "the surface conforms."
+9. **Promotion is an Owner decision.** Whether any recovered artifact — including the My Dashboard
+   P1v2 artboards, whose handoff at `:605-607` asks exactly this question — becomes repo-resident
+   current authority is the Owner's call. The recovery lane did not make it and must not be read as
+   having made it.
+10. **Two Financials canvases in `docs/north-star/financials/` are not the delivered bytes**
+   (`RECOVERY-MANIFEST.md` §7 F5, findings D2/D3), and `North Star - Equipment P1v2.dc.html` names two
+   different revisions (D1). Nothing at baseline records this. An Atlas Financials pass should settle
+   which copy is authoritative before citing either.
+
 ---
 
 ## 8. UNPROVEN — stated plainly
 
 | Item | Blocker |
 |---|---|
-| The number of `Current - *.dc.html` files, and their individual names | The register names the class but not the members (`eos-north-star-sources.md:229`); the 27-file total (`:237`) leaves a residue that depends on how bundled rows are expanded. Only the never-vendored `HTML Site Scoping answers needed.zip` could settle it. **No number should be published.** |
-| The individual filenames of the five `1–5 * Before-After.dc.html` | Same blocker. Only the count (5) and the naming pattern are recorded (`:228`). |
+| ~~The number of `Current - *.dc.html` files, and their individual names~~ **→ PROVEN 2026-09-13: six, all named (§3.6)** | ~~The register names the class but not the members (`eos-north-star-sources.md:229`); the 27-file total (`:237`) leaves a residue that depends on how bundled rows are expanded. Only the never-vendored `HTML Site Scoping answers needed.zip` could settle it. **No number should be published.**~~ **Resolved** by `pilot-menu.js` in `Scoping answers needed P1.zip`, a delivered index. The instruction not to publish a number was correct on the evidence then available; the residue estimate of "roughly 4" was wrong. **The six files themselves remain SOURCE_UNAVAILABLE.** |
+| ~~The individual filenames of the five `1–5 * Before-After.dc.html`~~ **→ PROVEN 2026-09-13, all five named (§3.6)** | ~~Same blocker. Only the count (5) and the naming pattern are recorded (`:228`).~~ **Resolved** from the same delivered index. The count of 5 is confirmed. **All five files remain SOURCE_UNAVAILABLE.** |
 | Whether `eos-north-star-design-grammar.md` §8 is the *whole* lost AI continuity model or a summary | The grammar cites no source for §8 (§5.1, zero grep hits), and the source is unavailable. Unresolvable from inside the repository. |
-| Whether any lost artifact survives **outside** this repository (Downloads folders, delivery zips, Owner decision-record attachments) | Out of scope for a git-based sweep. §1 proves absence **from this repository's object database**, which is the strongest claim available here — it is *not* a claim about the world. `eos-north-star-sources.md:5-8` records that the corpus was recovered from a Downloads-folder zip **once before**, so external survival is plausible and worth pursuing (R10). |
-| Whether the content of any SOURCE_UNAVAILABLE artifact matched its register description | Unfalsifiable by construction. The descriptions are the only evidence and cannot be checked against the thing they describe. |
+| Whether any lost artifact survives **outside** this repository (Downloads folders, delivery zips, Owner decision-record attachments) — **PARTIALLY RESOLVED 2026-09-13; see the added table below** | Out of scope for a git-based sweep. §1 proves absence **from this repository's object database**, which is the strongest claim available here — it is *not* a claim about the world. `eos-north-star-sources.md:5-8` records that the corpus was recovered from a Downloads-folder zip **once before**, so external survival is plausible and worth pursuing (R10). |
+| Whether the content of any SOURCE_UNAVAILABLE artifact matched its register description | Unfalsifiable by construction. The descriptions are the only evidence and cannot be checked against the thing they describe. **Amended 2026-09-13:** still exactly so for the 19 remaining rows. For the 9 recovered files it is **now falsifiable and has not been checked** — the descriptions in §3 and §5 were transcribed from prose and have **not** been compared against the recovered artifacts. |
+
+**Added 2026-09-13 — UNPROVEN after the recovery.**
+
+| Item | Blocker |
+|---|---|
+| **Whether the shipped Work Order surface conforms to `North Star - Work Order.dc.html` + `Implementation Render - Work Order.html`** | **The artifacts now exist and no one has run the comparison.** This is the single most important open item created by the recovery: a closed 2026-08-25 acceptance is auditable for the first time, and its result is **unknown.** Recovering a yardstick is not measuring with it. |
+| Whether the shipped Parts workspace conforms to frames `1a`/`1a-m`/`1b`/`1b-m` | Same, and harder. The surface changed after the deployed `9848ec9d`, and the historic `audit-*.png` baseline (§3.5 r23) is still unavailable, so a mismatch could not be attributed to drift rather than intended change. |
+| Whether the Account surface conforms to `North Star - Account P1.dc.html` | Acceptance is still `AWAITING_OWNER_VISUAL_ACCEPTANCE` — there is no closed acceptance to audit against, only DECISIONS #128's reconciliation claim, which is now re-runnable and un-rerun. |
+| Whether `docs/north-star/financials/North Star - Financials 16 Reconciliation.dc.html` / `20 Governance.dc.html`, or the delivered copies, are authoritative | `RECOVERY-MANIFEST.md` §7 findings D2/D3: 48 of 50 Financials files are byte-identical to the delivery; these two differ and the repository copies are **larger**. Nothing at baseline records the divergence. |
+| Whether the repository's `North Star - Equipment P1v2.dc.html` was intended to be the P1v3-archive revision | Finding D1. The filename names two revisions; no baseline document distinguishes them. |
+| Whether `eos-north-star-sources.md:237`'s **"27 HTML files"** is the correct count for the delivered package | The recovered index enumerates **36** filenames. Whether the package was a subset of the menu, the menu linked files never delivered, or 27 is simply wrong, cannot be settled from the custody searched. **Moved to UNPROVEN from being treated as fact in §2.1 and §3.6.** |
+| Whether `Implementation Render - Sales Order.html` (recovered) carries any authority status | `RECOVERY-MANIFEST.md` §7 F4. It is **not** `Proposed - Sales Order.dc.html`, which remains unavailable, so DECISIONS #125 is not contradicted on its own terms. An Owner question. |
+| Whether the 31 still-unavailable artifacts survive in another custody | **`HTML Site Scoping answers needed.zip` is not in the custody searched.** The row below on external survival is **partially discharged, not closed** — one location was searched and yielded 9 of 29 named files. **R10 stands.** |
 
 **One closing note on scope.** §1 establishes absence from this repository's object database across
 1,849 refs, 5,137 commits and 24,191 tree objects — reachable and unreachable. That is the limit of
@@ -770,3 +1101,12 @@ correct classification is **SOURCE UNAVAILABLE**, not "never existed" or "destro
 `Proposed - Sales Order.dc.html` is the cautionary case: the register says *"If this artifact exists,
 it has not been seen here"* (`:102`) — the honest form of the claim, and the form this register
 keeps throughout.
+
+**Vindicated 2026-09-13, and worth stating.** That restraint is the reason this register did not have
+to be retracted. Nine of the twenty-nine named files were produced from custody outside git on
+2026-09-13 (§0.4, §1.4). Because the register classified them **SOURCE UNAVAILABLE** rather than
+"lost", flagged external survival as **UNPROVEN**, and recommended pursuing it (**R10**), the recovery
+**completes** this register rather than refuting it. Every §1 measurement re-verifies today. The
+finding was **correct about the repository and incomplete about the world**, and the incompleteness was
+one the register had already named. **Nineteen rows and thirty-one files remain genuinely unavailable
+(§3.8); no acceptance state changed; no conformance was established.**

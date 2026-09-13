@@ -63,15 +63,35 @@ census), `docs/architecture/ADR-002/004/006/010`, `docs/architecture/technician-
 
 ### 0.3 Artifacts that are DESIGN AUTHORITY and are NOT in this repository — 8
 
+> **SUPERSEDED IN PART — 2026-09-13, lane ARCH-RECOVER. Three of these eight are RECOVERED; five are
+> not.** The heading and the original rows below are kept verbatim as the record of what was measured.
+> **The measurement was not wrong.** All three sweeps re-verify today: none of the three has ever been
+> in any commit on any branch. They were produced from **delivery archives held outside this
+> repository**, at `/mnt/d/Taylor_Parts/Claude Design Docs/`, which were outside this lane's authority
+> to search. The finding was **correct about the repository and incomplete about the world.**
+>
+> Recovered: `North Star - Work Order.dc.html`, `Implementation Render - Work Order.html`,
+> `Proposed - Work Order.dc.html` — all three from `Scoping answers needed P1.zip` / `P1v2.zip`, at
+> `docs/design-history/recovered/Scoping/`.
+>
+> **Still absent, unchanged:** `Proposed - Dispatch Board.dc.html`, `Proposed - Dispatch Map.html`,
+> **`Proposed - Technician Mobile.dc.html` — still the highest-value gap; the technician handheld still
+> has no design artifact**, and its "four moments" are still unenumerated —
+> `Subpages - Operations.dc.html`. Their filenames are independently corroborated by a delivered index
+> recovered from the same archive; corroborating a name is not recovering a file.
+>
+> **RECOVERED HISTORICAL DESIGN EVIDENCE** — **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not proof that current EOS still conforms.** Family 1's acceptance is **still closed 2026-08-25** and **nobody has audited its visual
+> conformance.** See `docs/design-history/recovered/RECOVERY-MANIFEST.md` and the recovery index at `historical-acceptance-evidence-register.md` §0.4.
+
 `docs/design/eos-north-star-sources.md:93-115` names these as visual sources. **None has ever
 existed at any commit on any branch** — proved twice, by the exhaustive `.dc.html` add-list and by
 a per-filename sweep of `git log --all`, both returning zero:
 
 | Missing artifact | What the register says it covers | Consequence |
 |---|---|---|
-| `North Star - Work Order.dc.html` | **The approved visual source for Family 1** (`eos-north-star-sources.md:186-196`) | Family 1 closed 2026-08-25 against an artifact no one here can re-read |
-| `Implementation Render - Work Order.html` | The explicit pixel target for Family 1 | same |
-| `Proposed - Work Order.dc.html` | Pilot 1; **its technician run sheet is still named as reference for a later family** | the technician run-sheet concept is unrecoverable |
+| `North Star - Work Order.dc.html` **· RECOVERED 2026-09-13** | **The approved visual source for Family 1** (`eos-north-star-sources.md:186-196`) | ~~Family 1 closed 2026-08-25 against an artifact no one here can re-read~~ → **the artifact is readable again.** The acceptance is still closed and **still unaudited** |
+| `Implementation Render - Work Order.html` **· RECOVERED 2026-09-13** | The explicit pixel target for Family 1 | ~~same~~ → same correction; from `Scoping answers needed P1v2.zip` |
+| `Proposed - Work Order.dc.html` **· RECOVERED 2026-09-13** | Pilot 1; **its technician run sheet is still named as reference for a later family** | ~~the technician run-sheet concept is unrecoverable~~ → **recovered and readable** |
 | `Proposed - Dispatch Board.dc.html` | "Densest board; drag-scheduling with refusal reasons" | the Dispatch P1 artifact is the *elevation* of this; the base is gone |
 | `Proposed - Dispatch Map.html` | Dispatch map concept | the Map tab's design intent survives only as one sentence |
 | `Proposed - Technician Mobile.dc.html` | "Four moments of a field day" | **the technician handheld has no recoverable design artifact at all** |
@@ -536,10 +556,21 @@ predicate. Is a technician-scoped list the same product as a dispatcher-scoped o
 
 ### 2.6 PAGE / ROUTE — `/service/work-orders/:workOrderId` (the Work Order record)
 
-**ORIGINAL CLAUDE DESIGN** — **UNRECOVERABLE.** `North Star - Work Order.dc.html` and
-`Implementation Render - Work Order.html` are named as the approved visual source and the pixel
-target (`eos-north-star-sources.md:186-196`) and **have never existed in this repository** (§0.3).
-What survives is prose:
+**ORIGINAL CLAUDE DESIGN** — ~~**UNRECOVERABLE.**~~ **RECOVERED 2026-09-13.**
+
+> The original verdict is struck through, not deleted. The original sentence, preserved verbatim:
+> *"`North Star - Work Order.dc.html` and `Implementation Render - Work Order.html` are named as the
+> approved visual source and the pixel target (`eos-north-star-sources.md:186-196`) and **have never
+> existed in this repository** (§0.3)."* **Every word of that re-verifies today** — neither has ever
+> been in any commit on any branch. Both were recovered from delivery archives outside it and now sit at
+> `docs/design-history/recovered/Scoping/`. **The word "UNRECOVERABLE" was never justified by a
+> git-scoped method** (see the register §1.4); the defensible word was, and is, *unavailable*.
+>
+> **RECOVERED HISTORICAL DESIGN EVIDENCE** — **not** current North Star, **not** current implementation authority, **not** permission to redesign, **not proof that current EOS still conforms.** **The prose below remains the only evidence for what was quoted from the artifact; it has
+> not been re-checked against the recovered file.** Family 1 is still closed 2026-08-25 and **no
+> conformance audit has been run** — recovering the yardstick is not measuring with it. See `docs/design-history/recovered/RECOVERY-MANIFEST.md` and the recovery index at `historical-acceptance-evidence-register.md` §0.4.
+
+What survives in this document is prose, and it is quoted as evidence *about* the artifact:
 
 - The artifact's own masthead is quoted: *"live truck-stock reads · WO naming service · notification
   channel · suggestion engine. None exist today."*
@@ -556,6 +587,11 @@ What survives is prose:
 
 Everything else about the original design — primary question, mobile behaviour, exception handling,
 composition — is **UNPROVEN** and unrecoverable from this repository.
+
+**AMENDED 2026-09-13.** That sentence stands as written about *this repository*. It is no longer the
+whole picture: those questions are now answerable by reading the recovered artifact directly at
+`docs/design-history/recovered/Scoping/`. **This lane did not read it and did not answer them** — the
+prose above remains prose evidence only, unreconciled against the recovered file.
 
 **WHAT ACTUALLY GOT BUILT** — **IMPLEMENTED and closed** (Family 1, closed 2026-08-25,
 `north-star-migration-ledger.md:32-56`). `modules/workOrders/WorkOrderDetailPage.jsx` over
