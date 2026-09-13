@@ -197,39 +197,55 @@ approving a change to credential fencing.
 |---|---|---|---|---|
 | A2-1 | `post/eng-b-firebase-guard` | Firebase-exit guard + shim boundary; widens the fence to `integrations` and `.mjs` | 5 | Changes what the guard **forbids**. Widening a fence can fail builds that previously passed |
 | A2-2 | `post/eng-d-environment-fence` | Operator-script environment fence — `projectTargetGuard.js`, 7 scripts fenced, 234-line test | 11 | **This is the fence the Owner ruled must never be weakened.** Merging it is the only way to stop weakening it by omission |
-| A2-3 | `night/p2c2-adc-failclosed` — **RESIDUE ONLY** | 4 scripts `eng-d` does not reach | 4 of 14 | see §7.1 |
+| A2-3 | `night/p2c2-adc-failclosed` — **RESIDUE ONLY** | Fences `inventoryCapabilityParityHarness.js`, which on `main` takes **no project argument at all** and binds Firestore from **ambient ADC** | **2 of 14** | Closes an ambient-targeting hole in a script that reads Firestore and Postgres. Must be applied **after** A1-4, which rewrites the same file. See §7.1 |
 | A2-4 | `night/p2m-sandbox-project-resolution` | `sandboxTargetGuard.js` + 3 backfill/repair CLIs fenced to sandbox | 10 | **Data-migration CLIs.** An unfenced backfill CLI is the highest-consequence unguarded surface in the repo |
 
-### 7.1 `night/p2c2-adc-failclosed` is PARTIALLY superseded — the residue is real and verified
+### 7.1 `night/p2c2-adc-failclosed` is PARTIALLY superseded — and the residue is ONE file, not four
 
 For the 7 files both branches touch, `post/eng-d-environment-fence` wins: it is based on `main`
 (`p2c2` is based on `d104cf49`, pre-merge) and its fence is larger
 (`generatePasswordResetLink.js`: `main` 69 lines → `p2c2` 128 → **`eng-d` 148**).
 
-But `p2c2` covers **4 files `eng-d` never touches**, and every one of them is unfenced on `main` today:
+`p2c2` covers 4 files `eng-d` never touches. **A first pass of this register claimed all four were
+unfenced on `main`. That was wrong for three of them, and it was wrong in the specific way this register
+warns about: a static negative over a chosen marker set.** Searching for `EOS_TARGET_ENV`,
+`requireExplicitEnvironment`, `projectTargetGuard`, `assertTarget` and `environmentTargetShared` returned
+zero matches — because `main` fences by a **different mechanism with different names**.
 
-| File | On `main`? | Fence markers on `main` | Touched by `eng-d`? |
+| File | On `main`? | Actual state on `main` | Residue needed? |
 |---|---|---|---|
-| `functions/scripts/environmentTargetShared.js` | **absent** | n/a | no |
-| `functions/scripts/operatorAccessCommand.js` | yes | **0** | no |
-| `functions/scripts/productionFoundationVerification.js` | yes | **0** | no |
-| `functions/scripts/inventoryCapabilityParityHarness.js` | yes | **0** | no |
+| `functions/scripts/operatorAccessCommand.js` | yes | **FENCED** — `assertProjectTarget()` at `:109-121`: `--projectId` **required, no default**; `--projectId taylor-parts` additionally requires exact-match `--confirmProduction`; checked **before `initializeApp()`** at `:382-395` | **no** |
+| `functions/scripts/productionFoundationVerification.js` | yes | **FENCED** — same pattern at `:85-97`, and its own comment says it matches `operatorAccessCommand.js` deliberately | **no** |
+| `functions/scripts/environmentTargetShared.js` | **absent** | n/a — it is `p2c2`'s new shared fence module | only as the vehicle for the row below |
+| `functions/scripts/inventoryCapabilityParityHarness.js` | yes | **UNFENCED** | **YES** |
 
-Searched for `EOS_TARGET_ENV`, `requireExplicitEnvironment`, `projectTargetGuard`, `assertTarget`,
-`environmentTargetShared` — **zero matches in all three files that exist.**
+**The one real hole, and it is a good one.** `inventoryCapabilityParityHarness.js` on `main` requires
+`--tenant` and at least one `--subject` (`:264`, `:270`) and **takes no project or environment argument
+at all**. Its own comment at `:254-258` states the operator contract: it reads Postgres from
+`POLICY_TEST_DATABASE_URL` or the standard config and Firestore from **"a live Firestore credential
+(GOOGLE_APPLICATION_CREDENTIALS / ADC)"**. It reaches `getFirestore()` with no app of its own — so it
+binds to whatever the ambient environment already initialised.
 
-So: **three operator scripts on `main` right now resolve their target environment with no explicit
-fence**, and the branch that would fence them is the one being superseded on its other files. Merging
-only `eng-d` leaves that hole open. **Port the residue onto `eng-d`; do not merge `p2c2` whole, and do
-not discard it either.**
+That is precisely the pattern the standing ruling forbids: **NO EXPLICIT ENVIRONMENT = REFUSE**, and do
+not infer the environment from ambient credentials. Run this harness on a machine holding production
+ADC and it reads production, with no flag anywhere in the invocation naming production.
 
-`operatorAccessCommand.js` and `productionFoundationVerification.js` are named for what they do. This is
-the single most consequential finding in this register.
+`p2c2` closes it, and finds a second trap while doing so that this register had not identified:
+**`GCLOUD_PROJECT` / `GOOGLE_CLOUD_PROJECT` silently supply the capability-*activation* environment,
+which is a different thing from the Firestore project being read.** A deployed Cloud Function always has
+`GCLOUD_PROJECT` set by the runtime; an operator laptop often has one set too. So `p2c2` requires **both**
+to be stated and to **agree** — `assertProjectTarget`, `assertResolvedProjectId` and
+`assertCapabilityActivationProject`, all before any Firestore or Postgres client is constructed.
 
-**UNPROVEN:** that the absence of those five markers means those scripts are genuinely unfenced. It is
-a static negative over one marker set — they could fence by a spelling not searched. Verify by execution
-before acting, per the reliability order. The finding is strong enough to act on and not strong enough
-to state as executed fact.
+**Action:** port `environmentTargetShared.js` plus the `inventoryCapabilityParityHarness.js` fence onto
+`eng-d`. Drop `p2c2`'s changes to `operatorAccessCommand.js` and `productionFoundationVerification.js` —
+`main` already fences both, and re-fencing them risks regressing a working guard.
+
+**Note the collision:** `post/eng-c-parity-vacuity` (A1-4) also rewrites
+`inventoryCapabilityParityHarness.js`, to 535 lines, for vacuity rather than fencing. Two lanes, one
+file, two unrelated concerns — **both needed, and they must be sequenced, not chosen between.** Take
+`eng-c`'s vacuity version first (A1-4), then apply the fence on top (A2-3). Doing it in the other order
+means resolving the fence into a file that is about to be rewritten.
 
 ## 8. TIER-2 HOLD — Owner decision required, not a correctness merge
 
@@ -296,7 +312,7 @@ here: `ext/own-decision-packet`, `ext/own-engineering-gap`, `ext/ux-honest-absen
 | Class | Branches |
 |---|---|
 | INTEGRATION A1 — normal correctness | **12** |
-| INTEGRATION A2 — guard / migration / environment authority | **4** (one residue-only) |
+| INTEGRATION A2 — guard / migration / environment authority | **4** (one residue-only, 2 files) |
 | TIER-2 HOLD — Owner decision | **2** |
 | SUPERSEDED — do not merge | **5** |
 | DISCARDED | **1** |
@@ -314,7 +330,8 @@ probably have but cannot receive without an Owner ruling.
   got wrong once and acted on.
 - **That the rebase exposure in §4 will not conflict.** It is a set intersection. It bounds risk; it
   does not simulate a merge.
-- **That the `p2c2` residue scripts are unfenced.** §7.1 is a static negative over one marker set.
+- **That `operatorAccessCommand.js` and `productionFoundationVerification.js` are safe in every respect.** §7.1 proves only that each requires an explicit `--projectId` with no default and gates production behind an exact-match confirmation, read from source. Their *other* behaviour is not assessed here.
+- **That `inventoryCapabilityParityHarness.js` would actually reach production.** §7.1 reads its argument parsing and its own documented credential contract; it was not executed, and no environment was contacted to find out what its ambient ADC would resolve to.
 - **Whether the 71 PR candidates are open or closed-unmerged.** Needs the API. Still **UNPROVEN**.
 - **The correct `firebaseExitGuard` baseline count** — 369 and 366 both appear in committed comments.
 - **Any production state whatsoever.** Nothing here was executed against any environment.
