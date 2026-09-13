@@ -343,11 +343,41 @@ program has been quoting a ruling by a paraphrase of its name. That is the same 
 `CURRENT_SUPPORTED_SERVER_KINDS` one: a paraphrased identifier is indistinguishable from a verified one
 once written down.
 
-**SCOPE NOTE, reported and deliberately NOT expanded.** **5 of 30 `allow update` statements are permissive
-with no `hasOnly` allowlist**: `fieldops_jobs:381-391` (this packet), `fieldops_technicians:418-419` (the
-closest analogue), `accounts:1335-1337`, `locations:1343`, `contacts:1557`. Only `reorder_requests:763-888`
-and `equipment:1542-1547` carry allowlists. **The other four are unassessed** and this register makes no
-claim about them beyond the count.
+**SCOPE NOTE — the denominator here was wrong, and it understated the finding roughly fourfold.** An
+earlier revision said *"5 of 30 `allow update` statements are permissive with no `hasOnly` allowlist."*
+Re-counted at the baseline:
+
+| Measure | Count |
+|---|---|
+| `allow [create, ] update` statements in `firestore.rules` | **25** |
+| …of which are `if false` — closed to every client | **18** |
+| …of which permit a client update | **7** |
+
+So the correct framing is **5 of 7 client-writable statements, not 5 of 30.** *"5 of 30"* reads like a
+rounding error; **5 of 7 is a structural property of the file.** The 18 closed statements are not a
+denominator — they are the pattern the other 7 depart from.
+
+**And "no allowlist" flattened four distinct mechanisms, which would have overstated two of them.** The
+seven, each verified for **helper-wrapped** allowlists as well as inline ones — because a literal `hasOnly`
+search misses `jobStatusOnlyChange()`, and missing it is how this register got §7.1 wrong once already:
+
+| Statement | Field constraint | Verdict |
+|---|---|---|
+| `reorder_requests:763` | inline `hasOnly` ×2 | **allowlisted** |
+| `equipment:1542` | inline `hasOnly` + `equipmentNameValid()` / `equipmentCreateShapeValid()` | **allowlisted** |
+| `fieldops_jobs:381` | `jobStatusOnlyChange()` **on the technician branch only** | **THE DEFECT** (§8.1) — allowlisted on one branch of two |
+| `accounts:1335` | `accountGovernedFieldsUnchanged()` — constrains governed fields **by equality, not by allowlist** | constrained by a **different mechanism**; **not** "no field constraint" |
+| `fieldops_technicians:418` | helpers are `isAdminOrDispatcher()` / `isSignedIn()` — **neither contains `hasOnly`** | **no field constraint** |
+| `locations:1343` | `isAdminOrDispatcher()` only | **no field constraint** |
+| `contacts:1557` | `isAdminOrDispatcher()` only | **no field constraint** |
+
+**Three statements have no field constraint of any kind** — `fieldops_technicians`, `locations`,
+`contacts` — and one is allowlisted on only one of its two branches, which is the `fieldops_jobs` defect
+this register already carries. **`accounts` is NOT in that group** and must not be reported as if it were.
+
+**Still reported and deliberately NOT expanded:** the three unconstrained statements and `accounts`'
+equality mechanism are **unassessed**. This register makes no claim about whether any of them is
+exploitable, only about what the predicates do and do not constrain.
 
 **Disposition:** TIER-2, no candidate, no authorization. It needs a `firestore.rules` change and
 therefore an Owner ruling, and it must not be folded into any A1 or A2 merge.
