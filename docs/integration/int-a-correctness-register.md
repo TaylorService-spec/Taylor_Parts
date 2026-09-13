@@ -378,8 +378,13 @@ probably have but cannot receive without an Owner ruling.
 Surfaced by the UX-KPI-DRILL lane. Two lanes reached opposite conclusions on it, so every link was
 re-verified here, at `64008d5a`, before anything was written down.
 
-**The program has repeatedly stated that nothing is reachable in production and that reporting stays
-fail-closed there. For the `report.*` family that is false.** The whole chain holds:
+**The program held two contradictory positions on this at once, and neither was right.** In conversation
+and in the reporting-closure posture it said reporting stays fail-closed in production. In the canonical
+run handoff (`docs/atlas/run-verdict-2026-09-13.md` §A.3, `C8`, §D, §J) it said the 25 are **live in
+production, flatly** — and called Reporting "the only production-activated family." The first is false.
+The second overshoots in the other direction: activation is established by source and configuration, and
+deployment by dated committed evidence, but *reachability today* is not established by either. The
+correct standing is narrower than both. The chain that **is** verified:
 
 | # | Link | Verified |
 |---|---|---|
@@ -401,8 +406,16 @@ deployed there."*
 **What is left standing after the deny is lifted** is only the ordinary Role/Scope/Condition/accessVersion
 check, which `resolveEffectivePermission.ts` leaves unchanged — so a lifted capability with no qualifying
 grant still denies. But `ADMIN_ALL_PERMISSIONS` (`compatibilityRoles.ts:235`) spreads the whole catalogue
-onto `admin`, and the single production principal is `admin@global`. **So the reachable-by-admin path
-for reporting in production is live, not theoretical.**
+onto `admin`. **So a reachable-by-admin path for reporting in production is a live possibility, not a
+theoretical one.**
+
+**One qualification on the principal, because this program has overstated it.** The committed census
+`be1e5579` reports `totals.roleAssignments: 2` but **itemises only one** — `admin@global`, `employeeId:
+null` — because its listing is scoped to a manager-exposure query. **The second assignment is identified
+nowhere.** So "zero governed-business-role occupancy" is supportable and "the single production principal
+is `admin@global`" is **not**: it is one of two, and the other is **UNPROVEN**. The census is also dated
+**2026-09-02** and was not re-read live. The reachable set cannot be closed while one of two production
+assignments is unidentified.
 
 **Withdrawn:** "reporting stays fail-closed in production" and the unqualified "nothing is reachable in
 production." The second was always about *commercial* surfaces and stays true of those; stated without
