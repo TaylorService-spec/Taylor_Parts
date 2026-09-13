@@ -542,6 +542,19 @@ ambient ADC — see §7.1. Already **A2-3**; nothing further to assign.
   lane's own tree at its own base. After rebase onto `64008d5a` each must be **re-proven**, unpiped —
   a test run read through `| tail -3` reports the exit code of `tail`, which this program has already
   got wrong once and acted on.
+- **That re-proof is currently possible at all.** Surveyed 2026-09-13: **no Linux worktree has
+  `node_modules` or `functions/lib`.** They exist in exactly one place — the main checkout
+  `/mnt/d/Taylor_Parts`, which is sitting on `docs/issue-100-inventory-role-access-specification`. There
+  is also **no `java`**, so the Firestore emulator cannot start anywhere. So the re-proof this register
+  requires has a **concrete prerequisite** that does not exist yet, and any lane reporting a passing
+  functions test should be asked where its `lib` came from.
+
+  **And one borrowing rule that is absolute.** `node_modules` may be borrowed from an idle checkout —
+  dependencies are branch-independent apart from `package.json` drift. **`functions/lib` may never be
+  borrowed.** It is compiled output of whatever branch produced it, and the `.mjs` suites import
+  `../lib/**/*.js` directly, so a borrowed `lib` runs the test against another branch's compiled code and
+  reports the result as the branch under test. That is precisely the branch-provenance failure this
+  program has committed three times. `functions/lib` is **built on the ref under test, or absent.**
 - **That the rebase exposure in §4 will not conflict.** It is a set intersection. It bounds risk; it
   does not simulate a merge.
 - **That `operatorAccessCommand.js` and `productionFoundationVerification.js` are safe in every respect.** §7.1 proves only that each requires an explicit `--projectId` with no default and gates production behind an exact-match confirmation, read from source. Their *other* behaviour is not assessed here.
