@@ -304,6 +304,51 @@ was wrong in two independent ways, and both matter:
    site.** Citing it made a correct Rules block look like a ruling violation while the real violation sat
    uncited a few hundred lines above.
 
+**SEVERITY, CORRECTED DOWN — and this register overstated it.** The TIER2-RULES-PACKET lane established
+three things that narrow the finding materially, and they belong here because §8.1 as first written read
+as a privilege-escalation report:
+
+- **`operatingCompanyId` is NOT read for authority on this family.** The one live read is FIN-004
+  `financialVisibility.ts:170`, which matches a *grant's* bound value against `invoice.companyId` —
+  invoices, not jobs. Zero `allow` predicates, zero client guards, zero `where('operatingCompanyId', …)`
+  queries touch it on `fieldops_jobs`.
+- **It is `0/12` in production.** 41/45 in sandbox, never backfilled to production. So the exposure is
+  **authoring a false company fact**, not corrupting a true one.
+- **Reachability is narrower than "any valid transition."** The branch is reachable only bundled with one
+  of four `isValidJobTransition` edges; a field-only patch yields `from == to` and is already denied.
+
+So this is **a standing-ruling violation and an ownership-integrity defect, not privilege escalation.**
+Still TIER-2 — it is a `firestore.rules` change on a declared owner field — but it must not be escalated
+in tone beyond what the evidence carries.
+
+**Two things that got WORSE on inspection.** The mutable-field set is **unbounded, not a 19-key list**:
+with no `keys()` or `affectedKeys()` constraint on the branch, arbitrary *new* keys and key *removals* are
+permitted too, so 19 is a lower bound derived from known writers and docs. And **there is zero test
+coverage** for field immutability against admin/dispatcher on this collection — of 14 update assertions in
+`legacyJobsTechniciansRules.test.js`, 12 are on the technician branch and the 2 on admin/dispatcher test
+the outer guard, not fields.
+
+**The minimum correction is a no-op for every live writer.** `hasOnly(['status','technicianId'])` as one
+added conjunct — the `jobStatusOnlyChange()` pattern 32 lines above. Verified against `assignJob`
+(`{technicianId, status}`), `updateJobStatus` (`{status}`), `completeAssignedJob` (Admin SDK, unaffected),
+`createJob` (orphaned) and `jobsStore.update` (stamps nothing). `['status']` alone would break the
+existing ALLOW at `:214`.
+
+**A citation correction that affects this whole program.** **No document in the repository contains the
+phrase "reassignment ≠ ownership transfer"** — zero matches, likewise "manager intervention ≠ …". The
+substance holds and is real, but it must be cited to where it actually lives: DECISIONS **#142** at
+`:3277-3279`, non-collapse at `:3307-3310`, `ownershipMatrix.ts:199-201,271`, and **#110** at `:1601-1606`,
+where the Owner enumerates what a reassignment records — **and company is absent from that list.** This
+program has been quoting a ruling by a paraphrase of its name. That is the same failure as the
+`CURRENT_SUPPORTED_SERVER_KINDS` one: a paraphrased identifier is indistinguishable from a verified one
+once written down.
+
+**SCOPE NOTE, reported and deliberately NOT expanded.** **5 of 30 `allow update` statements are permissive
+with no `hasOnly` allowlist**: `fieldops_jobs:381-391` (this packet), `fieldops_technicians:418-419` (the
+closest analogue), `accounts:1335-1337`, `locations:1343`, `contacts:1557`. Only `reorder_requests:763-888`
+and `equipment:1542-1547` carry allowlists. **The other four are unassessed** and this register makes no
+claim about them beyond the count.
+
 **Disposition:** TIER-2, no candidate, no authorization. It needs a `firestore.rules` change and
 therefore an Owner ruling, and it must not be folded into any A1 or A2 merge.
 
