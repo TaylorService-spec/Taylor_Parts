@@ -10,19 +10,48 @@
 // tone drives styling; role drives assistive-tech semantics ("alert" only for real problems, not
 // for an empty result or a normal loading region).
 
-const KINDS = new Set([
-  "idle", "loading", "empty", "permission-denied", "partially-authorized",
-  "unsupported", "truncated-widened", "failure", "unavailable", "results",
-  // RPT-CLIENT. Two states the client could not render at 8521cd88:
-  //   company-unresolved -- a SERVER kind (ENG-E): the run was refused because the
-  //     runner's operating company could not be established. Unrecognised here, it
-  //     fell through to "failure" and the tenancy explanation was lost.
-  //   incomplete-scan    -- a CLIENT-SIDE state (like "unavailable", "unsupported"
-  //     and "failure"), produced by reportRunOutcome.js from the server's
-  //     "resource-exhausted" refusal. It is NOT a server kind and must never be
-  //     added to SERVICE_KINDS.
-  "company-unresolved", "incomplete-scan",
-]);
+import { CLIENT_RECOGNIZED_KINDS } from "./reportRunOutcome.js";
+
+// ===================== THE KIND VOCABULARY, CLASSIFIED =====================
+//
+// RPT-COMPAT. This used to be a hand-written literal set that repeated the six wire
+// kinds a second time, so the render layer could fall behind the mapper without
+// anything failing. It is now DERIVED: the wire half comes from
+// reportRunOutcome.js's CLIENT_RECOGNIZED_KINDS (which carries the Owner's SUBSET
+// contract and the compatibility declaration), and the client half is declared
+// below with a reason per entry.
+//
+// Every kind this categorizer accepts is therefore in exactly one of two declared
+// classes, and test/reportOutcomeContractRatchet.test.mjs asserts the union is
+// complete, the two classes are DISJOINT, and the counts add up -- so an
+// unclassified kind cannot appear in either layer.
+//
+// CLIENT-ORIGIN states are produced by the CLIENT and are NEVER accepted off the
+// wire (mapServiceOutcome() rejects them, which is deliberate: a server must not be
+// able to claim "unavailable" or "idle"). They are NOT compatibility entries --
+// that is a different class, for a WIRE kind the current server can no longer emit,
+// declared in reportRunOutcome.js's SERVER_KIND_COMPATIBILITY.
+export const CLIENT_ORIGIN_KINDS = Object.freeze({
+  "idle": { reason: "the builder before any run has been requested; no server call has happened" },
+  "loading": { reason: "a run is in flight; the client owns this state, the server never reports it" },
+  "unsupported": { reason: "produced from the callable's invalid-argument/failed-precondition refusals" },
+  "failure": { reason: "the generic safe fallback for an incoherent or hand-built descriptor" },
+  "unavailable": { reason: "the engine is undeployed/unreachable (Spec sec12) -- no server payload exists" },
+  "incomplete-scan": {
+    reason: "produced from the callable's resource-exhausted scan-bound refusal; NOT a server kind " +
+      "and must never be added to CLIENT_RECOGNIZED_KINDS",
+  },
+  "unrecognized-outcome": {
+    reason: "RPT-COMPAT / Owner ruling -- the truthful generic blocking refusal for a server kind " +
+      "this build does not recognise (version skew) or an uninterpretable payload",
+  },
+});
+
+const KINDS = new Set([...CLIENT_RECOGNIZED_KINDS, ...Object.keys(CLIENT_ORIGIN_KINDS)]);
+
+/** Every kind describeRunOutcome() accepts as INPUT. EXPORTED for the guard. */
+export const RENDERABLE_KINDS = Object.freeze([...KINDS]);
+
 // NOTE the asymmetry, which is deliberate. "empty-unproven" is an OUTPUT-ONLY
 // display state -- the `empty` branch returns it when the completeness axis says the
 // absence was never proven -- and it is NOT in KINDS, because no OUTCOME ever has
@@ -148,6 +177,28 @@ export function describeRunOutcome(outcome) {
         "This report read records but there were too many to finish checking, so the result " +
         "couldn't be proven complete and isn't shown. Narrow the report — add a filter or a " +
         "shorter date range — and run it again. Nothing was changed.");
+    case "unrecognized-outcome": {
+      // RPT-COMPAT, the Owner ruling's render half: a TRUTHFUL GENERIC BLOCKING
+      // REFUSAL for a kind this build does not recognise.
+      //
+      // The hard constraint is what this copy MAY NOT ASSERT. The client received an
+      // answer it cannot parse, so it does not know whether the population was read,
+      // partially read, or never touched -- therefore the copy makes NO claim about
+      // what was or wasn't found, in EITHER direction. It must not say "no records
+      // matched" (that is the proven-absence claim), and it must not say "nothing was
+      // read" (the unavailable/failure copy) -- both would be inventions.
+      //
+      // Error tone so ReportBuilder's ResultArea routes it to FailureState: blocking,
+      // no rows table, and no EmptyState path. FailureState renders title+message and
+      // DISCARDS notes, so everything load-bearing is in the message.
+      //
+      // The unrecognised kind string never reaches here (mapServiceOutcome drops it),
+      // so there is nothing to leak.
+      return d("unrecognized-outcome", "error", "alert", "This report's result couldn't be shown",
+        "EOS received a result it doesn't recognise, so it isn't shown. This report can't tell you " +
+        "what was or wasn't found. The app may be out of date with the reporting service — reload " +
+        "and run it again, and tell an administrator if it keeps happening. Nothing was changed.");
+    }
     case "partially-authorized": {
       // Columns the RUNNER selected may be named back to them; dropped PREDICATES are surfaced
       // as a count only -- a shared report's hidden filter may reference a field the runner may

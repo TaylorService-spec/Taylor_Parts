@@ -6,36 +6,76 @@
 // client's own field names (kind / rows / aggregates / rowCount / rowCap / truncated / widened /
 // droppedColumnLabels / droppedPredicateCount), and its `kind`s are a subset of the ones
 // reportResultState.js renders -- so mapping is mostly shape-validation + fail-closed defaults.
+// (SUBSET, not equality: see CLIENT_RECOGNIZED_KINDS below and the Owner ruling recorded there.)
 // A malformed response or an unexpected error NEVER throws and NEVER surfaces a raw code/path.
 
 export const REPORT_RUN_UNAVAILABLE_REASON = "report-engine-unavailable";
 
-// The server's CLOSED RunReportOutcomeKind set, mirrored here.
+// The kinds this client can accept OFF THE WIRE, and the COMPATIBILITY CONTRACT
+// that governs them.
 //
-// RPT-CLIENT. At 8521cd88 this set had five values and the server had six: ENG-E
-// added "company-unresolved" (a TENANCY refusal, deliberately DISTINCT from
-// "permission-denied" so an operator cannot mistake it for a missing grant and go
-// and grant a Role, which would not fix a valueless binding and may over-grant
-// while trying to). An unrecognised kind falls through to reportRunFailure()
-// below, so at baseline a tenancy refusal rendered as a generic failure and the
-// explanation was lost.
+// ===================== OWNER RULING: SUBSET, NOT EQUALITY =====================
 //
-// Mirroring a closed set by hand is exactly the drift this lane's defect class is
-// made of, so it is no longer only a comment: test/
-// reportOutcomeContractRatchet.test.mjs PARSES
-// functions/src/reporting/reportExecutionService.ts's RunReportOutcomeKind union
-// and fails when this array and that union disagree in either direction.
+// This array used to be described as "the server's CLOSED kind set, mirrored", and
+// test/reportOutcomeContractRatchet.test.mjs enforced SET EQUALITY in both
+// directions. That was WRONG, and the Owner has ruled it out. The client and the
+// trusted Function are INDEPENDENTLY DEPLOYABLE and may legitimately run at
+// different versions, so the only defensible contract is directional:
 //
-// EXPORTED for that ratchet. Ordered as the server's union is.
-export const SERVICE_KINDS = Object.freeze([
+//     CURRENT_SUPPORTED_SERVER_KINDS  must be a SUBSET OF  CLIENT_RECOGNIZED_KINDS
+//
+// Equality fails on a configuration that is not hypothetical here. The last
+// RECORDED production Functions deploy pins commit fb45e6ee, whose
+// RunReportOutcomeKind union has FIVE members and NO "company-unresolved"
+// (`git show fb45e6ee:functions/src/reporting/reportExecutionService.ts`). A client
+// deployed ahead of that server -- or a server rolled back to it -- must go on
+// recognising the sixth kind, because a server that still emits it is a server the
+// client is talking to. Under equality the guard's own remedy was "remove
+// company-unresolved and its render branch", which is how the ENG-E tenancy defect
+// this lane was opened to fix would be RE-INTRODUCED by a passing test.
+//
+// So: a kind the CURRENT server source can no longer emit is allowed to remain
+// here, but ONLY as an explicitly declared COMPATIBILITY ENTRY below. An
+// UNDECLARED client-only kind still fails the guard -- otherwise the mirror rots
+// silently in the other direction, which is the original defect class.
+//
+// EXPORTED for the guard. Ordered as the server's union is, compatibility entries last.
+export const CLIENT_RECOGNIZED_KINDS = Object.freeze([
   "permission-denied",
+  // ENG-E requirement 3. A TENANCY refusal, deliberately DISTINCT from
+  // "permission-denied" so an operator cannot mistake it for a missing grant and
+  // go and grant a Role, which would not fix a valueless binding and may
+  // over-grant while trying to.
   "company-unresolved",
   "empty",
   "partially-authorized",
   "truncated-widened",
   "results",
 ]);
-const SERVICE_KIND_SET = new Set(SERVICE_KINDS);
+
+// The COMPATIBILITY DECLARATION: kinds present in CLIENT_RECOGNIZED_KINDS above
+// that the CURRENT server source can no longer emit, each with the reason it is
+// still carried. This is DATA, read by the guard -- not prose, because prose does
+// not fail a build.
+//
+// Rules the guard enforces (reportOutcomeContractRatchet.test.mjs):
+//   * every key must also appear in CLIENT_RECOGNIZED_KINDS (a compatibility entry
+//     that is not wire-accepted does nothing at all);
+//   * every key must have a non-empty `reason` -- an entry whose justification has
+//     been deleted is indistinguishable from drift;
+//   * a key the current server CAN emit is a STALE declaration and fails, so the
+//     table cannot quietly accumulate kinds that came back.
+//
+// CURRENTLY EMPTY, and that is a measured fact rather than an omission: at this
+// commit every kind above is in the server's live RunReportOutcomeKind union, so
+// nothing needs a compatibility exemption. The mechanism exists so that the next
+// server-side REMOVAL is a one-line declaration with a reason instead of a client
+// regression -- and the guard's negative controls exercise it by injection.
+//
+// Shape: { "<kind>": { reason: "<why the client still accepts it>" } }
+export const SERVER_KIND_COMPATIBILITY = Object.freeze({});
+
+const SERVICE_KIND_SET = new Set(CLIENT_RECOGNIZED_KINDS);
 
 // A server kind that carries NO rows because the run was refused before/without
 // producing an answer. `ok` is false for these; every other kind returned a row
@@ -83,6 +123,32 @@ export function reportRunFailure() {
   return Object.freeze({ ok: false, kind: "failure", rows: null, aggregates: null });
 }
 
+// RPT-COMPAT. THE UNKNOWN-KIND OUTCOME, per the Owner ruling: "Unknown server kinds
+// must render a truthful generic blocking refusal."
+//
+// It replaces reportRunFailure() on mapServiceOutcome()'s fail-closed path. Failure
+// was already SAFE -- no rows, ok:false -- but its copy is "Something went wrong
+// running this report. Try again in a moment.", and under version skew BOTH of those
+// sentences are untrue: nothing necessarily went wrong (the server may have answered
+// perfectly well, in a vocabulary this build predates) and trying again in a moment
+// cannot help, because the next call returns the same unrecognised kind.
+//
+// What this state must NOT do -- the four prohibitions, each asserted in
+// test/reportOutcomeContractRatchet.test.mjs by INJECTING an unknown kind:
+//   1. never render as success (ok:false, no rows, no aggregates, error tone);
+//   2. never render as a proven empty result;
+//   3. never claim "nothing was read" -- the client genuinely DOES NOT KNOW what the
+//      server read, so the copy asserts NOTHING about what was or wasn't found;
+//   4. never expose a raw code, the unrecognised kind string, or server prose.
+//
+// "Nothing was changed" is the one claim it does make, and it holds by construction:
+// a report run is read-only (the run callable's only write is its own Audit Event).
+export function reportRunUnrecognizedOutcome() {
+  return Object.freeze({
+    ok: false, kind: "unrecognized-outcome", rows: null, aggregates: null,
+  });
+}
+
 // RPT-CLIENT defect 2. The server's SCAN-BOUND REFUSAL, which at 8521cd88 had no
 // client branch at all.
 //
@@ -114,7 +180,13 @@ export function reportRunIncompleteScan() {
 // Map a successful callable payload (D-FN RunReportOutcome) to the client outcome. A response of
 // an unknown/absent kind fails closed to a safe failure state rather than rendering garbage.
 export function mapServiceOutcome(data) {
-  if (!isPlainObject(data) || !SERVICE_KIND_SET.has(data.kind)) return reportRunFailure();
+  // FAIL CLOSED, and fail HONESTLY (RPT-COMPAT). A payload this build cannot
+  // interpret -- an unrecognised kind from a newer server, or a malformed/absent
+  // response -- resolves to the unrecognized-outcome refusal rather than to
+  // `failure`, whose copy would assert that something went wrong and that retrying
+  // might help. Neither is known to be true. The unrecognised kind string itself is
+  // DROPPED here and never reaches the renderer.
+  if (!isPlainObject(data) || !SERVICE_KIND_SET.has(data.kind)) return reportRunUnrecognizedOutcome();
   return Object.freeze({
     ok: !REFUSAL_KINDS.has(data.kind),
     kind: data.kind,

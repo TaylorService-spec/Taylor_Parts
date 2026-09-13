@@ -1,11 +1,39 @@
 // RPT-CLIENT -- THE DRIFT RATCHET for the reporting server <-> client contract.
 // Baseline: rpt/false-empty-and-audit @ 8521cd88 (chain 92db1d19 -> 64008d5a).
 //
+// ======================= THE CONTRACT: SUBSET, NOT EQUALITY =========================
+//
+// OWNER RULING (supersedes this suite's original design, which asserted SET EQUALITY
+// in both directions):
+//
+//   * The client and the trusted Function are INDEPENDENTLY DEPLOYABLE and may
+//     temporarily run at different versions, so equality is NOT a legitimate
+//     requirement.
+//   * The required contract is DIRECTIONAL:
+//         CURRENT_SUPPORTED_SERVER_KINDS  subset of  CLIENT_RECOGNIZED_KINDS
+//   * A client-only kind is permitted ONLY when explicitly classified as a
+//     COMPATIBILITY ENTRY (reportRunOutcome.js's SERVER_KIND_COMPATIBILITY), with a
+//     reason. An UNDECLARED client-only kind still fails, so the mirror cannot rot in
+//     the other direction either.
+//   * An UNKNOWN server kind must resolve to a TRUTHFUL GENERIC BLOCKING REFUSAL:
+//     never success, never a proven empty, never "nothing was read" unless that is
+//     established, never a raw internal error. Proven here BY INJECTION.
+//
+// The equality version of this guard FAILED on a configuration that is real on this
+// estate: the last RECORDED production Functions deploy pins commit fb45e6ee, whose
+// RunReportOutcomeKind union has FIVE members and no "company-unresolved". Pointed at
+// that server the equality assertion demanded the client DELETE "company-unresolved"
+// and its render branch -- i.e. a passing test would have re-introduced the exact
+// ENG-E tenancy defect this lane was opened to fix. Captured before the change:
+//   RPT_CLIENT_RATCHET_SELFTEST_DIR=<server minus company-unresolved> \
+//     node test/reportOutcomeContractRatchet.test.mjs   -> EXIT 1,
+//     "The client recognises kinds the server can no longer return."
+//
 // ======================= THE DEFECT CLASS THIS EXISTS TO CATCH =======================
 //
 // The client mirrors two CLOSED server vocabularies by hand:
 //
-//   1. RunReportOutcomeKind          -> reportRunOutcome.js's SERVICE_KINDS
+//   1. RunReportOutcomeKind          -> reportRunOutcome.js's CLIENT_RECOGNIZED_KINDS
 //   2. the HttpsError codes that     -> reportRunOutcome.js's CALLABLE_ERROR_OUTCOMES
 //      runReportDefinitionCallable.ts
 //      can throw
@@ -14,8 +42,8 @@
 // fail-safe, silent, and user-facing:
 //
 //   * ENG-E added kind "company-unresolved" -- a TENANCY refusal, deliberately
-//     distinct from "permission-denied". SERVICE_KINDS is a closed set, so the new
-//     kind fell through mapServiceOutcome() to reportRunFailure() and a tenancy
+//     distinct from "permission-denied". The client's kind set is closed, so the new
+//     kind fell through mapServiceOutcome() to a generic failure and a tenancy
 //     refusal rendered as "the engine is unreachable"/"something went wrong".
 //   * RPT-FIX's UnprovenAbsenceError and the pre-existing
 //     IncompleteAggregateScanError both throw "resource-exhausted".
@@ -47,9 +75,12 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
-  SERVICE_KINDS, SCAN_COMPLETENESS_VALUES, CALLABLE_ERROR_OUTCOMES, mapServiceOutcome, mapCallableError,
+  CLIENT_RECOGNIZED_KINDS, SERVER_KIND_COMPATIBILITY, SCAN_COMPLETENESS_VALUES,
+  CALLABLE_ERROR_OUTCOMES, mapServiceOutcome, mapCallableError,
 } from "../src/domain/reporting/reportRunOutcome.js";
-import { describeRunOutcome } from "../src/domain/reporting/reportResultState.js";
+import {
+  describeRunOutcome, RENDERABLE_KINDS, CLIENT_ORIGIN_KINDS,
+} from "../src/domain/reporting/reportResultState.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -100,29 +131,186 @@ ok("the real server contract files exist and parse to non-trivial vocabularies",
   assert.ok(parseUnion(real, "ScanCompleteness").length >= 3);
 });
 
-// ---- 1. the kind mirror --------------------------------------------------------
-ok("SERVICE_KINDS matches the server's RunReportOutcomeKind union EXACTLY", () => {
-  const server = parseUnion(readServer("reportExecutionService.ts"), "RunReportOutcomeKind");
-  const missing = server.filter((k) => !SERVICE_KINDS.includes(k));
-  const extra = SERVICE_KINDS.filter((k) => !server.includes(k));
+// ---- 1. THE COMPATIBILITY CONTRACT ---------------------------------------------
+// The set the CURRENT server source can emit. Named as the ruling names it.
+function currentSupportedServerKinds() {
+  return parseUnion(readServer("reportExecutionService.ts"), "RunReportOutcomeKind");
+}
+
+ok("CURRENT_SUPPORTED_SERVER_KINDS is a SUBSET of CLIENT_RECOGNIZED_KINDS", () => {
+  const server = currentSupportedServerKinds();
+  const missing = server.filter((k) => !CLIENT_RECOGNIZED_KINDS.includes(k));
   assert.deepEqual(missing, [],
     "The server can return these kinds and the client does not recognise them. mapServiceOutcome()\n" +
-    "fails them closed to a generic `failure`, which is SAFE but DISCARDS the explanation -- exactly\n" +
-    "how a tenancy refusal came to render as \"the engine is unreachable\". Add each to SERVICE_KINDS\n" +
-    "in reportRunOutcome.js AND give it user-facing copy in reportResultState.js:\n  " + missing.join("\n  "));
-  assert.deepEqual(extra, [],
-    "The client recognises kinds the server can no longer return. A stale mirror is how the next\n" +
-    "drift hides: remove each, and the branch in reportResultState.js with it:\n  " + extra.join("\n  "));
+    "fails them closed to the generic unrecognized-outcome refusal, which is SAFE and HONEST but\n" +
+    "DISCARDS the explanation -- exactly how a tenancy refusal came to render as \"the engine is\n" +
+    "unreachable\". Add each to CLIENT_RECOGNIZED_KINDS in reportRunOutcome.js AND give it\n" +
+    "user-facing copy in reportResultState.js:\n  " + missing.join("\n  "));
+});
+
+ok("every client-only kind is an EXPLICITLY DECLARED compatibility entry, with a reason", () => {
+  // The other direction, which the ruling permits but only under declaration. This is
+  // what stops the mirror rotting silently once equality is gone.
+  const server = currentSupportedServerKinds();
+  const clientOnly = CLIENT_RECOGNIZED_KINDS.filter((k) => !server.includes(k));
+  const undeclared = clientOnly.filter(
+    (k) => !Object.prototype.hasOwnProperty.call(SERVER_KIND_COMPATIBILITY, k));
+  assert.deepEqual(undeclared, [],
+    "These kinds are accepted off the wire but the CURRENT server source cannot emit them, and they\n" +
+    "are not declared compatibility entries. Either the parse is stale (the server really does emit\n" +
+    "them -- fix the parse) or they are compatibility carry-overs, in which case declare each in\n" +
+    "SERVER_KIND_COMPATIBILITY with the reason the client still accepts it:\n  " + undeclared.join("\n  "));
+  for (const [kind, entry] of Object.entries(SERVER_KIND_COMPATIBILITY)) {
+    assert.ok(CLIENT_RECOGNIZED_KINDS.includes(kind),
+      `compatibility entry "${kind}" is not in CLIENT_RECOGNIZED_KINDS, so it does nothing at all`);
+    assert.equal(typeof entry?.reason, "string",
+      `compatibility entry "${kind}" has no reason -- an undocumented exemption is indistinguishable from drift`);
+    assert.ok(entry.reason.trim().length >= 20,
+      `compatibility entry "${kind}" has an empty/stub reason: ${JSON.stringify(entry.reason)}`);
+    assert.ok(!server.includes(kind),
+      `compatibility entry "${kind}" IS in the current server union -- the declaration is STALE. ` +
+      "Remove it so the table cannot accumulate kinds that came back.");
+  }
 });
 
 ok("every server kind has a REAL branch in describeRunOutcome -- not the generic failure", () => {
   // Recognising a kind in the mapper and then rendering it as "something went wrong"
-  // is the same defect one layer down.
-  for (const kind of SERVICE_KINDS) {
+  // is the same defect one layer down. Asserted over the SERVER's current set (the
+  // ruling's requirement) rather than over the client's, so a compatibility entry
+  // cannot be used to smuggle in an unrendered kind either.
+  for (const kind of [...new Set([...currentSupportedServerKinds(), ...CLIENT_RECOGNIZED_KINDS])]) {
     const d = describeRunOutcome({ kind, rows: null, completeness: "proven-complete", scanTruncated: false });
     assert.equal(d.kind, kind,
       `describeRunOutcome() has no branch for the server kind "${kind}" -- it fell through to "${d.kind}"`);
   }
+});
+
+ok("the render vocabulary is exactly the wire kinds UNION the declared client-origin states", () => {
+  // Union pattern, verified BY COUNT, in both directions -- so neither layer can gain
+  // a kind the other has never heard of, and no kind can be unclassified.
+  const clientOrigin = Object.keys(CLIENT_ORIGIN_KINDS);
+  const overlap = clientOrigin.filter((k) => CLIENT_RECOGNIZED_KINDS.includes(k));
+  assert.deepEqual(overlap, [],
+    "A CLIENT-ORIGIN state is also accepted off the wire. That lets a server claim a state the client\n" +
+    "owns (e.g. \"unavailable\", \"idle\"), which is a trust inversion, not a mirror problem:\n  " +
+    overlap.join("\n  "));
+  assert.equal(RENDERABLE_KINDS.length, CLIENT_RECOGNIZED_KINDS.length + clientOrigin.length,
+    `renderable=${RENDERABLE_KINDS.length} but wire=${CLIENT_RECOGNIZED_KINDS.length} + ` +
+    `client-origin=${clientOrigin.length} -- a kind is unclassified or counted twice`);
+  for (const k of [...CLIENT_RECOGNIZED_KINDS, ...clientOrigin]) {
+    assert.ok(RENDERABLE_KINDS.includes(k), `declared kind "${k}" is not renderable`);
+  }
+  for (const [k, entry] of Object.entries(CLIENT_ORIGIN_KINDS)) {
+    assert.equal(typeof entry?.reason, "string", `client-origin state "${k}" has no reason`);
+    assert.ok(entry.reason.trim().length >= 20, `client-origin state "${k}" has a stub reason`);
+  }
+});
+
+// ---- 1b. UNKNOWN-KIND SAFETY, PROVEN BY INJECTION -----------------------------
+// The ruling's four prohibitions, asserted against kinds NO version of the server has
+// ever emitted. This is the half that equality could never test: under equality an
+// unknown kind was, by assumption, impossible.
+const INJECTED_UNKNOWN_KINDS = Object.freeze([
+  "scope-unresolved",          // the kind the brief invented; the server has NEVER had it
+  "a-kind-from-a-newer-server",
+  "COMPANY-UNRESOLVED",        // case skew must not be coerced into the real kind
+  "results ",                  // whitespace skew likewise
+  "",
+]);
+
+ok("an injected UNKNOWN server kind is never accepted as a kind", () => {
+  const known = new Set([...currentSupportedServerKinds(), ...CLIENT_RECOGNIZED_KINDS]);
+  for (const kind of INJECTED_UNKNOWN_KINDS) {
+    assert.ok(!known.has(kind), `"${kind}" is a REAL kind -- pick an injection the contract does not cover`);
+    const out = mapServiceOutcome({ kind, rows: [{ id: "doc-1" }], rowCount: 1, completeness: "proven-complete" });
+    assert.equal(out.kind, "unrecognized-outcome",
+      `an unknown kind resolved to "${out.kind}" instead of the generic blocking refusal`);
+  }
+});
+
+ok("PROHIBITION 1 -- an unknown kind NEVER renders success", () => {
+  for (const kind of INJECTED_UNKNOWN_KINDS) {
+    // rows are supplied deliberately: a payload that LOOKS successful must still be refused.
+    const out = mapServiceOutcome({ kind, rows: [{ id: "doc-1" }], rowCount: 1, aggregates: [{ n: 1 }] });
+    assert.equal(out.ok, false, `unknown kind "${kind}" produced ok:true`);
+    assert.equal(out.rows, null, `unknown kind "${kind}" carried rows through`);
+    assert.equal(out.aggregates, null, `unknown kind "${kind}" carried aggregates through`);
+    const d = describeRunOutcome(out);
+    assert.notEqual(d.kind, "results", `unknown kind "${kind}" rendered as a result`);
+    // BLOCKING: error tone is what routes ReportBuilder's ResultArea to FailureState
+    // (no rows table, no EmptyState path).
+    assert.equal(d.tone, "error", `unknown kind "${kind}" is not rendered as a blocking refusal`);
+    assert.equal(d.role, "alert");
+    assert.doesNotMatch([d.title, d.message, ...d.notes].filter(Boolean).join(" | "),
+      /ran successfully|showing the first|complete result/i);
+  }
+});
+
+ok("PROHIBITION 2 -- an unknown kind NEVER renders a proven empty", () => {
+  for (const kind of INJECTED_UNKNOWN_KINDS) {
+    // the shape of a proven-complete zero-row answer, which is the trap
+    const d = describeRunOutcome(mapServiceOutcome({
+      kind, rows: [], rowCount: 0, completeness: "proven-complete", scanTruncated: false,
+    }));
+    assert.ok(d.kind !== "empty" && d.kind !== "empty-unproven",
+      `unknown kind "${kind}" rendered as an absence ("${d.kind}")`);
+    const text = [d.title, d.message, ...d.notes].filter(Boolean).join(" | ");
+    assert.doesNotMatch(text, /no matching records|no records matched|no matches|nothing matched|didn't match/i,
+      `unknown kind "${kind}" asserted an absence: ${text}`);
+  }
+});
+
+ok("PROHIBITION 3 -- an unknown kind NEVER claims nothing was read", () => {
+  // The client CANNOT know what an unparseable answer read. Saying "nothing was read"
+  // is as much an invention as saying the population was empty, and it is the exact
+  // false sentence this lane's predecessor removed from the scan-bound refusal.
+  for (const kind of INJECTED_UNKNOWN_KINDS) {
+    const d = describeRunOutcome(mapServiceOutcome({ kind }));
+    const text = [d.title, d.message, ...d.notes].filter(Boolean).join(" | ");
+    assert.doesNotMatch(text, /nothing was read|no records were read|nothing was checked|no data was read/i,
+      `unknown kind "${kind}" claimed nothing was read: ${text}`);
+    // ...and it must not claim the opposite either -- it asserts NOTHING about the read.
+    assert.doesNotMatch(text, /records were read|read records|we could read/i,
+      `unknown kind "${kind}" claimed records WERE read, which is equally unknown: ${text}`);
+  }
+});
+
+ok("PROHIBITION 4 -- an unknown kind leaks no raw code, kind string, or server prose", () => {
+  const LEAK = /permission-denied|resource-exhausted|failed-precondition|invalid-argument|unauthenticated|firestore\/|functions\/|HttpsError|FirebaseError|maxScanDocs|stack|undefined|null/i;
+  for (const kind of INJECTED_UNKNOWN_KINDS) {
+    const out = mapServiceOutcome({
+      kind, message: "Scan exceeded 20000 documents in \"customer\"", companyBoundRefusal: "companies/abc123",
+      rows: [{ secret: "row-data" }],
+    });
+    const d = describeRunOutcome(out);
+    for (const str of [out.message, d.title, d.message, ...d.notes].filter(Boolean)) {
+      assert.doesNotMatch(str, LEAK, `unknown kind "${kind}" leaked: ${str}`);
+      if (kind.trim() !== "") {
+        assert.ok(!str.includes(kind), `unknown kind "${kind}" was echoed into user-facing copy: ${str}`);
+      }
+    }
+    // and nothing from the payload survives anywhere on the outcome
+    assert.doesNotMatch(JSON.stringify(out), /20000|customer|abc123|row-data/);
+  }
+});
+
+ok("company-unresolved stays FAIL CLOSED -- no override, no inference, no client-supplied company", () => {
+  // The Owner's standing constraint, asserted at the render layer where the invitation
+  // to self-serve would appear. An authorized user resolves this through the ordinary
+  // authority path, not by typing a company into a report.
+  const d = describeRunOutcome(mapServiceOutcome({
+    kind: "company-unresolved", rows: null, completeness: "not-attempted",
+    // a hostile/compat payload trying to supply the answer it was refused for
+    companyId: "cmp-999", companyName: "Acme Holdings", operatingCompany: "cmp-999",
+  }));
+  const text = [d.title, d.message, ...d.notes].filter(Boolean).join(" | ");
+  assert.equal(d.tone, "error");
+  assert.doesNotMatch(text, /cmp-999|Acme Holdings/, "a client-supplied company must never be echoed as authority");
+  assert.doesNotMatch(text, /choose|select|pick|enter|switch to|specify|set the (operating )?company/i,
+    `the copy invites a self-service override: ${text}`);
+  assert.doesNotMatch(text, /role|permission|access denied|not allowed/i,
+    `a tenancy refusal must carry NO permission language: ${text}`);
+  assert.match(text, /administrator/i, "it must point at the ordinary authority path");
 });
 
 // ---- 2. the refusal-code mirror -----------------------------------------------
@@ -184,7 +372,7 @@ ok("completeness is NEVER a kind -- on the server or on the client", () => {
   const text = readServer("reportExecutionService.ts");
   const kinds = parseUnion(text, "RunReportOutcomeKind");
   const completeness = parseUnion(text, "ScanCompleteness");
-  const collision = completeness.filter((c) => kinds.includes(c) || SERVICE_KINDS.includes(c));
+  const collision = completeness.filter((c) => kinds.includes(c) || CLIENT_RECOGNIZED_KINDS.includes(c));
   assert.deepEqual(collision, [],
     "A completeness value became an outcome kind. The kind ladder is SINGLE-WINNER and has already\n" +
     "collapsed once; a completeness kind would have to out-rank \"partially-authorized\" to be seen at\n" +

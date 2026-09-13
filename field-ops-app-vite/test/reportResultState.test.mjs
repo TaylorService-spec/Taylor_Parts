@@ -4,7 +4,12 @@
 //
 // Run: node test/reportResultState.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
-import { describeRunOutcome } from "../src/domain/reporting/reportResultState.js";
+import {
+  describeRunOutcome, RENDERABLE_KINDS, CLIENT_ORIGIN_KINDS,
+} from "../src/domain/reporting/reportResultState.js";
+import {
+  CLIENT_RECOGNIZED_KINDS, mapServiceOutcome,
+} from "../src/domain/reporting/reportRunOutcome.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -233,6 +238,79 @@ ok("\"empty-unproven\" is OUTPUT-only -- it is not an accepted input kind", () =
   // KINDS later: no OUTCOME ever carries this kind, only a descriptor does.
   const d = describeRunOutcome({ kind: "empty-unproven" });
   assert.equal(d.kind, "failure", "an outcome cannot arrive with an output-only display kind");
+});
+
+
+// ============================================================================
+// RPT-COMPAT / OWNER RULING. The UNKNOWN-KIND display state.
+//
+// The ruling requires an unrecognised server kind to render a TRUTHFUL GENERIC
+// BLOCKING REFUSAL. mapServiceOutcome() resolves such a payload to
+// "unrecognized-outcome"; this is the copy half of that contract, asserted against
+// the four prohibitions AND against the one thing the ruling adds beyond them: the
+// copy CANNOT ASSERT WHAT WAS OR WASN'T READ, because the client does not know.
+// ============================================================================
+
+ok("the unknown-kind state renders a BLOCKING refusal, not a result and not an absence", () => {
+  const d = describeRunOutcome({ kind: "unrecognized-outcome" });
+  assert.equal(d.kind, "unrecognized-outcome");
+  assert.equal(d.tone, "error", "error tone is what routes ResultArea to FailureState -- no rows table");
+  assert.equal(d.role, "alert");
+  assert.ok(typeof d.title === "string" && d.title.length > 0);
+  assert.ok(typeof d.message === "string" && d.message.length > 0);
+  // FailureState renders title+message and DISCARDS notes, so nothing load-bearing
+  // may be demoted to a note.
+  assert.deepEqual(d.notes, []);
+});
+
+ok("the unknown-kind copy asserts NOTHING about what was or wasn't read", () => {
+  const d = describeRunOutcome({ kind: "unrecognized-outcome" });
+  const text = [d.title, d.message, ...d.notes].filter(Boolean).join(" | ");
+  // not "nothing was read" (the unavailable/failure claim)...
+  assert.doesNotMatch(text, /nothing was read|no records were read|nothing was checked/i);
+  // ...and not the opposite either. Both are inventions here.
+  assert.doesNotMatch(text, /records were read|read records|we could read/i);
+  // not a proven absence
+  assert.doesNotMatch(text, /no matching records|no records matched|no matches|ran successfully/i);
+  // not a success
+  assert.doesNotMatch(text, /showing the first|complete result/i);
+  // no raw code, no transport detail, no internal prose
+  assert.doesNotMatch(text, /permission-denied|resource-exhausted|invalid-argument|unauthenticated|functions\/|firestore\/|HttpsError|FirebaseError|maxScanDocs|undefined|null/i);
+  // it IS allowed to say the run changed nothing -- a report run is read-only.
+  assert.match(text, /Nothing was changed/i);
+  // and it must not invite a futile retry-in-a-moment, which is `failure`'s copy
+  assert.doesNotMatch(text, /try again in a moment/i);
+});
+
+ok("the unknown-kind state is DISTINCT from failure, unavailable and incomplete-scan", () => {
+  // If it collapsed into any of those three it would inherit copy that makes a claim
+  // the client cannot support.
+  const unknown = describeRunOutcome({ kind: "unrecognized-outcome" });
+  for (const other of ["failure", "unavailable", "incomplete-scan"]) {
+    const d = describeRunOutcome({ kind: other });
+    assert.notEqual(unknown.message, d.message, `unknown-kind copy is identical to "${other}"`);
+  }
+});
+
+ok("the kind vocabulary is CLASSIFIED -- wire kinds and client-origin states, disjoint", () => {
+  // RPT-COMPAT: the render layer no longer repeats the wire kinds by hand; it derives
+  // them from reportRunOutcome.js's CLIENT_RECOGNIZED_KINDS and unions the declared
+  // client-origin states. Verified by COUNT so nothing can be dropped silently.
+  const clientOrigin = Object.keys(CLIENT_ORIGIN_KINDS);
+  assert.equal(RENDERABLE_KINDS.length, CLIENT_RECOGNIZED_KINDS.length + clientOrigin.length);
+  assert.equal(new Set(RENDERABLE_KINDS).size, RENDERABLE_KINDS.length);
+  for (const k of clientOrigin) {
+    assert.ok(!CLIENT_RECOGNIZED_KINDS.includes(k),
+      `client-origin state "${k}" must NOT be accepted off the wire -- a server could then claim it`);
+    assert.ok(RENDERABLE_KINDS.includes(k));
+    assert.ok(CLIENT_ORIGIN_KINDS[k].reason.trim().length >= 20, `"${k}" needs a real reason`);
+  }
+  assert.ok(clientOrigin.includes("unrecognized-outcome"));
+  // a client-origin state arriving from the SERVER is refused, not rendered as itself
+  for (const k of clientOrigin) {
+    assert.equal(mapServiceOutcome({ kind: k }).kind, "unrecognized-outcome",
+      `the wire mapper accepted the client-origin state "${k}"`);
+  }
 });
 
 console.log(`\n${passed} passed`);

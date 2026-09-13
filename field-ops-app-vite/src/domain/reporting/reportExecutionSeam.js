@@ -23,6 +23,9 @@ export {
   // RPT-CLIENT: the scan-bound refusal state, re-exported on the same seam so a
   // caller that fixtures the other outcomes can fixture this one too.
   reportRunIncompleteScan,
+  // RPT-COMPAT: the unknown-kind blocking refusal (version skew between this client
+  // and an independently deployed engine), likewise fixture-able from the seam.
+  reportRunUnrecognizedOutcome,
 } from "./reportRunOutcome.js";
 
 // D-FN's onCall export name (functions/src/index.ts), region us-central1 (firebase.js binds the

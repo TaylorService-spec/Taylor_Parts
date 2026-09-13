@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   mapServiceOutcome, mapCallableError, reportRunUnavailable,
   REPORT_RUN_UNAVAILABLE_REASON,
+  CLIENT_RECOGNIZED_KINDS, SERVER_KIND_COMPATIBILITY, reportRunUnrecognizedOutcome,
 } from "../src/domain/reporting/reportRunOutcome.js";
 
 let passed = 0;
@@ -53,12 +54,20 @@ ok("permission-denied maps to ok=false with null rows", () => {
   assert.equal(out.rows, null);
 });
 
-ok("a malformed / unknown-kind payload fails closed to a safe failure", () => {
-  for (const junk of [null, undefined, {}, { kind: "nonsense" }, 42, { kind: "results" /* no rows */ }]) {
+ok("a malformed / unknown-kind payload fails closed to the HONEST blocking refusal", () => {
+  // RPT-COMPAT. This used to accept `failure`, whose copy says "Something went wrong
+  // running this report. Try again in a moment." Under client/server version skew
+  // neither half of that is known to be true, so the fail-closed path now resolves to
+  // "unrecognized-outcome" -- blocking, and silent about what was read.
+  for (const junk of [null, undefined, {}, { kind: "nonsense" }, 42, "results", { kind: 7 }]) {
     const out = mapServiceOutcome(junk);
-    assert.ok(["failure", "results"].includes(out.kind));
-    if (out.kind === "failure") assert.equal(out.ok, false);
+    assert.equal(out.kind, "unrecognized-outcome", `junk ${JSON.stringify(junk)} -> ${out.kind}`);
+    assert.equal(out.ok, false);
+    assert.equal(out.rows, null);
   }
+  // a VALID kind with a missing/garbage row set is a different case: the kind is
+  // recognised, so it maps through and the rows normalize to null.
+  assert.equal(mapServiceOutcome({ kind: "results" }).kind, "results");
   // a non-array rows on `results` is normalized to null, not thrown
   const out = mapServiceOutcome({ kind: "results", rows: "oops" });
   assert.equal(out.rows, null);
@@ -230,6 +239,73 @@ ok("both server refusals share one code, so they share one client outcome", () =
   const a = mapCallableError({ code: "resource-exhausted" });
   const b = mapCallableError({ code: "functions/resource-exhausted" });
   assert.deepEqual(a, b);
+});
+
+// ============================================================================
+// RPT-COMPAT. The OWNER'S SUBSET COMPATIBILITY CONTRACT, at the mapper.
+//
+// The ruling: CURRENT_SUPPORTED_SERVER_KINDS must be a SUBSET of
+// CLIENT_RECOGNIZED_KINDS -- NOT equal to it -- because client and server are
+// independently deployable. The SERVER-side half of that comparison is measured by
+// parsing the server source in reportOutcomeContractRatchet.test.mjs; what is
+// asserted here is the client-side data the ruling names, and the behaviour of the
+// unknown-kind path.
+// ============================================================================
+
+ok("CLIENT_RECOGNIZED_KINDS is a frozen, non-empty, duplicate-free wire vocabulary", () => {
+  assert.ok(Object.isFrozen(CLIENT_RECOGNIZED_KINDS));
+  assert.ok(CLIENT_RECOGNIZED_KINDS.length >= 6, "the server had SIX kinds when this was measured");
+  assert.equal(new Set(CLIENT_RECOGNIZED_KINDS).size, CLIENT_RECOGNIZED_KINDS.length);
+  for (const k of ["permission-denied", "company-unresolved", "empty", "partially-authorized",
+    "truncated-widened", "results"]) {
+    assert.ok(CLIENT_RECOGNIZED_KINDS.includes(k), `the measured server kind "${k}" is not recognised`);
+  }
+  // the kind the brief invented. The server has NEVER had it; it must not be mirrored.
+  assert.ok(!CLIENT_RECOGNIZED_KINDS.includes("scope-unresolved"));
+  // completeness values are an ORTHOGONAL axis and must never appear as kinds
+  for (const c of ["proven-complete", "bounded-page", "not-attempted"]) {
+    assert.ok(!CLIENT_RECOGNIZED_KINDS.includes(c), `completeness value "${c}" became a kind`);
+  }
+});
+
+ok("SERVER_KIND_COMPATIBILITY is the DECLARATION for client-only kinds, and every entry has a reason", () => {
+  assert.ok(Object.isFrozen(SERVER_KIND_COMPATIBILITY));
+  // Empty at this commit -- a measured fact, not an omission: every recognised kind is
+  // in the current server union. The guard fails if that stops being true without a
+  // declaration being added here.
+  for (const [kind, entry] of Object.entries(SERVER_KIND_COMPATIBILITY)) {
+    assert.ok(CLIENT_RECOGNIZED_KINDS.includes(kind), `"${kind}" is declared but not wire-accepted`);
+    assert.equal(typeof entry?.reason, "string");
+    assert.ok(entry.reason.trim().length >= 20, `"${kind}" has a stub reason`);
+  }
+});
+
+ok("the unknown-kind outcome is blocking, carries no data, and asserts nothing about the read", () => {
+  const out = reportRunUnrecognizedOutcome();
+  assert.equal(out.ok, false);
+  assert.equal(out.rows, null);
+  assert.equal(out.aggregates, null);
+  assert.ok(Object.isFrozen(out));
+  // it deliberately carries NO message: the copy is fixed at the render layer so a
+  // payload cannot shorten or replace it (same reasoning as incomplete-scan).
+  assert.equal(out.message, undefined);
+  // and the unavailable copy -- the one that claims nothing was read -- is NOT reused
+  assert.notEqual(out.kind, "unavailable");
+  assert.notEqual(out.message, "Running reports isn't available yet. Nothing was read or changed.");
+});
+
+ok("an unknown kind never inherits rows, aggregates, counts, or completeness from the payload", () => {
+  const out = mapServiceOutcome({
+    kind: "a-kind-from-a-newer-server",
+    rows: [{ id: "doc-1" }], aggregates: [{ n: 5 }], rowCount: 1, rowCap: 10,
+    truncated: false, completeness: "proven-complete", scanTruncated: false, widened: false,
+  });
+  assert.equal(out.kind, "unrecognized-outcome");
+  assert.equal(out.ok, false);
+  assert.equal(out.rows, null);
+  assert.equal(out.aggregates, null);
+  assert.equal(out.completeness, undefined, "a completeness claim must not survive an uninterpretable payload");
+  assert.doesNotMatch(JSON.stringify(out), /doc-1|proven-complete|a-kind-from-a-newer-server/);
 });
 
 console.log(`\n${passed} passed, 0 failed`);
