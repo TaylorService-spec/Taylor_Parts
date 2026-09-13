@@ -542,12 +542,24 @@ ambient ADC — see §7.1. Already **A2-3**; nothing further to assign.
   lane's own tree at its own base. After rebase onto `64008d5a` each must be **re-proven**, unpiped —
   a test run read through `| tail -3` reports the exit code of `tail`, which this program has already
   got wrong once and acted on.
-- **That re-proof is currently possible at all.** Surveyed 2026-09-13: **no Linux worktree has
-  `node_modules` or `functions/lib`.** They exist in exactly one place — the main checkout
-  `/mnt/d/Taylor_Parts`, which is sitting on `docs/issue-100-inventory-role-access-specification`. There
-  is also **no `java`**, so the Firestore emulator cannot start anywhere. So the re-proof this register
-  requires has a **concrete prerequisite** that does not exist yet, and any lane reporting a passing
-  functions test should be asked where its `lib` came from.
+- **Re-proof IS possible. A claim in an earlier revision of this section said it was not, and that claim
+  was wrong.** It said *"no Linux worktree has `node_modules` or `functions/lib`."* Re-counted across all
+  107 worktrees: **43 have `functions/node_modules` (637 packages) and many have `functions/lib`.** The
+  earlier survey sampled **8** — the newest ones, all created fresh from `64008d5a`, which is precisely
+  why none of them had it — and generalised from that sample. **Same error class as §7.1's:** a static
+  negative over an unrepresentative sample, stated as a fact about the whole. Twice in one register is a
+  method problem, not bad luck: **a negative result needs its population justified before it is written
+  down.**
+
+  What *is* true: there is **no `java`**, so the Firestore emulator cannot start anywhere, and every
+  emulator suite stays **NOT_RUN**.
+
+  **The correct re-proof method, demonstrated by the REPORTING-RECONCILIATION lane rather than theorised:**
+  `git archive` the ref under test into the scratchpad; symlink `node_modules` from an **idle** worktree
+  whose dependency **and** devDependency sets are verified byte-identical to that ref; run `npm run build`
+  so `functions/lib` is compiled **from the ref under test**; confirm `lib` is a real directory and its
+  sources `diff`-identical to the ref; remove the symlink; confirm the lender intact. That yields a real
+  execution with correct provenance, and it is the standard for every A1/A2 re-proof.
 
   **And one borrowing rule that is absolute.** `node_modules` may be borrowed from an idle checkout —
   dependencies are branch-independent apart from `package.json` drift. **`functions/lib` may never be
