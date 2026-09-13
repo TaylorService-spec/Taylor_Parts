@@ -6966,3 +6966,108 @@ identity.**
 All **42** items in `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` remain
 `IMPLEMENTATION STATUS = NOT AUTHORIZED` until the person-authority architecture is settled and the revised
 Employee / Atlas design is reconciled where UI behaviour is affected.
+
+## #185 — OWNER RULING: MI-ι — BUSINESS EMPLOYEE is BUSINESS DATA; canonical authority is PostgreSQL (2026-09-13)
+
+**`MI-ι` RULED AND CLOSED.** **BUSINESS EMPLOYEE IS BUSINESS DATA. The canonical Employee authority belongs
+in EOS-owned PostgreSQL.** The Employee business record must **not** be classified `IDENTITY_ONLY` merely
+because an Employee may be linked to an authenticated user or principal.
+
+### Three concepts, permanently separate
+
+| Concept | Answers | Canonical target |
+|---|---|---|
+| **EMPLOYEE** | who is this person **operationally in the business** | **PostgreSQL Employee relation** |
+| **PRINCIPAL** | who is this actor **for authorization** | `eos_policy.principals` |
+| **CREDENTIAL / AUTHENTICATION** | proof of who is signing in | the credential provider, **authentication only** |
+
+**Never collapse** EMPLOYEE into PRINCIPAL, Firebase Auth, Firestore `users`, or `fieldops_technicians`.
+
+**Resolution chain: CREDENTIAL → PRINCIPAL → EMPLOYEE LINK → EMPLOYEE.** Never *Firebase user → therefore
+Employee.*
+
+### Why Employee is business data
+
+Employee carries business-operational facts: employee identity · employment status · job role · manager ·
+department / organizational context · operating-company context · responsibilities · **accountability
+eligibility** · availability · proficiency · qualifications and certifications · assignment context ·
+historical employment facts · responsibility coverage · relationship to technician / sales / warehouse work.
+**Those are business facts, not authentication facts.**
+
+### Target and transitional classification
+
+**Target:** PostgreSQL Employee relation = **business person authority** · `eos_policy.principals` =
+**security principal authority** · `employee_principal_links` = **governed crosswalk**, made referentially
+sound with **real foreign keys** · credential provider = **authentication only**.
+
+**Transitional, and none becomes permanent Employee authority:** Firestore `employees` = transitional
+business compatibility · Firestore `users` = transitional identity compatibility · `fieldops_technicians` =
+legacy operational compatibility · Firebase Auth = transitional credential source.
+
+**The crosswalk must not rely permanently on** matching strings · Firebase uid coincidence ·
+`users/{uid}.employeeId` · `fieldops_technicians` identity · client-side linkage.
+
+### `OD-6` Layer 1 consequence
+
+Layer-1 authoritative person resolution must **ultimately resolve against the PostgreSQL Employee authority**,
+establishing at least: **employee exists · employee identity is authoritative · employee status · historical
+identity preservation · current eligibility facts required by the caller.**
+
+**Insufficient as proof that an Employee exists:** a non-empty string · a Firebase uid · a technician id ·
+**Principal existence alone.**
+
+### Interim path — no big-bang migration
+
+The governed person-resolution port must allow a **current transitional implementation** to be replaced by
+the **PostgreSQL implementation without changing `OD-7` orchestration semantics.** **One authoritative
+implementation at a time. No long-lived dual authority. No silent fallback from PostgreSQL to Firestore
+after cutover.** The interface must hide storage from governed business commands, and must return semantic
+states supporting `OD-6` — VALID CURRENT · VALID HISTORICAL / NOT CURRENTLY ELIGIBLE · INVALID / MISSING ·
+AUTHORITY UNAVAILABLE **if later ruled separately**. **Naming is explicitly not frozen by this ruling.**
+
+### ARCHITECTURE AUTHORITY CONFLICT — raised per `MI-ι` §6, not silently resolved
+
+Censused at `64008d5a`. **The conflict is narrower than "two documents disagree", and one part of it is not a
+conflict at all.**
+
+**1. `trendsToZero: false` is NOT a permanence claim, and this program over-read it.** `IDENTITY_ONLY` in
+`docs/architecture/firebase-exit-manifest.json` says in its own description: *"This is outside the
+BUSINESS_RUNTIME ratchet **for the current business-runtime exit phase**; eventual identity/auth migration is
+a separate future Firebase-exit concern, **not decided here**."* So the flag means *out of scope for this
+ratchet*, **not** *retained permanently*. **A prior report in this program stated that Firebase Auth is
+retained permanently on the strength of that flag. That over-read the manifest and is withdrawn.**
+
+**2. A real conflict: the ratchet asserts permanence its own source does not.**
+`docs/architecture/firebase-exit-ratchet.md:70-71` — *"identity is the one Firebase capability this
+architecture **keeps on purpose**."* That is a permanence claim. The manifest it cites says *not decided
+here*. **The ratchet overstates its source**, and against the standing target — *"zero Firebase
+dependency"*, `docs/architecture/inventory-reference-authority-p1b-census.md:1021` — it is wrong as written.
+
+**3. The scope defect this ruling directly overturns.** **Both** documents place Employee inside the identity
+carve-out:
+- manifest `IDENTITY_ONLY.description`: *"…or correlates a Firebase UID to an EOS Principal**/Employee**."*
+- `firebase-exit-ratchet.md:4`: *"Firebase UID correlation to an EOS Principal**/Employee**."*
+
+**Under this ruling, UID → PRINCIPAL correlation is legitimately identity; UID → EMPLOYEE is not.** The word
+**`/Employee`** in both places is now **wrong**, and it is exactly the seam by which Employee business data
+could have been retained in Firebase under an identity label.
+
+**Recommended reconciliation** — documentation-correctness work, **no implementation, nothing yet changed:**
+strike **`/Employee`** from the identity carve-out in both documents, leaving `Principal`; correct the
+ratchet's *"keeps on purpose"* to the manifest's own *"not decided here"*; and record that `OD-6` Layer 1
+therefore **cannot** be satisfied through the identity exception. `firebase/auth`, `firebase-admin/auth` and
+`firebase-admin/app` staying outside `FORBIDDEN_CATEGORIES` (`firebase-exit-ratchet.md:66-72`) is
+**unaffected** — that is about credentials, which this ruling leaves with the credential provider.
+
+**No new Firebase dependency is added, Employee authority is not moved into the identity exception, and the
+conflict is NOT resolved by expanding Firebase's scope.**
+
+### Status
+
+`MI-ι` **RULED / CLOSED.** **BUSINESS EMPLOYEE = BUSINESS DATA · TARGET AUTHORITY = POSTGRESQL · PRINCIPAL =
+SECURITY AUTHORITY · CREDENTIAL = AUTHENTICATION AUTHORITY**, and the three remain separate concepts.
+
+**IMPLEMENTATION REMAINS NOT AUTHORIZED** — items A–J of `MI-ι` §11 are prepared only, and all 42 items in
+`docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` keep
+`IMPLEMENTATION STATUS = NOT AUTHORIZED` until the remaining authority decisions are settled and the
+architecture-authority conflict above is reconciled.
