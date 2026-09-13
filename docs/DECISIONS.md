@@ -6600,3 +6600,139 @@ person axis, and until it does, the precedent cannot carry this ruling.**
 
 **NO schema implementation. NO backfill. NO handoff activation. NO migration.** `MI-N` is closed as an
 input to `OD-6`; it authorizes no code.
+
+## #182 — OWNER RULING: OD-6 two-layer person-reference contract; MI-P / MI-Q / MI-R closed (2026-09-13)
+
+**`OD-6` RULED AND CLOSED.** EOS adopts a **TWO-LAYER PERSON-REFERENCE CONTRACT.** Neither *"derivation
+only"* nor *"census only"* is the permanent model — **the evidence showed they are different questions.**
+
+| Layer | Question | Belongs in |
+|---|---|---|
+| **1 — REFERENTIAL INTEGRITY** | does the referenced Employee identity exist in the governed Employee authority? | authoritative person-reference **resolution / derivation** |
+| **2 — CURRENT ACCOUNTABILITY ELIGIBILITY** | can this person currently be accountable? | the accountability / responsibility **census and enforcement gate** |
+
+**These must remain distinguishable.** This closes the (a)-vs-(c) question the program could not settle from
+evidence: **the answer was that it was not one question.**
+
+### 1. Referential integrity
+
+A PERSON reference is **not** valid merely because it is a non-empty string, has type `USER`, or parses.
+Before EOS describes a person reference as authoritatively resolved it must establish that the referenced
+Employee **exists in the governed Employee authority**. Therefore **NON-EXISTENT** and **DELETED /
+UNRESOLVABLE** must **not** produce the same authoritative `RESOLVED` result as a real Employee.
+
+Applies to **RECORD OWNER where owner type is PERSON / USER**, **ACCOUNTABLE PERSON**, and future governed
+person-reference facts requiring authoritative identity resolution.
+
+**ACCOUNTABLE PERSON and RECORD OWNER are independently validated references. One person's validation is
+never validation for another person fact.**
+
+### 2. Historical person references
+
+**INACTIVE · TERMINATED · FORMER EMPLOYEE are NOT the same condition as NON-EXISTENT / INVALID.** A former
+employee may remain a legitimate historical fact. EOS **must preserve the historical reference** and must
+not rewrite historical record ownership, historical accountability or historical attribution merely because
+the Employee later becomes inactive or terminated.
+
+**`UNRESOLVED` must NOT be the automatic representation for every inactive or terminated employee** — that
+would destroy the distinction between *"this person existed and historically held responsibility"* and
+*"this person reference is invalid."*
+
+### 3. Required person-reference states — a SEMANTIC contract
+
+| | State | Meaning |
+|---|---|---|
+| **A** | `VALID_CURRENT` | Employee exists and is eligible for current use of this fact |
+| **B** | `VALID_HISTORICAL / NOT_CURRENTLY_ELIGIBLE` | Employee exists, historical reference remains valid, person not eligible to receive new/current accountability (inactive · terminated · former) |
+| **C** | `MISSING / INVALID_REFERENCE` | no governed Employee resolves the reference |
+| **D** | `NONE` | only where the family legitimately permits no person reference |
+
+For **actionable accountability, `NONE` is prohibited** by `OD-1` except under an explicit Owner-approved
+exception. **Exact enum and schema names are NOT authorized by this ruling.**
+
+### 4. Current accountability eligibility — `MI-R` CLOSED
+
+*"Can this person currently be ACCOUNTABLE?"* is separate from *"does this Employee exist?"* **and** from
+*"does this person possess the capability to execute the work?"*
+
+**`VALID FOR CURRENT ACCOUNTABILITY` does NOT mean `CURRENTLY AUTHORIZED TO PERFORM EVERY ACTION`.**
+Accountability is responsibility **for the outcome**; execution authority is governed by ROLE · CAPABILITY ·
+WORKFLOW AUTHORITY · OPERATING-COMPANY AUTHORITY · other domain authority. **An accountable person may
+delegate execution.**
+
+So eligibility must **not** be defined as *"has the capability to perform the assigned command."* At minimum
+it must consider **governed employment / person status**. Additional company or domain constraints are
+**per family — do not invent them globally.**
+
+### 5. Creation / inheritance consequence
+
+`EXPLICIT → INHERITED → REFUSE` **remains approved**, but **an inherited person reference must satisfy the
+applicable CURRENT eligibility contract.** So `resolveCreationOwner` and any future accountable-person
+initialization must **not** treat a structurally `RESOLVED` but inactive, terminated, deleted or
+non-existent person as automatically suitable for **new** responsibility.
+
+For ACCOUNTABLE PERSON the approved rule remains **EXPLICIT VALID ACCOUNTABLE PERSON → GOVERNED DERIVATION
+FROM CURRENT COMMERCIAL RECORD OWNER → REFUSE**. **The word VALID is load-bearing. It may not be
+implemented using today's shape-only USER resolution.**
+
+### 6. `MI-P` CLOSED — YES, accountability is measured
+
+ACCOUNTABLE PERSON **must** be included in responsibility-integrity measurement. **But `accountablePerson`
+must NOT be put into `ownershipMatrix.ownerFields` merely to make the existing ownership census see it** —
+`OD-1` established that OWNER and ACCOUNTABLE PERSON are different axes, so the canonical integrity model
+must measure both **distinctly**.
+
+Acceptable directions: **extend the census into a multi-axis responsibility census**, **or** add a
+**dedicated accountability census composed into the enforcement gate**. **Not** pretending accountability is
+an ownership field. Eventual measurable axes: **RECORD OWNERSHIP · ACCOUNTABILITY · ASSIGNMENT where
+governed · ESCALATION where governed.** *Prepare the smallest design consistent with this ruling; do not
+implement the final architecture.*
+
+### 7. `MI-Q` CLOSED — YES
+
+Opportunity, **Sales Agreement** and Sales Order all use the approved creation shape for the future
+ACCOUNTABLE PERSON fact. **Sales Agreement gets no `EXPLICIT → REFUSE`-only exception** unless later business
+evidence establishes one. This applies to ACCOUNTABLE PERSON; **existing `creditedSalespersonId` semantics
+must not be silently changed.**
+
+### 8. Current record-owner validity
+
+The same referential-integrity defect found on USER ownership **must be closed**: a PERSON record owner must
+reference a real governed Employee identity. **Historical PERSON ownership remains historical** — for an
+existing active record whose owner becomes inactive or terminated, **do not rewrite history automatically.**
+Instead classify the current-state condition so EOS can determine whether ownership may remain historical
+but needs a current steward · requires an explicit governed transfer · accountability must move immediately ·
+future records must use another current owner. **Those family-specific policies remain separate decisions.**
+
+### 9. Census / enforcement gate
+
+**The gate may NOT close on a census structurally incapable of detecting:** non-existent person owner ·
+invalid person owner · missing accountable person · invalid accountable person.
+
+For actionable work the gate must eventually prove **there is exactly one current accountable person AND
+that reference is authoritative AND the person is currently eligible to hold accountability.** Historical
+references remain **measurable without being treated as current actionability.**
+
+### 10. Backfill
+
+**Backfill is NOT the mechanism for fixing historical inactive or terminated references** and may not
+silently rewrite legitimate history. `ownershipBackfillRules`' current ability to propagate an **unvalidated
+upstream USER owner** (`ownershipBackfillRules.ts:70-78`; `:74-77` propagates a parent-Account owner onto
+every child, `:71` never overwrites so an invalid owner has no repair path) is **unsafe for future
+enforcement until person-reference validation exists.** **No backfill authorized.**
+
+### 11. Acceptance contract — required proofs
+
+PERSON OWNER: valid current · inactive · terminated · non-existent · missing reference.
+ACCOUNTABLE PERSON: valid current · inactive · terminated · non-existent · **missing on an actionable item**.
+COMPANY OWNER: valid company · invalid company. Plus **NON-OWNABLE / REFERENCE FAMILY**.
+
+**Historical cases must prove HISTORY PRESERVED. Current-actionability cases must prove INVALID CURRENT
+RESPONSIBILITY DOES NOT PASS THE GATE.**
+
+### Status
+
+`OD-6` **RULED / CLOSED** · `MI-P` **CLOSED** · `MI-Q` **CLOSED** · `MI-R` **CLOSED**.
+**ENGINEERING IMPLEMENTATION NOT YET AUTHORIZED.** The 29 accountability implementation items
+(`docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md`) are to be reassessed against
+this ruling and **remain unimplemented until `OD-7` and any directly dependent decisions are reconciled.**
