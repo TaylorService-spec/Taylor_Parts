@@ -7025,7 +7025,7 @@ after cutover.** The interface must hide storage from governed business commands
 states supporting `OD-6` — VALID CURRENT · VALID HISTORICAL / NOT CURRENTLY ELIGIBLE · INVALID / MISSING ·
 AUTHORITY UNAVAILABLE **if later ruled separately**. **Naming is explicitly not frozen by this ruling.**
 
-### ARCHITECTURE AUTHORITY CONFLICT — raised per `MI-ι` §6, not silently resolved
+### ARCHITECTURE AUTHORITY CONFLICT — raised as the ruling directs, not silently resolved
 
 Censused at `64008d5a`. **The conflict is narrower than "two documents disagree", and one part of it is not a
 conflict at all.**
@@ -7067,7 +7067,36 @@ conflict is NOT resolved by expanding Firebase's scope.**
 `MI-ι` **RULED / CLOSED.** **BUSINESS EMPLOYEE = BUSINESS DATA · TARGET AUTHORITY = POSTGRESQL · PRINCIPAL =
 SECURITY AUTHORITY · CREDENTIAL = AUTHENTICATION AUTHORITY**, and the three remain separate concepts.
 
-**IMPLEMENTATION REMAINS NOT AUTHORIZED** — items A–J of `MI-ι` §11 are prepared only, and all 42 items in
+**IMPLEMENTATION REMAINS NOT AUTHORIZED** — the ten prepared PostgreSQL work items **A–J** (enumerated below) are prepared only, and all 42 items in
 `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` keep
 `IMPLEMENTATION STATUS = NOT AUTHORIZED` until the remaining authority decisions are settled and the
 architecture-authority conflict above is reconciled.
+
+### The ten prepared PostgreSQL work items — A–J, all NOT AUTHORIZED
+
+**A** Employee table / relation authority · **B** Employee status model · **C** historical retention
+semantics · **D** `employee_principal_links` FK integrity · **E** migration / crosswalk from Firestore
+`employees` · **F** compatibility strategy for `fieldops_technicians` · **G** server-side person-resolution
+adapter · **H** `OD-6` acceptance tests · **I** `OD-7` orchestration integration · **J** census /
+responsibility-integrity integration.
+
+**Enumerated here deliberately.** An earlier revision of this entry cited them as *"`MI-ι` §11"*, and cited
+the conflict instruction as *"`MI-ι` §6"*. **Those citations were unresolvable and are withdrawn.** The
+section numbers belonged to the Owner's ruling **as delivered**, which is not a document in this repository —
+so no reader of `DECISIONS.md` could follow them. **A ruling record must not cite a section of a document
+that does not exist**, which is the same failure class as the withdrawn `CURRENT_SUPPORTED_SERVER_KINDS`
+identifier and the paraphrased *"reassignment ≠ ownership transfer"*: a citation that looks verifiable and is
+not. The clauses themselves are all present above, under their own headings, and are cited that way instead.
+
+### Two factual corrections carried into this entry
+
+**`employee_principal_links` has one foreign key, not none.** It is composite and deliberate, onto
+`tenant_memberships` (`1758412800000:133-135`), and it is correct as it stands. The accurate statement is
+**no foreign key on `employee_id`** — which is the constraint item **D** exists to add, and which that
+migration's own text at `:55-57` already names as *"the only thing that has to be added."*
+
+**One of the crosswalk's two admitted provenances is a compatibility mechanism this ruling forbids relying
+on permanently.** `link_source`'s closed vocabulary (`:140`) admits `RECIPROCAL_FIREBASE_UID_LINK`,
+documented at `:80` as agreement between `employees/{id}.userId` and `users/{uid}.employeeId` — precisely the
+*"Firebase uid coincidence"* and *"`users/{uid}.employeeId`"* the ruling names as non-canonical. **The target
+therefore needs either a governed successor provenance or a declared retirement for that value.**
