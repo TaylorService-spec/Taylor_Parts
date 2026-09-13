@@ -619,6 +619,83 @@ ambient ADC — see §7.1. Already **A2-3**; nothing further to assign.
 
 **None of A–D is implemented, and none is authorized.**
 
+## 12.4 `fieldops_jobs` A/B — BUSINESS CASE NOT ESTABLISHED
+
+The Owner's settling evidence for the `firestore.rules:381-384` Tier-2 decision is *"a real Taylor business
+case where an existing job legitimately changes operating company after creation."* Searched at the
+baseline. **It is not in the repository**, and the finding rests on positive evidence, not only absence:
+
+| Direction searched | Result |
+|---|---|
+| A command, callable or trusted writer that changes `operatingCompanyId` on `fieldops_jobs` | **none** |
+| A client surface offering it | **none for a job.** The `operatingCompanyId` controls that exist are `UserEditPanel.jsx:186-189` (a **user's** company), `AdminEmailCommunications.jsx:411` (a draft), and `ReorderWarehouseSelect.jsx:4` which states the command **derives** it from the chosen warehouse |
+| A documented business rule for an operating-company change on **any** record | **zero hits** across all of `docs/` |
+| Deliberate exclusion from a mutable-field set | `salesAgreementCommands.ts:461` — *"`operatingCompanyId` is deliberately NOT here"* |
+| Frozen-at-issuance statement | `FinancialsInvoiceDetail.jsx:100` — company authority came from the Sales Order at issuance and *"neither is re-derived"* |
+
+**The decisive evidence is that the repository has already adjudicated this exact inference for the sibling
+family, on the identical matrix classification.** `functions/src/ownership/warehouseRootCompanyAssignment.ts`
+refuses a different company outright and explains why:
+
+> *"NO REASSIGNMENT. The ownership matrix routes a warehouse company CHANGE to the handoff authority, but
+> nothing in this repository describes a warehouse moving between operating companies or what business event
+> that would be. **A routing rule is not a use case**, so a mismatch is refused rather than treated as a
+> transfer. If that requirement ever becomes real it gets its own ruling."*
+
+And `fieldops_jobs` carries **the same routing**: `ownershipMatrix.ts:267-269` declares it
+`ownerClass: "COMPANY"`, `ownerFields: ["operatingCompanyId"]`, **`transfer: "HANDOFF"`**. So the reasoning
+applies verbatim — **the `HANDOFF` routing on jobs is a routing rule, and on its own it is not evidence that
+a job's operating company ever legitimately changes.**
+
+**Status: `BUSINESS CASE NOT ESTABLISHED`. A/B stays OPEN and nothing is chosen.**
+
+**This is a repository-scoped negative and must not be over-read.** It establishes that no code, no client
+surface and no document describes such a change — **not** that the business never does one. The Owner's own
+knowledge is precisely the evidence class that could establish it, which is why the question was returned
+rather than answered. **Nothing was invented from code**, per the instruction.
+
+## 12.5 OD-6 ruling state — the reassessment, preserved
+
+Recorded so the count survives independently of the document that produced it
+(`docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md`, `f44235f8`, 609 → 1,220 lines,
+**610 additions and 0 deletions** — Part I retained verbatim behind 12 forward markers).
+
+| The original 29 items | Count |
+|---|---|
+| CONFIRMED / UNCHANGED | **14** |
+| WIDENED | **11** |
+| NARROWED | **4** |
+| SUPERSEDED | **0** |
+| CONTRADICTED | **0** |
+
+**13 new items: `OI-30` … `OI-42`.** Of those, **3 carry a proof obligation achievable today**
+(`OI-33` company ACTIVE-STATUS, `OI-41` backfill prohibition and absent repair path, `OI-42` the
+no-accountability-field assertion) and **10 are specification only** — because the accountable reference does
+not exist at the baseline, so an item can hold a specification obligation but cannot acquire a proof
+obligation without writing the schema `#182` withholds.
+
+**All 42 items remain `IMPLEMENTATION STATUS = NOT AUTHORIZED`.** Implementation may not begin before `OD-7`
+and the remaining directly dependent architecture decisions are settled. **Remote presence of a branch is
+not implementation authorization**, and the two TIER-2 HOLD branches keep that status after being pushed for
+custody.
+
+## 12.6 Canonical corrected facts — do not regress these
+
+Nine facts this register has established by correcting itself or a lane. Each replaced something that was
+stated wrongly first, so each is listed with what it replaces.
+
+| # | Canonical fact | Replaces |
+|---|---|---|
+| 1 | **5 of 7 client-writable `allow update` surfaces** lack a `hasOnly` allowlist — 25 statements, 18 `if false`, 7 client-writable | *"5 of 30"*, which understated it ~4× |
+| 2 | **Only three** of those seven have **no field constraint at all**: `fieldops_technicians:418`, `locations:1343`, `contacts:1557` | "five have no field constraint" |
+| 3 | **`fieldops_jobs:381`** is allowlisted on the **technician branch only** (`jobStatusOnlyChange()` at `:389`); the admin/dispatcher branch has none | the original, wrongly cited at `765-790` on `reorder_requests` |
+| 4 | **`accounts:1335`** constrains governed fields **by equality** (`accountGovernedFieldsUnchanged()`), a different mechanism — **not** "no field constraint" | grouping it with the unconstrained three |
+| 5 | The **`ownershipBackfillRules.ts:70-78`** finding is independently verified and originated in the **OD-6 preparation** lane, **not** the decomposition (which contains zero references to that file) | a controller misattribution in a lane brief |
+| 6 | **Accountable-person facts must NOT be forced into `ownershipMatrix.ownerFields`** — `MI-P` | the assumption that the existing census could carry accountability |
+| 7 | **Missing and invalid person references diverge today** — missing → `OWNERLESS` and **blocks**; invalid → `RESOLVED` and **cannot block at any quantity**. Both are `#182` state **C**, and the divergence needs reconciliation | treating state C as already coherent |
+| 8 | **The authoritative PERSON source is unresolved** — the matrix declares `users` "identity authority" (`:513`) and **both** `employees` (`:514`) and `fieldops_technicians` (`:515`) as "person authority". Pending `MI-X` | assuming `employees` was the authority |
+| 9 | **`auditEventWriter` has 44 importers, not 50** (50 merely mention it), and option (a)'s blast-radius objection is **void** — the matrix imports only `./typedOwner`, which the writer already imports, has zero I/O, and the edit is confined to one choke point | *"50 importers / blast radius is the whole audit surface"* |
+
 ## 13. What this register does NOT establish
 
 - **That any A1 or A2 branch still passes.** Every "EXECUTED (own lane)" grade is evidence from that
