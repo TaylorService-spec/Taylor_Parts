@@ -7043,10 +7043,19 @@ architecture **keeps on purpose**."* That is a permanence claim. The manifest it
 here*. **The ratchet overstates its source**, and against the standing target — *"zero Firebase
 dependency"*, `docs/architecture/inventory-reference-authority-p1b-census.md:1021` — it is wrong as written.
 
-**3. The scope defect this ruling directly overturns.** **Both** documents place Employee inside the identity
-carve-out:
-- manifest `IDENTITY_ONLY.description`: *"…or correlates a Firebase UID to an EOS Principal**/Employee**."*
-- `firebase-exit-ratchet.md:4`: *"Firebase UID correlation to an EOS Principal**/Employee**."*
+**3. The scope defect this ruling directly overturns.** **FOUR** sites place Employee inside the identity
+carve-out — one more than an earlier revision of this entry recorded, and the one it missed is the most
+load-bearing of the four:
+
+| Site | Text |
+|---|---|
+| **`firebase-exit-manifest.json:10`** — `targetArchitecture.principle` | *"Firebase is permitted only for sign-in identity and Firebase UID correlation to an EOS Principal**/Employee**."* **This is the target-architecture principle itself**, not a classification note |
+| `firebase-exit-manifest.json:14` — `IDENTITY_ONLY.description` | *"…or correlates a Firebase UID to an EOS Principal**/Employee**."* |
+| `firebase-exit-ratchet.md:4-5` | *"Firebase UID correlation to an EOS Principal**/Employee**."* |
+| `firebase-exit-ratchet.md:70-71` | *"identity is the one Firebase capability this architecture keeps on purpose"* — the permanence overstatement in **2** above |
+
+`docs/PROJECT_ARCHITECTURE.md:88` is a fifth site of a broader kind (it still says Firestore is source of
+truth for all operational data) and is **out of scope for this correction**, recorded so it is not lost.
 
 **Under this ruling, UID → PRINCIPAL correlation is legitimately identity; UID → EMPLOYEE is not.** The word
 **`/Employee`** in both places is now **wrong**, and it is exactly the seam by which Employee business data
@@ -7061,6 +7070,19 @@ therefore **cannot** be satisfied through the identity exception. `firebase/auth
 
 **No new Firebase dependency is added, Employee authority is not moved into the identity exception, and the
 conflict is NOT resolved by expanding Firebase's scope.**
+
+**Verified as needing NO edit**, so the correction stays minimal: `trendsToZero: false` itself ·
+`FORBIDDEN_CATEGORIES` · `dispositionRationale:49` · `scripts/firebaseExitGuard.mjs` (no test asserts this
+wording). **Four strikes of `/Employee` and one corrected sentence — nothing else.**
+
+**One challenged citation, re-verified and UPHELD.** A lane reading this entry at source reported that its
+citation of *"zero Firebase dependency"* at `inventory-reference-authority-p1b-census.md:1021` was **NOT
+LOCATABLE**, and classified it with the withdrawn `MI-ι §6`/`§11` citations. **That challenge is wrong.**
+Line 1021 reads, verbatim: *"Target reminder: **zero Firebase dependency.** `STABLE_EXTERNAL_REFERENCE_
+ALLOWED_DURING_CUTOVER` means temporary, for the cutover window only — never permanent architecture."* The
+citation is exact and stands. **Recorded because the source-first rule has to cut both ways**: it is there to
+establish what the source says, not to assume that a challenged citation is a bad one. The same lane's *other*
+correction — the fourth `/Employee` site above — was right, and was found by the same method.
 
 ### Status
 
