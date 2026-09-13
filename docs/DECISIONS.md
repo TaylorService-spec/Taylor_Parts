@@ -6766,10 +6766,22 @@ must supply a validated target fact.**
 
 This ruling is grounded in a measured property of the code, not a preference. `assertValid`
 (`functions/src/access/auditEventWriter.ts:460`) is **synchronous and returns `void`**, and is the first
-statement of the write paths at `:785` and `:820`; and **every module in `functions/src/ownership/` declares
-itself PURE, each by its own header** — `typedOwner.ts:7` · `operatingCompanyAuthority.ts:6` ·
-`ownershipCensus.ts:9-10` · `creationOwnerResolution.ts:25-26` · `ownershipBackfillRules.ts:27` ·
-`ownershipHandoffCommand.ts:12-13`. **Neither location can perform I/O.** The ruling therefore matches the
+statement of the write paths at `:785` and `:820`.
+
+**CORRECTED 2026-09-13, same day, before any reliance.** An earlier revision of this entry said *"every
+module in `functions/src/ownership/` declares itself PURE, each by its own header."* **That is false as
+written**, and the correction matters because it touches the one module option (a) would import. Re-counted
+across all 12 modules in that directory: **5 declare `PURE:`** (`creationOwnerResolution` ·
+`operatingCompanyAuthority` · `ownershipBackfillRules` · `ownershipDerivation` · plus
+`ownershipHandoffCommand` as *"a pure builder"*), **1 declares READ-ONLY BY CONSTRUCTION**
+(`ownershipCensus`), **3 declare INERT** (`typedOwner` · `commercialCompanyScope` ·
+`reorderRequestLocationAuthority`), **2 declare "no I/O"** (`warehouseCanonicalIdRepair` ·
+`warehouseRootCompanyAssignment`), and **`ownershipMatrix.ts` declares nothing at all.**
+
+**The substance of the ruling is unaffected** — no module in that directory performs I/O, and the audit
+writer's validation path cannot — **but the uniformity claim was wrong and is withdrawn.** `ownershipMatrix`
+having no stated purity contract is itself worth recording: a placement that imports it is relying on a
+property the file does not promise. The ruling therefore matches the
 architecture rather than fighting it, and it is consistent with ruling **O-1**, cited in code at
 `typedOwner.ts:44-48` as excluding *"a fallible cross-collection lookup into otherwise deterministic
 ownership resolution."*
@@ -6823,6 +6835,26 @@ historical identity preservation · Principal/Firebase identity linkage where re
 where required · operating-company context where applicable.** **`users`, `fieldops_technicians`, Firebase
 Auth and `eos_policy.principals` must NOT become the canonical Employee authority merely because one
 contains a useful subset.**
+
+### A prior program claim withdrawn by this entry: handoffs HAVE been recorded
+
+This program reported that **zero** callers can emit `OWNERSHIP_HANDOFF` and that no emitter is reachable.
+**Both are wrong, and the correction is material to `OD-7`.**
+
+- `functions/scripts/assignWarehouseRootCompany.js:234` calls `stageOwnershipHandoff` inside its
+  transaction, and `:239` reports *"each with one `OWNERSHIP_HANDOFF` event."*
+- `docs/specifications/reorder-trusted-command-authority.md:208` records the outcome: **the five R-1
+  authored roots were assigned by the bounded operator, each with one `OWNERSHIP_HANDOFF`
+  (`previousOwner: null`), and a re-run wrote 0.**
+
+So the accurate statement is: **zero of the non-builder write-capable importers can pass the action, and the
+builder can and DID — five real events, in a real environment, idempotent on re-run.** `U-L` (*"has any
+handoff ever been recorded?"*) was carried as UNPROVEN; it is **answered YES by committed evidence.**
+
+Two consequences. The governed emitter is **exercised, not merely present**, so the ruled sequence has a
+working instance rather than only a specification. And the *"unexercised, not unsound"* characterisation of
+the handoff path is **withdrawn** — it was exercised, on the one case (`previousOwner: null`, a first
+assignment) where invariant 7 has no content.
 
 **IMPLEMENTATION REMAINS NOT AUTHORIZED.** All 42 items in
 `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` stay
