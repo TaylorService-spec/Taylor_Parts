@@ -1,0 +1,155 @@
+/* ============================================================================
+   NORTH STAR — Work Order family. Additive only; no existing fo-* rule changes.
+   PASTE this entire block at the END of field-ops-app-vite/src/index.css
+   (or import as its own file after index.css). Prefix: ns-
+   Also add to :root (once, shared by all later families):
+     --font-display-serif: "Source Serif 4", Georgia, serif;
+   Self-host Source Serif 4 (600, 700) under src/assets/fonts using the same
+   @font-face pattern as the existing Inter faces.
+   Geometry source: North Star - Work Order.dc.html (approved concept).
+   ========================================================================== */
+
+.ns-page { max-width: 1360px; margin: 0 auto; }
+
+/* Utility line — context left, truthful live indicator right */
+.ns-utility {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+  padding: 14px 0 10px; flex-wrap: wrap;
+}
+.ns-utility-context {
+  font: 600 11px var(--font-interface); letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--color-text-secondary);
+}
+.ns-utility-context a { color: var(--color-text-secondary); text-decoration: none; }
+.ns-utility-context a:hover { color: var(--color-text-primary); text-decoration: underline; }
+.ns-live { font: 400 11.5px var(--font-interface); color: var(--color-text-secondary); white-space: nowrap; }
+.ns-live-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-success); animation: ns-live 2s infinite; vertical-align: 1px; margin-right: 2px;
+}
+@keyframes ns-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.ns-rulepair { border-top: 3px solid var(--verenward-evergreen); border-bottom: 1px solid var(--verenward-evergreen); height: 3px; }
+
+/* Record header */
+.ns-record-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 24px 0 14px; flex-wrap: wrap; }
+.ns-kicker { font: 600 12px var(--font-interface); letter-spacing: 0.12em; text-transform: uppercase; color: var(--verenward-bronze); margin: 0 0 6px; }
+.ns-title { font-family: var(--font-display-serif); font-size: 40px; line-height: 1.05; font-weight: 700; margin: 0 0 10px; color: var(--color-text-primary); }
+.ns-facts { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--color-text-secondary); align-items: center; }
+.ns-facts strong { color: var(--color-text-primary); font-weight: 600; }
+.ns-fact-status { font-weight: 600; color: var(--color-info); }
+
+/* Action cluster — restyles the EXISTING Button primitive inside it only.
+   Architecture from the concept: ONE filled primary (the first allowed
+   transition), outlined secondaries, Cancel as a red text button. */
+.ns-action-cluster { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ns-action-cluster .wo-actions { display: contents; }
+.ns-action-cluster .fo-btn-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ns-action-cluster .fo-button {
+  border-radius: 0; font: 600 13px var(--font-interface); padding: 9px 16px;
+  background: none; border: 1px solid var(--verenward-border-strong); color: var(--verenward-guardian);
+  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+}
+.ns-action-cluster .fo-button:hover:not(:disabled) { background: var(--verenward-stone-sunken); border-color: var(--verenward-bronze); }
+/* First non-destructive action = the filled primary */
+.ns-action-cluster .wo-action-row > .fo-button:first-child:not(.wo-action-destructive) {
+  background: var(--verenward-evergreen); border: 1px solid var(--verenward-evergreen); color: #fff; padding: 9px 18px;
+}
+.ns-action-cluster .wo-action-row > .fo-button:first-child:not(.wo-action-destructive):hover:not(:disabled) {
+  background: var(--verenward-guardian); border-color: var(--verenward-guardian);
+}
+.ns-action-cluster .wo-action-destructive,
+.ns-action-cluster .fo-button--destructive { background: none; border: none; color: var(--color-danger); }
+.ns-action-cluster .wo-action-destructive:hover:not(:disabled),
+.ns-action-cluster .fo-button--destructive:hover:not(:disabled) { background: var(--color-danger-surface); }
+
+/* Backlog buttons — hold the concept's action positions, disabled until the
+   behavior exists (README § Behavioral backlog). Never remove `disabled` in
+   CSS/JSX without the backing engine/channel change. */
+.ns-btn-pending {
+  border-radius: 0; font: 600 13px var(--font-interface); padding: 9px 16px;
+  background: none; border: 1px solid var(--verenward-border-strong); color: var(--verenward-guardian);
+  opacity: 0.45; cursor: not-allowed;
+}
+.ns-btn-pending--primary { background: var(--verenward-evergreen); border-color: var(--verenward-evergreen); color: #fff; padding: 9px 18px; }
+
+/* Lifecycle band */
+.ns-lifecycle { display: flex; gap: 14px; align-items: center; padding: 10px 0 10px; flex-wrap: nowrap; overflow-x: auto; }
+.ns-lifecycle-label { letter-spacing: 0.1em; text-transform: uppercase; font: 600 11px var(--font-interface); color: var(--color-text-secondary); margin-right: 4px; white-space: nowrap; }
+.ns-chip {
+  font: 600 12.5px var(--font-interface); padding: 8px 20px; border: none; cursor: pointer;
+  white-space: nowrap; transition: background var(--duration-fast);
+  clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%);
+}
+.ns-chip--first { clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%); padding-left: 14px; }
+.ns-chip--last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 11px 50%); padding-right: 14px; }
+.ns-chip--done { background: var(--verenward-stone); color: var(--color-success); }
+.ns-chip--done:hover { background: var(--verenward-border); }
+.ns-chip--current { background: var(--verenward-evergreen); color: #fff; }
+.ns-chip--current:hover { background: var(--verenward-guardian); }
+.ns-chip--future { background: var(--verenward-stone-card); color: var(--color-text-muted); outline: 1px solid var(--verenward-border); outline-offset: -1px; }
+.ns-chip--future:hover { background: var(--verenward-stone); }
+.ns-chip--terminal { background: var(--color-danger-surface); color: var(--color-danger); cursor: default; }
+.ns-pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--verenward-bronze); margin-left: 5px; animation: ns-pulse 2s ease-in-out infinite; }
+@keyframes ns-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.ns-lifecycle-tail { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
+.ns-stage-detail { min-height: 34px; margin-bottom: 10px; }
+.ns-stage-detail-row { display: flex; gap: 18px; align-items: baseline; font-size: 13px; color: var(--color-text-secondary); border-left: 3px solid var(--verenward-evergreen); padding: 6px 0 6px 12px; flex-wrap: wrap; }
+.ns-stage-detail-row--done { border-left-color: var(--color-success); }
+.ns-stage-detail-row--future { border-left-color: var(--verenward-bronze); }
+.ns-stage-detail-row strong { color: var(--color-text-primary); }
+
+/* Suggestion strip — the concept's structural slot. With no engine connected
+   it renders its honest empty state (neutral, not bronze). */
+.ns-suggest {
+  display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center;
+  background: var(--verenward-stone-card); border: 1px solid var(--verenward-border);
+  padding: 12px 16px; margin-bottom: 26px; font-size: 13.5px; color: var(--color-text-secondary);
+}
+.ns-suggest-label { font: 700 10.5px var(--font-interface); letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); }
+.ns-suggest--active { border-color: var(--verenward-bronze); color: var(--color-text-primary); }
+.ns-suggest--active .ns-suggest-label { color: var(--verenward-bronze); }
+
+/* Body grid + sections — concept proportions: minmax(0,1fr) / 340px / 56px gap */
+.ns-body-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 56px; }
+.ns-section { margin-bottom: 36px; }
+.ns-h2 { font-family: var(--font-display-serif); font-size: 19px; font-weight: 700; margin: 0 0 8px; color: var(--color-text-primary); }
+.ns-h2-note { font: 600 12px var(--font-interface); color: var(--color-text-muted); }
+.ns-prose { border-top: 2px solid var(--verenward-evergreen); padding-top: 14px; font-size: 14px; line-height: 1.65; max-width: 66ch; }
+.ns-prose p { margin: 0 0 10px; }
+
+.ns-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.ns-table th { font: 600 11px var(--font-interface); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); padding: 6px 12px 6px 0; border-bottom: 2px solid var(--verenward-evergreen); text-align: left; }
+.ns-table td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--verenward-border); font-variant-numeric: tabular-nums; }
+.ns-table .num { text-align: right; }
+
+.ns-timeline { border-top: 1px solid var(--verenward-border); }
+.ns-timeline-row { display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--verenward-border); font-size: 13.5px; }
+.ns-timeline-when { color: var(--color-text-muted); font-size: 12.5px; }
+
+/* Right rail */
+.ns-rail-h { font: 700 11px var(--font-interface); letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-secondary); margin: 0 0 10px; border-bottom: 2px solid var(--verenward-evergreen); padding-bottom: 6px; }
+.ns-rail-section { margin-bottom: 30px; font-size: 13px; line-height: 1.6; }
+.ns-rail-section strong { color: var(--color-text-primary); }
+.ns-rail-meta { color: var(--color-text-muted); }
+.ns-rail-section dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 13px; }
+.ns-rail-section dt { color: var(--color-text-muted); }
+.ns-rail-section dd { margin: 0; }
+.ns-gap-note { font-size: 12.5px; color: var(--color-text-muted); }
+p.ns-gap-note { margin: 8px 0 0; line-height: 1.55; }
+
+/* Neutralize legacy card chrome and restyle the embedded parts-plan table to
+   the concept's table geometry — DOM untouched, CSS only. */
+.ns-embed .fo-card { border: none; background: transparent; box-shadow: none; padding: 0; border-radius: 0; }
+.ns-embed .fo-card > h3 { display: none; } /* section already carries the ns-h2 */
+.ns-embed .fo-muted { font-size: 12.5px; color: var(--color-text-muted); }
+.ns-embed .fo-table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 6px; }
+.ns-embed .fo-table th { font: 600 11px var(--font-interface); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); padding: 6px 12px 6px 0; border-bottom: 2px solid var(--verenward-evergreen); text-align: left; background: none; }
+.ns-embed .fo-table td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--verenward-border); font-variant-numeric: tabular-nums; background: none; }
+.ns-embed .fo-table td:first-child { font-weight: 600; color: var(--color-text-primary); }
+
+@media (max-width: 899.98px) {
+  .ns-body-grid { grid-template-columns: 1fr; gap: 0; }
+  .ns-title { font-size: 30px; }
+  .ns-record-header { align-items: flex-start; flex-direction: column; }
+}

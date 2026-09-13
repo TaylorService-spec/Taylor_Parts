@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implementation render — NorthStarWorkOrderDetailPage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* RENDER-ONLY scaffold: the real app supplies these from src/index.css.
+   Token values copied verbatim from field-ops-app-vite/src/index.css. */
+:root {
+  --verenward-evergreen: #102B24; --verenward-guardian: #1C4638; --verenward-bronze: #B08A55;
+  --verenward-stone: #E8E2D6; --verenward-stone-page: #F3F0E9; --verenward-stone-card: #FCFAF6;
+  --verenward-stone-sunken: #EDE8DE; --verenward-border: #D9D3C6; --verenward-border-strong: #C3BCAB;
+  --color-text-primary: var(--verenward-evergreen); --color-text-secondary: #4A5B55; --color-text-muted: #6B7A74;
+  --color-success: #237A45; --color-danger: #B23B3B; --color-danger-surface: #FDECEC; --color-info: #2B5B7A;
+  --font-interface: "Inter", system-ui, sans-serif; --duration-fast: 140ms;
+  --font-display-serif: "Source Serif 4", Georgia, serif;
+}
+body { margin: 0; background: var(--verenward-stone-page); color: var(--color-text-primary); font-family: var(--font-interface); font-size: 14px; }
+/* Minimal stand-ins for existing app classes the page composes with */
+.fo-button { cursor: pointer; }
+.fo-button:disabled { opacity: 0.45; cursor: default; }
+.fo-card { }
+.fo-muted { color: var(--color-text-muted); }
+.wo-actions { }
+/* Page gutter the app shell provides around route content */
+.route-gutter { padding: 0 32px 80px; }
+</style>
+<link rel="stylesheet" href="ns-workorder.css">
+</head>
+<body>
+<div class="route-gutter">
+<!-- DOM below is exactly what NorthStarWorkOrderDetailPage.jsx renders for a
+     real record at status DISPATCHED (dispatcher role). Every honest-gap
+     sentence is what the code emits; nothing is invented. -->
+<div class="ns-page" data-screen-label="Implementation — Work Order (DISPATCHED)">
+  <div class="ns-utility">
+    <span class="ns-utility-context">Service → <a href="#back">Work Orders</a> → WO-2026-000873</span>
+    <span class="ns-live"><span class="ns-live-dot"></span> Live — this record updates in real time</span>
+  </div>
+  <div class="ns-rulepair"></div>
+  <header class="ns-record-header">
+    <div style="min-width: 0;">
+      <p class="ns-kicker">Work Order · Repair · P2 High</p>
+      <h1 class="ns-title">WO-2026-000873</h1>
+      <div class="ns-facts">
+        <span class="ns-fact-status">Dispatched — awaiting technician acceptance</span>
+        <span><strong>Desert Sun Beverage Co.</strong> · Broadway Plant</span>
+        <span>Tech <strong>J. Barela</strong></span>
+        <span>Window <strong>8/26/2026, 8:00:00 AM</strong></span>
+        <span class="ns-gap-note" title="Requires the prediction engine — a post-pilot governance item">First-visit fix — not computed</span>
+      </div>
+    </div>
+    <div class="ns-action-cluster">
+      <button type="button" class="fo-button ns-btn-pending" disabled title="Backlog B1 — needs a Reschedule transition (DISPATCHED → SCHEDULED) added to the transition engine; not legal today">Reschedule</button>
+      <button type="button" class="fo-button ns-btn-pending ns-btn-pending--primary" disabled title="Backlog B2 — needs a technician notification channel; none exists today">Message technician</button>
+      <div class="wo-actions">
+        <div class="fo-btn-row wo-action-row">
+          <button class="fo-button fo-button--destructive wo-action-destructive" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <div class="ns-lifecycle" role="tablist" aria-label="Lifecycle">
+    <span class="ns-lifecycle-label">Lifecycle</span>
+    <button type="button" class="ns-chip ns-chip--done ns-chip--first">✓ Created</button>
+    <button type="button" class="ns-chip ns-chip--done">✓ Scheduled</button>
+    <button type="button" class="ns-chip ns-chip--current" aria-expanded="true">Dispatched <span class="ns-pulse"></span></button>
+    <button type="button" class="ns-chip ns-chip--future">On site</button>
+    <button type="button" class="ns-chip ns-chip--future">Complete</button>
+    <button type="button" class="ns-chip ns-chip--future ns-chip--last">Closed</button>
+    <span class="ns-lifecycle-tail">Lineage isn’t linked on this record yet.</span>
+  </div>
+  <div class="ns-stage-detail">
+    <div class="ns-stage-detail-row"><strong>You are here.</strong><span>Dispatched 8/21/2026, 3:12:00 PM · awaiting acceptance</span></div>
+  </div>
+  <div class="ns-suggest">
+    <span class="ns-suggest-label">Suggested</span>
+    <span>No suggestion engine is connected yet — nothing is proposed for this job.</span>
+  </div>
+  <div class="ns-body-grid">
+    <div>
+      <section class="ns-section" aria-label="The job">
+        <h2 class="ns-h2">The job</h2>
+        <div class="ns-prose">
+          <p><strong>Complaint.</strong> Barrel temperature climbing above spec on the PM cycle; product too soft by mid-morning.</p>
+          <p><strong>Working diagnosis.</strong> Worn scraper blades + low refrigerant charge.</p>
+        </div>
+      </section>
+      <section class="ns-section" aria-label="Parts">
+        <h2 class="ns-h2">Parts <span class="ns-h2-note">· readiness by source (truck / warehouse) isn’t recorded yet — quantities are planned demand</span></h2>
+        <div class="ns-embed">
+          <div class="fo-card">
+            <h3>Parts Plan</h3>
+            <div class="fo-muted">Planned demand for this Work Order. Planning does not reserve stock or record usage.</div>
+            <table class="fo-table">
+              <thead><tr><th>Part</th><th>SKU</th><th>Category</th><th>Planned</th><th>Used</th></tr></thead>
+              <tbody>
+                <tr><td>Scraper Blade Kit</td><td>X49463-3</td><td>Kits</td><td>2 kit</td><td>—</td></tr>
+                <tr><td>O-Ring, Feed Tube</td><td>016132</td><td>Seals</td><td>4 ea</td><td>—</td></tr>
+                <tr><td>R404A Refrigerant</td><td>RF-404A-24</td><td>Refrigerant</td><td>1 cyl</td><td>—</td></tr>
+              </tbody>
+            </table>
+            <div class="fo-muted" style="margin-top: 8px;">Parts planning is not yet enabled for your role.</div>
+          </div>
+        </div>
+      </section>
+      <section class="ns-section" aria-label="Timeline">
+        <h2 class="ns-h2">Timeline <span class="ns-h2-note">· reconstructed from Work Order milestones — approximate, not a recorded audit trail</span></h2>
+        <div class="ns-timeline">
+          <div class="ns-timeline-row"><span class="ns-timeline-when">8/21/2026, 3:12:00 PM</span><span>Dispatched</span></div>
+          <div class="ns-timeline-row"><span class="ns-timeline-when">8/26/2026, 8:00:00 AM</span><span>Scheduled</span></div>
+          <div class="ns-timeline-row"><span class="ns-timeline-when">8/21/2026, 9:41:00 AM</span><span>Created</span></div>
+        </div>
+      </section>
+    </div>
+    <aside>
+      <section class="ns-rail-section" aria-label="Equipment">
+        <h3 class="ns-rail-h">Equipment</h3>
+        <strong>Soft Serve Freezer 2</strong><br>
+        <span class="ns-rail-meta">Taylor C712 · S/N K1122873</span>
+        <p class="ns-gap-note">Repair-history insight (repeat repairs, spend vs replacement) needs an equipment-history read this page doesn’t perform yet.</p>
+      </section>
+      <section class="ns-rail-section" aria-label="Site">
+        <h3 class="ns-rail-h">Site</h3>
+        <strong>Broadway Plant</strong><br>
+        <span class="ns-rail-meta">2214 E Broadway Rd, Phoenix, AZ 85040</span>
+      </section>
+      <section class="ns-rail-section" aria-label="Dispatcher context">
+        <h3 class="ns-rail-h">Dispatcher context</h3>
+        <p class="ns-gap-note">Technician day load, slip windows, and sibling work orders require scheduling reads this route doesn’t perform yet.</p>
+      </section>
+      <section class="ns-rail-section" aria-label="Record detail">
+        <details>
+          <summary class="ns-rail-h" style="cursor: pointer;">Record detail</summary>
+          <dl>
+            <dt>Type</dt><dd>Repair</dd>
+            <dt>Priority</dt><dd>P2 High</dd>
+            <dt>Status</dt><dd>Dispatched — awaiting technician acceptance</dd>
+          </dl>
+        </details>
+      </section>
+    </aside>
+  </div>
+</div>
+</div>
+</body>
+</html>

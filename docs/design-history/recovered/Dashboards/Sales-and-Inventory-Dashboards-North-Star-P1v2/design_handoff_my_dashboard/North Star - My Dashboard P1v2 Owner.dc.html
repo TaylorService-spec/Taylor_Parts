@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E9ECEA; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 15px; }
+    a { color: #005A3C; } a:hover { color: #0A3D2C; }
+    h3.rh { font: 700 12px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; padding: 16px 18px; }
+    .act { background: #FFFFFF; border: 1px solid #87938D; border-left: 4px solid #005A3C; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .btn { font: 600 14px Inter, sans-serif; padding: 8px 14px; background: #005A3C; color: #fff; white-space: nowrap; }
+    .gated { font-size: 14px; color: #626A66; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #87938D; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; flex: none; }
+    .hlp:hover { border-color: #111; color: #111; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8EFEA; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); }
+    .hlp:hover .tip { display: block; }
+    .dest { font: 600 14px Inter, sans-serif; padding: 9px 14px; border: 1px solid #87938D; color: #111; background: #fff; }
+    .kpiL { font: 600 12px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #3F4542; }
+    .kpiV { font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; color: #005A3C; margin-top: 2px; }
+    .sub13 { font-size: 13px; color: #626A66; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1560px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>My Dashboard — Owner / Admin · populated · 1440 · EOS Visual System (true white, evergreen emphasis)</span>
+      <span style="font-size: 12px; color: #3F4542;">All modules census-mapped · DESIGN FIXTURE values</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #5F6C66; display: flex; min-height: 980px;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; display: flex; flex-direction: column;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="margin: 8px 12px 2px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">My Dashboard</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Financials</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Admin</div>
+        <div style="flex: 1;"></div>
+        <div style="border-top: 1px solid #1C4638; padding: 12px 16px; display: flex; align-items: center; gap: 10px;">
+          <span style="width: 32px; height: 32px; border-radius: 50%; background: #B08A55; color: #102B24; font: 700 13px Inter, sans-serif; display: inline-flex; align-items: center; justify-content: center; flex: none;">GM</span>
+          <span style="flex: 1; min-width: 0;">
+            <span style="display: block; color: #fff; font-weight: 600; font-size: 13px;">G. Marsh</span>
+            <span style="display: block; font-size: 11px; color: #8FA098;">Owner · Administrator</span>
+          </span>
+          <span style="color: #8FA098;">▾</span>
+          <span class="hlp" style="border-color:#6B7A74;">i<span class="tip">Identity treatment per brief §10: initials, display name, role context from existing identity/role facts (A-4 effective access is the authority). Entry point for account/session actions. NOT a role switcher — authority never changes here. Existing notification behavior in the masthead is retained, not removed (shell-composition recommendations, if any, are named in the handoff).</span></span>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 0 12px; border-bottom: 1px solid #5F6C66;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 0 0 2px;">My Dashboard</h1>
+            <div style="font-size: 14px; color: #3F4542;">Tuesday, September 2 · what needs you, then what's moving<span class="hlp">i<span class="tip">Governing question: "What needs this signed-in person right now?" Sections in priority order: ACTION → WAITING → TODAY → EXCEPTIONS → HEALTH → GO TO. Composes existing domain read authorities at their existing scopes (census K-17/F-01, LandingPage.jsx precedent) — never a new permission layer. All counts are complete server-side aggregates or honestly-bounded lists (X-9). Values on this frame are DESIGN FIXTURES.</span></span></div>
+          </div>
+          <span style="font-size: 13px; color: #626A66;">Read-checked 7:58 AM · <a href="#r">Refresh</a></span>
+        </header>
+
+        <section style="margin-top: 18px;">
+          <h3 class="rh">Needs your attention · 3<span class="hlp">i<span class="tip">ACTION_ITEM per the Owner-ratified taxonomy (X-1): the signed-in user must do something. Owner/Admin action items today are governance decisions: A-1 privileged role requests (two-person approval), A-2 access requests. Each row answers what/why/record/age(A-1,A-2 request time is governed)/action without opening it. No ALERT severity layer is invented (X-3).</span></span></h3>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="act">
+              <span><strong>Approve or decline privileged role request</strong> — J. Whitfield → Financial Administrator<br><span class="sub13">Requires a second approver · requested Aug 30 · A-1</span></span>
+              <span class="btn">Review request</span>
+            </div>
+            <div class="act">
+              <span><strong>Approve or decline privileged role request</strong> — T. Ruiz → Warehouse Manager (Tucson)<br><span class="sub13">Requires a second approver · requested Sep 1 · A-1</span></span>
+              <span class="btn">Review request</span>
+            </div>
+            <div class="act">
+              <span><strong>Decide access request</strong> — new user P. Nakai awaiting account decision<br><span class="sub13">Requested Sep 1 · A-2</span></span>
+              <span class="btn">Decide</span>
+            </div>
+          </div>
+        </section>
+
+        <section style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 22px;">
+          <div class="panel"><div class="kpiL">Accounts</div><div class="kpiV">214</div><div class="sub13">182 active · complete count<span class="hlp">i<span class="tip">C-1 getAccountPortfolioSummary — a server-side complete count() at governed scope, never a bounded page presented as a total (X-9). REPORTABLE_NOW.</span></span></div></div>
+          <div class="panel"><div class="kpiL">Open work orders</div><div class="kpiV">47</div><div class="sub13">11-status governed enum<span class="hlp">i<span class="tip">SV-1 fieldops_wos.status, the real 11-value WorkOrderStatus — never the legacy derived state enum. REPORTABLE_NOW, admin/dispatcher rules scope.</span></span></div></div>
+          <div class="panel"><div class="kpiL">Scheduled today</div><div class="kpiV">12</div><div class="sub13">3 past due<span class="hlp">i<span class="tip">SV-3 scheduledStart is the only date authority (exists only once scheduled — no fabricated due dates); SV-4 past due via workOrderPastDueItem(). REPORTABLE_NOW.</span></span></div></div>
+          <div class="panel"><div class="kpiL">Receiving queue</div><div class="kpiV">6</div><div class="sub13">receivable POs<span class="hlp">i<span class="tip">W-1 listReceivablePurchaseOrders under inventory.stock.receive (active, deployed live 2026-08-06). REPORTABLE_NOW.</span></span></div></div>
+          <div class="panel"><div class="kpiL">Open purchase orders</div><div class="kpiV">9</div><div class="sub13">2 with discrepancies<span class="hlp">i<span class="tip">P-1 canonical purchase_orders; P-6 discrepancies from getPurchaseOrderReceivingProgress — received/remaining DERIVED from committed receipts, never stored on the PO. REPORTABLE_NOW. No "overdue PO" is shown: no governed promise date exists (P-3 DEFINITION_GAP).</span></span></div></div>
+        </section>
+        <div class="sub13" style="margin-top: 6px;">Current-state figures only — no MTD, trend or prior-period delta exists until a reporting time authority is decided (census G-05).</div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px;">
+          <div class="panel">
+            <h3 class="rh">Work orders by status<span class="hlp">i<span class="tip">SV-1 distribution over the governed 11-value enum (empty statuses omitted, stated). Current-state bar chart — a distribution, not a trend; no time axis exists without the reporting-time authority (G-05). Bars drill to the filtered WO queue.</span></span></h3>
+            <svg viewBox="0 0 620 190" style="width: 100%;" role="img" aria-label="Open work orders by governed status">
+              <text x="0" y="22" font-size="13" fill="#111" font-weight="600">Scheduled</text><rect x="150" y="10" width="280" height="16" fill="#005A3C"></rect><text x="438" y="23" font-size="13" fill="#111" font-weight="600">14</text>
+              <text x="0" y="54" font-size="13" fill="#111" font-weight="600">Dispatched</text><rect x="150" y="42" width="200" height="16" fill="#005A3C"></rect><text x="358" y="55" font-size="13" fill="#111" font-weight="600">10</text>
+              <text x="0" y="86" font-size="13" fill="#111" font-weight="600">In progress</text><rect x="150" y="74" width="160" height="16" fill="#005A3C"></rect><text x="318" y="87" font-size="13" fill="#111" font-weight="600">8</text>
+              <text x="0" y="118" font-size="13" fill="#111" font-weight="600">Ready to schedule</text><rect x="150" y="106" width="180" height="16" fill="#B08A55"></rect><text x="338" y="119" font-size="13" fill="#111" font-weight="600">9</text>
+              <text x="0" y="150" font-size="13" fill="#111" font-weight="600">Waiting on parts</text><rect x="150" y="138" width="120" height="16" fill="#8F6109"></rect><text x="278" y="151" font-size="13" fill="#111" font-weight="600">6</text>
+              <text x="0" y="182" font-size="13" fill="#111" font-weight="600">On hold</text><rect x="150" y="170" width="0" height="16" fill="#005A3C"></rect><text x="158" y="182" font-size="13" fill="#626A66" font-style="italic">0 — shown, not hidden</text>
+            </svg>
+          </div>
+          <div class="panel">
+            <h3 class="rh">Accounts by status<span class="hlp">i<span class="tip">C-1 complete counts over the canonical uppercase status enum (C-2). "Unclassified" surfaces unknown statuses rather than letting them vanish — the read's own contract. Composition bar: categories complete and mutually exclusive, so a stacked composition is honest.</span></span></h3>
+            <div style="display: flex; height: 26px; margin-top: 8px;">
+              <div style="width: 62%; background: #005A3C;"></div>
+              <div style="width: 17%; background: #B08A55;"></div>
+              <div style="width: 12%; background: #87938D;"></div>
+              <div style="width: 6%; background: #C9D1CC;"></div>
+              <div style="width: 3%; background: #8F6109;"></div>
+            </div>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: #3F4542;">
+              <span><span style="display:inline-block; width:10px; height:10px; background:#005A3C; margin-right:5px;"></span>Active 182</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#B08A55; margin-right:5px;"></span>Prospect 36</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#87938D; margin-right:5px;"></span>Inactive 26</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#C9D1CC; margin-right:5px;"></span>Archived 12</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#8F6109; margin-right:5px;"></span>Unclassified 6</span>
+            </div>
+            <h3 class="rh" style="margin-top: 22px;">Today's service composition<span class="hlp">i<span class="tip">SV-3/SV-4/SV-5/SV-6 composed: today's scheduled work split into clean / past due / conflicted / parts-blocked. Same-day current state — no week trend without time authority. Segments drill to the dispatch board filtered accordingly.</span></span></h3>
+            <div style="display: flex; height: 26px; margin-top: 8px;">
+              <div style="width: 50%; background: #005A3C;"></div>
+              <div style="width: 25%; background: #8F6109;"></div>
+              <div style="width: 8%; background: #B23B3B;"></div>
+              <div style="width: 17%; background: #87938D;"></div>
+            </div>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: #3F4542;">
+              <span><span style="display:inline-block; width:10px; height:10px; background:#005A3C; margin-right:5px;"></span>On track 6</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#8F6109; margin-right:5px;"></span>Past due 3</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#B23B3B; margin-right:5px;"></span>Conflict 1</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#87938D; margin-right:5px;"></span>Parts-blocked 2</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+          <div class="panel">
+            <h3 class="rh">Waiting / in motion<span class="hlp">i<span class="tip">NOTIFICATION per the taxonomy (X-2): in motion, no action required from this person now. Open POs (P-1), reorder requests in purchasing (W-6 states), receiving partials (W-2). Clearly secondary to the action queue.</span></span></h3>
+            <div style="font-size: 15px;">
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#po">PO-2026-0107 · Taylor Co. parts restock</a><span style="color:#3F4542;">Sent · awaiting receipt</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#ro">4 reorder requests</a><span style="color:#3F4542;">Purchasing in progress</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0;"><a href="#po2">PO-2026-0102</a><span style="color:#3F4542;">Partially received · 18 of 30 units</span></div>
+            </div>
+            <h3 class="rh" style="margin-top: 20px;">Reorder workflow state<span class="hlp">i<span class="tip">W-6 live governed workflow (activated in sandbox 2026-08-31, live-verified): create → assign → purchasing → received/closed states. Queue-state visualization over the governed status values; complete at the Owner's global scope.</span></span></h3>
+            <svg viewBox="0 0 620 128" style="width: 100%;" role="img" aria-label="Reorder requests by workflow state">
+              <text x="0" y="20" font-size="13" fill="#111" font-weight="600">Awaiting assignment</text><rect x="170" y="8" width="90" height="16" fill="#8F6109"></rect><text x="268" y="21" font-size="13" fill="#111" font-weight="600">3</text>
+              <text x="0" y="52" font-size="13" fill="#111" font-weight="600">Assigned</text><rect x="170" y="40" width="60" height="16" fill="#B08A55"></rect><text x="238" y="53" font-size="13" fill="#111" font-weight="600">2</text>
+              <text x="0" y="84" font-size="13" fill="#111" font-weight="600">Purchasing in progress</text><rect x="170" y="72" width="120" height="16" fill="#005A3C"></rect><text x="298" y="85" font-size="13" fill="#111" font-weight="600">4</text>
+              <text x="0" y="116" font-size="13" fill="#111" font-weight="600">Received this week</text><rect x="170" y="104" width="0" height="16"></rect><text x="178" y="116" font-size="13" fill="#626A66" font-style="italic">"this week" needs time authority — omitted (G-05)</text>
+            </svg>
+          </div>
+          <div class="panel">
+            <h3 class="rh">Receiving progress &amp; discrepancies<span class="hlp">i<span class="tip">W-2/P-6: per-PO progress bars from committed receipts (derived, never stored on the PO; stored status stays SENT while partial). Over-received lines surface reconciliation reasons — the two discrepancy rows are governed facts, not invented severity.</span></span></h3>
+            <div style="font-size: 14px;">
+              <div style="margin-bottom: 12px;"><div style="display:flex; justify-content:space-between;"><span><strong>PO-2026-0102</strong> · Scraper kits</span><span style="color:#3F4542;">18 / 30</span></div><div style="height: 10px; background: #F2F5F3; border: 1px solid #5F6C66; margin-top: 4px;"><div style="height: 100%; width: 60%; background: #005A3C;"></div></div></div>
+              <div style="margin-bottom: 12px;"><div style="display:flex; justify-content:space-between;"><span><strong>PO-2026-0104</strong> · Drive motors</span><span style="color:#3F4542;">4 / 4 · <strong style="color:#8F6109;">over-received line</strong></span></div><div style="height: 10px; background: #F2F5F3; border: 1px solid #5F6C66; margin-top: 4px;"><div style="height: 100%; width: 100%; background: #8F6109;"></div></div><div class="sub13" style="margin-top:3px;">Line 2 received 5 of 4 — reconciliation reason recorded</div></div>
+              <div><div style="display:flex; justify-content:space-between;"><span><strong>PO-2026-0107</strong> · Restock</span><span style="color:#3F4542;">0 / 52</span></div><div style="height: 10px; background: #F2F5F3; border: 1px solid #5F6C66; margin-top: 4px;"><div style="height: 100%; width: 0%; background: #005A3C;"></div></div></div>
+            </div>
+            <h3 class="rh" style="margin-top: 20px;">Financial summary<span class="hlp">i<span class="tip">Honest gated state, not specimen KPIs: every financial fact family (F-1..F-13, S-9..S-17, C-4/C-8) is blocked by one fact — no Role carries any finance.visibility.* capability (census §9 Owner decision 1). Fourteen fact families unblock when the Owner grants a reach scope. The slot is preserved; nothing masquerades as reportable.</span></span></h3>
+            <div style="background: #F2F5F3; border: 1px solid #5F6C66; padding: 12px 14px; font-size: 15px;">
+              <strong>Financial figures are unavailable.</strong>
+              <div style="font-size: 14px; color: #3F4542; margin-top: 4px; line-height: 1.6;">No role currently carries financial visibility (FIN-004). When a reach scope is granted, billed, collected, A/R and approval queues appear here — until then this dashboard shows no financial numbers.</div>
+            </div>
+          </div>
+        </div>
+
+        <section style="margin-top: 18px;">
+          <h3 class="rh">Go to<span class="hlp">i<span class="tip">X-6: the retained secondary launcher — destinations computed with the SAME isDomainVisible/isNavItemVisible functions as the rail (LandingPage.jsx precedent). A destination is genuinely reachable right now or it is not listed. Never the primary content. No site-wide search box: out of P1v2 scope by brief §11 (future-shell annotation only).</span></span></h3>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="dest">Accounts</span><span class="dest">Work Orders</span><span class="dest">Dispatch Board</span><span class="dest">Scheduling</span><span class="dest">Parts</span><span class="dest">Receiving</span><span class="dest">Purchase Orders</span><span class="dest">Equipment</span><span class="dest">Admin · Access</span><span class="dest">Reporting</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start;">
+    <div id="1b" style="width: 1000px; flex: none;">
+      <div style="margin-bottom: 8px;">
+        <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1b</span>Owner / Admin — quiet state (main column)</span>
+      </div>
+      <div style="background: #FFFFFF; outline: 1px solid #5F6C66; padding: 0 32px 36px;">
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 0 12px; border-bottom: 1px solid #5F6C66;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 0 0 2px;">My Dashboard</h1>
+            <div style="font-size: 14px; color: #3F4542;">Tuesday, September 2</div>
+          </div>
+          <span style="font-size: 13px; color: #626A66;">Read-checked 7:58 AM</span>
+        </header>
+        <section style="margin-top: 20px; padding: 22px 24px; background: #F2F5F3; border: 1px solid #87938D;">
+          <div style="font-family: 'Source Serif 4', serif; font-size: 21px; font-weight: 700;">Nothing needs your action right now.</div>
+          <div style="font-size: 14px; color: #3F4542; margin-top: 4px;">No pending role or access decisions. Operational queues below are moving without you.<span class="hlp">i<span class="tip">Quiet state per brief §8: a real state, not a blank screen and not invented work. Health facts, waiting items and Go to remain. The empty action queue is stated in words.</span></span></div>
+        </section>
+        <section style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 18px;">
+          <div class="panel"><div class="kpiL">Accounts</div><div class="kpiV">214</div><div class="sub13">182 active</div></div>
+          <div class="panel"><div class="kpiL">Open work orders</div><div class="kpiV">47</div><div class="sub13">0 past due</div></div>
+          <div class="panel"><div class="kpiL">Scheduled today</div><div class="kpiV">12</div><div class="sub13">no conflicts</div></div>
+          <div class="panel"><div class="kpiL">Receiving queue</div><div class="kpiV">2</div><div class="sub13">receivable POs</div></div>
+          <div class="panel"><div class="kpiL">Open purchase orders</div><div class="kpiV">7</div><div class="sub13">no discrepancies</div></div>
+        </section>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+          <div class="panel">
+            <h3 class="rh">Waiting / in motion</h3>
+            <div style="font-size: 15px;">
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#p">PO-2026-0107</a><span style="color:#3F4542;">Sent · awaiting receipt</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0;"><a href="#r">2 reorder requests</a><span style="color:#3F4542;">Purchasing in progress</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3 class="rh">Financial summary</h3>
+            <div class="gated">Unavailable — no role carries financial visibility (FIN-004).</div>
+          </div>
+        </div>
+        <section style="margin-top: 18px;">
+          <h3 class="rh">Go to</h3>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="dest">Accounts</span><span class="dest">Work Orders</span><span class="dest">Dispatch Board</span><span class="dest">Parts</span><span class="dest">Receiving</span><span class="dest">Purchase Orders</span><span class="dest">Admin · Access</span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div id="1a-mobile" style="width: 420px;">
+      <div style="margin-bottom: 8px;">
+        <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Owner / Admin — 375 recomposition</span>
+      </div>
+      <div id="fown-m" style="width: 375px; background: #FFFFFF; outline: 1px solid #5F6C66;">
+        <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="display: flex; align-items: center; gap: 10px;"><span style="width: 26px; height: 26px; border-radius: 50%; background: #B08A55; color: #102B24; font: 700 11px Inter, sans-serif; display: inline-flex; align-items: center; justify-content: center;">GM</span><span style="color:#B9C1BE;">☰</span></span></div>
+        <div style="padding: 16px;">
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700; margin: 0 0 2px;">My Dashboard</h1>
+          <div style="font-size: 13px; color: #3F4542;">Tuesday, September 2</div>
+          <section style="margin-top: 14px;">
+            <h3 class="rh">Needs your attention · 3</h3>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div class="act" style="padding: 10px 12px;"><span style="font-size: 14px;"><strong>Privileged role request</strong> — J. Whitfield<br><span class="sub13">Aug 30 · needs second approver</span></span><span class="btn" style="font-size: 13px; padding: 7px 10px;">Review</span></div>
+              <div class="act" style="padding: 10px 12px;"><span style="font-size: 14px;"><strong>Privileged role request</strong> — T. Ruiz<br><span class="sub13">Sep 1</span></span><span class="btn" style="font-size: 13px; padding: 7px 10px;">Review</span></div>
+              <div class="act" style="padding: 10px 12px;"><span style="font-size: 14px;"><strong>Access request</strong> — P. Nakai<br><span class="sub13">Sep 1</span></span><span class="btn" style="font-size: 13px; padding: 7px 10px;">Decide</span></div>
+            </div>
+          </section>
+          <section style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px;">
+            <div class="panel" style="padding: 10px 12px;"><div class="kpiL" style="font-size: 10.5px;">Accounts</div><div class="kpiV" style="font-size: 24px;">214</div></div>
+            <div class="panel" style="padding: 10px 12px;"><div class="kpiL" style="font-size: 10.5px;">Open WOs</div><div class="kpiV" style="font-size: 24px;">47</div></div>
+            <div class="panel" style="padding: 10px 12px;"><div class="kpiL" style="font-size: 10.5px;">Scheduled today</div><div class="kpiV" style="font-size: 24px;">12</div><div class="sub13">3 past due</div></div>
+            <div class="panel" style="padding: 10px 12px;"><div class="kpiL" style="font-size: 10.5px;">Receiving</div><div class="kpiV" style="font-size: 24px;">6</div></div>
+          </section>
+          <section style="margin-top: 14px;">
+            <h3 class="rh">Today's service composition</h3>
+            <div style="display: flex; height: 22px;">
+              <div style="width: 50%; background: #005A3C;"></div><div style="width: 25%; background: #8F6109;"></div><div style="width: 8%; background: #B23B3B;"></div><div style="width: 17%; background: #87938D;"></div>
+            </div>
+            <div class="sub13" style="margin-top: 6px;">On track 6 · past due 3 · conflict 1 · parts-blocked 2</div>
+          </section>
+          <section style="margin-top: 14px;">
+            <h3 class="rh">Waiting</h3>
+            <div style="font-size: 14px;">
+              <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #C9D1CC;"><span>PO-2026-0102</span><span style="color:#3F4542;">18 / 30 received</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 6px 0;"><span>4 reorder requests</span><span style="color:#3F4542;">In purchasing</span></div>
+            </div>
+          </section>
+          <section style="margin-top: 14px; padding-bottom: 4px;">
+            <h3 class="rh">Go to</h3>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="dest" style="font-size: 13px; padding: 8px 11px;">Accounts</span><span class="dest" style="font-size: 13px; padding: 8px 11px;">Work Orders</span><span class="dest" style="font-size: 13px; padding: 8px 11px;">Dispatch</span><span class="dest" style="font-size: 13px; padding: 8px 11px;">Receiving</span><span class="dest" style="font-size: 13px; padding: 8px 11px;">Admin</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

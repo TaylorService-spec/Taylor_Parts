@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E9ECEA; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 15px; }
+    a { color: #005A3C; } a:hover { color: #0A3D2C; }
+    h3.rh { font: 700 12px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; padding: 16px 18px; }
+    .act { background: #FFFFFF; border: 1px solid #87938D; border-left: 4px solid #005A3C; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .btn { font: 600 14px Inter, sans-serif; padding: 8px 14px; background: #005A3C; color: #fff; white-space: nowrap; }
+    .btn2 { font: 600 14px Inter, sans-serif; padding: 8px 14px; border: 1px solid #5F6C66; color: #111; white-space: nowrap; background: #fff; }
+    .gated { font-size: 14px; color: #626A66; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #87938D; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; flex: none; }
+    .hlp:hover { border-color: #111; color: #111; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8EFEA; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); }
+    .hlp:hover .tip { display: block; }
+    .dest { font: 600 14px Inter, sans-serif; padding: 9px 14px; border: 1px solid #87938D; color: #111; background: #fff; }
+    .kpiL { font: 600 12px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #3F4542; }
+    .kpiV { font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; color: #005A3C; margin-top: 2px; }
+    .sub13 { font-size: 13px; color: #626A66; }
+    .idb { border-top: 1px solid #1C4638; padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="2a" style="width: 1560px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">2a</span>My Dashboard — Dispatcher / Service Manager · populated · 1440</span>
+      <span style="font-size: 12px; color: #3F4542;">Richest ready persona · all REPORTABLE_NOW · DESIGN FIXTURES</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #5F6C66; display: flex; min-height: 940px;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; display: flex; flex-direction: column;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="margin: 8px 12px 2px; padding: 6px 10px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">My Dashboard</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Inventory</div>
+        <div style="padding: 7px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="flex: 1;"></div>
+        <div class="idb">
+          <span style="width: 32px; height: 32px; border-radius: 50%; background: #B08A55; color: #102B24; font: 700 13px Inter, sans-serif; display: inline-flex; align-items: center; justify-content: center; flex: none;">DR</span>
+          <span style="flex: 1; min-width: 0;"><span style="display: block; color: #fff; font-weight: 600; font-size: 13px;">D. Reyes</span><span style="display: block; font-size: 11px; color: #8FA098;">Dispatcher</span></span>
+          <span style="color: #8FA098;">▾</span>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 0 12px; border-bottom: 1px solid #5F6C66;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 0 0 2px;">My Dashboard</h1>
+            <div style="font-size: 14px; color: #3F4542;">Tuesday, September 2 · dispatch has 7 items needing action<span class="hlp">i<span class="tip">Dispatcher persona: the whole Service block is ACTION_REQUIRED (census §4). Composition: attention queue first (SV-2 unassigned, SV-4 past due, SV-5 conflicts, SV-6 parts-blocked), then today's board, workload distribution and completions. Existing jobRiskScoring/dispatchScoring vocabulary is linked, never re-badged into the 2-value taxonomy (X-3, SV-17). DESIGN FIXTURES.</span></span></div>
+          </div>
+          <span style="font-size: 13px; color: #626A66;">Read-checked 8:02 AM · <a href="#r">Refresh</a></span>
+        </header>
+
+        <section style="margin-top: 18px;">
+          <h3 class="rh">Needs your attention · 7</h3>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="act"><span><strong>3 work orders past due</strong> — oldest scheduled Aug 28 (CW-WO-0212 · Mesa Frozen Yogurt)<br><span class="sub13">scheduledStart vs now · SV-4</span></span><span class="btn">Open past due</span></div>
+            <div class="act"><span><strong>2 ready to dispatch</strong> — schedulable status, unassigned<br><span class="sub13">SCHEDULABLE_STATUS from the transition table · SV-2</span></span><span class="btn">Assign now</span></div>
+            <div class="act"><span><strong>1 scheduling conflict</strong> — R. Alvarez double-booked 1–3 PM today<br><span class="sub13">detectDayOverlaps() · SV-5</span></span><span class="btn">Resolve</span></div>
+            <div class="act" style="border-left-color: #8F6109;"><span><strong>1 job parts-blocked</strong> — CW-WO-0198 waiting on drive motor (stockout)<br><span class="sub13">buildWorkOrderPartsReadiness() output · SV-6</span></span><span class="btn2">View readiness</span></div>
+          </div>
+        </section>
+
+        <section style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 22px;">
+          <div class="panel"><div class="kpiL">Scheduled today</div><div class="kpiV">12</div><div class="sub13">SV-3 · scheduledStart</div></div>
+          <div class="panel"><div class="kpiL">Past due</div><div class="kpiV" style="color: #B23B3B;">3</div><div class="sub13">SV-4 · global, not week-bound</div></div>
+          <div class="panel"><div class="kpiL">Ready to dispatch</div><div class="kpiV">2</div><div class="sub13">SV-2</div></div>
+          <div class="panel"><div class="kpiL">Parts-blocked</div><div class="kpiV" style="color: #8F6109;">6</div><div class="sub13">SV-6</div></div>
+          <div class="panel"><div class="kpiL">Completed today</div><div class="kpiV">4</div><div class="sub13">SV-10 · real completedAt<span class="hlp">i<span class="tip">"Today" is the one honest window: completedAt grouped by calendar day. No completions-this-week trend exists without the reporting-time authority (G-05, K-11).</span></span></div></div>
+        </section>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px;">
+          <div class="panel">
+            <h3 class="rh">Open work orders by status<span class="hlp">i<span class="tip">SV-1 — distribution over the governed 11-value enum, current state. Bars drill to the WO queue filtered by that status.</span></span></h3>
+            <svg viewBox="0 0 620 190" style="width: 100%;" role="img" aria-label="Open work orders by status">
+              <text x="0" y="22" font-size="13" fill="#111" font-weight="600">Scheduled</text><rect x="150" y="10" width="280" height="16" fill="#005A3C"></rect><text x="438" y="23" font-size="13" fill="#111" font-weight="600">14</text>
+              <text x="0" y="54" font-size="13" fill="#111" font-weight="600">Dispatched</text><rect x="150" y="42" width="200" height="16" fill="#005A3C"></rect><text x="358" y="55" font-size="13" fill="#111" font-weight="600">10</text>
+              <text x="0" y="86" font-size="13" fill="#111" font-weight="600">In progress</text><rect x="150" y="74" width="160" height="16" fill="#005A3C"></rect><text x="318" y="87" font-size="13" fill="#111" font-weight="600">8</text>
+              <text x="0" y="118" font-size="13" fill="#111" font-weight="600">Ready to schedule</text><rect x="150" y="106" width="180" height="16" fill="#B08A55"></rect><text x="338" y="119" font-size="13" fill="#111" font-weight="600">9</text>
+              <text x="0" y="150" font-size="13" fill="#111" font-weight="600">Waiting on parts</text><rect x="150" y="138" width="120" height="16" fill="#8F6109"></rect><text x="278" y="151" font-size="13" fill="#111" font-weight="600">6</text>
+              <text x="0" y="182" font-size="13" fill="#111" font-weight="600">Completed today</text><rect x="150" y="170" width="80" height="16" fill="#87938D"></rect><text x="238" y="182" font-size="13" fill="#111" font-weight="600">4</text>
+            </svg>
+          </div>
+          <div class="panel">
+            <h3 class="rh">Technician workload today<span class="hlp">i<span class="tip">Composed from SV-3 assignments + SV-7 recorded availability. Bars are scheduled JOB COUNTS per technician today — NOT a utilisation % (SV-8 FORMALIZATION_REQUIRED: estimates are optional and absent-is-not-empty forbids a percentage). "No working schedule recorded" renders in words, never 0% booked.</span></span></h3>
+            <svg viewBox="0 0 620 160" style="width: 100%;" role="img" aria-label="Scheduled jobs per technician today">
+              <text x="0" y="22" font-size="13" fill="#111" font-weight="600">R. Alvarez</text><rect x="120" y="10" width="240" height="16" fill="#005A3C"></rect><rect x="360" y="10" width="60" height="16" fill="#B23B3B"></rect><text x="428" y="23" font-size="13" fill="#111" font-weight="600">4 · 1 conflict</text>
+              <text x="0" y="54" font-size="13" fill="#111" font-weight="600">J. Okafor</text><rect x="120" y="42" width="180" height="16" fill="#005A3C"></rect><text x="308" y="55" font-size="13" fill="#111" font-weight="600">3</text>
+              <text x="0" y="86" font-size="13" fill="#111" font-weight="600">S. Tran</text><rect x="120" y="74" width="180" height="16" fill="#005A3C"></rect><text x="308" y="87" font-size="13" fill="#111" font-weight="600">3</text>
+              <text x="0" y="118" font-size="13" fill="#111" font-weight="600">M. Deng</text><rect x="120" y="106" width="120" height="16" fill="#005A3C"></rect><text x="248" y="119" font-size="13" fill="#111" font-weight="600">2</text>
+              <text x="0" y="150" font-size="13" fill="#111" font-weight="600">K. Foss</text><text x="120" y="150" font-size="13" fill="#626A66" font-style="italic">No working schedule recorded — absent, not empty (SV-7)</text>
+            </svg>
+            <div class="sub13" style="margin-top: 4px;">Blocked time honored from technician_blocked_time · existing risk ranking stays in its own panel: <a href="#risk">Stalled-job risk (4-tier) →</a></div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+          <div class="panel">
+            <h3 class="rh">Waiting / in motion</h3>
+            <div style="font-size: 15px;">
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#w1">CW-WO-0221 · in progress</a><span style="color:#3F4542;">S. Tran on site since 7:20 AM</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#w2">6 reorder requests</a><span style="color:#3F4542;">With purchasing · affects 6 blocked jobs</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0;"><a href="#w3">PO-2026-0104 · drive motors</a><span style="color:#3F4542;">Fully received · unblocks CW-WO-0198 on put-away</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3 class="rh">Completed today · 4<span class="hlp">i<span class="tip">SV-10 — display grouping of a terminal status by real completedAt. A list, not a trend.</span></span></h3>
+            <div style="font-size: 15px;">
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#c1">CW-WO-0216 · Cactus Custard Co.</a><span style="color:#3F4542;">J. Okafor · 9:40 AM</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #C9D1CC;"><a href="#c2">CW-WO-0219 · Sun Devil Dining</a><span style="color:#3F4542;">M. Deng · 11:05 AM</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 7px 0;"><span class="sub13">+ 2 more</span><span></span></div>
+            </div>
+          </div>
+        </div>
+
+        <section style="margin-top: 18px;">
+          <h3 class="rh">Go to</h3>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span class="dest">Dispatch Board</span><span class="dest">Scheduling</span><span class="dest">Work Orders</span><span class="dest">Technicians</span><span class="dest">Parts</span><span class="dest">Accounts</span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 36px; align-items: flex-start;">
+    <div id="2b" style="width: 1000px; flex: none;">
+      <div style="margin-bottom: 8px;">
+        <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">2b</span>My Dashboard — Technician · populated · 1440 (main column)</span>
+      </div>
+      <div style="background: #FFFFFF; outline: 1px solid #5F6C66; padding: 0 32px 36px;">
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 20px 0 12px; border-bottom: 1px solid #5F6C66;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 28px; font-weight: 700; margin: 0 0 2px;">My Dashboard</h1>
+            <div style="font-size: 14px; color: #3F4542;">R. Alvarez · Technician · Tuesday, September 2<span class="hlp">i<span class="tip">Technician persona: everything scoped to users/{uid}.technicianId (T-1, a separate additional query — never a widened dispatcher read). Buckets are client-side grouping of the governed status enum (T-2). Allowed actions from getAllowedActions() (T-6). Performance is honest ALL-TIME (T-4) — no weekly figure exists (T-5 DEFINITION_GAP). Offline queue state is first-class (T-9).</span></span></div>
+          </div>
+          <span style="font-size: 13px; color: #626A66;">Read-checked 8:02 AM</span>
+        </header>
+        <section style="margin-top: 18px;">
+          <h3 class="rh">Needs your attention · 2</h3>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="act"><span><strong>Start CW-WO-0223</strong> — Route 9 Creamery · scheduled 8:30 AM, on site window open<br><span class="sub13">Allowed now: Start work · T-6 getAllowedActions()</span></span><span class="btn">Start work</span></div>
+            <div class="act" style="border-left-color: #8F6109;"><span><strong>1 unverified submission</strong> — put-away scan queued offline since 7:41 AM<br><span class="sub13">UNVERIFIED is a state, not a spinner · T-9</span></span><span class="btn2">View queue</span></div>
+          </div>
+        </section>
+        <div style="display: grid; grid-template-columns: 1fr 340px; gap: 12px; margin-top: 18px;">
+          <div class="panel">
+            <h3 class="rh">My work today<span class="hlp">i<span class="tip">T-2 buckets over my assigned WOs: Ready to start / Waiting / In progress / Completed today. Bucket bar is a queue-state visualization of the governed statuses; each segment opens the list.</span></span></h3>
+            <div style="display: flex; height: 26px;">
+              <div style="width: 34%; background: #005A3C;"></div>
+              <div style="width: 22%; background: #B08A55;"></div>
+              <div style="width: 11%; background: #8F6109;"></div>
+              <div style="width: 33%; background: #87938D;"></div>
+            </div>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 13px; color: #3F4542;">
+              <span><span style="display:inline-block; width:10px; height:10px; background:#005A3C; margin-right:5px;"></span>Ready to start 3</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#B08A55; margin-right:5px;"></span>In progress 2</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#8F6109; margin-right:5px;"></span>Waiting 1</span>
+              <span><span style="display:inline-block; width:10px; height:10px; background:#87938D; margin-right:5px;"></span>Completed today 3</span>
+            </div>
+            <div style="font-size: 15px; margin-top: 14px;">
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #C9D1CC;"><span><strong>8:30</strong> · <a href="#j1">CW-WO-0223</a> · Route 9 Creamery — C712 no-freeze</span><span style="color:#005A3C; font-weight:600;">Ready</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #C9D1CC;"><span><strong>10:30</strong> · <a href="#j2">CW-WO-0225</a> · Canyon Foods — PM visit</span><span style="color:#3F4542;">Scheduled</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #C9D1CC;"><span><strong>1:00</strong> · <a href="#j3">CW-WO-0212</a> · Mesa Frozen Yogurt — beater swap</span><span style="color:#8F6109; font-weight:600;">Waiting on part</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0;"><span><strong>3:00</strong> · <a href="#j4">CW-WO-0227</a> · Sun Devil Dining — gasket</span><span style="color:#3F4542;">Scheduled</span></div>
+            </div>
+            <div class="sub13" style="margin-top: 6px;">Ordered by scheduledStart. No governed "next job" rule exists (T-3 FORMALIZATION_REQUIRED) — this list orders by time and claims nothing more.</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="panel">
+              <h3 class="rh">My performance — all time<span class="hlp">i<span class="tip">T-4 getTechnicianExecutionStats: "the real, honest all-time total instead of fabricating a weekly figure this data can't actually support". No week/month window exists (T-5).</span></span></h3>
+              <div style="display: flex; gap: 24px;">
+                <span><div class="kpiV">412</div><div class="sub13">jobs completed</div></span>
+                <span><div class="kpiV">96%</div><div class="sub13">jobs closed clean</div></span>
+              </div>
+              <div class="sub13" style="margin-top: 6px;">All-time · no weekly figure exists yet</div>
+            </div>
+            <div class="panel">
+              <h3 class="rh">Scan workflows<span class="hlp">i<span class="tip">T-7 deriveScanWorkflows — capability-derived, never persona-branched; every unavailability carries its reason from the same authority.</span></span></h3>
+              <div style="font-size: 14px; line-height: 2;">
+                <div style="display:flex; justify-content:space-between;"><span>Part lookup</span><span style="color:#005A3C; font-weight:600;">Available</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Put-away</span><span style="color:#005A3C; font-weight:600;">Available</span></div>
+                <div style="display:flex; justify-content:space-between;"><span>Cycle count</span><span class="gated">Not granted to your role</span></div>
+              </div>
+            </div>
+            <div class="panel">
+              <h3 class="rh">Go to</h3>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <span class="dest" style="font-size:13px; padding:8px 11px;">My Work</span><span class="dest" style="font-size:13px; padding:8px 11px;">Scan</span><span class="dest" style="font-size:13px; padding:8px 11px;">Parts</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="2b-mobile" style="width: 420px;">
+      <div style="margin-bottom: 8px;">
+        <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">2b-m</span>Technician — 375 handheld</span>
+      </div>
+      <div id="ftech-m" style="width: 375px; background: #FFFFFF; outline: 1px solid #5F6C66;">
+        <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="display: flex; align-items: center; gap: 10px;"><span style="width: 26px; height: 26px; border-radius: 50%; background: #B08A55; color: #102B24; font: 700 11px Inter, sans-serif; display: inline-flex; align-items: center; justify-content: center;">RA</span><span style="color:#B9C1BE;">☰</span></span></div>
+        <div style="padding: 16px;">
+          <h1 style="font-family: 'Source Serif 4', serif; font-size: 22px; font-weight: 700; margin: 0 0 2px;">My Dashboard</h1>
+          <div style="font-size: 13px; color: #3F4542;">R. Alvarez · Tuesday, September 2</div>
+          <div class="act" style="margin-top: 12px; padding: 10px 12px;"><span style="font-size: 14px;"><strong>Start CW-WO-0223</strong> — Route 9 Creamery<br><span class="sub13">8:30 AM · window open</span></span><span class="btn" style="font-size: 13px; padding: 10px 12px;">Start</span></div>
+          <div class="act" style="border-left-color: #8F6109; margin-top: 8px; padding: 10px 12px;"><span style="font-size: 14px;"><strong>1 unverified submission</strong><br><span class="sub13">put-away scan · queued 7:41 AM</span></span><span class="btn2" style="font-size: 13px; padding: 10px 12px;">Queue</span></div>
+          <section style="margin-top: 14px;">
+            <h3 class="rh">My work today</h3>
+            <div style="display: flex; height: 22px;">
+              <div style="width: 34%; background: #005A3C;"></div><div style="width: 22%; background: #B08A55;"></div><div style="width: 11%; background: #8F6109;"></div><div style="width: 33%; background: #87938D;"></div>
+            </div>
+            <div class="sub13" style="margin-top: 6px;">Ready 3 · in progress 2 · waiting 1 · done today 3</div>
+            <div style="font-size: 14px; margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #C9D1CC;"><span><strong>8:30</strong> Route 9 Creamery</span><span style="color:#005A3C; font-weight:600;">Ready</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #C9D1CC;"><span><strong>10:30</strong> Canyon Foods</span><span style="color:#3F4542;">Scheduled</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #C9D1CC;"><span><strong>1:00</strong> Mesa Frozen Yogurt</span><span style="color:#8F6109; font-weight:600;">Waiting</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 8px 0;"><span><strong>3:00</strong> Sun Devil Dining</span><span style="color:#3F4542;">Scheduled</span></div>
+            </div>
+          </section>
+          <section style="margin-top: 12px;">
+            <h3 class="rh">All-time</h3>
+            <div style="display: flex; gap: 20px;"><span><span class="kpiV" style="font-size: 24px;">412</span><div class="sub13">jobs</div></span><span><span class="kpiV" style="font-size: 24px;">96%</span><div class="sub13">closed clean</div></span></div>
+          </section>
+          <section style="margin-top: 12px; padding-bottom: 4px;">
+            <h3 class="rh">Scan</h3>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <span class="dest" style="font-size: 13px; padding: 10px 12px;">Part lookup</span><span class="dest" style="font-size: 13px; padding: 10px 12px;">Put-away</span><span class="dest" style="font-size: 13px; padding: 10px 12px; color: #626A66; border-style: dashed;">Cycle count — not granted</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

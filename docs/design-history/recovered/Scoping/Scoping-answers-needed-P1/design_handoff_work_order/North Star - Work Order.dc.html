@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@400;500;600;700&display=swap">
+  <script src="pilot-menu.js"></script>
+  <style>
+    body { margin: 0; background: #F3F0E9; color: #102B24; font-family: Inter, system-ui, sans-serif; }
+    a { color: #1C4638; }
+    a:hover { color: #102B24; }
+    @keyframes eos-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+    @keyframes eos-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</helmet>
+<div data-screen-label="North Star: Work Order 10/10" style="min-height: 100vh;">
+  <div style="background: #102B24; color: #B9C1BE; font-size: 11.5px; padding: 7px 32px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+    <span style="letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: #B08A55;">North star concept — post-pilot horizon</span>
+    <span>Assumes: live truck-stock reads · WO naming service · notification channel · suggestion engine. None exist today — this is the destination, not the pilot.</span>
+  </div>
+  <div style="max-width: 1360px; margin: 0 auto; padding: 0 32px 80px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0 10px;">
+      <div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Enterprise Operations OS · Dispatcher view</div>
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span style="font-size: 11.5px; color: #6B7A74; border: 1px solid #C3BCAB; padding: 4px 10px; background: #FCFAF6;">⌘K — jump to any record</span>
+        <span style="font-size: 11.5px; color: #4A5B55;"><span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #237A45; animation: eos-live 2s infinite;"></span> Live · updated 4s ago</span>
+      </div>
+    </div>
+    <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+    <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 24px 0 14px; flex-wrap: wrap;">
+      <div style="min-width: 0;">
+        <div style="font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #B08A55; font-weight: 600; margin-bottom: 6px;">Work Order · Repair · P2 High</div>
+        <h1 style="font-family: 'Source Serif 4', Georgia, serif; font-size: 40px; line-height: 1.05; font-weight: 700; margin: 0 0 10px;">WO-2026-000873</h1>
+        <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #4A5B55; align-items: center;">
+          <span style="font-weight: 600; color: #2B5B7A;">Dispatched — J. Barela accepted 12 min ago</span>
+          <span><a href="Proposed - Account.dc.html" style="font-weight: 600;">Desert Sun Beverage Co.</a> · Broadway Plant</span>
+          <span>Window <strong style="color: #102B24;">Tue Aug 26, 8:00–12:00</strong> · customer notified ✓</span>
+          <span title="Based on parts readiness, tech skill match, and equipment history">First-visit fix <strong style="color: #237A45;">87%</strong></span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 11.5px; color: #6B7A74;"><span style="display: inline-block; width: 22px; height: 22px; border-radius: 50%; background: #B08A55; color: #fff; font: 700 10px Inter, sans-serif; text-align: center; line-height: 22px; vertical-align: middle;">MC</span> M. Cortez viewing</span>
+        <button style="font: 600 13px Inter, sans-serif; padding: 9px 16px; background: none; border: none; color: #B23B3B; cursor: pointer; transition: background 140ms;" style-hover="background: #FDECEC;">Cancel…</button>
+        <button style="font: 600 13px Inter, sans-serif; padding: 9px 16px; background: none; border: 1px solid #C3BCAB; color: #1C4638; cursor: pointer; transition: background 140ms;" style-hover="background: #E8E2D6; border-color: #B08A55;">Reschedule</button>
+        <button style="font: 600 13px Inter, sans-serif; padding: 9px 18px; background: #102B24; border: 1px solid #102B24; color: #fff; cursor: pointer; transition: background 140ms;" style-hover="background: #1C4638; border-color: #1C4638;">Message technician</button>
+      </div>
+    </header>
+    <div style="display: flex; gap: 14px; align-items: center; padding: 10px 0 10px; flex-wrap: wrap;">
+      <span style="letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; font-size: 11px; color: #4A5B55; margin-right: 4px;">Lifecycle</span>
+      <button onClick="{{ toggleCreated }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 20px 8px 14px; border: none; cursor: pointer; background: #E8E2D6; color: #237A45; clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%); transition: background 140ms;" style-hover="background: #D9D3C6;">✓ Created</button>
+      <button onClick="{{ toggleScheduled }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 20px; border: none; cursor: pointer; background: #E8E2D6; color: #237A45; clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); transition: background 140ms;" style-hover="background: #D9D3C6;">✓ Scheduled</button>
+      <button onClick="{{ toggleDispatched }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 20px; border: none; cursor: pointer; background: #102B24; color: #fff; clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); transition: background 140ms;" style-hover="background: #1C4638;">Dispatched <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #B08A55; margin-left: 5px; animation: eos-pulse 2s ease-in-out infinite;"></span></button>
+      <button onClick="{{ toggleOnsite }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 20px; border: none; cursor: pointer; background: #FCFAF6; color: #6B7A74; outline: 1px solid #D9D3C6; outline-offset: -1px; clip-path: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%, 11px 50%); transition: background 140ms;" style-hover="background: #E8E2D6;">On site <span style="color: #4A5B55;">· ETA 8:04a</span></button>
+      <button onClick="{{ toggleComplete }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 14px 8px 20px; border: none; cursor: pointer; background: #FCFAF6; color: #6B7A74; outline: 1px solid #D9D3C6; outline-offset: -1px; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 11px 50%); transition: background 140ms;" style-hover="background: #E8E2D6;">Complete <span style="color: #4A5B55;">· proj. 10:30a</span></button>
+      <span style="font-size: 12px; color: #6B7A74;">from <a href="Proposed - Sales Order.dc.html" style="text-decoration: none; font-weight: 600;">SO-2026-000141</a></span>
+    </div>
+    <div style="min-height: 34px; margin-bottom: 10px;">
+      <sc-if value="{{ openCreated }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 13px; color: #4A5B55; border-left: 3px solid #237A45; padding: 6px 0 6px 12px;">Created Aug 21, 9:41 AM by M. Cortez from <a href="Proposed - Sales Order.dc.html" style="font-weight: 600; text-decoration: none;">SO-2026-000141</a></div>
+      </sc-if>
+      <sc-if value="{{ openScheduled }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 13px; color: #4A5B55; border-left: 3px solid #237A45; padding: 6px 0 6px 12px;">Scheduled Aug 21, 10:02 AM · window suggested by the engine from route + customer preference (Tue/Thu) · customer confirmed by SMS Aug 21, 10:09 AM</div>
+      </sc-if>
+      <sc-if value="{{ openDispatched }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size: 13px; color: #4A5B55; border-left: 3px solid #102B24; padding: 6px 0 6px 12px;"><strong style="color: #102B24;">You are here.</strong> J. Barela accepted 12 min ago · truck stock verified 8 min ago · route puts arrival at 8:04a with 96% confidence</div>
+      </sc-if>
+      <sc-if value="{{ openOnsite }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 13px; color: #4A5B55; border-left: 3px solid #B08A55; padding: 6px 0 6px 12px;">Projected 8:04a from live route · arrival auto-recorded by geofence, customer notified on arrival</div>
+      </sc-if>
+      <sc-if value="{{ openComplete }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size: 13px; color: #4A5B55; border-left: 3px solid #B08A55; padding: 6px 0 6px 12px;">Projected 10:30a (median for blade + charge repair on a C712) · completion auto-writes part usage, labor, and the billing draft</div>
+      </sc-if>
+    </div>
+    <sc-if value="{{ suggestionPending }}" hint-placeholder-val="{{ true }}">
+      <div style="display: grid; grid-template-columns: auto 1fr auto auto; gap: 16px; align-items: center; background: #FCFAF6; border: 1px solid #B08A55; padding: 12px 16px; margin-bottom: 26px;">
+        <span style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #B08A55;">Suggested</span>
+        <span style="font-size: 13.5px;">O-rings (×4) are staged at the warehouse and J. Barela passes it at 7:38a — <strong>add a 10-minute pickup stop</strong> so the visit doesn't depend on a second trip. First-visit fix rises to <strong style="color: #237A45;">94%</strong>.</span>
+        <button onClick="{{ acceptSuggestion }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 16px; background: #102B24; border: 1px solid #102B24; color: #fff; cursor: pointer; transition: background 140ms;" style-hover="background: #1C4638;">Add pickup stop</button>
+        <button onClick="{{ dismissSuggestion }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 12px; background: none; border: none; color: #6B7A74; cursor: pointer;" style-hover="color: #102B24;">Dismiss</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ suggestionAccepted }}" hint-placeholder-val="{{ false }}">
+      <div style="display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; background: #E6F6EC; border: 1px solid #237A45; padding: 12px 16px; margin-bottom: 26px;">
+        <span style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #237A45;">Done</span>
+        <span style="font-size: 13.5px;">Pickup stop added to J. Barela's route (7:38a) and pushed to his run sheet · first-visit fix now <strong style="color: #237A45;">94%</strong>.</span>
+        <button onClick="{{ undoSuggestion }}" style="font: 600 12.5px Inter, sans-serif; padding: 8px 12px; background: none; border: none; color: #1C4638; cursor: pointer; text-decoration: underline;">Undo</button>
+      </div>
+    </sc-if>
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 56px;">
+      <div>
+        <section style="margin-bottom: 36px;">
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 8px;">The job</h2>
+          <div style="border-top: 2px solid #102B24; padding-top: 14px; font-size: 14px; line-height: 1.65; max-width: 66ch;">
+            <p style="margin: 0 0 10px;"><strong style="font-weight: 700;">Complaint.</strong> Barrel temperature climbing above spec on the PM cycle; product too soft by mid-morning.</p>
+            <p style="margin: 0 0 10px;"><strong style="font-weight: 700;">Working diagnosis.</strong> Worn scraper blades + low refrigerant charge. <span style="color: #6B7A74; font-size: 12.5px;">Matches 9 of 11 similar C712 cases in the last year — both were the fix in 8 of them.</span></p>
+          </div>
+        </section>
+        <section style="margin-bottom: 36px;">
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 4px;">Parts readiness <span style="font: 600 12px Inter, sans-serif; color: #237A45;">· verified against truck stock 8 min ago</span></h2>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13.5px;">
+            <thead>
+              <tr style="text-align: left;">
+                <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24;">Part</th>
+                <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px; border-bottom: 2px solid #102B24; text-align: right;">Planned</th>
+                <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px; border-bottom: 2px solid #102B24;">Source</th>
+                <th style="font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 0 6px 12px; border-bottom: 2px solid #102B24;">Ready</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 10px 12px 10px 0; border-bottom: 1px solid #D9D3C6;"><strong>Scraper Blade Kit</strong> <span style="color: #6B7A74;">· X49463-3</span></td>
+                <td style="padding: 10px 12px; border-bottom: 1px solid #D9D3C6; text-align: right;">2 kit</td>
+                <td style="padding: 10px 12px; border-bottom: 1px solid #D9D3C6; color: #4A5B55;">Truck 12 · bin C3</td>
+                <td style="padding: 10px 0 10px 12px; border-bottom: 1px solid #D9D3C6; color: #237A45; font-weight: 600;">✓ Verified on truck</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 12px 10px 0; border-bottom: 1px solid #D9D3C6;"><strong>O-Ring, Feed Tube</strong> <span style="color: #6B7A74;">· 016132</span></td>
+                <td style="padding: 10px 12px; border-bottom: 1px solid #D9D3C6; text-align: right;">4 ea</td>
+                <td style="padding: 10px 12px; border-bottom: 1px solid #D9D3C6; color: #4A5B55;">Warehouse · staged bay 2</td>
+                <td style="padding: 10px 0 10px 12px; border-bottom: 1px solid #D9D3C6;"><sc-if value="{{ suggestionAccepted }}" hint-placeholder-val="{{ false }}"><span style="color: #237A45; font-weight: 600;">✓ Pickup on route · 7:38a</span></sc-if><sc-if value="{{ suggestionPending }}" hint-placeholder-val="{{ true }}"><span style="color: #A9740D; font-weight: 600;">Staged — pickup not routed</span></sc-if></td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 12px 10px 0; border-bottom: 1px solid #D9D3C6;"><strong>R404A Refrigerant</strong> <span style="color: #6B7A74;">· RF-404A-24</span></td>
+                <td style="padding: 10px 12px; border-bottom: 1px solid #D9D3C6; text-align: right;">1 cyl</td>
+                <td style="padding: 10px 12px; border-bottom: 1px solid #D9D3C6; color: #4A5B55;">Truck 12 · rack</td>
+                <td style="padding: 10px 0 10px 12px; border-bottom: 1px solid #D9D3C6; color: #237A45; font-weight: 600;">✓ Verified on truck</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section style="margin-bottom: 36px;">
+          <h2 style="font-family: 'Source Serif 4', serif; font-size: 19px; font-weight: 700; margin: 0 0 12px;">Timeline <span style="font: 600 12px Inter, sans-serif; color: #4A5B55;">· recorded events, live</span></h2>
+          <div style="border-top: 1px solid #D9D3C6;">
+            <div style="display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px;">
+              <div style="color: #6B7A74; font-size: 12.5px;">12 min ago</div>
+              <div><strong>J. Barela accepted</strong> · route ETA computed 8:04a · customer auto-notified</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px;">
+              <div style="color: #6B7A74; font-size: 12.5px;">Aug 21, 3:12 PM</div>
+              <div>Dispatched to <strong>J. Barela</strong> by M. Cortez · skill match: C712-certified, 14 prior repairs on this fleet</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px;">
+              <div style="color: #6B7A74; font-size: 12.5px;">Aug 21, 10:02 AM</div>
+              <div>Scheduled — Tue Aug 26, 8:00–12:00 · confirmed by customer SMS</div>
+            </div>
+            <div style="display: grid; grid-template-columns: 150px 1fr; gap: 16px; padding: 10px 0; border-bottom: 1px solid #D9D3C6; font-size: 13.5px;">
+              <div style="color: #6B7A74; font-size: 12.5px;">Aug 21, 9:41 AM</div>
+              <div>Created from <a href="Proposed - Sales Order.dc.html">SO-2026-000141</a></div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <aside>
+        <section style="margin-bottom: 30px;">
+          <h3 style="font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px;">Equipment intelligence</h3>
+          <div style="font-size: 13px; line-height: 1.6;">
+            <strong>Soft Serve Freezer 2</strong><br>
+            <span style="color: #6B7A74;">Taylor C712 · S/N K1122873 · installed Mar 2021</span>
+            <div style="margin-top: 8px; padding: 8px 10px; background: #FFF4DE; font-size: 12.5px; line-height: 1.55;"><strong style="color: #A9740D;">3rd repair in 12 months.</strong> Repair spend is at 61% of replacement cost — flagged to the account owner as a C712 upgrade candidate on <a href="Proposed - Opportunity.dc.html">OP-2026-00058</a>.</div>
+          </div>
+        </section>
+        <section style="margin-bottom: 30px;">
+          <h3 style="font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px;">Site</h3>
+          <div style="font-size: 13px; line-height: 1.6;">
+            <strong>Broadway Plant</strong> · Phoenix<br>
+            <span style="color: #6B7A74;">Curt Ellison · (602) 555-0177<br>Dock entrance, badge at kiosk · last visit note: "compressor room key is at the front desk"</span>
+          </div>
+        </section>
+        <section style="margin-bottom: 30px;">
+          <h3 style="font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px;">Dispatcher context</h3>
+          <div style="font-size: 12.5px; line-height: 1.7; color: #4A5B55;">
+            <div style="padding: 5px 0; border-bottom: 1px solid #E8E2D6;">J. Barela today: <strong style="color: #102B24;">3 jobs</strong> · 82% booked · this is stop 1</div>
+            <div style="padding: 5px 0; border-bottom: 1px solid #E8E2D6;">If this slips: next window Thu 8:00a (customer-preferred)</div>
+            <div style="padding: 5px 0;">Sibling install <a href="#">WO-000874</a> unscheduled — <a href="#" style="font-weight: 600;">pair it Thu?</a></div>
+          </div>
+        </section>
+        <section>
+          <h3 style="font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px;">Why 10/10</h3>
+          <div style="font-size: 12.5px; line-height: 1.65; color: #4A5B55;">Every number here is live and traceable; the page proposes the next move (pickup stop, upgrade flag, pairing) and one click accepts with undo. Requires the governance items in the <a href="EOS UX Pilot.dc.html">pilot report</a> plus routing, notifications, and a suggestion engine.</div>
+        </section>
+      </aside>
+    </div>
+  </div>
+<pilot-menu></pilot-menu>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { open: "dispatched", suggestion: "pending" };
+  renderVals() {
+    const mk = (k) => () => this.setState({ open: this.state.open === k ? null : k });
+    return {
+      openCreated: this.state.open === "created",
+      openScheduled: this.state.open === "scheduled",
+      openDispatched: this.state.open === "dispatched",
+      openOnsite: this.state.open === "onsite",
+      openComplete: this.state.open === "complete",
+      toggleCreated: mk("created"),
+      toggleScheduled: mk("scheduled"),
+      toggleDispatched: mk("dispatched"),
+      toggleOnsite: mk("onsite"),
+      toggleComplete: mk("complete"),
+      suggestionPending: this.state.suggestion === "pending",
+      suggestionAccepted: this.state.suggestion === "accepted",
+      acceptSuggestion: () => this.setState({ suggestion: "accepted" }),
+      dismissSuggestion: () => this.setState({ suggestion: "dismissed" }),
+      undoSuggestion: () => this.setState({ suggestion: "pending" }),
+    };
+  }
+}
+</script>
+</body>
+</html>

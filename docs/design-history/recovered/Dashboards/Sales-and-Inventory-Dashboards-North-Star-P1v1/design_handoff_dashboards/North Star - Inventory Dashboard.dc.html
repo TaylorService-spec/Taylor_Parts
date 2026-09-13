@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E8E2D6; color: #102B24; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #1C4638; } a:hover { color: #102B24; }
+    h3.rh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: #4A5B55; margin: 0 0 10px; border-bottom: 2px solid #102B24; padding-bottom: 6px; }
+    span.fc { display: block; font: 600 9.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7A74; margin-top: 3px; }
+    span.inact { font-size: 12.5px; color: #6B7A74; font-style: italic; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #6B7A74; border-radius: 50%; color: #4A5B55; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; z-index: 40; box-shadow: 0 6px 20px rgba(16,43,36,0.35); font-weight: 400; }
+    .hlp:hover .tip { display: block; }
+    .seg { display: inline-flex; outline: 1px solid #C3BCAB; font: 600 12px Inter, sans-serif; }
+    .seg span { padding: 6px 12px; color: #4A5B55; }
+    .seg span.on { background: #102B24; color: #fff; }
+    .tf { display: inline-flex; font: 600 10.5px Inter, sans-serif; letter-spacing: 0.04em; }
+    .tf span { padding: 3px 8px; color: #6B7A74; outline: 1px solid #D9D3C6; outline-offset: -1px; }
+    .tf span.on { background: #102B24; color: #fff; outline-color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: #6B7A74; padding: 6px 12px 6px 0; border-bottom: 2px solid #102B24; text-align: left; }
+    td.ls { padding: 8px 12px 8px 0; border-bottom: 1px solid #D9D3C6; font-size: 13px; vertical-align: top; }
+    .lg { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: #4A5B55; margin-right: 14px; }
+    .sw { width: 10px; height: 10px; display: inline-block; }
+    .bar { height: 8px; background: #D9D3C6; position: relative; }
+    .bar i { position: absolute; inset: 0 auto 0 0; background: #1C4638; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div id="1a" style="width: 1560px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a</span>Inventory Dashboard — 1440 · /inventory/dashboard · TARGET STATE · slice-and-dice, mixed time frames</span>
+      <span style="font-size: 11.5px; color: #4A5B55;">Units are governed truth · dollar values gated on FIN-006 cost authority</span>
+    </div>
+    <div style="background: #F3F0E9; outline: 1px solid #C3BCAB; display: flex;">
+      <nav style="width: 248px; flex: none; background: #102B24; color: #B9C1BE; font-size: 12.5px; padding-bottom: 18px;" aria-label="Application">
+        <div style="padding: 16px 16px 14px; border-bottom: 1px solid #1C4638;">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div>
+          <div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Dashboard</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ CRM/Sales</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">Equipment</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Service</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #fff;">▾ Inventory</div>
+        <div style="margin: 2px 12px; padding: 6px 10px 6px 22px; background: #fff; color: #102B24; font-weight: 600; border-left: 3px solid #B08A55;">Inventory Dashboard</div>
+        <div style="padding: 5px 16px 5px 34px;">Parts</div>
+        <div style="padding: 5px 16px 5px 34px;">Receiving</div>
+        <div style="padding: 5px 16px 5px 34px;">Transfers</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Purchasing</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Financials</div>
+        <div style="padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6;">▸ Reporting</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px;">
+          <span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Inventory → Inventory Dashboard</span>
+          <span style="font-size: 11.5px; color: #6B7A74;">Read-checked 7:55 AM · <a href="#r">Refresh</a></span>
+        </div>
+        <div style="border-top: 3px solid #102B24; border-bottom: 1px solid #102B24; height: 3px;"></div>
+        <header style="display: flex; justify-content: space-between; align-items: flex-end; padding: 18px 0 8px;">
+          <div>
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 4px;">Inventory Dashboard</h1>
+            <div style="font-size: 13px; color: #4A5B55;">Custody and demand, sliced by any governed dimension. Unit counts are truth today; dollar valuation waits for cost authority.<span class="hlp">i<span class="tip">TARGET-STATE DASHBOARD. Slice model matches the Sales Dashboard: global filters set WHO/WHERE (company, warehouse, manufacturer, category), each panel owns WHEN. Custody, on-hand, committed, on-order and movement events are governed inventory facts (Parts/Receiving North Stars). Inventory VALUE, carrying cost and margin-per-part are FIN-006-gated and render honest absences. Journeys (receiving) and custody splits (Taylor vs Ventana ownership) come from governed facts — never warehouse-name inference. Specimen fixtures throughout.</span></span></div>
+          </div>
+          <span style="font-size: 12.5px; color: #4A5B55;">Scope: <strong>OPERATING_COMPANY</strong> · FIN-004 governs</span>
+        </header>
+        <div style="display: flex; gap: 14px; align-items: center; padding: 8px 0 14px; border-bottom: 1px solid #C3BCAB; flex-wrap: wrap;">
+          <span class="seg"><span class="on">Both companies</span><span>Taylor-owned</span><span>Ventana-owned</span></span>
+          <span class="seg"><span class="on">All warehouses</span><span>Phoenix</span><span>Tucson</span><span>Van stock</span></span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Manufacturer <strong style="color:#102B24;">All</strong> ▾</span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Category <strong style="color:#102B24;">All parts</strong> ▾</span>
+          <span style="font-size: 12.5px; color: #4A5B55;">Compare vs <strong style="color:#102B24;">Prior period</strong> ▾</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; padding: 18px 0 4px;">
+          <div style="border-right: 1px solid #D9D3C6; padding-right: 18px;">
+            <div style="display:flex; justify-content: space-between; align-items:center;"><span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">On hand</span><span class="tf"><span class="on">Now</span></span></div>
+            <div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 4px;">4,182 <span style="font-size:15px; color:#6B7A74;">units</span></div>
+            <span class="fc">Governed custody · point in time</span>
+            <div style="font-size: 12px; margin-top: 4px; color:#4A5B55;">812 SKUs · 3 locations</div>
+          </div>
+          <div style="border-right: 1px solid #D9D3C6; padding: 0 18px;">
+            <div style="display:flex; justify-content: space-between; align-items:center;"><span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Committed</span><span class="tf"><span class="on">Now</span></span></div>
+            <div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 4px;">618 <span style="font-size:15px; color:#6B7A74;">units</span></div>
+            <span class="fc">Reserved to WOs/SOs · governed</span>
+            <div style="font-size: 12px; margin-top: 4px; color:#4A5B55;">3,564 available to promise</div>
+          </div>
+          <div style="border-right: 1px solid #D9D3C6; padding: 0 18px;">
+            <div style="display:flex; justify-content: space-between; align-items:center;"><span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">On order</span><span class="tf"><span class="on">Open</span></span></div>
+            <div style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin-top: 4px;">926 <span style="font-size:15px; color:#6B7A74;">units</span></div>
+            <span class="fc">Open POs · awaiting receipt</span>
+            <div style="font-size: 12px; margin-top: 4px; color:#8A6D28; font-weight:600;">3 POs overdue · 214 units</div>
+          </div>
+          <div style="padding-left: 18px;">
+            <div style="display:flex; justify-content: space-between; align-items:center;"><span style="font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: #4A5B55;">Inventory value</span><span class="tf"><span class="on">Now</span></span></div>
+            <div style="font-family: 'Source Serif 4', serif; font-size: 21px; font-weight: 700; margin-top: 8px; color:#6B7A74; font-style: italic;">No cost authority</div>
+            <span class="fc">FIN-006 · slot reserved, never estimated</span>
+            <div style="font-size: 12px; margin-top: 4px;"><a href="#gov">Governance →</a></div>
+          </div>
+        </div>
+        <div style="font-size: 12px; color: #6B7A74; padding: 4px 0 14px; border-bottom: 1px solid #C3BCAB;">Point-in-time custody tiles carry "Now"; movement panels below own their frames independently.</div>
+
+        <div style="display: grid; grid-template-columns: minmax(0,1fr) 400px; gap: 40px; margin-top: 20px;">
+          <div>
+            <div style="display:flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #102B24; padding-bottom: 6px; margin-bottom: 12px;">
+              <h3 class="rh" style="border:none; margin:0; padding:0;">Movement — receipts vs issues, with demand projection</h3>
+              <span class="tf"><span>MTD</span><span>QTD</span><span class="on">T12M + fcst</span></span>
+            </div>
+            <div>
+              <span class="lg"><span class="sw" style="background:#1C4638;"></span>Issued (to WOs/SOs)</span>
+              <span class="lg"><span class="sw" style="background:#4A7A5E;"></span>Received</span>
+              <span class="lg"><span class="sw" style="background:repeating-linear-gradient(90deg,#6B7A74 0 3px,transparent 3px 6px);"></span>Demand projection — FIN-005 method TBD</span>
+            </div>
+            <svg viewBox="0 0 760 240" style="width:100%; margin-top: 8px;" role="img" aria-label="Monthly units received and issued, trailing 12 months with demand projection">
+              <line x1="40" y1="200" x2="750" y2="200" stroke="#C3BCAB" stroke-width="1"></line>
+              <line x1="40" y1="130" x2="750" y2="130" stroke="#E1DBCE" stroke-width="1"></line>
+              <line x1="40" y1="60" x2="750" y2="60" stroke="#E1DBCE" stroke-width="1"></line>
+              <text x="34" y="204" font-size="10" fill="#6B7A74" text-anchor="end">0</text>
+              <text x="34" y="134" font-size="10" fill="#6B7A74" text-anchor="end">400</text>
+              <text x="34" y="64" font-size="10" fill="#6B7A74" text-anchor="end">800</text>
+              <rect x="560" y="30" width="190" height="170" fill="#EFEAE0"></rect>
+              <text x="655" y="45" font-size="10" fill="#6B7A74" text-anchor="middle" font-weight="600">PROJECTION · FIN-005</text>
+              <g>
+                <rect x="52" y="118" width="16" height="82" fill="#4A7A5E"></rect><rect x="70" y="132" width="16" height="68" fill="#1C4638"></rect>
+                <rect x="110" y="126" width="16" height="74" fill="#4A7A5E"></rect><rect x="128" y="122" width="16" height="78" fill="#1C4638"></rect>
+                <rect x="168" y="108" width="16" height="92" fill="#4A7A5E"></rect><rect x="186" y="118" width="16" height="82" fill="#1C4638"></rect>
+                <rect x="226" y="122" width="16" height="78" fill="#4A7A5E"></rect><rect x="244" y="112" width="16" height="88" fill="#1C4638"></rect>
+                <rect x="284" y="98" width="16" height="102" fill="#4A7A5E"></rect><rect x="302" y="108" width="16" height="92" fill="#1C4638"></rect>
+                <rect x="342" y="112" width="16" height="88" fill="#4A7A5E"></rect><rect x="360" y="100" width="16" height="100" fill="#1C4638"></rect>
+                <rect x="400" y="92" width="16" height="108" fill="#4A7A5E"></rect><rect x="418" y="102" width="16" height="98" fill="#1C4638"></rect>
+                <rect x="458" y="104" width="16" height="96" fill="#4A7A5E"></rect><rect x="476" y="92" width="16" height="108" fill="#1C4638"></rect>
+                <rect x="516" y="88" width="16" height="112" fill="#4A7A5E"></rect><rect x="534" y="96" width="16" height="104" fill="#1C4638"></rect>
+              </g>
+              <polyline points="560,94 615,88 670,84 725,78" fill="none" stroke="#6B7A74" stroke-width="2" stroke-dasharray="5 4"></polyline>
+              <text x="52" y="218" font-size="10" fill="#6B7A74">Sep 25</text>
+              <text x="380" y="218" font-size="10" fill="#6B7A74" text-anchor="middle">Feb 26</text>
+              <text x="540" y="218" font-size="10" fill="#6B7A74" text-anchor="end">Aug 26</text>
+              <text x="725" y="218" font-size="10" fill="#6B7A74" text-anchor="end">Nov 26</text>
+            </svg>
+            <div style="font-size: 12px; color: #6B7A74; margin-top: 4px;">Issue/receipt bars are governed movement events; the demand projection is dashed, banded and FIN-005-labelled — methodology is not Design's to choose.<span class="hlp">i<span class="tip">Reorder recommendations derived from this projection render only when FIN-005 establishes the demand model; until then the panel shows movement history and the projection band stays annotated as target-state. Bars drill to the movement events behind them.</span></span></div>
+
+            <div style="display:flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #102B24; padding-bottom: 6px; margin: 26px 0 12px;">
+              <h3 class="rh" style="border:none; margin:0; padding:0;">Exceptions — stockouts &amp; aging</h3>
+              <span class="tf"><span class="on">Now</span></span>
+            </div>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead><tr><th class="ls">Part</th><th class="ls">Warehouse</th><th class="ls" style="text-align:right;">On hand</th><th class="ls" style="text-align:right;">Committed</th><th class="ls" style="text-align:right;">Reorder point</th><th class="ls" style="padding-right:0;">State</th></tr></thead>
+              <tbody>
+                <tr><td class="ls"><a href="#p">CW-P-0117 · Drive motor</a></td><td class="ls">Phoenix</td><td class="ls" style="text-align:right; font-weight:600; color:#B23B3B;">0</td><td class="ls" style="text-align:right;">2</td><td class="ls" style="text-align:right;">4</td><td class="ls" style="padding-right:0;"><span style="color:#B23B3B; font-weight:600;">Stockout · 2 WOs waiting</span></td></tr>
+                <tr><td class="ls"><a href="#p">CW-P-0093 · Scraper blade kit</a></td><td class="ls">Tucson</td><td class="ls" style="text-align:right; font-weight:600; color:#8A6D28;">3</td><td class="ls" style="text-align:right;">2</td><td class="ls" style="text-align:right;">8</td><td class="ls" style="padding-right:0;"><span style="color:#8A6D28; font-weight:600;">Below reorder point</span></td></tr>
+                <tr><td class="ls"><a href="#p">CW-P-0204 · Door gasket, C712</a></td><td class="ls">Phoenix</td><td class="ls" style="text-align:right;">46</td><td class="ls" style="text-align:right;">0</td><td class="ls" style="text-align:right;">6</td><td class="ls" style="padding-right:0;"><span style="color:#8A6D28; font-weight:600;">No movement 180+ days</span></td></tr>
+              </tbody>
+            </table>
+            <div style="font-size: 12px; color: #6B7A74; padding-top: 6px;">Exception-first: stockouts with waiting work sort above everything. Aging uses movement dates (governed); carrying-cost impact stays absent until FIN-006.</div>
+          </div>
+
+          <aside>
+            <div style="display:flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #102B24; padding-bottom: 6px; margin-bottom: 12px;">
+              <h3 class="rh" style="border:none; margin:0; padding:0;">Custody mix</h3>
+              <span class="tf"><span class="on">Now</span></span>
+            </div>
+            <div style="display:flex; gap: 18px; align-items: center;">
+              <svg viewBox="0 0 120 120" style="width:120px; flex:none;" role="img" aria-label="On-hand units by owning company">
+                <circle cx="60" cy="60" r="46" fill="none" stroke="#1C4638" stroke-width="20" stroke-dasharray="205 289" transform="rotate(-90 60 60)"></circle>
+                <circle cx="60" cy="60" r="46" fill="none" stroke="#B08A55" stroke-width="20" stroke-dasharray="84 289" stroke-dashoffset="-205" transform="rotate(-90 60 60)"></circle>
+                <text x="60" y="57" font-size="13" text-anchor="middle" font-weight="700" fill="#102B24">4,182</text>
+                <text x="60" y="71" font-size="8" text-anchor="middle" fill="#6B7A74">UNITS · NOW</text>
+              </svg>
+              <div style="font-size: 12.5px; line-height: 2;">
+                <div><span class="sw" style="background:#1C4638; margin-right:6px;"></span>Taylor-owned <strong>71%</strong></div>
+                <div><span class="sw" style="background:#B08A55; margin-right:6px;"></span>Ventana-owned <strong>29%</strong></div>
+              </div>
+            </div>
+            <div style="font-size: 12px; color: #6B7A74; margin-top: 6px;">Ownership is the governed custody fact — never inferred from which warehouse holds the unit.</div>
+
+            <div style="display:flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #102B24; padding-bottom: 6px; margin: 24px 0 12px;">
+              <h3 class="rh" style="border:none; margin:0; padding:0;">On hand by warehouse</h3>
+              <span class="tf"><span class="on">Now</span></span>
+            </div>
+            <svg viewBox="0 0 360 110" style="width:100%;" role="img" aria-label="On-hand units by warehouse">
+              <text x="0" y="24" font-size="11.5" fill="#102B24" font-weight="600">Phoenix</text>
+              <rect x="76" y="13" width="216" height="14" fill="#1C4638"></rect>
+              <text x="298" y="24" font-size="11" fill="#102B24" font-weight="600">2,410</text>
+              <text x="0" y="58" font-size="11.5" fill="#102B24" font-weight="600">Tucson</text>
+              <rect x="76" y="47" width="118" height="14" fill="#1C4638"></rect>
+              <text x="200" y="58" font-size="11" fill="#102B24" font-weight="600">1,318</text>
+              <text x="0" y="92" font-size="11.5" fill="#102B24" font-weight="600">Van stock</text>
+              <rect x="76" y="81" width="41" height="14" fill="#1C4638"></rect>
+              <text x="123" y="92" font-size="11" fill="#102B24" font-weight="600">454</text>
+            </svg>
+
+            <div style="display:flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #102B24; padding-bottom: 6px; margin: 24px 0 12px;">
+              <h3 class="rh" style="border:none; margin:0; padding:0;">Fastest movers</h3>
+              <span class="tf"><span>MTD</span><span class="on">T90D</span></span>
+            </div>
+            <div style="font-size: 13px; line-height: 2;">
+              <div style="display:flex; justify-content:space-between;"><a href="#p">Scraper blade kit</a><span><strong>212</strong> issued</span></div>
+              <div style="display:flex; justify-content:space-between;"><a href="#p">Door gasket, C712</a><span><strong>168</strong> issued</span></div>
+              <div style="display:flex; justify-content:space-between;"><a href="#p">O-ring service pack</a><span><strong>141</strong> issued</span></div>
+              <div style="display:flex; justify-content:space-between;"><a href="#p">Drive motor</a><span><strong>38</strong> issued</span></div>
+            </div>
+            <div style="font-size: 12px; color: #6B7A74; margin-top: 6px;">Trailing-90-day issue counts — a different clock from the trend panel, printed on the chip.</div>
+
+            <div style="display:flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #102B24; padding-bottom: 6px; margin: 24px 0 12px;">
+              <h3 class="rh" style="border:none; margin:0; padding:0;">Turns &amp; carrying cost</h3>
+            </div>
+            <div class="inact" style="line-height: 1.7;">Inventory turns by value and carrying cost need cost authority (FIN-006). Unit-based movement is drawn above; dollar analytics keep their reserved slot here.</div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1a-mobile" style="width: 420px;">
+    <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; margin-right: 8px;">1a-m</span>Inventory Dashboard 375</span>
+    <div id="f1am" style="width: 375px; background: #F3F0E9; outline: 1px solid #C3BCAB; margin-top: 8px;">
+      <div style="background: #102B24; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between;"><span style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px;">Verenward</span><span style="color:#B9C1BE;">☰</span></div>
+      <div style="padding: 16px;">
+        <div style="font: 600 10.5px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: #4A5B55;">Inventory → Dashboard</div>
+        <h1 style="font-family: 'Source Serif 4', serif; font-size: 24px; font-weight: 700; margin: 6px 0 2px;">Inventory Dashboard</h1>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; border-top: 2px solid #102B24; margin-top: 10px;">
+          <div style="padding: 10px 10px 10px 0; border-right:1px solid #D9D3C6; border-bottom:1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing:0.1em; text-transform:uppercase; color:#4A5B55;">On hand</div><strong style="font-family:'Source Serif 4',serif; font-size:20px;">4,182</strong><div style="font-size:11.5px; color:#4A5B55;">812 SKUs</div></div>
+          <div style="padding: 10px 0 10px 10px; border-bottom:1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing:0.1em; text-transform:uppercase; color:#4A5B55;">Available</div><strong style="font-family:'Source Serif 4',serif; font-size:20px;">3,564</strong><div style="font-size:11.5px; color:#4A5B55;">618 committed</div></div>
+          <div style="padding: 10px 10px 10px 0; border-right:1px solid #D9D3C6;"><div style="font: 600 10px Inter, sans-serif; letter-spacing:0.1em; text-transform:uppercase; color:#4A5B55;">On order</div><strong style="font-family:'Source Serif 4',serif; font-size:20px;">926</strong><div style="font-size:11.5px; color:#8A6D28; font-weight:600;">3 POs overdue</div></div>
+          <div style="padding: 10px 0 10px 10px;"><div style="font: 600 10px Inter, sans-serif; letter-spacing:0.1em; text-transform:uppercase; color:#4A5B55;">Value</div><span class="inact">No cost authority (FIN-006)</span></div>
+        </div>
+        <section style="margin-top: 14px;">
+          <h3 class="rh">Exceptions</h3>
+          <div style="font-size: 12.5px; line-height: 1.9;">
+            <div style="display:flex; justify-content:space-between;"><span>Drive motor · Phoenix</span><span style="color:#B23B3B; font-weight:600;">Stockout · 2 WOs</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Scraper blade kit · Tucson</span><span style="color:#8A6D28; font-weight:600;">Below reorder</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Door gasket C712</span><span style="color:#8A6D28; font-weight:600;">No movement 180d</span></div>
+          </div>
+        </section>
+        <section style="margin-top: 14px;">
+          <h3 class="rh">Custody mix · now</h3>
+          <div style="display:flex; gap: 12px; align-items:center;">
+            <svg viewBox="0 0 80 80" style="width:72px; flex:none;"><circle cx="40" cy="40" r="30" fill="none" stroke="#1C4638" stroke-width="14" stroke-dasharray="134 188" transform="rotate(-90 40 40)"></circle><circle cx="40" cy="40" r="30" fill="none" stroke="#B08A55" stroke-width="14" stroke-dasharray="54 188" stroke-dashoffset="-134" transform="rotate(-90 40 40)"></circle></svg>
+            <div style="font-size: 12px; line-height: 1.8;">Taylor-owned 71%<br>Ventana-owned 29%<br><span style="color:#6B7A74;">governed custody fact</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

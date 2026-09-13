@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Implementation render — Sales Order Detail (truthful today)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root { --eg: #102B24; --gd: #1C4638; --bz: #B08A55; --st: #E8E2D6; --pg: #F3F0E9; --cd: #FCFAF6; --bd: #D9D3C6; --bs: #C3BCAB; --t2: #4A5B55; --tm: #6B7A74; --ok: #237A45; --warn: #8A6D28; --bad: #B23B3B; --info: #2B5B7A; }
+body { margin: 0; background: var(--pg); color: var(--eg); font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+a { color: var(--gd); }
+.shell { display: flex; min-height: 100vh; }
+.rail { width: 248px; flex: none; background: var(--eg); color: #B9C1BE; font-size: 12.5px; }
+.rail .brand { padding: 16px 16px 14px; border-bottom: 1px solid var(--gd); }
+.rail .dom { padding: 9px 16px 5px; font-weight: 600; color: #E8E2D6; }
+.rail .item { display: block; padding: 5px 16px 5px 34px; color: #B9C1BE; text-decoration: none; }
+.rail .active { margin: 2px 12px; padding: 6px 10px 6px 10px; background: #fff; color: var(--eg); font-weight: 600; border-left: 3px solid var(--bz); }
+main { flex: 1; min-width: 0; padding: 0 32px 80px; }
+.page { max-width: 1360px; margin: 0 auto; }
+.util { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px; font-size: 11.5px; color: var(--tm); }
+.util .ctx { font: 600 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--t2); }
+.rules { border-top: 3px solid var(--eg); border-bottom: 1px solid var(--eg); height: 3px; }
+h1 { font-family: "Source Serif 4", serif; font-size: 40px; font-weight: 700; margin: 0 0 10px; line-height: 1.05; }
+.kicker { font: 600 12px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bz); margin: 0 0 6px; }
+.facts { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--t2); align-items: baseline; }
+.facts strong { color: var(--eg); }
+.btn { font: 600 13px Inter, sans-serif; padding: 9px 16px; border: 1px solid var(--bs); color: var(--gd); background: none; cursor: pointer; }
+.btn-red { border: none; color: var(--bad); background: none; font: 600 13px Inter, sans-serif; padding: 9px 10px; cursor: pointer; }
+.grouplabel { font: 600 11px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tm); }
+.chev { font: 600 12px Inter, sans-serif; padding: 7px 18px; white-space: nowrap; clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%, 10px 50%); }
+.chev.first { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%); padding-left: 12px; }
+.chev.last { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 10px 50%); padding-right: 14px; }
+.chev.done { background: var(--st); color: var(--ok); }
+.chev.cur { background: var(--eg); color: #fff; }
+.chev.unk { background: var(--cd); color: var(--tm); outline: 1px solid var(--bd); outline-offset: -1px; }
+th { font: 600 11px Inter, sans-serif; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tm); padding: 6px 12px 6px 0; border-bottom: 2px solid var(--eg); text-align: left; }
+td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--bd); font-size: 13.5px; }
+h2 { font-family: "Source Serif 4", serif; font-size: 19px; font-weight: 700; margin: 0 0 8px; }
+.h2note { font: 600 12px Inter, sans-serif; color: var(--tm); }
+.railh { font: 700 11px Inter, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: var(--t2); margin: 0 0 10px; border-bottom: 2px solid var(--eg); padding-bottom: 6px; }
+.muted { color: var(--tm); }
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="rail" aria-label="Application">
+  <div class="brand"><div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 15px; color: #fff;">Verenward</div><div style="font-size: 11px; line-height: 1.5;">Taylor Parts<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div></div>
+  <div class="dom">▸ Dashboard</div>
+  <div class="dom" style="color: #fff;">▾ CRM/Sales</div>
+  <a class="item" href="#">Customers</a>
+  <a class="item" href="#">Opportunities</a>
+  <span class="item active">Sales Orders</span>
+  <div class="dom">Equipment</div>
+  <div class="dom">▸ Service</div>
+  <div class="dom">▸ Inventory</div>
+  <div class="dom">▸ Purchasing</div>
+  <div class="dom">▸ Reporting</div>
+  <div class="dom">▸ Administration</div>
+</nav>
+<main>
+<div class="page" data-screen-label="Implementation render — Sales Order (IN_FULFILLMENT)">
+  <div class="util"><span class="ctx">CRM/Sales → <a href="#">Sales Orders</a> → SO-2026-000014</span><span>Read-checked 8:41 AM · <a href="#">Refresh</a> — this record loads on demand (no live feed)</span></div>
+  <div class="rules"></div>
+  <header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 24px 0 14px; flex-wrap: wrap;">
+    <div>
+      <p class="kicker">Sales Order · Phone</p>
+      <h1>SO-2026-000014</h1>
+      <div class="facts">
+        <span style="color: var(--warn); font-weight: 600;">In Fulfillment</span>
+        <span><strong>Desert Sun Beverage Co.</strong> · Broadway Plant</span>
+        <span>Worth <strong style="font-variant-numeric: tabular-nums;">$23,450.00</strong></span>
+        <span>Owner <strong>R. Amado</strong></span>
+        <span>PO <strong>PO-88231</strong></span>
+      </div>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <button class="btn" type="button">Allocate</button>
+      <button class="btn-red" type="button">Cancel order</button>
+      <span class="muted" style="font-size: 12px; max-width: 240px;">Mark Fulfilled becomes available when every line is fulfilled. Create Service already ran — see the linked Work Orders.</span>
+    </div>
+  </header>
+  <div style="display: flex; gap: 8px; align-items: center; padding: 8px 0 4px; font-size: 12.5px; flex-wrap: wrap;">
+    <span class="grouplabel" style="margin-right: 6px;">Provenance</span>
+    <a href="#" style="font-weight: 600;">Desert Sun Beverage Co.</a><span style="color: var(--bz);">→</span>
+    <a href="#" style="font-weight: 600;">OP-2026-000034</a><span style="color: var(--bz);">→</span>
+    <span class="muted" title="This order carries a link to its accepted agreement, but the read cannot name it yet (no SA reference is projected).">Agreement — reference unavailable</span><span style="color: var(--bz);">→</span>
+    <span style="font-weight: 700;">SO-2026-000014</span><span style="color: var(--bz);">→</span>
+    <span class="muted">2 Work Orders — references unavailable</span>
+  </div>
+  <div style="display: flex; gap: 0; align-items: center; padding: 10px 0 8px; overflow-x: auto;">
+    <span class="grouplabel" style="margin-right: 14px; white-space: nowrap;">Fulfillment</span>
+    <span class="chev first done">✓ Order confirmed</span>
+    <span class="chev cur">Inventory allocated · 14 of 18</span>
+    <span class="chev unk">Installation created — not recorded</span>
+    <span class="chev unk">Scheduled — not recorded</span>
+    <span class="chev unk">Dispatched — not recorded</span>
+    <span class="chev unk">On site — not recorded</span>
+    <span class="chev unk">Installed — not recorded</span>
+    <span class="chev last unk">Customer handoff — not recorded</span>
+  </div>
+  <ul style="margin: 0 0 8px; padding-left: 18px; font-size: 12.5px; color: var(--tm); line-height: 1.6;" role="status">
+    <li>Linked Work Orders could not be read from this page yet, so installation progress is unknown — not “not started”.</li>
+    <li>Customer handoff is not recorded: no serialized-asset custody event exists for this order.</li>
+  </ul>
+  <div style="display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; background: var(--cd); border: 1px solid var(--bd); padding: 12px 16px; margin: 8px 0 26px; font-size: 13.5px; color: var(--t2);">
+    <span style="font: 700 10.5px Inter, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tm);">Attention</span>
+    <span>Nothing needs attention that EOS can detect today — every line on this order carries a committed price. (Attention here is derived from pricing state only; fulfillment-risk detection does not exist yet.)</span>
+  </div>
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 56px;">
+    <div>
+      <section style="margin-bottom: 36px;">
+        <h2>What was sold <span class="h2note">· order total from committed line prices — per-line unit prices are stored but not yet returned by the read</span></h2>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead><tr><th>Ref</th><th>Kind</th><th style="text-align: right;">Ordered</th><th style="text-align: right;">Allocated</th><th style="text-align: right;">Fulfilled</th><th style="text-align: right;">Billed</th><th style="text-align: right; padding-right: 0;">Remaining</th></tr></thead>
+          <tbody>
+            <tr><td style="font-weight: 600;">C712-27</td><td>EQUIPMENT</td><td style="text-align: right;">2</td><td style="text-align: right;">2</td><td style="text-align: right;">0</td><td style="text-align: right;">0</td><td style="text-align: right; padding-right: 0;">2</td></tr>
+            <tr><td style="font-weight: 600;">X49463-3</td><td>PART</td><td style="text-align: right;">12</td><td style="text-align: right;">8</td><td style="text-align: right;">0</td><td style="text-align: right;">0</td><td style="text-align: right; padding-right: 0;">12</td></tr>
+            <tr><td style="font-weight: 600;">INSTALL-COMM</td><td>SERVICE</td><td style="text-align: right;">4</td><td style="text-align: right;">4</td><td style="text-align: right;">0</td><td style="text-align: right;">0</td><td style="text-align: right; padding-right: 0;">4</td></tr>
+            <tr><td style="font-weight: 700; border-bottom: none;">Order total · Priced</td><td style="border-bottom: none;"></td><td style="border-bottom: none;"></td><td style="border-bottom: none;"></td><td style="border-bottom: none;"></td><td style="border-bottom: none;"></td><td style="text-align: right; padding-right: 0; font-weight: 700; font-variant-numeric: tabular-nums; border-top: 2px solid var(--eg); border-bottom: none;">$23,450.00</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section style="margin-bottom: 36px;">
+        <h2>Operational work from this order <span class="h2note">· the linked Work Orders cannot be named or detailed from this read yet</span></h2>
+        <div style="border-top: 1px solid var(--bd);">
+          <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--bd); font-size: 13.5px;"><span class="muted">Work order reference unavailable</span><span class="muted">Status, schedule, technician — not readable from this page</span></div>
+          <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--bd); font-size: 13.5px;"><span class="muted">Work order reference unavailable</span><span class="muted">Status, schedule, technician — not readable from this page</span></div>
+        </div>
+      </section>
+      <section>
+        <h2>Notes</h2>
+        <p style="border-top: 2px solid var(--eg); padding-top: 12px; font-size: 14px; line-height: 1.65; max-width: 66ch; margin: 0;">Deliver to the loading dock on 22nd St; site contact wants both freezers commissioned the same day. Customer PO must appear on the invoice.</p>
+      </section>
+    </div>
+    <aside>
+      <section style="margin-bottom: 30px; font-size: 13px; line-height: 1.6;">
+        <h3 class="railh">Customer</h3>
+        <strong>Desert Sun Beverage Co.</strong><br><span class="muted">Broadway Plant</span><br><span class="muted">Owner R. Amado · Channel Phone</span>
+      </section>
+      <section style="margin-bottom: 30px; font-size: 13px; line-height: 1.6;">
+        <h3 class="railh">Commercial terms</h3>
+        <span class="muted">This order was created from an accepted Sales Agreement. Its reference and terms (warranty, ship-via, arrival estimate) aren’t resolvable from this page’s read yet — see the handoff’s decision S2.</span>
+      </section>
+      <section style="margin-bottom: 30px; font-size: 13px; line-height: 1.6;">
+        <h3 class="railh">Readiness</h3>
+        <span class="muted">Billing and invoicing status isn’t readable from this page yet. Pricing: all lines carry committed prices (the one readiness fact this read supplies).</span>
+      </section>
+      <section style="font-size: 13px;">
+        <h3 class="railh">Record detail</h3>
+        <dl style="margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;">
+          <dt class="muted">State</dt><dd style="margin: 0;">In Fulfillment</dd>
+          <dt class="muted">Currency</dt><dd style="margin: 0;">USD</dd>
+          <dt class="muted">Location</dt><dd style="margin: 0;">Broadway Plant</dd>
+          <dt class="muted">Customer PO</dt><dd style="margin: 0;">PO-88231</dd>
+        </dl>
+      </section>
+    </aside>
+  </div>
+</div>
+</main>
+</div>
+</body>
+</html>
