@@ -41,7 +41,7 @@ Named here for architectural coherence, not scoped into current sprints:
 | Contact | A person associated with an Account | Core (V2) |
 | Location / Site | Physical service location tied to an Account | Core (V2) |
 | Work Order | A discrete unit of field service work — the platform's core operational transaction | Core (V2) — already real, production |
-| Employee | Authoritative workforce/business identity — a person the business recognizes as personnel, independent of application access (see Section 8a) | Core (V2) — **approved architecture, not yet implemented**; `employees` collection does not exist yet |
+| Employee | Authoritative workforce/business identity — a person the business recognizes as personnel, independent of application access (see Section 8a) | Core (V2) — **approved architecture, not yet implemented**; `employees` collection does not exist yet |  <!-- SUPERSEDED 2026-09-13 -- see the correction note below Section 8a's table -->
 | User | Application-access identity, linked to Employee where applicable (see Section 8a) | Core (V2) — already real (`users/{uid}`) |
 | Part | Inventory item consumed or installed during service | Core (V2) — already real |
 | Warehouse | Fixed physical inventory storage location | Core (V2) — already real |
@@ -311,6 +311,27 @@ Assignment
 | `equipment` | New, **deferred** | `locationId` reference — not built in near-term sprints |
 | `fieldops_wos` | Existing, **unchanged** | No schema change proposed |
 | `employees` | New, **deferred** | Governance-approved architecture (Section 8a) as of the Employee Identity Governance update — implementation not yet scoped into a sprint, collection does not exist yet |
+
+> **CORRECTION — 2026-09-13.** **The two statements above that `employees` "does not exist yet" are
+> SUPERSEDED. The collection exists.** Verified at `64008d5a`: **10 files under `functions/src/` reference
+> `"employees"`**, and `firestore.rules` carries a `match /employees/{...}` block. The referential-integrity
+> pattern is already shipped against it twice trusted-side — `truckRegistryRepository.ts:196-200`
+> (`snap.exists && employmentStatus === "ACTIVE"`) and `employeeProfileCommands.ts:531-541` — and twice in
+> Rules (`firestore.rules:112-121`, `:491-496`).
+>
+> **The original wording is retained rather than deleted** because it was true when written and the
+> architecture note it attaches to is still the governing design record.
+>
+> **Two qualifications, so this correction is not over-read.** The collection is **not registered in
+> `functions/src/constants/collections.ts`** (zero hits) — it is reached through scattered string literals.
+> And it is **provably incomplete** as a workforce authority: roughly **15%** of technicians are
+> unrepresented, and one **production** principal that can act has `users/{uid}.employeeId: null` (committed
+> census `be1e5579`, dated 2026-09-02, not re-read live).
+>
+> **This correction does not make `employees` the canonical person authority.** That question is open as the
+> **PERSON AUTHORITY GAP** under `docs/DECISIONS.md` **#183** and **#184**, which forbid promoting an
+> existing collection merely because it is easy to query, and hold **BUSINESS EMPLOYEE** and **SECURITY
+> PRINCIPAL** to be distinct objects.
 | `users` | Existing, **unchanged** | Already the login/auth identity collection |
 | `fieldops_technicians` | Existing, **unchanged** | Remains the field-technician-specific record |
 | `data/partsCatalog`, `inventory_transactions`, `warehouses`, `stock_locations`, `suppliers`, `supplier_catalog`, `purchase_orders` | Existing, **unchanged** | No changes proposed |

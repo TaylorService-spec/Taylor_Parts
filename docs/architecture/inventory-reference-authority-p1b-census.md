@@ -817,6 +817,23 @@ surviving business fact (one vocabulary skew: uid `0TeiR5wPHCXoAIJShLsY8HDMzJN2`
 (`1757548800000_tenant-and-identity.sql:79-92`) has no `employee_id` and there is no join table —
 **the R4 identity mapping currently has nowhere to live.**
 
+> **CORRECTION — 2026-09-13. Both sentences above are WITHDRAWN as measurements of the current tree.** Re-run
+> at `64008d5a` over 18 migrations: **7 files match `employee`**, and one of them is
+> **`1758412800000_employee-principal-linkage.sql` with 44 matches** — a file whose name is the join table
+> this passage says does not exist. Others: `1758844800000_commercial-ownership-authority.sql` (18),
+> `1758758400000_crm-account-contact-location.sql` (8), `1758326400000_truck-and-mobile-location-registry.sql`
+> (7), plus three with one match each.
+>
+> **So the conclusion that "the R4 identity mapping currently has nowhere to live" is void** — a linkage
+> migration exists. The original text is retained because it was a correct reading of the tree it was taken
+> from; a later migration made it false, which is exactly why a measurement needs the commit it was taken at.
+>
+> **What this correction does NOT establish.** `employee_principal_links` carries an `employee_id` column but
+> **no foreign key**, so it records a prior assertion rather than resolving identity; **Cloud Functions has no
+> Postgres path** at this baseline, so nothing in the runtime can read it; and a Postgres `employees` table
+> **does not exist** — `1758412800000:46-47` says so. Having somewhere to live is not the same as being the
+> authority. The **PERSON AUTHORITY GAP** stays open under `docs/DECISIONS.md` **#183** / **#184**.
+
 **The truck assignment read-side defect is live and reproducible.**
 - Trucks: `TRK-SEED-101` — driver `"sbx-tech"`, location `mobile-seed1786749487428-101`, taylor.
   `TRK-SEED-102` — driver `null`, location `mobile-seed1786749487428-102`, ventana.
