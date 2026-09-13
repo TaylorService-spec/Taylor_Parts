@@ -6768,20 +6768,24 @@ This ruling is grounded in a measured property of the code, not a preference. `a
 (`functions/src/access/auditEventWriter.ts:460`) is **synchronous and returns `void`**, and is the first
 statement of the write paths at `:785` and `:820`.
 
-**CORRECTED 2026-09-13, same day, before any reliance.** An earlier revision of this entry said *"every
-module in `functions/src/ownership/` declares itself PURE, each by its own header."* **That is false as
-written**, and the correction matters because it touches the one module option (a) would import. Re-counted
-across all 12 modules in that directory: **5 declare `PURE:`** (`creationOwnerResolution` ·
-`operatingCompanyAuthority` · `ownershipBackfillRules` · `ownershipDerivation` · plus
-`ownershipHandoffCommand` as *"a pure builder"*), **1 declares READ-ONLY BY CONSTRUCTION**
-(`ownershipCensus`), **3 declare INERT** (`typedOwner` · `commercialCompanyScope` ·
-`reorderRequestLocationAuthority`), **2 declare "no I/O"** (`warehouseCanonicalIdRepair` ·
-`warehouseRootCompanyAssignment`), and **`ownershipMatrix.ts` declares nothing at all.**
+**CORRECTED 2026-09-13, twice, same day, before any reliance.** An earlier revision said *"every module in
+`functions/src/ownership/` declares itself PURE, each by its own header."* **False as written.** A first
+correction replaced it with a 5/1/3/2 partition; **that count was also wrong** — the declarations do not
+partition cleanly, because `"no I/O"` is the *predicate* of several `PURE` headers rather than a separate
+class, so any tally double-counts. **Two numeric attempts were enough: the enumeration is withdrawn and not
+replaced, because it never mattered to the ruling.**
 
-**The substance of the ruling is unaffected** — no module in that directory performs I/O, and the audit
-writer's validation path cannot — **but the uniformity claim was wrong and is withdrawn.** `ownershipMatrix`
-having no stated purity contract is itself worth recording: a placement that imports it is relying on a
-property the file does not promise. The ruling therefore matches the
+**What matters, and what holds:** **no module in `functions/src/ownership/` performs I/O**, and the audit
+writer's validation path cannot. That is the measured property the ruling rests on, and it is unaffected.
+
+**One specific exception is worth keeping, because it is load-bearing rather than decorative:**
+**`ownershipMatrix.ts` states no purity contract at all** — and it is the one module a writer-side placement
+would have had to import. A placement relying on a property the file does not promise is a different risk
+from one relying on a documented guarantee.
+
+**The method lesson, recorded because this is the third pass over one sentence:** a count asserted in a
+ruling record must either be derived from a stated, checkable partition or be left out. A number that needs
+re-deriving twice was never carrying the argument. The ruling therefore matches the
 architecture rather than fighting it, and it is consistent with ruling **O-1**, cited in code at
 `typedOwner.ts:44-48` as excluding *"a fallible cross-collection lookup into otherwise deterministic
 ownership resolution."*
