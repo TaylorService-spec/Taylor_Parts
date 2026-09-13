@@ -69,8 +69,15 @@ provenance cell.**
 > **at every point in time**, unless an explicit, separately Owner-approved exception defines otherwise.
 >
 > **This row is now SETTLED AUTHORITY, not an open question.** The full ruling — business definition, the
-> three worked examples, and all ten hard invariants — is recorded in
-> [`../../DECISIONS.md`](../../DECISIONS.md) **#180**, which is canonical for it.
+> three worked examples, and all ten hard invariants — is recorded as **`docs/DECISIONS.md` #180**, which
+> is canonical for it.
+>
+> **`#180` IS NOT ON THIS BRANCH.** It was written on `int/a-correctness-register` (commit `20830caf`);
+> `docs/DECISIONS.md` on `emp/own-synthesis` still ends at **#179**. So a relative link from here would
+> dangle, and none is given. **The two commits must land on `main` together** — this banner and `#180` are
+> one ruling recorded in two places, and either alone is incomplete: this one cites authority that is not
+> there, and `#180` alone leaves this row reading as an open question. Verified 2026-09-13: `#180` appears
+> on `int/a-correctness-register` and on no other ref.
 >
 > **IMPLEMENTATION IS NOT AUTHORIZED.** No ACCOUNTABLE PERSON storage, migration, enforcement, handoff or
 > backfill until `OD-6` resolves person-reference validity and census behaviour and the remaining
