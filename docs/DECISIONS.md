@@ -6514,3 +6514,89 @@ ACCOUNTABLE PERSON = NONE"* is an invariant EOS could violate silently today. Cl
 is `OD-6`'s subject, which is why `OD-6` is the gate on implementation rather than a follow-up.
 
 **Invariant 9 does not settle REFERENCE stewardship**; that is a separate decision.
+
+## #181 — OWNER RULING: MI-N — accountable person is separately carried on the commercial chain (2026-09-13)
+
+**CLOSED.** For **Opportunity**, **Sales Agreement** and **Sales Order**, **ACCOUNTABLE PERSON IS A
+SEPARATELY CARRIED BUSINESS FACT.** It is **not** permanently derived from RECORD OWNER.
+
+This resolves `MI-N`, the MISSING INPUT that decided whether `OD-6` option (b) was coherent. It composes
+with **#180** (`OD-1` — ACCOUNTABLE PERSON is a distinct first-class axis). **This entry is canonical for
+the ruling.** The brief that raised `MI-N`
+(`docs/operating-model/owner-decisions/OD-6-DECISION-BRIEF-POST-OD1.md`) records it CLOSED and is not
+rewritten.
+
+### Canonical creation rule
+
+> **EXPLICIT VALID ACCOUNTABLE PERSON → GOVERNED DERIVATION FROM CURRENT COMMERCIAL RECORD OWNER → REFUSE**
+
+At creation EOS **may** derive the **initial** accountable person from the governed commercial record owner
+when no explicit governed accountable person is supplied. **This is initialization / defaulting. It is NOT
+permanent equivalence.**
+
+**Explicitly forbidden:** `accountablePerson = ownerEmployeeId` as a **permanent computed identity.** The
+accountable-person fact must have **its own lifecycle**.
+
+### Business meaning
+
+| Axis | Answers |
+|---|---|
+| **RECORD OWNER** | who owns this customer / commercial relationship or sales record |
+| **ACCOUNTABLE PERSON** | who is personally responsible for making sure the next required commercial outcome happens |
+
+For normal sales work they will **frequently be the same employee**. EOS must nevertheless be able to
+represent them as **different people**. Divergence cases the Owner named: another employee temporarily
+responsible for completing an open sale · a manager assuming accountability **without** taking ownership of
+the customer · **National Accounts support executing a transaction while relationship ownership remains
+elsewhere** · an employee unavailable and accountability must move **immediately** while commercial
+ownership is unchanged · an explicit handoff changing accountability but not relationship ownership · a
+negotiated ownership transfer occurring separately from responsibility for an already-open transaction.
+
+### Transfer rules
+
+- Changing **RECORD OWNER** does **not** silently change **ACCOUNTABLE PERSON** on an existing actionable record.
+- Changing **ACCOUNTABLE PERSON** does **not** silently change **RECORD OWNER**.
+- A business action intending **both** must be **an explicit governed operation that records both changes**.
+- **Historical facts are not rewritten.** New downstream commercial records may initialize from the
+  **current** governed upstream facts per their creation rules:
+  **HISTORICAL REMAINS HISTORICAL. FUTURE WORK FOLLOWS CURRENT GOVERNED AUTHORITY.**
+
+### Accountability continuity
+
+For every open / actionable commercial record the accountable person must remain **identifiable throughout
+the lifecycle**. **A handoff must not create a NONE state.** Assignment of a task does not itself transfer
+accountability. Manager involvement does not itself transfer accountability. (These restate #180
+invariants 1, 7, 2 and 4 on the commercial chain.)
+
+### Consequence for `OD-6`
+
+**`OD-6` must evaluate person-reference validity for the ACCOUNTABLE PERSON independently from RECORD-OWNER
+validity. The record owner's validity may NOT be used as a substitute for validating the accountable
+person.** `OD-6` may now distinguish: ① does the referenced Employee **exist**; ② is that Employee **valid
+for current accountability**; ③ how should **INACTIVE / TERMINATED historical** references be represented;
+④ what must the census / enforcement gate consider **resolved vs actionable**.
+
+**Historical accountability is preserved** even when the referenced employee later becomes inactive or
+terminated, and is **not** automatically backfilled or rewritten merely because that person is no longer
+actionable. Sub-question ③ — what resolution *value* represents such a reference — **remains open**; that
+history must be preserved is **ruled**.
+
+### The shipped precedent, and why it is not yet sufficient
+
+The creation rule has **the same shape as a pattern EOS already ships**: `resolveCreationOwner`
+(`functions/src/ownership/creationOwnerResolution.ts:58-80`) is `EXPLICIT → INHERITED → throw`, and
+`buildCreateOpportunity` already routes `ownerEmployeeId` through it (`opportunityCommands.ts:159`). Its
+inherit branch is properly guarded: it inherits only when the upstream derivation is `RESOLVED` **and** the
+owner is of type `USER` (`:67-72`).
+
+**That guard is, however, vacuous on the person axis at `64008d5a`, and this is precisely why `OD-6` gates
+implementation.** `RESOLVED` for a person owner is produced without ever reading the Employee document, so
+a rule of this shape implemented on today's resolver would **inherit an initial accountable person from a
+terminated, deactivated or non-existent employee** and report it as governed. The pattern is right; the
+predicate it depends on is not yet trustworthy. **`OD-6` is what makes `RESOLVED` mean something on the
+person axis, and until it does, the precedent cannot carry this ruling.**
+
+### Implementation status
+
+**NO schema implementation. NO backfill. NO handoff activation. NO migration.** `MI-N` is closed as an
+input to `OD-6`; it authorizes no code.
