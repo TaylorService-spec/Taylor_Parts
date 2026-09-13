@@ -7155,3 +7155,135 @@ mistakes.
 `cycle_counts` migration, while `#183` lists **`M-1`** as an open `OD-7` sub-question about axis scope. **They
 are unrelated.** Anyone citing *"`M-1` is ruled"* against `OD-7` would be citing the wrong register. `M-1`
 (OD-7 axis scope) remains **OPEN**.
+
+## #186 — OWNER RULING: MI-S — person-reference resolution and accountability eligibility are separate (2026-09-13)
+
+**`MI-S` RULED AND CLOSED. Use the SEPARATED model.** **PERSON REFERENCE RESOLUTION** and **CURRENT
+ACCOUNTABILITY ELIGIBILITY** are distinct concerns.
+
+**The question, as prepared** (`ext/own-engineering-gap:docs/operating-model/architecture/PERSON-AUTHORITY-TARGET-MODEL.md:1083`):
+*"Is state **B** a distinct resolution outcome, or `RESOLVED` + a separately carried eligibility fact — and
+must INACTIVE be distinguishable from TERMINATED inside it?"*
+
+### 1. Resolution layer
+
+The authoritative Employee/person resolver establishes: whether the reference resolves to a real governed
+Employee · authoritative Employee identity · authoritative Employee lifecycle / employment status · whether
+the reference is **historically** valid.
+
+**It does NOT determine current accountability eligibility as part of referential validity.** A valid Employee
+reference **does not become invalid** merely because that employee is no longer eligible to receive new
+accountability. So a **FORMER / INACTIVE / TERMINATED** employee may remain a **VALID REFERENCE** while
+separately being **NOT CURRENTLY ELIGIBLE FOR NEW ACCOUNTABILITY.**
+
+### 2. Eligibility layer
+
+Current accountability eligibility is a **separately carried governed fact** belonging to the accountability /
+responsibility integrity layer. **REFERENCE VALIDITY · EMPLOYEE LIFECYCLE STATUS · CURRENT ACCOUNTABILITY
+ELIGIBILITY are three separate facts.**
+
+**Do not encode `NOT ELIGIBLE` as `INVALID PERSON REFERENCE`. Do not encode `VALID REFERENCE` as `CURRENTLY
+ELIGIBLE`.**
+
+### 3. State B is COMPOSED, not primitive
+
+**VALID HISTORICAL / NOT CURRENTLY ELIGIBLE** remains a valid business semantic, but it is a **composed**
+state — **not** a primitive referential-resolution result. A consumer or census **may present** the composed
+result while **the underlying facts remain independently available.**
+
+**This is what reconciles the two rulings the brief found in tension.** **#182**'s layer table places
+current-eligibility *"in the accountability / responsibility census and enforcement gate"*; **#185**'s
+interim-path clause lists *"VALID HISTORICAL / NOT CURRENTLY ELIGIBLE"* among the states the port must return.
+Both stand: **person authority establishes the valid historical reference; responsibility authority
+establishes current eligibility; the composed state is what a consumer sees.** Neither ruling is overridden.
+
+### 4. Employee status grain — and the vocabulary already exists
+
+**Do NOT collapse every non-`ACTIVE` Employee into one generic historical state.** At minimum **`INACTIVE` and
+`TERMINATED` must remain distinguishable.** Preserve the canonical governed Employee lifecycle vocabulary;
+**do not create an accountability-specific lifecycle vocabulary for this ruling**, and do not invent statuses.
+
+**That vocabulary is already shipped, already extensible, and already guarded.**
+`functions/src/access/employeeProfileCommands.ts:122-129` exports a frozen
+**`EMPLOYMENT_STATUS_VALUES`** of **six** values — `ACTIVE`, `ON_LEAVE`, `INACTIVE`, `TERMINATED`, `RETIRED`,
+`CONTRACTOR`. Its header (`:116-121`) records that `functions/scripts/provisionEmployeeAccess.js` is the
+collection's other writer holding the same closed set, mirrored by literal to keep an Admin-SDK bootstrap out
+of the deployed bundle, and that **`functions/test/employeeProfileCommands.test.mjs` asserts the two lists
+match, so the mirror cannot drift silently.**
+
+**So `S-GRAIN` is satisfiable with zero new vocabulary** — the extensible six-value domain this ruling calls
+for is the one already in the tree, with a drift guard on it.
+
+**What must change is the consumption, not the vocabulary.** `functions/src/access/operationalRoleContext.ts:51-52`
+records that **any status other than `ACTIVE` yields the same `false`** — *"ON_LEAVE/INACTIVE/TERMINATED/
+RETIRED/CONTRACTOR/missing/non-string"* — so six governed values are read through a one-bit test. That
+collapse is at the **consumer**, which is exactly where this ruling says eligibility policy belongs.
+
+### 5. The five cases
+
+| | Employee | Reference | Accountability |
+|---|---|---|---|
+| **A** | exists, `ACTIVE` | **VALID** | **ELIGIBLE** |
+| **B** | exists, `INACTIVE` | **VALID** (historical references valid) | new accountability **REFUSE** |
+| **C** | exists, `TERMINATED` | **VALID HISTORICALLY** | historical **PRESERVE**, new **REFUSE** |
+| **D** | id does not resolve | **INVALID / MISSING** | eligibility **NOT APPLICABLE** — **must not be represented as merely "not eligible"** |
+| **E** | authority unreachable | **not classified by `MI-S`** | remains the separate `AUTHORITY_UNAVAILABLE` decision |
+
+### 6. UI consequence — DESIGN INPUT, not implementation authority
+
+The UI must be able to distinguish *"Jane Smith — Former employee"* from *"Jane Smith — Inactive"* from
+*"Accountable person could not be resolved"* and from *"Employee authority unavailable"* where that is later
+ruled. **These must not be forced into one `NOT ELIGIBLE`.**
+
+### 7. Historical consequence
+
+Historical ownership and accountability references **remain valid** when the Employee later becomes
+`INACTIVE`, `TERMINATED` or former. **Do not rewrite history. Do not invalidate historical audit solely
+because the employee is not currently eligible.**
+
+### 8. Current-work consequence
+
+**An actionable current item requiring an Accountable Person may NOT remain healthy merely because its
+Employee reference still resolves.** If the accountable Employee becomes not currently eligible, the reference
+stays valid **but the current responsibility state may become a responsibility defect requiring governed
+resolution.** Reassignment and escalation behaviour is **workflow-specific**, and **accountability is never
+automatically transferred** (consistent with `#180` invariants 2 and 4).
+
+### 9. Acceptance / census consequence
+
+Responsibility integrity must distinguish at least: **VALID + CURRENTLY ELIGIBLE · VALID + NOT CURRENTLY
+ELIGIBLE · INVALID / MISSING** and, if separately ruled, **AUTHORITY UNAVAILABLE**. **The
+`ownershipMatrix.ownerFields` mechanism must not be made to carry this multi-axis model** — consistent with
+`#182`'s `MI-P` clause.
+
+### 10. Company-axis precedent — evidence, not a template
+
+**Do not mechanically copy the company axis onto PERSON.** The precedent remains useful evidence and is real:
+`functions/src/ownership/typedOwner.ts:127-129` states *"INACTIVE resolves: a record owned by a
+since-deactivated company still HAS an owner, and calling it unresolved would invite a backfill to reassign
+it."* **`MI-S` is now explicitly ruled for the person axis**, which preserves **VALID REFERENCE** separately
+from **CURRENT ACCOUNTABILITY ELIGIBILITY**. The company axis's own inactive semantics are **not** decided
+here.
+
+### 11. Option disposition
+
+**`S-REP`** → `RESOLVED / VALID REFERENCE` **+** a separately carried eligibility fact, with composed consumer
+states where useful. **Do not collapse both into one primitive resolver outcome.**
+**`S-GRAIN`** → preserve the governed vocabulary; `INACTIVE` and `TERMINATED` distinguishable; an extensible
+Employee-status domain rather than a one-bucket non-active state; invent nothing.
+
+### 12. Dependencies
+
+`MI-S` closes the **policy ambiguity** for **10** items
+(`ext/own-engineering-gap:docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md:1415`):
+**`OI-06` · `OI-07` · `OI-10` · `OI-11` · `OI-21` · `OI-30` · `OI-31` · `OI-35` · `OI-37` · `OI-40`**, plus
+the Person-Authority target work dependent on the state/eligibility contract.
+
+**These are NOT implementation-authorized. Other dependencies still apply**, and all 42 items remain
+`IMPLEMENTATION STATUS = NOT AUTHORIZED`.
+
+### 13. Explicitly NOT decided here
+
+`AUTHORITY_UNAVAILABLE` · technician linkage · migration treatment of invalid existing references ·
+workflow-specific reassignment · automatic escalation · handoff acceptance semantics · company-axis inactive
+semantics · `RECIPROCAL_FIREBASE_UID_LINK` disposition. **None of these is absorbed into `MI-S`.**
