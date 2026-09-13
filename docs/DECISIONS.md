@@ -7100,3 +7100,36 @@ on permanently.** `link_source`'s closed vocabulary (`:140`) admits `RECIPROCAL_
 documented at `:80` as agreement between `employees/{id}.userId` and `users/{uid}.employeeId` — precisely the
 *"Firebase uid coincidence"* and *"`users/{uid}.employeeId`"* the ruling names as non-canonical. **The target
 therefore needs either a governed successor provenance or a declared retirement for that value.**
+
+### Register hygiene — `MI-X` DECISION-ID COLLISION, resolved 2026-09-13
+
+**Not an Owner ruling.** A citation-integrity correction recorded here because `MI-X` is referenced from
+rulings above and the ambiguity makes those references unresolvable.
+
+**`MI-X` names two different decisions.** Censused at source across `ext/own-engineering-gap`,
+`ext/census-acceptance`, `ext/own-decision-packet` and `emp/own-synthesis`:
+
+| Sense | The decision | Status |
+|---|---|---|
+| **Sense 1** | Which collection is the canonical person authority — the question that produced `docs/operating-model/owner-decisions/MI-X-PERSON-AUTHORITY-OPTIONS.md` (511 lines, 6 candidates, `RECOMMENDATION: NONE`) | **CLOSED by `MI-ι` / #185** — PostgreSQL Employee is canonical |
+| **Sense 2** | *"Which of `MI-P`'s **two** acceptable architectures?"* — (i) a multi-axis responsibility census, or (ii) a dedicated accountability census composed into the gate (`OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md:1212`) | **OPEN** — and the sense that gates implementation items |
+
+**Resolution: the open sense-2 decision is renamed `MI-Y`.** Used ids across all refs are `MI-A`…`MI-K`,
+`MI-N`, `MI-P`…`MI-X` and `MI-α`…`MI-λ`, so `MI-Y` was free.
+
+**`MI-X` is RETIRED AS AMBIGUOUS, not overwritten.** Both senses stay readable, and the mapping above is the
+historical record: a reader meeting `MI-X` in an artifact written before this date must resolve it by context —
+person-authority source (closed) or census architecture (now `MI-Y`).
+
+**Why this is recorded in the ruling register rather than only in a lane artifact.** `#182`'s `MI-P` clause
+reserves the census-architecture choice to the Owner, and the items it gates are cited by id. An id that
+means two things cannot gate anything reliably — the same defect class as the withdrawn
+`CURRENT_SUPPORTED_SERVER_KINDS` identifier, the paraphrased *"reassignment ≠ ownership transfer"*, and the
+withdrawn `MI-ι §6`/`§11` citations: **a reference that looks verifiable and is not.** This program has now
+produced that failure four times, in four different forms, which makes it a process defect rather than four
+mistakes.
+
+**Also noted:** `MI-X` is not the only reused label. `#179` is titled *"M-1 Option A"* and concerns a
+`cycle_counts` migration, while `#183` lists **`M-1`** as an open `OD-7` sub-question about axis scope. **They
+are unrelated.** Anyone citing *"`M-1` is ruled"* against `OD-7` would be citing the wrong register. `M-1`
+(OD-7 axis scope) remains **OPEN**.
