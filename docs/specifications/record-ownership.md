@@ -17,6 +17,35 @@ target_release:
 
 **Architecture Review:** <link> — Approved YYYY-MM-DD
 
+> ### ⚠️ THE HEADLINE MODEL BELOW IS SUPERSEDED. THE HISTORICAL TEXT IS PRESERVED DELIBERATELY.
+>
+> **OBSERVED AT `64008d5ae0bdd9532909671b15a91122400accf1`.** This document records the Owner's
+> model of **2026-08-19**, whose first sentence is *"Whoever creates a record owns it."* **That
+> sentence has since been superseded by ruling D-4 and by the standing creation-owner chain, and
+> D-4 is referenced nowhere in this file (zero occurrences).**
+>
+> **The current rule is:**
+>
+> **EXPLICIT → INHERIT GOVERNED UPSTREAM OWNER → REFUSE**
+>
+> and, stated as a standing ruling in its own right: **the actor/creator does NOT automatically
+> become the owner**, and **an assistant creating a record does not acquire ownership merely by
+> acting.** Ownership changes are explicit and auditable; **reassignment of work is not an
+> ownership transfer**; **manager intervention is not an ownership transfer**; there is **no
+> implicit cascade of historical ownership**, and historical ownership stays historical.
+>
+> **Why the original text is left standing rather than edited:** it is the record of what the Owner
+> ruled on a date, and rewriting it would destroy the provenance of a real decision. Note also that
+> this document already moves away from its own headline in §Scope §1 (*"Ownership is assigned,
+> never claimed … derived from the authenticated actor"*) — so the file was **internally divergent
+> before D-4**, which is part of why the supersession went unmarked.
+>
+> **This document also promises a cascade that the governed handoff command forbids.** Treat any
+> cascade language below as superseded.
+>
+> Two independent lanes reached this conclusion separately while building the Employee Operating
+> Model, and a third confirmed that no marker existed. Nothing below has been altered.
+
 ## Executive summary
 
 Record ownership exists in this system today as scattered fields with no governing rule. Accounts

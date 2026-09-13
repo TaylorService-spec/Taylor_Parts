@@ -9,6 +9,20 @@ This document states who owns the product, the company, and the intellectual pro
 
 ---
 
+> ### ℹ️ THIS IS NOT THE RECORD-OWNERSHIP AUTHORITY
+>
+> Despite the filename, this document governs **intellectual property, company ownership and AI
+> attribution**. It says **nothing** about which employee owns a business record.
+>
+> For **record ownership** — who owns an Account, a Work Order, an Opportunity — see
+> [`specifications/record-ownership.md`](specifications/record-ownership.md) (note its supersession
+> banner), the `functions/src/ownership/**` modules, and `docs/operating-model/` for the Employee
+> Operating Model reconciliation.
+>
+> This pointer exists because the filename actively misleads: during the Employee Operating Model
+> work this file was cited as primary record-ownership evidence to three separate analysis lanes
+> before one of them read it and found it contains no record-ownership content at all.
+
 ## 1. Human and company ownership
 
 1. **Rudy DiGiorgio is the Founder, Product Owner, and originating human architect** of **Enterprise Operations OS**.
