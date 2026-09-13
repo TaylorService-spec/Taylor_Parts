@@ -62,16 +62,24 @@ own artifacts are the durable record.
 
 ## Bounded lanes (in flight)
 
-Base commit for all five: `64008d5ae0bdd9532909671b15a91122400accf1` (`ATLAS-BASE-2026-09-12-A`).
+Base commit for all lanes: `64008d5ae0bdd9532909671b15a91122400accf1` (`ATLAS-BASE-2026-09-12-A`), except
+CANONICAL-VERDICT-CORRECTION, which writes on `phase3/operational-reality-evidence` @ `1e53c5d8`.
+Started 2026-09-13. The controller is the single integration writer; no other lane merges anything.
 
-- INT-A-CORRECTNESS · CODE_WRITE · `int/a-correctness-register` · writes: `docs/integration/int-a-correctness-register.md` · `docs/engineering/ACTIVE_WORKSTREAMS.md` (this section) · classify every program branch against `main` into A1 / A2 / TIER-2 HOLD / SUPERSEDED / ABSORBED
-- OWN-DECISION-PACKET · EVIDENCE_WRITE · `ext/own-decision-packet` · writes: `docs/operating-model/owner-decisions/OD-PACKET-001-006-007.md` · prepare exactly three ownership decisions for Owner ruling
-- OWN-ENGINEERING-GAP · EVIDENCE_WRITE · `ext/own-engineering-gap` · writes: `docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md` · decompose what implementation the Owner decisions would unblock; nothing authorized
-- UX-HONEST-ABSENCE · EVIDENCE_WRITE · `ext/ux-honest-absence` · writes: `docs/atlas/engineering-implications/ENG-IMPL-003-honest-absence.md` · engineering contract for never rendering unproven absence as proven empty
-- UX-KPI-DRILL · EVIDENCE_WRITE · `ext/ux-kpi-drill` · writes: `docs/atlas/engineering-implications/ENG-IMPL-004-kpi-drill-through.md` · engineering contract for KPI provenance and drill-through integrity
+- CANONICAL-VERDICT-CORRECTION · EVIDENCE_WRITE · `phase3/operational-reality-evidence` · writes: `docs/atlas/run-verdict-2026-09-13.md` · RUNNING · append a dated correction for seven claims the extension overturned; originals preserved
+- OWN-DECISION-PRESENTATION · EVIDENCE_WRITE · `ext/census-acceptance` · writes: `docs/operating-model/engineering/PERSON-OWNER-CENSUS-ACCEPTANCE-CONTRACT.md` · RUNNING · present OD-1/OD-6/OD-7 for Owner ruling; prepare the person-owner census acceptance contract
+- TIER2-RULES-PACKET · EVIDENCE_WRITE · `ext/tier2-rules-packet` · writes: `docs/security/TIER2-PACKET-fieldops-jobs-operating-company.md` · RUNNING · read-only packet for `firestore.rules:381-384`; **no Rules edit**
+- REPORTING-RECONCILIATION · EVIDENCE_WRITE · `ext/reporting-reconcile` · writes: `docs/reporting/FALSE-EMPTY-RECONCILIATION.md` (+ at most one test file if warranted) · RUNNING · classify `reportExecutionService.ts:627-634` against the remediation chain
+- REMOTE-CUSTODY-PREP · CODE_WRITE · `int/a-correctness-register` · writes: `docs/integration/*` · `docs/engineering/ACTIVE_WORKSTREAMS.md` (this section) · **COMPLETE** · custody plan + defect triage; nothing pushed
 
-The five write-sets are disjoint by construction and no lane reaches a protected boundary. `INT-A-CORRECTNESS`
-is the run's **single integration writer**; the other four write one file each and merge nothing.
+Blocked, not started: REPORTING-RUNTIME-VERIFY — needs Firebase/gcloud authentication. Checked once on
+2026-09-13: `gcloud auth list` reports no credentialed accounts, no ADC file exists, `firebase login:list`
+does not return. **Environment is never inferred and ambient credentials are never borrowed**, so the lane
+stays unstarted rather than guessing a target.
+
+Completed and deleted from this section on 2026-09-13: INT-A-CORRECTNESS, OWN-DECISION-PACKET,
+OWN-ENGINEERING-GAP, UX-HONEST-ABSENCE, UX-KPI-DRILL. Their durable records are the artifacts they wrote;
+**this section is coordination state, not history.**
 
 ## Active
 
