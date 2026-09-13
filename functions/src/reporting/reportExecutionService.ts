@@ -141,6 +141,83 @@ export function judgeScanCompleteness(input: {
   return input.hasAggregates ? "refuse-incomplete-total" : "bounded-page";
 }
 
+// ---------------------------------------------------------------------
+// UNPROVEN ABSENCE (RPT-FIX). Baseline: post/eng-e-report-scope
+// @ 92db1d19, parent main @ 64008d5ae0bdd9532909671b15a91122400accf1.
+//
+// THE DEFECT. The scan above is UNORDERED and BOUNDED, and the
+// definition's filters are applied IN MEMORY over the page it returned.
+// Matching documents may therefore exist BEYOND the page. When none of
+// the LOADED documents match, rowCount is 0 -- and the kind ladder at
+// the bottom of runReportDefinition() maps rowCount === 0 to "empty"
+// FIRST, ahead of every other fact, truncation included. The caller
+// received a false negative dressed as a successful, complete answer.
+// The client compounded it: reportResultState.js's "empty" branch reads
+// no truncation flag and renders "This report ran successfully but no
+// records matched."
+//
+// THE INVARIANT: EOS MUST NOT RETURN "EMPTY" WHEN THE QUERY WAS NOT
+// PROVEN COMPLETE. This is an honesty/correctness rule, not a
+// performance one.
+//
+// WHY A REFUSAL, and not a new outcome kind. "0 rows" is an AGGREGATE
+// claim about the whole population -- the count of matches -- and X-9
+// above already settles what to do with an aggregate computed from a
+// cut population: refuse, per FIN-004, because a figure smaller than the
+// truth presented as the answer is worse than the slow read it replaced.
+// An unproven absence is that same sentence's other half, so it follows
+// the SAME established vocabulary rather than inventing a new one.
+//
+// A refusal is also structurally immune to the mechanism that produced
+// this defect. RunReportOutcomeKind is a SINGLE-WINNER ladder, and it
+// has already collapsed once -- X-9's own note records that an
+// understated total could arrive labelled "empty" or
+// "partially-authorized", never "incomplete". A new
+// "cannot-establish" KIND would put completeness straight back into that
+// ranking contest, where it would have to out-rank
+// "partially-authorized" to be seen at all. A thrown error cannot be
+// out-ranked by anything, and it cannot be silently dropped by a client
+// whose kind set is closed.
+//
+// Completeness is ADDITIONALLY published as an ORTHOGONAL AXIS
+// (`completeness` + `scanTruncated` on RunReportOutcome) so that no
+// consumer ever has to read it out of `kind`. That is the same shape
+// ENG-E chose for the tenancy axis -- companyReach/rowScopeKind/
+// companyBoundRefusal travel as FIELDS, and only the refusal itself is
+// a kind. The closed RunReportOutcomeKind set is deliberately UNCHANGED
+// by this fix, so the client's SERVICE_KINDS needs nothing from it.
+export class UnprovenAbsenceError extends Error {}
+
+export type AbsenceVerdict = "proven-absence" | "refuse-unproven-absence" | "not-an-absence";
+
+// PURE, for the same reason judgeScanCompleteness() is: this file's stated
+// design is that every limit DECISION is a small, independently testable helper.
+//
+// Only SCAN truncation is consulted, and that is not an oversight:
+// rowCapTruncated and groupCardinalityTruncated both REQUIRE more rows than
+// their cap, so neither can ever coexist with rowCount === 0. Scan truncation is
+// the only bound that cuts the POPULATION before a single filter runs, and so
+// the only one that can turn a real match into an apparent absence.
+export function judgeAbsenceProvenance(input: {
+  scanTruncated: boolean;
+  rowCount: number;
+}): AbsenceVerdict {
+  if (input.rowCount > 0) return "not-an-absence";
+  return input.scanTruncated ? "refuse-unproven-absence" : "proven-absence";
+}
+
+// The orthogonal completeness axis. NOT a RunReportOutcomeKind -- see above.
+//
+//   proven-complete -- the scan reached the end of the bounded population, so
+//                      the row set is the whole answer.
+//   bounded-page    -- the scan hit maxScanDocs; the row set is a PAGE. Rows
+//                      that ARE returned are real; absence is not established.
+//   not-attempted   -- no scan was issued at all (a refusal on authorization or
+//                      tenancy grounds). Completeness is INAPPLICABLE here, not
+//                      true: this value exists so a refused run cannot be
+//                      mistaken for a complete one.
+export type ScanCompleteness = "proven-complete" | "bounded-page" | "not-attempted";
+
 // Spec sec10's proposed conservative starting bounds (ADR-007 sec4 open
 // decision 3 -- the EXACT values remain an open Owner decision; these
 // are enforced as a maximum regardless, since a stricter cap can only
@@ -220,6 +297,13 @@ export interface RunReportOutcome {
   rowCount: number;
   rowCap: number;
   truncated: boolean;
+  // RPT-FIX, the ORTHOGONAL COMPLETENESS AXIS. `truncated` is an OR of three
+  // different bounds (scan / group cardinality / row cap) and a consumer cannot
+  // tell which fired -- but only ONE of them cuts the population, and only that
+  // one bears on whether an answer is the whole answer. These two fields state
+  // the population verdict directly, on every outcome, independent of `kind`.
+  completeness: ScanCompleteness;
+  scanTruncated: boolean;
   widened: boolean;
   // UI-safe labels (never a raw field id, matching reportResultState.js's
   // own safeLabels() convention on the client) for columns dropped from
@@ -562,6 +646,15 @@ export async function runReportDefinition(
       rowCount: 0,
       rowCap: maxResultRows,
       truncated: false,
+      // No scan was issued on this path (which reportRowScopeBound.test.mjs and
+      // reportAuditContextInjection.test.mjs both prove from the query log, not
+      // from the row count), so completeness is INAPPLICABLE -- stated, rather
+      // than left to be misread as "complete". This is how the completeness axis
+      // composes with ENG-E's `company-unresolved`: the kind carries the tenancy
+      // verdict, these fields carry the population verdict, and neither
+      // overwrites the other.
+      completeness: "not-attempted",
+      scanTruncated: false,
       widened: false,
       droppedColumnLabels: [],
       droppedFieldIds: [],
@@ -823,6 +916,35 @@ export async function runReportDefinition(
   const finalDroppedPredicateFieldIds = droppedPredicateFieldIds;
   const finalDroppedFieldIds = droppedFieldIds;
 
+  // --- RPT-FIX: UNPROVEN ABSENCE. See judgeAbsenceProvenance() above. ---
+  //
+  // Placed HERE, before the "applied" Audit Event and before the kind ladder, so
+  // no run that produced no provable answer is ever recorded as applied or
+  // returned as "empty".
+  //
+  // Unlike the aggregate refusal above -- which can be decided the moment the
+  // scan comes back -- this one cannot be decided before the in-memory predicate
+  // has run, because "nothing in the page matched" is only knowable afterwards.
+  // Nothing has left the service at this point, so deciding late costs honesty
+  // nothing: the rows are discarded by the throw.
+  if (judgeAbsenceProvenance({ scanTruncated, rowCount }) === "refuse-unproven-absence") {
+    await recordStandaloneAuditEvent({
+      actorUid: params.runnerUid,
+      action: "runReportDefinition",
+      targetType: "reportDefinition",
+      targetId: definitionId,
+      outcome: "denied",
+      summary: `Report run refused: no rows of "${objectId}" matched inside a truncated scan, so an empty result would not be a proven absence.`,
+      objectId,
+      rowCount: 0,
+      truncated: true,
+      accessVersionAfter: runner.accessVersion,
+    }, db);
+    throw new UnprovenAbsenceError(
+      `No matching rows for "${objectId}" were found, but the scan exceeded ${maxScanDocs} documents, so matching rows may exist beyond it. This is NOT a proven "no results": narrow the report with filters so the scan completes.`,
+    );
+  }
+
   await recordStandaloneAuditEvent({
     actorUid: params.runnerUid,
     action: "runReportDefinition",
@@ -838,6 +960,14 @@ export async function runReportDefinition(
     accessVersionAfter: runner.accessVersion,
   }, db);
 
+  // The single-winner ladder. It names ONE headline reason; every fact it ranks
+  // (and every fact it does not) also travels as its own field on the outcome --
+  // truncated/scanTruncated/completeness/widened/droppedColumnLabels/
+  // companyReach/rowScopeKind -- because a consumer that can only read the
+  // winner is exactly how the false-empty defect reached users.
+  //
+  // "empty" is now reachable ONLY for a PROVEN absence: the gate above threw
+  // otherwise, and neither rowCount nor scanTruncated is reassigned in between.
   const kind: RunReportOutcomeKind =
     rowCount === 0
       ? "empty"
@@ -855,6 +985,8 @@ export async function runReportDefinition(
     rowCount,
     rowCap: maxResultRows,
     truncated,
+    completeness: scanTruncated ? "bounded-page" : "proven-complete",
+    scanTruncated,
     widened,
     droppedColumnLabels,
     droppedFieldIds: finalDroppedFieldIds,
