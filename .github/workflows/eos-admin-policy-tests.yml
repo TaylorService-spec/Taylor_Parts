@@ -90,6 +90,12 @@ on:
       - "functions/test/employeeBusinessAuthorityMigration.test.mjs"
       - "functions/test/employeeReferenceIntegrityMeasurement.test.mjs"
       - "functions/scripts/measureEmployeeReferenceIntegrity.js"
+      # NONPROD ACTIVATION MEASUREMENT (required registration): the read-only C/D/G/H measurement and its
+      # two suites run in test:adminPolicy / test:adminPolicyPostgres and are named here for the same reason
+      # the Wave-2A entries above are.
+      - "functions/scripts/measureWorkforceActivation.js"
+      - "functions/test/workforceActivationMeasurement.test.mjs"
+      - "functions/test/workforceActivationPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
@@ -168,6 +174,12 @@ on:
       - "functions/test/employeeBusinessAuthorityMigration.test.mjs"
       - "functions/test/employeeReferenceIntegrityMeasurement.test.mjs"
       - "functions/scripts/measureEmployeeReferenceIntegrity.js"
+      # NONPROD ACTIVATION MEASUREMENT (required registration): the read-only C/D/G/H measurement and its
+      # two suites run in test:adminPolicy / test:adminPolicyPostgres and are named here for the same reason
+      # the Wave-2A entries above are.
+      - "functions/scripts/measureWorkforceActivation.js"
+      - "functions/test/workforceActivationMeasurement.test.mjs"
+      - "functions/test/workforceActivationPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
