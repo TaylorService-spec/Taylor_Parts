@@ -373,7 +373,26 @@ search misses `jobStatusOnlyChange()`, and missing it is how this register got �
 
 **Three statements have no field constraint of any kind** — `fieldops_technicians`, `locations`,
 `contacts` — and one is allowlisted on only one of its two branches, which is the `fieldops_jobs` defect
-this register already carries. **`accounts` is NOT in that group** and must not be reported as if it were.
+this register already carries.
+
+> **CORRECTED 2026-09-13 — `accounts` is WORSE than the group this register excluded it from.**
+> An earlier revision defended `accounts:1335` as *"constrained by a different mechanism"* and said it *"must
+> not be reported as if"* it lacked a field constraint. **Verified and withdrawn.** The predicate is
+> `allow update: if isAdminOrDispatcher() && accountGovernedFieldsValid(...) && (isAdmin() ||
+> accountGovernedFieldsUnchanged())` — so **`isAdmin()` short-circuits the equality helper entirely**, the
+> helper pins only `paymentTerms` and `taxStatus`, and **the string `accountOwner` appears ZERO times in the
+> whole of `firestore.rules`.** An admin may rewrite the account's owner field with no constraint at all.
+>
+> **Corrected counts:** of the 7 client-writable statements, **3 carry `hasOnly`** (not 2) and **4 have no
+> effective field constraint on their ownership field** — `fieldops_technicians:418`, `locations:1343`,
+> `contacts:1557` **and `accounts:1335`**. `fieldops_jobs` spans **`381-391`**, not `381-384`.
+>
+> **The sharpest consequence:** `accountOwner`, `contacts.owner` and `locations.owner` have **no server-side
+> writer at all** — client Rules is their *only* mutation path. So the missing field constraint is not a
+> redundancy behind a governed writer; **it is the entire control.**
+>
+> **One correction in the other direction:** `fieldops_technicians:418` carries **no ownership field**, so it
+> is **NOT APPLICABLE** to an ownership bypass census even though it lacks an allowlist.
 
 **Still reported and deliberately NOT expanded:** the three unconstrained statements and `accounts`'
 equality mechanism are **unassessed**. This register makes no claim about whether any of them is

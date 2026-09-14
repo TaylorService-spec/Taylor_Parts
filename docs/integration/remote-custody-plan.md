@@ -178,6 +178,13 @@ on `archaeology/recovered-design-evidence` — largest **496 KB**, whole branch 
 files**. Legitimate, in scope, and the reason that branch is the highest-priority custody target.
 No Git LFS is introduced or required.
 
+> **CORRECTED 2026-09-13 — the nineteenth was misdiagnosed, and the misdiagnosis pointed at the wrong fix.**
+> This section called the 2 NUL bytes an accidental defect and **merge-blocking**. **Verified: they are a
+> deliberate sentinel.** At offsets 3602 and 3649 (lines 64 and 66) the glob→regex converter parks `**` as a
+> NUL and restores it as `.*`. **The script runs correctly** — 467 files scanned, 451 registered, 16 baseline,
+> OK. It is a **reviewability** defect, trivially fixable by choosing a non-NUL sentinel, and **not**
+> merge-blocking. Calling it corruption aimed the repair at the wrong thing.
+
 **The nineteenth is not a binary asset — it is a source file with 2 NUL bytes in it.**
 `functions/scripts/testRegistrationRatchet.mjs` on `night/p2l-functions-test-registration` (11,308
 bytes, new file) contains **exactly 2 NUL bytes**, which is why `git diff --numstat` reports it as
