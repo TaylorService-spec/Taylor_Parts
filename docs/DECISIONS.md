@@ -7477,3 +7477,46 @@ an accountable person is named by **Employee identity**, not by a job role. `MI-
 **Five ids are stale in two standing register tables** — `MI-S`, `MI-T`/`MI-η`, `MI-θ`, `MI-X`-sense-2 (now
 `MI-Y`) and `M-1` were all closed after those tables were written. **Any artifact still showing `M-1` open is
 stale against #187.**
+
+### Register hygiene — BLOCKER NORMALIZATION: the foundation-blocking set is THREE (2026-09-13)
+
+**Not an Owner ruling.** Records the result of the blocker-normalization pass so the question is not re-opened.
+
+**A controller claim is withdrawn.** This program stated that all 17 remaining decisions blocked honest
+classification of the implementation backlog. **False.** Tested against ten named foundation work items,
+**six are blocked by none of the seventeen**: canonical PostgreSQL Employee authority · the Employee authority
+port · `AUTHORITY_UNAVAILABLE` · the `OD-7` orchestration skeleton · the bypass census · integrating the
+executable correctness branches.
+
+**MUST RULE NOW = 3:** `MI-λ` (blocks constraining `employee_principal_links`) · `MI-ε` (blocks the
+enforcement *mode*) · `OD-16` (blocks the accountability census's family scope).
+**Family-deferred 6 · UI/admin-deferred 3 · non-blocking with a named safe default 5 · derived 0.**
+
+**And there are 16 distinct decisions, not 17** — the standalone Service decision and the consolidated Service
+lifecycle decision are **one decision recorded at two refs.**
+
+**Three corrections of fact carried into this entry:**
+
+**`MI-κ` is off the Layer-1 critical path, proven by occupancy rather than inference.**
+`functions/src/ownership/ownershipMatrix.ts:518` declares `roleAssignment` *"access authority, governed
+separately"* and is the only RoleAssignment reference in either foundation directory; the committed census
+`be1e5579` shows **two production managers holding real `employeeId`s and operational job roles with zero
+RoleAssignments.** **An Employee is referenceable as a business person with no Security Role.**
+
+**`accountablePerson` is a FOLLOW-ON, not a prerequisite — the controller had this backwards.** Verified zero
+occurrences of `accountablePerson` / `accountableId` across `functions/src`, `field-ops-app-vite/src` and
+`firestore.rules`. It is required now only for the three commercial families `#181` rules; every other family
+may defer.
+
+**Four of the nine Service states in the instruction are not work-order statuses.** The shipped vocabulary is
+`CREATED · READY_TO_DISPATCH · SCHEDULED · DISPATCHED · ACCEPTED · EN_ROUTE · ARRIVED · WORK_IN_PROGRESS ·
+COMPLETED · CLOSED · CANCELLED`. **`WAITING_ON_PARTS`, `RETURN_VISIT` and `READY_FOR_BILLING` have zero
+occurrences in `functions/src`**, and `EXCEPTION` is not in the status enum. **So the Service lifecycle
+question splits in two: one accountability question over the 11 shipped statuses, and a separate, prior
+state-machine decision about whether the missing states should exist at all.** Asking accountability over
+states that do not exist would have produced a ruling with no referent.
+
+**Foundation work unblocked by any decision** (authorization still withheld): integrate the executable fix
+units → PostgreSQL Employee authority → the authority port → `AUTHORITY_UNAVAILABLE` → the `OD-7`
+orchestration skeleton → the bypass census → accountable-person **shape** only. The accountability census, the
+enforcement gate and the crosswalk constraint wait on exactly the three decisions above.
