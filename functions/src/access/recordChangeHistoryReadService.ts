@@ -28,6 +28,7 @@ import { getFirestore, type Firestore, Timestamp } from "firebase-admin/firestor
 import type { Role } from "../types/access";
 import { resolveEffectivePermission, type TargetContext } from "./resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
+import { GOVERNED_BUSINESS_ROLES } from "./governedBusinessRoles";
 import { listAuditEventsForRecord } from "./auditEventWriter";
 
 const USERS_COLLECTION = "users";
@@ -81,6 +82,43 @@ export interface RecordChangeHistoryDeps {
 }
 
 const GLOBAL_TARGET: TargetContext = { scope: { type: "global" }, condition: {} };
+
+/**
+ * The Role catalog this read resolves `audit.event.read` against when the caller injects none --
+ * i.e. in production, where administrationUsersCallables.listRecordChangeHistory passes no deps.
+ *
+ * BOTH CATALOGS, because audit read is granted through BOTH. `audit.event.read` is held by the
+ * compatibility Role `admin` (derived: ADMIN_ALL_PERMISSIONS spreads the whole catalog) AND by the
+ * eleven governed management Roles the Owner approved on 2026-08-21 -- owner, generalManager,
+ * operationsManager, financeManager, accountingManager, controller, fieldManager, salesManager,
+ * partsManager, warehouseManager, shopManager. That decision and its exact holder set are asserted
+ * by test/auditReadConfinement.test.mjs.
+ *
+ * DEFAULTING TO COMPATIBILITY_ROLES ALONE SILENTLY REVOKED THAT DECISION. The governed Role ids are
+ * simply absent from that three-entry map, so a well-formed, active, in-version, globally scoped
+ * assignment naming `controller` resolved `noQualifyingGrant` -- the same shape of failure
+ * trustedWriterCommands.ts records for genesis `owner`, and invisible here because every test in
+ * test/recordChangeHistoryRead.test.mjs injected its own `roles`.
+ *
+ * THIS IS NOT A WIDENING BEYOND THE RULING, and deliberately not a widening of the ruling's own
+ * mechanism. Nothing here grants anything: resolveEffectivePermission still requires a Role that
+ * DECLARES the capability, an active in-version assignment, a matching Scope and catalog
+ * `active` -- so a Role that does not declare `audit.event.read` is still refused, and no
+ * role-string comparison or blanket admin shortcut is introduced.
+ *
+ * NOT THE trustedWriterCommands POSTURE, and that difference is the point. That module resolves
+ * `admin.*` SECURITY ADMINISTRATION against COMPATIBILITY_ROLES and only those, on a recorded
+ * decision not to make business `owner` sufficient to administer access. Audit read is oversight,
+ * not administration -- auditReadConfinement.test.mjs asserts it confers no `admin.*` at all -- so
+ * the narrowing that is correct there is exactly what is wrong here.
+ *
+ * The two maps share no id (proved by resolveEffectivePermission.test.mjs), so the spread order
+ * below resolves no collision and is not load-bearing.
+ */
+const DEFAULT_AUDIT_READ_ROLE_CATALOG: Readonly<Record<string, Role>> = Object.freeze({
+  ...COMPATIBILITY_ROLES,
+  ...GOVERNED_BUSINESS_ROLES,
+});
 
 function readAccessVersion(data: Record<string, unknown> | undefined): number {
   const raw = data?.accessVersion;
@@ -281,7 +319,7 @@ export async function listRecordChangeHistory(
   deps: RecordChangeHistoryDeps = {},
 ): Promise<ChangeHistoryRow[]> {
   const db = deps.db ?? getFirestore();
-  const roles = deps.roles ?? COMPATIBILITY_ROLES;
+  const roles = deps.roles ?? DEFAULT_AUDIT_READ_ROLE_CATALOG;
 
   if (typeof input.actorUid !== "string" || !input.actorUid) {
     throw new InvalidInputError("actorUid is required");

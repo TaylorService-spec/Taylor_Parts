@@ -48,6 +48,13 @@ on:
       - "functions/src/index.ts"
       - "functions/test/employeeProfileCommands.test.mjs"
       - "functions/test/recordChangeHistoryRead.test.mjs"
+      - "functions/test/recordChangeHistoryDefaultRoleCatalog.test.mjs"
+      # The Change History read resolves audit.event.read against BOTH Role catalogs, so a change to
+      # either one changes WHO can read a record's audit history -- which is exactly what this
+      # workflow's default-catalog test guards. Without these filters that change ships untested.
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
       - ".github/workflows/administration-users-tests.yml"
   push:
     branches: [main]
@@ -60,6 +67,10 @@ on:
       - "functions/src/access/employeeProfileCommands.ts"
       - "functions/src/access/recordChangeHistoryReadService.ts"
       - "functions/src/access/administrationUsersCallables.ts"
+      - "functions/src/access/governedBusinessRoles.ts"
+      - "functions/src/access/compatibilityRoles.ts"
+      - "functions/src/access/resolveEffectivePermission.ts"
+      - "functions/test/recordChangeHistoryDefaultRoleCatalog.test.mjs"
       - ".github/workflows/administration-users-tests.yml"
   workflow_dispatch:
 
@@ -129,7 +140,28 @@ jobs:
         working-directory: functions
 
       - name: Profile command + record-scoped history read (node:test)
-        run: node --test test/employeeProfileCommands.test.mjs test/recordChangeHistoryRead.test.mjs
+        run: node --test test/employeeProfileCommands.test.mjs test/recordChangeHistoryRead.test.mjs test/recordChangeHistoryDefaultRoleCatalog.test.mjs
+        working-directory: functions
+
+      # SEPARATE STEP, deliberately. `node --test` silently DROPS a path argument that matches
+      # nothing as long as at least one other argument resolves: it exits 0 and prints a plausible
+      # pass count, so a typo in the step above would leave CI green while running one file fewer.
+      # Verified on Node 22: `node --test real.test.mjs doesNotExist.test.mjs` exits 0.
+      #
+      # This asserts each named file exists AND yields at least one executed subtest, rather than a
+      # hard-coded total -- a total would have to be edited every time a test is legitimately added,
+      # and a guard people routinely edit stops being a guard.
+      - name: Assert each history-read suite actually ran (registration guard)
+        run: |
+          set -euo pipefail
+          for f in test/employeeProfileCommands.test.mjs \
+                   test/recordChangeHistoryRead.test.mjs \
+                   test/recordChangeHistoryDefaultRoleCatalog.test.mjs; do
+            test -f "$f" || { echo "MISSING: $f is registered above but does not exist"; exit 1; }
+            n=$(node --test "$f" | awk '/^# tests /{print $3}')
+            echo "$f -> ${n} subtests"
+            test "${n:-0}" -gt 0 || { echo "RAN NOTHING: $f"; exit 1; }
+          done
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)
