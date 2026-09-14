@@ -18,7 +18,7 @@
 // listSalesOrderIndex, ...) is capability-scoped over the whole tenant: no owner, assignee or territory predicate
 // exists anywhere in them. These projections preserve exactly that and invent no narrower or wider scope.
 //
-// NOT WIRED: no Render operation, Firebase callable or client imports this module or the projections built on it.
+// WIRED ONLY THROUGH the C4 Commercial transport (commercialHttp.ts). No Firebase callable or client imports it.
 import type { Pool, PoolClient } from "pg";
 import { CommercialCommandError, fail } from "../commands/commercialCommandKernel";
 

@@ -16,10 +16,11 @@
 // custom claim or a document, and no answer it gave would be read as authority — every
 // authorization question is answered from PostgreSQL by the Administration API.
 //
-// ════════════════════ NOT DEPLOYED ════════════════════
+// ════════════════════ DEPLOYED: NONPROD ONLY ════════════════════
 //
-// This process is written, typechecked and proved locally. Nothing deploys it: there is no Render
-// service, and creating one needs Owner action. The required environment is listed in
+// Render runs this process as `eos-api-nonprod`, which deploys main automatically. It is NONPROD and
+// refuses a production environment label (readServiceConfig below). Firebase remains transitional
+// authentication only. The required environment is listed in
 // docs/architecture/eos-policy-nonprod-activation.md.
 import { createServer } from "node:http";
 import { PostgresPolicyRepository } from "../adminPolicy/postgresPolicyRepository";
@@ -32,6 +33,15 @@ import {
 import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
+import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
+
+/** Which domain transport answers a request path. Everything not Operations or Commercial is Administration. */
+export function eosApiDomainFor(url: string | undefined): "commercial" | "operations" | "administration" {
+  const path = (url ?? "").split("?")[0];
+  if (path.startsWith("/commercial/")) return "commercial";
+  if (path.startsWith("/operations/")) return "operations";
+  return "administration";
+}
 
 /**
  * The environment this service reads. Every one is injected; none is committed.
@@ -136,9 +146,11 @@ export async function startEosApi(
   await requirePolicyDatabaseReady(pool);
 
   const repo = new PostgresPolicyRepository(pool);
+  // ONE verifier for every domain transport: Firebase says only "this token belongs to subject X".
+  const verifyToken = options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider);
   const handler = createAdminPolicyHttpHandler({
     repo,
-    verifyToken: options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
+    verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {
       const health = await checkPolicyDatabaseHealth(pool);
@@ -159,12 +171,26 @@ export async function startEosApi(
   const operationsHandler = createOperationsHttpHandler({
     reader: repo,
     pool,
-    verifyToken: options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider),
+    verifyToken,
+    allowedOrigins: config.allowedOrigins,
+  });
+
+  // A THIRD domain-separated handler: the governed PostgreSQL Commercial transport (wave C4). Same repository, same
+  // pool, same verifier. No catalog authority is composed, so product-reference commands stay refused.
+  const commercialHandler = createCommercialHttpHandler({
+    reader: repo,
+    pool,
+    verifyToken,
     allowedOrigins: config.allowedOrigins,
   });
 
   const server = createServer((req, res) => {
-    if ((req.url ?? "").split("?")[0].startsWith("/operations/")) {
+    const domain = eosApiDomainFor(req.url);
+    if (domain === "commercial") {
+      void commercialHandler(req as never, res as never);
+      return;
+    }
+    if (domain === "operations") {
       void operationsHandler(req as never, res as never);
       return;
     }

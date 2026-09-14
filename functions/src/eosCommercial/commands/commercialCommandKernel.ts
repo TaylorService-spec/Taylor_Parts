@@ -16,7 +16,7 @@
 //     REFUSE with CATALOG_AUTHORITY_UNAVAILABLE unless an authority is supplied -- an explicit activation
 //     prerequisite, not a silently removed check and not a Firestore import.
 //
-// NOT WIRED: no Render operation, Firebase callable or client imports this module or the services built on it.
+// WIRED ONLY THROUGH the C4 Commercial transport (commercialHttp.ts). No Firebase callable or client imports it.
 import type { Pool, PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import { createPostgresEmployeeAuthority } from "../../employeeIdentity/postgresEmployeeAuthority";

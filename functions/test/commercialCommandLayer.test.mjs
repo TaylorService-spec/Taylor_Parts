@@ -43,12 +43,16 @@ test("(42) no Firebase: no command module imports it, and loading every one reso
   assert.equal(probe.status, 0, `a C2 module transitively loaded Firebase: ${probe.stderr}`);
 });
 
-test("no runtime entry point reaches the command layer: only the layer itself imports it", () => {
+test("the only runtime entry point to the command layer is the C4 Commercial transport", () => {
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(COMMANDS) && /eosCommercial\/commands\//.test(readFileSync(f, "utf8")));
-  assert.deepEqual(importers.map(rel), [], "a module outside the C2 command layer imports it");
-  for (const surface of ["index.ts", "eosApi/server.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
+  assert.deepEqual(importers.map(rel), [], "a module outside the Commercial layer imports the command layer");
+  const direct = walk(SRC, [".ts"]).filter((f) => !f.startsWith(join(SRC, "eosCommercial")) && /CommandService|commercialCommandKernel/.test(strip(readFileSync(f, "utf8"))));
+  assert.deepEqual(direct.map(rel), [], "a runtime module reaches Commercial commands without the transport");
+  for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCommercial|CommandService|commercialCommandKernel/, `${surface} reaches Commercial commands`);
   }
+  const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
+  assert.deepEqual([...server.matchAll(/from "([^"]*eosCommercial[^"]*)"/g)].map((m) => m[1]), ["../eosCommercial/commercialHttp"]);
 });
 
 test("(44) the identity-only spine writer cannot become a live Commercial create path", () => {
@@ -71,8 +75,11 @@ test("(45) no Commercial capability is activated", () => {
     assert.ok(at > 0, `${id} is not registered`);
     assert.match(catalog.slice(at, catalog.indexOf("}", at)), /active:\s*false/, `${id} became active`);
   }
-  const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"));
-  assert.ok(!migrations.some((sql) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(sql.replace(/^\s*--.*$/gm, ""))), "a Commercial capability was registered in eos_policy");
+  // C4 registers the VOCABULARY (migration 023) and nothing else may name a Commercial capability in SQL; no migration grants one.
+  const naming = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
+    .filter((f) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, "")));
+  assert.deepEqual(naming, ["1759536000000_commercial-capability-vocabulary.sql"], "a Commercial capability was registered or granted outside migration 023");
+  assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "migrations", naming[0]), "utf8").split("-- Down Migration")[0].replace(/^\s*--.*$/gm, ""), /role_capabilities/, "migration 023 grants a Commercial capability");
 });
 
 test("(31) no D2 execution write: the layer names no execution field or integration", () => {
