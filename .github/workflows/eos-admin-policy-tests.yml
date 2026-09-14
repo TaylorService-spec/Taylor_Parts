@@ -80,6 +80,16 @@ on:
       - "functions/src/employeeIdentity/**"
       - "functions/test/employeePrincipalLinkPlan.test.mjs"
       - "functions/test/employeePrincipalLinkPostgres.test.mjs"
+      # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
+      # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
+      # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
+      # wildcard -- so a PR editing only the harness or only its tests triggered nothing at all.
+      # This is the gate that proves deny/deny cannot certify the cutover.
+      - "functions/scripts/inventoryCapabilityParityHarness.js"
+      - "functions/test/inventoryCapabilityParityHarness.test.mjs"
+      - "functions/test/inventoryCapabilityParityHarnessClassification.test.mjs"
+      - "functions/test/inventoryCapabilityParityHarnessVacuity.test.mjs"
+      - "functions/test/inventoryWriterCapabilityCensus.test.mjs"
       - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -129,6 +139,16 @@ on:
       - "functions/src/employeeIdentity/**"
       - "functions/test/employeePrincipalLinkPlan.test.mjs"
       - "functions/test/employeePrincipalLinkPostgres.test.mjs"
+      # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
+      # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
+      # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
+      # wildcard -- so a PR editing only the harness or only its tests triggered nothing at all.
+      # This is the gate that proves deny/deny cannot certify the cutover.
+      - "functions/scripts/inventoryCapabilityParityHarness.js"
+      - "functions/test/inventoryCapabilityParityHarness.test.mjs"
+      - "functions/test/inventoryCapabilityParityHarnessClassification.test.mjs"
+      - "functions/test/inventoryCapabilityParityHarnessVacuity.test.mjs"
+      - "functions/test/inventoryWriterCapabilityCensus.test.mjs"
       - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
       - "field-ops-app-vite/src/domain/adminPolicyView.js"
       - "field-ops-app-vite/src/metadata/entityRegistry.js"
