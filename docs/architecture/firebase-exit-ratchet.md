@@ -69,3 +69,81 @@ the engineers doing the migration work, recorded in the manifest once made.
 part of the guard's `FORBIDDEN_CATEGORIES`. A file that imports only these never trips the fence,
 no matter how many of them it imports -- that is correct, not a gap: identity is the one Firebase
 capability this architecture keeps on purpose.
+
+## Two shapes of the same dependency, and both are fenced
+
+A dependency class is reached through two source shapes, and a fence that only knows the first one
+is not a fence.
+
+The **subpath** form names the class: `from "firebase-admin/firestore"`, `from
+"firebase/firestore"`. That is what `matchesSpecifier` matches.
+
+The **namespace** form names only the package root and so has no forbidden specifier at all:
+
+```ts
+import admin from "firebase-admin";                      // specifier: "firebase-admin"
+await admin.firestore().collection("workOrders").get();  // same Firestore persistence
+```
+
+Confirmed empirically at main `64008d5ae0bdd9532909671b15a91122400accf1`, not inferred: a file of
+that shape written under `functions/src` produced **zero** violations from a real ratchet run
+(`--previous-baseline` against the committed baseline, exit 0), while the identical file written
+with the `/firestore` subpath produced one violation (exit 1). Fifteen shapes were equally
+invisible -- namespace import, aliased namespace, `require()`, chained
+`require("firebase-admin").firestore()`, dynamic `import()`, `admin.app().firestore()`, the
+`admin.firestore.FieldValue` sentinel namespace, a destructured handle, a reassigned alias, and the
+frontend compat mirror (`firebase`/`firebase/app` plus `firebase.firestore()`,
+`firebase/compat/firestore`, `firebase/compat/functions`).
+
+The namespace form is matched by a category's optional `matchesSource`, as a **conjunction**: a bare
+package-root import **and** a Firestore/Functions access expression in a **comment- and
+string-blanked** view of the source. Both halves carry weight.
+
+- The blanking is what keeps this from becoming the keyword scan the guard's header rejects:
+  `admin.firestore()` reads identically in code and in prose, and this repository contains both.
+- The access-expression half is what **preserves the identity carve-out**.
+  `functions/src/eosApi/server.ts` imports the bare `firebase-admin` root -- dynamically, because
+  the package is CJS -- purely for `app.auth().verifyIdToken()`. Importing the root is not the
+  violation; persisting business data through it is.
+
+`matchesSource` is consulted **only when `matchesSpecifier` did not match**, which makes
+classification a strict superset of the specifier-only behaviour by construction: no committed
+baseline entry can be lost or reclassified by adding it. The baseline is unchanged at **366** guarded
+entries (55 + 55 + 184 + 72).
+
+## The transitional shim boundary: growth is fenced, existence is not
+
+The guard is a **direct-import** fence. A Firestore handle obtained in one module and re-exported
+from it is invisible to the guard in every module downstream -- those modules reach Firestore
+without naming a single forbidden specifier.
+
+**Owner ruling:** approved transitional Firestore re-export shims **may remain temporarily**, and
+recursively marking every existing consumer a violation is explicitly not the remedy. It would
+produce hundreds of findings that identify no new authority.
+
+`scripts/firebaseShimBoundary.mjs` holds the distinction the ruling requires. The dependency **is**
+fenced at the shim: each shim is a guard baseline entry, it cannot move, and no new one can join it.
+What was unfenced is the **growth of the consumer set** -- nothing stopped a new business module from
+reaching Firestore through `import { db } from "../firebase/firebase"` and appearing nowhere in this
+ledger. So the ratchet governs growth:
+
+- the registry is **derived from the code** (a module that carries a guard-fenced Firestore
+  dependency *and* exports a binding that hands Firestore/Functions authority across its boundary),
+  never hand-listed -- a hand list goes stale silently, and a stale allow-list is a bypass;
+- every consumer observed today is recorded in `docs/architecture/firebase-shim-consumer-census.json`
+  and tolerated;
+- the census is **shrink-only**: a new consumer fails, a removed one is the ratchet working, and a
+  stale entry fails for exactly the reason a stale baseline entry does;
+- a consumer that *also* imports the fenced dependency directly is **not** censused here -- it is a
+  guard baseline entry and that ratchet already governs it. The two fences compose rather than
+  double-governing one file.
+
+**Insulation is not a shim.** A read hook, a query service, or a domain command that uses Firestore
+internally and returns *data* hands no authority across its boundary, and its callers are not
+consumers. Holding that line is the whole difficulty: three successive over-wide rules discovered
+190, 65 and 21 "shims" before the current one, which discovers **4** with **5** tolerated consumers.
+
+**Retirement happens with the underlying Firebase exit, not separately.** A module leaves the
+registry automatically when it stops carrying a guard-fenced Firestore dependency, and its census
+section must be deleted in the same change -- the stale-entry check enforces that. There is no
+separate shim-retirement milestone to schedule, and none should be created.

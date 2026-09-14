@@ -1,0 +1,71 @@
+{
+  "schema": "eos.firebase-shim-consumer-census/1",
+  "derivedAtSha": "64008d5ae0bdd9532909671b15a91122400accf1",
+  "authority": {
+    "ownerRuling": "Approved transitional Firestore re-export shims may remain temporarily. Existing consumers are NOT violations and must not be marked recursively.",
+    "ratchets": "consumer-set GROWTH, not shim existence",
+    "shrinkOnly": true,
+    "retirement": "With the underlying Firebase exit. A shim leaves this census when it stops carrying a guard-fenced Firestore dependency; there is no separate shim-retirement milestone.",
+    "noNewBusinessAuthorityBehindAShim": true
+  },
+  "observed": {
+    "scannedFiles": 1269,
+    "shimsDiscovered": 4,
+    "alreadyFencedConsumers": 71,
+    "insulationNotGoverned": "Read hooks, query services and domain commands that use Firestore internally and return data are NOT shims and their callers are NOT censused -- see authorityExports."
+  },
+  "shims": [
+    {
+      "shim": "field-ops-app-vite/src/firebase/collectionStore.js",
+      "guardCategories": [
+        "frontend.firestore_client"
+      ],
+      "authorityExports": [
+        "makeCollectionStore"
+      ],
+      "consumers": [
+        "field-ops-app-vite/src/domain/accounts.js",
+        "field-ops-app-vite/src/domain/contacts.js",
+        "field-ops-app-vite/src/domain/equipmentRepository.js",
+        "field-ops-app-vite/src/domain/locations.js"
+      ]
+    },
+    {
+      "shim": "field-ops-app-vite/src/firebase/firebase.js",
+      "guardCategories": [
+        "frontend.firebase_functions_client",
+        "frontend.firestore_client"
+      ],
+      "authorityExports": [
+        "db",
+        "functions"
+      ],
+      "consumers": []
+    },
+    {
+      "shim": "field-ops-app-vite/src/lib/firebaseSafe.js",
+      "guardCategories": [
+        "frontend.firestore_client"
+      ],
+      "authorityExports": [
+        "safeAddDoc",
+        "safeDeleteDoc",
+        "safeSetDoc",
+        "safeUpdateDoc"
+      ],
+      "consumers": []
+    },
+    {
+      "shim": "functions/src/scheduling/schedulingRepository.ts",
+      "guardCategories": [
+        "server.firebase_admin_firestore"
+      ],
+      "authorityExports": [
+        "db"
+      ],
+      "consumers": [
+        "functions/src/scheduling/schedulingReadService.ts"
+      ]
+    }
+  ]
+}
