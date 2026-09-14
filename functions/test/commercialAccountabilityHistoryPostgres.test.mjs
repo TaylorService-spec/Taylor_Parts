@@ -77,7 +77,7 @@ test("governed PostgreSQL accountability audit authority, in PostgreSQL", { skip
     VALUES ('legacy-est','t1','o-legacy-1',NULL,'e-a','LEGACY','legacy'), ('legacy-hof','t1','o-legacy-2','e-a','e-b','LEGACY','legacy')`);
 
   await t.test("MIGRATION SAFETY: 021 applies over existing history, rewrites nothing and invents no provenance", async () => {
-    migrate();
+    migrate("1"); // exactly migration 021 -- later migrations (022 adds the Account key) are not what this proves
     const rows = (await q(`SELECT id, action, source, previous_accountable_employee_id, new_accountable_employee_id FROM eos_commercial.accountability_handoffs ORDER BY id`)).rows;
     assert.deepEqual(rows, [
       { id: "legacy-est", action: "ESTABLISHMENT", source: null, previous_accountable_employee_id: null, new_accountable_employee_id: "e-a" },

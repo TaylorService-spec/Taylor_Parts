@@ -71,6 +71,12 @@ async function prepare() {
     "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",
     [TENANT],
   );
+  // Migration 022 (wave C1) keys every NEW commercial row to a PostgreSQL Account in the same tenant.
+  await query(
+    `INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by)
+     VALUES ('acct-1', $1, 'Commercial proof account', 'ACTIVE', 'test', 'test') ON CONFLICT DO NOTHING`,
+    [TENANT],
+  );
   prepared = true;
 }
 
@@ -110,9 +116,12 @@ test.after(async () => {
       // every existing TRUNCATE of the referenced ones must name it too. Added here rather than left
       // to run order, because a cleanup that depends on which suite ran first is not a cleanup.
       "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
+      // Migration 022's line tables reference the three record tables too.
+      " eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       " eos_commercial.sales_orders," +
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );
+    await query("DELETE FROM eos_crm.accounts WHERE tenant_id = $1", [TENANT]);
   }
   if (pool) await pool.end();
 });
@@ -133,11 +142,13 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
   );
   assert.deepEqual(
     tables.rows.map((r) => r.table_name),
-    ["accountability_handoffs", "opportunities", "ownership_handoffs", "sales_agreements", "sales_orders"],
+    ["accountability_handoffs", "command_receipts", "number_counters", "opportunities", "opportunity_lines", "ownership_handoffs",
+      "sales_agreement_lines", "sales_agreements", "sales_order_lines", "sales_orders"],
     "five tables: three commercial records, their shared OWNERSHIP history, and -- since migration 020 " +
       "(Wave 2C) -- their shared ACCOUNTABILITY history. The second history table is deliberately NOT a " +
       "new source value on `ownership_handoffs`: #187 s1 rules that accountability must not be redefined " +
-      "as ownership, and reusing those columns would make their names lie about what they hold.",
+      "as ownership, and reusing those columns would make their names lie about what they hold. Migration 022 " +
+      "(wave C1) adds the three commercial line tables, the business-number counter and the idempotency receipts.",
   );
 });
 
