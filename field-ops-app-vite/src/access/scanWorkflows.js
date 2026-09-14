@@ -86,9 +86,40 @@ export const RETURNS_INTAKE_CAPABILITY = "inventory.returns.intake";
  * worker who may record where something was stowed may NOT, by that alone, move it. Bin read is also
  * required, because every bin in a move is resolved through the trusted bin read.
  *
- * Registered active:false and granted to no Role, so this is offered to nobody until BIN-P4.
+ * REGISTERED active:false, GRANTED to inventoryStockRelocationOperator (governedBusinessRoles.ts)
+ * and ACTIVATED in platform-sandbox (config/environments.json). The line that used to stand here
+ * said "granted to no Role"; that is stale. Until 2026-09-12 this workflow was still offered to
+ * nobody -- for a third reason entirely: the id was in no client request set, so the feed was never
+ * asked and the gate below read `undefined` for every principal. See access/shellCapabilityGates.js.
  */
 export const STOCK_RELOCATE_CAPABILITY = "inventory.stock.relocate";
+
+/**
+ * EVERY capability `deriveScanWorkflows` consults, as one declared list.
+ *
+ * THIRD FAILURE MODE (P2-G). A capability can be registered, activatable AND granted and still
+ * resolve permanently `false` on the client, because `buildHasCapability` answers from
+ * `feed.decisions[id]` and the feed only decides the ids it was ASKED for. This list exists so the
+ * shell's request set can be DERIVED from the gates instead of hand-maintained beside them: the
+ * `holds()` calls below and access/shellCapabilityGates.js now read from the same constants, so a
+ * workflow cannot be gated on an id the shell never asks about.
+ *
+ * That is exactly how `inventory.stock.relocate` went blind: MOVE_STOCK was gated on it, nothing
+ * requested it, and the only quantity-moving scanner workflow could never be offered to anyone --
+ * not because it was inactive (it is, separately) and not because it was ungranted (it is granted,
+ * to inventoryStockRelocationOperator), but because the question was never put.
+ */
+export const SCAN_WORKFLOW_CAPABILITY_IDS = Object.freeze([
+  RECEIVE_CAPABILITY,
+  TRANSFER_DISPATCH_CAPABILITY,
+  TRANSFER_RECEIVE_CAPABILITY,
+  CYCLE_COUNT_CREATE_CAPABILITY,
+  CYCLE_COUNT_SUBMIT_CAPABILITY,
+  PLACEMENT_RECORD_CAPABILITY,
+  BIN_READ_CAPABILITY,
+  RETURNS_INTAKE_CAPABILITY,
+  STOCK_RELOCATE_CAPABILITY,
+]);
 
 /**
  * Derive the available workflows.

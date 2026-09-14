@@ -14,6 +14,8 @@ import {
 } from "../src/access/reportCapabilityAccess.js";
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "../src/access/reportAccess.js";
 import { GOVERNED_SURFACE_CAPABILITY_IDS, DASHBOARD_MODULE_CAPABILITY_IDS } from "../src/access/governedSurfaceCapabilities.js";
+import { SHELL_GATED_CAPABILITY_IDS } from "../src/access/shellCapabilityGates.js";
+import { SCAN_WORKFLOW_CAPABILITY_IDS } from "../src/access/scanWorkflows.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -37,17 +39,37 @@ ok("requests the report ids PLUS the governed surface ids -- a closed, declared 
   // FIN-004 `finance.visibility.*` reach scopes come with them: `finance.read` is only the
   // fact-family gate and `listFinancialFacts` refuses a principal holding no scope, so asking for
   // the gate alone produced a money tile that could only ever say "could not be read".
-  assert.deepEqual([...REPORT_CAPABILITY_REQUEST], [
-    ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
-    ...REPORT_DEFINITION_CAPABILITY_IDS,
-    ...GOVERNED_SURFACE_CAPABILITY_IDS,
-    ...DASHBOARD_MODULE_CAPABILITY_IDS,
-  ]);
+  //
+  // EXTENDED AGAIN, AND THEN DERIVED (P2-G). The list is no longer hand-maintained beside the
+  // gates: it IS the de-duplicated union of access/shellCapabilityGates.js's declared gates, which
+  // the gating components import from. That closed the last five instances of the same defect --
+  // inventory.location.bin.manage, inventory.stock.relocate, financialPolicy.profile.read,
+  // financialPolicy.profile.configure, equipment.compatibility.view -- and, more to the point,
+  // removed the two-lists-kept-equal-by-hand arrangement that produced every one of them.
+  // The exactness this assertion used to provide now lives in test/capabilityRequestCoverage.test.mjs,
+  // which fails when ANY gated id in src/ is not asked about by some request set.
+  assert.deepEqual([...REPORT_CAPABILITY_REQUEST], [...SHELL_GATED_CAPABILITY_IDS]);
+  // The four original groups are all still in it, in order, and still nothing arbitrary: the union
+  // adds only ids that a declared gate actually consults.
+  assert.deepEqual(
+    [...REPORT_CAPABILITY_REQUEST].slice(0, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length),
+    [
+      ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
+      ...REPORT_DEFINITION_CAPABILITY_IDS,
+      ...GOVERNED_SURFACE_CAPABILITY_IDS,
+      ...DASHBOARD_MODULE_CAPABILITY_IDS,
+    ],
+  );
+  for (const id of SCAN_WORKFLOW_CAPABILITY_IDS) {
+    assert.ok(REPORT_CAPABILITY_REQUEST.includes(id), `scan workflow gates on ${id} but it is not requested`);
+  }
   assert.deepEqual([...REPORT_DEFINITION_CAPABILITY_IDS].sort(), [
     "report.definition.create", "report.definition.delete", "report.definition.duplicate",
     "report.definition.read", "report.definition.rename",
   ]);
-  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length);
+  // The five surfaces the union added beyond the four original groups: Warehouse Racking's manage
+  // id, Move stock's relocate id, both Financial Policy ids, and the compatibility view id.
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9 + GOVERNED_SURFACE_CAPABILITY_IDS.length + DASHBOARD_MODULE_CAPABILITY_IDS.length + 5);
   // No duplicates: a repeated id would be a silent sign two concerns had drifted into one list.
   assert.equal(new Set(REPORT_CAPABILITY_REQUEST).size, REPORT_CAPABILITY_REQUEST.length);
 });

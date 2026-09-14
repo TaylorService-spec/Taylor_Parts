@@ -16,25 +16,29 @@
 // GOVERNANCE BOUNDARY: governed access comes ONLY from the callable's decisions. This module never
 // reads users/{uid}.role, never inspects Role names, and never builds a Role definition -- a raw
 // role can never confer a governed capability (the W1 correction; this keeps it true).
-import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "./reportAccess.js";
-import { GOVERNED_SURFACE_CAPABILITY_IDS, DASHBOARD_MODULE_CAPABILITY_IDS } from "./governedSurfaceCapabilities.js";
+import { SHELL_GATED_CAPABILITY_IDS } from "./shellCapabilityGates.js";
 
 // The capabilities the trusted feed is asked to decide, in ONE consistent request (all resolved
-// against the same accessVersion): the four wave-1 Report Builder object-read ids, plus the five
-// per-action saved-definition ids the Saved Reports UI gates on. Never a broader or arbitrary set.
-// Extended (Owner decision 2026-08-16, #1065) with the governed SURFACE capabilities that now decide
-// route/nav visibility for capability-backed surfaces. Still one consistent request resolved against a
-// single accessVersion -- and still a closed, declared list, never a broader or arbitrary set. The name
-// stays REPORT_CAPABILITY_REQUEST because every consumer already imports it; what it means is "the
-// capabilities the shell must have a decision on to render navigation honestly".
-export const REPORT_CAPABILITY_REQUEST = Object.freeze([
-  ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
-  ...REPORT_DEFINITION_CAPABILITY_IDS,
-  ...GOVERNED_SURFACE_CAPABILITY_IDS,
-  // My Dashboard module composition. Without these the feed is never asked, and an unasked
-  // capability is indistinguishable from a denied one -- see DASHBOARD_MODULE_CAPABILITY_IDS.
-  ...DASHBOARD_MODULE_CAPABILITY_IDS,
-]);
+// against the same accessVersion). Never a broader or arbitrary set.
+//
+// DERIVED, NOT MAINTAINED (P2-G). This used to be a hand-written list of spreads that had to be kept
+// equal to the gates by somebody remembering to. It was not: four separate defects were found and
+// hand-patched by appending to it (My Dashboard's module ids, Data Import, Administration > Users,
+// Inbound Work), and P3-A2 then found two more (`inventory.location.bin.manage`,
+// `inventory.stock.relocate`) with this lane's census adding three (`financialPolicy.profile.read`,
+// `financialPolicy.profile.configure`, `equipment.compatibility.view`).
+//
+// It is now the UNION OF THE DECLARED GATES (access/shellCapabilityGates.js), which the gating
+// components import from, so a gate and the request cannot disagree. The name stays
+// REPORT_CAPABILITY_REQUEST because every consumer already imports it; what it means is "the
+// capabilities the shell must have a decision on to render its controls honestly".
+//
+// THE FAILURE THIS CLOSES is distinct from the two known ones and is NOT a governance change:
+// an id nobody asks about resolves `undefined` -> `false` in buildHasCapability() below, forever,
+// for every principal in every environment -- which is indistinguishable from `active:false` and
+// from "not activated here", and is fixed by neither granting nor activating. Asking is not
+// granting: a principal without the grant still gets `false`, from the server, on the evidence.
+export const REPORT_CAPABILITY_REQUEST = SHELL_GATED_CAPABILITY_IDS;
 
 // Observed-version subscription status. hasCapability requires `ready` with a valid version.
 export const VERSION_STATUS = Object.freeze({
