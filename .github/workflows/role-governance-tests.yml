@@ -94,6 +94,9 @@ on:
       - "docs/architecture/capability-graph.json"
       - "docs/architecture/capability-graph.md"
       - "functions/test/capabilityGraphDrift.test.mjs"
+      # C4: the Commercial transport and its capability vocabulary feed the generated capability graph and the catalog.
+      - "functions/src/eosCommercial/**"
+      - "functions/migrations/1759536000000_commercial-capability-vocabulary.sql"
       - "functions/scripts/certificationWorld/dataContractParity.mjs"
       - "functions/scripts/certificationWorld/state.mjs"
       - "functions/scripts/certificationWorld/verify.mjs"
@@ -188,6 +191,9 @@ on:
       - "docs/architecture/capability-graph.json"
       - "docs/architecture/capability-graph.md"
       - "functions/test/capabilityGraphDrift.test.mjs"
+      # C4: the Commercial transport and its capability vocabulary feed the generated capability graph and the catalog.
+      - "functions/src/eosCommercial/**"
+      - "functions/migrations/1759536000000_commercial-capability-vocabulary.sql"
       - "functions/scripts/certificationWorld/dataContractParity.mjs"
       - "functions/scripts/certificationWorld/state.mjs"
       - "functions/scripts/certificationWorld/verify.mjs"

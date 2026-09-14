@@ -69,7 +69,7 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
     VALUES ('opp-legacy','t1','OPP-LEGACY','firestore-only-account','e-owner','legacy','legacy')`);
 
   await t.test("(25) 022 applies over current-shaped data: nothing invented, nothing asserted retroactively", async () => {
-    migrate();
+    migrate("1"); // exactly migration 022 -- later migrations (023 adds capability vocabulary) are not what this proves
     const applied = (await q(`SELECT name FROM public.pgmigrations ORDER BY run_on, id`)).rows.map((r) => r.name);
     assert.equal(applied.at(-1), "1759449600000_commercial-schema-parity-numbering-receipts");
     assert.ok(!applied.some((n) => n.includes("employee-principal-link-employee-fk")), "(21) the deferred Employee FK ran");
@@ -289,7 +289,7 @@ test("the down migration of 022 refuses on any single C1 business fact, and not 
   const latest = async () => (await withClient(url, (c) => c.query(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC LIMIT 1`))).rows[0].name;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
   t.after(() => withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)));
-  run("up");
+  run("up", "22"); // through migration 022 only: the down guard under test is 022's, not a later migration's
   const q = (text, values = []) => withClient(url, (c) => c.query(text, values));
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
   await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-1','t1','A','ACTIVE','x','x')`);
@@ -303,7 +303,7 @@ test("the down migration of 022 refuses on any single C1 business fact, and not 
     assert.equal((await q(`SELECT edit_version FROM eos_commercial.opportunities WHERE id='o1'`)).rows[0].edit_version, "1");
     assert.equal(downRefuses(), false, "edit_version alone blocked the rollback");
     assert.notEqual(await latest(), "1759449600000_commercial-schema-parity-numbering-receipts");
-    run("up");
+    run("up", "1");
     assert.equal(await latest(), "1759449600000_commercial-schema-parity-numbering-receipts");
   });
 
@@ -340,7 +340,7 @@ test("the down migration of 022 refuses on any single C1 business fact, and not 
     assert.equal(downRefuses(), true, "agreement acceptance did not block the rollback");
     await q(`UPDATE eos_commercial.sales_agreements SET state=NULL, accepted_at=NULL, accepted_by=NULL WHERE id='sa1'`);
     assert.equal(downRefuses(), false, "clearing every C1 value did not make the database reversible again");
-    run("up");
+    run("up", "1");
   });
 
   await t.test("D. lines, counters and receipts still refuse the rollback", async () => {

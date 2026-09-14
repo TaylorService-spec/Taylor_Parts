@@ -1,4 +1,4 @@
-// Governed PostgreSQL Account-scoped Commercial projection -- wave C3. Internal; nothing external invokes it yet.
+// Governed PostgreSQL Account-scoped Commercial projection -- wave C3. Reached only through the C4 transport (commercialHttp.ts).
 //
 // Replaces, for a future C4 transport, the Account workspace's separate Firestore reads (listOpportunitiesForAccount,
 // listSalesOrdersForAccount) with one snapshot: the Account's complete Opportunities, Sales Agreements and Sales Orders

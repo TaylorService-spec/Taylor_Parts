@@ -1,4 +1,4 @@
-// Governed PostgreSQL Sales Order read projections -- wave C3. Internal; nothing external invokes them yet.
+// Governed PostgreSQL Sales Order read projections -- wave C3. Reached only through the C4 transport (commercialHttp.ts).
 //
 // CORE COMMERCIAL FACTS ONLY. D2 execution stays deferred (Owner ruling D2, option a), so this projection carries no
 // allocated / fulfilled / billed quantity, allocation or reservation state, service Work Order lineage, invoice
