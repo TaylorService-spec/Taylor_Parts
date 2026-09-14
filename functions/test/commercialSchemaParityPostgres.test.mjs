@@ -118,6 +118,24 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
       ('t1',$1,2,'SERVICE','svc-install','INSTALLATION',1,NULL,NULL,NULL,NULL)`, [spineSa.id]);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_commercial.sales_agreement_lines WHERE sales_agreement_id=$1`, [spineSa.id])).rows[0].n, 2);
     await assert.rejects(q(`UPDATE eos_commercial.sales_agreements SET accepted_at=NULL WHERE id=$1`, [spineSa.id]), /sales_agreements_accepted_exactly_when_accepted/);
+    // NULL-safety: the acceptance pair can never be half-recorded, and never appear without an ACCEPTED state.
+    const agreement = (id, number, state, acceptedAt, acceptedBy) => q(`INSERT INTO eos_commercial.sales_agreements
+      (id, tenant_id, sales_agreement_number, account_id, owner_employee_id, created_by, updated_by, state, accepted_at, accepted_by)
+      VALUES ($1,'t1',$2,'acct-1','e','x','x',$3,$4,$5)`, [id, number, state, acceptedAt, acceptedBy]);
+    const acceptance = /sales_agreements_accepted_exactly_when_accepted/;
+    // Refused: acceptance metadata that is partial, or present without state ACCEPTED (NULL state included).
+    await assert.rejects(agreement("sa-r1", "SA-R1", "DRAFT", new Date(), null), acceptance, "1. DRAFT + accepted_at only");
+    await assert.rejects(agreement("sa-r2", "SA-R2", "DRAFT", null, "p1"), acceptance, "2. DRAFT + accepted_by only");
+    await assert.rejects(agreement("sa-r3", "SA-R3", "DECLINED", new Date(), "p1"), acceptance, "3. DECLINED + both acceptance fields");
+    await assert.rejects(agreement("sa-r4", "SA-R4", null, new Date(), null), acceptance, "4. NULL state + accepted_at");
+    await assert.rejects(agreement("sa-r5", "SA-R5", null, null, "p1"), acceptance, "5. NULL state + accepted_by");
+    await assert.rejects(agreement("sa-r5b", "SA-R5B", null, new Date(), "p1"), acceptance, "NULL state + both acceptance fields");
+    await assert.rejects(agreement("sa-r5c", "SA-R5C", "ACCEPTED", new Date(), null), acceptance, "ACCEPTED + accepted_at only");
+    // Accepted: 6. ACCEPTED with both fields, and 7. DRAFT / DECLINED / NULL with neither.
+    await agreement("sa-a6", "SA-A6", "ACCEPTED", new Date(), "p1");
+    await agreement("sa-a7-draft", "SA-A7-DRAFT", "DRAFT", null, null);
+    await agreement("sa-a7-declined", "SA-A7-DECLINED", "DECLINED", null, null);
+    await agreement("sa-a7-null", "SA-A7-NULL", null, null, null);
     await assert.rejects(q(`UPDATE eos_commercial.sales_agreements SET currency='EUR' WHERE id=$1`, [spineSa.id]), /sales_agreements_currency_usd/);
     await assert.rejects(q(`UPDATE eos_commercial.sales_agreements SET tax_minor=-1 WHERE id=$1`, [spineSa.id]), /sales_agreements_charges_minor_units/, "(7)");
     await assert.rejects(q(`INSERT INTO eos_commercial.sales_agreements (id, tenant_id, sales_agreement_number, account_id, opportunity_id, owner_employee_id, created_by, updated_by)
@@ -245,5 +263,98 @@ test("commercial schema parity, numbering and receipts, in PostgreSQL", { skip: 
       Promise.resolve().then(() => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "--migrations-dir", "migrations"], { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe" })),
       (e) => /refuses to drop Commercial schema parity/.test(String(e.stderr ?? e.message)),
     );
+  });
+});
+
+// ════════════════════ THE DOWN MIGRATION GUARD COUNTS EVERY C1 BUSINESS FACT ════════════════════
+//
+// A separate database, so each scenario starts from a known state. Identity-only rows (edit_version=1 included) must
+// stay reversible; a single C1 business value in ANY new column -- including the ones a stage/state-only guard would
+// miss -- must refuse; lines, counters and receipts must refuse.
+test("the down migration of 022 refuses on any single C1 business fact, and not on edit_version alone", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const name = `c1_down_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const url = (() => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); })();
+  const run = (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
+    cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
+  });
+  const downRefuses = () => {
+    try {
+      run("down", "1");
+    } catch (err) {
+      assert.match(String(err.stderr), /migration 022 refuses to drop Commercial schema parity/);
+      return true;
+    }
+    return false;
+  };
+  const latest = async () => (await withClient(url, (c) => c.query(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC LIMIT 1`))).rows[0].name;
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  t.after(() => withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)));
+  run("up");
+  const q = (text, values = []) => withClient(url, (c) => c.query(text, values));
+  await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
+  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-1','t1','A','ACTIVE','x','x')`);
+  await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider) VALUES ('p1','p1','proof')`);
+  await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m1','t1','p1')`);
+  await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, created_by, updated_by) VALUES ('o1','t1','OPP-1','acct-1','e','x','x')`);
+  await q(`INSERT INTO eos_commercial.sales_agreements (id, tenant_id, sales_agreement_number, account_id, opportunity_id, owner_employee_id, created_by, updated_by) VALUES ('sa1','t1','SA-1','acct-1','o1','e','x','x')`);
+  await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, opportunity_id, sales_agreement_id, owner_employee_id, operating_company_key, created_by, updated_by) VALUES ('so1','t1','SO-1','acct-1','o1','sa1','e','taylor','x','x')`);
+
+  await t.test("A. identity-only rows, with edit_version=1 on every Opportunity, remain reversible", async () => {
+    assert.equal((await q(`SELECT edit_version FROM eos_commercial.opportunities WHERE id='o1'`)).rows[0].edit_version, "1");
+    assert.equal(downRefuses(), false, "edit_version alone blocked the rollback");
+    assert.notEqual(await latest(), "1759449600000_commercial-schema-parity-numbering-receipts");
+    run("up");
+    assert.equal(await latest(), "1759449600000_commercial-schema-parity-numbering-receipts");
+  });
+
+  // Every business column 022 adds, one at a time. The stage/state/sales_channel columns are included too.
+  const single = [
+    ["opportunities", "o1", "sales_channel", "'RETAIL'"], ["opportunities", "o1", "stage", "'IDENTIFIED'"],
+    ["opportunities", "o1", "need", "'x'"], ["opportunities", "o1", "expected_value", "100"],
+    ["opportunities", "o1", "expected_close_at", "now()"], ["opportunities", "o1", "next_action", "'Call'"],
+    ["opportunities", "o1", "credited_salesperson_employee_id", "'e-credit'"],
+    ["sales_agreements", "sa1", "state", "'DRAFT'"], ["sales_agreements", "sa1", "currency", "'USD'"],
+    ["sales_agreements", "sa1", "credited_salesperson_employee_id", "'e-credit'"], ["sales_agreements", "sa1", "location_id", "'loc-1'"],
+    ["sales_agreements", "sa1", "customer_po", "'PO-1'"], ["sales_agreements", "sa1", "is_lease", "false"],
+    ["sales_agreements", "sa1", "fulfillment_intent", "'DELIVER'"], ["sales_agreements", "sa1", "shipping_instructions", "'Dock'"],
+    ["sales_agreements", "sa1", "ship_via", "'Freight'"], ["sales_agreements", "sa1", "special_instructions", "'Call'"],
+    ["sales_agreements", "sa1", "shipping_minor", "0"], ["sales_agreements", "sa1", "install_charge_minor", "0"],
+    ["sales_agreements", "sa1", "tax_minor", "0"], ["sales_agreements", "sa1", "down_payment_minor", "0"],
+    ["sales_agreements", "sa1", "trade_in_minor", "0"],
+    ["sales_orders", "so1", "state", "'CONFIRMED'"], ["sales_orders", "so1", "sales_channel", "'RETAIL'"],
+    ["sales_orders", "so1", "currency", "'USD'"], ["sales_orders", "so1", "credited_salesperson_employee_id", "'e-credit'"],
+    ["sales_orders", "so1", "booked_at", "now()"], ["sales_orders", "so1", "location_id", "'loc-1'"],
+    ["sales_orders", "so1", "customer_po", "'PO-1'"], ["sales_orders", "so1", "notes", "'n'"],
+  ];
+  await t.test("B/C. a single C1 value in any one business column refuses the rollback", async () => {
+    for (const [table, id, column, value] of single) {
+      await q(`UPDATE eos_commercial.${table} SET ${column} = ${value} WHERE id = $1`, [id]);
+      assert.equal(downRefuses(), true, `${table}.${column} alone did not block the rollback`);
+      await q(`UPDATE eos_commercial.${table} SET ${column} = NULL WHERE id = $1`, [id]);
+    }
+    // The paired facts that cannot be set alone under their own CHECKs.
+    await q(`UPDATE eos_commercial.opportunities SET outcome='LOST', closed_at=now() WHERE id='o1'`);
+    assert.equal(downRefuses(), true, "opportunity outcome/closed_at did not block the rollback");
+    await q(`UPDATE eos_commercial.opportunities SET outcome=NULL, closed_at=NULL WHERE id='o1'`);
+    await q(`UPDATE eos_commercial.sales_agreements SET state='ACCEPTED', accepted_at=now(), accepted_by='p1' WHERE id='sa1'`);
+    assert.equal(downRefuses(), true, "agreement acceptance did not block the rollback");
+    await q(`UPDATE eos_commercial.sales_agreements SET state=NULL, accepted_at=NULL, accepted_by=NULL WHERE id='sa1'`);
+    assert.equal(downRefuses(), false, "clearing every C1 value did not make the database reversible again");
+    run("up");
+  });
+
+  await t.test("D. lines, counters and receipts still refuse the rollback", async () => {
+    const facts = [
+      [`INSERT INTO eos_commercial.opportunity_lines (tenant_id, opportunity_id, line_number, kind, ref, qty) VALUES ('t1','o1',1,'PART','p',1)`, `DELETE FROM eos_commercial.opportunity_lines`],
+      [`INSERT INTO eos_commercial.sales_agreement_lines (tenant_id, sales_agreement_id, line_number, kind, ref, business_unit, quantity) VALUES ('t1','sa1',1,'PART','p','PARTS',1)`, `DELETE FROM eos_commercial.sales_agreement_lines`],
+      [`INSERT INTO eos_commercial.sales_order_lines (tenant_id, sales_order_id, line_number, kind, ref, business_unit, ordered_qty) VALUES ('t1','so1',1,'PART','p','PARTS',1)`, `DELETE FROM eos_commercial.sales_order_lines`],
+      [`INSERT INTO eos_commercial.number_counters (tenant_id, series, year, last_value) VALUES ('t1','OPPORTUNITY',2026,1)`, `DELETE FROM eos_commercial.number_counters`],
+      [`INSERT INTO eos_commercial.command_receipts (id, tenant_id, principal_id, operation, idempotency_key_hash, result) VALUES ('r1','t1','p1','opportunity.create','${sha("k")}','{}')`, `DELETE FROM eos_commercial.command_receipts`],
+    ];
+    for (const [insert, clear] of facts) {
+      await q(insert);
+      assert.equal(downRefuses(), true, `${insert.slice(0, 50)} did not block the rollback`);
+      await q(clear);
+    }
   });
 });

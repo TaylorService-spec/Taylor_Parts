@@ -140,8 +140,12 @@ ALTER TABLE sales_agreements
         (shipping_minor IS NULL OR shipping_minor >= 0) AND (install_charge_minor IS NULL OR install_charge_minor >= 0)
         AND (tax_minor IS NULL OR tax_minor >= 0) AND (down_payment_minor IS NULL OR down_payment_minor >= 0)
         AND (trade_in_minor IS NULL OR trade_in_minor >= 0)),
+    -- Acceptance is recorded as a PAIR, and exactly when the state is ACCEPTED. Both halves use NULL-safe tests: a
+    -- plain `state = 'ACCEPTED'` is NULL for an identity-only row, and a CHECK that evaluates to NULL passes -- which
+    -- would admit acceptance facts on a row with no state, and a half-recorded acceptance on a DRAFT.
     ADD CONSTRAINT sales_agreements_accepted_exactly_when_accepted
-        CHECK ((state = 'ACCEPTED') = (accepted_at IS NOT NULL AND accepted_by IS NOT NULL)),
+        CHECK ((accepted_at IS NULL) = (accepted_by IS NULL)
+               AND (state IS NOT DISTINCT FROM 'ACCEPTED') = (accepted_at IS NOT NULL)),
     ADD CONSTRAINT sales_agreements_credited_salesperson_shape CHECK (credited_salesperson_employee_id IS NULL
         OR (credited_salesperson_employee_id <> '' AND btrim(credited_salesperson_employee_id) = credited_salesperson_employee_id
             AND position('/' in credited_salesperson_employee_id) = 0)),
@@ -249,6 +253,8 @@ CREATE TABLE command_receipts (
 SET search_path = eos_commercial, public;
 
 -- REFUSE WHILE ANY C1 FACT IS RECORDED: dropping these columns or tables would destroy Commercial business data.
+-- EVERY business column 022 adds is counted, one by one. `edit_version` is not: it is a technical concurrency token
+-- 022 gives every existing identity-only row, so an identity-only database stays reversible.
 DO $$
 DECLARE
     recorded BIGINT;
@@ -256,9 +262,18 @@ BEGIN
     SELECT (SELECT count(*) FROM opportunity_lines) + (SELECT count(*) FROM sales_agreement_lines)
          + (SELECT count(*) FROM sales_order_lines) + (SELECT count(*) FROM number_counters)
          + (SELECT count(*) FROM command_receipts)
-         + (SELECT count(*) FROM opportunities WHERE stage IS NOT NULL OR sales_channel IS NOT NULL)
-         + (SELECT count(*) FROM sales_agreements WHERE state IS NOT NULL)
-         + (SELECT count(*) FROM sales_orders WHERE state IS NOT NULL)
+         + (SELECT count(*) FROM opportunities WHERE sales_channel IS NOT NULL OR stage IS NOT NULL
+              OR outcome IS NOT NULL OR closed_at IS NOT NULL OR need IS NOT NULL OR expected_value IS NOT NULL
+              OR expected_close_at IS NOT NULL OR next_action IS NOT NULL OR credited_salesperson_employee_id IS NOT NULL)
+         + (SELECT count(*) FROM sales_agreements WHERE state IS NOT NULL OR currency IS NOT NULL
+              OR credited_salesperson_employee_id IS NOT NULL OR location_id IS NOT NULL OR customer_po IS NOT NULL
+              OR is_lease IS NOT NULL OR fulfillment_intent IS NOT NULL OR shipping_instructions IS NOT NULL
+              OR ship_via IS NOT NULL OR special_instructions IS NOT NULL OR shipping_minor IS NOT NULL
+              OR install_charge_minor IS NOT NULL OR tax_minor IS NOT NULL OR down_payment_minor IS NOT NULL
+              OR trade_in_minor IS NOT NULL OR accepted_at IS NOT NULL OR accepted_by IS NOT NULL)
+         + (SELECT count(*) FROM sales_orders WHERE state IS NOT NULL OR sales_channel IS NOT NULL OR currency IS NOT NULL
+              OR credited_salesperson_employee_id IS NOT NULL OR booked_at IS NOT NULL OR location_id IS NOT NULL
+              OR customer_po IS NOT NULL OR notes IS NOT NULL)
       INTO recorded;
     IF recorded > 0 THEN
         RAISE EXCEPTION 'migration 022 refuses to drop Commercial schema parity: % rows carry C1 facts', recorded
