@@ -193,17 +193,39 @@ export type AbsenceVerdict = "proven-absence" | "refuse-unproven-absence" | "not
 // PURE, for the same reason judgeScanCompleteness() is: this file's stated
 // design is that every limit DECISION is a small, independently testable helper.
 //
-// Only SCAN truncation is consulted, and that is not an oversight:
-// rowCapTruncated and groupCardinalityTruncated both REQUIRE more rows than
-// their cap, so neither can ever coexist with rowCount === 0. Scan truncation is
-// the only bound that cuts the POPULATION before a single filter runs, and so
-// the only one that can turn a real match into an apparent absence.
+// rowCapTruncated and groupCardinalityTruncated are deliberately NOT consulted:
+// both REQUIRE more rows than their cap, so neither can ever coexist with
+// rowCount === 0.
+//
+// TWO bounds can turn a real match into an apparent absence, and BOTH are
+// consulted here:
+//
+//   scanTruncated  -- the scan cut the POPULATION before a single filter ran, so
+//                     matching rows may lie beyond the page.
+//
+//   joinIncomplete -- CI-UNBLOCK-1899. The one-hop join did not complete for at
+//                     least one related object: its collection was REFUSED and
+//                     never read (`refusedJoinObjectIds`), or a related document
+//                     WAS read and then DROPPED for failing the run's company
+//                     bound (`incompleteJoinObjectIds`). Either way the related
+//                     field reads `undefined` on every affected row, so a
+//                     predicate over that field excludes rows whose real joined
+//                     value was never established. Zero rows out of that is NOT
+//                     a proven absence -- it is the same false-empty defect this
+//                     branch exists to close, arriving by a different route than
+//                     scan truncation, and ENG-E's own drop was silent about it.
+//
+// Neither bound is weakened by being reported: the related document is still
+// dropped, the refused collection is still never read. What changes is that the
+// outcome stops CLAIMING a proven absence it cannot prove.
 export function judgeAbsenceProvenance(input: {
   scanTruncated: boolean;
   rowCount: number;
+  joinIncomplete?: boolean;
 }): AbsenceVerdict {
   if (input.rowCount > 0) return "not-an-absence";
-  return input.scanTruncated ? "refuse-unproven-absence" : "proven-absence";
+  if (input.scanTruncated) return "refuse-unproven-absence";
+  return input.joinIncomplete ? "refuse-unproven-absence" : "proven-absence";
 }
 
 // The orthogonal completeness axis. NOT a RunReportOutcomeKind -- see above.
@@ -325,6 +347,19 @@ export interface RunReportOutcome {
   // backing collection has no governed company bound (e.g. `employees`, which the
   // ownership matrix classifies EXCLUDED). Those documents are never fetched.
   refusedJoinObjectIds: string[];
+  // CI-UNBLOCK-1899. Related objects whose join was ATTEMPTED and came back
+  // INCOMPLETE: the related document was fetched and then DROPPED because it
+  // failed the run's company bound (a different company, or -- per ENG-E's own
+  // ruling, preserved here -- no company at all). Distinct from
+  // `refusedJoinObjectIds`, where nothing was ever read.
+  //
+  // The drop itself is UNCHANGED and deliberate: no other company's field value
+  // reaches the caller. What this field adds is that the caller can SEE that the
+  // column it asked for is incomplete, instead of reading a `null` it cannot
+  // distinguish from a genuinely unset value -- and, via
+  // judgeAbsenceProvenance(), that a zero-row result which depends on such a
+  // join is refused rather than returned as a proven `kind: "empty"`.
+  incompleteJoinObjectIds: string[];
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -664,6 +699,7 @@ export async function runReportDefinition(
       rowScopeKind: kind === "company-unresolved" ? "unresolved" : rowScope.kind,
       companyBoundRefusal: refusal,
       refusedJoinObjectIds: [],
+      incompleteJoinObjectIds: [],
     };
   };
 
@@ -854,9 +890,15 @@ export async function runReportDefinition(
   // survives the predicate.
   const joinResult = relatedFieldsByBase.length > 0
     ? await joinRelatedDocs(db, objectId, rawDocs, relatedFieldsByBase, companyReach)
-    : { docs: rawDocs, refusedObjectIds: [] as string[] };
+    : { docs: rawDocs, refusedObjectIds: [] as string[], incompleteObjectIds: [] as string[] };
   const joinedRaw = joinResult.docs;
   const refusedJoinObjectIds = joinResult.refusedObjectIds;
+  const incompleteJoinObjectIds = joinResult.incompleteObjectIds;
+  // CI-UNBLOCK-1899. A join that did not complete -- refused outright, or
+  // company-bound-dropped after the read -- leaves the related field `undefined`
+  // on the affected rows. Carried to judgeAbsenceProvenance() below so a zero-row
+  // outcome that depends on it is never labelled a PROVEN absence.
+  const joinIncomplete = refusedJoinObjectIds.length > 0 || incompleteJoinObjectIds.length > 0;
 
   // --- Apply active filters in-memory (now against joined docs, so a
   // related-object predicate actually has a value to compare) ---
@@ -927,21 +969,29 @@ export async function runReportDefinition(
   // has run, because "nothing in the page matched" is only knowable afterwards.
   // Nothing has left the service at this point, so deciding late costs honesty
   // nothing: the rows are discarded by the throw.
-  if (judgeAbsenceProvenance({ scanTruncated, rowCount }) === "refuse-unproven-absence") {
+  if (judgeAbsenceProvenance({ scanTruncated, rowCount, joinIncomplete }) === "refuse-unproven-absence") {
+    const unjoined = [...new Set([...refusedJoinObjectIds, ...incompleteJoinObjectIds])];
+    // Two distinct reasons, two distinct messages -- neither is guessed from the
+    // other. Scan truncation wins when both hold: it cut the population first.
+    const summary = scanTruncated
+      ? `Report run refused: no rows of "${objectId}" matched inside a truncated scan, so an empty result would not be a proven absence.`
+      : `Report run refused: no rows of "${objectId}" matched, but the one-hop join to ${unjoined.map((id) => `"${id}"`).join(", ")} did not complete, so an empty result would not be a proven absence.`;
     await recordStandaloneAuditEvent({
       actorUid: params.runnerUid,
       action: "runReportDefinition",
       targetType: "reportDefinition",
       targetId: definitionId,
       outcome: "denied",
-      summary: `Report run refused: no rows of "${objectId}" matched inside a truncated scan, so an empty result would not be a proven absence.`,
+      summary,
       objectId,
       rowCount: 0,
-      truncated: true,
+      truncated: scanTruncated,
       accessVersionAfter: runner.accessVersion,
     }, db);
     throw new UnprovenAbsenceError(
-      `No matching rows for "${objectId}" were found, but the scan exceeded ${maxScanDocs} documents, so matching rows may exist beyond it. This is NOT a proven "no results": narrow the report with filters so the scan completes.`,
+      scanTruncated
+        ? `No matching rows for "${objectId}" were found, but the scan exceeded ${maxScanDocs} documents, so matching rows may exist beyond it. This is NOT a proven "no results": narrow the report with filters so the scan completes.`
+        : `No matching rows for "${objectId}" were found, but the related object(s) ${unjoined.map((id) => `"${id}"`).join(", ")} could not be joined for this run, so rows may have been excluded on a value that was never read. This is NOT a proven "no results": remove the related-object field from the report, or run it as a runner whose company reach covers those records.`,
     );
   }
 
@@ -996,6 +1046,7 @@ export async function runReportDefinition(
     rowScopeKind: rowScope.kind,
     companyBoundRefusal: null,
     refusedJoinObjectIds,
+    incompleteJoinObjectIds,
   };
 }
 
@@ -1139,12 +1190,16 @@ async function joinRelatedDocs(
   docs: Array<Record<string, unknown>>,
   relatedFields: Array<{ field: ReportField; relationship: NonNullable<ReturnType<typeof resolveDefinitionField>>["relationship"] }>,
   reach: readonly string[],
-): Promise<{ docs: Array<Record<string, unknown>>; refusedObjectIds: string[] }> {
+): Promise<{ docs: Array<Record<string, unknown>>; refusedObjectIds: string[]; incompleteObjectIds: string[] }> {
   // Group the related fields by the relationship they traverse (usually
   // one relationship, but a definition could select fields from more
   // than one related object).
   const byRelationship = new Map<string, { toObjectId: string; toCollection: string; viaField: ReportField; fields: ReportField[]; rowScope: ReportRowScope }>();
   const refusedObjectIds = new Set<string>();
+  // CI-UNBLOCK-1899. Related objects for which at least one referenced document
+  // WAS read and then dropped by the company bound below. The drop is unchanged;
+  // only its silence is.
+  const incompleteObjectIds = new Set<string>();
   for (const { field, relationship } of relatedFields) {
     if (!relationship) continue;
     const toObject = getReportObject(relationship.toObjectId);
@@ -1164,7 +1219,9 @@ async function joinRelatedDocs(
     }
     byRelationship.get(key)!.fields.push(field);
   }
-  if (byRelationship.size === 0) return { docs, refusedObjectIds: [...refusedObjectIds] };
+  if (byRelationship.size === 0) {
+    return { docs, refusedObjectIds: [...refusedObjectIds], incompleteObjectIds: [...incompleteObjectIds] };
+  }
 
   const joinedDocs = docs.map((d) => ({ ...d }));
   for (const { toObjectId, toCollection, viaField, rowScope: relatedRowScope } of byRelationship.values()) {
@@ -1188,6 +1245,20 @@ async function joinRelatedDocs(
       // here and never attached, so its field values cannot reach the caller.
       if (relatedRowScope.kind === "company-bound"
         && !documentSatisfiesCompanyBound(related, relatedRowScope.field, reach)) {
+        // CI-UNBLOCK-1899. THE DROP IS DELIBERATE AND UNCHANGED. ENG-E's ruling
+        // stands in both of its halves: a related document bearing ANOTHER
+        // company never attaches, and a related document bearing NO company
+        // never attaches either (`unresolvedPolicy` on a SINGLE_COMPANY family
+        // says such a document is out-of-model, not company-neutral -- admitting
+        // it here would decide that ruling from the report path, which this lane
+        // has no authority to do).
+        //
+        // What WAS wrong is that the drop was SILENT: the related field then
+        // read `undefined`, a predicate over it excluded the row, and a run that
+        // ended at zero rows was returned as `kind: "empty"` -- a proven-absence
+        // claim for an absence that was never proven. Recording the object here
+        // is what lets judgeAbsenceProvenance() refuse that claim.
+        incompleteObjectIds.add(toObjectId);
         return;
       }
       byId.set(refIdList[i], related);
@@ -1199,7 +1270,11 @@ async function joinRelatedDocs(
       }
     }
   }
-  return { docs: joinedDocs, refusedObjectIds: [...refusedObjectIds] };
+  return {
+    docs: joinedDocs,
+    refusedObjectIds: [...refusedObjectIds],
+    incompleteObjectIds: [...incompleteObjectIds],
+  };
 }
 
 // Independent-review finding (round 1): `sort` was authorization-filtered

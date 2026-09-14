@@ -83,6 +83,33 @@ async function grantRole(runnerUid, roleId, accessVersionAtGrant = 1) {
   return id;
 }
 
+// CI-UNBLOCK-1899. `equipment` is the ONLY object exercised in this file whose
+// ownership-matrix family is SINGLE_COMPANY (ownershipMatrix.ts: family
+// "equipment", ownerClass COMPANY, ownerFields ["operatingCompanyId"]). Every
+// other object used here -- customer/accounts, location/locations,
+// contact/contacts -- is COMPANY_NEUTRAL (ruling R-15) and carries no company
+// field at all.
+//
+// So once the service applies ENG-E's SERVER-SIDE row bound
+// (`where("operatingCompanyId", "in", reach)`), an equipment fixture that
+// carries no company is CORRECTLY invisible to every run -- exactly as a real
+// ownerless equipment record is (unresolvedPolicy OWNERLESS_UNTIL_SUPPLIED).
+// The fixtures below were written before that bound existed and stated no
+// company, so they were scanning zero rows and the related-join assertions were
+// failing on an absent BASE row, not on the join.
+//
+// This helper supplies the tenancy fact the model now requires. It changes NO
+// assertion and it does not widen the bound: reportRowScopeBound.test.mjs still
+// proves the predicate is issued server-side, and the cross-company checks below
+// prove a foreign company's record is still refused.
+const FIXTURE_COMPANY = "taylor";
+
+async function seedEquipment(doc) {
+  const id = uid("eq");
+  await db.collection("equipment").doc(id).set({ operatingCompanyId: FIXTURE_COMPANY, ...doc });
+  return id;
+}
+
 // Test-only Role fixtures -- these never touch compatibilityRoles.ts or
 // governedBusinessRoles.ts; they are passed only via
 // `runReportDefinition(params, { roles })`, the service's own
@@ -628,7 +655,7 @@ async function main() {
     await grantRole(runnerUid2, "relatedFieldOnly");
     const locId = uid("loc");
     await db.collection("locations").doc(locId).set({ name: "Main Warehouse" });
-    await db.collection("equipment").doc(uid("eq")).set({ name: "Forklift A", locationId: locId });
+    await seedEquipment({ name: "Forklift A", locationId: locId });
 
     for (const runnerUid of [runnerUid1, runnerUid2]) {
       const outcome = await runReportDefinition(
@@ -645,7 +672,7 @@ async function main() {
     const marker = uid("mk");
     const locId = uid("loc");
     await db.collection("locations").doc(locId).set({ name: "Main Warehouse" });
-    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Forklift A`, locationId: locId });
+    await seedEquipment({ name: `${marker}-Forklift A`, locationId: locId });
 
     const outcome = await runReportDefinition(
       {
@@ -833,8 +860,8 @@ async function main() {
     const otherLocId = uid("loc");
     await db.collection("locations").doc(matchLocId).set({ name: `${marker}-Main Warehouse` });
     await db.collection("locations").doc(otherLocId).set({ name: `${marker}-Other Site` });
-    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Forklift A`, locationId: matchLocId });
-    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Forklift B`, locationId: otherLocId });
+    await seedEquipment({ name: `${marker}-Forklift A`, locationId: matchLocId });
+    await seedEquipment({ name: `${marker}-Forklift B`, locationId: otherLocId });
 
     const outcome = await runReportDefinition(
       {
@@ -863,9 +890,9 @@ async function main() {
     const locB = uid("loc");
     await db.collection("locations").doc(locA).set({ name: `${marker}-Warehouse A` });
     await db.collection("locations").doc(locB).set({ name: `${marker}-Warehouse B` });
-    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Item 1`, locationId: locA });
-    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Item 2`, locationId: locA });
-    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Item 3`, locationId: locB });
+    await seedEquipment({ name: `${marker}-Item 1`, locationId: locA });
+    await seedEquipment({ name: `${marker}-Item 2`, locationId: locA });
+    await seedEquipment({ name: `${marker}-Item 3`, locationId: locB });
 
     const outcome = await runReportDefinition(
       {

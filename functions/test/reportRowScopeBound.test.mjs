@@ -557,10 +557,19 @@ test("RATCHET: the service resolves its bound from reportRowScope.ts, not from i
   // Tightened after a negative control showed the loose symbol check above was
   // satisfied by the IMPORT alone: deleting the join's verification left it green.
   // The guard's shape is asserted, not merely the symbol's presence.
+  //
+  // CI-UNBLOCK-1899 TIGHTENED THIS FURTHER, it did not relax it. The drop branch
+  // now RECORDS the incompleteness before short-circuiting, so that a zero-row
+  // run which depends on the dropped document is refused instead of being
+  // returned as a proven `kind: "empty"` (see reportRelatedJoinHonesty.test.mjs).
+  // Both statements are required here and in this order: deleting the
+  // verification, deleting the `return` (which would ATTACH another company's
+  // document), or deleting the recording (which would restore the silent drop)
+  // each fails this assertion.
   assert.match(
     code,
-    /relatedRowScope\.kind === "company-bound"\s*\n?\s*&& !documentSatisfiesCompanyBound\(related, relatedRowScope\.field, reach\)\)\s*\{\s*\n\s*return;/,
-    "the join must VERIFY a company-bound related document against the reach and drop it, not merely import the helper",
+    /relatedRowScope\.kind === "company-bound"\s*\n?\s*&& !documentSatisfiesCompanyBound\(related, relatedRowScope\.field, reach\)\)\s*\{\s*\n\s*incompleteObjectIds\.add\(toObjectId\);\s*\n\s*return;/,
+    "the join must VERIFY a company-bound related document against the reach, RECORD the incomplete join, and drop it -- not merely import the helper",
   );
   assert.match(
     code,
