@@ -7520,3 +7520,104 @@ states that do not exist would have produced a ruling with no referent.
 units → PostgreSQL Employee authority → the authority port → `AUTHORITY_UNAVAILABLE` → the `OD-7`
 orchestration skeleton → the bypass census → accountable-person **shape** only. The accountability census, the
 enforcement gate and the crosswalk constraint wait on exactly the three decisions above.
+
+## #189 — OWNER RULINGS: MI-λ declare-and-quarantine · MI-ε refuse-when-ineligible · OD-16 family-applicability (2026-09-13)
+
+The three foundation blockers, **all RULED / CLOSED.** With these, **the MUST-RULE-NOW foundation set is closed**
+and foundation engineering is authorized. Citations verified at `64008d5a` before writing.
+
+### 1. `MI-λ` — DECLARE AND QUARANTINE
+
+**Question:** the legal disposition of an existing person reference that does not resolve to a canonical
+governed Employee.
+
+**Ruled: declare and quarantine.** Such a reference must **not** be fabricated into an Employee · silently
+mapped by id coincidence · silently mapped through a Firebase UID · deleted from immutable history · rewritten
+merely to satisfy a foreign key · or **counted as a valid resolved Employee reference.**
+
+**Preserve the historical raw reference and its audit/history**, classified semantically as **HISTORICAL /
+LEGACY UNRESOLVED PERSON REFERENCE** or equivalent implementation terminology. **That exact enum name is not
+frozen** unless the existing model requires it.
+
+**Historical vs current, and they are treated differently:**
+
+| | Treatment |
+|---|---|
+| **HISTORICAL record** | a legacy unresolved reference may remain as historical truth. **It is not a valid canonical Employee reference**, and must stay **visibly distinguishable from a VALID HISTORICAL EMPLOYEE.** |
+| **CURRENT ACTIONABLE record** | a non-resolving reference **cannot satisfy current responsibility integrity**. For new writes, transfers and accountable-person establishment: **FAIL CLOSED.** **No governed command may create a new unresolved person reference.** |
+
+**Migration consequence.** Migration may reconcile a legacy unresolved reference to a canonical Employee
+**only when governed evidence establishes the relationship.** Identity must **not** be inferred from matching
+strings · matching names · Firebase UID coincidence · technician ids · legacy `users` ids · **Principal
+existence alone.** Absent governed evidence: **preserve and quarantine.**
+
+**MEASURE FIRST.** The implementation may use the smallest schema or constraint strategy that preserves legacy
+immutable history while enforcing canonical integrity for new and current data. **A direct FK requirement must
+not be allowed to destroy historical truth.**
+
+**Why the constraint strategy cannot be a plain FK — verified.** `ownership_handoffs` is protected against
+mutation by `refuse_ownership_history_mutation`
+(`functions/migrations/1758844800000_commercial-ownership-authority.sql:295-305`), and in the same
+`CREATE TABLE` **four columns carry foreign keys while the two person columns carry none**:
+`tenant_id … REFERENCES eos_policy.tenants(id)` · `opportunity_id … REFERENCES opportunities(id)` ·
+`sales_agreement_id … REFERENCES sales_agreements(id)` · `sales_order_id … REFERENCES sales_orders(id)`, then
+`previous_owner_employee_id TEXT` and `new_owner_employee_id TEXT NOT NULL` (`:256-263`). **So a bad person id
+already written there is permanent by design**, and adding a naive FK would either fail or require the history
+mutation this ruling forbids.
+
+### 2. `MI-ε` — YES, refuse; and eligibility stays separate from identity
+
+**Question:** should responsibility enforcement refuse a real, valid Employee who is not currently eligible to
+receive the accountability being established or changed?
+
+**Ruled: YES.** A real Employee may simultaneously be a **VALID REFERENCE** and **NOT CURRENTLY ELIGIBLE FOR
+NEW/CURRENT ACCOUNTABILITY.** When the authoritative eligibility result is *not currently eligible*, a governed
+command attempting to establish or transfer current accountability to that Employee **must REFUSE.**
+
+**Do NOT implement this as `status != ACTIVE → refuse`** unless the governed eligibility policy for that
+operation explicitly says so. **#186** already settled that employee lifecycle status and current
+accountability eligibility are **separate facts**. The gate **consumes the governed eligibility result** and
+**must not flatten the six-value vocabulary into a hidden boolean policy.** That vocabulary is
+`functions/src/access/employeeProfileCommands.ts:122-129`, frozen: `ACTIVE` · `ON_LEAVE` · `INACTIVE` ·
+`TERMINATED` · `RETIRED` · `CONTRACTOR`.
+
+**Existing actionable work.** If a currently-accountable Employee later becomes not currently eligible, **the
+reference remains valid and historical accountability remains valid** — but the actionable record may become
+**RESPONSIBILITY DEFECT — ACCOUNTABLE PERSON NOT CURRENTLY ELIGIBLE.** **Do not** automatically reassign,
+automatically transfer accountability, rewrite ownership, or erase history. **The family/workflow determines
+the governed resolution; the census must detect the defect.**
+
+### 3. `OD-16` — FAMILY-APPLICABILITY DRIVEN
+
+**Question:** which record families are covered by the Accountability Census and the accountability enforcement
+gate?
+
+**Ruled: family-applicability driven.** **Do not census every record merely because EOS has an accountability
+concept.** A family enters accountability enforcement **only when governed authority defines that family as
+requiring Accountable Person semantics.**
+
+**Initial governed scope: OPPORTUNITY · SALES AGREEMENT · SALES ORDER** — the three commercial families **#181**
+already rules to separately carry an accountable person. **Do not infer** that Service, Dispatch, Parts,
+Inventory, Warehouse, Purchasing, Equipment, reference/master data or any other family is in scope.
+
+**Future admission.** A family enters only when its governed model establishes, as applicable: accountability
+applicability · where and how the accountable person is carried · the creation/initialization rule · the
+current-eligibility requirement · transfer/change authority · historical behaviour · exception rules ·
+acceptance proof. **Recipient acceptance is not required unless that workflow separately governs it. UI mockups
+are not authority for admission.**
+
+**Out-of-scope families:** accountability is **NOT APPLICABLE** — **not** `MISSING`, **not** `OWNERLESS`, **not**
+`DEFECTIVE`. **Reference and master-data objects must not acquire fake personal accountability.** Service
+lifecycle accountability remains a **family** decision and does **not** block the generic foundation.
+
+### Status
+
+**The MUST-RULE-NOW foundation set is CLOSED.** Deferred family, UI and admin decisions — `MI-κ`, `OD-13`,
+job-role vocabulary extension, qualification blocking, Service lifecycle accountability, User Access
+composition, territory, admin-object design, coverage policy, automatic escalation, handover behaviour, and
+transfer expiry (which atomicity already eliminates) — **stay attached to the family or stage they actually
+block and must not block generic foundation engineering.**
+
+**Foundation implementation, integration, tests, PRs and nonprod-ready migration work are AUTHORIZED.**
+**Production cutover is NOT** — it still requires nonprod migration proof, rollback, runtime authority proof,
+a non-vacuous governed Role population, functional acceptance, and separate Owner authorization.
