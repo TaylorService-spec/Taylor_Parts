@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E4E8E5; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #005A3C; } a:hover { color: #102B24; }
+    h3.rh { font: 600 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #626A66; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; border-radius: 6px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; font-weight: 400; z-index: 40; box-shadow: 0 8px 32px rgba(16,43,36,0.18); }
+    .hlp:hover .tip { display: block; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px Inter, sans-serif; letter-spacing: 0.03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .btnp { font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #005A3C; color: #fff; border-radius: 6px; display: inline-block; }
+    .btns { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #fff; color: #111111; border: 1px solid #5F6C66; border-radius: 6px; display: inline-block; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,43,36,0.06), 0 2px 8px rgba(16,43,36,0.05); }
+    .navi { padding: 9px 12px; font-weight: 600; border-radius: 6px; color: #B9C1BE; }
+    .navsel { padding: 9px 12px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.07); box-shadow: inset 3px 0 0 #B08A55; border-radius: 6px; }
+    .subi { padding: 7px 10px 7px 28px; font-size: 12.5px; }
+    .subsel { padding: 7px 10px 7px 27px; background: #33815A; color: #fff; font-weight: 600; border-left: 1px solid #B08A55; border-radius: 0 6px 6px 0; font-size: 12.5px; }
+    .qcard { border: 1px solid #C4CCC7; border-radius: 8px; padding: 10px 12px; background: #fff; font-size: 12.5px; }
+    .blk { border-radius: 6px; padding: 6px 9px; font-size: 12px; font-weight: 600; color: #fff; background: #33815A; }
+    .lane { display: grid; grid-template-columns: 150px repeat(9, 1fr); border-bottom: 1px solid #C4CCC7; min-height: 58px; align-items: stretch; }
+    .lcell { border-left: 1px solid #E4E8E5; position: relative; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div style="max-width: 1100px; font-size: 13px; color: #3F4542; line-height: 1.6;"><strong>NS2-DSP-01 — Dispatch Board r1</strong> · Atlas P2 full-page North Star. Frames: NS2-DSP-01-1440 (day board), NS2-DSP-01-375 (honest phone queue). AI placement: explainable recommendation → dispatcher clicks Assign → normal governed scheduling command. DB-D1/DB-D2 carried. OBSERVED AGAINST: REVERIFICATION REQUIRED AT FAMILY OPEN.</div>
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1a</span>NS2-DSP-01-1440 — day board · conflict + recommendation shown</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Queue in hand, lanes per technician; conflicts and blocked time stay visible, never behind ⓘ.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Service</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subi">Work Orders</div>
+            <div class="subsel">Dispatch Board</div>
+            <div class="subi">Service Operations</div>
+          </div>
+          <div class="navi">Inventory</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 28px 44px; background: #FFFFFF;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+          <span>Service → Dispatch Board</span>
+          <span style="display:flex;gap:14px;align-items:center;"><span style="font-weight:600;color:#102B24;">Day</span><span>Week</span><span>2 weeks</span><span>Map</span><span style="color:#626A66;">· Wed Sep 12 · live<span class="hlp">i<span class="tip">Board/list/map are views over the same canonical Work Orders — one concept, several compositions. View, date, and selection live in the URL: refresh, back, and a shared link land on the same board state.</span></span></span></span>
+        </div>
+        <div style="display:flex;gap:20px;padding-top:18px;">
+          <div style="width: 264px; flex:none; display:flex;flex-direction:column;gap:10px;">
+            <h3 class="rh" style="margin:0;">Queue · 5 to place<span class="hlp">i<span class="tip">Ranked: promised-today first, then overdue, then age. Dragging a card onto a lane proposes the slot; the governed scheduling command validates (capacity, skills, parts, travel) and refuses with a reason the board renders on the spot. The card never silently lands.</span></span></h3>
+            <div class="qcard" style="border-color:#8F6109;">
+              <div style="display:flex;justify-content:space-between;"><strong>WO-4205</strong><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Today</span></div>
+              <div style="color:#3F4542;margin:3px 0;">Canyon Foods · no-cool, walk-in · Mesa</div>
+              <div style="background:#EAF3EE;border:1px solid #237A45;border-radius:6px;padding:6px 8px;margin-top:6px;color:#1E5B37;">Suggest: <strong>S. Naber 10:00</strong> — has slot, 18 min away, C723-certified · <a href="#">why?</a><span class="hlp">i<span class="tip">RECOMMEND, not act: the suggestion explains its grounds (capacity read, travel estimate, certification fact). Accepting it runs the same Assign command a manual drag runs — AI holds no parallel write path. If the engine lacks grounded inputs it stays silent.</span></span></div>
+              <div style="display:flex;gap:6px;margin-top:8px;"><span class="btnp" style="padding:6px 12px;font-size:12px;">Assign to Naber</span><span class="btns" style="padding:5px 11px;font-size:12px;">Choose…</span></div>
+            </div>
+            <div class="qcard"><div style="display:flex;justify-content:space-between;"><strong>WO-4206</strong><span style="color:#626A66;">Fri</span></div><div style="color:#3F4542;margin-top:2px;">Sunrise Creamery · PM quarterly</div></div>
+            <div class="qcard"><div style="display:flex;justify-content:space-between;"><strong>WO-4207</strong><span style="color:#626A66;">Mon</span></div><div style="color:#3F4542;margin-top:2px;">Desert Dairy · icemaker inspect</div></div>
+            <div class="qcard" style="background:#F2F5F3;"><div style="display:flex;justify-content:space-between;"><strong>WO-4187</strong><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Blocked · Fri</span></div><div style="color:#626A66;margin-top:2px;">Yuma HS · compressor swap — placeable Fri+ only</div></div>
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:grid;grid-template-columns:150px repeat(9,1fr);font: 600 11px Inter,sans-serif;letter-spacing:0.05em;color:#626A66;border-bottom:1px solid #5F6C66;padding-bottom:6px;">
+              <span>TECHNICIAN</span><span>7a</span><span>8a</span><span>9a</span><span>10a</span><span>11a</span><span>12p</span><span>1p</span><span>2p</span><span>3p</span>
+            </div>
+            <div class="lane">
+              <div style="padding:10px 8px;font-size:13px;"><strong>M. Villanueva</strong><br><span style="color:#8F6109;font-size:11.5px;font-weight:600;">Conflict 9:00</span></div>
+              <div class="lcell"></div>
+              <div class="lcell" style="grid-column: span 2;"><span class="blk" style="position:absolute;inset:6px 4px;">WO-4205 · Canyon Foods</span></div>
+              <div class="lcell" style="grid-column: span 2;"><span class="blk" style="position:absolute;inset:6px 4px;background:#B23B3B;">WO-4201 ⨯ WO-4188 overlap<span class="hlp" style="border-color:#fff;color:#fff;margin-left:6px;">i<span class="tip">A conflict is rendered as one red block naming both work orders — never two innocent-looking blocks stacked. Clicking opens resolution: move one, reassign, or split. The board cannot save an overlapping state; the command refuses it.</span></span></span></div>
+              <div class="lcell" style="grid-column: span 2;"><span class="blk" style="position:absolute;inset:6px 4px;background:#F2F5F3;color:#626A66;border:1px dashed #87938D;">Lunch</span></div>
+              <div class="lcell" style="grid-column: span 2;"><span class="blk" style="position:absolute;inset:6px 4px;">WO-4193 · Desert Dairy</span></div>
+            </div>
+            <div class="lane">
+              <div style="padding:10px 8px;font-size:13px;"><strong>R. Otero</strong><br><span style="color:#626A66;font-size:11.5px;">on site</span></div>
+              <div class="lcell" style="grid-column: span 4;"><span class="blk" style="position:absolute;inset:6px 4px;background:#237A45;">WO-4201 · Sunrise Creamery · in progress</span></div>
+              <div class="lcell" style="grid-column: span 2;"></div>
+              <div class="lcell" style="grid-column: span 3;"><span class="blk" style="position:absolute;inset:6px 4px;">WO-4199 · follow-up</span></div>
+            </div>
+            <div class="lane">
+              <div style="padding:10px 8px;font-size:13px;"><strong>S. Naber</strong><br><span style="color:#237A45;font-size:11.5px;font-weight:600;">2 slots open</span></div>
+              <div class="lcell" style="grid-column: span 2;"><span class="blk" style="position:absolute;inset:6px 4px;">WO-4202 · Peoria</span></div>
+              <div class="lcell" style="grid-column: span 3; background: #EAF3EE;"><span style="position:absolute;inset:6px 4px;border:2px dashed #237A45;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#1E5B37;font-weight:600;">Suggested slot · WO-4205</span></div>
+              <div class="lcell" style="grid-column: span 4;"></div>
+            </div>
+            <div class="lane" style="border-bottom:none;">
+              <div style="padding:10px 8px;font-size:13px;"><strong>D. Kellerman</strong><br><span style="color:#B23B3B;font-size:11.5px;font-weight:600;">Out · sick</span></div>
+              <div class="lcell" style="grid-column: span 9; background: repeating-linear-gradient(45deg,#F2F5F3,#F2F5F3 8px,#E9EDEA 8px,#E9EDEA 16px);"><span style="position:absolute;inset:6px 4px;display:flex;align-items:center;padding-left:10px;font-size:12px;color:#626A66;">Unavailable all day — 4 jobs to reassign · <a href="#" style="margin-left:6px;">reassign all…</a></span></div>
+            </div>
+            <div style="font-size:12px;color:#626A66;padding-top:12px;">Capacity shading, travel gaps, and blocked time derive from governed reads; the board renders truth, the command enforces it.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 420px;">
+    <div style="margin-bottom: 8px;"><span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1b</span>NS2-DSP-01-375 — honest phone alternative</span></div>
+    <div style="width: 375px; background: #FFFFFF; outline: 1px solid #87938D;">
+      <div style="background: #102B24; color: #fff; padding: 14px 16px; display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:'Source Serif 4',serif;font-weight:700;font-size:16px;">Scheduling queue</span><span style="font-size:12px;color:#B9C1BE;">Wed · live</span>
+      </div>
+      <div style="padding: 14px 16px; display:flex;flex-direction:column;gap:10px;">
+        <div style="background:#FDF6EC;border:1px solid #C8A464;border-radius:8px;padding:10px 12px;font-size:13px;"><strong>Conflict</strong> — Villanueva 9:00 overlap · <a href="#">resolve</a></div>
+        <div class="qcard"><div style="display:flex;justify-content:space-between;"><strong>WO-4205</strong><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Today</span></div><div style="color:#3F4542;margin:3px 0 8px;">Canyon Foods · Mesa</div><span class="btnp" style="display:block;text-align:center;padding:12px 0;">Assign — suggested: Naber 10:00</span></div>
+        <div class="qcard"><div style="display:flex;justify-content:space-between;"><strong>WO-4206</strong><span style="color:#626A66;">Fri</span></div><div style="color:#3F4542;">Sunrise Creamery · PM</div></div>
+        <div style="font-size:11.5px;color:#626A66;padding:2px 2px 6px;">The dense timeline is desktop-oriented by design; the phone gets the queue as a list — recomposition, not a shrunk board. Width never changes authority.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

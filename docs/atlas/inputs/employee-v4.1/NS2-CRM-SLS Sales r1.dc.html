@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E4E8E5; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #005A3C; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #3F4542; background: #F2F5F3; padding: 8px 12px 8px 10px; border-bottom: 1px solid #5F6C66; text-align: left; }
+    td.ls { padding: 10px 12px 10px 10px; border-bottom: 1px solid #C4CCC7; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 600 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #626A66; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; border-radius: 6px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; font-weight: 400; z-index: 40; box-shadow: 0 8px 32px rgba(16,43,36,0.18); }
+    .hlp:hover .tip { display: block; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px Inter, sans-serif; letter-spacing: 0.03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .btnp { font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #005A3C; color: #fff; border-radius: 6px; display: inline-block; }
+    .btns { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #fff; color: #111111; border: 1px solid #5F6C66; border-radius: 6px; display: inline-block; }
+    .btnd { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #F2F5F3; color: #626A66; border: 1px solid #87938D; border-radius: 6px; display: inline-block; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,43,36,0.06), 0 2px 8px rgba(16,43,36,0.05); }
+    .att { background: #FDF6EC; border: 1px solid #C8A464; border-radius: 10px; }
+    .navi { padding: 9px 12px; font-weight: 600; border-radius: 6px; color: #B9C1BE; }
+    .navsel { padding: 9px 12px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.07); box-shadow: inset 3px 0 0 #B08A55; border-radius: 6px; }
+    .subi { padding: 7px 10px 7px 28px; font-size: 12.5px; }
+    .subsel { padding: 7px 10px 7px 27px; background: #33815A; color: #fff; font-weight: 600; border-left: 1px solid #B08A55; border-radius: 0 6px 6px 0; font-size: 12.5px; }
+    .tab { font: 600 13px Inter, sans-serif; padding: 9px 2px; color: #3F4542; border-bottom: 3px solid transparent; }
+    .tabsel { font: 600 13px Inter, sans-serif; padding: 9px 2px; color: #102B24; border-bottom: 3px solid #005A3C; }
+    .stg { flex:1; text-align:center; font: 600 11.5px Inter,sans-serif; padding: 7px 4px; background:#F2F5F3; color:#626A66; border:1px solid #C4CCC7; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div style="max-width: 1100px; font-size: 13px; color: #3F4542; line-height: 1.6;"><strong>NS2-CRM / NS2-SLS — Sales &amp; Accounts r1</strong> · Atlas P2 full-page North Star. Frames: NS2-CRM-02-1440 (Account record), NS2-SLS-02-1440 (Opportunity record with downstream). The story: Account → Opportunity → Agreement → Sales Order → fulfillment → invoice, linked at every step. Downstream gaps G1–G5 rendered honestly. OBSERVED AGAINST: REVERIFICATION REQUIRED AT FAMILY OPEN.</div>
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1a</span>NS2-CRM-02-1440 — Account record · Overview (stable default)</span>
+      <span style="font-size: 11.5px; color: #3F4542;">One customer concept; tabs by user job: Overview | Sales | Service | Financials — all URL-addressable.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navi">Service</div>
+          <div class="navsel">Sales</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subi">Opportunities</div>
+            <div class="subi">Agreements</div>
+            <div class="subi">Sales Orders</div>
+            <div class="subsel">Accounts</div>
+          </div>
+          <div class="navi">Inventory</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Sales → <a href="#">Accounts</a> → Desert Dairy</span><span><a href="#">← Back to Accounts</a></span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:22px 0 4px;">
+            <div>
+              <h1 style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Desert Dairy Co.</h1>
+              <div style="font-size: 13.5px; color: #3F4542;">Chandler, AZ · 3 locations · 11 installed units · customer since 2019 · owner: J. Ruiz (sales)</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">AR attention</span>
+              <span class="btns">New work order</span>
+              <span class="btnp">New opportunity</span>
+            </div>
+          </header>
+          <div class="att" style="margin: 14px 0 18px; padding: 14px 20px; display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13.5px;"><strong>$42,180 now 90+ days past due</strong> · service continues under agreement SA-188 · collection escalation awaits Owner decision<span class="hlp">i<span class="tip">Operational truth stays visible on every tab — the AR breach follows the account, not just the Financials tab. The action offered is the legitimate one (escalation is an Owner capability; this session can only prepare the case).</span></span></span>
+            <a href="#">Account financials →</a>
+          </div>
+          <div style="display:flex;gap:28px;border-bottom:1px solid #87938D;margin-bottom:22px;">
+            <span class="tabsel">Overview</span><span class="tab">Sales</span><span class="tab">Service</span><span class="tab">Financials</span>
+            <span style="margin-left:auto;font-size:11.5px;color:#626A66;align-self:center;">Stable default = Overview; deep links may target a tab explicitly.</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 316px;gap:24px;">
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh">Open work · 4</h3>
+                <table style="width:100%;border-collapse:collapse;">
+                  <thead><tr><th class="ls">Item</th><th class="ls">State</th><th class="ls" style="text-align:right;"></th></tr></thead>
+                  <tbody>
+                    <tr><td class="ls"><strong>WO-4193</strong> · icemaker return visit</td><td class="ls"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Unscheduled 4d</span></td><td class="ls" style="text-align:right;"><a href="#">→</a></td></tr>
+                    <tr><td class="ls"><strong>Opp</strong> · soft-serve line, 2 units · $64k</td><td class="ls"><span class="chip" style="background:#102B24;color:#fff;">Proposal</span></td><td class="ls" style="text-align:right;"><a href="#1b">→</a></td></tr>
+                    <tr><td class="ls" style="border-bottom:none;"><strong>Invoice 10-2241</strong> · $8,140</td><td class="ls" style="border-bottom:none;"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">60 days</span></td><td class="ls" style="border-bottom:none;text-align:right;"><a href="#">→</a></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="panel" style="padding:18px 20px 14px;">
+                <h3 class="rh">The story so far</h3>
+                <p style="font-size:13.5px;line-height:1.65;margin:0 0 10px;">Steady service customer, 3 WOs/quarter, pays slow since spring — 2 of last 4 invoices past 60 days. Open $64k soft-serve opportunity is in proposal; win likelihood untouched by AR status unless escalation changes terms. Last touch: J. Ruiz site visit Aug 30.</p>
+                <div style="font-size:12px;color:#626A66;">AI summary over account history reads · <a href="#">show sources</a> · quiet when ungrounded</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Health</h3>
+                <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;"><span>Service on-time (12 mo)</span><strong>94%</strong></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Revenue (12 mo)</span><strong>$118k</strong></div>
+                  <div style="display:flex;justify-content:space-between;"><span>AR balance</span><strong style="color:#B23B3B;">$50,320</strong></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Agreement</span><a href="#">SA-188 →</a></div>
+                </div>
+              </div>
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Locations &amp; equipment</h3>
+                <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;"><span>Chandler plant · 7 units</span><a href="#">→</a></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Tempe retail · 3 units</span><a href="#">→</a></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Mesa retail · 1 unit</span><a href="#">→</a></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1b</span>NS2-SLS-02-1440 — Opportunity record · proposal stage, downstream visible</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Lifecycle position leads; refused transitions show the refusing rule; downstream Agreement/Order honest about gaps.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Sales</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subsel">Opportunities</div>
+            <div class="subi">Agreements</div>
+            <div class="subi">Sales Orders</div>
+            <div class="subi">Accounts</div>
+          </div>
+          <div class="navi">Inventory</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Sales → <a href="#">Opportunities</a> → Desert Dairy soft-serve line</span><span><a href="#">← Back to pipeline</a></span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:22px 0 4px;">
+            <div>
+              <h1 style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Desert Dairy — soft-serve line, 2 units</h1>
+              <div style="font-size: 13.5px; color: #3F4542;"><a href="#1a">Desert Dairy Co.</a> · $64,200 · owner J. Ruiz · opened Aug 18 · last activity 3 days ago</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="btns">Log activity</span>
+              <span class="btnp">Send proposal</span>
+            </div>
+          </header>
+          <div style="display:flex;gap:2px;margin:16px 0 4px;">
+            <span class="stg" style="background:#102B24;color:#fff;border-color:#102B24;">Qualified</span>
+            <span class="stg" style="background:#33815A;color:#fff;border-color:#33815A;">Proposal — current</span>
+            <span class="stg">Negotiation</span>
+            <span class="stg">Won</span>
+            <span class="stg">Fulfilled</span>
+          </div>
+          <div style="font-size:12px;color:#626A66;padding:4px 0 16px;">Forward transitions only as the lifecycle allows; a refused transition names its rule.<span class="hlp">i<span class="tip">Stage control renders useOpportunityTransitions truth: e.g. "Won" is unavailable until a proposal is sent and an agreement drafted — the disabled state carries that reason. Distinct renderings for unavailable-with-reason vs not-authorized, per the action-state rule.</span></span></div>
+          <div style="display:grid;grid-template-columns:1fr 316px;gap:24px;">
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh">Commercial</h3>
+                <table style="width:100%;border-collapse:collapse;">
+                  <thead><tr><th class="ls">Line</th><th class="ls" style="text-align:right;">Qty</th><th class="ls" style="text-align:right;">Amount</th></tr></thead>
+                  <tbody>
+                    <tr><td class="ls">Taylor C723 soft-serve, install + startup</td><td class="ls" style="text-align:right;">2</td><td class="ls" style="text-align:right;font-variant-numeric:tabular-nums;">$58,400</td></tr>
+                    <tr><td class="ls" style="border-bottom:none;">First-year PM plan</td><td class="ls" style="border-bottom:none;text-align:right;">1</td><td class="ls" style="border-bottom:none;text-align:right;font-variant-numeric:tabular-nums;">$5,800</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="panel" style="padding:18px 20px 14px;">
+                <h3 class="rh">Downstream — agreement &amp; order</h3>
+                <div style="font-size:13.5px;display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><span>Sales Agreement</span><span class="chip" style="background:#F2F5F3;color:#3F4542;border:1px solid #87938D;">Not yet drafted — available at Won</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;"><span>Sales Order</span><span class="chip" style="background:#F2F5F3;color:#626A66;border:1px dashed #87938D;">Created from agreement<span class="hlp">i<span class="tip">The designed structural slot is preserved and the state is honest: agreementToSalesOrder is the only creation path. Where a downstream read is missing (gaps G1–G5 as registered), this panel says "link unavailable — G3" rather than pretending. MISSING CAPABILITY is never drawn as a working link.</span></span></span></div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Activity</h3>
+                <div style="font-size:12.5px;color:#3F4542;display:flex;flex-direction:column;gap:8px;">
+                  <div><strong>Sep 9</strong> Site walk, plant room measured · J. Ruiz</div>
+                  <div><strong>Sep 3</strong> Budget confirmed with GM</div>
+                  <div><strong>Aug 18</strong> Opened from service visit note</div>
+                </div>
+              </div>
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Watch</h3>
+                <div style="font-size:13px;line-height:1.6;color:#3F4542;">Account carries a 90+ day AR breach — terms on this deal may need Finance review before Won.<span class="hlp">i<span class="tip">Cross-object truth surfaces where the decision happens: the AR fact follows from the account read; whether it constrains the deal is a Finance/Owner call, so the panel states the fact and links the account financials — it does not block the pipeline itself.</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

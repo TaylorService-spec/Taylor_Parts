@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <style>
+    body { margin: 0; background: #F2F4F2; font-family: "Segoe UI", -apple-system, sans-serif; color: #24312B; }
+    a { color: #005A3C; } a:hover { color: #33815A; }
+  </style>
+</helmet>
+<section id="1a" style="padding:40px">
+  <div style="max-width:1720px">
+    <div style="margin-bottom:28px">
+      <div style="font-size:11px;letter-spacing:0.12em;color:#5F6C66;text-transform:uppercase">NS2 — Design P2 Workbook</div>
+      <h1 style="font-size:26px;font-weight:600;margin:6px 0 4px">Layout Atlas — schemas per family</h1>
+      <div style="font-size:13px;color:#5F6C66;max-width:820px">Structural wireframes only (charter A1 visual ruling pending). Each board = section order, column ratios, attention placement, phone recomposition. Written contracts in <a href="ns2/README.md">ns2/</a>.</div>
+      <div style="display:flex;gap:16px;margin-top:12px;font-size:11px;color:#5F6C66;align-items:center">
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;background:#F3E2CF;border-radius:2px;display:inline-block"></span>attention / exception</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;background:#D9E7DF;border-radius:2px;display:inline-block"></span>action / rail</span>
+        <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:10px;background:#E9EDEA;border-radius:2px;display:inline-block"></span>content</span>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:640px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-HOME-01</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">My Dashboard — persona start page</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:440px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px">
+            <div style="height:18px;background:#E9EDEA;border-radius:2px;display:flex;align-items:center;padding:0 6px;font-size:9px;color:#6B7A72">SITUATION — one sentence, today</div>
+            <div style="height:44px;background:#F3E2CF;border-radius:2px;padding:4px 6px;font-size:9px;color:#8A5A2B">ATTENTION — exceptions only, ranked, each row drills through</div>
+            <div style="display:flex;gap:6px;flex:1">
+              <div style="width:36%;display:flex;flex-direction:column;gap:6px">
+                <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">KEY OUTCOMES<br>3–5 figures, all drill-through</div>
+              </div>
+              <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">WORK — queues the persona acts on
+                <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+                  <div style="height:12px;background:#DDE3DF;border-radius:2px"></div>
+                  <div style="height:12px;background:#DDE3DF;border-radius:2px"></div>
+                  <div style="height:12px;background:#DDE3DF;border-radius:2px"></div>
+                  <div style="height:12px;background:#DDE3DF;border-radius:2px"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="width:120px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:5px">
+            <div style="height:14px;background:#E9EDEA;border-radius:2px"></div>
+            <div style="height:34px;background:#F3E2CF;border-radius:2px"></div>
+            <div style="height:44px;background:#E9EDEA;border-radius:2px"></div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;font-size:8px;color:#6B7A72;padding:4px">queues as tappable rows ≥44px</div>
+            <div style="font-size:8px;color:#6B7A72;text-align:center">375 — same order, one column</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">7 persona variants · nothing without an authorized read · quiet + gated states</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-SVC-01</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Service Operations overview</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+          <div style="height:40px;background:#F3E2CF;border-radius:2px;padding:4px 6px;font-size:9px;color:#8A5A2B">ATTENTION — at-risk + parts-blocked WOs (never behind ⓘ)</div>
+          <div style="display:flex;gap:6px;flex:1">
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+              <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">WO TABLE — ranked
+                <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px"><div style="height:10px;background:#DDE3DF"></div><div style="height:10px;background:#DDE3DF"></div><div style="height:10px;background:#DDE3DF"></div><div style="height:10px;background:#DDE3DF"></div></div>
+              </div>
+              <div style="height:48px;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">DISPATCH QUEUE tray → DSP-01</div>
+            </div>
+            <div style="width:26%;background:#D9E7DF;border-radius:2px;padding:4px 6px;font-size:9px;color:#3D5A4C">RAIL — activity, capacity</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Phone: attention list → queue list, no dense table · SO-D1–D4 stand</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:640px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-SVC-03</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Work Order record</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:440px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px">
+            <div style="height:26px;background:#E9EDEA;border-radius:2px;display:flex;align-items:center;justify-content:space-between;padding:0 6px;font-size:9px;color:#6B7A72"><span>IDENTITY · STATE</span><span style="background:#D9E7DF;color:#005A3C;padding:2px 6px;border-radius:2px">NEXT ACTION</span></div>
+            <div style="height:26px;background:#F3E2CF;border-radius:2px;padding:4px 6px;font-size:9px;color:#8A5A2B">blocked / at-risk reason — always visible</div>
+            <div style="height:16px;display:flex;gap:4px;font-size:8px;color:#6B7A72"><span style="background:#DDE3DF;padding:2px 6px;border-radius:2px">Schedule</span><span style="background:#DDE3DF;padding:2px 6px;border-radius:2px">Parts</span><span style="background:#DDE3DF;padding:2px 6px;border-radius:2px">Execution</span><span style="background:#DDE3DF;padding:2px 6px;border-radius:2px">Completion & billing</span><span style="background:#DDE3DF;padding:2px 6px;border-radius:2px">History</span></div>
+            <div style="display:flex;gap:6px;flex:1">
+              <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">SECTION BODY — by job, URL-addressable</div>
+              <div style="width:26%;background:#D9E7DF;border-radius:2px;padding:4px 6px;font-size:9px;color:#3D5A4C">CONTEXT RAIL — account, equipment, links</div>
+            </div>
+          </div>
+          <div style="width:120px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:5px">
+            <div style="height:22px;background:#E9EDEA;border-radius:2px"></div>
+            <div style="height:20px;background:#F3E2CF;border-radius:2px"></div>
+            <div style="height:14px;background:#DDE3DF;border-radius:2px"></div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px"></div>
+            <div style="height:30px;background:#D9E7DF;border-radius:2px;font-size:8px;color:#3D5A4C;display:flex;align-items:center;justify-content:center">thumb action bar</div>
+            <div style="font-size:8px;color:#6B7A72;text-align:center">375 — technician execution</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Action states rendered distinctly: available / unavailable-with-reason / not authorized</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:640px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-DSP-01</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Dispatch Board — scheduling workspace</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:440px;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;gap:6px">
+            <div style="width:30%;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">QUEUE — ready / late / parts-blocked
+              <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px"><div style="height:14px;background:#DDE3DF"></div><div style="height:14px;background:#F3E2CF"></div><div style="height:14px;background:#DDE3DF"></div><div style="height:14px;background:#DDE3DF"></div></div>
+            </div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">DAY LANES per technician — blocks, blocked time, conflicts, capacity shading
+              <div style="margin-top:6px;display:flex;flex-direction:column;gap:5px">
+                <div style="display:flex;gap:4px"><div style="width:36px;height:14px;background:#DDE3DF"></div><div style="width:60px;height:14px;background:#D9E7DF"></div><div style="width:40px;height:14px;background:#D9E7DF"></div></div>
+                <div style="display:flex;gap:4px"><div style="width:36px;height:14px;background:#DDE3DF"></div><div style="width:90px;height:14px;background:#D9E7DF"></div></div>
+                <div style="display:flex;gap:4px"><div style="width:36px;height:14px;background:#DDE3DF"></div><div style="width:50px;height:14px;background:#F3E2CF"></div><div style="width:44px;height:14px;background:#D9E7DF"></div></div>
+              </div>
+            </div>
+          </div>
+          <div style="width:120px;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:5px">
+            <div style="height:14px;background:#E9EDEA;border-radius:2px"></div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;font-size:8px;color:#6B7A72;padding:4px">scheduling queue as a list — no fake timeline</div>
+            <div style="font-size:8px;color:#6B7A72;text-align:center">375 — honest alternative</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">AI recommendation is explainable; Assign runs the normal governed command · DB-D1/D2 open</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:300px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-TEC-01</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Technician mobile day</div>
+        <div style="width:150px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:5px;margin:0 auto">
+          <div style="height:56px;background:#D9E7DF;border-radius:2px;padding:4px;font-size:8px;color:#3D5A4C">NEXT JOB — where, when, why, ready?</div>
+          <div style="height:20px;background:#F3E2CF;border-radius:2px;font-size:8px;color:#8A5A2B;padding:2px 4px">readiness problems — visible</div>
+          <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px;font-size:8px;color:#6B7A72">TODAY list
+            <div style="margin-top:4px;display:flex;flex-direction:column;gap:4px"><div style="height:16px;background:#DDE3DF"></div><div style="height:16px;background:#DDE3DF"></div><div style="height:16px;background:#DDE3DF"></div></div>
+          </div>
+          <div style="height:44px;background:#E9EDEA;border-radius:2px;padding:4px;font-size:8px;color:#6B7A72">MY TRUCK — stock, counts due, transfers</div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Phone-only surface · offline queue + retry first-class · WORKFLOW GAP P2-G2</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-CRM-02</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Account record</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+          <div style="height:30px;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">IDENTITY + HEALTH STRIP</div>
+          <div style="height:22px;background:#F3E2CF;border-radius:2px;padding:3px 6px;font-size:9px;color:#8A5A2B">attention — AR overdue, stale opportunities</div>
+          <div style="height:16px;display:flex;gap:4px;font-size:8px;color:#6B7A72"><span style="background:#D9E7DF;color:#005A3C;padding:2px 8px;border-radius:2px">Overview</span><span style="background:#DDE3DF;padding:2px 8px;border-radius:2px">Sales</span><span style="background:#DDE3DF;padding:2px 8px;border-radius:2px">Service</span><span style="background:#DDE3DF;padding:2px 8px;border-radius:2px">Financials</span><span style="margin-left:auto">URL-addressable · stable default</span></div>
+          <div style="display:flex;gap:6px;flex:1">
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">situation · open work · recent story</div>
+            <div style="width:30%;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">AI account summary — grounded, quiet when not</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Deep links may target a tab explicitly — never capability-switched defaults</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-SLS-02</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Opportunity record (record grammar for SLS-03/05)</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+          <div style="height:26px;background:#E9EDEA;border-radius:2px;display:flex;align-items:center;justify-content:space-between;padding:0 6px;font-size:9px;color:#6B7A72"><span>IDENTITY · STAGE POSITION</span><span style="background:#D9E7DF;color:#005A3C;padding:2px 6px;border-radius:2px">NEXT TRANSITION</span></div>
+          <div style="height:20px;background:#F3E2CF;border-radius:2px;font-size:9px;color:#8A5A2B;padding:2px 6px">stale / blocked · refused transitions show the refusing rule</div>
+          <div style="height:16px;display:flex;gap:4px;font-size:8px;color:#6B7A72"><span style="background:#D9E7DF;color:#005A3C;padding:2px 8px;border-radius:2px">Overview / Details</span><span style="background:#DDE3DF;padding:2px 8px;border-radius:2px">Commercial / Agreement</span><span style="background:#DDE3DF;padding:2px 8px;border-radius:2px">Activity</span></div>
+          <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">SECTION BODY — downstream Agreement/Order links (gaps G1–G5 rendered honestly)</div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Won → Agreement (SLS-03) → Sales Order (SLS-04/05) journey links</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-INV-02 / 03</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Parts workspace + record</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+          <div style="height:34px;background:#F3E2CF;border-radius:2px;padding:4px 6px;font-size:9px;color:#8A5A2B">SERVICE-IMPACTING SHORTAGES first — absence priced at one line</div>
+          <div style="display:flex;gap:6px;flex:1">
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">PARTS TABLE — reorder work, arrivals
+              <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px"><div style="height:10px;background:#DDE3DF"></div><div style="height:10px;background:#DDE3DF"></div><div style="height:10px;background:#DDE3DF"></div></div>
+            </div>
+            <div style="width:26%;background:#D9E7DF;border-radius:2px;padding:4px 6px;font-size:9px;color:#3D5A4C">Work / Flow rail (subordinated)</div>
+          </div>
+          <div style="height:52px;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">RECORD: Overview | Demand & Purchasing | Identifiers | History — reorder rationale explainable; accept = normal purchasing command</div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Deep link: My Work → Reorder → Part / Demand & Purchasing</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:640px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-INV-04</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Cycle Counts — counter 390 + manager review</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:150px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:6px;display:flex;flex-direction:column;gap:5px">
+            <div style="height:22px;background:#E9EDEA;border-radius:2px;font-size:8px;color:#6B7A72;padding:2px 4px">SHEET — location · progress</div>
+            <div style="height:46px;background:#D9E7DF;border-radius:2px;font-size:8px;color:#3D5A4C;padding:4px">SCAN TARGET + qty entry (focused input; first scan = hardware test)</div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;font-size:8px;color:#6B7A72;padding:4px">SUBMITTED LINES — variance revealed only after submit
+              <div style="margin-top:4px;display:flex;flex-direction:column;gap:4px"><div style="height:14px;background:#DDE3DF"></div><div style="height:14px;background:#DDE3DF"></div></div>
+            </div>
+            <div style="height:26px;background:#F3E2CF;border-radius:2px;font-size:8px;color:#8A5A2B;padding:2px 4px">refusals / offline queue</div>
+          </div>
+          <div style="width:410px;height:290px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;gap:6px">
+            <div style="width:32%;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">SHEET QUEUE (A4 governed read)</div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">LINE DISPOSITIONS — per line only, no whole-sheet approve
+              <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px"><div style="height:12px;background:#DDE3DF"></div><div style="height:12px;background:#F3E2CF"></div><div style="height:12px;background:#DDE3DF"></div></div>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Blind-count invariant: no cross-line leakage · multi-scan continues without redirect · CC-B1/B2 Owner decisions</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-WHS-01</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Receiving</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;gap:6px;box-sizing:border-box">
+          <div style="width:32%;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">QUEUE — expected receipts / open ROs (RCV-D1 open)</div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">SESSION — PO lines vs scanned; partial receipt + substitution inline, never buried</div>
+            <div style="height:30px;background:#D9E7DF;border-radius:2px;padding:4px 6px;font-size:9px;color:#3D5A4C">CUSTODY CONFIRMATION — governed command</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">Handheld 390: scan-first + refusal queue (shared scan-session grammar) · RCV-G1/G2</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-FIN-01…20</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Financials — shared page grammar</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;flex-direction:column;gap:6px;box-sizing:border-box">
+          <div style="height:18px;background:#E9EDEA;border-radius:2px;font-size:9px;color:#6B7A72;padding:2px 6px">SITUATION</div>
+          <div style="height:34px;background:#F3E2CF;border-radius:2px;font-size:9px;color:#8A5A2B;padding:4px 6px">ATTENTION — unapplied cash, aging breaches, reconciliation breaks</div>
+          <div style="display:flex;gap:6px;height:64px">
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;font-size:9px;color:#6B7A72;padding:4px 6px">FIGURE ↘</div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;font-size:9px;color:#6B7A72;padding:4px 6px">FIGURE ↘</div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;font-size:9px;color:#6B7A72;padding:4px 6px">FIGURE ↘</div>
+          </div>
+          <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">WORK QUEUE — billing / application / reconciliation rows</div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">5-group regrouping is IA-Q2 · capability-gated, denied states honest · 15 authority gaps registered</div>
+      </div>
+
+      <div style="background:#fff;border:1px solid #D6DDD8;border-radius:8px;padding:18px;width:520px">
+        <div style="font-size:11px;color:#005A3C;font-weight:600">NS2-ADM-01…04</div>
+        <div style="font-size:15px;font-weight:600;margin:2px 0 10px">Administration</div>
+        <div style="width:100%;height:280px;background:#FBFCFB;border:1px solid #E2E7E3;border-radius:4px;padding:8px;display:flex;gap:6px;box-sizing:border-box">
+          <div style="width:28%;background:#D9E7DF;border-radius:2px;padding:4px 6px;font-size:9px;color:#3D5A4C">People & Access<br>Company Setup<br>Platform<br>Objects</div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <div style="height:24px;background:#E9EDEA;border-radius:2px;font-size:9px;color:#6B7A72;padding:3px 6px">"Why can this person do this?" — answerable chain</div>
+            <div style="flex:1;background:#E9EDEA;border-radius:2px;padding:4px 6px;font-size:9px;color:#6B7A72">DETAIL — object / role / permission / capability / workflow / assignment / operating company / policy, kept distinct</div>
+            <div style="height:26px;background:#E9EDEA;border-radius:2px;font-size:9px;color:#6B7A72;padding:3px 6px">AI: plain-language permission explanation (read-only)</div>
+          </div>
+        </div>
+        <div style="font-size:10px;color:#6B7A72;margin-top:8px">PROPOSED-ONLY — authority audit before composition · grouping is a §8 hypothesis</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>

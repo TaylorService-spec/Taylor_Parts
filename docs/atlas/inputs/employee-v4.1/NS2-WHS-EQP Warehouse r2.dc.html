@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E4E8E5; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #005A3C; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #3F4542; background: #F2F5F3; padding: 8px 12px 8px 10px; border-bottom: 1px solid #5F6C66; text-align: left; }
+    td.ls { padding: 10px 12px 10px 10px; border-bottom: 1px solid #C4CCC7; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 600 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #626A66; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; border-radius: 6px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; font-weight: 400; z-index: 40; box-shadow: 0 8px 32px rgba(16,43,36,0.18); }
+    .hlp:hover .tip { display: block; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px Inter, sans-serif; letter-spacing: 0.03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .btnp { font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #005A3C; color: #fff; border-radius: 6px; display: inline-block; }
+    .btns { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #fff; color: #111111; border: 1px solid #5F6C66; border-radius: 6px; display: inline-block; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,43,36,0.06), 0 2px 8px rgba(16,43,36,0.05); }
+    .att { background: #FDF6EC; border: 1px solid #C8A464; border-radius: 10px; }
+    .navi { padding: 9px 12px; font-weight: 600; border-radius: 6px; color: #B9C1BE; }
+    .navsel { padding: 9px 12px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.07); box-shadow: inset 3px 0 0 #B08A55; border-radius: 6px; }
+    .rel { display:inline-flex; align-items:center; font:700 10px Inter,sans-serif; letter-spacing:0.06em; padding:2px 8px; border-radius:4px; white-space:nowrap; vertical-align:middle; }
+    .rOWN{background:#102B24;color:#fff;} .rACC{background:#005A3C;color:#fff;} .rASG{background:#EAF3EE;color:#1E5B37;border:1px solid #237A45;} .rAPP{background:#F3EDFB;color:#5B3E8F;border:1px solid #7A5CB8;} .rESC{background:#FBEDED;color:#8F2B2B;border:1px solid #B23B3B;}
+    .subi { padding: 7px 10px 7px 28px; font-size: 12.5px; }
+    .subsel { padding: 7px 10px 7px 27px; background: #33815A; color: #fff; font-weight: 600; border-left: 1px solid #B08A55; border-radius: 0 6px 6px 0; font-size: 12.5px; }
+    .tab { font: 600 13px Inter, sans-serif; padding: 9px 2px; color: #3F4542; border-bottom: 3px solid transparent; }
+    .tabsel { font: 600 13px Inter, sans-serif; padding: 9px 2px; color: #102B24; border-bottom: 3px solid #005A3C; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div style="max-width: 1100px; font-size: 13px; color: #3F4542; line-height: 1.6;"><strong>NS2-WHS / NS2-EQP — Warehouse &amp; Equipment r2</strong> · Employee-model propagation: company owns the records; the buyer is accountable for the PO outcome, the receiver is assigned the receiving work (§26 pattern). OD-7 is settled (fact resolution → governed orchestration → pure validation → audit → atomic commit); workflow-specific handoff behavior (recipient acceptance, immediacy, forcing, decline windows) remains DESIGN HYPOTHESIS — WORKFLOW-SPECIFIC HANDOFF SEMANTICS per workflow. · Atlas P2 full-page North Star. Frames: NS2-WHS-01-1440 (Receiving session), NS2-EQP-01-1440 (Equipment record). RCV-G1/G2 and RCV-D1 carried; EQ rulings (P1v2.1) carried. OBSERVED AGAINST: REVERIFICATION REQUIRED AT FAMILY OPEN.</div>
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1a</span>NS2-WHS-01-1440 — Receiving · session against PO-1182, partial receipt inline</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Queue in hand, scan session center; exceptions (partial, substitution) are rows in the work, never buried.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Inventory</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subi">Parts</div>
+            <div class="subsel">Receiving</div>
+            <div class="subi">Cycle Counts</div>
+            <div class="subi">Transfers &amp; Trucks</div>
+            <div class="subi">Purchasing</div>
+          </div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Inventory → <a href="#">Receiving</a> → PO-1182</span><span><a href="#">← Back to Receiving</a></span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:22px 0 10px;">
+            <div>
+              <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Receiving PO-1182 — Taylor Direct</h1>
+              <div style="font-size: 13.5px; color: #3F4542;">Phoenix warehouse · 6 lines expected · owned by Taylor AZ · <span class="rel rACC" style="margin:0 4px;">ACCOUNTABLE</span>Maria V. (buyer — open-PO outcome) · <span class="rel rASG" style="margin:0 4px;">ASSIGNED</span>T. Alvarez (receiving) · started 9:12 AM</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span style="font-size: 13px; color: #626A66; padding: 9px 14px; border: 1px solid #005A3C; border-radius: 6px; min-width: 300px; background: #fff;">Scan next item — input focused<span class="hlp">i<span class="tip">Shared scan-session grammar (established by Cycle Counts CC-D9): focused input, first scan is the hardware test, camera/manual fallback, refusals queue with the server's reason, offline actions queue and retry.</span></span></span>
+            </div>
+          </header>
+          <div style="display:grid;grid-template-columns:316px 1fr;gap:24px;">
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:16px 18px 12px;">
+                <h3 class="rh">Today's receipts</h3>
+                <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;"><span style="font-weight:600;color:#102B24;">PO-1182 · Taylor Direct</span><span class="chip" style="background:#102B24;color:#fff;">Receiving</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span>PO-1179 · Hoshizaki</span><span style="color:#626A66;">Expected Mon</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Add existing unit</span><a href="#">Start →</a></div>
+                </div>
+                <div style="font-size:12px;color:#626A66;padding-top:10px;">One queue, two journeys (RCV-D1 — Owner decision carried; both entry points preserved).</div>
+              </div>
+            </div>
+            <div class="panel" style="padding:18px 20px 12px;">
+              <h3 class="rh">Session · 4 of 6 lines received</h3>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead><tr><th class="ls">Line</th><th class="ls" style="text-align:right;">Expected</th><th class="ls" style="text-align:right;">Received</th><th class="ls">State</th></tr></thead>
+                <tbody>
+                  <tr><td class="ls"><strong>C712-COMP</strong> Compressor Assembly · serialized</td><td class="ls" style="text-align:right;">1</td><td class="ls" style="text-align:right;font-weight:700;">1</td><td class="ls"><span class="chip" style="background:#EAF3EE;color:#237A45;border:1px solid #237A45;">Received · SN recorded</span></td></tr>
+                  <tr><td class="ls"><strong>016132</strong> O-Ring, Feed Tube</td><td class="ls" style="text-align:right;">48</td><td class="ls" style="text-align:right;font-weight:700;color:#8F6109;">36</td><td class="ls"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Short 12<span class="hlp">i<span class="tip">Partial receipt is a first-class path: the line stays open, the shortage is stated, and closing the session records a partial receipt against the PO with the remainder still expected. Nothing forces a false "complete".</span></span></span></td></tr>
+                  <tr><td class="ls"><strong>X49463-3</strong> Scraper Blade Kit</td><td class="ls" style="text-align:right;">10</td><td class="ls" style="text-align:right;font-weight:700;">10</td><td class="ls"><span class="chip" style="background:#EAF3EE;color:#237A45;border:1px solid #237A45;">Received</span></td></tr>
+                  <tr><td class="ls" style="border-bottom:none;"><strong>TF-BELT-42S</strong> Drive Belt (substitute for TF-BELT-42)</td><td class="ls" style="border-bottom:none;text-align:right;">12</td><td class="ls" style="border-bottom:none;text-align:right;font-weight:700;">12</td><td class="ls" style="border-bottom:none;"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Substitution — confirm<span class="hlp">i<span class="tip">Supplier substitution never posts silently: the scanned part differs from the PO line, so the row demands an explicit confirm (accept substitute → alias/mapping recorded) or refuse (line stays open). The governed command records which human accepted it.</span></span></span></td></tr>
+                </tbody>
+              </table>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 0 6px;">
+                <span style="font-size:12px;color:#626A66;">Receipt history read: RCV-G1 — honest gap; this session shows its own lines only.</span>
+                <span style="display:flex;gap:8px;"><span class="btns">Pause session</span><span class="btnp">Post received lines</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1b</span>NS2-EQP-01-1440 — Equipment record · installed unit</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Identity chain leads; warranty and timeline visible; unresolved location says so plainly.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Service</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subi">Work Orders</div>
+            <div class="subsel">Equipment</div>
+            <div class="subi">Service Operations</div>
+          </div>
+          <div class="navi">Inventory</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Service → <a href="#">Equipment</a> → TF-8842</span><span><a href="#">← Back to Equipment</a></span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:22px 0 4px;">
+            <div>
+              <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; margin: 0 0 4px;">TF-8842 — Taylor C723 soft-serve</h1>
+              <div style="font-size: 13.5px; color: #3F4542;">SN 8842-2019-0331 · <a href="#">Yuma High School</a> · Cafeteria, main kitchen · installed Mar 2019<span class="hlp">i<span class="tip">Identity chain: asset → Part → model → manufacturer via the governed line-mapping composition (Taylor/Ventana grouping, per the P1v2.1 ruling). Business tag TF-8842 leads; the internal record id lives in Details for support/audit only.</span></span></div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Down — open WO</span>
+              <span class="btns">Log reading</span>
+              <span class="btnp">New work order</span>
+            </div>
+          </header>
+          <div class="att" style="margin:14px 0 20px;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13.5px;"><strong>Unit down since Mon</strong> — compressor failed · <a href="#">WO-4187</a> awaiting part, swap scheduled after Fri receipt</span>
+            <a href="#">Work order →</a>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 316px;gap:24px;">
+            <div class="panel" style="padding:18px 20px 12px;">
+              <h3 class="rh">Service timeline</h3>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead><tr><th class="ls">When</th><th class="ls">Event</th><th class="ls" style="text-align:right;"></th></tr></thead>
+                <tbody>
+                  <tr><td class="ls">Mon</td><td class="ls"><strong>WO-4187</strong> opened — no-cool, compressor diagnosed failed</td><td class="ls" style="text-align:right;"><a href="#">→</a></td></tr>
+                  <tr><td class="ls">Jun 14</td><td class="ls">PM completed · blades + o-rings replaced</td><td class="ls" style="text-align:right;"><a href="#">→</a></td></tr>
+                  <tr><td class="ls" style="border-bottom:none;">Mar 2019</td><td class="ls" style="border-bottom:none;">Installed · governed install confirmation · S. Naber</td><td class="ls" style="border-bottom:none;text-align:right;"><a href="#">→</a></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Warranty &amp; coverage</h3>
+                <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;"><span>Manufacturer warranty</span><span style="color:#B23B3B;font-weight:600;">Expired Mar 2021</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Service agreement</span><a href="#">SA-201 · parts + labor →</a></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Operating company</span><span>Taylor AZ<span class="hlp">i<span class="tip">EQ-G5 seam: the owning operating company renders as a fact from the governed read. A cross-company mismatch (unit owned by one company, serviced by another) surfaces here as an explicit exception, never silently normalized.</span></span></span></div>
+                </div>
+              </div>
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Identity</h3>
+                <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;"><span>Model</span><span>Taylor C723</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Line</span><span>Soft-serve</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Serial</span><span>8842-2019-0331</span></div>
+                  <div style="display:flex;justify-content:space-between;"><span>EOS record id</span><span style="color:#626A66;">eq_7f3… <a href="#">copy</a></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

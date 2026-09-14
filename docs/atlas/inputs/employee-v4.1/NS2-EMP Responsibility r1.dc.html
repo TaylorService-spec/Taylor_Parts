@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E4E8E5; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #005A3C; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #3F4542; background: #F2F5F3; padding: 8px 12px 8px 10px; border-bottom: 1px solid #5F6C66; text-align: left; }
+    td.ls { padding: 10px 12px 10px 10px; border-bottom: 1px solid #C4CCC7; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 600 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #626A66; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; border-radius: 6px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; font-weight: 400; z-index: 40; box-shadow: 0 8px 32px rgba(16,43,36,0.18); }
+    .hlp:hover .tip { display: block; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px Inter, sans-serif; letter-spacing: 0.03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .rel { display: inline-flex; align-items: center; font: 700 10px Inter, sans-serif; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+    .rOWN { background: #102B24; color: #fff; }
+    .rACC { background: #005A3C; color: #fff; }
+    .rASG { background: #EAF3EE; color: #1E5B37; border: 1px solid #237A45; }
+    .rAPP { background: #F3EDFB; color: #5B3E8F; border: 1px solid #7A5CB8; }
+    .rESC { background: #FBEDED; color: #8F2B2B; border: 1px solid #B23B3B; }
+    .btnp { font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #005A3C; color: #fff; border-radius: 6px; display: inline-block; }
+    .btns { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #fff; color: #111111; border: 1px solid #5F6C66; border-radius: 6px; display: inline-block; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,43,36,0.06), 0 2px 8px rgba(16,43,36,0.05); }
+    .att { background: #FDF6EC; border: 1px solid #C8A464; border-radius: 10px; }
+    .navi { padding: 9px 12px; font-weight: 600; border-radius: 6px; color: #B9C1BE; }
+    .navsel { padding: 9px 12px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.07); box-shadow: inset 3px 0 0 #B08A55; border-radius: 6px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div style="max-width: 1100px; font-size: 13px; color: #3F4542; line-height: 1.6;"><strong>NS2-EMP — Employee Work &amp; Responsibility r1</strong> · from Owner handoff DES-EMP-01…12 (<a href="ns2/pages/NS2-EMP-responsibility.md">page doc</a>). Vocabulary: <span class="rel rOWN">OWNED</span> <span class="rel rACC">ACCOUNTABLE</span> <span class="rel rASG">ASSIGNED</span> <span class="rel rAPP">APPROVAL</span> <span class="rel rESC">ESCALATED</span> — an item may carry several; a chip always says why an item is in front of you. All reads/commands: MISSING CAPABILITY (P2-G5) until the operating-model workstream delivers — desired experience only. Handoff interactions here (request → accept, decline, assume, forced) are <strong>DESIGN HYPOTHESIS — GOVERNED HANDOFF SEMANTICS</strong> pending OD-7: the composition must support explicit transfer, refusal, pending states, zero responsibility gaps, and audit history without asserting that every workflow requires recipient acceptance. Frames: NS2-EMP-01-1440, NS2-EMP-02/03-1440, NS2-EMP-07-1440, NS2-EMP-08-375.</div>
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1a</span>NS2-EMP-01-1440 — My Work · sales/coordinator persona (K. Ames), start of day</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Five queues, never mixed; every row states why it is here (anti-pattern §33 guarded).</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navsel">Home · My Work</div>
+          <div class="navi">Service</div>
+          <div class="navi">Sales</div>
+          <div class="navi">Inventory</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Home → My Work</span><span style="color:#626A66;">Sat, Sep 13 · 7:10 AM</span>
+          </div>
+          <header style="padding: 24px 0 6px;">
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 6px;">My work — K. Ames</h1>
+            <p style="font-size: 14.5px; color: #3F4542; margin: 0;">Since Thursday: <strong>one new accountability</strong> (transferred by T. Ruiz, awaiting your acceptance) and <strong>one approval</strong> now waits on you. One accountability is overdue.<span class="hlp">i<span class="tip">§3 start-of-day answers: responsibility, assigned execution, decisions, escalations, owned relationships, changes since last worked, and risk — composed as one situation line + the five queues. Nothing here requires visiting functional modules to discover.</span></span></p>
+          </header>
+          <div class="att" style="margin: 16px 0 24px; padding: 14px 20px; display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13.5px;"><span class="rel rACC" style="margin-right:8px;">ACCOUNTABLE</span><strong>Transfer pending your acceptance</strong> — Desert Dairy collection case, from T. Ruiz: "out next week, needs continuity" · until you accept, <strong>T. Ruiz remains accountable</strong><span class="hlp">i<span class="tip">§10: transfer completes only on acceptance. Declining returns it visibly to Ruiz — never a silent handoff, never accountability limbo. Scenario 9 truth state.</span></span></span>
+            <span style="display:flex;gap:8px;"><span class="btnp" style="padding:7px 14px;">Review &amp; accept…</span><span class="btns" style="padding:6px 13px;">Decline…</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh"><span class="rel rACC" style="margin-right:8px;">ACCOUNTABLE</span>My accountabilities · 3</h3>
+                <table style="width:100%;border-collapse:collapse;">
+                  <tbody>
+                    <tr><td class="ls"><strong>WO-4187</strong> Yuma HS — next outcome: <em>parts availability confirmed</em><br><span style="color:#B23B3B;font-size:12px;font-weight:600;">Overdue — promise passed; escalation not yet raised</span></td><td class="ls" style="text-align:right;vertical-align:middle;"><a href="#1b">Open →</a></td></tr>
+                    <tr><td class="ls"><strong>Opp — Canyon Foods</strong> — next outcome: <em>agreement sent</em><br><span style="color:#626A66;font-size:12px;">also <span class="rel rOWN" style="margin:0 2px;">OWNED</span> — you own the relationship and the next move</span></td><td class="ls" style="text-align:right;vertical-align:middle;"><a href="#">Open →</a></td></tr>
+                    <tr><td class="ls" style="border-bottom:none;"><strong>Reorder 016132</strong> — next outcome: <em>PO placed</em> · execution with Purchasing<span class="hlp">i<span class="tip">§2: accountability without execution — Purchasing performs the ordering; Ames remains responsible that it happens. The row never claims Ames "owns" the part or the PO (§6/§26): Taylor owns those.</span></span></td><td class="ls" style="border-bottom:none;text-align:right;vertical-align:middle;"><a href="#">Open →</a></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh"><span class="rel rASG" style="margin-right:8px;">ASSIGNED</span>My assigned work · 2</h3>
+                <table style="width:100%;border-collapse:collapse;">
+                  <tbody>
+                    <tr><td class="ls">Prepare quote — Canyon Foods soft-serve add-on</td><td class="ls" style="text-align:right;"><a href="#">Start →</a></td></tr>
+                    <tr><td class="ls" style="border-bottom:none;">Customer follow-up call — Sunrise Creamery PM plan<br><span style="color:#626A66;font-size:12px;">accountable: J. Ruiz — you perform, Ruiz answers for the outcome</span></td><td class="ls" style="border-bottom:none;text-align:right;"><a href="#">Start →</a></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh"><span class="rel rAPP" style="margin-right:8px;">APPROVAL</span>Waiting on my decision · 1</h3>
+                <div style="font-size:13.5px;line-height:1.6;"><strong>Credit memo $2,300 — Sunrise Creamery</strong><br><span style="color:#626A66;font-size:12.5px;">Requested by S. Naber, who <strong>remains accountable</strong> for the underlying work order. Your authority is required: amount exceeds technician limit.<span class="hlp">i<span class="tip">§19 approval contract: the decision asked, who stays accountable, why this authority, supporting facts, and what happens after. Approving transfers nothing — S. Naber keeps the work.</span></span></span>
+                  <div style="display:flex;gap:8px;margin-top:10px;"><span class="btnp" style="padding:7px 14px;">Review &amp; decide…</span></div>
+                </div>
+              </div>
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh"><span class="rel rESC" style="margin-right:8px;">ESCALATED</span>My escalations · 1</h3>
+                <div style="font-size:13.5px;line-height:1.6;"><strong>WO-4193 return visit unscheduled 5 days</strong> — escalated from Dispatch<br><span style="color:#626A66;font-size:12.5px;">Accountable underneath: R. Diaz (dispatcher). Your intervention: decide reschedule vs reassign. Age 1 day; consequence: promise breach Monday.</span></div>
+              </div>
+              <div class="panel" style="padding:18px 20px 12px;">
+                <h3 class="rh"><span class="rel rOWN" style="margin-right:8px;">OWNED</span>My relationships needing attention · 2</h3>
+                <div style="font-size:13.5px;display:flex;flex-direction:column;gap:9px;">
+                  <div style="display:flex;justify-content:space-between;"><span>Desert Dairy — AR breach, opp in proposal</span><a href="#">Account →</a></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Canyon Foods — verbal yes 6 days, unsent</span><a href="#">Opportunity →</a></div>
+                </div>
+                <div style="font-size:12px;color:#626A66;padding-top:8px;">Durable relationship ownership — quiet unless attention is needed; never a task list.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1b</span>NS2-EMP-02/03-1440 — Work Order record · responsibility context + reassignment (scenarios 3, 5, 9)</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Company owns the record; people hold distinct relationships to it. Reassigning execution ≠ transferring accountability.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Service</div>
+          <div class="navi">Inventory</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Service → <a href="#">Work Orders</a> → WO-4188</span><span><a href="#">← Back</a></span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:22px 0 14px;">
+            <div>
+              <h1 style="font-family: 'Source Serif 4', serif; font-size: 30px; font-weight: 700; margin: 0 0 4px;">WO-4188 — Ice machine repair</h1>
+              <div style="font-size:13.5px;color:#3F4542;">Sunrise Creamery · Tempe · status: Scheduled · next expected outcome: <strong>visit completed Mon AM</strong></div>
+            </div>
+            <span class="chip" style="background:#102B24;color:#fff;">Scheduled</span>
+          </header>
+          <div class="panel" style="padding:18px 20px 14px;margin-bottom:24px;">
+            <h3 class="rh">Who's who on this record<span class="hlp">i<span class="tip">NS2-EMP-02 pattern — the responsibility context block, embedded on every important record. §4/§6: the operating company owns the record; the accountable person answers for the next outcome; the assignee performs; the approver gates decisions. Never one generic "owner" field.</span></span></h3>
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;font-size:13.5px;">
+              <div><div style="font:600 11px Inter,sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:#626A66;margin-bottom:4px;">Owned by</div><strong>Taylor AZ</strong> (company record)<div style="font-size:12px;color:#626A66;">no employee owns a work order</div></div>
+              <div><div style="font:600 11px Inter,sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:#626A66;margin-bottom:4px;">Accountable for next outcome</div><span class="rel rACC" style="margin-right:6px;">ACCOUNTABLE</span><strong>R. Diaz</strong> (dispatch)<div style="font-size:12px;color:#626A66;">since Tue · not overdue · <a href="#">history</a></div></div>
+              <div><div style="font:600 11px Inter,sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:#626A66;margin-bottom:4px;">Assigned to perform</div><span class="rel rASG" style="margin-right:6px;">ASSIGNED</span><strong>Carlos M.</strong> — visit Mon 8:00<div style="font-size:12px;color:#8F6109;font-weight:600;">reassignment pending (from D. Kellerman, out sick)</div></div>
+              <div><div style="font:600 11px Inter,sans-serif;letter-spacing:0.05em;text-transform:uppercase;color:#626A66;margin-bottom:4px;">Approval required</div>none for current step<div style="font-size:12px;color:#626A66;">parts within technician authority</div></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 380px;gap:24px;">
+            <div class="panel" style="padding:18px 20px 14px;">
+              <h3 class="rh">Reassign execution — Kellerman → Carlos (scenario 5)</h3>
+              <p style="font-size:13.5px;line-height:1.65;margin:0 0 12px;">This changes <strong>who performs the visit</strong>. It does <strong>not</strong> change: work order ownership (Taylor AZ), accountability (R. Diaz), or the promise to the customer. If accountability should also move, that is a separate explicit transfer.<span class="hlp">i<span class="tip">§12 + §17: the two actions never share a button. The recommendation below is EOS speaking; nothing is assigned until Diaz decides. Notification on completion names both facts: "Technician assignment changed from Kellerman to Carlos. R. Diaz remains accountable." (§30)</span></span></p>
+              <div style="background:#EAF3EE;border:1px solid #237A45;border-radius:8px;padding:12px 14px;font-size:13px;margin-bottom:12px;">
+                <div style="font-weight:700;margin-bottom:6px;">Recommended: Carlos M. <span style="font-weight:400;color:#1E5B37;">— EOS recommendation, not a decision</span></div>
+                <div style="line-height:1.7;color:#1E5B37;">Required C723 proficiency P3 → Carlos P4 · refrigeration P3 → P4 · 3 prior visits on this unit · available inside SLA · workload allows</div>
+              </div>
+              <div style="display:flex;gap:8px;"><span class="btnp">Reassign to Carlos</span><span class="btns">Choose someone else…</span><span class="btns" style="color:#626A66;">Transfer accountability instead…</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">Responsibility history<span class="hlp">i<span class="tip">NS2-EMP-09 seed (§22): accountability periods with start/end, transfer reason, transferring/accepting employee, forced-transfer actor, escalations, and assignments within each period. Audit-grade, human-readable.</span></span></h3>
+                <div style="font-size:12.5px;color:#3F4542;display:flex;flex-direction:column;gap:8px;">
+                  <div><strong>Tue</strong> Accountability: K. Ames → R. Diaz (accepted; reason: scheduling phase)</div>
+                  <div><strong>Tue</strong> Assigned: D. Kellerman (visit Mon)</div>
+                  <div><strong>Today</strong> Kellerman unavailable → reassignment opened</div>
+                </div>
+              </div>
+              <div class="panel" style="padding:16px 18px 14px;">
+                <h3 class="rh">If Carlos can't take it</h3>
+                <div style="font-size:13px;line-height:1.6;color:#3F4542;">No other available technician meets C723 P3 → the record raises <span class="rel rESC" style="margin:0 2px;">ESCALATED</span> PROFICIENCY GAP to the service manager (§18) — visibly, never a buried warning.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1c" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1c</span>NS2-EMP-07-1440 — Manager responsibility view · service manager (scenarios 10, 11)</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Team responsibility truth without entering each module; defects lead; assuming accountability is explicit.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: 'Source Serif 4', serif; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navsel">Home · My Team</div>
+          <div class="navi">Service</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Home → My Team</span><span style="color:#626A66;">Service team · 7 people</span>
+          </div>
+          <header style="padding: 24px 0 6px;">
+            <h1 style="font-family: 'Source Serif 4', serif; font-size: 32px; font-weight: 700; margin: 0 0 6px;">Team responsibility</h1>
+            <p style="font-size: 14.5px; color: #3F4542; margin: 0;"><strong>Two defects</strong> need you: one work item has no accountable person, and one required proficiency has no available employee.</p>
+          </header>
+          <div class="att" style="margin: 16px 0 24px; padding: 16px 20px;">
+            <h3 class="rh" style="color:#8F2B2B;">Responsibility defects · 2<span class="hlp">i<span class="tip">§18 defect classes: NO ACCOUNTABLE PERSON, holder unavailable, pending transfer, overdue, assignment conflict, proficiency gap, authority block. First-class attention — never low-priority system warnings.</span></span></h3>
+            <div style="display:flex;flex-direction:column;gap:10px;font-size:13.5px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;"><span><span class="rel rESC" style="margin-right:8px;">NO ACCOUNTABLE PERSON</span><strong>Customer escalation — Peoria Schools install delay</strong> · orphaned when T. Ruiz went on leave</span><span style="display:flex;gap:8px;"><span class="btnp" style="padding:6px 13px;">Assume accountability</span><span class="btns" style="padding:5px 12px;">Assign to…</span></span></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #E4D4B4;padding-top:10px;"><span><span class="rel rESC" style="margin-right:8px;">PROFICIENCY GAP</span><strong>WO-4188 needs C723 P3</strong> — only qualified available tech is at capacity Mon</span><span style="display:flex;gap:8px;"><span class="btns" style="padding:5px 12px;">Options…</span></span></div>
+            </div>
+            <div style="font-size:12px;color:#626A66;padding-top:10px;">"Assume accountability" is the §13 explicit act — recorded as a transfer to you. Viewing or helping never transfers anything implicitly. Forced transfer (§11) lives behind Options with reason + authorization + effective time, visibly exceptional.</div>
+          </div>
+          <div class="panel" style="padding:18px 20px 12px;">
+            <h3 class="rh">Team load — accountabilities and assignments are different columns<span class="hlp">i<span class="tip">§28/§31: a manager reads "everything Maria is accountable for" apart from "everything assigned to Maria". Overload shows per relationship type; pending transfers and approval load are visible without opening records.</span></span></h3>
+            <table style="width:100%;border-collapse:collapse;">
+              <thead><tr><th class="ls">Person</th><th class="ls" style="text-align:right;">Accountable</th><th class="ls" style="text-align:right;">Assigned</th><th class="ls" style="text-align:right;">Approvals</th><th class="ls">Pending transfers</th><th class="ls">Risk</th></tr></thead>
+              <tbody>
+                <tr><td class="ls"><strong>R. Diaz</strong> · dispatcher</td><td class="ls" style="text-align:right;font-weight:700;">14</td><td class="ls" style="text-align:right;">—</td><td class="ls" style="text-align:right;">2</td><td class="ls">—</td><td class="ls"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">1 overdue</span></td></tr>
+                <tr><td class="ls"><strong>K. Ames</strong> · coordinator</td><td class="ls" style="text-align:right;font-weight:700;">3</td><td class="ls" style="text-align:right;">2</td><td class="ls" style="text-align:right;">1</td><td class="ls">1 awaiting her acceptance</td><td class="ls"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">1 overdue</span></td></tr>
+                <tr><td class="ls"><strong>Carlos M.</strong> · technician</td><td class="ls" style="text-align:right;font-weight:700;">1</td><td class="ls" style="text-align:right;">5</td><td class="ls" style="text-align:right;">—</td><td class="ls">reassignment inbound</td><td class="ls"><span class="chip" style="background:#EAF3EE;color:#237A45;border:1px solid #237A45;">OK</span></td></tr>
+                <tr><td class="ls" style="border-bottom:none;"><strong>D. Kellerman</strong> · technician</td><td class="ls" style="border-bottom:none;text-align:right;font-weight:700;">—</td><td class="ls" style="border-bottom:none;text-align:right;color:#B23B3B;font-weight:700;">4 (unavailable)</td><td class="ls" style="border-bottom:none;text-align:right;">—</td><td class="ls" style="border-bottom:none;">—</td><td class="ls" style="border-bottom:none;"><span class="chip" style="background:#FBEDED;color:#8F2B2B;border:1px solid #B23B3B;">Out · conflicts</span></td></tr>
+              </tbody>
+            </table>
+            <div style="font-size:12px;color:#626A66;padding:8px 0 4px;">Escalation does not make the manager accountable (§20/§33) — only Assume accountability does.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1d" style="width: 420px;">
+    <div style="margin-bottom: 8px;"><span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1d</span>NS2-EMP-08-375 — Technician field view (scenario 4)</span></div>
+    <div style="width: 375px; background: #FFFFFF; outline: 1px solid #87938D; font-size: 14px;">
+      <div style="background: #102B24; color: #fff; padding: 14px 16px; display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:'Source Serif 4',serif;font-weight:700;font-size:16px;">Today's visit</span><span style="font-size:12px;color:#B9C1BE;">Carlos M.</span>
+      </div>
+      <div style="padding:16px;">
+        <div class="panel" style="border-color:#005A3C;padding:14px 16px;margin-bottom:12px;">
+          <div style="display:flex;gap:6px;margin-bottom:8px;"><span class="rel rASG">ASSIGNED TO ME</span><span class="rel rACC">I ACCEPTED THE OUTCOME</span></div>
+          <div style="font-weight:700;font-size:16px;">WO-4188 — ice machine repair</div>
+          <div style="font-size:13px;color:#3F4542;margin:4px 0 10px;">Sunrise Creamery, Tempe · Mon 8:00<br>Required outcome: <strong>machine running, parts recorded</strong></div>
+          <div style="font-size:12.5px;background:#F2F5F3;border:1px solid #C4CCC7;border-radius:6px;padding:8px 10px;line-height:1.6;">Manager approval needed only if parts exceed $500.<br>Can't finish? <strong>Hand back to Dispatch</strong> — that returns the outcome to R. Diaz, visibly.<span class="hlp">i<span class="tip">§29: the model is sophisticated, the interaction is not. Accepting the visit (scenario 4) added the ACCOUNTABLE chip; handing back is one action with a stated consequence — no governance screens in the field.</span></span></div>
+          <div style="display:flex;gap:8px;margin-top:10px;"><span class="btnp" style="flex:1;text-align:center;padding:12px 0;">Start visit</span><span class="btns" style="flex:1;text-align:center;padding:11px 0;">Hand back…</span></div>
+        </div>
+        <div style="font-size:11.5px;color:#626A66;padding:0 2px;">Chips say the two things that matter: it's mine to do, and I answered for the outcome when I accepted it.</div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

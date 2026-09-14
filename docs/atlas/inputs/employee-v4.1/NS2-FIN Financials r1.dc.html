@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E4E8E5; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #005A3C; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #3F4542; background: #F2F5F3; padding: 8px 12px 8px 10px; border-bottom: 1px solid #5F6C66; text-align: left; }
+    td.ls { padding: 10px 12px 10px 10px; border-bottom: 1px solid #C4CCC7; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 600 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #626A66; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; border-radius: 6px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; font-weight: 400; z-index: 40; box-shadow: 0 8px 32px rgba(16,43,36,0.18); }
+    .hlp:hover .tip { display: block; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px Inter, sans-serif; letter-spacing: 0.03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .btnp { font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #005A3C; color: #fff; border-radius: 6px; display: inline-block; }
+    .btns { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #fff; color: #111111; border: 1px solid #5F6C66; border-radius: 6px; display: inline-block; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,43,36,0.06), 0 2px 8px rgba(16,43,36,0.05); }
+    .att { background: #FDF6EC; border: 1px solid #C8A464; border-radius: 10px; }
+    .figv { font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; color: #111111; line-height: 1.1; }
+    .figl { font: 600 11px Inter, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #626A66; margin-top: 4px; }
+    .navi { padding: 9px 12px; font-weight: 600; border-radius: 6px; color: #B9C1BE; }
+    .navsel { padding: 9px 12px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.07); box-shadow: inset 3px 0 0 #B08A55; border-radius: 6px; }
+    .subi { padding: 7px 10px 7px 28px; font-size: 12.5px; }
+    .subsel { padding: 7px 10px 7px 27px; background: #33815A; color: #fff; font-weight: 600; border-left: 1px solid #B08A55; border-radius: 0 6px 6px 0; font-size: 12.5px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div style="max-width: 1100px; font-size: 13px; color: #3F4542; line-height: 1.6;"><strong>NS2-FIN — Financials r1</strong> · Atlas P2 full-page North Star. Frames: NS2-FIN-01-1440 (Overview, 5-group IA hypothesis in the subnav), NS2-FIN-02-1440 (Billing Queue — the working-page grammar for the suite). 15 authority gaps + 13 product questions carried from the P1 canonical register. Capability-gated; denied states honest. OBSERVED AGAINST: REVERIFICATION REQUIRED AT FAMILY OPEN.</div>
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1a</span>NS2-FIN-01-1440 — Financials Overview · Finance persona, morning</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Money truth end to end: exceptions lead, figures drill through, queues are the work. IA-Q2 grouping shown in subnav.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Financials</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subsel">Overview</div>
+            <div class="subi">Billing &amp; Receivables</div>
+            <div class="subi">Customer Financials</div>
+            <div class="subi">Performance</div>
+            <div class="subi">Planning &amp; Governance</div>
+          </div>
+          <div class="navi">Reporting</div>
+        </div>
+        <div style="margin: 16px 12px 0; padding: 10px 12px; border: 1px solid rgba(185,193,190,0.2); border-radius: 6px; font-size: 11.5px; line-height: 1.5; color: #8A968F;">5-group hypothesis over the 20 P1 pages (IA-Q2) — merges only with workflow evidence.</div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Financials → Overview</span><span style="color: #626A66;">Period: September (open) · Read-checked 8:05 AM</span>
+          </div>
+          <header style="padding: 24px 0 6px;">
+            <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 32px; font-weight: 700; margin: 0 0 6px;">Financials</h1>
+            <p style="font-size: 14.5px; color: #3F4542; margin: 0;">Cash is moving and billing is 2 days behind. <strong>Unapplied cash and one aging breach</strong> need work today.</p>
+          </header>
+          <div class="att" style="margin: 18px 0 24px; padding: 16px 20px;">
+            <h3 class="rh" style="color: #8F6109;">Exceptions · 3</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;"><span><strong>$12,400 unapplied cash</strong> — 2 payments received without invoice match<span class="hlp">i<span class="tip">Unapplied is stated as its own truth, never netted into AR. Each payment row offers the governed application command with suggested matches ranked by amount+account — applying is always the human's act.</span></span></span><a href="#">Apply →</a></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #E4D4B4;padding-top:10px;"><span><strong>Desert Dairy $42,180 at 90+</strong> — escalation prepared, awaiting Owner</span><a href="#">Case →</a></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #E4D4B4;padding-top:10px;"><span><strong>Reconciliation break</strong> — deposit 9/10 off by $86 vs recorded payments</span><a href="#">Reconcile →</a></div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 48px; padding: 0 0 26px;">
+            <div><div class="figv">$27.9k</div><div class="figl"><a href="#1b" style="color:#626A66;">Unbilled, ready →</a></div></div>
+            <div><div class="figv" style="color:#8F6109;">$188k</div><div class="figl"><a href="#" style="color:#626A66;">AR over 30 →</a></div></div>
+            <div><div class="figv">$96k</div><div class="figl"><a href="#" style="color:#626A66;">Received MTD →</a></div></div>
+            <div><div class="figv" style="color:#8F6109;">$12.4k</div><div class="figl"><a href="#" style="color:#626A66;">Unapplied →</a></div></div>
+            <span class="hlp" style="margin-top:8px;">i<span class="tip">Each figure exists because Finance asks it daily (what can we bill, who owes us, what came in, what isn't applied). Figures render only from governed reads; where a projection is absent (per the FIN authority-gap register) the slot shows the honest unavailable posture with its gap id.</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+            <div class="panel" style="padding:18px 20px 12px;">
+              <h3 class="rh">Work queues</h3>
+              <div style="font-size:13.5px;display:flex;flex-direction:column;gap:10px;">
+                <div style="display:flex;justify-content:space-between;"><span>Billing queue — completed WOs to invoice</span><a href="#1b">11 →</a></div>
+                <div style="display:flex;justify-content:space-between;"><span>Payments to apply</span><a href="#">2 →</a></div>
+                <div style="display:flex;justify-content:space-between;"><span>Credits awaiting approval</span><a href="#">1 · $18.4k →</a></div>
+                <div style="display:flex;justify-content:space-between;"><span>Reconciliation exceptions</span><a href="#">1 →</a></div>
+              </div>
+            </div>
+            <div class="panel" style="padding:18px 20px 12px;">
+              <h3 class="rh">Collection priority</h3>
+              <p style="font-size:13.5px;line-height:1.6;margin:0 0 8px;">Call order today: Desert Dairy (90+, escalation pending), Canyon Foods ($9.2k at 45 days, historically pays on call), Yuma HS district office (PO mismatch holding $6.1k).</p>
+              <div style="font-size:12px;color:#626A66;">AI-ranked from AR aging + payment history reads · <a href="#">show reasoning</a> · calls and terms remain human decisions</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1b</span>NS2-FIN-02-1440 — Billing Queue · the suite's working-page grammar</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Completed work → invoice, one motion per row; blockers named on the row.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Financials</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subi">Overview</div>
+            <div class="subsel">Billing &amp; Receivables</div>
+            <div class="subi">Customer Financials</div>
+            <div class="subi">Performance</div>
+            <div class="subi">Planning &amp; Governance</div>
+          </div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Financials → Billing &amp; Receivables → Billing Queue</span><span style="color:#626A66;">11 items · $27,940</span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;padding:22px 0 14px;">
+            <div>
+              <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Billing Queue</h1>
+              <p style="font-size: 13.5px; color: #3F4542; margin: 0;">Completed work not yet invoiced. Oldest first — 2 days is the standard.</p>
+            </div>
+            <span class="btnp">Invoice 8 ready items…<span class="hlp" style="margin-left:6px;">i<span class="tip">Batch action covers only rows whose state is Ready — blocked rows are excluded automatically and say why they stay. The command invoices each WO individually and reports per-row outcomes; a partial failure never silently drops items.</span></span></span>
+          </header>
+          <div class="panel" style="padding:18px 20px 12px;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead><tr><th class="ls">Work / order</th><th class="ls">Customer</th><th class="ls" style="text-align:right;">Amount</th><th class="ls">Waiting</th><th class="ls">State</th><th class="ls" style="text-align:right;"></th></tr></thead>
+              <tbody>
+                <tr><td class="ls"><strong>WO-4199</strong> · PM + parts</td><td class="ls">Canyon Foods</td><td class="ls" style="text-align:right;font-variant-numeric:tabular-nums;">$1,840</td><td class="ls" style="color:#8F6109;font-weight:600;">4 days</td><td class="ls"><span class="chip" style="background:#EAF3EE;color:#237A45;border:1px solid #237A45;">Ready</span></td><td class="ls" style="text-align:right;"><a href="#">Invoice →</a></td></tr>
+                <tr><td class="ls"><strong>WO-4188</strong> · repair</td><td class="ls">Sunrise Creamery</td><td class="ls" style="text-align:right;font-variant-numeric:tabular-nums;">$2,410</td><td class="ls">2 days</td><td class="ls"><span class="chip" style="background:#EAF3EE;color:#237A45;border:1px solid #237A45;">Ready</span></td><td class="ls" style="text-align:right;"><a href="#">Invoice →</a></td></tr>
+                <tr><td class="ls"><strong>SO-887</strong> · equipment sale</td><td class="ls">Peoria Schools</td><td class="ls" style="text-align:right;font-variant-numeric:tabular-nums;">$14,600</td><td class="ls">1 day</td><td class="ls"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Blocked — delivery unconfirmed</span></td><td class="ls" style="text-align:right;"><a href="#">Fulfillment →</a></td></tr>
+                <tr><td class="ls" style="border-bottom:none;"><strong>WO-4193</strong> · diagnosis visit</td><td class="ls" style="border-bottom:none;">Desert Dairy</td><td class="ls" style="border-bottom:none;text-align:right;font-variant-numeric:tabular-nums;">$480</td><td class="ls" style="border-bottom:none;">today</td><td class="ls" style="border-bottom:none;"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Hold — account 90+<span class="hlp">i<span class="tip">A billing hold from AR policy renders on the row with its policy name; releasing it is a governed action for sessions holding the policy capability — others see NOT AUTHORIZED, visually distinct from the blocked state.</span></span></span></td><td class="ls" style="border-bottom:none;text-align:right;"><span style="color:#626A66;">Held</span></td></tr>
+              </tbody>
+            </table>
+            <div style="font-size:12px;color:#626A66;padding:10px 0 4px;">Row → invoice draft → post: each step is the normal governed command; drafts never post themselves. <a href="#">All 11 →</a></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>

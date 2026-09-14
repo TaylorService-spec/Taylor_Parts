@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="design_doc_mode" content="canvas">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #E4E8E5; color: #111111; font-family: Inter, system-ui, sans-serif; font-size: 14px; }
+    a { color: #005A3C; } a:hover { color: #102B24; }
+    th.ls { font: 600 11px Inter, sans-serif; letter-spacing: 0.05em; text-transform: uppercase; color: #3F4542; background: #F2F5F3; padding: 8px 12px 8px 10px; border-bottom: 1px solid #5F6C66; text-align: left; }
+    td.ls { padding: 10px 12px 10px 10px; border-bottom: 1px solid #C4CCC7; font-size: 13.5px; vertical-align: top; }
+    h3.rh { font: 600 12px Inter, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #3F4542; margin: 0 0 10px; }
+    .hlp { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1px solid #626A66; border-radius: 50%; color: #3F4542; font: 700 10px Inter, sans-serif; cursor: help; vertical-align: middle; margin-left: 6px; }
+    .hlp:hover { border-color: #102B24; color: #102B24; }
+    .hlp .tip { display: none; position: absolute; top: 22px; left: 50%; transform: translateX(-50%); width: 380px; background: #102B24; color: #E8E2D6; padding: 12px 14px; border-radius: 6px; font: 400 12px/1.6 Inter, sans-serif; letter-spacing: 0; text-transform: none; text-align: left; font-weight: 400; z-index: 40; box-shadow: 0 8px 32px rgba(16,43,36,0.18); }
+    .hlp:hover .tip { display: block; }
+    .chip { display: inline-flex; align-items: center; gap: 5px; font: 600 11px Inter, sans-serif; letter-spacing: 0.03em; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .btnp { font: 600 13px Inter, sans-serif; padding: 9px 16px; background: #005A3C; color: #fff; border-radius: 6px; display: inline-block; }
+    .btns { font: 600 13px Inter, sans-serif; padding: 8px 15px; background: #fff; color: #111111; border: 1px solid #5F6C66; border-radius: 6px; display: inline-block; }
+    .panel { background: #FFFFFF; border: 1px solid #87938D; border-radius: 10px; box-shadow: 0 1px 2px rgba(16,43,36,0.06), 0 2px 8px rgba(16,43,36,0.05); }
+    .navi { padding: 9px 12px; font-weight: 600; border-radius: 6px; color: #B9C1BE; }
+    .navsel { padding: 9px 12px; font-weight: 600; color: #fff; background: rgba(255,255,255,0.07); box-shadow: inset 3px 0 0 #B08A55; border-radius: 6px; }
+    .rel { display:inline-flex; align-items:center; font:700 10px Inter,sans-serif; letter-spacing:0.06em; padding:2px 8px; border-radius:4px; white-space:nowrap; vertical-align:middle; }
+    .rOWN{background:#102B24;color:#fff;} .rACC{background:#005A3C;color:#fff;} .rASG{background:#EAF3EE;color:#1E5B37;border:1px solid #237A45;} .rAPP{background:#F3EDFB;color:#5B3E8F;border:1px solid #7A5CB8;} .rESC{background:#FBEDED;color:#8F2B2B;border:1px solid #B23B3B;}
+    .subi { padding: 7px 10px 7px 28px; font-size: 12.5px; }
+    .subsel { padding: 7px 10px 7px 27px; background: #33815A; color: #fff; font-weight: 600; border-left: 1px solid #B08A55; border-radius: 0 6px 6px 0; font-size: 12.5px; }
+  </style>
+</helmet>
+<section style="padding: 32px 40px; display: flex; flex-direction: column; gap: 44px;">
+
+  <div style="max-width: 1100px; font-size: 13px; color: #3F4542; line-height: 1.6;"><strong>NS2-ADM / NS2-RPT / NS2-PUR — Administration, Reporting, Purchasing r2</strong> · Employee-model propagation on Purchasing: POs are Taylor-owned; buyers are accountable, never owners. People & Access keeps the Employee ↔ User Access separation (bidirectional link only). OD-7 is settled (fact resolution → governed orchestration → pure validation → audit → atomic commit); workflow-specific handoff behavior (recipient acceptance, immediacy, forcing, decline windows) remains DESIGN HYPOTHESIS — WORKFLOW-SPECIFIC HANDOFF SEMANTICS per workflow. · Atlas P2 full-page North Star. Frames: NS2-ADM-01-1440 (People &amp; Access, "why can this person do this" chain), NS2-PUR-01-1440 (Purchasing workspace — AUTHORITY audit pending, P2-G3), NS2-RPT-01-1440 (Reporting). These families were PROPOSED-ONLY; the desired experience is designed, gaps marked, nothing invented. OBSERVED AGAINST: REVERIFICATION REQUIRED AT FAMILY OPEN.</div>
+
+  <div id="1a" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1a</span>NS2-ADM-01-1440 — People &amp; Access · effective-access answer</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Distinct concepts stay distinct: role, permission, capability, assignment, operating company, policy.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Administration</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subsel">People &amp; Access</div>
+            <div class="subi">Company Setup</div>
+            <div class="subi">Platform</div>
+            <div class="subi">Objects</div>
+          </div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Administration → People &amp; Access → M. Villanueva</span><span><a href="#">← All people</a></span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;padding:22px 0 16px;">
+            <div>
+              <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; margin: 0 0 4px;">M. Villanueva</h1>
+              <div style="font-size: 13.5px; color: #3F4542;">Technician · Taylor AZ · active since 2022 · assigned Truck 7</div>
+            </div>
+            <div style="display:flex;gap:8px;"><span class="btns">Change roles…</span><span class="btns">Change assignments…</span></div>
+          </header>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+            <div class="panel" style="padding:18px 20px 14px;">
+              <h3 class="rh">Why can this person count Truck 7?<span class="hlp">i<span class="tip">The signature Administration answer: every effective capability renders as its full derivation chain — role grants, policy conditions, assignment scope, operating company — read live from the authority model. Changing any link previews the resulting access before the governed change command runs.</span></span></h3>
+              <div style="font-size:13.5px;line-height:2;color:#111;">
+                <div>Role <strong>Technician</strong> grants capability <strong>inventoryCycleCountCounter</strong></div>
+                <div style="color:#626A66;">↳ policy: counting allowed on <em>assigned locations only</em></div>
+                <div>Assignment <strong>Truck 7</strong> (since Mar 2024) scopes <em>which</em> location</div>
+                <div style="color:#626A66;">↳ assignment answers <em>which</em>, capability answers <em>whether</em></div>
+                <div>Operating company <strong>Taylor AZ</strong> matches the truck's owner</div>
+                <div style="color:#237A45;font-weight:600;">→ Effective: may count Truck 7 · may not count warehouse bins</div>
+              </div>
+              <div style="font-size:12px;color:#626A66;padding-top:8px;">Plain-language explanation drafted by AI over the authority reads · the chain itself is the governed truth · <a href="#">what would change if the Technician role lost this capability?</a></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:24px;">
+              <div class="panel" style="padding:16px 18px 12px;">
+                <h3 class="rh">Roles &amp; assignments</h3>
+                <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;justify-content:space-between;"><span>Role · Technician</span><a href="#">definition →</a></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Assignment · Truck 7</span><a href="#">history →</a></div>
+                  <div style="display:flex;justify-content:space-between;"><span>Operating company · Taylor AZ</span><a href="#">→</a></div>
+                </div>
+              </div>
+              <div class="panel" style="padding:16px 18px 12px;">
+                <h3 class="rh">Recent access events</h3>
+                <div style="font-size:12.5px;color:#3F4542;display:flex;flex-direction:column;gap:7px;">
+                  <div><strong>Sep 4</strong> Denied: close cycle count sheet (no reconciler capability) — expected</div>
+                  <div><strong>Aug 30</strong> Truck 7 assignment renewed · K. Ames</div>
+                </div>
+                <div style="font-size:12px;color:#626A66;padding-top:8px;">Denials are facts worth showing — they verify the model is working.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1b" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1b</span>NS2-PUR-01-1440 — Purchasing workspace · desired experience, authority audit pending (P2-G3)</span>
+      <span style="font-size: 11.5px; color: #3F4542;">Reorder journey lands here: request → PO → receipt, each step linked.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navsel">Inventory</div>
+          <div style="margin-left: 10px; border-left: 1px solid rgba(185,193,190,0.18);">
+            <div class="subi">Parts</div>
+            <div class="subi">Receiving</div>
+            <div class="subsel">Purchasing</div>
+          </div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Inventory → Purchasing</span><span style="color:#626A66;">Read-checked 10:30 AM</span>
+          </div>
+          <header style="display:flex;justify-content:space-between;align-items:flex-end;padding:22px 0 16px;">
+            <div>
+              <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Purchasing</h1>
+              <p style="font-size:13.5px;color:#3F4542;margin:0;">2 requests awaiting order · 3 POs open · 1 partial receipt to resolve. Records owned by Taylor AZ — buyers are accountable for outcomes, never record owners.</p>
+            </div>
+            <span class="btnp">New purchase order</span>
+          </header>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+            <div class="panel" style="padding:18px 20px 12px;">
+              <h3 class="rh">Requests → order · 2</h3>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead><tr><th class="ls">Request</th><th class="ls" style="text-align:right;">Qty</th><th class="ls">From</th><th class="ls" style="text-align:right;"></th></tr></thead>
+                <tbody>
+                  <tr><td class="ls"><strong>016132</strong> O-Ring, Feed Tube</td><td class="ls" style="text-align:right;">48</td><td class="ls">Reorder · parts workspace</td><td class="ls" style="text-align:right;"><a href="#">Order →</a></td></tr>
+                  <tr><td class="ls" style="border-bottom:none;"><strong>TF-BELT-42</strong> Drive Belt</td><td class="ls" style="border-bottom:none;text-align:right;">24</td><td class="ls" style="border-bottom:none;">Reorder · parts workspace</td><td class="ls" style="border-bottom:none;text-align:right;"><a href="#">Order →</a></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel" style="padding:18px 20px 12px;">
+              <h3 class="rh">Open purchase orders · 3</h3>
+              <table style="width:100%;border-collapse:collapse;">
+                <thead><tr><th class="ls">PO</th><th class="ls">Supplier</th><th class="ls">State</th><th class="ls" style="text-align:right;"></th></tr></thead>
+                <tbody>
+                  <tr><td class="ls"><strong>PO-1182</strong> · 6 lines<br><span style="font-size:12px;color:#626A66;"><span class="rel rACC" style="margin-right:4px;">ACCOUNTABLE</span>Maria V. — resolve short receipt</span></td><td class="ls">Taylor Direct</td><td class="ls"><span class="chip" style="background:#FFF4DE;color:#8F6109;border:1px solid #8F6109;">Partial — 12 short</span></td><td class="ls" style="text-align:right;"><a href="#">→</a></td></tr>
+                  <tr><td class="ls"><strong>PO-1179</strong> · 2 lines</td><td class="ls">Hoshizaki</td><td class="ls"><span class="chip" style="background:#102B24;color:#fff;">Expected Mon</span></td><td class="ls" style="text-align:right;"><a href="#">→</a></td></tr>
+                  <tr><td class="ls" style="border-bottom:none;"><strong>PO-1175</strong> · 1 line</td><td class="ls" style="border-bottom:none;">Ventana</td><td class="ls" style="border-bottom:none;"><span class="chip" style="background:#F2F5F3;color:#3F4542;border:1px solid #87938D;">Sent</span></td><td class="ls" style="border-bottom:none;text-align:right;"><a href="#">→</a></td></tr>
+                </tbody>
+              </table>
+              <div style="font-size:12px;color:#626A66;padding:8px 0 4px;">P2-G3: the PO command/read set is unaudited — this composition is the desired experience; actions render NOT YET IMPLEMENTED until the authority audit lands.<span class="hlp">i<span class="tip">Honest-slot rule: the structural slots are designed and preserved; each write action here carries the NOT YET IMPLEMENTED treatment (distinct from denied/unavailable) until Purchasing authority is verified at a pinned baseline. Nothing is invented; nothing is silently dropped.</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="1c" style="width: 1672px;">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
+      <span style="font: 700 11px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase;"><span style="background: #102B24; color: #fff; padding: 2px 7px; border-radius: 4px; margin-right: 8px;">1c</span>NS2-RPT-01-1440 — Reporting · describe → draft → governed save</span>
+      <span style="font-size: 11.5px; color: #3F4542;">No metric without an authorized read; drafts are editable definitions, never opaque answers.</span>
+    </div>
+    <div style="background: #FFFFFF; outline: 1px solid #87938D; display: flex;">
+      <nav style="width: 252px; flex: none; background: #102B24; color: #B9C1BE; font-size: 13px; padding-bottom: 18px;">
+        <div style="padding: 18px 18px 16px; border-bottom: 1px solid rgba(185,193,190,0.14);">
+          <div style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-weight: 700; font-size: 16px; color: #fff;">Verenward</div>
+          <div style="font-size: 11.5px; line-height: 1.5;">EOS<br><span style="color: #6B7A74;">Taylor Freezer of Arizona</span></div>
+        </div>
+        <div style="padding: 10px 10px 0;">
+          <div class="navi">Home</div>
+          <div class="navi">Financials</div>
+          <div class="navsel">Reporting</div>
+        </div>
+      </nav>
+      <div style="flex: 1; min-width: 0; padding: 0 32px 48px; background: #FFFFFF;">
+        <div style="width: 1280px; margin: 0 auto;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #87938D; font-size: 12.5px; color: #3F4542;">
+            <span>Reporting</span><span style="color:#626A66;">Definitions run against governed reads only</span>
+          </div>
+          <header style="padding:22px 0 14px;">
+            <h1 style="font-family: Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-size: 30px; font-weight: 700; margin: 0 0 4px;">Reporting</h1>
+            <p style="font-size:13.5px;color:#3F4542;margin:0;">Describe the report you need, review the drafted definition, save it as yours.</p>
+          </header>
+          <div style="display:grid;grid-template-columns:1fr 316px;gap:24px;">
+            <div class="panel" style="padding:18px 20px 14px;">
+              <div style="font-size: 13px; color: #626A66; padding: 10px 14px; border: 1px solid #87938D; border-radius: 6px; background: #fff; margin-bottom: 14px;">"Technician on-time completion by month, last two quarters, split by customer type"</div>
+              <h3 class="rh">Drafted definition — review before saving</h3>
+              <div style="font-size:13.5px;line-height:1.9;">
+                <div><strong>Source:</strong> Work Orders (completed) — governed read</div>
+                <div><strong>Measure:</strong> on-time = completed ≤ promised date</div>
+                <div><strong>Group:</strong> month × customer type</div>
+                <div><strong>Range:</strong> Apr–Sep 2026</div>
+              </div>
+              <div style="display:flex;gap:8px;padding-top:12px;"><span class="btnp">Run</span><span class="btns">Edit definition</span><span class="btns">Save as report</span></div>
+              <div style="font-size:12px;color:#626A66;padding-top:10px;">The draft is a visible, editable definition — DRAFT placement, not an answer machine; running it uses only reads this session is authorized for.</div>
+            </div>
+            <div class="panel" style="padding:16px 18px 12px;">
+              <h3 class="rh">Saved reports</h3>
+              <div style="font-size:13px;display:flex;flex-direction:column;gap:8px;">
+                <div style="display:flex;justify-content:space-between;"><span>Service health, monthly</span><a href="#">→</a></div>
+                <div style="display:flex;justify-content:space-between;"><span>Sales vs goal, by rep</span><a href="#">→</a></div>
+                <div style="display:flex;justify-content:space-between;"><span>Inventory adjustments log</span><a href="#">→</a></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+</x-dc>
+</body>
+</html>
