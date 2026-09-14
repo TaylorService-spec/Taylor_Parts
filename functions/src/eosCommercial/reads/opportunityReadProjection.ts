@@ -1,4 +1,4 @@
-// Governed PostgreSQL Opportunity read projections -- wave C3. Internal; nothing external invokes them yet.
+// Governed PostgreSQL Opportunity read projections -- wave C3. Reached only through the C4 transport (commercialHttp.ts).
 //
 // Truthful C1 facts only. Deliberately NOT reproduced from the Firestore reader (opportunityReadService.ts):
 //   * `name` -- projected there but never persisted by any writer, so it was always null;

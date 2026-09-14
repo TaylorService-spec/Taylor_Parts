@@ -98,10 +98,13 @@ test("(19) every Commercial capability is still registered inactive", () => {
   }
 });
 
-test("(20) no Render Commercial endpoint or operation exists", () => {
-  for (const file of [join(SRC, "eosApi", "server.ts"), join(SRC, "eosOps", "eosOpsHttp.ts"), join(SRC, "adminPolicy", "adminPolicyHttp.ts")]) {
+test("(20) the Render Commercial surface is only the separate C4 transport, never an Administration or Operations operation", () => {
+  for (const file of [join(SRC, "eosOps", "eosOpsHttp.ts"), join(SRC, "adminPolicy", "adminPolicyHttp.ts")]) {
     assert.doesNotMatch(strip(readFileSync(file, "utf8")), /commercial|opportunit|salesAgreement|salesOrder/i, `${relative(FUNCTIONS_DIR, file)} gained a Commercial surface`);
   }
+  const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
+  assert.doesNotMatch(server, /opportunit|salesAgreement|salesOrder|commercialNumbering/i, "server.ts names Commercial business directly");
+  assert.match(server, /from "\.\.\/eosCommercial\/commercialHttp"/);
 });
 
 test("the migration is additive, keeps Job Role out, and adds no Employee foreign key", () => {

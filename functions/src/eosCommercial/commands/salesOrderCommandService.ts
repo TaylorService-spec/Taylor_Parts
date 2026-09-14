@@ -1,4 +1,4 @@
-// Governed PostgreSQL Sales Order commands -- wave C2. Internal services; nothing external invokes them yet.
+// Governed PostgreSQL Sales Order commands -- wave C2. Reached only through the C4 transport (commercialHttp.ts).
 //
 // Core Commercial lifecycle only. D2 (Owner ruling) keeps execution out: no allocated / fulfilled / billed quantity,
 // no inventory, no Work Order, no invoice, no service link is read or written here. Because the IN_FULFILLMENT ->
