@@ -126,6 +126,7 @@ holding the admin/dispatcher claim.
 | `scripts/financialReviewFixtures.mjs` | **LEGACY** | Fixture seeding; sets `ownerEmployeeId` inside a created Sales Order document (`:427`). Creation, no handoff audit. |
 | `scripts/ownershipBackfillSimulation.js` | **NOT APPLICABLE** | Read-only simulation. Its only `set` calls are on in-memory `Map`s. Writes nothing. |
 | `scripts/governance/effectiveAuthority.mjs` | **NOT APPLICABLE** | Read-only; names `ownerEmployeeId` in a projection. No write API call. |
+| `scripts/seedSyntheticNonprodWorkforce.js` | **GOVERNED/SEED** | Owner ruling 2026-09-14. The fenced synthetic NONPROD seed. Creation only: CRM and commercial owners are written through the governed `customerRepository` and `createCommercialRecord` writers; no ownership change, no reassignment. Refuses production by role and project id and refuses without `EOS_ENVIRONMENT=nonprod`. Its accountability half is classified in §5.2. |
 
 ---
 
@@ -182,7 +183,8 @@ authority was consulted in this process.
 | 6 | `src/opportunity/opportunityCommands.ts` | **GOVERNED** | Creation **verifies** the governed mark and refuses `ACCOUNTABLE_PERSON_NOT_GOVERNED` otherwise. The ordinary edit **refuses** `ACCOUNTABLE_PERSON_NOT_EDITABLE` rather than silently ignoring the field — see §5.3. |
 | 6 | `src/salesAgreement/salesAgreementCommands.ts` | **GOVERNED** | Same creation verification. `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` does not contain it and `buildUpdateSalesAgreementDraft` **rejects** every unnamed key (`FIELD_NOT_EDITABLE`), so the draft edit is not a path. |
 | 7 | `src/salesOrder/salesOrderCommands.ts` | **GOVERNED** | Same creation verification. There is **no** Sales Order field-edit command at all, so no edit path exists to classify. |
-| — | `functions/scripts/**` | **NOT APPLICABLE** | **Zero** operator scripts name an accountability field. Unlike §4's ownership scripts, there is no legacy accountability backfill to classify because the field is new. |
+| 8 | `scripts/seedSyntheticNonprodWorkforce.js` | **GOVERNED/SEED** | See §5.6. Nonprod-only; `accountable_employee_id` is persisted only from `accountablePersonFields(establishCreationAccountablePerson(...))`, in the record's own transaction, only while NULL. |
+| — | every other `functions/scripts/**` | **NOT APPLICABLE** | **Zero** other operator scripts name an accountability field or import the declaration. Unlike §4's ownership scripts, there is no legacy accountability backfill to classify because the field is new. |
 | — | `firestore.rules` | **NOT APPLICABLE** | **Zero** occurrences. See §5.4 for the runtime consequence, which is stated and **not** acted on. |
 | — | every other family | **NOT APPLICABLE** | **#189 `OD-16`**: accountability is NOT APPLICABLE to them — *not* `MISSING`, *not* `OWNERLESS`, *not* `DEFECTIVE`. They have no accountability storage, which is what makes that true rather than claimed. |
 
@@ -240,6 +242,24 @@ writer records into.
 The **creation** path needs no such port — a created record's audit is the creation's own — so it is complete,
 implemented and reachable end to end. **That is the path the reachability proof in §6 executes.**
 
+### 5.6 `GOVERNED/SEED` — what the classification means, and what it does NOT
+
+Owner ruling 2026-09-14 (synthetic nonprod seed), recorded in these words:
+
+> **GOVERNED/SEED** = a nonprod-only persistence path whose accountable Employee value was produced by the
+> governed establishment + mint authority.
+
+It is **NOT** equivalent to: live write activation; a production accountability writer; permission to bypass the
+governed mint; or closure of activation blocker #2. **Activation blockers #1–#3 remain OPEN** — no accountability
+audit action exists, no deployed creation callable invokes governed establishment or the enforcement gate, and
+`updateOpportunity` still moves ownership without a handoff.
+
+`scripts/seedSyntheticNonprodWorkforce.js` is the only member. It is unreachable from `functions/src` and from
+`index.ts`, runs only as an operator command in a process declaring `EOS_ENVIRONMENT=nonprod`, and the ratchet
+(§6 item 8) fails if another script reaches accountability storage or if this one stops being fenced and
+mint-gated. It exists because the Owner authorized a **synthetic** nonprod acceptance dataset; its rows are fixture
+data, not historical truth and not migrated Taylor data.
+
 ---
 
 ## 6. THE RATCHET
@@ -256,7 +276,11 @@ A snapshot document rots; a ratchet does not. It fails when:
 4. `accountablePerson` appears in `ownershipMatrix.ownerFields` (**#187 §1**);
 5. the recorded `firestore.rules` findings change — a Rules edit must force this census to be re-read;
 6. `updateOpportunity`'s module gains handoff auditing, which would mean entry #1 must be reclassified;
-7. the S4 boundary becomes exported from `index.ts`, which would mean a capability was activated.
+7. the S4 boundary becomes exported from `index.ts`, which would mean a capability was activated;
+8. an operator script reaches accountability storage (imports the declaration or establishment) without being a
+   classified **GOVERNED/SEED** path — or a GOVERNED/SEED script stops being nonprod-fenced, stops going through
+   `establishCreationAccountablePerson` + `accountablePersonFields`, names a field literal, or becomes reachable
+   from `functions/src`.
 
 ---
 

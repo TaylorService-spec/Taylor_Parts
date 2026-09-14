@@ -1,0 +1,80 @@
+{
+  "manifest": "SYNTHETIC_NONPROD_WORKFORCE_SEED",
+  "version": 1,
+  "classification": "SYNTHETIC NONPROD FIXTURE DATA. Not historical truth, not migrated Taylor production data, and not real people.",
+  "rulings": {
+    "jobRole": "Job Role authority is NOT YET IMPLEMENTED in PostgreSQL. Synthetic Job Role values are seed-manifest metadata only and are not authoritative runtime data.",
+    "principals": "eos-synthetic-nonprod Principals are non-authenticating fixture Principals. No authentication verifier recognizes this identity provider. They exist only to exercise governed Principal, Employee-link, membership, and Security Role relationships in the synthetic nonprod acceptance world.",
+    "accountability": "GOVERNED/SEED: accountable_employee_id is persisted only from the value the governed establishment + mint produced. This is not live write activation and does not close activation blocker #2."
+  },
+  "eligibilityPolicy": {
+    "policyId": "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1",
+    "eligibleStatuses": ["ACTIVE", "CONTRACTOR"]
+  },
+  "operatingCompanyId": "taylor",
+  "syntheticIdentityProvider": "eos-synthetic-nonprod",
+  "jobRoles": [
+    { "key": "OWNER_EXECUTIVE", "label": "Owner / Executive" },
+    { "key": "GENERAL_MANAGER", "label": "General Manager" },
+    { "key": "OFFICE_MANAGER", "label": "Office Manager" },
+    { "key": "SERVICE_MANAGER", "label": "Service Manager" },
+    { "key": "DISPATCHER", "label": "Dispatcher" },
+    { "key": "SERVICE_TECHNICIAN", "label": "Service Technician" },
+    { "key": "RETAIL_SALES", "label": "Retail Sales" },
+    { "key": "NATIONAL_ACCOUNTS_SALES", "label": "National Accounts Sales" },
+    { "key": "PARTS_MANAGER", "label": "Parts Manager" },
+    { "key": "PARTS_ASSOCIATE", "label": "Parts Associate" },
+    { "key": "WAREHOUSE_MANAGER", "label": "Warehouse Manager" },
+    { "key": "WAREHOUSE_ASSOCIATE", "label": "Warehouse Associate" }
+  ],
+  "employees": [
+    { "key": "owner-executive", "id": "synthetic-np-emp-owner-executive", "fixtureLabel": "Synthetic Owner / Executive", "jobRole": "OWNER_EXECUTIVE", "employmentStatus": "ACTIVE" },
+    { "key": "general-manager", "id": "synthetic-np-emp-general-manager", "fixtureLabel": "Synthetic General Manager", "jobRole": "GENERAL_MANAGER", "employmentStatus": "ACTIVE" },
+    { "key": "office-manager", "id": "synthetic-np-emp-office-manager", "fixtureLabel": "Synthetic Office Manager", "jobRole": "OFFICE_MANAGER", "employmentStatus": "ACTIVE" },
+    { "key": "service-manager", "id": "synthetic-np-emp-service-manager", "fixtureLabel": "Synthetic Service Manager", "jobRole": "SERVICE_MANAGER", "employmentStatus": "ACTIVE" },
+    { "key": "dispatcher", "id": "synthetic-np-emp-dispatcher", "fixtureLabel": "Synthetic Dispatcher", "jobRole": "DISPATCHER", "employmentStatus": "ACTIVE" },
+    { "key": "service-technician-a", "id": "synthetic-np-emp-service-technician-a", "fixtureLabel": "Synthetic Service Technician A", "jobRole": "SERVICE_TECHNICIAN", "employmentStatus": "ACTIVE" },
+    { "key": "service-technician-b", "id": "synthetic-np-emp-service-technician-b", "fixtureLabel": "Synthetic Service Technician B", "jobRole": "SERVICE_TECHNICIAN", "employmentStatus": "ACTIVE" },
+    { "key": "retail-sales-a", "id": "synthetic-np-emp-retail-sales-a", "fixtureLabel": "Synthetic Retail Sales A", "jobRole": "RETAIL_SALES", "employmentStatus": "ACTIVE" },
+    { "key": "retail-sales-b", "id": "synthetic-np-emp-retail-sales-b", "fixtureLabel": "Synthetic Retail Sales B", "jobRole": "RETAIL_SALES", "employmentStatus": "ACTIVE" },
+    { "key": "national-accounts-sales", "id": "synthetic-np-emp-national-accounts-sales", "fixtureLabel": "Synthetic National Accounts Sales", "jobRole": "NATIONAL_ACCOUNTS_SALES", "employmentStatus": "ACTIVE" },
+    { "key": "parts-manager", "id": "synthetic-np-emp-parts-manager", "fixtureLabel": "Synthetic Parts Manager", "jobRole": "PARTS_MANAGER", "employmentStatus": "ACTIVE" },
+    { "key": "parts-associate", "id": "synthetic-np-emp-parts-associate", "fixtureLabel": "Synthetic Parts Associate", "jobRole": "PARTS_ASSOCIATE", "employmentStatus": "ACTIVE" },
+    { "key": "warehouse-manager", "id": "synthetic-np-emp-warehouse-manager", "fixtureLabel": "Synthetic Warehouse Manager", "jobRole": "WAREHOUSE_MANAGER", "employmentStatus": "ACTIVE" },
+    { "key": "warehouse-associate", "id": "synthetic-np-emp-warehouse-associate", "fixtureLabel": "Synthetic Warehouse Associate", "jobRole": "WAREHOUSE_ASSOCIATE", "employmentStatus": "ACTIVE" },
+    { "key": "contract-technician", "id": "synthetic-np-emp-contract-technician", "fixtureLabel": "Synthetic Contract Technician", "jobRole": "SERVICE_TECHNICIAN", "employmentStatus": "CONTRACTOR" },
+    { "key": "technician-on-leave", "id": "synthetic-np-emp-technician-on-leave", "fixtureLabel": "Synthetic Technician On Leave", "jobRole": "SERVICE_TECHNICIAN", "employmentStatus": "ON_LEAVE" }
+  ],
+  "principals": [
+    { "employee": "owner-executive", "existingAdministrator": true, "securityRoles": ["admin"] },
+    { "employee": "general-manager", "externalSubject": "synthetic-np-principal-general-manager", "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)", "securityRoles": ["generalManager"] },
+    { "employee": "dispatcher", "externalSubject": "synthetic-np-principal-dispatcher", "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)", "securityRoles": ["dispatcher"] },
+    { "employee": "retail-sales-a", "externalSubject": "synthetic-np-principal-retail-sales", "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
+    { "employee": "national-accounts-sales", "externalSubject": "synthetic-np-principal-national-accounts-sales", "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
+    { "employee": "service-technician-a", "externalSubject": "synthetic-np-principal-service-technician", "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)", "securityRoles": ["technician"] },
+    { "employee": "parts-manager", "externalSubject": "synthetic-np-principal-parts-manager", "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)", "securityRoles": ["partsManager"] },
+    { "employee": "warehouse-manager", "externalSubject": "synthetic-np-principal-warehouse-manager", "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)", "securityRoles": ["warehouseManager"] }
+  ],
+  "accounts": [
+    { "id": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Customer (fixture)", "status": "ACTIVE", "owner": "retail-sales-a" },
+    { "id": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Customer (fixture)", "status": "ACTIVE", "owner": "national-accounts-sales" }
+  ],
+  "contacts": [
+    { "id": "synthetic-np-contact-retail", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Contact (fixture)", "isPrimary": true },
+    { "id": "synthetic-np-contact-national", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Contact (fixture)", "isPrimary": true }
+  ],
+  "locations": [
+    { "id": "synthetic-np-loc-retail", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Site (fixture)" },
+    { "id": "synthetic-np-loc-national", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Site (fixture)" }
+  ],
+  "commercial": [
+    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0001", "account": "synthetic-np-acct-retail", "owner": "retail-sales-a", "accountable": "DERIVE_FROM_OWNER" },
+    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0002", "account": "synthetic-np-acct-retail", "owner": "retail-sales-b", "accountable": "general-manager" },
+    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0003", "account": "synthetic-np-acct-national", "owner": "national-accounts-sales", "accountable": "DERIVE_FROM_OWNER" },
+    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0004", "account": "synthetic-np-acct-national", "owner": "national-accounts-sales", "accountable": "general-manager" },
+    { "kind": "SALES_AGREEMENT", "number": "SYN-NP-SA-0001", "account": "synthetic-np-acct-retail", "opportunity": "SYN-NP-OPP-0001", "owner": "retail-sales-a", "accountable": "DERIVE_FROM_OWNER" },
+    { "kind": "SALES_AGREEMENT", "number": "SYN-NP-SA-0002", "account": "synthetic-np-acct-national", "opportunity": "SYN-NP-OPP-0003", "owner": "national-accounts-sales", "accountable": "general-manager" },
+    { "kind": "SALES_ORDER", "number": "SYN-NP-SO-0001", "account": "synthetic-np-acct-retail", "opportunity": "SYN-NP-OPP-0001", "agreement": "SYN-NP-SA-0001", "owner": "retail-sales-a", "accountable": "office-manager" },
+    { "kind": "SALES_ORDER", "number": "SYN-NP-SO-0002", "account": "synthetic-np-acct-national", "opportunity": "SYN-NP-OPP-0003", "agreement": "SYN-NP-SA-0002", "owner": "national-accounts-sales", "accountable": "DERIVE_FROM_OWNER" }
+  ]
+}
