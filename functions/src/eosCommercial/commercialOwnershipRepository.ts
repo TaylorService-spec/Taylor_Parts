@@ -196,75 +196,90 @@ export async function transferCommercialOwnership(
   actorId: string,
   input: Omit<CommercialHandoffInput, "previousOwnerEmployeeId">,
 ): Promise<CommercialHandoffRecord> {
-  const kind = input.kind;
-  const table = COMMERCIAL_TABLE_BY_KIND[kind];
   const client: PoolClient = await pool.connect();
   try {
     await client.query("BEGIN");
-    const current = await client.query<{ owner_employee_id: string }>(
-      `SELECT owner_employee_id FROM ${SCHEMA}.${table}
-        WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-      [tenantId, input.recordId],
-    );
-    if (current.rows.length === 0) {
-      throw new CommercialRecordNotFoundError(kind, input.recordId);
-    }
-
-    // Validated only once the real predecessor is known -- the no-op refusal is meaningless against
-    // a previous owner the caller guessed.
-    const handoff = buildCommercialHandoff({
-      ...input,
-      previousOwnerEmployeeId: current.rows[0].owner_employee_id,
-    });
-
-    const id = newId("hof");
-    const inserted = await client.query<{
-      id: string;
-      previous_owner_employee_id: string | null;
-      new_owner_employee_id: string;
-      source: string;
-      reason: string | null;
-      effective_at: Date;
-      recorded_by: string;
-    }>(
-      `INSERT INTO ${SCHEMA}.ownership_handoffs
-         (id, tenant_id, ${HANDOFF_COLUMN[kind]}, previous_owner_employee_id,
-          new_owner_employee_id, source, reason, recorded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, previous_owner_employee_id, new_owner_employee_id, source, reason,
-                 effective_at, recorded_by`,
-      [
-        id, tenantId, handoff.recordId, handoff.previousOwnerEmployeeId,
-        handoff.newOwnerEmployeeId, handoff.source, handoff.reason, actorId,
-      ],
-    );
-
-    await client.query(
-      `UPDATE ${SCHEMA}.${table}
-          SET owner_employee_id = $3, updated_by = $4, updated_at = now()
-        WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, handoff.recordId, handoff.newOwnerEmployeeId, actorId],
-    );
-
+    const record = await stageCommercialOwnershipTransfer(client, tenantId, actorId, input);
     await client.query("COMMIT");
-    const row = inserted.rows[0];
-    return {
-      id: row.id,
-      kind,
-      recordId: handoff.recordId,
-      previousOwnerEmployeeId: row.previous_owner_employee_id,
-      newOwnerEmployeeId: row.new_owner_employee_id,
-      source: row.source,
-      reason: row.reason,
-      effectiveAt: row.effective_at,
-      recordedBy: row.recorded_by,
-    };
+    return record;
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;
   } finally {
     client.release();
   }
+}
+
+/**
+ * The same transfer, staged on the CALLER's open transaction: lock the record, append the handoff, move the owner.
+ * The caller commits or rolls back -- which is what lets a governed Commercial command put an owner change, its
+ * ownership history and the command's other effects in one transaction. One implementation, two entry points.
+ */
+export async function stageCommercialOwnershipTransfer(
+  client: Pick<PoolClient, "query">,
+  tenantId: string,
+  actorId: string,
+  input: Omit<CommercialHandoffInput, "previousOwnerEmployeeId">,
+): Promise<CommercialHandoffRecord> {
+  const kind = input.kind;
+  const table = COMMERCIAL_TABLE_BY_KIND[kind];
+  const current = await client.query<{ owner_employee_id: string }>(
+    `SELECT owner_employee_id FROM ${SCHEMA}.${table}
+      WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+    [tenantId, input.recordId],
+  );
+  if (current.rows.length === 0) {
+    throw new CommercialRecordNotFoundError(kind, input.recordId);
+  }
+
+  // Validated only once the real predecessor is known -- the no-op refusal is meaningless against
+  // a previous owner the caller guessed.
+  const handoff = buildCommercialHandoff({
+    ...input,
+    previousOwnerEmployeeId: current.rows[0].owner_employee_id,
+  });
+
+  const id = newId("hof");
+  const inserted = await client.query<{
+    id: string;
+    previous_owner_employee_id: string | null;
+    new_owner_employee_id: string;
+    source: string;
+    reason: string | null;
+    effective_at: Date;
+    recorded_by: string;
+  }>(
+    `INSERT INTO ${SCHEMA}.ownership_handoffs
+       (id, tenant_id, ${HANDOFF_COLUMN[kind]}, previous_owner_employee_id,
+        new_owner_employee_id, source, reason, recorded_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id, previous_owner_employee_id, new_owner_employee_id, source, reason,
+               effective_at, recorded_by`,
+    [
+      id, tenantId, handoff.recordId, handoff.previousOwnerEmployeeId,
+      handoff.newOwnerEmployeeId, handoff.source, handoff.reason, actorId,
+    ],
+  );
+
+  await client.query(
+    `UPDATE ${SCHEMA}.${table}
+        SET owner_employee_id = $3, updated_by = $4, updated_at = now()
+      WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, handoff.recordId, handoff.newOwnerEmployeeId, actorId],
+  );
+
+  const row = inserted.rows[0];
+  return {
+    id: row.id,
+    kind,
+    recordId: handoff.recordId,
+    previousOwnerEmployeeId: row.previous_owner_employee_id,
+    newOwnerEmployeeId: row.new_owner_employee_id,
+    source: row.source,
+    reason: row.reason,
+    effectiveAt: row.effective_at,
+    recordedBy: row.recorded_by,
+  };
 }
 
 /** The ownership history of ONE record, oldest first. This is what "historical ownership remains" reads. */

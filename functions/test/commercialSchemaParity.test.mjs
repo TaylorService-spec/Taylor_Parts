@@ -80,8 +80,9 @@ test("(17) the numbering module has no Firestore counter dependency and allocate
 });
 
 test("(18) no runtime module imports the C1 numbering module yet", () => {
+  // Only the unwired C2 command layer allocates numbers; commercialCommandLayer.test.mjs proves no runtime entry point reaches it.
   const reaching = walk(SRC, ".ts").filter((f) => f !== NUMBERING_SOURCE && /commercialNumbering/.test(readFileSync(f, "utf8"))).map((f) => relative(FUNCTIONS_DIR, f));
-  assert.deepEqual(reaching, []);
+  assert.ok(reaching.every((f) => f.startsWith("src/eosCommercial/commands/")), `a module outside the C2 command layer allocates numbers: ${reaching}`);
   assert.doesNotMatch(readFileSync(join(SRC, "index.ts"), "utf8"), /commercialNumbering|eosCommercial\//);
 });
 

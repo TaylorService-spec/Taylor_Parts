@@ -47,6 +47,8 @@ on:
       # BLOCKER #1 (Owner ruling 2026-09-14): the PostgreSQL accountability audit authority, its migration and suites.
       - "functions/migrations/1759363200000_accountability-history-action-and-source.sql"
       - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
+      # Commercial wave C2: its command modules are classified by governedOwnershipWriterCensus.
+      - "functions/src/eosCommercial/commands/**"
       - "functions/test/commercialAccountabilityHistory.test.mjs"
       - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"
       - "functions/src/salesAgreement/salesAgreementCommands.ts"
