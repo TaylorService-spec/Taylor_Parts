@@ -109,6 +109,10 @@ const VALID_CLASSIFICATIONS = Object.freeze([
   "LEGACY",
   "BYPASS DEFECT",
   "NOT APPLICABLE",
+  // Owner ruling 2026-09-14 (synthetic nonprod seed). A NONPROD-ONLY persistence path whose accountable Employee
+  // value was produced by the governed establishment + mint. NOT live write activation, NOT a production
+  // accountability writer, NOT permission to bypass the mint, and NOT closure of activation blocker #2.
+  "GOVERNED/SEED",
 ]);
 
 /**
@@ -155,7 +159,16 @@ const CLASSIFIED_SCRIPTS = Object.freeze({
   "scripts/financialReviewFixtures.mjs": "LEGACY",
   "scripts/ownershipBackfillSimulation.js": "NOT APPLICABLE",
   "scripts/governance/effectiveAuthority.mjs": "NOT APPLICABLE",
+  // Owner ruling 2026-09-14: the fenced synthetic nonprod seed. Owners go through the governed CRM and commercial
+  // writers; accountable persons through the mint (see the GOVERNED/SEED ratchet below).
+  "scripts/seedSyntheticNonprodWorkforce.js": "GOVERNED/SEED",
 });
+
+/**
+ * §5.2, pinned. Operator scripts that REACH accountability storage -- by importing the governed declaration or
+ * establishment -- rather than by naming its field literals. Only GOVERNED/SEED is admissible here.
+ */
+const GOVERNED_SEED_ACCOUNTABILITY_SCRIPTS = Object.freeze(["scripts/seedSyntheticNonprodWorkforce.js"]);
 
 function walk(dir, exts) {
   const out = [];
@@ -527,6 +540,38 @@ test("CLAIM 2c: the path is governed at RUNTIME — an unmarked value cannot rea
       (e) => e.code === "ACCOUNTABLE_PERSON_NOT_GOVERNED",
       `${JSON.stringify(forgery)} reached a commercial record as an accountable person`,
     );
+  }
+});
+
+test("GOVERNED/SEED: an operator script reaching accountability storage is classified, nonprod-fenced and mint-gated", () => {
+  const reaching = [];
+  for (const file of walk(SCRIPTS_DIR, [".js", ".mjs", ".cjs"])) {
+    const code = stripComments(readFileSync(file, "utf8"));
+    if (/responsibility\/(accountablePersonStorage|accountablePersonEstablishment)(\.js)?["']/.test(code)) {
+      reaching.push(relative(FUNCTIONS_DIR, file).split(sep).join("/"));
+    }
+  }
+  assert.deepEqual(
+    reaching.sort(),
+    [...GOVERNED_SEED_ACCOUNTABILITY_SCRIPTS].sort(),
+    "an operator script now reaches accountability storage and is not a classified GOVERNED/SEED path. Classify it " +
+      "in the census §5.2 -- an unclassified script writing a responsibility axis is the bypass #184 calls a defect.",
+  );
+  for (const script of GOVERNED_SEED_ACCOUNTABILITY_SCRIPTS) {
+    assert.equal(CLASSIFIED_SCRIPTS[script], "GOVERNED/SEED");
+    const code = stripComments(readFileSync(join(FUNCTIONS_DIR, script), "utf8"));
+    // Nonprod-only: the shared production refusal AND the positive nonprod runtime marker.
+    assert.ok(code.includes("assertMeasurementTarget(") && code.includes("assertNonprodRuntime("), `${script} is not nonprod-fenced`);
+    // Mint-gated: the persisted value comes from the governed establishment + mint, never a manifest id.
+    assert.ok(code.includes("establishCreationAccountablePerson(") && code.includes("accountablePersonFields("), `${script} does not go through the mint`);
+    for (const literal of ACCOUNTABILITY_FIELD_LITERALS) {
+      assert.ok(!namesToken(code, literal), `${script} names ${literal} instead of importing it from the declaration`);
+    }
+    // Unavailable to the runtime: no source module imports it.
+    const name = script.split("/").pop().replace(/\.[cm]?js$/, "");
+    for (const file of walk(SRC_DIR, [".ts"])) {
+      assert.ok(!readFileSync(file, "utf8").includes(name), `${relative(FUNCTIONS_DIR, file)} reaches the GOVERNED/SEED script`);
+    }
   }
 });
 

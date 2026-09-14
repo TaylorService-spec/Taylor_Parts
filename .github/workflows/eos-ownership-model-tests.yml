@@ -41,6 +41,8 @@ on:
       - "functions/test/commercialAccountabilityMigration.test.mjs"
       - "functions/test/commercialAccountabilityMeasurement.test.mjs"
       - "functions/scripts/measureCommercialAccountability.js"
+      # GOVERNED/SEED (census §5.6): the synthetic nonprod seed is pinned by governedOwnershipWriterCensus.
+      - "functions/scripts/seedSyntheticNonprodWorkforce.js"
       - "functions/migrations/1759276800000_commercial-accountability-authority.sql"
       - "functions/src/salesAgreement/salesAgreementCommands.ts"
       - "functions/scripts/ownershipDerivationCheck.js"
