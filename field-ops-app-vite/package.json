@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test:components": "vitest run",
     "test": "node scripts/runSuites.mjs",
+    "test:reportingOutcomeHonesty": "node test/reportRunOutcome.test.mjs && node test/reportResultState.test.mjs && node test/reportOutcomeContractRatchet.test.mjs",
     "verify:version": "node test/verifyVersionManifest.mjs"
   },
   "dependencies": {

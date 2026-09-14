@@ -170,16 +170,66 @@ export {
 } from "./access/accessCommandCallables";
 
 // --- Issue #325 / ADR-007 D-FN surface: trusted report execution ---
-// Same posture as the six commands above: deployed to eos-platform-sandbox under the per-environment
-// activation program, NOT deployed to the production project. No client calls it (the client
-// run seam, field-ops-app-vite/src/domain/reporting/
-// reportExecutionSeam.js, is unchanged and still unconditionally
-// unavailable) until a separate, later Owner production authorization.
-// Additionally requires NO Role grant exists for any report.*
-// capability (permissionCatalog.ts/compatibilityRoles.ts/
-// governedBusinessRoles.ts, untouched) -- every real call denies today
-// by construction of the access layer this depends on, independent of
-// deployment/export status.
+//
+// ENG-E CORRECTION (main @ 64008d5ae0bdd9532909671b15a91122400accf1). This block
+// previously asserted three protections. TWO OF THEM WERE FALSE at this
+// baseline and the third is unprovable from the repository. The false text is
+// quoted here rather than deleted, because a claim this load-bearing should
+// leave a trace of having been wrong:
+//
+//   FALSE (1): "Additionally requires NO Role grant exists for any report.*
+//   capability (permissionCatalog.ts/compatibilityRoles.ts/
+//   governedBusinessRoles.ts, untouched) -- every real call denies today by
+//   construction of the access layer this depends on".
+//     governedBusinessRoles.ts grants report.* to FOUR Roles: `reportViewer`
+//     (27 ids, :1381-1407), `reportFinanceViewer` (5 ids, :1425-1429),
+//     `reportAuthor` (3 definition-mutation ids, :1447-1449), and `owner`,
+//     which holds every ACTIVE report.* id dynamically (:67,
+//     `p.id.startsWith("report.") && p.active !== false`).
+//     reportExecutionService.ts resolves against allRoles() = COMPATIBILITY_ROLES
+//     union GOVERNED_BUSINESS_ROLES, so those governed Roles ARE reached. Only
+//     compatibilityRoles.ts is genuinely free of report.* (zero occurrences).
+//
+//   FALSE (2): the implied premise that the family is inactive outside the
+//   sandbox. config/environments.json declares `productionCapabilityActivations`
+//   on taylor-parts-production -- a field DELIBERATELY DISTINCT from
+//   `capabilityActivationOverrides`, as environmentCapabilityOverrides.ts:306
+//   states in terms -- carrying 25 ids, ALL of them report.*, and
+//   resolveProductionCapabilityActivations() honours them precisely BECAUSE the
+//   environment's role is "production". resolveRuntimeCapabilityOverrides()
+//   composes that set in for every runtime consumer, reporting included.
+//   THE REPORTING FAMILY IS PRODUCTION-ACTIVATED TODAY. The remaining 14
+//   report.* ids are absent on purpose and still resolve DENY/inactivePermission.
+//
+//   ALSO MISLEADING: "No client calls it (the client run seam ... is unchanged
+//   and still unconditionally unavailable)". field-ops-app-vite/src/domain/
+//   reporting/reportExecutionSeam.js:34 calls
+//   `httpsCallable(functions, RUN_REPORT_CALLABLE)` UNCONDITIONALLY, with no
+//   activation flag and no gate. What is unconditional is the CALL; the
+//   "unavailable" outcome is merely how a FAILED call is mapped. That is not a
+//   protection, it is error handling.
+//
+// WHAT IS ACTUALLY TRUE AT THIS BASELINE:
+//   * Deployment: this callable is believed not to be deployed to the production
+//     project. That is the ONE remaining layer of defence in depth, and it is
+//     UNPROVEN AND UNPROVABLE FROM THE REPOSITORY -- deployment state must be
+//     read from the environment, never inferred from a repository record.
+//   * Authorization: a real call with a governed Role grant resolves ALLOW in
+//     production for the 25 adopted ids. It is no longer "denied by
+//     construction".
+//   * Row scope: ENG-E bounds what an authorized run may read. The run is now
+//     bound to the runner's governed operating-company reach
+//     (reporting/reportRowScope.ts), the base scan carries a server-side company
+//     predicate where the ownership matrix declares one, the one-hop join is
+//     bounded the same way, and a runner whose operating company cannot be
+//     resolved gets the tenancy-specific outcome `company-unresolved` while the
+//     collection goes unread. Before ENG-E, an authorized run returned every
+//     document of every company plus ownerless documents, with no predicate on
+//     the query at all.
+//   * Residual: accounts/contacts/locations are COMPANY_NEUTRAL under ruling
+//     R-15 and carry no company field, so no row predicate exists for three of
+//     the four reachable objects. They are gated on a non-empty company reach
+//     and nothing more. That is an OPEN OWNER QUESTION, not a closed control.
 export { runReportDefinitionCallable } from "./reporting/runReportDefinitionCallable";
 
 // --- Issue #325 / ADR-007 D-RULES CORRECTED surface: trusted saved-

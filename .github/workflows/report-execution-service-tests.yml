@@ -24,8 +24,26 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/src/reporting/**"
+      # ENG-E: reportRowScope.ts reads the operating-company authority and the
+      # ownership matrix's companyScope column as the authority for the row bound,
+      # so a change there can silently change what a report may read.
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
+      - "functions/src/ownership/ownershipMatrix.ts"
+      - "config/environments.json"
       - "functions/test/reportCatalogParity.test.mjs"
       - "functions/test/reportExecutionService.test.mjs"
+      - "functions/test/reportRowScopeBound.test.mjs"
+      - "functions/test/reportTruncationHonesty.test.mjs"
+      # RPT-FIX. The false-empty invariant, the audit-context census, and the
+      # production-activation boundary guard -- all three run without an emulator.
+      - "functions/test/reportFalseEmptyHonesty.test.mjs"
+      - "functions/test/reportAuditContextInjection.test.mjs"
+      - "functions/test/reportingActivationBoundary.test.mjs"
+      - "functions/test/support/reportEngineHarness.mjs"
+      # RPT-FIX. reportingActivationBoundary.test.mjs resolves the PRODUCTION
+      # activation authority, so a change to either resolver changes what it proves.
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/access/permissionCatalog.ts"
       - "functions/test/savedDefinitionCommands.test.mjs"
       - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
@@ -40,8 +58,26 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/src/reporting/**"
+      # ENG-E: reportRowScope.ts reads the operating-company authority and the
+      # ownership matrix's companyScope column as the authority for the row bound,
+      # so a change there can silently change what a report may read.
+      - "functions/src/ownership/operatingCompanyAuthority.ts"
+      - "functions/src/ownership/ownershipMatrix.ts"
+      - "config/environments.json"
       - "functions/test/reportCatalogParity.test.mjs"
       - "functions/test/reportExecutionService.test.mjs"
+      - "functions/test/reportRowScopeBound.test.mjs"
+      - "functions/test/reportTruncationHonesty.test.mjs"
+      # RPT-FIX. The false-empty invariant, the audit-context census, and the
+      # production-activation boundary guard -- all three run without an emulator.
+      - "functions/test/reportFalseEmptyHonesty.test.mjs"
+      - "functions/test/reportAuditContextInjection.test.mjs"
+      - "functions/test/reportingActivationBoundary.test.mjs"
+      - "functions/test/support/reportEngineHarness.mjs"
+      # RPT-FIX. reportingActivationBoundary.test.mjs resolves the PRODUCTION
+      # activation authority, so a change to either resolver changes what it proves.
+      - "functions/src/access/environmentCapabilityOverrides.ts"
+      - "functions/src/access/permissionCatalog.ts"
       - "functions/test/savedDefinitionCommands.test.mjs"
       - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
@@ -93,6 +129,41 @@ jobs:
 
       - name: Catalog/query-model/validator parity vs. the client (no emulator)
         run: npm run build && node test/reportCatalogParity.test.mjs
+        working-directory: functions
+
+      # ENG-E. Deliberately placed BEFORE the emulator starts: the row-scope bound
+      # needs no emulator, so it must still be enforced when the emulator step
+      # fails. It asserts on the QUERY PREDICATE ISSUED, not on rows returned --
+      # Firestore applies the scan cap before any in-memory pass, so a row-count
+      # assertion would go green on an in-memory post-filter that fixes nothing.
+      - name: Report row-scope / operating-company bound (no emulator)
+        run: node --test test/reportRowScopeBound.test.mjs
+        working-directory: functions
+
+      - name: Truncation honesty (no emulator)
+        run: node --test test/reportTruncationHonesty.test.mjs
+        working-directory: functions
+
+      # RPT-FIX. Also deliberately BEFORE the emulator starts: none of these three
+      # needs one, so they must still be enforced when the emulator step fails.
+      #
+      # Each file gets its OWN `node --test` invocation on purpose. `node --test`
+      # silently DROPS a non-matching path argument when the other arguments
+      # resolve, so a typo inside a multi-path invocation reduces coverage without
+      # failing the step. One path per call turns that into a hard error.
+      - name: False-empty honesty -- EOS must not return "empty" unless the query was proven complete (no emulator)
+        run: node --test test/reportFalseEmptyHonesty.test.mjs
+        working-directory: functions
+
+      - name: Audit data-context injection -- no reporting audit write may reach the ambient Firestore (no emulator)
+        run: node --test test/reportAuditContextInjection.test.mjs
+        working-directory: functions
+
+      # This guard was UNREGISTERED at 92db1d19 -- present in functions/test/ but
+      # named by no npm script and no workflow, so its (false) fail-closed claim
+      # was never even enforced. Registered here.
+      - name: Reporting activation boundary -- the TRUE production posture, 25 live / 14 not (no emulator)
+        run: node --test test/reportingActivationBoundary.test.mjs
         working-directory: functions
 
       - name: Start Firestore emulator (background)

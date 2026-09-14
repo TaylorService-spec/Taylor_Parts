@@ -830,6 +830,10 @@
       "runner": "node"
     },
     {
+      "file": "test/reportOutcomeContractRatchet.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/reportQuery.test.mjs",
       "runner": "node"
     },
