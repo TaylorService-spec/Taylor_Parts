@@ -739,6 +739,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/assistant/assistantStarters.ts",
+          "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/opportunity/opportunityReadService.ts"
         ],
         "clientReferences": [
@@ -752,7 +753,7 @@
           "field-ops-app-vite/src/metadata/definitions/opportunity.js",
           "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 9,
         "evidence": "EXPORTED"
       },
@@ -902,6 +903,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/salesAgreement/salesAgreementReadService.ts"
         ],
         "clientReferences": [
@@ -911,7 +913,7 @@
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js",
           "field-ops-app-vite/src/metadata/definitions/salesAgreement.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -937,6 +939,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/salesOrder/salesOrderReadService.ts"
         ],
         "clientReferences": [
@@ -950,7 +953,7 @@
           "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
           "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 9,
         "evidence": "EXPORTED"
       },

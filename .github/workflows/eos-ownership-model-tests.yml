@@ -49,6 +49,7 @@ on:
       - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
       # Commercial wave C2: its command modules are classified by governedOwnershipWriterCensus.
       - "functions/src/eosCommercial/commands/**"
+      - "functions/src/eosCommercial/reads/**"
       - "functions/test/commercialAccountabilityHistory.test.mjs"
       - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"
       - "functions/src/salesAgreement/salesAgreementCommands.ts"
