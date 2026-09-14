@@ -9,7 +9,6 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
-import { execFileSync } from "node:child_process";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = resolve(FUNCTIONS_DIR, "..");
@@ -257,13 +256,38 @@ test("(21) the client never references the Commercial transport", () => {
   assert.deepEqual(offenders, []);
 });
 
-test("(22) Firestore callables, Rules and the legacy Commercial services are untouched by this change", () => {
-  const changed = execFileSync("git", ["diff", "--name-only", "799bccbafa5855893f3a7745ef51cf15a608f9e8", "--", "."], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
-  const forbidden = changed.filter((f) => /^firestore\.rules$|^field-ops-app-vite\/|^functions\/src\/(index\.ts|opportunity\/|salesAgreement\/|salesOrder\/|account\/|access\/)/.test(f));
-  assert.deepEqual(forbidden, []);
+test("(22) C4 leaves Firebase callables as the legacy runtime and does not wire the Commercial transport through Functions or Rules", () => {
+  // CURRENT-STATE boundaries only. This proves what the tree is now, not what a historical diff contained.
   const index = strip(readFileSync(join(SRC, "index.ts"), "utf8"));
-  for (const callable of ["listOpportunityContext", "getOpportunityContext", "getSalesAgreementContext", "getSalesOrderContext", "listSalesOrderIndex"]) assert.match(index, new RegExp(callable));
-  assert.doesNotMatch(index, /eosCommercial|commercialHttp/);
+  const LEGACY_COMMERCIAL_CALLABLES = [
+    ["createOpportunity", "./opportunity/opportunityCallables"], ["transitionOpportunity", "./opportunity/opportunityCallables"],
+    ["updateOpportunity", "./opportunity/opportunityCallables"], ["listOpportunityContext", "./opportunity/opportunityReadService"],
+    ["listOpportunitiesForAccount", "./opportunity/opportunityReadService"], ["getOpportunityContext", "./opportunity/opportunityReadService"],
+    ["createSalesOrderFromOpportunity", "./opportunity/createSalesOrderFromOpportunity"], ["closeOpportunityAsWon", "./opportunity/closeOpportunityAsWon"],
+    ["getSalesOrderContext", "./salesOrder/salesOrderReadService"], ["listSalesOrdersForAccount", "./salesOrder/salesOrderReadService"],
+    ["listSalesOrderIndex", "./salesOrder/salesOrderReadService"], ["createSalesAgreement", "./salesAgreement/salesAgreementCallables"],
+    ["updateSalesAgreementDraft", "./salesAgreement/salesAgreementCallables"], ["acceptSalesAgreement", "./salesAgreement/salesAgreementCallables"],
+    ["getSalesAgreementContext", "./salesAgreement/salesAgreementReadService"], ["getSalesAgreementForOpportunity", "./salesAgreement/salesAgreementReadService"],
+    ["createSalesOrder", "./salesOrder/salesOrderCallables"], ["transitionSalesOrder", "./salesOrder/salesOrderCallables"],
+  ];
+  const exported = new Map();
+  for (const [, names, from] of index.matchAll(/export\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g)) {
+    for (const name of names.split(",").map((n) => n.trim()).filter(Boolean)) exported.set(name, from);
+  }
+  for (const [name, from] of LEGACY_COMMERCIAL_CALLABLES) assert.equal(exported.get(name), from, `legacy callable ${name} is no longer exported from ${from}`);
+  // Functions never reach the PostgreSQL Commercial layer: no import of the transport, C2 commands or C3 reads.
+  assert.doesNotMatch(index, /eosCommercial|commercialHttp|CommandService|commercialCommandKernel|ReadProjection|commercialReadKernel/);
+  const functionsRuntime = walk(SRC, [".ts"]).filter((f) => /firebase-functions|onCall\(|onRequest\(/.test(strip(readFileSync(f, "utf8"))));
+  assert.ok(functionsRuntime.length > 10, "the Functions runtime census found nothing to check");
+  const bridged = functionsRuntime.filter((f) => /eosCommercial|commercialHttp/.test(strip(readFileSync(f, "utf8")))).map(rel);
+  assert.deepEqual(bridged, [], "a Firebase Functions module reaches the Commercial transport or its C2/C3 services");
+  // Rules route nothing to the transport.
+  const rules = readFileSync(join(REPO, "firestore.rules"), "utf8");
+  assert.doesNotMatch(rules, /\/commercial\/sales|commercialHttp|eosCommercial/);
+  // No Firebase business transport was created for Commercial: the Commercial layer itself carries no Functions trigger.
+  for (const f of walk(join(SRC, "eosCommercial"), [".ts"])) {
+    assert.doesNotMatch(strip(readFileSync(f, "utf8")), /firebase-functions|onCall\(|onRequest\(|firebase-admin/, `${rel(f)} is a Firebase transport`);
+  }
 });
 
 test("(24) no Commercial permission becomes active", () => {
