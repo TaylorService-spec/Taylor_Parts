@@ -80,6 +80,16 @@ on:
       - "functions/src/employeeIdentity/**"
       - "functions/test/employeePrincipalLinkPlan.test.mjs"
       - "functions/test/employeePrincipalLinkPostgres.test.mjs"
+      # WAVE-2A (required registration): the Employee business authority. The port lives under
+      # functions/src/employeeIdentity/** and the relation under functions/migrations/**, both of
+      # which this workflow already filters on -- but the three suites run in test:adminPolicy and a
+      # TEST-ONLY edit would have matched no filter and triggered nothing. Named individually, for the
+      # reason the W1-C5 and ENG-C entries above were: a suite that runs in a registered script but is
+      # named by no path filter goes stale in exactly the silence it exists to break.
+      - "functions/test/employeeAuthorityPort.test.mjs"
+      - "functions/test/employeeBusinessAuthorityMigration.test.mjs"
+      - "functions/test/employeeReferenceIntegrityMeasurement.test.mjs"
+      - "functions/scripts/measureEmployeeReferenceIntegrity.js"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
@@ -148,6 +158,16 @@ on:
       - "functions/src/employeeIdentity/**"
       - "functions/test/employeePrincipalLinkPlan.test.mjs"
       - "functions/test/employeePrincipalLinkPostgres.test.mjs"
+      # WAVE-2A (required registration): the Employee business authority. The port lives under
+      # functions/src/employeeIdentity/** and the relation under functions/migrations/**, both of
+      # which this workflow already filters on -- but the three suites run in test:adminPolicy and a
+      # TEST-ONLY edit would have matched no filter and triggered nothing. Named individually, for the
+      # reason the W1-C5 and ENG-C entries above were: a suite that runs in a registered script but is
+      # named by no path filter goes stale in exactly the silence it exists to break.
+      - "functions/test/employeeAuthorityPort.test.mjs"
+      - "functions/test/employeeBusinessAuthorityMigration.test.mjs"
+      - "functions/test/employeeReferenceIntegrityMeasurement.test.mjs"
+      - "functions/scripts/measureEmployeeReferenceIntegrity.js"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
