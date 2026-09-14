@@ -101,6 +101,7 @@
     "test:warehouseStatusWriter": "npm run build && node test/warehouseStatusWriter.test.mjs",
     "test:warehouseMigration": "npm run build && node test/warehouseGovernanceMigration.test.mjs && node test/warehouseGovernanceVerifier.test.mjs",
     "test:warehouseMigrationEmulator": "npm run build && node test/warehouseGovernanceMigrationEmulator.test.mjs",
+    "test:operatorTargetGuard": "npm run build && node --test test/sandboxTargetGuard.test.mjs test/salesOrderNumberBackfill.test.mjs test/phantomSalesOrderLinkRepair.test.mjs test/warehouseAssignmentProvisioningCli.test.mjs",
     "test:receivingLocationOptions": "npm run build && node test/receivingLocationOptionsService.test.mjs",
     "test:receivingLocationOptionsEmulator": "npm run build && node test/receivingLocationOptionsServiceEmulator.test.mjs",
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
