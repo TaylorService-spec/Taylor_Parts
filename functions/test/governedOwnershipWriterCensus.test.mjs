@@ -101,6 +101,9 @@ const CLASSIFIED_ACCOUNTABILITY_PATHS = Object.freeze({
   "src/opportunity/opportunityCommands.ts": "GOVERNED",
   "src/salesAgreement/salesAgreementCommands.ts": "GOVERNED",
   "src/salesOrder/salesOrderCommands.ts": "GOVERNED",
+  // Owner ruling 2026-09-14, blocker #1: the PostgreSQL accountability audit authority. Accepts only a minted value;
+  // mutation and append-only history in ONE transaction. Not imported by any callable (blocker #2 stays open).
+  "src/eosCommercial/commercialAccountabilityRepository.ts": "GOVERNED",
 });
 
 const VALID_CLASSIFICATIONS = Object.freeze([

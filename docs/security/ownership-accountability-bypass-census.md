@@ -184,6 +184,7 @@ authority was consulted in this process.
 | 6 | `src/salesAgreement/salesAgreementCommands.ts` | **GOVERNED** | Same creation verification. `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` does not contain it and `buildUpdateSalesAgreementDraft` **rejects** every unnamed key (`FIELD_NOT_EDITABLE`), so the draft edit is not a path. |
 | 7 | `src/salesOrder/salesOrderCommands.ts` | **GOVERNED** | Same creation verification. There is **no** Sales Order field-edit command at all, so no edit path exists to classify. |
 | 8 | `scripts/seedSyntheticNonprodWorkforce.js` | **GOVERNED/SEED** | See §5.6. Nonprod-only; `accountable_employee_id` is persisted only from `accountablePersonFields(establishCreationAccountablePerson(...))`, in the record's own transaction, only while NULL. |
+| 9 | `src/eosCommercial/commercialAccountabilityRepository.ts` | **GOVERNED** | Owner ruling 2026-09-14, blocker #1 (Option B). The **PostgreSQL accountability audit authority**: accepts only a minted `EstablishedAccountablePerson`, refuses a person minted in another tenant, locks the record, and writes `accountable_employee_id` and its append-only `accountability_handoffs` row (`action` ESTABLISHMENT / HANDOFF, `source` = the mint's provenance) in **one PostgreSQL transaction**; a failed history write refuses the mutation. Imported by no callable and not exported from `index.ts`. See §5.5. |
 | — | every other `functions/scripts/**` | **NOT APPLICABLE** | **Zero** other operator scripts name an accountability field or import the declaration. Unlike §4's ownership scripts, there is no legacy accountability backfill to classify because the field is new. |
 | — | `firestore.rules` | **NOT APPLICABLE** | **Zero** occurrences. See §5.4 for the runtime consequence, which is stated and **not** acted on. |
 | — | every other family | **NOT APPLICABLE** | **#189 `OD-16`**: accountability is NOT APPLICABLE to them — *not* `MISSING`, *not* `OWNERLESS`, *not* `DEFECTIVE`. They have no accountability storage, which is what makes that true rather than claimed. |
@@ -228,6 +229,21 @@ The measured runtime consequence, which required no Rules change and authorizes 
   accountability one.
 
 ### 5.5 What is still a seam, and why that is the honest state
+
+**Update — Owner ruling 2026-09-14, activation blocker #1 (Option B).** The governed accountability audit authority is
+**PostgreSQL**, not the Firestore `AuditAction` vocabulary, which is deliberately **not** extended for accountability.
+Migration 021 gives `eos_commercial.accountability_handoffs` a generated `action` (ESTABLISHMENT when there was no
+previous accountable person — at creation or on an existing record — otherwise HANDOFF) and a `source` that mirrors
+the mint's `ACCOUNTABLE_PERSON_SOURCES` with no new values. `src/eosCommercial/commercialAccountabilityRepository.ts`
+writes the accountable person and its history row in ONE PostgreSQL transaction. That closes blocker #1.
+
+**Blocker #2 stays OPEN and is now explicit:** the live commercial create callables persist to **Firestore**, so they
+cannot be the final governed accountability write path — the record, the establishment and its PostgreSQL history
+could not be atomic across two stores. Blocker #2 must move that write path to PostgreSQL; it must not weaken
+atomicity to keep the Firestore callables. **Blocker #3 stays OPEN.** The rows the synthetic nonprod seed
+(§5.6) wrote predate this writer and carry no history rows; they are fixture data, not governed runtime history.
+
+The historical record of this seam, as it stood before the ruling, follows unchanged.
 
 `AccountabilityAuditPort` **still has no implementation**, and the reason is unchanged from the previous
 revision and is a real constraint rather than a scoping choice: the governed `AuditAction` vocabulary

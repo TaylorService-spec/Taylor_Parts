@@ -292,6 +292,11 @@ const GOVERNED_ESTABLISHMENTS = new WeakSet<object>();
  */
 export interface EstablishedAccountablePerson {
   readonly accountableEmployeeId: string;
+  /**
+   * The tenant the Employee authority RESOLVED this person in. Carried so a writer can refuse a person
+   * minted for another tenant without a second Employee lookup (OD-7: resolution happens once).
+   */
+  readonly tenantId: string;
   readonly source: AccountablePersonSource;
   /** The governed policy that answered "may this person be accountable?". #189 `MI-ε`. */
   readonly eligibilityPolicyId: string;
@@ -393,6 +398,7 @@ export function mintGovernedAccountablePerson(
   }
   const minted: EstablishedAccountablePerson = Object.freeze({
     accountableEmployeeId: employee.employeeId,
+    tenantId: employee.tenantId,
     source,
     eligibilityPolicyId: eligibility.policyId,
     employmentStatus: employee.employmentStatus,

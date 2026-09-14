@@ -74,8 +74,17 @@ test("#189 OD-16: accountable_employee_id is added to EXACTLY the three admitted
 
 test("no OTHER migration in the set adds an accountability column to any other family", () => {
   const offenders = [];
+  // Migration 021 (Owner ruling 2026-09-14, blocker #1) is admitted BY NAME and only for what it is: it alters the
+  // accountability HISTORY table of the same three families and adds the mint's source enum. Proved below that it
+  // touches nothing else, so admitting it cannot let accountability reach another family.
+  const HISTORY_AUTHORITY = "1759363200000_accountability-history-action-and-source.sql";
+  const history = readFileSync(join(MIGRATIONS, HISTORY_AUTHORITY), "utf8").replace(/^\s*--.*$/gm, "");
+  const altered = [...history.matchAll(/ALTER TABLE\s+(\w+)/gi)].map((m) => m[1]);
+  assert.ok(altered.length > 0 && altered.every((t) => t === "accountability_handoffs"), `021 alters ${altered.join(", ")}`);
+  assert.deepEqual([...history.matchAll(/CREATE TYPE\s+(\w+)/gi)].map((m) => m[1]), ["accountable_person_source"]);
+  assert.doesNotMatch(history, /CREATE TABLE|accountable_employee_id\s+TEXT/i, "021 adds an accountability column or table");
   for (const entry of readdirSync(MIGRATIONS)) {
-    if (!entry.endsWith(".sql") || entry === FILE) continue;
+    if (!entry.endsWith(".sql") || entry === FILE || entry === HISTORY_AUTHORITY) continue;
     const body = readFileSync(join(MIGRATIONS, entry), "utf8").replace(/^\s*--.*$/gm, "");
     // An accountability IDENTIFIER -- a column, a table, or a type -- not the WORD. Migration 019's
     // own down-migration HINT string mentions "accountability references" in prose, and prose in a

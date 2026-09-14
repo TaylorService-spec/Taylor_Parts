@@ -44,6 +44,11 @@ on:
       # GOVERNED/SEED (census §5.6): the synthetic nonprod seed is pinned by governedOwnershipWriterCensus.
       - "functions/scripts/seedSyntheticNonprodWorkforce.js"
       - "functions/migrations/1759276800000_commercial-accountability-authority.sql"
+      # BLOCKER #1 (Owner ruling 2026-09-14): the PostgreSQL accountability audit authority, its migration and suites.
+      - "functions/migrations/1759363200000_accountability-history-action-and-source.sql"
+      - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
+      - "functions/test/commercialAccountabilityHistory.test.mjs"
+      - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"
       - "functions/src/salesAgreement/salesAgreementCommands.ts"
       - "functions/scripts/ownershipDerivationCheck.js"
       - "functions/src/access/auditEventWriter.ts"

@@ -200,14 +200,15 @@ test("the shape CHECK refuses a value that could never be an Employee id", { ski
 
 // ════════════════════ 2. THE HISTORY IS APPEND-ONLY, AND THE SERVER ENFORCES IT ════════════════════
 
-async function handoff({ opportunityId, previous, next, policyId = POLICY.policyId }) {
+// Migration 021 (blocker #1) requires every new history row to record its governed provenance.
+async function handoff({ opportunityId, previous, next, policyId = POLICY.policyId, source = "EXPLICIT" }) {
   const id = `ah-${uniq()}`;
   await query(
     `INSERT INTO eos_commercial.accountability_handoffs
        (id, tenant_id, opportunity_id, previous_accountable_employee_id, new_accountable_employee_id,
-        eligibility_policy_id, recorded_by)
-     VALUES ($1, $2, $3, $4, $5, $6, 'uid-actor')`,
-    [id, TENANT, opportunityId, previous, next, policyId],
+        eligibility_policy_id, recorded_by, source)
+     VALUES ($1, $2, $3, $4, $5, $6, 'uid-actor', $7)`,
+    [id, TENANT, opportunityId, previous, next, policyId, source],
   );
   return id;
 }
@@ -224,6 +225,8 @@ test("the FIRST establishment (NULL -> someone) IS a recordable handoff", { skip
   assert.equal(res.rows[0].previous_accountable_employee_id, null);
   assert.equal(res.rows[0].new_accountable_employee_id, person);
   assert.equal(res.rows[0].eligibility_policy_id, POLICY.policyId);
+  // Owner ruling 2026-09-14: a first accountable person is recorded as an ESTABLISHMENT, never a HANDOFF.
+  assert.equal(res.rows[0].action, "ESTABLISHMENT");
 });
 
 test("a no-op handoff is REFUSED by the database", { skip: SKIP }, async () => {
