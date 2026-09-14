@@ -82,6 +82,12 @@ async function prepare() {
   await query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING", [
     TENANT,
   ]);
+  // Migration 022 (wave C1) keys every NEW commercial row to a PostgreSQL Account in the same tenant.
+  await query(
+    `INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by)
+     VALUES ('acct-1', $1, 'Accountability proof account', 'ACTIVE', 'test', 'test') ON CONFLICT DO NOTHING`,
+    [TENANT],
+  );
   prepared = true;
 }
 
@@ -100,8 +106,10 @@ test.after(async () => {
   if (!URL) return;
   await query(
     "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
+      " eos_commercial.opportunity_lines, eos_commercial.sales_agreement_lines, eos_commercial.sales_order_lines," +
       " eos_commercial.sales_orders, eos_commercial.sales_agreements, eos_commercial.opportunities",
   );
+  await query("DELETE FROM eos_crm.accounts WHERE tenant_id = $1", [TENANT]);
   // The Employees and tenants this suite minted. DELETE is correct here -- `eos_workforce.employees`
   // is not append-only history, and these rows are this process's own.
   await query("DELETE FROM eos_workforce.employees WHERE tenant_id = $1", [TENANT]);

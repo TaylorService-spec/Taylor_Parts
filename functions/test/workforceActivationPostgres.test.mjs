@@ -118,7 +118,8 @@ async function seed() {
   await assign("A6", "t1", "p6", "r-admin"); // linked Employee resolves nowhere
   await assign("A7", "t2", "p1", "r-national"); // role belongs to t1; no t2 Employee link
   await assign("A8", "t1", "p3", "r-admin"); // principal disabled
-  // G. Owner is NOT NULL in this store; accountable is nullable.
+  // G. Owner is NOT NULL in this store; accountable is nullable. Commercial rows name a PostgreSQL Account (migration 022).
+  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('a1','t1','Proof account','ACTIVE',$1,$1)`, [actor]);
   await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, accountable_employee_id, created_by, updated_by) VALUES
     ('o1','t1','OPP-1','a1','e-active','e-active',$1,$1), ('o2','t1','OPP-2','a1','e-active','e-leave',$1,$1), ('o3','t1','OPP-3','a1','e-leave',NULL,$1,$1)`, [actor]);
   await q(`INSERT INTO eos_commercial.sales_orders (id, tenant_id, sales_order_number, account_id, owner_employee_id, accountable_employee_id, operating_company_key, created_by, updated_by) VALUES
