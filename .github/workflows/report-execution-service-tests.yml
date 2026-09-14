@@ -37,6 +37,9 @@ on:
       # RPT-FIX. The false-empty invariant, the audit-context census, and the
       # production-activation boundary guard -- all three run without an emulator.
       - "functions/test/reportFalseEmptyHonesty.test.mjs"
+      # CI-UNBLOCK-1899. The related-object join: authorized joins must return,
+      # and an incomplete join must never be reported as a proven empty result.
+      - "functions/test/reportRelatedJoinHonesty.test.mjs"
       - "functions/test/reportAuditContextInjection.test.mjs"
       - "functions/test/reportingActivationBoundary.test.mjs"
       - "functions/test/support/reportEngineHarness.mjs"
@@ -71,6 +74,9 @@ on:
       # RPT-FIX. The false-empty invariant, the audit-context census, and the
       # production-activation boundary guard -- all three run without an emulator.
       - "functions/test/reportFalseEmptyHonesty.test.mjs"
+      # CI-UNBLOCK-1899. The related-object join: authorized joins must return,
+      # and an incomplete join must never be reported as a proven empty result.
+      - "functions/test/reportRelatedJoinHonesty.test.mjs"
       - "functions/test/reportAuditContextInjection.test.mjs"
       - "functions/test/reportingActivationBoundary.test.mjs"
       - "functions/test/support/reportEngineHarness.mjs"
@@ -164,6 +170,10 @@ jobs:
       # was never even enforced. Registered here.
       - name: Reporting activation boundary -- the TRUE production posture, 25 live / 14 not (no emulator)
         run: node --test test/reportingActivationBoundary.test.mjs
+        working-directory: functions
+
+      - name: Related-object join honesty -- authorized joins return, an incomplete join is never a proven empty (no emulator)
+        run: node --test test/reportRelatedJoinHonesty.test.mjs
         working-directory: functions
 
       - name: Start Firestore emulator (background)
