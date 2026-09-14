@@ -166,6 +166,8 @@ export type GovernedResponsibilityRefusalCode =
   | "TARGET_NOT_CURRENTLY_ELIGIBLE"
   /** The family is outside the governed accountability scope (#189 `OD-16`). NOT a record defect. */
   | "FAMILY_NOT_ACCOUNTABLE"
+  /** The named family is not in the governed ownership matrix at all — the matrix is the allow-list. */
+  | "FAMILY_UNGOVERNED"
   /** The family has no single governed ownership field to write. Fail closed rather than guess. */
   | "OWNERSHIP_STORAGE_UNRESOLVED"
   /** The port this axis needs was not supplied. FAIL CLOSED — never a silent no-op. */
@@ -524,9 +526,14 @@ async function handoffRecordOwnership(
   // builder validates the family again on its own terms; this is not that check, it is "which field".
   const family = ownershipFamily(command.family);
   if (family === null) {
+    // A DIFFERENT refusal from OWNERSHIP_STORAGE_UNRESOLVED below, and the distinction is the one the
+    // pure builder already draws: an ungoverned family is not in the allow-list at all, while a
+    // governed family with no ownership field is governed and simply has nowhere to write yet.
     refuse(
-      "OWNERSHIP_STORAGE_UNRESOLVED",
-      `"${String(command.family)}" is not a governed ownership family, so it has no ownership storage to read`,
+      "FAMILY_UNGOVERNED",
+      `"${String(command.family)}" is not a governed ownership family — the matrix is the allow-list, ` +
+        "not a hint",
+      "FAMILY_UNKNOWN",
     );
   }
   if (family.ownerFields.length !== 1) {
