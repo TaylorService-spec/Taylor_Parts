@@ -19,8 +19,12 @@
 // P-INV (invoice-authority packet, migration 008): the per-line arithmetic and the header
 // aggregates are NO LONGER computed here. They come from the ONE shared derivation,
 // eosOps/invoiceTotals.ts, which the Postgres authority's GENERATED ALWAYS columns and the
-// `invoice_totals` view express in SQL and which financialReconciliation.ts now uses to prove a
-// stored header against its own lines. Four inline `out.reduce(...)` calls and a duplicated
+// `invoice_totals` view express in SQL. financialReconciliation.ts's `reconcileInvoiceTotals`
+// re-uses that same derivation to prove a stored header against its own lines — but NOTHING IN
+// PRODUCTION CALLS IT (P2-K, 2026-09-12: financialReconciliation.ts has no importer under
+// functions/src; its only importers are functions/test/*). Do not read that reconciler as a live
+// guard on this path: the guarantee here comes from the single derivation below, not from a check
+// that runs after it. Four inline `out.reduce(...)` calls and a duplicated
 // per-line formula lived here; a second copy of an arithmetic rule is how two layers come to
 // disagree about the same invoice's money. The refusal CODES are unchanged (LINE_INVALID /
 // UNPRICED / TAX_REQUIRES_REVIEW), re-thrown as InvoiceCommandError so every existing caller and
