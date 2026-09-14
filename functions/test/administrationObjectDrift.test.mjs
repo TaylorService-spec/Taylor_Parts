@@ -189,20 +189,20 @@ test("the governance capability map names no object Administration does not adve
   assert.deepEqual(orphans, []);
 });
 
-test("exactly one object Administration advertises is missing from the governance capability map", () => {
-  // PINNED, NOT ACCEPTED. Owner ruling D-5 (2026-09-08) split Reorder Request out of Purchase
-  // Orders as its own canonical Object. `objectPermissionMap.js` got the new row;
-  // `objectCapabilityMap.mjs` never did, so every governance contract row, workbook sheet and
-  // precedence-sweep classification generated from it silently omits the object — the capabilities
-  // `reorder.request.create.manual`, `.create.system`, `.read.queue` and `.read.own` are attributed
-  // to no object at all in the generated governance artifacts.
+test("the governance capability map covers every object Administration advertises", () => {
+  // This replaces a PIN. Until now the assertion here was `deepEqual(missing, ["Reorder Requests"])`
+  // — W1-C18 proved the gap, could not close it inside a shared capability map, and pinned it so it
+  // could not be forgotten. `objectCapabilityMap.mjs` now carries the row (W1-C18 §5.2 item 1,
+  // verbatim), so the pin is gone rather than amended: nothing here records an accepted gap any more.
   //
-  // Adding the row is a capability-map ADDITION and is therefore not this lane's to make. It is
-  // written up as a required registration in docs/handoff/w1-c18-registrations.md. When it lands,
-  // this test fails and must be deleted, not amended — the gap being closed is the whole point.
+  // What stands in its place is the mirror of the test above it. Together the two make the cover
+  // BIDIRECTIONAL — neither table may name an object the other does not — which is a strictly
+  // stronger guard than deleting the pin outright would have left behind. Deletion would have
+  // removed the only assertion in this direction, and the next object to be split out would have
+  // gone missing from the generated contract in exactly the same silence.
   const mapped = new Set(Object.keys(OBJECT_CAPABILITY_MAP));
   const missing = OBJECT_PERMISSIONS.map((e) => e.object).filter((o) => !mapped.has(o));
-  assert.deepEqual(missing, ["Reorder Requests"]);
+  assert.deepEqual(missing, []);
 });
 
 test("the reconciliation script's private matrix names no object Administration does not advertise", () => {

@@ -90,6 +90,15 @@ on:
       - "functions/test/inventoryCapabilityParityHarnessClassification.test.mjs"
       - "functions/test/inventoryCapabilityParityHarnessVacuity.test.mjs"
       - "functions/test/inventoryWriterCapabilityCensus.test.mjs"
+      # P2-F: the offline characterisation of the technician identity trap runs in
+      # test:adminPolicy alongside the linkage ratchet. It reads the two callable boundaries and
+      # drives the real truck resolver, so a change to ANY of those three must trigger it --
+      # otherwise the suite that documents the defect goes stale in exactly the silence the
+      # defect lives in.
+      - "functions/test/technicianIdentityTrap.test.mjs"
+      - "functions/src/workOrderConsumption/consumptionSourceService.ts"
+      - "functions/src/cycleCount/cycleCountSheetCallables.ts"
+      - "functions/src/inventoryTransfer/transferReceivableRead.ts"
       - "scripts/buildAdminPolicySeedSnapshot.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -149,6 +158,15 @@ on:
       - "functions/test/inventoryCapabilityParityHarnessClassification.test.mjs"
       - "functions/test/inventoryCapabilityParityHarnessVacuity.test.mjs"
       - "functions/test/inventoryWriterCapabilityCensus.test.mjs"
+      # P2-F: the offline characterisation of the technician identity trap runs in
+      # test:adminPolicy alongside the linkage ratchet. It reads the two callable boundaries and
+      # drives the real truck resolver, so a change to ANY of those three must trigger it --
+      # otherwise the suite that documents the defect goes stale in exactly the silence the
+      # defect lives in.
+      - "functions/test/technicianIdentityTrap.test.mjs"
+      - "functions/src/workOrderConsumption/consumptionSourceService.ts"
+      - "functions/src/cycleCount/cycleCountSheetCallables.ts"
+      - "functions/src/inventoryTransfer/transferReceivableRead.ts"
       - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
       - "field-ops-app-vite/src/domain/adminPolicyView.js"
       - "field-ops-app-vite/src/metadata/entityRegistry.js"

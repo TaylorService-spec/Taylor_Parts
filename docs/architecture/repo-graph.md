@@ -12,7 +12,7 @@ node scripts/buildRepoGraph.mjs
 ```
 
 `--check` reports without writing and exits non-zero on stale references.
-A full build over ~2,500 files takes under a second.
+A full build over ~4,500 files takes under a second.
 
 ## What it contains
 
