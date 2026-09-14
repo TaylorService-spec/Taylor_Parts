@@ -11,6 +11,17 @@
 // also trip on the word "firebase" in a comment (see field-ops-app-vite/src/domain/equipmentWrites.js,
 // which discusses firebase in prose but imports nothing).
 //
+// A dependency class is reached by TWO source shapes, and BOTH are fenced:
+//
+//   * the SUBPATH form -- `from "firebase-admin/firestore"`, `from "firebase/firestore"` --
+//     matched by a class's `matchesSpecifier`; and
+//   * the NAMESPACE form -- `import admin from "firebase-admin"` then `admin.firestore()` --
+//     which names only the package ROOT and therefore has NO forbidden specifier to match at
+//     all. That form is matched by a class's optional `matchesSource`: the CONJUNCTION of a bare
+//     package-root import AND a Firestore/Functions access expression in a comment- and
+//     string-blanked view of the source. Confirmed as a live bypass empirically (see the
+//     namespace-access section below) before it was closed.
+//
 // Those four classes are fenced at each business-runtime ROOT: field-ops-app-vite/src (the Vite
 // frontend), functions/src (the Cloud Functions deployment), and integrations (the standalone
 // Node ESM intake service). A category's `root` is a per-file filter -- a file is only ever
@@ -95,6 +106,127 @@ export function extractImportSpecifiers(text) {
 }
 
 /**
+ * A comment- and string-blanked view of a source file. Used ONLY by the `matchesSource`
+ * namespace-access detectors below -- NEVER by `extractImportSpecifiers`, whose behaviour must
+ * not change, because the committed baseline's 366 guarded entries are defined by it.
+ *
+ * Import specifiers are structural, so matching them over raw text is safe. An access EXPRESSION
+ * is not: `admin.firestore()` reads identically in code and in prose, and this repository
+ * contains both -- functions/src/types/workOrder.ts and field-ops-app-vite/src/types/workOrder.ts
+ * each mention `admin.firestore.FieldValue.serverTimestamp()` in a COMMENT while importing no
+ * firebase-admin root at all, and field-ops-app-vite/src/domain/equipmentWrites.js discusses
+ * firebase in prose while importing nothing. Blanking comments and string/template contents is
+ * what makes an access-expression test safe to run over whole-file text, and is what keeps
+ * `matchesSource` from degenerating into the keyword scan this module's header rejects.
+ *
+ * Template-literal contents are blanked wholesale, `${...}` interpolations included. That can
+ * only LOSE a detection, never invent one -- the safe direction for a ratchet whose baseline may
+ * not grow. Regex literals are not tracked; a `/.../` containing an unbalanced quote can only
+ * blank more text, again losing detections rather than inventing them.
+ */
+export function stripCommentsAndStringLiterals(text) {
+  let out = "";
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === "/" && next === "/") {
+      while (index < text.length && text[index] !== "\n") index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index += 2;
+      while (index < text.length && !(text[index] === "*" && text[index + 1] === "/")) index += 1;
+      index += 2;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") {
+      index += 1;
+      while (index < text.length && text[index] !== char) {
+        if (text[index] === "\\") index += 1;
+        index += 1;
+      }
+      index += 1;
+      // Keep an EMPTY literal so the tokens either side cannot fuse into a new match.
+      out += `${char}${char}`;
+      continue;
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
+/**
+ * ==================== THE NAMESPACE-ACCESS BYPASS (why matchesSource exists) ==================
+ *
+ * `matchesSpecifier` fences the SUBPATH form and nothing else. The package ROOT reaches exactly
+ * the same Firestore business persistence and was invisible to it:
+ *
+ *     import admin from "firebase-admin";   // specifier is "firebase-admin" -- no /firestore
+ *     await admin.firestore().collection("workOrders").get();
+ *
+ * Every variant was equally invisible: `import * as admin`, an aliased namespace, `require()`,
+ * chained `require("firebase-admin").firestore()`, dynamic `import()`, `admin.app().firestore()`,
+ * a destructured `const { firestore } = require("firebase-admin")`, a reassigned local alias, and
+ * the sentinel namespace `admin.firestore.FieldValue`.
+ *
+ * `matchesSource` is a CONJUNCTION and both halves are load-bearing:
+ *
+ *   1. the file imports the bare package ROOT, AND
+ *   2. the comment-and-string-blanked source contains a Firestore/Functions access expression.
+ *
+ * Half 2 is what PRESERVES IDENTITY_ONLY use, which the Owner ruling explicitly permits.
+ * functions/src/eosApi/server.ts imports the bare "firebase-admin" root -- dynamically, because
+ * the package is CJS -- purely to call `app.auth().verifyIdToken(...)`. It contains no Firestore
+ * access expression, is therefore not flagged, and must never become flagged. `admin.auth()`,
+ * `admin.app()`, `admin.apps`, `admin.initializeApp()` are IDENTITY_ONLY; `admin.storage()` is
+ * not one of the four fenced classes at all. Importing the root is not the violation --
+ * persisting business data through it is.
+ *
+ * Half 1 is what keeps this from becoming a keyword scan: a file that never imports the package
+ * root cannot be flagged by a `.firestore(` token alone, no matter how that token got there.
+ *
+ * `matchesSource` is consulted ONLY when `matchesSpecifier` did not match (see classifyFile), so
+ * classification is a strict SUPERSET of the specifier-only behaviour BY CONSTRUCTION: no
+ * baseline entry can be lost or reclassified by adding it.
+ */
+const BARE_FIREBASE_ADMIN_SPECIFIERS = new Set(["firebase-admin"]);
+
+/**
+ * Firestore access off a firebase-admin namespace. The `[(.]` after `.firestore` covers BOTH the
+ * handle call (`admin.firestore()`, `admin.app().firestore()`) AND the sentinel namespace
+ * (`admin.firestore.FieldValue.serverTimestamp()`, `admin.firestore.Timestamp`) -- the latter is
+ * Firestore persistence with no call on `firestore` itself, so a call-only pattern would miss it.
+ * The bare `firestore(` / `getFirestore(` alternatives cover a destructured or re-aliased handle.
+ */
+const ADMIN_FIRESTORE_ACCESS_PATTERN = /\.firestore\s*[(.]|\bfirestore\s*\(|\bgetFirestore\s*\(/;
+
+/**
+ * The frontend mirror of the same bypass: "firebase", "firebase/app" and "firebase/compat/app"
+ * reach the Firestore and Functions clients through the compat namespace
+ * (`firebase.firestore()`, `firebase.functions()`) without ever naming "firebase/firestore" or
+ * "firebase/functions".
+ *
+ * "firebase/app" is ALSO the legitimate identity entry point -- field-ops-app-vite/src/firebase/
+ * firebase.js imports `initializeApp` from it beside firebase/auth -- which is exactly why this
+ * is a conjunction: importing firebase/app is not a violation on its own.
+ */
+const FRONTEND_NAMESPACE_SPECIFIERS = new Set(["firebase", "firebase/app", "firebase/compat/app"]);
+
+/** Mirrors ADMIN_FIRESTORE_ACCESS_PATTERN for the frontend compat namespace. */
+const FRONTEND_FIRESTORE_ACCESS_PATTERN = /\.firestore\s*[(.]|\bgetFirestore\s*\(/;
+
+/**
+ * Deliberately NARROWER than the Firestore pattern: a call only (`firebase.functions()`), never
+ * `.functions.`. "functions" is an ordinary identifier that appears in unrelated member chains
+ * (`config.functions.region`, `utils.functions.map`); "firestore" is not. Matching `.functions.`
+ * would trade one closed bypass for a whole false-positive class, which for a ratchet that
+ * cannot grow its baseline is a strictly worse deal.
+ */
+const FRONTEND_FUNCTIONS_ACCESS_PATTERN = /\.functions\s*\(|\bgetFunctions\s*\(/;
+
+/**
  * The four business-runtime dependency classes, named exactly as they are named in
  * docs/architecture/firebase-exit-baseline.json (`baseline.<section>.<name>`).
  *
@@ -107,26 +239,50 @@ const BUSINESS_RUNTIME_CLASSES = [
   {
     name: "firestore_client",
     label: "firebase/firestore (Firestore business client)",
+    // "firebase/compat/firestore" IS the Firestore business client -- the compat build of it --
+    // and was unfenced because it does not start with "firebase/firestore".
     matchesSpecifier: (specifier) =>
-      specifier === "firebase/firestore" || specifier.startsWith("firebase/firestore/"),
+      specifier === "firebase/firestore" || specifier.startsWith("firebase/firestore/") ||
+      specifier === "firebase/compat/firestore" ||
+      specifier.startsWith("firebase/compat/firestore/"),
+    matchesSource: (specifiers, strippedText) =>
+      specifiers.some((specifier) => FRONTEND_NAMESPACE_SPECIFIERS.has(specifier)) &&
+      FRONTEND_FIRESTORE_ACCESS_PATTERN.test(strippedText),
   },
   {
     name: "firebase_functions_client",
     label: "firebase/functions (Firebase Functions business transport)",
     matchesSpecifier: (specifier) =>
-      specifier === "firebase/functions" || specifier.startsWith("firebase/functions/"),
+      specifier === "firebase/functions" || specifier.startsWith("firebase/functions/") ||
+      specifier === "firebase/compat/functions" ||
+      specifier.startsWith("firebase/compat/functions/"),
+    matchesSource: (specifiers, strippedText) =>
+      specifiers.some((specifier) => FRONTEND_NAMESPACE_SPECIFIERS.has(specifier)) &&
+      FRONTEND_FUNCTIONS_ACCESS_PATTERN.test(strippedText),
   },
   {
     name: "firebase_admin_firestore",
     label: "firebase-admin/firestore (Firestore business persistence)",
     matchesSpecifier: (specifier) =>
       specifier === "firebase-admin/firestore" || specifier.startsWith("firebase-admin/firestore/"),
+    // Closes the namespace-access bypass documented above: a bare "firebase-admin" root import
+    // plus a Firestore access expression is the same Firestore business persistence as the
+    // /firestore subpath, and was previously invisible to this fence.
+    matchesSource: (specifiers, strippedText) =>
+      specifiers.some((specifier) => BARE_FIREBASE_ADMIN_SPECIFIERS.has(specifier)) &&
+      ADMIN_FIRESTORE_ACCESS_PATTERN.test(strippedText),
   },
   {
     name: "firebase_functions_server",
     label: "firebase-functions business runtime (v1/v2 triggers and callables)",
     // Deliberately excludes "firebase-functions/logger" and "firebase-functions/params":
     // those are not business transport or business persistence.
+    //
+    // This class needs NO `matchesSource`: unlike firebase-admin, the bare package root
+    // "firebase-functions" ALREADY matches this pattern, so the namespace form
+    // (`import functions from "firebase-functions"; functions.https.onCall(...)`) is caught by
+    // specifier alone. Verified, not assumed -- see the evasion-shape census in the contract
+    // tests, which asserts this class catches the bare root.
     matchesSpecifier: (specifier) => /^firebase-functions(\/v[12](\/.*)?)?$/.test(specifier),
   },
 ];
@@ -169,6 +325,11 @@ export const FORBIDDEN_CATEGORIES = SCAN_ROOTS.flatMap(({ section, root }) =>
     root,
     label: `${businessClass.label} in ${root}`,
     matchesSpecifier: businessClass.matchesSpecifier,
+    // Optional, and only present on the classes that have a namespace form. Carried through the
+    // cross product unchanged: a namespace-form dependency is no less a dependency for being in
+    // a different root, and the eight currently-empty cross categories stay pinned at zero for
+    // the namespace form exactly as they are for the subpath form.
+    matchesSource: businessClass.matchesSource,
   })));
 
 /**
@@ -202,10 +363,20 @@ export function classifyFile(text, relativePath) {
   const applicable =
     relativePath === undefined ? FORBIDDEN_CATEGORIES : categoriesForPath(relativePath);
   const categories = new Set();
+  // Blanked ONCE per file, and only if some applicable category actually has a `matchesSource`.
+  let strippedText;
   for (const category of applicable) {
     if (specifiers.some((specifier) => category.matchesSpecifier(specifier))) {
       categories.add(category.key);
+      continue;
     }
+    // ONLY reached when the specifier matcher did NOT match. This ordering is what makes
+    // classification a strict superset of the specifier-only behaviour by construction: a file
+    // already classified by specifier is classified identically regardless of what
+    // `matchesSource` would say, so no committed baseline entry can be lost or reclassified.
+    if (!category.matchesSource) continue;
+    if (strippedText === undefined) strippedText = stripCommentsAndStringLiterals(text);
+    if (category.matchesSource(specifiers, strippedText)) categories.add(category.key);
   }
   return categories;
 }

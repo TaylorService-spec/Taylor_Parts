@@ -128,7 +128,27 @@ function buildProductionDeps(args) {
   const testEmail = process.env[config.testEmailEnv];
   const testPassword = process.env[config.testPasswordEnv];
   if (!webApiKey || !testEmail || !testPassword) throw new VerificationError("web API key + test-persona email/password env vars must be present (never committed/logged)");
-  if (!admin.apps.length) admin.initializeApp();
+  // X-TARGETING-GUARD: this was a BARE `admin.initializeApp()`. Every gate above validates the STRING
+  // the operator typed (--confirm-project must be taylor-parts AND must equal config.projectId), but a
+  // bare init does nothing with it: the Admin SDK then resolves its own target from ambient credentials
+  // (GOOGLE_APPLICATION_CREDENTIALS / gcloud ADC / GOOGLE_CLOUD_PROJECT / the well-known ADC file, which
+  // on a Windows host carries its own quota project). The verifier could therefore read one project while
+  // publishing evidence that names another -- and this tool's entire output is an assertion about WHICH
+  // project's deployed Rules and callables were observed, so a silent divergence does not merely mis-target
+  // a read, it falsifies the evidence.
+  //
+  // Passing the confirmed projectId through and then asserting the SDK's OWN resolved projectId matches it
+  // closes that gap. Mirrors warehouseBackupRestoreCli.js / warehouseGovernanceMigrationCli.js, which carry
+  // this same guard and the same comment, and scripts/_sandboxDeployGuard.mjs's "assert the resolved
+  // identity, don't trust the input string" shape.
+  if (!admin.apps.length) admin.initializeApp({ projectId: config.projectId });
+  const resolvedProjectId = admin.app().options.projectId;
+  if (resolvedProjectId !== config.projectId) {
+    throw new VerificationError(
+      `firebase-admin resolved projectId '${resolvedProjectId}' does not match the confirmed config.projectId ` +
+        `'${config.projectId}': refusing to verify (ambient credentials must not silently pick a different target)`,
+    );
+  }
   const db = admin.firestore();
   const REST = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents`;
 

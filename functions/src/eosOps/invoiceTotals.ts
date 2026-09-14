@@ -11,13 +11,20 @@
 //   2. RECONCILIATION. functions/src/finance/financialReconciliation.ts's
 //      `reconcileInvoiceProjection` took `stored.totalMinor` as its GIVEN basis and proved only the
 //      AR overlay on top of it — so the header aggregate every downstream AR figure is computed
-//      from had no proof against the lines it claims to summarise.
+//      from had no proof against the lines it claims to summarise. `reconcileInvoiceTotals` is
+//      that missing proof and it does import this module — but it is DORMANT: no module under
+//      functions/src imports financialReconciliation.ts, so layer 2 never executes in production
+//      (P2-K, 2026-09-12; see functions/test/financeDetectorWiring.test.mjs, which fails if that
+//      changes without the registry being updated).
 //   3. THE POSTGRES AUTHORITY. migrations/1758931200000_invoice-authority.sql expresses the same
 //      arithmetic as GENERATED ALWAYS columns plus the `invoice_totals` view, where no writer can
 //      supply a wrong answer.
 //
-// All three now derive from THIS function. That is the point: an aggregate with one definition can
-// still be stale, but it can no longer be a DIFFERENT answer depending on who asked.
+// All three DERIVE FROM THIS FUNCTION IN SOURCE. That is the point: an aggregate with one
+// definition can still be stale, but it can no longer be a DIFFERENT answer depending on who
+// asked. Note precisely what that does and does not buy: layers 1 and 3 run; layer 2 is a
+// detector no production caller invokes, so this module's single definition — not a
+// reconciliation pass — is what actually holds the Firestore path together today.
 //
 // ════════════════════ EXACT INTEGER MINOR UNITS, NEVER FLOAT ════════════════════
 //

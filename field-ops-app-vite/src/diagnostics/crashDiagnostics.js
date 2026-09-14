@@ -47,8 +47,25 @@ function makeCrashId() {
   return `${t}-${randomTail()}`;
 }
 
-// Six base-36 characters (~2.18 billion) drawn from the CSPRNG. At 200 draws the collision
-// probability is under one in ten million, against one in ninety-four before.
+// Six base-36 characters (36^6 = 2,176,782,336) drawn from the CSPRNG.
+//
+// CORRECTED 2026-09-13. The previous sentence claimed "the collision probability is under one in
+// ten million" at 200 draws. That is FALSE by a factor of ~91: the real figure is
+// 200*199/(2*36^6) = 9.14e-06, i.e. about ONE IN 109,000. Still far beyond practical concern at
+// this volume -- which is why the encoding below is left exactly as it is -- but a safety margin
+// stated 91x better than it is will be trusted by the next person to raise the draw rate.
+//
+// The keyspace is 36^6, NOT the 2^32 the source supplies, and the fold is NOT uniform.
+// `buf[0]` is a uint32 whose base-36 form runs to SEVEN characters, and `.slice(-6)` silently
+// discards the leading one. So every draw >= 36^6 lands on its own low-six-character suffix:
+// 2,118,184,960 tails are reachable TWO ways and the remaining 58,597,376 only one, making the
+// former twice as likely. Measured pair-collision rate is +0.67% against a uniform 36^6 source.
+//
+// This is documented rather than repaired deliberately. Widening the tail changes an id that is
+// read aloud down a phone and already appears in captured screenshots, and the arithmetic above
+// says the narrowing costs nothing at the volume this runs at. `test/crashDiagnostics.test.mjs`
+// asserts the TRUE keyspace and pins the boundary (`tailFor(2**32-1) === "Z141Z3"`), so a future
+// change to this encoding fails a test rather than quietly re-deriving this analysis.
 //
 // The fallback is deliberate rather than defensive theatre: a runtime without crypto would
 // otherwise throw INSIDE the crash handler, turning a reported crash into a silent one. It is the

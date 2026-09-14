@@ -2,10 +2,16 @@
 //
 // Reuses the SAME sourcing discipline transferOrderCommand.ts's computeNoneOnHandThroughTxn established
 // as the live expected-quantity authority for Transfer sufficiency (PR #1032): for NONE-mode Parts, sum
-// the location-aware operational ledger (RECEIVED/RETURNED/TRANSFER_IN +, TRANSFER_OUT/SCRAPPED -,
-// ADJUSTED signed) at the (partId, location) pair. That function is not exported from
-// transferOrderCommand.ts, so this is a parallel, behaviorally-identical implementation over the same
-// public inventoryLedger repository -- not a competing authority.
+// the location-aware operational ledger at the (partId, location) pair. That function is not exported
+// from transferOrderCommand.ts, so this is a parallel, behaviorally-identical implementation over the
+// same public inventoryLedger repository -- not a competing authority.
+//
+// THE SIGN RULE IS NOT RESTATED HERE, deliberately. It used to be spelled out in this paragraph
+// ("RECEIVED/RETURNED/TRANSFER_IN +, TRANSFER_OUT/SCRAPPED -, ADJUSTED signed") and that sentence had
+// already gone stale: it named neither WORK_ORDER_CONSUMPTION nor the RELOCATION pair. A comment that
+// restates a rule is a copy of it that no test can fail, which is how five copies of this rule drifted
+// apart in the first place. The rule lives in inventoryLedger/locationOnHand.ts MOVEMENT_SIGN and is
+// read from there, once, below.
 //
 // IN-TRANSIT DISPOSITION (documented boundary, not an open ambiguity): a unit mid-transfer has already
 // posted TRANSFER_OUT at the origin (excluded from the origin's sum) and has not yet posted TRANSFER_IN
@@ -26,7 +32,7 @@ import { signedQuantity } from "../inventoryLedger/locationOnHand.js";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
 import { classifyLedgerDoc, deserializeOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
-import type { CycleCountLocationRef } from "./cycleCountTypes.js";
+import { CycleCountIntegrityError, type CycleCountLocationRef } from "./cycleCountTypes.js";
 
 export async function computeExpectedQuantityThroughTxn(
   txn: Transaction,
@@ -58,7 +64,35 @@ export async function computeExpectedQuantityThroughTxn(
     // CERT-LEDGER-COUNTED-08) contributes nothing, and is skipped by classifyLedgerDoc above anyway.
     onHand += signedQuantity(v);
   }
-  return Math.max(onHand, 0);
+  // A NEGATIVE TOTAL IS A DATA-INTEGRITY SIGNAL, NOT A QUANTITY. This line used to be
+  // `Math.max(onHand, 0)`, which undid part of the care the comment above describes: the sign was
+  // taken from the one authority and then a floor silently replaced an impossible answer with a
+  // plausible one. More stock cannot have left this location than ever arrived, so a negative sum
+  // means the LEDGER is wrong -- a row missing, duplicated, or misattributed.
+  //
+  // Clamping that to 0 does not repair it, it hides it, and it hides it in the worst possible
+  // place: every unit the counter physically finds then reads as SURPLUS against an expected 0,
+  // reconciliation posts an ADJUSTED for the whole counted quantity (cycleCountCommand.ts computes
+  // variance = counted - expected), and the ledger gets "corrected" toward a figure the clamp
+  // invented. An expected quantity derived from a number the system already knows is impossible is
+  // not a count, it is a second corruption written on top of the first.
+  //
+  // The floor is NOT simply deleted, because a negative expectedQuantity cannot be stored either:
+  // cycleCountRepository.ts and cycleCountSheetRepository.ts both reject one as a malformed stored
+  // record, so writing it would brick the count document -- unreadable, and therefore not even
+  // cancellable. Refusing at computation time keeps the stored contract (non-negative integer)
+  // exactly as it is, because a count whose expected quantity is impossible is never created.
+  //
+  // CycleCountIntegrityError is the existing sanitized bucket for "this cannot coherently be done"
+  // (cycleCountTypes.ts); it needs no new failure code and maps to `internal` at the callable
+  // boundary, so the operator sees a refusal and an alert rather than a fabricated variance.
+  if (onHand < 0) {
+    throw new CycleCountIntegrityError(
+      `the inventory ledger for this part nets ${onHand} at ${location.type} ${location.locationId}; ` +
+        "a negative on-hand is impossible, so the expected quantity cannot be established until the ledger is corrected",
+    );
+  }
+  return onHand;
 }
 
 export async function computeExpectedSerialsThroughTxn(

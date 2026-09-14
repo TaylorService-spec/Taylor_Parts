@@ -27,6 +27,22 @@ export const IGNORED_SEGMENTS = new Set([
   "node_modules", ".git", "dist", "build", "coverage", ".next", ".cache", ".claude", ".codex",
 ]);
 
+/**
+ * Build OUTPUT directories that cannot be named by segment.
+ *
+ * `functions/lib/` is `tsc`'s output (`functions/.gitignore` ignores it). It was invisible here
+ * because "lib" is not a segment this file could blacklist: `docs/orchestration/lib/` is real,
+ * authored repository content that belongs in the graph. So the exclusion has to be ANCHORED.
+ *
+ * Why it matters, measured: in a tree where `npm run build` has been run, the walk reported 5,325
+ * files against the same 4,476 tracked ones -- 849 compiled `.js` files, each contributing import
+ * edges that mirror the TypeScript they were generated from. The artifact is committed, so
+ * regenerating it on a built machine and regenerating it on a clean one produce two different
+ * committed truths from the same source revision. "Deterministic, one command" was only true by
+ * accident of nobody having built first.
+ */
+export const IGNORED_PREFIXES = ["functions/lib/"];
+
 const CODE_RE = /\.(m?[jt]sx?)$/;
 const DOC_RE = /\.md$/;
 
@@ -36,7 +52,8 @@ export const toPosix = (p = "") => p.split(BACKSLASH).join("/");
 
 export const isCode = (p) => CODE_RE.test(p);
 export const isDoc = (p) => DOC_RE.test(p);
-export const isIgnored = (p) => p.split("/").some((s) => IGNORED_SEGMENTS.has(s));
+export const isIgnored = (p) =>
+  p.split("/").some((s) => IGNORED_SEGMENTS.has(s)) || IGNORED_PREFIXES.some((prefix) => p.startsWith(prefix));
 
 /** Normalize "a/b/../c" and "./x" to a canonical repo-relative path. */
 export function normalizePath(p) {

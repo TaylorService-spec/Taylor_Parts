@@ -1350,8 +1350,8 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/domain/financialPolicyView.js",
-          "field-ops-app-vite/src/modules/administration/AdminFinancialPolicy.jsx"
+          "field-ops-app-vite/src/access/shellCapabilityGates.js",
+          "field-ops-app-vite/src/domain/financialPolicyView.js"
         ],
         "serverReferenceCount": 1,
         "clientReferenceCount": 3,
@@ -1374,7 +1374,7 @@
         "exportedCallables": [],
         "serverReferences": [],
         "clientReferences": [
-          "field-ops-app-vite/src/modules/administration/AdminFinancialPolicy.jsx"
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
         "serverReferenceCount": 0,
         "clientReferenceCount": 1,
@@ -3473,7 +3473,7 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/modules/administration/AdminWarehouseRacking.jsx"
+          "field-ops-app-vite/src/access/shellCapabilityGates.js"
         ],
         "serverReferenceCount": 2,
         "clientReferenceCount": 2,
@@ -3503,7 +3503,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/access/scanWorkflows.js",
-          "field-ops-app-vite/src/modules/administration/AdminWarehouseRacking.jsx",
+          "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
         "serverReferenceCount": 3,
@@ -3940,11 +3940,12 @@
           "functions/src/equipmentCompatibility/readService.ts"
         ],
         "clientReferences": [
+          "field-ops-app-vite/src/access/shellCapabilityGates.js",
           "field-ops-app-vite/src/domain/equipmentCompatibilitySection.js",
           "field-ops-app-vite/src/metadata/definitions/equipmentModel.js"
         ],
         "serverReferenceCount": 1,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -4833,7 +4834,7 @@
       ],
       "module": "./reporting/runReportDefinitionCallable",
       "capabilityHints": [],
-      "comment": "--- Issue #325 / ADR-007 D-FN surface: trusted report execution --- Same posture as the six commands above: deployed to eos-platform-sandbox under the per-environment activation program, NOT deployed to the production project. No client calls it (the client run seam, field-ops-app-vite/src/domain/re"
+      "comment": "--- Issue #325 / ADR-007 D-FN surface: trusted report execution ---  ENG-E CORRECTION (main @ 64008d5ae0bdd9532909671b15a91122400accf1). This block previously asserted three protections. TWO OF THEM WERE FALSE at this baseline and the third is unprovable from the repository. The false text is quoted"
     },
     {
       "names": [

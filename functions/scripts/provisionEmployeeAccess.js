@@ -228,20 +228,16 @@ const VALID_OPERATIONAL_ROLES = [
   "SALES_ASSOCIATE",
 ];
 
-const PRODUCTION_PROJECT_ID = "taylor-parts";
-
-function parseArgs(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i].startsWith("--")) {
-      const key = argv[i].slice(2);
-      const value = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : "true";
-      args[key] = value;
-      if (value !== "true") i += 1;
-    }
-  }
-  return args;
-}
+// The project-target fence now lives in an SDK-FREE module so that a script whose safety property is
+// "refuse before any SDK client exists" can import it without loading firebase-admin (this file
+// require()s the Admin SDK at its top level, so importing THIS module loads it). The rule is
+// unchanged and is still re-exported below, so every existing caller of assertProjectTarget() --
+// auditSecurityRoleMirror.js, onboardEmployeePreflight.js, onboardEmployeeVerify.js -- is untouched.
+const {
+  parseArgs,
+  assertProjectTarget,
+  PRODUCTION_PROJECT_ID,
+} = require("./projectTargetGuard.js");
 
 // Trims whitespace, drops empties, and de-duplicates while preserving
 // first-occurrence order -- a stable, predictable result regardless of
@@ -760,22 +756,6 @@ async function provisionEmployeeAccess(db, auth, rawArgs) {
       "This account cannot sign in yet -- password setup/activation is a separate, approved process outside this script."
     );
   }
-}
-
-function assertProjectTarget(args) {
-  if (!args.projectId) {
-    throw new Error(
-      "--projectId is required (no default target -- e.g. --projectId taylor-parts, or a non-production id for testing)."
-    );
-  }
-  if (args.projectId === PRODUCTION_PROJECT_ID && args.confirmProduction !== PRODUCTION_PROJECT_ID) {
-    throw new Error(
-      `--projectId "${PRODUCTION_PROJECT_ID}" targets the production project -- this requires an explicit, ` +
-        `matching --confirmProduction ${PRODUCTION_PROJECT_ID} flag as a deliberate, per-run confirmation. ` +
-        `Use a different --projectId for emulator/non-production testing to skip this requirement.`
-    );
-  }
-  return args.projectId;
 }
 
 async function main() {

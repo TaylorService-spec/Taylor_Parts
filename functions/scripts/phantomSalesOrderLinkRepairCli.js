@@ -37,8 +37,10 @@
 //
 // X-BACKFILL-ENVIRONMENT-GUARD (fail-closed target guard -- copied verbatim from
 // salesOrderNumberBackfillCli.js, which is the established pattern this lane was told to follow): the only
-// accepted --environment is exactly "sandbox"; the only accepted --project under it is the single sandbox
-// project id resolved from config/environments.json. This check runs INSIDE parseArgs, which is called
+// accepted --environment is exactly "sandbox"; the only accepted --project under it is one
+// config/environments.json declares under role "sandbox" with a real firebase.projectId, named explicitly
+// by the operator -- the tool never chooses among them (functions/scripts/sandboxTargetGuard.js).
+// This check runs INSIDE parseArgs, which is called
 // before buildProductionDeps() (the only place firebase-admin is required and Firestore is touched) in both
 // the CLI entrypoint (main(), below) and every caller -- so a rejected configuration throws before
 // firebase-admin is ever required and before any Firestore connection, read, or write is attempted.
@@ -73,44 +75,13 @@ const lib = () => ({
 });
 
 // ---- environment guard: read-only local file, resolved BEFORE any Firebase/Firestore code runs ----------
-function loadEnvironmentRegistry() {
-  const registryPath = path.resolve(__dirname, "..", "..", "config", "environments.json");
-  let raw;
-  try {
-    raw = fs.readFileSync(registryPath, "utf8");
-  } catch (err) {
-    throw new Error(`--environment sandbox requires config/environments.json to be readable at ${registryPath}: ${err.message}`);
-  }
-  try {
-    return JSON.parse(raw);
-  } catch (err) {
-    throw new Error(`config/environments.json is not valid JSON: ${err.message}`);
-  }
-}
-
-function resolveSandboxProjectId(registry) {
-  const ids = [...new Set(
-    (registry.environments || [])
-      .filter((e) => e && e.role === "sandbox" && e.firebase && typeof e.firebase.projectId === "string" && e.firebase.projectId.length > 0)
-      .map((e) => e.firebase.projectId)
-  )];
-  if (ids.length !== 1) {
-    throw new Error(`--environment sandbox requires config/environments.json to declare exactly one sandbox project id with a real firebase.projectId; found ${ids.length} (${JSON.stringify(ids)})`);
-  }
-  return ids[0];
-}
-
-function assertSandboxTarget(args) {
-  if (!args.environment) throw new Error('--environment is required (the only accepted value today is "sandbox"; no default, nothing inferred)');
-  if (args.environment !== "sandbox") {
-    throw new Error(`--environment must be exactly "sandbox"; refusing '${args.environment}' (production and any other/unknown value are rejected)`);
-  }
-  const allowedProjectId = resolveSandboxProjectId(loadEnvironmentRegistry());
-  if (args.projectId !== allowedProjectId) {
-    throw new Error(`--environment sandbox only accepts --project '${allowedProjectId}'; refusing '${args.projectId}' (taylor-parts, aliases, near-misses, and any project not byte-identical to the registry-resolved sandbox id are refused; nothing is inferred from .firebaserc or the environment)`);
-  }
-}
-
+// X-BACKFILL-ENVIRONMENT-GUARD now lives in ONE place -- functions/scripts/sandboxTargetGuard.js -- because
+// this block used to be copy-pasted verbatim into three CLIs and one registry change silently broke all
+// three at once (see that file's header for the full history and for why the guard VALIDATES the project
+// the operator named rather than RESOLVING a unique one from the role). It performs a single local JSON
+// read and requires nothing from firebase-admin, so it is still safe to call from inside parseArgs(),
+// before buildProductionDeps() is ever reached.
+const { loadEnvironmentRegistry, resolveSandboxProjectIds, assertSandboxTarget } = require("./sandboxTargetGuard.js");
 function parseArgs(argv) {
   const args = {
     execute: false,
@@ -489,7 +460,7 @@ module.exports = {
   runRollback,
   run,
   buildProductionDeps,
-  resolveSandboxProjectId,
+  resolveSandboxProjectIds,
   loadEnvironmentRegistry,
   DEFAULT_PHANTOM_SALES_ORDER_ID,
   DEFAULT_REASON,

@@ -90,6 +90,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/capabilityRequestCoverage.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/changeHistoryModel.test.mjs",
       "runner": "node --test"
     },
@@ -827,6 +831,10 @@
     },
     {
       "file": "test/reportNavAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/reportOutcomeContractRatchet.test.mjs",
       "runner": "node"
     },
     {

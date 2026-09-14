@@ -10,6 +10,43 @@
 // building a speculative matcher would guess an interface. The Reconciliation & Exceptions surface gets
 // internal drift detection now; external reconciliation arrives with the authority-of-record selection.
 // Integer minor units; pure; no I/O.
+//
+// ════════════════════ DORMANT: NO PRODUCTION CALLER, BY DECISION, NOT BY OVERSIGHT ════════════════════
+//
+// P2-K (2026-09-12) audited this. NOTHING under functions/src imports this module; its only
+// importers are functions/test/financialReconciliation.test.mjs and
+// functions/test/invoiceTotalsAuthority.test.mjs. It is exercised (invoiceTotalsAuthority.test.mjs
+// runs in `npm run test:adminPolicy`, financialReconciliation.test.mjs now runs in
+// `npm run test:financeUnit`) but never RUN against real data. Two findings say leave it that way
+// until an Owner rules:
+//
+//   (a) `reconcileInvoiceProjection` DISAGREES WITH THE PRODUCTION ADJUSTMENT CORE about invoice
+//       state. adjustmentCommands.ts/adjustmentCallables.ts deliberately do NOT move `state` on a
+//       credit memo or write-off ("a write-off settles the AR balance without payment; it does NOT
+//       mark the invoice PAID"). This function re-derives state via deriveInvoiceStateFromFacts,
+//       which returns PAID whenever outstanding <= 0. So an invoice correctly settled by a full
+//       WRITE_OFF or CREDIT_MEMO — stored state ISSUED, outstanding 0 — is reported as DRIFT on
+//       `state`. That is a FALSE POSITIVE produced by correct production behaviour. It is pinned as
+//       an executed test ("KNOWN CONFLICT ...") in financialReconciliation.test.mjs. Wiring this
+//       reconciler before the conflict is resolved would alarm on healthy invoices.
+//       OWNER QUESTION #1: after a full write-off or credit memo, is the invoice's lifecycle state
+//       PAID, or does it stay ISSUED with outstanding 0? The two modules currently answer
+//       differently and only one of them can be right.
+//
+//   (b) The drift classes themselves are NARROWED, not gone. Every Firestore writer of the AR cache
+//       (paymentCallables / refundCallables / adjustmentCallables) updates it inside the SAME
+//       transaction that writes the durable fact, and firestore.rules denies all client read/write
+//       on invoices / payments / payment_applications / invoice_adjustments. The header-vs-lines
+//       class is narrower still: buildInvoiceRecord is the only writer of totalMinor and it derives
+//       it from eosOps/invoiceTotals.ts. What is NOT closed: records written before those
+//       invariants existed, out-of-band/manual repair, and the eventual Firestore→Postgres cutover
+//       (eosOps/invoiceAuthority.ts, unwired). Those are exactly what a sweep would find.
+//       OWNER QUESTION #2: when a sweep does find a cache/fact divergence, should it BLOCK the
+//       operation, WARN, or reconcile asynchronously? FIN-010 defers this; nothing here decides it.
+//
+// Consequence: this module is kept, not retired, and NOT wired. functions/test/
+// financeDetectorWiring.test.mjs is the ratchet — it fails if this module acquires a production
+// importer while still declared DORMANT, or if either suite falls out of package.json.
 import { deriveOutstandingMinor, deriveInvoiceStateFromFacts } from "./paymentCommands";
 import {
   reconcileInvoiceTotalsAgainstLines,

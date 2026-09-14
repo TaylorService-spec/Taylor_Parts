@@ -95,3 +95,52 @@ test("over-applied receipt (applications exceed the receipt amount) surfaces as 
   assert.equal(r.status, "DRIFT");
   assert.ok(r.differences.some((d) => d.field === "amountMinor" || d.field === "unappliedMinor"));
 });
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// P2-K (2026-09-12) — WHY THIS DETECTOR IS NOT WIRED.
+//
+// The tests above feed the reconciler hand-built projections. This one feeds it what the
+// PRODUCTION adjustment core actually produces, and the reconciler calls it DRIFT. That is a
+// false positive, and it is the reason `reconcileInvoiceProjection` must not be pointed at live
+// data before an Owner rules on invoice state after a full write-off / credit memo.
+//
+// adjustmentCommands.ts: "It does NOT mark the invoice 'PAID' — it settles the AR balance without
+// payment." adjustmentCallables.ts writes only outstandingMinor + the one tally; `state` is
+// deliberately left alone. But deriveInvoiceStateFromFacts (paymentCommands.ts) returns PAID for
+// any outstanding <= 0, and this reconciler uses it. Two production modules, two answers.
+//
+// This test PINS the conflict rather than papering over it: if someone changes either side, it
+// fails and the ruling gets made on purpose instead of by accident.
+// ════════════════════════════════════════════════════════════════════════════════════════════
+import { buildAdjustment } from "../lib/finance/adjustmentCommands.js";
+
+const issuedInvoice = () => ({
+  invoiceId: "INV-WO", companyId: "co-1", accountId: "acct-1", currency: "USD", state: "ISSUED",
+  totalMinor: 10000, appliedMinor: 0, creditsMinor: 0, chargesMinor: 0, writeOffMinor: 0,
+  outstandingMinor: 10000,
+});
+
+for (const type of ["WRITE_OFF", "CREDIT_MEMO"]) {
+  test(`KNOWN CONFLICT: a ${type}-settled invoice is healthy in production but reports DRIFT here`, () => {
+    const invoice = issuedInvoice();
+    const { adjustment, invoicePatch } = buildAdjustment(
+      { type, invoiceId: invoice.invoiceId, companyId: "co-1", accountId: "acct-1", currency: "USD",
+        amountMinor: 10000, reason: "owner-authorized", effectiveDate: "2026-09-12" },
+      invoice, { nowMillis: Date.UTC(2026, 8, 12) },
+    );
+    // Exactly what adjustmentCallables.ts persists: outstanding + the one tally. `state` untouched.
+    const storedAfter = { ...invoice, ...invoicePatch };
+    assert.equal(storedAfter.outstandingMinor, 0, "the adjustment settles the balance");
+    assert.equal(storedAfter.state, "ISSUED", "production deliberately leaves state alone");
+
+    const r = reconcileInvoiceProjection(storedAfter, {
+      applications: [], refunds: [],
+      adjustments: [{ invoiceId: invoice.invoiceId, type: adjustment.type, amountMinor: adjustment.amountMinor }],
+    });
+
+    // Every MONEY field reconciles. The only disagreement is `state`, and it is the reconciler's
+    // rule disagreeing with the command core's rule — not a cache that drifted from its facts.
+    assert.equal(r.status, "DRIFT");
+    assert.deepEqual(r.differences, [{ field: "state", storedValue: "ISSUED", derivedValue: "PAID" }]);
+  });
+}

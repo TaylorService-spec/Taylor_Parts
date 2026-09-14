@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { PageHeader, SectionHeader, StatusIndicator } from "../../shared/ui/primitives";
 import { buildFinancialPolicyView, VIEW_STATE } from "../../domain/financialPolicyView";
+import { FINANCIAL_POLICY_GATE } from "../../access/shellCapabilityGates.js";
 
 // Administration -> Company Setup -> Financial Policy.
 //
@@ -36,14 +37,19 @@ import { buildFinancialPolicyView, VIEW_STATE } from "../../domain/financialPoli
 // the same palette AdminWarehouseRacking uses. No new class is invented: a component naming a class
 // asserts that rule exists, and cssClassCoverage holds it to that.
 
-const CAP_READ = "financialPolicy.profile.read";
-const CAP_CONFIGURE = "financialPolicy.profile.configure";
+// FROM THE SHELL GATE DECLARATION, not from literals typed here -- so the trusted feed is actually
+// ASKED about them. Both were absent from the request set until P2-G, which meant this screen
+// answered "not available to you" to every principal in every environment, including the three
+// governed Roles that hold financialPolicy.profile.read. access/shellCapabilityGates.js explains
+// why that is a third, distinct failure mode rather than an inactive or unactivated capability.
+const CAP_READ = FINANCIAL_POLICY_GATE.read;
+const CAP_CONFIGURE = FINANCIAL_POLICY_GATE.configure;
 
 function Ungated({ capability }) {
   return (
     <StatusIndicator tone="neutral">
       Financial policy is not available to you. It needs <code>{capability}</code>, which is not
-      active for this environment and is not granted to any role yet.
+      active for this environment.
     </StatusIndicator>
   );
 }

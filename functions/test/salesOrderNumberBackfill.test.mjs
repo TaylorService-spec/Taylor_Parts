@@ -251,9 +251,38 @@ check("evidence: no sensitive-value pattern matches plan or execution evidence",
 // The registry-resolved sandbox project id is read through the SAME function the CLI itself uses
 // (cli.resolveSandboxProjectId + cli.loadEnvironmentRegistry), so this suite never hardcodes a second
 // copy of the id that could silently drift from config/environments.json.
-const SANDBOX_PROJECT_ID = cli.resolveSandboxProjectId(cli.loadEnvironmentRegistry());
-check("environment guard: resolves to exactly the expected sandbox project id", () => {
-  assert.equal(SANDBOX_PROJECT_ID, "eos-platform-sandbox");
+// CONTRACT (corrected 2026-09-12): the guard VALIDATES the --project the operator named against the set
+// of sandbox project ids config/environments.json declares; it does NOT resolve a unique one from the role.
+// The old `resolveSandboxProjectId` required that set to have EXACTLY ONE member, which stopped being true
+// when platform-certification was registered (55041a07, 2026-08-30) and broke every `--environment sandbox`
+// invocation of this CLI. The allowed SET is still read through the CLI's own function so this suite never
+// hardcodes a second copy of it; the project this tool's runbooks actually name is asserted separately.
+const SANDBOX_PROJECT_IDS = cli.resolveSandboxProjectIds(cli.loadEnvironmentRegistry());
+const SANDBOX_PROJECT_ID = "eos-platform-sandbox";
+check("environment guard: the registry declares the expected sandbox project id among its sandbox targets", () => {
+  assert.ok(Array.isArray(SANDBOX_PROJECT_IDS));
+  assert.ok(SANDBOX_PROJECT_IDS.includes("eos-platform-sandbox"));
+});
+check("environment guard: more than one declared sandbox is NOT an error -- the tool refuses to choose instead", () => {
+  const two = { environments: [
+    { id: "a", role: "sandbox", firebase: { projectId: "sb-a" } },
+    { id: "b", role: "sandbox", firebase: { projectId: "sb-b" } },
+    { id: "e", role: "sandbox", firebase: null },
+    { id: "p", role: "production", firebase: { projectId: "taylor-parts" } },
+  ] };
+  assert.deepEqual(cli.resolveSandboxProjectIds(two), ["sb-a", "sb-b"]);
+  // ...and an empty set IS an error: nothing to name means nothing may be targeted.
+  assert.throws(() => cli.resolveSandboxProjectIds({ environments: [] }), /found none/);
+});
+check("environment guard: every declared sandbox id is accepted when named explicitly; nothing else is", () => {
+  for (const id of SANDBOX_PROJECT_IDS) {
+    const argv = ["--project", id, "--confirm-project", id, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+    assert.equal(cli.parseArgs(argv).projectId, id);
+  }
+  for (const bad of ["taylor-parts", "eos-platform-sandbox ", "eos-platform-sandboxx", "x-eos-platform-sandbox"]) {
+    const argv = ["--project", bad, "--confirm-project", bad, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t"];
+    assert.throws(() => cli.parseArgs(argv), /only accepts --project/, `expected '${bad}' to be refused`);
+  }
 });
 
 const sandboxBase = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "test"];

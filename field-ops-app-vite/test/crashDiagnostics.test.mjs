@@ -73,12 +73,176 @@ test("two crashes never share an id", () => {
 // above was never held, and this id exists so ONE screenshot names ONE occurrence.
 //
 // A larger sample would only have made the flake likelier, so the guard is on the ENTROPY itself.
-test("the id tail is wide enough that the invariant above is actually held", () => {
-  const tails = Array.from({ length: 5000 }, () => build().crashId.split("-")[1]);
-  for (const t of tails) assert.match(t, /^[A-Z0-9]{6}$/, "a fixed-width tail, never a short draw");
-  // 5000 draws from ~2.18 billion values: a collision here means the entropy source regressed,
-  // not that we were unlucky (expected collisions ~0.006).
-  assert.equal(new Set(tails).size, 5000, "the tail must come from a wide, uniform source");
+//
+// ════════════════════ AND FOR A WHILE IT SAID THAT WHILE STILL SAMPLING ════════════════════
+//
+// The widened tail was guarded by drawing 5000 REAL ids and asserting 5000 distinct tails. That is
+// the same birthday problem one keyspace further out, not a check on entropy: six base-36
+// characters is 36^6 = 2,176,782,336 values, C(5000,2) = 12,497,500 pairs, so ~0.0058 expected
+// collisions and P(at least one) = 0.58% -- one run in 174. Measured by replaying that exact
+// assertion 4000 times: 30 failures, 0.75%, every one of them "expected 5000, actual 4999".
+//
+// A check that fails 0.6% of legitimate runs from position 31 of a 290-suite manifest is a
+// reliability defect on its own terms, and raising the tolerance to "at most one collision" would
+// only move the cliff. So the guard below is on the entropy, and it is DETERMINISTIC: the random
+// source is injected, a known sequence is driven through it, and distinctness is asserted exactly.
+// There is no randomness left in it to be unlucky with, and it proves strictly more than the
+// sampled version did --
+//   * the tail is six wide for EVERY value the source can return, including 0, where the sampled
+//     loop could only ever fail to notice a short draw;
+//   * the generator consumes crypto.getRandomValues and NOT Math.random -- the claim the module
+//     makes in prose, which nothing used to check;
+//   * distinct draws give distinct tails: injectivity, rather than an absence of observed
+//     collisions;
+//   * all 36 symbols are reachable in every position, so the keyspace really is 36^6.
+//
+// The residual real-world risk is then arithmetic instead of sampling. At 200 crashes being
+// compared, P(two share an id) = 9.2e-6 -- one in 108,655, against one in 94 before.
+//
+// ════════════════════ ONE CORRECTION, found while making this deterministic ════════════════════
+//
+// randomTail draws 32 bits and encodes them `.padStart(6,"0").slice(-6)`, and 2^32 > 36^6, so any
+// draw at or above 36^6 silently loses its leading base-36 character. The effective keyspace is
+// 36^6 and not 2^32, and the fold is slightly non-uniform: 2,118,184,960 tails are twice as likely
+// as the remaining 58,597,376, a 0.67% excess pair-collision rate over uniform. So the module's own
+// "under one in ten million at 200 draws" is wrong -- the true figure is the one in 108,655 above.
+// Both numbers are far beyond practical concern and the module is left alone, but the keyspace
+// below is asserted from the generator's behaviour rather than taken from the comment.
+
+/** The alphabet, width and keyspace the tail actually has. Asserted below, not assumed. */
+const TAIL_WIDTH = 6;
+const TAIL_SYMBOLS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const TAIL_KEYSPACE = TAIL_SYMBOLS.length ** TAIL_WIDTH; // 36^6 = 2,176,782,336
+
+const realCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+function restoreCrypto() {
+  if (realCryptoDescriptor) Object.defineProperty(globalThis, "crypto", realCryptoDescriptor);
+  else delete globalThis.crypto;
+}
+
+/**
+ * Run `body` with the id generator's entropy source replaced by a known one.
+ *
+ * This is the whole reason the check below can be deterministic: randomTail reads
+ * `globalThis.crypto` at call time, so the source is injectable from the outside and the module
+ * needs no test seam of its own.
+ */
+function withRandomSource(getRandomValues, body) {
+  Object.defineProperty(globalThis, "crypto", { value: { getRandomValues }, configurable: true, writable: true });
+  try {
+    return body();
+  } finally {
+    restoreCrypto();
+  }
+}
+
+/** The tails the generator produces for a known sequence of 32-bit draws, in order. */
+function tailsFrom(values) {
+  let i = 0;
+  return withRandomSource(
+    (buf) => {
+      buf[0] = values[i++];
+      return buf;
+    },
+    () => values.map(() => build().crashId.split("-")[1]),
+  );
+}
+const tailFor = (value) => tailsFrom([value])[0];
+
+test("the tail is a FIXED SIX CHARACTERS for every value the source can return", () => {
+  // The sampled version asserted the width 5000 times and still could not reach the value that
+  // would break it. These are the boundaries of the encoding, driven directly.
+  const edges = [0, 1, 35, 36, 1295, 1296, 36 ** 4 - 1, 36 ** 5, TAIL_KEYSPACE - 1, TAIL_KEYSPACE, 2 ** 32 - 1];
+  const tails = tailsFrom(edges);
+  for (let i = 0; i < edges.length; i += 1) {
+    assert.equal(tails[i].length, TAIL_WIDTH, `draw ${edges[i]} gave a ${tails[i].length}-character tail`);
+    assert.match(tails[i], /^[A-Z0-9]{6}$/, `draw ${edges[i]} left the alphabet: "${tails[i]}"`);
+  }
+  assert.equal(tailFor(0), "000000", "a zero draw must pad, never shorten the id a person reads out");
+  assert.equal(tailFor(TAIL_KEYSPACE - 1), "ZZZZZZ", "and the top of the keyspace is the top of the alphabet");
+});
+
+test("the entropy IS crypto.getRandomValues — one 32-bit draw per id, and never Math.random", () => {
+  // The module's stated reason for existing is that Math.random was too narrow. Nothing checked
+  // that the replacement is what actually gets consumed.
+  const draws = [];
+  const realRandom = Math.random;
+  let mathRandomCalls = 0;
+  Math.random = () => {
+    mathRandomCalls += 1;
+    return realRandom();
+  };
+  try {
+    const tails = withRandomSource(
+      (buf) => {
+        draws.push(`${buf.constructor.name}:${buf.length}`);
+        buf[0] = 7;
+        return buf;
+      },
+      () => [build().crashId.split("-")[1], build().crashId.split("-")[1]],
+    );
+    assert.deepEqual(draws, ["Uint32Array:1", "Uint32Array:1"], "one 32-bit CSPRNG draw per crash id");
+    assert.deepEqual(tails, ["000007", "000007"], "and the tail is that draw encoded, not something else");
+    assert.equal(mathRandomCalls, 0, "Math.random is the crypto-less fallback only, never the source");
+  } finally {
+    Math.random = realRandom;
+  }
+});
+
+test("10000 distinct draws give 10000 distinct tails — injectivity, not luck", () => {
+  // This replaces "5000 real ids, hope none collide". Same statement about the product, zero
+  // chance of failing on a legitimate run: the draws are distinct by construction, so a duplicate
+  // tail can only mean the generator folded two occurrences onto one id.
+  const sequential = Array.from({ length: 5000 }, (_, i) => i);
+  const step = Math.floor((TAIL_KEYSPACE - 5000) / 5000);
+  const spread = Array.from({ length: 5000 }, (_, i) => 5000 + i * step);
+  const draws = [...sequential, ...spread];
+  assert.equal(new Set(draws).size, draws.length, "the driven draws are themselves distinct");
+  const tails = tailsFrom(draws);
+  assert.equal(tails.length, 10000);
+  assert.equal(new Set(tails).size, 10000, "two different occurrences must never be named the same id");
+});
+
+test("THE KEYSPACE IS 36^6 AND EVERY SYMBOL OF IT IS REACHABLE", () => {
+  // "The generator draws across the full alphabet", proved by construction instead of by watching
+  // 30000 real characters and trusting that a missing symbol would have shown up.
+  const lowDigits = tailsFrom(Array.from({ length: 36 }, (_, s) => s)).map((t) => t[TAIL_WIDTH - 1]);
+  assert.equal(lowDigits.join(""), TAIL_SYMBOLS, "the low digit walks the whole alphabet, in order");
+  const highDigits = tailsFrom(Array.from({ length: 36 }, (_, s) => s * 36 ** (TAIL_WIDTH - 1))).map((t) => t[0]);
+  assert.equal(highDigits.join(""), TAIL_SYMBOLS, "and so does the high digit");
+  assert.equal(TAIL_SYMBOLS.length ** TAIL_WIDTH, 2176782336);
+  assert.ok(
+    TAIL_KEYSPACE >= 2 ** 31,
+    `one screenshot must name one occurrence out of at least 2^31; the tail offers ${TAIL_KEYSPACE}`,
+  );
+});
+
+test("the encoding is the low six base-36 digits, which is WHY the keyspace is 36^6 and not 2^32", () => {
+  // 32 bits go in and 36^6 come out, because `.slice(-6)` drops the leading character of any draw
+  // at or above 36^6. Pinned here so the keyspace above is a measured property of this generator
+  // and not a claim: widening the tail must break this and force the arithmetic to be redone.
+  const encode = (v) => (v % TAIL_KEYSPACE).toString(36).toUpperCase().padStart(TAIL_WIDTH, "0");
+  const probes = [0, 7, 12345, TAIL_KEYSPACE - 1, TAIL_KEYSPACE, TAIL_KEYSPACE + 7, 2 ** 32 - 1];
+  assert.deepEqual(tailsFrom(probes), probes.map(encode));
+  assert.equal(tailFor(2 ** 32 - 1), "Z141Z3", "the widest draw folds to its low six digits");
+});
+
+test("with no crypto at all the id is still well formed, so the crash handler cannot become the crash", () => {
+  // The fallback is weaker entropy on purpose: a runtime without crypto would otherwise throw
+  // INSIDE the crash handler and turn a reported crash into a silent one. What must still hold is
+  // the SHAPE, or the id stops being something a person can read off a screenshot.
+  const realRandom = Math.random;
+  try {
+    delete globalThis.crypto;
+    for (const r of [0, 0.5, 0.999999999, 1 / 36 ** 7]) {
+      Math.random = () => r;
+      const id = build().crashId;
+      assert.match(id, /^[A-Z0-9]{5}-[A-Z0-9]{6}$/, `Math.random()=${r} produced "${id}"`);
+    }
+  } finally {
+    Math.random = realRandom;
+    restoreCrypto();
+  }
 });
 
 test("THE SUMMARY IS ACTIONABLE ON ITS OWN, so a console screenshot is enough", () => {

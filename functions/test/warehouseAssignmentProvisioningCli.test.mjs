@@ -21,12 +21,32 @@ async function acheck(name, fn) {
   catch (err) { failed += 1; console.log(`  FAIL - ${name}: ${err && err.stack || err}`); }
 }
 
-const SANDBOX_PROJECT_ID = cli.resolveSandboxProjectId(cli.loadEnvironmentRegistry());
+// The guard VALIDATES the project the operator named; it does not RESOLVE a unique one from the role.
+// This suite reads the allowed set through the SAME function the CLI uses, so it never hardcodes a second
+// copy of the ids that could drift from config/environments.json.
+const SANDBOX_PROJECT_IDS = cli.resolveSandboxProjectIds(cli.loadEnvironmentRegistry());
+const SANDBOX_PROJECT_ID = "eos-platform-sandbox"; // the one every runbook for THIS tool names
 const base = ["--project", SANDBOX_PROJECT_ID, "--confirm-project", SANDBOX_PROJECT_ID, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "test"];
 
-check("resolveSandboxProjectId: resolves to exactly one project id from config/environments.json", () => {
-  assert.equal(typeof SANDBOX_PROJECT_ID, "string");
-  assert.ok(SANDBOX_PROJECT_ID.length > 0);
+check("resolveSandboxProjectIds: returns every declared sandbox project id, and does NOT require exactly one", () => {
+  assert.ok(Array.isArray(SANDBOX_PROJECT_IDS));
+  assert.ok(SANDBOX_PROJECT_IDS.length >= 1);
+  assert.ok(SANDBOX_PROJECT_IDS.includes(SANDBOX_PROJECT_ID));
+  assert.equal(new Set(SANDBOX_PROJECT_IDS).size, SANDBOX_PROJECT_IDS.length, "deduped");
+  // local-emulator carries role "sandbox" but firebase: null by design -- it has no project id to target.
+  assert.ok(SANDBOX_PROJECT_IDS.every((id) => typeof id === "string" && id.length > 0));
+});
+
+check("resolveSandboxProjectIds: a registry with NO targetable sandbox is refused, never inferred", () => {
+  assert.throws(() => cli.resolveSandboxProjectIds({ environments: [{ id: "p", role: "production", firebase: { projectId: "taylor-parts" } }] }), /found none/);
+  assert.throws(() => cli.resolveSandboxProjectIds({ environments: [] }), /found none/);
+});
+
+check("guard: EVERY declared sandbox project id is accepted when the operator names it explicitly", () => {
+  for (const id of SANDBOX_PROJECT_IDS) {
+    const argv = ["--project", id, "--confirm-project", id, "--environment", "sandbox", "--commit", "c", "--evidence-dir", "/ev", "--operator", "t", "--manifest", "/m.json"];
+    assert.equal(cli.parseArgs(argv).projectId, id);
+  }
 });
 
 check("parseArgs: --environment is required", () => {
