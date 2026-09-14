@@ -96,6 +96,13 @@ const RUNNERS: Readonly<Record<CommercialOperation, Runner>> = Object.freeze({ .
 export const isCommercialOperation = (name: unknown): name is CommercialOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
 
+/**
+ * The ONLY operations whose `input` may be omitted: the unfiltered list reads, whose C3 signatures take an optional input.
+ * Every detail read, the Account projection and every mutation requires `input` to be present as an object.
+ */
+export const COMMERCIAL_OPTIONAL_INPUT_OPERATIONS: readonly CommercialReadOperation[] = Object.freeze(["listOpportunities", "listSalesAgreements", "listSalesOrders"]);
+const OPTIONAL_INPUT = new Set<string>(COMMERCIAL_OPTIONAL_INPUT_OPERATIONS);
+
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */
 export const AUTHORITY_BEARING_FIELDS = Object.freeze([
   "tenantId", "principalId", "capabilities", "externalSubject", "identityProvider", "uid", "heldRoleKeys", "roles",
@@ -231,6 +238,9 @@ export async function handleCommercialRequest(options: CommercialHttpOptions, re
   const operation = envelope.operation;
   if (!isCommercialOperation(operation)) return failure(404, typeof operation === "string" ? operation : "", "UNKNOWN_OPERATION", "no such Commercial operation", origin);
 
+  if (envelope.input === undefined && !OPTIONAL_INPUT.has(operation)) {
+    return failure(400, operation, "INVALID_INPUT", "input is required for this operation", origin);
+  }
   const input = envelope.input === undefined ? {} : envelope.input;
   if (!input || typeof input !== "object" || Array.isArray(input)) return failure(400, operation, "INVALID_INPUT", "input must be a JSON object", origin);
   const stated = AUTHORITY_BEARING_FIELDS.filter((f) => Object.prototype.hasOwnProperty.call(input, f));

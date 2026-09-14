@@ -193,6 +193,38 @@ test("(17)(18) a raw failure is a generic 500 that leaks no SQL, driver or conne
   assert.doesNotMatch(broken.body, /S3cr3t|db\.internal|postgres:/);
 });
 
+test("omitted input: only the three unfiltered list reads may omit it; every other operation refuses before identity, context, database or domain", async () => {
+  const OMITTABLE = ["listOpportunities", "listSalesAgreements", "listSalesOrders"];
+  const REQUIRED = ["getOpportunityDetail", "getSalesAgreementDetail", "getSalesOrderDetail", "getAccountCommercialProjection", ...EXPECTED_MUTATIONS];
+  assert.equal(REQUIRED.length, 14);
+  for (const operation of OMITTABLE) {
+    const res = await post(fakeWorld(), { operation });
+    assert.equal(res.status, 200, `${operation} without input: ${res.body}`);
+  }
+  for (const operation of REQUIRED) {
+    const touched = [];
+    const w = fakeWorld();
+    const watched = {
+      ...w,
+      verifyToken: async (tok) => { touched.push("verify"); return w.verifyToken(tok); },
+      reader: new Proxy(w.reader, { get: (target, prop) => { touched.push(`reader.${String(prop)}`); return target[prop]; } }),
+      pool: { query: async () => { touched.push("pool.query"); return { rows: [] }; }, connect: async () => { touched.push("pool.connect"); throw new Error("connected"); } },
+    };
+    const res = await post(watched, { operation });
+    assert.deepEqual([res.status, parsed(res).code, parsed(res).message], [400, "INVALID_INPUT", "input is required for this operation"], operation);
+    assert.deepEqual(touched, [], `${operation} reached ${touched.join(", ")} before refusing a missing input`);
+  }
+});
+
+test("present empty input still reaches the governed layer and receives its own validation", async () => {
+  const create = await post(fakeWorld(), { operation: "createOpportunity", input: {} });
+  assert.deepEqual([create.status, parsed(create).code], [400, "IDEMPOTENCY_KEY_REQUIRED"]);
+  const detail = await post(fakeWorld(), { operation: "getOpportunityDetail", input: {} });
+  assert.deepEqual([detail.status, parsed(detail).code], [400, "RECORD_ID_REQUIRED"]);
+  const account = await post(fakeWorld(), { operation: "getAccountCommercialProjection", input: {} });
+  assert.deepEqual([account.status, parsed(account).code], [400, "RECORD_ID_REQUIRED"]);
+});
+
 // ════════════════════ static ratchets ════════════════════
 
 test("(19)(20) the transport imports no Firebase or Firestore, contains no SQL, and resolves context only through resolveOperationalContext", () => {
