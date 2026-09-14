@@ -7287,3 +7287,112 @@ the Person-Authority target work dependent on the state/eligibility contract.
 `AUTHORITY_UNAVAILABLE` · technician linkage · migration treatment of invalid existing references ·
 workflow-specific reassignment · automatic escalation · handoff acceptance semantics · company-axis inactive
 semantics · `RECIPROCAL_FIREBASE_UID_LINK` disposition. **None of these is absorbed into `MI-S`.**
+
+## #187 — OWNER RULINGS: MI-Y · AUTHORITY_UNAVAILABLE · technician linkage · link provenance · OD-7 axis scope (2026-09-13)
+
+Five rulings, all **RULED / CLOSED**. Every citation below was verified at `64008d5a` before being written.
+
+### 1. `MI-Y` — Y-2: a DEDICATED ACCOUNTABILITY CENSUS COMPOSED INTO THE ENFORCEMENT GATE
+
+**The question, as prepared**
+(`ext/own-engineering-gap:docs/operating-model/engineering/OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md:1212`):
+*"Which of `MI-P`'s two acceptable architectures?"*
+
+**Ruled: (ii).** **Do NOT expand the ownership census into a generic mega-census.** OWNERSHIP ·
+ACCOUNTABILITY · ASSIGNMENT · APPROVAL · ESCALATION are distinct business axes. **Ownership integrity remains
+ownership integrity; accountability integrity gets its own measurement.**
+
+```
+OWNERSHIP CENSUS + ACCOUNTABILITY CENSUS + other required governed integrity facts
+    → RESPONSIBILITY / ENFORCEMENT GATE
+```
+
+**`accountablePerson` must NOT be placed into `ownershipMatrix.ownerFields`**, and accountability must not be
+redefined as ownership. This closes the `MI-P` clause of **#182**, which reserved the choice.
+
+**Gates released from this ambiguity — 7 items** (`OID:1416`): `OI-02` · `OI-03` · `OI-05` · `OI-32` ·
+`OI-35` · `OI-37` · `OI-40`, plus target-work item **J**. `OID:1212`'s prose and `:1416`'s tally differ on
+membership; under the prose reading the count is 8. **Both readings carried.**
+
+### 2. `MI-T` / `MI-η` — `AUTHORITY_UNAVAILABLE` is DISTINCT, and FAILS CLOSED
+
+**Ruled distinct from `INVALID / MISSING EMPLOYEE REFERENCE`.** They mean different things:
+
+| Outcome | Meaning |
+|---|---|
+| **INVALID / MISSING** | the authoritative Employee system **successfully answered** and the reference does not validly resolve |
+| **AUTHORITY_UNAVAILABLE** | **EOS could not obtain an authoritative answer** — database unavailable · authority adapter unavailable · transaction/read failure · authority service unavailable |
+
+**`AUTHORITY_UNAVAILABLE` must FAIL CLOSED.** It must **not** be interpreted as person missing or person
+invalid, must **not** be represented as healthy empty data, and must **not** fall back silently to Firestore,
+to `users`, to `fieldops_technicians`, or to Firebase UID coincidence. **No silent fallback.**
+
+The distinction must be preserved in: **resolver contract · census · enforcement · audit/error semantics · UI
+outcome vocabulary where applicable · tests.**
+
+This closes the state **#185** named and deferred (*"AUTHORITY UNAVAILABLE if later ruled separately"*), and
+composes with **#186**: `MI-S` classifies **the reference**; this classifies **the lookup**.
+
+### 3. `MI-θ` — technician linkage is a DOMAIN PROJECTION, not core person authority
+
+**Ruled: NOT part of the core person-authority identity model.** Core is **EMPLOYEE · PRINCIPAL · EMPLOYEE ↔
+PRINCIPAL LINK**. Field Service may additionally require an **EMPLOYEE ↔ TECHNICIAN domain identity /
+projection**, but **`fieldops_technicians` must NOT become canonical Employee authority**, and **the Person
+Authority contract must not require every Employee to be a technician.** A technician may require a valid
+Employee relationship where the workflow requires a real employee. Technician-specific facts are **re-homed
+into a governed domain model during migration**; legacy technician storage does not define business identity.
+
+**The repository already argues this at DDL level, and the argument is worth preserving verbatim**
+(`functions/migrations/1758412800000_employee-principal-linkage.sql:86-92`):
+
+> *"There is deliberately NO term for "the technician id happened to equal the employee id". In the live
+> census 11 of 13 `fieldops_technicians` ids coincide exactly with `employees` ids — and 2 do not
+> (`tech-sbx-01`, `tech-sbx-02`). **A rule inferred from the 11 is provably wrong for the 2**, and
+> `fieldops_technicians` is compatibility data that must not remain employee-identity authority. A future
+> migration cannot add that term by accident: it would have to edit this CHECK, in a diff a reviewer reads."*
+
+### 4. `RECIPROCAL_FIREBASE_UID_LINK` — retained as HISTORICAL PROVENANCE, retired as an authority
+
+**Ruled:** it **may be retained as historical migration provenance** and **must NOT remain the permanent
+authority for creating new Employee ↔ Principal links.** Target: **preserve existing history · stop minting
+new links from Firebase UID coincidence · use a governed EOS linking operation for future links.**
+
+**Do not rewrite old provenance. Do not delete the historical fact that a link was established through the
+legacy reciprocal relationship.**
+
+Future links require governed provenance sufficient to answer **WHO/WHAT established the link · WHEN · WHY /
+through which governed process · WHAT EMPLOYEE · WHAT PRINCIPAL** — using **the smallest governed successor
+consistent with existing EOS audit patterns**, with no invented approval ceremony.
+
+**Verified state at the baseline:** the vocabulary is closed to exactly two values by
+`CHECK (link_source IN ('RECIPROCAL_FIREBASE_UID_LINK', 'OPERATOR_ASSERTED'))`
+(`1758412800000:140`); `functions/src/employeeIdentity/employeePrincipalLink.ts:36` records
+`RECIPROCAL_FIREBASE_UID_LINK` as **"the ONLY derived source"**; and it **is minted in code** at
+`functions/src/employeeIdentity/employeePrincipalLinkPlan.ts:297`. **So "retain as history" is not the
+current state — the mint site must be closed for this ruling to hold**, and `OPERATOR_ASSERTED` is the
+already-shipped non-derived alternative.
+
+### 5. `M-1` — OD-7 axis scope: OWNERSHIP and ACCOUNTABILITY, not ASSIGNMENT
+
+**Ruled:** `OD-7` governed handoff orchestration applies to governed changes of **RECORD OWNERSHIP** and
+**ACCOUNTABILITY** where those axes exist. **ASSIGNMENT remains a separate axis**, and an assignment command
+is **not** automatically an `OD-7` handoff. A single governed command may change multiple axes **only when the
+business operation explicitly requests and authorizes each one.**
+
+Therefore: **REASSIGNMENT ≠ OWNERSHIP TRANSFER · REASSIGNMENT ≠ ACCOUNTABILITY TRANSFER · ACCOUNTABILITY
+TRANSFER ≠ OWNERSHIP TRANSFER** — unless the named governed command explicitly changes both.
+
+**Cited to real sources rather than to the paraphrase this program invented.** The phrase *"reassignment ≠
+ownership transfer"* appears in **no** repository document; its substance is **#142** (`:3277-3279`):
+> *"every governed business record has an owner, typed as `owner.type` + `owner.id`, **separate from Created
+> By and Assigned To, never changing implicitly**, and changing only by explicit auditable handoff."*
+
+and **#110** (`:1601-1606`), which enumerates what a Dispatch reassignment records — *"prior technician, new
+technician, actor, timestamp and reason"* — **a list in which ownership and company do not appear.**
+
+### What these five rulings do NOT authorize
+
+**No implementation is authorized by this entry.** All 42 items in `OWNERSHIP-IMPLEMENTATION-DECOMPOSITION.md`
+retain `IMPLEMENTATION STATUS = NOT AUTHORIZED` until the single final dependency classification is performed
+against these rulings and the remaining true Owner policy decisions are closed. **No production change, no
+Rules change, no migration, no capability activation, and no new Firebase dependency.**
