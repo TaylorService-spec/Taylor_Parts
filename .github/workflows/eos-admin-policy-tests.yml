@@ -114,6 +114,9 @@ on:
       - "functions/src/eosCommercial/commercialOwnershipRepository.ts"
       - "functions/test/commercialCommandLayer.test.mjs"
       - "functions/test/commercialCommandLayerPostgres.test.mjs"
+      - "functions/src/eosCommercial/reads/**"
+      - "functions/test/commercialReadProjections.test.mjs"
+      - "functions/test/commercialReadProjectionsPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
@@ -216,6 +219,9 @@ on:
       - "functions/src/eosCommercial/commercialOwnershipRepository.ts"
       - "functions/test/commercialCommandLayer.test.mjs"
       - "functions/test/commercialCommandLayerPostgres.test.mjs"
+      - "functions/src/eosCommercial/reads/**"
+      - "functions/test/commercialReadProjections.test.mjs"
+      - "functions/test/commercialReadProjectionsPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
