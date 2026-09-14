@@ -362,6 +362,75 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     assert.equal(retry.replayed, false, "the retry replayed a result that was never committed");
   });
 
+  // ════════════════════ REVIEW CORRECTIONS ════════════════════
+  await t.test("a MALFORMED explicit accountable person refuses on every creating family and never derives from the owner", async () => {
+    const won = await newOpportunity();
+    await advanceToDecision(won.opportunityId);
+    const snapshot = async () => [await count("opportunities"), await count("sales_agreements"), await count("sales_orders"), await count("accountability_handoffs"), await count("command_receipts")];
+    const before = await snapshot();
+    for (const malformed of [123, {}, true, ["e-gm"], "", "   "]) {
+      await assert.rejects(newOpportunity({ accountableEmployeeId: malformed }), code("EXPLICIT_PERSON_INVALID"), `Opportunity accepted ${JSON.stringify(malformed)}`);
+      await assert.rejects(agreementFor(won.opportunityId, { accountableEmployeeId: malformed }), code("EXPLICIT_PERSON_INVALID"), `Agreement accepted ${JSON.stringify(malformed)}`);
+      await assert.rejects(so.createSalesOrder(deps, ACTOR, { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-national", operatingCompanyId: "taylor", salesChannel: "RETAIL",
+        lines: [{ kind: "SERVICE", ref: "svc", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }], accountableEmployeeId: malformed }), code("EXPLICIT_PERSON_INVALID"), `Sales Order accepted ${JSON.stringify(malformed)}`);
+    }
+    assert.deepEqual(await snapshot(), before, "a malformed explicit person created a record, a history row or a receipt");
+    const absent = await newOpportunity({ accountableEmployeeId: null });
+    assert.equal(absent.accountablePersonSource, "DERIVED_FROM_RECORD_OWNER", "a genuinely absent person no longer derives");
+  });
+
+  await t.test("the catalog boundary covers every command that accepts NEW product references", async () => {
+    const service = [{ kind: "SERVICE", ref: "svc-visit", qty: 1 }];
+    await assert.rejects(opp.createOpportunity(bare, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-b", qty: 1 }] }), code("CATALOG_AUTHORITY_UNAVAILABLE"));
+    await assert.rejects(opp.createOpportunity(bare, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", lines: [{ kind: "EQUIPMENT_MODEL", ref: "model-a", qty: 1 }] }), code("CATALOG_AUTHORITY_UNAVAILABLE"));
+    const serviceOnly = await opp.createOpportunity(bare, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", lines: service });
+    assert.equal(serviceOnly.replayed, false, "a SERVICE-only Opportunity needs no catalog authority");
+    await assert.rejects(opp.updateOpportunity(bare, ACTOR, { idempotencyKey: key(), opportunityId: serviceOnly.opportunityId, expectedEditVersion: 1, lines: [{ kind: "PART", ref: "part-b", qty: 1 }] }), code("CATALOG_AUTHORITY_UNAVAILABLE"));
+    const unchanged = (await q(`SELECT edit_version FROM eos_commercial.opportunities WHERE id=$1`, [serviceOnly.opportunityId])).rows[0].edit_version;
+    assert.equal(unchanged, "1", "a refused line replacement bumped the version");
+    assert.deepEqual((await q(`SELECT kind::text FROM eos_commercial.opportunity_lines WHERE opportunity_id=$1`, [serviceOnly.opportunityId])).rows, [{ kind: "SERVICE" }]);
+    const updated = await opp.updateOpportunity(bare, ACTOR, { idempotencyKey: key(), opportunityId: serviceOnly.opportunityId, expectedEditVersion: 1, need: "no line change" });
+    assert.equal(updated.editVersion, 2, "an edit that does not replace lines needs no catalog authority");
+    await assert.rejects(so.createSalesOrder(bare, ACTOR, { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-national", operatingCompanyId: "taylor", salesChannel: "RETAIL",
+      lines: [{ kind: "PART", ref: "part-b", orderedQty: 1, unitPrice: 100 }] }), code("CATALOG_AUTHORITY_UNAVAILABLE"));
+  });
+
+  await t.test("a malformed catalog authority response refuses with zero mutation", async () => {
+    const counts = async () => [await count("opportunities"), await count("sales_orders"), await count("sales_agreements"), await count("command_receipts")];
+    const before = await counts();
+    for (const verifyReferences of [async () => [], async (_d, _t, r) => [...r.map(() => "FOUND"), "FOUND"], async (_d, _t, r) => r.map(() => "MAYBE"), async () => "FOUND"]) {
+      const broken = { pool, catalog: { verifyReferences } };
+      await assert.rejects(opp.createOpportunity(broken, ACTOR, { idempotencyKey: key(), accountId: "acct-1", salesChannel: "RETAIL", lines: [{ kind: "PART", ref: "part-b", qty: 1 }] }), code("CATALOG_AUTHORITY_CONTRACT_VIOLATION"));
+      await assert.rejects(so.createSalesOrder(broken, ACTOR, { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-national", operatingCompanyId: "taylor", salesChannel: "RETAIL",
+        lines: [{ kind: "EQUIPMENT_MODEL", ref: "model-a", orderedQty: 1, unitPrice: 100 }] }), code("CATALOG_AUTHORITY_CONTRACT_VIOLATION"));
+    }
+    assert.deepEqual(await counts(), before);
+  });
+
+  await t.test("an Order derived from an ACCEPTED Agreement carries its committed references without a second catalog decision", async () => {
+    const o = await newOpportunity();
+    await advanceToDecision(o.opportunityId);
+    const agreement = await agreementFor(o.opportunityId);
+    await sa.acceptSalesAgreement(deps, ACTOR, { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId });
+    const closed = await opp.closeOpportunityAsWon(bare, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, salesChannel: "RETAIL" });
+    assert.deepEqual((await q(`SELECT kind::text, ref FROM eos_commercial.sales_order_lines WHERE sales_order_id=$1 ORDER BY line_number`, [closed.salesOrderId])).rows,
+      [{ kind: "EQUIPMENT_MODEL", ref: "model-a" }, { kind: "SERVICE", ref: "svc-install" }]);
+  });
+
+  await t.test("closed_at is the command's governed instant, for a plain outcome and for close-as-won", async () => {
+    const fixed = new Date("2026-10-15T12:34:56.789Z");
+    const clocked = { pool, catalog, now: () => fixed };
+    const lost = await newOpportunity();
+    await opp.transitionOpportunity(clocked, ACTOR, { idempotencyKey: key(), opportunityId: lost.opportunityId, outcome: "LOST" });
+    assert.equal((await q(`SELECT closed_at FROM eos_commercial.opportunities WHERE id=$1`, [lost.opportunityId])).rows[0].closed_at.toISOString(), fixed.toISOString());
+    const toWin = await newOpportunity();
+    await advanceToDecision(toWin.opportunityId);
+    const agreement = await agreementFor(toWin.opportunityId);
+    await sa.acceptSalesAgreement(deps, ACTOR, { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId });
+    await opp.closeOpportunityAsWon(clocked, ACTOR, { idempotencyKey: key(), opportunityId: toWin.opportunityId, salesChannel: "RETAIL" });
+    assert.equal((await q(`SELECT closed_at FROM eos_commercial.opportunities WHERE id=$1`, [toWin.opportunityId])).rows[0].closed_at.toISOString(), fixed.toISOString());
+  });
+
   // ════════════════════ TENANCY / AUTHORITY ════════════════════
   await t.test("(39)(40)(41) cross-tenant sources, missing capability, non-member and disabled principals refuse", async () => {
     await assert.rejects(opp.updateOpportunity(deps, { ...ACTOR, tenantId: "t2" }, { idempotencyKey: key(), opportunityId: o1.opportunityId, expectedEditVersion: 1, need: "x" }), code("ACTOR_NOT_TENANT_MEMBER"));

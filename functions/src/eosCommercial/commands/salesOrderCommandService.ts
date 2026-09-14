@@ -12,7 +12,7 @@ import type { SalesAgreementState } from "../../salesAgreement/salesAgreementLif
 import { deriveEmployeeRefOwner } from "../../ownership/typedOwner";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -50,7 +50,14 @@ export function assertConvertibleAgreement(agreement: AgreementRow | null, oppor
   return agreement;
 }
 
-/** Stage a Sales Order derived from an ACCEPTED Agreement, on the caller's transaction. Shared by WON close and create-from-Opportunity. */
+/**
+ * Stage a Sales Order derived from an ACCEPTED Agreement, on the caller's transaction. Shared by WON close and
+ * create-from-Opportunity.
+ *
+ * NO SECOND CATALOG DECISION. The Agreement's product references were validated when they were written and again at
+ * acceptance; the ACCEPTED Agreement is immutable commercial truth. The Order carries exactly those references, so a
+ * catalog entry that later disappears cannot rewrite, or block the fulfilment of, a contract the customer accepted.
+ */
 export async function stageSalesOrderFromAgreement(
   db: Queryable, actor: CommercialActorContext, now: Date, opportunity: OpportunityRow, agreement: AgreementRow,
   input: { salesChannel: unknown; ownerEmployeeId?: unknown; locationId?: unknown; customerPO?: unknown },
@@ -120,6 +127,8 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
       }
       opportunityId = opportunity!.id;
     }
+    // A direct Order carries NEW product references: they pass the catalog authority before any number or row.
+    await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
     const created = await stageBuiltSalesOrder(db, actor, now, built, { opportunityId, salesAgreementId: null }, accountableEmployeeId);
     return { result: created, target: { family: "salesOrder" as const, id: created.salesOrderId } };
   });

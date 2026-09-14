@@ -17,7 +17,7 @@ import { isCommercialHandoffSource } from "../commercialOwnershipAuthority";
 import { stageCommercialOwnershipTransfer } from "../commercialOwnershipRepository";
 import { allocateCommercialNumber } from "../commercialNumbering";
 import {
-  COMMERCIAL_CAPABILITIES, fail, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
+  COMMERCIAL_CAPABILITIES, fail, requireCatalogReferences, requireTenantAccount, requireTenantEmployee, runCommercialCommand,
   type CommercialActorContext, type CommercialCommandDeps,
 } from "./commercialCommandKernel";
 import { resolveCreationAccountablePerson, stageCreationAccountablePerson } from "./commercialCreation";
@@ -49,6 +49,8 @@ export function createOpportunity(deps: CommercialCommandDeps, actor: Commercial
     );
     await requireTenantEmployee(db, actor.tenantId, built.ownerEmployeeId, "OWNER");
     if (built.creditedSalespersonId !== null) await requireTenantEmployee(db, actor.tenantId, built.creditedSalespersonId, "CREDITED_SALESPERSON");
+    // New product references pass the catalog authority before any number is allocated or row written.
+    await requireCatalogReferences(deps, db, actor.tenantId, built.lines);
     const established = await resolveCreationAccountablePerson(db, actor.tenantId, "opportunity", accountableEmployeeId, built.ownerEmployeeId);
     const number = await allocateCommercialNumber(db, actor.tenantId, "OPPORTUNITY", now);
     const id = newRecordId("opp");
@@ -86,6 +88,8 @@ export function updateOpportunity(deps: CommercialCommandDeps, actor: Commercial
       { ...(fields as Record<string, unknown>), expectedUpdatedAtMillis: expected } as never,
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
+    // Replacement lines are NEW product references: they pass the catalog authority before anything is written.
+    if ("lines" in patch) await requireCatalogReferences(deps, db, actor.tenantId, patch.lines as { kind: string; ref: string }[]);
 
     const sets: string[] = [];
     const values: unknown[] = [actor.tenantId, current.id, expected, actor.principalId];
@@ -140,7 +144,7 @@ export function transitionOpportunity(deps: CommercialCommandDeps, actor: Commer
       hasStage ? { kind: "ADVANCE", toStage: input.toStage as never } : { kind: "OUTCOME", outcome: input.outcome as never },
       { actorUid: actor.principalId, nowMillis: now.getTime() },
     );
-    await applyOpportunityTransition(db, actor, current.id, current.editVersion, patch.stage, patch.outcome);
+    await applyOpportunityTransition(db, actor, current.id, current.editVersion, patch.stage, patch.outcome, now);
     return {
       result: { opportunityId: current.id, stage: patch.stage, outcome: patch.outcome, editVersion: current.editVersion + 1 },
       target: target(current.id),
@@ -148,12 +152,13 @@ export function transitionOpportunity(deps: CommercialCommandDeps, actor: Commer
   });
 }
 
-async function applyOpportunityTransition(db: Queryable, actor: CommercialActorContext, id: string, version: number, stage: string, outcome: string | null) {
+/** `now` is the command's governed instant -- the same one the transition patch was built with. No second clock read. */
+async function applyOpportunityTransition(db: Queryable, actor: CommercialActorContext, id: string, version: number, stage: string, outcome: string | null, now: Date) {
   const result = await db.query(
     `UPDATE eos_commercial.opportunities
         SET stage = $4, outcome = $5, closed_at = $6, edit_version = edit_version + 1, updated_by = $7, updated_at = now()
       WHERE tenant_id = $1 AND id = $2 AND edit_version = $3`,
-    [actor.tenantId, id, version, stage, outcome, outcome === null ? null : new Date(), actor.principalId],
+    [actor.tenantId, id, version, stage, outcome, outcome === null ? null : now, actor.principalId],
   );
   if (result.rowCount !== 1) fail("VERSION_CONFLICT", "CONFLICT", "the Opportunity changed since it was read; reload and retry");
 }
@@ -180,7 +185,7 @@ export function closeOpportunityAsWon(deps: CommercialCommandDeps, actor: Commer
       );
       const agreement = assertConvertibleAgreement(await lockAgreementForOpportunity(db, actor.tenantId, opportunity.id), opportunity);
       const order = await stageSalesOrderFromAgreement(db, actor, now, opportunity, agreement, input as { salesChannel: unknown });
-      if (patch) await applyOpportunityTransition(db, actor, opportunity.id, opportunity.editVersion, patch.stage, patch.outcome);
+      if (patch) await applyOpportunityTransition(db, actor, opportunity.id, opportunity.editVersion, patch.stage, patch.outcome, now);
       return {
         result: {
           opportunityId: opportunity.id, salesOrderId: order.salesOrderId, salesOrderNumber: order.salesOrderNumber, recovered: alreadyWon,

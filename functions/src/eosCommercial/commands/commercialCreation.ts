@@ -9,24 +9,39 @@ import { createPostgresEmployeeAuthority } from "../../employeeIdentity/postgres
 import { establishCreationAccountablePerson } from "../../responsibility/accountablePersonEstablishment";
 import type { EstablishedAccountablePerson } from "../../responsibility/accountablePersonStorage";
 import { stageCommercialAccountablePersonChange } from "../commercialAccountabilityRepository";
-import { COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1, type CommercialFamily } from "./commercialCommandKernel";
+import { COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1, fail, type CommercialFamily } from "./commercialCommandKernel";
 
 type Queryable = Pick<PoolClient, "query">;
 
+/**
+ * ABSENT means the caller supplied no explicit person: `undefined` or `null`. Anything else that was supplied is an
+ * EXPLICIT request -- and a supplied value that is not a non-empty string (a number, an object, a boolean, an array, a
+ * blank string) is a MALFORMED explicit person. It refuses exactly as an unresolvable one does; it is never read as
+ * "no explicit person", so it can never fall through to derivation from the owner.
+ */
+function explicitAccountableEmployeeIdOf(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string" || value.trim() === "") {
+    fail("EXPLICIT_PERSON_INVALID", "INVALID_INPUT", "the explicit accountable person is not an Employee id; no derivation from the owner is attempted");
+  }
+  return value as string;
+}
+
 /** Resolve (never persist) the creation Accountable Person. Call BEFORE any row is written, so a refusal writes nothing. */
-export function resolveCreationAccountablePerson(
+export async function resolveCreationAccountablePerson(
   db: Queryable,
   tenantId: string,
   family: CommercialFamily,
   explicitAccountableEmployeeId: unknown,
   ownerEmployeeId: string,
 ): Promise<EstablishedAccountablePerson> {
+  const explicit = explicitAccountableEmployeeIdOf(explicitAccountableEmployeeId);
   return establishCreationAccountablePerson(
     { employeeAuthority: createPostgresEmployeeAuthority(db) },
     {
       tenantId,
       family,
-      explicitAccountableEmployeeId: typeof explicitAccountableEmployeeId === "string" ? explicitAccountableEmployeeId : null,
+      explicitAccountableEmployeeId: explicit,
       currentRecordOwnerEmployeeId: ownerEmployeeId,
       eligibilityPolicy: COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1,
     },

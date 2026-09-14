@@ -122,3 +122,67 @@ test("the receipt stores only a key hash and a committed result -- it is not an 
   assert.doesNotMatch(code, /audit_events|appendAudit|actor_uid|before|after/i, "the receipt grew audit semantics");
   assert.match(code, /pg_advisory_xact_lock/, "concurrent first executions are serialized in PostgreSQL");
 });
+
+test("a pool that cannot connect yields only the governed error: no driver message, no connection string, no release", async () => {
+  const leaks = [
+    Object.assign(new Error("connect ECONNREFUSED 10.0.0.7:5432 for postgres://eos_app:S3cr3t-P4ss@db.internal:5432/eos_policy"), { code: "ECONNREFUSED", address: "10.0.0.7" }),
+    Object.assign(new Error('password authentication failed for user "eos_app"'), { code: "28P01", severity: "FATAL" }),
+    Object.assign(new Error("timeout exceeded when trying to connect"), { name: "Error" }),
+  ];
+  for (const raw of leaks) {
+    let released = false;
+    const pool = { connect: async () => { throw raw; }, release: () => { released = true; } };
+    const actor = { tenantId: "t1", principalId: "p1", capabilities: new Set(["opportunity.write"]) };
+    const err = await kernel.runCommercialCommand({ pool }, actor, "opportunity.create", ["opportunity.write"], "k-1", async () => {
+      throw new Error("the body ran without a connection");
+    }).then(() => null, (e) => e);
+    assert.ok(err, "a failed connection resolved");
+    assert.equal(err.name, "CommercialCommandError");
+    assert.deepEqual([err.code, err.category, err.message], ["COMMAND_FAILED", "FAILED", "the command could not be completed"]);
+    assert.doesNotMatch(`${err.message}\n${err.stack}\n${JSON.stringify(err)}`, /postgres:\/\/|S3cr3t|eos_app|ECONNREFUSED|10\.0\.0\.7|password|timeout exceeded/);
+    assert.equal(released, false);
+  }
+});
+
+test("the catalog authority must return exactly one governed verdict per reference, or the command refuses", async () => {
+  const lines = [{ kind: "PART", ref: "p-1" }, { kind: "SERVICE", ref: "s-1" }, { kind: "EQUIPMENT_MODEL", ref: "m-1" }];
+  const run = (verifyReferences) => kernel.requireCatalogReferences({ pool: {}, catalog: { verifyReferences } }, {}, "t1", lines);
+  const contract = (e) => e.code === "CATALOG_AUTHORITY_CONTRACT_VIOLATION" && e.category === "UNAVAILABLE";
+  let asked;
+  await run(async (_d, _t, refs) => { asked = refs; return refs.map(() => "FOUND"); });
+  assert.deepEqual(asked, [{ kind: "PART", ref: "p-1" }, { kind: "EQUIPMENT_MODEL", ref: "m-1" }], "SERVICE lines were sent to the catalog");
+  await assert.rejects(run(async () => ["FOUND"]), contract, "too few verdicts read as FOUND");
+  await assert.rejects(run(async () => ["FOUND", "FOUND", "FOUND"]), contract, "too many verdicts were accepted");
+  await assert.rejects(run(async () => ["FOUND", "PROBABLY"]), contract, "an unknown verdict was accepted");
+  await assert.rejects(run(async () => "FOUND"), contract, "a non-array answer was accepted");
+  await assert.rejects(run(async () => [undefined, undefined]), contract);
+  await assert.rejects(run(async () => ["FOUND", "NOT_FOUND"]), (e) => e.code === "REFERENCE_NOT_FOUND");
+  await assert.rejects(kernel.requireCatalogReferences({ pool: {} }, {}, "t1", lines), (e) => e.code === "CATALOG_AUTHORITY_UNAVAILABLE");
+  await kernel.requireCatalogReferences({ pool: {} }, {}, "t1", [{ kind: "SERVICE", ref: "s-1" }]);
+});
+
+test("every command that accepts new product lines consults the catalog before writing; Agreement-derived Orders do not", () => {
+  const src = (f) => strip(readFileSync(join(COMMANDS, f), "utf8"));
+  const opportunity = src("opportunityCommandService.ts");
+  const createBody = opportunity.slice(opportunity.indexOf("export function createOpportunity"), opportunity.indexOf("export function updateOpportunity"));
+  assert.ok(createBody.indexOf("requireCatalogReferences(") > 0 && createBody.indexOf("requireCatalogReferences(") < createBody.indexOf("allocateCommercialNumber("), "Opportunity create allocates before the catalog check");
+  const updateBody = opportunity.slice(opportunity.indexOf("export function updateOpportunity"), opportunity.indexOf("export function transitionOpportunity"));
+  assert.ok(updateBody.indexOf("requireCatalogReferences(") > 0 && updateBody.indexOf("requireCatalogReferences(") < updateBody.indexOf("UPDATE eos_commercial.opportunities"), "line replacement writes before the catalog check");
+  const order = src("salesOrderCommandService.ts");
+  const directBody = order.slice(order.indexOf("export function createSalesOrder("), order.indexOf("export function createSalesOrderFromOpportunity"));
+  assert.ok(directBody.indexOf("requireCatalogReferences(") > 0 && directBody.indexOf("requireCatalogReferences(") < directBody.indexOf("stageBuiltSalesOrder("), "direct Order create allocates before the catalog check");
+  const derived = order.slice(order.indexOf("export async function stageSalesOrderFromAgreement"), order.indexOf("async function stageBuiltSalesOrder"));
+  assert.doesNotMatch(derived, /requireCatalogReferences/, "an ACCEPTED Agreement's committed references are re-decided");
+  const agreement = src("salesAgreementCommandService.ts");
+  assert.equal((agreement.match(/requireCatalogReferences\(/g) ?? []).length, 3, "Agreement create, draft update and accept each keep their check");
+});
+
+test("closed_at comes from the command's governed clock, not a second wall-clock read", () => {
+  const opportunity = strip(readFileSync(join(COMMANDS, "opportunityCommandService.ts"), "utf8"));
+  const apply = opportunity.slice(opportunity.indexOf("async function applyOpportunityTransition"));
+  assert.doesNotMatch(apply.slice(0, apply.indexOf("\n}\n")), /new Date\(|Date\.now\(|now\(\)\s*[,)]/, "applyOpportunityTransition reads the wall clock");
+  for (const file of commandSources()) {
+    if (file.endsWith("commercialCommandKernel.ts")) continue;
+    assert.doesNotMatch(strip(readFileSync(file, "utf8")), /new Date\(\)|Date\.now\(\)/, `${rel(file)} reads the wall clock instead of the command's now`);
+  }
+});

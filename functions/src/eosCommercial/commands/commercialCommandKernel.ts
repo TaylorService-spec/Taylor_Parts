@@ -74,6 +74,7 @@ export interface CatalogReference {
   readonly ref: string;
 }
 export type CatalogReferenceVerdict = "FOUND" | "NOT_FOUND" | "WRONG_KIND";
+const CATALOG_VERDICTS: ReadonlySet<unknown> = new Set<CatalogReferenceVerdict>(["FOUND", "NOT_FOUND", "WRONG_KIND"]);
 
 /**
  * The catalog-reference authority a command validates product lines against. There is deliberately no
@@ -113,8 +114,13 @@ export async function requireCatalogReferences(
       "no PostgreSQL catalog authority is available to validate PART / EQUIPMENT_MODEL references; this command cannot run until one is governed",
     );
   }
-  const verdicts = await deps.catalog!.verifyReferences(db, tenantId, references);
-  verdicts.forEach((verdict, i) => {
+  const verdicts: unknown = await deps.catalog!.verifyReferences(db, tenantId, references);
+  // The authority must answer every reference with a governed verdict. A short, long or unrecognised answer is a broken
+  // authority, and a broken authority must never read as FOUND.
+  if (!Array.isArray(verdicts) || verdicts.length !== references.length || !verdicts.every((v) => CATALOG_VERDICTS.has(v))) {
+    fail("CATALOG_AUTHORITY_CONTRACT_VIOLATION", "UNAVAILABLE", "the catalog authority did not return one governed verdict per reference");
+  }
+  (verdicts as CatalogReferenceVerdict[]).forEach((verdict, i) => {
     if (verdict === "NOT_FOUND") fail("REFERENCE_NOT_FOUND", "INVALID_INPUT", `line reference ${references[i].ref} does not exist`);
     if (verdict === "WRONG_KIND") fail("REFERENCE_WRONG_KIND", "INVALID_INPUT", `line reference ${references[i].ref} is not a ${references[i].kind}`);
   });
@@ -216,8 +222,11 @@ export async function runCommercialCommand<R extends object>(
   const keyHash = hashKey(idempotencyKey);
   const now = (deps.now ?? (() => new Date()))();
 
-  const client = await deps.pool.connect();
+  // Acquisition is INSIDE the governed boundary: a pool that cannot connect is a COMMAND_FAILED like any other
+  // infrastructure failure, never a raw driver error carrying a host, user or connection string.
+  let client: PoolClient | undefined;
   try {
+    client = await deps.pool.connect();
     await client.query("BEGIN");
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
       `commercial-command|${actor.tenantId}|${actor.principalId}|${operation}|${keyHash}`,
@@ -250,10 +259,10 @@ export async function runCommercialCommand<R extends object>(
     await client.query("COMMIT");
     return { ...outcome.result, replayed: false };
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
+    if (client) await client.query("ROLLBACK").catch(() => undefined);
     throw translateCommercialError(err);
   } finally {
-    client.release();
+    client?.release();
   }
 }
 
