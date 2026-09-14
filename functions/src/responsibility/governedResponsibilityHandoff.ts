@@ -123,6 +123,10 @@ import { resolveOperatingCompany } from "../ownership/operatingCompanyAuthority"
 import { OWNERSHIP_RESOLUTION, OWNER_TYPES, typedOwner, type TypedOwner } from "../ownership/typedOwner";
 import { buildOwnershipHandoff, OwnershipHandoffError } from "../ownership/ownershipHandoffCommand";
 import { accountabilityFamilyScope } from "./accountabilityFamilyScope";
+import {
+  mintGovernedAccountablePerson,
+  type EstablishedAccountablePerson,
+} from "./accountablePersonStorage";
 // TYPE-ONLY, and that is deliberate: the audit event SHAPE is the governed writer's, and staging it
 // is the governed writer's job. This module never imports the writer's runtime, so it cannot stage an
 // audit event by itself — it is handed a port that does.
@@ -255,22 +259,41 @@ export interface OwnershipAuditPort {
   stageOwnershipHandoffEvent(event: RecordAuditEventInput): string;
 }
 
-/** The authoritative read of the current accountable person. `null` = genuinely none, never a guess. */
+/**
+ * The authoritative read of the current accountable person. `null` = genuinely none, never a guess.
+ *
+ * FOUR outcomes. `CURRENT_UNREADABLE` was added in Wave 2C, when real storage arrived and the fourth
+ * case stopped being hypothetical: a stored value that is neither a usable Employee id nor an honest
+ * absence — `""`, an untrimmed or path-shaped string, a number, an object. #189 `MI-λ` requires it to
+ * stay "visibly distinguishable" from both, because collapsing it into `accountableEmployeeId: null`
+ * would license this boundary to overwrite a legacy value as though nothing had been there, and
+ * collapsing it into `READ_UNAVAILABLE` would claim an outage that did not happen.
+ */
 export type AccountablePersonRead =
   | { readonly outcome: "READ"; readonly accountableEmployeeId: string | null }
   | { readonly outcome: "RECORD_NOT_FOUND" }
+  | { readonly outcome: "CURRENT_UNREADABLE"; readonly detail: string }
   | { readonly outcome: "READ_UNAVAILABLE"; readonly detail: string };
 
 /**
- * THE ACCOUNTABILITY SEAM — the smallest contract the sequence needs, and NOT an implementation.
+ * THE ACCOUNTABILITY STORE — what the sequence needs of storage, and nothing about where it lives.
  *
- * There is no accountability storage in this repository. This interface says what the future governed
- * storage must be able to do and nothing about where it lives, what collection or table holds it, or
- * what the field is called. Nothing in this repository implements it.
+ * WAVE 2C CHANGED ONE THING HERE, and it is the load-bearing half. `stageAccountablePersonWrite` now
+ * takes an `EstablishedAccountablePerson` rather than a bare id string. That type can only be minted
+ * from a RESOLVED `EmployeeFacts` plus a positive eligibility verdict
+ * (`accountablePersonStorage.mintGovernedAccountablePerson`), so the store is structurally incapable
+ * of being handed an unvalidated person — which is #184's "eliminate or refuse the bypass" expressed
+ * as a signature instead of as a rule somebody has to remember.
+ *
+ * Migration 1759276800000 is the storage; `accountablePersonRecordStore.ts` is the implementation over
+ * a document port. This interface still says nothing about either.
  */
 export interface AccountabilityStore {
   readCurrentAccountablePerson(target: ResponsibilityTarget): Promise<AccountablePersonRead>;
-  stageAccountablePersonWrite(target: ResponsibilityTarget, accountableEmployeeId: string): void;
+  stageAccountablePersonWrite(
+    target: ResponsibilityTarget,
+    established: EstablishedAccountablePerson,
+  ): void;
 }
 
 /**
@@ -723,6 +746,17 @@ async function handoffAccountability(
   if (read.outcome === "RECORD_NOT_FOUND") {
     refuse("RECORD_NOT_FOUND", `${target.family} ${target.recordId} does not exist`);
   }
+  if (read.outcome === "CURRENT_UNREADABLE") {
+    // #189 `MI-λ`, declare and quarantine. The stored value is NOT an absence and NOT an outage, so
+    // it gets neither of those refusals: this boundary will not overwrite a legacy unresolved person
+    // reference as though the field had been empty. Repairing one is a separate governed decision.
+    refuse(
+      "CURRENT_RESPONSIBILITY_UNRESOLVED",
+      `the stored accountable person of ${target.family} ${target.recordId} is neither a usable ` +
+        `Employee id nor an honest absence: ${read.detail}. Fail closed (#189 MI-λ) rather than ` +
+        "overwrite an unresolved historical reference.",
+    );
+  }
   if (read.outcome !== "READ") {
     refuse(
       "AUTHORITATIVE_READ_UNAVAILABLE",
@@ -761,9 +795,15 @@ async function handoffAccountability(
   }
 
   // ── F. MUTATION + G. AUDIT — one uninterrupted block ────────────────────────────────────────────
+  // The GOVERNED VALUE. Minted here, from the authoritative facts this sequence already established,
+  // so the store cannot be handed anything else. The source is EXPLICIT because a governed handoff
+  // NAMES the person — `DERIVED_FROM_RECORD_OWNER` belongs to initialization only (#181), and a
+  // transfer that recorded itself as a derivation would be claiming it followed the owner.
+  const established = mintGovernedAccountablePerson(employee, eligibility, "EXPLICIT");
+
   let auditEventId: string;
   try {
-    store.stageAccountablePersonWrite(target, newId);
+    store.stageAccountablePersonWrite(target, established);
     auditEventId = audit.stageAccountabilityHandoff({
       actorUid: command.actorUid,
       target,

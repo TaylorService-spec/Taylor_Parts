@@ -105,7 +105,12 @@ async function anOpportunity(overrides = {}) {
 test.after(async () => {
   if (URL) {
     await query(
-      "TRUNCATE eos_commercial.ownership_handoffs, eos_commercial.sales_orders," +
+      // `accountability_handoffs` (migration 020, Wave 2C) references all three record tables, and
+      // Postgres refuses to truncate a referenced table on its own -- so a new referencing table means
+      // every existing TRUNCATE of the referenced ones must name it too. Added here rather than left
+      // to run order, because a cleanup that depends on which suite ran first is not a cleanup.
+      "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
+      " eos_commercial.sales_orders," +
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );
   }

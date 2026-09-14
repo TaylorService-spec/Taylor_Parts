@@ -8,6 +8,14 @@
 // starts at IDENTIFIED, open (no outcome). Transitions are validated by checkTransition().
 
 import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
+import {
+  ACCOUNTABLE_PERSON_FIELD,
+  ACCOUNTABLE_PERSON_SOURCE_FIELD,
+  accountablePersonFields,
+  isGovernedAccountablePerson,
+  type AccountablePersonSource,
+  type EstablishedAccountablePerson,
+} from "../responsibility/accountablePersonStorage";
 import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
 import { resolveCreditedSalesperson } from "../finance/financialAttribution";
 import type { OwnerDerivation } from "../ownership/typedOwner";
@@ -40,7 +48,12 @@ export type OpportunityCommandErrorCode =
   // someone else has since changed the record" -- different facts needing different UI.
   | "VERSION_CONFLICT"
   | "CLOSED"
-  | "NO_CHANGES";
+  | "NO_CHANGES"
+  // ACCOUNTABLE PERSON (#181 / #184). Two codes, because they are two different mistakes: handing
+  // creation an accountable person that no governed establishment produced, and trying to CHANGE one
+  // through the ordinary edit instead of through the governed responsibility handoff boundary.
+  | "ACCOUNTABLE_PERSON_NOT_GOVERNED"
+  | "ACCOUNTABLE_PERSON_NOT_EDITABLE";
 
 export class OpportunityCommandError extends Error {
   code: OpportunityCommandErrorCode;
@@ -79,6 +92,15 @@ export interface CreateOpportunityInput {
   // reassignable pre-close through the ordinary edit; frozen downstream at the commercial
   // commitment snapshot.
   creditedSalespersonId?: string;
+  // #181 (`MI-N`) ACCOUNTABLE PERSON -- a SEPARATELY CARRIED business fact, not derived from
+  // ownership after creation. It arrives as an ESTABLISHED value rather than an id, because the
+  // creation rule (EXPLICIT VALID -> GOVERNED DERIVATION FROM CURRENT RECORD OWNER -> REFUSE) needs
+  // an authoritative Employee lookup and #184 places that at the governed orchestration boundary,
+  // never in a pure builder. `responsibility/accountablePersonEstablishment.ts` is what produces one.
+  //
+  // A raw string is REFUSED, not coerced: the whole point of the established type is that a builder
+  // cannot be handed an unvalidated person.
+  accountablePerson?: EstablishedAccountablePerson;
   salesChannel: SalesChannel;
   need?: string;
   expectedValue?: number | null;
@@ -137,6 +159,17 @@ export interface BuiltOpportunity {
   operatingCompanyId: string | null;
   /** FIN-002: sales credit. Distinct from ownerEmployeeId (OWNERSHIP != SALES CREDIT). */
   creditedSalespersonId: string | null;
+  /**
+   * #181 ACCOUNTABLE PERSON. Present ONLY when a governed establishment supplied one.
+   *
+   * ABSENT rather than null when none was established, and that is a measurement decision: migration
+   * 1759276800000 leaves the column NULLABLE for the same reason, and `MEASURE FIRST` (#189 MI-lambda)
+   * means an un-established record must be COUNTABLE as such rather than carrying a fabricated value.
+   * Nothing here defaults it to `ownerEmployeeId` -- #181 forbids that as a permanent identity.
+   */
+  accountableEmployeeId?: string;
+  /** How it got there -- EXPLICIT or DERIVED_FROM_RECORD_OWNER. Recorded, never recomputed. */
+  accountablePersonSource?: AccountablePersonSource;
   lines: OpportunityLineInput[];
   createdByUid: string;
   createdAtMillis: number;
@@ -168,8 +201,22 @@ export function buildCreateOpportunity(
     throw new OpportunityCommandError("INVALID", "expectedCloseAt must be an epoch-ms number or null");
   }
   const lines = Array.isArray(input.lines) ? input.lines.map((l, i) => validateLine(l, i)) : [];
+  // #184: the builder VERIFIES that the accountable person came from a governed establishment; it does
+  // not establish one. A value without the governed mark is refused rather than written, so there is
+  // no path from a caller-supplied id to persisted accountability that skips the authority.
+  if (input.accountablePerson !== undefined && !isGovernedAccountablePerson(input.accountablePerson)) {
+    throw new OpportunityCommandError(
+      "ACCOUNTABLE_PERSON_NOT_GOVERNED",
+      "accountablePerson must be the result of a governed establishment " +
+        "(responsibility/accountablePersonEstablishment.ts). An id, a plain object, or a serialized " +
+        "copy is not evidence that the Employee authority was consulted (#184, #182 s5).",
+    );
+  }
+  const accountability =
+    input.accountablePerson === undefined ? {} : accountablePersonFields(input.accountablePerson);
   return {
     accountId: input.accountId.trim(),
+    ...accountability,
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
     salesChannel: input.salesChannel,
     operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId),
@@ -276,6 +323,27 @@ export function buildUpdateOpportunity(
   if (!input || typeof input !== "object") throw new OpportunityCommandError("INVALID", "Missing input");
   if (!nonEmpty(input.opportunityId)) throw new OpportunityCommandError("INVALID", "opportunityId is required");
   if (!current || !isStage(current.stage)) throw new OpportunityCommandError("INVALID", "Invalid current state");
+
+  // ACCOUNTABILITY IS NOT AN ORDINARY FIELD, and this REFUSES rather than ignores.
+  //
+  // `EDITABLE_OPPORTUNITY_FIELDS` does not contain the accountable person, so the field could never
+  // have been written by this command -- the patch is built key by key from named fields. But silently
+  // dropping it would tell a caller its change succeeded when nothing moved, and a UI built on that
+  // belief would ship a control that does nothing. #184 is also explicit that the answer to a mutation
+  // path outside the governed boundary is to "eliminate or refuse the bypass", and a refusal names
+  // where the change belongs: the governed responsibility handoff boundary, which reads the
+  // authoritative previous value, authorizes the caller, and stages an audit record. None of which
+  // this command does.
+  const attempted = input as unknown as Record<string, unknown>;
+  if (ACCOUNTABLE_PERSON_FIELD in attempted || ACCOUNTABLE_PERSON_SOURCE_FIELD in attempted) {
+    throw new OpportunityCommandError(
+      "ACCOUNTABLE_PERSON_NOT_EDITABLE",
+      "the accountable person cannot be changed by an ordinary edit. Changing ACCOUNTABILITY is a " +
+        "governed responsibility handoff (#184 OD-7, #187 M-1) -- it requires an authoritative " +
+        "Employee resolution, a current-eligibility verdict, caller authorization and an audit record, " +
+        "and it does not move RECORD OWNERSHIP with it (#181).",
+    );
+  }
 
   // A closed Opportunity is a historical record. WON and LOST are terminal, and editing the
   // deal terms of a WON Opportunity would silently disagree with the Sales Order already

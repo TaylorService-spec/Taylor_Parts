@@ -129,33 +129,115 @@ holding the admin/dispatcher claim.
 
 ---
 
-## 5. ACCOUNTABILITY — STATED HONESTLY
+## 5. CENSUS — ACCOUNTABILITY WRITE PATHS
 
-> ## `NO ACCOUNTABILITY WRITE PATH EXISTS YET`
+**The previous revision of this section read `NO ACCOUNTABILITY WRITE PATH EXISTS YET`, and that sentence is
+now FALSE.** Wave 2C's S6 built the storage — migration
+`functions/migrations/1759276800000_commercial-accountability-authority.sql` and
+`functions/src/responsibility/accountablePersonStorage.ts` — so the ratchet in
+`functions/test/governedOwnershipWriterCensus.test.mjs` failed, exactly as it was built to, and this section is
+rewritten with a real population. **The vacuity guard is not deleted: it is replaced by a POSITIVE REACHABILITY
+PROOF**, which is a strictly stronger assertion and is described in §6.
 
-This is the required phrasing and it is the literal truth of the measurement, **not** a finding that
-accountability is safe. Measured at this baseline:
+### 5.1 What "an accountability write" is, and where it can happen
 
-* **zero** exported callables write an accountable-person field;
-* **zero** `firestore.rules` statements mention one;
-* **zero** operator scripts write one;
-* **zero** occurrences of `accountablePerson` / `accountableEmployeeId` anywhere in `functions/src`;
-* `ownershipMatrix.ownerFields` contains no accountability field — correctly, per **#187 §1**.
+Accountability is carried on **exactly three families** — OPPORTUNITY · SALES AGREEMENT · SALES ORDER
+(**#189 `OD-16`**) — in **one document field** and **one SQL column**:
 
-**The vacuity trap, named:** this population is empty because **the storage does not exist**, not because the
-paths were audited and found governed. **"No accountability bypasses were proven"** would therefore be a false
-statement about a stronger claim than the evidence supports, and it is not made here.
+| | |
+|---|---|
+| document field | `accountableEmployeeId`, plus `accountablePersonSource` recording EXPLICIT vs DERIVED_FROM_RECORD_OWNER |
+| SQL column | `eos_commercial.{opportunities,sales_agreements,sales_orders}.accountable_employee_id`, **NULLABLE** |
+| history | `eos_commercial.accountability_handoffs`, append-only, its own trigger, **zero foreign keys on either person column** (**#189 `MI-λ`**) |
 
-**What this wave built instead:** the accountability axis is governed **at the boundary** —
-`AccountabilityStore` and `AccountabilityAuditPort` in the S4 module are the smallest seam the ruled sequence
-needs, and **neither has an implementation in this repository.** With no ports supplied the axis refuses
-`PORT_UNAVAILABLE`, which is the fail-closed answer: the alternative — recording an accountability change as an
-`OWNERSHIP_HANDOFF`, the only ownership action the governed `AuditAction` vocabulary has — would be exactly
-**#187 §1**'s *"accountability must not be redefined as ownership."*
+There are **two** governed ways a value reaches that field and no third:
 
-**S6 owns the storage.** When it lands, the ratchet in
-`functions/test/governedOwnershipWriterCensus.test.mjs` **fails** — deliberately — and forces this section to be
-rewritten with a real population and real classifications.
+```
+CREATION   establishCreationAccountablePerson  →  mintGovernedAccountablePerson  →  accountablePersonFields
+           (authority lookup + eligibility)       (refuses an ineligible verdict)    (the only field map)
+                                                        ↓
+                                               buildCreate{Opportunity,SalesAgreement,SalesOrder}
+
+CHANGE     stageGovernedResponsibilityHandoff (axis ACCOUNTABILITY)  →  mintGovernedAccountablePerson
+           (authoritative read + caller authorization + eligibility)       ↓
+                                                        createRecordAccountabilityStore → accountablePersonFields
+```
+
+**Both funnel through the same mint**, and the mint cannot be called without an `EmployeeFacts` that only a
+`RESOLVED` answer from the Employee authority produces and an `AccountabilityEligibility` that only
+`decideAccountabilityEligibility` produces from a **stated** governed policy. The mark it stamps is a
+module-private `Symbol()` — not `Symbol.for()` — so it cannot be forged by name, and it does not survive JSON or
+`structuredClone`, so a value that crossed a serialization boundary is no longer accepted as evidence that the
+authority was consulted in this process.
+
+### 5.2 The population, classified
+
+| # | path | classification | why |
+|---|---|---|---|
+| 1 | `src/responsibility/accountablePersonStorage.ts` | **GOVERNED** | Declares the field, the source vocabulary and the scope; holds the **only** mint and the **only** function that produces a persistable accountability field map. Refuses to build one from an unmarked value. |
+| 2 | `src/responsibility/accountablePersonEstablishment.ts` | **GOVERNED** | The creation rule, **#181**: EXPLICIT VALID → GOVERNED DERIVATION FROM CURRENT RECORD OWNER → REFUSE. Resolves through the Wave-2A Employee port; `AUTHORITY_UNAVAILABLE` gets its own code and fails closed. |
+| 3 | `src/responsibility/accountablePersonRecordStore.ts` | **GOVERNED** | The `AccountabilityStore` implementation. Takes a document port, never a driver; stages, never commits; refuses an out-of-scope family so storage cannot acquire fake accountability even if a command asked. |
+| 4 | `src/responsibility/governedResponsibilityHandoff.ts` | **GOVERNED** | The **change** path (**#184** option (e)). Authoritative read → caller authorization → target resolution → eligibility → no-op refusal → mint → stage mutation and audit with no `await` between them. |
+| 5 | `src/opportunity/opportunityCommands.ts` | **GOVERNED** | Creation **verifies** the governed mark and refuses `ACCOUNTABLE_PERSON_NOT_GOVERNED` otherwise. The ordinary edit **refuses** `ACCOUNTABLE_PERSON_NOT_EDITABLE` rather than silently ignoring the field — see §5.3. |
+| 6 | `src/salesAgreement/salesAgreementCommands.ts` | **GOVERNED** | Same creation verification. `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` does not contain it and `buildUpdateSalesAgreementDraft` **rejects** every unnamed key (`FIELD_NOT_EDITABLE`), so the draft edit is not a path. |
+| 7 | `src/salesOrder/salesOrderCommands.ts` | **GOVERNED** | Same creation verification. There is **no** Sales Order field-edit command at all, so no edit path exists to classify. |
+| — | `functions/scripts/**` | **NOT APPLICABLE** | **Zero** operator scripts name an accountability field. Unlike §4's ownership scripts, there is no legacy accountability backfill to classify because the field is new. |
+| — | `firestore.rules` | **NOT APPLICABLE** | **Zero** occurrences. See §5.4 for the runtime consequence, which is stated and **not** acted on. |
+| — | every other family | **NOT APPLICABLE** | **#189 `OD-16`**: accountability is NOT APPLICABLE to them — *not* `MISSING`, *not* `OWNERLESS`, *not* `DEFECTIVE`. They have no accountability storage, which is what makes that true rather than claimed. |
+
+**There is no `BYPASS DEFECT` row, and this time the absence is earned rather than vacuous.** The three write
+entry points were inspected individually — they are not alike, and the survey that said so was right:
+
+| family | entry points that could have touched accountability | finding |
+|---|---|---|
+| **Opportunity** | `buildCreateOpportunity` · `buildUpdateOpportunity` (the ordinary edit, which **does** move `ownerEmployeeId`) · `buildTransitionPatch` | creation governed; **the ordinary edit was the one real exposure and is now an explicit refusal**; transitions never name a person field |
+| **Sales Agreement** | `buildCreateSalesAgreement` · `buildUpdateSalesAgreementDraft` · `buildAcceptSalesAgreement` | creation governed; the draft edit's allow-list **already** refuses unnamed keys, so it was never a path; acceptance patches only state and timestamps |
+| **Sales Order** | `buildCreateSalesOrder` · `buildTransitionPatch` | creation governed; **no field-edit command exists**, so there is nothing to close |
+
+### 5.3 The one accountability-mutation exposure this wave corrected
+
+`buildUpdateOpportunity` is the only ordinary-edit command among the three that changes a person field at all —
+it moves `ownerEmployeeId`, which is §2 entry #1's recorded **BYPASS DEFECT** on the *ownership* axis. Because
+it is the one command shaped to move a person, it is the one place an `accountableEmployeeId` key could
+plausibly have been added later by someone treating accountability as an ordinary field.
+
+It now **refuses**, with its own code, naming where the change belongs. Refusing rather than ignoring is
+deliberate on **#184**'s terms — *"eliminate or refuse the bypass"* — and because silently dropping the key
+would report success for a change that did not happen, and a UI built on that report would ship a control that
+does nothing.
+
+**What was deliberately NOT done:** the *ownership* bypass in that same command is **not** fixed here. It is
+§2 entry #1, it is pinned by a test that fails when it is fixed, and it belongs to the ownership axis; closing
+it inside an accountability wave would broaden this lane into a family it was told not to touch.
+
+### 5.4 `firestore.rules` — the runtime consequence, stated only
+
+**No line of `firestore.rules` was changed. Tier-2 remains HOLD.**
+
+The measured runtime consequence, which required no Rules change and authorizes none:
+
+* `opportunities`, `sales_orders` and `sales_agreements` are each `allow read, write: if false` — **Admin-SDK
+  only**. So the `accountableEmployeeId` field the governed commands write is **unreachable from any client**,
+  and no client-direct accountability write path exists on any admitted family.
+* `accountOwner` appears **nowhere** in Rules, as §3 records. **Nothing is inferred from that absence.** It is
+  not read here as permission, as prohibition, or as a Rules semantic of any kind — only as the fact that the
+  *accounts* family's ownership field carries no Rules constraint, which is a §3 ownership finding and not an
+  accountability one.
+
+### 5.5 What is still a seam, and why that is the honest state
+
+`AccountabilityAuditPort` **still has no implementation**, and the reason is unchanged from the previous
+revision and is a real constraint rather than a scoping choice: the governed `AuditAction` vocabulary
+(`functions/src/access/auditEventWriter.ts`) contains exactly one ownership action, `OWNERSHIP_HANDOFF`, and
+**no** accountability action. Recording an accountability change as an `OWNERSHIP_HANDOFF` — carrying the
+accountable person in `previousOwner`/`newOwner` — would be precisely **#187 §1**'s *"accountability must not be
+redefined as ownership"*, and adding a new governed audit action is a change to the audit contract that this
+lane was not asked to make. So the **change** path refuses `PORT_UNAVAILABLE` when the audit port is absent,
+which is fail-closed, and `eos_commercial.accountability_handoffs` is the durable history the future audit
+writer records into.
+
+The **creation** path needs no such port — a created record's audit is the creation's own — so it is complete,
+implemented and reachable end to end. **That is the path the reachability proof in §6 executes.**
 
 ---
 
@@ -168,7 +250,8 @@ A snapshot document rots; a ratchet does not. It fails when:
 
 1. a **new** source module names a person-axis ownership field and is not classified in §2;
 2. the ownership matrix gains a **new** `PERSON`-axis ownership field not listed in §0;
-3. any accountability field appears **anywhere** while §5 still says no write path exists;
+3. an accountability write path appears that §5 does not classify, **or** the accountability write population
+   becomes EMPTY — the reachability proof requires **at least one** governed path, so zero can never pass;
 4. `accountablePerson` appears in `ownershipMatrix.ownerFields` (**#187 §1**);
 5. the recorded `firestore.rules` findings change — a Rules edit must force this census to be re-read;
 6. `updateOpportunity`'s module gains handoff auditing, which would mean entry #1 must be reclassified;
@@ -183,5 +266,7 @@ A snapshot document rots; a ratchet does not. It fails when:
 | `firestore.rules` not changed | **Tier-2 HOLD.** The three PERSON-axis defects in §3 are recorded for the Rules lane. |
 | `updateOpportunity` not changed | `#184`: *"eliminate or refuse the bypass"* — but doing so is an opportunity-domain change with its own audit-vocabulary consequences, and this wave's authority is the boundary and the census. Recorded as **BYPASS DEFECT (when granted)**. |
 | No capability activated | No `active: false` capability was flipped, and the S4 boundary is unexported for that reason. |
-| No accountability storage invented | S6's. Only the seam exists. |
-| Nothing proven against a database | **NOT_RUN.** No PostgreSQL was reachable in this lane and no Firestore emulator exists here (no `java`). Every proof in this wave is a proof about the contract and the sequence, run with doubles. |
+| No accountability **audit action** added | §5.5. The governed `AuditAction` vocabulary has no accountability member, and adding one is a change to the audit contract rather than to this axis. The change path fails closed without the port; the creation path needs none. |
+| The *ownership* bypass in `updateOpportunity` still not fixed | §5.3. It is the ownership axis, it is pinned by a failing-when-fixed test, and closing it inside an accountability wave would broaden this lane. |
+| No backfill of existing records | **#182 §10** and **#189 `MI-λ`**: measure first. `functions/scripts/measureCommercialAccountability.js` is the read-only artifact; a backfill is a separate, separately-proven decision and the migration's column is NULLABLE so that the un-established population stays countable. |
+| PostgreSQL | **PROVEN** in Wave 2C against a real `postgres:16` server: migration 020 applied, structure and constraints asserted, and the measurement classification exercised over seeded rows. §5.1's storage claims are database facts, not source facts. |

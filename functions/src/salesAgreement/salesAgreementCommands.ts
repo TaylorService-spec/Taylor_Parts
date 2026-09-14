@@ -9,6 +9,12 @@ import {
 } from "./salesAgreementLifecycle.js";
 import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
 import {
+  accountablePersonFields,
+  isGovernedAccountablePerson,
+  type AccountablePersonSource,
+  type EstablishedAccountablePerson,
+} from "../responsibility/accountablePersonStorage";
+import {
   AttributionError,
   deriveLineBusinessUnit,
   resolveCreditedSalesperson,
@@ -63,6 +69,8 @@ export type SalesAgreementErrorCode =
   | "BUSINESS_UNIT_INVALID"
   /** Company-authority correction: ACCEPT attempted while the agreement's operating company is unresolved. */
   | "COMPANY_REQUIRED"
+  /** Creation was handed an accountable person that no governed establishment produced (#184). */
+  | "ACCOUNTABLE_PERSON_NOT_GOVERNED"
   | "ILLEGAL_TRANSITION";
 
 export class SalesAgreementCommandError extends Error {
@@ -97,6 +105,13 @@ export interface SalesAgreementLineInput {
 export interface CreateSalesAgreementInput {
   accountId: string;
   ownerEmployeeId: string;
+  // #181 (`MI-N`) ACCOUNTABLE PERSON -- a SEPARATELY CARRIED business fact on this family, never a
+  // permanent derivation from RECORD OWNER. Arrives ESTABLISHED, not as an id: the creation rule
+  // (EXPLICIT VALID -> GOVERNED DERIVATION FROM CURRENT RECORD OWNER -> REFUSE) requires an
+  // authoritative Employee resolution and a current-eligibility verdict, and #184 places both at the
+  // governed orchestration boundary rather than in a pure builder.
+  accountablePerson?: EstablishedAccountablePerson;
+
   // FIN-002 (Ruling R-14): explicit, else inherited from the source Opportunity by the callable —
   // copied, not followed. Never inferred from location/warehouse/manufacturer names. null is an
   // honest "no company attribution", never a value to be guessed later.
@@ -254,6 +269,18 @@ export interface BuiltSalesAgreement {
   operatingCompanyId: string | null;
   /** FIN-002: sales credit — distinct from ownerEmployeeId; frozen for history at ACCEPTED. */
   creditedSalespersonId: string;
+  /**
+   * #181 ACCOUNTABLE PERSON. Present ONLY when a governed establishment supplied one.
+   *
+   * ABSENT rather than null when none was established -- migration 1759276800000 leaves the column
+   * NULLABLE for the same reason. `MEASURE FIRST` (#189 MI-lambda) requires an un-established record to
+   * be countable as such rather than carrying a fabricated value, and nothing here defaults it to
+   * `ownerEmployeeId`: #181 forbids that as a permanent computed identity.
+   */
+  accountableEmployeeId?: string;
+  /** How it got there -- EXPLICIT or DERIVED_FROM_RECORD_OWNER. Recorded, never recomputed. */
+  accountablePersonSource?: AccountablePersonSource;
+
   locationId: string | null;
   sourceOpportunityId: string | null;
   customerPO: string | null;
@@ -285,6 +312,20 @@ export function buildCreateSalesAgreement(
     throw new SalesAgreementCommandError("INTENT_INVALID", "fulfillmentIntent must be DELIVER, INSTALL or BOTH");
   }
 
+  // #184: the builder VERIFIES the governed mark; it never establishes accountability itself. A value
+  // without the mark is refused rather than written, so no caller-supplied id can become persisted
+  // accountability without the Employee authority having answered.
+  if (input.accountablePerson !== undefined && !isGovernedAccountablePerson(input.accountablePerson)) {
+    throw new SalesAgreementCommandError(
+      "ACCOUNTABLE_PERSON_NOT_GOVERNED",
+      "accountablePerson must be the result of a governed establishment " +
+        "(responsibility/accountablePersonEstablishment.ts). An id, a plain object, or a serialized " +
+        "copy is not evidence that the Employee authority was consulted (#184, #182 s5).",
+    );
+  }
+  const accountability =
+    input.accountablePerson === undefined ? {} : accountablePersonFields(input.accountablePerson);
+
   const lines = input.lines.map((l, i) => validateLine(l, i));
   // Only the CHARGE fields. Handing the whole input in made every string on it -- accountId
   // included -- run through the money validator.
@@ -299,6 +340,7 @@ export function buildCreateSalesAgreement(
   return {
     accountId: input.accountId.trim(),
     ownerEmployeeId: input.ownerEmployeeId.trim(),
+    ...accountability,
     // R-14: explicit-or-inherited, never inferred, no production default. The callable supplies
     // the inherited value from the source Opportunity it read inside its own transaction.
     operatingCompanyId: resolveCommercialCompanyScope(input.operatingCompanyId, input.inheritedOperatingCompanyId),

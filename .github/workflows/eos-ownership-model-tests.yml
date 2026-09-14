@@ -30,6 +30,16 @@ on:
       - "functions/test/governedOwnershipWriterCensus.test.mjs"
       - "docs/security/ownership-accountability-bypass-census.md"
       - "functions/src/index.ts"
+      # WAVE 2C S6-S9: accountable-person persistence, the accountability census and the composed
+      # responsibility gate. The commercial creation builders below are already named; these are the
+      # accountability-specific artifacts, and the migration is named because the storage declaration
+      # and the DDL are asserted against each other.
+      - "functions/test/commercialAccountabilityPersistence.test.mjs"
+      - "functions/test/commercialAccountabilityMigration.test.mjs"
+      - "functions/test/commercialAccountabilityMeasurement.test.mjs"
+      - "functions/scripts/measureCommercialAccountability.js"
+      - "functions/migrations/1759276800000_commercial-accountability-authority.sql"
+      - "functions/src/salesAgreement/salesAgreementCommands.ts"
       - "functions/scripts/ownershipDerivationCheck.js"
       - "functions/src/access/auditEventWriter.ts"
       - "functions/src/types/access.ts"
@@ -116,6 +126,14 @@ jobs:
       # workflow that fires on an ownership change.
       - name: Commercial creation backward-compatibility
         run: node --test test/opportunityCommands.test.mjs test/salesOrderCommands.test.mjs
+        working-directory: functions
+
+      # WAVE 2C: the accountability axis. Run in this workflow because the ownership ratchet's
+      # reachability proof and the accountability storage are two halves of one census -- a change to
+      # either must re-run both, and a new directory is CI-uncovered until a workflow names it
+      # (DECISIONS #133).
+      - name: Commercial accountability (build + run)
+        run: npm run test:commercialAccountability
         working-directory: functions
 
       # The merge-gate tooling from DECISIONS #144. It shipped five defects, every one a false
