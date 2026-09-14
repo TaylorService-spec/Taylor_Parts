@@ -72,8 +72,8 @@ Every module in `functions/src/**` that names `accountOwner`, `ownerEmployeeId`,
 | 3 | `src/opportunity/closeOpportunityAsWon.ts` | **YES** | **INERT** | Establishes `ownerEmployeeId` on a **newly created** Sales Order (`:283`). Creation, not a handoff. Gated on `opportunity.write` **+** `opportunity.createSalesOrder`, both `active: false`. |
 | 4 | `src/opportunity/createSalesOrderFromOpportunity.ts` | **YES** | **INERT** | Same: creation-time owner (`:200`, `:336`), gated on `opportunity.createSalesOrder`, `active: false`. |
 | 5 | `src/salesAgreement/salesAgreementCallables.ts` | **YES** | **INERT** | `createSalesAgreement` requires `ownerEmployeeId` at creation (`:239-240`). `updateSalesAgreementDraft` **cannot** change it — see #6. All three capabilities `active: false`. |
-| 6 | `src/salesAgreement/salesAgreementCommands.ts` | via #5 | **NOT APPLICABLE** | Verified: `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` (`:456-477`) does **not** contain `ownerEmployeeId`, and a non-DRAFT agreement freezes entirely. There is no agreement ownership-change path. |
-| 7 | `src/salesOrder/salesOrderCommands.ts` | via `salesOrderCallables` | **NOT APPLICABLE** | Creation only (`:261`, `:285`). No Sales Order command changes `ownerEmployeeId`. |
+| 7 | `src/salesAgreement/salesAgreementCommands.ts` | via #5 | **NOT APPLICABLE** | Verified: `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` (`:456-477`) does **not** contain `ownerEmployeeId`, and a non-DRAFT agreement freezes entirely. There is no agreement ownership-change path. |
+| 8 | `src/salesOrder/salesOrderCommands.ts` | via `salesOrderCallables` | **NOT APPLICABLE** | Creation only (`:261`, `:285`). No Sales Order command changes `ownerEmployeeId`. |
 | 8 | `src/salesAgreement/agreementToSalesOrder.ts` | via #5 / Sales Order creation | **NOT APPLICABLE** | Projection into a creation payload. Writes nothing itself. |
 | 9 | `src/ownership/creationOwnerResolution.ts` | via #1 · #3 · #4 · #5 · #7 | **NOT APPLICABLE** | The pure creation-owner inheritance rule. Establishment axis; no I/O. |
 | 10 | `src/ownership/ownershipBackfillRules.ts` | **NO** | **LEGACY** | The pure rule that authors the `owner: { type: "USER", … }` patch (`:77`) which the bounded backfill scripts write. See §4. |
@@ -136,8 +136,8 @@ now FALSE.** Wave 2C's S6 built the storage — migration
 `functions/migrations/1759276800000_commercial-accountability-authority.sql` and
 `functions/src/responsibility/accountablePersonStorage.ts` — so the ratchet in
 `functions/test/governedOwnershipWriterCensus.test.mjs` failed, exactly as it was built to, and this section is
-rewritten with a real population. **The vacuity guard is not deleted: it is replaced by a POSITIVE REACHABILITY
-PROOF**, which is a strictly stronger assertion and is described in §6.
+rewritten with a real population. **The vacuity guard is not deleted: it is replaced by a
+POSITIVE REACHABILITY PROOF**, which is a strictly stronger assertion and is described in §6.
 
 ### 5.1 What "an accountability write" is, and where it can happen
 
@@ -177,8 +177,9 @@ authority was consulted in this process.
 | 1 | `src/responsibility/accountablePersonStorage.ts` | **GOVERNED** | Declares the field, the source vocabulary and the scope; holds the **only** mint and the **only** function that produces a persistable accountability field map. Refuses to build one from an unmarked value. |
 | 2 | `src/responsibility/accountablePersonEstablishment.ts` | **GOVERNED** | The creation rule, **#181**: EXPLICIT VALID → GOVERNED DERIVATION FROM CURRENT RECORD OWNER → REFUSE. Resolves through the Wave-2A Employee port; `AUTHORITY_UNAVAILABLE` gets its own code and fails closed. |
 | 3 | `src/responsibility/accountablePersonRecordStore.ts` | **GOVERNED** | The `AccountabilityStore` implementation. Takes a document port, never a driver; stages, never commits; refuses an out-of-scope family so storage cannot acquire fake accountability even if a command asked. |
-| 4 | `src/responsibility/governedResponsibilityHandoff.ts` | **GOVERNED** | The **change** path (**#184** option (e)). Authoritative read → caller authorization → target resolution → eligibility → no-op refusal → mint → stage mutation and audit with no `await` between them. |
-| 5 | `src/opportunity/opportunityCommands.ts` | **GOVERNED** | Creation **verifies** the governed mark and refuses `ACCOUNTABLE_PERSON_NOT_GOVERNED` otherwise. The ordinary edit **refuses** `ACCOUNTABLE_PERSON_NOT_EDITABLE` rather than silently ignoring the field — see §5.3. |
+| 4 | `src/responsibility/accountabilityCensus.ts` | **NOT APPLICABLE** | The dedicated census (**#187 §1** `MI-Y` option (ii)). It is in the population because it imports the storage declaration, and it writes nothing — it takes documents and an authority port and returns counts. |
+| 5 | `src/responsibility/governedResponsibilityHandoff.ts` | **GOVERNED** | The **change** path (**#184** option (e)). Authoritative read → caller authorization → target resolution → eligibility → no-op refusal → mint → stage mutation and audit with no `await` between them. |
+| 6 | `src/opportunity/opportunityCommands.ts` | **GOVERNED** | Creation **verifies** the governed mark and refuses `ACCOUNTABLE_PERSON_NOT_GOVERNED` otherwise. The ordinary edit **refuses** `ACCOUNTABLE_PERSON_NOT_EDITABLE` rather than silently ignoring the field — see §5.3. |
 | 6 | `src/salesAgreement/salesAgreementCommands.ts` | **GOVERNED** | Same creation verification. `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` does not contain it and `buildUpdateSalesAgreementDraft` **rejects** every unnamed key (`FIELD_NOT_EDITABLE`), so the draft edit is not a path. |
 | 7 | `src/salesOrder/salesOrderCommands.ts` | **GOVERNED** | Same creation verification. There is **no** Sales Order field-edit command at all, so no edit path exists to classify. |
 | — | `functions/scripts/**` | **NOT APPLICABLE** | **Zero** operator scripts name an accountability field. Unlike §4's ownership scripts, there is no legacy accountability backfill to classify because the field is new. |

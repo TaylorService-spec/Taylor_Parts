@@ -805,8 +805,22 @@ test("#180: an explicit governed exception is READABLE and nothing in EOS writes
   for (const file of walk(SRC)) {
     const code = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
     if (!code.includes(ACCOUNTABILITY_EXCEPTION_FIELD)) continue;
-    // The declaration and the reader are the storage module's own. Anything else is a writer.
-    if (file.endsWith(join("responsibility", "accountablePersonStorage.ts"))) continue;
+    // Two READERS are allowed and neither can write: the storage declaration, which names the field and
+    // exposes `accountabilityExceptionId`, and the accountability census, which counts it. Anything else
+    // naming the field is a candidate WRITER, which is what #189's deferred exception mechanism means
+    // must not exist yet.
+    if (
+      file.endsWith(join("responsibility", "accountablePersonStorage.ts")) ||
+      file.endsWith(join("responsibility", "accountabilityCensus.ts"))
+    ) {
+      // And neither of the two assigns it. An assignment is what would make one a writer.
+      assert.ok(
+        !new RegExp(`${ACCOUNTABILITY_EXCEPTION_FIELD}\\s*[:=]\\s*[^=]`).test(code),
+        `${file.slice(SRC.length + 1)} ASSIGNS the accountability exception field. Both permitted modules ` +
+          "are readers; a writer would be an exception authority built without the ruling that shapes it.",
+      );
+      continue;
+    }
     writers.push(file.slice(SRC.length + 1));
   }
   assert.deepEqual(

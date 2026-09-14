@@ -160,7 +160,7 @@
     "test:aiRepository": "npm run build && node --test test/aiRepositoryProvider.test.mjs",
     "test:aiSalesOrderInterpretation": "npm run build && node --test test/aiSalesOrderModelInterpretation.test.mjs",
     "test:ownership": "npm run build && node --test test/ownershipModel.test.mjs test/ownershipCensus.test.mjs test/ownershipHandoffAudit.test.mjs test/ownershipProductionGuard.test.mjs test/warehouseRootCompanyAssignment.test.mjs test/warehouseCanonicalIdRepair.test.mjs test/governedResponsibilityHandoff.test.mjs test/governedOwnershipWriterCensus.test.mjs",
-    "test:commercialAccountability": "npm run build && node --test test/commercialAccountabilityPersistence.test.mjs test/commercialAccountabilityMigration.test.mjs test/commercialAccountabilityMeasurement.test.mjs",
+    "test:commercialAccountability": "npm run build && node --test test/commercialAccountabilityPersistence.test.mjs test/commercialAccountabilityMigration.test.mjs test/commercialAccountabilityMeasurement.test.mjs test/accountabilityCensus.test.mjs",
     "test:financialPolicy": "npm run build && node --test test/financialPolicyProfile.test.mjs",
     "test:financeUnit": "npm run build && node --test test/financialReconciliation.test.mjs test/financialReportingRead.test.mjs test/financeDetectorWiring.test.mjs",
     "test:reportingActivationBoundary": "npm run build && node --test test/reportingActivationBoundary.test.mjs",
