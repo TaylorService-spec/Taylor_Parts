@@ -99,11 +99,29 @@ This is the good news and the trap in the same table. Even `night/p2i-stale-auth
 changes **56 code files**, overlaps `main` on **one** — and that one is a test-registration line, not
 business logic. Semantic conflict risk across the night run is far lower than its size suggests.
 
-**The trap.** `node --test` resolves each positional argument as path-or-glob and takes the **union** of
-what matches. It errors only when the union is **empty** *and* one argument was a literal path.
-**A non-matching argument is silently dropped when any other argument resolves.** So a
-`functions/package.json` whose merged test script names a glob for files that did not land will
-**pass, reporting success, having run fewer tests than it claims.**
+> **CORRECTED 2026-09-13 — this hazard does not apply to this repository, and it was the whole
+> justification for sequencing A1-1 first.** Counted at the Wave-2A head: **all 164 scripts in
+> `functions/package.json` contain zero `*` characters.** Every test script **enumerates its files
+> literally.** The dropped-glob failure needs a glob to bite, and there are none.
+>
+> **And the literal-path case is the SAFE one:** `node --test` errors when an argument is a literal path
+> that matches nothing. So a merged script naming a file that did not land **fails loudly** rather than
+> passing quietly — the opposite of what this register warned about. The repository is already in the safe
+> configuration.
+>
+> **What survives:** the `node --test` union semantics are real, and the rule *"verify the suite you
+> registered actually ran"* is still worth keeping — the Wave-2A lane satisfied it by **running the
+> registered script and confirming its three suites appeared in the output**, which is the right check
+> regardless. **What is withdrawn is the claim that this was a systemic hazard requiring a ratchet to be
+> merged first.** `night/p2l-functions-test-registration` remains a reasonable guard; it is not a
+> prerequisite.
+
+**The trap, as originally written and now withdrawn for this repository.** `node --test` resolves each
+positional argument as path-or-glob and takes the **union** of what matches. It errors only when the union
+is **empty** *and* one argument was a literal path. **A non-matching argument is silently dropped when any
+other argument resolves.** So a `functions/package.json` whose merged test script names a **glob** for files
+that did not land would **pass, reporting success, having run fewer tests than it claims** — a real property
+of `node --test`, but one that needs a glob, and this repository has none.
 
 **Therefore, mandatory after every merge into this sequence:** assert that each glob in the merged test
 script matches at least one file. A merge is not verified by a green test run; it is verified by a green
