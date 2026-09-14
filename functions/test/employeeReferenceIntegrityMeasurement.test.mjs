@@ -205,10 +205,12 @@ test("the script loads no Firebase module, so it cannot 'resolve' a reference fr
   }
 });
 
-// ════════════════════ 4. SCOPE — NINE COLUMNS, AND THE ACTOR COLUMNS DECLARED OUT ════════════════════
+// ════════════════════ 4. SCOPE — TWELVE COLUMNS, AND THE ACTOR COLUMNS DECLARED OUT ════════════════════
 
-test("the nine Employee-id columns are the scope, each citing where it was read from", () => {
-  assert.equal(EMPLOYEE_REFERENCE_COLUMNS.length, 9);
+test("the twelve Employee-id columns are the scope, each citing where it was read from", () => {
+  // Nine from waves 1-2C, plus the three credited-salesperson columns the Commercial C2 command layer writes.
+  assert.equal(EMPLOYEE_REFERENCE_COLUMNS.length, 12);
+  assert.deepEqual(EMPLOYEE_REFERENCE_COLUMNS.filter((c) => c.column === "credited_salesperson_employee_id").map((c) => c.table), ["opportunities", "sales_agreements", "sales_orders"]);
   for (const c of EMPLOYEE_REFERENCE_COLUMNS) {
     assert.match(c.source, /^\d{13}:\d+$/, `${c.table}.${c.column} must cite migration:line`);
     assert.ok(["eos_policy", "eos_crm", "eos_commercial"].includes(c.schema));
@@ -271,11 +273,11 @@ test("an absent Employee authority makes EVERY column AUTHORITY_UNAVAILABLE, not
   // and a report of "0 unresolved" would be a lie that authorizes moving the deferred foreign key.
   return measureEmployeeReferenceIntegrity(fakeClient({ present: [] })).then((report) => {
     assert.equal(report.authorityPresent, false);
-    assert.equal(report.columns.length, 9);
+    assert.equal(report.columns.length, 12);
     assert.ok(report.columns.every((c) => c.status === "AUTHORITY_UNAVAILABLE"));
-    assert.equal(report.unmeasured, 9);
+    assert.equal(report.unmeasured, 12);
     assert.equal(report.deferredForeignKeyPrecondition.met, false, "an unmeasurable database never meets the precondition");
-    assert.match(describeReport(report, "test"), /AUTHORITY_UNAVAILABLE for 9 column\(s\) -- these are NOT zeroes/);
+    assert.match(describeReport(report, "test"), /AUTHORITY_UNAVAILABLE for 12 column\(s\) -- these are NOT zeroes/);
   });
 });
 
@@ -287,7 +289,7 @@ test("a table that cannot be read is AUTHORITY_UNAVAILABLE for that column alone
   assert.equal(link.status, "AUTHORITY_UNAVAILABLE");
   assert.match(link.reason, /does not exist/);
   // The others still measured -- a partial outage is reported partially, not as a total failure.
-  assert.equal(report.columns.filter((c) => c.status === "MEASURED").length, 8);
+  assert.equal(report.columns.filter((c) => c.status === "MEASURED").length, 11);
   assert.equal(report.unmeasured, 1);
   assert.equal(report.deferredForeignKeyPrecondition.met, false);
   assert.match(report.deferredForeignKeyPrecondition.reason, /could not be measured/);
@@ -342,7 +344,7 @@ test("a fully clean census MEETS the precondition, and says so", async () => {
 
 test("a NULL reference is not a defect on its own", async () => {
   // #182 state D: NONE is legitimate "where the family legitimately permits no person reference", and
-  // three of the nine columns are nullable for exactly that reason.
+  // several of the twelve columns are nullable for exactly that reason.
   const report = await measureEmployeeReferenceIntegrity(
     fakeClient({ present: ALL_PRESENT, counts: { "eos_crm.accounts.owner_employee_id": { rows: 6, nullReference: 6 } } }),
   );

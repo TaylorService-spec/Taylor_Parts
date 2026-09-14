@@ -62,7 +62,7 @@
 //
 // ============================ WHAT IT MEASURES, AND WHAT IT REFUSES TO ============================
 //
-// IN SCOPE: the NINE columns in the migration set that hold a business EMPLOYEE id. They are listed in
+// IN SCOPE: the TWELVE columns in the migration set that hold a business EMPLOYEE id. They are listed in
 // EMPLOYEE_REFERENCE_COLUMNS below, each with the migration and line it was read from.
 //
 // OUT OF SCOPE, and this is the more important half: the ~60 `created_by` / `updated_by` / `actor_uid`
@@ -126,7 +126,8 @@ const PRODUCTION_ROLE = "production";
 const EMPLOYEE_AUTHORITY = { schema: "eos_workforce", table: "employees", idColumn: "id" };
 
 /**
- * The nine columns in the migration set that hold a business EMPLOYEE id.
+ * The twelve columns in the migration set that hold a business EMPLOYEE id. The three credited-salesperson columns
+ * (migration 022) joined when the Commercial wave C2 command layer began writing them.
  *
  * Each carries the migration and line it was read from, because a census whose scope cannot be
  * re-verified at source is a list somebody will trust without checking. `appendOnly` marks a column on
@@ -142,6 +143,9 @@ const EMPLOYEE_REFERENCE_COLUMNS = Object.freeze([
   { schema: "eos_commercial", table: "sales_orders", column: "owner_employee_id", nullable: false, appendOnly: false, source: "1758844800000:233" },
   { schema: "eos_commercial", table: "ownership_handoffs", column: "previous_owner_employee_id", nullable: true, appendOnly: true, source: "1758844800000:262" },
   { schema: "eos_commercial", table: "ownership_handoffs", column: "new_owner_employee_id", nullable: false, appendOnly: true, source: "1758844800000:263" },
+  { schema: "eos_commercial", table: "opportunities", column: "credited_salesperson_employee_id", nullable: true, appendOnly: false, source: "1759449600000:89" },
+  { schema: "eos_commercial", table: "sales_agreements", column: "credited_salesperson_employee_id", nullable: true, appendOnly: false, source: "1759449600000:121" },
+  { schema: "eos_commercial", table: "sales_orders", column: "credited_salesperson_employee_id", nullable: true, appendOnly: false, source: "1759449600000:181" },
 ]);
 
 /**

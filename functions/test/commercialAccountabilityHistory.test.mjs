@@ -116,11 +116,13 @@ test("(14) the Firestore AuditAction vocabulary was NOT extended for accountabil
 
 // ════════════════════ (15) (16) THE OTHER BLOCKERS STAY OPEN ════════════════════
 
-test("(15) blocker #2 stays unwired: no callable, no source module and no index export reaches the writer", () => {
+test("(15) blocker #2 stays unwired: no callable, no runtime entry point and no index export reaches the writer", () => {
+  // Commercial wave C2 composes the writer inside the governed PostgreSQL command layer, which is itself unreachable
+  // from every runtime entry point (proved by commercialCommandLayer.test.mjs). Nothing outside that layer may import it.
   const reaching = walk(SRC, ".ts")
     .filter((f) => f !== REPO_SOURCE && /commercialAccountabilityRepository/.test(readFileSync(f, "utf8")))
     .map((f) => relative(FUNCTIONS_DIR, f));
-  assert.deepEqual(reaching, []);
+  assert.deepEqual(reaching, ["src/eosCommercial/commands/commercialCreation.ts"]);
   assert.doesNotMatch(readFileSync(join(SRC, "index.ts"), "utf8"), /responsibility\/|commercialAccountabilityRepository/);
   for (const callable of ["opportunity/opportunityCallables.ts", "salesAgreement/salesAgreementCallables.ts", "salesOrder/salesOrderCallables.ts"]) {
     const code = strip(readFileSync(join(SRC, callable), "utf8"));

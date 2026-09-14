@@ -104,6 +104,8 @@ const CLASSIFIED_ACCOUNTABILITY_PATHS = Object.freeze({
   // Owner ruling 2026-09-14, blocker #1: the PostgreSQL accountability audit authority. Accepts only a minted value;
   // mutation and append-only history in ONE transaction. Not imported by any callable (blocker #2 stays open).
   "src/eosCommercial/commercialAccountabilityRepository.ts": "GOVERNED",
+  // Commercial wave C2: creation-time establishment, mint-gated, persisted only through the #1905 writer. Unwired.
+  "src/eosCommercial/commands/commercialCreation.ts": "GOVERNED",
 });
 
 const VALID_CLASSIFICATIONS = Object.freeze([
@@ -144,6 +146,14 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   "src/crm/customerRepository.ts": "INERT",
   "src/eosCommercial/commercialOwnershipAuthority.ts": "INERT",
   "src/eosCommercial/commercialOwnershipRepository.ts": "INERT",
+  // Commercial wave C2: the governed PostgreSQL command layer. Unwired (no runtime entry point imports it) and behind
+  // capabilities registered active:false. Its ONE owner-CHANGE path goes through stageCommercialOwnershipTransfer.
+  "src/eosCommercial/commands/opportunityCommandService.ts": "GOVERNED",
+  "src/eosCommercial/commands/salesAgreementCommandService.ts": "INERT",
+  "src/eosCommercial/commands/salesOrderCommandService.ts": "INERT",
+  "src/eosCommercial/commands/commercialRecordStore.ts": "INERT",
+  "src/eosCommercial/commands/commercialCommandKernel.ts": "NOT APPLICABLE",
+  "src/eosCommercial/commands/commercialCreation.ts": "NOT APPLICABLE",
   // The model, the measurement, and the read projections.
   "src/ownership/ownershipMatrix.ts": "NOT APPLICABLE",
   "src/ownership/typedOwner.ts": "NOT APPLICABLE",
