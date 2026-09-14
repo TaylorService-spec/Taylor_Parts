@@ -703,6 +703,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/opportunity/opportunityCallables.ts"
         ],
         "clientReferences": [
@@ -711,7 +712,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/opportunityCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
@@ -775,6 +776,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/opportunity/createSalesOrderFromOpportunity.ts"
         ],
         "clientReferences": [
@@ -782,7 +784,7 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 3,
         "evidence": "EXPORTED"
       },
@@ -804,6 +806,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
+          "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
           "functions/src/salesAgreement/salesAgreementCallables.ts"
         ],
         "clientReferences": [
@@ -812,7 +816,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -834,6 +838,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
+          "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
           "functions/src/salesAgreement/salesAgreementCallables.ts"
         ],
         "clientReferences": [
@@ -842,7 +848,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -864,6 +870,8 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
+          "functions/src/eosCommercial/commands/salesAgreementCommandService.ts",
           "functions/src/salesAgreement/salesAgreementCallables.ts"
         ],
         "clientReferences": [
@@ -872,7 +880,7 @@
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -967,6 +975,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosCommercial/commands/commercialCommandKernel.ts",
           "functions/src/salesOrder/salesOrderCallables.ts"
         ],
         "clientReferences": [
@@ -975,7 +984,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/salesOrderCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
