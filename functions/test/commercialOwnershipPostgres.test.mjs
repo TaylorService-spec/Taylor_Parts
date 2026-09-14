@@ -133,8 +133,11 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
   );
   assert.deepEqual(
     tables.rows.map((r) => r.table_name),
-    ["opportunities", "ownership_handoffs", "sales_agreements", "sales_orders"],
-    "four tables: three commercial records and their shared ownership history",
+    ["accountability_handoffs", "opportunities", "ownership_handoffs", "sales_agreements", "sales_orders"],
+    "five tables: three commercial records, their shared OWNERSHIP history, and -- since migration 020 " +
+      "(Wave 2C) -- their shared ACCOUNTABILITY history. The second history table is deliberately NOT a " +
+      "new source value on `ownership_handoffs`: #187 s1 rules that accountability must not be redefined " +
+      "as ownership, and reusing those columns would make their names lie about what they hold.",
   );
 });
 

@@ -35,6 +35,7 @@ on:
       # accountability-specific artifacts, and the migration is named because the storage declaration
       # and the DDL are asserted against each other.
       - "functions/test/accountabilityCensus.test.mjs"
+      - "functions/test/commercialAccountabilityAcceptance.test.mjs"
       - "functions/test/responsibilityEnforcementGate.test.mjs"
       - "functions/test/commercialAccountabilityPersistence.test.mjs"
       - "functions/test/commercialAccountabilityMigration.test.mjs"
