@@ -7396,3 +7396,69 @@ technician, actor, timestamp and reason"* — **a list in which ownership and co
 retain `IMPLEMENTATION STATUS = NOT AUTHORIZED` until the single final dependency classification is performed
 against these rulings and the remaining true Owner policy decisions are closed. **No production change, no
 Rules change, no migration, no capability activation, and no new Firebase dependency.**
+
+## #188 — DECISION TRIAGE: 11 of 17 remaining decisions closed without new Owner policy (2026-09-13)
+
+**Not new Owner policy.** A triage recording which previously-open decisions are **already answered** by the
+rulings **#180**–**#187**, so they are not re-asked. **Only category C below returns to the Owner.**
+
+All 17 were located at authoritative source and classified. **A 3 · B 7 · C 6 · D 0 · E 1.**
+
+### A — ALREADY SETTLED by a newer ruling (3)
+
+| ID | Settled by |
+|---|---|
+| **`MI-β`** | **#183**'s placement consequence affirms ruling `O-1` as *consistent with* Layer 1 rather than superseded, and **#184** places resolution at the orchestration boundary. No conflict remains to rule. |
+| **`MI-ζ`** | **#185**'s interim-path clause expressly permits a transitional implementation behind the port. |
+| **`M-3`** | **#184**, verbatim: *"`OD-7` closure does NOT authorize implementation."* |
+
+### B — DERIVED CONSEQUENCE, no Owner policy required (7)
+
+| ID | Derivation |
+|---|---|
+| **`MI-γ`** | **#185**'s Layer-1 list omits a principal link, and rules Principal existence alone insufficient. Requiring a **live link** for reference validity would be the EMPLOYEE↔PRINCIPAL collapse #185 forbids. → not required. |
+| **`MI-δ`** | The PostgreSQL Employee authority **cannot be read from Firestore Rules**, and **#184** forbids a second authority lookup below orchestration. → **NO**, Rules do not resolve person validity. |
+| **`MI-U`** | **#186** case D and **#187** treat *INVALID / MISSING* as **one** outcome, while **#182** requires the underlying reasons to be separately detectable. → **one state, distinguishable reason.** Today's gate treats the two reasons oppositely, which is therefore a **defect**, not a decision. |
+| **`MI-W`** | **#180** invariant 1 makes any exception conditional on *"an explicit, separately Owner-approved exception."* **None exists.** → the exception list is **EMPTY**. The residual family-count question belongs to `OD-16`. |
+| **`O-1`** | **#185**'s `CREDENTIAL → PRINCIPAL → LINK → EMPLOYEE` chain rules a Firebase uid insufficient, so `USER` is not the canonical Employee id; the exclusion half resolves as `MI-β`. The residue is a **measurement**, not a decision. |
+| **`M-2`** | Resolves **by exclusion**, and the exclusion is structural: `FIELD_CHANGE_ACTIONS` (`functions/src/access/auditEventWriter.ts:414-416`) is a **one-member set** — `["updateEmployeeProfile"]` — and `:661-670` throws *"fieldKey/previousValue/newValue is only valid for a field-change AuditAction"* for anything else. **The field-change carrier is structurally refused for an ownership handoff**, so the handoff carrier is the only one available. And **#183**/**#184** describe one governed **transaction**, not one audit event. |
+| **`OD-8`** | All four exposed fields are governed `ownerFields` (`functions/src/ownership/ownershipMatrix.ts:119-135`, `:267`), and **#184**'s *bypass paths are DEFECTS* removes "accept the exposure" as an option. → a defect to fix, not a policy to choose. |
+
+### E — NON-BLOCKING (1)
+
+**`MI-α`** — its subject is closed by **#185** and its collision by the register-hygiene entry above. It blocks no
+register item. **Deliberately not classified D**, because the row still carries live bookkeeping and calling it
+obsolete would be inaccurate.
+
+### C — TRUE OWNER POLICY DECISIONS REMAINING (6, plus one unlabelled)
+
+**`MI-λ`** · **`MI-κ`** · **`MI-ε`** · **`MI-V`** · **`OD-13`** · **`OD-16`**, consolidated in one packet at
+`ext/census-acceptance:docs/operating-model/owner-decisions/REMAINING-DECISION-TRIAGE.md`.
+
+**Plus a seventh with no register id: Service lifecycle accountability.** It is **partly derived** — eight
+platform-level rules follow from #180/#182/#186/#187 — but **who holds accountability per lifecycle state, and
+whether it moves at any boundary, does not.** **#186** places that in workflow-specific territory and lists it
+among what is not absorbed, so **the design package's `PROPOSED` tag is correctly placed.** It is asked **once,
+covering all states together**, not per status. **No id was assigned — naming a register item is the Owner's.**
+
+**`MI-λ`'s option space is physically constrained**, which limits the answers rather than merely informing them:
+`ownership_handoffs` is append-only via `refuse_ownership_history_mutation`
+(`functions/migrations/1758844800000_commercial-ownership-authority.sql:295-305`), and its two person columns
+carry **no FK** while four other columns in the same `CREATE TABLE` do (`:258-263`). **A bad row there is
+permanent by design.** Two absolutes bound every option: **never fabricate an Employee to make an FK pass** —
+that produces in the authority exactly the false `RESOLVED` #182 forbids — and **never delete immutable history.**
+
+### Corrections this triage made to standing artifacts
+
+**A `firestore.rules` claim in the Person-Authority target model is mis-described.** It records *"four sites
+enforce `employmentStatus == "ACTIVE"` (`:61`, `:92`, `:114`, `:141`)"*. Verified: the ACTIVE comparisons are at
+**`:118`, `:145`, `:494` — three** — and `:92` tests no status at all. The cited four lines *read the employees
+document*; they do not compare status. `MI-δ`'s derivation is unaffected.
+
+**A decomposition claim is too strong after #182.** *"Nothing can name an accountable person without `MI-κ`"* —
+an accountable person is named by **Employee identity**, not by a job role. `MI-κ` bears on role-keyed
+**escalation and approval** surfaces, which takes it **off the Layer-1 critical path.**
+
+**Five ids are stale in two standing register tables** — `MI-S`, `MI-T`/`MI-η`, `MI-θ`, `MI-X`-sense-2 (now
+`MI-Y`) and `M-1` were all closed after those tables were written. **Any artifact still showing `M-1` open is
+stale against #187.**
