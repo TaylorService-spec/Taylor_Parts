@@ -1,4 +1,4 @@
-// Governed PostgreSQL Sales Agreement read projections -- wave C3. Internal; nothing external invokes them yet.
+// Governed PostgreSQL Sales Agreement read projections -- wave C3. Reached only through the C4 transport (commercialHttp.ts).
 //
 // Totals are NOT stored (C1 keeps only the charge inputs): subtotal / total / balance are computed at read time by the
 // existing governed arithmetic, computeAgreementTotals, from the stored lines and charges -- never a second stored
