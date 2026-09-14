@@ -88,6 +88,10 @@ Every module in `functions/src/**` that names `accountOwner`, `ownerEmployeeId`,
 | 15d | `src/eosCommercial/commands/commercialRecordStore.ts` | **NO** | **INERT** | Commercial wave C2. The SQL the command services use; writes an owner only in the creation INSERT. |
 | 15e | `src/eosCommercial/commands/commercialCommandKernel.ts` | **NO** | **NOT APPLICABLE** | Commercial wave C2. Reads the Account owner as the upstream creation default; writes no owner. |
 | 15f | `src/eosCommercial/commands/commercialCreation.ts` | **NO** | **NOT APPLICABLE** | Commercial wave C2. Reads the record owner only to derive creation accountability (§5.2). |
+| 15g | `src/eosCrm/accountAuthority.ts` | **NO** | **INERT** | CRM wave D1-A. The governed PostgreSQL Account create writes an owner only in the creation INSERT, explicit or absent (ruling D-6) and resolved as an Employee of the tenant; the update allowlist (name, status) cannot change the owner. Unwired. |
+| 15h | `src/eosCrm/contactAuthority.ts` | **NO** | **INERT** | CRM wave D1-A. Contact owner inherited from the parent Account at creation only, in the create's transaction; the update allowlist cannot change it. Unwired. |
+| 15i | `src/eosCrm/accountLocationAuthority.ts` | **NO** | **INERT** | CRM wave D1-A. Customer-site owner inherited from the parent Account at creation only; the update allowlist cannot change it. Unwired. |
+| 15j | `src/eosCrm/crmAuthorityKernel.ts` | **NO** | **NOT APPLICABLE** | CRM wave D1-A. Reads the parent Account owner as the creation inheritance source; writes no owner. |
 | 16 | `src/ownership/ownershipMatrix.ts` | n/a | **NOT APPLICABLE** | The model. Declares where ownership is stored; writes nothing. |
 | 17 | `src/ownership/typedOwner.ts` | n/a | **NOT APPLICABLE** | The shape and the derivations. Pure. |
 | 18 | `src/ownership/ownershipCensus.ts` | n/a | **NOT APPLICABLE** | Measurement. Pure. |
