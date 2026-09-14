@@ -6933,9 +6933,16 @@ PUBLIC / API ENTRY → ORCHESTRATOR → AUTHORITY READ → PURE VALIDATOR → WR
 ```
 
 Every mutation path classified **GOVERNED · INERT · LEGACY · BYPASS DEFECT · NOT APPLICABLE**. Known
-candidate at the baseline: `OwnerSelect.jsx` → `updateOpportunity` moves ownership in production and emits
-**no** `OWNERSHIP_HANDOFF` at all (`opportunityCallables.ts:337-350` writes a free-text `summary`), which on
-this ruling is a **bypass defect** rather than merely an unwired path.
+candidate at the baseline: `OwnerSelect.jsx` → `updateOpportunity` changes ownership and emits **no**
+`OWNERSHIP_HANDOFF` at all — `functions/src/opportunity/opportunityCallables.ts:337-350` writes a free-text
+`summary` instead — which on this ruling is a **bypass defect** rather than merely an unwired path.
+
+> **CORRECTED 2026-09-13.** An earlier revision said this path *"moves ownership in production."* **That
+> framing is withdrawn.** `updateOpportunity` is gated on the capability `opportunity.write`, which is
+> **`active: false`** in the catalogue (`functions/src/access/permissionCatalog.ts:154-159`), so the path is
+> **INERT at the catalogue baseline** — it is a bypass **when granted**, not a live production bypass today.
+> The missing-audit defect is entirely real; the urgency attached to it was not. The module path was also
+> wrong: it is `functions/src/opportunity/`, not `functions/src/sales/`.
 
 ### Assignment remains separate
 
@@ -7206,10 +7213,18 @@ establishes current eligibility; the composed state is what a consumer sees.** N
 **That vocabulary is already shipped, already extensible, and already guarded.**
 `functions/src/access/employeeProfileCommands.ts:122-129` exports a frozen
 **`EMPLOYMENT_STATUS_VALUES`** of **six** values — `ACTIVE`, `ON_LEAVE`, `INACTIVE`, `TERMINATED`, `RETIRED`,
-`CONTRACTOR`. Its header (`:116-121`) records that `functions/scripts/provisionEmployeeAccess.js` is the
-collection's other writer holding the same closed set, mirrored by literal to keep an Admin-SDK bootstrap out
-of the deployed bundle, and that **`functions/test/employeeProfileCommands.test.mjs` asserts the two lists
-match, so the mirror cannot drift silently.**
+`CONTRACTOR`. **The drift guard is real; its stated counterpart is not.**
+
+> **CORRECTED 2026-09-13.** An earlier revision of this entry repeated the module header's own claim
+> (`employeeProfileCommands.ts:116-121`) that `functions/scripts/provisionEmployeeAccess.js` holds the same
+> closed set, mirrored by literal. **Verified: it does not.** That script contains **zero** occurrences of
+> `EMPLOYMENT_STATUS_VALUES` or `ON_LEAVE`; it carries only `EMPLOYMENT_STATUS_ACTIVE`. **The repository's own
+> header prose is false about its own repository, and this entry propagated it.**
+>
+> **What is true, and it is the part that matters:** the mirror test exists and names a different counterpart —
+> `functions/test/employeeProfileCommands.test.mjs:570`, *"employmentStatus mirrors `domain/constants.js`
+> EMPLOYMENT_STATUS, its canonical home."* **So the canonical home is `domain/constants.js`**, the drift guard
+> is against that, and the six-value vocabulary and its guard both stand. Only the named counterpart was wrong.
 
 **So `S-GRAIN` is satisfiable with zero new vocabulary** — the extensible six-value domain this ruling calls
 for is the one already in the tree, with a drift guard on it.
