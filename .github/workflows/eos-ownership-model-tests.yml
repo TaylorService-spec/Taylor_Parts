@@ -20,6 +20,16 @@ on:
   pull_request:
     paths:
       - "functions/src/ownership/**"
+      # WAVE 2B S4/S5: the governed responsibility handoff boundary and the ungoverned-writer
+      # ratchet. New directories are CI-uncovered until a workflow names them (DECISIONS #133), and
+      # the ratchet reads the ownership matrix and the callable surface, so a change to either must
+      # re-run it.
+      - "functions/src/responsibility/**"
+      - "functions/src/employeeIdentity/employeeAuthority.ts"
+      - "functions/test/governedResponsibilityHandoff.test.mjs"
+      - "functions/test/governedOwnershipWriterCensus.test.mjs"
+      - "docs/security/ownership-accountability-bypass-census.md"
+      - "functions/src/index.ts"
       - "functions/scripts/ownershipDerivationCheck.js"
       - "functions/src/access/auditEventWriter.ts"
       - "functions/src/types/access.ts"
