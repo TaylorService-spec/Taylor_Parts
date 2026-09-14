@@ -102,6 +102,9 @@ on:
       - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
       - "functions/test/syntheticNonprodWorkforceSeed.test.mjs"
       - "functions/test/syntheticNonprodWorkforceSeedPostgres.test.mjs"
+      # BLOCKER #1: the PostgreSQL accountability history proof runs in test:adminPolicyPostgres.
+      - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
+      - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
@@ -192,6 +195,9 @@ on:
       - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
       - "functions/test/syntheticNonprodWorkforceSeed.test.mjs"
       - "functions/test/syntheticNonprodWorkforceSeedPostgres.test.mjs"
+      # BLOCKER #1: the PostgreSQL accountability history proof runs in test:adminPolicyPostgres.
+      - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
+      - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
