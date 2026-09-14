@@ -715,6 +715,63 @@ stated wrongly first, so each is listed with what it replaces.
 | 8 | **The authoritative PERSON source is unresolved** — the matrix declares `users` "identity authority" (`:513`) and **both** `employees` (`:514`) and `fieldops_technicians` (`:515`) as "person authority". Pending `MI-X` | assuming `employees` was the authority |
 | 9 | **`auditEventWriter` has 44 importers, not 50** (50 merely mention it), and option (a)'s blast-radius objection is **void** — the matrix imports only `./typedOwner`, which the writer already imports, has zero I/O, and the edit is confined to one choke point | *"50 importers / blast radius is the whole audit surface"* |
 
+## 12.7 Two framings this program carried for its whole length, both now corrected at source
+
+### 12.7.a "Zero occupancy" was materially incomplete — the roster is NOT empty
+
+This register and several rulings describe production role occupancy as **zero**. The precise claim —
+**zero *governed-business-Role* occupancy** — is correct. But it has been allowed to imply an empty roster,
+and that is false. The same committed census (`be1e5579`,
+`docs/assessments/r32-production-exposure-census.json`, dated **2026-09-02**) records in its own `totals`:
+
+| Measure | Value |
+|---|---|
+| `roleAssignments` | **2** (one principal `admin@global`, `employeeId: null`; the second unitemised) |
+| `users` | **16** |
+| `employees` | **6** |
+| Production managers holding an **operational** role | **2** — one `PARTS_MANAGER`, one `WAREHOUSE_MANAGER`, both with real `employeeId`s |
+
+**Correct phrasing from here on: zero governed-Role occupancy · two operational-role holders · six
+employees · sixteen users.**
+
+**This changes what role-acceptance work needs.** The standing instruction is not to call responsibility or
+role acceptance complete against an empty population — and **the population is not empty.** It is six
+employees of whom two already carry governed operational roles. So the gap is **not** "nobody exists"; it is
+that the **governed-Role axis** has no holders while the **operational-role axis** has two. Those are
+different problems with different remedies, and conflating them has made the second invisible.
+
+### 12.7.b A governed job-role vocabulary DOES exist — the gap is extension, not absence
+
+This register, and a brief that went to a design-reconciliation lane, stated that **no** governed job-role
+vocabulary exists at baseline. **Withdrawn.** `functions/src/access/employeeProfileCommands.ts:131-140`
+exports a frozen **`OPERATIONAL_ROLE_VALUES`** of **eight** values:
+
+`PARTS_MANAGER` · `PARTS_ASSOCIATE` · `TECHNICIAN` · `WAREHOUSE_MANAGER` · `WAREHOUSE_ASSOCIATE` ·
+**`SERVICE_MANAGER`** · `SALES_MANAGER` · `SALES_ASSOCIATE`
+
+It is stored on `employees/{id}.operationalRoles`, written through the governed command, mirrored in a second
+writer, **drift-guarded by test**, and **consumed for authority gating**. That is a governed vocabulary by
+every test this program applies to one.
+
+**The substantive finding survives and sharpens.** The governed set contains **none of the Employee v4.1
+design's role names** and carries **no PRIMARY/ADDITIONAL grain**, so what the design needs is a **vocabulary
+extension** — an Owner decision — **not** the creation of a vocabulary that does not exist. Those are very
+different pieces of work, and the second framing would have justified inventing a parallel vocabulary, which
+the rulings forbid.
+
+**And it resolves an old puzzle rather than deepening it.** `SERVICE_MANAGER` — the exact value the Owner's
+own worked example names as the Work Order accountable person — **is in the governed vocabulary** and was
+earlier reported as having "no consumer under any of four readings." Both are true: **it is governed and
+unconsumed.** The defect is a missing consumer, not a missing value.
+
+### 12.7.c A provenance correction about the rulings themselves
+
+Ruling citations in this program have been written as though observable at `64008d5a`. They are not.
+`docs/DECISIONS.md` at the baseline **ends at #179**, and the branch carrying **#180–#188**
+(`int/a-correctness-register`) is **not an ancestor of `64008d5a`** — it descends from it. **Rulings must be
+cited with their own ref**, exactly as this register requires of every other cross-branch claim. Recorded
+because the rule this program wrote for itself applies to its own rulings first.
+
 ## 13. What this register does NOT establish
 
 - **That any A1 or A2 branch still passes.** Every "EXECUTED (own lane)" grade is evidence from that
