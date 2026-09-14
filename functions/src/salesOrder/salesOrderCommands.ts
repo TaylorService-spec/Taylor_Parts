@@ -8,6 +8,12 @@
 
 import { resolveCreationOwner, type CreationOwnerResolution } from "../ownership/creationOwnerResolution";
 import { resolveCommercialCompanyScope } from "../ownership/commercialCompanyScope";
+import {
+  accountablePersonFields,
+  isGovernedAccountablePerson,
+  type AccountablePersonSource,
+  type EstablishedAccountablePerson,
+} from "../responsibility/accountablePersonStorage";
 import type { OwnerDerivation } from "../ownership/typedOwner";
 import { AttributionError, deriveLineBusinessUnit, resolveCreditedSalesperson } from "../finance/financialAttribution";
 import {
@@ -38,6 +44,8 @@ export type SalesOrderErrorCode =
   | "BUSINESS_UNIT_INVALID"
   /** Company-authority correction: creation attempted while the governed operating company is unresolved. */
   | "COMPANY_REQUIRED"
+  /** Creation was handed an accountable person that no governed establishment produced (#184). */
+  | "ACCOUNTABLE_PERSON_NOT_GOVERNED"
   | "QTY_INVALID"
   | "TERMINAL"
   | "ILLEGAL_TRANSITION"
@@ -86,6 +94,12 @@ export interface CreateSalesOrderInput {
   // read) → this order's resolved commercial owner. Never the creating actor.
   creditedSalespersonId?: string;
   inheritedCreditedSalespersonId?: string | null;
+  // #181 (`MI-N`) ACCOUNTABLE PERSON -- a SEPARATELY CARRIED business fact on this family, never a
+  // permanent derivation from RECORD OWNER. Arrives ESTABLISHED, not as an id: the creation rule
+  // (EXPLICIT VALID -> GOVERNED DERIVATION FROM CURRENT RECORD OWNER -> REFUSE) requires an
+  // authoritative Employee resolution and a current-eligibility verdict, and #184 places both at the
+  // governed orchestration boundary rather than in a pure builder.
+  accountablePerson?: EstablishedAccountablePerson;
   salesChannel: SalesChannel;
   locationId?: string;
   sourceOpportunityId?: string;
@@ -229,6 +243,18 @@ export interface BuiltSalesOrder {
   /** FIN-002: sales credit, frozen at creation. Distinct from ownerEmployeeId; never the actor. */
   creditedSalespersonId: string;
   /**
+   * #181 ACCOUNTABLE PERSON. Present ONLY when a governed establishment supplied one.
+   *
+   * ABSENT rather than null when none was established -- migration 1759276800000 leaves the column
+   * NULLABLE for the same reason. `MEASURE FIRST` (#189 MI-lambda) requires an un-established record to
+   * be countable as such rather than carrying a fabricated value, and nothing here defaults it to
+   * `ownerEmployeeId`: #181 forbids that as a permanent computed identity.
+   */
+  accountableEmployeeId?: string;
+  /** How it got there -- EXPLICIT or DERIVED_FROM_RECORD_OWNER. Recorded, never recomputed. */
+  accountablePersonSource?: AccountablePersonSource;
+
+  /**
    * FIN-002 BOOKED basis (DECISIONS #154): the moment commercial terms were committed. For an
    * order derived from an accepted Agreement this is the agreement's server-stamped
    * acceptedAtMillis, passed via ctx by the conversion; for a direct creation it is the server
@@ -264,6 +290,19 @@ export function buildCreateSalesOrder(
   }
   if (!isSalesChannel(input.salesChannel)) throw new SalesOrderCommandError("CHANNEL_INVALID", "salesChannel is invalid");
   if (!Array.isArray(input.lines) || input.lines.length === 0) throw new SalesOrderCommandError("NO_LINES", "A Sales Order requires at least one line");
+  // #184: the builder VERIFIES the governed mark; it never establishes accountability itself. A value
+  // without the mark is refused rather than written, so no caller-supplied id can become persisted
+  // accountability without the Employee authority having answered.
+  if (input.accountablePerson !== undefined && !isGovernedAccountablePerson(input.accountablePerson)) {
+    throw new SalesOrderCommandError(
+      "ACCOUNTABLE_PERSON_NOT_GOVERNED",
+      "accountablePerson must be the result of a governed establishment " +
+        "(responsibility/accountablePersonEstablishment.ts). An id, a plain object, or a serialized " +
+        "copy is not evidence that the Employee authority was consulted (#184, #182 s5).",
+    );
+  }
+  const accountability =
+    input.accountablePerson === undefined ? {} : accountablePersonFields(input.accountablePerson);
   const lines = input.lines.map((l, i) => validateLine(l, i));
   requireCompletePricing(lines);
   // COMPANY GATE (company-authority correction). A CONFIRMED order is a reportable commitment; if
@@ -283,6 +322,7 @@ export function buildCreateSalesOrder(
   return {
     accountId: input.accountId.trim(),
     ownerEmployeeId: resolvedOwner.ownerEmployeeId,
+    ...accountability,
     salesChannel: input.salesChannel,
     operatingCompanyId: resolvedCompany,
     // Credit chain: explicit → inherited (agreement's frozen credit, read transactionally by the

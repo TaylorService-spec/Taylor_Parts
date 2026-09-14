@@ -24,13 +24,27 @@
 // `ownershipBackfillRules.ts` authors and the backfill scripts write. That is precise, and it is the only
 // form in which the `contact`/`location` owner field is ever constructed in this repository.
 //
-// ════════════════════ THE ACCOUNTABILITY HALF IS A VACUITY GUARD ════════════════════
+// ════════════════════ THE ACCOUNTABILITY HALF IS A POSITIVE REACHABILITY PROOF ════════════════════
 //
-// The accountability population is EMPTY, and the honest reason is that the storage does not exist yet.
-// An empty population asserted as "no bypasses" would be a false claim; asserted as "nothing exists to
-// classify" it is true and it is checkable. So the guard below asserts the emptiness AND asserts that the
-// census document says `NO ACCOUNTABILITY WRITE PATH EXISTS YET` — so that when S6 lands the accountability
-// storage, this test FAILS and forces the census section to be rewritten with a real population.
+// IT USED TO BE A VACUITY GUARD, and that guard did its job: it asserted the accountability population was
+// EMPTY and that the census document said `NO ACCOUNTABILITY WRITE PATH EXISTS YET`, so that when Wave 2C's
+// S6 built the storage the test would FAIL and force the section to be rewritten. It failed. This is the
+// rewrite, and it is deliberately a STRONGER assertion rather than a relaxed one.
+//
+// The vacuity guard could only ever say "nothing exists". The proof below says three things, and ALL THREE
+// must hold:
+//
+//   1. AT LEAST ONE REAL ACCOUNTABILITY WRITE PATH EXISTS — and it is proved by EXECUTING it, not by
+//      finding a file. A governed establishment runs against an Employee authority double, a real
+//      commercial builder is called with the result, and the accountability field is asserted present in
+//      the built record. A path that existed only as source would pass a file-scan and fail a business.
+//   2. EVERY REACHABLE ACCOUNTABILITY WRITE PATH IS GOVERNED. The field-name LITERAL exists in exactly one
+//      module, so every writer must import that module — which makes the import graph the population,
+//      rather than a token scan that would silently miss a module naming the field through the constant.
+//      Every member is classified, and no member is a BYPASS DEFECT.
+//   3. ZERO PATHS MUST NEVER PASS. The population size is asserted NON-ZERO, and so is the count of
+//      GOVERNED members. An empty accountability axis now FAILS this suite, which is the opposite of what
+//      the old guard required and is the whole point of replacing it rather than deleting it.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -51,13 +65,43 @@ const CENSUS_DOC = join(REPO_ROOT, "docs", "security", "ownership-accountability
  *  OPERATING COMPANY a separate axis, so `operatingCompanyId` is deliberately not here. */
 const PERSON_OWNERSHIP_FIELDS = Object.freeze(["accountOwner", "owner", "ownerEmployeeId"]);
 
-/** Field names an accountability write would have to use. The population is expected to be EMPTY. */
-const ACCOUNTABILITY_FIELDS = Object.freeze([
-  "accountablePerson",
-  "accountablePersonId",
-  "accountableEmployeeId",
-  "accountablePersonEmployeeId",
-]);
+/**
+ * The STORED field names an accountability write must use, as string LITERALS.
+ *
+ * The population below is expected to be NON-EMPTY in `functions/src` and EMPTY in `functions/scripts` and
+ * `firestore.rules`. Both halves of that are assertions.
+ */
+const ACCOUNTABILITY_FIELD_LITERALS = Object.freeze(["accountableEmployeeId", "accountablePersonSource"]);
+
+/**
+ * The ONE module allowed to contain those literals: the governed storage declaration. Everything else must
+ * import them, which is what makes the import graph the complete population.
+ */
+const ACCOUNTABILITY_DECLARATION = "src/responsibility/accountablePersonStorage.ts";
+
+/**
+ * §5.2 of docs/security/ownership-accountability-bypass-census.md, pinned.
+ *
+ * Every module that imports the accountability storage declaration, with its classification. ADDING A
+ * MODULE HERE IS A DECISION: it means somebody classified a new accountability write path.
+ */
+const CLASSIFIED_ACCOUNTABILITY_PATHS = Object.freeze({
+  // The declaration itself: the field names, the source vocabulary, the scope, and the only mint.
+  "src/responsibility/accountablePersonStorage.ts": "GOVERNED",
+  // The creation rule (#181), over the Wave-2A Employee port.
+  "src/responsibility/accountablePersonEstablishment.ts": "GOVERNED",
+  // The store: stages, never commits; refuses an out-of-scope family.
+  "src/responsibility/accountablePersonRecordStore.ts": "GOVERNED",
+  // The change path (#184 option (e)).
+  "src/responsibility/governedResponsibilityHandoff.ts": "GOVERNED",
+  // The dedicated census (#187 §1). READ-ONLY -- it is in the population because it imports the
+  // declaration, and its classification says it writes nothing.
+  "src/responsibility/accountabilityCensus.ts": "NOT APPLICABLE",
+  // The three creation builders. Each VERIFIES the governed mark and refuses an unmarked value.
+  "src/opportunity/opportunityCommands.ts": "GOVERNED",
+  "src/salesAgreement/salesAgreementCommands.ts": "GOVERNED",
+  "src/salesOrder/salesOrderCommands.ts": "GOVERNED",
+});
 
 const VALID_CLASSIFICATIONS = Object.freeze([
   "GOVERNED",
@@ -300,53 +344,258 @@ test("RECORDED: the four firestore.rules findings are unchanged, and accountOwne
   }
 });
 
-// ════════════════════ 5. THE ACCOUNTABILITY VACUITY GUARD ════════════════════
+// ════════════════════ 5. THE ACCOUNTABILITY REACHABILITY PROOF ════════════════════
+//
+// Replaces the Wave-2B vacuity guard. Three claims, all required. See the header.
 
-test("VACUITY GUARD: the accountability write population is empty because NOTHING EXISTS to classify", () => {
-  const inSrc = scan(SRC_DIR, [".ts"], ACCOUNTABILITY_FIELDS, { includeTypedOwner: false });
-  const inScripts = scan(SCRIPTS_DIR, [".js", ".mjs", ".cjs"], ACCOUNTABILITY_FIELDS, {
+/**
+ * The ACCOUNTABILITY WRITE POPULATION: the governed storage declaration, plus every module under
+ * `functions/src` that imports it.
+ *
+ * The declaration is a member by definition rather than by import — it cannot import itself, and it is
+ * the module that holds the field literals and the mint, so leaving it out would exclude the one path
+ * every other member depends on.
+ */
+function accountabilityPopulation() {
+  const found = new Set([ACCOUNTABILITY_DECLARATION]);
+  for (const file of walk(SRC_DIR, [".ts"])) {
+    const code = stripComments(readFileSync(file, "utf8"));
+    if (/from\s+["'][^"']*accountablePersonStorage["']/.test(code)) {
+      found.add(relative(FUNCTIONS_DIR, file).split(sep).join("/"));
+    }
+  }
+  return [...found].sort();
+}
+
+test("CLAIM 2a: the accountability field LITERALS exist in exactly ONE module", () => {
+  // This is what makes the import graph the complete population. If a second module spelled
+  // "accountableEmployeeId" itself, it could write the field without importing the declaration, and the
+  // reachability proof below would have a blind spot.
+  for (const literal of ACCOUNTABILITY_FIELD_LITERALS) {
+    const holders = [];
+    for (const file of walk(SRC_DIR, [".ts"])) {
+      const code = stripComments(readFileSync(file, "utf8"));
+      if (new RegExp(`["']${literal}["']`).test(code)) {
+        holders.push(relative(FUNCTIONS_DIR, file).split(sep).join("/"));
+      }
+    }
+    assert.deepEqual(
+      holders,
+      [ACCOUNTABILITY_DECLARATION],
+      `the literal "${literal}" appears outside the governed storage declaration. Every accountability ` +
+        "writer must IMPORT the field name, because that is what makes the import graph the complete " +
+        `population this suite classifies: ${holders.join(", ")}`,
+    );
+  }
+});
+
+test("CLAIM 2b: every module reaching accountability storage is CLASSIFIED, and none is a BYPASS DEFECT", () => {
+  const discovered = accountabilityPopulation();
+  const unclassified = discovered.filter((m) => !(m in CLASSIFIED_ACCOUNTABILITY_PATHS));
+  assert.deepEqual(
+    unclassified,
+    [],
+    "A NEW module can reach accountability storage and is NOT classified in " +
+      "docs/security/ownership-accountability-bypass-census.md §5.2. Per #184 every mutation path capable " +
+      "of changing governed ACCOUNTABILITY must be classified GOVERNED / INERT / LEGACY / BYPASS DEFECT / " +
+      `NOT APPLICABLE — classify it there and pin it here: ${unclassified.join(", ")}`,
+  );
+  const vanished = Object.keys(CLASSIFIED_ACCOUNTABILITY_PATHS)
+    .filter((m) => !discovered.includes(m))
+    .sort();
+  assert.deepEqual(
+    vanished,
+    [],
+    "A classified accountability path no longer reaches the storage declaration. That may be a genuine " +
+      `change, but the census must be updated rather than left describing a path that is gone: ${vanished.join(", ")}`,
+  );
+  for (const [module, classification] of Object.entries(CLASSIFIED_ACCOUNTABILITY_PATHS)) {
+    assert.ok(
+      VALID_CLASSIFICATIONS.includes(classification),
+      `${module} carries "${classification}", which is not one of: ${VALID_CLASSIFICATIONS.join(" · ")}`,
+    );
+    assert.notEqual(
+      classification,
+      "BYPASS DEFECT",
+      `${module} is an accountability BYPASS DEFECT. #184: "eliminate or refuse the bypass" — this axis ` +
+        "was built after that ruling, so a bypass here is a new defect rather than an inherited one.",
+    );
+  }
+});
+
+test("CLAIM 3: ZERO PATHS CANNOT PASS — the population and the GOVERNED count are both non-zero", () => {
+  const discovered = accountabilityPopulation();
+  assert.ok(
+    discovered.length > 0,
+    "THE ACCOUNTABILITY WRITE POPULATION IS EMPTY. That is the vacuous pass this proof exists to refuse: " +
+      "an axis with no write path satisfies 'every path is governed' trivially and measures nothing. " +
+      "Wave 2C S6 built the path; if it is gone, this suite must fail.",
+  );
+  const governed = Object.entries(CLASSIFIED_ACCOUNTABILITY_PATHS).filter(([, c]) => c === "GOVERNED");
+  assert.ok(
+    governed.length >= 1,
+    "NO path is classified GOVERNED. 'All reachable accountability write paths are governed' is then " +
+      "vacuously true over an empty set, which is exactly the claim this proof refuses to accept.",
+  );
+  // And the four load-bearing ones are named individually, so a rename cannot quietly reduce the set.
+  for (const required of [
+    "src/responsibility/accountablePersonStorage.ts",
+    "src/responsibility/accountablePersonEstablishment.ts",
+    "src/responsibility/accountablePersonRecordStore.ts",
+    "src/responsibility/governedResponsibilityHandoff.ts",
+  ]) {
+    assert.ok(discovered.includes(required), `${required} is no longer in the accountability population`);
+    assert.equal(CLASSIFIED_ACCOUNTABILITY_PATHS[required], "GOVERNED");
+  }
+});
+
+test("CLAIM 1: a REAL accountability write path exists — proved by RUNNING it", async () => {
+  // The strongest form available without a database: the governed creation rule runs against an Employee
+  // authority double, and a REAL commercial builder is called with its result. A source scan cannot tell a
+  // working path from a dead one; this can.
+  const { establishCreationAccountablePerson } = await import(
+    "../lib/responsibility/accountablePersonEstablishment.js"
+  );
+  const { ACCOUNTABLE_PERSON_FIELD, ACCOUNTABLE_PERSON_SOURCE_FIELD } = await import(
+    "../lib/responsibility/accountablePersonStorage.js"
+  );
+  const { buildCreateOpportunity } = await import("../lib/opportunity/opportunityCommands.js");
+
+  const authority = {
+    async resolveEmployeeReference(reference) {
+      return {
+        outcome: "RESOLVED",
+        reference,
+        employee: {
+          employeeId: reference.employeeId,
+          tenantId: reference.tenantId,
+          employmentStatus: "ACTIVE",
+          operatingCompanyId: "taylor",
+        },
+      };
+    },
+  };
+  const established = await establishCreationAccountablePerson(
+    { employeeAuthority: authority },
+    {
+      tenantId: "tenant-a",
+      family: "opportunity",
+      explicitAccountableEmployeeId: "emp-accountable",
+      eligibilityPolicy: { policyId: "RATCHET-PROOF", eligibleStatuses: ["ACTIVE"] },
+    },
+  );
+  const built = buildCreateOpportunity(
+    {
+      accountId: "acct-1",
+      ownerEmployeeId: "emp-owner",
+      operatingCompanyId: "taylor",
+      salesChannel: "RETAIL",
+      lines: [{ kind: "PART", ref: "p-1", qty: 1 }],
+      accountablePerson: established,
+    },
+    { actorUid: "uid-actor", nowMillis: 1000 },
+  );
+  assert.equal(
+    built[ACCOUNTABLE_PERSON_FIELD],
+    "emp-accountable",
+    "the executed accountability write path produced no accountability field — the path is source only",
+  );
+  assert.equal(built[ACCOUNTABLE_PERSON_SOURCE_FIELD], "EXPLICIT");
+  // AND THE OWNER IS UNTOUCHED AND DIFFERENT, so the executed path is not the collapse #187 §1 forbids.
+  assert.equal(built.ownerEmployeeId, "emp-owner");
+  assert.notEqual(built.ownerEmployeeId, built[ACCOUNTABLE_PERSON_FIELD]);
+});
+
+test("CLAIM 2c: the path is governed at RUNTIME — an unmarked value cannot reach storage", async () => {
+  // The other half of claim 2. A classification is a statement about a file; this is a statement about
+  // what the code accepts. An accountability write that took a bare id would be governed only by
+  // convention, and convention is what #184 says not to rely on.
+  const { buildCreateOpportunity } = await import("../lib/opportunity/opportunityCommands.js");
+  const input = {
+    accountId: "acct-1",
+    ownerEmployeeId: "emp-owner",
+    operatingCompanyId: "taylor",
+    salesChannel: "RETAIL",
+    lines: [{ kind: "PART", ref: "p-1", qty: 1 }],
+  };
+  for (const forgery of [
+    "emp-accountable",
+    { accountableEmployeeId: "emp-accountable", source: "EXPLICIT", eligibilityPolicyId: "x", employmentStatus: "ACTIVE" },
+  ]) {
+    assert.throws(
+      () => buildCreateOpportunity({ ...input, accountablePerson: forgery }, { actorUid: "u", nowMillis: 1 }),
+      (e) => e.code === "ACCOUNTABLE_PERSON_NOT_GOVERNED",
+      `${JSON.stringify(forgery)} reached a commercial record as an accountable person`,
+    );
+  }
+});
+
+test("accountability storage reaches NO operator script and NO Rules statement", () => {
+  // These two populations ARE empty, and unlike the old guard the emptiness here is a finding rather than
+  // the whole claim: §5.2 classifies both as NOT APPLICABLE, and this is what keeps that true.
+  const inScripts = scan(SCRIPTS_DIR, [".js", ".mjs", ".cjs"], ACCOUNTABILITY_FIELD_LITERALS, {
     includeTypedOwner: false,
   });
-  const rules = readFileSync(RULES, "utf8");
-  const inRules = ACCOUNTABILITY_FIELDS.filter((f) => rules.includes(f));
-
-  // ONE module is expected to name these: the S4 governed boundary, whose `AccountabilityStore` and
-  // `AccountabilityAuditPort` are the SEAM the ruled sequence needs. A seam is not storage — it declares
-  // what the future storage must do and nothing about where it lives. It is allow-listed by name so that
-  // a SECOND module naming an accountability field still fails this guard.
-  const GOVERNED_SEAM = "src/responsibility/governedResponsibilityHandoff.ts";
-  assert.ok(
-    inSrc.has(GOVERNED_SEAM),
-    `${GOVERNED_SEAM} no longer names an accountability field — the governed accountability seam is gone`,
-  );
-
-  const population = [
-    ...[...inSrc.keys()].filter((m) => m !== GOVERNED_SEAM),
-    ...inScripts.keys(),
-    ...inRules.map((f) => `firestore.rules:${f}`),
-  ];
   assert.deepEqual(
-    population.sort(),
+    [...inScripts.keys()].sort(),
     [],
-    "ACCOUNTABILITY STORAGE NOW EXISTS. The census's §5 currently states NO ACCOUNTABILITY WRITE PATH " +
-      "EXISTS YET, which is no longer true. Rewrite §5 with a real population, classify every path " +
-      "GOVERNED / INERT / LEGACY / BYPASS DEFECT / NOT APPLICABLE, and update this guard: " +
-      `${population.join(", ")}`,
+    "an operator script now names an accountability field. Classify it in the census §5.2 — an unclassified " +
+      "script writing a responsibility axis is the bypass #184 calls a defect.",
+  );
+  const rules = readFileSync(RULES, "utf8");
+  const inRules = ACCOUNTABILITY_FIELD_LITERALS.filter((f) => rules.includes(f));
+  assert.deepEqual(
+    inRules,
+    [],
+    "firestore.rules now names an accountability field. Rules are Tier-2 HOLD, so this change did not come " +
+      `from this lane, and the census §5.4 must be re-measured: ${inRules.join(", ")}`,
   );
 });
 
-test("the census document states the accountability truth in the required words", () => {
+test("#187 §1: the accountability census is its OWN census, not a column in the ownership one", () => {
+  // The structural half of MI-Y option (ii). Two separate modules, and the ownership census does not
+  // import the accountability one.
+  const ownershipCensus = stripComments(readFileSync(join(SRC_DIR, "ownership", "ownershipCensus.ts"), "utf8"));
+  assert.ok(
+    !/accountab/i.test(ownershipCensus),
+    "the ownership census now knows about accountability. #187 §1 ruled AGAINST expanding it into a " +
+      "generic mega-census: ownership integrity remains ownership integrity.",
+  );
+  const accountabilityCensus = stripComments(
+    readFileSync(join(SRC_DIR, "responsibility", "accountabilityCensus.ts"), "utf8"),
+  );
+  assert.ok(
+    !/ownerFields|ownershipMatrix/.test(accountabilityCensus),
+    "the accountability census reads the ownership matrix's owner fields. #186 §9: that mechanism must " +
+      "not be made to carry this multi-axis model.",
+  );
+});
+
+test("the census document RECORDS that the vacuity guard was replaced, not deleted", () => {
   const doc = readFileSync(CENSUS_DOC, "utf8");
-  // The brief's explicit anti-vacuity instruction: an empty population must NOT be reported as
-  // "no bypasses proven". Both halves are asserted — the required phrase present, the false one absent.
-  assert.ok(
-    doc.includes("NO ACCOUNTABILITY WRITE PATH EXISTS YET"),
-    "the census must state NO ACCOUNTABILITY WRITE PATH EXISTS YET rather than implying the paths were audited",
+  // The old required phrase must be gone as a CLAIM and present only as the sentence that is now false --
+  // a census that simply dropped it would lose the record of why the section changed.
+  assert.match(
+    doc,
+    /previous revision of this section read `NO ACCOUNTABILITY WRITE PATH EXISTS YET`/,
+    "the census must record that the vacuity statement is now false, rather than silently dropping it",
   );
-  assert.ok(
-    !/no bypasses (were )?proven/i.test(doc.replace(/\*\*"No accountability bypasses were proven"\*\*/g, "")),
-    "the census claims 'no bypasses proven' from an empty population, which is the vacuity trap",
+  assert.match(doc, /now FALSE/, "the census must say so in those words");
+  assert.match(
+    doc,
+    /POSITIVE REACHABILITY PROOF/,
+    "the census must say the guard was REPLACED by a stronger proof, not deleted",
   );
+  // And the vacuity trap itself must still not be committed: an empty population must never be reported
+  // as "no bypasses proven".
+  assert.ok(
+    !/no bypasses (were )?proven/i.test(doc),
+    "the census claims 'no bypasses proven', which is the vacuity trap the previous revision named",
+  );
+  // Every classification word the ruling names appears, and the accountability population is classified.
+  for (const module of Object.keys(CLASSIFIED_ACCOUNTABILITY_PATHS)) {
+    assert.ok(doc.includes(module), `${module} is pinned here but is not named in the census document`);
+  }
 });
 
 test("the census classifies every module and script this ratchet pins", () => {

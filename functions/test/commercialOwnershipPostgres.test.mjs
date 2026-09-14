@@ -105,7 +105,12 @@ async function anOpportunity(overrides = {}) {
 test.after(async () => {
   if (URL) {
     await query(
-      "TRUNCATE eos_commercial.ownership_handoffs, eos_commercial.sales_orders," +
+      // `accountability_handoffs` (migration 020, Wave 2C) references all three record tables, and
+      // Postgres refuses to truncate a referenced table on its own -- so a new referencing table means
+      // every existing TRUNCATE of the referenced ones must name it too. Added here rather than left
+      // to run order, because a cleanup that depends on which suite ran first is not a cleanup.
+      "TRUNCATE eos_commercial.accountability_handoffs, eos_commercial.ownership_handoffs," +
+      " eos_commercial.sales_orders," +
       " eos_commercial.sales_agreements, eos_commercial.opportunities",
     );
   }
@@ -128,8 +133,11 @@ test("migration 008 creates eos_commercial beside eos_policy and eos_ops", { ski
   );
   assert.deepEqual(
     tables.rows.map((r) => r.table_name),
-    ["opportunities", "ownership_handoffs", "sales_agreements", "sales_orders"],
-    "four tables: three commercial records and their shared ownership history",
+    ["accountability_handoffs", "opportunities", "ownership_handoffs", "sales_agreements", "sales_orders"],
+    "five tables: three commercial records, their shared OWNERSHIP history, and -- since migration 020 " +
+      "(Wave 2C) -- their shared ACCOUNTABILITY history. The second history table is deliberately NOT a " +
+      "new source value on `ownership_handoffs`: #187 s1 rules that accountability must not be redefined " +
+      "as ownership, and reusing those columns would make their names lie about what they hold.",
   );
 });
 
