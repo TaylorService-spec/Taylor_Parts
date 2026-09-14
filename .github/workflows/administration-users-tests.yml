@@ -38,6 +38,12 @@ on:
       - "field-ops-app-vite/test/employeeProfileDomain.test.mjs"
       - "field-ops-app-vite/test/changeHistoryModel.test.mjs"
       - "field-ops-app-vite/test/administrationUsersSurfaces.test.jsx"
+      - "field-ops-app-vite/test/employeeOperatingProfile.test.jsx"
+      - "field-ops-app-vite/test/compositionConformance.test.jsx"
+      - "field-ops-app-vite/src/domain/employeeOperatingProfile.js"
+      - "field-ops-app-vite/src/modules/employees/**"
+      - "field-ops-app-vite/src/navigation/AppRail.jsx"
+      - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "functions/src/access/employeeProfileCommands.ts"
       - "functions/src/access/recordChangeHistoryReadService.ts"
@@ -60,6 +66,8 @@ on:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/modules/administration/**"
+      - "field-ops-app-vite/src/modules/employees/**"
+      - "field-ops-app-vite/src/domain/employeeOperatingProfile.js"
       - "field-ops-app-vite/src/shared/ui/ChangeHistory.jsx"
       - "field-ops-app-vite/src/domain/employeeProfile.js"
       - "field-ops-app-vite/src/domain/changeHistory.js"
@@ -111,6 +119,10 @@ jobs:
 
       - name: The rendered surfaces -- directory, record page, edit flow, history (vitest)
         run: npx vitest run test/administrationUsersSurfaces.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Employee operating profile (Employee design v4.1) -- record, self view, pure domain (vitest)
+        run: npx vitest run test/employeeOperatingProfile.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Composition conformance -- the record and collection grammars

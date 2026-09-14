@@ -18,13 +18,13 @@ import {
   EMPLOYEE_TARGET_TYPE,
   EOS_ACCESS_STATE_UNAVAILABLE,
   SECURITY_ROLE_MIRROR_CAPTION,
+  employeeCompanyName,
   employeeDisplayName,
   employeeNameIsAbsent,
   employeeSubtitle,
   employmentFields,
   employmentStatusTone,
   employmentStatusWords,
-  eosAccessLabel,
   eosAccessState,
   identityFields,
   operationalRoleLabels,
@@ -32,8 +32,31 @@ import {
 } from "../../domain/employeeProfile.js";
 import UserEditPanel from "./UserEditPanel.jsx";
 import UserAccessActions from "./UserAccessActions.jsx";
+import {
+  RUNTIME_DEPENDENCIES,
+  describeUserAccessRelationship,
+} from "../../domain/employeeOperatingProfile.js";
+import {
+  EmployeeLifecycle,
+  JobRoleSection,
+  ManagedEmployeesSection,
+  ResponsibilitySection,
+  SourceSection,
+  UserAccessRelationship,
+} from "../employees/EmployeeProfileSections.jsx";
 
 // ADMINISTRATION → USERS → one person. The operational profile of an employee.
+//
+// ════════════════════ EMPLOYEE DESIGN v4.1 -- THE OPERATING PROFILE ════════════════════
+//
+// Composed to the Employee v4.1 profile (NS2-EMP-05a) and User Access linkage (NS2-EMP-10) frames:
+// Employee status with its meaning, operating company and business context, Job Role stated as NOT
+// YET GOVERNED beside operational eligibility, User Access in its own section (linkage, Principal,
+// Security Role as access, account and Role actions), and a rail holding Record Owner, Accountable
+// Person and Assigned Person as three separate axes, the managed-employee context and the source of
+// each part. Facts with no governed read are stated as unavailable with a named runtime dependency
+// (domain/employeeOperatingProfile.js). No data path was added: the page reads exactly what it read
+// before -- the directory subscription, the trusted principal-access read and the audit read.
 //
 // ════════════════════ READ-ONLY BY DEFAULT, DELIBERATELY ════════════════════
 //
@@ -191,31 +214,29 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
       <div className="ns-rulepair" />
 
       <RecordIdentity
-        kicker="User · Employee record"
+        kicker="Employee record"
         // The person's NAME is the reference. A record with no name renders the truthful generic
         // one; the document id is not accepted as a prop and cannot arrive here (DECISIONS #106).
         reference={employeeNameIsAbsent(employee) ? null : name}
         fallbackName={name}
         subtitle={employeeSubtitle(employee)}
-        // EMPLOYMENT status, and only employment status, in the header. The account's status is a
-        // separate fact with its own section, and putting both in one header line is precisely how
-        // the two come to be read as one thing.
+        // EMPLOYEE status, and only Employee status, in the header. User Access is a separate fact
+        // with its own section, and putting both in one header line is precisely how the two come
+        // to be read as one thing.
         statusWords={employmentStatusWords(employee)}
         statusTone={employmentStatusTone(employee)}
         facts={[
-          // "EOS Account", not "EOS Access" -- the value is linkage, and a label reading Access
-          // over it claims more than the record can prove (Owner ruling, PR #1806).
-          { key: "access", label: "EOS Account", value: eosAccessLabel(employee) },
-          { key: "roles", label: "Operational", value: roles.length > 0 ? roles.join(", ") : null },
-          // "Legacy role", not "Security Role": the header is the most-read line on the page, and a
-          // label reading as current governed authority over a legacy mirror is the specific
-          // misreading this record has been causing.
-          { key: "security", label: "Legacy role", value: security },
+          { key: "company", label: "Company", value: employeeCompanyName(employee) },
+          // "User Access", worded as linkage -- the value is whether an account is linked, and a
+          // label reading Access-granted over it would claim more than the record can prove.
+          { key: "access", label: "User Access", value: describeUserAccessRelationship(employee).words },
         ]}
         actions={
           editing ? null : (
+            // EDITS THE EMPLOYEE BUSINESS RECORD ONLY. Account status and Security Roles are User
+            // Access, managed in their own section below -- never through this form.
             <Button variant="primary" data-user-action="edit" onClick={() => setEditing(true)}>
-              Edit User
+              Edit Employee
             </Button>
           )
         }
@@ -247,19 +268,32 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
                 <StructuredFields fields={identityFields(employee)} label="Identity and contact" />
               </RuledSection>
 
-              <RuledSection title="Employment">
-                <StructuredFields fields={employmentFields(employee)} label="Employment" />
+              <RuledSection title="Employment & business context">
+                {/* THE LIFECYCLE IN WORDS AND MEANING. Six governed statuses, each its own sentence:
+                    Inactive is not Terminated, On Leave is not a former Employee, and a former
+                    Employee's record stays fully readable. */}
+                <dl className="fo-detail-list ns-emp-facts">
+                  <dt>Employee status</dt>
+                  <dd>
+                    <EmployeeLifecycle status={employee.employmentStatus} />
+                  </dd>
+                </dl>
+                <StructuredFields
+                  fields={employmentFields(employee).filter((f) => f.label !== "Employment Status")}
+                  label="Employment"
+                />
                 {/* MANAGER IS A RELATIONSHIP, so it is rendered as one rather than as a cell of
                     text. The stored value is another employee's document id; what a reader gets is
-                    that person's name and a link to their own User Detail. A manager flattened
-                    into display text is unfollowable and goes stale the day they are renamed. */}
+                    that person's name and a link to their own record. A manager flattened into
+                    display text is unfollowable and goes stale the day they are renamed. It is a
+                    RECORDED manager, not a governed reporting relation -- see Managed employees. */}
                 <dl className="fo-detail-list">
-                  <dt>Manager</dt>
+                  <dt>Recorded manager</dt>
                   <dd data-user-manager={employee.managerEmployeeId ?? ""}>
                     {!employee.managerEmployeeId ? (
                       <span className="fo-muted">Not recorded</span>
                     ) : manager ? (
-                      <Link to={`/administration/users/${employee.managerEmployeeId}`}>
+                      <Link className="ns-emp-link" to={`/administration/users/${employee.managerEmployeeId}`}>
                         {employeeDisplayName(manager)}
                       </Link>
                     ) : (
@@ -272,46 +306,19 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
                 </dl>
               </RuledSection>
 
-              <RuledSection title="Operational assignment">
-                {/* OPERATIONAL ROLES ARE NOT SECURITY. They mark what an employee is eligible to
-                    do operationally -- firestore.rules' isActiveOperationalRole() reads them as an
-                    additional CONDITION on a permission, never as a permission. Nothing on this
-                    page derives one from the other in either direction. */}
-                {roles.length > 0 ? (
-                  <ul className="fo-chip-list" data-user-operational-roles>
-                    {roles.map((label) => (
-                      <li key={label} className="fo-chip">
-                        {label}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="fo-muted" data-user-operational-roles>
-                    No operational roles recorded.
-                  </p>
-                )}
-                <p className="fo-muted">
-                  Operational roles are eligibility for work, not access. They grant no permission
-                  on their own.
-                </p>
-                {/* NO WAREHOUSE / TERRITORY ROWS. assignedWarehouseIds is a real stored array that
-                    gates firestore.rules' isAssignedToWarehouse(), but no warehouse EntityDefinition
-                    is registered in this program and there is no governed read that turns those ids
-                    into warehouse NAMES -- so a row here could only print ids. Territory has no
-                    employee-side field at all: coverage is assigned to a territory, not stored on a
-                    person (docs/…/commercial coverage). Both are recorded as gaps rather than
-                    rendered as raw ids or invented. */}
-              </RuledSection>
+              {/* JOB ROLE IS NOT GOVERNED, AND OPERATIONAL ELIGIBILITY IS NOT A JOB ROLE. The
+                  eligibility markers are shown for what they are -- firestore.rules'
+                  isActiveOperationalRole() reads them as an additional CONDITION on a permission,
+                  never as a permission -- and nothing derives a Job Role from them, from the
+                  Security Role, or from the job title. */}
+              <JobRoleSection operationalRoles={roles} />
 
-              <RuledSection title="EOS access & security">
-                <dl className="fo-detail-list">
-                  <dt>EOS account</dt>
-                  <dd data-user-access={access}>{eosAccessLabel(employee)}</dd>
-                  {/* NO ACCOUNT STATUS ROW HERE ANY MORE. It read a hard-coded "Not available",
-                      which was honest while no governed read existed. UserAccessActions below now
-                      renders the authoritative value from readPrincipalAccessState, beside the
-                      action that changes it. Two rows for one fact would eventually disagree, and
-                      the stale one is the one without a read behind it. */}
+              {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE. Linkage, the Principal (stated as not yet
+                  readable), the Security Role as an access concept, and the account/Role actions --
+                  none of which the Edit Employee form can touch. */}
+              <RuledSection title="User Access" meta="Access to EOS — separate from the Employee record">
+                <UserAccessRelationship employee={employee} />
+                <dl className="fo-detail-list ns-emp-facts">
                   {/* LEGACY, AND LABELLED AS LEGACY (Owner ruling 2026-09-06 §2). This row is not
                       the person's governed access and must never be read as it -- governed Roles
                       are rendered by UserAccessActions below, from the trusted read. The two are
@@ -320,15 +327,13 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
                   <dt>Legacy compatibility role</dt>
                   <dd data-user-security-role={employee.securityRole ?? ""}>
                     {security ?? <span className="fo-muted">Not recorded</span>}
+                    <p className="fo-muted ns-emp-note">{SECURITY_ROLE_MIRROR_CAPTION}</p>
+                    <p className="fo-muted ns-emp-note">
+                      Security Roles are access. They are not Job Roles and are never used as one.
+                    </p>
                   </dd>
                 </dl>
-                <p className="fo-muted">{EOS_ACCESS_STATE_UNAVAILABLE}</p>
-                <p className="fo-muted">{SECURITY_ROLE_MIRROR_CAPTION}</p>
-                {/* NO LAST SIGN-IN, ACCOUNT CREATED OR LAST ACCESS CHANGE ROWS. All three are
-                    Firebase Auth / users-document facts, and this client has no governed read for
-                    another user's. Rows showing "Unknown" for facts we have no path to would
-                    describe a loading problem rather than the truth, which is that the read does
-                    not exist. */}
+                <p className="fo-muted" data-user-access={access}>{EOS_ACCESS_STATE_UNAVAILABLE}</p>
 
                 {/* The SAME seam this page already uses for the profile write and the history
                     read, threaded through rather than left to the component's own default import.
@@ -344,19 +349,48 @@ export default function UserDetail({ client = administrationUsersClient, hasCapa
             </>
           )}
 
-          {/* AT THE BOTTOM, always, and the SHARED component -- the same one Customers, Equipment,
-              Parts, Work Orders and the Financials records will mount. It renders stored, audited
-              events; there is no prop through which this page could hand it a client-computed
-              diff, which is the difference between a history and a guess. */}
-          <ChangeHistory
-            rows={historyRows}
-            loading={history.loading}
-            unavailable={history.unavailable}
-            onRetry={() => setHistoryNonce((n) => n + 1)}
-            emptyMessage="No recorded changes for this user yet."
-          />
         </div>
+
+        {/* RESPONSIBILITY, MANAGER CONTEXT AND SOURCE -- the rail. Record Owner, Accountable Person
+            and Assigned Person are three separate entries with three separate dependencies; none is
+            readable for a person today, and each says so rather than rendering a zero. */}
+        <aside className="ns-rail" aria-label="Responsibility and source">
+          <ResponsibilitySection perspective="admin" />
+          <ManagedEmployeesSection />
+          <SourceSection
+            rows={[
+              {
+                key: "employee",
+                label: "Employee record",
+                source: `The Administration employee directory read this page has always used — not yet the canonical PostgreSQL Employee authority (${RUNTIME_DEPENDENCIES.EMPLOYEE_RECORD_READ.id}).`,
+              },
+              {
+                key: "access",
+                label: "Account status & governed Roles",
+                source: "The existing trusted principal-access read and role commands, shown under User Access.",
+              },
+              {
+                key: "history",
+                label: "Change history",
+                source: "The existing trusted audit read for this Employee record.",
+              },
+            ]}
+          />
+        </aside>
       </div>
+
+      {/* AT THE BOTTOM, always -- below the record body, so it is last at every width, including the
+          phone where the rail stacks under the main column. The SHARED component, the same one
+          Customers, Equipment, Parts, Work Orders and the Financials records mount. It renders
+          stored, audited events; there is no prop through which this page could hand it a
+          client-computed diff, which is the difference between a history and a guess. */}
+      <ChangeHistory
+        rows={historyRows}
+        loading={history.loading}
+        unavailable={history.unavailable}
+        onRetry={() => setHistoryNonce((n) => n + 1)}
+        emptyMessage="No recorded changes for this Employee yet."
+      />
     </div>
   );
 }

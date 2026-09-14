@@ -190,20 +190,30 @@ describe("User Detail is read-only by default", () => {
     expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
   });
 
-  it("renders identity, employment, operational assignment and access as separate sections", async () => {
+  it("renders identity, employment, Job Role & eligibility and User Access as separate sections", async () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    for (const title of ["Identity & contact", "Employment", "Operational assignment", "EOS access & security"]) {
+    // Employee design v4.1: "Operational assignment" became "Job Role & operational eligibility" (the
+    // word assignment belongs to the Assigned Person axis), and "EOS access & security" became
+    // "User Access" -- the access concept, kept apart from the Employee business record.
+    for (const title of [
+      "Identity & contact",
+      "Employment & business context",
+      "Job Role & operational eligibility",
+      "User Access",
+      "Responsibility",
+    ]) {
       expect(screen.getByRole("heading", { name: title }), title).toBeTruthy();
     }
-    expect(screen.getByText("Taylor Freezer of Arizona")).toBeTruthy();
+    // The operating company appears in the header facts AND in the business context section.
+    expect(screen.getAllByText("Taylor Freezer of Arizona").length).toBeGreaterThan(0);
   });
 
   it("opens with NO form controls -- editing is a choice, never a side effect of arriving", async () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit User" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Edit Employee" })).toBeTruthy();
   });
 
   it("the manager is a LINK to that person's own record, not display text", async () => {
@@ -490,7 +500,7 @@ describe("EOS access and security stay independent, and fail closed", () => {
 describe("Edit User is deliberate, governed, and cannot change access", () => {
   it("opens from the Edit User button, with Save and Cancel", async () => {
     renderDetail(okHistory());
-    fireEvent.click(await screen.findByRole("button", { name: "Edit User" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Edit Employee" }));
     expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
     expect(screen.getByLabelText(/Job Title/)).toBeTruthy();
@@ -603,7 +613,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
-    expect(await screen.findByRole("button", { name: "Edit User" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Edit Employee" })).toBeTruthy();
     // The record still reads as it did.
     expect(screen.getAllByText(/Senior Service Technician/).length).toBeGreaterThan(0);
   });
