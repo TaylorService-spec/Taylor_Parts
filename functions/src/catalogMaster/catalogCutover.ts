@@ -16,8 +16,13 @@
 // Part -> Equipment Model foreign key holds row by row. A run that inserts anything appends ONE
 // eos_policy.audit_events row naming the snapshot digest and counts; a no-op run appends nothing.
 //
-// Actor columns record the cutover operator (`catalog-cutover:<performedBy>`), not the Firestore uid that last
-// touched a document: a Firebase uid is identity, not EOS authority, and is not carried into eos_ops.
+// ACTOR COLUMNS CARRY AN EOS PRINCIPAL (Owner ruling 2026-09-14). created_by / updated_by and the audit actor are the
+// cutover Principal (`principalId`, required to be an ACTIVE principal with an ACTIVE membership in the target
+// tenant). A Firebase creator/updater uid is NOT an EOS Principal id and is never written to any column; the snapshot's
+// legacy uids survive only in the migration evidence the CLI prints (catalogSnapshot.ts LegacyActorProvenance).
+//
+// CERTIFICATION FIXTURES never reach this module: catalogSnapshot.ts excludes them before canonicalization. The copy
+// report and the verify report carry their counts and ids, and verify fails if any of them is found in the target.
 //
 // ════════════════════ VERIFY ════════════════════
 //
@@ -43,7 +48,7 @@ import {
   PART_SELECT,
   partFromRow,
 } from "./catalogRows";
-import type { CanonicalCatalog } from "./catalogSnapshot";
+import type { CanonicalCatalog, CatalogFinding } from "./catalogSnapshot";
 
 type Db = Pick<PoolClient, "query">;
 
@@ -54,7 +59,7 @@ export class CatalogCutoverError extends Error {
   }
 }
 
-/** Does eos_ops.parts carry the deferred-027 descriptive columns? (025 alone is identity only.) */
+/** Does eos_ops.parts carry the deferred-027 descriptive columns? (026 alone is identity only.) */
 export async function partMasterSchemaPresent(db: Db): Promise<boolean> {
   const { rows } = await db.query(
     `SELECT count(*)::int AS n FROM information_schema.columns
@@ -91,25 +96,34 @@ export interface CopyReport {
   readonly canonicalDigest: string;
   readonly equipmentModels: { readonly inserted: number; readonly unchanged: number };
   readonly parts: { readonly inserted: number; readonly unchanged: number };
+  readonly cutoverPrincipalId: string;
+  readonly certificationExcluded: { readonly count: number; readonly records: readonly CatalogFinding[] };
 }
 
 export async function copyCatalog(
   client: PoolClient,
-  input: { tenantId: string; performedBy: string; catalog: CanonicalCatalog; canonicalDigest: string; now?: Date },
+  input: { tenantId: string; principalId: string; catalog: CanonicalCatalog; canonicalDigest: string; certificationExcluded?: readonly CatalogFinding[]; now?: Date },
 ): Promise<CopyReport> {
   const { tenantId, catalog } = input;
-  if (typeof input.performedBy !== "string" || !/^[A-Za-z0-9._@-]{1,100}$/.test(input.performedBy)) {
-    throw new CatalogCutoverError("PERFORMED_BY_INVALID", "--performedBy must name the operator ([A-Za-z0-9._@-], at most 100)");
+  if (typeof input.principalId !== "string" || input.principalId.trim() === "" || input.principalId !== input.principalId.trim()) {
+    throw new CatalogCutoverError("CUTOVER_PRINCIPAL_REQUIRED", "the copy must be performed as a named EOS Principal");
   }
-  const actor = `catalog-cutover:${input.performedBy}`;
+  const actor = input.principalId;
+  const excluded = input.certificationExcluded ?? [];
   await client.query("BEGIN");
   try {
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`catalog-cutover|${tenantId}`]);
     const tenant = await client.query(`SELECT 1 FROM eos_policy.tenants WHERE id = $1`, [tenantId]);
     if (tenant.rows.length === 0) throw new CatalogCutoverError("TENANT_NOT_FOUND", "the target tenant does not exist; the copy never creates one");
+    const member = await client.query(
+      `SELECT 1 FROM eos_policy.tenant_memberships m JOIN eos_policy.principals p ON p.id = m.principal_id
+        WHERE m.tenant_id = $1 AND m.principal_id = $2 AND m.status = 'active' AND p.status = 'active'`,
+      [tenantId, actor],
+    );
+    if (member.rows.length === 0) throw new CatalogCutoverError("CUTOVER_PRINCIPAL_NOT_TENANT_MEMBER", "the cutover Principal is not an active member of the target tenant");
     const partSchema = await partMasterSchemaPresent(client);
     if (catalog.parts.length > 0 && !partSchema) {
-      throw new CatalogCutoverError("PART_TARGET_SCHEMA_ABSENT", "eos_ops.parts lacks the Part Master columns: migration 025 (#1911) and deferred migration 027 must be applied first");
+      throw new CatalogCutoverError("PART_TARGET_SCHEMA_ABSENT", "eos_ops.parts lacks the Part Master columns: migration 026 (#1911) and deferred migration 027 must be applied first");
     }
     const target = await tenantRows(client, tenantId, partSchema);
     const models = plan(catalog.equipmentModels, target.models, EQUIPMENT_MODEL_FIELDS);
@@ -129,12 +143,16 @@ export async function copyCatalog(
       canonicalDigest: input.canonicalDigest,
       equipmentModels: { inserted: models.insert.length, unchanged: models.unchanged },
       parts: { inserted: parts.insert.length, unchanged: parts.unchanged },
+      cutoverPrincipalId: actor,
+      certificationExcluded: { count: excluded.length, records: excluded },
     };
     if (inserted > 0) {
       await client.query(
         `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at)
          VALUES ($1, $2, 'catalog.cutover.copy', $3, 'catalog_snapshot', $4, NULL, $5, $6)`,
-        [`audit_${randomUUID()}`, tenantId, actor, input.canonicalDigest, JSON.stringify(report), input.now ?? new Date()],
+        [`audit_${randomUUID()}`, tenantId, actor, input.canonicalDigest, JSON.stringify({
+          equipmentModels: report.equipmentModels, parts: report.parts, certificationExcluded: excluded.length,
+        }), input.now ?? new Date()],
       );
     }
     await client.query("COMMIT");
@@ -176,6 +194,9 @@ export interface VerifyReport {
   readonly duplicateIdentities: readonly { kind: string; id: string }[];
   readonly danglingEquipmentModelReferences: readonly string[];
   readonly verdictChecks: readonly { kind: string; ref: string; tenant: string; expected: CatalogVerdict; actual: CatalogVerdict }[];
+  readonly certificationExcluded: { readonly count: number; readonly records: readonly CatalogFinding[] };
+  /** Excluded Certification fixture ids found in the target. Must be empty. */
+  readonly certificationFixturesInTarget: readonly string[];
 }
 
 /** Deterministic sample: ids ordered by sha256(id); `all` or the first N. */
@@ -192,8 +213,9 @@ export const ABSENT_TENANT_PROBE = "catalog-cutover-verify-absent-tenant";
 
 export async function verifyCatalog(
   client: PoolClient,
-  input: { tenantId: string; catalog: CanonicalCatalog; sample: number | "all" },
+  input: { tenantId: string; catalog: CanonicalCatalog; sample: number | "all"; certificationExcluded?: readonly CatalogFinding[] },
 ): Promise<VerifyReport> {
+  const excluded = input.certificationExcluded ?? [];
   const { tenantId, catalog } = input;
   await client.query("BEGIN READ ONLY");
   try {
@@ -252,6 +274,9 @@ export async function verifyCatalog(
     }
     await client.query("COMMIT");
 
+    const fixturesInTarget = excluded
+      .filter((x) => (x.kind === "part" ? tParts.has(x.id) : tModels.has(x.id)))
+      .map((x) => `${x.kind}:${x.id}`);
     const duplicateIdentities = [...dupModels.map((r) => ({ kind: "equipment_model", id: String(r.id) })), ...dupParts.map((r) => ({ kind: "part", id: String(r.id) }))];
     const report: VerifyReport = {
       reconciled: false,
@@ -266,12 +291,14 @@ export async function verifyCatalog(
       duplicateIdentities,
       danglingEquipmentModelReferences: dangling,
       verdictChecks,
+      certificationExcluded: { count: excluded.length, records: excluded },
+      certificationFixturesInTarget: fixturesInTarget,
     };
     const reconciled =
       report.counts.equipmentModels.source === report.counts.equipmentModels.target &&
       report.counts.parts.source === report.counts.parts.target &&
       missing.length === 0 && extra.length === 0 && mismatches.length === 0 && duplicateIdentities.length === 0 &&
-      dangling.length === 0 && verdictChecks.every((c) => c.expected === c.actual) &&
+      dangling.length === 0 && verdictChecks.every((c) => c.expected === c.actual) && fixturesInTarget.length === 0 &&
       (catalog.parts.length === 0 || partSchema);
     return { ...report, reconciled };
   } catch (err) {

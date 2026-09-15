@@ -9,18 +9,18 @@
 -- deferred/1759190400000_employee-principal-link-employee-fk.sql for the measured reason). Moving it up one
 -- directory is the deliberate act that applies it.
 --
--- PRECONDITION: migration 025 (1759708800000_catalog-part-identity-reference-authority.sql, PR #1911) is in the
--- applied set. This migration EXTENDS 025's `eos_ops.parts` identity table; it does not restate it. On a tree
--- without 025 it fails on its first ALTER, which is exactly the refusal wanted.
+-- PRECONDITION: migration 026 (1759795200000_catalog-part-identity-reference-authority.sql, PR #1911) is in the
+-- applied set. This migration EXTENDS 026's `eos_ops.parts` identity table; it does not restate it. On a tree
+-- without 026 it fails on its first ALTER, which is exactly the refusal wanted.
 --
 -- ============================================================================
 -- MIGRATION 027. Catalog cutover lane. The Part Master DESCRIPTIVE authority and the catalog write capability
 -- vocabulary, the two things the PostgreSQL catalog writers (functions/src/catalogMaster/) need that no migration
 -- provides yet.
 --
--- ════════════════════ WHY ALTER 025'S TABLE, NOT A SECOND TABLE ════════════════════
+-- ════════════════════ WHY ALTER 026'S TABLE, NOT A SECOND TABLE ════════════════════
 --
--- 025's header: "NO LIFECYCLE / STATUS COLUMN ... it arrives with the Part Master descriptive move, additively."
+-- 026's header: "NO LIFECYCLE / STATUS COLUMN ... it arrives with the Part Master descriptive move, additively."
 -- This is that move. A second `part_master_records` table keyed by the same (tenant_id, id) would be a second
 -- row per Part stating one identity twice -- the shape every eos_ops migration refuses. One Part, one row.
 --
@@ -54,7 +54,7 @@
 
 SET search_path = eos_ops, public;
 
--- Pre-flight: NOT NULL columns cannot be added honestly to rows that have no value for them. 025 creates the
+-- Pre-flight: NOT NULL columns cannot be added honestly to rows that have no value for them. 026 creates the
 -- table empty and nothing writes it, so this only fires if something did.
 DO $$
 DECLARE
@@ -132,7 +132,7 @@ INSERT INTO capabilities (id, key, description) VALUES
 -- Down Migration
 SET search_path = eos_ops, public;
 
--- Refuse, never destroy (migrations 008 / 025): dropping these columns deletes Part Master records that exist
+-- Refuse, never destroy (migrations 008 / 026): dropping these columns deletes Part Master records that exist
 -- nowhere else in this schema, and deleting a capability a Role holds deletes an authorization fact.
 DO $$
 DECLARE

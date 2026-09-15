@@ -43,8 +43,8 @@ import {
 import { parseManufacturerId, parsePartId, validatePart, type PartInput } from "./validation";
 import { EQUIPMENT_MODELS_COLLECTION } from "../equipmentCompatibility/repository";
 import { MANUFACTURER_STATUSES, PART_STATUSES } from "./types";
-// Catalog cutover: the retirement switch (OPEN today; see catalogMaster/firestoreCatalogWriterRetirement.ts).
-import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/firestoreCatalogWriterRetirement";
+// Catalog cutover: the catalog writer authority state (OPEN today; see catalogMaster/catalogWriterState.ts).
+import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState";
 import type { ControlType, Manufacturer, ManufacturerStatus, Part, PartStatus } from "./types";
 
 export const CAP_CATALOG_MANAGE = "inventory.catalog.manage";

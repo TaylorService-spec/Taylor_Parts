@@ -3,11 +3,13 @@
 //   * the PostgreSQL catalog writers name only capability ids the permission catalog registers, and restate the two
 //     Part Master rules that live in a Firebase module exactly;
 //   * nothing under src/catalogMaster, and not the copy tool, loads Firebase or names a Firestore write;
-//   * the Firestore catalog writer RETIREMENT SWITCH is OPEN, is called by every writer it lists, and refuses when
-//     RETIRED;
+//   * the catalog WRITER AUTHORITY STATE (Owner ruling: controlled freeze window): committed OPEN/INACTIVE, exactly
+//     four legal moves, never two authoritative writer sets, no revert once PostgreSQL is ACTIVE, freeze != removal;
+//   * FIREBASE_EXIT_MIGRATION_ONLY: the snapshot exporter's marker, source allowlist, exclusive checksummed output,
+//     and the structural proof that no runtime code can reach it;
 //   * the snapshot census: counts, invalid ids, duplicate canonical identity, missing references, status
-//     distribution, non-master fields, certification-marked decision, digest determinism;
-//   * deferred migration 027 is not applied and extends 025 rather than restating it.
+//     distribution, non-master fields, ALWAYS-excluded Certification fixtures, legacy uid provenance, digest;
+//   * deferred migration 027 is not applied and extends 026 rather than restating it.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -21,7 +23,7 @@ import { migrationFiles } from "./support/migrationSchema.mjs";
 const require = createRequire(import.meta.url);
 const { CATALOG_CAPABILITIES } = require("../lib/catalogMaster/catalogMasterKernel.js");
 const { PART_STATUS_TRANSITIONS, PART_UPDATABLE_FIELDS } = require("../lib/catalogMaster/postgresPartMasterWriter.js");
-const retirement = require("../lib/catalogMaster/firestoreCatalogWriterRetirement.js");
+const writerState = require("../lib/catalogMaster/catalogWriterState.js");
 const { parseCatalogSnapshot, censusCatalogSnapshot, timestampToIsoMicros, CatalogSnapshotError } = require("../lib/catalogMaster/catalogSnapshot.js");
 const { isValidPermissionId } = require("../lib/access/permissionCatalog.js");
 
@@ -80,7 +82,8 @@ test("the copy tool loads no Firebase module and has no Firestore write path", (
   assert.doesNotMatch(code, /\.(set|add|update|delete|create|commit|batch|runTransaction|bulkWriter)\s*\(/);
   // It requires only the fence helpers at module scope; lib/ and pg after the fence.
   const topLevelRequires = code.split("async function main")[0].match(/require\(\s*["'][^"']+["']\s*\)/g);
-  assert.deepEqual(topLevelRequires, ['require("node:fs")', 'require("node:path")', 'require("./measureEmployeeReferenceIntegrity.js")', 'require("./measureWorkforceActivation.js")']);
+  assert.deepEqual(topLevelRequires, ['require("node:fs")', 'require("node:path")', 'require("node:crypto")', 'require("./measureEmployeeReferenceIntegrity.js")', 'require("./measureWorkforceActivation.js")']);
+  assert.doesNotMatch(code, /exportCatalogSnapshot/, "the copy tool consumes a snapshot file; it never loads the exporter");
 });
 
 test("the snapshot export performs only collection reads -- no Firestore write verb anywhere in its code", () => {
@@ -99,21 +102,102 @@ test("the snapshot export encodes Timestamps and refuses every other non-JSON Fi
   assert.throws(() => encodeValue(Number.NaN, FakeTimestamp, "d"), /non-finite/);
 });
 
-// ════════════════════ the retirement switch ════════════════════
+// ════════════════════ FIREBASE_EXIT_MIGRATION_ONLY: the snapshot exporter ════════════════════
 
-test("the Firestore catalog writer retirement switch is OPEN in this change", () => {
-  assert.equal(retirement.FIRESTORE_CATALOG_WRITER_STATE, "OPEN");
-  for (const id of Object.keys(retirement.FIRESTORE_CATALOG_WRITERS)) assert.doesNotThrow(() => retirement.assertFirestoreCatalogWriterOpen(id));
+const EXPORTER = "scripts/exportCatalogSnapshot.js";
+
+test("the exporter is explicitly marked as the migration-only exception and allowlists exactly two source collections", () => {
+  const ex = require("../scripts/exportCatalogSnapshot.js");
+  assert.equal(ex.FIREBASE_EXIT_MIGRATION_ONLY, "FIREBASE_EXIT_MIGRATION_ONLY");
+  assert.match(readFileSync(EXPORTER, "utf8").split("\n")[0], /^\/\/ FIREBASE_EXIT_MIGRATION_ONLY$/);
+  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["parts", "equipment_models"]);
+  assert.equal(ex.assertAllowlisted("parts"), "parts");
+  for (const other of ["users", "part_aliases", "equipment_model_aliases", "auditEvents", ""]) assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted/);
+  const code = stripComments(readFileSync(EXPORTER, "utf8"));
+  assert.deepEqual([...code.matchAll(/\bdb\.collection\((.*?)\)\.get\(/g)].map((m) => m[1]), ["assertAllowlisted(name)"], "every collection read goes through the allowlist");
 });
 
-test("RETIRED refuses every listed writer with a governed error, and an unknown writer id is a programming error", () => {
-  for (const id of Object.keys(retirement.FIRESTORE_CATALOG_WRITERS)) {
-    assert.throws(() => retirement.assertFirestoreCatalogWriterOpen(id, "RETIRED"), (e) => e instanceof retirement.FirestoreCatalogWriterRetiredError && e.code === "FIRESTORE_CATALOG_WRITER_RETIRED" && e.writer === id);
+test("the exporter writes the snapshot and its sha256 exclusively and refuses to overwrite either", () => {
+  const ex = require("../scripts/exportCatalogSnapshot.js");
+  const dir = mkdtempSync(join(tmpdir(), "catalog-export-"));
+  const out = join(dir, "snap.json");
+  const sha = ex.writeSnapshotFiles(out, "{\"a\":1}\n");
+  assert.match(sha, /^[0-9a-f]{64}$/);
+  assert.equal(readFileSync(`${out}.sha256`, "utf8"), `${sha}  snap.json\n`);
+  assert.throws(() => ex.writeSnapshotFiles(out, "{\"a\":2}\n"), /EEXIST/);
+  assert.equal(readFileSync(out, "utf8"), "{\"a\":1}\n", "the first snapshot is untouched");
+  assert.throws(() => ex.assertExportInvocation({ projectId: "eos-platform-sandbox", out }), /never overwritten/);
+  const { verifySnapshotChecksum } = require("../scripts/catalogCutover.js");
+  assert.equal(verifySnapshotChecksum(out).sha256, sha);
+  writeFileSync(join(dir, "tampered.json"), "{}\n");
+  writeFileSync(join(dir, "tampered.json.sha256"), `${sha}  tampered.json\n`);
+  assert.throws(() => verifySnapshotChecksum(join(dir, "tampered.json")), /changed after export/);
+  assert.throws(() => verifySnapshotChecksum(join(dir, "nope.json")), /missing/);
+});
+
+test("STRUCTURAL: no runtime code can import the exporter -- not src, not the client, not integrations, not package entry points, not a workflow step or schedule", () => {
+  const root = resolve("..");
+  const walk = (dir) => readdirSync(dir).flatMap((f) => {
+    if (f === "node_modules" || f === ".git" || f === "lib" || f === "dist") return [];
+    const p = join(dir, f);
+    return statSync(p).isDirectory() ? walk(p) : /\.(ts|tsx|js|jsx|mjs|cjs|json)$/.test(f) ? [p] : [];
+  });
+  const offenders = ["functions/src", "field-ops-app-vite/src", "integrations"]
+    .flatMap((d) => walk(join(root, d)))
+    .filter((f) => /exportCatalogSnapshot|FIREBASE_EXIT_MIGRATION_ONLY/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(offenders, [], "a runtime module references the migration-only exporter");
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.doesNotMatch(JSON.stringify({ main: pkg.main, exports: pkg.exports ?? null, bin: pkg.bin ?? null, scripts: pkg.scripts }), /exportCatalogSnapshot/);
+  for (const wf of readdirSync(join(root, ".github", "workflows"))) {
+    const lines = readFileSync(join(root, ".github", "workflows", wf), "utf8").split("\n").filter((l) => /exportCatalogSnapshot/.test(l));
+    for (const line of lines) assert.match(line.trim(), /^- "functions\/scripts\/exportCatalogSnapshot\.js"$/, `${wf} may name the exporter only as a path filter: ${line}`);
+    if (lines.length > 0) assert.doesNotMatch(readFileSync(join(root, ".github", "workflows", wf), "utf8"), /^\s*schedule:/m, `${wf} names the exporter and has a schedule`);
   }
-  assert.throws(() => retirement.assertFirestoreCatalogWriterOpen("part.delete"), /unknown Firestore catalog writer/);
 });
 
-test("every writer the switch lists calls the guard with its own id, before anything else it does", () => {
+// ════════════════════ the catalog writer authority state (controlled freeze window) ════════════════════
+
+const st = (firestore, postgres) => ({ firestore, postgres });
+
+test("the committed catalog writer state is OPEN/INACTIVE: legacy writers authoritative, PostgreSQL writers not active", () => {
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("OPEN", "INACTIVE"));
+  assert.doesNotThrow(() => writerState.assertCatalogWriterAuthorityCoherent(writerState.CATALOG_WRITER_AUTHORITY));
+  for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) assert.doesNotThrow(() => writerState.assertFirestoreCatalogWriterOpen(id));
+});
+
+test("never two authoritative writer sets: OPEN/ACTIVE and RETIRED/INACTIVE are incoherent", () => {
+  assert.throws(() => writerState.assertCatalogWriterAuthorityCoherent(st("OPEN", "ACTIVE")), (e) => e.code === "TWO_AUTHORITATIVE_WRITER_SETS");
+  assert.throws(() => writerState.assertCatalogWriterAuthorityCoherent(st("RETIRED", "INACTIVE")), (e) => e.code === "NO_AUTHORITATIVE_WRITER_SET");
+  assert.throws(() => writerState.assertCatalogWriterAuthorityCoherent(st("PAUSED", "INACTIVE")), (e) => e.code === "CATALOG_WRITER_STATE_INVALID");
+});
+
+test("the allowed moves are exactly freeze, rollback-before-PostgreSQL-writes, activate, retire", () => {
+  assert.equal(writerState.assertCatalogWriterTransition(st("OPEN", "INACTIVE"), st("FROZEN", "INACTIVE")), "FREEZE");
+  assert.equal(writerState.assertCatalogWriterTransition(st("FROZEN", "INACTIVE"), st("OPEN", "INACTIVE")), "ROLLBACK_BEFORE_POSTGRES_WRITES");
+  assert.equal(writerState.assertCatalogWriterTransition(st("FROZEN", "INACTIVE"), st("FROZEN", "ACTIVE")), "ACTIVATE_POSTGRES");
+  assert.equal(writerState.assertCatalogWriterTransition(st("FROZEN", "ACTIVE"), st("RETIRED", "ACTIVE")), "RETIRE_FIRESTORE");
+  assert.equal(writerState.CATALOG_WRITER_TRANSITIONS.length, 4);
+  // No silent revert once PostgreSQL accepts authoritative writes; no skipping the freeze; no un-retiring.
+  assert.throws(() => writerState.assertCatalogWriterTransition(st("FROZEN", "ACTIVE"), st("FROZEN", "INACTIVE")), (e) => e.code === "CATALOG_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCatalogWriterTransition(st("RETIRED", "ACTIVE"), st("FROZEN", "ACTIVE")), (e) => e.code === "CATALOG_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCatalogWriterTransition(st("OPEN", "INACTIVE"), st("FROZEN", "ACTIVE")), (e) => e.code === "CATALOG_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCatalogWriterTransition(st("OPEN", "INACTIVE"), st("OPEN", "ACTIVE")), (e) => e.code === "TWO_AUTHORITATIVE_WRITER_SETS");
+});
+
+test("FROZEN and RETIRED both refuse every legacy writer, with distinct governed codes (freeze is not removal)", () => {
+  for (const id of Object.keys(writerState.FIRESTORE_CATALOG_WRITERS)) {
+    assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id, st("FROZEN", "INACTIVE")), (e) => e instanceof writerState.FirestoreCatalogWriterClosedError && e.code === "FIRESTORE_CATALOG_WRITER_FROZEN" && e.writer === id);
+    assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id, st("FROZEN", "ACTIVE")), (e) => e.code === "FIRESTORE_CATALOG_WRITER_FROZEN");
+    assert.throws(() => writerState.assertFirestoreCatalogWriterOpen(id, st("RETIRED", "ACTIVE")), (e) => e.code === "FIRESTORE_CATALOG_WRITER_RETIRED");
+  }
+  assert.throws(() => writerState.assertFirestoreCatalogWriterOpen("part.create", st("OPEN", "ACTIVE")), (e) => e.code === "TWO_AUTHORITATIVE_WRITER_SETS");
+  assert.throws(() => writerState.assertFirestoreCatalogWriterOpen("part.delete"), /unknown Firestore catalog writer/);
+  // The freeze covers the catalog import write: Data Import reaches Part creation only through createPart.
+  assert.ok(writerState.FIRESTORE_CATALOG_WRITERS["part.create"].reachedFrom.some((r) => /executeDataImport/.test(r)));
+  assert.match(readFileSync("src/dataImport/firestoreDataImportAdapters.ts", "utf8"), /await createPart\(/);
+});
+
+test("every legacy writer calls the guard with its own id, before anything else it does", () => {
   const pm = readFileSync("src/partMaster/partMasterCommands.ts", "utf8");
   for (const [id, fn] of [["part.create", "createPart"], ["part.update", "updatePart"], ["part.changeStatus", "changePartStatus"]]) {
     const body = new RegExp(`export async function ${fn}\\([^)]*\\)[^{]*\\{\\n([^\\n]*)`).exec(pm);
@@ -126,10 +210,17 @@ test("every writer the switch lists calls the guard with its own id, before anyt
   assert.ok(accept.indexOf("assertFirestoreCatalogWriterOpen") < accept.indexOf("resolvePermission"), "the guard precedes capability resolution");
 });
 
-test("the Part callables map a retired writer to failed-precondition, not internal", () => {
+test("while PostgreSQL is INACTIVE, nothing outside catalogMaster imports the PostgreSQL catalog writers", () => {
+  assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
+  const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : /\.(ts|js|mjs)$/.test(f) ? [join(dir, f)] : []));
+  const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && /postgresPartMasterWriter|postgresEquipmentModelWriter|catalogMasterKernel/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(importers, [], "activating PostgreSQL catalog writers is step 7 and must change CATALOG_WRITER_AUTHORITY in the same change");
+});
+
+test("the Part callables map FROZEN and RETIRED to failed-precondition, not internal", () => {
   const { mapError } = require("../lib/partMaster/partMasterCallables.js");
-  const mapped = mapError(new retirement.FirestoreCatalogWriterRetiredError("part.create"));
-  assert.equal(mapped.code, "failed-precondition");
+  assert.equal(mapError(new writerState.FirestoreCatalogWriterClosedError("part.create", "FROZEN")).code, "failed-precondition");
+  assert.equal(mapError(new writerState.FirestoreCatalogWriterClosedError("part.update", "RETIRED")).code, "failed-precondition");
 });
 
 // ════════════════════ snapshot census ════════════════════
@@ -203,18 +294,50 @@ test("census detects a whole-unit Part whose equipment model is not in the snaps
   assert.ok(census.blockers.includes("MISSING_REFERENCES"));
 });
 
-test("certification-marked records require an explicit decision; exclude leaves them out, include copies them", () => {
+test("identified Certification fixtures are ALWAYS excluded, listed with id and reason, and never block or seed the copy", () => {
   const s = cleanSnapshot();
-  s.parts.push(partDoc("CW-P-0000", { certificationWorld: "1.9.0", certFamily: "CTRL" }));
-  const undecided = censusCatalogSnapshot(parseCatalogSnapshot(s));
-  assert.deepEqual(undecided.census.certificationMarked, { parts: 1, equipmentModels: 0 });
-  assert.deepEqual(undecided.census.blockers, ["CERTIFICATION_MARKED_RECORDS_REQUIRE_DECISION"]);
-  const excluded = censusCatalogSnapshot(parseCatalogSnapshot(s), "exclude");
-  assert.equal(excluded.census.copyReady, true);
-  assert.equal(excluded.catalog.parts.some((p) => p.id === "CW-P-0000"), false);
-  const included = censusCatalogSnapshot(parseCatalogSnapshot(s), "include");
-  assert.equal(included.catalog.parts.some((p) => p.id === "CW-P-0000"), true);
-  assert.notEqual(excluded.census.canonicalDigest, included.census.canonicalDigest);
+  s.parts.push(partDoc("CW-P-0000", { certificationWorld: { version: "1.9.0", datasetId: "cw" }, certFamily: "CTRL" }));
+  s.parts.push(partDoc("CW-P-0001", { dataProvenance: "SYNTHETIC_CERTIFICATION_FACT", version: 0 })); // invalid, but excluded first
+  s.equipmentModels.push(modelDoc("CERT--MODEL-1", { certificationWorld: { version: "1.9.0", datasetId: "cw" } }));
+  const { census, catalog } = censusCatalogSnapshot(parseCatalogSnapshot(s));
+  assert.equal(census.copyReady, true, JSON.stringify(census.blockers));
+  assert.deepEqual(census.certificationExcluded, {
+    counts: { parts: 2, equipmentModels: 1 },
+    records: [
+      { kind: "equipment_model", id: "CERT--MODEL-1", reason: "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker" },
+      { kind: "part", id: "CW-P-0000", reason: "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker" },
+      { kind: "part", id: "CW-P-0001", reason: "CERTIFICATION_FIXTURE_EXCLUDED:dataProvenance" },
+    ],
+  });
+  assert.equal(catalog.parts.some((p) => p.id.startsWith("CW-")), false);
+  assert.equal(catalog.equipmentModels.some((m) => m.id === "CERT--MODEL-1"), false);
+  assert.equal(census.canonicalDigest, censusCatalogSnapshot(parseCatalogSnapshot(cleanSnapshot())).census.canonicalDigest, "fixtures contribute nothing to what is copied");
+  assert.equal(census.nonMasterFields.parts.certFamily, undefined, "an excluded fixture is not inventoried as catalog data");
+});
+
+test("a Certification fixture cannot become seed truth: an operational Part naming a fixture model is a missing reference", () => {
+  const s = snapshotOf({ equipmentModels: [modelDoc("CERT--MODEL-1", { certificationWorld: { version: "1" } })], parts: [wholeUnitPartDoc("UNIT-OPS", "CERT--MODEL-1")] });
+  const { census } = censusCatalogSnapshot(parseCatalogSnapshot(s));
+  assert.deepEqual(census.blockers, ["MISSING_REFERENCES"]);
+});
+
+test("there is no way to include Certification fixtures: the census takes no decision and the CLI refuses the old option", () => {
+  assert.equal(censusCatalogSnapshot.length, 1, "censusCatalogSnapshot(snapshot) has no inclusion parameter");
+  const s = cleanSnapshot();
+  s.parts.push(partDoc("CW-P-0000", { certificationWorld: { version: "1" } }));
+  for (const extra of ["include", true, "exclude"]) {
+    assert.equal(censusCatalogSnapshot(parseCatalogSnapshot(s), extra).catalog.parts.some((p) => p.id === "CW-P-0000"), false);
+  }
+  const { assertCutoverInvocation } = require("../scripts/catalogCutover.js");
+  assert.throws(() => assertCutoverInvocation({ mode: "census", environment: "platform-sandbox", databaseUrlEnv: "X", tenantKey: "t", snapshot: "s", certificationMarked: "include" }, { X: "postgres://x", EOS_ENVIRONMENT: "nonprod" }), /not an option/);
+});
+
+test("legacy Firestore actor uids are kept only as migration provenance, never on a canonical record", () => {
+  const { catalog, legacyActorProvenance } = censusCatalogSnapshot(parseCatalogSnapshot(cleanSnapshot()));
+  const canonicalText = JSON.stringify(catalog);
+  for (const uid of ["legacy-uid-a", "legacy-uid-b", "legacy-uid-c"]) assert.doesNotMatch(canonicalText, new RegExp(uid));
+  assert.deepEqual(legacyActorProvenance.find((p) => p.id === "UNIT-CW-100"), { kind: "part", id: "UNIT-CW-100", legacyCreatedBy: "legacy-uid-a", legacyUpdatedBy: "legacy-uid-c" });
+  assert.equal(legacyActorProvenance.length, 7);
 });
 
 test("census findings that do not block: sku disagreement, duplicate internal part numbers, cross-kind ids, truncated timestamps", () => {
@@ -245,11 +368,11 @@ test("a structurally wrong file is refused before any census", () => {
 
 const DEFERRED_027 = "1759881600000_catalog-master-descriptive-authority.sql";
 
-test("migration 027 is deferred -- not in the applied set -- and extends 025's eos_ops.parts rather than restating it", () => {
-  assert.equal(migrationFiles().some((f) => f.startsWith("1759881600000")), false, "027 must stay in migrations/deferred until #1911 (025) is applied");
+test("migration 027 is deferred -- not in the applied set -- and extends 026's eos_ops.parts rather than restating it", () => {
+  assert.equal(migrationFiles().some((f) => f.startsWith("1759881600000")), false, "027 must stay in migrations/deferred until #1911 (026) is applied");
   const sql = readFileSync(join("migrations", "deferred", DEFERRED_027), "utf8");
   const up = sql.split(/^-- Down Migration/m)[0].split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
-  assert.doesNotMatch(up, /CREATE\s+TABLE/i, "027 creates no table: the Part identity table is 025's");
+  assert.doesNotMatch(up, /CREATE\s+TABLE/i, "027 creates no table: the Part identity table is 026's");
   assert.match(up, /ALTER TABLE parts/);
   assert.match(up, /FOREIGN KEY \(tenant_id, equipment_model_id\)\s+REFERENCES equipment_models \(tenant_id, id\)/);
   for (const key of Object.values(CATALOG_CAPABILITIES)) assert.match(up, new RegExp(`'${key.replace(/\./g, "\\.")}'`));

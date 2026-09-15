@@ -245,11 +245,12 @@ for (const [label, args, env, pattern] of [
   ["no mode", CUTOVER_ARGS, CUTOVER_ENV, /--mode must be one of/],
   ["no environment", ["--mode", "census"], CUTOVER_ENV, /--environment is required/],
   ["production environment", ["--mode", "copy", ...CUTOVER_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a))], CUTOVER_ENV, /production/],
-  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", ...CUTOVER_ARGS, "--performedBy", "op"], { ...CUTOVER_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", ...CUTOVER_ARGS, "--principalId", "p"], { ...CUTOVER_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
   ["EOS_ENVIRONMENT absent", ["--mode", "verify", ...CUTOVER_ARGS], { CATALOG_FENCE_DB: CUTOVER_ENV.CATALOG_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
   ["frozen Certification world", ["--mode", "census", ...CUTOVER_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a))], CUTOVER_ENV, /Certification world, which is frozen/],
   ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "CATALOG_FENCE_DB", "--snapshot", "x.json"], CUTOVER_ENV, /--tenantKey is required/],
-  ["copy without performedBy", ["--mode", "copy", ...CUTOVER_ARGS], CUTOVER_ENV, /--performedBy <operator> is required/],
+  ["copy without an EOS principal", ["--mode", "copy", ...CUTOVER_ARGS], CUTOVER_ENV, /--principalId <EOS principal id> is required/],
+  ["any Certification inclusion option", ["--mode", "copy", ...CUTOVER_ARGS, "--principalId", "p", "--certificationMarked", "include"], CUTOVER_ENV, /not an option/],
 ]) {
   test(`catalog cutover: refuses (${label}) before any client library loads`, () => {
     const res = runCli(CUTOVER, args, env);

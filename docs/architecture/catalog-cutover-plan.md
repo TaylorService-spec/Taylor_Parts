@@ -3,9 +3,10 @@
 Branch `catalog/postgres-cutover`, based on main `736b1f17` (post-C4). Owner option (a): **governed catalog cutover
 before Commercial C6** — COPY ONCE → VERIFY → RECONCILE → CUT OVER WRITERS → DISABLE FIRESTORE CATALOG WRITERS.
 
-This change builds and proves the first three steps' tooling and the target writers, and builds (does not throw) the
-switch for the last step. **Nothing is wired, copied, or disabled in any environment.** Line numbers are at this
-branch's HEAD.
+This change builds and proves the copy/verify tooling, the target writers, and the writer-authority state switch that
+the freeze, activation and retirement steps move. **Nothing is wired, frozen, copied or disabled in any environment.**
+Owner rulings of 2026-09-14 (controlled freeze window, Certification exclusion, legacy creator uid, migration-only
+snapshot export, production fence) are implemented as stated in §4–§6. Line numbers are at this branch's HEAD.
 
 Classes (as in `catalog-reference-authority-census.md`): **A** canonical PostgreSQL authority · **B** PostgreSQL schema,
 not authoritative · **C** Firestore-only authority · **D** derived / denormalized · **E** legacy defect · **F** Owner decision.
@@ -92,7 +93,7 @@ reads it back through `validatePart`:
 
 | Field | Class | PostgreSQL (deferred 027) |
 |---|---|---|
-| doc id = `partId` (= SKU, Decision #44; `parsePartId` `/^[A-Za-z0-9_-]{1,64}$/`) | identity | `eos_ops.parts.id` (025) |
+| doc id = `partId` (= SKU, Decision #44; `parsePartId` `/^[A-Za-z0-9_-]{1,64}$/`) | identity | `eos_ops.parts.id` (026) |
 | `internalPartNumber`, `name`, `description?`, `category?` | C → A | `internal_part_number`, `name`, `description`, `category` |
 | `status` DRAFT/ACTIVE/INACTIVE/SUPERSEDED/DISCONTINUED | C → A | `status ops_part_status` |
 | `stockingUnit`, `controlType`, `stockingClass` | C → A | enums |
@@ -100,9 +101,9 @@ reads it back through `validatePart`:
 | `primaryManufacturerId?`, `primaryManufacturerPartNumber?`, `oemStatus?` | C → A | opaque key (manufacturers stay Firestore), text, enum |
 | `wholeUnit?` (absent = false), `equipmentModelId?` | C → A | `whole_unit`, tenant-scoped FK to `equipment_models` |
 | `version`, `createdAt`, `updatedAt` | repository metadata | carried verbatim |
-| `createdBy`, `updatedBy` (Firebase uids) | identity provenance | **not carried** — see §8 |
+| `createdBy`, `updatedBy` (Firebase uids) | identity provenance | **never written to a column** — migration evidence only (§4.4) |
 | `sku` (== partId), `unitOfMeasure`, `partTrackingMode` | **D** legacy projections | not copied; census counts them and reports `sku ≠ id` |
-| `cert*`, `dataProvenance`, `certificationWorld` | fixture metadata | not copied; marker drives the §8 decision |
+| `cert*`, `dataProvenance`, `certificationWorld` | Certification fixture identification | a marked document is **always excluded** (§4.3) |
 
 **Equipment Model** — `modelToFirestore` (`equipmentModelRepository.ts:37-55`): `equipmentModelId` (canonical
 `{manufacturerId}--{modelNumber}`), `manufacturerId`, `manufacturerName`, `modelNumber`, `displayName`, `family`,
@@ -125,13 +126,16 @@ tenant-scoped (`(tenant_id, id)`). Evidence for the nonprod mapping: `render.yam
 training doc (`docs/training/administration-policy-and-access.md:7`) use; `config/environments.json` declares
 `platform-sandbox` ↔ Firebase `eos-platform-sandbox`. So **platform-sandbox catalog → tenant `taylor-nonprod`** is
 supported by evidence, but it is an operator assertion, not a stored fact: the tool takes `--tenantKey` explicitly and
-never infers it. **Production has no PostgreSQL tenant and no mapping (unresolved, §8).**
+never infers it. **Production has no PostgreSQL tenant and no mapping; none is inferred (§6).**
+
+---
 
 ---
 
 ## 2. Target PostgreSQL writers (built, unwired)
 
-`functions/src/catalogMaster/` — no Firebase import (static test), not composed in `functions/src/eosApi/server.ts`.
+`functions/src/catalogMaster/`: no Firebase import (static test and runtime load probe), not composed in
+`functions/src/eosApi/server.ts` (structural test tied to the writer state, §5.3).
 
 | Module | Commands | Capability (existing ids, `permissionCatalog.ts`) |
 |---|---|---|
@@ -139,10 +143,11 @@ never infers it. **Production has no PostgreSQL tenant and no mapping (unresolve
 | `postgresEquipmentModelWriter.ts` | `createEquipmentModel`, `updateEquipmentModel` | `equipment.model.manage` (= Firestore `COMMAND_CAPABILITIES.importEquipmentModel`) |
 | `postgresPartMasterWriter.ts` | `createPart`, `updatePart`, `changePartStatus` | `inventory.catalog.manage` / `inventory.catalog.activate` (= `CAP_CATALOG_MANAGE` / `CAP_CATALOG_ACTIVATE`) |
 | `catalogRows.ts` | canonical record shape, row mapping, inserts — shared by writers and copy | — |
+| `catalogWriterState.ts` | the writer-authority state and its legal transitions (§5.3) | — |
 
 Rules reused, not restated: `validatePart` and `validateEquipmentModel` (pure). Restated with parity tests: the Part
 status transition table and updatable-field allowlist. Ids carried verbatim (no remapping). Allowlisted input fields;
-`version` is repository authority (create = 1, update = expected + 1).
+`version` is repository authority (create = 1, update = expected + 1). Actor columns are always an EOS Principal id.
 
 **Idempotency is content-addressed.** The Firestore commands are idempotent by *key* (an audit document per key), not
 by id. PostgreSQL has no catalog receipts table and must not borrow `eos_commercial.command_receipts`. So: a create
@@ -151,169 +156,236 @@ whose row already holds exactly the requested fields replays; an update/status c
 updates are `NO_CHANGES` rather than a version bump.
 
 **Gaps (CATALOG_AUTHORITY_GAP):**
-1. **Capability vocabulary.** `inventory.catalog.manage`, `inventory.catalog.activate`, `equipment.model.manage` exist in
-   `permissionCatalog.ts` but **not in `eos_policy.capabilities`**, so no PostgreSQL Role can be granted them. Deferred
-   027 registers them (definitions only, no grant).
+1. **Capability vocabulary.** The three ids exist in `permissionCatalog.ts` but not in `eos_policy.capabilities`; no
+   PostgreSQL Role can be granted them. Migration 027 registers them (definitions only, no grant).
 2. **INTERNAL_PN alias.** Firestore `updatePart` preserves a changed `internalPartNumber` as a `part_aliases` alias
    atomically. `part_aliases` is not in PostgreSQL, so the PostgreSQL `updatePart` **fails closed**
    (`INTERNAL_PART_NUMBER_ALIAS_AUTHORITY_UNAVAILABLE`) on a number change until aliases move.
 3. **Dependent Firestore authorities.** `part_aliases`, `part_supplier_items`, `equipment_model_aliases`,
    `equipment_part_compatibility` commands check Part / Equipment Model existence in Firestore
-   (`partAliasCommands.ts:101`, `partSupplierItems.ts:307`, `equipmentCompatibility/commands.ts:533,548`). After writer
-   cutover, a record created only in PostgreSQL is invisible to them. See §5.
-4. **Manufacturers** stay Firestore; `primary_manufacturer_id` is an opaque key (the Firestore command never checked it either).
+   (`partAliasCommands.ts:101`, `partSupplierItems.ts:307`, `equipmentCompatibility/commands.ts:533,548`). They must move
+   or stay frozen with the catalog until their own cutover.
+4. **Manufacturers** stay Firestore; `primary_manufacturer_id` is an opaque key (the Firestore command never checked it).
 
 ---
 
 ## 3. Schema
 
-- **Equipment Model:** `eos_ops.equipment_models` (migration 008, on main) already holds every master field. **No
-  migration.**
-- **Part:** `functions/migrations/deferred/1759881600000_catalog-master-descriptive-authority.sql` (**027, deferred**):
-  `ALTER TABLE eos_ops.parts` (025's identity table) adding the §1.3 columns as enums/booleans/text, `validatePart`'s
-  combination rules as CHECKs, the tenant-scoped FK to `equipment_models`, `version/updated_by/updated_at`; plus the
-  three capability vocabulary rows. Pre-flight refuses if `eos_ops.parts` has rows; Down refuses while records or grants
-  exist. It creates no table and restates nothing of 025.
+- **Equipment Model:** `eos_ops.equipment_models` (migration 008, on main) already holds every master field. No migration.
+- **Part:** migration **027**, `functions/migrations/deferred/1759881600000_catalog-master-descriptive-authority.sql`:
+  `ALTER TABLE eos_ops.parts` — the identity table of migration **026**
+  (`1759795200000_catalog-part-identity-reference-authority.sql`, PR #1911) — adding the §1.3 columns as
+  enums/booleans/text, `validatePart`'s combination rules as CHECKs, the tenant-scoped FK to `equipment_models`,
+  `version/updated_by/updated_at`; plus the three capability vocabulary rows. Pre-flight refuses if `eos_ops.parts` has
+  rows; Down refuses while records or grants exist. It creates no table and restates nothing of 026.
 
-**Why deferred (least-coupled design).** 027 extends a table that exists only on #1911. Putting it in
-`functions/migrations/` here would break every migration run on this branch; merging #1911 into this branch is not
-allowed; restating 025's DDL is forbidden. The repository already has the pattern for "prepared, precondition not
-met": `functions/migrations/deferred/` (neither node-pg-migrate nor `migrationSchema.mjs` reads it). Moving 027 up one
-directory after #1911 merges is the integration act. The PostgreSQL suite proves both states: without 025 it runs on
-main's migration set (Part proofs skip with `DEPENDS ON #1911`, and the copy refuses Parts with
-`PART_TARGET_SCHEMA_ABSENT`); with 025 present it migrates a temporary symlink directory of every migration plus
-deferred 027 through the real runner, so 027 executes exactly as it will once moved. (Proved locally both ways — §9.)
+**Migration order (Owner):** 024 + 025 CRM (`1759622400000`, `1759708800000`); 026 catalog foundation #1911
+(`1759795200000`); Employee runtime authority PR(s) take timestamps strictly between `1759795200000` and
+`1759881600000` and integrate before this cutover; **027 = this cutover (`1759881600000`)**.
+
+**Why deferred.** 027 extends a table that exists only once #1911 lands. It stays in `functions/migrations/deferred/`
+(read by neither node-pg-migrate nor `migrationSchema.mjs`, the repository's existing pattern for a prepared migration
+whose precondition is not met) until the coordinator confirms #1911 is on main; then this branch **merges main
+normally** and moves 027 up one directory. The PostgreSQL suite proves both states: without 026 it runs on main's
+migration set (Part proofs skip with `DEPENDS ON #1911`; the copy refuses Parts with `PART_TARGET_SCHEMA_ABSENT`);
+with 026 present it migrates a temporary symlink directory of every migration plus deferred 027 through the real
+runner. (Proved locally both ways — §9.)
 
 ---
 
 ## 4. Population and reconciliation
 
 ```
-exportCatalogSnapshot.js (Firestore, read only)  →  snapshot.json  →  catalogCutover.js census | copy | verify (PostgreSQL)
+exportCatalogSnapshot.js (FIREBASE_EXIT_MIGRATION_ONLY, read only) → snapshot.json + snapshot.json.sha256
+      → catalogCutover.js census | copy | verify (PostgreSQL, no Firebase module)
 ```
 
-**Source approach and the Firebase exit guard.** `scripts/firebaseExitGuard.mjs` scans `functions/src`,
-`field-ops-app-vite/src` and `integrations` only; `functions/scripts` is not fenced and is where every existing
-Firestore operator tool lives. The guard would therefore *permit* a copy tool that reads Firestore directly. The design
-still splits the read out: the PostgreSQL tool loads no Firebase module (static test + fence preload), and the exact
-bytes copied are a hashable artifact. No existing export fits (`extractProductionFixtures.mjs` is production-only,
-bounded and sanitizing). `exportCatalogSnapshot.js` is the minimal read-only step: only `collection(name).get()` on
-`parts` and `equipment_models`, Timestamps tagged, any other non-JSON value refused, output `0600`, never overwritten.
+### 4.1 The migration-only Firestore export (Owner ruling)
 
-**Snapshot format** (`catalogSnapshot.ts` header): `{format:"EOS_CATALOG_SNAPSHOT", version:1, source:{firebaseProjectId,
-exportedAt}, parts:[{id,data}], equipmentModels:[{id,data}]}`.
+`functions/scripts/exportCatalogSnapshot.js` is the one permitted Firebase read of this cutover, marked with the literal
+`FIREBASE_EXIT_MIGRATION_ONLY` (first line, and the exported constant). Conditions and how each is held:
 
-**Canonicalization** = what the Firestore adapters read back (`partFromFirestore`, `modelFromFirestore`, `readMeta`). A
-document either would refuse is INVALID and blocks the copy; nothing is repaired or defaulted. Timestamps are compared
-at microsecond precision (TIMESTAMPTZ); sub-microsecond truncation is counted.
+| Condition | Enforcement |
+|---|---|
+| read-only, source-export purpose only | only `db.collection(assertAllowlisted(name)).get()`; no write verb in the code (static test) |
+| exact source allowlist `parts`, `equipment_models` | `SOURCE_COLLECTIONS` + `assertAllowlisted` (test: every read goes through it; other names refused) |
+| not imported by runtime; not reachable from client or normal API | STRUCTURAL test: no file under `functions/src`, `field-ops-app-vite/src`, `integrations` names it; not in `functions/package.json` `main`/`exports`/`bin`/`scripts`; the copy tool never loads it |
+| no scheduled job, no sync | STRUCTURAL test: a workflow may name it only as a path filter, and no workflow naming it has `schedule:` |
+| environment-fenced / Certification-fenced / production-fenced | `--projectId` required and registry-declared; `eos-platform-certification` refused; `taylor-parts` refused outright (no production mode) — fence tests prove each refusal precedes loading `firebase-admin` |
+| output immutable and checksummed | snapshot and `<snapshot>.sha256` created with `wx` / `0600`, never overwritten (test); `catalogCutover.js` refuses a missing or mismatching checksum in every mode |
+| no credentials/secrets in output | output = source project id, export time, documents; credentials come from ADC and are never read into the output |
 
-**Modes:**
+The Firebase exit guard (`scripts/firebaseExitGuard.mjs`) scans only `functions/src`, `field-ops-app-vite/src` and
+`integrations`; `functions/scripts` is where existing Firestore operator tools live, so the guard permits this file and
+the structural test above is what keeps it out of the runtime.
+
+**Retirement** (convention: `docs/architecture/firebase-exit-manifest.json` — migrationState `CUTOVER` "the Firebase
+path is inert in the live runtime", `RETIRED` "removed from source"; dispositions `RETIRE` "deleted rather than
+migrated", `ARCHIVE` "captured as read-only evidence/history"): the exporter is **deleted** in the change that removes
+the legacy Firestore catalog writers (§5.2 step 10). The exported snapshot and its `.sha256` are the **archive**, kept
+with the cutover evidence outside the repository.
+
+### 4.2 Copy tool
+
+`functions/scripts/catalogCutover.js` — canonicalization = what the Firestore adapters read back (`partFromFirestore`,
+`modelFromFirestore`, `readMeta`); a document either would refuse is INVALID and blocks the copy; nothing is repaired.
+Timestamps compared at microsecond precision.
 
 | Mode | Behaviour |
 |---|---|
-| `census` | read only: counts, certification-marked counts, invalid records (identity mismatch, non-canonical id, domain, meta), duplicate canonical identities, Part → Equipment Model references missing from the snapshot, status distribution, non-master field counts, `sku ≠ id`, duplicate internal part numbers, cross-kind ids, truncated timestamps, blockers, canonical digest; target tenant row counts and whether the Part schema is present |
-| `copy` | refuses unless census is copy-ready; ONE transaction + per-tenant advisory lock; inserts absent records verbatim (models before parts); identical present → nothing; **different present → `DRIFT_DETECTED`, everything rolled back, never overwritten**; tenant rows not in the snapshot → `TARGET_HAS_UNKNOWN_RECORDS`; one `eos_policy.audit_events` row (`catalog.cutover.copy`, digest, counts) only if something was inserted; actor columns `catalog-cutover:<performedBy>` |
-| `verify` | READ ONLY transaction: source vs target counts, identity-set reconciliation, exact field reconciliation over a deterministic sample (`--sample N|all`, sha256 order), duplicate identity, dangling Part → Equipment Model references, reference verdict spot-checks with the #1911 adapter's tenant-scoped EXISTS probe (own kind FOUND, other kind WRONG_KIND, absent ref and absent tenant NOT_FOUND) |
+| `census` | read only: counts, invalid records, duplicate canonical identities, Part → Equipment Model references missing from the snapshot, status distribution, non-master field counts, `sku ≠ id`, duplicate internal part numbers, cross-kind ids, truncated timestamps, blockers, canonical digest, **excluded Certification fixtures**; target tenant counts |
+| `copy` | refuses unless census is copy-ready; ONE transaction + per-tenant advisory lock; inserts absent records verbatim (models before parts) as the cutover **EOS Principal**; identical present → nothing; **different present → `DRIFT_DETECTED`, all rolled back, never overwritten**; tenant rows not in the snapshot → `TARGET_HAS_UNKNOWN_RECORDS`; one `eos_policy.audit_events` row (`catalog.cutover.copy`, digest, counts) only if something was inserted |
+| `verify` | READ ONLY: counts, identity-set reconciliation, exact field reconciliation (`--sample N|all`), duplicate identity, dangling references, reference verdict spot-checks with the #1911 adapter's tenant-scoped EXISTS probe, and **no excluded Certification fixture present in the target** |
 
-**Fence** (refuses before `pg`/`lib` load; proved by subprocess with a module-load sentinel): `--environment` declared in
-`config/environments.json`, not production by role or by project id, `--databaseUrlEnv` named (shared
-`assertMeasurementTarget`); `EOS_ENVIRONMENT` exactly `nonprod` (shared `assertNonprodRuntime`); not
-`platform-certification`; `--tenantKey`, `--snapshot`, and `--performedBy` for copy. After parsing: the snapshot's
-`firebaseProjectId` must equal the environment's declared project and must not be `taylor-parts`. The export refuses no
-`--projectId`, `taylor-parts` (even "confirmed"), `eos-platform-certification`, undeclared projects, missing/existing `--out`.
+Every mode prints `evidence`: `snapshotSha256`, `certificationExcluded` (counts, ids, reason), `legacyActorProvenance`.
+
+**Fence** (before `pg`/`lib` load; subprocess-proved): `--environment` declared, not production by role or project id,
+`--databaseUrlEnv` named (shared `assertMeasurementTarget`); `EOS_ENVIRONMENT` exactly `nonprod` (shared
+`assertNonprodRuntime`); not `platform-certification`; `--tenantKey`, `--snapshot`, `--principalId` for copy; any
+`--certificationMarked` option refused. After parsing: checksum must match; snapshot `firebaseProjectId` must equal the
+environment's declared project and must not be `taylor-parts`.
+
+### 4.3 Certification exclusion (Owner ruling)
+
+Certification remains frozen. A document is an **explicitly identified Certification fixture** when it carries the
+`certificationWorld` marker (`functions/scripts/certificationWorld/manifest.mjs` `MARKER_FIELD`; `parts` and
+`equipment_models` are markered groups, only `warehouses` is markerless) or `dataProvenance:
+"SYNTHETIC_CERTIFICATION_FACT"`. Such documents are **always excluded** before canonicalization — there is no option
+to include them — so they are never copied, never block the copy, and never serve as seed truth (an operational Part
+naming a fixture model is a `MISSING_REFERENCES` blocker). Their counts, ids and exclusion reason are in census, copy
+and verify evidence; verify fails if any is found in the target. Nothing reads or writes Certification data beyond the
+read-only export of the source project, and the Certification project itself is refused.
+
+### 4.4 Legacy creator/updater uid (Owner ruling)
+
+A Firebase uid is not an EOS Principal id. Copied rows carry `created_by` / `updated_by` = the cutover Principal
+(`--principalId`, which must be an active principal with an active membership in the target tenant), as does the audit
+row's `actor_uid`. Legacy `createdBy` / `updatedBy` uids are kept **only** in `evidence.legacyActorProvenance` in the
+tool's JSON output (the reconciliation / import provenance artifact) — never in a business column and never in the
+audit payload. Tests assert no fixture uid appears in any `created_by`, `updated_by`, `actor_uid` or audit `after`.
 
 **Nothing has been run against any Firebase project or Render database.**
 
 ---
 
-## 5. Writer cutover and old-writer disablement
+## 5. Controlled freeze window — cutover sequence (Owner ruling)
 
-### 5.1 The reader constraint (why the order matters)
+### 5.1 Sequence
 
-Every Firestore reader in §1.2 keeps reading Firestore after the copy. With no sync and no dual write, **any catalog
-write accepted by PostgreSQL after the copy is invisible to those readers**, and any write accepted by Firestore after
-the copy is drift. The only coherent sequence therefore freezes Firestore first and opens PostgreSQL writers only when
-the readers that must see new catalog records have moved (or the Owner accepts a catalog write freeze for that window
-— §8).
+Each step separately authorized and evidenced. **Never two authoritative writer sets.**
 
-### 5.2 Sequence (each step separately authorized and evidenced)
+1. **Pre-cutover census** — export a read-only snapshot, run `census`; resolve every blocker at the source through the
+   existing governed writers (never in the tool). Business operations continue.
+2. **FREEZE legacy Firestore catalog writers** — writer state `OPEN/INACTIVE → FROZEN/INACTIVE`, deployed to the
+   environment. During the freeze: **no Part Master create / update / status change, no Equipment Model create /
+   update, no catalog import write** (`executeDataImport` reaches Parts only through `createPart`).
+3. **Export source snapshot** — the post-freeze snapshot + `.sha256`: the exact source of the copy.
+4. **Copy once into PostgreSQL** — `copy`.
+5. **Verify** — `verify --sample all`; a rerun of `copy` must be `NO_CHANGES`.
+6. **Reconcile** — every count, identity, field, exclusion and verdict check reconciled; findings explained.
+7. **Activate PostgreSQL writers** — `FROZEN/INACTIVE → FROZEN/ACTIVE`: governed capability grants; the catalogMaster
+   commands become the only writer set.
+8. **Compose the PostgreSQL catalog authority in Render** — the #1911 reference authority and the catalog writers behind
+   the trusted API; client and import writers pointed at it.
+9. **Verify governed read/write behaviour** — through the Render API, with real principals.
+10. **Disable/remove legacy Firestore writers** — `FROZEN/ACTIVE → RETIRED/ACTIVE`, then delete the legacy writers,
+    their callable exports (`functions/src/index.ts:400-402`), the migration-only exporter (§4.1), and shrink
+    `docs/architecture/firebase-exit-baseline.json`.
+11. **Unfreeze business operations.**
 
-1. **Integrate** #1911 (025) → this branch (move deferred 027 into `functions/migrations/`) → migrate nonprod.
-2. **Export** `exportCatalogSnapshot.js --projectId eos-platform-sandbox`; record sha256.
-3. **Census** → resolve every blocker at the source through the existing governed writers (never in the tool); decide
-   certification-marked records (§8).
-4. **Freeze Firestore catalog writers:** set `FIRESTORE_CATALOG_WRITER_STATE = "RETIRED"` in
-   `functions/src/catalogMaster/firestoreCatalogWriterRetirement.ts`, deploy Functions to the environment. From here:
-   - callables `createPart`, `updatePart`, `changePartStatus` → `failed-precondition` (`partMasterCallables.ts` `mapError`);
-   - `executeDataImport` Part rows → refused per row by `createPart`;
-   - `runEquipmentCompatibilityCommand` `importEquipmentModel` → pre-acceptance denial;
-   - operator scripts `executePartMasterCreate.js`, `generatePartMasterMigrationEvidence.js` → refused (they call `createPart`);
-   - client paths `partMasterCommandClient.js` (create/update/changeStatus) and `dataImportClient.js` (execute) receive the refusal.
-   Not covered by the switch (raw Admin SDK writes, must not be run after the freeze): `seedSandboxBaseline.js`,
-   Certification world scripts (frozen anyway).
-5. **Re-export after the freeze**, census, **copy**, **verify `--sample all`**. A reconciled verify on a post-freeze
-   snapshot is the population evidence. A rerun must be `NO_CHANGES`.
-6. **Move readers** (§1.2) to PostgreSQL through the Render API, domain by domain (separate PRs): Commercial reference
-   authority composition (#1911's adapter, CATALOG_CUTOVER_TAIL) first, since it is what C6 needs.
-7. **Open PostgreSQL writers:** compose `catalogMaster` commands into the Render transport, grant the capabilities
-   (governed Role grant), move `partMasterCommandClient.js` / Data Import to the API. Only now do catalog writes resume.
-8. **Remove** the retired Firestore writers, their callable exports (`functions/src/index.ts:400-402`), the switch, and
-   shrink `docs/architecture/firebase-exit-baseline.json`.
+The freeze covers, via the guard: callables `createPart`, `updatePart`, `changePartStatus` (→ `failed-precondition`,
+"frozen for the catalog cutover"); Part rows of `executeDataImport`; `runEquipmentCompatibilityCommand`
+`importEquipmentModel`; operator scripts `executePartMasterCreate.js`, `generatePartMasterMigrationEvidence.js`; client
+paths `partMasterCommandClient.js` and `dataImportClient.js`. Not covered (raw Admin SDK writers, forbidden during the
+freeze by procedure): `seedSandboxBaseline.js`; Certification scripts (frozen regardless).
 
-The switch is proved (offline): OPEN today; RETIRED refuses every listed writer; each writer calls it with its own id
-before capability resolution; the callable maps it to `failed-precondition`.
+### 5.2 Rollback
+
+- **Before PostgreSQL writes begin** (any failure in steps 3–6, or before step 7 completes): keep the PostgreSQL target
+  **inactive**, move the writer state `FROZEN/INACTIVE → OPEN/INACTIVE` (restore/re-enable the legacy writers),
+  investigate. **No partial cutover**: the copy is all-or-nothing, and rows already copied stay inert (nothing reads or
+  writes them) until a clean rerun.
+- **Once PostgreSQL writers accept authoritative writes** (after step 7): **no silent revert to Firestore.** A reverse
+  migration is a separate Owner decision and a new design, not a state of the switch.
+
+### 5.3 The writer-state switch matches the ruling
+
+`functions/src/catalogMaster/catalogWriterState.ts` — `CATALOG_WRITER_AUTHORITY = { firestore: "OPEN", postgres:
+"INACTIVE" }` (a code constant; changing it is a reviewed commit and deploy).
+
+| Move | From → To | Step |
+|---|---|---|
+| `FREEZE` | OPEN/INACTIVE → FROZEN/INACTIVE | 2 |
+| `ROLLBACK_BEFORE_POSTGRES_WRITES` | FROZEN/INACTIVE → OPEN/INACTIVE | rollback |
+| `ACTIVATE_POSTGRES` | FROZEN/INACTIVE → FROZEN/ACTIVE | 7 |
+| `RETIRE_FIRESTORE` | FROZEN/ACTIVE → RETIRED/ACTIVE | 10 |
+
+Incoherent: `OPEN/ACTIVE` (two authoritative writer sets), `RETIRED/INACTIVE` (none). Every other move is refused,
+including any move out of `ACTIVE` and any move back to `OPEN` once `ACTIVE`. **Freeze ≠ removal:** `FROZEN` keeps the
+legacy writers in source, refusing with `FIRESTORE_CATALOG_WRITER_FROZEN`; `RETIRED` refuses with
+`FIRESTORE_CATALOG_WRITER_RETIRED` and is the precondition for deleting them. The re-enable path (`ROLLBACK…`) exists
+only from `FROZEN/INACTIVE`. Tests: committed state coherent; the four moves exactly; all others refused; each legacy
+writer calls the guard first; while `postgres` is `INACTIVE` nothing outside catalogMaster imports the PostgreSQL writers.
 
 ---
 
-## 6. Production stop conditions
+## 6. Production
 
-Stop and obtain separate authorization before any of: a production (`taylor-parts`) export or census (a production data
-read — both tools refuse it outright and have no production mode); creating a production PostgreSQL tenant or choosing
-its key; deploying the RETIRED switch to production; any copy into a production database. Also stop if: census reports
-any blocker; verify is not reconciled; a post-freeze rerun is not `NO_CHANGES`; any Firestore catalog write is observed
-after the freeze; `sku ≠ id` or duplicate internal part numbers are found and not explained.
+**No production catalog mutation is authorized.** Both tools refuse production (environment role, project id
+`taylor-parts`, snapshot source), and neither infers a tenant: the target tenant is always the explicit `--tenantKey`;
+no production tenant mapping exists or is assumed.
+
+Production prerequisites, each a separate Owner authorization before any production step:
+1. **Source census** of the production Firebase project's `parts` / `equipment_models` (a production data read):
+   counts, invalid records, duplicates, missing references, Certification markers, `sku ≠ id`, duplicate internal part
+   numbers.
+2. **Target tenant mapping**: a production PostgreSQL tenant created by its own governed bootstrap, and the Owner's
+   statement of which Firebase project's catalog belongs to which tenant.
+3. **Counts and identity reconciliation** plan and acceptance criteria for that tenant.
+4. **Owner cutover authorization** for the §5 sequence in production, including the freeze window.
+5. A production mode for the tools, added only under that authorization (none exists today).
+
+Stop conditions in any environment: a census blocker; verify not reconciled; a post-freeze copy rerun not `NO_CHANGES`;
+a Firestore catalog write observed after the freeze; unexplained `sku ≠ id` or duplicate internal part numbers.
 
 ---
 
 ## 7. Integration order and dependencies
 
-1. **#1911** (catalog foundation: 025 + reference authority) merges first.
-2. This branch rebases on it and, in the integration commit, moves
-   `migrations/deferred/1759881600000_catalog-master-descriptive-authority.sql` into `migrations/`. The Part proofs in
-   `catalogCutoverPostgres.test.mjs` then run in CI without change. (C4's "023 is the latest migration" tests will need
-   the coordinator's migration-pin patch at that point, as for every lane that adds a migration.)
-3. Reference-authority composition into `server.ts` (CATALOG_CUTOVER_TAIL) after a reconciled verify.
-4. CRM lane (#1912) touches the same `functions/package.json` / workflow lines; edits here are append-only.
+1. CRM 024 + 025 (#1912) and catalog foundation 026 (#1911, `1759795200000`).
+2. Employee runtime authority PR(s) (timestamps between 026 and 027).
+3. On the coordinator's message that #1911 is on main: this branch **merges main normally** (never a rebase) and moves
+   deferred 027 into `functions/migrations/`; the Part proofs then run in CI unchanged.
+4. After a reconciled verify in an authorized freeze window: steps 7–9 (writer activation, Render composition of the
+   reference authority — CATALOG_CUTOVER_TAIL — and the catalog writers).
+5. `functions/package.json` / workflow edits here are append-only next to lines #1911 and #1912 also touch.
 
 ---
 
-## 8. Unresolved facts and Owner decisions
+## 8. Unresolved facts
 
-- **F — Writer freeze window.** Between the Firestore freeze (§5.2 step 4) and PostgreSQL writers opening (step 7),
-  catalog records cannot be created or edited anywhere. Accept a freeze window, or require readers to move first?
-- **F — Certification-marked records** in the sandbox `parts` / `equipment_models`: copy into the nonprod tenant
-  (`--certificationMarked include`) or not (`exclude`)? The copy refuses until decided.
-- **F — Legacy actor uids.** Copied rows record the cutover operator as `created_by`/`updated_by`; the Firestore
-  `createdBy`/`updatedBy` uids are not carried into eos_ops (identity, not authority). Acceptable, or must they be
-  archived elsewhere?
-- **Unresolved — production tenancy.** No production PostgreSQL tenant exists; the production catalog → tenant mapping
-  cannot be proved from the repository.
-- **Unresolved — live data shape.** Counts, invalid records, `sku ≠ id`, duplicate internal part numbers and
-  certification markers in `eos-platform-sandbox` are unmeasured until an authorized export + census.
-- **Gap — `part_aliases`** not in PostgreSQL (internal part number changes fail closed); dependent alias / supplier item /
-  compatibility authorities (§2 gap 3) must move or be frozen with the catalog.
+- **Live data shape** of `eos-platform-sandbox` (counts, invalid records, `sku ≠ id`, duplicate internal part numbers,
+  Certification fixtures) is unmeasured until an authorized export + census.
+- **Production tenancy** does not exist (§6).
+- **`part_aliases`** and the dependent alias / supplier item / compatibility authorities (§2 gaps 2–3) are not in
+  PostgreSQL; their freeze or move must be scheduled with the catalog window.
+
+Resolved by Owner ruling 2026-09-14: controlled freeze window (§5); Certification exclusion (§4.3); legacy creator uid
+(§4.4); migration-only snapshot export (§4.1); production fence (§6).
 
 ---
 
 ## 9. Proof
 
-- `functions/test/catalogMaster.test.mjs` (offline, in `test:adminPolicy`): capability ids and rule parity; no Firebase
-  in `src/catalogMaster` or the copy tool; export read-only; retirement switch; census (clean, duplicates, invalid,
-  missing references, certification decision, non-blocking findings, timestamps); deferred 027 not applied and extends 025.
-- `functions/test/catalogCutoverPostgres.test.mjs` (in `test:adminPolicyPostgres`): Equipment Model writer; Part writer
-  (with 025); copy exact ids/versions/timestamps; verify all fields + verdicts; rerun no-op; drift refused; unknown
-  target refused; tenant scoping; CLI end to end; 027 Down refusal (with 025).
-- `functions/test/operatorScriptEnvironmentFence.test.mjs`: 13 refusals for the two new scripts, each before any client library loads.
-- Negative controls (each red, then restored byte-identically): tenant predicate removed from the copy read or the
-  verdict probe; duplicate detection removed; drift overwritten; `assertNonprodRuntime` removed; a Firestore write added
-  to `catalogCutover.ts` (static test and `firebaseExitGuard` both red).
+- `functions/test/catalogMaster.test.mjs` (offline, `test:adminPolicy`): capability ids and rule parity; no Firebase in
+  `src/catalogMaster` (static + runtime probe) or the copy tool; exporter marker, allowlist, exclusive checksummed
+  write, structural no-runtime-import; writer-state coherence, transitions, freeze vs retire, guard placement, no
+  PostgreSQL writer composition while INACTIVE; census (clean, duplicates, invalid, missing references, Certification
+  exclusion, no inclusion path, legacy uid provenance, non-blocking findings, timestamps); deferred 027.
+- `functions/test/catalogCutoverPostgres.test.mjs` (`test:adminPolicyPostgres`): Equipment Model writer; Part writer
+  (with 026); copy exact ids/versions/timestamps as the cutover Principal; Certification fixtures never land and are
+  listed; no uid in any actor column or audit payload; non-member principal refused; verify all fields, verdicts, and
+  fixture-in-target failure; rerun no-op; drift refused; unknown target refused; tenant scoping; CLI end to end
+  (checksum, evidence, refused inclusion flag); 027 Down refusal (with 026).
+- `functions/test/operatorScriptEnvironmentFence.test.mjs`: 14 refusals for the two scripts, each before any client library loads.
+- Negative controls (each red, then restored byte-identically) are listed in the PR description.

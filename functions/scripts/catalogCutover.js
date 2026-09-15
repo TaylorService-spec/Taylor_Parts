@@ -5,8 +5,8 @@
 // The operator tool for the first three steps of docs/architecture/catalog-cutover-plan.md:
 //
 //   --mode census   READ ONLY. The snapshot's counts, id validity, duplicate canonical identities, missing
-//                   Part -> Equipment Model references, lifecycle distribution, non-master fields, and the target
-//                   tenant's current catalog row counts. Writes nothing anywhere.
+//                   Part -> Equipment Model references, lifecycle distribution, non-master fields, the EXCLUDED
+//                   Certification fixtures, and the target tenant's current catalog row counts. Writes nothing.
 //   --mode copy     COPY ONCE into eos_ops.equipment_models and eos_ops.parts for ONE tenant, in ONE transaction.
 //                   Refuses unless the census is copy-ready. Identical rerun: no change. A source that changed after
 //                   the copy, or a tenant row the snapshot does not contain: REFUSED, nothing written, never
@@ -17,9 +17,19 @@
 // ============================ THE SOURCE IS A FILE ============================
 //
 // --snapshot names an EOS_CATALOG_SNAPSHOT file written by scripts/exportCatalogSnapshot.js (functions/src/
-// catalogMaster/catalogSnapshot.ts documents the format). THIS TOOL LOADS NO FIREBASE MODULE AND CANNOT WRITE
+// catalogMaster/catalogSnapshot.ts documents the format), with its immutable `<snapshot>.sha256` beside it; every mode
+// refuses a snapshot whose checksum file is missing or disagrees. THIS TOOL LOADS NO FIREBASE MODULE AND CANNOT WRITE
 // FIRESTORE: it never deletes, marks or touches the legacy source. The snapshot must name the Firebase project the
 // --environment declares, and never the production project.
+//
+// ============================ OWNER RULINGS (2026-09-14) ============================
+//
+//   * CERTIFICATION: identified Certification fixtures are ALWAYS excluded; there is no option to include them (the
+//     former --certificationMarked flag is refused). Counts, ids and reason are printed in every mode's evidence.
+//   * ACTORS: rows are written as the EOS Principal named by --principalId (an active member of the tenant). Legacy
+//     Firebase uids appear only in the printed `legacyActorProvenance` evidence, never in a column.
+//   * PRODUCTION: refused by environment role, by project id and by snapshot source; no production tenant mapping is
+//     inferred -- the tenant is always the explicit --tenantKey, and production prerequisites are in the plan §6.
 //
 // ============================ THE FENCE ============================
 //
@@ -28,13 +38,13 @@
 //     --databaseUrlEnv (shared: measureEmployeeReferenceIntegrity.js assertMeasurementTarget)
 //   * EOS_ENVIRONMENT not exactly `nonprod` (shared: measureWorkforceActivation.js assertNonprodRuntime)
 //   * --environment platform-certification (the Certification world is frozen)
-//   * missing --mode / --tenantKey / --snapshot, or --performedBy for copy
+//   * missing --mode / --tenantKey / --snapshot, or --principalId for copy; any --certificationMarked option
 // The tenant is resolved by --tenantKey from eos_policy.tenants and never created or inferred.
 //
 // Usage (Render Shell on eos-api-nonprod):
 //   node scripts/catalogCutover.js --mode census --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
-//     --tenantKey taylor-nonprod --snapshot ./catalog-snapshot.json [--certificationMarked include|exclude]
-//   ... --mode copy   ... --performedBy <operator>
+//     --tenantKey taylor-nonprod --snapshot ./catalog-snapshot.json
+//   ... --mode copy   ... --principalId <EOS principal id>
 //   ... --mode verify ... [--sample 50|all]
 //
 // Exit: 0 census copy-ready / copy applied or no-op / verify reconciled; 1 census not copy-ready or verify not
@@ -43,6 +53,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { assertMeasurementTarget, parseArgs, PRODUCTION_PROJECT_ID } = require("./measureEmployeeReferenceIntegrity.js");
 const { assertNonprodRuntime } = require("./measureWorkforceActivation.js");
 
@@ -62,10 +73,10 @@ function assertCutoverInvocation(args, env) {
   }
   if (!args.tenantKey || args.tenantKey === "true") throw new Error("--tenantKey is required: the tenant is named, never inferred.");
   if (!args.snapshot || args.snapshot === "true") throw new Error("--snapshot <file> is required: the copy consumes an exported snapshot, never a live Firestore read.");
-  if (args.mode === "copy" && (!args.performedBy || args.performedBy === "true")) throw new Error("--performedBy <operator> is required for copy.");
-  if (args.certificationMarked !== undefined && !["include", "exclude"].includes(args.certificationMarked)) {
-    throw new Error("--certificationMarked must be include or exclude.");
+  if (args.certificationMarked !== undefined) {
+    throw new Error("--certificationMarked is not an option: Certification fixtures are always excluded from the operational catalog copy (Owner ruling).");
   }
+  if (args.mode === "copy" && (!args.principalId || args.principalId === "true")) throw new Error("--principalId <EOS principal id> is required for copy: rows are written as an EOS Principal, never a Firebase uid.");
   let sample = DEFAULT_SAMPLE;
   if (args.sample !== undefined) {
     if (args.sample === "all") sample = "all";
@@ -78,8 +89,7 @@ function assertCutoverInvocation(args, env) {
     connectionString,
     tenantKey: args.tenantKey,
     snapshotPath: args.snapshot,
-    performedBy: args.performedBy,
-    certification: args.certificationMarked ?? null,
+    principalId: args.principalId,
     sample,
   };
 }
@@ -89,6 +99,21 @@ function declaredProjectId(environmentId) {
   const registry = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../config/environments.json"), "utf8"));
   const env = (registry.environments || []).find((e) => e && e.id === environmentId);
   return env && env.firebase ? env.firebase.projectId : null;
+}
+
+/** The snapshot bytes must match the immutable `<snapshot>.sha256` the export wrote. Returns the hex digest. */
+function verifySnapshotChecksum(snapshotPath) {
+  const file = path.resolve(snapshotPath);
+  let recorded;
+  try {
+    recorded = fs.readFileSync(`${file}.sha256`, "utf8").trim().split(/\s+/)[0];
+  } catch {
+    throw new Error(`${file}.sha256 is missing: a snapshot without its export checksum is refused.`);
+  }
+  const bytes = fs.readFileSync(file);
+  const actual = crypto.hash("sha256", bytes);
+  if (recorded !== actual) throw new Error(`the snapshot does not match ${file}.sha256; it changed after export and is refused.`);
+  return { bytes, sha256: actual };
 }
 
 /** The snapshot must come from the environment being cut over, and never from production. */
@@ -108,15 +133,18 @@ async function main() {
   // THE FENCE FIRST, before any client or lib/ module exists.
   const options = assertCutoverInvocation(args, process.env);
 
-  const raw = JSON.parse(fs.readFileSync(path.resolve(options.snapshotPath), "utf8"));
+  const { bytes, sha256 } = verifySnapshotChecksum(options.snapshotPath);
+  const raw = JSON.parse(bytes.toString("utf8"));
   // AFTER the fence, never at module scope.
   const { parseCatalogSnapshot, censusCatalogSnapshot } = require("../lib/catalogMaster/catalogSnapshot.js");
   const snapshot = parseCatalogSnapshot(raw);
   assertSnapshotSource(snapshot, options.environmentId);
-  const { census, catalog } = censusCatalogSnapshot(snapshot, options.certification);
+  const { census, catalog, legacyActorProvenance } = censusCatalogSnapshot(snapshot);
+  // Migration evidence only: the file checksum, the excluded Certification fixtures and the legacy uids.
+  const evidence = { snapshotSha256: sha256, certificationExcluded: census.certificationExcluded, legacyActorProvenance };
 
   if (options.mode === "copy" && !census.copyReady) {
-    console.log(JSON.stringify({ mode: "copy", outcome: "REFUSED", reason: "CENSUS_NOT_COPY_READY", blockers: census.blockers, census }, null, 2));
+    console.log(JSON.stringify({ mode: "copy", outcome: "REFUSED", reason: "CENSUS_NOT_COPY_READY", blockers: census.blockers, census, evidence }, null, 2));
     process.exitCode = 2;
     return;
   }
@@ -139,15 +167,17 @@ async function main() {
       const parts = partSchema ? await client.query("SELECT count(*)::int AS n FROM eos_ops.parts WHERE tenant_id = $1", [tenantId]) : null;
       await client.query("COMMIT");
       const target = { equipmentModels: models.rows[0].n, parts: parts ? parts.rows[0].n : null, partMasterSchemaPresent: partSchema };
-      console.log(JSON.stringify({ ...header, readOnly: true, census, target }, null, 2));
+      console.log(JSON.stringify({ ...header, readOnly: true, census, target, evidence }, null, 2));
       process.exitCode = census.copyReady ? 0 : 1;
     } else if (options.mode === "copy") {
-      const report = await copyCatalog(client, { tenantId, performedBy: options.performedBy, catalog, canonicalDigest: census.canonicalDigest });
-      console.log(JSON.stringify({ ...header, report }, null, 2));
+      const report = await copyCatalog(client, {
+        tenantId, principalId: options.principalId, catalog, canonicalDigest: census.canonicalDigest, certificationExcluded: census.certificationExcluded.records,
+      });
+      console.log(JSON.stringify({ ...header, report, evidence }, null, 2));
       process.exitCode = 0;
     } else {
-      const report = await verifyCatalog(client, { tenantId, catalog, sample: options.sample });
-      console.log(JSON.stringify({ ...header, canonicalDigest: census.canonicalDigest, report }, null, 2));
+      const report = await verifyCatalog(client, { tenantId, catalog, sample: options.sample, certificationExcluded: census.certificationExcluded.records });
+      console.log(JSON.stringify({ ...header, canonicalDigest: census.canonicalDigest, report, evidence }, null, 2));
       process.exitCode = report.reconciled ? 0 : 1;
     }
   } finally {
@@ -155,7 +185,7 @@ async function main() {
   }
 }
 
-module.exports = { assertCutoverInvocation, assertSnapshotSource, MODES, FROZEN_ENVIRONMENTS };
+module.exports = { assertCutoverInvocation, assertSnapshotSource, verifySnapshotChecksum, MODES, FROZEN_ENVIRONMENTS };
 
 if (require.main === module) {
   main().catch((err) => {

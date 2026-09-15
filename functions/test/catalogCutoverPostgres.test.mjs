@@ -6,14 +6,14 @@
 // ════════════════════ TWO SCHEMA STATES, BOTH PROVED ════════════════════
 //
 // Equipment Models live in eos_ops.equipment_models (migration 008, on main): every Equipment Model proof runs
-// everywhere. Parts live in eos_ops.parts, which migration 025 creates (PR #1911, not on this branch) and deferred
+// everywhere. Parts live in eos_ops.parts, which migration 026 creates (PR #1911, not on this branch) and deferred
 // migration 027 extends. So:
 //
-//   * 025 ABSENT (this branch alone): the migration set is main's. Part proofs are SKIPPED with the reason, and the
+//   * 026 ABSENT (this branch alone): the migration set is main's. Part proofs are SKIPPED with the reason, and the
 //     copy is proved to REFUSE a snapshot carrying Parts (PART_TARGET_SCHEMA_ABSENT) rather than half-copy it.
-//   * 025 PRESENT (after #1911 merges): the suite migrates a temporary directory of symlinks -- every applied
+//   * 026 PRESENT (after #1911 merges): the suite migrates a temporary directory of symlinks -- every applied
 //     migration plus deferred/027 -- through the SAME runner, so 027 is executed exactly as it will be once moved,
-//     and every Part proof runs. Nothing is copied or restated from 025.
+//     and every Part proof runs. Nothing is copied or restated from 026.
 //
 // Same skip contract as every other Postgres suite: set POLICY_TEST_DATABASE_URL to run.
 import test from "node:test";
@@ -21,12 +21,13 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { hash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
-import { cleanSnapshot, modelDoc, snapshotOf, wholeUnitPartDoc } from "./support/catalogSnapshotFixture.mjs";
+import { cleanSnapshot, modelDoc, partDoc, snapshotOf, wholeUnitPartDoc } from "./support/catalogSnapshotFixture.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -37,10 +38,10 @@ const partWriter = require("../lib/catalogMaster/postgresPartMasterWriter.js");
 const { copyCatalog, verifyCatalog, partMasterSchemaPresent, ABSENT_TENANT_PROBE } = require("../lib/catalogMaster/catalogCutover.js");
 const { parseCatalogSnapshot, censusCatalogSnapshot } = require("../lib/catalogMaster/catalogSnapshot.js");
 
-const MIGRATION_025 = "1759708800000_catalog-part-identity-reference-authority.sql";
+const MIGRATION_026 = "1759795200000_catalog-part-identity-reference-authority.sql";
 const DEFERRED_027 = "1759881600000_catalog-master-descriptive-authority.sql";
-const HAS_025 = existsSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_025));
-const PART_SKIP = HAS_025 ? false : "DEPENDS ON #1911: migration 025 (eos_ops.parts) is not in this tree; Part proofs run once it is";
+const HAS_026 = existsSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_026));
+const PART_SKIP = HAS_026 ? false : "DEPENDS ON #1911: migration 026 (eos_ops.parts) is not in this tree; Part proofs run once it is";
 
 const DB_NAME = `catalog_cutover_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => { const u = new URL(URL_BASE); u.pathname = `/${DB_NAME}`; return u.toString(); };
@@ -51,7 +52,7 @@ async function withClient(url, fn) {
 }
 
 function migrationsDir() {
-  if (!HAS_025) return { dir: join(FUNCTIONS_DIR, "migrations"), cleanup: () => {} };
+  if (!HAS_026) return { dir: join(FUNCTIONS_DIR, "migrations"), cleanup: () => {} };
   const dir = mkdtempSync(join(tmpdir(), "catalog-cutover-migrations-"));
   for (const f of readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))) symlinkSync(join(FUNCTIONS_DIR, "migrations", f), join(dir, f));
   symlinkSync(join(FUNCTIONS_DIR, "migrations", "deferred", DEFERRED_027), join(dir, DEFERRED_027));
@@ -89,12 +90,14 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
   await principal("p1", "t1");
   await principal("p2", "t2");
   await principal("p-disabled", "t1", "disabled");
+  await principal("p-cutover-t3", "t3");
+  await principal("p-cutover-t4", "t4");
 
   const withPool = async (fn) => { const c = await pool.connect(); try { return await fn(c); } finally { c.release(); } };
   const auditCount = async (tenant) => Number((await q(`SELECT count(*) FROM eos_policy.audit_events WHERE tenant_id = $1`, [tenant])).rows[0].count);
 
   await t.test("schema state is the one this tree declares", async () => {
-    assert.equal(await withPool(partMasterSchemaPresent), HAS_025);
+    assert.equal(await withPool(partMasterSchemaPresent), HAS_026);
   });
 
   // ════════════════════ the Equipment Model writer ════════════════════
@@ -202,54 +205,110 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
 
   // ════════════════════ COPY ONCE -> VERIFY ════════════════════
 
-  const censusOf = (snap, decision = null) => censusCatalogSnapshot(parseCatalogSnapshot(snap), decision);
+  const censusOf = (snap) => censusCatalogSnapshot(parseCatalogSnapshot(snap));
   const modelsOnly = () => { const s = cleanSnapshot(); s.parts = []; return s; };
+  // Every copy snapshot also carries identified Certification fixtures and legacy uids, so exclusion and uid
+  // treatment are proved on every path, not in one corner.
+  const LEGACY_UIDS = ["legacy-uid-a", "legacy-uid-b", "legacy-uid-c"];
+  const withFixtures = (snap) => {
+    snap.parts.push(partDoc("CW-P-0000", { certificationWorld: { version: "1.9.0", datasetId: "cw" }, certFamily: "CTRL" }));
+    snap.equipmentModels.push(modelDoc("CERT--MODEL-1", { certificationWorld: { version: "1.9.0", datasetId: "cw" } }));
+    snap.equipmentModels.push(modelDoc("CERT--MODEL-2", { dataProvenance: "SYNTHETIC_CERTIFICATION_FACT" }));
+    return snap;
+  };
 
-  await t.test("copy refuses Parts when eos_ops.parts has no Part Master schema, and writes nothing", { skip: HAS_025 ? "025 present: the Part schema exists" : false }, async () => {
+  await t.test("copy refuses Parts when eos_ops.parts has no Part Master schema, and writes nothing", { skip: HAS_026 ? "026 present: the Part schema exists" : false }, async () => {
     const { census, catalog } = censusOf(cleanSnapshot());
-    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", performedBy: "op", catalog, canonicalDigest: census.canonicalDigest })), code("PART_TARGET_SCHEMA_ABSENT"));
+    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest })), code("PART_TARGET_SCHEMA_ABSENT"));
     assert.equal(Number((await q(`SELECT count(*) FROM eos_ops.equipment_models WHERE tenant_id = 't3'`)).rows[0].count), 0);
   });
 
-  const COPY_SNAPSHOT = () => (HAS_025 ? cleanSnapshot() : modelsOnly());
+  const COPY_SNAPSHOT = () => withFixtures(HAS_026 ? cleanSnapshot() : modelsOnly());
 
   await t.test("copy populates the tenant with exact ids, versions and timestamps, and one audit row", async () => {
     const { census, catalog } = censusOf(COPY_SNAPSHOT());
     assert.equal(census.copyReady, true);
-    const report = await withPool((c) => copyCatalog(c, { tenantId: "t3", performedBy: "operator.jane", catalog, canonicalDigest: census.canonicalDigest, now: CLOCK() }));
+    const report = await withPool((c) => copyCatalog(c, { tenantId: "t3", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest, now: CLOCK() }));
     assert.equal(report.outcome, "COPIED");
     assert.deepEqual(report.equipmentModels, { inserted: 3, unchanged: 0 });
-    assert.deepEqual(report.parts, { inserted: HAS_025 ? 4 : 0, unchanged: 0 });
+    assert.deepEqual(report.parts, { inserted: HAS_026 ? 4 : 0, unchanged: 0 });
     const rows = (await q(`SELECT id, version, status::text, created_by, updated_by, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
                              FROM eos_ops.equipment_models WHERE tenant_id = 't3' ORDER BY id`)).rows;
     assert.deepEqual(rows.map((r) => r.id), ["ACME--CW-100", "ACME--CW-200", "KOLD--KX-9"]);
-    assert.ok(rows.every((r) => r.version === 3 && r.created_by === "catalog-cutover:operator.jane" && r.created_at === "2025-09-04T15:33:20.123456Z"));
-    if (HAS_025) {
+    assert.ok(rows.every((r) => r.version === 3 && r.created_by === "p-cutover-t3" && r.updated_by === "p-cutover-t3" && r.created_at === "2025-09-04T15:33:20.123456Z"));
+    if (HAS_026) {
       const parts = (await q(`SELECT id, equipment_model_id, whole_unit FROM eos_ops.parts WHERE tenant_id = 't3' ORDER BY id`)).rows;
       assert.deepEqual(parts, [
         { id: "TST-1001", equipment_model_id: null, whole_unit: false }, { id: "TST-1002", equipment_model_id: null, whole_unit: false },
         { id: "TST-1003", equipment_model_id: null, whole_unit: false }, { id: "UNIT-CW-100", equipment_model_id: "ACME--CW-100", whole_unit: true },
       ]);
     }
-    const audit = (await q(`SELECT action, target_kind, target_id FROM eos_policy.audit_events WHERE tenant_id = 't3'`)).rows;
-    assert.deepEqual(audit, [{ action: "catalog.cutover.copy", target_kind: "catalog_snapshot", target_id: census.canonicalDigest }]);
+    const audit = (await q(`SELECT action, actor_uid, target_kind, target_id FROM eos_policy.audit_events WHERE tenant_id = 't3'`)).rows;
+    assert.deepEqual(audit, [{ action: "catalog.cutover.copy", actor_uid: "p-cutover-t3", target_kind: "catalog_snapshot", target_id: census.canonicalDigest }]);
+    assert.equal(report.cutoverPrincipalId, "p-cutover-t3");
+  });
+
+  await t.test("Certification fixtures never land in PostgreSQL, and the copy evidence lists them with their reason", async () => {
+    const { census, catalog } = censusOf(COPY_SNAPSHOT());
+    const fixtureRows = await q(`SELECT id FROM eos_ops.equipment_models WHERE id LIKE 'CERT--%'`);
+    assert.equal(fixtureRows.rows.length, 0);
+    if (HAS_026) assert.equal((await q(`SELECT id FROM eos_ops.parts WHERE id LIKE 'CW-%'`)).rows.length, 0);
+    const rerun = await withPool((c) => copyCatalog(c, { tenantId: "t3", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest, certificationExcluded: census.certificationExcluded.records }));
+    assert.deepEqual(rerun.certificationExcluded, {
+      count: 3,
+      records: [
+        { kind: "equipment_model", id: "CERT--MODEL-1", reason: "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker" },
+        { kind: "equipment_model", id: "CERT--MODEL-2", reason: "CERTIFICATION_FIXTURE_EXCLUDED:dataProvenance" },
+        { kind: "part", id: "CW-P-0000", reason: "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker" },
+      ],
+    });
+  });
+
+  await t.test("a Firebase uid is never written to created_by, updated_by, an audit actor or an audit payload; it survives only as evidence", async () => {
+    const { legacyActorProvenance } = censusOf(COPY_SNAPSHOT());
+    assert.ok(legacyActorProvenance.some((p) => p.legacyCreatedBy === "legacy-uid-a"), "the evidence keeps the legacy uids");
+    const actorColumns = await q(`SELECT created_by AS v FROM eos_ops.equipment_models UNION ALL SELECT updated_by FROM eos_ops.equipment_models
+                                  UNION ALL SELECT actor_uid FROM eos_policy.audit_events UNION ALL SELECT COALESCE(after::text, '') FROM eos_policy.audit_events`);
+    const partColumns = HAS_026 ? (await q(`SELECT created_by AS v FROM eos_ops.parts UNION ALL SELECT updated_by FROM eos_ops.parts`)).rows : [];
+    for (const { v } of [...actorColumns.rows, ...partColumns]) for (const uid of LEGACY_UIDS) assert.equal(String(v).includes(uid), false, `${uid} leaked into a column`);
+  });
+
+  await t.test("the cutover Principal must be an active member of the target tenant", async () => {
+    const { census, catalog } = censusOf(COPY_SNAPSHOT());
+    for (const principalId of ["p1", "p-disabled", "legacy-uid-a", ""]) {
+      await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", principalId, catalog, canonicalDigest: census.canonicalDigest })),
+        (e) => ["CUTOVER_PRINCIPAL_NOT_TENANT_MEMBER", "CUTOVER_PRINCIPAL_REQUIRED"].includes(e.code));
+    }
   });
 
   await t.test("verify reconciles counts, identities and EVERY field, with reference verdict spot-checks", async () => {
     const { catalog } = censusOf(COPY_SNAPSHOT());
-    const report = await withPool((c) => verifyCatalog(c, { tenantId: "t3", catalog, sample: "all" }));
+    const { census } = censusOf(COPY_SNAPSHOT());
+    const report = await withPool((c) => verifyCatalog(c, { tenantId: "t3", catalog, sample: "all", certificationExcluded: census.certificationExcluded.records }));
     assert.equal(report.reconciled, true, JSON.stringify(report, null, 2));
-    assert.deepEqual(report.counts, { equipmentModels: { source: 3, target: 3 }, parts: { source: HAS_025 ? 4 : 0, target: HAS_025 ? 4 : 0 } });
-    assert.deepEqual(report.sampled, { equipmentModels: 3, parts: HAS_025 ? 4 : 0 });
+    assert.equal(report.certificationExcluded.count, 3);
+    assert.deepEqual(report.certificationFixturesInTarget, []);
+    assert.deepEqual(report.counts, { equipmentModels: { source: 3, target: 3 }, parts: { source: HAS_026 ? 4 : 0, target: HAS_026 ? 4 : 0 } });
+    assert.deepEqual(report.sampled, { equipmentModels: 3, parts: HAS_026 ? 4 : 0 });
     const verdicts = report.verdictChecks;
     assert.ok(verdicts.some((v) => v.kind === "EQUIPMENT_MODEL" && v.tenant === "t3" && v.actual === "FOUND"));
     assert.ok(verdicts.some((v) => v.kind === "EQUIPMENT_MODEL" && v.tenant === ABSENT_TENANT_PROBE && v.actual === "NOT_FOUND"));
     assert.ok(verdicts.some((v) => v.ref === "catalog-cutover-verify-absent-ref" && v.actual === "NOT_FOUND"));
-    if (HAS_025) {
+    if (HAS_026) {
       assert.ok(verdicts.some((v) => v.kind === "PART" && v.tenant === "t3" && v.actual === "FOUND"));
       assert.ok(verdicts.some((v) => v.kind === "PART" && v.tenant === "t3" && v.actual === "WRONG_KIND"));
       assert.ok(verdicts.some((v) => v.kind === "EQUIPMENT_MODEL" && v.tenant === "t3" && v.actual === "WRONG_KIND"));
     }
+  });
+
+  await t.test("verify fails if an excluded Certification fixture is present in the target", async () => {
+    const { census, catalog } = censusOf(COPY_SNAPSHOT());
+    await q(`INSERT INTO eos_ops.equipment_models (id, tenant_id, manufacturer_id, manufacturer_name, model_number, display_name, status, source_authority, version, created_by, updated_by)
+             VALUES ('CERT--MODEL-1', 't5', 'CERT', 'Cert', 'MODEL-1', 'Cert', 'ACTIVE', 'proof', 1, 'proof', 'proof')`);
+    const report = await withPool((c) => verifyCatalog(c, { tenantId: "t5", catalog, sample: "all", certificationExcluded: census.certificationExcluded.records }));
+    assert.equal(report.reconciled, false);
+    assert.deepEqual(report.certificationFixturesInTarget, ["equipment_model:CERT--MODEL-1"]);
+    await q(`DELETE FROM eos_ops.equipment_models WHERE tenant_id = 't5'`);
   });
 
   await t.test("rerun of the identical snapshot is a no-op: no insert, no update, no audit row", async () => {
@@ -257,7 +316,7 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     const snapshotRows = async () => (await q(`SELECT * FROM eos_ops.equipment_models WHERE tenant_id = 't3' ORDER BY id`)).rows;
     const before = JSON.stringify(await snapshotRows());
     const audits = await auditCount("t3");
-    const report = await withPool((c) => copyCatalog(c, { tenantId: "t3", performedBy: "operator.bob", catalog, canonicalDigest: census.canonicalDigest }));
+    const report = await withPool((c) => copyCatalog(c, { tenantId: "t3", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest }));
     assert.equal(report.outcome, "NO_CHANGES");
     assert.deepEqual(report.equipmentModels, { inserted: 0, unchanged: 3 });
     assert.equal(JSON.stringify(await snapshotRows()), before);
@@ -269,7 +328,7 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     s.equipmentModels[0] = modelDoc("ACME--CW-100", { displayName: "renamed in Firestore after the copy", version: 4 });
     s.equipmentModels.push(modelDoc("ACME--CW-NEW"));
     const { census, catalog } = censusOf(s);
-    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", performedBy: "op", catalog, canonicalDigest: census.canonicalDigest })), (e) => {
+    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest })), (e) => {
       assert.equal(e.code, "DRIFT_DETECTED");
       assert.deepEqual(e.details, [{ kind: "equipment_model", id: "ACME--CW-100", fields: ["displayName", "version"] }]);
       return true;
@@ -286,16 +345,16 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
   await t.test("a tenant row the snapshot does not contain is refused, not deleted", async () => {
     const s = COPY_SNAPSHOT();
     s.equipmentModels = s.equipmentModels.filter((d) => d.id !== "KOLD--KX-9");
-    if (HAS_025) s.parts = s.parts.filter((d) => d.id !== "TST-1003");
+    if (HAS_026) s.parts = s.parts.filter((d) => d.id !== "TST-1003");
     const { census, catalog } = censusOf(s);
-    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", performedBy: "op", catalog, canonicalDigest: census.canonicalDigest })), code("TARGET_HAS_UNKNOWN_RECORDS"));
+    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t3", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest })), code("TARGET_HAS_UNKNOWN_RECORDS"));
     assert.equal(Number((await q(`SELECT count(*) FROM eos_ops.equipment_models WHERE tenant_id = 't3'`)).rows[0].count), 3);
   });
 
   await t.test("tenant scoping: another tenant's catalog neither satisfies nor blocks this tenant's copy, and verify sees only its own", async () => {
     const { census, catalog } = censusOf(COPY_SNAPSHOT());
     // t2 holds ACME--CW-100 (from the writer proofs) with different content: that is t2's record, not drift for t4.
-    const report = await withPool((c) => copyCatalog(c, { tenantId: "t4", performedBy: "op", catalog, canonicalDigest: census.canonicalDigest }));
+    const report = await withPool((c) => copyCatalog(c, { tenantId: "t4", principalId: "p-cutover-t4", catalog, canonicalDigest: census.canonicalDigest }));
     assert.deepEqual(report.equipmentModels, { inserted: 3, unchanged: 0 });
     const unrelated = await withPool((c) => verifyCatalog(c, { tenantId: "t5", catalog, sample: "all" }));
     assert.equal(unrelated.reconciled, false);
@@ -306,7 +365,7 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
 
   await t.test("a missing tenant is refused; the copy never creates one", async () => {
     const { census, catalog } = censusOf(modelsOnly());
-    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t-nope", performedBy: "op", catalog, canonicalDigest: census.canonicalDigest })), code("TENANT_NOT_FOUND"));
+    await assert.rejects(withPool((c) => copyCatalog(c, { tenantId: "t-nope", principalId: "p-cutover-t3", catalog, canonicalDigest: census.canonicalDigest })), code("TENANT_NOT_FOUND"));
   });
 
   await t.test("migration 027 refuses to be reversed while Part Master records exist", { skip: PART_SKIP }, async () => {
@@ -320,9 +379,12 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     const dir = mkdtempSync(join(tmpdir(), "catalog-cutover-cli-"));
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('tenant-cli', 'taylor-nonprod-cli', 'CLI proof')`);
-    const run = (mode, snapshot, extra = []) => {
+    await principal("p-cli", "tenant-cli");
+    const run = (mode, snapshot, extra = [], { checksum = true } = {}) => {
       const file = join(dir, `${mode}-${randomUUID()}.json`);
-      writeFileSync(file, JSON.stringify(snapshot));
+      const text = JSON.stringify(snapshot);
+      writeFileSync(file, text);
+      if (checksum) writeFileSync(`${file}.sha256`, `${hash("sha256", text)}  snapshot.json\n`);
       const res = spawnSync(process.execPath, ["scripts/catalogCutover.js", "--mode", mode, "--environment", "platform-sandbox", "--databaseUrlEnv", "CATALOG_TEST_DB",
         "--tenantKey", "taylor-nonprod-cli", "--snapshot", file, ...extra], {
         cwd: FUNCTIONS_DIR, encoding: "utf8", env: { ...process.env, EOS_ENVIRONMENT: "nonprod", CATALOG_TEST_DB: dbUrl() },
@@ -333,28 +395,41 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     const census = run("census", snap);
     assert.equal(census.status, 0, census.err);
     assert.equal(JSON.parse(census.out).target.equipmentModels, 0);
+    assert.equal(JSON.parse(census.out).evidence.certificationExcluded.counts.equipmentModels, 2);
+    const unsummed = run("census", snap, [], { checksum: false });
+    assert.equal(unsummed.status, 2);
+    assert.match(unsummed.err, /sha256 is missing/);
     assert.doesNotMatch(census.out + census.err, new RegExp(new URL(URL_BASE).password || "no-password-to-leak"));
 
     const dup = COPY_SNAPSHOT();
     dup.equipmentModels.push(modelDoc("ACME--CW-100"));
-    const refused = run("copy", dup, ["--performedBy", "op"]);
+    const refused = run("copy", dup, ["--principalId", "p-cli"]);
     assert.equal(refused.status, 2);
     // (With Parts present the duplicated model is also unselectable, so the whole unit naming it is a missing reference too.)
     assert.ok(JSON.parse(refused.out).blockers.includes("DUPLICATE_CANONICAL_IDENTITY"));
     assert.equal(Number((await q(`SELECT count(*) FROM eos_ops.equipment_models WHERE tenant_id = 'tenant-cli'`)).rows[0].count), 0);
 
     const missing = snapshotOf({ equipmentModels: [modelDoc("ACME--CW-100")], parts: [wholeUnitPartDoc("UNIT-Z", "ACME--GONE-1")] });
-    const missingRun = run("copy", missing, ["--performedBy", "op"]);
+    const missingRun = run("copy", missing, ["--principalId", "p-cli"]);
     assert.equal(missingRun.status, 2);
     assert.deepEqual(JSON.parse(missingRun.out).blockers, ["MISSING_REFERENCES"]);
 
-    const copied = run("copy", snap, ["--performedBy", "op"]);
+    const copied = run("copy", snap, ["--principalId", "p-cli"]);
     assert.equal(copied.status, 0, copied.err);
-    assert.equal(JSON.parse(copied.out).report.outcome, "COPIED");
+    const copiedOut = JSON.parse(copied.out);
+    assert.equal(copiedOut.report.outcome, "COPIED");
+    assert.equal(copiedOut.report.cutoverPrincipalId, "p-cli");
+    assert.deepEqual(copiedOut.report.certificationExcluded.records.map((r) => r.id), ["CERT--MODEL-1", "CERT--MODEL-2", "CW-P-0000"]);
+    assert.ok(copiedOut.evidence.legacyActorProvenance.some((p) => p.legacyUpdatedBy === "legacy-uid-b"), "legacy uids are in the evidence JSON");
+    assert.match(copiedOut.evidence.snapshotSha256, /^[0-9a-f]{64}$/);
     const verified = run("verify", snap, ["--sample", "all"]);
     assert.equal(verified.status, 0, verified.err);
     assert.equal(JSON.parse(verified.out).report.reconciled, true);
-    const rerun = run("copy", snap, ["--performedBy", "op"]);
+    assert.equal(JSON.parse(verified.out).evidence.certificationExcluded.records.length, 3);
+    const flagged = run("copy", snap, ["--principalId", "p-cli", "--certificationMarked", "include"]);
+    assert.equal(flagged.status, 2);
+    assert.match(flagged.err, /not an option/);
+    const rerun = run("copy", snap, ["--principalId", "p-cli"]);
     assert.equal(JSON.parse(rerun.out).report.outcome, "NO_CHANGES");
 
     const foreign = run("census", { ...snap, source: { ...snap.source, firebaseProjectId: "taylor-parts" } });

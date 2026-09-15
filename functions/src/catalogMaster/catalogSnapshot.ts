@@ -4,7 +4,7 @@
 // ════════════════════ WHY A FILE ════════════════════
 //
 // The copy tool never loads a Firebase module. The Firestore read is a separate, read-only export step
-// (functions/scripts/exportCatalogSnapshot.js) that writes this file; census, copy and verify consume it. So the
+// (the operator snapshot export in functions/scripts, never imported by runtime code) that writes this file; census, copy and verify consume it. So the
 // PostgreSQL side of the cutover is Firebase-free by construction, and the exact bytes that were copied are a
 // durable, hashable artifact rather than a moment in a live collection.
 //
@@ -32,8 +32,26 @@ import { type CanonicalEquipmentModel, type CanonicalPart, canonicalPartOf, EQUI
 
 export const SNAPSHOT_FORMAT = "EOS_CATALOG_SNAPSHOT";
 export const SNAPSHOT_VERSION = 1;
-/** The marker certification-world records carry (functions/scripts/_releaseStateSnapshot.mjs MARKER_FIELD). */
+/**
+ * How a Certification fixture is EXPLICITLY identified -- never guessed from an id or a name.
+ *   * the `certificationWorld` marker every markered certification record carries
+ *     (functions/scripts/certificationWorld/manifest.mjs MARKER_FIELD; `parts` and `equipment_models` are markered
+ *     groups -- only `warehouses` is markerless, certificationWorld.mjs expectedRecords);
+ *   * `dataProvenance: "SYNTHETIC_CERTIFICATION_FACT"` (certificationWorld/data/partsCatalog.mjs).
+ *
+ * OWNER RULING (2026-09-14): Certification stays frozen. Identified fixtures are ALWAYS excluded from the operational
+ * catalog copy -- there is no option that includes them -- and are never used as seed truth. Their counts, ids and
+ * exclusion reason are carried in the census / copy / verify evidence instead.
+ */
 export const CERTIFICATION_MARKER_FIELD = "certificationWorld";
+export const CERTIFICATION_PROVENANCE_VALUE = "SYNTHETIC_CERTIFICATION_FACT";
+
+/** The exclusion reason for a document, or null when it is not an identified Certification fixture. */
+export function certificationExclusionReason(data: Record<string, unknown>): string | null {
+  if (Object.prototype.hasOwnProperty.call(data, CERTIFICATION_MARKER_FIELD)) return "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker";
+  if (data.dataProvenance === CERTIFICATION_PROVENANCE_VALUE) return "CERTIFICATION_FIXTURE_EXCLUDED:dataProvenance";
+  return null;
+}
 
 /** The fields partToFirestore / modelToFirestore write. Everything else on a document is not master data. */
 const PART_STORED_FIELDS = new Set([
@@ -166,7 +184,6 @@ export function canonicalizeEquipmentModel(doc: SnapshotDocument): Canonicalized
   };
 }
 
-export type CertificationDecision = "include" | "exclude" | null;
 
 export interface CatalogFinding {
   readonly kind: "part" | "equipment_model";
@@ -177,7 +194,11 @@ export interface CatalogFinding {
 export interface CatalogCensus {
   readonly source: CatalogSnapshot["source"];
   readonly counts: { readonly parts: number; readonly equipmentModels: number };
-  readonly certificationMarked: { readonly parts: number; readonly equipmentModels: number };
+  /** Identified Certification fixtures, always excluded: counts, ids and reason (evidence, never copied). */
+  readonly certificationExcluded: {
+    readonly counts: { readonly parts: number; readonly equipmentModels: number };
+    readonly records: readonly CatalogFinding[];
+  };
   readonly selected: { readonly parts: number; readonly equipmentModels: number };
   readonly invalid: readonly CatalogFinding[];
   readonly duplicateIdentities: readonly CatalogFinding[];
@@ -215,16 +236,26 @@ export function canonicalDigest(catalog: CanonicalCatalog): string {
 /**
  * Census the snapshot and produce the canonical catalog a copy would write.
  *
- * `certification` decides certification-world-marked documents. When any exist and no decision is given, the census
- * still reports everything, but copyReady is false: whether synthetic certification fixtures become tenant catalog
- * records is not this tool's to guess.
+ * Identified Certification fixtures are excluded BEFORE canonicalization, so a fixture can neither be copied nor
+ * block the copy; it is listed in `certificationExcluded`. Legacy Firestore actor uids are returned separately as
+ * migration provenance -- never part of a canonical record, never written to a business column.
  */
-export function censusCatalogSnapshot(snapshot: CatalogSnapshot, certification: CertificationDecision = null): { census: CatalogCensus; catalog: CanonicalCatalog } {
+/** A legacy Firestore actor uid, kept ONLY as migration provenance evidence (Owner ruling: a uid is not a Principal). */
+export interface LegacyActorProvenance {
+  readonly kind: "part" | "equipment_model";
+  readonly id: string;
+  readonly legacyCreatedBy: string | null;
+  readonly legacyUpdatedBy: string | null;
+}
+
+export function censusCatalogSnapshot(snapshot: CatalogSnapshot): { census: CatalogCensus; catalog: CanonicalCatalog; legacyActorProvenance: LegacyActorProvenance[] } {
   const invalid: CatalogFinding[] = [];
   const duplicates: CatalogFinding[] = [];
   const blockers: string[] = [];
   let truncated = 0;
-  const marked = { parts: 0, equipmentModels: 0 };
+  const excludedCounts = { parts: 0, equipmentModels: 0 };
+  const excluded: CatalogFinding[] = [];
+  const provenance: LegacyActorProvenance[] = [];
   const nonMaster = { parts: {} as Record<string, number>, equipmentModels: {} as Record<string, number> };
   const statuses = { parts: {} as Record<string, number>, equipmentModels: {} as Record<string, number> };
 
@@ -237,16 +268,21 @@ export function censusCatalogSnapshot(snapshot: CatalogSnapshot, certification: 
     for (const [id, n] of seen) if (n > 1) duplicates.push({ kind, id, reason: `DUPLICATE_CANONICAL_IDENTITY:${n}` });
     const out: T[] = [];
     for (const d of docs) {
+      const exclusion = certificationExclusionReason(d.data);
+      if (exclusion !== null) {
+        excludedCounts[bag] += 1;
+        excluded.push({ kind, id: d.id, reason: exclusion });
+        continue;
+      }
       for (const f of Object.keys(d.data)) if (!storedFields.has(f)) countInto(nonMaster[bag], f);
-      const isMarked = Object.prototype.hasOwnProperty.call(d.data, CERTIFICATION_MARKER_FIELD);
-      if (isMarked) marked[bag] += 1;
       const c = canonicalize(d);
       if (!c.ok) { invalid.push({ kind, id: d.id, reason: c.reason }); continue; }
       countInto(statuses[bag], (c.record as unknown as { status: string }).status);
       truncated += c.truncatedTimestamps;
-      if (isMarked && certification !== "include") continue;
       if ((seen.get(d.id) ?? 0) > 1) continue;
       out.push(c.record);
+      const actor = (v: unknown) => (typeof v === "string" ? v : null);
+      provenance.push({ kind, id: d.id, legacyCreatedBy: actor(d.data.createdBy), legacyUpdatedBy: actor(d.data.updatedBy) });
     }
     return out.sort((a, b) => asciiSort(a.id, b.id));
   };
@@ -270,13 +306,12 @@ export function censusCatalogSnapshot(snapshot: CatalogSnapshot, certification: 
   if (invalid.length > 0) blockers.push("INVALID_SOURCE_RECORDS");
   if (duplicates.length > 0) blockers.push("DUPLICATE_CANONICAL_IDENTITY");
   if (missingReferences.length > 0) blockers.push("MISSING_REFERENCES");
-  if ((marked.parts > 0 || marked.equipmentModels > 0) && certification === null) blockers.push("CERTIFICATION_MARKED_RECORDS_REQUIRE_DECISION");
 
   const catalog: CanonicalCatalog = { parts, equipmentModels };
   const census: CatalogCensus = {
     source: snapshot.source,
     counts: { parts: snapshot.parts.length, equipmentModels: snapshot.equipmentModels.length },
-    certificationMarked: marked,
+    certificationExcluded: { counts: excludedCounts, records: excluded.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`)) },
     selected: { parts: parts.length, equipmentModels: equipmentModels.length },
     invalid: invalid.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`)),
     duplicateIdentities: duplicates.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`)),
@@ -291,5 +326,6 @@ export function censusCatalogSnapshot(snapshot: CatalogSnapshot, certification: 
     copyReady: blockers.length === 0,
     canonicalDigest: canonicalDigest(catalog),
   };
-  return { census, catalog };
+  provenance.sort((a, b) => asciiSort(`${a.kind}|${a.id}`, `${b.kind}|${b.id}`));
+  return { census, catalog, legacyActorProvenance: provenance };
 }
