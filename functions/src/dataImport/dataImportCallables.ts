@@ -88,6 +88,7 @@ import {
   listImportedServiceHistory,
   ImportedServiceHistoryReadError,
 } from "./importedServiceHistoryReadService.js";
+import { assertFirestoreCrmWriterOpen, FirestoreCrmWriterClosedError } from "../crm/crmWriterState.js";
 import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
@@ -221,6 +222,7 @@ function mapError(err: unknown): HttpsError {
   // caller's own file ("row 4 has 7 values, the header has 6") and are useless generically.
   if (err instanceof IntakeError) return new HttpsError("invalid-argument", err.message, { code: err.code });
   if (err instanceof ImportJobError) return new HttpsError("failed-precondition", err.message, { code: err.code });
+  if (err instanceof FirestoreCrmWriterClosedError) return new HttpsError("failed-precondition", err.message, { code: err.code });
   if (err instanceof ImportTargetRefusedError) {
     return new HttpsError("failed-precondition", "Data Import is not available in this environment.");
   }
@@ -374,6 +376,9 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
 
     const store = firestoreImportJobStore(db);
     const staged = assertExecutable(await store.get(jobId), targetProjectId);
+    // CRM cutover writer freeze: a customer import honours the freeze as a WHOLE, before the job is claimed and before
+    // any row is written; a frozen CRM refuses the job rather than failing row by row (crm/crmWriterState.ts).
+    if (staged.entityType === "CUSTOMERS") assertFirestoreCrmWriterOpen("account.import");
     const claimed = beginExecution(staged, actorUid, new Date().toISOString());
     if (!(await store.claimForExecution(claimed))) {
       // Someone else claimed it between the read and the write. Refusing is correct:

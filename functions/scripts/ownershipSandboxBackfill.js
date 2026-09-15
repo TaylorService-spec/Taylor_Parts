@@ -210,6 +210,10 @@ async function main() {
     return;
   }
 
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): the typed-owner patch is a contacts / locations
+  // write, so it refuses before the first one once the Firestore CRM writers are frozen.
+  require("../lib/crm/crmWriterState.js").assertFirestoreCrmWriterOpen("crm.ownershipBackfill");
+
   // ---------------- pass 2: write, re-reading each document inside a transaction
   let written = 0;
   let refused = 0;

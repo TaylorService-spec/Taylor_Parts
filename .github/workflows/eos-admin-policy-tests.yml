@@ -76,6 +76,14 @@ on:
       - "functions/src/crm/**"
       - "functions/test/crmCustomerNamespace.test.mjs"
       - "functions/test/crmCustomerPostgres.test.mjs"
+      # CRM CUTOVER (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
+      # and their suites (test:adminPolicy / test:adminPolicyPostgres after the D1-A integration).
+      - "functions/scripts/crmCutover.js"
+      - "functions/scripts/exportCrmSnapshot.js"
+      - "functions/test/crmCutover.test.mjs"
+      - "functions/test/crmCutoverPostgres.test.mjs"
+      - "functions/test/support/crmSnapshotFixture.mjs"
+      - "docs/architecture/crm-cutover-plan.md"
       # W1-C5: same gap, same two commands, for the employee-principal linkage.
       - "functions/src/employeeIdentity/**"
       - "functions/test/employeePrincipalLinkPlan.test.mjs"
@@ -215,6 +223,14 @@ on:
       - "functions/src/crm/**"
       - "functions/test/crmCustomerNamespace.test.mjs"
       - "functions/test/crmCustomerPostgres.test.mjs"
+      # CRM CUTOVER (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
+      # and their suites (test:adminPolicy / test:adminPolicyPostgres after the D1-A integration).
+      - "functions/scripts/crmCutover.js"
+      - "functions/scripts/exportCrmSnapshot.js"
+      - "functions/test/crmCutover.test.mjs"
+      - "functions/test/crmCutoverPostgres.test.mjs"
+      - "functions/test/support/crmSnapshotFixture.mjs"
+      - "docs/architecture/crm-cutover-plan.md"
       # W1-C5: same gap, same two commands, for the employee-principal linkage.
       - "functions/src/employeeIdentity/**"
       - "functions/test/employeePrincipalLinkPlan.test.mjs"
