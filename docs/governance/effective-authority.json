@@ -1,8 +1,8 @@
 {
  "catalog": {
-  "total": 147,
+  "total": 148,
   "active": 38,
-  "inactive": 109
+  "inactive": 110
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
@@ -155,9 +155,9 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 147,
+   "grantedCount": 148,
    "operableCount": 38,
-   "blockedCount": 109,
+   "blockedCount": 110,
    "granted": [
     "admin.accessRequest.decide",
     "admin.credentialReset.initiate",
@@ -178,6 +178,7 @@
     "customer.record.create",
     "customer.record.read",
     "customer.record.update",
+    "employee.record.read",
     "equipment.compatibility.correct",
     "equipment.compatibility.import",
     "equipment.compatibility.verify",
@@ -357,6 +358,7 @@
     "coverage.write",
     "crm.activity.create",
     "crm.activity.read",
+    "employee.record.read",
     "equipment.compatibility.correct",
     "equipment.compatibility.import",
     "equipment.compatibility.verify",
@@ -463,14 +465,15 @@
    "roleId": "generalManager",
    "label": "General Manager",
    "composedFunctionalRoles": [],
-   "grantedCount": 37,
+   "grantedCount": 38,
    "operableCount": 13,
-   "blockedCount": 24,
+   "blockedCount": 25,
    "granted": [
     "audit.event.read",
     "customer.record.create",
     "customer.record.read",
     "customer.record.update",
+    "employee.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",
@@ -521,6 +524,7 @@
     "workOrder.transition"
    ],
    "grantedButInactive": [
+    "employee.record.read",
     "finance.adjustment.record",
     "finance.invoice.issue",
     "finance.payment.apply",

@@ -74,6 +74,12 @@ export interface ReconcileOptions {
   readonly apply?: boolean;
   /** Recorded as granted_by / created_by / updated_by on any row this run applies. */
   readonly actor: string;
+  /**
+   * The capability keys to reconcile. DEFAULT = the inventory writer keys (newCapabilityKeys()). The SAME Role-catalog
+   * derivation serves any other governed key set -- e.g. eosWorkforce/migration/employeeCapabilityGrants.ts -- so a
+   * grant is always "what the Role catalog declares", never a hand-typed Role list.
+   */
+  readonly capabilityKeys?: readonly string[];
 }
 
 class UnknownTenantError extends Error {
@@ -95,7 +101,7 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
   const tenantRow = await pool.query<{ id: string }>(`SELECT id FROM ${SCHEMA}.tenants WHERE id = $1`, [tenantId]);
   if (tenantRow.rowCount === 0) throw new UnknownTenantError(tenantId);
 
-  const legacyGrants = deriveLegacyRoleGrants();
+  const legacyGrants = deriveLegacyRoleGrants(options.capabilityKeys ?? newCapabilityKeys());
 
   const capRows = await pool.query<{ id: string; key: string }>(`SELECT id, key FROM ${SCHEMA}.capabilities`);
   const capabilityIdByKey = new Map(capRows.rows.map((r) => [r.key, r.id]));

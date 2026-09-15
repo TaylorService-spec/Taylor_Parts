@@ -1,4 +1,4 @@
-// Governed PostgreSQL Sales Agreement commands -- wave C2. Internal services; nothing external invokes them yet.
+// Governed PostgreSQL Sales Agreement commands -- wave C2. Reached only through the C4 transport (commercialHttp.ts).
 //
 // Validation is the existing pure builders' (salesAgreementCommands.ts). Totals are never stored: C1 keeps only the
 // charge inputs, and subtotal / total / balance are computed from lines and charges when read. Acceptance metadata is

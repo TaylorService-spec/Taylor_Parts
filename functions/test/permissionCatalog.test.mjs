@@ -256,12 +256,19 @@ check("the three sensitive wave-1 report ids stay withheld -- now at the activat
 // Prefixes accumulate as registered-but-ungranted capabilities land. Two waves added entries
 // concurrently (coordinated-visit/transfer, and cycle count); both sets are kept -- one must never
 // overwrite the other. Each is paired with its own active:false assertion elsewhere in this file.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile.", "inventory.stock.relocate", "admin.dataImport.", "administration.emailIntake.", "service.inboundWork."];
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts.", "workOrder.labor.", "opportunity.", "salesAgreement.", "salesOrder.", "finance.", "coverage.", "inventory.catalog.read", "inventory.catalog.alias.read", "inventory.balance.", "inventory.location.bin.", "inventory.placement.", "inventory.returns.", "inventory.serializedAsset.", "crm.activity.", "fulfillment.coordinatedVisit.", "inventory.transfer.", "inventory.location.display.", "inventory.cycleCount.", "performance.goal.", "financialPolicy.profile.", "inventory.stock.relocate", "admin.dataImport.", "administration.emailIntake.", "service.inboundWork.", "employee.record."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
     assert.equal("active" in permission, false, `"${permission.id}" must not declare active -- would be a behavior change`);
   }
+});
+// Employee business record read (Owner ruling A, 2026-09-14). Paired with the "employee.record." prefix: exactly one
+// id, registered-but-inactive -- the PostgreSQL runtime decides by eos_policy.role_capabilities, not this flag.
+check("employee.record.* is exactly employee.record.read, registered-but-inactive (active: false, never true)", () => {
+  const ids = PERMISSION_CATALOG.filter((p) => p.id.startsWith("employee.record."));
+  assert.deepEqual(ids.map((p) => p.id), ["employee.record.read"]);
+  assert.equal(ids[0].active, false);
 });
 // Data Import P1. Paired with the "admin.dataImport." prefix, per this file's convention: a prefix
 // that permits `active` to be DECLARED must come with an assertion pinning what it is declared AS.

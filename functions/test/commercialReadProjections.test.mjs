@@ -50,12 +50,16 @@ test("(1) no Firebase: no read module imports it, and loading every one resolves
   assert.equal(probe.status, 0, `a C3 module transitively loaded Firebase: ${probe.stderr}`);
 });
 
-test("(2) no runtime entry point reaches the read projections: nothing outside them imports them", () => {
-  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosCommercial\/reads\//.test(readFileSync(f, "utf8")));
-  assert.deepEqual(importers.map(rel), [], "a module outside the C3 read layer imports it");
-  for (const surface of ["index.ts", "eosApi/server.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
+test("(2) the only runtime entry point to the read projections is the C4 Commercial transport", () => {
+  // A relative "./reads/" import reaches the Commercial read layer only from src/eosCommercial itself; elsewhere (e.g.
+  // src/eosWorkforce/reads) it names a different domain's reads.
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) &&
+    (/eosCommercial\/reads\//.test(readFileSync(f, "utf8")) || (dirname(f) === join(SRC, "eosCommercial") && /["']\.\/reads\//.test(readFileSync(f, "utf8")))));
+  assert.deepEqual(importers.map(rel), ["src/eosCommercial/commercialHttp.ts"], "a module other than the C4 transport imports the read layer");
+  for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCommercial|ReadProjection|commercialReadKernel/, `${surface} reaches Commercial reads`);
   }
+  assert.doesNotMatch(strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8")), /ReadProjection|commercialReadKernel|eosCommercial\/reads/, "server.ts reaches reads without the transport");
   const client = walk(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
   assert.ok(!client.some((f) => /eosCommercial\/reads|(opportunity|salesAgreement|salesOrder)ReadProjection|commercialReadKernel|getAccountCommercialProjection/.test(readFileSync(f, "utf8"))), "the client references a C3 projection");
 });
@@ -70,8 +74,11 @@ test("(3) no Commercial capability is activated, and no read capability id is in
   }
   const used = new Set(readSources().flatMap((f) => [...strip(readFileSync(f, "utf8")).matchAll(/"((?:opportunity|salesAgreement|salesOrder|account|customer)\.[A-Za-z.]+)"/g)].map((m) => m[1])));
   assert.deepEqual([...used].sort(), ["opportunity.read", "salesAgreement.read", "salesOrder.read"]);
-  const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"));
-  assert.ok(!migrations.some((sql) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(sql.replace(/^\s*--.*$/gm, ""))), "a Commercial capability was registered in eos_policy");
+  // C4 registers the VOCABULARY (migration 023) and nothing else may name a Commercial capability in SQL; no migration grants one.
+  const naming = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
+    .filter((f) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, "")));
+  assert.deepEqual(naming, ["1759536000000_commercial-capability-vocabulary.sql"], "a Commercial capability was registered or granted outside migration 023");
+  assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "migrations", naming[0]), "utf8").split("-- Down Migration")[0].replace(/^\s*--.*$/gm, ""), /role_capabilities/, "migration 023 grants a Commercial capability");
 });
 
 test("(4) READ-ONLY: no read module contains write SQL, locks, sequence use, or reaches a writer", () => {

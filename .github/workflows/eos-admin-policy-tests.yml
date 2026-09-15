@@ -117,6 +117,40 @@ on:
       - "functions/src/eosCommercial/reads/**"
       - "functions/test/commercialReadProjections.test.mjs"
       - "functions/test/commercialReadProjectionsPostgres.test.mjs"
+      - "functions/src/eosCommercial/commercialHttp.ts"
+      - "functions/test/commercialTransport.test.mjs"
+      - "functions/test/commercialTransportPostgres.test.mjs"
+      # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
+      - "functions/src/eosWorkforce/**"
+      - "functions/test/employeeRuntimeReads.test.mjs"
+      - "functions/test/employeeRuntimeReadsPostgres.test.mjs"
+      - "functions/src/eosOps/migration/inventoryCapabilityGrantMigration.ts"
+      - "functions/scripts/employeeProfileCutover.js"
+      - "functions/scripts/exportEmployeeProfileSnapshot.js"
+      - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      - "functions/test/employeeProfileAuthority.test.mjs"
+      - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
+      # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
+      # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
+      - "functions/src/eosCrm/**"
+      - "functions/migrations/1759622400000_crm-capability-vocabulary.sql"
+      - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
+      - "functions/test/crmAuthority.test.mjs"
+      - "functions/test/crmAuthorityPostgres.test.mjs"
+      # Lane D catalog reference authority FOUNDATION (#1911): inert schema + adapter + tests, not composed.
+      - "functions/src/catalogAuthority/**"
+      - "functions/migrations/1759795200000_catalog-part-identity-reference-authority.sql"
+      - "functions/test/catalogReferenceAuthority.test.mjs"
+      - "functions/test/catalogReferenceAuthorityPostgres.test.mjs"
+      # CATALOG CUTOVER (required registration): the unwired PostgreSQL catalog writers, the fenced copy/verify tool and
+      # its snapshot export, and their two suites run in test:adminPolicy / test:adminPolicyPostgres.
+      - "functions/src/catalogMaster/**"
+      - "functions/scripts/catalogCutover.js"
+      - "functions/scripts/exportCatalogSnapshot.js"
+      - "functions/test/catalogMaster.test.mjs"
+      - "functions/test/catalogCutoverPostgres.test.mjs"
+      - "functions/test/support/catalogSnapshotFixture.mjs"
+      - "functions/migrations/1759881600000_catalog-master-descriptive-authority.sql"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
@@ -222,6 +256,40 @@ on:
       - "functions/src/eosCommercial/reads/**"
       - "functions/test/commercialReadProjections.test.mjs"
       - "functions/test/commercialReadProjectionsPostgres.test.mjs"
+      - "functions/src/eosCommercial/commercialHttp.ts"
+      - "functions/test/commercialTransport.test.mjs"
+      - "functions/test/commercialTransportPostgres.test.mjs"
+      # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
+      - "functions/src/eosWorkforce/**"
+      - "functions/test/employeeRuntimeReads.test.mjs"
+      - "functions/test/employeeRuntimeReadsPostgres.test.mjs"
+      - "functions/src/eosOps/migration/inventoryCapabilityGrantMigration.ts"
+      - "functions/scripts/employeeProfileCutover.js"
+      - "functions/scripts/exportEmployeeProfileSnapshot.js"
+      - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      - "functions/test/employeeProfileAuthority.test.mjs"
+      - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
+      # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
+      # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
+      - "functions/src/eosCrm/**"
+      - "functions/migrations/1759622400000_crm-capability-vocabulary.sql"
+      - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
+      - "functions/test/crmAuthority.test.mjs"
+      - "functions/test/crmAuthorityPostgres.test.mjs"
+      # Lane D catalog reference authority FOUNDATION (#1911): inert schema + adapter + tests, not composed.
+      - "functions/src/catalogAuthority/**"
+      - "functions/migrations/1759795200000_catalog-part-identity-reference-authority.sql"
+      - "functions/test/catalogReferenceAuthority.test.mjs"
+      - "functions/test/catalogReferenceAuthorityPostgres.test.mjs"
+      # CATALOG CUTOVER (required registration): the unwired PostgreSQL catalog writers, the fenced copy/verify tool and
+      # its snapshot export, and their two suites run in test:adminPolicy / test:adminPolicyPostgres.
+      - "functions/src/catalogMaster/**"
+      - "functions/scripts/catalogCutover.js"
+      - "functions/scripts/exportCatalogSnapshot.js"
+      - "functions/test/catalogMaster.test.mjs"
+      - "functions/test/catalogCutoverPostgres.test.mjs"
+      - "functions/test/support/catalogSnapshotFixture.mjs"
+      - "functions/migrations/1759881600000_catalog-master-descriptive-authority.sql"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**

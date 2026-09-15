@@ -1,4 +1,4 @@
-// Governed PostgreSQL Opportunity commands -- wave C2. Internal services; nothing external invokes them yet.
+// Governed PostgreSQL Opportunity commands -- wave C2. Reached only through the C4 transport (commercialHttp.ts).
 //
 // Validation is the existing pure builders' (opportunityCommands.ts, opportunityLifecycle.ts); authority, identity,
 // numbering, ownership history, accountability history and idempotency are PostgreSQL's, in one transaction.
