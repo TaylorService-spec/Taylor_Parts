@@ -57,5 +57,5 @@ verdict.
   environment. A composed PostgreSQL catalog authority therefore answers NOT_FOUND (fail-closed) until a governed
   catalog cutover (copy once → verify → reconcile → cut over writer). Owner ruling D2 (2026-09-14) excluded catalog
   migration from the Commercial wave — **F**.
-- Composition into `functions/src/eosApi/server.ts`, test registration in `functions/package.json` and workflows —
-  post-C4 integration tail.
+- Composition into `functions/src/eosApi/server.ts` — CATALOG_CUTOVER_TAIL, gated on proven population and
+  reconciliation; a static ratchet (`functions/test/catalogReferenceAuthority.test.mjs`) keeps it absent until then.

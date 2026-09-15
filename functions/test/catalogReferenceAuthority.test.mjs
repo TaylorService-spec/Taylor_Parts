@@ -1,7 +1,7 @@
 // LANE D, no database -- the boundary of the PostgreSQL catalog reference authority.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -50,6 +50,24 @@ test("the verdict rules on a fake database: own kind first, then the other kind,
   assert.deepEqual(await authority.verifyReferences(db, "t1", refs), ["FOUND", "WRONG_KIND", "WRONG_KIND", "FOUND", "NOT_FOUND", "NOT_FOUND", "FOUND", "FOUND"]);
   const nonBoolean = { query: async () => ({ rows: [{ ordinal: 1, is_part: "t", is_equipment_model: 1 }] }) };
   assert.deepEqual(await authority.verifyReferences(nonBoolean, "t1", [{ kind: "PART", ref: "x" }]), ["NOT_FOUND"], "only a real boolean true is existence");
+});
+
+// CATALOG_CUTOVER_TAIL. This PR is an INERT FOUNDATION. eos_ops.parts and eos_ops.equipment_models are empty in every
+// environment, so a composed PostgreSQL catalog would answer NOT_FOUND for every real product -- a false answer.
+// CATALOG_AUTHORITY_UNAVAILABLE is the truthful deployed behaviour until population and reconciliation are PROVEN by
+// the governed catalog cutover. Only that cutover may compose this adapter and relax this ratchet.
+test("ratchet: nothing composes the catalog authority -- server.ts supplies no catalog, and no runtime module imports catalogAuthority/**", () => {
+  const SRC = join(FUNCTIONS_DIR, "src");
+  const server = strip(readFileSync(join(SRC, "eosApi/server.ts"), "utf8"));
+  assert.doesNotMatch(server, /catalogAuthority|CatalogReferenceAuthority|createPostgresCatalog/, "server.ts composes the catalog authority");
+  const handlerCall = server.match(/createCommercialHttpHandler\(\{([\s\S]*?)\}\)/);
+  assert.ok(handlerCall, "server.ts no longer composes the Commercial handler where this ratchet expects it");
+  assert.doesNotMatch(handlerCall[1], /\bcatalog\b/, "server.ts hands the Commercial handler a catalog");
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
+  const importers = walk(SRC)
+    .filter((f) => /\.(ts|js|mjs|cjs)$/.test(f) && !f.startsWith(join(SRC, "catalogAuthority")))
+    .filter((f) => /catalogAuthority\b|postgresCatalogReferenceAuthority/.test(strip(readFileSync(f, "utf8"))));
+  assert.deepEqual(importers, [], "a runtime module imports the catalog authority");
 });
 
 test("migration 025 is additive, standalone and carries no data, writer or cross-schema dependency beyond tenants", () => {

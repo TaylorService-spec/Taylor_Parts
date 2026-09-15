@@ -23,7 +23,8 @@
 //     no caller-supplied SQL, table or column.
 //   * Not a transaction owner: it runs on the `db` the command hands it, so the verdicts belong to the SAME
 //     snapshot as the command's write.
-//   * Not wired: nothing composes it yet (composition into the Render boundary is the post-C4 integration tail).
+//   * Not wired: nothing composes it. Composition is CATALOG_CUTOVER_TAIL, gated on proven population/reconciliation
+//     (an empty catalog would answer NOT_FOUND for every real product; CATALOG_AUTHORITY_UNAVAILABLE is the truth).
 //
 // The port's types are restated structurally rather than imported, because the C2 command layer is imported only
 // by itself (commercialCommandLayer.test.mjs). Its CONTRACT is proven by passing this authority to the real
