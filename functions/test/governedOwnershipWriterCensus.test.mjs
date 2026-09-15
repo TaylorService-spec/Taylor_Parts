@@ -143,6 +143,8 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   // PostgreSQL / migration modules no callable can reach.
   "src/crm/customerIdentity.ts": "INERT",
   "src/crm/customerMigrationSource.ts": "INERT",
+  // CRM cutover: the pure snapshot census. Reads legacy owner shapes; writes nothing; loaded only by scripts/crmCutover.js.
+  "src/crm/crmCutoverSnapshot.ts": "INERT",
   "src/crm/customerRepository.ts": "INERT",
   "src/eosCommercial/commercialOwnershipAuthority.ts": "INERT",
   "src/eosCommercial/commercialOwnershipRepository.ts": "INERT",

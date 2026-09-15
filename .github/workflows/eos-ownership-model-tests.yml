@@ -43,6 +43,8 @@ on:
       - "functions/scripts/measureCommercialAccountability.js"
       # GOVERNED/SEED (census §5.6): the synthetic nonprod seed is pinned by governedOwnershipWriterCensus.
       - "functions/scripts/seedSyntheticNonprodWorkforce.js"
+      # CRM cutover: the pure snapshot census is classified by governedOwnershipWriterCensus (census row 12a).
+      - "functions/src/crm/crmCutoverSnapshot.ts"
       - "functions/migrations/1759276800000_commercial-accountability-authority.sql"
       # BLOCKER #1 (Owner ruling 2026-09-14): the PostgreSQL accountability audit authority, its migration and suites.
       - "functions/migrations/1759363200000_accountability-history-action-and-source.sql"
