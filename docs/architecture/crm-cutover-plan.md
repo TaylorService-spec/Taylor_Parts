@@ -128,7 +128,7 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 | `accountOwner.assignedToDisplayName` | — | D | display snapshot; not migrated |
 | `accountOwner.assignedByEmployeeId / assignedByUserId / assignedByDisplayName / assignedAt` | — | E (ruled) | **migration evidence only.** Never Account columns. A one-time transform into ownership history is allowed **only once a governed Account ownership-handoff history exists** — it does not (#1912 `ACCOUNT_OWNER_HANDOFF_PENDING`). Never fabricated into governed history. |
 | `billingAddress {street,city,state,zip}` | `billing_address_street/_city/_state/_postal_code` | A | structured parts map **directly** (`zip` → `_postal_code`); blank part → NULL; unknown part → blocker |
-| `billingAddress` **free-text string** | — | C | **never parsed.** Held verbatim in the census/copy evidence (`billingAddressResolution`), Account marked `BILLING_ADDRESS_REQUIRES_RESOLUTION` (blocker). No permanent free-text column. Resolution = a person records the structured address through the Account form before the freeze (or an Owner-approved staging path, §9). |
+| `billingAddress` **free-text string** | — | C | **never parsed, no structure invented** (controller ruling 1). Held verbatim in the census/copy evidence (`billingAddressResolution`), Account marked `BILLING_ADDRESS_REQUIRES_RESOLUTION` (**reconciliation blocker**). No permanent free-text column, no staging shadow authority. Repo-controlled fixtures: none writes a free-text billing address (the only writer is Data Import at runtime, `customerImportContract.ts:66-73,177`), so there is no fixture to remediate. Production: read-only census only; an unresolved real record needs a later Owner data decision. |
 | `notes`, `customerNumber`, `erpId`, `accountingId`, `legacyId` | same-named snake columns | A | optional text; opaque; not unique (D-C1-4) |
 | `defaultCurrency` | `default_currency` | A | `^[A-Z]{3}$` and in the D1-A ISO-4217 set (`eosCrm/accountVocabulary.ts`, imported) |
 | `purchaseOrderRequired` | `purchase_order_required` | A | boolean or NULL |
@@ -138,14 +138,14 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 | `tags[]` | `eos_crm.account_tags (position, tag)` | A | ≤100 distinct non-blank ≤200, trimmed, order preserved |
 | `relationshipTypes[]` | `eos_crm.account_relationship_types` | A | CUSTOMER/VENDOR set |
 | `lineOfBusiness[]` | `eos_crm.account_lines_of_business` | A | TAYLOR/VENTANA set |
-| `lineOfBusiness` **scalar** | — | C | `LINE_OF_BUSINESS_SCALAR_LEGACY` blocker (seed shape; the UI reads arrays only, `domain/accountNorthStar.js:125`) — a scalar is not promoted to a set by assumption |
+| `lineOfBusiness` **scalar** | `account_lines_of_business` (one-item set) | B (ruling 3, §2.5) | a vocabulary value (TAYLOR/VENTANA) becomes a one-item set (`LINE_OF_BUSINESS_SCALAR_AS_SET`, advisory); any other scalar → `LINE_OF_BUSINESS_SCALAR_UNMAPPABLE` blocker |
 | `createdAt`, `updatedAt` (Timestamp or epoch ms) | `created_at`, `updated_at` | A | microsecond ISO; drift counted. Absent/invalid `createdAt` → blocker (never fabricated). Absent `updatedAt` → `created_at` (the create path stamps both from one call, `collectionStore.js:85-88`), advisory. |
 | `nameLower` | — | B | PostgreSQL folds `lower(btrim(name))`; stale value reported (advisory) |
 | `accountId` (seed echo) | — | D | must equal the doc id, else blocker |
 | `createdBy`, `updatedBy` | — | provenance | uid / seed actor → evidence only. `created_by`/`updated_by` = the **cutover EOS Principal** |
 | `certificationWorld` | — | marker | record **excluded** (ids + reason in evidence) |
 | `category, certLineMode, fixtureCompleteness, dataProvenance, fieldProvenance, publicSource, syntheticDataDisclaimer` | — | E | fixture-only; on an unmarked record → blocker |
-| `city, state, addressLine1, phone, website` on an Account | — | E | no Account column (`metadata/definitions/account.js` gap `ACCOUNT_CITY_STATE_NOT_PROJECTED`) → blocker |
+| `city, state, addressLine1, phone, website` on an Account | — | C (ruling 3, §2.5) | **not migrated**; each value preserved per record in `evidence.notMigratedValues` (`FIELD_NOT_MIGRATED_OBSOLETE`, advisory). Never promoted to a billing address. |
 
 ### 2.2 Contact → `eos_crm.contacts`
 
@@ -157,12 +157,12 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 | `email`, `phone` | `email`, `phone` | A | optional text |
 | `role` | `contact_role` | A | free text |
 | `isPrimary` | `is_primary` | A | boolean; absent → false; multiple primaries per Account reported, not resolved |
-| `owner {type:"USER", id}` | `owner_employee_id` | A | must resolve as for Account. Absent → NULL (advisory). **Never inherited from the Account at migration time** — inheritance is a creation rule. |
+| `owner {type:"USER", id}` | `owner_employee_id` | A | a stated owner is kept and must resolve as for Account. **Absent → follows the Account's owner at cutover** (ruling 4: the D1 creation semantics; not accountability; a later Account handoff never propagates to historical children), recorded per record in `evidence.ownerDerivations` (`{collection, id, derivedFromAccountId, ownerEmployeeId, rule: D1_CREATION_OWNER_FOLLOWS_ACCOUNT_OWNER_AT_CUTOVER}`). Under an **ownerless Account** the child is **blocked** (`CHILD_OWNER_UNDERIVABLE`) — a governed child is never ownerless. |
 | `createdAt/updatedAt` | `created_at/updated_at` | A | as Account |
 | `createdBy/updatedBy` (uids) | — | provenance | evidence only |
 | `contactId` (seed echo) | — | D | must equal id |
-| `title` | — | E | not asserted to be `role` → blocker (seed/Certification shape) |
-| `locationId` | — | E | a Contact has no site column → blocker |
+| `title` | `contact_role` | B (ruling 3, §2.5) | used when `role` is absent (`CONTACT_TITLE_AS_ROLE`); `title` ≠ `role` → `CONTACT_TITLE_ROLE_CONFLICT` blocker |
+| `locationId` | — | C (ruling 3, §2.5) | not migrated; value preserved in `evidence.notMigratedValues` |
 | `dataProvenance` | — | E | fixture-only |
 
 ### 2.3 Customer site → `eos_crm.account_locations`
@@ -175,7 +175,7 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 | `address {street,city,state,zip}` | `address_street/_city/_state/_postal_code` | A | nested map → flat columns directly |
 | flat `addressLine1 / city / state / zip` | same columns | C (legacy variant) | structured components map directly (`addressLine1`→street). Nested + flat that **agree** merge; that **disagree** → `ADDRESS_SHAPE_CONFLICT` blocker (no precedence chosen) |
 | `accessNotes` | `access_notes` | A | optional text |
-| `owner {USER}` | `owner_employee_id` | A | as Contact |
+| `owner {USER}` | `owner_employee_id` | A | as Contact (stated, or derived from the Account at cutover with evidence, or blocked) |
 | `createdAt/updatedAt` | `created_at/updated_at` | A | as Account |
 | `createdBy/updatedBy` | — | provenance | evidence only |
 | `locationId` (seed echo) | — | D | must equal id |
@@ -189,6 +189,24 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 - A Certification-marked record is excluded; an **unmarked** id with the `cw-` prefix blocks (`CERTIFICATION_ID_WITHOUT_MARKER`) — whether it is a fixture is not guessed.
 - `eos_commercial.opportunities / sales_agreements / sales_orders`, `eos_finance.invoices / payments`, `eos_ops.equipment` rows of the tenant naming an Account the copy will not provide (and `eos_crm.accounts` does not already hold) → `COMMERCIAL_ACCOUNT_REFERENCE_UNRESOLVABLE` blocker.
 - A Firebase uid is **never** written to `created_by`, `updated_by` or any principal column.
+- A source id that the synthetic nonprod seed manifest also declares → `SYNTHETIC_ID_CONFLICT` blocker (ruling 5).
+
+### 2.5 Field census for the six contested fields (controller ruling 3)
+
+Classes: A legitimate current governed business fact · B derived/duplicated · C obsolete/dead · D unresolved. No field is
+class A, so **no migration is added** (none needed).
+
+| Field | Writers | Readers / UI / reports | Class | Target |
+|---|---|---|---|---|
+| Contact `title` | `functions/scripts/seedSandboxBaseline.js:123-124,240` (sandbox seed); `certificationWorld/build.mjs:202` (frozen fixture). No product writer. | No reader: `metadata/definitions/contact.js` declares `role` only; report catalog `reporting/reportCatalog.ts:149` exposes `role`. The product's CSV importer maps a *Title / Job title / Position* column **to role**: `field-ops-app-vite/src/domain/contactCsvImport.js:109`. | **B** | `contact_role` when `role` absent; conflict blocks |
+| Contact `locationId` | `certificationWorld/build.mjs:200` only | none (no hook, UI, report or command reads a Contact's site) | **C** | not migrated; evidence |
+| Account scalar `lineOfBusiness` | `seedSandboxBaseline.js:112-113,226`; `certificationWorld/build.mjs:148` | `AccountForm.jsx:60,324,332` reads it by membership (`.includes`); `domain/accountNorthStar.js:120-125` and `metadata/definitions/account.js:173` treat the field as a set | **B** | `account_lines_of_business` one-item set |
+| Account `city` | `certificationWorld/build.mjs:156` only | none for Accounts (`getWorkOrderFieldContext.ts:83` reads `city` on a **site**, which §2.3 maps) | **C** | not migrated; evidence |
+| Account `phone` | `certificationWorld/build.mjs:166` only | no UI/report/command; `domain/duplicateRules.js:179` names an account `phone` criterion that no writer ever populates (dead criterion, `matchBlanks: false`) | **C** | not migrated; evidence |
+| Account `website` | `certificationWorld/build.mjs:167` only | none | **C** | not migrated; evidence |
+
+(Account `state` / `addressLine1` share `city`'s evidence and class.) Certification records carrying these fields are
+excluded anyway; the classification decides what happens if an unmarked record carries one.
 
 ---
 
@@ -296,7 +314,7 @@ verification tooling that must not run after the freeze; **REMOVE** — deleted 
 |---|---|---|---|---|---|
 | 1 | Account form create | `AccountsList.jsx:138` → `domain/accounts.js:78` | W accounts | **MUST** | CRM transport `createAccount` (explicit owner) |
 | 2 | Account form edit | `AccountDetail.jsx:463` → `accounts.js:82` | W accounts | **MUST** | `updateAccount` (+ governed capability) |
-| 3 | Data Import customers | `firestoreDataImportAdapters.ts:284` → `accountImportCommand.ts:118-185`; callable `executeDataImport` | W accounts | **MUST** (or frozen) | `createAccount` — **GAP**: import contract has no owner (`customerImportContract.ts:22-24`) and PostgreSQL refuses ownerless creation; free-text billing address (`:66-73`) has no target. Owner decision §9 |
+| 3 | Data Import customers | `firestoreDataImportAdapters.ts:284` → `accountImportCommand.ts:118-185`; callable `executeDataImport` | W accounts | **MUST** (frozen during cutover) | **`functions/src/crm/postgresCustomerImport.ts`** (ruling 2, built, unwired behind PostgreSQL INACTIVE): every row needs an explicit `ownerEmployeeId` (resolved by eos_crm `createAccount` as a same-tenant Employee; never the import operator/Principal/uid/role/creator — no governed Account creation-owner authority exists, `ownership/creationOwnerResolution.ts` resolves owners *from* an Account); a free-text billing address refuses; a structured address is validated by the authority itself; governed/unknown fields refuse. Wiring Data Import onto it is the consumer-migration step. |
 | 4 | Data Import identity/equipment/service-history lookups | `firestoreDataImportAdapters.ts:264,357,367,442,453`; `firestoreServiceHistoryAdapters.ts:46,144` | R accounts, locations | FOLLOW | `listAccounts` name-fold lookup + `listAccountLocations` |
 | 5 | Account picker | `hooks/useAccountPicker.js:38` (NewOpportunityForm.jsx:26, WorkOrderWizard.jsx:92, InboundWorkWorkspace.jsx:226) | R accounts | **MUST** | `listAccounts` |
 | 6 | Account record | `hooks/useAccount.js:65` | R accounts | **MUST** | `getAccount` |
@@ -353,12 +371,20 @@ Owner accepts a CRM write freeze for that window).
 | `domain/accounts.js:78,82` (client-direct) | Rules: `accounts` `allow create, update: if false` (`firestore.rules:1332-1337`) | writer + `AccountForm` submit re-pointed to transport |
 | `domain/contacts.js:28,40`, `domain/contactImport.js:20` | Rules: `contacts` `allow create, update: if false` (`firestore.rules:1557`) | writers |
 | `domain/locations.js:18,22` | Rules: `locations` `allow create, update: if false` (`firestore.rules:1343`) | writers |
-| `account/accountImportCommand.ts:118` (Admin SDK — Rules do not apply) | a retirement switch as the catalog lane's `firestoreCatalogWriterRetirement.ts`: `assertFirestoreCrmWriterOpen("account.import")` first statement; RETIRED → `failed-precondition`; deploy Functions | command + `CUSTOMERS` writer registration `dataImportCallables.ts:126` |
-| `ownershipSandboxBackfill.js`, `seedAccountOwners.mjs`, `seedSandboxBaseline.js`, `seedSandboxInboundWork.mjs` (Admin SDK) | operator stop: must not be run after the freeze (recorded in the freeze evidence) | retire the CRM parts |
+| `account/accountImportCommand.ts` (Admin SDK — Rules do not apply) | **built**: the CRM writer state `functions/src/crm/crmWriterState.ts` (committed Firestore OPEN / PostgreSQL INACTIVE, catalog pattern). `createAccountFromImport` calls `assertFirestoreCrmWriterOpen("account.import")` as its first act, and `executeDataImport` refuses a CUSTOMERS job **before claiming it** (the import honours the freeze as a whole, fail-closed); FROZEN/RETIRED → `failed-precondition` | command + `CUSTOMERS` writer registration `dataImportCallables.ts` |
+| `ownershipSandboxBackfill.js`, `certificationWorld/seedAccountOwners.mjs`, `seedSandboxBaseline.js`, `seedSandboxInboundWork.mjs` (Admin SDK) | **built**: each calls the same guard with its own writer id before its first CRM write (proved statically) | retire the CRM parts |
 | Read Rules `allow read: if isAdminOrDispatcher()` (`:1320,1342,1556`) | unchanged during the window (frozen readers keep working) | `allow read: if false` after every §5 reader moved |
 
-**Rules are not modified in this lane.** The Rules edits and the retirement switch are their own PRs, each deployed to
-the environment as a separately authorized step.
+**Rules are not modified in this lane (Tier-2 Rules HOLD).** Client-direct writers (`FIRESTORE_CRM_WRITERS` entries with
+`enforcement: RULES_FREEZE`) are frozen only by the documented Rules step, deployed as a separately authorized act at step
+3. The server-side switch is flipped by a reviewed commit (`CRM_WRITER_AUTHORITY` → FROZEN/INACTIVE) and deploy — never an
+environment variable or a Firestore flag. Legal moves: FREEZE, ROLLBACK_BEFORE_POSTGRES_WRITES, ACTIVATE_POSTGRES,
+RETIRE_FIRESTORE; OPEN/ACTIVE is incoherent and nothing leaves ACTIVE.
+
+**Freeze window (ruling 6).** No fixed duration: the shortest controlled interval freeze legacy writers → export → copy →
+verify/reconcile → activate PostgreSQL authority → retire old writers → unfreeze on the new authority. No legacy mutation
+may slip through after the freeze begins; an import that cannot honour the freeze atomically stays disabled (contact CSV
+import is client-direct and is frozen by the Rules step; the PostgreSQL replacement is per-row idempotent creates).
 
 ### 6.3 Sequence (each step separately authorized and evidenced)
 
@@ -373,6 +399,10 @@ the environment as a separately authorized step.
 9. **Compose the Render CRM transport** (§4) and move the MUST consumers (§5 rows 1-9, 13), then the FOLLOW* consumers that gate site/Account creation (24-26, 28). **Verify** again (a `--mode verify` on the same snapshot must still reconcile for untouched rows; new PostgreSQL rows are expected and reported, not drift).
 10. **Disable/remove legacy writers** and their callables, then legacy readers as they move; `allow read: if false`; drop Firestore indexes; shrink `docs/architecture/firebase-exit-baseline.json`.
 11. **Unfreeze**: CRM writes resume on PostgreSQL only.
+
+**Synthetic acceptance rows (ruling 5).** Manifest-declared synthetic nonprod rows may coexist with copied nonprod data
+only with `--retainDeclaredSyntheticSeedRows` (refused for production by name, before any client), only when no id
+conflicts (`SYNTHETIC_ID_CONFLICT` blocks the census), and verify reports them separately from source-copy counts.
 
 **Rollback rule.** Before step 8 (no PostgreSQL CRM write has been accepted), rollback = revert the Rules/switch
 deploy and discard the copied tenant rows through a separately authorized, audited operation; Firestore is still the
@@ -427,23 +457,29 @@ CRM write is observed after the freeze; a Firebase uid appears in any `created_b
 - `functions/test/crmAuthority.test.mjs` (F2) now names the cutover modules as the one sanctioned outside importer of
   `src/eosCrm` and asserts no runtime module imports the cutover.
 
+- Controller rulings (2026-09-15), offline in `crmCutover.test.mjs` and PostgreSQL in `crmCutoverPostgres.test.mjs`:
+  child owner derivation with evidence and ownerless-Account blocking (+ copy refuses evidence from another Account, a
+  missing evidence set or an ownerless child; verify holds the cutover owner through a later Account handoff); title ->
+  role, scalar line of business, obsolete fields in evidence; synthetic id conflict and the production refusal of the
+  synthetic flag (also in the fence suite); the CRM writer state (coherence, legal moves, every server-side writer guarded
+  before its first write, the customer import refusing before touching Firestore and before the job is claimed); the
+  PostgreSQL customer import refusal matrix and its PostgreSQL behaviour through eos_crm `createAccount`.
+- Ruling negative controls (each red, restored byte-identical): child owner derived without evidence; derived from the
+  wrong Account; copy accepting evidence from another Account; import creating an ownerless Account; legacy writer
+  ignoring the freeze; synthetic flag accepted in production.
+
 ---
 
-## 9. Unresolved facts and Owner decisions
+## 9. Controller rulings (2026-09-15) and what remains unresolved
 
-- **E — Free-text billing addresses.** Default in this plan: resolve at the source before the freeze (copy blocked).
-  Alternative requiring Owner approval: copy the Account with NULL billing columns and a governed, non-authoritative
-  staging record that refuses authoritative execution of the field until resolved.
-- **E — Data Import customers after cutover.** The customer contract carries no owner and a free-text billing address;
-  the PostgreSQL authority refuses both. Freeze customer import, or extend the contract with an explicit Employee owner
-  and structured address.
-- **E — Legacy shapes with no target:** Contact `title` (map to `contact_role`?), Contact `locationId`, scalar
-  `lineOfBusiness` (promote to a singleton set?), Account `city/state/addressLine1/phone/website`. Currently blockers.
-- **E — Ownerless legacy Contacts/sites:** carried OWNERLESS (no migration-time inheritance). Confirm, or authorize a
-  documented inheritance transform with evidence.
-- **E — Declared synthetic nonprod seed rows** already in `eos_crm` for `taylor-nonprod`: allow them to coexist with the
-  copy (reported separately), or remove them first.
-- **E — Freeze window** between step 3 and step 11, and **contact CSV import atomicity** (one batch today; per-row
-  idempotent creates on PostgreSQL).
-- **Unresolved — live data shape.** Sandbox counts, blockers, timestamp drift and owner resolution are unmeasured until
-  an authorized export + census. **Production tenancy** has no PostgreSQL tenant.
+Rulings 1-8 are applied (§2.1-2.5, §5 row 3, §6.2-6.3, §7): free-text billing addresses are reconciliation blockers,
+never parsed; the PostgreSQL customer import requires an explicit same-tenant Employee owner; the six contested fields
+are classified (§2.5, no migration); children follow the Account owner at cutover with evidence or are blocked; synthetic
+rows coexist only in nonprod with the explicit flag; the CRM writer state freezes every server-side legacy writer;
+the exporter exception stays narrow; production is fail-closed (no production mode in either tool).
+
+Remaining, real and unmeasured until an authorized export + census (no speculative items):
+- **Live data shape.** Sandbox counts, free-text billing addresses, children under ownerless Accounts, timestamp drift and
+  owner resolution are unmeasured; each would surface as a census blocker with exact ids.
+- **Production tenancy.** No production PostgreSQL tenant or mapping exists; production is limited to a separately
+  authorized read-only census.

@@ -4,8 +4,8 @@
 //
 // ════════════════════ PURE. NO FIREBASE, NO DATABASE, NO WRITES ════════════════════
 //
-// Input is an already-exported EOS_CRM_SNAPSHOT file (functions/scripts/exportCrmSnapshot.js, the Owner's
-// FIREBASE_EXIT_MIGRATION_ONLY exception). Output is a report plus the canonical records a copy would write. Target
+// Input is an already-exported EOS_CRM_SNAPSHOT file (the fenced CRM snapshot export script, the Owner's
+// migration-only Firebase exit exception). Output is a report plus the canonical records a copy would write. Target
 // facts that need PostgreSQL (does an owner resolve to a same-tenant Employee, which eos_commercial rows name an
 // Account) are gathered by the CLI and folded in by `finalizeCrmCensus`, which is also pure.
 //

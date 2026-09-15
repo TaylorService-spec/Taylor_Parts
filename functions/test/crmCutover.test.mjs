@@ -67,6 +67,15 @@ test("STRUCTURAL: no runtime module (functions/src, field-ops-app-vite/src, inte
     }
   }
   assert.deepEqual(offenders, []);
+  // Not a package entry point, and a workflow may name it only as a path filter, never in a step or a schedule.
+  const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+  assert.doesNotMatch(JSON.stringify({ main: pkg.main, exports: pkg.exports ?? null, bin: pkg.bin ?? null, scripts: pkg.scripts }), /exportCrmSnapshot/);
+  for (const wf of readdirSync(join(REPO_ROOT, ".github", "workflows"))) {
+    const text = readFileSync(join(REPO_ROOT, ".github", "workflows", wf), "utf8");
+    const lines = text.split("\n").filter((l) => /exportCrmSnapshot/.test(l));
+    for (const line of lines) assert.match(line.trim(), /^- "functions\/scripts\/exportCrmSnapshot\.js"$/, `${wf} may name the exporter only as a path filter: ${line}`);
+    if (lines.length > 0) assert.doesNotMatch(text, /^\s*schedule:/m, `${wf} names the exporter and has a schedule`);
+  }
   // Nor any other operator script: the export is run by a person, never composed.
   const scripts = walk(resolve("scripts"), [".js", ".mjs", ".cjs"]).filter((f) => !f.endsWith("exportCrmSnapshot.js"));
   assert.deepEqual(scripts.filter((f) => /require\([^)]*exportCrmSnapshot|from\s+["'][^"']*exportCrmSnapshot/.test(readFileSync(f, "utf8"))), []);
