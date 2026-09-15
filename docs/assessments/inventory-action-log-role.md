@@ -178,3 +178,78 @@ This Assessment makes **no scope claim, no dependency, and no design decision** 
 4. Confirm the recommended relocation must not disturb the still-Draft `inventory-nav-access-alignment` Specification's planned reuse of `useInventoryActionsForPart()` (§5, decision 4) -- or, if that Specification is itself revised first, resequence accordingly.
 5. Is deep-history access (beyond the current 10-most-recent display) worth a dedicated future Specification item now, or deferred indefinitely (§5, decision 5)?
 6. Confirmed out of scope for this Assessment, restated for Architecture Review's own record: no decision on the eventual shape of the trusted receiving-to-ledger write path itself (§2, §4) -- that remains genuinely unscoped, blocked on Issue #15, and is not this Assessment's question to answer.
+
+---
+
+# Resolution — production dependency assessment (2026-08-30)
+
+**Authorized read-only by the Owner.** No write, delete, migration, Rules change, or reinterpretation
+of `inventory_actions` as inventory authority was performed or is proposed here.
+
+This section answers the question §5 left open, with production evidence rather than reasoning.
+
+## What production actually holds
+
+Measured against project `taylor-parts`, read-only, via the Firestore REST aggregation and query
+endpoints:
+
+| | |
+|---|---|
+| **Document count** | **2** |
+| **Types present** | `RECEIVE_STOCK` ×2. **No `ADJUST_STOCK`, no `CORRECT_MISTAKE` has ever been written.** |
+| **Date range** | 2026-07-11T01:16:27Z and 2026-07-12T07:03:09Z — 30 hours apart |
+| **Authors** | a single `createdBy` uid for both |
+| **Since** | **nothing in the ~7 weeks to 2026-08-31** |
+
+The two entries sit immediately before this assessment's own commissioning date (2026-07-14), which
+§Business Request records as arising *"during PR #151 post-merge production smoke check."* The
+alignment is circumstantial but tight: two entries, one author, 30 hours apart, immediately before
+the smoke check that produced the question, and nothing since.
+
+## What that does to §5's central argument
+
+§5 argued against absorbing the log because *"a damaged-goods write-off with a human explanation is a
+different kind of record than a validated `CONSUMED` ledger entry"* — the free-text audit value might
+not be subsumed by a future ledger write.
+
+**That argument is sound and the evidence does not refute it. What the evidence shows is that this
+surface never served it.** In production the log has only ever recorded `RECEIVE_STOCK`. The two
+action types the argument rests on — `ADJUST_STOCK` and `CORRECT_MISTAKE` — have **never been used
+once**. The need may well be real; this was not the thing meeting it.
+
+## Repository consumers
+
+| Consumer | Status |
+|---|---|
+| `useInventoryActionsForPart` — Part record, Warehouse Manager Home | **LIVE.** The read retained by the 2026-08-30 ruling. |
+| `reportCatalog.js` — catalogued as object `inventoryAction` | **DECLARED ONLY.** No execution path runs a report against it; no saved-report consumer found. |
+| `permissionCatalog` / `legacyAuthorizationSurface` | Declarations of the read/create permissions, not consumers. |
+| Compliance | **None found** anywhere in the repository. |
+
+## Recommendation — ARCHIVE IN PLACE
+
+Not *retain* (it is not serving a live purpose), and not *delete* (deleting two documents gains
+nothing and forecloses a question that costs nothing to leave open).
+
+1. **Keep the two documents and keep them readable.** They are evidence of what was recorded. The
+   read surface already states they were never applied to stock.
+2. **Close the Rules create path** — the open Tier-2 item. With the form retired, that rule is the
+   only remaining way to create a document, and it validates no fields and does not bind `createdBy`.
+3. **Demote the reporting catalogue entry** from a live object to a historical one, so a future report
+   builder does not offer it as a current source. Its own gate, not this one.
+4. **Do not schedule collection deletion.** Two documents impose no cost; a deletion decision can be
+   taken later with nothing lost by waiting.
+
+**The one thing this evidence cannot establish:** whether those two entries were deliberate
+operational records or smoke-check artefacts. Only the Owner knows. If they were trial data, nothing
+in this recommendation changes — archive-in-place is correct either way, which is why it is the
+recommendation.
+
+## Status of the July question
+
+§5's *"relocate/de-emphasize now; do not commit to permanence yet"* has been overtaken by the Owner's
+2026-08-30 ruling, which retired new writes entirely. Its three open decisions resolve as:
+
+1. **Exact de-emphasis treatment** — moot; the write is gone and the section is now read-only history.
+2. **"Receive Stock (log only)" naming** — moot; no action-type selector remains.
+3. **`WAREHOUSE_MANAGER` create capability** — resolved as *no*, for everyone: no client creates.
