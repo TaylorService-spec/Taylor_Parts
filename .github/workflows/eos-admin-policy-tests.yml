@@ -81,6 +81,7 @@ on:
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
+      - "functions/test/crmCutoverPostgres.test.mjs"
       - "functions/test/support/crmSnapshotFixture.mjs"
       - "docs/architecture/crm-cutover-plan.md"
       # W1-C5: same gap, same two commands, for the employee-principal linkage.
@@ -203,6 +204,7 @@ on:
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
+      - "functions/test/crmCutoverPostgres.test.mjs"
       - "functions/test/support/crmSnapshotFixture.mjs"
       - "docs/architecture/crm-cutover-plan.md"
       # W1-C5: same gap, same two commands, for the employee-principal linkage.

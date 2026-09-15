@@ -61,7 +61,7 @@ export async function measureCrmTarget(db: Db, tenantId: string, ownerIds: reado
   let resolvable = new Set<string>();
   if (await relationExists(db, "eos_workforce.employees")) {
     const { rows } = await db.query(
-      `SELECT id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[]) AND employment_status = ANY($3::text[])`,
+      `SELECT id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = ANY($2::text[]) AND employment_status::text = ANY($3::text[])`,
       [tenantId, [...ownerIds], [...EMPLOYMENT_STATUS_VALUES]],
     );
     resolvable = new Set(rows.map((r: { id: string }) => r.id));

@@ -85,13 +85,15 @@ test("the exporter encodes Timestamps, tags unsupported Firestore types, and ref
 // ════════════════════ no Firebase on the census / copy side ════════════════════
 
 const FORBIDDEN = [/from\s+["']firebase/, /require\(\s*["']firebase/, /import\(\s*["']firebase/, /\bgetFirestore\s*\(/, /\bFieldValue\b/, /@google-cloud\/firestore/];
-const CUTOVER_SOURCES = ["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverTarget.ts"];
+const CUTOVER_SOURCES = ["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverTarget.ts", "src/crm/crmCutoverCopy.ts"];
 
 test("the CRM cutover modules and the copy tool import no Firebase and name no Firestore write", () => {
   for (const file of [...CUTOVER_SOURCES, "scripts/crmCutover.js"]) {
     const code = stripComments(readFileSync(file, "utf8"));
     for (const p of FORBIDDEN) assert.doesNotMatch(code, p, `${file}: ${p}`);
-    assert.doesNotMatch(code, /\.(add|commit|batch|runTransaction|bulkWriter)\s*\(/, file);
+    // Firestore write shapes: a verb on a db/batch/transaction/document/collection handle, or a batch/transaction factory.
+    assert.doesNotMatch(code, /\b(db|batch|txn|tx|ref|doc\([^)]*\)|collection\([^)]*\))\.(set|add|update|delete|create|commit)\s*\(/, file);
+    assert.doesNotMatch(code, /\b(runTransaction|bulkWriter|writeBatch)\s*\(/, file);
   }
   const code = stripComments(readFileSync("scripts/crmCutover.js", "utf8"));
   const topLevelRequires = code.split("async function main")[0].match(/require\(\s*["'][^"']+["']\s*\)/g);
@@ -102,7 +104,7 @@ test("loading the compiled CRM cutover modules never resolves a Firebase package
   const dir = mkdtempSync(join(tmpdir(), "crm-cutover-probe-"));
   const preload = join(dir, "banFirebase.cjs");
   writeFileSync(preload, 'const M=require("module");const l=M._load;M._load=function(r,...a){if(/firebase|@google-cloud\\/firestore/i.test(r)){process.stderr.write("FIREBASE_LOADED:"+r);process.exit(97);}return l.call(this,r,...a);};');
-  const modules = ["lib/crm/crmCutoverSnapshot.js", "lib/crm/crmCutoverTarget.js", "scripts/crmCutover.js"].map((m) => resolve(m));
+  const modules = ["lib/crm/crmCutoverSnapshot.js", "lib/crm/crmCutoverTarget.js", "lib/crm/crmCutoverCopy.js", "scripts/crmCutover.js"].map((m) => resolve(m));
   const probe = spawnSync(process.execPath, ["--require", preload, "-e", modules.map((m) => `require(${JSON.stringify(m)});`).join("")], { encoding: "utf8" });
   assert.equal(probe.status, 0, `a CRM cutover module transitively loaded Firebase: ${probe.stderr}`);
 });

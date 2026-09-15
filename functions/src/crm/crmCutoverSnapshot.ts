@@ -46,17 +46,24 @@ export const CERTIFICATION_MARKER_FIELD = "certificationWorld";
 /** The id prefix the Certification world mints (build.mjs "cw-acct-"). Evidence only: a marker is what identifies. */
 export const CERTIFICATION_ID_PREFIX = "cw-";
 
-/** The governed authority's text bound (functions/src/eosCrm/crmAuthorityKernel.ts MAX_CRM_TEXT_LENGTH). */
-export const MAX_CRM_TEXT_LENGTH = 2000;
-export const MAX_ACCOUNT_TAGS = 100;
-export const MAX_ACCOUNT_TAG_LENGTH = 200;
+// The governed D1-A authority's own bounds and vocabularies -- imported, never restated, so the census cannot accept a
+// value the authority would refuse (functions/src/eosCrm/accountVocabulary.ts, crmAuthorityKernel.ts).
+import {
+  ACCOUNT_LINES_OF_BUSINESS,
+  ACCOUNT_RELATIONSHIP_TYPES,
+  INVOICE_DELIVERY_METHODS,
+  ISO_4217_CURRENCIES,
+  MAX_ACCOUNT_TAGS,
+  MAX_ACCOUNT_TAG_LENGTH,
+  PAYMENT_TERMS,
+  TAX_STATUSES,
+} from "../eosCrm/accountVocabulary.js";
+import { MAX_CRM_TEXT_LENGTH } from "../eosCrm/crmAuthorityKernel.js";
 
-/** Restated vocabularies (field-ops-app-vite/src/domain/constants.js); crmCutover.test.mjs pins them to the client. */
-export const ACCOUNT_RELATIONSHIP_TYPES = Object.freeze(["CUSTOMER", "VENDOR"] as const);
-export const ACCOUNT_LINES_OF_BUSINESS = Object.freeze(["TAYLOR", "VENTANA"] as const);
-export const INVOICE_DELIVERY_METHODS = Object.freeze(["EMAIL", "PORTAL", "MAIL", "EDI"] as const);
-export const PAYMENT_TERMS = Object.freeze(["COD", "NET_30", "NET_60", "NET_90"] as const);
-export const TAX_STATUSES = Object.freeze(["UNKNOWN", "TAXABLE", "EXEMPT", "RESELLER"] as const);
+export {
+  ACCOUNT_LINES_OF_BUSINESS, ACCOUNT_RELATIONSHIP_TYPES, INVOICE_DELIVERY_METHODS, MAX_ACCOUNT_TAGS, MAX_ACCOUNT_TAG_LENGTH,
+  MAX_CRM_TEXT_LENGTH, PAYMENT_TERMS, TAX_STATUSES,
+};
 
 /** Oldest legacy timestamp accepted as a real business time (2000-01-01T00:00:00Z). */
 const EARLIEST_MS = 946_684_800_000;
@@ -609,7 +616,7 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     const notes = opt("notes"), customerNumber = opt("customerNumber"), erpId = opt("erpId"), accountingId = opt("accountingId"), legacyId = opt("legacyId");
     let defaultCurrency: string | null | undefined = null;
     if (data.defaultCurrency !== undefined && data.defaultCurrency !== null) {
-      if (typeof data.defaultCurrency !== "string" || !/^[A-Z]{3}$/.test(data.defaultCurrency)) {
+      if (typeof data.defaultCurrency !== "string" || !/^[A-Z]{3}$/.test(data.defaultCurrency) || !ISO_4217_CURRENCIES.has(data.defaultCurrency)) {
         add("accounts", d.id, "FIELD_VALUE_INVALID", "BLOCKING", "defaultCurrency", `${JSON.stringify(data.defaultCurrency)} is not an ISO 4217 alphabetic code`);
         defaultCurrency = undefined;
       } else defaultCurrency = data.defaultCurrency;
@@ -718,7 +725,7 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     });
   }
 
-  // Billing contact must be a selected Contact OF THAT Account (migration 026 accounts_billing_contact_on_account).
+  // Billing contact must be a selected Contact OF THAT Account (migration 025 accounts_billing_contact_on_account).
   const contactAccount = new Map(contacts.map((c) => [c.id, c.accountId]));
   const accountsOut = accounts.filter((a) => {
     if (a.billingContactId === null) return true;

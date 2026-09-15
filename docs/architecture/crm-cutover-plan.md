@@ -9,10 +9,11 @@ RENDER TRANSPORT → VERIFY → DISABLE/REMOVE LEGACY WRITERS → UNFREEZE**, mi
 tooling and writes the plan. No Firebase project and no Render database was contacted. `firestore.rules` and
 `functions/src/eosApi/server.ts` are not modified.
 
-Dependency: the governed PostgreSQL CRM authority **#1912** (`d1a/crm-postgres-authority`: `functions/src/eosCrm/**`,
-migration 024 vocabulary, migration `1759795200000_crm-account-business-facts-and-receipts.sql` — business facts,
-child tables, `eos_crm.command_receipts`). Copy/verify execute against that schema and are finished after #1912 merges
-(§3.4). Line numbers below are at main `736b1f17` unless a `#1912:` prefix says otherwise.
+Dependency: the governed PostgreSQL CRM authority **#1912**, merged to main at `45385420` and merged into this branch:
+`functions/src/eosCrm/**`, migration 024 `1759622400000_crm-capability-vocabulary.sql`, migration 025
+`1759708800000_crm-account-business-facts-and-receipts.sql` (business facts, child tables, `eos_crm.command_receipts`).
+Copy/verify execute against that schema (§3.4). **This branch adds no migration.** Source line numbers are at main
+`736b1f17` (CRM source files are unchanged by #1912).
 
 Mapping classes: **A** canonical (copied) · **B** derived (recomputed, not copied) · **C** legacy defect ·
 **D** duplicated (a stored echo of another fact) · **E** Owner decision.
@@ -129,7 +130,7 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 | `billingAddress {street,city,state,zip}` | `billing_address_street/_city/_state/_postal_code` | A | structured parts map **directly** (`zip` → `_postal_code`); blank part → NULL; unknown part → blocker |
 | `billingAddress` **free-text string** | — | C | **never parsed.** Held verbatim in the census/copy evidence (`billingAddressResolution`), Account marked `BILLING_ADDRESS_REQUIRES_RESOLUTION` (blocker). No permanent free-text column. Resolution = a person records the structured address through the Account form before the freeze (or an Owner-approved staging path, §9). |
 | `notes`, `customerNumber`, `erpId`, `accountingId`, `legacyId` | same-named snake columns | A | optional text; opaque; not unique (D-C1-4) |
-| `defaultCurrency` | `default_currency` | A | `^[A-Z]{3}$` (+ #1912 ISO-4217 set after integration) |
+| `defaultCurrency` | `default_currency` | A | `^[A-Z]{3}$` and in the D1-A ISO-4217 set (`eosCrm/accountVocabulary.ts`, imported) |
 | `purchaseOrderRequired` | `purchase_order_required` | A | boolean or NULL |
 | `invoiceDeliveryMethod` | `invoice_delivery_method` | A | EMAIL/PORTAL/MAIL/EDI or NULL |
 | `paymentTerms`, `taxStatus` | `payment_terms`, `tax_status` | A (governed) | COD/NET_30/NET_60/NET_90; UNKNOWN/TAXABLE/EXEMPT/RESELLER; invalid → blocker. NULL tax_status = UNKNOWN. The copy is not a `customer.governedField.write` command — it carries the stored, Rules-validated value verbatim and records it in the audit digest. |
@@ -236,19 +237,21 @@ blockers, `copyReady`, canonical digest. `--evidenceOut` writes the reconciliati
 addresses, Certification exclusions with reason, per-record uid/assignment provenance). A census before owners are
 measured is never copy-ready (`OWNER_RESOLUTION_NOT_MEASURED`).
 
-### 3.4 `--mode copy` / `--mode verify` (design; executed after #1912 merges)
+### 3.4 `--mode copy` / `--mode verify` (built: `functions/src/crm/crmCutoverCopy.ts`)
 
-Until the #1912 schema is on this branch both modes refuse `CRM_COPY_SCHEMA_NOT_INTEGRATED` after the census, rather
-than write a partial Account.
+Both modes run the full census first (§3.3) and refuse `CENSUS_NOT_COPY_READY` (copy) on any blocker.
 
 **Copy** — refuses unless census `copyReady`. ONE transaction under `pg_advisory_xact_lock('crm-cutover|<tenant>')`:
 tenant exists; `--performedByPrincipalId` is an active Principal with an active membership in the tenant (it is the
-`created_by`/`updated_by` of every row; never a uid); schema present. Plan per family (accounts → contacts → sites →
+`created_by`/`updated_by` of every row; never a uid — refused `PERFORMER_NOT_TENANT_PRINCIPAL`); #1912 schema present
+(`CRM_TARGET_SCHEMA_ABSENT`); every owner **re-resolved inside the transaction** (`OWNER_UNRESOLVED`, a census can be
+stale); any snapshot id already held by **another tenant** refused (`ID_HELD_BY_ANOTHER_TENANT` — ids are global primary
+keys and are never re-minted). Plan per family (accounts → contacts → sites →
 children → `billing_contact_id` update, so every composite FK holds row by row): absent → INSERT verbatim ids and
 timestamps; present and identical → nothing; present and different → `DRIFT_DETECTED`, roll back, **never
 overwritten**; tenant rows not in the snapshot → `TARGET_HAS_UNKNOWN_RECORDS`, roll back (the declared synthetic
-nonprod seed ids of `scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json` are reported separately; whether they
-may coexist is §9). Identity for "identical" excludes `created_by/updated_by` (a rerun by another operator is still a
+nonprod seed ids of `scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json` are tolerated **only** with the explicit
+`--retainDeclaredSyntheticSeedRows` flag and reported as retained; whether that flag may be used is §9). Identity for "identical" excludes `created_by/updated_by` (a rerun by another operator is still a
 no-op) but includes every canonical field and child set. One `eos_policy.audit_events` row
 (`crm.cutover.copy`, snapshot sha256, canonical digest, counts, evidence sha256) only if anything was inserted.
 Evidence file written (`wx`, 0600) **before** BEGIN: uid provenance, owner-assignment trail, Certification
@@ -409,7 +412,20 @@ CRM write is observed after the freeze; a Firebase uid appears in any `created_b
   any client library loads.
 - `functions/test/governedOwnershipWriterCensus.test.mjs` + `docs/security/ownership-accountability-bypass-census.md`
   row 12a: `crmCutoverSnapshot.ts` classified INERT.
-- PostgreSQL copy/verify suite: after #1912 (§3.4).
+- `functions/test/crmCutoverPostgres.test.mjs` (real postgres:16, in `test:adminPolicyPostgres`): census against the
+  real tenant; owner of another tenant blocks census and copy; a uid / other-tenant performer refused; exact copy
+  (ids, fields, child sets, billing contact, microsecond timestamps, EOS Principal attribution, one audit event,
+  Certification fixture absent); no uid in any column of any copied row; copied rows read back through the D1-A
+  authorities; rerun `NO_CHANGES` with no audit; verify `--sample all` reconciled incl. an Opportunity FK; verify
+  detects a changed field, a uid attribution and a finance row naming an absent Account; drift refused and never
+  overwritten; unknown target rows refused, declared synthetic rows retained only with the flag; tenancy (other tenant
+  sees nothing, cannot take ids); CLI census → copy → verify → rerun, existing evidence and tampered checksum refused,
+  no password or connection string in any output.
+- PostgreSQL negative controls (each red, then restored byte-identically): tenant predicate removed from the tenant
+  read (tenancy + CLI red); drift silently overwritten (drift test red); Principal fence removed so a uid becomes
+  `created_by` (performer, copy-attribution, uid-scan and both verify tests red).
+- `functions/test/crmAuthority.test.mjs` (F2) now names the cutover modules as the one sanctioned outside importer of
+  `src/eosCrm` and asserts no runtime module imports the cutover.
 
 ---
 
@@ -431,5 +447,3 @@ CRM write is observed after the freeze; a Firebase uid appears in any `created_b
   idempotent creates on PostgreSQL).
 - **Unresolved — live data shape.** Sandbox counts, blockers, timestamp drift and owner resolution are unmeasured until
   an authorized export + census. **Production tenancy** has no PostgreSQL tenant.
-- **Unresolved — migration id.** The coordinator's brief names `1759708800000_crm-account-business-facts-and-receipts.sql`;
-  #1912 at `f5147d7e` carries `1759795200000_…` (its header says "MIGRATION 026"). The integration uses whatever lands.

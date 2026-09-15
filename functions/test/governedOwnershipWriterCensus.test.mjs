@@ -145,6 +145,8 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   "src/crm/customerMigrationSource.ts": "INERT",
   // CRM cutover: the pure snapshot census. Reads legacy owner shapes; writes nothing; loaded only by scripts/crmCutover.js.
   "src/crm/crmCutoverSnapshot.ts": "INERT",
+  // CRM cutover: copy once / verify. Carries the census-resolved owner verbatim at INSERT; never changes an owner. Operator tool only.
+  "src/crm/crmCutoverCopy.ts": "INERT",
   "src/crm/customerRepository.ts": "INERT",
   "src/eosCommercial/commercialOwnershipAuthority.ts": "INERT",
   "src/eosCommercial/commercialOwnershipRepository.ts": "INERT",

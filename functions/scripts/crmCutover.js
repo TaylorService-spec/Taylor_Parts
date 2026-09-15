@@ -10,7 +10,8 @@
 //                   unmappable statuses, Certification fixtures excluded, eos_commercial / eos_finance rows naming an
 //                   Account the copy would not provide, existing eos_crm rows. Writes nothing to PostgreSQL. With
 //                   --evidenceOut it writes the reconciliation evidence file (never overwritten, 0600).
-//   --mode copy     COPY ONCE into eos_crm for ONE tenant. Refuses unless the census is copy-ready.
+//   --mode copy     COPY ONCE into eos_crm for ONE tenant (functions/src/crm/crmCutoverCopy.ts). Refuses unless the census
+//                   is copy-ready; one transaction; drift and unknown target rows refused, never overwritten.
 //   --mode verify   READ ONLY. Counts, id sets, field-by-field reconciliation, FK integrity, Commercial compatibility.
 //
 // ============================ THE SOURCE IS A FILE ============================
@@ -32,7 +33,8 @@
 // Usage (Render Shell on eos-api-nonprod):
 //   node scripts/crmCutover.js --mode census --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
 //     --tenantKey taylor-nonprod --snapshot ./crm-snapshot.json [--evidenceOut ./crm-census-evidence.json]
-//   ... --mode copy   ... --performedByPrincipalId <EOS Principal id> --evidenceOut ./crm-copy-evidence.json
+//   ... --mode copy   ... --performedByPrincipalId <EOS Principal id> --evidenceOut ./crm-copy-evidence.json \
+//                     [--retainDeclaredSyntheticSeedRows]   (Owner decision: keep the manifest-declared synthetic seed rows)
 //   ... --mode verify ... [--sample 50|all]
 //
 // Exit: 0 census copy-ready / copy applied or no-op / verify reconciled; 1 census not copy-ready or verify not
@@ -68,6 +70,9 @@ function assertCutoverInvocation(args, env) {
     }
     if (!args.evidenceOut || args.evidenceOut === "true") throw new Error("--evidenceOut <file> is required for copy: legacy uid provenance is written there, never into PostgreSQL.");
   }
+  if (args.retainDeclaredSyntheticSeedRows !== undefined && args.retainDeclaredSyntheticSeedRows !== "true") {
+    throw new Error("--retainDeclaredSyntheticSeedRows is a bare flag.");
+  }
   if (args.evidenceOut && args.evidenceOut !== "true" && fs.existsSync(path.resolve(args.evidenceOut))) {
     throw new Error(`--evidenceOut ${path.resolve(args.evidenceOut)} already exists; evidence is never overwritten.`);
   }
@@ -85,6 +90,7 @@ function assertCutoverInvocation(args, env) {
     snapshotPath: args.snapshot,
     performedByPrincipalId: args.performedByPrincipalId,
     evidenceOut: args.evidenceOut && args.evidenceOut !== "true" ? path.resolve(args.evidenceOut) : null,
+    retainDeclaredSynthetic: args.retainDeclaredSyntheticSeedRows === "true",
     sample,
   };
 }
@@ -123,6 +129,30 @@ function snapshotDigest(snapshotPath, requireSidecar) {
     throw new Error(`${sidecar} is required for copy: the copied bytes must be the checksummed export.`);
   }
   return { bytes, sha256 };
+}
+
+/** The ids the governed synthetic nonprod seed manifest DECLARES (scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json). */
+function declaredSyntheticIds() {
+  const m = JSON.parse(fs.readFileSync(path.resolve(__dirname, "fixtures/syntheticNonprodWorkforceSeed.v1.json"), "utf8"));
+  const ids = (xs) => (Array.isArray(xs) ? xs.map((x) => x.id) : []);
+  return { accounts: ids(m.accounts), contacts: ids(m.contacts), locations: ids(m.locations) };
+}
+
+/** Every legacy actor string (Firebase uid, seed actor) the provenance evidence names. None may become an attribution. */
+function provenanceActorsOf(evidence) {
+  const out = new Set();
+  for (const p of evidence.provenance) {
+    for (const v of [p.createdBy, p.updatedBy, p.ownerAssignment && p.ownerAssignment.assignedToUserId, p.ownerAssignment && p.ownerAssignment.assignedByUserId]) {
+      if (typeof v === "string" && v !== "") out.add(v);
+    }
+  }
+  return [...out].sort();
+}
+
+function excludedIdsOf(evidence) {
+  const out = { accounts: [], contacts: [], locations: [] };
+  for (const e of evidence.certificationExcluded) out[e.collection].push(e.id);
+  return out;
 }
 
 function writeEvidence(file, document) {
@@ -170,10 +200,27 @@ async function main() {
       process.exitCode = 2;
       return;
     }
-    // Copy and verify execute against the D1-A (#1912) Account business-fact schema. Until that lands on main they
-    // refuse rather than write a partial Account (docs/architecture/crm-cutover-plan.md §3.4).
-    void crm;
-    throw Object.assign(new Error(`--mode ${options.mode} requires the D1-A CRM business-fact schema (migration 026, #1912); not available in this build`), { name: "CrmCutoverError", code: "CRM_COPY_SCHEMA_NOT_INTEGRATED" });
+    const declaredSynthetic = declaredSyntheticIds();
+    const policy = { declaredSynthetic, retainDeclaredSynthetic: options.retainDeclaredSynthetic };
+    const { copyCrm, verifyCrm } = require("../lib/crm/crmCutoverCopy.js");
+    if (options.mode === "copy") {
+      // The evidence is written BEFORE the transaction: the uid provenance must exist whether or not the copy commits.
+      const evidenceText = JSON.stringify({ kind: "EOS_CRM_COPY_EVIDENCE", ...header, canonicalDigest: census.canonicalDigest, evidence }, null, 2) + "\n";
+      fs.writeFileSync(options.evidenceOut, evidenceText, { encoding: "utf8", flag: "wx", mode: 0o600 });
+      const evidenceSha256 = createHash("sha256").update(evidenceText).digest("hex");
+      const report = await copyCrm(client, {
+        tenantId, performedByPrincipalId: options.performedByPrincipalId, crm, canonicalDigest: census.canonicalDigest,
+        snapshotSha256: sha256, evidenceSha256, ...policy,
+      });
+      console.log(JSON.stringify({ ...header, evidenceSha256, report }, null, 2));
+      process.exitCode = 0;
+      return;
+    }
+    const report = await verifyCrm(client, {
+      tenantId, crm, sample: options.sample, provenanceActors: provenanceActorsOf(evidence), excludedIds: excludedIdsOf(evidence), declaredSynthetic,
+    });
+    console.log(JSON.stringify({ ...header, canonicalDigest: census.canonicalDigest, report }, null, 2));
+    process.exitCode = report.reconciled ? 0 : 1;
   } finally {
     await client.end();
   }
