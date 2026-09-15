@@ -20,7 +20,6 @@ const READS = join(WORKFORCE, "reads");
 const require = createRequire(import.meta.url);
 const http = require("../lib/eosWorkforce/workforceHttp.js");
 const kernel = require("../lib/eosWorkforce/reads/employeeReadKernel.js");
-const profile = require("../lib/eosWorkforce/reads/myEmployeeProfile.js");
 const responsibility = require("../lib/eosWorkforce/reads/employeeResponsibilityReads.js");
 const { eosApiDomainFor } = require("../lib/eosApi/server.js");
 
@@ -87,22 +86,24 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-test("the operation list is closed and read-only: exactly EMP-RT-07, EMP-RT-03 and EMP-RT-04", () => {
-  assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], ["readMyEmployeeProfile", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"]);
-  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile"]);
+const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"];
+
+test("the operation list is closed and read-only: EMP-RT-01, 02, 03, 04, 06 and 07", () => {
+  assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
+  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);
   assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
   const src = code(HTTP_SOURCE);
-  assert.doesNotMatch(src, /MUTATION|command\(|transition|assign(ed)?Work|listManaged|readEmployee\b|listEmployees|JobRole/);
+  assert.doesNotMatch(src, /MUTATION|command\(|transition|assign(ed)?Work|JobRole|establishReporting|endReporting|eosWorkforce\/commands|\.\/commands\//);
   const runners = /const READ_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
-  assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), ["readMyEmployeeProfile", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"]);
-  for (const blocked of ["readEmployee", "listEmployees", "readEmployeePrincipalLink", "listAssignedWorkForEmployee", "listManagedEmployees", "listEmployeeJobRoles"]) {
+  assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), OPERATIONS);
+  for (const blocked of ["listAssignedWorkForEmployee", "listEmployeeJobRoles", "establishReportingRelationship", "endReportingRelationship"]) {
     assert.equal(http.isWorkforceOperation(blocked), false, blocked);
   }
 });
 
 test("unknown operation 404, wrong method 405, wrong path 404, OPTIONS preflight with a bounded origin", async () => {
   const w = fakeWorld();
-  assert.equal((await post(w, { operation: "readEmployee", input: { employeeId: "e1" } })).status, 404);
+  assert.equal((await post(w, { operation: "listAssignedWorkForEmployee", input: { employeeId: "e1" } })).status, 404);
   assert.equal((await post(w, { operation: "readMyEmployeeProfile" }, {}, "/workforce/employees", "GET")).status, 405);
   assert.equal((await post(w, { operation: "readMyEmployeeProfile" }, {}, "/workforce/other")).status, 404);
   const pre = await post(w, "", { origin: "https://eos.example" }, "/workforce/employees", "OPTIONS");
@@ -177,9 +178,11 @@ const workforceSources = () => walk(WORKFORCE, [".ts"]);
 
 test("no Firebase or Firestore in the Workforce layer, statically and transitively", () => {
   for (const f of workforceSources()) {
-    for (const forbidden of [/firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /customClaims|claims\./, /onCall\(|onRequest\(/]) {
-      assert.doesNotMatch(code(f), forbidden, `${rel(f)} matches ${forbidden}`);
-    }
+    // The migration modules NAME the snapshot's source project (firebaseProjectId) as data; nothing may import or call Firebase.
+    const forbidden = f.includes(`${WORKFORCE}/migration/`)
+      ? [/(from|require\()\s*["'][^"']*firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /onCall\(|onRequest\(/, /\.collection\(/]
+      : [/firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /customClaims|claims\./, /onCall\(|onRequest\(/];
+    for (const pattern of forbidden) assert.doesNotMatch(code(f), pattern, `${rel(f)} matches ${pattern}`);
   }
   const sentinel = "EMP_RT_LOADED_FIREBASE";
   const preload = join(mkdtempSync(join(tmpdir(), "emp-rt-")), "preload.cjs");
@@ -202,7 +205,7 @@ test("the reads never touch credential identity and never match an Employee by s
   }
   const selfRead = code(join(READS, "myEmployeeProfile.ts"));
   assert.match(selfRead, /FROM eos_policy\.employee_principal_links l\s+WHERE l\.tenant_id = \$1 AND l\.principal_id = \$2 AND l\.status = 'active'/);
-  assert.match(selfRead, /FROM eos_workforce\.employees e\s+WHERE e\.tenant_id = \$1 AND e\.id = \$2`,\s+\[tenantId, link\.employee_id\]/);
+  assert.match(selfRead, /FROM eos_workforce\.employees e\s+\$\{CURRENT_MANAGER_JOIN\}\s+WHERE e\.tenant_id = \$1 AND e\.id = \$2`,\s+\[tenantId, link\.employee_id\]/);
   assert.equal((selfRead.match(/eos_workforce\.employees/g) ?? []).length, 1, "a second Employee lookup path exists");
 });
 
@@ -214,23 +217,22 @@ test("owner and accountable stay two axes over two columns; no credited salesper
   assert.deepEqual([...responsibility.EMPLOYEE_RECORD_FAMILIES], ["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER"]);
 });
 
-test("no Job Role is produced, inferred or named anywhere in the Workforce read layer", () => {
-  for (const f of walk(READS, [".ts"])) {
-    assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS/, rel(f));
+test("no Job Role, Security Role or operationalRoles is produced, inferred or named anywhere in the Workforce reads or commands", () => {
+  for (const f of [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])]) {
+    assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS|operationalRoles|operational_roles/, rel(f));
   }
-  assert.ok(!profile.EMPLOYEE_FACTS_NOT_IN_POSTGRES.some((f) => /jobRole|securityRole|job_role/i.test(f)), "a Job Role or Security Role fact is listed as an Employee fact");
 });
 
 test("capabilities: only existing read ids, each registered in the catalog AND the PostgreSQL vocabulary; none invented", () => {
-  const used = new Set(workforceSources().flatMap((f) => [...code(f).matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1])).filter((s) => /\.read$|\.write$|\.[a-z]+$/.test(s) && !/\.ts$|\.js$/.test(s)));
-  assert.deepEqual([...used].sort(), ["opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+  const used = new Set([...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"]), HTTP_SOURCE].flatMap((f) => [...code(f).matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1])).filter((s) => /\.(read|write)$/.test(s)));
+  assert.deepEqual([...used].sort(), ["admin.employeeProfile.write", "admin.principalAccess.read", "employee.record.read", "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
   for (const id of used) {
     assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
     assert.ok(migrations.includes(`'${id}'`), `${id} is not in the PostgreSQL capability vocabulary`);
   }
-  assert.doesNotMatch(migrations, /'(workforce|employee)\.[a-zA-Z.]+'/, "an Employee/Workforce capability was registered");
+  assert.deepEqual([...new Set([...migrations.matchAll(/'((?:workforce|employee)\.[a-zA-Z.]+)'/g)].map((m) => m[1]))], ["employee.record.read"], "an Employee/Workforce capability other than employee.record.read was registered");
 });
 
 test("server.ts composes the Workforce transport as a fourth domain with the same pool, verifier and origins, leaving other routes alone", () => {
@@ -247,10 +249,13 @@ test("server.ts composes the Workforce transport as a fourth domain with the sam
 });
 
 test("nothing but the transport imports the read layer; no Functions, Rules or client reference the route", () => {
-  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosWorkforce\/reads\/|["']\.\/reads\/(employeeReadKernel|myEmployeeProfile|employeeResponsibilityReads)/.test(readFileSync(f, "utf8")));
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosWorkforce\/reads\/|["']\.\/reads\/(employee|myEmployeeProfile)/.test(readFileSync(f, "utf8")));
   assert.deepEqual(importers.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"]);
-  const transportImporters = walk(SRC, [".ts"]).filter((f) => f !== HTTP_SOURCE && /eosWorkforce/.test(code(f)));
-  assert.deepEqual(transportImporters.map(rel), ["functions/src/eosApi/server.ts"]);
+  // The reporting writer's commands module borrows only the error-category TYPE from the read kernel.
+  const outsideWorkforce = walk(SRC, [".ts"]).filter((f) => !f.startsWith(WORKFORCE) && /eosWorkforce/.test(code(f)));
+  assert.deepEqual(outsideWorkforce.map(rel), ["functions/src/eosApi/server.ts"]);
+  const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));
+  assert.deepEqual(internal.map(rel), [], "a runtime Workforce module imports the internal writer or the migration modules");
   const client = walk(join(REPO, "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
   assert.deepEqual(client.filter((f) => /\/workforce\/employees|workforceHttp|WORKFORCE_ROUTE|eosWorkforce/.test(readFileSync(f, "utf8"))).map(rel), []);
   assert.doesNotMatch(readFileSync(join(REPO, "firestore.rules"), "utf8"), /workforce\/employees|eosWorkforce/);

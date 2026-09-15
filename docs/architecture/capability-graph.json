@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 147,
+    "capabilities": 148,
     "catalogActive": 0,
-    "catalogInactive": 147,
+    "catalogInactive": 148,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 48,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 147,
-    "parsed": 147,
+    "raw": 148,
+    "parsed": 148,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 121,
+    "SERVER_REFERENCED": 122,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
@@ -3130,14 +3130,16 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
-          "functions/src/access/trustedWriterCommands.ts"
+          "functions/src/access/trustedWriterCommands.ts",
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3155,12 +3157,39 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/access/employeeProfileCommands.ts"
+          "functions/src/access/employeeProfileCommands.ts",
+          "functions/src/eosWorkforce/commands/reportingRelationshipCommands.ts",
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
         ],
-        "serverReferenceCount": 1,
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "employee.record.read",
+      "resource": "employee.record",
+      "action": "read",
+      "description": "Read an Employee business record and the bounded Employee directory projection. Confers no Principal access state, Role, credential or provider identity, Job Role, ownership mutation or Employee mutation.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/reads/employeeDirectoryReads.ts"
+        ],
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+        ],
+        "serverReferenceCount": 3,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },

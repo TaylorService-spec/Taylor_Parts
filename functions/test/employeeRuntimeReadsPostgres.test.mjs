@@ -158,9 +158,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
       const r = res.body.result;
       assert.deepEqual([r.employee.employeeId, r.employee.employmentStatus, r.employee.operatingCompanyId], [`e-${s.toLowerCase()}`, s, "taylor"]);
       assert.deepEqual([r.principalLink.principalId, r.principalLink.linkSource, r.principalLink.assertedBy], [selves[s].principalId, "OPERATOR_ASSERTED", "fixture-operator"]);
-      assert.equal(r.factsNotInPostgres.code, "EMPLOYEE_FACT_NOT_IN_POSTGRES");
-      assert.ok(r.factsNotInPostgres.facts.includes("jobTitle") && r.factsNotInPostgres.facts.includes("managerEmployeeId") && r.factsNotInPostgres.facts.includes("displayName"));
-      assert.deepEqual(Object.keys(r).sort(), ["employee", "factsNotInPostgres", "principalLink"]);
+      assert.deepEqual(Object.keys(r).sort(), ["employee", "principalLink"]);
     }
     const empty = await call(selves.ACTIVE, "readMyEmployeeProfile", {});
     assert.equal(empty.status, 200);
@@ -299,7 +297,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     assert.deepEqual([selfAuthority.status, selfAuthority.body.code], [400, "AUTHORITY_FIELD_NOT_ACCEPTED"]);
     const foreignTenant = await call(reader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "OPPORTUNITY" }, { "x-eos-tenant": "t2" });
     assert.deepEqual([foreignTenant.status, foreignTenant.body.message], [403, "TENANT_NOT_A_MEMBERSHIP"]);
-    for (const operation of ["readEmployee", "listEmployees", "readEmployeePrincipalLink", "listAssignedWorkForEmployee", "listManagedEmployees", "listEmployeeJobRoles"]) {
+    for (const operation of ["listAssignedWorkForEmployee", "listEmployeeJobRoles", "establishReportingRelationship", "endReportingRelationship"]) {
       const res = await call(reader, operation, { employeeId: "e-owner-a" });
       assert.deepEqual([res.status, res.body.code], [404, "UNKNOWN_OPERATION"], operation);
     }

@@ -5,10 +5,10 @@
   "activationOverrides": 92
  },
  "catalog": {
-  "total": 147,
+  "total": 148,
   "globallyActive": 38,
   "activeInThisEnvironment": 130,
-  "inactiveInThisEnvironment": 17
+  "inactiveInThisEnvironment": 18
  },
  "employeesEvaluated": 47,
  "assignmentClassifications": {
@@ -427,7 +427,7 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 147,
+   "grantedCount": 148,
    "operableCount": 130,
    "assignments": [
     {
@@ -476,7 +476,7 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 88,
+   "grantedCount": 89,
    "operableCount": 88,
    "assignments": [
     {
@@ -518,7 +518,7 @@
     "reportAuthor"
    ],
    "functionalRoles": [],
-   "grantedCount": 88,
+   "grantedCount": 89,
    "operableCount": 88,
    "assignments": [
     {

@@ -32,6 +32,10 @@ on:
       - "functions/scripts/d1SmokeCompleteAssignedJob.js"
       - "functions/scripts/d2SmokeRulesVerification.js"
       - "functions/scripts/d3SmokeUiVerification.js"
+      # EMPLOYEE PROFILE MIGRATION + CAPABILITY GRANTS (fence cases in operatorScriptEnvironmentFence.test.mjs).
+      - "functions/scripts/employeeProfileCutover.js"
+      - "functions/scripts/exportEmployeeProfileSnapshot.js"
+      - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
       - "functions/test/operatorScriptEnvironmentFence.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
@@ -52,6 +56,10 @@ on:
       - "functions/scripts/d1SmokeCompleteAssignedJob.js"
       - "functions/scripts/d2SmokeRulesVerification.js"
       - "functions/scripts/d3SmokeUiVerification.js"
+      # EMPLOYEE PROFILE MIGRATION + CAPABILITY GRANTS (fence cases in operatorScriptEnvironmentFence.test.mjs).
+      - "functions/scripts/employeeProfileCutover.js"
+      - "functions/scripts/exportEmployeeProfileSnapshot.js"
+      - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
       - "functions/test/operatorScriptEnvironmentFence.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"

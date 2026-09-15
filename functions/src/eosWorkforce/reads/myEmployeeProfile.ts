@@ -11,7 +11,7 @@
 //
 // CAPABILITY. None beyond an active resolved Principal with an active tenant membership and exactly one governed
 // active link: this read returns ONLY the caller's own Employee and accepts no selector, so it cannot reach anyone
-// else's. It is not a general Employee read and confers none (EMP-RT-01 stays blocked on a missing capability).
+// else's. It is not a general Employee read and confers none (another Employee is EMP-RT-01, under employee.record.read).
 //
 // FAIL CLOSED:
 //   no active link in this tenant                    -> 404 EMPLOYEE_PRINCIPAL_LINK_NOT_FOUND
@@ -20,32 +20,18 @@
 // Every lifecycle status resolves: a TERMINATED or RETIRED Employee is still that person, and eligibility is a policy
 // layer's answer, not this read's.
 //
-// WHAT POSTGRESQL DOES NOT HOLD. eos_workforce.employees carries id, tenant, lifecycle status and operating company
-// only (migration 019). Every other profile fact the Firestore Employee record carries
-// (access/employeeProfileCommands.ts EDITABLE_EMPLOYEE_FIELDS) is named in `factsNotInPostgres` rather than read from
-// anywhere else -- there is no Firestore fallback. eos_policy.principals.display_name is an identity fact about the
-// Principal, not the Employee's name, and is deliberately not offered as one.
+// WHAT IT RETURNS. The caller's Employee BUSINESS record (the same projection readEmployee returns: lifecycle, operating
+// company, profile facts, current manager) plus the provenance of the caller's own governed link. operationalRoles is not
+// migrated and not returned (Owner ruling E); no Job Role is returned (EMP-RT-08 is not implemented).
+// eos_policy.principals.display_name is an identity fact about the Principal and is never offered as the Employee's name.
 import {
   acceptOnly, isoOf, refuse, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
 } from "./employeeReadKernel";
-
-export const EMPLOYEE_FACT_NOT_IN_POSTGRES = "EMPLOYEE_FACT_NOT_IN_POSTGRES";
-
-/** Firestore-only Employee profile facts: no PostgreSQL column holds any of them. */
-export const EMPLOYEE_FACTS_NOT_IN_POSTGRES = Object.freeze([
-  "displayName", "firstName", "middleName", "lastName", "preferredName", "employeeNumber", "workEmail", "workPhone",
-  "mobilePhone", "address", "jobTitle", "managerEmployeeId", "hireDate", "separationDate", "operationalRoles",
-] as const);
+import { CURRENT_MANAGER_JOIN, EMPLOYEE_RECORD_COLUMNS, employeeRecordOf, type EmployeeRecordProjection } from "./employeeRecordProjection";
 
 export interface MyEmployeeProfile {
-  readonly employee: {
-    readonly employeeId: string;
-    readonly employmentStatus: string;
-    readonly operatingCompanyId: string;
-    readonly createdAt: string;
-    readonly updatedAt: string;
-  };
-  /** The governed Employee <-> Principal link that resolved this Employee. Provenance only. */
+  readonly employee: EmployeeRecordProjection;
+  /** The governed Employee <-> Principal link that resolved this Employee. Provenance only; the caller's own. */
   readonly principalLink: {
     readonly linkId: string;
     readonly principalId: string;
@@ -53,7 +39,6 @@ export interface MyEmployeeProfile {
     readonly linkedAt: string;
     readonly assertedBy: string | null;
   };
-  readonly factsNotInPostgres: { readonly code: typeof EMPLOYEE_FACT_NOT_IN_POSTGRES; readonly facts: readonly string[] };
 }
 
 export function readMyEmployeeProfile(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<MyEmployeeProfile> {
@@ -77,23 +62,19 @@ export function readMyEmployeeProfile(deps: EmployeeReadDeps, actor: EmployeeRea
       );
       if (reverse.rows[0].n !== 1) refuse("EMPLOYEE_PRINCIPAL_LINK_AMBIGUOUS", "CONFLICT", "the linked Employee has more than one active principal link");
       const employees = await db.query(
-        `SELECT e.id, e.employment_status::text AS employment_status, e.operating_company_id, e.created_at, e.updated_at
+        `SELECT ${EMPLOYEE_RECORD_COLUMNS}
            FROM eos_workforce.employees e
+           ${CURRENT_MANAGER_JOIN}
           WHERE e.tenant_id = $1 AND e.id = $2`,
         [tenantId, link.employee_id],
       );
       if (employees.rows.length === 0) refuse("EMPLOYEE_PRINCIPAL_LINK_UNRESOLVED", "PRECONDITION_FAILED", "the linked Employee does not resolve in this tenant");
-      const e = employees.rows[0];
       return {
-        employee: {
-          employeeId: e.id, employmentStatus: e.employment_status, operatingCompanyId: e.operating_company_id,
-          createdAt: isoOf(e.created_at)!, updatedAt: isoOf(e.updated_at)!,
-        },
+        employee: employeeRecordOf(employees.rows[0]),
         principalLink: {
           linkId: link.id, principalId: link.principal_id, linkSource: link.link_source, linkedAt: isoOf(link.created_at)!,
           assertedBy: link.asserted_by ?? null,
         },
-        factsNotInPostgres: { code: EMPLOYEE_FACT_NOT_IN_POSTGRES, facts: [...EMPLOYEE_FACTS_NOT_IN_POSTGRES] },
       };
     });
 }

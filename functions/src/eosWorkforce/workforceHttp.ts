@@ -19,17 +19,17 @@
 //
 // ════════════════════ WHAT IS SERVED, AND WHAT IS NOT ════════════════════
 //
-//   EMP-RT-07 readMyEmployeeProfile           SERVED. Own Employee via the governed link; no capability beyond an
-//                                             active Principal + membership + exactly one active link.
-//   EMP-RT-03 listRecordsOwnedByEmployee      SERVED for the Commercial families, gated by each family's read capability.
-//   EMP-RT-04 listAccountabilitiesForEmployee SERVED for the Commercial families, gated by each family's read capability.
-//   EMP-RT-01 readEmployee / listEmployees    NOT SERVED -- EMPLOYEE_AUTHORITY_GAP: no Employee read capability exists
-//                                             in eos_policy.capabilities or the permission catalog.
-//   EMP-RT-02 readEmployeePrincipalLink       NOT SERVED -- EMPLOYEE_AUTHORITY_GAP, same reason (the caller's own link
-//                                             is part of EMP-RT-07).
-//   EMP-RT-05 listAssignedWorkForEmployee     NOT SERVED -- ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES.
-//   EMP-RT-06 listManagedEmployees            NOT SERVED -- MANAGER_RELATIONSHIP_AUTHORITY_NOT_IMPLEMENTED.
+//   EMP-RT-07 readMyEmployeeProfile           Own Employee via the governed link; no capability beyond an active
+//                                             Principal + membership + exactly one active link. No selector.
+//   EMP-RT-01 readEmployee / listEmployees    employee.record.read. Business record + bounded directory; no Principal,
+//                                             provider, Role or account status.
+//   EMP-RT-02 readEmployeePrincipalLink       admin.principalAccess.read (Owner ruling B).
+//   EMP-RT-03 listRecordsOwnedByEmployee      the Commercial families, gated by each family's read capability.
+//   EMP-RT-04 listAccountabilitiesForEmployee the Commercial families, gated by each family's read capability.
+//   EMP-RT-06 listManagedEmployees            employee.record.read over eos_workforce.employee_reporting_relationships.
+//   EMP-RT-05 listAssignedWorkForEmployee     NOT SERVED -- ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES (held, Owner ruling H).
 //   EMP-RT-08 Job Role                        NOT IMPLEMENTED -- no governed Job Role authority (standing ruling).
+// The reporting-relationship WRITER (eosWorkforce/commands) is an internal command and is not served here.
 // An unserved name is an ordinary unknown operation (404); nothing is stubbed.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
@@ -38,6 +38,8 @@ import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { EmployeeReadError, type EmployeeReadActor, type EmployeeReadErrorCategory } from "./reads/employeeReadKernel";
 import { readMyEmployeeProfile } from "./reads/myEmployeeProfile";
 import { listAccountabilitiesForEmployee, listRecordsOwnedByEmployee } from "./reads/employeeResponsibilityReads";
+import { listEmployees, listManagedEmployees, readEmployee } from "./reads/employeeDirectoryReads";
+import { readEmployeePrincipalLink } from "./reads/employeePrincipalLinkRead";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -61,6 +63,10 @@ const read = (fn: (d: { pool: Pool }, a: EmployeeReadActor, i: Input) => Promise
 
 const READ_RUNNERS = Object.freeze({
   readMyEmployeeProfile: read(readMyEmployeeProfile),
+  readEmployee: read(readEmployee),
+  listEmployees: read(listEmployees),
+  readEmployeePrincipalLink: read(readEmployeePrincipalLink),
+  listManagedEmployees: read(listManagedEmployees),
   listRecordsOwnedByEmployee: read(listRecordsOwnedByEmployee),
   listAccountabilitiesForEmployee: read(listAccountabilitiesForEmployee),
 } as const);
@@ -71,8 +77,8 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze(Object.keys(READ_RUNNERS)
 export const isWorkforceOperation = (name: unknown): name is WorkforceOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(READ_RUNNERS, name);
 
-/** The ONLY operation whose `input` may be omitted: the self read, which takes no input at all. */
-export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile"]);
+/** The ONLY operations whose `input` may be omitted: the self read (no input at all) and the unfiltered directory. */
+export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile", "listEmployees"]);
 const OPTIONAL_INPUT = new Set<string>(WORKFORCE_OPTIONAL_INPUT_OPERATIONS);
 
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */
