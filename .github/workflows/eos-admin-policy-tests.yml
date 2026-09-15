@@ -157,6 +157,14 @@ on:
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      # COMMERCIAL C5 (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
+      # their modules and suites (test:adminPolicy / test:adminPolicyPostgres).
+      - "functions/src/commercialMigration/**"
+      - "functions/scripts/commercialC5.js"
+      - "functions/scripts/exportCommercialSnapshot.js"
+      - "functions/test/commercialC5Migration.test.mjs"
+      - "functions/test/commercialC5MigrationPostgres.test.mjs"
+      - "functions/test/support/commercialC5SnapshotFixture.mjs"
       - "functions/test/support/catalogSnapshotFixture.mjs"
       - "functions/migrations/1759881600000_catalog-master-descriptive-authority.sql"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
@@ -304,6 +312,14 @@ on:
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      # COMMERCIAL C5 (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
+      # their modules and suites (test:adminPolicy / test:adminPolicyPostgres).
+      - "functions/src/commercialMigration/**"
+      - "functions/scripts/commercialC5.js"
+      - "functions/scripts/exportCommercialSnapshot.js"
+      - "functions/test/commercialC5Migration.test.mjs"
+      - "functions/test/commercialC5MigrationPostgres.test.mjs"
+      - "functions/test/support/commercialC5SnapshotFixture.mjs"
       - "functions/test/support/catalogSnapshotFixture.mjs"
       - "functions/migrations/1759881600000_catalog-master-descriptive-authority.sql"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the

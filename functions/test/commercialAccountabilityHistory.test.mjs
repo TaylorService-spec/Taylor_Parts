@@ -122,7 +122,9 @@ test("(15) blocker #2 stays unwired: no callable, no runtime entry point and no 
   const reaching = walk(SRC, ".ts")
     .filter((f) => f !== REPO_SOURCE && /commercialAccountabilityRepository/.test(readFileSync(f, "utf8")))
     .map((f) => relative(FUNCTIONS_DIR, f));
-  assert.deepEqual(reaching, ["src/eosCommercial/commands/commercialCreation.ts"]);
+  // Commercial C5 copy once (src/commercialMigration/commercialC5Target.ts) is the one other importer: the operator-only,
+  // nonprod-fenced one-time migration, which no runtime entry point reaches (commercialC5Migration.test.mjs STRUCTURAL).
+  assert.deepEqual(reaching.sort(), ["src/commercialMigration/commercialC5Target.ts", "src/eosCommercial/commands/commercialCreation.ts"]);
   assert.doesNotMatch(readFileSync(join(SRC, "index.ts"), "utf8"), /responsibility\/|commercialAccountabilityRepository/);
   for (const callable of ["opportunity/opportunityCallables.ts", "salesAgreement/salesAgreementCallables.ts", "salesOrder/salesOrderCallables.ts"]) {
     const code = strip(readFileSync(join(SRC, callable), "utf8"));

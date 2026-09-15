@@ -106,6 +106,10 @@ const CLASSIFIED_ACCOUNTABILITY_PATHS = Object.freeze({
   "src/eosCommercial/commercialAccountabilityRepository.ts": "GOVERNED",
   // Commercial wave C2: creation-time establishment, mint-gated, persisted only through the #1905 writer. Unwired.
   "src/eosCommercial/commands/commercialCreation.ts": "GOVERNED",
+  // Commercial C5: the pure snapshot census reads the recorded accountable person; writes nothing.
+  "src/commercialMigration/commercialC5Snapshot.ts": "NOT APPLICABLE",
+  // Commercial C5 copy once: mint + #1905 writer for currently eligible persons; historical preservation otherwise. Operator tool only.
+  "src/commercialMigration/commercialC5Target.ts": "INERT",
 });
 
 const VALID_CLASSIFICATIONS = Object.freeze([
@@ -166,6 +170,9 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   "src/eosCrm/contactAuthority.ts": "INERT",
   "src/eosCrm/accountLocationAuthority.ts": "INERT",
   "src/eosCrm/crmAuthorityKernel.ts": "NOT APPLICABLE",
+  // Commercial C5: the one-time Commercial data migration. Pure census + copy once / verify; operator tool only.
+  "src/commercialMigration/commercialC5Snapshot.ts": "INERT",
+  "src/commercialMigration/commercialC5Target.ts": "INERT",
   // The model, the measurement, and the read projections.
   "src/ownership/ownershipMatrix.ts": "NOT APPLICABLE",
   "src/ownership/typedOwner.ts": "NOT APPLICABLE",

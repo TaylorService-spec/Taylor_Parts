@@ -43,6 +43,8 @@ on:
       - "functions/scripts/measureCommercialAccountability.js"
       # GOVERNED/SEED (census §5.6): the synthetic nonprod seed is pinned by governedOwnershipWriterCensus.
       - "functions/scripts/seedSyntheticNonprodWorkforce.js"
+      # Commercial C5: the snapshot census and copy are classified by governedOwnershipWriterCensus (census rows 15k/15l, §5.2 11-12).
+      - "functions/src/commercialMigration/**"
       # CRM cutover: the pure snapshot census is classified by governedOwnershipWriterCensus (census row 12a).
       - "functions/src/crm/crmCutoverSnapshot.ts"
       - "functions/src/crm/crmCutoverCopy.ts"
