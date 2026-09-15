@@ -409,6 +409,7 @@
           "functions/src/assistant/assistantStarters.ts",
           "functions/src/dataImport/importedServiceHistoryReadService.ts",
           "functions/src/eosCrm/crmAuthorityKernel.ts",
+          "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
@@ -420,7 +421,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 9,
+        "serverReferenceCount": 10,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
       },
