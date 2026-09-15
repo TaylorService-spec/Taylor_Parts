@@ -105,7 +105,10 @@ test("every shared-writer store was found", () => {
   //
   // The floor exists so a store cannot vanish unnoticed. It moves only with a reason, and only
   // down by the number actually removed -- never re-raised to paper over a later disappearance.
-  assert.ok(stores.length >= 5, `expected the known stores, found ${stores.length}`);
+  // FLOOR LOWERED 5 -> 2 (CRM cutover): accounts, contacts and locations are no longer Firestore stores; their writes go
+  // to the governed PostgreSQL CRM authority through the EOS API.
+  assert.ok(stores.length >= 2, `expected the known stores, found ${stores.length}`);
+  assert.equal(stores.some((s) => ["accounts", "contacts", "locations"].includes(s.collection)), false, "a retired CRM Firestore store is back");
   assert.ok(stores.every((s) => s.collection), `a store's collection could not be resolved: ${JSON.stringify(stores.filter((s) => !s.collection))}`);
 });
 
@@ -128,9 +131,9 @@ test("A STORE'S TIMESTAMP POLICY MATCHES ITS COLLECTION'S GOVERNED TYPE", () => 
   }
 });
 
-test("accounts is the ONE server-timestamp store, and the default stays epoch millis", () => {
+test("no server-timestamp store remains (accounts moved to PostgreSQL), and the default stays epoch millis", () => {
   const server = stores.filter((s) => s.declaresServerTimestamp).map((s) => s.collection);
-  assert.deepEqual(server, ["accounts"]);
+  assert.deepEqual(server, []);
   // Every other store passes no options at all, so this change is byte-identical for them.
   const storeSrc = read(path.join(src, "firebase", "collectionStore.js"));
   assert.match(storeSrc, /timestamps = TIMESTAMP_SHAPE\.EPOCH_MILLIS/, "the default must remain epoch millis");
@@ -142,10 +145,9 @@ test("NO ACCOUNT WRITER HARDCODES Date.now()", () => {
   // updateAccount stamped `updatedAt: Date.now()` directly, so a record created with the right type
   // sank the moment anybody edited it. Asking the store for its own governed stamp means the create
   // and edit paths can never drift apart.
-  const accounts = read(path.join(src, "domain", "accounts.js"));
-  assert.doesNotMatch(accounts, /updatedAt:\s*Date\.now\(\)/, "the edit path must not stamp its own epoch millis");
-  assert.match(accounts, /updatedAt:\s*accountsStore\.timestampValue\(\)/, "the edit path asks the store for the governed shape");
-  assert.match(accounts, /TIMESTAMP_SHAPE\.SERVER_TIMESTAMP/, "the store declares the governed policy");
+  // CRM CUTOVER: timestamps are the PostgreSQL server's now(); the client stamps none at all.
+  const accounts = read(path.join(src, "domain", "accounts.js")).replace(/\/\/[^\n]*/g, "");
+  assert.doesNotMatch(accounts, /Date\.now\(\)|updatedAt|createdAt|serverTimestamp/, "an Account writer stamps its own time");
 });
 
 test("the NUMBER-governed collections keep writing numbers", () => {

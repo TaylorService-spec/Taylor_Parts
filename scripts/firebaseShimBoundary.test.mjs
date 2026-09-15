@@ -266,7 +266,7 @@ test("the committed census matches the live tree exactly -- no new consumer, no 
   assert.deepEqual(result, { newConsumers: [], staleEntries: [], unregistered: [] });
 });
 
-test("the discovered registry is EXACTLY the four transitional shims, with five tolerated " +
+test("the discovered registry is EXACTLY the four transitional shims, with two tolerated " +
   "consumers -- the regression floor against the three rule sets that over-discovered", () => {
   const live = buildCensus(REPO_ROOT);
   assert.deepEqual(live.shims.map((shim) => shim.shim), [
@@ -275,7 +275,8 @@ test("the discovered registry is EXACTLY the four transitional shims, with five 
     "field-ops-app-vite/src/lib/firebaseSafe.js",
     "functions/src/scheduling/schedulingRepository.ts",
   ], "a fifth shim is either a real new re-export or a rule that started over-discovering again");
-  assert.equal(live.shims.reduce((sum, shim) => sum + shim.consumers.length, 0), 5);
+  // CRM cutover: domain/accounts.js, contacts.js and locations.js no longer use collectionStore (5 -> 2).
+  assert.equal(live.shims.reduce((sum, shim) => sum + shim.consumers.length, 0), 2);
   assert.ok(live.shims.length < 21,
     "21 / 65 / 190 were the counts of three successive over-wide rules; see this file's header");
 });
@@ -287,13 +288,14 @@ test("the canonical frontend shim exports the Firestore and Functions HANDLES an
     "auth must never appear here -- Firebase Auth identity is permitted by Owner ruling");
 });
 
-test("all 71 importers of the frontend handle shim's db/functions also import the fenced " +
+test("all 60 importers of the frontend handle shim's db/functions also import the fenced " +
   "dependency DIRECTLY, so the guard's own baseline already governs every one of them -- which " +
   "is why this shim's tolerated consumer set is empty rather than unexamined", () => {
   const live = buildCensus(REPO_ROOT);
   const shim = live.shims.find((entry) => entry.shim === "field-ops-app-vite/src/firebase/firebase.js");
   assert.deepEqual(shim.consumers, []);
-  assert.equal(live.observed.alreadyFencedConsumers, 71,
+  // CRM cutover: 11 former importers now reach the EOS API instead of Firebase at all (71 -> 60).
+  assert.equal(live.observed.alreadyFencedConsumers, 60,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });

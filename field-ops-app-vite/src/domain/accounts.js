@@ -1,90 +1,44 @@
-import { ACCOUNTS_COLLECTION } from "./constants";
-import { makeCollectionStore, TIMESTAMP_SHAPE } from "../firebase/collectionStore";
-import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
-import { assertClientCrmWriterOpen } from "./crmCutoverFreeze";
+import { isWriteBlocked } from "../config/env";
+import { accountInputFromForm, accountRowFromCrm, newIdempotencyKey, ownerFromForm, requireCrmApi } from "../services/crmApiClient.js";
 
-// Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
-// Revives the previously dead domain/customers.js (zero importers,
-// never wired to any UI) as domain/accounts.js -- internal naming is
-// "Account" throughout; the UI labels this "Customers" where that's
-// clearer for users (see BusinessEntityModel.md's naming
-// recommendation). Same makeCollectionStore shape as jobsStore/
-// techniciansStore -- no transactional logic needed here, unlike
-// jobActions.js's assignJob(), since Accounts have no state machine
-// and no cross-document invariant to protect.
+// Customer (Account) writers. Internal naming is "Account"; the UI says "Customer".
 //
-// During the nonprod CRM cutover the platform-sandbox bundle refuses these writes
-// before the collection store is called. This is a temporary client safety fuse,
-// not business authorization; PostgreSQL + EOS is the target authority and no new
-// Firebase Rules dependency is introduced.
-//
-// An Account is: { id, name, billingAddress?, status?, notes?, tags?,
-// customerNumber?, erpId?, accountingId?, legacyId?, createdAt,
-// updatedAt }. status is one of ACCOUNT_STATUS (domain/constants.js).
-// The four external-identifier fields (customerNumber/erpId/
-// accountingId/legacyId) are reserved for future integrations only --
-// nothing in this sprint populates or reads them beyond passing
-// through whatever a user types.
-//
-// createdAt/updatedAt are Date.now() epoch-ms numbers, not Firestore
-// Timestamps -- same convention makeCollectionStore already uses for
-// jobsStore/techniciansStore (see firebase/collectionStore.js), kept
-// consistent here rather than introducing a second timestamp
-// convention for only these three new collections.
-//
-// Commercial Profile fields (PR 1: defaultCurrency/purchaseOrderRequired/
-// invoiceDeliveryMethod/billingContact/accountOwner; PR 2:
-// paymentTerms/taxStatus) are additive and flow through this generic store
-// untouched -- there is no field-specific write logic here.
-//
-// ACCOUNTS ARE GOVERNED AS TIMESTAMP, and this is the one collection on the shared writer that is.
-//
-// metadata/definitions/account.js declares createdAt and updatedAt as TIMESTAMP, and the existing
-// population stores Firestore Timestamps. The writer's default is epoch milliseconds -- correct for
-// equipment, locations, inventory_actions and reorder_requests, all of which govern NUMBER, and
-// wrong here. A number sorts BELOW every Timestamp under `updatedAt DESC` (Firestore orders by type
-// first), so a newly created Customer landed at the BOTTOM of a 106-row list with a 50-row page and
-// was unreachable from the list it was created in.
-//
-// Declared here rather than inferred anywhere: the entity definition is the authority on the type,
-// and this line is the writer agreeing with it.
-export const accountsStore = makeCollectionStore(ACCOUNTS_COLLECTION, {
-  timestamps: TIMESTAMP_SHAPE.SERVER_TIMESTAMP,
-});
+// CRM CUTOVER. Account writes go to the governed PostgreSQL CRM authority through the EOS API (POST /crm/customer).
+// There is no Firestore write here any more and no fallback: a refusal (owner required, missing capability,
+// governed field, not configured) is thrown to the form, which already renders a thrown save error.
 
-// ============================ THE DERIVED SEARCH NAME ============================
-//
-// `nameLower` is a normalized copy of `name`, and the customer search box queries it rather than
-// `name` because Firestore cannot compare case-insensitively -- searching "mesquite" could not find
-// "Mesquite Soda Works" while the query ran against the display name.
-//
-// A derived field is only as good as its weakest writer. If ONE path sets `name` without setting
-// `nameLower`, that customer becomes permanently unfindable by search, and the symptom -- "search
-// sometimes doesn't find things" -- gives no hint of the cause. So the derivation happens HERE, in
-// the writers themselves, rather than at the call sites: a caller cannot forget what it never had
-// to remember. `accountWriteContract.test.mjs` asserts that this stays true.
-
-/** Fold the derived field in whenever a name is present on the payload. */
-function withDerivedSearchName(data) {
-  if (!data || typeof data !== "object") return data;
-  // Absent `name` means this write is not touching the name, so the stored derivation still
-  // matches and must not be clobbered with the empty string.
-  if (!("name" in data)) return data;
-  return { ...data, [SEARCH_NAME_FIELD]: normalizeNameForSearch(data.name) };
-}
-
-export function createAccount(data) {
-  assertClientCrmWriterOpen("account.clientCreate");
-  return accountsStore.add(withDerivedSearchName(data));
-}
-
-export function updateAccount(id, data) {
-  assertClientCrmWriterOpen("account.clientUpdate");
-  // THE SAME SHAPE THE CREATE PATH WRITES. This hardcoded Date.now(), so an edit re-broke a record
-  // that had been created correctly -- the account sank down the date-ordered list the moment
-  // anybody touched it. Asking the store for its own governed stamp means the two can never drift.
-  return accountsStore.update(id, {
-    ...withDerivedSearchName(data),
-    updatedAt: accountsStore.timestampValue(),
+/** Create an Account. The owner is REQUIRED and explicit (the form's owner assignment); it is never the signed-in user. */
+export async function createAccount(data) {
+  if (isWriteBlocked()) return { blocked: true };
+  const result = await requireCrmApi("createAccount", {
+    idempotencyKey: newIdempotencyKey(),
+    ownerEmployeeId: ownerFromForm(data),
+    ...accountInputFromForm(data),
   });
+  return accountRowFromCrm(result);
+}
+
+/**
+ * Update an Account's governed business fields, including its owner.
+ *
+ * OWNERSHIP follows the governed PostgreSQL rule (eosCrm/accountAuthority.ts), never a client rule: a stated owner that
+ * differs from the current one is sent as `ownerEmployeeId`, and the SERVER records it as an OWNER_HANDOFF (or the
+ * INITIAL_OWNER_ASSIGNMENT of a legacy ownerless Account) in the same transaction, with the Principal as actor. The
+ * owner the form was loaded with is sent as `expectedCurrentOwnerEmployeeId`, so a stale form is refused
+ * (ACCOUNT_OWNER_CHANGED_SINCE_READ) rather than turning an intended first assignment into a handoff. Clearing the
+ * owner is refused by the server (OWNER_REQUIRED).
+ */
+export async function updateAccount(id, data) {
+  if (isWriteBlocked()) return { blocked: true };
+  const input = accountInputFromForm(data);
+  const statedOwner = ownerFromForm(data);
+  if (statedOwner !== null) {
+    const current = await requireCrmApi("getAccount", { accountId: id });
+    if (current.ownerEmployeeId !== statedOwner) {
+      input.ownerEmployeeId = statedOwner;
+      input.expectedCurrentOwnerEmployeeId = current.ownerEmployeeId ?? null;
+    }
+  }
+  if (Object.keys(input).length === 0) return { id };
+  return accountRowFromCrm(await requireCrmApi("updateAccount", { accountId: id, ...input }));
 }

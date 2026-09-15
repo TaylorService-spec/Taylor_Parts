@@ -686,7 +686,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
   });
 
   it("section-level '+ Add Contact' / 'Import Contacts' / '+ Add Location' affordances survive the metadata wiring", () => {
-    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null });
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     renderDetail();
     expect(screen.getByRole("button", { name: "+ Add contact" })).toBeTruthy();
@@ -699,6 +699,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
       data: [],
       loading: false,
       error: "You do not have permission to view these contacts.",
+      retry: vi.fn(),
     });
     useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     renderDetail();
@@ -711,6 +712,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
       data: [{ id: "contact-1", name: "Jane Doe", role: "Manager", email: null, phone: null, isPrimary: false, accountId: "acct-1" }],
       loading: false,
       error: null,
+      retry: vi.fn(),
     });
     useLocationsForAccount.mockReturnValue({
       data: [{ id: "location-1", name: "Main Plant", accountId: "acct-1", address: { street: "1 Main St", city: "Springfield", state: "IL", zip: "62701" } }],
@@ -731,7 +733,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
   // focusRowKey/onFocusHandled wired to AccountDetail's own pendingContactFocus, the exact
   // accessibility parity #1211/this lane's own instructions require before wiring at all.
   it("post-create focus parity: creating a Contact moves keyboard focus onto its new row once the live subscription delivers it", async () => {
-    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null });
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     mockCreateContact.mockResolvedValue({ id: "contact-new", name: "New Contact" });
 
@@ -755,6 +757,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
       data: [{ id: "contact-new", name: "New Contact", role: null, email: null, phone: null, isPrimary: false, accountId: "acct-1" }],
       loading: false,
       error: null,
+      retry: vi.fn(),
     });
     rerender(
       <MemoryRouter>
@@ -775,7 +778,7 @@ describe("AccountDetail.jsx — Contacts/Locations wired through the metadata li
   });
 
   it("post-create focus parity: creating a Location moves keyboard focus onto its new row once the live subscription delivers it", async () => {
-    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null });
+    useContactsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     useLocationsForAccount.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
     mockCreateLocation.mockResolvedValue({ id: "location-new", name: "New Site" });
 
