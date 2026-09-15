@@ -153,6 +153,10 @@ test("capability refusal and invalid input touch no database; a missing membersh
   const w = fakeWorld({ capabilities: ["opportunity.read"] });
   const noCap = await post(w, { operation: "listRecordsOwnedByEmployee", input: { employeeId: "e1", family: "SALES_ORDER" } });
   assert.deepEqual([noCap.status, parsed(noCap).code], [403, "CAPABILITY_REQUIRED"]);
+  for (const family of ["ACCOUNT", "CONTACT", "ACCOUNT_LOCATION"]) {
+    const crmWithOpportunityRead = await post(w, { operation: "listRecordsOwnedByEmployee", input: { employeeId: "e1", family } });
+    assert.deepEqual([crmWithOpportunityRead.status, parsed(crmWithOpportunityRead).message], [403, "this read requires customer.record.read"], family);
+  }
   const badFamily = await post(w, { operation: "listAccountabilitiesForEmployee", input: { employeeId: "e1", family: "ACCOUNT" } });
   assert.deepEqual([badFamily.status, parsed(badFamily).code], [400, "FAMILY_INVALID"]);
   assert.equal(w.connects(), 0);
@@ -214,7 +218,13 @@ test("owner and accountable stay two axes over two columns; no credited salesper
   assert.match(src, /RECORD_OWNER: "owner_employee_id", ACCOUNTABLE_PERSON: "accountable_employee_id"/);
   assert.match(src, /WHERE r\.tenant_id = \$1 AND r\.\$\{personColumn\} = \$2/);
   assert.doesNotMatch(src, /credited_salesperson|assignee|assigned_|technician|manager|reports_to|COALESCE/i);
-  assert.deepEqual([...responsibility.EMPLOYEE_RECORD_FAMILIES], ["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER"]);
+  assert.deepEqual([...responsibility.EMPLOYEE_RECORD_FAMILIES], ["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER", "ACCOUNT", "CONTACT", "ACCOUNT_LOCATION"]);
+  // Owner ruling G: CRM families are OWNER-axis only -- no CRM accountability is inferred.
+  assert.deepEqual([...responsibility.ACCOUNTABLE_RECORD_FAMILIES], ["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER"]);
+  assert.match(src, /const crm = [^\n]*\n[^\n]*\n\s*companyExpr: "NULL::text", complete: "TRUE", capability: "customer\.record\.read", handoffKey: null,/);
+  for (const [family, table] of [["ACCOUNT", "eos_crm.accounts"], ["CONTACT", "eos_crm.contacts"], ["ACCOUNT_LOCATION", "eos_crm.account_locations"]]) {
+    assert.match(src, new RegExp(`${family}: crm\\("${table.replace(".", "\\.")}"`), family);
+  }
 });
 
 test("no Job Role, Security Role or operationalRoles is produced, inferred or named anywhere in the Workforce reads or commands", () => {
@@ -225,7 +235,7 @@ test("no Job Role, Security Role or operationalRoles is produced, inferred or na
 
 test("capabilities: only existing read ids, each registered in the catalog AND the PostgreSQL vocabulary; none invented", () => {
   const used = new Set([...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"]), HTTP_SOURCE].flatMap((f) => [...code(f).matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1])).filter((s) => /\.(read|write)$/.test(s)));
-  assert.deepEqual([...used].sort(), ["admin.employeeProfile.write", "admin.principalAccess.read", "employee.record.read", "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+  assert.deepEqual([...used].sort(), ["admin.employeeProfile.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read", "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
   for (const id of used) {

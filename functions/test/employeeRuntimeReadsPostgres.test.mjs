@@ -147,6 +147,8 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
   const writerOnly = await makeActor("t1", "firebase-uid-writer-only", ["opportunity.write", "salesOrder.write"]);
   const nobody = await makeActor("t1", "firebase-uid-nobody");
   const t2Reader = await makeActor("t2", "firebase-uid-t2-reader", ["opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+  const crmReader = await makeActor("t1", "firebase-uid-crm-reader", ["customer.record.read"]);
+  const t2CrmReader = await makeActor("t2", "firebase-uid-t2-crm-reader", ["customer.record.read"]);
   assert.notEqual(reader.principalId, reader.subject);
 
   const assertNoLeak = (body) => assert.doesNotMatch(JSON.stringify(body), /hunter2|10\.0\.0\.7|syntax error|relation|password|eos_workforce|SELECT/i);
@@ -252,7 +254,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     assert.deepEqual(ids(await call(reader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "SALES_ORDER" })), []);
     assert.deepEqual(ids(await call(reader, "listAccountabilitiesForEmployee", { employeeId: "e-owner-a", family: "SALES_ORDER" })), ["so-b-owned-a-acct"]);
     const item = (await call(reader, "listRecordsOwnedByEmployee", { employeeId: "e-acct-b", family: "SALES_ORDER" })).body.result.items[0];
-    assert.deepEqual(Object.keys(item).sort(), ["accountId", "family", "operatingCompanyId", "recordId", "recordNumber", "state", "updatedAt"]);
+    assert.deepEqual(Object.keys(item).sort(), ["accountId", "family", "name", "operatingCompanyId", "recordId", "recordNumber", "state", "updatedAt"]);
   });
 
   await t.test("EMP-RT-03: a TERMINATED Employee stays resolvable; a foreign-tenant or unknown Employee is 404", async () => {
@@ -277,7 +279,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
   });
 
   await t.test("input: unserved families, unknown fields, authority fields and bad paging refuse 400", async () => {
-    for (const family of ["ACCOUNT", "CONTACT", "WORK_ORDER", "opportunity", undefined]) {
+    for (const family of ["WORK_ORDER", "ASSIGNED_WORK", "opportunity", "account", undefined]) {
       const res = await call(reader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family });
       assert.deepEqual([res.status, res.body.code], [400, "FAMILY_INVALID"], String(family));
     }
@@ -335,6 +337,58 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     }
   });
 
+  await t.test("Owner ruling G: CRM families under customer.record.read, owner axis only, tenant-scoped, bounded and deterministic", async () => {
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, customer_number, created_by, updated_by) VALUES
+      ('acct-a-zeta','t1','Zeta Foods','ACTIVE','e-owner-a','C-900','x','x'), ('acct-a-alpha','t1','alpha Market','PROSPECT','e-owner-a',NULL,'x','x'),
+      ('acct-b','t1','Bravo','ACTIVE','e-acct-b',NULL,'x','x'), ('acct-t2-a','t2','Foreign','ACTIVE','e-owner-a',NULL,'x','x')`);
+    await q(`INSERT INTO eos_crm.contacts (id, tenant_id, account_id, name, owner_employee_id, created_by, updated_by) VALUES
+      ('ct-b-on-a','t1','acct-a-zeta','Casey','e-acct-b','x','x'), ('ct-a-on-b','t1','acct-b','Drew','e-owner-a','x','x'), ('ct-t2','t2','acct-t2-a','Far','e-owner-a','x','x')`);
+    await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, owner_employee_id, created_by, updated_by) VALUES
+      ('loc-a','t1','acct-b','Warehouse Dock','e-owner-a','x','x'), ('loc-t2','t2','acct-t2-a','Far Dock','e-owner-a','x','x')`);
+
+    const accounts = await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "ACCOUNT" });
+    assert.equal(accounts.status, 200, JSON.stringify(accounts.body));
+    assert.deepEqual(accounts.body.result.items.map((i) => [i.recordId, i.name, i.state, i.recordNumber, i.accountId]),
+      [["acct-a-alpha", "alpha Market", "PROSPECT", null, "acct-a-alpha"], ["acct-a-zeta", "Zeta Foods", "ACTIVE", "C-900", "acct-a-zeta"]], "folded-name order, tenant-scoped");
+    assert.equal(accounts.body.result.axis, "RECORD_OWNER");
+    // The owner of a CONTACT is not inferred from its Account's owner, and vice versa.
+    assert.deepEqual(ids(await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "CONTACT" })), ["ct-a-on-b"]);
+    assert.deepEqual(ids(await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-acct-b", family: "CONTACT" })), ["ct-b-on-a"]);
+    assert.deepEqual(ids(await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-acct-b", family: "ACCOUNT" })), ["acct-b"]);
+    const locations = await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "ACCOUNT_LOCATION" });
+    assert.deepEqual(locations.body.result.items.map((i) => [i.recordId, i.accountId]), [["loc-a", "acct-b"]]);
+    // A Commercial record owned by A inside B's account appears under A's OPPORTUNITY ownership, never under ACCOUNT.
+    assert.ok(!ids(accounts).includes("acct-1"));
+
+    for (const family of ["ACCOUNT", "CONTACT", "ACCOUNT_LOCATION"]) {
+      for (const actor of [oppOnly, reader, writerOnly, nobody]) {
+        const res = await call(actor, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family });
+        assert.deepEqual([res.status, res.body.code], [403, "CAPABILITY_REQUIRED"], `${actor.subject} ${family}`);
+      }
+      const acct = await call(crmReader, "listAccountabilitiesForEmployee", { employeeId: "e-owner-a", family });
+      assert.deepEqual([acct.status, acct.body.code], [400, "FAMILY_INVALID"], `CRM accountability was answered for ${family}`);
+    }
+    const crmOnCommercial = await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "OPPORTUNITY" });
+    assert.deepEqual([crmOnCommercial.status, crmOnCommercial.body.code], [403, "CAPABILITY_REQUIRED"]);
+    const foreign = await call(t2CrmReader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "ACCOUNT" });
+    assert.deepEqual([foreign.status, foreign.body.code], [404, "EMPLOYEE_NOT_FOUND"]);
+
+    for (const [i, name] of ["Delta", "bravo", "Charlie", "alpha"].entries()) {
+      await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES ($1,'t1',$2,'ACTIVE','e-page','x','x')`, [`acct-page-${i}`, name]);
+    }
+    const seen = [];
+    let cursor;
+    const pages = [];
+    do {
+      const res = await call(crmReader, "listRecordsOwnedByEmployee", { employeeId: "e-page", family: "ACCOUNT", limit: 3, ...(cursor ? { cursor } : {}) });
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      pages.push(res.body.result.items.length);
+      seen.push(...res.body.result.items.map((it) => it.name));
+      cursor = res.body.result.nextCursor;
+    } while (cursor);
+    assert.deepEqual([pages, seen], [[3, 1], ["alpha", "bravo", "Charlie", "Delta"]]);
+  });
+
   await t.test("a raw database failure is a generic 500 that leaks no SQL, driver or connection detail", async () => {
     failOn = /eos_workforce\.employees/;
     try {
@@ -354,7 +408,7 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     await call(reader, "listAccountabilitiesForEmployee", { employeeId: "e-acct-b", family: "OPPORTUNITY" });
     await call(reader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "SALES_AGREEMENT" });
     const schemas = new Set(statements.flatMap((s) => [...s.matchAll(/\b(eos_[a-z_]+)\./g)].map((m) => m[1])));
-    for (const schema of schemas) assert.ok(["eos_policy", "eos_commercial", "eos_workforce"].includes(schema), `unexpected schema ${schema}`);
+    for (const schema of schemas) assert.ok(["eos_policy", "eos_commercial", "eos_workforce", "eos_crm"].includes(schema), `unexpected schema ${schema}`);
     assert.ok(schemas.has("eos_workforce") && schemas.has("eos_policy") && schemas.has("eos_commercial"));
     assert.ok(statements.includes("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY"));
     assert.deepEqual(statements.filter((s) => /^\s*(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(s)), [], "a read issued a write");
