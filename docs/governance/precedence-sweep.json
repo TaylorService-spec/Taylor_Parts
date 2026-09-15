@@ -8,7 +8,7 @@
  "totals": {
   "EXPLICIT_OWNER_DECISION": 103,
   "CANONICAL_MATRIX": 114,
-  "UNJUSTIFIED": 6,
+  "UNJUSTIFIED": 7,
   "WORKFLOW_REQUIRED": 4,
   "LEGACY_COMPATIBILITY_ONLY": 2
  },
@@ -486,6 +486,13 @@
     "warehouseManager",
     "partsManager"
    ]
+  },
+  {
+   "roleId": "generalManager",
+   "capability": "employee.record.read",
+   "classification": "UNJUSTIFIED",
+   "basis": "no matrix row, no composition, no recorded decision",
+   "alsoHeldBy": []
   },
   {
    "roleId": "salesManager",

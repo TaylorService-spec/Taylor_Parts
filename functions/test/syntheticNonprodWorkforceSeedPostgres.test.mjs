@@ -170,7 +170,9 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
     const adminLink = (await q("SELECT employee_id FROM eos_policy.employee_principal_links WHERE principal_id = $1 AND status = 'active'", [adminPrincipalId])).rows;
     assert.deepEqual(adminLink, [{ employee_id: "synthetic-np-emp-owner-executive" }], "the real administrator was not reused for Owner / Executive");
     const employeeColumns = (await q(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'eos_workforce' AND table_name = 'employees' ORDER BY 1`)).rows.map((r) => r.column_name);
-    assert.deepEqual(employeeColumns, ["created_at", "employment_status", "id", "operating_company_id", "tenant_id", "updated_at"], "(5) a Job Role or identity column reached the Employee table");
+    // The later Employee profile migration (Owner ruling C) adds typed profile facts; none is a Job Role or identity column.
+    for (const c of ["created_at", "employment_status", "id", "operating_company_id", "tenant_id", "updated_at"]) assert.ok(employeeColumns.includes(c), c);
+    assert.deepEqual(employeeColumns.filter((c) => /role|uid|firebase|principal|subject|provider|operational|technician/.test(c)), [], "(5) a Job Role or identity column reached the Employee table");
   });
 
   await t.test("C/D/G/H: the workforce measurement meets the acceptance characteristics", async () => {
@@ -243,7 +245,9 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
   await t.test("(16) the deferred Employee foreign key was not activated", async () => {
     const applied = (await q("SELECT name FROM public.pgmigrations")).rows.map((r) => r.name);
     assert.ok(!applied.some((n) => n.includes("employee-principal-link-employee-fk")));
-    const fks = (await q(`SELECT count(*)::int AS n FROM pg_constraint WHERE contype = 'f' AND confrelid = 'eos_workforce.employees'::regclass`)).rows[0].n;
+    // The governed reporting relation (Owner ruling D) keys onto employees by design; no EXISTING person-reference column does.
+    const fks = (await q(`SELECT count(*)::int AS n FROM pg_constraint WHERE contype = 'f' AND confrelid = 'eos_workforce.employees'::regclass
+                            AND conrelid <> 'eos_workforce.employee_reporting_relationships'::regclass`)).rows[0].n;
     assert.equal(fks, 0);
   });
 });

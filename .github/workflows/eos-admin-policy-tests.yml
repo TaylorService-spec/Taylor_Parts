@@ -120,6 +120,16 @@ on:
       - "functions/src/eosCommercial/commercialHttp.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
+      # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
+      - "functions/src/eosWorkforce/**"
+      - "functions/test/employeeRuntimeReads.test.mjs"
+      - "functions/test/employeeRuntimeReadsPostgres.test.mjs"
+      - "functions/src/eosOps/migration/inventoryCapabilityGrantMigration.ts"
+      - "functions/scripts/employeeProfileCutover.js"
+      - "functions/scripts/exportEmployeeProfileSnapshot.js"
+      - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      - "functions/test/employeeProfileAuthority.test.mjs"
+      - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"
@@ -249,6 +259,16 @@ on:
       - "functions/src/eosCommercial/commercialHttp.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
+      # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
+      - "functions/src/eosWorkforce/**"
+      - "functions/test/employeeRuntimeReads.test.mjs"
+      - "functions/test/employeeRuntimeReadsPostgres.test.mjs"
+      - "functions/src/eosOps/migration/inventoryCapabilityGrantMigration.ts"
+      - "functions/scripts/employeeProfileCutover.js"
+      - "functions/scripts/exportEmployeeProfileSnapshot.js"
+      - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      - "functions/test/employeeProfileAuthority.test.mjs"
+      - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"

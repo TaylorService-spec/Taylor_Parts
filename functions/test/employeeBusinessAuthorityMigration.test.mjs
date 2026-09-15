@@ -47,7 +47,8 @@ const downCode = code(downSection);
 test("migration 019 is in the applied set and declares eos_workforce.employees", () => {
   assert.ok(migrationFiles().includes(MIGRATION), "the migration must be in functions/migrations");
   assert.ok(declaredSchemas().includes("eos_workforce"));
-  assert.deepEqual(declaredTables().get("eos_workforce"), ["employees"]);
+  // Through 019 only: the later Employee profile/reporting migration (Owner ruling D) adds the governed reporting relation.
+  assert.deepEqual(declaredTables(migrationFiles().filter((f) => f <= MIGRATION)).get("eos_workforce"), ["employees"]);
 });
 
 test("exactly ONE new relation is created -- not a table plus a history table plus a role table", () => {
