@@ -12,12 +12,16 @@ import VerenwardMark from "../shared/brand/VerenwardMark";
 // This shell is the composition that surface always needed; `.fo-form` is
 // untouched and keeps doing its job everywhere else.
 //
-// BRAND HIERARCHY (Owner-ruled, 2026-08-19). Three distinct tiers, and they are
-// NOT interchangeable:
+// BRAND HIERARCHY (Owner-ruled, 2026-08-19; workspace identity corrected
+// 2026-09-10). Three distinct tiers, and they are NOT interchangeable:
 //   Verenward                -- parent / provisional brand
 //   Enterprise Operations OS -- the platform
-//   Taylor Parts             -- the implementation / workspace
-// with "Taylor Freezer of Arizona" as company context where appropriate.
+//   Taylor Freezer of Arizona -- the workspace / Customer 1 (canonical name;
+//                                "Taylor Arizona" is a display-only short form
+//                                for space-constrained chrome, never a new
+//                                canonical identity)
+// "Taylor Parts" was never an approved Customer 1 name and must not appear as
+// the workspace identity.
 //
 // An earlier draft of this screen rendered an invented "EOS" wordmark and mark.
 // That was wrong on both counts: it promoted the platform to parent-brand
@@ -36,7 +40,10 @@ import VerenwardMark from "../shared/brand/VerenwardMark";
 // Approved copy. Held as constants so wording changes are one edit.
 export const BRAND_HEADLINE = "RUN THE OPERATION.";
 export const BRAND_SUPPORTING = "Service. Parts. Inventory. Sales. One connected system.";
-export const WORKSPACE_NAME = "Taylor Parts";
+export const WORKSPACE_NAME = "Taylor Freezer of Arizona";
+// Display-only short form for space-constrained chrome (the workspace badge
+// below). Never treat this as a separate canonical identity.
+export const WORKSPACE_NAME_SHORT = "Taylor Arizona";
 
 function AlertIcon() {
   return (
@@ -67,7 +74,7 @@ function WorkspaceBadge({ tone = "onLight" }) {
 
   return (
     <span className={`eos-auth__workspace eos-auth__workspace--${tone}`} title={APP_ENVIRONMENT?.id ?? "environment not identified"}>
-      <span className="eos-auth__workspace-name">{WORKSPACE_NAME}</span>
+      <span className="eos-auth__workspace-name">{WORKSPACE_NAME_SHORT}</span>
       {environment ? (
         <>
           <span className="eos-auth__workspace-sep" aria-hidden="true">·</span>

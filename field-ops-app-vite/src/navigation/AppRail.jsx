@@ -373,12 +373,12 @@ export function RailBrand() {
     <div className="fo-rail__brand">
       <VerenwardMark variant="horizontal" tone="onDark" size={30} />
       <span className="fo-implementation">
-        <span className="fo-implementation__name">Taylor Parts</span>
-        {/* Company context, per the ruled brand hierarchy (Parent brand =
-            Verenward, Platform = Enterprise Operations OS, Workspace = Taylor
-            Parts, Company context = Taylor Freezer of Arizona). This used to
-            read "Arizona Operations" -- a name that appears nowhere else in
-            the ruled hierarchy or the wider docs corpus. */}
+        {/* Workspace / Customer 1 identity (Owner-ruled 2026-09-10). Canonical
+            name is "Taylor Freezer of Arizona"; "Taylor Arizona" is the
+            display-only short form used here for space, never a new canonical
+            identity. "Taylor Parts" was never an approved Customer 1 name and
+            must not appear as the workspace label. */}
+        <span className="fo-implementation__name">Taylor Arizona</span>
         <span className="fo-implementation__context">Taylor Freezer of Arizona</span>
       </span>
     </div>

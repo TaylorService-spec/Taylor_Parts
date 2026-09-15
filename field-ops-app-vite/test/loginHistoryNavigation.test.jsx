@@ -26,10 +26,11 @@ function setUrl(search) {
 }
 
 // Brand hierarchy is Owner-ruled and not interchangeable: Verenward (parent) /
-// Enterprise Operations OS (platform) / Taylor Parts (implementation). The
-// approved workspace badge is "Taylor Parts · Sandbox". An earlier draft
-// rendered an invented "EOS" wordmark in parent position; these pin the ruling
-// so that cannot silently return.
+// Enterprise Operations OS (platform) / Taylor Freezer of Arizona (workspace,
+// shown short as "Taylor Arizona" in space-constrained chrome). The approved
+// workspace badge is "Taylor Arizona · Sandbox". An earlier draft rendered an
+// invented "EOS" wordmark in parent position; these pin the ruling so that
+// cannot silently return.
 describe("Login brand hierarchy", () => {
   beforeEach(() => { setUrl(""); });
 
@@ -42,7 +43,7 @@ describe("Login brand hierarchy", () => {
     expect(screen.getAllByText("Enterprise Operations OS").length).toBeGreaterThan(0);
     // The mock supplies role: "sandbox", so the badge must carry BOTH halves --
     // the implementation and the environment.
-    expect(screen.getAllByText("Taylor Parts").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Taylor Arizona").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sandbox").length).toBeGreaterThan(0);
   });
 
