@@ -1,11 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { employeeEntity, employeeIndexList } from "../../metadata/definitions/employee.js";
-import { useMetadataList } from "../../hooks/useMetadataList";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
-import { EOS_ACCESS, EOS_ACCESS_LABEL } from "../../domain/employeeProfile.js";
-import { securityRoleLabel } from "../../domain/employeeVocabulary.js";
+import { workforceApiClient } from "../../services/workforceApiClient.js";
+import { useWorkforceEmployeeDirectory } from "../../hooks/useWorkforceEmployeeDirectory.js";
+import { employeeDirectoryPresentation } from "../../domain/employeeOperatingProfile.js";
 // THE STORED ASSIGNMENTS, beside the employee directory. A PRINCIPAL is the identity EOS
 // authorizes and it is not the same record as an employee -- the panel says so rather than
 // letting the proximity of the two tables imply they are one thing.
@@ -24,82 +23,56 @@ import { UsersPolicyPanel } from "./PolicyStorePanels.jsx";
 // this -- two directories over one collection is how they drift into disagreeing about the same
 // people. The retired Employees URLs redirect here (App.jsx).
 //
-// THE CONSOLIDATION IS PRESENTATIONAL. Underneath, nothing collapsed: `employees` is still the
-// authoritative workforce identity, `users/{uid}` is still application-access identity,
-// operationalRoles are still eligibility markers rather than permissions, and securityRole is
-// still a read-only mirror of the legacy role. The page is one; the authorities are not, and
-// domain/employeeProfile.js is where that separation is kept honest.
+// THE CONSOLIDATION IS PRESENTATIONAL. Underneath, nothing collapsed: the Employee is the workforce
+// business record, the PRINCIPAL is the identity EOS authorizes, and the two are linked rather than
+// merged. UsersPolicyPanel below presents the Principal side and is deliberately a separate panel.
 //
-// ════════════════════ THIS IS THE EMPLOYEE DIRECTORY, NOT A COPY OF IT ════════════════════
+// ════════════════════ THE DIRECTORY IS THE GOVERNED PostgreSQL READ ════════════════════
 //
-// The rows come from `employee.index` (metadata/definitions/employee.js) on the standard list
-// runtime -- the same declaration, the same Rules-granted client-direct read, the same
-// name-ordered default sort and 50-row page the retired Employees screen used. No second read path
-// was added and no employee domain code was deleted; the directory moved under the name Users.
+// Rows come from EMP-RT-01 `listEmployees` over the governed PostgreSQL Employee authority
+// (browser: services/workforceApiClient.js → POST /workforce/employees → functions/src/eosWorkforce/
+// reads/employeeDirectoryReads.ts). It is keyset-paginated by Employee id and bounded by the server's
+// own page size; Load More asks for the next cursor and appends.
 //
-// ════════════════════ A ROW CLICK READS. EDIT EDITS. ════════════════════
+// IT USED TO BE THE FIRESTORE `employee.index` METADATA LIST, and that was the defect: the record page
+// had already moved to PostgreSQL, so a Firestore directory id handed to /administration/users/:id
+// produced a live 404 for any Employee whose two ids disagreed. One authority, one id space: the row
+// key here IS the PostgreSQL employeeId the record page reads.
 //
-// Clicking a row (or its name) opens User Detail READ-ONLY. Nothing here ever turns a row into an
-// editable field: an inline-editable table makes every stray click a candidate write to somebody's
-// employment record, and it has nowhere to put the validation, the confirmation and the audit a
-// governed change requires. The explicit Edit action opens the SAME edit flow the detail page's
-// Edit User button opens, against the SAME trusted command -- one write path, two doors to it.
-export default function AdminUsers() {
+// The metadata definition `employee.index` is left in place -- other surfaces and suites reference it
+// -- but this page no longer reads through it and holds no Firestore dependency of any kind. There is
+// no fallback: a refusal renders "not available to you" and an outage renders a retryable failure,
+// neither of them as an empty directory.
+//
+// WHAT IS NOT SHOWN, BECAUSE THE GOVERNED READ DOES NOT RETURN IT. The projection is employeeId,
+// display name, employee number, employment status, operating company and job title. Account status,
+// EOS account linkage, the legacy Security Role mirror and any Firebase uid are NOT in it -- and are
+// not fetched from somewhere else to fill a column. User Access linkage for one person is on the
+// record page (EMP-RT-01 userAccess / EMP-RT-02); Role assignments are the Principal panel below.
+//
+// ════════════════════ A ROW CLICK READS. EDIT IS A DESTINATION. ════════════════════
+//
+// Clicking a row (or its name) opens the Employee record READ-ONLY. Nothing here ever turns a row into
+// an editable field. The Edit action opens the same record with `?edit=1`, where editing states that it
+// is unavailable: PostgreSQL is the Employee profile authority and no governed profile writer is served
+// yet (EMP-RT-W1). The destination is kept so the answer is given in one place rather than two.
+export default function AdminUsers({ workforce = workforceApiClient }) {
   const navigate = useNavigate();
-  const { presentation, loadMore, retry } = useMetadataList(employeeIndexList, employeeEntity, {
-    filters: [],
-  });
+  const directory = useWorkforceEmployeeDirectory({ client: workforce });
 
-  // THE EOS ACCOUNT CELL, composed here rather than in the metadata layer.
-  //
-  // `makeColumn` deliberately accepts no custom renderer -- the definition's own validator rejects
-  // one by name -- and names post-processing `presentation.rows[].cells` as what a caller needing
-  // custom cell display does instead. This is that. The `userId` column is relabelled "EOS Account"
-  // in the definition, and its cell becomes words: the raw uid never reaches a reader, which is
-  // the point, because a Firebase uid in a directory column is unreadable and teaches people to
-  // recognise internal keys.
-  //
-  // It says "Account linked" / "No account", NOT "Enabled" / "Disabled". Whether an account is
-  // enabled is Firebase Auth state, and no governed read exposes another user's to this client.
-  // Deriving it from employment status would render a CONTRACTOR who legitimately holds access as
-  // switched off -- the exact conflation this product forbids. The detail page says the same thing
-  // at greater length rather than filling the gap with a guess.
-  //
-  // The COLUMN is headed "EOS Account" for the same reason (Owner ruling, PR #1806): a heading
-  // reading Access over a linkage value invites "this person HAS access", which is a stronger claim
-  // than "an account exists" and the one no read here can support.
-  //
-  // SECURITY ROLE IS GIVEN ITS WORDS IN THE SAME PASS. It is a plain STRING field (deliberately --
-  // it is a mirror, and declaring enumLabels on it would dress a mirror up as a governed
-  // vocabulary), so the runtime renders the stored machine value: a column reading "technician"
-  // beside one reading "Active" teaches a reader that some of these are database constants.
-  // securityRoleLabel is the ONE label map for it, reused rather than restated here, and an
-  // unrecognised value still passes through verbatim rather than becoming a placeholder.
-  const withDisplayWords = useMemo(() => {
-    if (presentation.state !== "READY") return presentation;
-    const accessIndex = presentation.columns.findIndex((c) => c.fieldId === "userId");
-    const roleIndex = presentation.columns.findIndex((c) => c.fieldId === "securityRole");
-    if (accessIndex < 0 && roleIndex < 0) return presentation;
-    return {
-      ...presentation,
-      rows: presentation.rows.map((row) => ({
-        ...row,
-        cells: row.cells.map((cell, index) => {
-          if (index === accessIndex) {
-            // cellValue already resolved an absent/blank userId to null, so the presence of a
-            // value IS the linkage -- no second interpretation of the stored shape here.
-            return { ...cell, value: EOS_ACCESS_LABEL[cell.value ? EOS_ACCESS.LINKED : EOS_ACCESS.NO_ACCOUNT] };
-          }
-          if (index === roleIndex && cell.value) {
-            return { ...cell, value: securityRoleLabel(cell.value) };
-          }
-          return cell;
-        }),
-      })),
-    };
-  }, [presentation]);
+  const presentation = useMemo(
+    () =>
+      employeeDirectoryPresentation({
+        status: directory.status,
+        items: directory.items,
+        hasMore: directory.hasMore,
+        error: directory.error,
+      }),
+    [directory.status, directory.items, directory.hasMore, directory.error],
+  );
 
   const openDetail = useCallback(
+    // The PostgreSQL employeeId the governed read returned -- the same id the record page reads by.
     (employeeId) => navigate(`/administration/users/${employeeId}`),
     [navigate],
   );
@@ -107,10 +80,6 @@ export default function AdminUsers() {
   const rowActions = useMemo(
     () => [
       { id: "view", label: "View", onActivate: openDetail },
-      // Edit is a different DESTINATION, not a mode toggle on the row: the detail page opens
-      // read-only, and `?edit=1` opens it with the editor already up. Both reach the same form and
-      // the same trusted command; authorization is resolved there, never by whether this button
-      // rendered.
       {
         id: "edit",
         label: "Edit",
@@ -137,33 +106,32 @@ export default function AdminUsers() {
       // it, so a workload line here would be a tally of the loaded page presented as a fact about
       // the company. Silence is the honest answer, not an approximation in a smaller font.
       summaryItems={[]}
-      // NO CREATE ACTION. A person enters EOS through the governed operator script
-      // (functions/scripts/provisionEmployeeAccess.js), which links a human to application access
-      // reciprocally. A disabled "New user" here would describe a permission boundary when the
-      // truth is that creating one is an onboarding procedure rather than a screen.
+      // NO CREATE ACTION. A person enters EOS through the governed operator process, not through a
+      // screen, and a disabled "New user" here would describe a permission boundary when the truth is
+      // that creating one is an onboarding procedure.
     >
       <p className="fo-muted">
-        Employee profiles, operational roles, EOS access and security roles. Security Role mirrors
-        the legacy identity role (admin, dispatcher, technician) — not the governed Role a person
-        holds. EOS Account shows whether an application account exists for this person; whether that
-        account is enabled or disabled is Firebase Auth state that no governed read exposes yet.
+        Employee business records from the governed Employee authority: name, Employee ID, employment
+        status, job title and operating company. Whether a person can sign in is User Access, not an
+        Employee fact — a person&apos;s linkage is on their record, and the Roles a Principal holds are
+        in the panel below.
       </p>
       {/* THE DIRECTORY IS MEASURED AGAINST ITSELF, NOT THE WINDOW. This wrapper exists only to
           be a containment context: `.fo-users-directory` in index.css asks how much width the
           directory actually has once the application rail has taken its share, and recomposes
-          the six columns into the shared labelled-card grammar below 760px of its OWN width.
+          the columns into the shared labelled-card grammar below 760px of its OWN width.
           The rail is why a 900px window was clipping View and Edit off the right edge while the
           640px phone breakpoint sat unfired -- the numbers are in the CSS comment and in
           scripts/adminUsersResponsiveProbe.mjs. No second Users table: same grid, same cells,
           same data-labels, recomposed. */}
       <div className="fo-users-directory">
         <MetadataListGrid
-          presentation={withDisplayWords}
+          presentation={presentation}
           caption="Users"
           onRowClick={openDetail}
           rowActions={rowActions}
-          onLoadMore={loadMore}
-          onRetry={retry}
+          onLoadMore={directory.loadMore}
+          onRetry={directory.retry}
         />
       </div>
 

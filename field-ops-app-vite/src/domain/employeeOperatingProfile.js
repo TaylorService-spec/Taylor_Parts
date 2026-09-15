@@ -368,3 +368,73 @@ export function describeMyProfileFailure(error) {
   }
   return { state: MY_PROFILE_STATE.UNAVAILABLE, words: "Your Employee profile could not be loaded from the Workforce service. Nothing else was used in its place.", retryable: true };
 }
+
+// ════════════════════ THE DIRECTORY (EMP-RT-01 listEmployees) ════════════════════
+//
+// The Administration → Users directory renders exactly the bounded projection the governed read returns --
+// employeeId, displayName, employeeNumber, employmentStatus, operatingCompanyId, jobTitle -- and nothing else.
+// There is no account status, no Security Role, no Job Role and no Firebase uid in it, so no column claims one.
+
+export const EMPLOYEE_DIRECTORY_COLUMNS = Object.freeze([
+  Object.freeze({ fieldId: "displayName", label: "Name" }),
+  Object.freeze({ fieldId: "employeeNumber", label: "Employee ID" }),
+  Object.freeze({ fieldId: "employmentStatus", label: "Employment Status" }),
+  Object.freeze({ fieldId: "jobTitle", label: "Job Title" }),
+  Object.freeze({ fieldId: "operatingCompanyId", label: "Operating Company" }),
+]);
+
+/** One directory item's cells, in column order. An absent optional value is stated, never blank. */
+function directoryCells(item) {
+  const company = resolveOperatingCompany(item?.operatingCompanyId ?? null).company?.displayName ?? null;
+  const values = {
+    // The derived display name, or the truthful generic one. NEVER the Employee id (DECISIONS #106).
+    displayName: recordDisplayName(item),
+    employeeNumber: isBlank(item?.employeeNumber) ? ABSENCE.NOT_RECORDED : String(item.employeeNumber),
+    employmentStatus: describeLifecycle(item?.employmentStatus).words,
+    jobTitle: isBlank(item?.jobTitle) ? ABSENCE.NOT_RECORDED : String(item.jobTitle),
+    // A company id the governed company authority cannot resolve is UNRESOLVED -- a different fact from
+    // "not recorded", and never the raw id.
+    operatingCompanyId: company ?? (isBlank(item?.operatingCompanyId) ? ABSENCE.NOT_RECORDED : ABSENCE.UNRESOLVED),
+  };
+  return EMPLOYEE_DIRECTORY_COLUMNS.map((c) => Object.freeze({ fieldId: c.fieldId, value: values[c.fieldId] }));
+}
+
+/**
+ * The directory as the shared list grid renders it. PURE: it takes what the Workforce read returned and decides
+ * only how it reads.
+ *
+ * The row KEY is the PostgreSQL employeeId, which is what the record route is addressed by -- the split that
+ * produced 404s was a Firestore directory id handed to a PostgreSQL-only record page.
+ *
+ * States: a refusal is DENIED ("not available to you"), an outage is UNAVAILABLE and retryable, and neither is
+ * ever rendered as an empty directory.
+ */
+export function employeeDirectoryPresentation({ status, items = [], hasMore = false, error = null } = {}) {
+  const failure = error ? describeWorkforceFailure(error, "The Employee directory") : null;
+  const state = (() => {
+    if (status === "loading") return "LOADING";
+    if (status === "failed" || (failure && items.length === 0)) {
+      return failure && failure.kind === READ_FAILURE_KIND.NOT_AVAILABLE_TO_YOU ? "DENIED" : "UNAVAILABLE";
+    }
+    return items.length > 0 ? "READY" : "EMPTY";
+  })();
+  return Object.freeze({
+    listId: "employee.directory.workforce",
+    surface: "INDEX",
+    state,
+    columns: EMPLOYEE_DIRECTORY_COLUMNS,
+    rows: Object.freeze(state === "READY" ? items.map((item) => Object.freeze({ key: item.employeeId, cells: Object.freeze(directoryCells(item)) })) : []),
+    hasMore: state === "READY" && Boolean(hasMore),
+    viewAllListId: null,
+    truncated: false,
+    emptyMessage:
+      state === "EMPTY"
+        ? "No Employees are recorded in this company yet."
+        : failure
+          ? failure.words
+          : state === "UNAVAILABLE"
+            ? "The Employee directory could not be loaded."
+            : null,
+    emptyGuidance: null,
+  });
+}

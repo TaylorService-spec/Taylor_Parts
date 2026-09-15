@@ -1,7 +1,6 @@
 // ADMINISTRATION > USERS -- the directory, the record page, the retained editor, and the shared history.
 //
-// The DIRECTORY is exercised through a controlled list presentation. The RECORD page reads Employee business
-// data only from the governed Workforce transport, injected here as a mocked client (no Firestore mock exists
+// The RECORD page reads Employee business data only from the governed Workforce transport, injected here as a mocked client (no Firestore mock exists
 // in this file, because the record page has no Firestore read to mock). The legacy account callables are
 // mocked at their SEAM. No Firebase, no network, and no capability granted unless a test grants it.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
@@ -18,24 +17,15 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-// The list runtime reads Firestore; the directory page is exercised through a controlled
-// presentation instead, so this file tests the SCREEN rather than the metadata runtime (which has
-// its own suites).
-let listState = { presentation: null, loadMore: vi.fn(), retry: vi.fn() };
-vi.mock("../src/hooks/useMetadataList", () => ({
-  useMetadataList: () => listState,
-}));
-
-import AdminUsers from "../src/modules/administration/AdminUsers.jsx";
+// The DIRECTORY has its own suite (adminUsersDirectory.test.jsx) since it moved to the governed
+// Workforce read; this file is the record page, the retained editor and the shared history.
 import UserDetail from "../src/modules/administration/UserDetail.jsx";
 import UserEditPanel from "../src/modules/administration/UserEditPanel.jsx";
-import { employeeEntity, employeeIndexList } from "../src/metadata/definitions/employee.js";
 import { OPERATIONAL_ROLE_OPTIONS } from "../src/domain/employeeProfile.js";
 import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
 import { ADMINISTRATION_USERS_SURFACE_CAPABILITIES } from "../src/access/governedSurfaceCapabilities.js";
-import { buildListPresentation } from "../src/metadata/listPresentation.js";
 
-// Directory rows (the Firestore-backed employee.index list, still used by the Users DIRECTORY page).
+// The legacy Firestore-shaped Employee record, kept for the retained (unmounted) editor only.
 const JOHN = {
   id: "emp-1",
   employeeId: "emp-1",
@@ -49,7 +39,6 @@ const JOHN = {
   operatingCompanyId: "taylor",
   managerEmployeeId: "emp-2",
 };
-const UNLINKED = { id: "emp-3", employeeId: "emp-3", displayName: "Pat Lee", employmentStatus: "CONTRACTOR" };
 
 // ── The governed Workforce projections (EMP-RT-01) the RECORD page reads. Test fixtures only.
 const nameOf = (displayName) => ({ displayName, firstName: null, middleName: null, lastName: null, preferredName: null });
@@ -161,83 +150,8 @@ const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability =
 beforeEach(() => {
   mockNavigate.mockClear();
   seedRecords();
-  listState = {
-    presentation: buildListPresentation({
-      def: employeeIndexList,
-      entity: employeeEntity,
-      page: { rows: [JOHN, UNLINKED], hasMore: false },
-    }),
-    loadMore: vi.fn(),
-    retry: vi.fn(),
-  };
 });
 afterEach(cleanup);
-
-// ════════════════════ THE DIRECTORY ════════════════════
-
-describe("Administration > Users is the one people directory", () => {
-  it("renders the authoritative employee directory under the name Users", () => {
-    render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    expect(screen.getByRole("heading", { name: "Users" })).toBeTruthy();
-    expect(screen.getByText("John Smith")).toBeTruthy();
-    expect(screen.getByText("Pat Lee")).toBeTruthy();
-  });
-
-  it("shows the six columns the directory is for -- with EOS Account as WORDS, never a uid", () => {
-    render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    // "EOS Account", not "EOS Access" (Owner ruling, PR #1806): the value is linkage, and a heading
-    // reading Access over it claims something no read on this page can support.
-    // "Legacy role", not "Security Role": a directory column headed Security Role reads as current
-    // governed access to everyone scanning the list, and it is the legacy mirror.
-    for (const heading of ["Name", "Employment Status", "Operational Roles", "EOS Account", "Legacy role"]) {
-      expect(screen.getByRole("columnheader", { name: heading }), heading).toBeTruthy();
-    }
-    expect(screen.queryByRole("columnheader", { name: "EOS Access" })).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "Security Role" })).toBeNull();
-    expect(screen.getByText("Account linked")).toBeTruthy();
-    expect(screen.getByText("No account")).toBeTruthy();
-    // The linked employee's raw uid must not appear anywhere on the page.
-    expect(screen.queryByText("uid-john")).toBeNull();
-  });
-
-  it("EOS Account is NOT derived from employment status", () => {
-    // Pat Lee is a CONTRACTOR with no account; John is ACTIVE with one. A status-derived column
-    // would call the contractor disabled, which is the conflation this product forbids.
-    render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    expect(screen.getByText("Contractor")).toBeTruthy();
-    expect(screen.getByText("Account linked")).toBeTruthy();
-  });
-
-  it("a row click opens the record READ-ONLY, and nothing on the row becomes editable", () => {
-    render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    fireEvent.click(screen.getByText("John Smith"));
-    expect(mockNavigate).toHaveBeenCalledWith("/administration/users/emp-1");
-    // No edit affordance was created by the click: the row has no inputs at all.
-    expect(screen.queryAllByRole("textbox").length).toBe(0);
-    expect(screen.queryAllByRole("combobox").length).toBe(0);
-  });
-
-  it("Edit is a DELIBERATE, separate action beside the name", () => {
-    render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    const edits = screen.getAllByRole("button", { name: "Edit" });
-    expect(edits.length).toBe(2); // one per row
-    fireEvent.click(edits[0]);
-    expect(mockNavigate).toHaveBeenCalledWith("/administration/users/emp-1?edit=1");
-  });
-
-  it("the count is withheld while pages remain", () => {
-    listState = {
-      ...listState,
-      presentation: buildListPresentation({
-        def: employeeIndexList,
-        entity: employeeEntity,
-        page: { rows: [JOHN], hasMore: true },
-      }),
-    };
-    render(<MemoryRouter><AdminUsers /></MemoryRouter>);
-    expect(screen.queryByText("1")).toBeNull();
-  });
-});
 
 // ════════════════════ THE RECORD PAGE ════════════════════
 
