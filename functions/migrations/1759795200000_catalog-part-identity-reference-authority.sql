@@ -2,8 +2,8 @@
 -- CATALOG PART IDENTITY -- the PostgreSQL reference authority Commercial product lines validate against.
 --
 -- ============================================================================
--- MIGRATION 025. Lane D of the PostgreSQL authority wave. Depends on 001 (eos_policy.tenants) and 008
--- (eos_ops.equipment_models) only -- NOT on 023 or 024.
+-- MIGRATION 026. Lane D of the PostgreSQL authority wave. Depends on 001 (eos_policy.tenants) and 008
+-- (eos_ops.equipment_models) only -- NOT on 023, 024 or 025.
 --
 -- The C2 Commercial command layer validates every PART / EQUIPMENT_MODEL line through the port
 -- `CommercialCatalogAuthority.verifyReferences` (functions/src/eosCommercial/commands/commercialCommandKernel.ts)
@@ -76,7 +76,7 @@ DECLARE
 BEGIN
     SELECT count(*) INTO occupied FROM eos_ops.parts;
     IF occupied > 0 THEN
-        RAISE EXCEPTION 'migration 025 cannot be reversed: eos_ops.parts holds % Part identities', occupied
+        RAISE EXCEPTION 'migration 026 cannot be reversed: eos_ops.parts holds % Part identities', occupied
             USING HINT = 'A schema rollback will not delete catalog identities. Resolve these records first.';
     END IF;
 END

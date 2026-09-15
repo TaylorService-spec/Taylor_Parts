@@ -2,7 +2,7 @@
 // `CommercialCatalogAuthority` port.
 //
 // Its OWN database, migrated by the normal runner, dropped in one t.after hook. Catalog identities are inserted
-// directly: no catalog writer exists (migration 025's header). The integration proof hands the authority to the
+// directly: no catalog writer exists (migration 026's header). The integration proof hands the authority to the
 // real C2 command services as `deps.catalog`, unmodified.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +22,7 @@ const { createPostgresCatalogReferenceAuthority, CatalogReferenceAuthorityError 
 const opp = require("../lib/eosCommercial/commands/opportunityCommandService.js");
 const so = require("../lib/eosCommercial/commands/salesOrderCommandService.js");
 
-const MIGRATION = "1759708800000_catalog-part-identity-reference-authority";
+const MIGRATION = "1759795200000_catalog-part-identity-reference-authority";
 const DB_NAME = `catalog_ref_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
   const u = new URL(URL_BASE);
@@ -77,7 +77,7 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
   await model("t1", "ACME--CW-GONE", "RETIRED");
   await model("t2", "ACME--T2-ONLY");
 
-  await t.test("migration 025 is applied, by name", async () => {
+  await t.test("migration 026 is applied, by name", async () => {
     const { rows } = await q(`SELECT 1 FROM pgmigrations WHERE name = $1`, [MIGRATION]);
     assert.equal(rows.length, 1);
   });

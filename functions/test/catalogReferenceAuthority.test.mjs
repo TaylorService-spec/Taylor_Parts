@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE = join(FUNCTIONS_DIR, "src/catalogAuthority/postgresCatalogReferenceAuthority.ts");
 const COMPILED = join(FUNCTIONS_DIR, "lib/catalogAuthority/postgresCatalogReferenceAuthority.js");
-const MIGRATION = join(FUNCTIONS_DIR, "migrations/1759708800000_catalog-part-identity-reference-authority.sql");
+const MIGRATION = join(FUNCTIONS_DIR, "migrations/1759795200000_catalog-part-identity-reference-authority.sql");
 const require = createRequire(import.meta.url);
 const strip = (code) => code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
@@ -70,13 +70,13 @@ test("ratchet: nothing composes the catalog authority -- server.ts supplies no c
   assert.deepEqual(importers, [], "a runtime module imports the catalog authority");
 });
 
-test("migration 025 is additive, standalone and carries no data, writer or cross-schema dependency beyond tenants", () => {
+test("migration 026 is additive, standalone and carries no data, writer or cross-schema dependency beyond tenants", () => {
   const sql = readFileSync(MIGRATION, "utf8");
   const [up, down] = sql.split("-- Down Migration");
   const upCode = up.replace(/--.*$/gm, "");
   assert.match(upCode, /CREATE TABLE parts \(/);
   assert.doesNotMatch(upCode, /\b(ALTER|DROP|INSERT|UPDATE|DELETE|COPY|TRIGGER|FUNCTION)\b/i, "the up migration only creates");
   assert.deepEqual([...upCode.matchAll(/REFERENCES\s+([a-z_.]+)/g)].map((m) => m[1]), ["eos_policy.tenants"]);
-  assert.doesNotMatch(sql, /1759536000000|1759622400000/, "does not depend on migrations 023 or 024");
+  assert.doesNotMatch(sql, /1759536000000|1759622400000|1759708800000/, "does not depend on migrations 023, 024 or 025");
   assert.match(down, /RAISE EXCEPTION/, "the down migration refuses to delete identities");
 });

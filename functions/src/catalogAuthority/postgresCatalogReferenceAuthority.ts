@@ -5,7 +5,7 @@
 // For each { kind, ref } a Commercial command sends, within ONE tenant, exactly one verdict, in order:
 //
 //   FOUND       the ref is a canonical identity of the kind the line claims
-//                 PART             eos_ops.parts            (tenant_id, id)   -- migration 025
+//                 PART             eos_ops.parts            (tenant_id, id)   -- migration 026
 //                 EQUIPMENT_MODEL  eos_ops.equipment_models (tenant_id, id)   -- migration 008
 //   WRONG_KIND  not of that kind, but a canonical identity of the OTHER kind in the same tenant
 //   NOT_FOUND   neither

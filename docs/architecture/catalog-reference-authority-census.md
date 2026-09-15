@@ -45,7 +45,7 @@ verdict.
 
 ## 4. PostgreSQL target built here
 
-- Migration `1759708800000_catalog-part-identity-reference-authority.sql` (025): `eos_ops.parts (tenant_id, id)` —
+- Migration `1759795200000_catalog-part-identity-reference-authority.sql` (026): `eos_ops.parts (tenant_id, id)` —
   the canonical Part identity only (format CHECK, tenant FK, actor). No status, no descriptive fields, no data, no
   writer, no sync, no FKs from existing `part_id` columns. Down refuses while rows exist.
 - `functions/src/catalogAuthority/postgresCatalogReferenceAuthority.ts`: one frozen object, one method, one fixed
