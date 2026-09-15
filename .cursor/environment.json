@@ -1,0 +1,20 @@
+{
+  "name": "Enterprise Operations OS (Taylor Parts)",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "vite-dev-server",
+      "command": "cd field-ops-app-vite && npm run dev -- --port 5173 --strictPort",
+      "description": "Vite dev server for the Field Ops web client. Open http://localhost:5173/Taylor_Parts/field-ops/?emulator=1 to use the app against the local Firebase emulator (seeded accounts are printed by the start script)."
+    }
+  ],
+  "ports": [
+    { "name": "vite-dev-server", "port": 5173 },
+    { "name": "firebase-emulator-ui", "port": 4000 },
+    { "name": "firestore-emulator", "port": 8080 },
+    { "name": "auth-emulator", "port": 9099 },
+    { "name": "functions-emulator", "port": 5001 }
+  ],
+  "chromeExecutablePath": "/usr/bin/google-chrome-stable"
+}
