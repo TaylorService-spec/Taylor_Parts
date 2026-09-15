@@ -51,7 +51,10 @@ test("(1) no Firebase: no read module imports it, and loading every one resolves
 });
 
 test("(2) the only runtime entry point to the read projections is the C4 Commercial transport", () => {
-  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosCommercial\/reads\/|["']\.\/reads\//.test(readFileSync(f, "utf8")));
+  // A relative "./reads/" import reaches the Commercial read layer only from src/eosCommercial itself; elsewhere (e.g.
+  // src/eosWorkforce/reads) it names a different domain's reads.
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) &&
+    (/eosCommercial\/reads\//.test(readFileSync(f, "utf8")) || (dirname(f) === join(SRC, "eosCommercial") && /["']\.\/reads\//.test(readFileSync(f, "utf8")))));
   assert.deepEqual(importers.map(rel), ["src/eosCommercial/commercialHttp.ts"], "a module other than the C4 transport imports the read layer");
   for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCommercial|ReadProjection|commercialReadKernel/, `${surface} reaches Commercial reads`);

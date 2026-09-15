@@ -1,0 +1,257 @@
+// EMPLOYEE RUNTIME READS, offline -- the Workforce transport's closed surface, identity, error boundaries and the static
+// ratchets over the Employee read layer. The real-database proof is functions/test/employeeRuntimeReadsPostgres.test.mjs.
+//
+// Offline requests run the REAL resolveOperationalContext over a fake PolicyReader and a fake pool.
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO = resolve(FUNCTIONS_DIR, "..");
+const SRC = join(FUNCTIONS_DIR, "src");
+const WORKFORCE = join(SRC, "eosWorkforce");
+const HTTP_SOURCE = join(WORKFORCE, "workforceHttp.ts");
+const READS = join(WORKFORCE, "reads");
+const require = createRequire(import.meta.url);
+const http = require("../lib/eosWorkforce/workforceHttp.js");
+const kernel = require("../lib/eosWorkforce/reads/employeeReadKernel.js");
+const profile = require("../lib/eosWorkforce/reads/myEmployeeProfile.js");
+const responsibility = require("../lib/eosWorkforce/reads/employeeResponsibilityReads.js");
+const { eosApiDomainFor } = require("../lib/eosApi/server.js");
+
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+function walk(dir, exts) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (entry === "node_modules" || entry === "lib" || entry === "dist") continue;
+    if (statSync(full).isDirectory()) out.push(...walk(full, exts));
+    else if (exts.some((e) => full.endsWith(e))) out.push(full);
+  }
+  return out;
+}
+const rel = (f) => relative(REPO, f).split("\\").join("/");
+const code = (f) => strip(readFileSync(f, "utf8"));
+
+function fakeWorld({ capabilities = ["opportunity.read"], clientQuery, member = true } = {}) {
+  const lookups = [];
+  const reader = {
+    async getPrincipalBySubject(provider, subject) {
+      lookups.push({ provider, subject });
+      return provider === "firebase" && subject === "subj-alice" ? { id: "p-eos-alice", status: "active" } : null;
+    },
+    async listMembershipsForPrincipal() { return [{ tenantId: "t1", status: "active" }]; },
+    async getTenant(id) { return { id, status: "active" }; },
+    async listAssignmentsForPrincipal() { return [{ roleId: "r1", status: "active", accessVersionAtGrant: 0 }]; },
+    async getAccessVersion() { return { accessVersion: 0 }; },
+    async listObjects() { return []; },
+    async listObjectPermissions() { return []; },
+    async listFieldOverrides() { return []; },
+    async listRoles() { return [{ id: "r1", key: "sales" }]; },
+  };
+  const clientStatements = [];
+  let connects = 0;
+  const pool = {
+    async query(text) {
+      if (/role_capabilities/.test(text)) return { rows: capabilities.map((key) => ({ key })) };
+      throw new Error(`unexpected pool query ${text}`);
+    },
+    async connect() {
+      connects++;
+      return {
+        async query(text, values) {
+          clientStatements.push({ text, values });
+          if (/tenant_memberships/.test(text)) return { rows: member ? [{ ok: 1 }] : [] };
+          if (clientQuery) return clientQuery(text, values);
+          return { rows: [] };
+        },
+        release() {},
+      };
+    },
+  };
+  const verifyToken = async (token) => {
+    if (token !== "tok-alice") throw new Error("firebase: auth/argument-error for project secret-project with key AIza-SECRET");
+    return { externalSubject: "subj-alice", identityProvider: "firebase" };
+  };
+  return { reader, pool, verifyToken, lookups, clientStatements, connects: () => connects, allowedOrigins: ["https://eos.example"] };
+}
+const post = (world, body, headers = {}, url = "/workforce/employees", method = "POST") => http.handleWorkforceRequest(world, {
+  method, url, headers: { authorization: "Bearer tok-alice", ...headers }, body: typeof body === "string" ? body : JSON.stringify(body),
+});
+const parsed = (res) => JSON.parse(res.body);
+
+// ════════════════════ closed surface ════════════════════
+
+test("the operation list is closed and read-only: exactly EMP-RT-07, EMP-RT-03 and EMP-RT-04", () => {
+  assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], ["readMyEmployeeProfile", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"]);
+  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile"]);
+  assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
+  const src = code(HTTP_SOURCE);
+  assert.doesNotMatch(src, /MUTATION|command\(|transition|assign(ed)?Work|listManaged|readEmployee\b|listEmployees|JobRole/);
+  const runners = /const READ_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
+  assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), ["readMyEmployeeProfile", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"]);
+  for (const blocked of ["readEmployee", "listEmployees", "readEmployeePrincipalLink", "listAssignedWorkForEmployee", "listManagedEmployees", "listEmployeeJobRoles"]) {
+    assert.equal(http.isWorkforceOperation(blocked), false, blocked);
+  }
+});
+
+test("unknown operation 404, wrong method 405, wrong path 404, OPTIONS preflight with a bounded origin", async () => {
+  const w = fakeWorld();
+  assert.equal((await post(w, { operation: "readEmployee", input: { employeeId: "e1" } })).status, 404);
+  assert.equal((await post(w, { operation: "readMyEmployeeProfile" }, {}, "/workforce/employees", "GET")).status, 405);
+  assert.equal((await post(w, { operation: "readMyEmployeeProfile" }, {}, "/workforce/other")).status, 404);
+  const pre = await post(w, "", { origin: "https://eos.example" }, "/workforce/employees", "OPTIONS");
+  assert.deepEqual([pre.status, pre.headers["access-control-allow-origin"]], [204, "https://eos.example"]);
+  const evil = await post(w, "", { origin: "https://evil.example" }, "/workforce/employees", "OPTIONS");
+  assert.equal(evil.headers["access-control-allow-origin"], undefined);
+  assert.equal(w.lookups.length, 0);
+});
+
+test("a missing or invalid bearer is 401 and leaks nothing from the identity provider", async () => {
+  const w = fakeWorld();
+  const none = await post(w, { operation: "readMyEmployeeProfile" }, { authorization: undefined });
+  assert.equal(none.status, 401);
+  const bad = await post(w, { operation: "readMyEmployeeProfile" }, { authorization: "Bearer nope" });
+  assert.equal(bad.status, 401);
+  assert.doesNotMatch(bad.body, /secret-project|AIza|argument-error/);
+});
+
+test("envelope and input: extra envelope keys, missing input on a list, array input and authority fields refuse before identity", async () => {
+  const w = fakeWorld();
+  assert.equal((await post(w, { operation: "readMyEmployeeProfile", tenantId: "t2" })).status, 400);
+  assert.equal((await post(w, { operation: "listRecordsOwnedByEmployee" })).status, 400);
+  assert.equal((await post(w, { operation: "listRecordsOwnedByEmployee", input: [] })).status, 400);
+  for (const field of http.AUTHORITY_BEARING_FIELDS) {
+    const res = await post(w, { operation: "listRecordsOwnedByEmployee", input: { employeeId: "e1", family: "OPPORTUNITY", [field]: "x" } });
+    assert.deepEqual([res.status, parsed(res).code], [400, "AUTHORITY_FIELD_NOT_ACCEPTED"], field);
+  }
+  assert.equal((await post(w, "x".repeat(http.MAX_WORKFORCE_BODY_BYTES + 1))).status, 413);
+  assert.equal(w.lookups.length, 0, "identity was consulted for a refused envelope");
+  assert.equal(w.connects(), 0);
+});
+
+test("only the verified subject reaches Principal resolution, and the read receives the EOS Principal id, never the subject", async () => {
+  const w = fakeWorld({ capabilities: [], clientQuery: () => ({ rows: [] }) });
+  const res = await post(w, { operation: "readMyEmployeeProfile" });
+  assert.deepEqual([res.status, parsed(res).code], [404, "EMPLOYEE_PRINCIPAL_LINK_NOT_FOUND"]);
+  assert.deepEqual(w.lookups, [{ provider: "firebase", subject: "subj-alice" }]);
+  const values = w.clientStatements.flatMap((s) => s.values ?? []);
+  assert.ok(values.includes("p-eos-alice"));
+  assert.ok(!values.includes("subj-alice"), "the external subject reached an Employee read");
+  const link = w.clientStatements.find((s) => /employee_principal_links/.test(s.text));
+  assert.match(link.text, /l\.principal_id = \$2/);
+  assert.deepEqual(link.values, ["t1", "p-eos-alice"]);
+});
+
+test("capability refusal and invalid input touch no database; a missing membership refuses in the transaction", async () => {
+  const w = fakeWorld({ capabilities: ["opportunity.read"] });
+  const noCap = await post(w, { operation: "listRecordsOwnedByEmployee", input: { employeeId: "e1", family: "SALES_ORDER" } });
+  assert.deepEqual([noCap.status, parsed(noCap).code], [403, "CAPABILITY_REQUIRED"]);
+  const badFamily = await post(w, { operation: "listAccountabilitiesForEmployee", input: { employeeId: "e1", family: "ACCOUNT" } });
+  assert.deepEqual([badFamily.status, parsed(badFamily).code], [400, "FAMILY_INVALID"]);
+  assert.equal(w.connects(), 0);
+  const notMember = fakeWorld({ member: false });
+  const res = await post(notMember, { operation: "readMyEmployeeProfile" });
+  assert.deepEqual([res.status, parsed(res).code], [403, "ACTOR_NOT_TENANT_MEMBER"]);
+  assert.equal(notMember.clientStatements[0].text, "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+});
+
+test("each governed category maps to its exact status; a raw failure is a generic 500 that leaks nothing", async () => {
+  assert.deepEqual({ ...http.STATUS_BY_CATEGORY }, { INVALID_INPUT: 400, NOT_FOUND: 404, PRECONDITION_FAILED: 412, CONFLICT: 409, FORBIDDEN: 403, FAILED: 500 });
+  const raw = new Error('relation "eos_workforce.employees" does not exist password=hunter2 host=10.0.0.7');
+  const w = fakeWorld({ clientQuery: (text) => { if (/employee_principal_links/.test(text)) throw raw; return { rows: [] }; } });
+  const res = await post(w, { operation: "readMyEmployeeProfile" });
+  assert.deepEqual([res.status, parsed(res).code, parsed(res).message], [500, "READ_FAILED", "the read could not be completed"]);
+  assert.doesNotMatch(res.body, /hunter2|10\.0\.0\.7|relation|eos_workforce/);
+  assert.equal(kernel.translateEmployeeReadError(raw).message, "the read could not be completed");
+});
+
+// ════════════════════ static ratchets ════════════════════
+
+const workforceSources = () => walk(WORKFORCE, [".ts"]);
+
+test("no Firebase or Firestore in the Workforce layer, statically and transitively", () => {
+  for (const f of workforceSources()) {
+    for (const forbidden of [/firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /customClaims|claims\./, /onCall\(|onRequest\(/]) {
+      assert.doesNotMatch(code(f), forbidden, `${rel(f)} matches ${forbidden}`);
+    }
+  }
+  const sentinel = "EMP_RT_LOADED_FIREBASE";
+  const preload = join(mkdtempSync(join(tmpdir(), "emp-rt-")), "preload.cjs");
+  writeFileSync(preload, `const M=require("module");const l=M._load;M._load=function(r,...a){if(/firebase/i.test(r)){process.stderr.write("${sentinel}:"+r);process.exit(97);}return l.call(this,r,...a);};`);
+  const modules = workforceSources().map((f) => join(FUNCTIONS_DIR, "lib", relative(SRC, f)).replace(/\.ts$/, ".js"));
+  const probe = spawnSync(process.execPath, ["--require", preload, "-e", modules.map((m) => `require(${JSON.stringify(m)});`).join("")], { cwd: FUNCTIONS_DIR, encoding: "utf8" });
+  assert.equal(probe.status, 0, `a Workforce module transitively loaded Firebase: ${probe.stderr}`);
+});
+
+test("the transport carries no SQL and resolves context only through resolveOperationalContext", () => {
+  const src = code(HTTP_SOURCE);
+  assert.doesNotMatch(src, /\bSELECT\b|\bFROM\s+eos_|\bINSERT\b|\bUPDATE\s|\bDELETE\b|eos_workforce|eos_policy\.|eos_commercial/);
+  assert.match(src, /resolveOperationalContext\(deps\.reader, deps\.pool/);
+  assert.doesNotMatch(src, /resolvePrincipalContext|getPrincipalBySubject/);
+});
+
+test("the reads never touch credential identity and never match an Employee by subject, uid or Principal id", () => {
+  for (const f of walk(READS, [".ts"])) {
+    assert.doesNotMatch(code(f), /external_subject|externalSubject|identity_provider|identityProvider|\buid\b|firebase_uid|technician/i, rel(f));
+  }
+  const selfRead = code(join(READS, "myEmployeeProfile.ts"));
+  assert.match(selfRead, /FROM eos_policy\.employee_principal_links l\s+WHERE l\.tenant_id = \$1 AND l\.principal_id = \$2 AND l\.status = 'active'/);
+  assert.match(selfRead, /FROM eos_workforce\.employees e\s+WHERE e\.tenant_id = \$1 AND e\.id = \$2`,\s+\[tenantId, link\.employee_id\]/);
+  assert.equal((selfRead.match(/eos_workforce\.employees/g) ?? []).length, 1, "a second Employee lookup path exists");
+});
+
+test("owner and accountable stay two axes over two columns; no credited salesperson, no assignment, no manager", () => {
+  const src = code(join(READS, "employeeResponsibilityReads.ts"));
+  assert.match(src, /RECORD_OWNER: "owner_employee_id", ACCOUNTABLE_PERSON: "accountable_employee_id"/);
+  assert.match(src, /WHERE r\.tenant_id = \$1 AND r\.\$\{personColumn\} = \$2/);
+  assert.doesNotMatch(src, /credited_salesperson|assignee|assigned_|technician|manager|reports_to|COALESCE/i);
+  assert.deepEqual([...responsibility.EMPLOYEE_RECORD_FAMILIES], ["OPPORTUNITY", "SALES_AGREEMENT", "SALES_ORDER"]);
+});
+
+test("no Job Role is produced, inferred or named anywhere in the Workforce read layer", () => {
+  for (const f of walk(READS, [".ts"])) {
+    assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS/, rel(f));
+  }
+  assert.ok(!profile.EMPLOYEE_FACTS_NOT_IN_POSTGRES.some((f) => /jobRole|securityRole|job_role/i.test(f)), "a Job Role or Security Role fact is listed as an Employee fact");
+});
+
+test("capabilities: only existing read ids, each registered in the catalog AND the PostgreSQL vocabulary; none invented", () => {
+  const used = new Set(workforceSources().flatMap((f) => [...code(f).matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1])).filter((s) => /\.read$|\.write$|\.[a-z]+$/.test(s) && !/\.ts$|\.js$/.test(s)));
+  assert.deepEqual([...used].sort(), ["opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+  const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
+  const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
+  for (const id of used) {
+    assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
+    assert.ok(migrations.includes(`'${id}'`), `${id} is not in the PostgreSQL capability vocabulary`);
+  }
+  assert.doesNotMatch(migrations, /'(workforce|employee)\.[a-zA-Z.]+'/, "an Employee/Workforce capability was registered");
+});
+
+test("server.ts composes the Workforce transport as a fourth domain with the same pool, verifier and origins, leaving other routes alone", () => {
+  assert.equal(eosApiDomainFor("/workforce/employees"), "workforce");
+  assert.equal(eosApiDomainFor("/workforce/employees?x=1"), "workforce");
+  assert.equal(eosApiDomainFor("/commercial/sales"), "commercial");
+  assert.equal(eosApiDomainFor("/operations/inventory"), "operations");
+  assert.equal(eosApiDomainFor("/admin/policy"), "administration");
+  assert.equal(eosApiDomainFor("/workforceX"), "administration");
+  const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
+  assert.match(server, /createWorkforceHttpHandler\(\{\s*reader: repo,\s*pool,\s*verifyToken,\s*allowedOrigins: config\.allowedOrigins,\s*\}\)/);
+  assert.deepEqual([...server.matchAll(/from "([^"]*eosWorkforce[^"]*)"/g)].map((m) => m[1]), ["../eosWorkforce/workforceHttp"]);
+  assert.equal((server.match(/getPolicyDatabasePool\(\)/g) ?? []).length, 1);
+});
+
+test("nothing but the transport imports the read layer; no Functions, Rules or client reference the route", () => {
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosWorkforce\/reads\/|["']\.\/reads\/(employeeReadKernel|myEmployeeProfile|employeeResponsibilityReads)/.test(readFileSync(f, "utf8")));
+  assert.deepEqual(importers.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"]);
+  const transportImporters = walk(SRC, [".ts"]).filter((f) => f !== HTTP_SOURCE && /eosWorkforce/.test(code(f)));
+  assert.deepEqual(transportImporters.map(rel), ["functions/src/eosApi/server.ts"]);
+  const client = walk(join(REPO, "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
+  assert.deepEqual(client.filter((f) => /\/workforce\/employees|workforceHttp|WORKFORCE_ROUTE|eosWorkforce/.test(readFileSync(f, "utf8"))).map(rel), []);
+  assert.doesNotMatch(readFileSync(join(REPO, "firestore.rules"), "utf8"), /workforce\/employees|eosWorkforce/);
+});
