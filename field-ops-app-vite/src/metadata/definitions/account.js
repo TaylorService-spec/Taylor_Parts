@@ -67,7 +67,8 @@ export const accountEntity = makeEntityDefinition({
   collection: ACCOUNTS_COLLECTION,
   // Firestore rules are the gate for accounts today; the Phase 0 audit found both
   // patterns in use, and recording which one this is stops the runtime from assuming.
-  readVia: "CLIENT_DIRECT",
+  // CRM CUTOVER: served by the governed PostgreSQL CRM authority through the EOS API (metadata/crmListSource.js).
+  readVia: "EOS_API",
   // The account's name is how a human identifies it. There is no reference number for
   // an Account, and declaring one that does not exist would license a surface to render
   // a document id in its place — the exact defect corrected on Sales Orders (#1124).
@@ -594,7 +595,7 @@ export const accountIndexList = makeListViewDefinition({
   surface: "INDEX",
   columns: [
     makeColumn({ fieldId: "name", sortable: true }),
-    makeColumn({ fieldId: "status", sortable: true }),
+    makeColumn({ fieldId: "status" }),
     makeColumn({ fieldId: "relationshipTypes" }),
     makeColumn({ fieldId: "lineOfBusiness" }),
     makeColumn({ fieldId: "accountOwnerEmployeeId" }),
@@ -602,24 +603,20 @@ export const accountIndexList = makeListViewDefinition({
     // know which exist is to read every account, and rebuilding the facet from the current page
     // would present "the tags on these fifty rows" as "the tags that exist".
     makeColumn({ fieldId: "tags" }),
-    makeColumn({ fieldId: "createdAt", sortable: true }),
+    makeColumn({ fieldId: "createdAt" }),
     // The DEFAULT SORT's own field. A list ordered by most-recently-touched that does not show
     // when each row was touched asks the reader to take the ordering on faith.
-    makeColumn({ fieldId: "updatedAt", sortable: true }),
+    makeColumn({ fieldId: "updatedAt" }),
   ],
   filters: [
     makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] }),
-    makeFilter({ fieldId: "relationshipTypes", operators: ["ARRAY_CONTAINS"] }),
-    // THE THIRD FILTER, and its cost was checked before it was declared. Array filters do not
-    // combine with each other, so this adds one index FAMILY rather than doubling the set — and
-    // the combination `relationshipTypes AND lineOfBusiness` is refused at the query planner
-    // (MULTIPLE_ARRAY_FILTERS), because Firestore cannot serve it at any index cost.
-    makeFilter({ fieldId: "lineOfBusiness", operators: ["ARRAY_CONTAINS"] }),
+    // CRM CUTOVER: the PostgreSQL CRM list serves name order and a status filter only; nothing else is declared,
+    // so no control offers a query the source would refuse.
   ],
   // Most-recently-touched first is the ordering that makes a first page useful when the
   // set is larger than anyone will scroll. Name-ascending is available as a sort but is
   // a poor default: it makes page one a permanent property of the alphabet.
-  defaultSort: [makeSort({ fieldId: "updatedAt", direction: "DESC" })],
+  defaultSort: [makeSort({ fieldId: "name", direction: "ASC" })],
   pageSize: 50,
   savedViews: [
     // At 250,000 accounts an unfiltered first page answers nobody's question, so the
@@ -629,7 +626,7 @@ export const accountIndexList = makeListViewDefinition({
       id: "active",
       label: "Active customers",
       filters: [{ fieldId: "status", operator: "EQUALS", value: ACCOUNT_STATUS.ACTIVE }],
-      sort: [makeSort({ fieldId: "updatedAt", direction: "DESC" })],
+      sort: [makeSort({ fieldId: "name", direction: "ASC" })],
     }),
   ],
   rowNavigationTo: "/customers/:id",

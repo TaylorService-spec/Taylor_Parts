@@ -84,15 +84,10 @@ test("every demanded index is expressed in Firestore's vocabulary, ready to decl
   }
 });
 
-test("the relationship filter demands its own index, not just the combined one", () => {
-  // Firestore will not serve a relationship-only query from the status+relationship
-  // index, so a single combined demand would leave that query unindexed and failing in
-  // front of a user while CI stayed green.
-  const shapes = requiredIndexes(accountIndexList, accountEntity)
-    .map((i) => i.fields.map((f) => f.fieldPath).join(","));
-  assert.ok(shapes.includes("relationshipTypes,updatedAt,__name__"), shapes.join(" | "));
-  assert.ok(shapes.includes("status,updatedAt,__name__"), shapes.join(" | "));
-  assert.ok(shapes.includes("status,relationshipTypes,updatedAt,__name__"), shapes.join(" | "));
+test("CRM CUTOVER: the Customers list is served by the EOS API with name order and a status filter only", () => {
+  assert.equal(accountEntity.readVia, "EOS_API");
+  assert.deepEqual(accountIndexList.filters.map((f) => f.fieldId), ["status"]);
+  assert.deepEqual(accountIndexList.defaultSort.map((s) => [s.fieldId, s.direction]), [["name", "ASC"]]);
 });
 
 // ---- X-ACCOUNT-PAGE-GAPS (entity half): account.locations + Commercial Profile /
@@ -201,20 +196,7 @@ test("none of the new Commercial Profile / Notes & Identifiers fields are filter
   }
 });
 
-test("requiredIndexes() adds ONE array family per array filter, never a combined one", () => {
-  // Firestore permits ONE array filter per query, so a second array filter produces its own
-  // family rather than combining with the first. There is deliberately NO
-  // relationshipTypes+lineOfBusiness entry: no index can serve that query at any cost, and
-  // listRuntime refuses it as MULTIPLE_ARRAY_FILTERS rather than letting it fail at read time.
-  const shapes = requiredIndexes(accountIndexList, accountEntity)
-    .map((i) => i.fields.map((f) => f.fieldPath).join(","))
-    .sort();
-  assert.deepEqual(shapes, [
-    "lineOfBusiness,updatedAt,__name__",
-    "relationshipTypes,updatedAt,__name__",
-    "status,lineOfBusiness,updatedAt,__name__",
-    "status,relationshipTypes,updatedAt,__name__",
-    "status,updatedAt,__name__",
-  ]);
-  assert.equal(shapes.some((s2) => s2.includes("relationshipTypes") && s2.includes("lineOfBusiness")), false);
+test("no array filter is declared on the PostgreSQL-served Customers list", () => {
+  const shapes = requiredIndexes(accountIndexList, accountEntity).map((i) => i.fields.map((f) => f.fieldPath).join(","));
+  assert.equal(shapes.some((s2) => s2.includes("relationshipTypes") || s2.includes("lineOfBusiness")), false);
 });

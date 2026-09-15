@@ -233,7 +233,7 @@ function PrimaryContactPanel({ contacts, loading, error, withCall = false }) {
 // ALWAYS stated — an absent value resolves to Unknown, NEVER silently to Taxable. That safe
 // default is domain/commercialProfile.js's, applied here and in the header's terms digest, which
 // is the same derivation read twice, not two derivations.
-function CommercialProfileSection({ account, contacts, contactsLoading, contactsError, byUserId, directoryLoading, directoryError }) {
+function CommercialProfileSection({ account, contacts, contactsLoading, contactsError, byUserId, byEmployeeId, directoryLoading, directoryError }) {
   const currency = account.defaultCurrency || null;
   const invoiceMethod = account.invoiceDeliveryMethod || null;
   const hasPo = account.purchaseOrderRequired === true || account.purchaseOrderRequired === false;
@@ -244,6 +244,7 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
 
   const ownerIdentity = resolveOwnerIdentity(account.accountOwner, {
     byUserId,
+    byEmployeeId,
     loading: directoryLoading,
     error: directoryError,
   });
@@ -392,7 +393,7 @@ export default function AccountDetail() {
   const { account, loading, error: accountError, retry: retryAccount, checkedAt } = useAccount(accountId);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError, retry: retryContacts } = useContactsForAccount(accountId);
-  const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
+  const { byUserId, byEmployeeId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
   // The real, fail-closed capability decisions for accountRecordPage's declared ids -- see
   // accountPageComponents.js. Denies everything while loading/signed-out/erroring; never a
   // permissive default.
@@ -468,6 +469,8 @@ export default function AccountDetail() {
     }
     setIsEditing(false);
     setFocusFieldId(null);
+    // A one-shot read, not a subscription: re-read the persisted record rather than show the request back.
+    retryAccount();
   }
 
   // Called by LocationCreateModal. On a blocked/denied write this THROWS so the
@@ -482,6 +485,7 @@ export default function AccountDetail() {
       throw blockedErr;
     }
     setShowLocationModal(false);
+    retryLocations();
     setPendingLocationFocus(created.id);
     setLocationAnnouncement(`Location ${created.name} added.`);
   }
@@ -495,6 +499,7 @@ export default function AccountDetail() {
       throw blockedErr;
     }
     setShowContactModal(false);
+    retryContacts();
     setPendingContactFocus(created.id);
     setContactAnnouncement(`Contact ${created.name} added.`);
   }
@@ -503,6 +508,7 @@ export default function AccountDetail() {
   // announce the totals, and queue focus onto the first imported Contact; the live
   // subscription renders the new rows itself (no manual insert/refetch).
   function handleImported({ importedIds, importedCount, skippedDuplicates, rejected, firstName }) {
+    retryContacts();
     setShowImport(false);
     setPendingContactFocus(importedIds?.[0] ?? null);
     const skipPart = skippedDuplicates ? `, ${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped` : "";
@@ -587,6 +593,7 @@ export default function AccountDetail() {
   // still-resolving both render nothing in the header rather than a placeholder fact.
   const ownerIdentity = resolveOwnerIdentity(account.accountOwner, {
     byUserId,
+    byEmployeeId,
     loading: directoryLoading,
     error: directoryError,
   });
@@ -712,6 +719,7 @@ export default function AccountDetail() {
       contactsLoading={contactsLoading}
       contactsError={contactsError}
       byUserId={byUserId}
+      byEmployeeId={byEmployeeId}
       directoryLoading={directoryLoading}
       directoryError={directoryError}
     />

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { collection, getDocs, limit as fsLimit, orderBy, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { accountRowFromCrm, callCrmApi } from "../services/crmApiClient.js";
 import { accountSearchQueryShape, interpretAccountSearchRead, ACCOUNT_SEARCH_CAP } from "../domain/accountSearch.js";
 
 // The ONLY place this feature touches Firestore. domain/accountSearch.js decided
@@ -38,16 +37,11 @@ export function useAccountSearch(term, { cap = ACCOUNT_SEARCH_CAP } = {}) {
 
     const timer = setTimeout(async () => {
       try {
-        const q = query(
-          collection(db, shape.collection),
-          where(shape.fieldPath, ">=", shape.start),
-          where(shape.fieldPath, "<=", shape.end),
-          orderBy(shape.fieldPath, "asc"),
-          fsLimit(shape.limit)
-        );
-        const snap = await getDocs(q);
+        // CRM CUTOVER: the folded-name prefix search runs against the governed PostgreSQL CRM authority (EOS API).
+        const res = await callCrmApi("listAccounts", { nameStartsWith: String(term).trim(), limit: Math.min(shape.limit, 200) });
         if (token !== requestRef.current) return;
-        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
+        if (!res.ok) throw Object.assign(new Error(res.message), { code: res.code });
+        setRaw({ docs: res.result.items.map(accountRowFromCrm), loading: false, error: null });
       } catch (error) {
         if (token !== requestRef.current) return;
         // docs stays null, not [], so a failed read is never mistaken downstream for a

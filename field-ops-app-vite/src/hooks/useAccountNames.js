@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, getDocs, query, where, documentId } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { ACCOUNTS_COLLECTION } from "../domain/constants";
+import { callCrmApi } from "../services/crmApiClient.js";
 
 // W4 (human-readable IDs). Resolves a SET of account ids -> Map<accountId, name>,
 // for surfaces that render many work orders and must show a human-readable
@@ -79,14 +77,14 @@ export function useAccountNamesWithStatus(accountIds) {
       const map = new Map();
       let status = ACCOUNT_NAMES_STATUS.READY;
       try {
+        // CRM CUTOVER: names come from the governed PostgreSQL CRM authority (EOS API), a bounded set of point reads.
         for (const idChunk of chunk(ids, 10)) {
-          const snap = await getDocs(
-            query(collection(db, ACCOUNTS_COLLECTION), where(documentId(), "in", idChunk))
-          );
-          snap.forEach((d) => {
-            const name = d.data()?.name;
-            if (typeof name === "string" && name) map.set(d.id, name);
-          });
+          const results = await Promise.all(idChunk.map((accountId) => callCrmApi("getAccount", { accountId })));
+          for (const res of results) {
+            if (res.ok) { if (res.result.name) map.set(res.result.accountId, res.result.name); continue; }
+            if (res.code === "ACCOUNT_NOT_FOUND" || res.code === "RECORD_ID_REQUIRED") continue;
+            throw Object.assign(new Error(res.message), { code: ["CAPABILITY_REQUIRED", "FORBIDDEN", "ACTOR_NOT_TENANT_MEMBER"].includes(res.code) ? "permission-denied" : res.code });
+          }
         }
       } catch (err) {
         // DENIED IS KEPT SEPARATE from every other failure. A refusal is permanent for this viewer

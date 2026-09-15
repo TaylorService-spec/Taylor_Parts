@@ -15,7 +15,7 @@
 // drive each path directly, exactly as test/inventoryRoleReadErrorContract.test.jsx
 // already does for the collection-read hooks.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { renderHook, act, cleanup } from "@testing-library/react";
+import { renderHook, act, cleanup, waitFor } from "@testing-library/react";
 
 let capturedNext;
 let capturedError;
@@ -33,6 +33,8 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 import { useWorkOrder } from "../src/hooks/useWorkOrder";
+const mockCrm = vi.fn();
+vi.mock("../src/services/crmApiClient.js", async (orig) => ({ ...(await orig()), callCrmApi: (...args) => mockCrm(...args) }));
 import { useLocation } from "../src/hooks/useLocation";
 
 beforeEach(() => {
@@ -81,26 +83,26 @@ describe("useWorkOrder -- read-error contract (H14)", () => {
   });
 });
 
-describe("useLocation -- read-error contract (H14)", () => {
+describe("useLocation -- read-error contract (H14), served by the CRM EOS API", () => {
   it("starts loading with no error", () => {
+    mockCrm.mockReturnValue(new Promise(() => {}));
     const { result } = renderHook(() => useLocation("loc-1"));
     expect(result.current.loading).toBe(true);
     expect(result.current.error).toBe(null);
   });
 
-  it("a denied read resolves loading to false and exposes a safe error -- never hangs forever", () => {
+  it("a denied read resolves loading to false and exposes a safe error -- never hangs forever", async () => {
+    mockCrm.mockResolvedValue({ ok: false, code: "CAPABILITY_REQUIRED", message: "this read requires customer.record.read" });
     const { result } = renderHook(() => useLocation("loc-1"));
-    expect(capturedError).toBeTypeOf("function");
-    act(() => capturedError({ code: "permission-denied" }));
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("You do not have permission to view these locations.");
     expect(result.current.location).toBe(null);
   });
 
-  it("a confirmed absence (successful read, no such doc) is distinct from a failed read", () => {
+  it("a confirmed absence (successful read, no such site) is distinct from a failed read", async () => {
+    mockCrm.mockResolvedValue({ ok: false, code: "ACCOUNT_LOCATION_NOT_FOUND", message: "no such site" });
     const { result } = renderHook(() => useLocation("loc-1"));
-    act(() => capturedNext({ id: "loc-1", exists: () => false }));
-    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(null);
     expect(result.current.location).toBe(null);
   });

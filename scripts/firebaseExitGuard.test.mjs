@@ -984,13 +984,15 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 366 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 355 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
   const expected = {
-    "frontend.firestore_client": 55,
-    "frontend.firebase_functions_client": 55,
+    // CRM cutover: 10 Firestore CRM client modules and the Firestore-backed portfolio-summary callable client moved to
+    // the EOS API (PostgreSQL CRM) -- the baseline SHRANK by 11 (was 55 + 55 + 184 + 72 = 366).
+    "frontend.firestore_client": 45,
+    "frontend.firebase_functions_client": 54,
     "server.firebase_admin_firestore": 184,
     "server.firebase_functions_server": 72,
   };
@@ -1003,5 +1005,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 366);
+  assert.equal(total, 355);
 });

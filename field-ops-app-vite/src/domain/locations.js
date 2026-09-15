@@ -1,24 +1,17 @@
-import { LOCATIONS_COLLECTION } from "./constants";
-import { makeCollectionStore } from "../firebase/collectionStore";
+import { isWriteBlocked } from "../config/env";
+import { locationInputFromForm, locationRowFromCrm, newIdempotencyKey, requireCrmApi } from "../services/crmApiClient.js";
 
-// Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
-// A Location is: { id, accountId, name, address, accessNotes?,
-// createdAt, updatedAt }. Recommended (and implemented) as a
-// first-class collection related to Account by `accountId`, not an
-// array embedded on the Account document -- see
-// BusinessEntityModel.md's Option A/B comparison for why (scalability,
-// direct querying, and consistency with every other FK-based
-// relationship already in this codebase all favored this).
-//
-// No standalone Locations list/detail page exists this sprint --
-// Locations are shown only nested inside AccountDetail.jsx. See
-// hooks/useLocationsForAccount.js for the scoped read.
-export const locationsStore = makeCollectionStore(LOCATIONS_COLLECTION);
-
-export function createLocation(accountId, data) {
-  return locationsStore.add({ ...data, accountId });
+// Customer-site (Location) writers. CRM CUTOVER: written through the governed PostgreSQL CRM authority (EOS API,
+// POST /crm/customer) as eos_crm.account_locations. A customer site always belongs to one Account. No Firestore write,
+// no fallback.
+export async function createLocation(accountId, data) {
+  if (isWriteBlocked()) return { blocked: true };
+  return locationRowFromCrm(await requireCrmApi("createAccountLocation", {
+    idempotencyKey: newIdempotencyKey(), accountId, ...locationInputFromForm(data),
+  }));
 }
 
-export function updateLocation(id, data) {
-  return locationsStore.update(id, { ...data, updatedAt: Date.now() });
+export async function updateLocation(id, data) {
+  if (isWriteBlocked()) return { blocked: true };
+  return locationRowFromCrm(await requireCrmApi("updateAccountLocation", { accountLocationId: id, ...locationInputFromForm(data) }));
 }
