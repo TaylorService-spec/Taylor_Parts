@@ -331,3 +331,51 @@ for (const [label, args, pattern] of [
     assert.match(out, pattern);
   });
 }
+
+// ============================ COMMERCIAL C5 ============================
+//
+// scripts/commercialC5.js writes eos_commercial (copy) and scripts/exportCommercialSnapshot.js reads a Firebase project
+// (the FIREBASE_EXIT_MIGRATION_ONLY exception). Both must refuse before `pg` / firebase-admin is even resolved, and
+// neither has a production mode.
+const C5 = "scripts/commercialC5.js";
+const C5_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "C5_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const C5_ENV = { EOS_ENVIRONMENT: "nonprod", C5_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const C5_CONFIRM = ["--confirmMigrationRequired", "a".repeat(64)];
+
+for (const [label, args, env, pattern] of [
+  ["no mode", C5_ARGS, C5_ENV, /--mode must be one of/],
+  ["no environment", ["--mode", "census"], C5_ENV, /--environment is required/],
+  ["production environment", ["--mode", "copy", ...C5_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a)), "--principalId", "p", ...C5_CONFIRM], C5_ENV, /production/],
+  ["any production confirmation", ["--mode", "copy", ...C5_ARGS, "--principalId", "p", ...C5_CONFIRM, "--confirmProduction", "taylor-parts"], C5_ENV, /no production mode/],
+  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", ...C5_ARGS, "--principalId", "p", ...C5_CONFIRM], { ...C5_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", ["--mode", "verify", ...C5_ARGS], { C5_FENCE_DB: C5_ENV.C5_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", ["--mode", "census", ...C5_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a))], C5_ENV, /Certification world, which is frozen/],
+  ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "C5_FENCE_DB", "--snapshot", "x.json"], C5_ENV, /--tenantKey is required/],
+  ["no snapshot", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "C5_FENCE_DB", "--tenantKey", "t"], C5_ENV, /--snapshot <file> is required/],
+  ["copy without an EOS principal", ["--mode", "copy", ...C5_ARGS, ...C5_CONFIRM], C5_ENV, /--principalId <EOS principal id> is required/],
+  ["copy without the explicit migration confirmation", ["--mode", "copy", ...C5_ARGS, "--principalId", "p"], C5_ENV, /--confirmMigrationRequired <snapshot sha256> is required/],
+  ["any Certification inclusion option", ["--mode", "copy", ...C5_ARGS, "--principalId", "p", ...C5_CONFIRM, "--includeCertification", "yes"], C5_ENV, /not an option/],
+]) {
+  test(`commercial C5: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(C5, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `commercial C5, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+const C5_EXPORT = "scripts/exportCommercialSnapshot.js";
+for (const [label, args, pattern] of [
+  ["no environment", ["--out", "/nonexistent/x.json"], /--environment is required/],
+  ["a project id instead of an environment", ["--environment", "platform-sandbox", "--projectId", "taylor-parts", "--out", "/nonexistent/x.json"], /--projectId is not accepted/],
+  ["production, even confirmed", ["--environment", "taylor-parts-production", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /no production mode/],
+  ["production environment", ["--environment", "taylor-parts-production", "--out", "/nonexistent/x.json"], /production/],
+  ["frozen Certification world", ["--environment", "platform-certification", "--out", "/nonexistent/x.json"], /frozen/],
+  ["undeclared environment", ["--environment", "someone-elses-env", "--out", "/nonexistent/x.json"], /not an environment declared/],
+  ["no out file", ["--environment", "platform-sandbox"], /--out <file> is required/],
+]) {
+  test(`commercial snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+    const res = runCli(C5_EXPORT, args);
+    const out = assertRefusedBeforeAnySdk(res, `commercial snapshot export, ${label}`);
+    assert.match(out, pattern);
+  });
+}
