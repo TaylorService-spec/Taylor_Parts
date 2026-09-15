@@ -5,10 +5,14 @@
 //   * the ALREADY-RESOLVED actor context a trusted boundary supplies -- tenant, EOS Principal id and the capability KEYS
 //     `resolveOperationalContext` computes from eos_policy.role_capabilities. Structurally the Commercial C2 actor
 //     context. Authentication is NOT done here; business authority (capability + active tenant membership) IS.
-//   * the EXISTING catalogued Customer capabilities only (`customer.record.read|create|update`). No id is invented.
+//   * the EXISTING catalogued Customer capabilities only. Owner ruling (V1): Accounts, Contacts and customer sites all use
+//     `customer.record.read|create|update` for their verbs; an Account's paymentTerms / taxStatus additionally keep their
+//     DISTINCT `customer.governedField.write` authority. No id is invented.
 //   * caller input that can never carry authority: tenant, principal, capabilities, uid, roles, securityRole, jobRole,
 //     externalSubject and identityProvider are REFUSED, never ignored; every other key must be on the operation's
 //     allowlist.
+//   * CREATE IDEMPOTENCY (runCrmCreate): an `eos_crm.command_receipts` row in the create's own transaction, serialized
+//     by a transaction-scoped advisory lock on the key identity, replayed with `replayed: true`. Raw keys are never stored.
 //   * ONE transaction per command (READ COMMITTED) and ONE `REPEATABLE READ READ ONLY` snapshot per read, each checking
 //     active principal + active tenant membership inside it. Timestamps are the database server's `now()`.
 //   * deterministic, non-leaking errors in the Commercial C2 shape (code, category, message): governed refusals keep
@@ -19,12 +23,14 @@
 // POSTGRESQL ONLY. No Firebase, no Firestore fallback, no dual write. NOT WIRED: no Render operation, Firebase callable
 // or client imports this module or the services built on it.
 import type { Pool, PoolClient } from "pg";
+import { createHash, randomUUID } from "node:crypto";
 
 /** The catalogued Customer capability KEYS (functions/src/access/permissionCatalog.ts). Nothing else is consulted. */
 export const CRM_CAPABILITIES = Object.freeze({
   CUSTOMER_RECORD_READ: "customer.record.read",
   CUSTOMER_RECORD_CREATE: "customer.record.create",
   CUSTOMER_RECORD_UPDATE: "customer.record.update",
+  CUSTOMER_GOVERNED_FIELD_WRITE: "customer.governedField.write",
 } as const);
 
 /** The resolved governed context a trusted boundary hands an operation. Structurally the C2 CommercialActorContext. */
@@ -75,6 +81,10 @@ const CONSTRAINT_CODES: Readonly<Record<string, [string, CrmErrorCategory]>> = O
   accounts_pkey: ["ID_CONFLICT", "CONFLICT"],
   contacts_pkey: ["ID_CONFLICT", "CONFLICT"],
   account_locations_pkey: ["ID_CONFLICT", "CONFLICT"],
+  accounts_billing_contact_on_account: ["BILLING_CONTACT_NOT_ON_ACCOUNT", "INVALID_INPUT"],
+  account_tags_unique_per_account: ["FIELD_INVALID", "INVALID_INPUT"],
+  command_receipts_one_per_key: ["IDEMPOTENCY_CONFLICT", "CONFLICT"],
+  command_receipts_member_fk: ["ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN"],
 });
 
 /** The pure CRM vocabulary's own refusals (functions/src/crm/customerIdentity.ts), kept as governed input refusals. */
@@ -104,7 +114,7 @@ export function translateCrmError(err: unknown, fallback: "CRM_COMMAND_FAILED" |
 
 // ════════════════════ actor + caller input ════════════════════
 
-function requireActor(actor: CrmActorContext, requiredCapability: string): void {
+export function requireActor(actor: CrmActorContext, requiredCapability: string): void {
   if (!actor || typeof actor.tenantId !== "string" || actor.tenantId.trim() === "" || typeof actor.principalId !== "string" || actor.principalId.trim() === "") {
     fail("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
   }
@@ -270,6 +280,105 @@ export async function runCrmCommand<P, R>(
   } finally {
     client?.release();
   }
+}
+
+// ════════════════════ create idempotency ════════════════════
+
+export type CrmCreateOperation = "crm.createAccount" | "crm.createContact" | "crm.createAccountLocation";
+export type CrmTargetType = "ACCOUNT" | "CONTACT" | "ACCOUNT_LOCATION";
+export type CrmReplayable<R> = R & { readonly replayed: boolean };
+
+const sha256 = (value: string): string => createHash("sha256").update(value, "utf8").digest("hex");
+
+/** Deterministic JSON: object keys sorted at every depth, so the same request always hashes the same. */
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.keys(value as Record<string, unknown>).sort()
+      .filter((k) => (value as Record<string, unknown>)[k] !== undefined)
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson((value as Record<string, unknown>)[k])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+export const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
+
+/** A create's idempotency key: required, a non-blank string of bounded length. Only its SHA-256 is ever persisted. */
+export function requireIdempotencyKey(value: unknown): string {
+  if (typeof value !== "string" || value.trim() === "" || value.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    fail("IDEMPOTENCY_KEY_REQUIRED", "INVALID_INPUT", `idempotencyKey is required: a non-blank string of at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`);
+  }
+  return value as string;
+}
+
+/**
+ * Run ONE governed CRM CREATE, idempotently, in ONE PostgreSQL transaction.
+ *
+ * Order: actor + capability -> `prepare` (which must validate the key and return the caller's request without it) ->
+ * connect -> BEGIN -> active principal + membership -> advisory lock on (tenant, principal, operation, key hash) ->
+ * committed receipt? replay it (or refuse a different request under the same key) -> the body -> the receipt -> COMMIT.
+ *
+ * SCOPE. A key belongs to one (tenant, principal, operation): the same key used by another principal, in another tenant
+ * or for another create operation is a DIFFERENT key. Reusing a key for the same operation with a different request
+ * (compared by SHA-256 of the canonical request) refuses with IDEMPOTENCY_KEY_REUSED and changes nothing. A replay
+ * returns the result recorded at creation, not the record's current state. Any failure rolls the receipt back with the
+ * create, so the key stays free for a genuine retry.
+ */
+export async function runCrmCreate<P extends { idempotencyKey: string; request: unknown }, R extends object>(
+  deps: CrmDeps,
+  actor: CrmActorContext,
+  requiredCapability: string,
+  operation: CrmCreateOperation,
+  prepare: () => P,
+  body: (client: PoolClient, actor: CrmActorContext, prepared: P) => Promise<{ result: R; targetType: CrmTargetType; targetId: string }>,
+): Promise<CrmReplayable<R>> {
+  let client: PoolClient | undefined;
+  try {
+    requireActor(actor, requiredCapability);
+    const prepared = prepare();
+    const keyHash = sha256(prepared.idempotencyKey);
+    const requestHash = sha256(canonicalJson(prepared.request));
+    client = await deps.pool.connect();
+    await client.query("BEGIN");
+    await requireActiveMembership(client, actor);
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [
+      `crm-create|${actor.tenantId}|${actor.principalId}|${operation}|${keyHash}`,
+    ]);
+    const prior = await client.query<{ request_hash: string; result: R }>(
+      `SELECT request_hash, result FROM eos_crm.command_receipts
+        WHERE tenant_id = $1 AND principal_id = $2 AND operation = $3 AND idempotency_key_hash = $4`,
+      [actor.tenantId, actor.principalId, operation, keyHash],
+    );
+    if (prior.rows.length === 1) {
+      if (prior.rows[0].request_hash !== requestHash) {
+        fail("IDEMPOTENCY_KEY_REUSED", "CONFLICT", "this idempotency key was already used for a different request");
+      }
+      await client.query("COMMIT");
+      return { ...prior.rows[0].result, replayed: true };
+    }
+    const outcome = await body(client, actor, prepared);
+    await client.query(
+      `INSERT INTO eos_crm.command_receipts
+         (id, tenant_id, principal_id, operation, idempotency_key_hash, request_hash, target_type, target_id, result)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [`crcpt_${randomUUID()}`, actor.tenantId, actor.principalId, operation, keyHash, requestHash,
+        outcome.targetType, outcome.targetId, JSON.stringify(outcome.result)],
+    );
+    await client.query("COMMIT");
+    return { ...outcome.result, replayed: false };
+  } catch (err) {
+    if (client) await client.query("ROLLBACK").catch(() => undefined);
+    throw translateCrmError(err, "CRM_COMMAND_FAILED");
+  } finally {
+    client?.release();
+  }
+}
+
+/** Split a create input into its idempotency key and the request it names. */
+export function splitIdempotentInput(i: Record<string, unknown>): { idempotencyKey: string; request: Record<string, unknown> } {
+  const { idempotencyKey, ...request } = i;
+  return { idempotencyKey: requireIdempotencyKey(idempotencyKey), request };
 }
 
 /** Run ONE governed CRM read in ONE read-only snapshot. PostgreSQL itself refuses any write attempted inside it. */

@@ -9,14 +9,16 @@
 // site -- and never an inventory location. A payload carrying `type` / `locationType` is REFUSED before anything else is
 // validated, and a `null` read means "not a customer site of this tenant", never "try the inventory namespace".
 //
-// AUTHORITY: CRM_CHILD_RECORD_CAPABILITIES -- see contactAuthority.ts (CRM_AUTHORITY_GAP).
+// AUTHORITY. Owner ruling (V1): customer sites use `customer.record.read|create|update` for their verbs, the same
+// capabilities as their Account (firestore.rules' locations block is admin/dispatcher for read, create and update alike;
+// legacyAuthorizationSurface row 23). Create is idempotent (runCrmCreate).
 //
 // TENANCY: the parent Account is read in the actor's tenant only, and `account_locations_account_same_tenant` makes a
 // cross-tenant link unrepresentable.
 import { randomUUID } from "node:crypto";
 import { assertNoInventoryLocationDiscriminator, inheritOwnerFromAccount } from "../crm/customerIdentity.js";
-import { CRM_CHILD_RECORD_CAPABILITIES } from "./contactAuthority.js";
 import {
+  CRM_CAPABILITIES,
   assignmentsOf,
   decodeCrmCursor,
   fail,
@@ -29,9 +31,12 @@ import {
   requireRecordId,
   requireTenantAccount,
   runCrmCommand,
+  runCrmCreate,
   runCrmRead,
+  splitIdempotentInput,
   type CrmActorContext,
   type CrmDeps,
+  type CrmReplayable,
 } from "./crmAuthorityKernel.js";
 
 export interface AccountLocationProjection {
@@ -95,11 +100,11 @@ const LOCATION_UPDATE_COLUMNS = Object.freeze({
 });
 
 /** The namespace guard runs on the RAW payload, before the allowlist could report `type` as merely unknown. */
-function siteInput(input: unknown, key: string): Record<string, unknown> {
+function siteInput(input: unknown, keys: readonly string[]): Record<string, unknown> {
   if (input !== null && typeof input === "object" && !Array.isArray(input)) {
     assertNoInventoryLocationDiscriminator(input as Record<string, unknown>);
   }
-  return requireAllowlistedInput(input, [key, ...Object.keys(LOCATION_UPDATE_COLUMNS)]);
+  return requireAllowlistedInput(input, [...keys, ...Object.keys(LOCATION_UPDATE_COLUMNS)]);
 }
 
 function siteFields(i: Record<string, unknown>): Map<string, unknown> {
@@ -113,16 +118,18 @@ function siteFields(i: Record<string, unknown>): Map<string, unknown> {
 
 // ════════════════════ commands ════════════════════
 
-export function createAccountLocation(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<AccountLocationProjection> {
-  return runCrmCommand(
+export function createAccountLocation(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<CrmReplayable<AccountLocationProjection>> {
+  return runCrmCreate(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.CREATE,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_CREATE,
+    "crm.createAccountLocation",
     () => {
-      const i = siteInput(input, "accountId");
+      const i = siteInput(input, ["idempotencyKey", "accountId"]);
+      const { idempotencyKey, request } = splitIdempotentInput(i);
       const fields = siteFields(i);
       if (!fields.has("name")) fail("NAME_REQUIRED", "INVALID_INPUT", "a customer site requires a name");
-      return { accountId: requireRecordId(i.accountId, "accountId"), fields };
+      return { idempotencyKey, request, accountId: requireRecordId(i.accountId, "accountId"), fields };
     },
     async (db, { tenantId, principalId }, { accountId, fields }) => {
       const parent = await requireTenantAccount(db, tenantId, accountId, "SHARE");
@@ -136,7 +143,7 @@ export function createAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
           fields.get("addressState") ?? null, fields.get("addressPostalCode") ?? null, fields.get("accessNotes") ?? null,
           inheritOwnerFromAccount(parent.ownerEmployeeId), principalId],
       );
-      return project(rows[0]);
+      return { result: project(rows[0]), targetType: "ACCOUNT_LOCATION", targetId: rows[0].id };
     },
   );
 }
@@ -145,9 +152,9 @@ export function updateAccountLocation(deps: CrmDeps, actor: CrmActorContext, inp
   return runCrmCommand(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.UPDATE,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_UPDATE,
     () => {
-      const i = siteInput(input, "accountLocationId");
+      const i = siteInput(input, ["accountLocationId"]);
       const changes = siteFields(i);
       if (changes.size === 0) fail("NO_CHANGES_REQUESTED", "INVALID_INPUT", "an update must name at least one accepted field");
       return { accountLocationId: requireRecordId(i.accountLocationId, "accountLocationId"), changes };
@@ -172,7 +179,7 @@ export function getAccountLocation(deps: CrmDeps, actor: CrmActorContext, input:
   return runCrmRead(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.READ,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
     () => ({ accountLocationId: requireRecordId(requireAllowlistedInput(input, ["accountLocationId"]).accountLocationId, "accountLocationId") }),
     async (db, tenantId, { accountLocationId }) => {
       const { rows } = await db.query<AccountLocationRow>(
@@ -195,7 +202,7 @@ export function listAccountLocations(deps: CrmDeps, actor: CrmActorContext, inpu
   return runCrmRead(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.READ,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
     () => {
       const i = requireAllowlistedInput(input, ["accountId", "limit", "cursor"]);
       return { accountId: requireRecordId(i.accountId, "accountId"), limit: requirePageSize(i.limit), cursor: decodeCrmCursor("accountLocation", i.cursor) };

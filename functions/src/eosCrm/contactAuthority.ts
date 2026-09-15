@@ -5,10 +5,10 @@
 //   getContact           one Contact of the actor's tenant
 //   listAccountContacts  bounded keyset list of one Account's Contacts
 //
-// AUTHORITY. The permission catalog registers NO Contact capability (policySeedSnapshot `contact.capabilitiesByVerb` is
-// empty) and legacyAuthorizationSurface row 23 gates `contacts` with the SAME predicate as `accounts`. A Contact is
-// reached only through its Account, so each operation requires the parent Account's catalogued capability for the same
-// verb (CRM_CHILD_RECORD_CAPABILITIES). This is recorded as CRM_AUTHORITY_GAP pending an Owner ruling; it invents no id.
+// AUTHORITY. Owner ruling (V1): Contacts use `customer.record.read|create|update` for their verbs, the same capabilities
+// as their Account. Repository evidence carries no finer distinction: legacyAuthorizationSurface row 23 gates `contacts`
+// with the same predicate as `accounts`, and firestore.rules' contacts block is admin/dispatcher for read, create and
+// update alike. Create is idempotent (runCrmCreate).
 //
 // TENANCY. The parent Account is read in the actor's tenant only, and `contacts_account_same_tenant` -- the composite
 // (tenant_id, account_id) foreign key -- makes a cross-tenant link unrepresentable even if that read were skipped.
@@ -30,20 +30,13 @@ import {
   requireRecordId,
   requireTenantAccount,
   runCrmCommand,
+  runCrmCreate,
   runCrmRead,
+  splitIdempotentInput,
   type CrmActorContext,
   type CrmDeps,
+  type CrmReplayable,
 } from "./crmAuthorityKernel.js";
-
-/**
- * CRM_AUTHORITY_GAP: no catalogued Contact / customer-site capability exists. Child records are governed by the parent
- * Account's capability for the same verb until an Owner ruling says otherwise. ONE place to change.
- */
-export const CRM_CHILD_RECORD_CAPABILITIES = Object.freeze({
-  READ: CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
-  CREATE: CRM_CAPABILITIES.CUSTOMER_RECORD_CREATE,
-  UPDATE: CRM_CAPABILITIES.CUSTOMER_RECORD_UPDATE,
-});
 
 export interface ContactProjection {
   readonly contactId: string;
@@ -117,16 +110,18 @@ function contactFields(i: Record<string, unknown>): Map<string, unknown> {
 
 // ════════════════════ commands ════════════════════
 
-export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<ContactProjection> {
-  return runCrmCommand(
+export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<CrmReplayable<ContactProjection>> {
+  return runCrmCreate(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.CREATE,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_CREATE,
+    "crm.createContact",
     () => {
-      const i = requireAllowlistedInput(input, ["accountId", ...Object.keys(CONTACT_UPDATE_COLUMNS)]);
+      const i = requireAllowlistedInput(input, ["idempotencyKey", "accountId", ...Object.keys(CONTACT_UPDATE_COLUMNS)]);
+      const { idempotencyKey, request } = splitIdempotentInput(i);
       const fields = contactFields(i);
       if (!fields.has("name")) fail("NAME_REQUIRED", "INVALID_INPUT", "a Contact requires a name");
-      return { accountId: requireRecordId(i.accountId, "accountId"), fields };
+      return { idempotencyKey, request, accountId: requireRecordId(i.accountId, "accountId"), fields };
     },
     async (db, { tenantId, principalId }, { accountId, fields }) => {
       const parent = await requireTenantAccount(db, tenantId, accountId, "SHARE");
@@ -138,7 +133,7 @@ export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
         [`cont_${randomUUID()}`, tenantId, parent.id, fields.get("name"), fields.get("email") ?? null, fields.get("phone") ?? null,
           fields.get("contactRole") ?? null, fields.get("isPrimary") ?? false, inheritOwnerFromAccount(parent.ownerEmployeeId), principalId],
       );
-      return project(rows[0]);
+      return { result: project(rows[0]), targetType: "CONTACT", targetId: rows[0].id };
     },
   );
 }
@@ -147,7 +142,7 @@ export function updateContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
   return runCrmCommand(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.UPDATE,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_UPDATE,
     () => {
       const i = requireAllowlistedInput(input, ["contactId", ...Object.keys(CONTACT_UPDATE_COLUMNS)]);
       const changes = contactFields(i);
@@ -174,7 +169,7 @@ export function getContact(deps: CrmDeps, actor: CrmActorContext, input: unknown
   return runCrmRead(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.READ,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
     () => ({ contactId: requireRecordId(requireAllowlistedInput(input, ["contactId"]).contactId, "contactId") }),
     async (db, tenantId, { contactId }) => {
       const { rows } = await db.query<ContactRow>(`SELECT ${COLUMNS} FROM eos_crm.contacts WHERE tenant_id = $1 AND id = $2`, [tenantId, contactId]);
@@ -194,7 +189,7 @@ export function listAccountContacts(deps: CrmDeps, actor: CrmActorContext, input
   return runCrmRead(
     deps,
     actor,
-    CRM_CHILD_RECORD_CAPABILITIES.READ,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
     () => {
       const i = requireAllowlistedInput(input, ["accountId", "limit", "cursor"]);
       return { accountId: requireRecordId(i.accountId, "accountId"), limit: requirePageSize(i.limit), cursor: decodeCrmCursor("contact", i.cursor) };

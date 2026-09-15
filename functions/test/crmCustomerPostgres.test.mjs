@@ -92,12 +92,17 @@ const columns = (table) => query(
 
 // ============================ the schema exists, and holds exactly what it claims ============================
 
-test("eos_crm stands beside eos_policy and eos_ops, with exactly three tables", { skip: SKIP }, async () => {
+test("eos_crm stands beside eos_policy and eos_ops, with its three record tables and nothing else", { skip: SKIP }, async () => {
   await fresh();
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_crm' ORDER BY 1",
   );
-  assert.deepEqual(tables.rows.map((r) => r.table_name), ["account_locations", "accounts", "contacts"]);
+  // Migration 008's three record tables, plus migration 026's (wave D1-A): the Account's normalized multi-valued
+  // business facts and the CRM create-idempotency receipts. Still no location or inventory table of any kind.
+  assert.deepEqual(tables.rows.map((r) => r.table_name), [
+    "account_lines_of_business", "account_locations", "account_relationship_types", "account_tags", "accounts",
+    "command_receipts", "contacts",
+  ]);
 
   // AND eos_ops IS UNCHANGED. eosOpsPostgres.test.mjs asserts eos_ops holds "exactly four foundation
   // tables -- no balance table, no locations table". Migration 008 does not falsify that claim, and
@@ -166,7 +171,8 @@ test("there is NO foreign key in either direction between eos_crm and eos_ops", 
   assert.deepEqual(crossing.rows, [],
     "the inventory location_id is opaque governed data; pointing it at a customer site would assert a stock position IS one");
 
-  // The only edge eos_crm has outside itself is tenancy.
+  // The only edges eos_crm has outside itself are tenancy -- the tenant, and (migration 026) the tenant MEMBERSHIP a
+  // create receipt's principal must hold.
   const outbound = await query(
     `SELECT DISTINCT dst.nspname AS to_schema, dt.relname AS to_table
        FROM pg_constraint c
@@ -177,7 +183,7 @@ test("there is NO foreign key in either direction between eos_crm and eos_ops", 
       WHERE c.contype = 'f' AND src.nspname = 'eos_crm' AND dst.nspname <> 'eos_crm'
       ORDER BY 1, 2`,
   );
-  assert.deepEqual(outbound.rows, [{ to_schema: "eos_policy", to_table: "tenants" }]);
+  assert.deepEqual(outbound.rows, [{ to_schema: "eos_policy", to_table: "tenant_memberships" }, { to_schema: "eos_policy", to_table: "tenants" }]);
 });
 
 test("the inventory location vocabulary gains no customer label", { skip: SKIP }, async () => {
@@ -441,9 +447,15 @@ test("the composite keys a future Equipment table needs are present", { skip: SK
       WHERE n.nspname = 'eos_crm' AND c.contype = 'u'
       ORDER BY 1, 2`,
   );
+  // Migration 026 (wave D1-A) adds exactly three: a Contact addressable with its Account (so an Account's billing contact
+  // must be its own), one tag value per Account, and one create receipt per idempotency key. Still NO uniqueness on a
+  // name or an external identifier (ruling D-C1-4).
   assert.deepEqual(uniques.rows, [
     { table_name: "account_locations", conname: "account_locations_account_scoped_identity" },
+    { table_name: "account_tags", conname: "account_tags_unique_per_account" },
     { table_name: "accounts", conname: "accounts_tenant_scoped_identity" },
+    { table_name: "command_receipts", conname: "command_receipts_one_per_key" },
+    { table_name: "contacts", conname: "contacts_account_scoped_identity" },
   ]);
 });
 

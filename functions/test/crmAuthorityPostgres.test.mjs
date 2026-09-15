@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -42,6 +42,7 @@ async function withClient(url, fn) {
 const ALL = new Set(["customer.record.read", "customer.record.create", "customer.record.update"]);
 const A1 = Object.freeze({ tenantId: "t1", principalId: "p-t1", capabilities: ALL });
 const A2 = Object.freeze({ tenantId: "t2", principalId: "p-t2", capabilities: ALL });
+const K = () => `key-${randomUUID()}`;
 const code = (c) => (e) => {
   assert.equal(e.name, "CrmAuthorityError", `not a governed error: ${e}`);
   assert.equal(e.code, c, `expected ${c}, got ${e.code}: ${e.message}`);
@@ -80,9 +81,12 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES
     ('e-t1','t1','ACTIVE','taylor'), ('e-t2','t2','ACTIVE','taylor')`);
 
-  const acct1 = await accounts.createAccount(deps, A1, { name: "  Mesquite Soda Works ", status: "ACTIVE", ownerEmployeeId: "e-t1" });
-  const ownerless = await accounts.createAccount(deps, A1, { name: "Ownerless Diner", status: "PROSPECT" });
-  const acct2 = await accounts.createAccount(deps, A2, { name: "Mesquite Soda Works", status: "ACTIVE", ownerEmployeeId: "e-t2" });
+  const acct1 = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "  Mesquite Soda Works ", status: "ACTIVE", ownerEmployeeId: "e-t1" });
+  // A LEGACY ownerless row, exactly as an import or migration may carry one (OWNERLESS is a legitimate stored state). The
+  // governed authority can no longer CREATE one; it must still read it and inherit from it truthfully.
+  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-legacy-ownerless','t1','Ownerless Diner','PROSPECT','import','import')`);
+  const ownerless = { accountId: "acct-legacy-ownerless" };
+  const acct2 = await accounts.createAccount(deps, A2, { idempotencyKey: K(), name: "Mesquite Soda Works", status: "ACTIVE", ownerEmployeeId: "e-t2" });
 
   await t.test("(1) Account create: canonical id, trimmed name, EOS Principal attribution, explicit owner, server timestamps", async () => {
     assert.match(acct1.accountId, /^acct_[0-9a-f-]{36}$/);
@@ -94,11 +98,20 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     assert.equal(row.tenant_id, "t1");
     assert.equal(row.created_by, "p-t1", "attribution is the EOS Principal id");
     assert.equal(new Date(acct1.createdAt).toISOString(), row.created_at.toISOString(), "the timestamp is the server's");
-    // OWNER != ATTRIBUTION: an Account created without an owner is OWNERLESS, never the actor.
-    assert.equal(ownerless.ownerEmployeeId, null);
-    await assert.rejects(accounts.createAccount(deps, A1, { name: "X", status: "ACTIVE", ownerEmployeeId: "e-t2" }), code("OWNER_NOT_FOUND"));
-    await assert.rejects(accounts.createAccount(deps, A1, { name: "X", status: "ACTIVE", ownerEmployeeId: "p-t1" }), code("OWNER_NOT_FOUND"));
+    // OWNER REFUSAL MATRIX. Missing, malformed, unresolved, cross-tenant -- and never the Principal standing in for one.
+    const refused = [
+      [{}, "OWNER_REQUIRED"], [{ ownerEmployeeId: null }, "OWNER_REQUIRED"], [{ ownerEmployeeId: "" }, "OWNER_INVALID"],
+      [{ ownerEmployeeId: "e t1" }, "OWNER_INVALID"], [{ ownerEmployeeId: 7 }, "OWNER_INVALID"],
+      [{ ownerEmployeeId: "e-nobody" }, "OWNER_NOT_FOUND"], [{ ownerEmployeeId: "e-t2" }, "OWNER_NOT_FOUND"],
+      [{ ownerEmployeeId: "p-t1" }, "OWNER_NOT_FOUND"],
+    ];
+    for (const [owner, expected] of refused) {
+      await assert.rejects(accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "X", status: "ACTIVE", ...owner }), code(expected), JSON.stringify(owner));
+    }
     assert.equal(await count("accounts", "name = 'X'"), 0);
+    assert.equal(await count("command_receipts", "target_type = 'ACCOUNT' AND result->>'name' = 'X'"), 0);
+    // No Account the authority created is ownerless, and none is owned by its creator.
+    assert.equal(await count("accounts", "created_by <> 'import' AND (owner_employee_id IS NULL OR owner_employee_id = created_by)"), 0);
   });
 
   await t.test("(2) TENANCY: tenant B cannot read, list or mutate tenant A's Account", async () => {
@@ -112,14 +125,14 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   });
 
   await t.test("(3) Contact: created under the actor's tenant Account, owner inherited at creation; cannot link across tenant", async () => {
-    const c1 = await contacts.createContact(deps, A1, { accountId: acct1.accountId, name: "Ana", email: "ana@example.com", isPrimary: true });
+    const c1 = await contacts.createContact(deps, A1, { idempotencyKey: K(), accountId: acct1.accountId, name: "Ana", email: "ana@example.com", isPrimary: true });
     assert.equal(c1.accountId, acct1.accountId);
     assert.equal(c1.ownerEmployeeId, "e-t1", "owner inherited from the parent Account");
     assert.equal(c1.createdBy, "p-t1");
-    const c0 = await contacts.createContact(deps, A1, { accountId: ownerless.accountId, name: "Bo" });
+    const c0 = await contacts.createContact(deps, A1, { idempotencyKey: K(), accountId: ownerless.accountId, name: "Bo" });
     assert.equal(c0.ownerEmployeeId, null, "an ownerless parent yields an ownerless child, never the actor");
     // Tenant B names tenant A's Account.
-    await assert.rejects(contacts.createContact(deps, A2, { accountId: acct1.accountId, name: "Intruder" }), code("ACCOUNT_NOT_FOUND"));
+    await assert.rejects(contacts.createContact(deps, A2, { idempotencyKey: K(), accountId: acct1.accountId, name: "Intruder" }), code("ACCOUNT_NOT_FOUND"));
     assert.equal(await count("contacts", "name = 'Intruder'"), 0);
     // Tenant B cannot read, list or mutate tenant A's Contact.
     await assert.rejects(contacts.getContact(deps, A2, { contactId: c1.contactId }), code("CONTACT_NOT_FOUND"));
@@ -139,16 +152,16 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   });
 
   await t.test("(4) Location: customer site under the actor's tenant Account; cannot link across tenant; never an inventory location", async () => {
-    const s1 = await sites.createAccountLocation(deps, A1, { accountId: acct1.accountId, name: "Main Kitchen", addressStreet: "1 Main", addressCity: "Austin", addressState: "TX", addressPostalCode: "78701" });
+    const s1 = await sites.createAccountLocation(deps, A1, { idempotencyKey: K(), accountId: acct1.accountId, name: "Main Kitchen", addressStreet: "1 Main", addressCity: "Austin", addressState: "TX", addressPostalCode: "78701" });
     assert.equal(s1.ownerEmployeeId, "e-t1");
     assert.equal(s1.createdBy, "p-t1");
-    await assert.rejects(sites.createAccountLocation(deps, A2, { accountId: acct1.accountId, name: "Intruder Site" }), code("ACCOUNT_NOT_FOUND"));
+    await assert.rejects(sites.createAccountLocation(deps, A2, { idempotencyKey: K(), accountId: acct1.accountId, name: "Intruder Site" }), code("ACCOUNT_NOT_FOUND"));
     assert.equal(await count("account_locations", "name = 'Intruder Site'"), 0);
     await assert.rejects(sites.getAccountLocation(deps, A2, { accountLocationId: s1.accountLocationId }), code("ACCOUNT_LOCATION_NOT_FOUND"));
     await assert.rejects(sites.updateAccountLocation(deps, A2, { accountLocationId: s1.accountLocationId, accessNotes: "gate code" }), code("ACCOUNT_LOCATION_NOT_FOUND"));
     await assert.rejects(sites.listAccountLocations(deps, A2, { accountId: acct1.accountId }), code("ACCOUNT_NOT_FOUND"));
     await assert.rejects(q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, created_by, updated_by) VALUES ('raw-s','t2',$1,'Raw','x','x')`, [acct1.accountId]), (e) => e.constraint === "account_locations_account_same_tenant");
-    await assert.rejects(sites.createAccountLocation(deps, A1, { accountId: acct1.accountId, name: "Warehouse 9", type: "WAREHOUSE" }), code("INVENTORY_LOCATION_DISCRIMINATOR_REFUSED"));
+    await assert.rejects(sites.createAccountLocation(deps, A1, { idempotencyKey: K(), accountId: acct1.accountId, name: "Warehouse 9", type: "WAREHOUSE" }), code("INVENTORY_LOCATION_DISCRIMINATOR_REFUSED"));
     assert.equal(await count("account_locations", "name = 'Warehouse 9'"), 0);
     const u = await sites.updateAccountLocation(deps, A1, { accountLocationId: s1.accountLocationId, accessNotes: "  back door  ", addressCity: null });
     assert.equal(u.accessNotes, "back door");
@@ -194,10 +207,10 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   await t.test("(6) caller authority in input is refused and writes nothing", async () => {
     const before = [await count("accounts"), await count("contacts"), await count("account_locations")];
     for (const field of ["tenantId", "principalId", "capabilities", "uid", "roles", "securityRole", "jobRole", "externalSubject", "identityProvider"]) {
-      await assert.rejects(accounts.createAccount(deps, A1, { name: "Forged", status: "ACTIVE", [field]: "t2" }), code("CALLER_AUTHORITY_REFUSED"));
+      await assert.rejects(accounts.createAccount(deps, A1, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Forged", status: "ACTIVE", [field]: "t2" }), code("CALLER_AUTHORITY_REFUSED"));
       await assert.rejects(accounts.updateAccount(deps, A1, { accountId: acct1.accountId, name: "Forged", [field]: "t2" }), code("CALLER_AUTHORITY_REFUSED"));
-      await assert.rejects(contacts.createContact(deps, A2, { accountId: acct1.accountId, name: "Forged", [field]: "t1" }), code("CALLER_AUTHORITY_REFUSED"));
-      await assert.rejects(sites.createAccountLocation(deps, A2, { accountId: acct1.accountId, name: "Forged", [field]: "t1" }), code("CALLER_AUTHORITY_REFUSED"));
+      await assert.rejects(contacts.createContact(deps, A2, { idempotencyKey: K(), accountId: acct1.accountId, name: "Forged", [field]: "t1" }), code("CALLER_AUTHORITY_REFUSED"));
+      await assert.rejects(sites.createAccountLocation(deps, A2, { idempotencyKey: K(), accountId: acct1.accountId, name: "Forged", [field]: "t1" }), code("CALLER_AUTHORITY_REFUSED"));
       await assert.rejects(accounts.getAccount(deps, A2, { accountId: acct1.accountId, [field]: "t1" }), code("CALLER_AUTHORITY_REFUSED"));
     }
     assert.deepEqual([await count("accounts"), await count("contacts"), await count("account_locations")], before);
@@ -207,31 +220,31 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   await t.test("(7) no write without capability; non-members and disabled principals refused; no Job Role inference", async () => {
     const before = await count("accounts");
     const reader = { tenantId: "t1", principalId: "p-t1", capabilities: new Set(["customer.record.read"]) };
-    await assert.rejects(accounts.createAccount(deps, reader, { name: "No Cap", status: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(accounts.createAccount(deps, reader, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "No Cap", status: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(accounts.updateAccount(deps, reader, { accountId: acct1.accountId, name: "No Cap" }), code("CAPABILITY_REQUIRED"));
-    await assert.rejects(contacts.createContact(deps, reader, { accountId: acct1.accountId, name: "No Cap" }), code("CAPABILITY_REQUIRED"));
-    await assert.rejects(sites.createAccountLocation(deps, reader, { accountId: acct1.accountId, name: "No Cap" }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(contacts.createContact(deps, reader, { idempotencyKey: K(), accountId: acct1.accountId, name: "No Cap" }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(sites.createAccountLocation(deps, reader, { idempotencyKey: K(), accountId: acct1.accountId, name: "No Cap" }), code("CAPABILITY_REQUIRED"));
     // Role-shaped strings are not capabilities.
     const roleShaped = { tenantId: "t1", principalId: "p-t1", capabilities: new Set(["admin", "ADMIN", "dispatcher", "SALES_MANAGER", "jobRole:GENERAL_MANAGER"]) };
-    await assert.rejects(accounts.createAccount(deps, roleShaped, { name: "No Cap", status: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(accounts.createAccount(deps, roleShaped, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "No Cap", status: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(accounts.getAccount(deps, roleShaped, { accountId: acct1.accountId }), code("CAPABILITY_REQUIRED"));
     // A principal of tenant B claiming tenant A; a disabled principal of tenant A.
-    await assert.rejects(accounts.createAccount(deps, { ...A1, principalId: "p-t2" }, { name: "No Cap", status: "ACTIVE" }), code("ACTOR_NOT_TENANT_MEMBER"));
+    await assert.rejects(accounts.createAccount(deps, { ...A1, principalId: "p-t2" }, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "No Cap", status: "ACTIVE" }), code("ACTOR_NOT_TENANT_MEMBER"));
     await assert.rejects(accounts.getAccount(deps, { ...A1, principalId: "p-t2" }, { accountId: acct1.accountId }), code("ACTOR_NOT_TENANT_MEMBER"));
-    await assert.rejects(accounts.createAccount(deps, { ...A1, principalId: "p-disabled" }, { name: "No Cap", status: "ACTIVE" }), code("ACTOR_NOT_TENANT_MEMBER"));
+    await assert.rejects(accounts.createAccount(deps, { ...A1, principalId: "p-disabled" }, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "No Cap", status: "ACTIVE" }), code("ACTOR_NOT_TENANT_MEMBER"));
     assert.equal(await count("accounts"), before);
   });
 
   await t.test("(8) grantable through PostgreSQL: migration 024 vocabulary -> role_capabilities -> resolved capability -> governed write", async () => {
     const keys = (await q(`SELECT key FROM eos_policy.capabilities WHERE key LIKE 'customer.%' ORDER BY key`)).rows.map((r) => r.key);
-    assert.deepEqual(keys, ["customer.record.create", "customer.record.read", "customer.record.update"]);
+    assert.deepEqual(keys, ["customer.governedField.write", "customer.record.create", "customer.record.read", "customer.record.update"]);
     assert.equal(Number((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities`)).rows[0].n), 0, "a migration granted a capability");
     await q(`INSERT INTO eos_policy.roles (id, tenant_id, key, name, origin, created_by, updated_by) VALUES ('r-crm','t1','crm-editor','CRM editor','CUSTOM','proof','proof')`);
     await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by)
              SELECT 'rc-' || c.id, 't1', 'r-crm', c.id, 'proof', 'proof', 'proof' FROM eos_policy.capabilities c WHERE c.key IN ('customer.record.read','customer.record.create')`);
     const resolved = await capabilitiesForRoleKeys(pool, "t1", ["crm-editor"]);
     assert.deepEqual([...resolved].sort(), ["customer.record.create", "customer.record.read"]);
-    const created = await accounts.createAccount(deps, { tenantId: "t1", principalId: "p-t1", capabilities: resolved }, { name: "Granted", status: "PROSPECT" });
+    const created = await accounts.createAccount(deps, { tenantId: "t1", principalId: "p-t1", capabilities: resolved }, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Granted", status: "PROSPECT" });
     assert.equal(created.createdBy, "p-t1");
     await assert.rejects(accounts.updateAccount(deps, { tenantId: "t1", principalId: "p-t1", capabilities: resolved }, { accountId: created.accountId, name: "Nope" }), code("CAPABILITY_REQUIRED"));
     assert.deepEqual([...(await capabilitiesForRoleKeys(pool, "t2", ["crm-editor"]))], [], "a grant in t1 resolved in t2");
@@ -239,7 +252,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
 
   await t.test("(9) updates are allowlisted and change only what they name", async () => {
     const before = (await q(`SELECT owner_employee_id, created_by, created_at FROM eos_crm.accounts WHERE id = $1`, [acct1.accountId])).rows[0];
-    for (const extra of ["ownerEmployeeId", "createdBy", "createdAt", "updatedBy", "id", "paymentTerms"]) {
+    for (const extra of ["ownerEmployeeId", "accountOwner", "createdBy", "createdAt", "updatedBy", "id", "nameLower"]) {
       await assert.rejects(accounts.updateAccount(deps, A1, { accountId: acct1.accountId, status: "INACTIVE", [extra]: "p-evil" }), code("FIELD_NOT_ALLOWED"));
     }
     assert.equal((await q(`SELECT status FROM eos_crm.accounts WHERE id = $1`, [acct1.accountId])).rows[0].status, "ACTIVE");
@@ -255,7 +268,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
   });
 
   await t.test("(10) reads are bounded, paged without gaps or repeats, and read-only", async () => {
-    for (let i = 0; i < 7; i++) await accounts.createAccount(deps, A1, { name: `Paged ${String.fromCharCode(71 - i)}`, status: "ACTIVE" });
+    for (let i = 0; i < 7; i++) await accounts.createAccount(deps, A1, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: `Paged ${String.fromCharCode(71 - i)}`, status: "ACTIVE" });
     statements.length = 0;
     const seen = [];
     let cursor;
@@ -278,7 +291,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     assert.ok(deflt.items.length <= 50);
     await assert.rejects(accounts.listAccounts(deps, A1, { limit: 500 }), code("PAGE_SIZE_INVALID"));
     // Contacts page within ONE Account.
-    for (let i = 0; i < 4; i++) await contacts.createContact(deps, A1, { accountId: ownerless.accountId, name: `Person ${i}` });
+    for (let i = 0; i < 4; i++) await contacts.createContact(deps, A1, { idempotencyKey: K(), accountId: ownerless.accountId, name: `Person ${i}` });
     const p1 = await contacts.listAccountContacts(deps, A1, { accountId: ownerless.accountId, limit: 2 });
     const p2 = await contacts.listAccountContacts(deps, A1, { accountId: ownerless.accountId, limit: 2, cursor: p1.nextCursor });
     const p3 = await contacts.listAccountContacts(deps, A1, { accountId: ownerless.accountId, limit: 2, cursor: p2.nextCursor });
@@ -299,7 +312,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
         };
       },
     };
-    const err = await accounts.createAccount({ pool: breaking }, A1, { name: "Broken", status: "ACTIVE" }).then(() => null, (e) => e);
+    const err = await accounts.createAccount({ pool: breaking }, A1, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Broken", status: "ACTIVE" }).then(() => null, (e) => e);
     assert.ok(err, "the broken statement did not refuse");
     assert.equal(err.code, "CRM_COMMAND_FAILED");
     assert.equal(err.category, "FAILED");
@@ -326,9 +339,9 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
       (async () => {
         const pool = new pg.Pool({ connectionString: process.env.D1A_DB, max: 2 });
         const actor = { tenantId: "t1", principalId: "p-t1", capabilities: new Set(["customer.record.read","customer.record.create","customer.record.update"]) };
-        const acct = await a.createAccount({ pool }, actor, { name: "Subprocess", status: "ACTIVE" });
-        await c.createContact({ pool }, actor, { accountId: acct.accountId, name: "Sub Contact" });
-        await s.createAccountLocation({ pool }, actor, { accountId: acct.accountId, name: "Sub Site" });
+        const acct = await a.createAccount({ pool }, actor, { idempotencyKey: "sub-a", ownerEmployeeId: "e-t1", name: "Subprocess", status: "ACTIVE" });
+        await c.createContact({ pool }, actor, { idempotencyKey: "sub-c", accountId: acct.accountId, name: "Sub Contact" });
+        await s.createAccountLocation({ pool }, actor, { idempotencyKey: "sub-s", accountId: acct.accountId, name: "Sub Site" });
         await a.getAccount({ pool }, actor, { accountId: acct.accountId });
         await pool.end();
         const loaded = Object.keys(require.cache).filter((k) => /firebase|firestore/i.test(k));
@@ -339,5 +352,177 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     assert.equal(probe.status, 0, `subprocess failed: ${probe.stderr.slice(0, 200)}`);
     assert.equal(probe.stdout, "OK");
     assert.equal(await count("contacts", "name = 'Sub Contact'"), 1);
+  });
+
+  await t.test("(13) ACCOUNT BUSINESS FACTS: every migrated field round-trips, children are normalized and tenant-bound", async () => {
+    const full = await accounts.createAccount(deps, A1, {
+      idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Full Facts Co", status: "ACTIVE", notes: "  Use the back gate ",
+      billingAddress: { street: "1 Main", city: "Austin", state: "TX", zip: "78701" }, customerNumber: "C-100", erpId: "ERP-9",
+      accountingId: "AC-7", legacyId: "L-3", defaultCurrency: "USD", purchaseOrderRequired: true, invoiceDeliveryMethod: "EDI",
+      tags: ["VIP", " Chain Store "], relationshipTypes: ["VENDOR", "CUSTOMER"], lineOfBusiness: ["VENTANA", "TAYLOR"],
+    });
+    assert.deepEqual({ ...full, accountId: undefined, createdAt: undefined, updatedAt: undefined, replayed: undefined }, {
+      accountId: undefined, name: "Full Facts Co", status: "ACTIVE", ownerEmployeeId: "e-t1", notes: "Use the back gate",
+      billingAddress: { street: "1 Main", city: "Austin", state: "TX", zip: "78701" }, customerNumber: "C-100", erpId: "ERP-9",
+      accountingId: "AC-7", legacyId: "L-3", defaultCurrency: "USD", purchaseOrderRequired: true, invoiceDeliveryMethod: "EDI",
+      paymentTerms: null, taxStatus: null, billingContactId: null, tags: ["VIP", "Chain Store"],
+      relationshipTypes: ["CUSTOMER", "VENDOR"], lineOfBusiness: ["TAYLOR", "VENTANA"], createdBy: "p-t1", createdAt: undefined,
+      updatedBy: "p-t1", updatedAt: undefined, replayed: undefined,
+    });
+    assert.deepEqual(await accounts.getAccount(deps, A1, { accountId: full.accountId }), (({ replayed, ...rest }) => rest)(full));
+    assert.deepEqual((await q(`SELECT position, tag FROM eos_crm.account_tags WHERE account_id = $1 ORDER BY position`, [full.accountId])).rows, [{ position: 0, tag: "VIP" }, { position: 1, tag: "Chain Store" }]);
+    assert.equal(await count("account_relationship_types", "account_id = $1", [full.accountId]), 2);
+    // No JSON dump of the legacy document anywhere in eos_crm.
+    assert.deepEqual((await q(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'eos_crm' AND data_type IN ('json','jsonb') AND table_name <> 'command_receipts'`)).rows, []);
+    // External ids are NOT unique (ruling D-C1-4): a second Account may carry the same customer number.
+    await accounts.createAccount(deps, A1, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Same Number Co", status: "ACTIVE", customerNumber: "C-100" });
+    // Update: sets are replaced, scalars cleared by null, billing address cleared together.
+    const updated = await accounts.updateAccount(deps, A1, { accountId: full.accountId, tags: ["Chain Store"], lineOfBusiness: [], billingAddress: null, notes: null, purchaseOrderRequired: false });
+    assert.deepEqual([updated.tags, updated.lineOfBusiness, updated.billingAddress, updated.notes, updated.purchaseOrderRequired, updated.relationshipTypes],
+      [["Chain Store"], [], null, null, false, ["CUSTOMER", "VENDOR"]]);
+    // Billing contact: a Contact of THIS Account only.
+    const own = await contacts.createContact(deps, A1, { idempotencyKey: K(), accountId: full.accountId, name: "Billing Person" });
+    const other = await contacts.createContact(deps, A1, { idempotencyKey: K(), accountId: acct1.accountId, name: "Elsewhere" });
+    assert.equal((await accounts.updateAccount(deps, A1, { accountId: full.accountId, billingContactId: own.contactId })).billingContactId, own.contactId);
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: full.accountId, billingContactId: other.contactId }), code("BILLING_CONTACT_NOT_ON_ACCOUNT"));
+    const t2contact = await contacts.createContact(deps, A2, { idempotencyKey: K(), accountId: acct2.accountId, name: "T2 Person" });
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: full.accountId, billingContactId: t2contact.contactId }), code("BILLING_CONTACT_NOT_ON_ACCOUNT"));
+    assert.equal((await accounts.getAccount(deps, A1, { accountId: full.accountId })).billingContactId, own.contactId);
+    // Tenant B cannot mutate tenant A's business facts or children.
+    await assert.rejects(accounts.updateAccount(deps, A2, { accountId: full.accountId, tags: ["Hijacked"] }), code("ACCOUNT_NOT_FOUND"));
+    assert.equal(await count("account_tags", "tag = 'Hijacked'"), 0);
+    // The schema holds the same line when the authority is bypassed.
+    await assert.rejects(q(`INSERT INTO eos_crm.account_tags (tenant_id, account_id, position, tag) VALUES ('t2', $1, 9, 'Raw')`, [full.accountId]), (e) => e.constraint === "account_tags_account_same_tenant");
+    await assert.rejects(q(`UPDATE eos_crm.accounts SET payment_terms = 'NET_45' WHERE id = $1`, [full.accountId]), (e) => e.constraint === "accounts_payment_terms_vocabulary");
+    await assert.rejects(q(`UPDATE eos_crm.accounts SET default_currency = 'usd' WHERE id = $1`, [full.accountId]), (e) => e.constraint === "accounts_default_currency_shape");
+    await assert.rejects(q(`INSERT INTO eos_crm.account_lines_of_business (tenant_id, account_id, line_of_business) VALUES ('t1', $1, 'not a key')`, [full.accountId]), (e) => e.code === "23514");
+  });
+
+  await t.test("(14) GOVERNED FIELDS keep their distinct authority: customer.governedField.write", async () => {
+    const noGoverned = A1;
+    const governed = { ...A1, capabilities: new Set([...ALL, "customer.governedField.write"]) };
+    await assert.rejects(accounts.createAccount(deps, noGoverned, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Terms Co", status: "ACTIVE", paymentTerms: "NET_30" }), code("CAPABILITY_REQUIRED"));
+    const baseline = await accounts.createAccount(deps, noGoverned, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Terms Co", status: "ACTIVE", taxStatus: "UNKNOWN" });
+    assert.equal(baseline.taxStatus, "UNKNOWN");
+    await assert.rejects(accounts.updateAccount(deps, noGoverned, { accountId: baseline.accountId, paymentTerms: "NET_60" }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(accounts.updateAccount(deps, noGoverned, { accountId: baseline.accountId, taxStatus: "EXEMPT", name: "Sneaky" }), code("CAPABILITY_REQUIRED"));
+    assert.equal((await accounts.getAccount(deps, A1, { accountId: baseline.accountId })).name, "Terms Co", "a refused governed change left a partial effect");
+    const set = await accounts.updateAccount(deps, governed, { accountId: baseline.accountId, paymentTerms: "NET_60", taxStatus: "EXEMPT" });
+    assert.deepEqual([set.paymentTerms, set.taxStatus], ["NET_60", "EXEMPT"]);
+    // Naming the CURRENT governed values is not a governed write (accountGovernedFieldsUnchanged).
+    const same = await accounts.updateAccount(deps, noGoverned, { accountId: baseline.accountId, paymentTerms: "NET_60", taxStatus: "EXEMPT", notes: "ok" });
+    assert.equal(same.notes, "ok");
+    const created = await accounts.createAccount(deps, governed, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Governed Co", status: "ACTIVE", paymentTerms: "COD", taxStatus: "RESELLER" });
+    assert.deepEqual([created.paymentTerms, created.taxStatus], ["COD", "RESELLER"]);
+    // The governed capability never stands in for the record verb.
+    await assert.rejects(accounts.updateAccount(deps, { ...A1, capabilities: new Set(["customer.governedField.write"]) }, { accountId: created.accountId, paymentTerms: "NET_30" }), code("CAPABILITY_REQUIRED"));
+  });
+
+  await t.test("(15) STATUS: canonical vocabulary only; no transition graph is enforced", async () => {
+    const a = await accounts.createAccount(deps, A1, { idempotencyKey: K(), ownerEmployeeId: "e-t1", name: "Lifecycle Co", status: "ARCHIVED" });
+    for (const status of ["ACTIVE", "PROSPECT", "ARCHIVED", "INACTIVE", "PROSPECT"]) {
+      assert.equal((await accounts.updateAccount(deps, A1, { accountId: a.accountId, status })).status, status);
+    }
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: a.accountId, status: "DELETED" }), code("STATUS_INVALID"));
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: a.accountId, status: "prospect" }), code("STATUS_INVALID"));
+  });
+
+  await t.test("(16) IDEMPOTENCY: replay, request mismatch, scoping, raw key never stored, rollback leaves no receipt", async () => {
+    const key = `secret-key-${randomUUID()}`;
+    const input = { idempotencyKey: key, ownerEmployeeId: "e-t1", name: "Idempotent Co", status: "ACTIVE", tags: ["x"] };
+    const first = await accounts.createAccount(deps, A1, input);
+    const again = await accounts.createAccount(deps, A1, { ...input });
+    assert.equal(first.replayed, false);
+    assert.equal(again.replayed, true);
+    assert.deepEqual({ ...again, replayed: false }, first, "a replay returned a different result");
+    assert.equal(await count("accounts", "name = 'Idempotent Co'"), 1);
+    // A different request under the same key refuses and writes nothing.
+    await assert.rejects(accounts.createAccount(deps, A1, { ...input, name: "Other Co" }), code("IDEMPOTENCY_KEY_REUSED"));
+    assert.equal(await count("accounts", "name = 'Other Co'"), 0);
+    // Scope: the same key for another principal, another tenant or another operation is a different key.
+    await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider) VALUES ('p-t1-b','p-t1-b','proof')`);
+    await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-p-t1-b','t1','p-t1-b')`);
+    const otherPrincipal = await accounts.createAccount(deps, { ...A1, principalId: "p-t1-b" }, input);
+    assert.equal(otherPrincipal.replayed, false);
+    assert.notEqual(otherPrincipal.accountId, first.accountId);
+    const otherTenant = await accounts.createAccount(deps, A2, { ...input, ownerEmployeeId: "e-t2" });
+    assert.equal(otherTenant.replayed, false);
+    const contact = await contacts.createContact(deps, A1, { idempotencyKey: key, accountId: first.accountId, name: "Keyed" });
+    const site = await sites.createAccountLocation(deps, A1, { idempotencyKey: key, accountId: first.accountId, name: "Keyed" });
+    assert.equal(contact.replayed, false);
+    assert.equal(site.replayed, false);
+    assert.equal((await contacts.createContact(deps, A1, { idempotencyKey: key, accountId: first.accountId, name: "Keyed" })).contactId, contact.contactId);
+    assert.equal((await sites.createAccountLocation(deps, A1, { idempotencyKey: key, accountId: first.accountId, name: "Keyed" })).accountLocationId, site.accountLocationId);
+    assert.equal(await count("contacts", "name = 'Keyed'"), 1);
+    // The raw key is nowhere in the database.
+    const receipts = (await q(`SELECT * FROM eos_crm.command_receipts`)).rows;
+    assert.ok(receipts.length >= 5);
+    assert.ok(!JSON.stringify(receipts).includes(key), "a raw idempotency key was stored");
+    const mine = receipts.filter((r) => r.target_id === first.accountId);
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].idempotency_key_hash, createHash("sha256").update(key, "utf8").digest("hex"));
+    assert.deepEqual([mine[0].principal_id, mine[0].operation, mine[0].target_type], ["p-t1", "crm.createAccount", "ACCOUNT"]);
+    // Rollback: a create that fails leaves neither record nor receipt, and the key stays free.
+    const failKey = `fail-${randomUUID()}`;
+    await assert.rejects(accounts.createAccount(deps, A1, { idempotencyKey: failKey, ownerEmployeeId: "e-t2", name: "Rolled Back", status: "ACTIVE" }), code("OWNER_NOT_FOUND"));
+    const failingReceipt = {
+      connect: async () => {
+        const client = await pool.connect();
+        return {
+          query: (text, values) => /INSERT INTO eos_crm\.command_receipts/.test(String(text)) ? Promise.reject(Object.assign(new Error("boom"), { code: "57014" })) : client.query(text, values),
+          release: () => client.release(),
+        };
+      },
+    };
+    await assert.rejects(accounts.createAccount({ pool: failingReceipt }, A1, { idempotencyKey: failKey, ownerEmployeeId: "e-t1", name: "Rolled Back", status: "ACTIVE" }), code("CRM_COMMAND_FAILED"));
+    assert.equal(await count("accounts", "name = 'Rolled Back'"), 0, "the create survived its receipt's failure");
+    assert.equal(await count("command_receipts", "idempotency_key_hash = $1", [createHash("sha256").update(failKey, "utf8").digest("hex")]), 0);
+    // A COMMIT that fails after the receipt INSERT leaves no receipt either: the receipt is the create's own transaction.
+    const failingCommit = {
+      connect: async () => {
+        const client = await pool.connect();
+        return {
+          query: async (text, values) => {
+            if (String(text) === "COMMIT") { await client.query("ROLLBACK"); throw Object.assign(new Error("commit lost"), { code: "08006" }); }
+            return client.query(text, values);
+          },
+          release: () => client.release(),
+        };
+      },
+    };
+    const commitKey = `commit-${randomUUID()}`;
+    await assert.rejects(accounts.createAccount({ pool: failingCommit }, A1, { idempotencyKey: commitKey, ownerEmployeeId: "e-t1", name: "Commit Lost", status: "ACTIVE" }), code("CRM_COMMAND_FAILED"));
+    assert.equal(await count("accounts", "name = 'Commit Lost'"), 0);
+    assert.equal(await count("command_receipts", "idempotency_key_hash = $1", [createHash("sha256").update(commitKey, "utf8").digest("hex")]), 0, "a receipt survived its create's failed commit");
+    const retried = await accounts.createAccount(deps, A1, { idempotencyKey: failKey, ownerEmployeeId: "e-t1", name: "Rolled Back", status: "ACTIVE" });
+    assert.equal(retried.replayed, false);
+  });
+
+  await t.test("(17) IDEMPOTENCY under concurrency: twelve simultaneous first executions create exactly one Account", async () => {
+    const key = `race-${randomUUID()}`;
+    const racePool = new pg.Pool({ connectionString: dbUrl(), max: 12 });
+    try {
+      const results = await Promise.all(Array.from({ length: 12 }, () =>
+        accounts.createAccount({ pool: racePool }, A1, { idempotencyKey: key, ownerEmployeeId: "e-t1", name: "Race Co", status: "ACTIVE" })));
+      assert.equal(new Set(results.map((r) => r.accountId)).size, 1);
+      assert.equal(results.filter((r) => !r.replayed).length, 1);
+      assert.equal(await count("accounts", "name = 'Race Co'"), 1);
+      assert.equal(await count("command_receipts", "idempotency_key_hash = $1", [createHash("sha256").update(key, "utf8").digest("hex")]), 1);
+    } finally {
+      await racePool.end();
+    }
+  });
+
+  await t.test("(18) migration 026 refuses to roll back while governed facts or receipts exist", async (st) => {
+    // Pinned by NAME, not as "the latest": `down 1` reverses the last-run migration, so this proof runs only while 026 is
+    // that migration in this database, and says so instead of silently testing a different one.
+    const names = (await q(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC`)).rows.map((r) => r.name);
+    assert.ok(names.includes("1759795200000_crm-account-business-facts-and-receipts"));
+    if (names[0] !== "1759795200000_crm-account-business-facts-and-receipts") return st.skip("a later migration was applied after 026");
+    const down = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "1", "--migrations-dir", "migrations"],
+      { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
+    assert.notEqual(down.status, 0);
+    assert.match(down.stdout + down.stderr, /migration 026 refuses to drop CRM Account business facts/);
+    assert.ok((await q(`SELECT to_regclass('eos_crm.command_receipts') AS t`)).rows[0].t, "the receipts table was dropped");
   });
 });
