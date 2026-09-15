@@ -513,16 +513,16 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     }
   });
 
-  await t.test("(18) migration 026 refuses to roll back while governed facts or receipts exist", async (st) => {
-    // Pinned by NAME, not as "the latest": `down 1` reverses the last-run migration, so this proof runs only while 026 is
+  await t.test("(18) migration 025 refuses to roll back while governed facts or receipts exist", async (st) => {
+    // Pinned by NAME, not as "the latest": `down 1` reverses the last-run migration, so this proof runs only while 025 is
     // that migration in this database, and says so instead of silently testing a different one.
     const names = (await q(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC`)).rows.map((r) => r.name);
-    assert.ok(names.includes("1759795200000_crm-account-business-facts-and-receipts"));
-    if (names[0] !== "1759795200000_crm-account-business-facts-and-receipts") return st.skip("a later migration was applied after 026");
+    assert.ok(names.includes("1759708800000_crm-account-business-facts-and-receipts"));
+    if (names[0] !== "1759708800000_crm-account-business-facts-and-receipts") return st.skip("a later migration was applied after 025");
     const down = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "1", "--migrations-dir", "migrations"],
       { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
     assert.notEqual(down.status, 0);
-    assert.match(down.stdout + down.stderr, /migration 026 refuses to drop CRM Account business facts/);
+    assert.match(down.stdout + down.stderr, /migration 025 refuses to drop CRM Account business facts/);
     assert.ok((await q(`SELECT to_regclass('eos_crm.command_receipts') AS t`)).rows[0].t, "the receipts table was dropped");
   });
 });

@@ -15,7 +15,12 @@
 // from the Principal, a Firebase uid, a Security Role, a Job Role or the creator, and this authority cannot create an
 // ownerless Account. Owner change after creation is ACCOUNT_OWNER_HANDOFF_PENDING: no governed PostgreSQL handoff writer
 // supports the Account family (eos_commercial's ownership_handoffs name Commercial records only), so it is not offered
-// here and never through customer.record.update.
+// here and never through customer.record.update. Owner ruling: legacy accountOwner.assignedBy* / assignedAt never become
+// Account columns; future changes go through a governed Account ownership-handoff writer (prior owner, new owner,
+// effective time, changed-by Principal, governed reason/source).
+//
+// BILLING ADDRESS. Owner ruling: a single free-text billing address is never parsed into the structured parts; it is
+// refused here (FIELD_INVALID) and belongs only in import staging / reconciliation evidence until resolved.
 //
 // STATUS. The canonical vocabulary only. D-C1-5's transition graph is PROPOSED and is not enforced.
 //

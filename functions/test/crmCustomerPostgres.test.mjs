@@ -97,7 +97,7 @@ test("eos_crm stands beside eos_policy and eos_ops, with its three record tables
   const tables = await query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_crm' ORDER BY 1",
   );
-  // Migration 008's three record tables, plus migration 026's (wave D1-A): the Account's normalized multi-valued
+  // Migration 008's three record tables, plus migration 025's (wave D1-A): the Account's normalized multi-valued
   // business facts and the CRM create-idempotency receipts. Still no location or inventory table of any kind.
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
     "account_lines_of_business", "account_locations", "account_relationship_types", "account_tags", "accounts",
@@ -171,7 +171,7 @@ test("there is NO foreign key in either direction between eos_crm and eos_ops", 
   assert.deepEqual(crossing.rows, [],
     "the inventory location_id is opaque governed data; pointing it at a customer site would assert a stock position IS one");
 
-  // The only edges eos_crm has outside itself are tenancy -- the tenant, and (migration 026) the tenant MEMBERSHIP a
+  // The only edges eos_crm has outside itself are tenancy -- the tenant, and (migration 025) the tenant MEMBERSHIP a
   // create receipt's principal must hold.
   const outbound = await query(
     `SELECT DISTINCT dst.nspname AS to_schema, dt.relname AS to_table
@@ -447,7 +447,7 @@ test("the composite keys a future Equipment table needs are present", { skip: SK
       WHERE n.nspname = 'eos_crm' AND c.contype = 'u'
       ORDER BY 1, 2`,
   );
-  // Migration 026 (wave D1-A) adds exactly three: a Contact addressable with its Account (so an Account's billing contact
+  // Migration 025 (wave D1-A) adds exactly three: a Contact addressable with its Account (so an Account's billing contact
   // must be its own), one tag value per Account, and one create receipt per idempotency key. Still NO uniqueness on a
   // name or an external identifier (ruling D-C1-4).
   assert.deepEqual(uniques.rows, [

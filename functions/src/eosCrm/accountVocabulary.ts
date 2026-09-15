@@ -11,7 +11,7 @@
 //   ISO_4217_CURRENCIES            field-ops-app-vite/src/domain/commercialProfile.js ISO_4217_CURRENCIES -- the SAME
 //                                  fixed set, fail-closed, never a runtime currency list
 //
-// Migration 1759795200000 carries the enum lists as CHECK constraints (lines of business only as an opaque key shape:
+// Migration 1759708800000 (025) carries the enum lists as CHECK constraints (lines of business only as an opaque key shape:
 // executable SQL never names an operating company); crmAuthority.test.mjs pins these lists to the
 // client sources and to that migration so the three cannot drift apart silently.
 

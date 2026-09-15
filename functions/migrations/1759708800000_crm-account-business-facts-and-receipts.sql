@@ -1,5 +1,5 @@
 -- Up Migration
--- MIGRATION 026 -- CRM Account business facts and create idempotency receipts (wave D1-A corrections).
+-- MIGRATION 025 -- CRM Account business facts and create idempotency receipts (wave D1-A corrections).
 --
 -- ════════════════════ WHAT MOVES, AND WHY THESE ════════════════════
 --
@@ -43,7 +43,21 @@
 -- never stored. `request_hash` is the SHA-256 of the canonical create input, so a reused key with a different request
 -- refuses deterministically instead of replaying an unrelated result. Not audit infrastructure.
 --
--- STANDARD POSTGRESQL ONLY. Independent of migrations 023 and 025.
+-- ════════════════════ OWNER RULINGS RECORDED HERE (2026-09-14) ════════════════════
+--
+-- BILLING ADDRESS. A single free-text billing address is NEVER heuristically parsed into these structured columns.
+-- Structured import components map directly; a single free-text value (the import contract's `billingAddress` string,
+-- functions/src/dataImport/contracts/customerImportContract.ts) is preserved only in import staging / reconciliation
+-- evidence, the row is marked as requiring address resolution, and authoritative execution of that field is refused
+-- until it is resolved. There is deliberately NO permanent free-text billing-address column. The governed authority
+-- refuses a string billingAddress (FIELD_INVALID).
+--
+-- ACCOUNT OWNER HISTORY. The legacy accountOwner.assignedBy* / assignedAt provenance does NOT become Account columns.
+-- Future owner changes go through a governed Account ownership-handoff writer (prior owner, new owner, effective time,
+-- changed-by Principal, governed reason/source); legacy history enters only by a one-time migration if trustworthy,
+-- otherwise as migration evidence only. Account owner handoff remains NOT IMPLEMENTED (ACCOUNT_OWNER_HANDOFF_PENDING).
+--
+-- STANDARD POSTGRESQL ONLY. Independent of migration 023 and of the catalog foundation migration.
 
 SET search_path = eos_crm, public;
 
@@ -146,7 +160,7 @@ BEGIN
               OR payment_terms IS NOT NULL OR tax_status IS NOT NULL OR billing_contact_id IS NOT NULL)
       INTO recorded;
     IF recorded > 0 THEN
-        RAISE EXCEPTION 'migration 026 refuses to drop CRM Account business facts: % rows carry them', recorded
+        RAISE EXCEPTION 'migration 025 refuses to drop CRM Account business facts: % rows carry them', recorded
             USING HINT = 'Reversing this migration destroys Account business data or create receipts. Export it deliberately first, or do not reverse it.';
     END IF;
 END

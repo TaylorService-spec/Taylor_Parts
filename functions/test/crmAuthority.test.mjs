@@ -32,7 +32,7 @@ function walk(dir, exts) {
 const crmSources = () => walk(CRM, [".ts"]);
 const rel = (f) => relative(FUNCTIONS_DIR, f).split("\\").join("/");
 const MIGRATION_024 = "1759622400000_crm-capability-vocabulary.sql";
-const MIGRATION_026 = "1759795200000_crm-account-business-facts-and-receipts.sql";
+const MIGRATION_025 = "1759708800000_crm-account-business-facts-and-receipts.sql";
 const CRM_CAPABILITY_IDS = ["customer.governedField.write", "customer.record.create", "customer.record.read", "customer.record.update"];
 
 /** A pool that must never be reached: every refusal below happens before a connection is taken. */
@@ -283,7 +283,7 @@ test("(F15) Account business fields validate against the stored vocabulary; stat
   assert.doesNotMatch(strip(readFileSync(join(CRM, "accountAuthority.ts"), "utf8")), /TRANSITION|allowedNext|ILLEGAL_TRANSITION/i);
 });
 
-test("(F16) the vocabulary is pinned to the Account form's constants and to migration 026", () => {
+test("(F16) the vocabulary is pinned to the Account form's constants and to migration 025", () => {
   const constants = readFileSync(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src", "domain", "constants.js"), "utf8");
   const block = (name) => [...constants.slice(constants.indexOf(`export const ${name} = {`)).split("};")[0].matchAll(/:\s*"([A-Z_0-9]+)"/g)].map((m) => m[1]);
   assert.deepEqual([...vocabulary.ACCOUNT_RELATIONSHIP_TYPES], block("ACCOUNT_RELATIONSHIP_TYPE"));
@@ -294,7 +294,7 @@ test("(F16) the vocabulary is pinned to the Account form's constants and to migr
   const profile = readFileSync(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src", "domain", "commercialProfile.js"), "utf8");
   const iso = [...profile.slice(profile.indexOf("const ISO_4217_CURRENCIES")).split("]);")[0].matchAll(/"([A-Z]{3})"/g)].map((m) => m[1]);
   assert.deepEqual([...vocabulary.ISO_4217_CURRENCIES], iso);
-  const sql = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_026), "utf8").split("-- Down Migration")[0];
+  const sql = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_025), "utf8").split("-- Down Migration")[0];
   const inList = (column) => [...sql.match(new RegExp(`${column} IN \\(([^)]*)\\)`))[1].matchAll(/'([A-Z_0-9]+)'/g)].map((m) => m[1]);
   assert.deepEqual(inList("invoice_delivery_method"), [...vocabulary.INVOICE_DELIVERY_METHODS]);
   assert.deepEqual(inList("payment_terms"), [...vocabulary.PAYMENT_TERMS]);
@@ -319,7 +319,7 @@ test("(F17) idempotency: creates require a key; only its hash is persisted; rece
   assert.ok(run.indexOf('"BEGIN"') < run.indexOf("pg_advisory_xact_lock") && run.indexOf("pg_advisory_xact_lock") < run.indexOf("INSERT INTO eos_crm.command_receipts")
     && run.indexOf("INSERT INTO eos_crm.command_receipts") < run.indexOf('"COMMIT")', run.indexOf("const outcome")), "the receipt is not written inside the create's transaction");
   assert.doesNotMatch(run, /deps\.pool\.query/, "a receipt or lookup bypasses the transaction's client");
-  const mig = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_026), "utf8").split("-- Down Migration")[0];
+  const mig = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_025), "utf8").split("-- Down Migration")[0];
   assert.match(mig, /idempotency_key_hash TEXT NOT NULL CHECK \(idempotency_key_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/);
   assert.match(mig, /CONSTRAINT command_receipts_one_per_key UNIQUE \(tenant_id, principal_id, operation, idempotency_key_hash\)/);
   assert.doesNotMatch(mig, /JSON(B)? .*legacy|firestore_document|raw_key|idempotency_key TEXT/i);
