@@ -61,10 +61,12 @@ test("(F1) no Firebase: no CRM authority module names it, and loading every one 
   assert.equal(probe.status, 0, `a D1-A module transitively loaded Firebase: ${probe.stderr}`);
 });
 
-test("(F2) not wired: nothing outside src/eosCrm imports it, and no runtime surface or client names it", () => {
+test("(F2) the only runtime entry point is the CRM transport composed by server.ts; the client never imports it", () => {
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(CRM) && /eosCrm\//.test(readFileSync(f, "utf8")));
-  assert.deepEqual(importers.map(rel), [], "a module outside the CRM authority layer imports it");
-  for (const surface of ["index.ts", "eosApi/server.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
+  assert.deepEqual(importers.map(rel), ["src/eosApi/server.ts"], "a module other than server.ts imports the CRM authority layer");
+  const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
+  assert.deepEqual([...server.matchAll(/from "([^"]*eosCrm[^"]*)"/g)].map((m) => m[1]), ["../eosCrm/crmHttp"]);
+  for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts", "eosCommercial/commercialHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCrm|crmAuthorityKernel|accountAuthority|contactAuthority|accountLocationAuthority/, `${surface} reaches the CRM authority layer`);
   }
   const client = walk(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
