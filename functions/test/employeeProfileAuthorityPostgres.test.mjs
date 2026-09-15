@@ -35,7 +35,7 @@ async function withClient(url, fn) {
 const migrator = (url) => (...args) => execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations"], {
   cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: url }, stdio: "pipe",
 });
-async function freshWorld(t, prefix) {
+async function freshWorld(t, prefix, upThroughTimestamp = null) {
   let pool;
   const name = `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
@@ -44,7 +44,9 @@ async function freshWorld(t, prefix) {
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
   const url = dbUrlFor(name);
-  migrator(url)("up");
+  // The schema suite pins THROUGH this lane's migration: a later migration (e.g. catalog 027) must not become the one its down proof reverses.
+  if (upThroughTimestamp) migrator(url)("up", upThroughTimestamp, "--timestamp");
+  else migrator(url)("up");
   pool = new pg.Pool({ connectionString: url, max: 8 });
   const q = (text, values = []) => pool.query(text, values);
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
@@ -60,7 +62,7 @@ const code = (err) => err?.code;
 // ════════════════════ schema ════════════════════
 
 test("migration: vocabulary without grants, typed nullable profile facts, no forbidden column, a refusing down", { skip: SKIP, concurrency: 1 }, async (t) => {
-  const { q, run } = await freshWorld(t, "emp_schema");
+  const { q, run } = await freshWorld(t, "emp_schema", "1759838400000");
 
   await t.test("the three keys are registered as vocabulary and no migration grants anything", async () => {
     const rows = (await q(`SELECT id, key FROM eos_policy.capabilities WHERE key IN ('employee.record.read','admin.principalAccess.read','admin.employeeProfile.write') ORDER BY key`)).rows;

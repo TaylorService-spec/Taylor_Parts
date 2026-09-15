@@ -395,7 +395,12 @@ test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t)
     const unsummed = run("census", snap, [], { checksum: false });
     assert.equal(unsummed.status, 2);
     assert.match(unsummed.err, /sha256 is missing/);
-    assert.doesNotMatch(census.out + census.err, new RegExp(new URL(URL_BASE).password || "no-password-to-leak"));
+    // Look for the connection secret in a form that cannot collide with ordinary output (a short CI password such as
+    // "eos" also appears in project ids): the whole URL, and the password in its user:password@ position.
+    const leaked = census.out + census.err;
+    assert.ok(!leaked.includes(URL_BASE), "the database URL leaked");
+    const password = new URL(URL_BASE).password;
+    if (password) assert.ok(!leaked.includes(`:${password}@`), "the database password leaked");
 
     const dup = COPY_SNAPSHOT();
     dup.equipmentModels.push(modelDoc("ACME--CW-100"));
