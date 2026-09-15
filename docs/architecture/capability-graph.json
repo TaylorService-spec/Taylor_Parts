@@ -408,6 +408,7 @@
           "functions/src/account/accountPortfolioSummary.ts",
           "functions/src/assistant/assistantStarters.ts",
           "functions/src/dataImport/importedServiceHistoryReadService.ts",
+          "functions/src/eosCrm/crmAuthorityKernel.ts",
           "functions/src/performance/performanceGoalAuthority.ts"
         ],
         "clientReferences": [
@@ -419,7 +420,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 8,
+        "serverReferenceCount": 9,
         "clientReferenceCount": 7,
         "evidence": "EXPORTED"
       },
@@ -441,7 +442,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/account/accountImportCommand.ts"
+          "functions/src/account/accountImportCommand.ts",
+          "functions/src/eosCrm/crmAuthorityKernel.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -450,7 +452,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -471,7 +473,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/eosCrm/crmAuthorityKernel.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -480,7 +483,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -501,7 +504,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/eosCrm/crmAuthorityKernel.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -510,7 +514,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },

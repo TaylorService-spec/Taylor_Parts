@@ -120,6 +120,13 @@ on:
       - "functions/src/eosCommercial/commercialHttp.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
+      # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
+      # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
+      - "functions/src/eosCrm/**"
+      - "functions/migrations/1759622400000_crm-capability-vocabulary.sql"
+      - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
+      - "functions/test/crmAuthority.test.mjs"
+      - "functions/test/crmAuthorityPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
@@ -228,6 +235,13 @@ on:
       - "functions/src/eosCommercial/commercialHttp.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
+      # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
+      # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
+      - "functions/src/eosCrm/**"
+      - "functions/migrations/1759622400000_crm-capability-vocabulary.sql"
+      - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
+      - "functions/test/crmAuthority.test.mjs"
+      - "functions/test/crmAuthorityPostgres.test.mjs"
       # ENG-C (required registration, baseline 64008d5ae0bdd9532909671b15a91122400accf1): the
       # inventory capability PARITY HARNESS and its three suites run in test:adminPolicy but were
       # named by NO path filter in any workflow, and no workflow carries a functions/scripts/**
