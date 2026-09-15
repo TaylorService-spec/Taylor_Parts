@@ -8649,6 +8649,21 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-my-profile { }
 .ns-emp-access { margin: 0 0 16px; }
 .ns-emp-sources { gap: 0; }
+/* A Workforce read failure, and the page-level "editing is not available" statement. */
+.ns-emp-failure { margin: 8px 0; }
+.ns-emp-edit-unavailable { margin: 0 0 18px; max-width: 68ch; }
+
+/* Records on a responsibility axis, family by family. The family label and every record title wrap -- a
+   long Account name or number is never clipped. */
+.ns-emp-families { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 8px; }
+.ns-emp-family { min-width: 0; }
+.ns-emp-family__label { margin: 0; font-size: 12px; font-weight: 600; color: var(--color-text-primary); overflow-wrap: anywhere; }
+.ns-emp-family__state { padding: 2px 0; font-size: 13px; }
+.ns-emp-records { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 2px; }
+.ns-emp-record { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; min-width: 0; font-size: 13.5px; }
+.ns-emp-record__title { min-width: 0; overflow-wrap: anywhere; color: var(--color-text-primary); }
+.ns-emp-record__state { font-size: 12px; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+
 .ns-emp-sources__row { display: block; }
 .ns-emp-sources__row + .ns-emp-sources__row { margin-top: 10px; }
 .ns-emp-sources__row dt { margin-top: 0; }

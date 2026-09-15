@@ -1,8 +1,8 @@
 // VISUAL HARNESS — renders the Employee operating profile (Administration record + self view) to
 // static files with the real stylesheet. Not an assertion suite.
 //
-// Same technique as the Parts / Opportunity harnesses: the real components, the directory read mocked
-// at the hook boundary and the session at AuthContext, so the composition on screen is the one the
+// Same technique as the Parts / Opportunity harnesses: the real components, the Workforce transport injected
+// as a stub client and the session at AuthContext, so the composition on screen is the one the
 // pages produce. The output is what a browser measures at 1440 and 375 (horizontal overflow, clipped
 // responsibility labels, touch-floor sizes) without a dev server or credentials.
 //
@@ -15,43 +15,60 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import fs from "node:fs";
 import path from "node:path";
 
+const nameOf = (displayName) => ({ displayName, firstName: "Dana", middleName: null, lastName: "Reyes-Montgomery", preferredName: null });
+// EMP-RT-01 / EMP-RT-07 projection, test-only.
 const EMPLOYEE = {
-  id: "emp-1",
-  displayName: "Dana Reyes-Montgomery",
+  employeeId: "emp-1",
   employmentStatus: "ON_LEAVE",
-  operationalRoles: ["SALES_ASSOCIATE", "TECHNICIAN"],
-  securityRole: "salesperson",
-  userId: "uid-dana",
-  jobTitle: "Senior Account Executive, Commercial Refrigeration",
-  employeeNumber: "TAZ-0042",
   operatingCompanyId: "taylor",
-  managerEmployeeId: "emp-2",
-  workEmail: "dana.reyes-montgomery@example.test",
+  employeeNumber: "TAZ-0042",
+  displayName: "Dana Reyes-Montgomery",
+  name: nameOf("Dana Reyes-Montgomery"),
+  jobTitle: "Senior Account Executive, Commercial Refrigeration",
+  contact: { workEmail: "dana.reyes-montgomery@example.test", workPhone: null, mobilePhone: null },
+  address: { street: null, unit: null, city: null, state: null, postalCode: null },
+  hireDate: "2019-04-01",
+  separationDate: null,
+  currentManager: { managerEmployeeId: "emp-2", displayName: "Mike Jones", effectiveFrom: "2026-01-05T00:00:00.000Z" },
+  userAccess: "LINKED",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
-const MANAGER = { id: "emp-2", displayName: "Mike Jones", employmentStatus: "ACTIVE" };
+const LONG = "Canyon Foods Regional Distribution — Southwest Commissary and Frozen Dessert Programme";
 
-vi.mock("../../src/hooks/useEmployeeDirectory", () => ({
-  useEmployeeDirectory: () => ({
-    byUserId: new Map([["uid-dana", EMPLOYEE]]),
-    byEmployeeId: new Map([["emp-1", EMPLOYEE], ["emp-2", MANAGER]]),
-    loading: false,
-    error: null,
-  }),
-}));
 vi.mock("../../src/auth/AuthContext", () => ({
-  useAuth: () => ({
-    user: { uid: "uid-dana" },
-    role: "technician",
-    employeeId: "emp-1",
-    displayName: "Dana Reyes-Montgomery",
-    employmentStatus: "ON_LEAVE",
-    operationalRoles: ["TECHNICIAN"],
-    loading: false,
-  }),
+  useAuth: () => ({ user: { uid: "uid-dana" }, role: "technician", loading: false }),
 }));
 
 const { default: UserDetail } = await import("../../src/modules/administration/UserDetail.jsx");
 const { default: MyEmployeeProfile } = await import("../../src/modules/employees/MyEmployeeProfile.jsx");
+
+const workforce = {
+  call: async (operation, input) => {
+    switch (operation) {
+      case "readEmployee":
+        return { ok: true, result: EMPLOYEE };
+      case "readMyEmployeeProfile":
+        return { ok: true, result: { employee: EMPLOYEE, principalLink: { linkId: "l", principalId: "pr-1", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } } };
+      case "readEmployeePrincipalLink":
+        return { ok: true, result: { employeeId: "emp-1", userAccess: "LINKED", link: { linkId: "l", principalId: "pr-1", principalDisplayName: "Dana Reyes-Montgomery", principalStatus: "active", membershipStatus: "active", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } } };
+      case "listManagedEmployees":
+        return { ok: true, result: { items: [{ employeeId: "emp-7", displayName: "Alexandra Konstantinopoulou-Whitfield", employmentStatus: "ACTIVE", employeeNumber: null, operatingCompanyId: "taylor", jobTitle: null, reportingSince: "2026-01-01" }], truncated: false } };
+      case "listRecordsOwnedByEmployee":
+        return input.family === "ACCOUNT"
+          ? { ok: true, result: { items: [{ family: "ACCOUNT", recordId: "a1", recordNumber: null, name: LONG, state: "ACTIVE", accountId: "a1", operatingCompanyId: null, updatedAt: "x" }], truncated: true } }
+          : input.family === "SALES_ORDER" ? { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 }
+          : { ok: true, result: { items: [], truncated: false } };
+      case "listAccountabilitiesForEmployee":
+        return input.family === "OPPORTUNITY"
+          ? { ok: true, result: { items: [{ family: "OPPORTUNITY", recordId: "o1", recordNumber: "OPP-2026-000412", name: null, state: "QUALIFY", accountId: "a1", operatingCompanyId: "taylor", updatedAt: "x", currentAccountability: null }], truncated: false } }
+          : { ok: true, result: { items: [], truncated: false } };
+      default:
+        return { ok: false, code: "UNKNOWN_OPERATION" };
+    }
+  },
+};
+const policyCall = async () => ({ ok: true, data: [{ id: "pr-1", externalSubject: "uid-dana", identityProvider: "firebase", displayName: "Dana", status: "active" }] });
 
 const client = {
   updateEmployeeProfile: async () => ({ ok: true }),
@@ -77,12 +94,12 @@ describe.skipIf(!process.env.VISUAL)("visual harness — Employee operating prof
     const { container, findByRole } = render(
       <MemoryRouter initialEntries={["/administration/users/emp-1"]}>
         <Routes>
-          <Route path="/administration/users/:employeeId" element={<UserDetail client={client} />} />
+          <Route path="/administration/users/:employeeId" element={<UserDetail client={client} workforce={workforce} policyCall={policyCall} hasCapability={() => true} />} />
         </Routes>
       </MemoryRouter>,
     );
     await findByRole("heading", { level: 1 });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 60));
     write(container, "employee-record.rendered.html", "Employee record — rendered");
     cleanup();
   });
@@ -91,11 +108,12 @@ describe.skipIf(!process.env.VISUAL)("visual harness — Employee operating prof
     const { container, findByRole } = render(
       <MemoryRouter initialEntries={["/my-profile"]}>
         <Routes>
-          <Route path="/my-profile" element={<MyEmployeeProfile />} />
+          <Route path="/my-profile" element={<MyEmployeeProfile workforce={workforce} />} />
         </Routes>
       </MemoryRouter>,
     );
     await findByRole("heading", { level: 1 });
+    await new Promise((r) => setTimeout(r, 60));
     write(container, "employee-self.rendered.html", "Employee self view — rendered");
     cleanup();
   });

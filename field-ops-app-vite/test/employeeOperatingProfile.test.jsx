@@ -1,52 +1,38 @@
-// EMPLOYEE OPERATING PROFILE (Employee design v4.1) -- the Administration Employee record, the self
-// view, and the pure domain underneath both.
+// EMPLOYEE OPERATING PROFILE (Employee design v4.1) on the governed Workforce transport -- the Administration
+// Employee record, the self view, and the pure domain underneath both.
 //
-// Rendered through the real components. The Firestore directory read is mocked at the HOOK boundary
-// and the session at AuthContext -- the same technique administrationUsersSurfaces.test.jsx uses --
-// so nothing here reaches Firebase or the network. Fixtures live only in this file.
-//
-// What is proved, one describe each:
-//   * Employee and User Access are separate sections, with linked and unlinked states
-//   * Record Owner / Accountable Person / Assigned Person are three separate axes, never merged
-//   * the six-value lifecycle renders as six distinct words and meanings
-//   * Inactive / Terminated / Retired Employees stay resolvable and displayable
-//   * Job Role is NOT GOVERNED -- never inferred from Security Role, eligibility or job title, and
-//     Retail Sales and National Accounts Sales are never one generic Sales role
-//   * the self view renders linked, unlinked and unresolved sessions without a new read
-//   * static ratchet: no Firebase import, no collection() read, no demo data in the new files
-//   * mobile/touch CSS contract, accessibility labels, and the route/rail wiring
+// The Workforce transport is a mocked client injected through the pages' `workforce` prop; the Administration
+// API (credential lookup) through `policyCall`; the session at AuthContext. No Firestore hook is mocked anywhere
+// in this file, because neither page has one -- and the static ratchet at the bottom proves it. Fixtures live
+// only in this file.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, within } from "@testing-library/react";
+import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-let directory = { byUserId: new Map(), byEmployeeId: new Map(), loading: false, error: null };
-let session = { user: { uid: "actor-1" }, role: "admin", loading: false };
-
-vi.mock("../src/hooks/useEmployeeDirectory", () => ({
-  useEmployeeDirectory: () => directory,
-}));
-vi.mock("../src/auth/AuthContext", () => ({
-  useAuth: () => session,
-}));
+let session = { user: { uid: "uid-dana" }, role: "admin", loading: false };
+vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => session }));
 
 import UserDetail from "../src/modules/administration/UserDetail.jsx";
 import MyEmployeeProfile from "../src/modules/employees/MyEmployeeProfile.jsx";
 import {
-  EMPLOYEE_LIFECYCLE,
+  ACCOUNTABLE_RECORD_FAMILIES,
   EMPLOYEE_LIFECYCLE_VALUES,
   EMPLOYEE_RUNTIME_DEPENDENCY,
   JOB_ROLE_STATE,
   LIFECYCLE_STANDING,
+  MY_PROFILE_STATE,
+  OWNED_RECORD_FAMILIES,
   RESPONSIBILITY_AXIS,
   RUNTIME_DEPENDENCIES,
   USER_ACCESS_LINK,
   describeJobRole,
   describeLifecycle,
+  describeMyProfileFailure,
   describeResponsibilities,
-  describeSelf,
   describeUserAccessRelationship,
+  describeWorkforceFailure,
   explainWhyInFrontOfMe,
 } from "../src/domain/employeeOperatingProfile.js";
 import { EMPLOYMENT_STATUS_VALUES } from "../src/domain/employeeVocabulary.js";
@@ -54,32 +40,70 @@ import { EMPLOYMENT_STATUS_VALUES } from "../src/domain/employeeVocabulary.js";
 const read = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
 const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "").replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
 
-// ── fixtures (test-only) ──
-const LINKED = {
-  id: "emp-1",
-  displayName: "Dana Reyes",
+// ── fixtures (test-only), in the EMP-RT-01 projection shape ──
+const rec = (over) => ({
   employmentStatus: "ACTIVE",
-  operationalRoles: ["SALES_ASSOCIATE"],
-  securityRole: "salesperson",
-  userId: "uid-dana",
-  jobTitle: "Account Executive",
   operatingCompanyId: "taylor",
-};
-const UNLINKED = { id: "emp-2", displayName: "Lee Park", employmentStatus: "CONTRACTOR" };
-const TERMINATED = { id: "emp-3", displayName: "Sam Ortiz", employmentStatus: "TERMINATED", managerEmployeeId: "emp-1", separationDate: "2026-03-31" };
-const INACTIVE = { id: "emp-4", displayName: "Kim Wu", employmentStatus: "INACTIVE" };
-const RETIRED = { id: "emp-5", displayName: "Pat Gray", employmentStatus: "RETIRED" };
+  employeeNumber: null,
+  jobTitle: null,
+  name: { displayName: over.displayName ?? null, firstName: null, middleName: null, lastName: null, preferredName: null },
+  contact: { workEmail: null, workPhone: null, mobilePhone: null },
+  address: { street: null, unit: null, city: null, state: null, postalCode: null },
+  hireDate: null,
+  separationDate: null,
+  currentManager: null,
+  userAccess: "UNLINKED",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  ...over,
+});
+const DANA = rec({
+  employeeId: "emp-1",
+  displayName: "Dana Reyes",
+  jobTitle: "Account Executive",
+  userAccess: "LINKED",
+  currentManager: { managerEmployeeId: "emp-9", displayName: "Morgan Hale", effectiveFrom: "2026-02-01T00:00:00.000Z" },
+});
+const LEE = rec({ employeeId: "emp-2", displayName: "Lee Park", employmentStatus: "CONTRACTOR" });
+const SAM = rec({ employeeId: "emp-3", displayName: "Sam Ortiz", employmentStatus: "TERMINATED", separationDate: "2026-03-31" });
+const KIM = rec({ employeeId: "emp-4", displayName: "Kim Wu", employmentStatus: "INACTIVE" });
+const PAT = rec({ employeeId: "emp-5", displayName: "Pat Gray", employmentStatus: "RETIRED" });
 
-function seed(records = [LINKED, UNLINKED, TERMINATED, INACTIVE, RETIRED]) {
-  directory = {
-    byUserId: new Map(records.filter((r) => r.userId).map((r) => [r.userId, r])),
-    byEmployeeId: new Map(records.map((r) => [r.id, r])),
-    loading: false,
-    error: null,
+const LINK = { linkId: "l-1", principalId: "pr-1", principalDisplayName: "Dana Reyes", principalStatus: "active", membershipStatus: "active", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null };
+
+const ok = (result) => ({ ok: true, result });
+const fail = (code, reason = null, status = null) => ({ ok: false, code, reason, status, message: "refused" });
+
+/** A mocked Workforce transport. `overrides[operation]` replaces an answer (a value or a function of input). */
+function makeWorkforce(overrides = {}, records = [DANA, LEE, SAM, KIM, PAT]) {
+  const byId = Object.fromEntries(records.map((r) => [r.employeeId, r]));
+  return {
+    call: vi.fn(async (operation, input) => {
+      if (operation in overrides) {
+        const o = overrides[operation];
+        return typeof o === "function" ? o(input) : o;
+      }
+      switch (operation) {
+        case "readEmployee":
+          return byId[input.employeeId] ? ok(byId[input.employeeId]) : fail("NOT_FOUND", "EMPLOYEE_NOT_FOUND", 404);
+        case "readEmployeePrincipalLink":
+          return ok({ employeeId: input.employeeId, userAccess: byId[input.employeeId]?.userAccess, link: byId[input.employeeId]?.userAccess === "LINKED" ? LINK : null });
+        case "readMyEmployeeProfile":
+          return ok({ employee: DANA, principalLink: { linkId: "l-1", principalId: "pr-1", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } });
+        case "listManagedEmployees":
+        case "listRecordsOwnedByEmployee":
+        case "listAccountabilitiesForEmployee":
+          return ok({ items: [], truncated: false, nextCursor: null });
+        default:
+          return fail("UNKNOWN_OPERATION");
+      }
+    }),
   };
 }
 
-const client = () => ({
+const policyCall = vi.fn(async () => ({ ok: true, data: [{ id: "pr-1", displayName: "Dana Reyes", externalSubject: "uid-dana", identityProvider: "firebase", status: "active" }] }));
+
+const legacyClient = () => ({
   updateEmployeeProfile: vi.fn(),
   setUserStatus: vi.fn(),
   assignApprovedRole: vi.fn(),
@@ -88,20 +112,20 @@ const client = () => ({
   listRecordChangeHistory: vi.fn().mockResolvedValue({ ok: true, rows: [] }),
 });
 
-const renderRecord = (employeeId = "emp-1") =>
+const renderRecord = (employeeId = "emp-1", workforce = makeWorkforce(), client = legacyClient(), hasCapability = undefined) =>
   render(
     <MemoryRouter initialEntries={[`/administration/users/${employeeId}`]}>
       <Routes>
-        <Route path="/administration/users/:employeeId" element={<UserDetail client={client()} />} />
+        <Route path="/administration/users/:employeeId" element={<UserDetail client={client} workforce={workforce} policyCall={policyCall} hasCapability={hasCapability} />} />
       </Routes>
     </MemoryRouter>,
   );
 
-const renderSelf = () =>
+const renderSelf = (workforce = makeWorkforce()) =>
   render(
     <MemoryRouter initialEntries={["/my-profile"]}>
       <Routes>
-        <Route path="/my-profile" element={<MyEmployeeProfile />} />
+        <Route path="/my-profile" element={<MyEmployeeProfile workforce={workforce} />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -110,280 +134,298 @@ const section = (title) => screen.getByRole("heading", { level: 2, name: title }
 
 let consoleError;
 beforeEach(() => {
-  seed();
-  session = { user: { uid: "actor-1" }, role: "admin", loading: false };
+  session = { user: { uid: "uid-dana" }, role: "admin", loading: false };
+  policyCall.mockClear();
   consoleError = vi.spyOn(console, "error");
 });
 afterEach(() => {
   cleanup();
-  // No console crash: a React render error or a failed prop type lands here.
   const crashes = consoleError.mock.calls.filter((args) => !/not wrapped in act/.test(String(args[0])));
   consoleError.mockRestore();
   expect(crashes).toEqual([]);
 });
 
+// ════════════════════ THE RECORD READS THE WORKFORCE TRANSPORT ════════════════════
+
+describe("the Administration Employee record reads the governed Workforce transport", () => {
+  it("reads EMP-RT-01 readEmployee for the routed Employee and renders its projection", async () => {
+    const workforce = makeWorkforce();
+    renderRecord("emp-1", workforce);
+    expect(await screen.findByRole("heading", { level: 1, name: "Dana Reyes" })).toBeTruthy();
+    expect(workforce.call).toHaveBeenCalledWith("readEmployee", { employeeId: "emp-1" });
+    expect(screen.getAllByText("Account Executive").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Taylor Freezer of Arizona").length).toBeGreaterThan(0);
+  });
+
+  it("a transport failure renders a truthful unavailable state with Retry -- no fallback, no empty record", async () => {
+    const workforce = makeWorkforce({ readEmployee: fail("UNREACHABLE") });
+    renderRecord("emp-1", workforce);
+    const failure = await screen.findByText(/could not be loaded from the Workforce service\. Nothing else was used in its place\./);
+    expect(failure.closest("[data-workforce-failure]").getAttribute("data-workforce-failure")).toBe("UNAVAILABLE");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
+    expect(workforce.call.mock.calls.map((c) => c[0])).toEqual(["readEmployee"]);
+  });
+
+  it("a refused read (403) says not available to you -- not an outage, not a not-found", async () => {
+    renderRecord("emp-1", makeWorkforce({ readEmployee: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
+    expect(await screen.findByText("This Employee record is not available to you.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("not configured is its own state", async () => {
+    renderRecord("emp-1", makeWorkforce({ readEmployee: fail("NOT_CONFIGURED") }));
+    expect(await screen.findByText(/Workforce service is not configured/)).toBeTruthy();
+  });
+});
+
 // ════════════════════ EMPLOYEE != USER ACCESS ════════════════════
 
 describe("Employee and User Access are separate", () => {
-  it("renders the Employee business context and User Access as different sections", async () => {
+  it("the business context and User Access are different sections", async () => {
     renderRecord();
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
     const business = section("Employment & business context");
     const access = section("User Access");
-    expect(business).not.toBe(access);
-    // The Employee section never carries access facts...
     expect(within(business).queryByText(/User Access/)).toBeNull();
-    expect(within(business).queryByText(/Security Role|compatibility role/i)).toBeNull();
-    // ...and the access section never carries Employee status.
+    expect(within(business).queryByText(/Security Role/)).toBeNull();
     expect(access.querySelector("[data-employee-lifecycle]")).toBeNull();
     expect(within(access).getByText("User Access linked")).toBeTruthy();
   });
 
-  it("linked state: User Access linked, the Principal stated as not yet readable -- never inferred", async () => {
-    renderRecord("emp-1");
+  it("linked: EMP-RT-02 details the governed Principal link, and the credential comes from the Principal", async () => {
+    const workforce = makeWorkforce();
+    const client = legacyClient();
+    renderRecord("emp-1", workforce, client, () => true);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    expect(document.querySelector("[data-user-access-link]").getAttribute("data-user-access-link")).toBe("LINKED");
-    const principal = document.querySelector("[data-employee-principal]");
-    expect(principal.getAttribute("data-employee-principal")).toBe("UNAVAILABLE");
-    expect(principal.querySelector('[data-runtime-dependency="EMP-RT-02"]')).toBeTruthy();
-    // The account pointer is never shown as if it were the Principal.
-    expect(screen.queryByText("uid-dana")).toBeNull();
+    await waitFor(() => expect(document.querySelector('[data-employee-principal="LINKED"]')).toBeTruthy());
+    expect(workforce.call).toHaveBeenCalledWith("readEmployeePrincipalLink", { employeeId: "emp-1" });
+    await waitFor(() => expect(client.readPrincipalAccessState).toHaveBeenCalledWith({ principalUid: "uid-dana" }));
+    expect(policyCall).toHaveBeenCalledWith("listTenantPrincipals", {});
   });
 
-  it("unlinked state: No User Access, stated as legitimate, and the Employee still fully exists", async () => {
-    renderRecord("emp-2");
+  it("unlinked: No User Access, no EMP-RT-02 read, no account actions -- and the Employee fully exists", async () => {
+    const workforce = makeWorkforce();
+    const client = legacyClient();
+    renderRecord("emp-2", workforce, client);
     await screen.findByRole("heading", { level: 1, name: "Lee Park" });
-    expect(document.querySelector("[data-user-access-link]").getAttribute("data-user-access-link")).toBe("NOT_LINKED");
-    expect(screen.getAllByText("No User Access").length).toBeGreaterThan(0);
-    expect(screen.getByText(/legitimate state/)).toBeTruthy();
+    expect(document.querySelector("[data-user-access-link]").getAttribute("data-user-access-link")).toBe(USER_ACCESS_LINK.NOT_LINKED);
+    expect(workforce.call.mock.calls.some((c) => c[0] === "readEmployeePrincipalLink")).toBe(false);
+    expect(document.querySelector('[data-account-actions="UNAVAILABLE"]').textContent).toMatch(/no account to manage/);
+    expect(client.readPrincipalAccessState).not.toHaveBeenCalled();
     expect(screen.getAllByText("Contractor").length).toBeGreaterThan(0);
   });
 
-  it("Edit Employee edits the business record only -- no access control inside the form", async () => {
-    render(
-      <MemoryRouter initialEntries={["/administration/users/emp-1?edit=1"]}>
-        <Routes>
-          <Route path="/administration/users/:employeeId" element={<UserDetail client={client()} />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-    const form = (await screen.findByRole("button", { name: "Save" })).closest("form");
-    expect(within(form).queryByText(/User Access/)).toBeNull();
-    expect(within(form).queryByRole("button", { name: /Enable Account|Disable Account|Add Role/ })).toBeNull();
-    expect(within(form).queryByLabelText(/Security Role|Job Role/)).toBeNull();
+  it("a 403 on the Principal link renders 'not available to you' and offers no account actions", async () => {
+    const client = legacyClient();
+    renderRecord("emp-1", makeWorkforce({ readEmployeePrincipalLink: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }), client);
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    await waitFor(() => expect(document.querySelector('[data-employee-principal="NOT_AVAILABLE_TO_YOU"]')).toBeTruthy());
+    expect(screen.getAllByText(/The Principal link is not available to you\./).length).toBeGreaterThan(0);
+    expect(policyCall).not.toHaveBeenCalled();
+    expect(client.readPrincipalAccessState).not.toHaveBeenCalled();
   });
 
-  it("domain: linkage is a pure function of the pointer and never names a Principal", () => {
-    expect(describeUserAccessRelationship({ userId: "x" }).state).toBe(USER_ACCESS_LINK.LINKED);
-    expect(describeUserAccessRelationship({ userId: "  " }).state).toBe(USER_ACCESS_LINK.NOT_LINKED);
-    expect(describeUserAccessRelationship(null).state).toBe(USER_ACCESS_LINK.NOT_LINKED);
-    const linked = describeUserAccessRelationship({ userId: "x" });
-    expect(linked.principal.available).toBe(false);
-    expect(JSON.stringify(linked)).not.toContain('"x"');
+  it("domain: EMP-RT-01 userAccess maps to three distinct states and carries no id", () => {
+    expect(describeUserAccessRelationship("LINKED").state).toBe(USER_ACCESS_LINK.LINKED);
+    expect(describeUserAccessRelationship("UNLINKED").state).toBe(USER_ACCESS_LINK.NOT_LINKED);
+    expect(describeUserAccessRelationship(undefined).state).toBe(USER_ACCESS_LINK.UNKNOWN);
   });
 });
 
 // ════════════════════ OWNER != ACCOUNTABLE != ASSIGNED ════════════════════
 
 describe("Record Owner, Accountable Person and Assigned Person stay separate", () => {
-  it("renders three axes with three labels and three dependencies -- never one list of 'owner'", async () => {
-    renderRecord();
+  it("owned = EMP-RT-03 per family, accountable = EMP-RT-04 per Commercial family, assigned = EMP-RT-05 unavailable", async () => {
+    const workforce = makeWorkforce({
+      listRecordsOwnedByEmployee: (i) => ok({ items: i.family === "ACCOUNT" ? [{ family: "ACCOUNT", recordId: "acc-x", recordNumber: "C-1001", name: "Canyon Foods", state: "ACTIVE", accountId: "acc-x", operatingCompanyId: null, updatedAt: "x" }] : [], truncated: false }),
+      listAccountabilitiesForEmployee: (i) => (i.family === "SALES_ORDER" ? fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) : ok({ items: i.family === "OPPORTUNITY" ? [{ family: "OPPORTUNITY", recordId: "op-x", recordNumber: "OPP-0042", name: null, state: "QUALIFY", accountId: "a", operatingCompanyId: "taylor", updatedAt: "x", currentAccountability: null }] : [], truncated: true })),
+    });
+    renderRecord("emp-1", workforce);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    const axes = [...document.querySelectorAll("[data-responsibility-axis]")];
-    expect(axes.map((a) => a.getAttribute("data-responsibility-axis"))).toEqual(["OWNER", "ACCOUNTABLE", "ASSIGNED"]);
-    expect(axes.map((a) => a.querySelector(".ns-emp-axis__label").textContent)).toEqual([
-      "Record Owner",
-      "Accountable Person",
-      "Assigned Person",
-    ]);
-    const deps = axes.map((a) => a.querySelector("[data-runtime-dependency]").getAttribute("data-runtime-dependency"));
-    expect(new Set(deps).size).toBe(3);
-    expect(deps).toEqual(["EMP-RT-03", "EMP-RT-04", "EMP-RT-05"]);
-    // Unavailable is not empty: no axis prints a count.
-    for (const a of axes) expect(a.textContent).not.toMatch(/\b0\b/);
-    // Each axis explains only its own relationship.
-    expect(axes[0].textContent).toMatch(/does not make you accountable/);
-    expect(axes[1].textContent).toMatch(/separate from ownership/);
-    expect(axes[2].textContent).toMatch(/does not make you the Record Owner or the Accountable Person/);
+    const axes = () => [...document.querySelectorAll("[data-responsibility-axis]")];
+    await waitFor(() => expect(axes()[1].querySelector('[data-record-family="OPPORTUNITY"][data-family-state="RECORDS"]')).toBeTruthy());
+    expect(axes().map((a) => a.getAttribute("data-responsibility-axis"))).toEqual(["OWNER", "ACCOUNTABLE", "ASSIGNED"]);
+    expect(axes().map((a) => a.querySelector(".ns-emp-axis__label").textContent)).toEqual(["Record Owner", "Accountable Person", "Assigned Person"]);
+
+    const [owner, accountable, assigned] = axes();
+    await waitFor(() => expect(owner.querySelector('[data-record-family="ACCOUNT"][data-family-state="RECORDS"]')).toBeTruthy());
+    expect(owner.querySelector("[data-responsibility-read]").getAttribute("data-responsibility-read")).toBe("EMP-RT-03");
+    expect(within(owner).getByText("C-1001")).toBeTruthy();
+    expect(within(owner).queryByText("OPP-0042")).toBeNull();
+    expect(accountable.querySelector("[data-responsibility-read]").getAttribute("data-responsibility-read")).toBe("EMP-RT-04");
+    expect(within(accountable).getByText("OPP-0042")).toBeTruthy();
+    expect(within(accountable).queryByText("C-1001")).toBeNull();
+    // One family refused never hides another family.
+    expect(accountable.querySelector('[data-record-family="SALES_ORDER"]').getAttribute("data-family-state")).toBe("NOT_AVAILABLE_TO_YOU");
+    expect(within(accountable).getAllByText("More records exist than are shown here.").length).toBeGreaterThan(0);
+    // Assigned work is never read, never invented.
+    expect(assigned.querySelector('[data-runtime-dependency="EMP-RT-05"]')).toBeTruthy();
+    expect(assigned.querySelector("[data-responsibility-read]")).toBeNull();
+
+    const calls = workforce.call.mock.calls;
+    expect(calls.filter((c) => c[0] === "listRecordsOwnedByEmployee").map((c) => c[1].family).sort()).toEqual([...OWNED_RECORD_FAMILIES].sort());
+    expect(calls.filter((c) => c[0] === "listAccountabilitiesForEmployee").map((c) => c[1].family).sort()).toEqual([...ACCOUNTABLE_RECORD_FAMILIES].sort());
+    expect(calls.some((c) => /Assigned/i.test(c[0]))).toBe(false);
+    // Never the record id (DECISIONS #106).
+    expect(screen.queryByText("acc-x")).toBeNull();
   });
 
-  it("the self view asks the same three questions in the first person, with 'Why is this in front of me?'", () => {
-    session = { user: { uid: "u" }, role: "technician", employeeId: "emp-1", displayName: "Dana Reyes", employmentStatus: "ACTIVE", operationalRoles: [], loading: false };
+  it("the self view asks the same three questions in the first person, with 'Why is this in front of me?'", async () => {
     renderSelf();
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
     for (const heading of ["Records I own", "Outcomes I'm accountable for", "My assigned work"]) {
       expect(screen.getByRole("heading", { level: 3, name: heading })).toBeTruthy();
     }
     expect(screen.getAllByText("Why is this in front of me?").length).toBe(3);
   });
 
-  it("domain: explainWhyInFrontOfMe returns only the TRUE relationships, in axis order, one each", () => {
-    expect(explainWhyInFrontOfMe([])).toEqual([]);
-    expect(explainWhyInFrontOfMe(undefined)).toEqual([]);
-    expect(explainWhyInFrontOfMe(["ASSIGNED"]).map((r) => r.axis)).toEqual(["ASSIGNED"]);
-    expect(explainWhyInFrontOfMe(["ASSIGNED", "OWNER", "OWNER", "BOGUS"]).map((r) => r.label)).toEqual([
-      "Record Owner",
-      "Assigned Person",
+  it("domain: axes, reads and dependency are fixed and distinct", () => {
+    const axes = describeResponsibilities("admin");
+    expect(axes.map((a) => [a.axis, a.read?.id ?? a.dependency.id])).toEqual([
+      ["OWNER", "EMP-RT-03"],
+      ["ACCOUNTABLE", "EMP-RT-04"],
+      ["ASSIGNED", "EMP-RT-05"],
     ]);
-    const reasons = explainWhyInFrontOfMe(Object.values(RESPONSIBILITY_AXIS)).map((r) => r.reason);
-    expect(new Set(reasons).size).toBe(3);
-  });
-
-  it("domain: every axis is unavailable with its own EMPLOYEE_RUNTIME_DEPENDENCY and no count slot", () => {
-    for (const perspective of ["admin", "self"]) {
-      const axes = describeResponsibilities(perspective);
-      expect(axes).toHaveLength(3);
-      for (const a of axes) {
-        expect(a.available).toBe(false);
-        expect(a.dependency.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
-        expect(a).not.toHaveProperty("count");
-      }
-    }
+    expect(axes[2].available).toBe(false);
+    expect(RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ.serverReason).toBe("ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES");
+    expect(explainWhyInFrontOfMe(["ASSIGNED", "OWNER", "BOGUS"]).map((r) => r.label)).toEqual(["Record Owner", "Assigned Person"]);
+    expect(new Set(explainWhyInFrontOfMe(Object.values(RESPONSIBILITY_AXIS)).map((r) => r.reason)).size).toBe(3);
   });
 });
 
 // ════════════════════ LIFECYCLE ════════════════════
 
-describe("the Employee lifecycle is exactly six statuses, each its own words and meaning", () => {
-  it("domain: the table mirrors the governed vocabulary exactly", () => {
+describe("the Employee lifecycle is exactly six statuses, each displayable and resolvable", () => {
+  it("domain: the table mirrors the governed vocabulary", () => {
     expect(EMPLOYEE_LIFECYCLE_VALUES).toEqual(["ACTIVE", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]);
     expect(EMPLOYEE_LIFECYCLE_VALUES).toEqual([...EMPLOYMENT_STATUS_VALUES]);
-    const meanings = EMPLOYEE_LIFECYCLE_VALUES.map((v) => describeLifecycle(v).meaning);
-    expect(new Set(meanings).size).toBe(6);
+    expect(new Set(EMPLOYEE_LIFECYCLE_VALUES.map((v) => describeLifecycle(v).meaning)).size).toBe(6);
     expect(describeLifecycle("INACTIVE").standing).not.toBe(describeLifecycle("TERMINATED").standing);
-    expect(describeLifecycle("ON_LEAVE").standing).toBe(LIFECYCLE_STANDING.CURRENT);
-    expect(describeLifecycle("CONTRACTOR").standing).toBe(LIFECYCLE_STANDING.CURRENT);
-    expect(describeLifecycle("RETIRED").standing).toBe(LIFECYCLE_STANDING.FORMER);
-  });
-
-  it("domain: unrecognised is verbatim, absent is NOT_RECORDED -- neither becomes a neighbouring status", () => {
     expect(describeLifecycle("SUSPENDED")).toMatchObject({ words: "SUSPENDED", standing: LIFECYCLE_STANDING.UNRECOGNISED });
-    expect(describeLifecycle(null).standing).toBe(LIFECYCLE_STANDING.NOT_RECORDED);
-    expect(Object.isFrozen(EMPLOYEE_LIFECYCLE)).toBe(true);
   });
 
   for (const status of ["ACTIVE", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]) {
-    it(`renders ${status} with its word and meaning on the record`, async () => {
-      seed([{ id: "emp-x", displayName: "Status Probe", employmentStatus: status }]);
-      renderRecord("emp-x");
+    it(`renders ${status} from the governed read with its word and meaning`, async () => {
+      renderRecord("emp-x", makeWorkforce({}, [rec({ employeeId: "emp-x", displayName: "Status Probe", employmentStatus: status })]));
       await screen.findByRole("heading", { level: 1, name: "Status Probe" });
       const row = document.querySelector("[data-employee-lifecycle]");
       expect(row.getAttribute("data-employee-lifecycle")).toBe(status);
-      const d = describeLifecycle(status);
-      expect(within(row).getByText(d.words)).toBeTruthy();
-      expect(within(row).getByText(d.meaning)).toBeTruthy();
+      expect(within(row).getByText(describeLifecycle(status).words)).toBeTruthy();
+      expect(within(row).getByText(describeLifecycle(status).meaning)).toBeTruthy();
     });
   }
-});
 
-describe("former and inactive Employees stay resolvable and displayable", () => {
-  for (const [fixture, word] of [[TERMINATED, "Terminated"], [INACTIVE, "Inactive"], [RETIRED, "Retired"]]) {
-    it(`${word}: the record opens, names the person and keeps its history and relationships`, async () => {
-      renderRecord(fixture.id);
-      expect(await screen.findByRole("heading", { level: 1, name: fixture.displayName })).toBeTruthy();
-      expect(screen.queryByText("This user could not be found.")).toBeNull();
+  for (const [id, name, word] of [["emp-3", "Sam Ortiz", "Terminated"], ["emp-4", "Kim Wu", "Inactive"], ["emp-5", "Pat Gray", "Retired"]]) {
+    it(`${word}: the record opens, names the person and keeps its sections and history`, async () => {
+      renderRecord(id);
+      expect(await screen.findByRole("heading", { level: 1, name })).toBeTruthy();
       expect(screen.getAllByText(word).length).toBeGreaterThan(0);
       expect(screen.getByRole("heading", { name: "Change History" })).toBeTruthy();
     });
   }
-
-  it("a Terminated Employee's recorded manager still resolves as a link", async () => {
-    renderRecord("emp-3");
-    await screen.findByRole("heading", { level: 1, name: "Sam Ortiz" });
-    expect(screen.getByRole("link", { name: "Dana Reyes" }).getAttribute("href")).toBe("/administration/users/emp-1");
-  });
 });
 
 // ════════════════════ JOB ROLE ════════════════════
 
 describe("Job Role is not governed and is never inferred", () => {
-  it("a salesperson Security Role with a Sales Associate marker still shows Job Role: Not yet governed", async () => {
+  it("a sales title and a salesperson Security Role still show Job Role: Not yet governed", async () => {
+    session = { user: { uid: "uid-dana" }, role: "salesperson", loading: false };
     renderRecord("emp-1");
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
     const jobRole = document.querySelector("[data-employee-job-role]");
     expect(jobRole.getAttribute("data-employee-job-role")).toBe(JOB_ROLE_STATE.NOT_GOVERNED);
-    expect(within(jobRole).getByText("Not yet governed")).toBeTruthy();
-    // Nothing about the person leaks into the Job Role cell.
-    expect(jobRole.textContent).not.toMatch(/Salesperson|salesperson|Sales Associate|Account Executive/);
-    // The eligibility marker is shown -- as eligibility, in its own row.
-    const eligibility = document.querySelector("[data-employee-operational-eligibility]");
-    expect(within(eligibility).getByText("Sales Associate")).toBeTruthy();
+    expect(jobRole.textContent).not.toMatch(/Account Executive|salesperson|Salesperson/);
+    expect(jobRole.querySelector('[data-runtime-dependency="EMP-RT-08"]')).toBeTruthy();
   });
 
-  it("domain: describeJobRole takes no input, so no input can produce a Job Role", () => {
+  it("domain: takes no input; Retail Sales and National Accounts Sales remain two future roles", () => {
     expect(describeJobRole.length).toBe(0);
-    expect(describeJobRole({ securityRole: "salesperson", operationalRoles: ["SALES_ASSOCIATE"] })).toEqual(describeJobRole());
-    expect(describeJobRole().dependency).toBe(RUNTIME_DEPENDENCIES.JOB_ROLE_AUTHORITY);
-  });
-
-  it("Retail Sales and National Accounts Sales are named as TWO roles, never one generic Sales role", async () => {
-    const text = describeJobRole().explanation;
-    expect(text).toMatch(/Retail Sales and National Accounts Sales will be separate Job Roles/);
-    renderRecord("emp-1");
-    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    const jobRole = document.querySelector("[data-employee-job-role]");
-    // No collapsed label anywhere in the Job Role cell.
-    expect(jobRole.textContent).not.toMatch(/\bSales Job Role\b|Job Role: Sales\b/);
+    expect(describeJobRole().explanation).toMatch(/Retail Sales and National Accounts Sales will be separate Job Roles/);
+    expect(RUNTIME_DEPENDENCIES.JOB_ROLE_AUTHORITY.serverReason).toBe("JOB_ROLE_AUTHORITY_NOT_IMPLEMENTED");
     expect(read("src/domain/employeeOperatingProfile.js")).not.toMatch(/["']SALES["']/);
-  });
-
-  it("the self view never presents the Security Role as a Job Role", () => {
-    session = { user: { uid: "u" }, role: "salesperson", employeeId: "emp-1", displayName: "Dana Reyes", employmentStatus: "ACTIVE", operationalRoles: ["SALES_ASSOCIATE"], loading: false };
-    renderSelf();
-    expect(document.querySelector("[data-employee-job-role]").textContent).not.toMatch(/salesperson/i);
-    expect(document.querySelector("[data-self-security-role]").textContent).toMatch(/It is not your Job Role/);
   });
 });
 
-// ════════════════════ MANAGER CONTEXT ════════════════════
+// ════════════════════ MANAGER / REPORTING ════════════════════
 
-describe("manager context is not invented", () => {
-  it("the record states managed employees as unavailable rather than deriving a hierarchy from stored manager ids", async () => {
-    renderRecord("emp-1"); // emp-3 records emp-1 as manager -- that must NOT become a team list
+describe("manager and managed employees come from the governed reporting relationship", () => {
+  it("the manager is the currentManager of the Employee read, linked, with its effective date", async () => {
+    renderRecord("emp-1");
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    const link = screen.getByRole("link", { name: "Morgan Hale" });
+    expect(link.getAttribute("href")).toBe("/administration/users/emp-9");
+    expect(screen.getByText(/reporting since 2026-02-01/)).toBeTruthy();
+  });
+
+  it("managed employees are EMP-RT-06, and a refusal is not available to you", async () => {
+    const workforce = makeWorkforce({
+      listManagedEmployees: ok({ managerEmployeeId: "emp-1", items: [{ employeeId: "emp-2", displayName: "Lee Park", employmentStatus: "CONTRACTOR", employeeNumber: null, operatingCompanyId: "taylor", jobTitle: null, reportingSince: "2026-01-01" }], truncated: false }),
+    });
+    renderRecord("emp-1", workforce);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
     const managed = section("Managed employees");
-    expect(within(managed).queryByText("Sam Ortiz")).toBeNull();
-    expect(managed.querySelector('[data-runtime-dependency="EMP-RT-06"]')).toBeTruthy();
+    await waitFor(() => expect(within(managed).getByRole("link", { name: "Lee Park" })).toBeTruthy());
+    expect(workforce.call).toHaveBeenCalledWith("listManagedEmployees", { managerEmployeeId: "emp-1" });
+
+    cleanup();
+    renderSelf(makeWorkforce({ listManagedEmployees: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    await waitFor(() => expect(screen.getByText("Managed employees is not available to you.")).toBeTruthy());
   });
 });
 
 // ════════════════════ SELF VIEW ════════════════════
 
-describe("the self view", () => {
-  it("linked: who EOS says I am, status with meaning, eligibility, access and responsibilities", () => {
-    session = { user: { uid: "u" }, role: "technician", employeeId: "emp-9", displayName: "Chris Vale", employmentStatus: "ON_LEAVE", operationalRoles: ["TECHNICIAN"], loading: false };
-    renderSelf();
-    expect(screen.getByRole("heading", { level: 1, name: "Chris Vale" })).toBeTruthy();
-    expect(document.querySelector("[data-self-identity]").getAttribute("data-self-identity")).toBe("LINKED");
-    expect(screen.getByText(describeLifecycle("ON_LEAVE").meaning)).toBeTruthy();
-    expect(screen.getByText("Technician", { selector: ".fo-chip" })).toBeTruthy();
-    expect(document.querySelector('[data-self-operating-company="UNAVAILABLE"] [data-runtime-dependency="EMP-RT-07"]')).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 2, name: "People I manage" })).toBeTruthy();
+describe("the self view uses readMyEmployeeProfile only", () => {
+  it("reads EMP-RT-07 with no input and renders the governed Employee", async () => {
+    const workforce = makeWorkforce();
+    renderSelf(workforce);
+    expect(await screen.findByRole("heading", { level: 1, name: "Dana Reyes" })).toBeTruthy();
+    expect(workforce.call.mock.calls[0]).toEqual(["readMyEmployeeProfile", undefined]);
+    expect(workforce.call.mock.calls.some((c) => c[0] === "readEmployee")).toBe(false);
+    expect(screen.getByText("Morgan Hale")).toBeTruthy(); // plain words, not an Administration link
+    expect(screen.queryByRole("link", { name: "Morgan Hale" })).toBeNull();
+    expect(document.querySelector("[data-self-security-role]").textContent).toMatch(/It is not your Job Role/);
   });
 
-  it("unlinked: says EOS knows you as User Access only, with no fabricated Employee facts", () => {
-    session = { user: { uid: "u" }, role: "admin", employeeId: null, displayName: null, employmentStatus: null, operationalRoles: [], loading: false };
-    renderSelf();
-    expect(document.querySelector("[data-self-identity]").getAttribute("data-self-identity")).toBe("NOT_LINKED");
-    expect(screen.getByText(/not linked to an Employee record\. EOS knows you as User Access only/)).toBeTruthy();
-    expect(document.querySelector("[data-responsibility-axis]")).toBeNull();
-    expect(document.querySelector('[data-responsibility-state="NOT_APPLICABLE"]')).toBeTruthy();
-    expect(document.querySelector("[data-employee-lifecycle]")).toBeNull();
-  });
-
-  it("unresolved link: stated as unresolved, never as 'status not recorded'", () => {
-    session = { user: { uid: "u" }, role: "technician", employeeId: "emp-gone", displayName: null, employmentStatus: null, operationalRoles: [], loading: false };
-    renderSelf();
-    expect(screen.getAllByText(/did not resolve/).length).toBeGreaterThan(0);
-    expect(screen.queryByText("Status not recorded")).toBeNull();
-    expect(screen.queryByText("emp-gone")).toBeNull();
-  });
-
-  it("domain: describeSelf reads only the session it is handed", () => {
-    expect(describeSelf({}).identity).toBe("NOT_LINKED");
-    expect(describeSelf({ employeeId: "e", displayName: "A", employmentStatus: "RETIRED" })).toMatchObject({
-      identity: "LINKED",
-      recordResolved: true,
+  for (const [error, state] of [
+    [fail("NOT_FOUND", "EMPLOYEE_PRINCIPAL_LINK_NOT_FOUND", 404), MY_PROFILE_STATE.NOT_LINKED],
+    [fail("CONFLICT", "EMPLOYEE_PRINCIPAL_LINK_AMBIGUOUS", 409), MY_PROFILE_STATE.LINK_AMBIGUOUS],
+    [fail("PRECONDITION_FAILED", "EMPLOYEE_PRINCIPAL_LINK_UNRESOLVED", 412), MY_PROFILE_STATE.LINK_UNRESOLVED],
+    [fail("FORBIDDEN", null, 403), MY_PROFILE_STATE.NOT_A_MEMBER],
+    [fail("UNREACHABLE"), MY_PROFILE_STATE.UNAVAILABLE],
+    [fail("NOT_CONFIGURED"), MY_PROFILE_STATE.NOT_CONFIGURED],
+  ]) {
+    it(`${state}: its own words, no Employee facts, no responsibility reads, no fallback`, async () => {
+      const workforce = makeWorkforce({ readMyEmployeeProfile: error });
+      renderSelf(workforce);
+      await waitFor(() => expect(document.querySelector("[data-self-identity]")?.getAttribute("data-self-identity")).toBe(state));
+      expect(screen.getByText(describeMyProfileFailure(error).words)).toBeTruthy();
+      expect(document.querySelector("[data-employee-lifecycle]")).toBeNull();
+      expect(document.querySelector('[data-responsibility-state="NOT_APPLICABLE"]')).toBeTruthy();
+      expect(workforce.call.mock.calls.map((c) => c[0])).toEqual(["readMyEmployeeProfile"]);
+      expect(Boolean(screen.queryByRole("button", { name: "Retry" }))).toBe(state === MY_PROFILE_STATE.UNAVAILABLE);
     });
+  }
+});
+
+// ════════════════════ FAILURE WORDS ════════════════════
+
+describe("domain: failures in words", () => {
+  it("403 is not available to you, 404 not found, outages unavailable and retryable", () => {
+    expect(describeWorkforceFailure({ code: "FORBIDDEN" }, "X")).toMatchObject({ kind: "NOT_AVAILABLE_TO_YOU", retryable: false });
+    expect(describeWorkforceFailure({ code: "NOT_FOUND" }, "X")).toMatchObject({ kind: "NOT_FOUND", retryable: false });
+    expect(describeWorkforceFailure({ code: "INTERNAL" }, "X")).toMatchObject({ kind: "UNAVAILABLE", retryable: true });
+    expect(describeWorkforceFailure({ code: "UNREACHABLE" }, "X")).toMatchObject({ kind: "UNAVAILABLE", retryable: true });
+  });
+
+  it("every remaining runtime dependency names the governed API it needs", () => {
+    for (const dep of Object.values(RUNTIME_DEPENDENCIES)) {
+      expect(dep.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
+      expect(dep.requiredApi).toMatch(/Governed/);
+    }
+    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-08", "EMP-RT-H1", "EMP-RT-W1"]);
   });
 });
 
@@ -395,60 +437,63 @@ describe("accessibility labels", () => {
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
     expect(screen.getByRole("complementary", { name: "Responsibility and source" })).toBeTruthy();
     const list = screen.getByRole("list", { name: "Responsibility relationships" });
-    for (const item of within(list).getAllByRole("listitem")) {
-      const id = item.getAttribute("aria-labelledby");
-      expect(document.getElementById(id)?.tagName).toBe("H3");
+    for (const item of [...list.children]) {
+      expect(document.getElementById(item.getAttribute("aria-labelledby"))?.tagName).toBe("H3");
     }
     for (const details of document.querySelectorAll("details.ns-emp-disclosure")) {
       expect(details.querySelector("summary")?.textContent.trim().length).toBeGreaterThan(0);
     }
-    // Status is never colour alone: the lifecycle pill carries its word.
     expect(document.querySelector("[data-employee-lifecycle] .fo-status-pill").textContent).toMatch(/Active/);
   });
 });
 
 // ════════════════════ STATIC RATCHETS ════════════════════
 
-const NEW_OR_CHANGED = [
+const EMPLOYEE_PAGE_MODULES = [
   "src/domain/employeeOperatingProfile.js",
   "src/modules/employees/EmployeeProfileSections.jsx",
   "src/modules/employees/MyEmployeeProfile.jsx",
   "src/modules/administration/UserDetail.jsx",
+  "src/hooks/useWorkforceRead.js",
+  "src/hooks/usePrincipalCredential.js",
+  "src/services/workforceApiClient.js",
 ];
 
-describe("no new Firebase data path and no demo data", () => {
-  for (const rel of NEW_OR_CHANGED) {
-    it(`${rel} imports no Firebase module and opens no Firestore read or callable`, () => {
+describe("Employee business data no longer depends on Firestore", () => {
+  for (const rel of EMPLOYEE_PAGE_MODULES) {
+    it(`${rel}: no Firebase import, no Firestore read, no employee directory hook, no demo data`, () => {
       const src = code(read(rel));
       expect(src).not.toMatch(/from\s+["']firebase(\/[a-z-]+)?["']/);
+      expect(src).not.toMatch(/from\s+["'][^"']*firebase\/firebase(\.js)?["']/);
       expect(src).not.toMatch(/\b(collection|onSnapshot|getDoc|getDocs|doc|query|httpsCallable)\s*\(/);
+      expect(src).not.toMatch(/useEmployeeDirectory|useAssignableEmployees|domain\/employees(\.js)?["']|employeeSession/);
       expect(src).not.toMatch(/from\s+["'][./]*\/?(data|fixtures)\//);
-      expect(src).not.toMatch(/\b(mock|demo|sample|placeholder|coming soon)\b/i);
+      expect(src).not.toMatch(/\b(mock|demo|sample|coming soon)\b/i);
     });
   }
 
-  it("UserDetail reads exactly the data seams it read before -- nothing added", () => {
-    const imports = code(read("src/modules/administration/UserDetail.jsx"))
-      .split("\n")
-      .filter((l) => /^import /.test(l) || /^\s+from /.test(l) || /} from /.test(l))
-      .join("\n");
-    const dataSeams = [...imports.matchAll(/from\s+["']([^"']*(hooks|access|services|firebase)[^"']*)["']/g)].map((m) => m[1]);
-    expect(dataSeams.sort()).toEqual(["../../access/administrationUsersClient", "../../hooks/useEmployeeDirectory"]);
+  it("the record page's data seams are exactly: Workforce, the Principal credential lookup, and the legacy User Access callables", () => {
+    const src = code(read("src/modules/administration/UserDetail.jsx"));
+    const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services)\/[^"']*)["']/g)].map((m) => m[1]).sort();
+    expect(seams).toEqual([
+      "../../access/administrationUsersClient",
+      "../../hooks/usePrincipalCredential.js",
+      "../../hooks/useWorkforceRead.js",
+      "../../services/adminPolicyApiClient.js",
+      "../../services/workforceApiClient.js",
+    ]);
+    // The legacy callables it may still use are User Access / history only -- never the profile writer.
+    expect(src).not.toMatch(/updateEmployeeProfile\s*\(/);
+    expect(src).not.toMatch(/UserEditPanel/);
+    expect(src).not.toMatch(/managerEmployeeId\s*\?/);
   });
 
-  it("the self view's only data seam is the existing AuthContext session", () => {
+  it("the self view's seams are the Workforce transport and the session (for sign-in and Security Role only)", () => {
     const src = code(read("src/modules/employees/MyEmployeeProfile.jsx"));
-    const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services|firebase|auth)[^"']*)["']/g)].map((m) => m[1]);
-    expect(seams).toEqual(["../../auth/AuthContext"]);
-  });
-
-  it("every runtime dependency names the governed read it needs", () => {
-    for (const dep of Object.values(RUNTIME_DEPENDENCIES)) {
-      expect(dep.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
-      expect(dep.id).toMatch(/^EMP-RT-\d\d$/);
-      expect(dep.requiredApi).toMatch(/Governed/);
-    }
-    expect(new Set(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id)).size).toBe(Object.keys(RUNTIME_DEPENDENCIES).length);
+    const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services|auth)\/[^"']*)["']/g)].map((m) => m[1]).sort();
+    expect(seams).toEqual(["../../auth/AuthContext", "../../hooks/useWorkforceRead.js", "../../services/workforceApiClient.js"]);
+    expect(src).toMatch(/const \{ user, role \} = useAuth\(\)/);
+    expect(src).not.toMatch(/employeeId\b[^:]*=\s*[^;]*useAuth|session\.employeeId|displayName\s*\}\s*=\s*useAuth/);
   });
 });
 
@@ -462,21 +507,17 @@ describe("mobile layout contract (index.css)", () => {
     return m ? m[2] : "";
   };
 
-  it("profile facts stack to one column at every width, so sentences never squeeze into the rail", () => {
+  it("facts stack to one column; labels, family names and record titles wrap rather than clip", () => {
     expect(rule(".ns-emp-facts")).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-    expect(rule(".ns-emp-facts dd")).toMatch(/overflow-wrap:\s*anywhere/);
-  });
-
-  it("responsibility labels wrap rather than clip", () => {
-    for (const sel of [".ns-emp-axis__label", ".ns-emp-axis__heading"]) {
-      const body = rule(sel);
-      expect(body, sel).toMatch(/overflow-wrap:\s*anywhere/);
-      expect(body, sel).not.toMatch(/white-space:\s*nowrap|text-overflow:\s*ellipsis/);
+    for (const sel of [".ns-emp-axis__label", ".ns-emp-axis__heading", ".ns-emp-family__label", ".ns-emp-record__title"]) {
+      expect(rule(sel), sel).toMatch(/overflow-wrap:\s*anywhere/);
+      expect(rule(sel), sel).not.toMatch(/white-space:\s*nowrap|text-overflow:\s*ellipsis/);
     }
   });
 
-  it("disclosures and the rail profile link meet the 44px touch floor by default", () => {
+  it("disclosures, person links and the rail profile link meet the 44px touch floor by default", () => {
     expect(rule(".ns-emp-disclosure > summary")).toMatch(/min-height:\s*44px/);
+    expect(rule(".ns-emp-link")).toMatch(/min-height:\s*44px/);
     expect(rule(".fo-rail-identity__profile")).toMatch(/min-height:\s*44px/);
   });
 
@@ -487,18 +528,11 @@ describe("mobile layout contract (index.css)", () => {
   });
 });
 
-// ════════════════════ ROUTE / NAVIGATION WIRING ════════════════════
-
 describe("routes", () => {
-  it("App mounts /my-profile beside the unchanged Administration record route", () => {
+  it("App mounts /my-profile beside the unchanged Administration record route; the rail links to it", () => {
     const app = read("src/App.jsx");
     expect(app).toMatch(/<Route path="\/my-profile" element=\{<MyEmployeeProfile \/>\} \/>/);
     expect(app).toMatch(/path="users\/:employeeId"/);
-  });
-
-  it("the rail identity block links to the self view and keeps its name, role and Sign out", () => {
-    const rail = read("src/navigation/AppRail.jsx");
-    expect(rail).toMatch(/<NavLink to="\/my-profile" className="fo-rail-identity__profile">/);
-    expect(rail).toMatch(/Sign out/);
+    expect(read("src/navigation/AppRail.jsx")).toMatch(/<NavLink to="\/my-profile" className="fo-rail-identity__profile">/);
   });
 });

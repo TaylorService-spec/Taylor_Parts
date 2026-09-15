@@ -1,19 +1,15 @@
-// ADMINISTRATION > USERS -- the directory, the record page, the edit flow, and the shared history.
+// ADMINISTRATION > USERS -- the directory, the record page, the retained editor, and the shared history.
 //
-// Rendered through the real components with the Firestore reads mocked at the hook boundary and
-// the governed writes mocked at the SEAM -- the same technique accountDetailFailClosed.test.jsx
-// uses. No Firebase, no network, and no capability granted anywhere: the fail-closed states below
-// are the states the running app is in today.
+// The DIRECTORY is exercised through a controlled list presentation. The RECORD page reads Employee business
+// data only from the governed Workforce transport, injected here as a mocked client (no Firestore mock exists
+// in this file, because the record page has no Firestore read to mock). The legacy account callables are
+// mocked at their SEAM. No Firebase, no network, and no capability granted unless a test grants it.
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, within, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within, act, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 const mockNavigate = vi.fn();
-let directory = { byUserId: new Map(), byEmployeeId: new Map(), loading: false, error: null };
 
-vi.mock("../src/hooks/useEmployeeDirectory", () => ({
-  useEmployeeDirectory: () => directory,
-}));
 vi.mock("../src/auth/AuthContext", () => ({
   useAuth: () => ({ user: { uid: "actor-1" }, role: "admin", loading: false }),
 }));
@@ -32,12 +28,14 @@ vi.mock("../src/hooks/useMetadataList", () => ({
 
 import AdminUsers from "../src/modules/administration/AdminUsers.jsx";
 import UserDetail from "../src/modules/administration/UserDetail.jsx";
+import UserEditPanel from "../src/modules/administration/UserEditPanel.jsx";
 import { employeeEntity, employeeIndexList } from "../src/metadata/definitions/employee.js";
 import { OPERATIONAL_ROLE_OPTIONS } from "../src/domain/employeeProfile.js";
 import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
 import { ADMINISTRATION_USERS_SURFACE_CAPABILITIES } from "../src/access/governedSurfaceCapabilities.js";
 import { buildListPresentation } from "../src/metadata/listPresentation.js";
 
+// Directory rows (the Firestore-backed employee.index list, still used by the Users DIRECTORY page).
 const JOHN = {
   id: "emp-1",
   employeeId: "emp-1",
@@ -51,17 +49,79 @@ const JOHN = {
   operatingCompanyId: "taylor",
   managerEmployeeId: "emp-2",
 };
-const MIKE = { id: "emp-2", employeeId: "emp-2", displayName: "Mike Jones", employmentStatus: "ACTIVE" };
 const UNLINKED = { id: "emp-3", employeeId: "emp-3", displayName: "Pat Lee", employmentStatus: "CONTRACTOR" };
 
-function seedDirectory(records = [JOHN, MIKE]) {
-  directory = {
-    byUserId: new Map(records.filter((r) => r.userId).map((r) => [r.userId, r])),
-    byEmployeeId: new Map(records.map((r) => [r.id, r])),
-    loading: false,
-    error: null,
+// ── The governed Workforce projections (EMP-RT-01) the RECORD page reads. Test fixtures only.
+const nameOf = (displayName) => ({ displayName, firstName: null, middleName: null, lastName: null, preferredName: null });
+const EMPTY_CONTACT = { workEmail: null, workPhone: null, mobilePhone: null };
+const EMPTY_ADDRESS = { street: null, unit: null, city: null, state: null, postalCode: null };
+const record = (over) => ({
+  employmentStatus: "ACTIVE",
+  operatingCompanyId: "taylor",
+  employeeNumber: null,
+  jobTitle: null,
+  contact: EMPTY_CONTACT,
+  address: EMPTY_ADDRESS,
+  hireDate: null,
+  separationDate: null,
+  currentManager: null,
+  userAccess: "UNLINKED",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  ...over,
+  name: nameOf(over.displayName ?? null),
+});
+const JOHN_REC = record({
+  employeeId: "emp-1",
+  displayName: "John Smith",
+  jobTitle: "Senior Service Technician",
+  employeeNumber: "TAZ-0042",
+  currentManager: { managerEmployeeId: "emp-2", displayName: "Mike Jones", effectiveFrom: "2026-01-05T00:00:00.000Z" },
+  userAccess: "LINKED",
+});
+const MIKE_REC = record({ employeeId: "emp-2", displayName: "Mike Jones" });
+const PAT_REC = record({ employeeId: "emp-3", displayName: "Pat Lee", employmentStatus: "CONTRACTOR" });
+
+let records = {};
+function seedRecords(list = [JOHN_REC, MIKE_REC]) {
+  records = Object.fromEntries(list.map((r) => [r.employeeId, r]));
+}
+
+/** A mocked Workforce transport: the closed operations, answered from `records`. */
+function makeWorkforce() {
+  return {
+    call: vi.fn(async (operation, input) => {
+      const rec = input?.employeeId ? records[input.employeeId] : null;
+      switch (operation) {
+        case "readEmployee":
+          return rec ? { ok: true, result: rec } : { ok: false, code: "NOT_FOUND", reason: "EMPLOYEE_NOT_FOUND", status: 404 };
+        case "readEmployeePrincipalLink":
+          return {
+            ok: true,
+            result: {
+              employeeId: input.employeeId,
+              userAccess: rec?.userAccess ?? "UNLINKED",
+              link: rec?.userAccess === "LINKED"
+                ? { linkId: "l-1", principalId: `pr-${input.employeeId}`, principalDisplayName: rec.displayName, principalStatus: "active", membershipStatus: "active", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null }
+                : null,
+            },
+          };
+        case "listManagedEmployees":
+        case "listRecordsOwnedByEmployee":
+        case "listAccountabilitiesForEmployee":
+          return { ok: true, result: { items: [], truncated: false, nextCursor: null } };
+        default:
+          return { ok: false, code: "UNKNOWN_OPERATION" };
+      }
+    }),
   };
 }
+
+/** The Administration API's listTenantPrincipals: the Principal -> credential mapping. */
+const policyCall = vi.fn(async () => ({
+  ok: true,
+  data: [{ id: "pr-emp-1", displayName: "John Smith", externalSubject: "uid-john", identityProvider: "firebase", status: "active" }],
+}));
 
 // The trusted principal-access read defaults to an ENABLED account holding no governed Role: the
 // commonest real state, and the one that makes "which button is offered" meaningful. Tests that
@@ -86,13 +146,13 @@ const deniedAccessRead = (rows = []) => ({
 // `hasCapability` defaults to UNDEFINED, which is what the running app passes when the trusted feed
 // has not returned a positive decision -- so every test that omits it is exercising the real
 // fail-closed path rather than a test-only one.
-const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability = undefined) =>
+const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability = undefined, workforce = makeWorkforce()) =>
   render(
     <MemoryRouter initialEntries={[`/administration/users/${employeeId}${search}`]}>
       <Routes>
         <Route
           path="/administration/users/:employeeId"
-          element={<UserDetail client={client} hasCapability={hasCapability} />}
+          element={<UserDetail client={client} workforce={workforce} policyCall={policyCall} hasCapability={hasCapability} />}
         />
       </Routes>
     </MemoryRouter>,
@@ -100,7 +160,7 @@ const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability =
 
 beforeEach(() => {
   mockNavigate.mockClear();
-  seedDirectory();
+  seedRecords();
   listState = {
     presentation: buildListPresentation({
       def: employeeIndexList,
@@ -199,7 +259,7 @@ describe("User Detail is read-only by default", () => {
     for (const title of [
       "Identity & contact",
       "Employment & business context",
-      "Job Role & operational eligibility",
+      "Job Role",
       "User Access",
       "Responsibility",
     ]) {
@@ -213,7 +273,8 @@ describe("User Detail is read-only by default", () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Edit Employee" })).toBeTruthy();
+    // Shown, and protected: no governed PostgreSQL profile writer is served (EMP-RT-W1).
+    expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("the manager is a LINK to that person's own record, not display text", async () => {
@@ -223,24 +284,24 @@ describe("User Detail is read-only by default", () => {
     expect(link.getAttribute("href")).toBe("/administration/users/emp-2");
   });
 
-  it("a recorded manager who cannot be resolved reads as unavailable, never as a raw id", async () => {
-    seedDirectory([{ ...JOHN, managerEmployeeId: "emp-ghost" }]);
+  it("no current reporting relationship reads as such, never as a raw id or a blank", async () => {
+    seedRecords([{ ...JOHN_REC, currentManager: null }]);
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    expect(screen.queryByText("emp-ghost")).toBeNull();
-    expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
+    expect(screen.queryByText("emp-2")).toBeNull();
+    expect(screen.getByText("No current reporting relationship recorded.")).toBeTruthy();
   });
 
   it("missing optional fields render honestly rather than as blanks", async () => {
-    seedDirectory([{ id: "emp-1", employeeId: "emp-1", displayName: "New Person", employmentStatus: "ACTIVE" }]);
+    seedRecords([record({ employeeId: "emp-1", displayName: "New Person" })]);
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "New Person" });
     expect(screen.getAllByText("Not recorded").length).toBeGreaterThan(0);
   });
 
-  it("a user who is not in the directory is a NOT-FOUND, not an empty record", async () => {
+  it("an Employee the governed read does not find is a NOT-FOUND, not an empty record", async () => {
     renderDetail(okHistory(), "emp-nobody");
-    expect(await screen.findByText("This user could not be found.")).toBeTruthy();
+    expect(await screen.findByText("This Employee record could not be found.")).toBeTruthy();
   });
 });
 
@@ -251,7 +312,9 @@ describe("EOS access and security stay independent, and fail closed", () => {
     const client = okHistory();
     renderDetail(client, "emp-1", "", () => true);
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    expect(client.readPrincipalAccessState).toHaveBeenCalledWith({ principalUid: "uid-john" });
+    // The uid is reached along Employee -> governed link (EMP-RT-02) -> Principal -> credential, never read
+    // from an Employee document.
+    await waitFor(() => expect(client.readPrincipalAccessState).toHaveBeenCalledWith({ principalUid: "uid-john" }));
     // The value shown is the one the read returned. Nothing here derives it from employment status
     // (John is ACTIVE) or from the fact that he has a linked account.
     const row = document.querySelector("[data-user-account-status]");
@@ -283,6 +346,7 @@ describe("EOS access and security stay independent, and fail closed", () => {
     // action offered beside an unknown state is the guess this whole section exists to stop.
     renderDetail(deniedAccessRead(), "emp-1", "", (id) => id !== "admin.principalAccess.read");
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    await waitFor(() => expect(document.querySelector("[data-user-account-status]")?.textContent).toMatch(/do not have access/i));
     const row = document.querySelector("[data-user-account-status]");
     expect(row.textContent).toMatch(/do not have access to read/i);
     expect(screen.queryByRole("button", { name: /Disable Account/ })).toBeNull();
@@ -317,10 +381,10 @@ describe("EOS access and security stay independent, and fail closed", () => {
     expect(within(dialog).getAllByText(/disabled/).length).toBeGreaterThan(0);
   });
 
-  it("Security Role is shown as the MIRROR it is, with no control over it", async () => {
+  it("Security Role is stated as access -- never a Job Role -- with no control over it", async () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    expect(screen.getByText(/Mirrors the legacy identity role/)).toBeTruthy();
+    expect(screen.getByText(/Security Roles are access\. They are not Job Roles/)).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: /security role/i })).toBeNull();
   });
 
@@ -416,9 +480,9 @@ describe("EOS access and security stay independent, and fail closed", () => {
     expect(client.readPrincipalAccessState.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it("offers no privileged Role -- Owner and Administrator need the two-person route", () => {
+  it("offers no privileged Role -- Owner and Administrator need the two-person route", async () => {
     renderDetail(okHistory());
-    const select = screen.getByRole("combobox", { name: /Role to assign/i });
+    const select = await screen.findByRole("combobox", { name: /Role to assign/i });
     const labels = within(select).getAllByRole("option").map((o) => o.textContent);
     expect(labels).not.toContain("Owner");
     expect(labels).not.toContain("Administrator");
@@ -427,9 +491,9 @@ describe("EOS access and security stay independent, and fail closed", () => {
     expect(labels).toContain("Sales Manager");
   });
 
-  it("with the grant, it confirms first and names the person AND the Role in words", () => {
+  it("with the grant, it confirms first and names the person AND the Role in words", async () => {
     renderDetail(okHistory(), "emp-1", "", (id) => id === "admin.roleAssignment.write");
-    const select = screen.getByRole("combobox", { name: /Role to assign/i });
+    const select = await screen.findByRole("combobox", { name: /Role to assign/i });
     expect(select.disabled).toBe(false);
     fireEvent.change(select, { target: { value: "salesperson" } });
     fireEvent.click(screen.getByRole("button", { name: /Add Role/ }));
@@ -440,16 +504,17 @@ describe("EOS access and security stay independent, and fail closed", () => {
     expect(within(dialog).getByText("Salesperson")).toBeTruthy();
   });
 
-  it("an employee with no EOS account gets an explanation, not a dead control", () => {
-    // A Role is held by an account. Offering the control against a person with no account would
-    // fail server-side for a reason the screen already knows.
-    seedDirectory([JOHN, MIKE, UNLINKED]);
-    renderDetail(okHistory(), "emp-3");
+  it("an Employee with no governed Principal link gets an explanation, not a dead control", async () => {
+    // A Role is held by an account. Offering the control against a person with no linked Principal
+    // would fail server-side for a reason the screen already knows (EMP-RT-01 userAccess UNLINKED).
+    seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
+    const client = okHistory();
+    renderDetail(client, "emp-3");
+    await screen.findByRole("heading", { level: 1, name: "Pat Lee" });
     expect(screen.queryByRole("button", { name: /Add Role/ })).toBeNull();
-    // Targeted by the hook rather than by copy: the status buttons state the same fact for their
-    // own reason, so matching on the words alone would pass on the wrong element.
-    const note = document.querySelector('[data-user-role-assign="no-account"]');
-    expect(note?.textContent).toMatch(/A Role is held by an account/i);
+    const note = document.querySelector('[data-account-actions="UNAVAILABLE"]');
+    expect(note?.textContent).toMatch(/no account to manage/i);
+    expect(client.readPrincipalAccessState).not.toHaveBeenCalled();
   });
 
   it("the feed is ASKED about the Administration capabilities -- an unasked id is not a decision", () => {
@@ -497,36 +562,59 @@ describe("EOS access and security stay independent, and fail closed", () => {
 
 // ════════════════════ EDIT USER ════════════════════
 
-describe("Edit User is deliberate, governed, and cannot change access", () => {
-  it("opens from the Edit User button, with Save and Cancel", async () => {
-    renderDetail(okHistory());
-    fireEvent.click(await screen.findByRole("button", { name: "Edit Employee" }));
-    expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
-    expect(screen.getByLabelText(/Job Title/)).toBeTruthy();
+const onClose = vi.fn();
+/** The editor, rendered directly against the legacy Firestore-shaped record it was built for. */
+const renderEditor = (client) =>
+  render(
+    <MemoryRouter>
+      <UserEditPanel
+        employee={JOHN}
+        candidates={new Map([["emp-1", JOHN], ["emp-2", { id: "emp-2", displayName: "Mike Jones", employmentStatus: "ACTIVE" }]])}
+        client={client}
+        actorUid="actor-1"
+        onClose={onClose}
+        onSaved={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+
+describe("Edit Employee is not offered on the record, and the retained editor stays governed", () => {
+  // THE RECORD PAGE NO LONGER MOUNTS THE EDITOR. PostgreSQL is the Employee profile authority after the
+  // copy-once cutover and no governed profile writer is served; the legacy command writes the retired
+  // Firestore record this page no longer reads (EMP-RT-W1). The editor component and its command seam are
+  // kept, and proved directly below, for the day a governed writer is served.
+  it("the record page offers Edit Employee protected, with the stated reason, and opens no form", async () => {
+    const client = okHistory();
+    renderDetail(client);
+    const edit = await screen.findByRole("button", { name: "Edit Employee" });
+    expect(edit.hasAttribute("disabled")).toBe(true);
+    expect(screen.getAllByText(/no governed Employee profile writer is served/i).length).toBeGreaterThan(0);
+    fireEvent.click(edit);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
   });
 
-  it("opens directly from the directory's Edit action (?edit=1) -- the same form", async () => {
+  it("the directory's Edit action (?edit=1) lands on the truthful unavailable state, not a form", async () => {
     renderDetail(okHistory(), "emp-1", "?edit=1");
-    expect(await screen.findByRole("button", { name: "Save" })).toBeTruthy();
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    expect(document.querySelector('[data-employee-edit="UNAVAILABLE"] [data-runtime-dependency="EMP-RT-W1"]')).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
   it("Employment Status is a closed picklist and Security Role is absent entirely", async () => {
-    renderDetail(okHistory(), "emp-1", "?edit=1");
+    renderEditor(okHistory());
     const status = await screen.findByLabelText(/Employment Status/);
     expect(status.tagName).toBe("SELECT");
     expect(within(status).getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Active", "On Leave", "Inactive", "Terminated", "Retired", "Contractor",
     ]);
-    // Security Role is not on the edit form at all -- not as a control, and not as read-only
-    // context. The detail view states it (with its mirror caption); a form carries only what can
-    // be edited, and the assertion is deliberately the ABSENCE of both.
+    // Security Role is not on the edit form at all -- not as a control, and not as read-only context.
     expect(screen.queryByLabelText(/Security Role/)).toBeNull();
     expect(screen.queryByText(/Mirrors the legacy identity role/)).toBeNull();
   });
 
   it("Operational Roles is a multi-select over the canonical vocabulary", async () => {
-    renderDetail(okHistory(), "emp-1", "?edit=1");
+    renderEditor(okHistory());
     const group = await screen.findByRole("group", { name: "Operational Roles" });
     const boxes = within(group).getAllByRole("checkbox");
     expect(boxes.length).toBe(8);
@@ -542,7 +630,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
   // structure that lets the CSS do it -- uniform sibling items under one containment context,
   // with nothing positioned per role -- and that fixing the layout changed no role and no order.
   it("every operational role is present, in the canonical order, none hidden", async () => {
-    renderDetail(okHistory(), "emp-1", "?edit=1");
+    renderEditor(okHistory());
     const group = await screen.findByRole("group", { name: "Operational Roles" });
     expect(within(group).getAllByRole("checkbox").map((b) => b.closest("label").textContent)).toEqual(
       OPERATIONAL_ROLE_OPTIONS.map((o) => o.label),
@@ -550,7 +638,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
   });
 
   it("the roles are uniform siblings inside the containment context the grid measures", async () => {
-    renderDetail(okHistory(), "emp-1", "?edit=1");
+    renderEditor(okHistory());
     const group = await screen.findByRole("group", { name: "Operational Roles" });
     // One container, one item class, no per-role wrapper and no inline positioning: the columns
     // come from the grid or they do not come at all.
@@ -562,7 +650,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
   });
 
   it("the explanatory line is outside the grid, so it is not a ninth role", async () => {
-    renderDetail(okHistory(), "emp-1", "?edit=1");
+    renderEditor(okHistory());
     const group = await screen.findByRole("group", { name: "Operational Roles" });
     const note = screen.getByText(/Operational roles are eligibility for work/);
     expect(group.contains(note)).toBe(false);
@@ -570,7 +658,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
 
   it("Save sends ONLY the changed field, through the trusted command", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     const title = await screen.findByLabelText(/Job Title/);
     fireEvent.change(title, { target: { value: "Service Manager" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -584,7 +672,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
 
   it("changing an operational role sends operationalRoles and NOTHING about security", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     const group = await screen.findByRole("group", { name: "Operational Roles" });
     fireEvent.click(within(group).getByLabelText("Parts Manager"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -596,7 +684,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
 
   it("changing employment status sends employmentStatus and NOTHING about account status", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     const status = await screen.findByLabelText(/Employment Status/);
     fireEvent.change(status, { target: { value: "TERMINATED" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -608,19 +696,17 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
 
   it("Cancel discards the changes and sends nothing", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     fireEvent.change(await screen.findByLabelText(/Job Title/), { target: { value: "Nope" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
-    expect(await screen.findByRole("button", { name: "Edit Employee" })).toBeTruthy();
-    // The record still reads as it did.
-    expect(screen.getAllByText(/Senior Service Technician/).length).toBeGreaterThan(0);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("a save with nothing changed does not call the command", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
@@ -630,7 +716,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
   it("an unauthorized save fails closed and says nothing was saved", async () => {
     const client = okHistory();
     client.updateEmployeeProfile = vi.fn().mockResolvedValue({ ok: false, result: "DENIED" });
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     fireEvent.change(await screen.findByLabelText(/Job Title/), { target: { value: "Service Manager" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/not authorized to edit this user\. Nothing was saved/i)).toBeTruthy();
@@ -638,7 +724,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
 
   it("client validation blocks an obviously bad value before any round trip", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     fireEvent.change(await screen.findByLabelText(/Display Name/), { target: { value: "  " } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText("Enter a display name.")).toBeTruthy();
@@ -647,7 +733,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
 
   it("a malformed Employee ID is refused before a round trip", async () => {
     const client = okHistory();
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     fireEvent.change(await screen.findByLabelText(/Employee ID/), { target: { value: "has space" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText(/no spaces/i)).toBeTruthy();
@@ -663,7 +749,7 @@ describe("Edit User is deliberate, governed, and cannot change access", () => {
       result: "INVALID",
       message: "That Employee ID is already assigned to another employee. Choose a different one.",
     });
-    renderDetail(client, "emp-1", "?edit=1");
+    renderEditor(client);
     // A DIFFERENT number from the one this record already holds -- an unchanged value is a no-op
     // and would never reach the command.
     fireEvent.change(await screen.findByLabelText(/Employee ID/), { target: { value: "TAZ-0099" } });

@@ -39,6 +39,12 @@ on:
       - "field-ops-app-vite/test/changeHistoryModel.test.mjs"
       - "field-ops-app-vite/test/administrationUsersSurfaces.test.jsx"
       - "field-ops-app-vite/test/employeeOperatingProfile.test.jsx"
+      - "field-ops-app-vite/test/workforceApiClient.test.jsx"
+      - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
+      - "field-ops-app-vite/src/hooks/useWorkforceRead.js"
+      - "field-ops-app-vite/src/hooks/usePrincipalCredential.js"
+      - "functions/src/eosWorkforce/workforceHttp.ts"
       - "field-ops-app-vite/test/compositionConformance.test.jsx"
       - "field-ops-app-vite/src/domain/employeeOperatingProfile.js"
       - "field-ops-app-vite/src/modules/employees/**"
@@ -68,6 +74,9 @@ on:
       - "field-ops-app-vite/src/modules/administration/**"
       - "field-ops-app-vite/src/modules/employees/**"
       - "field-ops-app-vite/src/domain/employeeOperatingProfile.js"
+      - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/hooks/useWorkforceRead.js"
+      - "field-ops-app-vite/src/hooks/usePrincipalCredential.js"
       - "field-ops-app-vite/src/shared/ui/ChangeHistory.jsx"
       - "field-ops-app-vite/src/domain/employeeProfile.js"
       - "field-ops-app-vite/src/domain/changeHistory.js"
@@ -121,8 +130,8 @@ jobs:
         run: npx vitest run test/administrationUsersSurfaces.test.jsx
         working-directory: field-ops-app-vite
 
-      - name: Employee operating profile (Employee design v4.1) -- record, self view, pure domain (vitest)
-        run: npx vitest run test/employeeOperatingProfile.test.jsx
+      - name: Employee operating profile (Employee design v4.1) on the Workforce transport -- record, self view, client, pure domain (vitest)
+        run: npx vitest run test/employeeOperatingProfile.test.jsx test/workforceApiClient.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Composition conformance -- the record and collection grammars

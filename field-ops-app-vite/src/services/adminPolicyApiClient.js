@@ -173,7 +173,7 @@ export async function callPolicyApi(operation, input = {}, options = {}) {
  * authority -- the server resolves the principal, the tenant and the Roles from PostgreSQL, and a
  * token that said otherwise would not be believed.
  */
-async function currentIdToken() {
+export async function currentIdToken() {
   const user = auth?.currentUser ?? null;
   if (!user) return null;
   return user.getIdToken();
