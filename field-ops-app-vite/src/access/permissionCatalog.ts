@@ -1008,6 +1008,23 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.employeeProfile",
     action: "write",
   }),
+  // EMPLOYEE BUSINESS RECORD READ -- Owner ruling A (2026-09-14), the Employee runtime lane. Reads an Employee
+  // BUSINESS record (eos_workforce.employees: lifecycle, operating company, profile facts, current manager) and the
+  // bounded Employee directory projection, served by the governed PostgreSQL Employee reads through the Render Workforce
+  // transport. It confers NO Principal access state, Role, credential or provider identity, Job Role, ownership
+  // mutation or Employee mutation: another person's Principal linkage stays behind admin.principalAccess.read.
+  //
+  // NOT admin.*: reading who works here is business visibility, not access administration, which is why General
+  // Manager (who holds no admin.* by ruling) may hold it. Registered active:false like the other PostgreSQL-authority
+  // reads (opportunity.read, salesOrder.read): the PostgreSQL runtime decides by eos_policy.role_capabilities.
+  Object.freeze({
+    id: "employee.record.read",
+    description:
+      "Read an Employee business record and the bounded Employee directory projection. Confers no Principal access state, Role, credential or provider identity, Job Role, ownership mutation or Employee mutation.",
+    resource: "employee.record",
+    action: "read",
+    active: false,
+  }),
   Object.freeze({
     id: "admin.accessRequest.decide",
     description: "Approve or reject a pending Access Request.",

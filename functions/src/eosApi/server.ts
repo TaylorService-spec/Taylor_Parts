@@ -34,11 +34,13 @@ import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
+import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 
-/** Which domain transport answers a request path. Everything not Operations or Commercial is Administration. */
-export function eosApiDomainFor(url: string | undefined): "commercial" | "operations" | "administration" {
+/** Which domain transport answers a request path. Everything not Operations, Commercial or Workforce is Administration. */
+export function eosApiDomainFor(url: string | undefined): "commercial" | "operations" | "workforce" | "administration" {
   const path = (url ?? "").split("?")[0];
   if (path.startsWith("/commercial/")) return "commercial";
+  if (path.startsWith("/workforce/")) return "workforce";
   if (path.startsWith("/operations/")) return "operations";
   return "administration";
 }
@@ -184,10 +186,23 @@ export async function startEosApi(
     allowedOrigins: config.allowedOrigins,
   });
 
+  // A FOURTH domain-separated handler: the governed PostgreSQL Employee (Workforce) reads. Same repository, same pool,
+  // same verifier. Reads only.
+  const workforceHandler = createWorkforceHttpHandler({
+    reader: repo,
+    pool,
+    verifyToken,
+    allowedOrigins: config.allowedOrigins,
+  });
+
   const server = createServer((req, res) => {
     const domain = eosApiDomainFor(req.url);
     if (domain === "commercial") {
       void commercialHandler(req as never, res as never);
+      return;
+    }
+    if (domain === "workforce") {
+      void workforceHandler(req as never, res as never);
       return;
     }
     if (domain === "operations") {

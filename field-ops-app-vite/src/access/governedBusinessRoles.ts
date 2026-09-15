@@ -726,6 +726,9 @@ export const GENERAL_MANAGER_ROLE: Role = Object.freeze({
     "performance.goal.approve",
     "performance.goal.supersede",
     "performance.goal.retire",
+    // EMPLOYEE BUSINESS RECORD READ -- Owner ruling A (2026-09-14). Business visibility of who works here, their
+    // lifecycle and reporting line; NOT admin.*, and it reveals no Principal, Role, credential or account status.
+    "employee.record.read",
   ],
 }) as Role;
 

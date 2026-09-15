@@ -281,3 +281,102 @@ test("the shared guard requires a project and confirms production, as pure logic
     "taylor-parts",
   );
 });
+
+// ============================ THE EMPLOYEE PROFILE MIGRATION AND CAPABILITY GRANTS ============================
+//
+// scripts/employeeProfileCutover.js writes eos_workforce (copy), scripts/employeeCapabilityGrantMigrationCli.js writes
+// eos_policy.role_capabilities (--apply), and scripts/exportEmployeeProfileSnapshot.js (FIREBASE_EXIT_MIGRATION_ONLY)
+// reads one Firebase collection. All three refuse before `pg` / firebase-admin is resolved; none has a production mode.
+const EMP_CUTOVER = "scripts/employeeProfileCutover.js";
+const EMP_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const EMP_ENV = { EOS_ENVIRONMENT: "nonprod", EMP_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const swapEnv = (args, to) => args.map((a) => (a === "platform-sandbox" ? to : a));
+
+for (const [label, args, env, pattern] of [
+  ["no mode", EMP_ARGS, EMP_ENV, /--mode must be one of/],
+  ["no environment", ["--mode", "census"], EMP_ENV, /--environment is required/],
+  ["production environment", ["--mode", "copy", ...swapEnv(EMP_ARGS, "taylor-parts-production"), "--performedBy", "op"], EMP_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", ...EMP_ARGS, "--performedBy", "op"], { ...EMP_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", ["--mode", "census", ...swapEnv(EMP_ARGS, "platform-certification")], EMP_ENV, /Certification world, which is frozen/],
+  ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--snapshot", "x.json"], EMP_ENV, /--tenantKey is required/],
+  ["no snapshot", ["--mode", "verify", "--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod"], EMP_ENV, /--snapshot <file> is required/],
+  ["copy without performedBy", ["--mode", "copy", ...EMP_ARGS], EMP_ENV, /--performedBy <operator> is required/],
+]) {
+  test(`employee profile cutover: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(EMP_CUTOVER, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `employee profile cutover, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+const EMP_GRANTS = "scripts/employeeCapabilityGrantMigrationCli.js";
+const GRANT_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--apply"];
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op"], EMP_ENV, /--environment is required/],
+  ["production environment", swapEnv(GRANT_ARGS, "taylor-parts-production"), EMP_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", GRANT_ARGS, { ...EMP_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(GRANT_ARGS, "platform-certification"), EMP_ENV, /Certification world, which is frozen/],
+  ["no performedBy", GRANT_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), EMP_ENV, /--performedBy <operator> is required/],
+]) {
+  test(`employee capability grants: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(EMP_GRANTS, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `employee capability grants, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+const EMP_EXPORT = "scripts/exportEmployeeProfileSnapshot.js";
+for (const [label, args, pattern] of [
+  ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
+  ["production, even confirmed", ["--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /is production/],
+  ["frozen Certification world", ["--projectId", "eos-platform-certification", "--out", "/nonexistent/x.json"], /frozen/],
+  ["undeclared project", ["--projectId", "someone-elses-project", "--out", "/nonexistent/x.json"], /not a Firebase project declared/],
+  ["no out file", ["--projectId", "eos-platform-sandbox"], /--out <file> is required/],
+]) {
+  test(`employee profile snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+    const res = runCli(EMP_EXPORT, args);
+    const out = assertRefusedBeforeAnySdk(res, `employee profile snapshot export, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// ============================ THE CATALOG CUTOVER ============================
+//
+// scripts/catalogCutover.js writes eos_ops catalog tables (copy) and scripts/exportCatalogSnapshot.js reads a
+// Firebase project. Both must refuse before `pg` / firebase-admin is even resolved, and neither has a production mode.
+const CUTOVER = "scripts/catalogCutover.js";
+const CUTOVER_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "CATALOG_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/snapshot.json"];
+const CUTOVER_ENV = { EOS_ENVIRONMENT: "nonprod", CATALOG_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+
+for (const [label, args, env, pattern] of [
+  ["no mode", CUTOVER_ARGS, CUTOVER_ENV, /--mode must be one of/],
+  ["no environment", ["--mode", "census"], CUTOVER_ENV, /--environment is required/],
+  ["production environment", ["--mode", "copy", ...CUTOVER_ARGS.map((a) => (a === "platform-sandbox" ? "taylor-parts-production" : a))], CUTOVER_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", ...CUTOVER_ARGS, "--principalId", "p"], { ...CUTOVER_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", ["--mode", "verify", ...CUTOVER_ARGS], { CATALOG_FENCE_DB: CUTOVER_ENV.CATALOG_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", ["--mode", "census", ...CUTOVER_ARGS.map((a) => (a === "platform-sandbox" ? "platform-certification" : a))], CUTOVER_ENV, /Certification world, which is frozen/],
+  ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "CATALOG_FENCE_DB", "--snapshot", "x.json"], CUTOVER_ENV, /--tenantKey is required/],
+  ["copy without an EOS principal", ["--mode", "copy", ...CUTOVER_ARGS], CUTOVER_ENV, /--principalId <EOS principal id> is required/],
+  ["any Certification inclusion option", ["--mode", "copy", ...CUTOVER_ARGS, "--principalId", "p", "--certificationMarked", "include"], CUTOVER_ENV, /not an option/],
+]) {
+  test(`catalog cutover: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(CUTOVER, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `catalog cutover, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+const EXPORT = "scripts/exportCatalogSnapshot.js";
+for (const [label, args, pattern] of [
+  ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],
+  ["production, even confirmed", ["--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], /is production/],
+  ["frozen Certification world", ["--projectId", "eos-platform-certification", "--out", "/nonexistent/x.json"], /frozen/],
+  ["undeclared project", ["--projectId", "someone-elses-project", "--out", "/nonexistent/x.json"], /not a Firebase project declared/],
+  ["no out file", ["--projectId", "eos-platform-sandbox"], /--out <file> is required/],
+]) {
+  test(`catalog snapshot export: refuses (${label}) before firebase-admin loads`, () => {
+    const res = runCli(EXPORT, args);
+    const out = assertRefusedBeforeAnySdk(res, `catalog snapshot export, ${label}`);
+    assert.match(out, pattern);
+  });
+}

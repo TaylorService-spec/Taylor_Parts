@@ -43,6 +43,8 @@ import {
 import { parseManufacturerId, parsePartId, validatePart, type PartInput } from "./validation";
 import { EQUIPMENT_MODELS_COLLECTION } from "../equipmentCompatibility/repository";
 import { MANUFACTURER_STATUSES, PART_STATUSES } from "./types";
+// Catalog cutover: the catalog writer authority state (OPEN today; see catalogMaster/catalogWriterState.ts).
+import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState";
 import type { ControlType, Manufacturer, ManufacturerStatus, Part, PartStatus } from "./types";
 
 export const CAP_CATALOG_MANAGE = "inventory.catalog.manage";
@@ -233,6 +235,7 @@ export interface CreatePartInput {
 }
 
 export async function createPart(input: CreatePartInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("part.create");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
@@ -297,6 +300,7 @@ export interface UpdatePartInput {
 const UPDATABLE_FIELDS = new Set(["internalPartNumber", "name", "description", "category", "stockingUnit", "controlType", "stockingClass", "flags", "manufacturerId", "manufacturerPartNumber", "oemStatus", "wholeUnit", "equipmentModelId"]);
 
 export async function updatePart(input: UpdatePartInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("part.update");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
@@ -428,6 +432,7 @@ export interface ChangePartStatusInput {
 }
 
 export async function changePartStatus(input: ChangePartStatusInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("part.changeStatus");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);

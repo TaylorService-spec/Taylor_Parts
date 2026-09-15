@@ -32,6 +32,8 @@ import {
 } from "./equipmentModelRepository";
 import { buildFirestoreOperationRepository } from "./operationRepository";
 import { MalformedStoredRecordError, type StoredMeta } from "./repository";
+// Catalog cutover: the catalog writer authority state (OPEN today; see catalogMaster/catalogWriterState.ts).
+import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState";
 
 // The governed capability each command requires (design §5). D4 registers these INACTIVE in Stage D;
 // the resolver seam below is what decides, so this module never inspects a role or a grant itself.
@@ -272,6 +274,8 @@ async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentComm
   if (typeof action !== "string" || !Object.prototype.hasOwnProperty.call(COMMAND_CAPABILITIES, action)) {
     throw new InvalidInputError("unknown command action");
   }
+  // Catalog cutover: refused while the catalog writer state is FROZEN or RETIRED (OPEN today).
+  if (action === "importEquipmentModel") assertFirestoreCatalogWriterOpen("equipmentModel.import");
   if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_-]{8,200}$/.test(idempotencyKey)) {
     throw new InvalidInputError("idempotencyKey is malformed");
   }

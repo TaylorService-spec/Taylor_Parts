@@ -51,7 +51,9 @@ const code = (c) => (e) => {
 
 test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
-  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
+  // Migrated THROUGH 025 only (timestamp mode, the C4 pin technique): test (18) proves 025's own rollback guard, which
+  // `down 1` can reach only while 025 is the last-run migration. Later migrations are not what this suite proves.
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "1759708800000", "--timestamp", "--migrations-dir", "migrations"], {
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
   });
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 6 });
@@ -518,7 +520,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
     // that migration in this database, and says so instead of silently testing a different one.
     const names = (await q(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC`)).rows.map((r) => r.name);
     assert.ok(names.includes("1759708800000_crm-account-business-facts-and-receipts"));
-    if (names[0] !== "1759708800000_crm-account-business-facts-and-receipts") return st.skip("a later migration was applied after 025");
+    assert.equal(names[0], "1759708800000_crm-account-business-facts-and-receipts", "this database must be migrated only through 025");
     const down = spawnSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "down", "1", "--migrations-dir", "migrations"],
       { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
     assert.notEqual(down.status, 0);
