@@ -325,6 +325,9 @@ test("(47) migration 023 is vocabulary only: no grant, Role, assignment or catal
 });
 
 test("migration 023 is the next monotonic migration after 022", () => {
+  // Adjacency, not "latest": later migrations (CRM, catalog, ...) legitimately follow 023.
   const files = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
-  assert.deepEqual(files.slice(-2), ["1759449600000_commercial-schema-parity-numbering-receipts.sql", "1759536000000_commercial-capability-vocabulary.sql"]);
+  const at = files.indexOf("1759536000000_commercial-capability-vocabulary.sql");
+  assert.ok(at > 0, "migration 023 is missing");
+  assert.equal(files[at - 1], "1759449600000_commercial-schema-parity-numbering-receipts.sql");
 });
