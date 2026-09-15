@@ -85,7 +85,7 @@ test("the exporter encodes Timestamps, tags unsupported Firestore types, and ref
 // ════════════════════ no Firebase on the census / copy side ════════════════════
 
 const FORBIDDEN = [/from\s+["']firebase/, /require\(\s*["']firebase/, /import\(\s*["']firebase/, /\bgetFirestore\s*\(/, /\bFieldValue\b/, /@google-cloud\/firestore/];
-const CUTOVER_SOURCES = ["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverTarget.ts", "src/crm/crmCutoverCopy.ts"];
+const CUTOVER_SOURCES = ["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverTarget.ts", "src/crm/crmCutoverCopy.ts", "src/crm/crmWriterState.ts", "src/crm/postgresCustomerImport.ts"];
 
 test("the CRM cutover modules and the copy tool import no Firebase and name no Firestore write", () => {
   for (const file of [...CUTOVER_SOURCES, "scripts/crmCutover.js"]) {
@@ -104,7 +104,7 @@ test("loading the compiled CRM cutover modules never resolves a Firebase package
   const dir = mkdtempSync(join(tmpdir(), "crm-cutover-probe-"));
   const preload = join(dir, "banFirebase.cjs");
   writeFileSync(preload, 'const M=require("module");const l=M._load;M._load=function(r,...a){if(/firebase|@google-cloud\\/firestore/i.test(r)){process.stderr.write("FIREBASE_LOADED:"+r);process.exit(97);}return l.call(this,r,...a);};');
-  const modules = ["lib/crm/crmCutoverSnapshot.js", "lib/crm/crmCutoverTarget.js", "lib/crm/crmCutoverCopy.js", "scripts/crmCutover.js"].map((m) => resolve(m));
+  const modules = ["lib/crm/crmCutoverSnapshot.js", "lib/crm/crmCutoverTarget.js", "lib/crm/crmCutoverCopy.js", "lib/crm/crmWriterState.js", "lib/crm/postgresCustomerImport.js", "scripts/crmCutover.js"].map((m) => resolve(m));
   const probe = spawnSync(process.execPath, ["--require", preload, "-e", modules.map((m) => `require(${JSON.stringify(m)});`).join("")], { encoding: "utf8" });
   assert.equal(probe.status, 0, `a CRM cutover module transitively loaded Firebase: ${probe.stderr}`);
 });
@@ -146,15 +146,15 @@ test("a clean snapshot is NOT copy-ready until owners are measured, then is, wit
   assert.equal(unmeasured.census.copyReady, false);
   assert.deepEqual(unmeasured.census.blockers, ["OWNER_RESOLUTION_NOT_MEASURED"]);
 
-  const { census, crm } = run(cleanSnapshot());
+  const { census, crm, evidence } = run(cleanSnapshot());
   assert.equal(census.copyReady, true, JSON.stringify(census.findings.filter((f) => f.severity === "BLOCKING")));
-  assert.deepEqual(census.counts, { accounts: 2, contacts: 2, locations: 2 });
-  assert.deepEqual(census.selected, { accounts: 2, contacts: 2, locations: 2 });
-  assert.deepEqual(census.ownerless, { accounts: 1, contacts: 1, locations: 0 });
-  assert.deepEqual(census.ownerReferences, { "emp-owner-1": 4 });
-  assert.deepEqual(census.statusDistribution, { ACTIVE: 1, PROSPECT: 1 });
+  assert.deepEqual(census.counts, { accounts: 3, contacts: 2, locations: 2 });
+  assert.deepEqual(census.selected, { accounts: 3, contacts: 2, locations: 2 });
+  assert.deepEqual(census.ownerless, { accounts: 1, contacts: 0, locations: 0 }, "a legacy ownerless Account is carried; no child is ownerless");
+  assert.deepEqual(census.ownerReferences, { "emp-owner-1": 4, "emp-owner-2": 2 });
+  assert.deepEqual(census.statusDistribution, { ACTIVE: 2, PROSPECT: 1 });
   assert.deepEqual(census.addressShapes, { nested: 1, flat: 1, both: 0, absent: 0 });
-  assert.deepEqual(census.timestampShapes.accounts.createdAt, { TIMESTAMP: 2, EPOCH_MILLIS: 0, ABSENT: 0, INVALID: 0 });
+  assert.deepEqual(census.timestampShapes.accounts.createdAt, { TIMESTAMP: 3, EPOCH_MILLIS: 0, ABSENT: 0, INVALID: 0 });
   assert.deepEqual(census.timestampShapes.contacts.createdAt, { TIMESTAMP: 0, EPOCH_MILLIS: 2, ABSENT: 0, INVALID: 0 });
 
   const alpha = crm.accounts.find((a) => a.id === "acct-alpha");
@@ -165,14 +165,16 @@ test("a clean snapshot is NOT copy-ready until owners are measured, then is, wit
     invoiceDeliveryMethod: "EMAIL", paymentTerms: "NET_30", taxStatus: "TAXABLE", billingContactId: "con-alpha-ap", tags: ["fixture"],
     relationshipTypes: ["CUSTOMER"], linesOfBusiness: ["TAYLOR"], createdAt: "2025-01-02T03:04:05.678000Z", updatedAt: "2025-06-07T08:09:10.111000Z",
   });
+  assert.equal(crm.accounts.find((a) => a.id === "acct-ownerless").ownerEmployeeId, null, "a legacy OWNERLESS Account is carried, never filled in");
   const bravo = crm.accounts.find((a) => a.id === "acct-bravo");
-  assert.equal(bravo.ownerEmployeeId, null, "OWNERLESS is carried, never filled in");
   assert.deepEqual([bravo.relationshipTypes, bravo.linesOfBusiness], [["CUSTOMER", "VENDOR"], ["TAYLOR", "VENTANA"]], "sets in vocabulary order");
   const flat = crm.locations.find((l) => l.id === "loc-bravo-flat");
   assert.deepEqual([flat.addressStreet, flat.addressCity, flat.addressState, flat.addressPostalCode], ["5 Flat St", "Flatland", "NM", null]);
+  assert.equal(flat.ownerEmployeeId, "emp-owner-1", "an independently stated site owner is kept");
   const contact = crm.contacts.find((c) => c.id === "con-bravo-1");
-  assert.equal(contact.ownerEmployeeId, null, "a Contact owner is never inherited from its Account at migration time");
+  assert.equal(contact.ownerEmployeeId, "emp-owner-2", "no stated owner: follows its Account's owner at cutover (ruling 4)");
   assert.equal(contact.createdAt, "2025-01-02T03:04:05.678000Z");
+  assert.deepEqual(evidence.ownerDerivations, [{ collection: "contacts", id: "con-bravo-1", derivedFromAccountId: "acct-bravo", ownerEmployeeId: "emp-owner-2", rule: "D1_CREATION_OWNER_FOLLOWS_ACCOUNT_OWNER_AT_CUTOVER" }]);
 });
 
 test("the census and digest are deterministic: document order in the file does not matter", () => {
@@ -190,7 +192,7 @@ test("the census and digest are deterministic: document order in the file does n
 
 test("BILLING ADDRESS: a single free-text value is never parsed -- held in evidence, Account blocked for resolution", () => {
   const s = cleanSnapshot();
-  s.accounts[1] = accountDoc("acct-bravo", { billingAddress: "12 Main St, Springfield, IL 62701", accountOwner: null });
+  s.accounts[1].data.billingAddress = "12 Main St, Springfield, IL 62701";
   const { census, crm, evidence } = run(s);
   assert.equal(census.copyReady, false);
   assert.ok(census.blockers.includes("BILLING_ADDRESS_REQUIRES_RESOLUTION"));
@@ -198,7 +200,7 @@ test("BILLING ADDRESS: a single free-text value is never parsed -- held in evide
   assert.equal(crm.accounts.find((a) => a.id === "acct-bravo"), undefined, "the Account is not selected with a guessed or dropped address");
   const serialized = JSON.stringify(crm);
   for (const fragment of ["12 Main St", "Springfield", "62701"]) assert.ok(!serialized.includes(fragment), `free text reached a canonical column: ${fragment}`);
-  assert.deepEqual(census.billingAddressShapes, { structured: 1, freeText: 1, absent: 0, invalid: 0 });
+  assert.deepEqual(census.billingAddressShapes, { structured: 2, freeText: 1, absent: 0, invalid: 0 });
 });
 
 test("BILLING ADDRESS: structured parts map directly; blank parts are NULL; an unknown part blocks", () => {
@@ -221,7 +223,7 @@ test("STATUS: title-cased, unknown and absent statuses are unmappable blockers -
     assert.ok(codes(census, id).includes("STATUS_UNMAPPABLE"), id);
     assert.equal(crm.accounts.find((a) => a.id === id), undefined);
   }
-  assert.deepEqual(census.statusDistribution, { "<absent>": 1, ACTIVE: 1, Active: 1, DORMANT: 1, PROSPECT: 1 });
+  assert.deepEqual(census.statusDistribution, { "<absent>": 1, ACTIVE: 2, Active: 1, DORMANT: 1, PROSPECT: 1 });
 });
 
 // ════════════════════ references ════════════════════
@@ -287,10 +289,38 @@ test("UID PROVENANCE: Firebase uids and the owner-assignment trail reach the evi
 });
 
 test("OWNER: an owner that does not resolve to a same-tenant Employee blocks; it is never nulled", () => {
-  const { census, crm } = run(cleanSnapshot(), resolvingFacts(["someone-else"]));
+  const { census, crm } = run(cleanSnapshot(), resolvingFacts(["emp-owner-2"]));
   assert.equal(census.copyReady, false);
   assert.deepEqual(new Set(census.findings.filter((f) => f.code === "OWNER_UNRESOLVED").map((f) => f.id)), new Set(["acct-alpha", "con-alpha-ap", "loc-alpha-main", "loc-bravo-flat"]));
   assert.equal(crm.accounts.find((a) => a.id === "acct-alpha").ownerEmployeeId, "emp-owner-1");
+});
+
+test("RULING 4: a child with no stated owner follows its OWN Account's owner, with evidence; under an ownerless Account it is blocked", () => {
+  const s = cleanSnapshot();
+  s.contacts.push(contactDoc("con-under-ownerless", "acct-ownerless", { owner: undefined }));
+  s.locations.push(locationDoc("loc-under-ownerless", "acct-ownerless", { owner: undefined }), locationDoc("loc-alpha-derived", "acct-alpha", { owner: undefined }));
+  const { census, crm, evidence } = run(s);
+  assert.deepEqual(census.findings.filter((f) => f.code === "CHILD_OWNER_UNDERIVABLE").map((f) => f.id).sort(), ["con-under-ownerless", "loc-under-ownerless"]);
+  assert.ok(census.blockers.includes("CHILD_OWNER_UNDERIVABLE"));
+  for (const id of ["con-under-ownerless", "loc-under-ownerless"]) assert.ok(![...crm.contacts, ...crm.locations].some((r) => r.id === id), `${id} was copied ownerless`);
+  assert.ok(![...crm.contacts, ...crm.locations].some((r) => r.ownerEmployeeId === null), "a governed child is never ownerless");
+  // Every derived child has exactly one evidence entry, naming ITS Account and that Account's owner.
+  const derivedIds = evidence.ownerDerivations.map((d) => `${d.collection}/${d.id}`);
+  assert.deepEqual(derivedIds, ["contacts/con-bravo-1", "locations/loc-alpha-derived"]);
+  const accountOwner = new Map(crm.accounts.map((a) => [a.id, a.ownerEmployeeId]));
+  for (const d of evidence.ownerDerivations) {
+    const child = (d.collection === "contacts" ? crm.contacts : crm.locations).find((r) => r.id === d.id);
+    assert.equal(child.accountId, d.derivedFromAccountId);
+    assert.equal(d.ownerEmployeeId, accountOwner.get(child.accountId));
+    assert.equal(child.ownerEmployeeId, d.ownerEmployeeId);
+  }
+  // No child owner exists that is neither stated in the source nor evidenced.
+  const statedChild = new Set([...s.contacts, ...s.locations].filter((d) => d.data.owner).map((d) => d.id));
+  for (const r of [...crm.contacts, ...crm.locations]) assert.ok(statedChild.has(r.id) || derivedIds.some((x) => x.endsWith(`/${r.id}`)), `${r.id} has an owner without evidence`);
+  const { ownerDerivationInconsistencies } = require("../lib/crm/crmCutoverCopy.js");
+  assert.deepEqual(ownerDerivationInconsistencies(crm, evidence.ownerDerivations), []);
+  const wrong = evidence.ownerDerivations.map((d) => (d.id === "con-bravo-1" ? { ...d, derivedFromAccountId: "acct-alpha", ownerEmployeeId: "emp-owner-1" } : d));
+  assert.deepEqual(ownerDerivationInconsistencies(crm, wrong).map((x) => x.reason), ["DERIVED_FROM_ANOTHER_ACCOUNT"]);
 });
 
 test("OWNER: an unrecognised accountOwner or typed owner shape blocks", () => {
@@ -329,17 +359,40 @@ test("ADDRESS SHAPES: nested and flat that agree merge; that disagree block with
   assert.ok(codes(run(s).census, "loc-alpha-main").includes("ADDRESS_SHAPE_CONFLICT"));
 });
 
-test("UNCLASSIFIED / LEGACY SHAPES: an unknown field, a Contact title, a scalar lineOfBusiness, an id echo mismatch all block", () => {
+test("RULING 3: title maps to contact_role (conflict blocks); scalar lineOfBusiness is a one-item set; obsolete fields go to evidence", () => {
   const s = cleanSnapshot();
   s.accounts[0].data.favouriteColour = "blue";
-  s.accounts[1].data.lineOfBusiness = "TAYLOR";
-  s.contacts[0].data.title = "General Manager";
+  s.accounts[1].data.lineOfBusiness = "VENTANA";
+  s.accounts[2].data.city = "Phoenix";
+  s.accounts[2].data.phone = "602-555-0000";
+  s.accounts[2].data.website = "https://acme-website.example";
+  s.contacts[1].data.title = "General Manager";
+  s.contacts[1].data.locationId = "loc-bravo-flat";
   s.locations[0].data.locationId = "not-the-id";
-  const { census } = run(s);
-  assert.ok(codes(census, "acct-alpha").includes("UNCLASSIFIED_SOURCE_FIELD"));
-  assert.ok(codes(census, "acct-bravo").includes("LINE_OF_BUSINESS_SCALAR_LEGACY"));
-  assert.ok(codes(census, "con-alpha-ap").includes("FIELD_HAS_NO_CANONICAL_TARGET"));
+  const { census, crm, evidence } = run(s);
+  assert.ok(codes(census, "acct-alpha").includes("UNCLASSIFIED_SOURCE_FIELD"), "an unknown field still blocks");
   assert.ok(codes(census, "loc-alpha-main").includes("IDENTITY_ECHO_MISMATCH"));
+  assert.deepEqual(crm.accounts.find((a) => a.id === "acct-bravo").linesOfBusiness, ["VENTANA"]);
+  assert.equal(crm.contacts.find((c) => c.id === "con-bravo-1").contactRole, "General Manager");
+  const ownerless = crm.accounts.find((a) => a.id === "acct-ownerless");
+  assert.deepEqual([ownerless.billingAddressCity, ownerless.billingAddressStreet], ["Testville", "1 Fixture Way"], "Account city is never promoted to a billing address");
+  assert.deepEqual(evidence.notMigratedValues.map((v) => `${v.collection}/${v.id}.${v.field}=${v.value}`), [
+    "accounts/acct-ownerless.city=Phoenix", "accounts/acct-ownerless.phone=602-555-0000", "accounts/acct-ownerless.website=https://acme-website.example",
+    "contacts/con-bravo-1.locationId=loc-bravo-flat",
+  ]);
+  assert.ok(!JSON.stringify(crm).includes("602-555-0000") && !JSON.stringify(crm).includes("acme-website.example"));
+  const t = cleanSnapshot();
+  t.contacts[0].data.title = "Owner";
+  t.accounts[1].data.lineOfBusiness = "ACME";
+  const conflict = run(t).census;
+  assert.ok(codes(conflict, "con-alpha-ap").includes("CONTACT_TITLE_ROLE_CONFLICT"));
+  assert.ok(codes(conflict, "acct-bravo").includes("LINE_OF_BUSINESS_SCALAR_UNMAPPABLE"));
+});
+
+test("RULING 5: a source id that the synthetic seed manifest also declares blocks the census", () => {
+  const facts = { ...resolvingFacts(), declaredSyntheticIds: { accounts: ["acct-bravo"], contacts: [], locations: ["loc-alpha-main"] } };
+  const { census } = run(cleanSnapshot(), facts);
+  assert.deepEqual(census.findings.filter((f) => f.code === "SYNTHETIC_ID_CONFLICT").map((f) => f.id).sort(), ["acct-bravo", "loc-alpha-main"]);
 });
 
 test("GOVERNED / ENUM FIELDS: invalid paymentTerms, taxStatus, currency or relationship values block", () => {
@@ -394,4 +447,100 @@ test("the copy tool refuses a snapshot from another environment, project or prod
   assert.throws(() => snapshotDigest(file, true), /\.sha256 is required for copy/);
   writeFileSync(`${file}.sha256`, `${"0".repeat(64)}  s.json\n`);
   assert.throws(() => snapshotDigest(file, false), /do not match/);
+});
+
+// ════════════════════ RULING 5: the synthetic flag is nonprod-only ════════════════════
+
+test("RULING 5: --retainDeclaredSyntheticSeedRows is refused for production and undeclared environments, allowed for a sandbox", () => {
+  const { assertSyntheticRetentionAllowed } = require("../scripts/crmCutover.js");
+  assert.doesNotThrow(() => assertSyntheticRetentionAllowed({ environment: "platform-sandbox", retainDeclaredSyntheticSeedRows: "true" }));
+  assert.doesNotThrow(() => assertSyntheticRetentionAllowed({ environment: "taylor-parts-production" }), "absent flag is not a refusal");
+  assert.throws(() => assertSyntheticRetentionAllowed({ environment: "taylor-parts-production", retainDeclaredSyntheticSeedRows: "true" }), /nonprod-only/);
+  assert.throws(() => assertSyntheticRetentionAllowed({ environment: "made-up", retainDeclaredSyntheticSeedRows: "true" }), /nonprod-only/);
+  assert.throws(() => assertSyntheticRetentionAllowed({ environment: "platform-sandbox", retainDeclaredSyntheticSeedRows: "yes" }), /bare flag/);
+});
+
+// ════════════════════ RULING 6: the CRM writer state and the freeze boundary ════════════════════
+
+const writerState = require("../lib/crm/crmWriterState.js");
+
+test("RULING 6: the committed CRM writer state is Firestore OPEN / PostgreSQL INACTIVE, coherent, with the four legal moves only", () => {
+  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" });
+  assert.doesNotThrow(() => writerState.assertCrmWriterAuthorityCoherent(writerState.CRM_WRITER_AUTHORITY));
+  const S = (firestore, postgres) => ({ firestore, postgres });
+  assert.equal(writerState.assertCrmWriterTransition(S("OPEN", "INACTIVE"), S("FROZEN", "INACTIVE")), "FREEZE");
+  assert.equal(writerState.assertCrmWriterTransition(S("FROZEN", "INACTIVE"), S("OPEN", "INACTIVE")), "ROLLBACK_BEFORE_POSTGRES_WRITES");
+  assert.equal(writerState.assertCrmWriterTransition(S("FROZEN", "INACTIVE"), S("FROZEN", "ACTIVE")), "ACTIVATE_POSTGRES");
+  assert.equal(writerState.assertCrmWriterTransition(S("FROZEN", "ACTIVE"), S("RETIRED", "ACTIVE")), "RETIRE_FIRESTORE");
+  assert.throws(() => writerState.assertCrmWriterAuthorityCoherent(S("OPEN", "ACTIVE")), /two authoritative/);
+  assert.throws(() => writerState.assertCrmWriterTransition(S("FROZEN", "ACTIVE"), S("FROZEN", "INACTIVE")), (e) => e.code === "CRM_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCrmWriterTransition(S("RETIRED", "ACTIVE"), S("FROZEN", "INACTIVE")), (e) => e.code === "CRM_WRITER_TRANSITION_NOT_ALLOWED");
+  for (const [id, w] of Object.entries(writerState.FIRESTORE_CRM_WRITERS)) {
+    if (w.enforcement !== "SERVER_GUARD") { assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id), /unknown server-side/); continue; }
+    assert.doesNotThrow(() => writerState.assertFirestoreCrmWriterOpen(id));
+    assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id, S("FROZEN", "INACTIVE")), (e) => e.code === "FIRESTORE_CRM_WRITER_FROZEN" && e.writer === id);
+    assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id, S("RETIRED", "ACTIVE")), (e) => e.code === "FIRESTORE_CRM_WRITER_RETIRED");
+  }
+});
+
+test("RULING 6: every server-side legacy CRM writer calls the guard with its own id BEFORE its first write", () => {
+  const firstIndex = (code, patterns) => Math.min(...patterns.map((p) => { const m = p.exec(code); return m ? m.index : Infinity; }));
+  const cases = [
+    ["account.import", "src/account/accountImportCommand.ts", [/\bgetFirestore\(/, /runTransaction\(/, /txn\.set\(/]],
+    ["crm.sandboxBaselineSeed", "scripts/seedSandboxBaseline.js", [/initializeApp\(\{/, /await upsert\(/]],
+    ["crm.sandboxInboundSeed", "scripts/seedSandboxInboundWork.mjs", [/initializeApp\(\{/, /\.set\(data\)/]],
+    ["crm.ownershipBackfill", "scripts/ownershipSandboxBackfill.js", [/tx\.set\(/, /runTransaction\(/]],
+    ["crm.certificationAccountOwners", "scripts/certificationWorld/seedAccountOwners.mjs", [/batch\.set\(/, /batch\.commit\(/]],
+  ];
+  const guarded = new Set();
+  for (const [id, file, writes] of cases) {
+    const code = stripComments(readFileSync(file, "utf8"));
+    const guard = code.indexOf(`assertFirestoreCrmWriterOpen("${id}"`);
+    assert.ok(guard >= 0, `${file} does not call the CRM writer guard as ${id}`);
+    const mainStart = Math.max(0, code.search(/async function main|export async function createAccountFromImport/));
+    const firstWrite = firstIndex(code.slice(mainStart), writes) + mainStart;
+    assert.ok(guard < firstWrite, `${file}: the guard must precede its first write`);
+    guarded.add(id);
+  }
+  const serverWriters = Object.entries(writerState.FIRESTORE_CRM_WRITERS).filter(([, w]) => w.enforcement === "SERVER_GUARD").map(([id]) => id);
+  assert.deepEqual([...guarded].sort(), serverWriters.sort(), "a server-side CRM writer is registered without a proved guard");
+  // The customer import honours the freeze as a whole: before the job is claimed.
+  const callables = stripComments(readFileSync("src/dataImport/dataImportCallables.ts", "utf8"));
+  const exec = callables.slice(callables.indexOf("export const executeDataImportCallable"));
+  assert.ok(exec.indexOf('assertFirestoreCrmWriterOpen("account.import")') >= 0);
+  assert.ok(exec.indexOf('assertFirestoreCrmWriterOpen("account.import")') < exec.indexOf("claimForExecution"), "the freeze check must precede claiming the job");
+});
+
+test("RULING 6: a FROZEN CRM refuses the Firestore customer import before it touches Firestore", async () => {
+  const { createAccountFromImport } = require("../lib/account/accountImportCommand.js");
+  const poison = new Proxy({}, { get() { throw new Error("Firestore was touched"); } });
+  await assert.rejects(
+    createAccountFromImport({ actorUid: "u", idempotencyKey: "k", accountId: "acct-x", draft: { name: "X" } }, { db: poison, crmWriterAuthority: { firestore: "FROZEN", postgres: "INACTIVE" } }),
+    (e) => e.code === "FIRESTORE_CRM_WRITER_FROZEN",
+  );
+});
+
+// ════════════════════ RULING 2: the PostgreSQL customer import contract ════════════════════
+
+const pgImport = require("../lib/crm/postgresCustomerImport.js");
+
+test("RULING 2: the PostgreSQL customer import refuses an ownerless row, a free-text address, governed and unknown fields, missing facts", () => {
+  const ok = { name: "Acme", status: "ACTIVE", ownerEmployeeId: "emp-owner-1", billingAddress: { street: "1 Way", city: "Town", state: "AZ", zip: "85001" } };
+  assert.deepEqual(pgImport.preparePostgresCustomerImport(ok, "job-1:row-1"), { idempotencyKey: "job-1:row-1", ...ok });
+  const refusal = (row, codeName) => assert.throws(() => pgImport.preparePostgresCustomerImport(row, "k"), (e) => e.name === "PostgresCustomerImportRefusal" && e.code === codeName, codeName);
+  refusal({ name: "Acme", status: "ACTIVE" }, "OWNER_REQUIRED");
+  refusal({ ...ok, ownerEmployeeId: null }, "OWNER_REQUIRED");
+  refusal({ ...ok, ownerEmployeeId: "  " }, "OWNER_REQUIRED");
+  refusal({ ...ok, billingAddress: "1 Way, Town, AZ 85001" }, "BILLING_ADDRESS_UNSTRUCTURED");
+  refusal({ ...ok, paymentTerms: "NET_30" }, "GOVERNED_FIELD_REFUSED");
+  refusal({ ...ok, accountOwner: { assignedToEmployeeId: "e" } }, "FIELD_NOT_ALLOWED");
+  refusal({ ...ok, name: "" }, "NAME_REQUIRED");
+  refusal({ ...ok, status: undefined }, "STATUS_REQUIRED");
+});
+
+test("RULING 2: the PostgreSQL customer import is unwired -- it refuses while PostgreSQL CRM writes are INACTIVE", async () => {
+  await assert.rejects(
+    pgImport.importCustomerToPostgres({ pool: null }, { tenantId: "t", principalId: "p", capabilities: new Set() }, { row: {}, idempotencyKey: "k" }),
+    (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE",
+  );
 });

@@ -27,6 +27,7 @@ import { initializeApp, applicationDefault } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 import { assertNonProductionImportTarget } from "../lib/dataImport/importTargetGuard.js";
+import { assertFirestoreCrmWriterOpen } from "../lib/crm/crmWriterState.js";
 import { normalizeProviderMessage } from "../lib/inboundWork/emailProvider.js";
 import { upsertEmailConnection, upsertEmailMailbox, upsertEmailRoutingRule } from "../lib/inboundWork/emailAdminCommands.js";
 import { ingestInboundMessage } from "../lib/inboundWork/inboundIntakeCommand.js";
@@ -58,6 +59,9 @@ async function main() {
   // production-role environment is refused whoever owns it (ADR-011).
   const target = assertNonProductionImportTarget(projectId === "true" ? "" : projectId);
   console.log(`Seeding inbound work into ${target.projectId} (role ${target.role})`);
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): this seed writes accounts, locations and contacts,
+  // so it refuses wholesale -- before any client exists or any document is written -- once they are frozen.
+  assertFirestoreCrmWriterOpen("crm.sandboxInboundSeed");
 
   initializeApp({ projectId: target.projectId, credential: applicationDefault() });
   const db = getFirestore();

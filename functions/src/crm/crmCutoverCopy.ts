@@ -38,6 +38,8 @@ import {
   type CanonicalCrm,
   type CanonicalLocation,
   type CrmCollection,
+  type OwnerDerivationEvidence,
+  OWNER_DERIVATION_RULE,
 } from "./crmCutoverSnapshot.js";
 import { ACCOUNT_REFERENCING_TABLES, crmBusinessFactSchemaPresent, relationExists } from "./crmCutoverTarget.js";
 
@@ -164,6 +166,32 @@ export interface CrmCopyInput {
   readonly evidenceSha256: string;
   readonly declaredSynthetic?: DeclaredSyntheticIds;
   readonly retainDeclaredSynthetic?: boolean;
+  /** Ruling 4: the census's per-record owner derivations. Checked against the records before anything is written. */
+  readonly ownerDerivations: readonly OwnerDerivationEvidence[];
+}
+
+/**
+ * Ruling 4, enforced at the write: every derivation names a child of THAT Account, carries THAT Account's owner at
+ * cutover and the declared rule. Returns the inconsistencies (empty = consistent).
+ */
+export function ownerDerivationInconsistencies(crm: CanonicalCrm, derivations: readonly OwnerDerivationEvidence[]): { collection: string; id: string; reason: string }[] {
+  const out: { collection: string; id: string; reason: string }[] = [];
+  const accountOwner = new Map(crm.accounts.map((a) => [a.id, a.ownerEmployeeId]));
+  const children = { contacts: new Map(crm.contacts.map((c) => [c.id, c])), locations: new Map(crm.locations.map((l) => [l.id, l])) };
+  const seen = new Set<string>();
+  for (const d of derivations ?? []) {
+    const key = `${d.collection}|${d.id}`;
+    if (seen.has(key)) { out.push({ collection: d.collection, id: d.id, reason: "DUPLICATE_DERIVATION" }); continue; }
+    seen.add(key);
+    const child = children[d.collection]?.get(d.id);
+    if (d.rule !== OWNER_DERIVATION_RULE) out.push({ collection: d.collection, id: d.id, reason: "RULE_NOT_DECLARED" });
+    else if (!child) out.push({ collection: d.collection, id: d.id, reason: "CHILD_NOT_IN_COPY" });
+    else if (child.accountId !== d.derivedFromAccountId) out.push({ collection: d.collection, id: d.id, reason: "DERIVED_FROM_ANOTHER_ACCOUNT" });
+    else if (accountOwner.get(d.derivedFromAccountId) !== d.ownerEmployeeId || child.ownerEmployeeId !== d.ownerEmployeeId) {
+      out.push({ collection: d.collection, id: d.id, reason: "OWNER_IS_NOT_THE_ACCOUNT_OWNER_AT_CUTOVER" });
+    }
+  }
+  return out;
 }
 
 export async function copyCrm(client: PoolClient, input: CrmCopyInput): Promise<CrmCopyReport> {
@@ -174,6 +202,11 @@ export async function copyCrm(client: PoolClient, input: CrmCopyInput): Promise<
   }
   const declared = input.declaredSynthetic ?? NO_SYNTHETIC;
   const retain = input.retainDeclaredSynthetic === true;
+  if (!Array.isArray(input.ownerDerivations)) throw new CrmCutoverError("OWNER_DERIVATION_EVIDENCE_REQUIRED", "the census owner-derivation evidence is required");
+  const inconsistent = ownerDerivationInconsistencies(crm, input.ownerDerivations);
+  if (inconsistent.length > 0) throw new CrmCutoverError("OWNER_DERIVATION_EVIDENCE_INCONSISTENT", `${inconsistent.length} owner derivation(s) do not match the records; nothing was written`, inconsistent);
+  const ownerless = [...crm.contacts.map((r) => ["contacts", r] as const), ...crm.locations.map((r) => ["locations", r] as const)].filter(([, r]) => r.ownerEmployeeId === null);
+  if (ownerless.length > 0) throw new CrmCutoverError("CHILD_OWNERLESS", "a governed Contact or customer site is never ownerless (ruling 4); nothing was written", ownerless.map(([c, r]) => ({ collection: c, id: r.id })));
   await client.query("BEGIN");
   try {
     await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`crm-cutover|${tenantId}`]);
@@ -280,6 +313,7 @@ export async function copyCrm(client: PoolClient, input: CrmCopyInput): Promise<
           snapshotSha256: input.snapshotSha256, canonicalDigest: input.canonicalDigest, evidenceSha256: input.evidenceSha256, inserted,
           unchanged: { accounts: plans.accounts.unchanged, contacts: plans.contacts.unchanged, locations: plans.locations.unchanged },
           retainedDeclaredSyntheticRows: { accounts: plans.accounts.retained, contacts: plans.contacts.retained, locations: plans.locations.retained },
+          ownerDerivations: input.ownerDerivations.length,
         }), "CRM Firestore -> PostgreSQL cutover: copy once (docs/architecture/crm-cutover-plan.md)"],
       );
     }
@@ -312,6 +346,8 @@ export interface CrmVerifyInput {
   /** Certification-excluded ids per collection. None may be present. */
   readonly excludedIds: Readonly<Record<CrmCollection, readonly string[]>>;
   readonly declaredSynthetic?: DeclaredSyntheticIds;
+  /** Ruling 4: the census's owner derivations; each copied child must still carry exactly that owner on that Account. */
+  readonly ownerDerivations?: readonly OwnerDerivationEvidence[];
 }
 
 export interface CrmVerifyReport {
@@ -329,6 +365,8 @@ export interface CrmVerifyReport {
     readonly attributionNotAnEosPrincipal: number;
     readonly attributionIsLegacyActor: number;
     readonly certificationExcludedPresent: number;
+    readonly childrenOwnerless: number;
+    readonly ownerDerivationMismatches: number;
   };
   readonly commercialAccountReferences: readonly { readonly table: string; readonly rows: number; readonly unresolved: number }[];
 }
@@ -400,6 +438,15 @@ export async function verifyCrm(client: PoolClient, input: CrmVerifyInput): Prom
         WHERE o.owner_employee_id IS NOT NULL AND NOT EXISTS (
           SELECT 1 FROM eos_workforce.employees e WHERE e.tenant_id = $1 AND e.id = o.owner_employee_id AND e.employment_status::text = ANY($2::text[]))`,
       [tenantId, [...EMPLOYMENT_STATUS_VALUES]]),
+      childrenOwnerless: await n(`SELECT (SELECT count(*) FROM eos_crm.contacts WHERE tenant_id = $1 AND id = ANY($2::text[]) AND owner_employee_id IS NULL)
+          + (SELECT count(*) FROM eos_crm.account_locations WHERE tenant_id = $1 AND id = ANY($3::text[]) AND owner_employee_id IS NULL) AS n`,
+      [tenantId, crm.contacts.map((r) => r.id), crm.locations.map((r) => r.id)]),
+      // The child's owner is the one recorded AT CUTOVER, on the Account it was derived from. The Account's CURRENT owner
+      // is deliberately not compared: a later Account handoff does not propagate to historical children.
+      ownerDerivationMismatches: (input.ownerDerivations ?? []).filter((d) => {
+        const t = (d.collection === "contacts" ? target.contacts : target.locations).find((r) => r.id === d.id);
+        return t !== undefined && (t.accountId !== d.derivedFromAccountId || t.ownerEmployeeId !== d.ownerEmployeeId);
+      }).length,
       attributionNotAnEosPrincipal: attributionNotPrincipal,
       attributionIsLegacyActor: attributionLegacy,
       certificationExcludedPresent: excludedPresent,

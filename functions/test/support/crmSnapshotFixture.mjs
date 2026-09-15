@@ -98,12 +98,16 @@ export function snapshotOf({ accounts = [], contacts = [], locations = [], envir
   };
 }
 
-/** A copy-ready world once owners resolve: two Accounts, a billing Contact, a flat-address site. */
+/**
+ * A copy-ready world once owners resolve: two owned Accounts, a legacy ownerless Account with no children, a billing
+ * Contact, a Contact with no stated owner (derived from its Account's owner at cutover), a flat-address site.
+ */
 export function cleanSnapshot() {
   return snapshotOf({
     accounts: [
       accountDoc("acct-alpha", { billingContact: { contactId: "con-alpha-ap" }, paymentTerms: "NET_30", taxStatus: "TAXABLE" }),
-      accountDoc("acct-bravo", { status: "PROSPECT", accountOwner: null, billingAddress: null, relationshipTypes: ["VENDOR", "CUSTOMER"], lineOfBusiness: ["VENTANA", "TAYLOR"] }),
+      accountDoc("acct-bravo", { status: "PROSPECT", accountOwner: { assignedToEmployeeId: "emp-owner-2", assignedToUserId: FAKE_UID_B, assignedToDisplayName: "Second Owner", assignedByEmployeeId: "emp-manager-1", assignedByUserId: FAKE_UID_A, assignedByDisplayName: "Manager Snapshot Name", assignedAt: 1_756_000_000_001 }, billingAddress: null, relationshipTypes: ["VENDOR", "CUSTOMER"], lineOfBusiness: ["VENTANA", "TAYLOR"] }),
+      accountDoc("acct-ownerless", { accountOwner: null }),
     ],
     contacts: [
       contactDoc("con-alpha-ap", "acct-alpha", { isPrimary: true }),
@@ -119,7 +123,7 @@ export function cleanSnapshot() {
 /** Strip `undefined` overrides the way a JSON round trip (the real file) would. */
 export const asFile = (snapshot) => JSON.parse(JSON.stringify(snapshot));
 
-export const resolvingFacts = (ids = ["emp-owner-1"]) => ({
+export const resolvingFacts = (ids = ["emp-owner-1", "emp-owner-2"]) => ({
   resolvableEmployeeIds: new Set(ids),
   commercialAccountIds: [],
   existingAccountIds: new Set(),

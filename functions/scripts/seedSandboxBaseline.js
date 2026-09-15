@@ -145,6 +145,9 @@ async function main() {
     return;
   }
   console.log(`Seeding baseline into '${env.id}' (${args.projectId}, role=${env.role})`);
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): this seed writes accounts, locations and contacts,
+  // so it refuses wholesale -- before any client exists -- once the Firestore CRM writers are frozen.
+  require("../lib/crm/crmWriterState.js").assertFirestoreCrmWriterOpen("crm.sandboxBaselineSeed");
 
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const db = getFirestore();

@@ -34,7 +34,7 @@
 //   node scripts/crmCutover.js --mode census --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
 //     --tenantKey taylor-nonprod --snapshot ./crm-snapshot.json [--evidenceOut ./crm-census-evidence.json]
 //   ... --mode copy   ... --performedByPrincipalId <EOS Principal id> --evidenceOut ./crm-copy-evidence.json \
-//                     [--retainDeclaredSyntheticSeedRows]   (Owner decision: keep the manifest-declared synthetic seed rows)
+//                     [--retainDeclaredSyntheticSeedRows]   (ruling 5: nonprod-only; keep manifest-declared synthetic rows)
 //   ... --mode verify ... [--sample 50|all]
 //
 // Exit: 0 census copy-ready / copy applied or no-op / verify reconciled; 1 census not copy-ready or verify not
@@ -52,11 +52,27 @@ const FROZEN_ENVIRONMENTS = Object.freeze(["platform-certification"]);
 const DEFAULT_SAMPLE = 50;
 const PRINCIPAL_ID = /^[A-Za-z0-9_-]{1,200}$/;
 
+/**
+ * Ruling 5: manifest-declared synthetic nonprod rows may coexist with a NONPROD copy only. The flag is refused for any
+ * environment that is not a declared sandbox/integration (non-production) registry entry, and always for production.
+ */
+function assertSyntheticRetentionAllowed(args) {
+  if (args.retainDeclaredSyntheticSeedRows === undefined) return;
+  if (args.retainDeclaredSyntheticSeedRows !== "true") throw new Error("--retainDeclaredSyntheticSeedRows is a bare flag.");
+  const registry = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../config/environments.json"), "utf8"));
+  const env = (registry.environments || []).find((e) => e && e.id === args.environment);
+  if (!env || env.role === "production" || (env.firebase && env.firebase.projectId === PRODUCTION_PROJECT_ID)) {
+    throw new Error("REFUSED: --retainDeclaredSyntheticSeedRows is nonprod-only; synthetic acceptance rows never coexist with a production copy.");
+  }
+}
+
 /** Every refusal that can be decided from argv and the process environment alone. No client, no lib/. */
 function assertCutoverInvocation(args, env) {
   if (!MODES.includes(args.mode)) {
     throw new Error(`--mode must be one of ${MODES.join(" | ")} (got ${args.mode === undefined ? "nothing" : `'${args.mode}'`}).`);
   }
+  // Ruling 5: the synthetic-acceptance flag is NONPROD-ONLY, refused first and by name for production.
+  assertSyntheticRetentionAllowed(args);
   const { environmentId, connectionString } = assertMeasurementTarget(args, env);
   assertNonprodRuntime(env);
   if (FROZEN_ENVIRONMENTS.includes(environmentId)) {
@@ -69,9 +85,6 @@ function assertCutoverInvocation(args, env) {
       throw new Error("--performedByPrincipalId <EOS Principal id> is required for copy: created_by/updated_by name an EOS Principal, never a Firebase uid.");
     }
     if (!args.evidenceOut || args.evidenceOut === "true") throw new Error("--evidenceOut <file> is required for copy: legacy uid provenance is written there, never into PostgreSQL.");
-  }
-  if (args.retainDeclaredSyntheticSeedRows !== undefined && args.retainDeclaredSyntheticSeedRows !== "true") {
-    throw new Error("--retainDeclaredSyntheticSeedRows is a bare flag.");
   }
   if (args.evidenceOut && args.evidenceOut !== "true" && fs.existsSync(path.resolve(args.evidenceOut))) {
     throw new Error(`--evidenceOut ${path.resolve(args.evidenceOut)} already exists; evidence is never overwritten.`);
@@ -185,7 +198,8 @@ async function main() {
     await client.query("BEGIN READ ONLY");
     const target = await measureCrmTarget(client, tenantId, Object.keys(snapshotResult.census.ownerReferences));
     await client.query("COMMIT");
-    const { census, crm, evidence } = finalizeCrmCensus(snapshotResult, target.facts);
+    const declaredSynthetic = declaredSyntheticIds();
+    const { census, crm, evidence } = finalizeCrmCensus(snapshotResult, { ...target.facts, declaredSyntheticIds: declaredSynthetic });
 
     if (options.mode === "census") {
       if (options.evidenceOut) {
@@ -200,7 +214,6 @@ async function main() {
       process.exitCode = 2;
       return;
     }
-    const declaredSynthetic = declaredSyntheticIds();
     const policy = { declaredSynthetic, retainDeclaredSynthetic: options.retainDeclaredSynthetic };
     const { copyCrm, verifyCrm } = require("../lib/crm/crmCutoverCopy.js");
     if (options.mode === "copy") {
@@ -210,14 +223,14 @@ async function main() {
       const evidenceSha256 = createHash("sha256").update(evidenceText).digest("hex");
       const report = await copyCrm(client, {
         tenantId, performedByPrincipalId: options.performedByPrincipalId, crm, canonicalDigest: census.canonicalDigest,
-        snapshotSha256: sha256, evidenceSha256, ...policy,
+        snapshotSha256: sha256, evidenceSha256, ownerDerivations: evidence.ownerDerivations, ...policy,
       });
       console.log(JSON.stringify({ ...header, evidenceSha256, report }, null, 2));
       process.exitCode = 0;
       return;
     }
     const report = await verifyCrm(client, {
-      tenantId, crm, sample: options.sample, provenanceActors: provenanceActorsOf(evidence), excludedIds: excludedIdsOf(evidence), declaredSynthetic,
+      tenantId, crm, sample: options.sample, provenanceActors: provenanceActorsOf(evidence), excludedIds: excludedIdsOf(evidence), declaredSynthetic, ownerDerivations: evidence.ownerDerivations,
     });
     console.log(JSON.stringify({ ...header, canonicalDigest: census.canonicalDigest, report }, null, 2));
     process.exitCode = report.reconciled ? 0 : 1;
@@ -226,7 +239,7 @@ async function main() {
   }
 }
 
-module.exports = { assertCutoverInvocation, assertSnapshotSource, snapshotDigest, MODES, FROZEN_ENVIRONMENTS };
+module.exports = { assertSyntheticRetentionAllowed, assertCutoverInvocation, assertSnapshotSource, snapshotDigest, MODES, FROZEN_ENVIRONMENTS };
 
 if (require.main === module) {
   main().catch((err) => {

@@ -65,10 +65,10 @@ test("(F2) not wired: nothing outside src/eosCrm imports it, and no runtime surf
   // The ONE sanctioned outside importer is the CRM cutover (docs/architecture/crm-cutover-plan.md): its census imports the
   // authority's vocabularies and bounds so it cannot accept what the authority refuses. It is itself unwired -- only
   // functions/scripts/crmCutover.js loads it -- which the second assertion keeps true.
-  const CUTOVER = new Set(["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverCopy.ts"]);
+  const CUTOVER = new Set(["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverCopy.ts", "src/crm/postgresCustomerImport.ts"]);
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(CRM) && /eosCrm\//.test(readFileSync(f, "utf8")));
   assert.deepEqual(importers.map(rel).filter((f) => !CUTOVER.has(f)), [], "a module outside the CRM authority layer imports it");
-  const cutoverImporters = walk(SRC, [".ts"]).filter((f) => !/src[\\/]crm[\\/]crmCutover/.test(f) && /crmCutover(Snapshot|Copy|Target)/.test(strip(readFileSync(f, "utf8"))));
+  const cutoverImporters = walk(SRC, [".ts"]).filter((f) => !/src[\\/]crm[\\/]crmCutover/.test(f) && /crmCutover(Snapshot|Copy|Target)|postgresCustomerImport/.test(strip(readFileSync(f, "utf8"))) && !/src[\\/]crm[\\/]postgresCustomerImport/.test(f));
   assert.deepEqual(cutoverImporters.map(rel), [], "a runtime module imports the CRM cutover");
   for (const surface of ["index.ts", "eosApi/server.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCrm|crmAuthorityKernel|accountAuthority|contactAuthority|accountLocationAuthority/, `${surface} reaches the CRM authority layer`);

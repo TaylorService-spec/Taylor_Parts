@@ -208,6 +208,7 @@ for (const [label, args, env, pattern] of [
   ["no snapshot", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "CRM_FENCE_DB", "--tenantKey", "taylor-nonprod"], CRM_ENV, /--snapshot <file> is required/],
   ["copy without an EOS Principal", ["--mode", "copy", ...CRM_ARGS, "--evidenceOut", "/nonexistent/e.json"], CRM_ENV, /--performedByPrincipalId <EOS Principal id> is required/],
   ["copy without an evidence file", ["--mode", "copy", ...CRM_ARGS, "--performedByPrincipalId", "p1"], CRM_ENV, /--evidenceOut <file> is required/],
+  ["synthetic-row flag against production (ruling 5)", ["--mode", "copy", ...onEnv(CRM_ARGS, "taylor-parts-production"), "--performedByPrincipalId", "p1", "--evidenceOut", "/nonexistent/e.json", "--retainDeclaredSyntheticSeedRows"], CRM_ENV, /nonprod-only/],
 ]) {
   test(`crm cutover: refuses (${label}) before any client library loads`, () => {
     const res = runCli(CRM_CUTOVER, args, env);

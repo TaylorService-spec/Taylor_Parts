@@ -94,7 +94,7 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ($1,$2,$3)`, [`m-${p}`, tenant, p]);
   }
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES
-    ('emp-owner-1','t1','ACTIVE','taylor'), ('emp-t2-only','t2','ACTIVE','taylor')`);
+    ('emp-owner-1','t1','ACTIVE','taylor'), ('emp-owner-2','t1','ACTIVE','taylor'), ('emp-t2-only','t2','ACTIVE','taylor')`);
 
   const snapshot = cleanSnapshot();
   // A Certification fixture in the same export: excluded, never copied.
@@ -103,7 +103,7 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
   const ACTOR = "p-cutover";
   const copyInput = (over = {}) => ({
     tenantId: "t1", performedByPrincipalId: ACTOR, crm: clean.crm, canonicalDigest: clean.census.canonicalDigest,
-    snapshotSha256: "a".repeat(64), evidenceSha256: "b".repeat(64), ...over,
+    snapshotSha256: "a".repeat(64), evidenceSha256: "b".repeat(64), ownerDerivations: clean.evidence.ownerDerivations, ...over,
   });
   const counts = async (tenant = "t1") => ({
     accounts: Number((await q(`SELECT count(*)::int n FROM eos_crm.accounts WHERE tenant_id = $1`, [tenant])).rows[0].n),
@@ -135,7 +135,7 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
   await t.test("(3) COPY: ids, fields, children, microsecond timestamps verbatim; EOS Principal attribution; one audit event", async () => {
     report = await withPoolClient(pool, (c) => copyCrm(c, copyInput()));
     assert.equal(report.outcome, "COPIED");
-    assert.deepEqual([report.accounts, report.contacts, report.locations], [{ inserted: 2, unchanged: 0 }, { inserted: 2, unchanged: 0 }, { inserted: 2, unchanged: 0 }]);
+    assert.deepEqual([report.accounts, report.contacts, report.locations], [{ inserted: 3, unchanged: 0 }, { inserted: 2, unchanged: 0 }, { inserted: 2, unchanged: 0 }]);
     const target = await withPoolClient(pool, (c) => readTenantCrm(c, "t1"));
     assert.deepEqual({ accounts: target.accounts, contacts: target.contacts, locations: target.locations }, JSON.parse(JSON.stringify(clean.crm)));
     for (const [, who] of target.attribution) assert.deepEqual(who, { createdBy: ACTOR, updatedBy: ACTOR });
@@ -162,8 +162,10 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     const a = await accounts.getAccount(deps, actor, { accountId: "acct-alpha" });
     assert.deepEqual(a.billingAddress, { street: "1 Fixture Way", city: "Testville", state: "AZ", zip: "85001" });
     assert.deepEqual([a.ownerEmployeeId, a.paymentTerms, a.taxStatus, a.billingContactId, a.tags, a.lineOfBusiness], ["emp-owner-1", "NET_30", "TAXABLE", "con-alpha-ap", ["fixture"], ["TAYLOR"]]);
-    const bravo = await accounts.getAccount(deps, actor, { accountId: "acct-bravo" });
-    assert.equal(bravo.ownerEmployeeId, null, "the legacy ownerless Account reads back ownerless");
+    const legacy = await accounts.getAccount(deps, actor, { accountId: "acct-ownerless" });
+    assert.equal(legacy.ownerEmployeeId, null, "the legacy ownerless Account reads back ownerless");
+    const derived = await contacts.getContact(deps, actor, { contactId: "con-bravo-1" });
+    assert.equal(derived.ownerEmployeeId, "emp-owner-2", "the derived child owner reads back through the authority");
     const listed = await contacts.listAccountContacts(deps, actor, { accountId: "acct-alpha" });
     assert.deepEqual(listed.items.map((c) => c.contactId), ["con-alpha-ap"]);
   });
@@ -178,9 +180,9 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
   await t.test("(7) VERIFY --sample all is reconciled, including Commercial compatibility", async () => {
     await q(`INSERT INTO eos_commercial.opportunities (id, tenant_id, opportunity_number, account_id, owner_employee_id, created_by, updated_by)
              VALUES ('opp-1','t1','OPP-2026-000001','acct-alpha','emp-owner-1','seed','seed')`);
-    const v = await withPoolClient(pool, (c) => verifyCrm(c, { tenantId: "t1", crm: clean.crm, sample: "all", provenanceActors: provenanceActors(clean.evidence), excludedIds: excludedIds(clean.evidence) }));
+    const v = await withPoolClient(pool, (c) => verifyCrm(c, { tenantId: "t1", crm: clean.crm, sample: "all", provenanceActors: provenanceActors(clean.evidence), excludedIds: excludedIds(clean.evidence), ownerDerivations: clean.evidence.ownerDerivations }));
     assert.equal(v.reconciled, true, JSON.stringify(v, null, 2));
-    assert.deepEqual(v.sampled, { accounts: 2, contacts: 2, locations: 2 });
+    assert.deepEqual(v.sampled, { accounts: 3, contacts: 2, locations: 2 });
     assert.deepEqual(v.commercialAccountReferences.find((c) => c.table === "eos_commercial.opportunities"), { table: "eos_commercial.opportunities", rows: 1, unresolved: 0 });
   });
 
@@ -233,16 +235,16 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     assert.deepEqual([t2.accounts, t2.contacts, t2.locations], [[], [], []]);
     const v = await withPoolClient(pool, (c) => verifyCrm(c, { tenantId: "t2", crm: clean.crm, sample: "all", provenanceActors: [], excludedIds: excludedIds(clean.evidence) }));
     assert.equal(v.reconciled, false);
-    assert.deepEqual(v.missingInTarget.accounts, ["acct-alpha", "acct-bravo"]);
+    assert.deepEqual(v.missingInTarget.accounts, ["acct-alpha", "acct-bravo", "acct-ownerless"]);
     // A finance row (append-only, no Account FK) naming an Account this tenant does not hold is reported unresolved.
     await q(`INSERT INTO eos_finance.payments (id, tenant_id, operating_company_key, account_id, currency, amount_minor, received_at, recorded_by)
              VALUES ('pay-t2','t2','taylor','acct-gone','USD',100, now(),'seed')`);
     const withPayment = await withPoolClient(pool, (c) => verifyCrm(c, { tenantId: "t2", crm: { accounts: [], contacts: [], locations: [] }, sample: "all", provenanceActors: [], excludedIds: excludedIds(clean.evidence) }));
     assert.deepEqual(withPayment.commercialAccountReferences.find((c) => c.table === "eos_finance.payments"), { table: "eos_finance.payments", rows: 1, unresolved: 1 });
     assert.equal(withPayment.reconciled, false);
-    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('emp-owner-1-t2','t2','ACTIVE','taylor')`);
-    const crmForT2 = JSON.parse(JSON.stringify(clean.crm).replaceAll('"emp-owner-1"', '"emp-owner-1-t2"'));
-    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, copyInput({ tenantId: "t2", performedByPrincipalId: "p-t2", crm: crmForT2 }))), code("ID_HELD_BY_ANOTHER_TENANT"));
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('emp-owner-1-t2','t2','ACTIVE','taylor'), ('emp-owner-2-t2','t2','ACTIVE','taylor')`);
+    const toT2 = (x) => JSON.parse(JSON.stringify(x).replaceAll('"emp-owner-1"', '"emp-owner-1-t2"').replaceAll('"emp-owner-2"', '"emp-owner-2-t2"'));
+    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, copyInput({ tenantId: "t2", performedByPrincipalId: "p-t2", crm: toT2(clean.crm), ownerDerivations: toT2(clean.evidence.ownerDerivations) }))), code("ID_HELD_BY_ANOTHER_TENANT"));
     assert.deepEqual(await counts("t2"), { accounts: 0, contacts: 0, locations: 0 });
   });
 
@@ -252,8 +254,8 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ('p-t3','p-t3','proof','active')`);
     await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-p-t3','t3','p-t3')`);
     // Employee and record ids are global primary keys: t3 gets its own owner and its own record ids.
-    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('emp-owner-t3','t3','ACTIVE','taylor')`);
-    const snap = JSON.parse(JSON.stringify(asFile(cleanSnapshot())).replaceAll('"emp-owner-1"', '"emp-owner-t3"')
+    await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('emp-owner-t3','t3','ACTIVE','taylor'), ('emp-owner-2-t3','t3','ACTIVE','taylor')`);
+    const snap = JSON.parse(JSON.stringify(asFile(cleanSnapshot())).replaceAll('"emp-owner-1"', '"emp-owner-t3"').replaceAll('"emp-owner-2"', '"emp-owner-2-t3"')
       .replaceAll("acct-", "t3acct-").replaceAll("con-", "t3con-").replaceAll("loc-", "t3loc-"));
     const dir = mkdtempSync(join(tmpdir(), "crm-cli-"));
     const file = join(dir, "crm-snapshot.json");
@@ -262,12 +264,14 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     writeFileSync(`${file}.sha256`, `${createHash("sha256").update(bytes).digest("hex")}  crm-snapshot.json\n`);
     const run = (mode, extra = []) => spawnSync(process.execPath, ["scripts/crmCutover.js", "--mode", mode, "--environment", "platform-sandbox", "--databaseUrlEnv", "CRM_CLI_DB",
       "--tenantKey", "crm-cli", "--snapshot", file, ...extra], { cwd: FUNCTIONS_DIR, encoding: "utf8", env: { ...process.env, EOS_ENVIRONMENT: "nonprod", CRM_CLI_DB: dbUrl() } });
+    // Leak checks match the CREDENTIAL SHAPE, never the bare password: CI's password is literally `eos`, which also
+    // occurs in ordinary ids such as eos-platform-sandbox.
     const secret = new URL(URL_BASE).password;
     const check = (res, status, label) => {
       const out = `${res.stdout}${res.stderr}`;
       assert.equal(res.status, status, `${label}: ${out}`);
-      assert.ok(!out.includes(secret), `${label} printed the database password`);
-      assert.ok(!out.includes("postgres://"), `${label} printed a connection string`);
+      assert.ok(!out.includes(`:${secret}@`), `${label} printed the database credentials`);
+      assert.ok(!out.includes(dbUrl()) && !out.includes(URL_BASE) && !out.includes("postgres://"), `${label} printed a connection string`);
       return out;
     };
     const census = JSON.parse(check(run("census", ["--evidenceOut", join(dir, "census-evidence.json")]), 0, "census"));
@@ -284,5 +288,63 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     assert.equal(rerun.report.outcome, "NO_CHANGES");
     writeFileSync(`${file}.sha256`, `${"0".repeat(64)}  crm-snapshot.json\n`);
     check(run("copy", ["--performedByPrincipalId", "p-t3", "--evidenceOut", join(dir, "copy-evidence-3.json")]), 2, "copy with a tampered checksum");
+  });
+  await t.test("(13) RULING 4: the copy refuses owner-derivation evidence from another Account or an ownerless child; verify holds the cutover owner without propagating a later handoff", async () => {
+    const wrong = clean.evidence.ownerDerivations.map((d) => ({ ...d, derivedFromAccountId: "acct-alpha", ownerEmployeeId: "emp-owner-1" }));
+    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, copyInput({ ownerDerivations: wrong }))), (e) => {
+      code("OWNER_DERIVATION_EVIDENCE_INCONSISTENT")(e);
+      assert.deepEqual(e.details.map((x) => x.reason), ["DERIVED_FROM_ANOTHER_ACCOUNT"]);
+      return true;
+    });
+    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, copyInput({ ownerDerivations: undefined }))), code("OWNER_DERIVATION_EVIDENCE_REQUIRED"));
+    const ownerlessChild = JSON.parse(JSON.stringify(clean.crm));
+    ownerlessChild.contacts.find((x) => x.id === "con-bravo-1").ownerEmployeeId = null;
+    await assert.rejects(withPoolClient(pool, (c) => copyCrm(c, copyInput({ crm: ownerlessChild, ownerDerivations: [] }))), code("CHILD_OWNERLESS"));
+    const verifyNow = () => withPoolClient(pool, (c) => verifyCrm(c, { tenantId: "t1", crm: clean.crm, sample: "all", provenanceActors: provenanceActors(clean.evidence), excludedIds: excludedIds(clean.evidence), ownerDerivations: clean.evidence.ownerDerivations }));
+    // A later Account owner handoff does NOT propagate to the historical child: the child still verifies against its cutover owner.
+    await q(`UPDATE eos_crm.accounts SET owner_employee_id = 'emp-owner-1' WHERE id = 'acct-bravo'`);
+    try {
+      const afterHandoff = await verifyNow();
+      assert.equal(afterHandoff.integrity.ownerDerivationMismatches, 0);
+      assert.deepEqual(afterHandoff.fieldMismatches, [{ collection: "accounts", id: "acct-bravo", fields: ["ownerEmployeeId"] }]);
+    } finally {
+      await q(`UPDATE eos_crm.accounts SET owner_employee_id = 'emp-owner-2' WHERE id = 'acct-bravo'`);
+    }
+    await q(`UPDATE eos_crm.contacts SET owner_employee_id = 'emp-owner-1' WHERE id = 'con-bravo-1'`);
+    try {
+      const v = await verifyNow();
+      assert.equal(v.integrity.ownerDerivationMismatches, 1);
+      assert.equal(v.reconciled, false);
+    } finally {
+      await q(`UPDATE eos_crm.contacts SET owner_employee_id = 'emp-owner-2' WHERE id = 'con-bravo-1'`);
+    }
+    assert.equal((await verifyNow()).reconciled, true);
+  });
+
+  await t.test("(14) RULING 2: the PostgreSQL customer import creates only with an explicit same-tenant Employee owner and a structured address", async () => {
+    const importer = require("../lib/crm/postgresCustomerImport.js");
+    const ACTIVE = { firestore: "FROZEN", postgres: "ACTIVE" };
+    const actor = { tenantId: "t1", principalId: ACTOR, capabilities: new Set(["customer.record.create", "customer.record.read"]) };
+    const deps = { pool };
+    const before = await counts();
+    const receipts = async () => Number((await q(`SELECT count(*)::int n FROM eos_crm.command_receipts WHERE tenant_id = 't1'`)).rows[0].n);
+    const receiptsBefore = await receipts();
+    const row = { name: "Imported Customer", status: "ACTIVE", ownerEmployeeId: "emp-owner-2", billingAddress: { street: "7 Import Rd", city: "Town", state: "AZ", zip: "85003" } };
+    await assert.rejects(importer.importCustomerToPostgres(deps, actor, { row, idempotencyKey: "imp:1" }), (e) => e.code === "POSTGRES_CRM_WRITER_INACTIVE");
+    const refuse = async (r, expected) => assert.rejects(importer.importCustomerToPostgres(deps, actor, { row: r, idempotencyKey: `imp:${expected}` }, ACTIVE), (e) => e.code === expected, expected);
+    await refuse({ ...row, ownerEmployeeId: undefined }, "OWNER_REQUIRED");
+    await refuse({ ...row, billingAddress: "7 Import Rd, Town, AZ 85003" }, "BILLING_ADDRESS_UNSTRUCTURED");
+    await refuse({ ...row, ownerEmployeeId: "emp-t2-only" }, "OWNER_NOT_FOUND");
+    await refuse({ ...row, ownerEmployeeId: ACTOR }, "OWNER_IS_IMPORT_ACTOR");
+    await refuse({ ...row, billingAddress: { street: "7 Import Rd", suite: "4" } }, "FIELD_NOT_ALLOWED");
+    assert.deepEqual(await counts(), before, "a refused import row wrote an Account");
+    assert.equal(await receipts(), receiptsBefore, "a refused import row wrote a receipt");
+    const created = await importer.importCustomerToPostgres(deps, actor, { row, idempotencyKey: "imp:ok" }, ACTIVE);
+    const projection = created.result ?? created;
+    assert.equal(projection.ownerEmployeeId, "emp-owner-2");
+    assert.equal(projection.createdBy, ACTOR);
+    assert.deepEqual(projection.billingAddress, { street: "7 Import Rd", city: "Town", state: "AZ", zip: "85003" });
+    await q(`DELETE FROM eos_crm.command_receipts WHERE target_id = $1`, [projection.accountId]);
+    await q(`DELETE FROM eos_crm.accounts WHERE id = $1`, [projection.accountId]);
   });
 });

@@ -141,7 +141,8 @@ export type FieldDisposition =
   | "PROVENANCE_EVIDENCE" // Firebase uid / seed actor / assignment provenance: evidence file only, never a column
   | "CERTIFICATION_MARKER" // the Certification-world marker: the record is excluded
   | "CERTIFICATION_FIXTURE_ONLY" // E: fixture metadata with no business column; blocks on a non-Certification record
-  | "NOT_MIGRATED_BLOCKING"; // C/E: a stored fact with no canonical target; blocks until the source is corrected or the Owner decides
+  | "NOT_MIGRATED_OBSOLETE" // C: census found no current reader/writer beyond fixtures; not migrated, value kept in evidence
+  | "NOT_MIGRATED_BLOCKING"; // a stored fact with no canonical target (e.g. an inventory type); blocks the record
 
 export const ACCOUNT_FIELD_DISPOSITIONS: Readonly<Record<string, FieldDisposition>> = Object.freeze({
   name: "COLUMN", status: "COLUMN", accountOwner: "COLUMN", billingAddress: "COLUMN", notes: "COLUMN",
@@ -156,9 +157,11 @@ export const ACCOUNT_FIELD_DISPOSITIONS: Readonly<Record<string, FieldDispositio
   certLineMode: "CERTIFICATION_FIXTURE_ONLY", category: "CERTIFICATION_FIXTURE_ONLY", fixtureCompleteness: "CERTIFICATION_FIXTURE_ONLY",
   dataProvenance: "CERTIFICATION_FIXTURE_ONLY", fieldProvenance: "CERTIFICATION_FIXTURE_ONLY", publicSource: "CERTIFICATION_FIXTURE_ONLY",
   syntheticDataDisclaimer: "CERTIFICATION_FIXTURE_ONLY",
-  // Written only by the Certification world on an Account; no Account column exists (ACCOUNT_CITY_STATE_NOT_PROJECTED).
-  city: "NOT_MIGRATED_BLOCKING", state: "NOT_MIGRATED_BLOCKING", addressLine1: "NOT_MIGRATED_BLOCKING",
-  phone: "NOT_MIGRATED_BLOCKING", website: "NOT_MIGRATED_BLOCKING",
+  // Controller ruling 3 census (crm-cutover-plan.md §2.5): written only by the Certification world
+  // (certificationWorld/build.mjs:151-164), read by no product surface, report or command -> C, not migrated, the value
+  // preserved per record in the evidence. NEVER promoted to a billing address.
+  city: "NOT_MIGRATED_OBSOLETE", state: "NOT_MIGRATED_OBSOLETE", addressLine1: "NOT_MIGRATED_OBSOLETE",
+  phone: "NOT_MIGRATED_OBSOLETE", website: "NOT_MIGRATED_OBSOLETE",
 });
 
 export const CONTACT_FIELD_DISPOSITIONS: Readonly<Record<string, FieldDisposition>> = Object.freeze({
@@ -168,8 +171,10 @@ export const CONTACT_FIELD_DISPOSITIONS: Readonly<Record<string, FieldDispositio
   createdBy: "PROVENANCE_EVIDENCE", updatedBy: "PROVENANCE_EVIDENCE",
   [CERTIFICATION_MARKER_FIELD]: "CERTIFICATION_MARKER",
   dataProvenance: "CERTIFICATION_FIXTURE_ONLY",
-  // Seed / Certification shapes with no canonical target: `title` is not `role` by assertion, and a Contact has no site.
-  title: "NOT_MIGRATED_BLOCKING", locationId: "NOT_MIGRATED_BLOCKING",
+  // Ruling 3: `title` is the SAME fact as `role` -- the product's own CSV importer maps a Title / Job title / Position
+  // column to role (field-ops-app-vite/src/domain/contactCsvImport.js:109) -> B, mapped to contact_role; a record whose
+  // title and role disagree blocks. `locationId` (Certification world only, no reader) -> C, not migrated, in evidence.
+  title: "COLUMN", locationId: "NOT_MIGRATED_OBSOLETE",
 });
 
 export const LOCATION_FIELD_DISPOSITIONS: Readonly<Record<string, FieldDisposition>> = Object.freeze({
@@ -294,7 +299,22 @@ export interface ProvenanceEvidence {
   } | null;
 }
 
+/** Ruling 4: the D1 creation-owner rule applied at cutover, recorded per derived record. */
+export const OWNER_DERIVATION_RULE = "D1_CREATION_OWNER_FOLLOWS_ACCOUNT_OWNER_AT_CUTOVER";
+
+export interface OwnerDerivationEvidence {
+  readonly collection: "contacts" | "locations";
+  readonly id: string;
+  readonly derivedFromAccountId: string;
+  readonly ownerEmployeeId: string;
+  readonly rule: typeof OWNER_DERIVATION_RULE;
+}
+
 export interface CrmEvidence {
+  /** Ruling 4: every child owner derived from its Account at cutover. */
+  readonly ownerDerivations: readonly OwnerDerivationEvidence[];
+  /** Ruling 3 class C fields: not migrated, their values preserved verbatim. */
+  readonly notMigratedValues: readonly { readonly collection: CrmCollection; readonly id: string; readonly field: string; readonly value: unknown }[];
   /** Single free-text billing addresses, verbatim. Reconciliation staging only -- never parsed, never a column. */
   readonly billingAddressResolution: readonly { readonly accountId: string; readonly freeText: string }[];
   readonly certificationExcluded: readonly { readonly collection: CrmCollection; readonly id: string; readonly reason: string }[];
@@ -462,6 +482,8 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
   const billingAddressShapes = { structured: 0, freeText: 0, absent: 0, invalid: 0 };
   const ownerReferences: Record<string, number> = {};
   const billingAddressResolution: { accountId: string; freeText: string }[] = [];
+  const notMigratedValues: { collection: CrmCollection; id: string; field: string; value: unknown }[] = [];
+  const ownerDerivations: OwnerDerivationEvidence[] = [];
   const certificationExcluded: { collection: CrmCollection; id: string; reason: string }[] = [];
   const provenance: ProvenanceEvidence[] = [];
 
@@ -500,6 +522,9 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
           add(collection, d.id, disposition === "CERTIFICATION_FIXTURE_ONLY" ? "FIXTURE_FIELD_ON_UNMARKED_RECORD" : "FIELD_HAS_NO_CANONICAL_TARGET",
             "BLOCKING", field, "the value has no PostgreSQL target; correct the source or obtain an Owner mapping decision");
           blocked = true;
+        } else if (disposition === "NOT_MIGRATED_OBSOLETE") {
+          notMigratedValues.push({ collection, id: d.id, field, value });
+          add(collection, d.id, "FIELD_NOT_MIGRATED_OBSOLETE", "ADVISORY", field, "no current reader or writer (ruling 3, class C); not migrated, the value is preserved in the evidence");
         } else if (disposition === "IDENTITY_ECHO" && value !== d.id) {
           add(collection, d.id, "IDENTITY_ECHO_MISMATCH", "BLOCKING", field, `stores ${JSON.stringify(value)}, which is not the document id`);
           blocked = true;
@@ -660,8 +685,15 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     const relationshipTypes = text("accounts", d.id, "relationshipTypes", enumSet(data.relationshipTypes, ACCOUNT_RELATIONSHIP_TYPES));
     let linesOfBusiness: string[] | undefined;
     if (typeof data.lineOfBusiness === "string") {
-      add("accounts", d.id, "LINE_OF_BUSINESS_SCALAR_LEGACY", "BLOCKING", "lineOfBusiness",
-        `stores the scalar ${JSON.stringify(data.lineOfBusiness)}; the governed shape is a set, and a scalar is not promoted to one by assumption`);
+      // Ruling 3, class B: the scalar is the one-member form of the same fact (the Account form reads it by membership,
+      // AccountForm.jsx:60,324,332). A vocabulary value maps to a one-item set; anything else blocks.
+      if ((ACCOUNT_LINES_OF_BUSINESS as readonly string[]).includes(data.lineOfBusiness)) {
+        linesOfBusiness = [data.lineOfBusiness];
+        add("accounts", d.id, "LINE_OF_BUSINESS_SCALAR_AS_SET", "ADVISORY", "lineOfBusiness", `the scalar ${JSON.stringify(data.lineOfBusiness)} is copied as a one-item set`);
+      } else {
+        add("accounts", d.id, "LINE_OF_BUSINESS_SCALAR_UNMAPPABLE", "BLOCKING", "lineOfBusiness",
+          `the scalar ${JSON.stringify(data.lineOfBusiness)} is not one of ${ACCOUNT_LINES_OF_BUSINESS.join(", ")}`);
+      }
     } else {
       linesOfBusiness = text("accounts", d.id, "lineOfBusiness", enumSet(data.lineOfBusiness, ACCOUNT_LINES_OF_BUSINESS));
     }
@@ -684,6 +716,23 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     });
   }
   const accountIds = new Set(accounts.map((a) => a.id));
+  const accountOwnerOf = new Map(accounts.map((a) => [a.id, a.ownerEmployeeId]));
+  /**
+   * Ruling 4: a Contact or customer site with no independent stated owner follows its Account's owner AT CUTOVER (the
+   * D1 creation semantics). Not accountability, and not a propagation of any later Account handoff. Evidence is
+   * recorded per record. An ownerless Account yields no owner to follow: the child is BLOCKED, never left ownerless.
+   */
+  const childOwner = (collection: "contacts" | "locations", id: string, accountId: string, stated: string | null): string | null | undefined => {
+    if (stated !== null) return stated;
+    const accountOwner = accountOwnerOf.get(accountId) ?? null;
+    if (accountOwner === null) {
+      add(collection, id, "CHILD_OWNER_UNDERIVABLE", "BLOCKING", "owner",
+        `no owner is stated and Account ${accountId} is ownerless; a governed ${collection === "contacts" ? "Contact" : "customer site"} is never ownerless and its owner is never guessed`);
+      return undefined;
+    }
+    ownerDerivations.push({ collection, id, derivedFromAccountId: accountId, ownerEmployeeId: accountOwner, rule: OWNER_DERIVATION_RULE });
+    return accountOwner;
+  };
   const everyAccountId = new Set(snapshot.accounts.map((a) => a.id));
 
   const parentOf = (collection: CrmCollection, d: SnapshotDocument): string | undefined => {
@@ -707,7 +756,18 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     const name = text("contacts", d.id, "name", requiredName(d.data.name));
     const email = text("contacts", d.id, "email", optionalText(d.data.email));
     const phone = text("contacts", d.id, "phone", optionalText(d.data.phone));
-    const contactRole = text("contacts", d.id, "role", optionalText(d.data.role));
+    const role = text("contacts", d.id, "role", optionalText(d.data.role));
+    const title = text("contacts", d.id, "title", optionalText(d.data.title));
+    let contactRole: string | null | undefined = role;
+    if (role !== undefined && title !== undefined && title !== null) {
+      if (role === null) {
+        contactRole = title;
+        add("contacts", d.id, "CONTACT_TITLE_AS_ROLE", "ADVISORY", "title", "title is the role fact (contactCsvImport.js:109); copied to contact_role");
+      } else if (role !== title) {
+        add("contacts", d.id, "CONTACT_TITLE_ROLE_CONFLICT", "BLOCKING", "title", `title ${JSON.stringify(title)} and role ${JSON.stringify(role)} disagree; neither is chosen`);
+        contactRole = undefined;
+      }
+    } else if (title === undefined) contactRole = undefined;
     let isPrimary: boolean | undefined = false;
     if (d.data.isPrimary !== undefined && d.data.isPrimary !== null) {
       if (typeof d.data.isPrimary !== "boolean") {
@@ -719,9 +779,11 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     if (!owner.ok) add("contacts", d.id, "OWNER_SHAPE_UNRECOGNISED", "BLOCKING", "owner", owner.reason);
     const at = instants("contacts", d);
     if (bad || accountId === undefined || !owner.ok || at === null || [name, email, phone, contactRole, isPrimary].some((v) => v === undefined)) continue;
+    const contactOwner = childOwner("contacts", d.id, accountId, owner.value);
+    if (contactOwner === undefined) continue;
     contacts.push({
       id: d.id, accountId, name: name as string, email: email as string | null, phone: phone as string | null,
-      contactRole: contactRole as string | null, isPrimary: isPrimary as boolean, ownerEmployeeId: owner.value, createdAt: at.createdAt, updatedAt: at.updatedAt,
+      contactRole: contactRole as string | null, isPrimary: isPrimary as boolean, ownerEmployeeId: contactOwner, createdAt: at.createdAt, updatedAt: at.updatedAt,
     });
   }
 
@@ -794,9 +856,11 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     if (!owner.ok) add("locations", d.id, "OWNER_SHAPE_UNRECOGNISED", "BLOCKING", "owner", owner.reason);
     const at = instants("locations", d);
     if (bad || accountId === undefined || !owner.ok || at === null || name === undefined || accessNotes === undefined) continue;
+    const siteOwner = childOwner("locations", d.id, accountId, owner.value);
+    if (siteOwner === undefined) continue;
     locations.push({
       id: d.id, accountId, name, addressStreet: parts[0], addressCity: parts[1], addressState: parts[2], addressPostalCode: parts[3],
-      accessNotes, ownerEmployeeId: owner.value, createdAt: at.createdAt, updatedAt: at.updatedAt,
+      accessNotes, ownerEmployeeId: siteOwner, createdAt: at.createdAt, updatedAt: at.updatedAt,
     });
   }
 
@@ -807,8 +871,8 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
 
   const byId = <T extends { id: string }>(xs: T[]) => xs.sort((a, b) => asciiSort(a.id, b.id));
   const crm: CanonicalCrm = { accounts: byId(accountsOut), contacts: byId(contacts), locations: byId(locations) };
-  // Ownership is counted over what is actually selected. OWNERLESS is carried, never filled in (ruling D-6), and a
-  // Contact or site owner is never inherited from its Account at migration time -- inheritance is a creation rule.
+  // Ownership is counted over what is actually selected. A legacy OWNERLESS Account is carried, never filled in (ruling
+  // D-6); a Contact or site is never ownerless (ruling 4: stated, or derived from its Account with evidence, or blocked).
   const owned: [CrmCollection, readonly { id: string; ownerEmployeeId: string | null }[]][] = [
     ["accounts", crm.accounts], ["contacts", crm.contacts], ["locations", crm.locations],
   ];
@@ -816,7 +880,7 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     for (const r of records) {
       if (r.ownerEmployeeId === null) {
         ownerless[collection] += 1;
-        add(collection, r.id, "OWNERLESS_LEGACY", "ADVISORY", collection === "accounts" ? "accountOwner" : "owner", "no owner stated; carried as OWNERLESS, never derived");
+        add(collection, r.id, "OWNERLESS_LEGACY", "ADVISORY", collection === "accounts" ? "accountOwner" : "owner", "no owner stated; a legacy ownerless Account is carried as OWNERLESS, never filled in");
       } else ownerReferences[r.ownerEmployeeId] = (ownerReferences[r.ownerEmployeeId] ?? 0) + 1;
     }
   }
@@ -830,6 +894,10 @@ export function censusCrmSnapshot(snapshot: CrmSnapshot): CrmCensusResult {
     crm,
     evidence: {
       billingAddressResolution: billingAddressResolution.sort((a, b) => asciiSort(a.accountId, b.accountId)),
+      ownerDerivations: ownerDerivations
+        .filter((o) => (o.collection === "contacts" ? crm.contacts : crm.locations).some((r) => r.id === o.id))
+        .sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
+      notMigratedValues: notMigratedValues.sort((a, b) => asciiSort(`${a.collection}|${a.id}|${a.field}`, `${b.collection}|${b.id}|${b.field}`)),
       certificationExcluded: certificationExcluded.sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
       provenance: provenance.sort((a, b) => asciiSort(`${a.collection}|${a.id}`, `${b.collection}|${b.id}`)),
     },
@@ -889,6 +957,8 @@ export interface CrmTargetFacts {
   readonly commercialAccountIds: readonly { readonly table: string; readonly accountId: string }[];
   /** Account ids already present in eos_crm.accounts for this tenant (e.g. declared synthetic seed rows, or a prior copy). */
   readonly existingAccountIds: ReadonlySet<string>;
+  /** Ruling 5: ids the synthetic nonprod seed manifest DECLARES. A snapshot record may never share one. */
+  readonly declaredSyntheticIds?: Readonly<Record<CrmCollection, readonly string[]>>;
 }
 
 /**
@@ -897,7 +967,17 @@ export interface CrmTargetFacts {
  * block (the C6 Account dependency). Pure.
  */
 export function finalizeCrmCensus(result: CrmCensusResult, facts: CrmTargetFacts): CrmCensusResult {
-  const findings: CrmFinding[] = result.census.findings.filter((f) => f.code !== "OWNER_UNRESOLVED" && f.code !== "COMMERCIAL_ACCOUNT_REFERENCE_UNRESOLVABLE");
+  const TARGET_CODES = ["OWNER_UNRESOLVED", "COMMERCIAL_ACCOUNT_REFERENCE_UNRESOLVABLE", "SYNTHETIC_ID_CONFLICT"];
+  const findings: CrmFinding[] = result.census.findings.filter((f) => !TARGET_CODES.includes(f.code));
+  for (const [collection, records] of [["accounts", result.crm.accounts], ["contacts", result.crm.contacts], ["locations", result.crm.locations]] as const) {
+    const declared = new Set(facts.declaredSyntheticIds?.[collection] ?? []);
+    for (const r of records) {
+      if (declared.has(r.id)) {
+        findings.push({ collection, id: r.id, code: "SYNTHETIC_ID_CONFLICT", severity: "BLOCKING", field: null,
+          detail: "this source id is also declared by the synthetic nonprod seed manifest; synthetic acceptance rows and copied records must never share an id" });
+      }
+    }
+  }
   const owned: [CrmCollection, readonly { id: string; ownerEmployeeId: string | null }[]][] = [
     ["accounts", result.crm.accounts], ["contacts", result.crm.contacts], ["locations", result.crm.locations],
   ];
