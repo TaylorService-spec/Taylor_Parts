@@ -3,10 +3,10 @@
 // stageUpdate), exported as the `createPart` / `updatePart` / `changePartStatus` callables and used by
 // dataImport/firestoreDataImportAdapters.ts.
 //
-// ════════════════════ DEPENDS ON #1911 AND DEFERRED MIGRATION 027 ════════════════════
+// ════════════════════ TABLE: MIGRATIONS 026 + 027 ════════════════════
 //
 // Its table is eos_ops.parts: the identity row migration 026 (PR #1911) creates, extended with the descriptive
-// columns in functions/migrations/deferred/1759881600000_catalog-master-descriptive-authority.sql. This module
+// columns in functions/migrations/1759881600000_catalog-master-descriptive-authority.sql (027). This module
 // compiles without either; it cannot run until both are applied (a missing column is COMMAND_FAILED, never a
 // partial write).
 //

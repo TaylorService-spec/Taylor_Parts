@@ -62,7 +62,12 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
 
   // ── the world ──
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
-  const part = (tenant, id) => q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by) VALUES ($1,$2,'proof')`, [id, tenant]);
+  // Migration 027 (catalog cutover) gives every Part identity its Part Master descriptive record, NOT NULL. These proofs
+  // are about identity, so each row carries one fixed, valid descriptive record and nothing below depends on it.
+  const PART_ROW = `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit, control_type,
+      stocking_class, expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+    VALUES ($1, $2, $3, 'PROOF-IPN', 'proof part', 'ACTIVE', 'EACH', 'STANDARD', 'STOCKED', false, false, false, false, 1, 'proof')`;
+  const part = (tenant, id) => q(PART_ROW, [id, tenant, "proof"]);
   const model = (tenant, id, status = "ACTIVE") => {
     const [manufacturer, number] = id.split("--");
     return q(`INSERT INTO eos_ops.equipment_models (id, tenant_id, manufacturer_id, manufacturer_name, model_number, display_name, status, source_authority, version, created_by, updated_by)
@@ -180,7 +185,7 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
     const tx = await pool.connect();
     try {
       await tx.query("BEGIN");
-      await tx.query(`INSERT INTO eos_ops.parts (id, tenant_id, created_by) VALUES ('TST-TX', 't1', 'proof')`);
+      await tx.query(PART_ROW, ["TST-TX", "t1", "proof"]);
       assert.deepEqual(await authority.verifyReferences(tx, "t1", [P("TST-TX")]), ["FOUND"]);
       assert.deepEqual(await authority.verifyReferences(pool, "t1", [P("TST-TX")]), ["NOT_FOUND"], "an uncommitted identity is not visible outside its transaction");
       await tx.query("ROLLBACK");
@@ -202,7 +207,7 @@ test("PostgreSQL catalog reference authority, in PostgreSQL", { skip: SKIP, conc
     for (const bad of ["", " TST-1", "TST 1", "TST/1", "a".repeat(65), "tst.1"]) {
       await assert.rejects(part("t1", bad), (e) => e.code === "23514" && e.constraint === "part_id_canonical_shape", JSON.stringify(bad));
     }
-    await assert.rejects(q(`INSERT INTO eos_ops.parts (id, tenant_id, created_by) VALUES ('TST-X','t1','')`), (e) => e.constraint === "part_created_by_present");
+    await assert.rejects(q(PART_ROW, ["TST-X", "t1", ""]), (e) => e.constraint === "part_created_by_present");
     await assert.rejects(part("no-such-tenant", "TST-X"), (e) => e.code === "23503");
   });
 

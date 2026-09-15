@@ -9,10 +9,10 @@
 //     and the structural proof that no runtime code can reach it;
 //   * the snapshot census: counts, invalid ids, duplicate canonical identity, missing references, status
 //     distribution, non-master fields, ALWAYS-excluded Certification fixtures, legacy uid provenance, digest;
-//   * deferred migration 027 is not applied and extends 026 rather than restating it.
+//   * migration 027 is in the applied set, after 026, and extends 026 rather than restating it.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -364,13 +364,18 @@ test("a structurally wrong file is refused before any census", () => {
   assert.throws(() => parseCatalogSnapshot({ ...cleanSnapshot(), parts: [{ id: 1, data: {} }] }), /parts\[0\]/);
 });
 
-// ════════════════════ deferred migration 027 ════════════════════
+// ════════════════════ migration 027 ════════════════════
 
-const DEFERRED_027 = "1759881600000_catalog-master-descriptive-authority.sql";
+const MIGRATION_026 = "1759795200000_catalog-part-identity-reference-authority.sql";
+const MIGRATION_027 = "1759881600000_catalog-master-descriptive-authority.sql";
 
-test("migration 027 is deferred -- not in the applied set -- and extends 026's eos_ops.parts rather than restating it", () => {
-  assert.equal(migrationFiles().some((f) => f.startsWith("1759881600000")), false, "027 must stay in migrations/deferred until #1911 (026) is applied");
-  const sql = readFileSync(join("migrations", "deferred", DEFERRED_027), "utf8");
+test("migration 027 is applied, pinned by name, after 026, and extends 026's eos_ops.parts rather than restating it", () => {
+  const files = migrationFiles();
+  assert.ok(files.includes(MIGRATION_026), "026 (catalog foundation) is in the set");
+  assert.ok(files.includes(MIGRATION_027), "027 is in the applied set");
+  assert.ok(files.indexOf(MIGRATION_026) < files.indexOf(MIGRATION_027), "027 runs after the 026 table it extends");
+  assert.equal(existsSync(join("migrations", "deferred", MIGRATION_027)), false, "no deferred copy remains");
+  const sql = readFileSync(join("migrations", MIGRATION_027), "utf8");
   const up = sql.split(/^-- Down Migration/m)[0].split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
   assert.doesNotMatch(up, /CREATE\s+TABLE/i, "027 creates no table: the Part identity table is 026's");
   assert.match(up, /ALTER TABLE parts/);

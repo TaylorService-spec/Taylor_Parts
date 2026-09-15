@@ -1,15 +1,9 @@
 -- Up Migration
 --
--- ████████████████████████████████████████████████████████████████████████████████████████████████
--- ██  NOT APPLIED. THIS FILE IS NOT IN THE MIGRATION SET AND MUST NOT BE MOVED INTO IT YET.      ██
--- ████████████████████████████████████████████████████████████████████████████████████████████████
+-- APPLIED IN ORDER after migration 026. It was prepared in functions/migrations/deferred/ while 026 (PR #1911) was
+-- not yet on main, and moved into the migration set when this branch merged main after #1911 landed.
 --
--- It lives in `functions/migrations/deferred/`, which neither node-pg-migrate nor
--- functions/test/support/migrationSchema.mjs reads (see the header of
--- deferred/1759190400000_employee-principal-link-employee-fk.sql for the measured reason). Moving it up one
--- directory is the deliberate act that applies it.
---
--- PRECONDITION: migration 026 (1759795200000_catalog-part-identity-reference-authority.sql, PR #1911) is in the
+-- DEPENDS ON migration 026 (1759795200000_catalog-part-identity-reference-authority.sql, PR #1911) is in the
 -- applied set. This migration EXTENDS 026's `eos_ops.parts` identity table; it does not restate it. On a tree
 -- without 026 it fails on its first ALTER, which is exactly the refusal wanted.
 --

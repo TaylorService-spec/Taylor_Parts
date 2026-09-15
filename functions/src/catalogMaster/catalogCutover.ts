@@ -29,8 +29,8 @@
 // READ ONLY transaction. Counts, identity-set reconciliation, exact field reconciliation over a deterministic
 // sample (or all), duplicate canonical identity, dangling Part -> Equipment Model references, and catalog
 // reference verdict spot-checks with the SAME tenant-scoped EXISTS probe the #1911 reference authority issues
-// (FOUND own kind / WRONG_KIND other kind / NOT_FOUND absent or other tenant). Adapter-level verdict proof over
-// populated data is an integration step once #1911 is merged.
+// (FOUND own kind / WRONG_KIND other kind / NOT_FOUND absent or other tenant). The adapter itself is proved against
+// the populated copy in catalogCutoverPostgres.test.mjs (it may not be imported by runtime code before step 8).
 import type { PoolClient } from "pg";
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -59,7 +59,7 @@ export class CatalogCutoverError extends Error {
   }
 }
 
-/** Does eos_ops.parts carry the deferred-027 descriptive columns? (026 alone is identity only.) */
+/** Does eos_ops.parts carry migration 027's descriptive columns? (026 alone is identity only; an unmigrated database refuses.) */
 export async function partMasterSchemaPresent(db: Db): Promise<boolean> {
   const { rows } = await db.query(
     `SELECT count(*)::int AS n FROM information_schema.columns
@@ -123,7 +123,7 @@ export async function copyCatalog(
     if (member.rows.length === 0) throw new CatalogCutoverError("CUTOVER_PRINCIPAL_NOT_TENANT_MEMBER", "the cutover Principal is not an active member of the target tenant");
     const partSchema = await partMasterSchemaPresent(client);
     if (catalog.parts.length > 0 && !partSchema) {
-      throw new CatalogCutoverError("PART_TARGET_SCHEMA_ABSENT", "eos_ops.parts lacks the Part Master columns: migration 026 (#1911) and deferred migration 027 must be applied first");
+      throw new CatalogCutoverError("PART_TARGET_SCHEMA_ABSENT", "eos_ops.parts lacks the Part Master columns: migrations 026 and 027 must be applied first");
     }
     const target = await tenantRows(client, tenantId, partSchema);
     const models = plan(catalog.equipmentModels, target.models, EQUIPMENT_MODEL_FIELDS);
@@ -167,7 +167,11 @@ export async function copyCatalog(
 
 export type CatalogVerdict = "FOUND" | "NOT_FOUND" | "WRONG_KIND";
 
-/** The #1911 adapter's probe shape, restated for verification only (not a reference authority). */
+/**
+ * The #1911 catalog reference adapter's probe shape, restated for verification only.
+ * Not an import: that adapter's CATALOG_CUTOVER_TAIL ratchet forbids any runtime module from importing it until the
+ * cutover composes it (step 8). catalogCutoverPostgres.test.mjs proves this probe and the adapter agree on populated data.
+ */
 async function verdicts(db: Db, tenantId: string, refs: readonly { kind: "PART" | "EQUIPMENT_MODEL"; ref: string }[], partSchema: boolean): Promise<CatalogVerdict[]> {
   if (refs.length === 0) return [];
   const partProbe = partSchema ? `EXISTS (SELECT 1 FROM eos_ops.parts p WHERE p.tenant_id = $1 AND p.id = r.ref)` : "false";

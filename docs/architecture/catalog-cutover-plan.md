@@ -91,7 +91,7 @@ Certification world `g03Snapshot.mjs:72`, `buildGoldenManifest.mjs:168`, `buildQ
 **Part** — canonical master data is exactly `partToFirestore` (`partMasterRepository.ts:78-98`) as `partFromFirestore`
 reads it back through `validatePart`:
 
-| Field | Class | PostgreSQL (deferred 027) |
+| Field | Class | PostgreSQL (migration 027) |
 |---|---|---|
 | doc id = `partId` (= SKU, Decision #44; `parsePartId` `/^[A-Za-z0-9_-]{1,64}$/`) | identity | `eos_ops.parts.id` (026) |
 | `internalPartNumber`, `name`, `description?`, `category?` | C → A | `internal_part_number`, `name`, `description`, `category` |
@@ -172,7 +172,7 @@ updates are `NO_CHANGES` rather than a version bump.
 ## 3. Schema
 
 - **Equipment Model:** `eos_ops.equipment_models` (migration 008, on main) already holds every master field. No migration.
-- **Part:** migration **027**, `functions/migrations/deferred/1759881600000_catalog-master-descriptive-authority.sql`:
+- **Part:** migration **027**, `functions/migrations/1759881600000_catalog-master-descriptive-authority.sql`:
   `ALTER TABLE eos_ops.parts` — the identity table of migration **026**
   (`1759795200000_catalog-part-identity-reference-authority.sql`, PR #1911) — adding the §1.3 columns as
   enums/booleans/text, `validatePart`'s combination rules as CHECKs, the tenant-scoped FK to `equipment_models`,
@@ -183,13 +183,12 @@ updates are `NO_CHANGES` rather than a version bump.
 (`1759795200000`); Employee runtime authority PR(s) take timestamps strictly between `1759795200000` and
 `1759881600000` and integrate before this cutover; **027 = this cutover (`1759881600000`)**.
 
-**Why deferred.** 027 extends a table that exists only once #1911 lands. It stays in `functions/migrations/deferred/`
-(read by neither node-pg-migrate nor `migrationSchema.mjs`, the repository's existing pattern for a prepared migration
-whose precondition is not met) until the coordinator confirms #1911 is on main; then this branch **merges main
-normally** and moves 027 up one directory. The PostgreSQL suite proves both states: without 026 it runs on main's
-migration set (Part proofs skip with `DEPENDS ON #1911`; the copy refuses Parts with `PART_TARGET_SCHEMA_ABSENT`);
-with 026 present it migrates a temporary symlink directory of every migration plus deferred 027 through the real
-runner. (Proved locally both ways — §9.)
+**How it arrived.** 027 extends a table that existed only once #1911 landed, so it was prepared in
+`functions/migrations/deferred/` (read by neither node-pg-migrate nor `migrationSchema.mjs`). After #1911 (026) and
+#1912 (024/025) merged, this branch merged main normally (no rebase) and moved 027 into `functions/migrations/`. The
+Employee runtime authority lane (#1913) holds `1759838400000`, which sorts between 026 and 027. The PostgreSQL suite
+migrates from `functions/migrations` with the real runner and runs every Part proof unconditionally; it asserts 026 and
+027 by name, never "the latest migration".
 
 ---
 
@@ -354,8 +353,8 @@ a Firestore catalog write observed after the freeze; unexplained `sku ≠ id` or
 
 1. CRM 024 + 025 (#1912) and catalog foundation 026 (#1911, `1759795200000`).
 2. Employee runtime authority PR(s) (timestamps between 026 and 027).
-3. On the coordinator's message that #1911 is on main: this branch **merges main normally** (never a rebase) and moves
-   deferred 027 into `functions/migrations/`; the Part proofs then run in CI unchanged.
+3. Done: #1911 and #1912 are on main; this branch **merged main normally** (never a rebase) and moved 027 into
+   `functions/migrations/`; the Part proofs run unconditionally.
 4. After a reconciled verify in an authorized freeze window: steps 7–9 (writer activation, Render composition of the
    reference authority — CATALOG_CUTOVER_TAIL — and the catalog writers).
 5. `functions/package.json` / workflow edits here are append-only next to lines #1911 and #1912 also touch.
@@ -381,11 +380,12 @@ Resolved by Owner ruling 2026-09-14: controlled freeze window (§5); Certificati
   `src/catalogMaster` (static + runtime probe) or the copy tool; exporter marker, allowlist, exclusive checksummed
   write, structural no-runtime-import; writer-state coherence, transitions, freeze vs retire, guard placement, no
   PostgreSQL writer composition while INACTIVE; census (clean, duplicates, invalid, missing references, Certification
-  exclusion, no inclusion path, legacy uid provenance, non-blocking findings, timestamps); deferred 027.
+  exclusion, no inclusion path, legacy uid provenance, non-blocking findings, timestamps); migration 027 applied after 026, pinned by name.
 - `functions/test/catalogCutoverPostgres.test.mjs` (`test:adminPolicyPostgres`): Equipment Model writer; Part writer
-  (with 026); copy exact ids/versions/timestamps as the cutover Principal; Certification fixtures never land and are
+  (unconditional); copy exact ids/versions/timestamps as the cutover Principal; Certification fixtures never land and are
   listed; no uid in any actor column or audit payload; non-member principal refused; verify all fields, verdicts, and
   fixture-in-target failure; rerun no-op; drift refused; unknown target refused; tenant scoping; CLI end to end
-  (checksum, evidence, refused inclusion flag); 027 Down refusal (with 026).
+  (checksum, evidence, refused inclusion flag); 027 Down refusal; the #1911 reference authority's
+  FOUND / WRONG_KIND / NOT_FOUND over the populated copy, agreeing with verify's probe.
 - `functions/test/operatorScriptEnvironmentFence.test.mjs`: 14 refusals for the two scripts, each before any client library loads.
 - Negative controls (each red, then restored byte-identically) are listed in the PR description.
