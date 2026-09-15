@@ -31,6 +31,7 @@ import {
 } from "./partMasterCommands.js";
 import type { PartInput } from "./validation.js";
 import { MalformedStoredRecordError } from "./partMasterRepository.js";
+import { FirestoreCatalogWriterRetiredError } from "../catalogMaster/firestoreCatalogWriterRetirement.js";
 
 // Sanitized error -> HttpsError. The service's messages may embed internal ids/versions; each error
 // TYPE surfaces a GENERIC message so no internal state (existence, current version) leaks past the
@@ -50,6 +51,8 @@ export function mapError(err: unknown): HttpsError {
   // Named explicitly for readers tracing a malformed stored record, though it maps to the same
   // generic "internal" response as the catch-all below (a stored-shape problem is never surfaced).
   if (err instanceof MalformedStoredRecordError) return new HttpsError("internal", "The request could not be completed.");
+  // Catalog cutover: once the retirement switch is thrown, Part Master is written through PostgreSQL only.
+  if (err instanceof FirestoreCatalogWriterRetiredError) return new HttpsError("failed-precondition", "Part records are no longer written here.");
   return new HttpsError("internal", "The request could not be completed.");
 }
 
