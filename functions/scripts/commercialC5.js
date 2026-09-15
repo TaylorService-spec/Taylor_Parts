@@ -30,13 +30,14 @@
 //   * EOS_ENVIRONMENT not exactly `nonprod` (shared: measureWorkforceActivation.js assertNonprodRuntime)
 //   * --environment platform-certification (the Certification world is frozen)
 //   * missing --tenantKey / --snapshot; copy without --principalId or without a 64-hex --confirmMigrationRequired
-//   * any Certification inclusion option; any --confirmProduction (there is no production mode)
+//   * any Certification inclusion option; any --confirmProduction (there is no production mode); any option that would
+//     tolerate synthetic / unknown target rows (a real migration needs an empty target; cleanup is never part of C5)
 // After the fence: the snapshot checksum must match, and the snapshot must name the environment and the Firebase project
 // the registry declares -- never production.
 //
 // Usage (Render Shell on eos-api-nonprod):
 //   node scripts/commercialC5.js --mode census --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
-//     --tenantKey taylor-nonprod --snapshot ./commercial-snapshot.json [--retainDeclaredSyntheticSeedRows]
+//     --tenantKey taylor-nonprod --snapshot ./commercial-snapshot.json
 //   ... --mode copy   ... --principalId <EOS principal id> --confirmMigrationRequired <snapshot sha256>
 //   ... --mode verify ...
 //
@@ -72,6 +73,11 @@ function assertC5Invocation(args, env) {
   for (const option of ["certificationMarked", "includeCertification", "includeFixtures"]) {
     if (args[option] !== undefined) throw new Error(`--${option} is not an option: identified Certification fixtures are always excluded (Owner ruling).`);
   }
+  for (const option of ["retainDeclaredSyntheticSeedRows", "retainSyntheticRows", "allowUnknownTargetRows"]) {
+    if (args[option] !== undefined) {
+      throw new Error(`--${option} is not an option: target rows the snapshot does not hold (declared synthetic seed rows included) always block the copy; their removal is a separately authorized governed nonprod cleanup, never part of C5 (Owner ruling).`);
+    }
+  }
   if (args.mode === "copy") {
     if (!args.principalId || args.principalId === "true") throw new Error("--principalId <EOS principal id> is required for copy: rows are written as an EOS Principal, never a Firebase uid.");
     if (!/^[0-9a-f]{64}$/.test(args.confirmMigrationRequired || "")) {
@@ -86,7 +92,6 @@ function assertC5Invocation(args, env) {
     snapshotPath: args.snapshot,
     principalId: args.principalId,
     confirmMigrationRequired: args.confirmMigrationRequired,
-    retainDeclaredSyntheticSeedRows: args.retainDeclaredSyntheticSeedRows === "true",
   };
 }
 
@@ -123,7 +128,7 @@ function assertSnapshotSource(snapshot, environmentId) {
   }
 }
 
-/** The commercial numbers the governed synthetic nonprod seed declares -- the only target rows copy may leave in place. */
+/** The commercial numbers the governed synthetic nonprod seed declares -- used only to LABEL such target rows in the census; they still block. */
 function declaredSyntheticSeedNumbers() {
   const manifest = JSON.parse(fs.readFileSync(SYNTHETIC_SEED_MANIFEST, "utf8"));
   return (manifest.commercial || []).map((r) => r.number);
@@ -147,7 +152,7 @@ async function main() {
   const snapshot = parseCommercialSnapshot(raw);
   assertSnapshotSource(snapshot, options.environmentId);
   const { census, canonical, legacyActorProvenance } = censusCommercialSnapshot(snapshot);
-  const retainedSyntheticNumbers = options.retainDeclaredSyntheticSeedRows ? declaredSyntheticSeedNumbers() : [];
+  const declaredSyntheticNumbers = declaredSyntheticSeedNumbers();
   // Migration evidence only: checksum, Certification exclusions, legacy uids (never a column).
   const evidence = { snapshotSha256: sha256, certificationExcluded: census.certificationExcluded, legacyActorProvenance };
 
@@ -177,22 +182,22 @@ async function main() {
       await client.query("BEGIN READ ONLY");
       let facts;
       try {
-        facts = await target.measureC5Target(client, tenantId, census, canonical);
+        facts = await target.measureC5Target(client, tenantId, census, canonical, legacyActorProvenance);
       } finally {
         await client.query("COMMIT");
       }
-      const final = target.finalizeC5Census(census, canonical, facts, { retainedSyntheticNumbers });
+      const final = target.finalizeC5Census(census, canonical, facts, legacyActorProvenance, { declaredSyntheticNumbers });
       console.log(JSON.stringify({ ...header, readOnly: true, disposition: census.disposition, census, final, evidence }, null, 2));
       process.exitCode = exitCodeForCensus(final, census.disposition.disposition);
     } else if (options.mode === "copy") {
       const report = await target.copyCommercial(client, {
         tenantId, principalId: options.principalId, census, canonical, snapshotSha256: sha256,
-        confirmedSnapshotSha256: options.confirmMigrationRequired, retainedSyntheticNumbers,
+        confirmedSnapshotSha256: options.confirmMigrationRequired, legacyActorProvenance, declaredSyntheticNumbers,
       });
       console.log(JSON.stringify({ ...header, report, evidence }, null, 2));
       process.exitCode = 0;
     } else {
-      const report = await target.verifyCommercial(client, { tenantId, census, canonical, legacyActorProvenance, retainedSyntheticNumbers });
+      const report = await target.verifyCommercial(client, { tenantId, census, canonical, legacyActorProvenance });
       console.log(JSON.stringify({ ...header, canonicalDigest: census.canonicalDigest, report, evidence }, null, 2));
       process.exitCode = report.reconciled ? 0 : 1;
     }

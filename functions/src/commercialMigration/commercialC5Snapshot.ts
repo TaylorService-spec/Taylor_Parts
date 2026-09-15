@@ -33,7 +33,8 @@
 //
 // Mapping classes (the plan's §2): A canonical (copied) · B derived (recomputed, not copied) · C legacy defect/variant ·
 // D2 deferred execution state (NOT migrated as authority; counted) · E Owner decision · P provenance (evidence only) ·
-// F fixture marker.
+// F fixture marker. `acceptedByUid` is P for the row but is the KEY of the governed accepting-Principal resolution
+// (commercialC5Target.ts): an ACCEPTED Agreement without one blocks (ACCEPTING_PRINCIPAL_UID_MISSING).
 //
 // ════════════════════ RESPONSIBILITY AXES ARE READ, NEVER COLLAPSED ════════════════════
 //
@@ -240,7 +241,9 @@ export const FIELD_DISPOSITIONS: Readonly<Record<C5Family, Readonly<Record<strin
     salesAgreementId: "B", salesOrderId: "B",
     closedAtMillis: "C", createdAtMillis: "C",
     createdByUid: "P", updatedByUid: "P",
-    name: "E", [ACCOUNTABILITY_EXCEPTION_FIELD]: "E",
+    // Owner ruling (C5 closeout): legacy EVIDENCE only -- no column, not mapped to need or anything else, never blocks
+    name: "P",
+    [ACCOUNTABILITY_EXCEPTION_FIELD]: "E",
     certificationWorld: "F", dataProvenance: "F", [FINANCIAL_REVIEW_FIXTURE_MARKER]: "F",
   }),
   salesAgreement: Object.freeze({
@@ -348,10 +351,12 @@ export interface CanonicalCommercial {
 
 // ════════════════════ canonicalization ════════════════════
 
-type Result<T> = { ok: true; record: T; accountability: SourceAccountability } | { ok: false; findings: C5Finding[] };
+type Result<T> = { ok: true; record: T; accountability: SourceAccountability; evidence: C5Finding[] } | { ok: false; findings: C5Finding[]; evidence: C5Finding[] };
 
 class Collector {
   readonly findings: C5Finding[] = [];
+  /** Advisory legacy evidence (never blocks). */
+  readonly evidence: C5Finding[] = [];
   constructor(readonly family: C5Family, readonly id: string) {}
   add(code: string, detail?: string): null { this.findings.push({ family: this.family, id: this.id, code, ...(detail === undefined ? {} : { detail }) }); return null; }
 }
@@ -462,8 +467,8 @@ function businessUnit(c: Collector, l: Record<string, unknown>, i: number): stri
 }
 
 function finish<T>(c: Collector, record: T | null, accountability: SourceAccountability | null): Result<T> {
-  if (c.findings.length > 0 || record === null || accountability === null) return { ok: false, findings: c.findings };
-  return { ok: true, record, accountability };
+  if (c.findings.length > 0 || record === null || accountability === null) return { ok: false, findings: c.findings, evidence: c.evidence };
+  return { ok: true, record, accountability, evidence: c.evidence };
 }
 
 export function canonicalizeOpportunity(doc: SnapshotDocument): Result<CanonicalOpportunity> {
@@ -502,6 +507,7 @@ export function canonicalizeOpportunity(doc: SnapshotDocument): Result<Canonical
   });
   if (outcome === "WON" && lines.length === 0) c.add("NO_LINES", "a WON Opportunity without lines");
   const accountability = accountabilityOf(c, "opportunity", d);
+  if (d.name !== undefined && d.name !== null) c.evidence.push({ family: "opportunity", id: doc.id, code: "OPPORTUNITY_NAME_LEGACY_EVIDENCE_NOT_MIGRATED", detail: typeof d.name === "string" ? d.name.slice(0, 200) : typeof d.name });
   const record = num && accountId && owner && t ? {
     id: doc.id, number: num, accountId, ownerEmployeeId: owner, operatingCompanyKey: company, creditedSalespersonEmployeeId: credited,
     salesChannel: String(d.salesChannel), stage: String(d.stage), outcome: outcome as string | null, closedAt,
@@ -541,6 +547,9 @@ export function canonicalizeSalesAgreement(doc: SnapshotDocument): Result<Canoni
   const acceptedAt = isMillis(d.acceptedAtMillis) ? millisIso(d.acceptedAtMillis) : null;
   if (d.acceptedAtMillis !== undefined && d.acceptedAtMillis !== null && acceptedAt === null) c.add("ACCEPTED_AT_INVALID");
   if (state === "ACCEPTED" && acceptedAt === null) c.add("ACCEPTED_AT_MISSING", "an ACCEPTED agreement without its acceptance time");
+  if (state === "ACCEPTED" && !nonEmpty(d.acceptedByUid)) {
+    c.add("ACCEPTING_PRINCIPAL_UID_MISSING", "an ACCEPTED agreement without acceptedByUid: the historical accepter cannot be resolved to an EOS Principal, and is never substituted or inferred");
+  }
   if (state !== "ACCEPTED" && acceptedAt !== null) c.add("ACCEPTED_AT_WITHOUT_ACCEPTANCE");
   const t = stamps(c, d);
   const rawLines = linesOf(c, "salesAgreement", d, true) ?? [];
@@ -654,6 +663,38 @@ export interface LegacyActorProvenance {
 
 export interface NumberSeriesYear { readonly series: C5Series; readonly year: number; readonly count: number; readonly maxSequence: number; readonly numbers: readonly string[] }
 
+/**
+ * The SOURCE-VISIBLE high-water per series/year (Owner ruling, C5 closeout): the highest VALID business number in the
+ * COMPLETE frozen snapshot -- migrated records AND records excluded from migration (Certification fixtures, other
+ * fixtures, records blocked by a finding) -- so PostgreSQL never re-issues a number a person has seen. Invalid numbers
+ * and the SO-0000 sentinel year never contribute.
+ */
+export interface SourceVisibleHighWater {
+  readonly series: C5Series; readonly year: number; readonly maxSequence: number; readonly number: string;
+  readonly fromFamilyId: { readonly family: C5Family; readonly id: string };
+  readonly includesExcludedRecords: boolean;
+}
+
+export function sourceVisibleHighWater(snapshot: CommercialSnapshot, migratedIds: ReadonlySet<string>): SourceVisibleHighWater[] {
+  const best = new Map<string, SourceVisibleHighWater>();
+  for (const f of C5_FAMILIES) {
+    for (const d of snapshot[f.key]) {
+      const value = d.data[f.numberField];
+      const reading = readBusinessNumber(f.family, value);
+      if (reading.state !== "VALID") continue;
+      const key = `${reading.series}|${reading.year}`;
+      const cur = best.get(key);
+      const excluded = !migratedIds.has(`${f.family}|${d.id}`);
+      if (!cur || reading.sequence > cur.maxSequence) {
+        best.set(key, { series: reading.series, year: reading.year, maxSequence: reading.sequence, number: value as string, fromFamilyId: { family: f.family, id: d.id }, includesExcludedRecords: excluded || (cur?.includesExcludedRecords ?? false) });
+      } else if (excluded) {
+        best.set(key, { ...cur, includesExcludedRecords: true });
+      }
+    }
+  }
+  return [...best.values()].sort((a, b) => asciiSort(`${a.series}|${a.year}`, `${b.series}|${b.year}`));
+}
+
 export interface CommercialSourceCensus {
   readonly source: CommercialSnapshot["source"];
   readonly counts: { readonly opportunities: number; readonly salesAgreements: number; readonly salesOrders: number };
@@ -668,6 +709,7 @@ export interface CommercialSourceCensus {
   readonly advisories: readonly C5Finding[];
   readonly numbers: {
     readonly bySeriesYear: readonly NumberSeriesYear[];
+    readonly sourceVisibleHighWater: readonly SourceVisibleHighWater[];
     readonly sentinelYear: readonly { family: C5Family; id: string; number: string }[];
     readonly duplicates: readonly { series: C5Series; number: string; ids: string[] }[];
   };
@@ -813,6 +855,7 @@ export function censusCommercialSnapshot(snapshot: CommercialSnapshot): {
       const uid = (v: unknown) => (typeof v === "string" ? v : null);
       provenance.push({ family, id: d.id, createdByUid: uid(d.data.createdByUid), updatedByUid: uid(d.data.updatedByUid), acceptedByUid: uid(d.data.acceptedByUid) });
       const r = canonicalize(d);
+      advisories.push(...r.evidence);
       if (!r.ok) { findings.push(...r.findings); continue; }
       if ((seen.get(d.id) ?? 0) > 1) continue;
       out.push(r.record);
@@ -954,6 +997,7 @@ export function censusCommercialSnapshot(snapshot: CommercialSnapshot): {
     numbers: {
       bySeriesYear: [...bySeriesYear.values()].map((v) => ({ series: v.series, year: v.year, count: v.numbers.length, maxSequence: v.max, numbers: v.numbers.sort(asciiSort) }))
         .sort((a, b) => asciiSort(`${a.series}|${a.year}`, `${b.series}|${b.year}`)),
+      sourceVisibleHighWater: sourceVisibleHighWater(snapshot, kept),
       sentinelYear: sentinel.sort((a, b) => asciiSort(a.number, b.number)),
       duplicates,
     },

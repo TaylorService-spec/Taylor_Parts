@@ -39,12 +39,18 @@
 //   * source record absent from the tenant   -> INSERT verbatim id, number, facts, lines, timestamps
 //   * present and identical                  -> nothing (a rerun of the same snapshot writes nothing)
 //   * present and different                  -> REFUSE (DRIFT_DETECTED); roll back everything; never overwritten
-//   * tenant row the snapshot does not hold  -> REFUSE (TARGET_HAS_UNKNOWN_RECORDS) unless it is a declared synthetic
-//                                               nonprod seed row the operator explicitly retains
-// Actor columns (created_by, updated_by, accepted_by, the history row's recorded_by, the audit actor) carry the EOS
-// Principal named by --principalId; a Firebase uid is never written anywhere. NO command_receipts are written (receipts
-// are idempotency, not audit). number_counters are seeded per (series, year) to max(existing, highest migrated
-// sequence) -- never lowered. One eos_policy.audit_events row is appended when anything was written.
+//   * tenant row the snapshot does not hold  -> REFUSE (TARGET_HAS_UNKNOWN_RECORDS). A declared synthetic nonprod seed
+//                                               row is reported as such (TARGET_HAS_SYNTHETIC_SEED_ROWS) and blocks
+//                                               too: a real migration needs an empty target, and cleanup is a
+//                                               separately authorized governed operation, never part of C5
+// "Who performed the migration" columns (created_by, updated_by, the history row's recorded_by, the audit actor) carry
+// the EOS Principal named by --principalId. `accepted_by` is NOT one of them: it is the HISTORICAL accepter, the
+// Principal the legacy acceptedByUid maps to through the governed credential->Principal read
+// (PostgresPolicyRepository.getPrincipalBySubject, provider `firebase`) with a membership in the tenant -- never the
+// uid, never the operator, never inferred from owner / accountable person / created_by / updated_by. NO command_receipts
+// are written (receipts are idempotency, not audit). number_counters are seeded per (series, year) to max(existing,
+// SOURCE-VISIBLE high-water): the highest valid number anywhere in the frozen snapshot, excluded records included --
+// never lowered. One eos_policy.audit_events row is appended when anything was written.
 //
 // ════════════════════ VERIFY ════════════════════
 //
@@ -60,6 +66,8 @@ import { decideAccountabilityEligibility, type EmployeeFacts } from "../employee
 import { ACCOUNTABLE_PERSON_FIELD, mintGovernedAccountablePerson, type AccountablePersonSource } from "../responsibility/accountablePersonStorage";
 import { stageCommercialAccountablePersonChange } from "../eosCommercial/commercialAccountabilityRepository";
 import { allocateCommercialNumber } from "../eosCommercial/commercialNumbering";
+import { PostgresPolicyRepository } from "../adminPolicy/postgresPolicyRepository";
+import { FIREBASE_IDENTITY_PROVIDER } from "../adminPolicy/principalContext";
 import {
   C5_ACCOUNTABILITY_ELIGIBILITY_V1,
   C5_FAMILIES,
@@ -131,7 +139,38 @@ export interface C5TargetFacts {
   readonly existing: Readonly<Record<C5Family, readonly { id: string; number: string }[]>>;
   readonly idsHeldByOtherTenants: readonly { family: C5Family; id: string }[];
   readonly counters: readonly { series: C5Series; year: number; lastValue: number }[];
+  /** legacy acceptedByUid -> the governed accepting-Principal answer, for every selected ACCEPTED Agreement. */
+  readonly acceptors: ReadonlyMap<string, AcceptorAnswer>;
 }
+
+export type AcceptorAnswer =
+  | { readonly outcome: "RESOLVED"; readonly principalId: string; readonly principalStatus: string; readonly membershipStatus: string }
+  | { readonly outcome: "UNRESOLVED" }
+  | { readonly outcome: "AMBIGUOUS"; readonly candidates: number }
+  | { readonly outcome: "OUTSIDE_TENANT"; readonly principalId: string; readonly principalStatus: string };
+
+/**
+ * The historical accepter: a Firebase credential subject mapped to an EOS Principal through the governed identity read
+ * (`PostgresPolicyRepository.getPrincipalBySubject`, the reader principalContext.ts resolves callers with), then its
+ * membership in THIS tenant (`getMembership`). Current principal / membership status is recorded as evidence and is not
+ * required to be active -- the acceptance is history. More than one principal for the subject (the
+ * `principals_provider_subject_unique` constraint forbids it; counted anyway, never picked from) is AMBIGUOUS.
+ */
+export async function resolveAcceptor(db: Db, tenantId: string, uid: string): Promise<AcceptorAnswer> {
+  const repo = new PostgresPolicyRepository(db as never);
+  const candidates = Number((await db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM eos_policy.principals WHERE identity_provider = $1 AND external_subject = $2`, [FIREBASE_IDENTITY_PROVIDER, uid],
+  )).rows[0].n);
+  if (candidates > 1) return { outcome: "AMBIGUOUS", candidates };
+  const principal = await repo.getPrincipalBySubject(FIREBASE_IDENTITY_PROVIDER, uid);
+  if (!principal) return { outcome: "UNRESOLVED" };
+  const membership = await repo.getMembership(tenantId as never, principal.id);
+  if (!membership) return { outcome: "OUTSIDE_TENANT", principalId: principal.id, principalStatus: principal.status };
+  return { outcome: "RESOLVED", principalId: principal.id, principalStatus: principal.status, membershipStatus: membership.status };
+}
+
+const acceptedUidOf = (provenance: readonly LegacyActorProvenance[], id: string): string | null =>
+  provenance.find((p) => p.family === "salesAgreement" && p.id === id)?.acceptedByUid ?? null;
 
 /** Resolve through the governed PostgreSQL Employee authority, one reference at a time. */
 export async function resolveEmployees(db: Db, tenantId: string, ids: readonly string[]): Promise<Map<string, EmployeeAnswer>> {
@@ -165,7 +204,9 @@ export async function probeCatalogReferences(db: Db, tenantId: string, refs: rea
   });
 }
 
-export async function measureC5Target(db: Db, tenantId: string, census: CommercialSourceCensus, canonical: CanonicalCommercial): Promise<C5TargetFacts> {
+export async function measureC5Target(
+  db: Db, tenantId: string, census: CommercialSourceCensus, canonical: CanonicalCommercial, legacyActorProvenance: readonly LegacyActorProvenance[],
+): Promise<C5TargetFacts> {
   const schema = await c5SchemaPresence(db);
   if (!schema.commercialParity || !schema.accountabilitySource || !schema.crmAccounts) {
     throw new CommercialC5Error("TARGET_SCHEMA_ABSENT", "the eos_commercial parity / accountability-source schema or eos_crm.accounts is absent: apply the governed migrations first");
@@ -188,9 +229,15 @@ export async function measureC5Target(db: Db, tenantId: string, census: Commerci
   const counters = (await db.query<{ series: C5Series; year: number; last_value: string }>(
     `SELECT series::text AS series, year, last_value FROM ${S}.number_counters WHERE tenant_id = $1 ORDER BY series, year`, [tenantId],
   )).rows.map((r) => ({ series: r.series, year: Number(r.year), lastValue: Number(r.last_value) }));
+  const acceptors = new Map<string, AcceptorAnswer>();
+  for (const a of canonical.salesAgreements) {
+    if (a.state !== "ACCEPTED") continue;
+    const uid = acceptedUidOf(legacyActorProvenance, a.id);
+    if (uid !== null && !acceptors.has(uid)) acceptors.set(uid, await resolveAcceptor(db, tenantId, uid));
+  }
   return {
     schema, employees, accountIds: new Set(accounts.rows.map((r) => r.id)), locationIds: new Set(locations.rows.map((r) => r.id)),
-    catalog, existing, idsHeldByOtherTenants: others, counters,
+    catalog, existing, idsHeldByOtherTenants: others, counters, acceptors,
   };
 }
 
@@ -209,6 +256,15 @@ export interface AccountabilityPlanEntry {
   readonly context: SourceAccountability["context"];
 }
 
+export interface CounterSeed {
+  readonly series: C5Series; readonly year: number; readonly migratedMax: number | null; readonly sourceVisibleMax: number;
+  readonly existing: number | null; readonly seedTo: number; readonly action: "INSERT" | "RAISE" | "NONE";
+}
+export interface AcceptancePlanEntry {
+  readonly id: string; readonly legacyAcceptedByUidEvidence: string; readonly acceptedByPrincipalId: string;
+  readonly principalStatus: string; readonly membershipStatus: string;
+}
+
 export interface GatingCondition { readonly id: string; readonly status: "MET" | "NOT_MET" | "OPERATOR_EVIDENCE_REQUIRED"; readonly detail: string }
 
 export interface C5FinalCensus {
@@ -221,11 +277,14 @@ export interface C5FinalCensus {
   readonly target: {
     readonly existing: Readonly<Record<C5Family, number>>;
     readonly unknownRecords: readonly { family: C5Family; id: string; number: string }[];
-    readonly retainedSyntheticSeedRows: readonly { family: C5Family; id: string; number: string }[];
+    readonly syntheticSeedRows: readonly { family: C5Family; id: string; number: string }[];
     readonly alreadyPresent: Readonly<Record<C5Family, number>>;
     readonly counters: C5TargetFacts["counters"];
   };
-  readonly counterSeedPlan: readonly { series: C5Series; year: number; migratedMax: number; existing: number | null; seedTo: number; action: "INSERT" | "RAISE" | "NONE" }[];
+  /** Per series/year: migrated maximum, source-visible maximum (complete snapshot), existing PG counter, resulting seed. */
+  readonly counterSeedPlan: readonly CounterSeed[];
+  /** The historical accepting Principal of every ACCEPTED Agreement to be copied (legacy uid carried as evidence only). */
+  readonly acceptancePlan: readonly AcceptancePlanEntry[];
   readonly copyReady: boolean;
 }
 
@@ -235,7 +294,8 @@ export function finalizeC5Census(
   source: CommercialSourceCensus,
   canonical: CanonicalCommercial,
   target: C5TargetFacts,
-  options: { retainedSyntheticNumbers?: readonly string[] } = {},
+  legacyActorProvenance: readonly LegacyActorProvenance[],
+  options: { declaredSyntheticNumbers?: readonly string[] } = {},
 ): C5FinalCensus {
   const findings: C5Finding[] = [];
   const advisories: C5Finding[] = [...source.advisories];
@@ -298,40 +358,59 @@ export function finalizeC5Census(
 
   // target rows: ids held elsewhere, numbers held by another record, unknown rows, already-present rows
   for (const h of target.idsHeldByOtherTenants) add(h.family, h.id, "ID_HELD_BY_ANOTHER_TENANT");
-  const retained = new Set(options.retainedSyntheticNumbers ?? []);
+  const declaredSynthetic = new Set(options.declaredSyntheticNumbers ?? []);
   const unknownRecords: { family: C5Family; id: string; number: string }[] = [];
-  const retainedRows: { family: C5Family; id: string; number: string }[] = [];
+  const syntheticRows: { family: C5Family; id: string; number: string }[] = [];
   const alreadyPresent = { opportunity: 0, salesAgreement: 0, salesOrder: 0 } as Record<C5Family, number>;
   for (const f of C5_FAMILIES) {
     const sourceIds = new Set(canonical[f.key].map((r) => r.id));
     const sourceNumber = new Map(canonical[f.key].map((r) => [r.number, r.id]));
     for (const row of target.existing[f.family]) {
       if (sourceIds.has(row.id)) alreadyPresent[f.family] += 1;
-      else if (retained.has(row.number)) retainedRows.push({ family: f.family, ...row });
-      else unknownRecords.push({ family: f.family, ...row });
+      else {
+        unknownRecords.push({ family: f.family, ...row });
+        if (declaredSynthetic.has(row.number)) syntheticRows.push({ family: f.family, ...row });
+      }
       const holder = sourceNumber.get(row.number);
       if (holder !== undefined && holder !== row.id) add(f.family, holder, "NUMBER_HELD_BY_ANOTHER_RECORD", `${row.number} is ${row.id} in the tenant`);
     }
   }
 
-  // counters: max(existing, migrated max) per (series, year); never lowered
-  const counterSeedPlan = source.numbers.bySeriesYear.map((sy) => {
-    const migrated = records.filter(({ family, r }) => {
-      const n = readBusinessNumber(family, r.number);
-      return n.state === "VALID" && n.series === sy.series && n.year === sy.year;
-    }).map(({ family, r }) => (readBusinessNumber(family, r.number) as { sequence: number }).sequence);
-    if (migrated.length === 0) return null;
-    const migratedMax = Math.max(...migrated);
-    const existing = target.counters.find((c) => c.series === sy.series && c.year === sy.year)?.lastValue ?? null;
-    const seedTo = Math.max(existing ?? 0, migratedMax);
-    return { series: sy.series, year: sy.year, migratedMax, existing, seedTo, action: existing === null ? "INSERT" as const : existing < migratedMax ? "RAISE" as const : "NONE" as const };
-  }).filter((x): x is NonNullable<typeof x> => x !== null);
+  // counters: max(existing, SOURCE-VISIBLE high-water) per (series, year); never lowered. The migrated maximum is reported
+  // beside it; a series/year seen only on excluded records still seeds (its numbers were visible to people).
+  const migratedMaxOf = (series: C5Series, year: number): number | null => {
+    const seqs = records.map(({ family, r }) => readBusinessNumber(family, r.number))
+      .filter((n): n is Extract<typeof n, { state: "VALID" }> => n.state === "VALID" && n.series === series && n.year === year).map((n) => n.sequence);
+    return seqs.length === 0 ? null : Math.max(...seqs);
+  };
+  const counterSeedPlan: CounterSeed[] = source.numbers.sourceVisibleHighWater.map((hw) => {
+    const existing = target.counters.find((c) => c.series === hw.series && c.year === hw.year)?.lastValue ?? null;
+    const seedTo = Math.max(existing ?? 0, hw.maxSequence);
+    return {
+      series: hw.series, year: hw.year, migratedMax: migratedMaxOf(hw.series, hw.year), sourceVisibleMax: hw.maxSequence, existing, seedTo,
+      action: existing === null ? "INSERT" as const : existing < hw.maxSequence ? "RAISE" as const : "NONE" as const,
+    };
+  });
+
+  // accepted_by: the HISTORICAL accepter through the governed credential -> Principal read, with a tenant membership
+  const acceptancePlan: AcceptancePlanEntry[] = [];
+  for (const a of canonical.salesAgreements) {
+    if (a.state !== "ACCEPTED") continue;
+    const uid = acceptedUidOf(legacyActorProvenance, a.id);
+    if (uid === null) { add("salesAgreement", a.id, "ACCEPTING_PRINCIPAL_UID_MISSING"); continue; }
+    const answer = target.acceptors.get(uid);
+    if (!answer || answer.outcome === "UNRESOLVED") { add("salesAgreement", a.id, "ACCEPTING_PRINCIPAL_UNRESOLVED", "no EOS Principal carries this acceptedByUid as its firebase subject"); continue; }
+    if (answer.outcome === "AMBIGUOUS") { add("salesAgreement", a.id, "ACCEPTING_PRINCIPAL_AMBIGUOUS", `${answer.candidates} Principals carry this subject`); continue; }
+    if (answer.outcome === "OUTSIDE_TENANT") { add("salesAgreement", a.id, "ACCEPTING_PRINCIPAL_OUTSIDE_TENANT", `Principal ${answer.principalId} has no membership in the tenant`); continue; }
+    acceptancePlan.push({ id: a.id, legacyAcceptedByUidEvidence: uid, acceptedByPrincipalId: answer.principalId, principalStatus: answer.principalStatus, membershipStatus: answer.membershipStatus });
+  }
 
   const sourceBlockers = source.blockers;
   const disposition = source.disposition.disposition;
   const blockers = new Set<string>([...sourceBlockers, ...findings.map((f) => f.code)]);
   if (disposition !== "MIGRATION_REQUIRED_OR_OWNER_REVIEW") blockers.add(`DISPOSITION_${disposition}`);
   if (unknownRecords.length > 0) blockers.add("TARGET_HAS_UNKNOWN_RECORDS");
+  if (syntheticRows.length > 0) blockers.add("TARGET_HAS_SYNTHETIC_SEED_ROWS");
 
   const productRefs = source.references.catalog.length;
   const gatingConditions: GatingCondition[] = [
@@ -357,9 +436,10 @@ export function finalizeC5Census(
     gatingConditions,
     target: {
       existing: { opportunity: target.existing.opportunity.length, salesAgreement: target.existing.salesAgreement.length, salesOrder: target.existing.salesOrder.length },
-      unknownRecords, retainedSyntheticSeedRows: retainedRows, alreadyPresent, counters: target.counters,
+      unknownRecords, syntheticSeedRows: syntheticRows, alreadyPresent, counters: target.counters,
     },
     counterSeedPlan,
+    acceptancePlan: acceptancePlan.sort((a, b) => asciiSort(a.id, b.id)),
     copyReady: blockers.size === 0,
   };
 }
@@ -435,10 +515,11 @@ export interface C5CopyReport {
   readonly inserted: Readonly<Record<C5Family, readonly string[]>>;
   readonly unchanged: Readonly<Record<C5Family, number>>;
   readonly accountability: { readonly governedEstablishments: number; readonly historicalPreserved: number; readonly derivedAtMigration: readonly string[] };
-  readonly counters: readonly { series: C5Series; year: number; action: "INSERT" | "RAISE" | "NONE"; from: number | null; to: number }[];
+  readonly counters: readonly { series: C5Series; year: number; action: "INSERT" | "RAISE" | "NONE"; from: number | null; to: number; migratedMax: number | null; sourceVisibleMax: number }[];
   readonly cutoverPrincipalId: string;
   readonly receiptsWritten: 0;
-  readonly retainedSyntheticSeedRows: readonly { family: C5Family; id: string; number: string }[];
+  /** Historical accepters written to accepted_by (the legacy uid is evidence here, never a column). */
+  readonly acceptedBy: readonly AcceptancePlanEntry[];
 }
 
 async function assertPrincipal(db: Db, tenantId: string, principalId: string): Promise<void> {
@@ -455,7 +536,9 @@ async function assertPrincipal(db: Db, tenantId: string, principalId: string): P
   if (member.rows.length === 0) throw new CommercialC5Error("CUTOVER_PRINCIPAL_NOT_TENANT_MEMBER", "the cutover Principal is not an active member of the target tenant");
 }
 
-async function insertRecord(db: Db, family: C5Family, tenantId: string, actor: string, r: CanonicalOpportunity | CanonicalSalesAgreement | CanonicalSalesOrder): Promise<void> {
+async function insertRecord(
+  db: Db, family: C5Family, tenantId: string, actor: string, r: CanonicalOpportunity | CanonicalSalesAgreement | CanonicalSalesOrder, acceptedBy: string | null,
+): Promise<void> {
   if (family === "opportunity") {
     const o = r as CanonicalOpportunity;
     await db.query(
@@ -479,7 +562,7 @@ async function insertRecord(db: Db, family: C5Family, tenantId: string, actor: s
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$25,$27)`,
       [a.id, tenantId, a.number, a.accountId, a.opportunityId, a.ownerEmployeeId, a.operatingCompanyKey, a.creditedSalespersonEmployeeId, a.state, a.currency,
         a.locationId, a.customerPo, a.isLease, a.fulfillmentIntent, a.shippingInstructions, a.shipVia, a.specialInstructions, a.shippingMinor,
-        a.installChargeMinor, a.taxMinor, a.downPaymentMinor, a.tradeInMinor, a.acceptedAt, a.acceptedAt === null ? null : actor, actor, a.createdAt, a.updatedAt],
+        a.installChargeMinor, a.taxMinor, a.downPaymentMinor, a.tradeInMinor, a.acceptedAt, acceptedBy, actor, a.createdAt, a.updatedAt],
     );
     for (const l of a.lines) {
       await db.query(
@@ -545,7 +628,8 @@ export async function copyCommercial(
     tenantId: string; principalId: string; census: CommercialSourceCensus; canonical: CanonicalCommercial; snapshotSha256: string;
     /** The operator's explicit confirmation: the sha256 of the snapshot being migrated, restated. */
     confirmedSnapshotSha256: string;
-    retainedSyntheticNumbers?: readonly string[]; now?: Date;
+    legacyActorProvenance: readonly LegacyActorProvenance[];
+    declaredSyntheticNumbers?: readonly string[]; now?: Date;
   },
 ): Promise<C5CopyReport> {
   const { tenantId, canonical, census } = input;
@@ -561,11 +645,14 @@ export async function copyCommercial(
   try {
     await client.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`commercial-c5|${tenantId}`]);
     await assertPrincipal(client, tenantId, actor);
-    const target = await measureC5Target(client, tenantId, census, canonical);
-    const final = finalizeC5Census(census, canonical, target, { retainedSyntheticNumbers: input.retainedSyntheticNumbers });
+    const target = await measureC5Target(client, tenantId, census, canonical, input.legacyActorProvenance);
+    const final = finalizeC5Census(census, canonical, target, input.legacyActorProvenance, { declaredSyntheticNumbers: input.declaredSyntheticNumbers });
     if (!final.copyReady) throw new CommercialC5Error("CENSUS_NOT_COPY_READY", "the census re-measured inside the copy transaction is not copy-ready; nothing was written", final.blockers);
 
     const planOf = new Map(final.accountabilityPlan.map((p) => [`${p.family}|${p.id}`, p]));
+    const accepterOf = new Map(final.acceptancePlan.map((p) => [p.id, p.acceptedByPrincipalId]));
+    const expectedAcceptedBy = (family: C5Family, r: { id: string; acceptedAt?: string | null }) =>
+      family === "salesAgreement" && r.acceptedAt ? (accepterOf.get(r.id) ?? null) : null;
     const inserted = { opportunity: [] as string[], salesAgreement: [] as string[], salesOrder: [] as string[] };
     const unchanged = { opportunity: 0, salesAgreement: 0, salesOrder: 0 };
     const drift: { family: C5Family; id: string; fields: string[] }[] = [];
@@ -578,6 +665,7 @@ export async function copyCommercial(
         const fields = differingFields(f.family, r, existing.record);
         const expectedAccountable = planOf.get(`${f.family}|${r.id}`)?.accountableEmployeeId ?? null;
         if (existing.accountableEmployeeId !== expectedAccountable) fields.push(ACCOUNTABLE_PERSON_FIELD);
+        if (existing.acceptedBy !== expectedAcceptedBy(f.family, r as { id: string; acceptedAt?: string | null })) fields.push("acceptedBy");
         if (fields.length === 0) unchanged[f.family] += 1;
         else drift.push({ family: f.family, id: r.id, fields });
       }
@@ -588,7 +676,11 @@ export async function copyCommercial(
     let governed = 0, historical = 0;
     const derived: string[] = [];
     for (const { family, r } of toInsert) {
-      await insertRecord(client, family, tenantId, actor, r);
+      const acceptedBy = expectedAcceptedBy(family, r as { id: string; acceptedAt?: string | null });
+      if (family === "salesAgreement" && (r as CanonicalSalesAgreement).acceptedAt !== null && acceptedBy === null) {
+        throw new CommercialC5Error("ACCEPTING_PRINCIPAL_UNRESOLVED", `salesAgreement ${r.id} has no resolved historical accepter; nothing was written`);
+      }
+      await insertRecord(client, family, tenantId, actor, r, acceptedBy);
       const entry = planOf.get(`${family}|${r.id}`);
       if (!entry) throw new CommercialC5Error("ACCOUNTABILITY_PLAN_MISSING", `${family} ${r.id} has no accountable person plan`);
       await establish(client, tenantId, actor, entry, input.snapshotSha256);
@@ -607,7 +699,7 @@ export async function copyCommercial(
       } else if (c.action === "RAISE") {
         await client.query(`UPDATE ${S}.number_counters SET last_value = $4, updated_at = now() WHERE tenant_id = $1 AND series = $2 AND year = $3 AND last_value < $4`, [tenantId, c.series, c.year, c.seedTo]);
       }
-      counters.push({ series: c.series, year: c.year, action: c.action, from: c.existing, to: c.seedTo });
+      counters.push({ series: c.series, year: c.year, action: c.action, from: c.existing, to: c.seedTo, migratedMax: c.migratedMax, sourceVisibleMax: c.sourceVisibleMax });
     }
 
     const wrote = toInsert.length > 0 || counters.some((c) => c.action !== "NONE");
@@ -616,7 +708,7 @@ export async function copyCommercial(
       tenantId, snapshotSha256: input.snapshotSha256, canonicalDigest: census.canonicalDigest,
       inserted, unchanged,
       accountability: { governedEstablishments: governed, historicalPreserved: historical, derivedAtMigration: derived.sort(asciiSort) },
-      counters, cutoverPrincipalId: actor, receiptsWritten: 0, retainedSyntheticSeedRows: final.target.retainedSyntheticSeedRows,
+      counters, cutoverPrincipalId: actor, receiptsWritten: 0, acceptedBy: final.acceptancePlan,
     };
     if (wrote) {
       await client.query(
@@ -650,7 +742,9 @@ export interface C5VerifyReport {
   readonly identity: { readonly missingInTarget: readonly string[]; readonly extraInTarget: readonly string[] };
   readonly fieldMismatches: readonly { family: C5Family; id: string; fields: string[] }[];
   readonly numbers: { readonly missingOrMoved: readonly string[]; readonly invalidFormat: readonly string[]; readonly duplicatesInTarget: readonly string[] };
-  readonly counters: readonly { series: C5Series; year: number; migratedMax: number; counter: number | null; probeNumber: string | null; ok: boolean }[];
+  readonly counters: readonly { series: C5Series; year: number; migratedMax: number | null; sourceVisibleMax: number; counter: number | null; probeNumber: string | null; ok: boolean }[];
+  /** accepted_by must be the historical accepter re-resolved from the legacy uid -- not whoever ran C5. */
+  readonly acceptedByViolations: readonly string[];
   readonly people: { readonly unresolved: readonly string[] };
   readonly accountabilityHistory: { readonly problems: readonly string[]; readonly establishments: number };
   readonly accountFkViolations: readonly string[];
@@ -663,23 +757,22 @@ export interface C5VerifyReport {
 
 export async function verifyCommercial(
   client: PoolClient,
-  input: { tenantId: string; census: CommercialSourceCensus; canonical: CanonicalCommercial; legacyActorProvenance: readonly LegacyActorProvenance[]; retainedSyntheticNumbers?: readonly string[] },
+  input: { tenantId: string; census: CommercialSourceCensus; canonical: CanonicalCommercial; legacyActorProvenance: readonly LegacyActorProvenance[] },
 ): Promise<C5VerifyReport> {
   const { tenantId, canonical, census } = input;
-  const retained = new Set(input.retainedSyntheticNumbers ?? []);
   await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
   try {
     const counts = {} as Record<C5Family, { source: number; target: number }>;
     const missing: string[] = [], extra: string[] = [], mismatches: { family: C5Family; id: string; fields: string[] }[] = [];
     const numbersMissing: string[] = [], invalid: string[] = [], dupes: string[] = [], unresolved: string[] = [], problems: string[] = [];
-    const uidAttr: string[] = [], nonPrincipal: string[] = [];
+    const uidAttr: string[] = [], nonPrincipal: string[] = [], acceptedByViolations: string[] = [];
     const legacyUids = new Set(input.legacyActorProvenance.flatMap((p) => [p.createdByUid, p.updatedByUid, p.acceptedByUid]).filter((u): u is string => u !== null));
     const authority = createPostgresEmployeeAuthority(client);
     let establishments = 0;
     const actors = new Set<string>();
     for (const f of C5_FAMILIES) {
       const rows = await readTenantRows(client, f.family, tenantId);
-      const targetIds = [...rows.entries()].filter(([, r]) => !retained.has(String(r.record.number))).map(([id]) => id);
+      const targetIds = [...rows.keys()];
       const source = canonical[f.key] as (CanonicalOpportunity | CanonicalSalesAgreement | CanonicalSalesOrder)[];
       counts[f.family] = { source: source.length, target: targetIds.length };
       const sourceIds = new Set(source.map((r) => r.id));
@@ -696,6 +789,16 @@ export async function verifyCommercial(
         const reading = readBusinessNumber(f.family, row.record.number);
         if (reading.state !== "VALID" && reading.state !== "SENTINEL_YEAR") invalid.push(`${f.family}:${r.id}`);
         for (const a of [row.createdBy, row.updatedBy, row.acceptedBy]) if (a !== null) actors.add(a);
+        if (f.family === "salesAgreement") {
+          const acceptedAt = (r as CanonicalSalesAgreement).acceptedAt;
+          if (acceptedAt === null) { if (row.acceptedBy !== null) acceptedByViolations.push(`${r.id}:ACCEPTED_BY_WITHOUT_ACCEPTANCE`); }
+          else {
+            const uid = acceptedUidOf(input.legacyActorProvenance, r.id);
+            const answer = uid === null ? null : await resolveAcceptor(client, tenantId, uid);
+            if (!answer || answer.outcome !== "RESOLVED") acceptedByViolations.push(`${r.id}:HISTORICAL_ACCEPTER_UNRESOLVED`);
+            else if (row.acceptedBy !== answer.principalId) acceptedByViolations.push(`${r.id}:ACCEPTED_BY_IS_NOT_THE_HISTORICAL_ACCEPTER`);
+          }
+        }
         for (const person of [r.ownerEmployeeId, r.creditedSalespersonEmployeeId, row.accountableEmployeeId]) {
           if (person === null) continue;
           if ((await authority.resolveEmployeeReference({ tenantId, employeeId: person })).outcome !== "RESOLVED") unresolved.push(`${f.family}:${r.id}:${person}`);
@@ -761,19 +864,21 @@ export async function verifyCommercial(
     const counterRows = (await client.query<{ series: C5Series; year: number; last_value: string }>(
       `SELECT series::text AS series, year, last_value FROM ${S}.number_counters WHERE tenant_id = $1`, [tenantId])).rows;
     const counters: C5VerifyReport["counters"][number][] = [];
-    for (const sy of census.numbers.bySeriesYear) {
-      const family = C5_FAMILIES.find((f) => f.series === sy.series)!;
+    for (const hw of census.numbers.sourceVisibleHighWater) {
+      const family = C5_FAMILIES.find((f) => f.series === hw.series)!;
       const migrated = (canonical[family.key] as readonly { number: string }[])
-        .map((r) => readBusinessNumber(family.family, r.number)).filter((n): n is Extract<typeof n, { state: "VALID" }> => n.state === "VALID" && n.year === sy.year);
-      if (migrated.length === 0) continue;
-      const migratedMax = Math.max(...migrated.map((n) => n.sequence));
-      const row = counterRows.find((c) => c.series === sy.series && Number(c.year) === sy.year);
+        .map((r) => readBusinessNumber(family.family, r.number)).filter((n): n is Extract<typeof n, { state: "VALID" }> => n.state === "VALID" && n.year === hw.year);
+      const migratedMax = migrated.length === 0 ? null : Math.max(...migrated.map((n) => n.sequence));
+      const row = counterRows.find((c) => c.series === hw.series && Number(c.year) === hw.year);
       const counter = row ? Number(row.last_value) : null;
       await client.query("SAVEPOINT c5_probe");
-      const probe = await allocateCommercialNumber(client, tenantId, sy.series, new Date(Date.UTC(sy.year, 6, 1)));
+      const probe = await allocateCommercialNumber(client, tenantId, hw.series, new Date(Date.UTC(hw.year, 6, 1)));
       const held = await client.query(`SELECT 1 FROM ${TABLE[family.family].table} WHERE tenant_id = $1 AND ${TABLE[family.family].number} = $2`, [tenantId, probe.number]);
       await client.query("ROLLBACK TO SAVEPOINT c5_probe");
-      counters.push({ series: sy.series, year: sy.year, migratedMax, counter, probeNumber: probe.number, ok: counter !== null && counter >= migratedMax && held.rows.length === 0 && probe.sequence > migratedMax });
+      counters.push({
+        series: hw.series, year: hw.year, migratedMax, sourceVisibleMax: hw.maxSequence, counter, probeNumber: probe.number,
+        ok: counter !== null && counter >= hw.maxSequence && held.rows.length === 0 && probe.sequence > hw.maxSequence,
+      });
     }
     await client.query("ROLLBACK");
 
@@ -781,13 +886,13 @@ export async function verifyCommercial(
       tenantId, counts, identity: { missingInTarget: missing.sort(asciiSort), extraInTarget: extra.sort(asciiSort) }, fieldMismatches: mismatches,
       numbers: { missingOrMoved: numbersMissing, invalidFormat: invalid, duplicatesInTarget: dupes }, counters, people: { unresolved },
       accountabilityHistory: { problems, establishments }, accountFkViolations: fk.rows.map((r) => r.what), lineageViolations: lineage.rows.map((r) => r.what),
-      certificationFixturesInTarget: fixturesInTarget, legacyUidAttributions: uidAttr.sort(asciiSort), nonPrincipalAttributions: nonPrincipal.sort(asciiSort),
+      acceptedByViolations, certificationFixturesInTarget: fixturesInTarget, legacyUidAttributions: uidAttr.sort(asciiSort), nonPrincipalAttributions: nonPrincipal.sort(asciiSort),
       receiptsNamingMigratedRecords: receipts,
     };
     const reconciled = C5_FAMILIES.every((f) => counts[f.family].source === counts[f.family].target)
       && missing.length === 0 && extra.length === 0 && mismatches.length === 0 && numbersMissing.length === 0 && invalid.length === 0 && dupes.length === 0
       && counters.every((c) => c.ok) && unresolved.length === 0 && problems.length === 0 && fk.rows.length === 0 && lineage.rows.length === 0
-      && fixturesInTarget.length === 0 && uidAttr.length === 0 && nonPrincipal.length === 0;
+      && fixturesInTarget.length === 0 && uidAttr.length === 0 && nonPrincipal.length === 0 && acceptedByViolations.length === 0;
     return { reconciled, ...report };
   } catch (err) {
     await client.query("ROLLBACK").catch(() => undefined);

@@ -31,7 +31,7 @@ key, numbers `UNIQUE (tenant_id, <number>)` (migration `1758844800000`), counter
 `1759449600000`, `commercialNumbering.ts:335-354`) — **per tenant per year**, same visible format.
 
 **Firestore counters are NOT exported.** The Owner allowlist is exactly the three record collections; `counters` also
-holds `work_orders_YYYY`, `receiving_orders_YYYY`, … PostgreSQL counters are seeded from the migrated numbers (§8).
+holds `work_orders_YYYY`, `receiving_orders_YYYY`, … PostgreSQL counters are seeded from the source-visible high-water of the snapshot (§8).
 
 ### 1.2 Stored shapes and their writers
 
@@ -117,8 +117,8 @@ C2 authority would refuse blocks — never repaired, defaulted or guessed.
 | `updatedAtMillis` (version token) | — (`edit_version = 1`) | B | PostgreSQL versions start fresh |
 | `salesAgreementId`, `salesOrderId` | — | B | recomputed from children; disagreement → `LINEAGE_FORWARD_LINK_DISAGREES` |
 | `createdByUid`, `updatedByUid` | — | P | evidence file only; `created_by`/`updated_by` = the C5 EOS Principal |
-| `name` | — | E | no target column → blocker `FIELD_REQUIRES_OWNER_DECISION` |
-| `accountabilityExceptionId` | — | E | no governed exception writer/column → blocker |
+| `name` | — | P | **Owner ruling (C5 closeout): legacy evidence only.** No column, mapped to nothing (not `need`), never blocks; carried as advisory `OPPORTUNITY_NAME_LEGACY_EVIDENCE_NOT_MIGRATED` with the value |
+| `accountabilityExceptionId` | — | E | no governed exception writer/column → blocker (unchanged by the closeout) |
 | `certificationWorld`, `dataProvenance` | — | F | record excluded (ids + reason) |
 | `financialReviewP1` | — | F | fixture provenance (§4) |
 
@@ -130,7 +130,7 @@ Opportunity of the same Account; one Agreement per Opportunity); `state` (A); `c
 `locationId`, `customerPO`, `isLease`, `fulfillmentIntent`, `shippingInstructions`, `shipVia`, `specialInstructions` (A);
 `totals.{shipping,installCharge,tax,downPayment,tradeIn}Minor` → `*_minor` (A); `totals.{subtotal,total,balance}Minor` and
 `lines[].extendedMinor` (B, recomputed arithmetic); `acceptedAtMillis` → `accepted_at` (A; required iff ACCEPTED);
-**`acceptedByUid` (P) → `accepted_by` = the C5 EOS Principal** (E-ruled default, §10); `lines[]` → `sales_agreement_lines`
+**`acceptedByUid` (P) → `accepted_by` = the HISTORICAL accepter's EOS Principal** (Owner ruling, §6.3); `lines[]` → `sales_agreement_lines`
 with `lineId` (B: must be `line-<position>`, else `LINE_ID_NOT_POSITIONAL` — downstream line references would break),
 `businessUnitId` → `business_unit` (A; legacy absent → derived for EQUIPMENT_MODEL/PART via `deriveLineBusinessUnit`,
 an ambiguous SERVICE line blocks), `unitPrice` → `unit_price_minor` (an ACCEPTED line must be priced), `condition`,
@@ -236,8 +236,9 @@ PostgreSQL Employee authority (`createPostgresEmployeeAuthority`, same tenant); 
 sites against `eos_crm.account_locations` (advisory — no FK); PART/EQUIPMENT_MODEL refs with the #1911 probe shape
 (restated; parity-tested against `postgresCatalogReferenceAuthority`) — an absent Part Master schema is
 `CATALOG_REFERENCES_UNVERIFIABLE`, **never FOUND**; the tenant's existing rows (unknown rows, already-present rows,
-declared synthetic seed rows retained only with `--retainDeclaredSyntheticSeedRows`); ids held by another tenant;
-numbers held by another record; counters and the counter seed plan; the **accountability plan** (§7);
+declared synthetic seed rows labelled `TARGET_HAS_SYNTHETIC_SEED_ROWS` — they block; there is no retention option); ids held by another tenant;
+numbers held by another record; counters and the counter seed plan; the historical accepter of every ACCEPTED Agreement
+(`acceptancePlan`, §6.3); the **accountability plan** (§7);
 **gating conditions** (§9).
 
 Blockers (target): `OWNER_UNRESOLVED`, `CREDITED_SALESPERSON_UNRESOLVED`, `ACCOUNTABLE_PERSON_UNRESOLVED`,
@@ -260,7 +261,11 @@ copy-ready. Per family in FK order (Opportunities → Agreements → Orders):
 * absent → `INSERT` verbatim id, number, facts, lines, `created_at`/`updated_at`; actor columns = the Principal;
 * present and identical (every canonical field, lines, accountable person) → nothing;
 * present and different → `DRIFT_DETECTED`, roll back, **never overwritten**;
-* tenant rows the snapshot does not hold → `TARGET_HAS_UNKNOWN_RECORDS` (in-transaction census), roll back.
+* tenant rows the snapshot does not hold → `TARGET_HAS_UNKNOWN_RECORDS` (in-transaction census), roll back. **Owner ruling:**
+  declared synthetic nonprod seed rows are reported (`TARGET_HAS_SYNTHETIC_SEED_ROWS`) and block too — a real migration needs
+  target Commercial families free of unrecognized/synthetic rows; their removal is a separately authorized governed nonprod
+  cleanup that C5 neither builds nor runs. `--retainDeclaredSyntheticSeedRows` no longer exists; the CLI refuses it as not an
+  option.
 
 After each insert: the accountable person (§7), then `updated_at` restored to the preserved source value (the governed
 writer stamps `now()`, which describes the migration, not the business record). **No `command_receipts`.** Counters
@@ -270,14 +275,33 @@ accountability summary, counter actions, exclusions) only when something was wri
 
 ### 6.2 Verify — commits nothing
 
-One REPEATABLE READ transaction, always rolled back: counts and exact ids per family (retained synthetic rows excluded);
+One REPEATABLE READ transaction, always rolled back: counts and exact ids per family;
 field-by-field equality of **every** record incl. lines; number continuity (every migrated number on its id, format valid,
-no duplicate in the tenant); counters (`last_value ≥` highest migrated sequence per series/year, and a **probe
-allocation** through `allocateCommercialNumber` inside a savepoint that is rolled back — it must exceed the migrated max
-and not collide); owner / credited / accountable resolve in the tenant; accountability history (exactly one
+no duplicate in the tenant); counters (`last_value ≥` the source-visible high-water per series/year, and a **probe
+allocation** through `allocateCommercialNumber` inside a savepoint that is rolled back — it must exceed that high-water
+and not collide); `accepted_by` re-resolved from the legacy uid and equal to the historical accepter
+(`acceptedByViolations`, e.g. `ACCEPTED_BY_IS_NOT_THE_HISTORICAL_ACCEPTER` when it names the operator instead); owner / credited / accountable resolve in the tenant; accountability history (exactly one
 ESTABLISHMENT with a recorded source per record, history ends at the current person); Account FK validity; lineage;
 Certification fixtures absent; no actor column (`created_by`, `updated_by`, `accepted_by`, `recorded_by`) holds a legacy
 uid, and every actor is an EOS Principal; receipts naming migrated records reported.
+
+### 6.3 `accepted_by` — the historical accepter (Owner ruling, C5 closeout)
+
+The migration Principal is the actor only for "who performed the migration" facts: `created_by`/`updated_by` of the
+copied rows, the ESTABLISHMENT row's `recorded_by`, and the `commercial.c5.copy` audit event. `accepted_by` states who
+**accepted** the Agreement, so for every ACCEPTED Agreement:
+
+1. the legacy `acceptedByUid` (carried only in provenance evidence) is looked up through the governed credential →
+   Principal read `PostgresPolicyRepository.getPrincipalBySubject('firebase', uid)` (the reader `principalContext.ts`
+   resolves callers with); more than one Principal for the subject is counted and refused, never picked from;
+2. the Principal must have a membership in the target tenant (`PostgresPolicyRepository.getMembership`); principal and
+   membership status are recorded as evidence and are **not** required to be active — the acceptance is history;
+3. `accepted_by` = that Principal id. Never the uid, never the operator, never inferred from owner, accountable person,
+   `created_by` or `updated_by`.
+
+Blocking reason codes (census and, re-measured, copy): `ACCEPTING_PRINCIPAL_UID_MISSING` (source finding),
+`ACCEPTING_PRINCIPAL_UNRESOLVED`, `ACCEPTING_PRINCIPAL_AMBIGUOUS`, `ACCEPTING_PRINCIPAL_OUTSIDE_TENANT`. A rerun that finds a
+different `accepted_by` refuses as drift.
 
 ---
 
@@ -308,15 +332,17 @@ except by the explicit rung-2 rule above; no assignee exists in these families.
 * Every migrated record keeps its id and its business number verbatim; format validated against
   `formatCommercialNumber` (parity test); duplicates per series block; a missing number blocks (run the governed backfill
   at the source first — the migration never mints a number).
-* `number_counters` per `(tenant, series, year)` = **max(existing counter, highest migrated sequence)** — inserted if
-  absent, raised if lower, untouched if higher; never lowered. Sentinel-year numbers (`SO-0000-…`) are preserved and seed
-  no counter (`year` CHECK 1970..9999; no allocation ever targets year 0).
-* After the copy the next governed allocation is the migrated max + 1 (proven by the verify probe and by a real C2
-  `createOpportunity` in the PG suite).
-* **E — numbers above the seed.** Firestore counters are global per year and not exported: numbers consumed by
-  excluded Certification/fixture records, or by any record not migrated, can be re-issued in PostgreSQL. Default: seed
-  from migrated numbers (the spec). Alternative requiring an Owner decision: seed from the max over every snapshot number
-  including exclusions, or add the three `counters/*` documents to a separately authorized export.
+* **Owner ruling (C5 closeout) — source-visible high-water.** `number_counters` per `(tenant, series, year)` =
+  **max(existing counter, highest VALID business number in the COMPLETE frozen snapshot)** — migrated records and records
+  excluded from migration (Certification fixtures, other fixtures, records blocked by a finding) alike, so a number a person
+  has seen is never re-issued. Inserted if absent, raised if lower, untouched if higher; never lowered. A series/year seen
+  only on excluded records still seeds.
+* Invalid numbers (e.g. `SO-FR-…`) never seed. Sentinel-year numbers (`SO-0000-…`) are preserved on migrated records and
+  never seed (`year` CHECK 1970..9999).
+* The census and copy report, per series/year: `migratedMax`, `sourceVisibleMax`, `existing`, `seedTo`, `action`
+  (`sourceVisibleHighWater` also names the record that set it and whether excluded records contributed).
+* After the copy the next governed allocation is the high-water + 1 (verify probe; a real C2 `createOpportunity` in the PG
+  suite). No Firestore `counters/*` export.
 
 ---
 
@@ -369,8 +395,12 @@ except by the explicit rung-2 rule above; no assignee exists in these families.
   Firestore writer; census (counts/ids, Certification exclusion, canonical rows, D2 exclusion, uid provenance only,
   numbers, lineage, legacy shapes); disposition (production STOP incl. empty, empty nonprod, all-fixture, D3, D3 overruled
   by value signals and growth, other environments); finalize (accountability plan, owner/accountable/Account/catalog
-  blockers, outage ≠ verdict, counters max(existing, migrated), unknown rows, synthetic retention); CLI post-fence checks.
-* `functions/test/operatorScriptEnvironmentFence.test.mjs`: 19 subprocess refusals (12 CLI, 7 exporter), each before any
+  blockers, outage ≠ verdict, counters max(existing, source-visible high-water), unknown and synthetic rows block);
+  closeout proofs: accepter unresolved / ambiguous / outside-tenant / uid-missing block and no operator substitution (B, C,
+  D), excluded valid numbers raise the high-water while invalid and SO-0000 numbers do not (E, F, G), Opportunity `name`
+  is evidence only and the record migrates (H), `accountabilityExceptionId` still blocks (I), synthetic target rows block
+  with no retention option (J); CLI post-fence checks.
+* `functions/test/operatorScriptEnvironmentFence.test.mjs`: 20 subprocess refusals (13 CLI incl. the removed retention flag, 7 exporter), each before any
   client library loads.
 * `functions/test/commercialC5MigrationPostgres.test.mjs` (real postgres:16, in `test:adminPolicyPostgres`, migrations
   pinned by name): catalog probe = #1911 adapter; census copy-ready; uid / other-tenant Principal / missing confirmation /
@@ -378,7 +408,10 @@ except by the explicit rung-2 rule above; no assignee exists in these families.
   fixtures absent; accountability rows (governed, derived, historical preserved); no uid in any column; counters and
   rolled-back probe; verify reconciled; rerun `NO_CHANGES`; drift refused and not overwritten; verify detects field
   change, uid attribution and a lowered counter; a real C2 create allocates the next number and then makes a rerun refuse;
-  counters raised-not-lowered; tenant isolation; the CLI end to end with no connection string, `:password@` or password in
+  counters raised-not-lowered; accepted_by = the historical accepter (disabled Principal, tenant member) and never the operator
+  or uid (A, C, D), verify and rerun catch an operator substituted as accepter, unresolved and outside-tenant accepters
+  block (B), the excluded Certification order raises the Sales Order high-water (E), a synthetic target row blocks the
+  copy (J); tenant isolation; the CLI end to end with no connection string, `:password@` or password in
   any output.
 * `functions/test/governedOwnershipWriterCensus.test.mjs` + `docs/security/ownership-accountability-bypass-census.md`
   rows 15k/15l and §5.2 rows 11-12 classify the two modules.
@@ -396,13 +429,9 @@ except by the explicit rung-2 rule above; no assignee exists in these families.
 
 * **Unresolved — live shape and counts.** Sandbox and production populations are unmeasured until an authorized export.
   The previous sandbox census (14/5/17, non-fixture) predates accountability storage and D2 quantities.
-* **E — `accepted_by`.** Default: the C5 Principal (recorder semantics, like `created_by`), the legacy `acceptedByUid`
-  kept as evidence. Alternative: a governed uid → Principal resolution, which would need its own ruling (a uid is never a
-  Principal id).
-* **E — counter seed above migrated numbers** (§8).
-* **E — `name`, `accountabilityExceptionId`** on a record: no target; blocker until ruled.
-* **E — declared synthetic seed rows** in the nonprod tenant: retained with the explicit flag, or removed first.
-* **E — historical accountable persons no longer eligible:** preserved (§7) per #186 §7; confirm the `reason` wording as
-  the evidence of record.
+* **Ruled (C5 closeout):** `accepted_by` = historical accepter via the governed credential → Principal read (§6.3);
+  counters seed from the source-visible high-water (§8); Opportunity `name` is legacy evidence only (§2.1);
+  `accountabilityExceptionId` still blocks; synthetic target rows block a real copy and have no retention option (§6.1);
+  the historical-accountability `reason` wording is accepted (§7).
 * **E — actionable records whose accountable person is ineligible / underivable:** resolved at the source by a governed
   handoff before the freeze (default), or an Owner-approved exception.

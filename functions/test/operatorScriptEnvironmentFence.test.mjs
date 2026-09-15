@@ -405,6 +405,7 @@ for (const [label, args, env, pattern] of [
   ["copy without an EOS principal", ["--mode", "copy", ...C5_ARGS, ...C5_CONFIRM], C5_ENV, /--principalId <EOS principal id> is required/],
   ["copy without the explicit migration confirmation", ["--mode", "copy", ...C5_ARGS, "--principalId", "p"], C5_ENV, /--confirmMigrationRequired <snapshot sha256> is required/],
   ["any Certification inclusion option", ["--mode", "copy", ...C5_ARGS, "--principalId", "p", ...C5_CONFIRM, "--includeCertification", "yes"], C5_ENV, /not an option/],
+  ["any option tolerating synthetic target rows", ["--mode", "copy", ...C5_ARGS, "--principalId", "p", ...C5_CONFIRM, "--retainDeclaredSyntheticSeedRows"], C5_ENV, /--retainDeclaredSyntheticSeedRows is not an option/],
 ]) {
   test(`commercial C5: refuses (${label}) before any client library loads`, () => {
     const res = runCli(C5, args, env);

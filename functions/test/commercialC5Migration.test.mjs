@@ -239,7 +239,7 @@ test("clean snapshot: counts and exact ids per family, Certification fixtures ex
 });
 
 test("D2 execution state (allocation / fulfillment / billing quantities, service Work Orders) is excluded from the canonical rows and counted", () => {
-  const { census: c, canonical } = census(cleanSnapshot());
+  const { census: c, canonical, legacyActorProvenance: prov } = census(cleanSnapshot());
   assert.deepEqual(c.d2Excluded.fieldPresence, {
     "salesOrder.fulfillmentReadiness": 1, "salesOrder.lines[].allocatedQty": 1, "salesOrder.lines[].billedQty": 1, "salesOrder.lines[].fulfilledQty": 1, "salesOrder.serviceWorkOrderIds": 1,
   });
@@ -280,14 +280,17 @@ test("NUMBERS: duplicates per series block every holder, a non-governed format b
 
 test("FIELDS AND LEGACY SHAPES: unclassified and Owner-decision fields, unrecorded accountable source, non-positional line ids, ambiguous SERVICE lines, missing company, broken acceptance", () => {
   const d = commercialDocs();
-  const o = clone(d.opp2); o.data.mystery = 1; o.data.name = "Big deal";
+  const o = clone(d.opp2); o.data.mystery = 1;
   const a = clone(d.opp3); delete a.data.accountablePersonSource;
   const sa = clone(d.sa1); sa.data.lines[1].lineId = "line-7"; delete sa.data.acceptedAtMillis;
   const so = clone(d.so1); delete so.data.lines[1].businessUnitId; so.data.operatingCompanyId = null;
   const { census: c } = census(snapshotOf({ opportunities: [d.opp1, o, a], salesAgreements: [sa], salesOrders: [so] }));
-  assert.deepEqual(codes(c.findings, "opp-2").sort(), ["FIELD_REQUIRES_OWNER_DECISION", "UNCLASSIFIED_SOURCE_FIELD"]);
+  assert.deepEqual(codes(c.findings, "opp-2"), ["UNCLASSIFIED_SOURCE_FIELD"]);
   assert.deepEqual(codes(c.findings, "opp-3"), ["ACCOUNTABLE_PERSON_SOURCE_UNRECORDED"]);
   assert.deepEqual(codes(c.findings, "sa-1").sort(), ["ACCEPTED_AT_MISSING", "LINE_ID_NOT_POSITIONAL"]);
+  // (B) an ACCEPTED Agreement without its legacy accepter uid blocks with its own code
+  const noAccepter = clone(d.sa1); delete noAccepter.data.acceptedByUid;
+  assert.ok(codes(census(snapshotOf({ opportunities: [d.opp1], salesAgreements: [noAccepter] })).census.findings, "sa-1").includes("ACCEPTING_PRINCIPAL_UID_MISSING"));
   assert.ok(codes(c.findings, "so-1").includes("BUSINESS_UNIT_UNRESOLVABLE"));
   assert.ok(codes(c.findings, "so-1").includes("COMPANY_REQUIRED"));
   assert.ok(!c.selected.salesOrders.includes("so-1") && !c.selected.salesAgreements.includes("sa-1"), "a record with a finding is never selected");
@@ -347,13 +350,14 @@ function facts(over = {}) {
     accountIds: new Set(["acct-1", "acct-2"]), locationIds: new Set(["loc-1"]),
     catalog: { status: "PROBED", verdicts: [{ kind: "EQUIPMENT_MODEL", ref: "ACME--CW-100", verdict: "FOUND" }, { kind: "PART", ref: "P-100", verdict: "FOUND" }] },
     existing: { opportunity: [], salesAgreement: [], salesOrder: [] }, idsHeldByOtherTenants: [], counters: [],
+    acceptors: new Map([["uid-accepter", { outcome: "RESOLVED", principalId: "p-accepter", principalStatus: "disabled", membershipStatus: "active" }]]),
     ...over,
   };
 }
 
 test("finalize: the clean snapshot is copy-ready; the accountability plan is governed, derived-at-migration and historical-preserved exactly where the rules say", () => {
-  const { census: c, canonical } = census(cleanSnapshot());
-  const f = T.finalizeC5Census(c, canonical, facts());
+  const { census: c, canonical, legacyActorProvenance: prov } = census(cleanSnapshot());
+  const f = T.finalizeC5Census(c, canonical, facts(), prov);
   assert.deepEqual(f.blockers, []);
   assert.equal(f.copyReady, true);
   assert.deepEqual(f.accountabilityPlan.map((p) => [p.id, p.path, p.accountableEmployeeId, p.source, p.derivedAtMigration]), [
@@ -364,9 +368,12 @@ test("finalize: the clean snapshot is copy-ready; the accountability plan is gov
     ["so-1", "GOVERNED_ESTABLISHMENT", EMP.accountable, "DERIVED_FROM_RECORD_OWNER", false],
   ]);
   assert.deepEqual(f.derivedAccountablePersons, [{ family: "opportunity", id: "opp-2", accountableEmployeeId: EMP.owner }]);
-  assert.deepEqual(f.counterSeedPlan.map((x) => [x.series, x.year, x.migratedMax, x.existing, x.seedTo, x.action]), [
-    ["OPPORTUNITY", 2025, 3, null, 3, "INSERT"], ["OPPORTUNITY", 2026, 9, null, 9, "INSERT"], ["SALES_AGREEMENT", 2026, 4, null, 4, "INSERT"], ["SALES_ORDER", 2026, 11, null, 11, "INSERT"],
+  // (E) the excluded Certification order SO-2026-000099 is source-visible: it raises the SALES_ORDER high-water above the migrated 11
+  assert.deepEqual(f.counterSeedPlan.map((x) => [x.series, x.year, x.migratedMax, x.sourceVisibleMax, x.existing, x.seedTo, x.action]), [
+    ["OPPORTUNITY", 2025, 3, 3, null, 3, "INSERT"], ["OPPORTUNITY", 2026, 9, 9, null, 9, "INSERT"], ["SALES_AGREEMENT", 2026, 4, 4, null, 4, "INSERT"], ["SALES_ORDER", 2026, 11, 99, null, 99, "INSERT"],
   ]);
+  // (A)(C)(D) accepted_by is the historical accepter's EOS Principal -- not the operator, not the uid; status is evidence, not required active
+  assert.deepEqual(f.acceptancePlan, [{ id: "sa-1", legacyAcceptedByUidEvidence: "uid-accepter", acceptedByPrincipalId: "p-accepter", principalStatus: "disabled", membershipStatus: "active" }]);
   assert.match(T.establishmentReason(f.accountabilityPlan[2], "a".repeat(64)), /^C5_MIGRATION_HISTORICAL_ACCOUNTABILITY_PRESERVED snapshot:aaaaaaaaaaaaaaaa status:TERMINATED/);
   assert.ok(T.establishmentReason(f.accountabilityPlan[2], "a".repeat(64)).length <= 500);
   assert.deepEqual(f.gatingConditions.map((g) => [g.id, g.status]), [
@@ -376,12 +383,12 @@ test("finalize: the clean snapshot is copy-ready; the accountability plan is gov
 });
 
 test("finalize: owner, credited salesperson, accountable person, authority outage, Account and catalog blockers -- never a fallback, never always-FOUND", () => {
-  const { census: c, canonical } = census(cleanSnapshot());
+  const { census: c, canonical, legacyActorProvenance: prov } = census(cleanSnapshot());
   const people = new Map(facts().employees);
   people.delete(EMP.credited); // NOT_FOUND is modelled as absent from the answer map? no: explicit
   people.set(EMP.credited, { outcome: "NOT_FOUND" });
   people.set(EMP.accountable, employee(EMP.accountable, "INACTIVE"));
-  const f = T.finalizeC5Census(c, canonical, facts({ employees: people, accountIds: new Set(["acct-2"]), catalog: { status: "PART_MASTER_SCHEMA_ABSENT", verdicts: [] } }));
+  const f = T.finalizeC5Census(c, canonical, facts({ employees: people, accountIds: new Set(["acct-2"]), catalog: { status: "PART_MASTER_SCHEMA_ABSENT", verdicts: [] } }), prov);
   assert.equal(f.copyReady, false);
   for (const code of ["CREDITED_SALESPERSON_UNRESOLVED", "ACCOUNTABLE_PERSON_NOT_CURRENTLY_ELIGIBLE", "ACCOUNT_UNRESOLVED", "CATALOG_REFERENCES_UNVERIFIABLE"]) assert.ok(f.blockers.includes(code), code);
   // the ineligible person on HISTORICAL records (opp-1, sa-1) is preserved; on ACTIONABLE work (so-1) it blocks
@@ -392,42 +399,96 @@ test("finalize: owner, credited salesperson, accountable person, authority outag
   assert.equal(f.gatingConditions.find((g) => g.id === "CATALOG_CUTOVER_RECONCILED").status, "NOT_MET");
 
   const noOwner = new Map(facts().employees); noOwner.set(EMP.owner, { outcome: "NOT_FOUND" });
-  const g = T.finalizeC5Census(c, canonical, facts({ employees: noOwner }));
+  const g = T.finalizeC5Census(c, canonical, facts({ employees: noOwner }), prov);
   assert.ok(g.blockers.includes("OWNER_UNRESOLVED"));
   assert.deepEqual(codes(g.findings, "opp-2").sort(), ["ACCOUNTABLE_PERSON_UNDERIVABLE", "OWNER_UNRESOLVED"], "no accountable person is derived from an owner who does not resolve");
   const termOwner = new Map(facts().employees); termOwner.set(EMP.owner, employee(EMP.owner, "TERMINATED"));
-  assert.ok(codes(T.finalizeC5Census(c, canonical, facts({ employees: termOwner })).findings, "opp-2").includes("ACCOUNTABLE_PERSON_UNDERIVABLE"));
+  assert.ok(codes(T.finalizeC5Census(c, canonical, facts({ employees: termOwner }), prov).findings, "opp-2").includes("ACCOUNTABLE_PERSON_UNDERIVABLE"));
   const unknownPerson = new Map(facts().employees); unknownPerson.set(EMP.terminated, { outcome: "NOT_FOUND" });
-  assert.ok(codes(T.finalizeC5Census(c, canonical, facts({ employees: unknownPerson })).findings, "opp-3").includes("ACCOUNTABLE_PERSON_UNRESOLVED"));
+  assert.ok(codes(T.finalizeC5Census(c, canonical, facts({ employees: unknownPerson }), prov).findings, "opp-3").includes("ACCOUNTABLE_PERSON_UNRESOLVED"));
   const outage = new Map(facts().employees); outage.set(EMP.accountable, { outcome: "AUTHORITY_UNAVAILABLE" });
-  const h = T.finalizeC5Census(c, canonical, facts({ employees: outage }));
+  const h = T.finalizeC5Census(c, canonical, facts({ employees: outage }), prov);
   assert.ok(h.blockers.includes("EMPLOYEE_AUTHORITY_UNAVAILABLE"));
   assert.ok(!h.blockers.includes("ACCOUNTABLE_PERSON_UNRESOLVED"), "an outage is never a verdict about the person");
-  const wrong = T.finalizeC5Census(c, canonical, facts({ catalog: { status: "PROBED", verdicts: [{ kind: "EQUIPMENT_MODEL", ref: "ACME--CW-100", verdict: "WRONG_KIND" }, { kind: "PART", ref: "P-100", verdict: "NOT_FOUND" }] } }));
+  const wrong = T.finalizeC5Census(c, canonical, facts({ catalog: { status: "PROBED", verdicts: [{ kind: "EQUIPMENT_MODEL", ref: "ACME--CW-100", verdict: "WRONG_KIND" }, { kind: "PART", ref: "P-100", verdict: "NOT_FOUND" }] } }), prov);
   assert.ok(wrong.blockers.includes("CATALOG_REFERENCE_WRONG_KIND") && wrong.blockers.includes("CATALOG_REFERENCE_NOT_FOUND"));
 });
 
-test("finalize: counters are seeded to max(existing, migrated) and never lowered; unknown tenant rows, ids held by another tenant and numbers held by another record block; declared synthetic rows are retained only when named", () => {
-  const { census: c, canonical } = census(cleanSnapshot());
-  const f = T.finalizeC5Census(c, canonical, facts({ counters: [{ series: "OPPORTUNITY", year: 2026, lastValue: 4 }, { series: "SALES_ORDER", year: 2026, lastValue: 40 }] }));
-  assert.deepEqual(f.counterSeedPlan.find((x) => x.series === "OPPORTUNITY" && x.year === 2026), { series: "OPPORTUNITY", year: 2026, migratedMax: 9, existing: 4, seedTo: 9, action: "RAISE" });
-  assert.deepEqual(f.counterSeedPlan.find((x) => x.series === "SALES_ORDER"), { series: "SALES_ORDER", year: 2026, migratedMax: 11, existing: 40, seedTo: 40, action: "NONE" });
-  for (const x of f.counterSeedPlan) assert.ok(x.seedTo >= x.migratedMax && x.seedTo >= (x.existing ?? 0));
+test("finalize: counters are seeded to max(existing, source-visible high-water) and never lowered; unknown and declared synthetic target rows, ids held by another tenant and numbers held by another record all block (J)", () => {
+  const { census: c, canonical, legacyActorProvenance: prov } = census(cleanSnapshot());
+  const f = T.finalizeC5Census(c, canonical, facts({ counters: [{ series: "OPPORTUNITY", year: 2026, lastValue: 4 }, { series: "SALES_ORDER", year: 2026, lastValue: 40 }] }), prov);
+  assert.deepEqual(f.counterSeedPlan.find((x) => x.series === "OPPORTUNITY" && x.year === 2026), { series: "OPPORTUNITY", year: 2026, migratedMax: 9, sourceVisibleMax: 9, existing: 4, seedTo: 9, action: "RAISE" });
+  assert.deepEqual(f.counterSeedPlan.find((x) => x.series === "SALES_ORDER"), { series: "SALES_ORDER", year: 2026, migratedMax: 11, sourceVisibleMax: 99, existing: 40, seedTo: 99, action: "RAISE" });
+  for (const x of f.counterSeedPlan) assert.ok(x.seedTo >= x.sourceVisibleMax && x.seedTo >= (x.migratedMax ?? 0) && x.seedTo >= (x.existing ?? 0));
+  const high = T.finalizeC5Census(c, canonical, facts({ counters: [{ series: "SALES_ORDER", year: 2026, lastValue: 500 }] }), prov);
+  assert.deepEqual(high.counterSeedPlan.find((x) => x.series === "SALES_ORDER"), { series: "SALES_ORDER", year: 2026, migratedMax: 11, sourceVisibleMax: 99, existing: 500, seedTo: 500, action: "NONE" });
 
   const existing = { opportunity: [{ id: "opp-other", number: "OPP-2026-000009" }, { id: "syn-1", number: "SYN-NP-OPP-0001" }], salesAgreement: [], salesOrder: [] };
-  const g = T.finalizeC5Census(c, canonical, facts({ existing, idsHeldByOtherTenants: [{ family: "salesOrder", id: "so-1" }] }));
+  const g = T.finalizeC5Census(c, canonical, facts({ existing, idsHeldByOtherTenants: [{ family: "salesOrder", id: "so-1" }] }), prov);
   assert.ok(g.blockers.includes("TARGET_HAS_UNKNOWN_RECORDS") && g.blockers.includes("ID_HELD_BY_ANOTHER_TENANT") && g.blockers.includes("NUMBER_HELD_BY_ANOTHER_RECORD"));
   assert.deepEqual(g.target.unknownRecords.map((r) => r.id), ["opp-other", "syn-1"]);
-  const h = T.finalizeC5Census(c, canonical, facts({ existing: { opportunity: [{ id: "syn-1", number: "SYN-NP-OPP-0001" }], salesAgreement: [], salesOrder: [] } }), { retainedSyntheticNumbers: ["SYN-NP-OPP-0001"] });
-  assert.deepEqual(h.blockers, []);
-  assert.deepEqual(h.target.retainedSyntheticSeedRows.map((r) => r.id), ["syn-1"]);
+  // (J) a declared synthetic seed row is reported as such and BLOCKS a real copy -- there is no retention option
+  const h = T.finalizeC5Census(c, canonical, facts({ existing: { opportunity: [{ id: "syn-1", number: "SYN-NP-OPP-0001" }], salesAgreement: [], salesOrder: [] } }), prov, { declaredSyntheticNumbers: ["SYN-NP-OPP-0001"] });
+  assert.deepEqual(h.blockers, ["TARGET_HAS_SYNTHETIC_SEED_ROWS", "TARGET_HAS_UNKNOWN_RECORDS"]);
+  assert.equal(h.copyReady, false);
+  assert.deepEqual(h.target.syntheticSeedRows.map((r) => r.id), ["syn-1"]);
+  assert.equal(T.finalizeC5Census(c, canonical, facts({ existing: { opportunity: [{ id: "syn-1", number: "SYN-NP-OPP-0001" }], salesAgreement: [], salesOrder: [] } }), prov, { retainedSyntheticNumbers: ["SYN-NP-OPP-0001"] }).copyReady, false, "the removed option has no effect");
   // a disposable source is never copy-ready, whatever the target says
   const d = commercialDocs();
   const [o1, a1] = [clone(d.opp1), clone(d.sa1)];
   delete o1.data.salesOrderId; delete a1.data.salesOrderId;
   const quiet = census(snapshotOf({ opportunities: [o1, d.opp2, d.opp3], salesAgreements: [a1] }));
-  const q = T.finalizeC5Census(quiet.census, quiet.canonical, facts());
+  const q = T.finalizeC5Census(quiet.census, quiet.canonical, facts(), quiet.legacyActorProvenance);
   assert.deepEqual([q.copyReady, q.blockers], [false, ["DISPOSITION_DISPOSABLE_FIXTURE_ONLY"]]);
+});
+
+test("ACCEPTED_BY (B): unresolved, ambiguous and outside-tenant accepters block with their own codes; the operator is never a fallback", () => {
+  const { census: c, canonical, legacyActorProvenance: prov } = census(cleanSnapshot());
+  for (const [answer, code] of [
+    [{ outcome: "UNRESOLVED" }, "ACCEPTING_PRINCIPAL_UNRESOLVED"],
+    [{ outcome: "AMBIGUOUS", candidates: 2 }, "ACCEPTING_PRINCIPAL_AMBIGUOUS"],
+    [{ outcome: "OUTSIDE_TENANT", principalId: "p-other", principalStatus: "active" }, "ACCEPTING_PRINCIPAL_OUTSIDE_TENANT"],
+  ]) {
+    const f = T.finalizeC5Census(c, canonical, facts({ acceptors: new Map([["uid-accepter", answer]]) }), prov);
+    assert.equal(f.copyReady, false);
+    assert.deepEqual(codes(f.findings, "sa-1"), [code]);
+    assert.deepEqual(f.acceptancePlan, [], "no accepter is substituted");
+  }
+  const none = T.finalizeC5Census(c, canonical, facts({ acceptors: new Map() }), prov);
+  assert.deepEqual(codes(none.findings, "sa-1"), ["ACCEPTING_PRINCIPAL_UNRESOLVED"]);
+  // (D) the copy module never writes the actor or the uid into accepted_by
+  const src = stripComments(readFileSync("src/commercialMigration/commercialC5Target.ts", "utf8"));
+  assert.doesNotMatch(src, /acceptedAt === null \? null : actor/);
+  assert.match(src, /a\.acceptedAt, acceptedBy, actor,/);
+});
+
+test("COUNTER HIGH-WATER (E, F, G): excluded valid numbers raise it, invalid numbers and the SO-0000 sentinel never do", () => {
+  const d = commercialDocs();
+  const excludedHigh = { id: "cw-so-9", data: { ...d.soCw.data, salesOrderNumber: "SO-2026-000500" } };
+  const invalidFixture = { id: "fr-so", data: { ...clone(d.so1).data, salesOrderNumber: "SO-FR-999999", financialReviewP1: { version: "1.0.0" }, sourceOpportunityId: null, sourceAgreementId: null, sourceOpportunityNumber: null } };
+  const invalidExcluded = { id: "cw-so-bad", data: { ...d.soCw.data, salesOrderNumber: "SO-2026-9999999x" } };
+  const sentinel = { id: "cw-so-0", data: { ...d.soCw.data, salesOrderNumber: "SO-0000-900000" } };
+  const hw = (orders) => C5.sourceVisibleHighWater(C5.parseCommercialSnapshot(snapshotOf({ opportunities: [d.opp1], salesAgreements: [d.sa1], salesOrders: orders })), new Set(["salesOrder|so-1"]))
+    .filter((x) => x.series === "SALES_ORDER");
+  assert.deepEqual(hw([d.so1, excludedHigh]).map((x) => [x.year, x.maxSequence, x.number, x.includesExcludedRecords]), [[2026, 500, "SO-2026-000500", true]]);
+  assert.deepEqual(hw([d.so1, invalidFixture, invalidExcluded]).map((x) => [x.year, x.maxSequence]), [[2026, 11]], "invalid numbers never seed");
+  assert.deepEqual(hw([d.so1, sentinel]).map((x) => [x.year, x.maxSequence]), [[2026, 11]], "the sentinel year never seeds");
+  assert.deepEqual(hw([sentinel]), [], "a sentinel-only series seeds nothing");
+});
+
+test("OPPORTUNITY name (H) is legacy evidence only and the record migrates; accountabilityExceptionId (I) still blocks", () => {
+  const d = commercialDocs();
+  const named = clone(d.opp2); named.data.name = "Big deal";
+  const { census: c, canonical } = census(snapshotOf({ opportunities: [named] }));
+  assert.deepEqual(c.findings, []);
+  assert.ok(canonical.opportunities.some((o) => o.id === "opp-2"), "the named Opportunity is copied");
+  assert.doesNotMatch(JSON.stringify(canonical.opportunities), /Big deal/, "name reaches no column");
+  assert.deepEqual(c.advisories.filter((a) => a.id === "opp-2").map((a) => [a.code, a.detail]), [["OPPORTUNITY_NAME_LEGACY_EVIDENCE_NOT_MIGRATED", "Big deal"]]);
+  assert.equal(C5.FIELD_DISPOSITIONS.opportunity.name, "P");
+  const excepted = clone(d.opp2); excepted.data.accountabilityExceptionId = "exc-1";
+  const e = census(snapshotOf({ opportunities: [excepted] })).census;
+  assert.ok(codes(e.findings, "opp-2").includes("ACCOUNTABILITY_EXCEPTION_NO_TARGET"));
+  assert.ok(e.blockers.includes("ACCOUNTABILITY_EXCEPTION_NO_TARGET"));
 });
 
 test("the C5 CLI's post-fence checks: snapshot source must match the registry environment and is never production; census exit codes", () => {
@@ -447,4 +508,7 @@ test("the C5 CLI's post-fence checks: snapshot source must match the registry en
   assert.throws(() => cli.assertC5Invocation({ ...base, confirmMigrationRequired: "yes" }, env), /--confirmMigrationRequired/);
   assert.equal(cli.assertC5Invocation({ ...base, confirmMigrationRequired: "a".repeat(64) }, env).mode, "copy");
   assert.throws(() => cli.assertC5Invocation({ ...base, confirmMigrationRequired: "a".repeat(64), includeCertification: "true" }, env), /not an option/);
+  for (const flag of ["retainDeclaredSyntheticSeedRows", "retainSyntheticRows", "allowUnknownTargetRows"]) {
+    assert.throws(() => cli.assertC5Invocation({ ...base, confirmMigrationRequired: "a".repeat(64), [flag]: "true" }, env), /is not an option: target rows the snapshot does not hold/);
+  }
 });
