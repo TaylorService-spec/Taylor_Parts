@@ -3342,6 +3342,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/catalogMaster/catalogMasterKernel.ts",
           "functions/src/partMaster/partMasterCommands.ts"
         ],
         "clientReferences": [
@@ -3351,7 +3352,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/administration/profiles/part.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3370,6 +3371,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/catalogMaster/catalogMasterKernel.ts",
           "functions/src/partMaster/partMasterCommands.ts"
         ],
         "clientReferences": [
@@ -3378,7 +3380,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/administration/profiles/part.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
@@ -4075,12 +4077,13 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/catalogMaster/catalogMasterKernel.ts",
           "functions/src/equipmentCompatibility/commands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
