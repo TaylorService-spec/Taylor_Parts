@@ -152,6 +152,9 @@ const NORTH_STAR_RECORD_PAGES = [
   // not a recomposition: no Administration surface has ever had a record page, so this file
   // arrives on this list rather than moving off another one.
   "modules/administration/UserDetail.jsx",
+  // EMPLOYEE DESIGN v4.1 -- the self view (/my-profile). A NEW routed record page for the signed-in
+  // person's own Employee profile; it composes the record grammar and hosts no WorkspaceShell.
+  "modules/employees/MyEmployeeProfile.jsx",
 ];
 
 // ════════════════════ NORTH STAR COLLECTION PAGES ════════════════════

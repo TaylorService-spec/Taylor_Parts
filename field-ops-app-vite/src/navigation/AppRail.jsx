@@ -360,6 +360,11 @@ export function RailIdentity() {
     <div className="fo-rail-identity">
       <span className="fo-rail-identity__name" title={name}>{name}</span>
       {role ? <span className="fo-rail-identity__role">{ROLE_LABEL[role] ?? role}</span> : null}
+      {/* The self view: who EOS says you are (Employee design v4.1). A route, not a nav group --
+          it belongs to every signed-in person, whatever their role, and grants nothing. */}
+      <NavLink to="/my-profile" className="fo-rail-identity__profile">
+        Your Employee profile
+      </NavLink>
       <Button variant="tertiary" onClick={logout} className="fo-rail-identity__signout">
         Sign out
       </Button>

@@ -72,6 +72,9 @@ const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImp
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const AdminWorkflows = lazy(() => import("./modules/administration/AdminWorkflows.jsx"));
 const UserDetail = lazy(() => import("./modules/administration/UserDetail.jsx"));
+// The Employee self view (Employee design v4.1): who EOS says the signed-in person is. Reads only the
+// session AuthContext already resolved at sign-in -- no new data path.
+const MyEmployeeProfile = lazy(() => import("./modules/employees/MyEmployeeProfile.jsx"));
 const IntegrationsFaq = lazy(() => import("./modules/administration/IntegrationsFaq"));
 const AdminEmailCommunications = lazy(() => import("./modules/administration/AdminEmailCommunications.jsx"));
 const InboundWorkWorkspace = lazy(() => import("./modules/service/InboundWorkWorkspace.jsx"));
@@ -867,6 +870,11 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
           the standard No Access state otherwise (real gate, not route obscurity);
           Firestore Rules are unchanged. Isolated from PartsList/PartDetail. */}
       <Route path="/admin/diagnostics/inventory-parts-parity" element={<PartsShadowParityDiagnostics />} />
+
+      {/* EMPLOYEE SELF VIEW. Not a navigation group: it is reached from the rail identity block and
+          belongs to every signed-in person regardless of role. It renders only the session the shell
+          already holds and grants nothing; every fact it cannot know is stated as unavailable. */}
+      <Route path="/my-profile" element={<MyEmployeeProfile />} />
 
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
         <Route key={domain.key} path={domain.path}>

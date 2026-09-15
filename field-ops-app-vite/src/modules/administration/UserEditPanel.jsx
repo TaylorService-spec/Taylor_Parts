@@ -142,7 +142,7 @@ export default function UserEditPanel({ employee, candidates, client, onClose, o
 
   return (
     <form className="fo-user-edit" onSubmit={handleSubmit} noValidate>
-      <RuledSection title="Edit user" panel>
+      <RuledSection title="Edit Employee record" panel>
         <div className="fo-form-grid">
           {text("displayName", "Display Name", { required: true })}
           {text("preferredName", "Preferred Name")}
@@ -221,7 +221,7 @@ export default function UserEditPanel({ employee, candidates, client, onClose, o
         </div>
       </RuledSection>
 
-      <RuledSection title="Operational assignment" panel>
+      <RuledSection title="Operational eligibility" panel>
         {/* MULTI-SELECT over the canonical operational-role vocabulary -- checkboxes rather than a
             multiple <select>, which is close to unusable on a phone and famously easy to clear by
             accident. A fieldset/legend so the group is announced as one question. */}
