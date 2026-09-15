@@ -57,13 +57,16 @@ async function freshDatabase(t, prefix, beforeDrop = async () => {}) {
 test("migration 023: Commercial capability vocabulary, no grants, and a down that refuses to destroy grants", { skip: SKIP, concurrency: 1 }, async (t) => {
   const url = await freshDatabase(t, "c4_vocab");
   const run = migrator(url);
-  run("up");
+  // Pinned THROUGH migration 023 (timestamp mode): later migrations (CRM, catalog, ...) are not what this suite proves.
+  const MIGRATION_023 = "1759536000000_commercial-capability-vocabulary";
+  const upThrough023 = () => run("up", "1759536000000", "--timestamp");
+  upThrough023();
   const q = (text, values = []) => withClient(url, (c) => c.query(text, values));
   const commercialKeys = async () => (await q(`SELECT id, key FROM eos_policy.capabilities WHERE key ~ '^(opportunity|salesAgreement|salesOrder)\\.' ORDER BY key`)).rows;
   const latest = async () => (await q(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC LIMIT 1`)).rows[0].name;
 
   await t.test("(25)(26) up registers exactly the nine keys and creates zero grants", async () => {
-    assert.equal(await latest(), "1759536000000_commercial-capability-vocabulary");
+    assert.equal(await latest(), MIGRATION_023);
     const rows = await commercialKeys();
     assert.deepEqual(rows.map((r) => r.key), [...COMMERCIAL_KEYS].sort());
     for (const r of rows) assert.equal(r.id, `cap_${r.key.replace(/\./g, "_")}`);
@@ -73,7 +76,7 @@ test("migration 023: Commercial capability vocabulary, no grants, and a down tha
   });
 
   await t.test("rerunning up is a no-op under the migration framework", async () => {
-    run("up");
+    upThrough023();
     assert.equal((await commercialKeys()).length, 9);
   });
 
@@ -82,7 +85,7 @@ test("migration 023: Commercial capability vocabulary, no grants, and a down tha
     await q(`INSERT INTO eos_policy.roles (id, tenant_id, key, name, origin, protected, created_by, updated_by) VALUES ('r-v','t-v','sales','Sales','CUSTOM',false,'x','x')`);
     await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by) VALUES ('rc-v','t-v','r-v','cap_opportunity_read','x','x','x')`);
     assert.throws(() => run("down", "1"), (err) => /migration 023 refuses to remove the Commercial capability vocabulary: 1 Role grant/.test(String(err.stderr)));
-    assert.equal(await latest(), "1759536000000_commercial-capability-vocabulary");
+    assert.equal(await latest(), MIGRATION_023);
     assert.equal((await commercialKeys()).length, 9);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities WHERE id='rc-v'`)).rows[0].n, 1, "the rollback destroyed a grant");
   });
@@ -94,7 +97,7 @@ test("migration 023: Commercial capability vocabulary, no grants, and a down tha
     assert.equal(await latest(), "1759449600000_commercial-schema-parity-numbering-receipts");
     assert.deepEqual(await commercialKeys(), []);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities`)).rows[0].n, others, "the rollback removed other vocabulary");
-    run("up");
+    upThrough023();
     assert.equal((await commercialKeys()).length, 9);
   });
 });
