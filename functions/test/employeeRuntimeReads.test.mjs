@@ -267,6 +267,9 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));
   assert.deepEqual(internal.map(rel), [], "a runtime Workforce module imports the internal writer or the migration modules");
   const client = walk(join(REPO, "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
-  assert.deepEqual(client.filter((f) => /\/workforce\/employees|workforceHttp|WORKFORCE_ROUTE|eosWorkforce/.test(readFileSync(f, "utf8"))).map(rel), []);
+  // Exactly ONE dedicated Workforce API client may know the transport route (#1910); Employee UI modules consume that
+  // client abstraction and never name the route, the server module or the route constant themselves.
+  assert.deepEqual(client.filter((f) => /\/workforce\/employees|workforceHttp|WORKFORCE_ROUTE|eosWorkforce/.test(readFileSync(f, "utf8"))).map(rel),
+    ["field-ops-app-vite/src/services/workforceApiClient.js"]);
   assert.doesNotMatch(readFileSync(join(REPO, "firestore.rules"), "utf8"), /workforce\/employees|eosWorkforce/);
 });

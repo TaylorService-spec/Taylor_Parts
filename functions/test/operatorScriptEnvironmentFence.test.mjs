@@ -188,6 +188,56 @@ for (const [script, mode] of [
   });
 }
 
+// ============================ THE CRM CUTOVER ============================
+//
+// scripts/crmCutover.js writes eos_crm (copy) and scripts/exportCrmSnapshot.js is the Owner's FIREBASE_EXIT_MIGRATION_ONLY
+// Firestore read. Both must refuse before `pg` / firebase-admin is even resolved, and neither has a production mode.
+const CRM_CUTOVER = "scripts/crmCutover.js";
+const CRM_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "CRM_FENCE_DB", "--tenantKey", "taylor-nonprod", "--snapshot", "/nonexistent/crm-snapshot.json"];
+const CRM_ENV = { EOS_ENVIRONMENT: "nonprod", CRM_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const onEnv = (args, id) => args.map((a) => (a === "platform-sandbox" ? id : a));
+
+for (const [label, args, env, pattern] of [
+  ["no mode", CRM_ARGS, CRM_ENV, /--mode must be one of/],
+  ["no environment", ["--mode", "census"], CRM_ENV, /--environment is required/],
+  ["production environment", ["--mode", "copy", ...onEnv(CRM_ARGS, "taylor-parts-production")], CRM_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", ["--mode", "copy", ...CRM_ARGS, "--performedByPrincipalId", "p1", "--evidenceOut", "/nonexistent/e.json"], { ...CRM_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", ["--mode", "verify", ...CRM_ARGS], { CRM_FENCE_DB: CRM_ENV.CRM_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", ["--mode", "census", ...onEnv(CRM_ARGS, "platform-certification")], CRM_ENV, /Certification world, which is frozen/],
+  ["no tenant key", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "CRM_FENCE_DB", "--snapshot", "x.json"], CRM_ENV, /--tenantKey is required/],
+  ["no snapshot", ["--mode", "census", "--environment", "platform-sandbox", "--databaseUrlEnv", "CRM_FENCE_DB", "--tenantKey", "taylor-nonprod"], CRM_ENV, /--snapshot <file> is required/],
+  ["copy without an EOS Principal", ["--mode", "copy", ...CRM_ARGS, "--evidenceOut", "/nonexistent/e.json"], CRM_ENV, /--performedByPrincipalId <EOS Principal id> is required/],
+  ["copy without an evidence file", ["--mode", "copy", ...CRM_ARGS, "--performedByPrincipalId", "p1"], CRM_ENV, /--evidenceOut <file> is required/],
+  ["synthetic-row flag against production (ruling 5)", ["--mode", "copy", ...onEnv(CRM_ARGS, "taylor-parts-production"), "--performedByPrincipalId", "p1", "--evidenceOut", "/nonexistent/e.json", "--retainDeclaredSyntheticSeedRows"], CRM_ENV, /nonprod-only/],
+]) {
+  test(`crm cutover: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(CRM_CUTOVER, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `crm cutover, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+const CRM_EXPORT = "scripts/exportCrmSnapshot.js";
+const CRM_EXPORT_ENV = { EOS_ENVIRONMENT: "nonprod" };
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--out", "/nonexistent/x.json"], CRM_EXPORT_ENV, /--environment is required/],
+  ["a --projectId instead of a registry environment", ["--environment", "platform-sandbox", "--projectId", "eos-platform-sandbox", "--out", "/nonexistent/x.json"], CRM_EXPORT_ENV, /--projectId is not accepted/],
+  ["EOS_ENVIRONMENT not nonprod", ["--environment", "platform-sandbox", "--out", "/nonexistent/x.json"], { EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", ["--environment", "platform-sandbox", "--out", "/nonexistent/x.json"], { EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["production, even confirmed", ["--environment", "taylor-parts-production", "--confirmProduction", "taylor-parts", "--out", "/nonexistent/x.json"], CRM_EXPORT_ENV, /production/],
+  ["frozen Certification world", ["--environment", "platform-certification", "--out", "/nonexistent/x.json"], CRM_EXPORT_ENV, /frozen/],
+  ["undeclared environment", ["--environment", "someone-elses-env", "--out", "/nonexistent/x.json"], CRM_EXPORT_ENV, /not an environment declared/],
+  ["environment with no Firebase project", ["--environment", "local-emulator", "--out", "/nonexistent/x.json"], CRM_EXPORT_ENV, /declares no Firebase project/],
+  ["no out file", ["--environment", "platform-sandbox"], CRM_EXPORT_ENV, /--out <file> is required/],
+  ["an existing out file", ["--environment", "platform-sandbox", "--out", "scripts/exportCrmSnapshot.js"], CRM_EXPORT_ENV, /never overwritten/],
+]) {
+  test(`crm snapshot export (FIREBASE_EXIT_MIGRATION_ONLY): refuses (${label}) before firebase-admin loads`, () => {
+    const res = runCli(CRM_EXPORT, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `crm snapshot export, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ THE GUARD ITSELF STAYS SDK-FREE ============================
 //
 // projectTargetGuard.js exists so that "import the fence" and "load the Admin SDK" are different acts.

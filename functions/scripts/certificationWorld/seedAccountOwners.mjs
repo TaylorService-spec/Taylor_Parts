@@ -215,6 +215,10 @@ async function main() {
     return;
   }
 
+  // CRM cutover writer freeze (functions/src/crm/crmWriterState.ts): accountOwner is an accounts write.
+  const { assertFirestoreCrmWriterOpen } = await import(L("functions/lib/crm/crmWriterState.js"));
+  assertFirestoreCrmWriterOpen("crm.certificationAccountOwners");
+
   let written = 0;
   for (let i = 0; i < planned.length; i += 400) {
     const batch = db.batch();
