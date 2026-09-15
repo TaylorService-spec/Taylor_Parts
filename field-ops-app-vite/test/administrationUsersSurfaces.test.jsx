@@ -449,6 +449,10 @@ describe("EOS access and security stay independent, and fail closed", () => {
       "",
       () => true,
     );
+    // The access state resolves asynchronously (Employee -> Principal link -> Administration access API -> held Roles).
+    // Wait for the HELD assignment itself to render -- its Remove control -- so the options below are inspected only
+    // after the held-Role lookup has actually answered, not while the picker still reflects an unloaded state.
+    await screen.findByRole("button", { name: "Remove" });
     const select = await screen.findByRole("combobox", { name: /Role to assign/i });
     const labels = within(select).getAllByRole("option").map((o) => o.textContent);
     expect(labels).not.toContain("Salesperson");

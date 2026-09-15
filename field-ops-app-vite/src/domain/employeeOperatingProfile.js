@@ -5,7 +5,7 @@
 // The Employee v4.1 design (docs/atlas/inputs/employee-v4.1/NS2-EMP Profile r1.dc.html on atlas/employee-v41-input)
 // asks the profile: who EOS says this person is, whether they are a current Employee, which company they work for,
 // how their User Access relates to them, and what they own, are accountable for and are assigned. Since #1913 those
-// answers come from the governed PostgreSQL Workforce transport (POST /workforce/employees). This module turns the
+// answers come from the governed PostgreSQL Workforce transport (through services/workforceApiClient.js). This module turns the
 // transport's projections and refusals into words, and names the facts that are still NOT served.
 //
 // The fixed model, none of it a styling choice:

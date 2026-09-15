@@ -53,7 +53,7 @@ import {
 //
 // Every Employee business fact on this page -- identity, contact, lifecycle, operating company, job title, dates,
 // the current manager, owned records, accountabilities and managed employees -- is read from the governed
-// PostgreSQL Workforce transport (POST /workforce/employees, #1913): EMP-RT-01 readEmployee, EMP-RT-02
+// PostgreSQL Workforce transport (services/workforceApiClient.js, #1913): EMP-RT-01 readEmployee, EMP-RT-02
 // readEmployeePrincipalLink, EMP-RT-03 / EMP-RT-04 responsibility reads, EMP-RT-06 listManagedEmployees. The
 // Firestore employee directory is not read here at all, and nothing falls back to it: a refused read says
 // "not available to you", a failed read says it could not be loaded.
