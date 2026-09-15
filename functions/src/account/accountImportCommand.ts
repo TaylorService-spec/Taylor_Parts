@@ -42,6 +42,7 @@ import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles.js";
 import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles.js";
 import type { Role } from "../types/access.js";
 import { ACCOUNTS_COLLECTION } from "./accountPortfolioSummary.js";
+import { assertFirestoreCrmWriterOpen, type CrmWriterAuthority } from "../crm/crmWriterState.js";
 
 /** The capability that names the authority to create a Customer. Not a new one. */
 export const CAP_CUSTOMER_CREATE = "customer.record.create";
@@ -105,6 +106,8 @@ export interface AccountImportOutcome {
 export interface AccountImportDeps {
   db?: Firestore;
   now?: () => Date;
+  /** TEST INJECTION ONLY: the CRM writer authority (defaults to the committed CRM_WRITER_AUTHORITY). */
+  crmWriterAuthority?: CrmWriterAuthority;
 }
 
 /**
@@ -119,6 +122,8 @@ export async function createAccountFromImport(
   input: AccountImportInput,
   deps: AccountImportDeps = {},
 ): Promise<AccountImportOutcome> {
+  // CRM cutover writer freeze: the first act, before any read or write (crm/crmWriterState.ts).
+  assertFirestoreCrmWriterOpen("account.import", deps.crmWriterAuthority);
   const db = deps.db ?? getFirestore();
   const now = deps.now ?? (() => new Date());
 

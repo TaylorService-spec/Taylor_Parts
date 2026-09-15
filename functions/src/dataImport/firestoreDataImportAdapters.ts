@@ -38,6 +38,7 @@ import {
   normalizeAccountSearchName,
   AccountImportError,
 } from "../account/accountImportCommand.js";
+import { FirestoreCrmWriterClosedError } from "../crm/crmWriterState.js";
 import { ACCOUNTS_COLLECTION } from "../account/accountPortfolioSummary.js";
 import {
   createEquipmentFromImport,
@@ -301,6 +302,9 @@ export function firestoreCustomerWriter(actorUid: string, db?: Firestore): RowWr
                   ? "This row sets a governed commercial field, which import cannot write."
                   : "The row failed the Customer validation rules.";
           return { kind: "failed", code: err.code, message };
+        }
+        if (err instanceof FirestoreCrmWriterClosedError) {
+          return { kind: "failed", code: err.code, message: "Customer writes are frozen for the CRM cutover." };
         }
         return { kind: "failed", code: "UNEXPECTED", message: "The record could not be written." };
       }
