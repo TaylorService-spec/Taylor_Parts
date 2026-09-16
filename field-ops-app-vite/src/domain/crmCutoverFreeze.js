@@ -21,6 +21,7 @@ const CRM_CLIENT_WRITERS = Object.freeze([
   "account.clientUpdate",
   "contact.clientCreate",
   "contact.clientUpdate",
+  "contact.clientImport",
   "location.clientCreate",
   "location.clientUpdate",
 ]);
