@@ -430,3 +430,54 @@ for (const [label, args, pattern] of [
     assert.match(out, pattern);
   });
 }
+
+// ============================ THE SAMPLE COMPANY V2 SEED AND VERIFIER ============================
+//
+// scripts/seedSampleCompany.js writes eos_workforce, eos_policy, eos_crm, eos_commercial and eos_ops
+// (--mode apply --apply) and scripts/verifySampleCompany.js reads all of them. Both must refuse before `pg`
+// is even resolved. Neither has a production mode, and BOTH refuse the Certification world by NAME -- it
+// carries role "sandbox" in config/environments.json, so a role-only fence would let it through.
+const SAMPLE_SEED = "scripts/seedSampleCompany.js";
+const SAMPLE_VERIFY = "scripts/verifySampleCompany.js";
+const SAMPLE_ENV = { EOS_ENVIRONMENT: "nonprod", SAMPLE_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const SAMPLE_ARGS = [
+  "--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB",
+  "--tenantKey", "taylor-nonprod", "--existingAdminPrincipalId", "p", "--performedBy", "op",
+];
+const sampleEnvSwap = (args, environment) => args.map((a) => (a === "platform-sandbox" ? environment : a));
+
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--environment is required/],
+  ["production environment", [...sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), "--mode", "apply", "--apply"], SAMPLE_ENV, /production/],
+  ["frozen Certification world", [...sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), "--mode", "apply", "--apply"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["any other non-production environment", [...sampleEnvSwap(SAMPLE_ARGS, "platform-integration")], SAMPLE_ENV, /exists only in 'platform-sandbox'/],
+  ["EOS_ENVIRONMENT not nonprod", [...SAMPLE_ARGS, "--mode", "apply", "--apply"], { ...SAMPLE_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", SAMPLE_ARGS, { SAMPLE_FENCE_DB: SAMPLE_ENV.SAMPLE_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no databaseUrlEnv", ["--environment", "platform-sandbox", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["the wrong tenant", [...SAMPLE_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a))], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no performedBy", SAMPLE_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), SAMPLE_ENV, /--performedBy <operator> is required/],
+  ["no administering principal", SAMPLE_ARGS.filter((a) => a !== "--existingAdminPrincipalId" && a !== "p"), SAMPLE_ENV, /--existingAdminPrincipalId is required/],
+  ["an unknown mode", [...SAMPLE_ARGS, "--mode", "destroy"], SAMPLE_ENV, /--mode must be one of plan, apply, verify/],
+  ["apply mode without the explicit --apply", [...SAMPLE_ARGS, "--mode", "apply"], SAMPLE_ENV, /--mode apply additionally requires the explicit --apply/],
+  ["--apply without apply mode", [...SAMPLE_ARGS, "--apply"], SAMPLE_ENV, /--apply was given without --mode apply/],
+]) {
+  test(`sample company v2 seed: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(SAMPLE_SEED, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `sample company v2 seed, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--environment is required/],
+  ["production environment", sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), SAMPLE_ENV, /production/],
+  ["frozen Certification world", sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), SAMPLE_ENV, /Certification world, which is frozen/],
+  ["EOS_ENVIRONMENT not nonprod", SAMPLE_ARGS, { ...SAMPLE_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no tenant key", ["--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
+]) {
+  test(`sample company v2 verifier: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(SAMPLE_VERIFY, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `sample company v2 verifier, ${label}`);
+    assert.match(out, pattern);
+  });
+}

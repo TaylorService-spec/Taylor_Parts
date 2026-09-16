@@ -157,8 +157,9 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
 
   await count("equipment.models", `SELECT count(*)::int AS n FROM eos_ops.equipment_models WHERE tenant_id = $1 AND id = ANY($2::text[])`,
     [tenantId, manifest.equipmentModels.map((m) => m.id)], manifest.equipmentModels.length);
-  await count("parts.identities", `SELECT count(*)::int AS n FROM eos_ops.parts WHERE tenant_id = $1 AND id = ANY($2::text[])`,
-    [tenantId, manifest.parts.records.map((p) => p.partId)], manifest.parts.records.length);
+  // eos_ops.parts is NOT counted as an expectation: the governed writer is INACTIVE, so the sample company
+  // writes no Part row at all. Counting zero as a defect would report a blocker as drift.
+  domains["parts.identities"] = { status: "BLOCKED", blockedBy: ["PARTS_POSTGRES_WRITER_INACTIVE"] };
   await count("purchasing.suppliers", `SELECT count(*)::int AS n FROM eos_ops.suppliers WHERE tenant_id = $1 AND supplier_id = ANY($2::text[])`,
     [tenantId, manifest.suppliers.map((s) => s.supplierId)], manifest.suppliers.length);
   await count("purchasing.supplierCatalogItems",
@@ -211,7 +212,17 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
 
   const personas = [];
   const grantRows = [];
-  const capabilityKeys = new Set(sampleCompanyCapabilityKeys(manifest));
+  // THE REGISTERED VOCABULARY IS THE MEASURABLE ONE. A Role-catalog id that eos_policy.capabilities does not
+  // register can hold no grant, so counting it as a MISSING_GRANT would report a defect that no apply run
+  // could ever fix. The gap itself is reported separately, by code.
+  const liveVocabulary = new Set(
+    (await client.query(`SELECT key FROM eos_policy.capabilities`)).rows.map((r) => r.key));
+  const declaredVocabulary = new Set(manifest.expectedAccess.postgresCapabilityVocabulary);
+  for (const key of declaredVocabulary) if (!liveVocabulary.has(key)) fail("access.capabilityVocabulary", key, "declared in the manifest but not registered in eos_policy.capabilities");
+  for (const key of liveVocabulary) if (!declaredVocabulary.has(key)) fail("access.capabilityVocabulary", key, "registered in eos_policy.capabilities but not declared in the manifest; the access contract must be reviewed");
+  const catalogCapabilityKeys = sampleCompanyCapabilityKeys(manifest);
+  const capabilityKeys = new Set(catalogCapabilityKeys.filter((k) => liveVocabulary.has(k)));
+  const capabilityVocabularyGap = catalogCapabilityKeys.filter((k) => !liveVocabulary.has(k));
 
   // LIVE GRANT truth, once: which (Role key, capability key) pairs actually exist in role_capabilities.
   const live = await client.query(
@@ -443,9 +454,11 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
     },
     SUPPLIES_PART: async (subject, object) => {
       const [supplierId, partId] = subject.split(":")[1].split("/");
+      // Deliberately NOT joined to eos_ops.parts: that table is BLOCKED (its governed writer is INACTIVE),
+      // and part_id is an unjoined governed key here by design.
       const { rows } = await client.query(
-        `SELECT 1 FROM eos_ops.supplier_catalog_items i JOIN eos_ops.parts p ON p.tenant_id = i.tenant_id AND p.id = i.part_id
-          WHERE i.tenant_id = $1 AND i.supplier_id = $2 AND i.part_id = $3`, [tenantId, supplierId, partId]);
+        `SELECT 1 FROM eos_ops.supplier_catalog_items WHERE tenant_id = $1 AND supplier_id = $2 AND part_id = $3`,
+        [tenantId, supplierId, partId]);
       return rows.length > 0 && partId === object.split(":")[1] ? "VERIFIED" : "DANGLING";
     },
     FOR_PART: async (subject, object) => {
@@ -529,7 +542,9 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
       assertions: relationshipResults,
     },
     access: {
-      capabilityKeysDerivedFromRoleCatalog: capabilityKeys.size,
+      capabilityKeysDerivedFromRoleCatalog: capabilityKeys.size + capabilityVocabularyGap.length,
+      capabilityKeysMeasurable: capabilityKeys.size,
+      capabilityVocabularyGap: { code: "CAPABILITY_VOCABULARY_PARTIAL", count: capabilityVocabularyGap.length, keys: capabilityVocabularyGap },
       rolesUsed: usedRoleKeys,
       grants: grantRows,
       missingGrants: missingGrants.length,

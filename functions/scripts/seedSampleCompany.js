@@ -260,7 +260,12 @@ function validateManifest(m) {
     if (declared !== edge) refuse("MANIFEST_INVALID", `${e.key}: the profile manager and the reporting edge disagree`);
   }
 
-  // ---- Expected access. Every login-capable persona declares the four-part contract.
+  // ---- Expected access. Every login-capable persona declares the four-part contract, and every capability
+  // it names is drawn from the GOVERNED POSTGRESQL VOCABULARY. A capability eos_policy.capabilities does not
+  // register cannot be granted, cannot be resolved and therefore cannot be proved either way -- asserting one
+  // would be a contract that can only ever report a false negative.
+  const vocabulary = new Set(m.expectedAccess.postgresCapabilityVocabulary);
+  if (vocabulary.size === 0) refuse("MANIFEST_INVALID", "the governed PostgreSQL capability vocabulary must be declared");
   const accessPersonas = m.expectedAccess.personas;
   for (const [key, p] of principalsByEmployee) {
     const contract = accessPersonas[key];
@@ -273,6 +278,11 @@ function validateManifest(m) {
     }
     const overlap = contract.requiredCapabilities.filter((c) => contract.forbiddenCapabilities.includes(c));
     if (overlap.length > 0) refuse("MANIFEST_INVALID", `${key}: ${overlap.join(", ")} is both required and forbidden`);
+    for (const capability of [...contract.requiredCapabilities, ...contract.forbiddenCapabilities]) {
+      if (!vocabulary.has(capability)) {
+        refuse("CAPABILITY_NOT_IN_VOCABULARY", `${key}: ${capability} is not in the governed PostgreSQL capability vocabulary, so no grant can exist for it and no verifier can resolve it`);
+      }
+    }
   }
   for (const key of Object.keys(accessPersonas)) {
     if (!principalsByEmployee.has(key)) refuse("MANIFEST_INVALID", `the access contract names ${key}, who has no Principal`);
@@ -511,7 +521,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   const { decideAccountabilityEligibility } = require("../lib/employeeIdentity/employeeAuthority.js");
   const { establishReportingRelationship } = require("../lib/eosWorkforce/commands/reportingRelationshipCommands.js");
   const { reconcileInventoryCapabilityGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
-  const { capabilitiesForRoleKeys } = require("../lib/eosOps/capabilityAuthority.js");
+  const { capabilitiesForRoleKeys, listCapabilityKeys } = require("../lib/eosOps/capabilityAuthority.js");
   const crm = require("../lib/crm/customerRepository.js");
   const { createCommercialRecord } = require("../lib/eosCommercial/commercialOwnershipRepository.js");
   const { establishCreationAccountablePerson } = require("../lib/responsibility/accountablePersonEstablishment.js");
@@ -558,7 +568,28 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   }
 
   // ---- 3. capability / Role grant reconciliation, through the EXISTING tooling. Dry run first, always.
-  const capabilityKeys = sampleCompanyCapabilityKeys(manifest);
+  //
+  // TWO SETS, KEPT APART DELIBERATELY. The Role catalog declares hundreds of capability ids; eos_policy
+  // .capabilities registers 37, by migration. An id in the first and not the second cannot be granted -- the
+  // grant is a foreign key to a capability row that does not exist. Reconciling over the whole catalog would
+  // therefore report hundreds of UNKNOWN_CAPABILITY rows every run and drown the finding that matters.
+  //
+  // So the reconciliation runs over the INTERSECTION, and the remainder is reported as
+  // CAPABILITY_VOCABULARY_PARTIAL -- a declared, named gap rather than noise. The manifest's own declared
+  // vocabulary is checked against the LIVE table first: if a vocabulary migration has moved, this run refuses
+  // rather than quietly reconciling a different set than the access contract was written against.
+  const catalogCapabilityKeys = sampleCompanyCapabilityKeys(manifest);
+  const liveVocabulary = await listCapabilityKeys(pool);
+  const declaredVocabulary = new Set(manifest.expectedAccess.postgresCapabilityVocabulary);
+  const vocabularyDrift = [
+    ...[...declaredVocabulary].filter((k) => !liveVocabulary.has(k)).map((k) => `declared but not registered: ${k}`),
+    ...[...liveVocabulary].filter((k) => !declaredVocabulary.has(k)).map((k) => `registered but not declared: ${k}`),
+  ];
+  if (vocabularyDrift.length > 0) {
+    refuse("CAPABILITY_VOCABULARY_DRIFT", `the governed PostgreSQL capability vocabulary has moved since the manifest was written (${vocabularyDrift.join("; ")}); the access contract must be reviewed rather than reconciled against a different vocabulary`);
+  }
+  const capabilityKeys = catalogCapabilityKeys.filter((k) => liveVocabulary.has(k));
+  const capabilityVocabularyGap = catalogCapabilityKeys.filter((k) => !liveVocabulary.has(k));
   const grantDryRun = await reconcileInventoryCapabilityGrants(pool, {
     tenantId, apply: false, actor: `sample-company-v2:${actorUid}`, capabilityKeys,
   });
@@ -623,7 +654,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
     }
     ledger.record("employees", "ALREADY_PRESENT", e.id);
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   // ---- 6, 7, 8. Principals + memberships, Employee links, Security Role assignments.
   const principalIdByEmployee = new Map();
@@ -705,7 +736,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       });
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   // ---- 10, 11. CRM.
   for (const a of manifest.accounts) {
@@ -719,7 +750,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       ledger.record("accounts", "ALREADY_PRESENT", a.id);
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   for (const c of manifest.contacts) {
     const existing = (await crm.listAccountContacts(pool, tenantId, c.account)).find((x) => x.id === c.id);
@@ -754,7 +785,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       ledger.record("locations", "ALREADY_PRESENT", l.id);
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   // ---- 12. Equipment models.
   for (const m of manifest.equipmentModels) {
@@ -846,21 +877,17 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       client.release();
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
-  // ---- 15. Part IDENTITIES. DIRECT INSERT; identity only; documented in the manifest.
-  for (const p of manifest.parts.records) {
-    const { rows } = await pool.query(`SELECT 1 FROM eos_ops.parts WHERE tenant_id = $1 AND id = $2`, [tenantId, p.partId]);
-    ledger.record("parts", rows.length === 0 ? "CREATE" : "ALREADY_PRESENT", p.partId);
-    if (apply && rows.length === 0) {
-      await pool.query(
-        `INSERT INTO eos_ops.parts (id, tenant_id, created_by) VALUES ($1, $2, $3)
-         ON CONFLICT (tenant_id, id) DO NOTHING`,
-        [p.partId, tenantId, actorUid]);
-    }
-  }
-  // Every descriptive Part fact is BLOCKED while the PostgreSQL catalog writer is INACTIVE.
-  for (const p of manifest.parts.records) ledger.record("partDescriptiveFacts", "BLOCKED", p.partId);
+  // ---- 15. Parts. BLOCKED, and this one is worth stating plainly.
+  //
+  // eos_ops.parts IS the canonical PostgreSQL Part Master table and postgresPartMasterWriter.ts IS its
+  // governed writer -- but catalogWriterState.ts declares that writer INACTIVE, and the table is filled by
+  // the explicit catalog cutover. A governed writer that exists and is switched off is not an absent writer,
+  // so the direct-insert policy does not apply and NOTHING is written here. The purchasing, supplier-catalog
+  // and cycle-count rows below carry the declared part ids as unjoined governed keys; migration 026 states
+  // that no foreign key references this table, so the operational chain still connects.
+  for (const p of manifest.parts.records) ledger.record("parts", "BLOCKED", p.partId);
 
   // ---- 16. Suppliers, then supplier catalog items.
   for (const s of manifest.suppliers) {
@@ -891,7 +918,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       ledger.record("supplierCatalogItems", "ALREADY_PRESENT", `${i.supplierId}/${i.partId}`);
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   // ---- 17. Warehouses, then bins.
   for (const w of manifest.warehouses) {
@@ -905,7 +932,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       ledger.record("warehouses", "ALREADY_PRESENT", w.warehouseId);
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   // A bin's identity is DERIVED from its idempotency key (deriveBinId), so the key is the stable handle
   // this seed recognises a previously-created bin by -- never the generated code, which a rename may change.
@@ -933,7 +960,7 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       ledger.record("mobileLocations", "ALREADY_PRESENT", l.locationId);
     }
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   for (const t of manifest.trucks.records) {
     const existing = await truckFleet.readTruck(pool, tenantId, t.truckId);
@@ -953,57 +980,106 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
     // The person-to-truck relationship has no governed authority and is written NOWHERE.
     ledger.record("truckOperatorLinks", "BLOCKED", `${t.truckId}<-${t.desiredOperator}`);
   }
-  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 
   // ---- 19. Purchasing: reorder request -> purchase order -> receipt / void.
+  //
+  // EACH STEP IS CHECKED SEPARATELY, not the chain as a unit. A run that created the request and then failed
+  // must be resumable: keying the whole chain on the request would see it ALREADY_PRESENT and silently leave
+  // the purchase order and the receipt missing forever -- a half-seeded chain that reports success.
   for (const p of manifest.purchasing) {
-    const { rows } = await pool.query(
-      `SELECT id, status FROM eos_ops.reorder_requests WHERE tenant_id = $1 AND reorder_request_number = $2`,
+    const found = await pool.query(
+      `SELECT id FROM eos_ops.reorder_requests WHERE tenant_id = $1 AND reorder_request_number = $2`,
       [tenantId, p.reorderRequestNumber]);
-    if (rows.length > 0) {
-      ledger.record("purchasing", "ALREADY_PRESENT", p.reorderRequestNumber);
-      continue;
-    }
-    ledger.record("purchasing", "CREATE", p.reorderRequestNumber);
-    if (!apply) continue;
-
-    const request = await purchasing.createReorderRequest(pool, tenantId, actorUid, companyKey, {
-      partId: p.partId, warehouseId: p.warehouseId, status: "PURCHASING_IN_PROGRESS",
-      requestedQuantity: p.requestedQuantity, recommendedQuantity: p.recommendedQuantity,
-      reorderRequestNumber: p.reorderRequestNumber,
-    });
-    await purchasing.recordPurchaseOrder(pool, tenantId, actorUid, request.id, {
-      supplierName: p.purchaseOrder.supplierName, externalPoNumber: p.purchaseOrder.externalPoNumber,
-      orderedQuantity: p.purchaseOrder.orderedQuantity, orderedDate: p.purchaseOrder.orderedDate,
-      expectedArrivalDate: p.purchaseOrder.expectedArrivalDate,
-      unitPriceMinor: p.purchaseOrder.unitPriceMinor, currency: p.purchaseOrder.currency,
-    });
-    if (p.progressTo === "RECEIVED") {
-      await purchasing.createReceivingOrder(pool, tenantId, actorUid, companyKey, {
-        purchaseOrderId: request.id, reorderRequestId: request.id, sourceKind: p.receipt.sourceKind,
-        receivingLocation: p.receipt.receivingLocation, status: p.receipt.status,
-        receivingOrderNumber: p.receipt.receivingOrderNumber, idempotencyKey: p.receipt.idempotencyKey,
-        lines: p.receipt.lines,
+    let requestId = found.rows[0]?.id ?? null;
+    ledger.record("purchasing", requestId ? "ALREADY_PRESENT" : "CREATE", p.reorderRequestNumber);
+    if (!requestId) {
+      if (!apply) {
+        // Nothing downstream can be read for a request that does not exist yet; both are what an apply
+        // run would create.
+        ledger.record("purchaseOrders", "CREATE", p.purchaseOrder.externalPoNumber);
+        if (p.progressTo === "RECEIVED") ledger.record("receiving", "CREATE", p.receipt.receivingOrderNumber);
+        else ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
+        continue;
+      }
+      const request = await purchasing.createReorderRequest(pool, tenantId, actorUid, companyKey, {
+        partId: p.partId, warehouseId: p.warehouseId, status: "PURCHASING_IN_PROGRESS",
+        requestedQuantity: p.requestedQuantity, recommendedQuantity: p.recommendedQuantity,
+        reorderRequestNumber: p.reorderRequestNumber,
       });
-      ledger.record("receiving", "CREATE", p.receipt.receivingOrderNumber);
+      requestId = request.id;
+    }
+
+    // THE PURCHASE ORDER IS THE REQUEST. purchasingRepository keys purchase_orders.id to the reorder
+    // request id in the legacy chain; that is the identity equation, not a coincidence.
+    const po = await pool.query(`SELECT external_po_number FROM eos_ops.purchase_orders WHERE tenant_id = $1 AND id = $2`, [tenantId, requestId]);
+    if (po.rows.length === 0) {
+      ledger.record("purchaseOrders", "CREATE", p.purchaseOrder.externalPoNumber);
+      if (apply) {
+        await purchasing.recordPurchaseOrder(pool, tenantId, actorUid, requestId, {
+          supplierName: p.purchaseOrder.supplierName, externalPoNumber: p.purchaseOrder.externalPoNumber,
+          orderedQuantity: p.purchaseOrder.orderedQuantity, orderedDate: p.purchaseOrder.orderedDate,
+          expectedArrivalDate: p.purchaseOrder.expectedArrivalDate,
+          unitPriceMinor: p.purchaseOrder.unitPriceMinor, currency: p.purchaseOrder.currency,
+        });
+      }
+    } else if (po.rows[0].external_po_number !== p.purchaseOrder.externalPoNumber) {
+      ledger.record("purchaseOrders", "FIXTURE_DRIFT", p.purchaseOrder.externalPoNumber, "the stored purchase order number differs from the manifest");
+    } else {
+      ledger.record("purchaseOrders", "ALREADY_PRESENT", p.purchaseOrder.externalPoNumber);
+    }
+
+    if (p.progressTo === "RECEIVED") {
+      const receipt = await pool.query(
+        `SELECT 1 FROM eos_ops.receiving_orders WHERE tenant_id = $1 AND receiving_order_number = $2`,
+        [tenantId, p.receipt.receivingOrderNumber]);
+      if (receipt.rows.length === 0) {
+        ledger.record("receiving", "CREATE", p.receipt.receivingOrderNumber);
+        if (apply) {
+          await purchasing.createReceivingOrder(pool, tenantId, actorUid, companyKey, {
+            purchaseOrderId: requestId, reorderRequestId: requestId, sourceKind: p.receipt.sourceKind,
+            receivingLocation: p.receipt.receivingLocation, status: p.receipt.status,
+            receivingOrderNumber: p.receipt.receivingOrderNumber, idempotencyKey: p.receipt.idempotencyKey,
+            lines: p.receipt.lines,
+          });
+        }
+      } else {
+        ledger.record("receiving", "ALREADY_PRESENT", p.receipt.receivingOrderNumber);
+      }
     } else if (p.progressTo === "VOIDED") {
-      await purchasing.voidPurchaseOrder(pool, tenantId, actorUid, request.id, p.void.reason);
-      ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
+      const voided = await pool.query(`SELECT 1 FROM eos_ops.purchase_order_voids WHERE tenant_id = $1 AND purchase_order_id = $2`, [tenantId, requestId]);
+      if (voided.rows.length === 0) {
+        ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
+        // A void is append-only and reachable only from ORDERED. The purchase order document itself is
+        // never mutated: the void is its own row, which is what preserves the immutability rule.
+        if (apply) await purchasing.voidPurchaseOrder(pool, tenantId, actorUid, requestId, p.void.reason);
+      } else {
+        ledger.record("purchaseOrderVoids", "ALREADY_PRESENT", p.purchaseOrder.externalPoNumber);
+      }
     }
   }
+  if (ledger.drift.length > 0) return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
   // The receipt -> on-hand movement has no governed PostgreSQL writer.
   for (const p of manifest.purchasing) if (p.progressTo === "RECEIVED") ledger.record("receiptInventoryMovements", "BLOCKED", p.receipt.receivingOrderNumber);
 
   // ---- 20. Cycle counts. The LAST writes, because reconcile is what posts the inventory movement.
   for (const c of manifest.cycleCounts) {
+    // A sheet is recognised by the EXACT set of part ids it counts, because a sheet has no business number
+    // of its own. A sheet that carries some of the manifest's parts but not all of them is a half-written
+    // count, which is FIXTURE_DRIFT for an operator to resolve -- never something to quietly complete.
     const { rows } = await pool.query(
-      `SELECT s.id FROM eos_ops.cycle_count_sheets s
+      `SELECT s.id, array_agg(l.part_id ORDER BY l.part_id) AS parts
+         FROM eos_ops.cycle_count_sheets s
+         JOIN eos_ops.cycle_count_lines l ON l.tenant_id = s.tenant_id AND l.sheet_id = s.id
         WHERE s.tenant_id = $1 AND s.operating_company_key = $2 AND s.location_id = $3
-          AND EXISTS (SELECT 1 FROM eos_ops.cycle_count_lines l
-                       WHERE l.tenant_id = s.tenant_id AND l.sheet_id = s.id AND l.part_id = $4)`,
-      [tenantId, companyKey, c.location.id, c.lines[0].partId]);
+          AND l.part_id = ANY($4::text[])
+        GROUP BY s.id`,
+      [tenantId, companyKey, c.location.id, c.lines.map((l) => l.partId)]);
+    const wanted = c.lines.map((l) => l.partId).sort();
     if (rows.length > 0) {
-      ledger.record("cycleCounts", "ALREADY_PRESENT", c.key);
+      const complete = rows.some((r) => JSON.stringify([...r.parts].sort()) === JSON.stringify(wanted));
+      ledger.record("cycleCounts", complete ? "ALREADY_PRESENT" : "FIXTURE_DRIFT", c.key,
+        complete ? undefined : "a cycle count sheet exists at this location covering only some of the manifest's parts");
       continue;
     }
     ledger.record("cycleCounts", "CREATE", c.key);
@@ -1029,10 +1105,10 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   for (const i of manifest.inboundWork.desired) ledger.record("inboundWork", "BLOCKED", i.key);
   ledger.record("financials", "BLOCKED", "invoices and payments (FINANCIAL_SAMPLE_COVERAGE)");
 
-  return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId);
+  return finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap);
 }
 
-function finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId) {
+function finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId, capabilityVocabularyGap) {
   const totals = { CREATE: 0, ALREADY_PRESENT: 0, FIXTURE_DRIFT: 0, BLOCKED: 0 };
   for (const d of Object.values(ledger.domains)) for (const k of Object.keys(totals)) totals[k] += d[k];
   return {
@@ -1048,7 +1124,10 @@ function finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId
     syntheticIdentityProvider: SYNTHETIC_IDENTITY_PROVIDER,
     jobRoleAuthority: manifest.rulings.jobRole,
     capabilityGrants: {
-      keysDerivedFromRoleCatalog: capabilityKeys.length,
+      keysDerivedFromRoleCatalog: capabilityKeys.length + capabilityVocabularyGap.length,
+      keysReconcilable: capabilityKeys.length,
+      // Declared, named, and counted -- never silently dropped and never reported as UNKNOWN_CAPABILITY noise.
+      capabilityVocabularyGap: { code: "CAPABILITY_VOCABULARY_PARTIAL", count: capabilityVocabularyGap.length, keys: capabilityVocabularyGap },
       apply: grantReport.apply,
       beforeCount: grantReport.beforeCount,
       proposedAdditions: grantReport.proposedAdditions,

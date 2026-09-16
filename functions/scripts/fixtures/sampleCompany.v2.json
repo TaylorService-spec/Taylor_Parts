@@ -21,7 +21,10 @@
   },
   "eligibilityPolicy": {
     "policyId": "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1",
-    "eligibleStatuses": ["ACTIVE", "CONTRACTOR"]
+    "eligibleStatuses": [
+      "ACTIVE",
+      "CONTRACTOR"
+    ]
   },
   "company": {
     "id": "sample-company-v2",
@@ -37,18 +40,54 @@
     "$comment": "operatingCompanyKey is deliberately DISTINCT from any real Taylor operating company key. eos_ops rows this seed writes are therefore confined to a company nothing else in nonprod uses."
   },
   "jobRoles": [
-    { "key": "OWNER_EXECUTIVE", "label": "Owner / Executive" },
-    { "key": "GENERAL_MANAGER", "label": "General Manager" },
-    { "key": "OFFICE_MANAGER", "label": "Office Manager" },
-    { "key": "SERVICE_MANAGER", "label": "Service Manager" },
-    { "key": "DISPATCHER", "label": "Dispatcher" },
-    { "key": "SERVICE_TECHNICIAN", "label": "Service Technician" },
-    { "key": "RETAIL_SALES", "label": "Retail Sales" },
-    { "key": "NATIONAL_ACCOUNTS_SALES", "label": "National Accounts Sales" },
-    { "key": "PARTS_MANAGER", "label": "Parts Manager" },
-    { "key": "PARTS_ASSOCIATE", "label": "Parts Associate" },
-    { "key": "WAREHOUSE_MANAGER", "label": "Warehouse Manager" },
-    { "key": "WAREHOUSE_ASSOCIATE", "label": "Warehouse Associate" }
+    {
+      "key": "OWNER_EXECUTIVE",
+      "label": "Owner / Executive"
+    },
+    {
+      "key": "GENERAL_MANAGER",
+      "label": "General Manager"
+    },
+    {
+      "key": "OFFICE_MANAGER",
+      "label": "Office Manager"
+    },
+    {
+      "key": "SERVICE_MANAGER",
+      "label": "Service Manager"
+    },
+    {
+      "key": "DISPATCHER",
+      "label": "Dispatcher"
+    },
+    {
+      "key": "SERVICE_TECHNICIAN",
+      "label": "Service Technician"
+    },
+    {
+      "key": "RETAIL_SALES",
+      "label": "Retail Sales"
+    },
+    {
+      "key": "NATIONAL_ACCOUNTS_SALES",
+      "label": "National Accounts Sales"
+    },
+    {
+      "key": "PARTS_MANAGER",
+      "label": "Parts Manager"
+    },
+    {
+      "key": "PARTS_ASSOCIATE",
+      "label": "Parts Associate"
+    },
+    {
+      "key": "WAREHOUSE_MANAGER",
+      "label": "Warehouse Manager"
+    },
+    {
+      "key": "WAREHOUSE_ASSOCIATE",
+      "label": "Warehouse Associate"
+    }
   ],
   "employees": [
     {
@@ -75,8 +114,14 @@
       "hireDate": "2012-01-03",
       "separationDate": null,
       "manager": null,
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "avery.fixture@sandbox.invalid", "existingAdministrator": true }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "avery.fixture@sandbox.invalid",
+        "existingAdministrator": true
+      }
     },
     {
       "key": "general-manager",
@@ -102,8 +147,13 @@
       "hireDate": "2015-04-13",
       "separationDate": null,
       "manager": "owner-executive",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "bailey.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "bailey.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "office-manager",
@@ -129,8 +179,13 @@
       "hireDate": "2017-09-05",
       "separationDate": null,
       "manager": "general-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "casey.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "casey.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "service-manager",
@@ -156,8 +211,13 @@
       "hireDate": "2016-02-22",
       "separationDate": null,
       "manager": "general-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "devon.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "devon.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "dispatcher",
@@ -183,8 +243,13 @@
       "hireDate": "2019-06-17",
       "separationDate": null,
       "manager": "service-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "emerson.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "emerson.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "service-technician-a",
@@ -210,8 +275,13 @@
       "hireDate": "2020-03-02",
       "separationDate": null,
       "manager": "service-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "finley.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "finley.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "service-technician-b",
@@ -237,8 +307,13 @@
       "hireDate": "2021-08-09",
       "separationDate": null,
       "manager": "service-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "gray.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "gray.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "retail-sales-a",
@@ -264,8 +339,13 @@
       "hireDate": "2018-11-26",
       "separationDate": null,
       "manager": "general-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "harper.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "harper.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "retail-sales-b",
@@ -291,8 +371,13 @@
       "hireDate": "2022-01-10",
       "separationDate": null,
       "manager": "general-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "indigo.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "indigo.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "national-accounts-sales",
@@ -318,8 +403,13 @@
       "hireDate": "2014-07-21",
       "separationDate": null,
       "manager": "general-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "jules.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "jules.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "parts-manager",
@@ -345,8 +435,13 @@
       "hireDate": "2016-10-04",
       "separationDate": null,
       "manager": "general-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "kai.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "kai.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "parts-associate",
@@ -372,8 +467,13 @@
       "hireDate": "2023-02-13",
       "separationDate": null,
       "manager": "parts-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "logan.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "logan.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "warehouse-manager",
@@ -399,8 +499,13 @@
       "hireDate": "2018-05-30",
       "separationDate": null,
       "manager": "parts-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "morgan.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "morgan.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "warehouse-associate",
@@ -426,8 +531,13 @@
       "hireDate": "2023-09-18",
       "separationDate": null,
       "manager": "warehouse-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "noor.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "noor.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "contract-technician",
@@ -453,8 +563,13 @@
       "hireDate": "2025-01-06",
       "separationDate": null,
       "manager": "service-manager",
-      "userAccess": { "state": "ENABLED" },
-      "sandboxPersona": { "interactiveLogin": true, "credentialEmail": "oakley.fixture@sandbox.invalid" }
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "oakley.fixture@sandbox.invalid"
+      }
     },
     {
       "key": "technician-on-leave",
@@ -484,7 +599,9 @@
         "state": "NONE",
         "reason": "ON_LEAVE. Application access was removed for the duration of the leave. The Employee record, the employment history and the reporting relationship all remain; the person simply has no Principal and no credential. This is the Employee != User Access proof for a non-ACTIVE lifecycle status."
       },
-      "sandboxPersona": { "interactiveLogin": false }
+      "sandboxPersona": {
+        "interactiveLogin": false
+      }
     },
     {
       "key": "records-clerk",
@@ -514,26 +631,138 @@
         "state": "NONE",
         "reason": "THE EMPLOYEE != USER ACCESS PROOF. An ACTIVE, fully-profiled, managed Employee who has never had, and does not need, any application access: no Principal, no tenant membership, no Security Role, no credential. A verifier that reports this person as 'missing access' has confused the two concepts."
       },
-      "sandboxPersona": { "interactiveLogin": false },
+      "sandboxPersona": {
+        "interactiveLogin": false
+      },
       "extraEmployee": true
     }
   ],
   "principals": [
-    { "employee": "owner-executive", "existingAdministrator": true, "securityRoles": ["admin"], "$comment": "The ONE real administrator Principal in the nonprod tenant. REUSED verbatim: never recreated, never renamed, never re-credentialed, and its Role set is left exactly as v1 left it." },
-    { "employee": "general-manager", "externalSubject": "synthetic-np-principal-general-manager", "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)", "securityRoles": ["generalManager"] },
-    { "employee": "office-manager", "externalSubject": "synthetic-np-principal-office-manager", "displayName": "SYNTHETIC NONPROD Office Manager (fixture, cannot sign in)", "securityRoles": ["officeManager"] },
-    { "employee": "service-manager", "externalSubject": "synthetic-np-principal-service-manager", "displayName": "SYNTHETIC NONPROD Service Manager (fixture, cannot sign in)", "securityRoles": ["fieldManager"] },
-    { "employee": "dispatcher", "externalSubject": "synthetic-np-principal-dispatcher", "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)", "securityRoles": ["dispatcher"] },
-    { "employee": "service-technician-a", "externalSubject": "synthetic-np-principal-service-technician", "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)", "securityRoles": ["technician"] },
-    { "employee": "service-technician-b", "externalSubject": "synthetic-np-principal-service-technician-b", "displayName": "SYNTHETIC NONPROD Service Technician B (fixture, cannot sign in)", "securityRoles": ["technician"] },
-    { "employee": "retail-sales-a", "externalSubject": "synthetic-np-principal-retail-sales", "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
-    { "employee": "retail-sales-b", "externalSubject": "synthetic-np-principal-retail-sales-b", "displayName": "SYNTHETIC NONPROD Retail Sales B (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
-    { "employee": "national-accounts-sales", "externalSubject": "synthetic-np-principal-national-accounts-sales", "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
-    { "employee": "parts-manager", "externalSubject": "synthetic-np-principal-parts-manager", "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)", "securityRoles": ["partsManager", "purchasingManager"] },
-    { "employee": "parts-associate", "externalSubject": "synthetic-np-principal-parts-associate", "displayName": "SYNTHETIC NONPROD Parts Associate (fixture, cannot sign in)", "securityRoles": ["partsAssociate", "inventoryReceivingClerk"] },
-    { "employee": "warehouse-manager", "externalSubject": "synthetic-np-principal-warehouse-manager", "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)", "securityRoles": ["warehouseManager", "inventoryCycleCountReconciler", "inventoryBinAdministrator"] },
-    { "employee": "warehouse-associate", "externalSubject": "synthetic-np-principal-warehouse-associate", "displayName": "SYNTHETIC NONPROD Warehouse Associate (fixture, cannot sign in)", "securityRoles": ["warehouseAssociate", "inventoryCycleCountCounter"] },
-    { "employee": "contract-technician", "externalSubject": "synthetic-np-principal-contract-technician", "displayName": "SYNTHETIC NONPROD Contract Technician (fixture, cannot sign in)", "securityRoles": ["technician"] }
+    {
+      "employee": "owner-executive",
+      "existingAdministrator": true,
+      "securityRoles": [
+        "admin"
+      ],
+      "$comment": "The ONE real administrator Principal in the nonprod tenant. REUSED verbatim: never recreated, never renamed, never re-credentialed, and its Role set is left exactly as v1 left it."
+    },
+    {
+      "employee": "general-manager",
+      "externalSubject": "synthetic-np-principal-general-manager",
+      "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)",
+      "securityRoles": [
+        "generalManager"
+      ]
+    },
+    {
+      "employee": "office-manager",
+      "externalSubject": "synthetic-np-principal-office-manager",
+      "displayName": "SYNTHETIC NONPROD Office Manager (fixture, cannot sign in)",
+      "securityRoles": [
+        "officeManager"
+      ]
+    },
+    {
+      "employee": "service-manager",
+      "externalSubject": "synthetic-np-principal-service-manager",
+      "displayName": "SYNTHETIC NONPROD Service Manager (fixture, cannot sign in)",
+      "securityRoles": [
+        "fieldManager"
+      ]
+    },
+    {
+      "employee": "dispatcher",
+      "externalSubject": "synthetic-np-principal-dispatcher",
+      "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)",
+      "securityRoles": [
+        "dispatcher"
+      ]
+    },
+    {
+      "employee": "service-technician-a",
+      "externalSubject": "synthetic-np-principal-service-technician",
+      "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)",
+      "securityRoles": [
+        "technician"
+      ]
+    },
+    {
+      "employee": "service-technician-b",
+      "externalSubject": "synthetic-np-principal-service-technician-b",
+      "displayName": "SYNTHETIC NONPROD Service Technician B (fixture, cannot sign in)",
+      "securityRoles": [
+        "technician"
+      ]
+    },
+    {
+      "employee": "retail-sales-a",
+      "externalSubject": "synthetic-np-principal-retail-sales",
+      "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)",
+      "securityRoles": [
+        "salesperson"
+      ]
+    },
+    {
+      "employee": "retail-sales-b",
+      "externalSubject": "synthetic-np-principal-retail-sales-b",
+      "displayName": "SYNTHETIC NONPROD Retail Sales B (fixture, cannot sign in)",
+      "securityRoles": [
+        "salesperson"
+      ]
+    },
+    {
+      "employee": "national-accounts-sales",
+      "externalSubject": "synthetic-np-principal-national-accounts-sales",
+      "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)",
+      "securityRoles": [
+        "salesperson"
+      ]
+    },
+    {
+      "employee": "parts-manager",
+      "externalSubject": "synthetic-np-principal-parts-manager",
+      "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)",
+      "securityRoles": [
+        "partsManager",
+        "purchasingManager"
+      ]
+    },
+    {
+      "employee": "parts-associate",
+      "externalSubject": "synthetic-np-principal-parts-associate",
+      "displayName": "SYNTHETIC NONPROD Parts Associate (fixture, cannot sign in)",
+      "securityRoles": [
+        "partsAssociate",
+        "inventoryReceivingClerk"
+      ]
+    },
+    {
+      "employee": "warehouse-manager",
+      "externalSubject": "synthetic-np-principal-warehouse-manager",
+      "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)",
+      "securityRoles": [
+        "warehouseManager",
+        "inventoryCycleCountReconciler",
+        "inventoryBinAdministrator"
+      ]
+    },
+    {
+      "employee": "warehouse-associate",
+      "externalSubject": "synthetic-np-principal-warehouse-associate",
+      "displayName": "SYNTHETIC NONPROD Warehouse Associate (fixture, cannot sign in)",
+      "securityRoles": [
+        "warehouseAssociate",
+        "inventoryCycleCountCounter"
+      ]
+    },
+    {
+      "employee": "contract-technician",
+      "externalSubject": "synthetic-np-principal-contract-technician",
+      "displayName": "SYNTHETIC NONPROD Contract Technician (fixture, cannot sign in)",
+      "securityRoles": [
+        "technician"
+      ]
+    }
   ],
   "employeePrincipalLinks": {
     "linkSource": "OPERATOR_ASSERTED",
@@ -545,22 +774,71 @@
     "reason": "SAMPLE COMPANY V2 org chart",
     "$comment": "NEVER inferred from a Security Role and never inferred from a Job Role. The command requires admin.employeeProfile.write, which only the administering Principal holds.",
     "edges": [
-      { "employee": "general-manager", "manager": "owner-executive" },
-      { "employee": "office-manager", "manager": "general-manager" },
-      { "employee": "service-manager", "manager": "general-manager" },
-      { "employee": "retail-sales-a", "manager": "general-manager" },
-      { "employee": "retail-sales-b", "manager": "general-manager" },
-      { "employee": "national-accounts-sales", "manager": "general-manager" },
-      { "employee": "parts-manager", "manager": "general-manager" },
-      { "employee": "dispatcher", "manager": "service-manager" },
-      { "employee": "service-technician-a", "manager": "service-manager" },
-      { "employee": "service-technician-b", "manager": "service-manager" },
-      { "employee": "contract-technician", "manager": "service-manager" },
-      { "employee": "technician-on-leave", "manager": "service-manager" },
-      { "employee": "parts-associate", "manager": "parts-manager" },
-      { "employee": "warehouse-manager", "manager": "parts-manager" },
-      { "employee": "warehouse-associate", "manager": "warehouse-manager" },
-      { "employee": "records-clerk", "manager": "office-manager", "extraEdge": true }
+      {
+        "employee": "general-manager",
+        "manager": "owner-executive"
+      },
+      {
+        "employee": "office-manager",
+        "manager": "general-manager"
+      },
+      {
+        "employee": "service-manager",
+        "manager": "general-manager"
+      },
+      {
+        "employee": "retail-sales-a",
+        "manager": "general-manager"
+      },
+      {
+        "employee": "retail-sales-b",
+        "manager": "general-manager"
+      },
+      {
+        "employee": "national-accounts-sales",
+        "manager": "general-manager"
+      },
+      {
+        "employee": "parts-manager",
+        "manager": "general-manager"
+      },
+      {
+        "employee": "dispatcher",
+        "manager": "service-manager"
+      },
+      {
+        "employee": "service-technician-a",
+        "manager": "service-manager"
+      },
+      {
+        "employee": "service-technician-b",
+        "manager": "service-manager"
+      },
+      {
+        "employee": "contract-technician",
+        "manager": "service-manager"
+      },
+      {
+        "employee": "technician-on-leave",
+        "manager": "service-manager"
+      },
+      {
+        "employee": "parts-associate",
+        "manager": "parts-manager"
+      },
+      {
+        "employee": "warehouse-manager",
+        "manager": "parts-manager"
+      },
+      {
+        "employee": "warehouse-associate",
+        "manager": "warehouse-manager"
+      },
+      {
+        "employee": "records-clerk",
+        "manager": "office-manager",
+        "extraEdge": true
+      }
     ]
   },
   "securityRoleAssignments": {
@@ -570,187 +848,1083 @@
   },
   "expectedAccess": {
     "$contract": "Per login-capable persona: requiredCapabilities MUST all resolve through Credential -> Principal -> membership -> Role assignments -> role_capabilities -> effective set; forbiddenCapabilities MUST NOT. The verifier resolves the EFFECTIVE set with functions/src/eosOps/capabilityAuthority.ts capabilitiesForRoleKeys and never accepts the existence of an assignment row as proof.",
+    "postgresCapabilityVocabulary": [
+      "admin.dataImport.execute",
+      "admin.employeeProfile.write",
+      "admin.principalAccess.read",
+      "customer.governedField.write",
+      "customer.record.create",
+      "customer.record.read",
+      "customer.record.update",
+      "employee.record.read",
+      "equipment.install",
+      "equipment.model.manage",
+      "inventory.catalog.activate",
+      "inventory.catalog.manage",
+      "inventory.cycleCount.cancel",
+      "inventory.cycleCount.close",
+      "inventory.cycleCount.create",
+      "inventory.cycleCount.reconcile",
+      "inventory.cycleCount.submit",
+      "inventory.placement.record",
+      "inventory.stock.receive",
+      "inventory.stock.relocate",
+      "inventory.transfer.cancel",
+      "inventory.transfer.create",
+      "inventory.transfer.dispatch",
+      "inventory.transfer.receive",
+      "inventory.workOrderConsumption.record",
+      "opportunity.createSalesOrder",
+      "opportunity.read",
+      "opportunity.write",
+      "salesAgreement.accept",
+      "salesAgreement.create",
+      "salesAgreement.read",
+      "salesAgreement.updateDraft",
+      "salesOrder.read",
+      "salesOrder.write",
+      "workOrder.lifecycle.cancel",
+      "workOrder.lifecycle.complete",
+      "workOrder.lifecycle.dispatch"
+    ],
+    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 37 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
     "personas": {
       "owner-executive": {
-        "securityRoles": ["admin"],
-        "requiredCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "employee.record.read", "customer.record.read", "opportunity.read", "inventory.balance.read"],
-        "forbiddenCapabilities": [],
-        "expectedSurfaces": ["administration.users", "administration.rolesPermissions", "employees.directory", "crm.accounts", "commercial.opportunities", "inventory.balances", "reporting.definitions"],
+        "securityRoles": [
+          "admin"
+        ],
+        "requiredCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "employee.record.read",
+          "customer.record.read",
+          "customer.governedField.write",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.reconcile",
+          "equipment.model.manage"
+        ],
+        "forbiddenCapabilities": [
+          "workOrder.lifecycle.dispatch",
+          "inventory.cycleCount.close"
+        ],
+        "expectedSurfaces": [
+          "administration.users",
+          "administration.rolesPermissions",
+          "employees.directory",
+          "crm.accounts",
+          "commercial.opportunities",
+          "inventory.balances",
+          "reporting.definitions"
+        ],
         "deniedSurfaces": []
       },
       "general-manager": {
-        "securityRoles": ["generalManager"],
-        "requiredCapabilities": ["employee.record.read", "customer.record.read", "customer.record.create", "opportunity.write", "salesAgreement.accept", "salesOrder.write", "finance.read", "inventory.balance.read", "workOrder.create"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "inventory.cycleCount.reconcile", "inventory.location.bin.manage"],
-        "expectedSurfaces": ["employees.directory", "crm.accounts", "commercial.opportunities", "commercial.salesOrders", "finance.invoices", "inventory.balances"],
-        "deniedSurfaces": ["administration.users", "administration.rolesPermissions"],
+        "securityRoles": [
+          "generalManager"
+        ],
+        "requiredCapabilities": [
+          "employee.record.read",
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update",
+          "opportunity.read",
+          "opportunity.write",
+          "opportunity.createSalesOrder",
+          "salesAgreement.create",
+          "salesAgreement.updateDraft",
+          "salesAgreement.accept",
+          "salesOrder.read",
+          "salesOrder.write",
+          "inventory.catalog.manage"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "customer.governedField.write",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.stock.receive",
+          "inventory.transfer.create",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "employees.directory",
+          "crm.accounts",
+          "commercial.opportunities",
+          "commercial.salesOrders",
+          "finance.invoices",
+          "inventory.balances"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "administration.rolesPermissions"
+        ],
         "$comment": "GENERAL MANAGER HOLDS NO SECURITY ADMINISTRATION. test/generalManagerNoAdmin.test.mjs already pins that; this contract asserts it again through live grant resolution."
       },
       "office-manager": {
-        "securityRoles": ["officeManager"],
-        "requiredCapabilities": ["customer.record.read", "customer.record.create", "customer.record.update", "workOrder.create"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "opportunity.write", "salesAgreement.accept", "inventory.cycleCount.reconcile", "finance.invoice.issue"],
-        "expectedSurfaces": ["crm.accounts", "crm.contacts", "crm.locations", "service.workOrders.create"],
-        "deniedSurfaces": ["administration.users", "commercial.opportunities.write", "inventory.cycleCount"]
+        "securityRoles": [
+          "officeManager"
+        ],
+        "requiredCapabilities": [
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "employee.record.read",
+          "customer.governedField.write",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.reconcile",
+          "inventory.stock.receive"
+        ],
+        "expectedSurfaces": [
+          "crm.accounts",
+          "crm.contacts",
+          "crm.locations",
+          "service.workOrders.create"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "commercial.opportunities.write",
+          "inventory.cycleCount"
+        ]
       },
       "service-manager": {
-        "securityRoles": ["fieldManager"],
-        "requiredCapabilities": ["customer.record.read", "workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.balance.read", "inventory.serializedAsset.read", "audit.event.read"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "opportunity.write", "salesAgreement.accept", "customer.record.create", "inventory.cycleCount.reconcile"],
-        "expectedSurfaces": ["service.workOrders", "service.dispatch", "inventory.balances", "employees.myTeam"],
-        "deniedSurfaces": ["administration.users", "commercial.opportunities.write"]
+        "securityRoles": [
+          "fieldManager"
+        ],
+        "requiredCapabilities": [
+          "customer.record.read",
+          "inventory.catalog.manage",
+          "salesOrder.read"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "employee.record.read",
+          "customer.record.create",
+          "customer.record.update",
+          "customer.governedField.write",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile"
+        ],
+        "expectedSurfaces": [
+          "service.workOrders",
+          "service.dispatch",
+          "inventory.balances",
+          "employees.myTeam"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "commercial.opportunities.write"
+        ],
+        "accessModelGap": "SERVICE_MANAGER_WORK_ORDER_LIFECYCLE_NOT_IN_POSTGRES_VOCABULARY"
       },
       "dispatcher": {
-        "securityRoles": ["dispatcher"],
-        "requiredCapabilities": ["workOrder.create", "workOrder.transition", "reorder.request.read.queue", "inventory.action.create", "customer.record.read"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "employee.record.read", "inventory.cycleCount.reconcile"],
-        "expectedSurfaces": ["service.dispatch", "service.workOrders", "inventory.reorderQueue"],
-        "deniedSurfaces": ["administration.users", "employees.directory"]
+        "securityRoles": [
+          "dispatcher"
+        ],
+        "requiredCapabilities": [
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update",
+          "opportunity.read",
+          "opportunity.write",
+          "salesOrder.read",
+          "inventory.stock.receive"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.governedField.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "service.dispatch",
+          "service.workOrders",
+          "inventory.reorderQueue"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "employees.directory"
+        ]
       },
       "service-technician-a": {
-        "securityRoles": ["technician"],
-        "requiredCapabilities": ["workOrder.transition"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "employee.record.read", "customer.record.create", "customer.record.update", "warehouse.transferOrder.read", "inventory.location.bin.manage", "inventory.cycleCount.reconcile", "opportunity.write", "finance.invoice.issue"],
-        "expectedSurfaces": ["field.myWorkOrders"],
-        "deniedSurfaces": ["administration.users", "employees.directory", "warehouse.management", "commercial.opportunities"],
-        "$comment": "THE TECHNICIAN DENIAL PROOF the access contract calls for: a technician must not hold admin.employeeProfile.write."
+        "securityRoles": [
+          "technician"
+        ],
+        "requiredCapabilities": [],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.governedField.write",
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.stock.receive",
+          "inventory.transfer.create",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "field.myWorkOrders"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "employees.directory",
+          "warehouse.management",
+          "commercial.opportunities"
+        ],
+        "$comment": "THE TECHNICIAN DENIAL PROOF the access contract calls for: a technician must not hold admin.employeeProfile.write.",
+        "accessModelGap": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY"
       },
       "service-technician-b": {
-        "securityRoles": ["technician"],
-        "requiredCapabilities": ["workOrder.transition"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "employee.record.read", "warehouse.transferOrder.read", "inventory.cycleCount.reconcile", "opportunity.write"],
-        "expectedSurfaces": ["field.myWorkOrders"],
-        "deniedSurfaces": ["administration.users", "warehouse.management", "commercial.opportunities"]
+        "securityRoles": [
+          "technician"
+        ],
+        "requiredCapabilities": [],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.governedField.write",
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.stock.receive",
+          "inventory.transfer.create",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "field.myWorkOrders"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "warehouse.management",
+          "commercial.opportunities"
+        ],
+        "accessModelGap": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY"
       },
       "retail-sales-a": {
-        "securityRoles": ["salesperson"],
-        "requiredCapabilities": ["customer.record.create", "customer.record.read", "customer.record.update", "opportunity.write", "opportunity.read", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.accept", "salesOrder.write", "finance.visibility.self"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "employee.record.read", "warehouse.transferOrder.read", "inventory.location.bin.manage", "inventory.cycleCount.reconcile", "inventory.cycleCount.submit", "finance.visibility.consolidated", "reorder.request.approve"],
-        "expectedSurfaces": ["crm.accounts", "crm.contacts", "commercial.opportunities", "commercial.agreements", "commercial.salesOrders", "dashboard.myPipeline"],
-        "deniedSurfaces": ["administration.users", "warehouse.management", "inventory.cycleCount", "employees.directory"],
+        "securityRoles": [
+          "salesperson"
+        ],
+        "requiredCapabilities": [
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update",
+          "opportunity.read",
+          "opportunity.write",
+          "opportunity.createSalesOrder",
+          "salesAgreement.create",
+          "salesAgreement.updateDraft",
+          "salesAgreement.accept",
+          "salesOrder.read",
+          "salesOrder.write"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.governedField.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.transfer.create",
+          "inventory.transfer.dispatch",
+          "inventory.stock.receive",
+          "inventory.stock.relocate",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "crm.accounts",
+          "crm.contacts",
+          "commercial.opportunities",
+          "commercial.agreements",
+          "commercial.salesOrders",
+          "dashboard.myPipeline"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "warehouse.management",
+          "inventory.cycleCount",
+          "employees.directory"
+        ],
         "$comment": "THE SALESPERSON DENIAL PROOF: a salesperson must not hold warehouse management."
       },
       "retail-sales-b": {
-        "securityRoles": ["salesperson"],
-        "requiredCapabilities": ["customer.record.create", "opportunity.write", "salesAgreement.create", "salesOrder.write", "finance.visibility.self"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "employee.record.read", "warehouse.transferOrder.read", "inventory.cycleCount.submit", "finance.visibility.consolidated"],
-        "expectedSurfaces": ["crm.accounts", "commercial.opportunities", "dashboard.myPipeline"],
-        "deniedSurfaces": ["administration.users", "warehouse.management", "inventory.cycleCount"]
+        "securityRoles": [
+          "salesperson"
+        ],
+        "requiredCapabilities": [
+          "customer.record.create",
+          "opportunity.write",
+          "salesAgreement.create",
+          "salesOrder.write"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "employee.record.read",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.transfer.create",
+          "inventory.stock.receive",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "crm.accounts",
+          "commercial.opportunities",
+          "dashboard.myPipeline"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "warehouse.management",
+          "inventory.cycleCount"
+        ]
       },
       "national-accounts-sales": {
-        "securityRoles": ["salesperson"],
-        "requiredCapabilities": ["customer.record.create", "customer.record.read", "opportunity.write", "opportunity.createSalesOrder", "salesAgreement.create", "salesAgreement.accept", "salesOrder.write", "finance.visibility.self"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "employee.record.read", "warehouse.transferOrder.read", "inventory.cycleCount.submit", "finance.visibility.consolidated"],
-        "expectedSurfaces": ["crm.accounts", "commercial.opportunities", "commercial.agreements", "commercial.salesOrders", "dashboard.myPipeline"],
-        "deniedSurfaces": ["administration.users", "warehouse.management", "inventory.cycleCount"],
+        "securityRoles": [
+          "salesperson"
+        ],
+        "requiredCapabilities": [
+          "customer.record.create",
+          "customer.record.read",
+          "opportunity.write",
+          "opportunity.createSalesOrder",
+          "salesAgreement.create",
+          "salesAgreement.accept",
+          "salesOrder.write"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "employee.record.read",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.transfer.create",
+          "inventory.stock.receive",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "crm.accounts",
+          "commercial.opportunities",
+          "commercial.agreements",
+          "commercial.salesOrders",
+          "dashboard.myPipeline"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "warehouse.management",
+          "inventory.cycleCount"
+        ],
         "accessModelGap": "NATIONAL_ACCOUNTS_SALES_HAS_NO_DISTINCT_SECURITY_ROLE"
       },
       "parts-manager": {
-        "securityRoles": ["partsManager", "purchasingManager"],
-        "requiredCapabilities": ["reorder.request.read.queue", "reorder.request.create.manual", "reorder.request.assign", "reorder.request.startPurchasing", "reorder.request.recordPurchaseOrder", "reorder.purchaseOrder.create", "reorder.purchaseOrder.read", "inventory.balance.read", "inventory.catalog.manage", "audit.event.read"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "opportunity.write", "salesAgreement.accept", "inventory.cycleCount.reconcile"],
-        "expectedSurfaces": ["inventory.reorderQueue", "purchasing.purchaseOrders", "inventory.balances", "inventory.catalog"],
-        "deniedSurfaces": ["administration.users", "commercial.opportunities"]
+        "securityRoles": [
+          "partsManager",
+          "purchasingManager"
+        ],
+        "requiredCapabilities": [
+          "customer.record.read",
+          "inventory.catalog.manage",
+          "salesOrder.read"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.record.create",
+          "customer.record.update",
+          "customer.governedField.write",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile"
+        ],
+        "expectedSurfaces": [
+          "inventory.reorderQueue",
+          "purchasing.purchaseOrders",
+          "inventory.balances",
+          "inventory.catalog"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "commercial.opportunities"
+        ],
+        "accessModelGap": "PURCHASING_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY"
       },
       "parts-associate": {
-        "securityRoles": ["partsAssociate", "inventoryReceivingClerk"],
-        "requiredCapabilities": ["inventory.balance.read", "inventory.catalog.read", "inventory.serializedAsset.read", "inventory.stock.receive", "customer.record.read"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "reorder.request.approve", "reorder.request.assign", "reorder.purchaseOrder.void", "inventory.cycleCount.reconcile", "opportunity.write", "inventory.catalog.manage"],
-        "expectedSurfaces": ["inventory.balances", "inventory.catalog", "receiving.checkIn"],
-        "deniedSurfaces": ["administration.users", "purchasing.approvals", "commercial.opportunities"],
+        "securityRoles": [
+          "partsAssociate",
+          "inventoryReceivingClerk"
+        ],
+        "requiredCapabilities": [
+          "customer.record.read",
+          "inventory.stock.receive",
+          "salesOrder.read"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.record.create",
+          "customer.record.update",
+          "opportunity.write",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.catalog.activate",
+          "inventory.cycleCount.reconcile",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "inventory.balances",
+          "inventory.catalog",
+          "receiving.checkIn"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "purchasing.approvals",
+          "commercial.opportunities"
+        ],
         "accessModelGap": "PARTS_ASSOCIATE_REORDER_EXECUTION_ONLY_VIA_TECHNICIAN_COMPATIBILITY_ROLE"
       },
       "warehouse-manager": {
-        "securityRoles": ["warehouseManager", "inventoryCycleCountReconciler", "inventoryBinAdministrator"],
-        "requiredCapabilities": ["inventory.balance.read", "inventory.action.read", "inventory.catalog.manage", "warehouse.transferOrder.read", "inventory.cycleCount.reconcile", "inventory.location.bin.manage", "inventory.location.bin.read", "reorder.request.create.manual", "audit.event.read"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "opportunity.write", "salesAgreement.accept", "reorder.purchaseOrder.void"],
-        "expectedSurfaces": ["warehouse.management", "warehouse.bins", "inventory.cycleCount.review", "inventory.balances"],
-        "deniedSurfaces": ["administration.users", "commercial.opportunities"]
+        "securityRoles": [
+          "warehouseManager",
+          "inventoryCycleCountReconciler",
+          "inventoryBinAdministrator"
+        ],
+        "requiredCapabilities": [
+          "customer.record.read",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.reconcile",
+          "salesOrder.read"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.record.create",
+          "customer.record.update",
+          "customer.governedField.write",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit"
+        ],
+        "expectedSurfaces": [
+          "warehouse.management",
+          "warehouse.bins",
+          "inventory.cycleCount.review",
+          "inventory.balances"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "commercial.opportunities"
+        ],
+        "accessModelGap": "WAREHOUSE_TRANSFER_AND_BIN_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY"
       },
       "warehouse-associate": {
-        "securityRoles": ["warehouseAssociate", "inventoryCycleCountCounter"],
-        "requiredCapabilities": ["inventory.balance.read", "inventory.catalog.read", "inventory.action.read", "warehouse.transferOrder.read", "inventory.cycleCount.create", "inventory.cycleCount.submit"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "admin.principalAccess.read", "administration.emailIntake.manage", "inventory.cycleCount.reconcile", "inventory.location.bin.manage", "inventory.catalog.manage", "opportunity.write", "customer.record.create"],
-        "expectedSurfaces": ["warehouse.picking", "inventory.cycleCount.count", "inventory.balances"],
-        "deniedSurfaces": ["administration.users", "administration.emailIntake", "inventory.cycleCount.review", "commercial.opportunities"],
-        "$comment": "THE WAREHOUSE ASSOCIATE DENIAL PROOF: no administration, and no cycle-count RECONCILE -- the counter may never approve their own variance."
+        "securityRoles": [
+          "warehouseAssociate",
+          "inventoryCycleCountCounter"
+        ],
+        "requiredCapabilities": [
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.cancel",
+          "salesOrder.read"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.record.read",
+          "customer.record.create",
+          "customer.record.update",
+          "customer.governedField.write",
+          "opportunity.write",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.reconcile",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "warehouse.picking",
+          "inventory.cycleCount.count",
+          "inventory.balances"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "administration.emailIntake",
+          "inventory.cycleCount.review",
+          "commercial.opportunities"
+        ],
+        "$comment": "THE WAREHOUSE ASSOCIATE DENIAL PROOF: no administration, and no cycle-count RECONCILE -- the counter may never approve their own variance.",
+        "accessModelGap": "WAREHOUSE_TRANSFER_AND_BIN_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY"
       },
       "contract-technician": {
-        "securityRoles": ["technician"],
-        "requiredCapabilities": ["workOrder.transition"],
-        "forbiddenCapabilities": ["admin.employeeProfile.write", "employee.record.read", "customer.record.create", "warehouse.transferOrder.read", "inventory.cycleCount.reconcile", "opportunity.write"],
-        "expectedSurfaces": ["field.myWorkOrders"],
-        "deniedSurfaces": ["administration.users", "warehouse.management", "commercial.opportunities"]
+        "securityRoles": [
+          "technician"
+        ],
+        "requiredCapabilities": [],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.dataImport.execute",
+          "employee.record.read",
+          "customer.governedField.write",
+          "customer.record.create",
+          "customer.record.read",
+          "customer.record.update",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write",
+          "inventory.catalog.manage",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.submit",
+          "inventory.cycleCount.reconcile",
+          "inventory.stock.receive",
+          "inventory.transfer.create",
+          "equipment.model.manage"
+        ],
+        "expectedSurfaces": [
+          "field.myWorkOrders"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "warehouse.management",
+          "commercial.opportunities"
+        ],
+        "accessModelGap": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY"
       }
     },
     "noAccessPersonas": {
-      "technician-on-leave": { "userAccessState": "NONE", "expectedPrincipals": 0, "expectedRoleAssignments": 0, "expectedSurfaces": [], "deniedSurfaces": ["*"] },
-      "records-clerk": { "userAccessState": "NONE", "expectedPrincipals": 0, "expectedRoleAssignments": 0, "expectedSurfaces": [], "deniedSurfaces": ["*"] }
+      "technician-on-leave": {
+        "userAccessState": "NONE",
+        "expectedPrincipals": 0,
+        "expectedRoleAssignments": 0,
+        "expectedSurfaces": [],
+        "deniedSurfaces": [
+          "*"
+        ]
+      },
+      "records-clerk": {
+        "userAccessState": "NONE",
+        "expectedPrincipals": 0,
+        "expectedRoleAssignments": 0,
+        "expectedSurfaces": [],
+        "deniedSurfaces": [
+          "*"
+        ]
+      }
     }
   },
   "accounts": [
-    { "id": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Customer (fixture)", "status": "ACTIVE", "owner": "retail-sales-a", "segment": "RETAIL" },
-    { "id": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Customer (fixture)", "status": "ACTIVE", "owner": "national-accounts-sales", "segment": "NATIONAL_ACCOUNTS" },
-    { "id": "sample-co-acct-retail-b", "name": "SYNTHETIC NONPROD Retail Customer B (fixture)", "status": "ACTIVE", "owner": "retail-sales-b", "segment": "RETAIL" }
+    {
+      "id": "synthetic-np-acct-retail",
+      "name": "SYNTHETIC NONPROD Retail Customer (fixture)",
+      "status": "ACTIVE",
+      "owner": "retail-sales-a",
+      "segment": "RETAIL"
+    },
+    {
+      "id": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Account Customer (fixture)",
+      "status": "ACTIVE",
+      "owner": "national-accounts-sales",
+      "segment": "NATIONAL_ACCOUNTS"
+    },
+    {
+      "id": "sample-co-acct-retail-b",
+      "name": "SYNTHETIC NONPROD Retail Customer B (fixture)",
+      "status": "ACTIVE",
+      "owner": "retail-sales-b",
+      "segment": "RETAIL"
+    }
   ],
   "contacts": [
-    { "id": "synthetic-np-contact-retail", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Contact (fixture)", "isPrimary": true, "email": "retail.primary@sandbox.invalid", "phone": "+1-555-0170", "contactRole": "Owner" },
-    { "id": "synthetic-np-contact-national", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Contact (fixture)", "isPrimary": true, "email": "national.primary@sandbox.invalid", "phone": "+1-555-0171", "contactRole": "Director of Facilities" },
-    { "id": "sample-co-contact-retail-secondary", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Secondary Contact (fixture)", "isPrimary": false, "email": "retail.secondary@sandbox.invalid", "phone": "+1-555-0172", "contactRole": "Site Manager" },
-    { "id": "sample-co-contact-national-regional", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Regional Contact (fixture)", "isPrimary": false, "email": "national.regional@sandbox.invalid", "phone": "+1-555-0173", "contactRole": "Regional Operations" },
-    { "id": "sample-co-contact-national-ap", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Accounts Payable Contact (fixture)", "isPrimary": false, "email": "national.ap@sandbox.invalid", "phone": "+1-555-0174", "contactRole": "Accounts Payable" },
-    { "id": "sample-co-contact-retail-b", "account": "sample-co-acct-retail-b", "name": "SYNTHETIC NONPROD Retail B Contact (fixture)", "isPrimary": true, "email": "retailb.primary@sandbox.invalid", "phone": "+1-555-0175", "contactRole": "Proprietor" }
+    {
+      "id": "synthetic-np-contact-retail",
+      "account": "synthetic-np-acct-retail",
+      "name": "SYNTHETIC NONPROD Retail Contact (fixture)",
+      "isPrimary": true,
+      "email": "retail.primary@sandbox.invalid",
+      "phone": "+1-555-0170",
+      "contactRole": "Owner"
+    },
+    {
+      "id": "synthetic-np-contact-national",
+      "account": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Account Contact (fixture)",
+      "isPrimary": true,
+      "email": "national.primary@sandbox.invalid",
+      "phone": "+1-555-0171",
+      "contactRole": "Director of Facilities"
+    },
+    {
+      "id": "sample-co-contact-retail-secondary",
+      "account": "synthetic-np-acct-retail",
+      "name": "SYNTHETIC NONPROD Retail Secondary Contact (fixture)",
+      "isPrimary": false,
+      "email": "retail.secondary@sandbox.invalid",
+      "phone": "+1-555-0172",
+      "contactRole": "Site Manager"
+    },
+    {
+      "id": "sample-co-contact-national-regional",
+      "account": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Regional Contact (fixture)",
+      "isPrimary": false,
+      "email": "national.regional@sandbox.invalid",
+      "phone": "+1-555-0173",
+      "contactRole": "Regional Operations"
+    },
+    {
+      "id": "sample-co-contact-national-ap",
+      "account": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Accounts Payable Contact (fixture)",
+      "isPrimary": false,
+      "email": "national.ap@sandbox.invalid",
+      "phone": "+1-555-0174",
+      "contactRole": "Accounts Payable"
+    },
+    {
+      "id": "sample-co-contact-retail-b",
+      "account": "sample-co-acct-retail-b",
+      "name": "SYNTHETIC NONPROD Retail B Contact (fixture)",
+      "isPrimary": true,
+      "email": "retailb.primary@sandbox.invalid",
+      "phone": "+1-555-0175",
+      "contactRole": "Proprietor"
+    }
   ],
   "locations": [
-    { "id": "synthetic-np-loc-retail", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Site (fixture)", "addressStreet": "300 Example Commerce Way", "addressCity": "Sampleton", "addressState": "ZZ", "addressPostalCode": "00000", "isMain": true },
-    { "id": "synthetic-np-loc-national", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Site (fixture)", "addressStreet": "400 Example Industrial Loop", "addressCity": "Sampleton", "addressState": "ZZ", "addressPostalCode": "00000", "isMain": true },
-    { "id": "sample-co-loc-national-north", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Site North (fixture)", "addressStreet": "410 Example Industrial Loop", "addressCity": "Sampleton", "addressState": "ZZ", "addressPostalCode": "00000", "isMain": false },
-    { "id": "sample-co-loc-national-south", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Site South (fixture)", "addressStreet": "420 Example Industrial Loop", "addressCity": "Sampleton", "addressState": "ZZ", "addressPostalCode": "00000", "isMain": false },
-    { "id": "sample-co-loc-retail-b", "account": "sample-co-acct-retail-b", "name": "SYNTHETIC NONPROD Retail B Site (fixture)", "addressStreet": "500 Example Commerce Way", "addressCity": "Sampleton", "addressState": "ZZ", "addressPostalCode": "00000", "isMain": true }
+    {
+      "id": "synthetic-np-loc-retail",
+      "account": "synthetic-np-acct-retail",
+      "name": "SYNTHETIC NONPROD Retail Site (fixture)",
+      "addressStreet": "300 Example Commerce Way",
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "isMain": true
+    },
+    {
+      "id": "synthetic-np-loc-national",
+      "account": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Account Site (fixture)",
+      "addressStreet": "400 Example Industrial Loop",
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "isMain": true
+    },
+    {
+      "id": "sample-co-loc-national-north",
+      "account": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Site North (fixture)",
+      "addressStreet": "410 Example Industrial Loop",
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "isMain": false
+    },
+    {
+      "id": "sample-co-loc-national-south",
+      "account": "synthetic-np-acct-national",
+      "name": "SYNTHETIC NONPROD National Site South (fixture)",
+      "addressStreet": "420 Example Industrial Loop",
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "isMain": false
+    },
+    {
+      "id": "sample-co-loc-retail-b",
+      "account": "sample-co-acct-retail-b",
+      "name": "SYNTHETIC NONPROD Retail B Site (fixture)",
+      "addressStreet": "500 Example Commerce Way",
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "isMain": true
+    }
   ],
   "equipmentModels": [
-    { "id": "SAMPLECO--SC-100", "manufacturerId": "SAMPLECO", "manufacturerName": "SYNTHETIC SampleCo Manufacturing (fixture)", "modelNumber": "SC-100", "displayName": "SYNTHETIC SampleCo SC-100 Soft Serve Freezer (fixture)", "family": "FREEZER", "subtype": "SOFT_SERVE", "revision": "A", "status": "ACTIVE", "sourceAuthority": "SAMPLE_COMPANY_V2", "version": 1 },
-    { "id": "SAMPLECO--SC-200", "manufacturerId": "SAMPLECO", "manufacturerName": "SYNTHETIC SampleCo Manufacturing (fixture)", "modelNumber": "SC-200", "displayName": "SYNTHETIC SampleCo SC-200 Shake Machine (fixture)", "family": "FREEZER", "subtype": "SHAKE", "revision": "B", "status": "ACTIVE", "sourceAuthority": "SAMPLE_COMPANY_V2", "version": 1 },
-    { "id": "FIXTUREWORKS--FW-50", "manufacturerId": "FIXTUREWORKS", "manufacturerName": "SYNTHETIC FixtureWorks Ltd (fixture)", "modelNumber": "FW-50", "displayName": "SYNTHETIC FixtureWorks FW-50 Grill (fixture)", "family": "GRILL", "subtype": "FLAT_TOP", "revision": null, "status": "ACTIVE", "sourceAuthority": "SAMPLE_COMPANY_V2", "version": 1 },
-    { "id": "FIXTUREWORKS--FW-OLD", "manufacturerId": "FIXTUREWORKS", "manufacturerName": "SYNTHETIC FixtureWorks Ltd (fixture)", "modelNumber": "FW-OLD", "displayName": "SYNTHETIC FixtureWorks FW-OLD Retired Fryer (fixture)", "family": "FRYER", "subtype": null, "revision": null, "status": "RETIRED", "sourceAuthority": "SAMPLE_COMPANY_V2", "version": 1, "$comment": "The non-ACTIVE catalog case." }
+    {
+      "id": "SAMPLECO--SC-100",
+      "manufacturerId": "SAMPLECO",
+      "manufacturerName": "SYNTHETIC SampleCo Manufacturing (fixture)",
+      "modelNumber": "SC-100",
+      "displayName": "SYNTHETIC SampleCo SC-100 Soft Serve Freezer (fixture)",
+      "family": "FREEZER",
+      "subtype": "SOFT_SERVE",
+      "revision": "A",
+      "status": "ACTIVE",
+      "sourceAuthority": "SAMPLE_COMPANY_V2",
+      "version": 1
+    },
+    {
+      "id": "SAMPLECO--SC-200",
+      "manufacturerId": "SAMPLECO",
+      "manufacturerName": "SYNTHETIC SampleCo Manufacturing (fixture)",
+      "modelNumber": "SC-200",
+      "displayName": "SYNTHETIC SampleCo SC-200 Shake Machine (fixture)",
+      "family": "FREEZER",
+      "subtype": "SHAKE",
+      "revision": "B",
+      "status": "ACTIVE",
+      "sourceAuthority": "SAMPLE_COMPANY_V2",
+      "version": 1
+    },
+    {
+      "id": "FIXTUREWORKS--FW-50",
+      "manufacturerId": "FIXTUREWORKS",
+      "manufacturerName": "SYNTHETIC FixtureWorks Ltd (fixture)",
+      "modelNumber": "FW-50",
+      "displayName": "SYNTHETIC FixtureWorks FW-50 Grill (fixture)",
+      "family": "GRILL",
+      "subtype": "FLAT_TOP",
+      "revision": null,
+      "status": "ACTIVE",
+      "sourceAuthority": "SAMPLE_COMPANY_V2",
+      "version": 1
+    },
+    {
+      "id": "FIXTUREWORKS--FW-OLD",
+      "manufacturerId": "FIXTUREWORKS",
+      "manufacturerName": "SYNTHETIC FixtureWorks Ltd (fixture)",
+      "modelNumber": "FW-OLD",
+      "displayName": "SYNTHETIC FixtureWorks FW-OLD Retired Fryer (fixture)",
+      "family": "FRYER",
+      "subtype": null,
+      "revision": null,
+      "status": "RETIRED",
+      "sourceAuthority": "SAMPLE_COMPANY_V2",
+      "version": 1,
+      "$comment": "The non-ACTIVE catalog case."
+    }
   ],
   "equipment": {
     "status": "BLOCKED",
     "blockedBy": "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT",
     "$comment": "The installed-asset register (eos_ops.equipment) has exactly ONE governed PostgreSQL writer: installSerializedUnitAsEquipment (functions/src/eosOps/equipmentCustody.ts:294), and it MOVES an existing AVAILABLE eos_ops.serialized_custody unit. Nothing in functions/src inserts a serialized_custody row -- serialized acquisition is still a Firestore path. So installed Equipment cannot be seeded without either inventing custody rows (a second authority) or connecting to Firebase (forbidden). The desired records are declared here so the scenario completes automatically once serialized acquisition lands in PostgreSQL.",
     "desired": [
-      { "id": "sample-co-eq-retail-freezer-1", "account": "synthetic-np-acct-retail", "customerLocation": "synthetic-np-loc-retail", "equipmentModel": "SAMPLECO--SC-100", "name": "SYNTHETIC Retail Freezer 1 (fixture)", "status": "ACTIVE", "serialNumber": "SC100-SYN-0001", "partId": "SC-PART-CTRL-BOARD-04" },
-      { "id": "sample-co-eq-retail-shake-1", "account": "synthetic-np-acct-retail", "customerLocation": "synthetic-np-loc-retail", "equipmentModel": "SAMPLECO--SC-200", "name": "SYNTHETIC Retail Shake Machine 1 (fixture)", "status": "ACTIVE", "serialNumber": "SC200-SYN-0002", "partId": "SC-PART-CTRL-BOARD-04" },
-      { "id": "sample-co-eq-national-freezer-1", "account": "synthetic-np-acct-national", "customerLocation": "synthetic-np-loc-national", "equipmentModel": "SAMPLECO--SC-100", "name": "SYNTHETIC National Freezer 1 (fixture)", "status": "ACTIVE", "serialNumber": "SC100-SYN-0003", "partId": "SC-PART-CTRL-BOARD-04" },
-      { "id": "sample-co-eq-national-grill-north", "account": "synthetic-np-acct-national", "customerLocation": "sample-co-loc-national-north", "equipmentModel": "FIXTUREWORKS--FW-50", "name": "SYNTHETIC National Grill North (fixture)", "status": "ACTIVE", "serialNumber": "FW50-SYN-0004", "partId": "SC-PART-CTRL-BOARD-04" },
-      { "id": "sample-co-eq-national-grill-south", "account": "synthetic-np-acct-national", "customerLocation": "sample-co-loc-national-south", "equipmentModel": "FIXTUREWORKS--FW-50", "name": "SYNTHETIC National Grill South (fixture)", "status": "INACTIVE", "serialNumber": "FW50-SYN-0005", "partId": "SC-PART-CTRL-BOARD-04", "$comment": "The non-ACTIVE installed case." },
-      { "id": "sample-co-eq-retail-b-fryer", "account": "sample-co-acct-retail-b", "customerLocation": "sample-co-loc-retail-b", "equipmentModel": "FIXTUREWORKS--FW-OLD", "name": "SYNTHETIC Retail B Fryer (fixture)", "status": "ACTIVE", "serialNumber": "FWOLD-SYN-0006", "partId": "SC-PART-CTRL-BOARD-04" }
+      {
+        "id": "sample-co-eq-retail-freezer-1",
+        "account": "synthetic-np-acct-retail",
+        "customerLocation": "synthetic-np-loc-retail",
+        "equipmentModel": "SAMPLECO--SC-100",
+        "name": "SYNTHETIC Retail Freezer 1 (fixture)",
+        "status": "ACTIVE",
+        "serialNumber": "SC100-SYN-0001",
+        "partId": "SC-PART-CTRL-BOARD-04"
+      },
+      {
+        "id": "sample-co-eq-retail-shake-1",
+        "account": "synthetic-np-acct-retail",
+        "customerLocation": "synthetic-np-loc-retail",
+        "equipmentModel": "SAMPLECO--SC-200",
+        "name": "SYNTHETIC Retail Shake Machine 1 (fixture)",
+        "status": "ACTIVE",
+        "serialNumber": "SC200-SYN-0002",
+        "partId": "SC-PART-CTRL-BOARD-04"
+      },
+      {
+        "id": "sample-co-eq-national-freezer-1",
+        "account": "synthetic-np-acct-national",
+        "customerLocation": "synthetic-np-loc-national",
+        "equipmentModel": "SAMPLECO--SC-100",
+        "name": "SYNTHETIC National Freezer 1 (fixture)",
+        "status": "ACTIVE",
+        "serialNumber": "SC100-SYN-0003",
+        "partId": "SC-PART-CTRL-BOARD-04"
+      },
+      {
+        "id": "sample-co-eq-national-grill-north",
+        "account": "synthetic-np-acct-national",
+        "customerLocation": "sample-co-loc-national-north",
+        "equipmentModel": "FIXTUREWORKS--FW-50",
+        "name": "SYNTHETIC National Grill North (fixture)",
+        "status": "ACTIVE",
+        "serialNumber": "FW50-SYN-0004",
+        "partId": "SC-PART-CTRL-BOARD-04"
+      },
+      {
+        "id": "sample-co-eq-national-grill-south",
+        "account": "synthetic-np-acct-national",
+        "customerLocation": "sample-co-loc-national-south",
+        "equipmentModel": "FIXTUREWORKS--FW-50",
+        "name": "SYNTHETIC National Grill South (fixture)",
+        "status": "INACTIVE",
+        "serialNumber": "FW50-SYN-0005",
+        "partId": "SC-PART-CTRL-BOARD-04",
+        "$comment": "The non-ACTIVE installed case."
+      },
+      {
+        "id": "sample-co-eq-retail-b-fryer",
+        "account": "sample-co-acct-retail-b",
+        "customerLocation": "sample-co-loc-retail-b",
+        "equipmentModel": "FIXTUREWORKS--FW-OLD",
+        "name": "SYNTHETIC Retail B Fryer (fixture)",
+        "status": "ACTIVE",
+        "serialNumber": "FWOLD-SYN-0006",
+        "partId": "SC-PART-CTRL-BOARD-04"
+      }
     ]
   },
   "commercial": [
-    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0001", "account": "synthetic-np-acct-retail", "owner": "retail-sales-a", "accountable": "DERIVE_FROM_OWNER", "scenario": "A", "pipelineStage": "QUALIFYING", "$comment": "owner == accountable" },
-    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0002", "account": "synthetic-np-acct-retail", "owner": "retail-sales-b", "accountable": "general-manager", "scenario": "A", "pipelineStage": "PROPOSAL", "$comment": "owner != accountable (GM accountable)" },
-    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0003", "account": "synthetic-np-acct-national", "owner": "national-accounts-sales", "accountable": "DERIVE_FROM_OWNER", "scenario": "B", "pipelineStage": "NEGOTIATION" },
-    { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0004", "account": "synthetic-np-acct-national", "owner": "national-accounts-sales", "accountable": "general-manager", "scenario": "B", "pipelineStage": "QUALIFYING" },
-    { "kind": "OPPORTUNITY", "number": "SAMPLE-CO-OPP-0005", "account": "sample-co-acct-retail-b", "owner": "retail-sales-b", "accountable": "DERIVE_FROM_OWNER", "scenario": "A", "pipelineStage": "DISCOVERY" },
-    { "kind": "OPPORTUNITY", "number": "SAMPLE-CO-OPP-0006", "account": "sample-co-acct-retail-b", "owner": "retail-sales-b", "accountable": "office-manager", "scenario": "A", "pipelineStage": "PROPOSAL", "$comment": "owner != accountable (Office Manager accountable)" },
-    { "kind": "SALES_AGREEMENT", "number": "SYN-NP-SA-0001", "account": "synthetic-np-acct-retail", "opportunity": "SYN-NP-OPP-0001", "owner": "retail-sales-a", "accountable": "DERIVE_FROM_OWNER", "scenario": "A" },
-    { "kind": "SALES_AGREEMENT", "number": "SYN-NP-SA-0002", "account": "synthetic-np-acct-national", "opportunity": "SYN-NP-OPP-0003", "owner": "national-accounts-sales", "accountable": "general-manager", "scenario": "B" },
-    { "kind": "SALES_AGREEMENT", "number": "SAMPLE-CO-SA-0003", "account": "sample-co-acct-retail-b", "opportunity": "SAMPLE-CO-OPP-0005", "owner": "retail-sales-b", "accountable": "DERIVE_FROM_OWNER", "scenario": "A" },
-    { "kind": "SALES_ORDER", "number": "SYN-NP-SO-0001", "account": "synthetic-np-acct-retail", "opportunity": "SYN-NP-OPP-0001", "agreement": "SYN-NP-SA-0001", "owner": "retail-sales-a", "accountable": "office-manager", "scenario": "A" },
-    { "kind": "SALES_ORDER", "number": "SYN-NP-SO-0002", "account": "synthetic-np-acct-national", "opportunity": "SYN-NP-OPP-0003", "agreement": "SYN-NP-SA-0002", "owner": "national-accounts-sales", "accountable": "DERIVE_FROM_OWNER", "scenario": "B" },
-    { "kind": "SALES_ORDER", "number": "SAMPLE-CO-SO-0003", "account": "sample-co-acct-retail-b", "opportunity": "SAMPLE-CO-OPP-0005", "agreement": "SAMPLE-CO-SA-0003", "owner": "retail-sales-b", "accountable": "general-manager", "scenario": "A" }
+    {
+      "kind": "OPPORTUNITY",
+      "number": "SYN-NP-OPP-0001",
+      "account": "synthetic-np-acct-retail",
+      "owner": "retail-sales-a",
+      "accountable": "DERIVE_FROM_OWNER",
+      "scenario": "A",
+      "pipelineStage": "QUALIFYING",
+      "$comment": "owner == accountable"
+    },
+    {
+      "kind": "OPPORTUNITY",
+      "number": "SYN-NP-OPP-0002",
+      "account": "synthetic-np-acct-retail",
+      "owner": "retail-sales-b",
+      "accountable": "general-manager",
+      "scenario": "A",
+      "pipelineStage": "PROPOSAL",
+      "$comment": "owner != accountable (GM accountable)"
+    },
+    {
+      "kind": "OPPORTUNITY",
+      "number": "SYN-NP-OPP-0003",
+      "account": "synthetic-np-acct-national",
+      "owner": "national-accounts-sales",
+      "accountable": "DERIVE_FROM_OWNER",
+      "scenario": "B",
+      "pipelineStage": "NEGOTIATION"
+    },
+    {
+      "kind": "OPPORTUNITY",
+      "number": "SYN-NP-OPP-0004",
+      "account": "synthetic-np-acct-national",
+      "owner": "national-accounts-sales",
+      "accountable": "general-manager",
+      "scenario": "B",
+      "pipelineStage": "QUALIFYING"
+    },
+    {
+      "kind": "OPPORTUNITY",
+      "number": "SAMPLE-CO-OPP-0005",
+      "account": "sample-co-acct-retail-b",
+      "owner": "retail-sales-b",
+      "accountable": "DERIVE_FROM_OWNER",
+      "scenario": "A",
+      "pipelineStage": "DISCOVERY"
+    },
+    {
+      "kind": "OPPORTUNITY",
+      "number": "SAMPLE-CO-OPP-0006",
+      "account": "sample-co-acct-retail-b",
+      "owner": "retail-sales-b",
+      "accountable": "office-manager",
+      "scenario": "A",
+      "pipelineStage": "PROPOSAL",
+      "$comment": "owner != accountable (Office Manager accountable)"
+    },
+    {
+      "kind": "SALES_AGREEMENT",
+      "number": "SYN-NP-SA-0001",
+      "account": "synthetic-np-acct-retail",
+      "opportunity": "SYN-NP-OPP-0001",
+      "owner": "retail-sales-a",
+      "accountable": "DERIVE_FROM_OWNER",
+      "scenario": "A"
+    },
+    {
+      "kind": "SALES_AGREEMENT",
+      "number": "SYN-NP-SA-0002",
+      "account": "synthetic-np-acct-national",
+      "opportunity": "SYN-NP-OPP-0003",
+      "owner": "national-accounts-sales",
+      "accountable": "general-manager",
+      "scenario": "B"
+    },
+    {
+      "kind": "SALES_AGREEMENT",
+      "number": "SAMPLE-CO-SA-0003",
+      "account": "sample-co-acct-retail-b",
+      "opportunity": "SAMPLE-CO-OPP-0005",
+      "owner": "retail-sales-b",
+      "accountable": "DERIVE_FROM_OWNER",
+      "scenario": "A"
+    },
+    {
+      "kind": "SALES_ORDER",
+      "number": "SYN-NP-SO-0001",
+      "account": "synthetic-np-acct-retail",
+      "opportunity": "SYN-NP-OPP-0001",
+      "agreement": "SYN-NP-SA-0001",
+      "owner": "retail-sales-a",
+      "accountable": "office-manager",
+      "scenario": "A"
+    },
+    {
+      "kind": "SALES_ORDER",
+      "number": "SYN-NP-SO-0002",
+      "account": "synthetic-np-acct-national",
+      "opportunity": "SYN-NP-OPP-0003",
+      "agreement": "SYN-NP-SA-0002",
+      "owner": "national-accounts-sales",
+      "accountable": "DERIVE_FROM_OWNER",
+      "scenario": "B"
+    },
+    {
+      "kind": "SALES_ORDER",
+      "number": "SAMPLE-CO-SO-0003",
+      "account": "sample-co-acct-retail-b",
+      "opportunity": "SAMPLE-CO-OPP-0005",
+      "agreement": "SAMPLE-CO-SA-0003",
+      "owner": "retail-sales-b",
+      "accountable": "general-manager",
+      "scenario": "A"
+    }
   ],
   "parts": {
-    "identityAuthority": "eos_ops.parts (migration 1759795200000) -- IDENTITY ONLY: id, tenant_id, created_by. There is no status, name, manufacturer, unit or control-type column on it, by design.",
-    "descriptiveAuthority": "BLOCKED. Part Master descriptive facts are Firestore-authoritative and the PostgreSQL catalog writer is INACTIVE (catalogWriterState.ts CATALOG_WRITER_AUTHORITY). Every descriptive field below is manifest metadata and is written NOWHERE.",
+    "status": "BLOCKED",
+    "blockedBy": "PARTS_POSTGRES_WRITER_INACTIVE",
+    "postgresAuthority": "eos_ops.parts (migration 1759795200000 for the identity, 1759881600000 for the descriptive authority) IS the canonical PostgreSQL Part Master table, with NOT NULL internal_part_number, name, status, stocking_unit, control_type, stocking_class and the rest.",
+    "governedWriter": "functions/src/catalogMaster/postgresPartMasterWriter.ts EXISTS and is DELIBERATELY INACTIVE: catalogWriterState.ts declares CATALOG_WRITER_AUTHORITY = { firestore: OPEN, postgres: INACTIVE }, and the table is populated only by the explicit catalog cutover (copy -> verify -> reconcile -> cut over).",
+    "$comment": "BECAUSE a governed writer exists and is switched off, a direct insert here is NOT available: the direct-insert policy applies only where NO governed writer exists. Writing descriptive Part rows around an inactive writer would make this seed a second catalog authority and would collide with the cutover that owns the table. The Part records below are therefore declared fixture metadata, referenced by the purchasing, supplier-catalog and cycle-count rows (none of which has a foreign key to eos_ops.parts -- migration 026 says so explicitly), and written NOWHERE.",
     "records": [
-      { "partId": "SC-PART-COMPRESSOR-01", "name": "SYNTHETIC Compressor Assembly (fixture)", "status": "ACTIVE", "controlType": "STANDARD", "trackingMode": "NONE", "stockingClass": "STOCK", "manufacturer": "SAMPLECO", "compatibleEquipmentModels": ["SAMPLECO--SC-100", "SAMPLECO--SC-200"], "stockPosture": "REORDER_NEEDED" },
-      { "partId": "SC-PART-FILTER-02", "name": "SYNTHETIC Intake Filter (fixture)", "status": "ACTIVE", "controlType": "STANDARD", "trackingMode": "NONE", "stockingClass": "STOCK", "manufacturer": "SAMPLECO", "compatibleEquipmentModels": ["SAMPLECO--SC-100"], "stockPosture": "ADEQUATE" },
-      { "partId": "SC-PART-SEAL-KIT-03", "name": "SYNTHETIC Seal Kit (fixture)", "status": "ACTIVE", "controlType": "STANDARD", "trackingMode": "NONE", "stockingClass": "KIT", "manufacturer": "FIXTUREWORKS", "compatibleEquipmentModels": ["FIXTUREWORKS--FW-50"], "stockPosture": "ADEQUATE" },
-      { "partId": "SC-PART-CTRL-BOARD-04", "name": "SYNTHETIC Controller Board (fixture)", "status": "ACTIVE", "controlType": "SERIALIZED", "trackingMode": "SERIAL", "stockingClass": "STOCK", "manufacturer": "SAMPLECO", "compatibleEquipmentModels": ["SAMPLECO--SC-100", "SAMPLECO--SC-200", "FIXTUREWORKS--FW-50"], "stockPosture": "ADEQUATE" },
-      { "partId": "SC-PART-LEGACY-05", "name": "SYNTHETIC Superseded Bracket (fixture)", "status": "INACTIVE", "controlType": "STANDARD", "trackingMode": "NONE", "stockingClass": "NON_STOCK", "manufacturer": "FIXTUREWORKS", "compatibleEquipmentModels": ["FIXTUREWORKS--FW-OLD"], "stockPosture": "EDGE_STATUS", "$comment": "The inactive/edge-status case. Its status lives only here; eos_ops.parts has no status column." },
-      { "partId": "SC-PART-BELT-06", "name": "SYNTHETIC Drive Belt (fixture)", "status": "ACTIVE", "controlType": "STANDARD", "trackingMode": "NONE", "stockingClass": "STOCK", "manufacturer": "SAMPLECO", "compatibleEquipmentModels": ["SAMPLECO--SC-200"], "stockPosture": "REORDER_NEEDED" }
+      {
+        "partId": "SC-PART-COMPRESSOR-01",
+        "name": "SYNTHETIC Compressor Assembly (fixture)",
+        "status": "ACTIVE",
+        "controlType": "STANDARD",
+        "trackingMode": "NONE",
+        "stockingClass": "STOCK",
+        "manufacturer": "SAMPLECO",
+        "compatibleEquipmentModels": [
+          "SAMPLECO--SC-100",
+          "SAMPLECO--SC-200"
+        ],
+        "stockPosture": "REORDER_NEEDED"
+      },
+      {
+        "partId": "SC-PART-FILTER-02",
+        "name": "SYNTHETIC Intake Filter (fixture)",
+        "status": "ACTIVE",
+        "controlType": "STANDARD",
+        "trackingMode": "NONE",
+        "stockingClass": "STOCK",
+        "manufacturer": "SAMPLECO",
+        "compatibleEquipmentModels": [
+          "SAMPLECO--SC-100"
+        ],
+        "stockPosture": "ADEQUATE"
+      },
+      {
+        "partId": "SC-PART-SEAL-KIT-03",
+        "name": "SYNTHETIC Seal Kit (fixture)",
+        "status": "ACTIVE",
+        "controlType": "STANDARD",
+        "trackingMode": "NONE",
+        "stockingClass": "KIT",
+        "manufacturer": "FIXTUREWORKS",
+        "compatibleEquipmentModels": [
+          "FIXTUREWORKS--FW-50"
+        ],
+        "stockPosture": "ADEQUATE"
+      },
+      {
+        "partId": "SC-PART-CTRL-BOARD-04",
+        "name": "SYNTHETIC Controller Board (fixture)",
+        "status": "ACTIVE",
+        "controlType": "SERIALIZED",
+        "trackingMode": "SERIAL",
+        "stockingClass": "STOCK",
+        "manufacturer": "SAMPLECO",
+        "compatibleEquipmentModels": [
+          "SAMPLECO--SC-100",
+          "SAMPLECO--SC-200",
+          "FIXTUREWORKS--FW-50"
+        ],
+        "stockPosture": "ADEQUATE"
+      },
+      {
+        "partId": "SC-PART-LEGACY-05",
+        "name": "SYNTHETIC Superseded Bracket (fixture)",
+        "status": "INACTIVE",
+        "controlType": "STANDARD",
+        "trackingMode": "NONE",
+        "stockingClass": "NON_STOCK",
+        "manufacturer": "FIXTUREWORKS",
+        "compatibleEquipmentModels": [
+          "FIXTUREWORKS--FW-OLD"
+        ],
+        "stockPosture": "EDGE_STATUS",
+        "$comment": "The inactive/edge-status case. Its status lives only here; eos_ops.parts has no status column."
+      },
+      {
+        "partId": "SC-PART-BELT-06",
+        "name": "SYNTHETIC Drive Belt (fixture)",
+        "status": "ACTIVE",
+        "controlType": "STANDARD",
+        "trackingMode": "NONE",
+        "stockingClass": "STOCK",
+        "manufacturer": "SAMPLECO",
+        "compatibleEquipmentModels": [
+          "SAMPLECO--SC-200"
+        ],
+        "stockPosture": "REORDER_NEEDED"
+      }
     ],
     "equipmentPartCompatibility": {
       "status": "BLOCKED",
@@ -759,33 +1933,155 @@
     }
   },
   "suppliers": [
-    { "supplierId": "SC-SUP-ACME", "name": "SYNTHETIC Acme Parts Supply (fixture)", "normalizedKey": "syntheticacmepartssupplyfixture", "status": "ACTIVE", "contactName": "SYNTHETIC Supplier Desk", "phone": "+1-555-0180", "email": "orders@sandbox.invalid", "address": "900 Example Supply Road, Sampleton ZZ 00000" },
-    { "supplierId": "SC-SUP-FIXTUREWORKS", "name": "SYNTHETIC FixtureWorks Distribution (fixture)", "normalizedKey": "syntheticfixtureworksdistributionfixture", "status": "ACTIVE", "contactName": "SYNTHETIC Distribution Desk", "phone": "+1-555-0181", "email": "dist@sandbox.invalid", "address": "950 Example Supply Road, Sampleton ZZ 00000" }
+    {
+      "supplierId": "SC-SUP-ACME",
+      "name": "SYNTHETIC Acme Parts Supply (fixture)",
+      "normalizedKey": "syntheticacmepartssupplyfixture",
+      "status": "ACTIVE",
+      "contactName": "SYNTHETIC Supplier Desk",
+      "phone": "+1-555-0180",
+      "email": "orders@sandbox.invalid",
+      "address": "900 Example Supply Road, Sampleton ZZ 00000"
+    },
+    {
+      "supplierId": "SC-SUP-FIXTUREWORKS",
+      "name": "SYNTHETIC FixtureWorks Distribution (fixture)",
+      "normalizedKey": "syntheticfixtureworksdistributionfixture",
+      "status": "ACTIVE",
+      "contactName": "SYNTHETIC Distribution Desk",
+      "phone": "+1-555-0181",
+      "email": "dist@sandbox.invalid",
+      "address": "950 Example Supply Road, Sampleton ZZ 00000"
+    }
   ],
   "supplierCatalogItems": [
-    { "partId": "SC-PART-COMPRESSOR-01", "supplierId": "SC-SUP-ACME", "supplierSku": "ACME-COMP-01", "cost": 48500, "currency": "USD", "leadTimeDays": 7, "minOrderQty": 1, "preferred": true },
-    { "partId": "SC-PART-FILTER-02", "supplierId": "SC-SUP-ACME", "supplierSku": "ACME-FILT-02", "cost": 1250, "currency": "USD", "leadTimeDays": 3, "minOrderQty": 10, "preferred": true },
-    { "partId": "SC-PART-SEAL-KIT-03", "supplierId": "SC-SUP-FIXTUREWORKS", "supplierSku": "FW-SEAL-03", "cost": 6400, "currency": "USD", "leadTimeDays": 5, "minOrderQty": 2, "preferred": true },
-    { "partId": "SC-PART-BELT-06", "supplierId": "SC-SUP-ACME", "supplierSku": "ACME-BELT-06", "cost": 2200, "currency": "USD", "leadTimeDays": 4, "minOrderQty": 5, "preferred": true }
+    {
+      "partId": "SC-PART-COMPRESSOR-01",
+      "supplierId": "SC-SUP-ACME",
+      "supplierSku": "ACME-COMP-01",
+      "cost": 48500,
+      "currency": "USD",
+      "leadTimeDays": 7,
+      "minOrderQty": 1,
+      "preferred": true
+    },
+    {
+      "partId": "SC-PART-FILTER-02",
+      "supplierId": "SC-SUP-ACME",
+      "supplierSku": "ACME-FILT-02",
+      "cost": 1250,
+      "currency": "USD",
+      "leadTimeDays": 3,
+      "minOrderQty": 10,
+      "preferred": true
+    },
+    {
+      "partId": "SC-PART-SEAL-KIT-03",
+      "supplierId": "SC-SUP-FIXTUREWORKS",
+      "supplierSku": "FW-SEAL-03",
+      "cost": 6400,
+      "currency": "USD",
+      "leadTimeDays": 5,
+      "minOrderQty": 2,
+      "preferred": true
+    },
+    {
+      "partId": "SC-PART-BELT-06",
+      "supplierId": "SC-SUP-ACME",
+      "supplierSku": "ACME-BELT-06",
+      "cost": 2200,
+      "currency": "USD",
+      "leadTimeDays": 4,
+      "minOrderQty": 5,
+      "preferred": true
+    }
   ],
   "warehouses": [
-    { "warehouseId": "SC-WH-MAIN", "name": "SYNTHETIC Sample Co Main Warehouse (fixture)", "siteLabel": "Sampleton Main", "status": "ACTIVE", "provenance": "NATIVE" },
-    { "warehouseId": "SC-WH-SERVICE", "name": "SYNTHETIC Sample Co Service Depot (fixture)", "siteLabel": "Sampleton Service", "status": "ACTIVE", "provenance": "NATIVE" }
+    {
+      "warehouseId": "SC-WH-MAIN",
+      "name": "SYNTHETIC Sample Co Main Warehouse (fixture)",
+      "siteLabel": "Sampleton Main",
+      "status": "ACTIVE",
+      "provenance": "NATIVE"
+    },
+    {
+      "warehouseId": "SC-WH-SERVICE",
+      "name": "SYNTHETIC Sample Co Service Depot (fixture)",
+      "siteLabel": "Sampleton Service",
+      "status": "ACTIVE",
+      "provenance": "NATIVE"
+    }
   ],
   "bins": [
-    { "warehouseId": "SC-WH-MAIN", "area": "A", "aisle": "01", "bay": 1, "position": 1, "name": "SYNTHETIC Main A-01-1-1 (fixture)", "idempotencyKey": "sample-co-v2-bin-main-a-01-1-1" },
-    { "warehouseId": "SC-WH-MAIN", "area": "A", "aisle": "01", "bay": 1, "position": 2, "name": "SYNTHETIC Main A-01-1-2 (fixture)", "idempotencyKey": "sample-co-v2-bin-main-a-01-1-2" },
-    { "warehouseId": "SC-WH-MAIN", "area": "B", "aisle": "02", "bay": 3, "position": 1, "name": "SYNTHETIC Main B-02-3-1 (fixture)", "idempotencyKey": "sample-co-v2-bin-main-b-02-3-1" },
-    { "warehouseId": "SC-WH-SERVICE", "area": "S", "aisle": "01", "bay": 1, "position": 1, "name": "SYNTHETIC Service S-01-1-1 (fixture)", "idempotencyKey": "sample-co-v2-bin-service-s-01-1-1" }
+    {
+      "warehouseId": "SC-WH-MAIN",
+      "area": "MAIN",
+      "aisle": "A",
+      "bay": 1,
+      "position": 1,
+      "name": "SYNTHETIC Main MAIN-A-1-1 (fixture)",
+      "idempotencyKey": "sample-co-v2-bin-main-a-1-1"
+    },
+    {
+      "warehouseId": "SC-WH-MAIN",
+      "area": "MAIN",
+      "aisle": "A",
+      "bay": 1,
+      "position": 2,
+      "name": "SYNTHETIC Main MAIN-A-1-2 (fixture)",
+      "idempotencyKey": "sample-co-v2-bin-main-a-1-2"
+    },
+    {
+      "warehouseId": "SC-WH-MAIN",
+      "area": "MAIN",
+      "aisle": "B",
+      "bay": 3,
+      "position": 1,
+      "name": "SYNTHETIC Main MAIN-B-3-1 (fixture)",
+      "idempotencyKey": "sample-co-v2-bin-main-b-3-1"
+    },
+    {
+      "warehouseId": "SC-WH-SERVICE",
+      "area": "SERVICE",
+      "aisle": "S",
+      "bay": 1,
+      "position": 1,
+      "name": "SYNTHETIC Service SERVICE-S-1-1 (fixture)",
+      "idempotencyKey": "sample-co-v2-bin-service-s-1-1"
+    }
   ],
   "trucks": {
     "mobileLocations": [
-      { "locationId": "SC-MOBILE-TRUCK-A", "displayLabel": "SYNTHETIC Truck A mobile stock (fixture)", "active": true },
-      { "locationId": "SC-MOBILE-TRUCK-B", "displayLabel": "SYNTHETIC Truck B mobile stock (fixture)", "active": true }
+      {
+        "locationId": "SC-MOBILE-TRUCK-A",
+        "displayLabel": "SYNTHETIC Truck A mobile stock (fixture)",
+        "active": true
+      },
+      {
+        "locationId": "SC-MOBILE-TRUCK-B",
+        "displayLabel": "SYNTHETIC Truck B mobile stock (fixture)",
+        "active": true
+      }
     ],
     "records": [
-      { "truckId": "SC-TRUCK-A", "vehicleNumber": "SC-101", "displayLabel": "SYNTHETIC Truck A (fixture)", "status": "ACTIVE", "homeWarehouseId": "SC-WH-SERVICE", "mobileLocationId": "SC-MOBILE-TRUCK-A", "desiredOperator": "service-technician-a" },
-      { "truckId": "SC-TRUCK-B", "vehicleNumber": "SC-102", "displayLabel": "SYNTHETIC Truck B (fixture)", "status": "ACTIVE", "homeWarehouseId": "SC-WH-SERVICE", "mobileLocationId": "SC-MOBILE-TRUCK-B", "desiredOperator": "service-technician-b" }
+      {
+        "truckId": "SC-TRUCK-A",
+        "vehicleNumber": "SC-101",
+        "displayLabel": "SYNTHETIC Truck A (fixture)",
+        "status": "ACTIVE",
+        "homeWarehouseId": "SC-WH-SERVICE",
+        "mobileLocationId": "SC-MOBILE-TRUCK-A",
+        "desiredOperator": "service-technician-a"
+      },
+      {
+        "truckId": "SC-TRUCK-B",
+        "vehicleNumber": "SC-102",
+        "displayLabel": "SYNTHETIC Truck B (fixture)",
+        "status": "ACTIVE",
+        "homeWarehouseId": "SC-WH-SERVICE",
+        "mobileLocationId": "SC-MOBILE-TRUCK-B",
+        "desiredOperator": "service-technician-b"
+      }
     ],
     "operatorLink": {
       "status": "BLOCKED",
@@ -795,7 +2091,9 @@
   },
   "inventory": {
     "balanceAuthority": "DERIVED. On-hand is a sum over eos_ops.inventory_movements; no stored balance exists anywhere (warehouseBinRepository.ts:45).",
-    "seedableMovementSources": ["CYCLE_COUNT_LINE"],
+    "seedableMovementSources": [
+      "CYCLE_COUNT_LINE"
+    ],
     "$comment": "The ONLY governed PostgreSQL writer of eos_ops.inventory_movements is cycleCountRepository.reconcileLine (functions/src/eosOps/cycleCountRepository.ts:325). Receiving does NOT post a movement in PostgreSQL. So every seeded on-hand quantity in this manifest arrives through an APPROVED cycle-count variance, which is an honest, governed, auditable adjustment -- not an invented opening balance.",
     "openingBalances": {
       "status": "BLOCKED",
@@ -813,9 +2111,40 @@
       "reorderRequestNumber": "RR-2026-000901",
       "raisedBy": "parts-associate",
       "progressTo": "RECEIVED",
-      "statusPath": ["PURCHASING_IN_PROGRESS", "ORDERED"],
-      "purchaseOrder": { "supplierName": "SYNTHETIC Acme Parts Supply (fixture)", "externalPoNumber": "SC-PO-000901", "orderedQuantity": 4, "orderedDate": "2026-09-01", "expectedArrivalDate": "2026-09-08", "unitPriceMinor": 48500, "currency": "USD", "recordedBy": "parts-manager" },
-      "receipt": { "receivingOrderNumber": "RCV-2026-000901", "idempotencyKey": "sample-co-v2-receipt-compressor-01", "sourceKind": "REORDER_PURCHASE_ORDER", "receivingLocation": { "type": "WAREHOUSE", "id": "SC-WH-MAIN" }, "status": "PUTAWAY_COMPLETE", "receivedBy": "parts-associate", "lines": [ { "lineId": "1", "partId": "SC-PART-COMPRESSOR-01", "trackingMode": "NONE", "expectedQuantity": 4, "receivedQuantity": 4 } ] }
+      "statusPath": [
+        "PURCHASING_IN_PROGRESS",
+        "ORDERED"
+      ],
+      "purchaseOrder": {
+        "supplierName": "SYNTHETIC Acme Parts Supply (fixture)",
+        "externalPoNumber": "SC-PO-000901",
+        "orderedQuantity": 4,
+        "orderedDate": "2026-09-01",
+        "expectedArrivalDate": "2026-09-08",
+        "unitPriceMinor": 48500,
+        "currency": "USD",
+        "recordedBy": "parts-manager"
+      },
+      "receipt": {
+        "receivingOrderNumber": "RO-2026-000901",
+        "idempotencyKey": "sample-co-v2-receipt-compressor-01",
+        "sourceKind": "REORDER_PURCHASE_ORDER",
+        "receivingLocation": {
+          "type": "WAREHOUSE",
+          "id": "SC-WH-MAIN"
+        },
+        "status": "PUTAWAY_COMPLETE",
+        "receivedBy": "parts-associate",
+        "lines": [
+          {
+            "lineId": "1",
+            "partId": "SC-PART-COMPRESSOR-01",
+            "trackingMode": "NONE",
+            "expectedQuantity": 4,
+            "receivedQuantity": 4
+          }
+        ]
+      }
     },
     {
       "key": "reorder-belt-voided",
@@ -826,9 +2155,25 @@
       "reorderRequestNumber": "RR-2026-000902",
       "raisedBy": "warehouse-manager",
       "progressTo": "VOIDED",
-      "statusPath": ["PURCHASING_IN_PROGRESS", "ORDERED", "VOIDED"],
-      "purchaseOrder": { "supplierName": "SYNTHETIC Acme Parts Supply (fixture)", "externalPoNumber": "SC-PO-000902", "orderedQuantity": 10, "orderedDate": "2026-09-02", "expectedArrivalDate": "2026-09-09", "unitPriceMinor": 2200, "currency": "USD", "recordedBy": "parts-manager" },
-      "void": { "reason": "SAMPLE COMPANY V2: supplier could not fulfil; order voided before receipt", "voidedBy": "parts-manager" },
+      "statusPath": [
+        "PURCHASING_IN_PROGRESS",
+        "ORDERED",
+        "VOIDED"
+      ],
+      "purchaseOrder": {
+        "supplierName": "SYNTHETIC Acme Parts Supply (fixture)",
+        "externalPoNumber": "SC-PO-000902",
+        "orderedQuantity": 10,
+        "orderedDate": "2026-09-02",
+        "expectedArrivalDate": "2026-09-09",
+        "unitPriceMinor": 2200,
+        "currency": "USD",
+        "recordedBy": "parts-manager"
+      },
+      "void": {
+        "reason": "SAMPLE COMPANY V2: supplier could not fulfil; order voided before receipt",
+        "voidedBy": "parts-manager"
+      },
       "$comment": "The void case. VOIDED is reachable only from ORDERED (purchasingRepository.ts PO_VOIDABLE_STATUS) and the purchase order document itself stays immutable -- the void is a separate purchase_order_voids row."
     }
   ],
@@ -839,26 +2184,79 @@
     {
       "key": "cc-clean",
       "outcome": "CLEAN",
-      "location": { "type": "WAREHOUSE", "id": "SC-WH-MAIN" },
+      "location": {
+        "type": "WAREHOUSE",
+        "id": "SC-WH-MAIN"
+      },
       "createdBy": "warehouse-associate",
-      "lines": [ { "partId": "SC-PART-FILTER-02", "trackingMode": "NONE", "expectedQuantity": 0, "countedQuantity": 0, "submittedBy": "warehouse-associate", "decision": "APPROVE", "reason": null, "expectVariance": 0, "expectMovement": false } ]
+      "lines": [
+        {
+          "partId": "SC-PART-FILTER-02",
+          "trackingMode": "NONE",
+          "expectedQuantity": 0,
+          "countedQuantity": 0,
+          "submittedBy": "warehouse-associate",
+          "decision": "APPROVE",
+          "reason": null,
+          "expectVariance": 0,
+          "expectMovement": false
+        }
+      ]
     },
     {
       "key": "cc-discrepancy-open",
       "outcome": "DISCREPANCY_AWAITING_REVIEW",
-      "location": { "type": "WAREHOUSE", "id": "SC-WH-MAIN" },
+      "location": {
+        "type": "WAREHOUSE",
+        "id": "SC-WH-MAIN"
+      },
       "createdBy": "warehouse-associate",
-      "lines": [ { "partId": "SC-PART-SEAL-KIT-03", "trackingMode": "NONE", "expectedQuantity": 0, "countedQuantity": 3, "submittedBy": "warehouse-associate", "decision": null, "reason": null, "expectVariance": 3, "expectMovement": false } ],
+      "lines": [
+        {
+          "partId": "SC-PART-SEAL-KIT-03",
+          "trackingMode": "NONE",
+          "expectedQuantity": 0,
+          "countedQuantity": 3,
+          "submittedBy": "warehouse-associate",
+          "decision": null,
+          "reason": null,
+          "expectVariance": 3,
+          "expectMovement": false
+        }
+      ],
       "$comment": "Submitted and deliberately NOT reconciled: the discrepancy case the Warehouse Manager still has to review."
     },
     {
       "key": "cc-discrepancy-reconciled",
       "outcome": "RECONCILED",
-      "location": { "type": "WAREHOUSE", "id": "SC-WH-MAIN" },
+      "location": {
+        "type": "WAREHOUSE",
+        "id": "SC-WH-MAIN"
+      },
       "createdBy": "warehouse-associate",
       "lines": [
-        { "partId": "SC-PART-COMPRESSOR-01", "trackingMode": "NONE", "expectedQuantity": 0, "countedQuantity": 4, "submittedBy": "warehouse-associate", "decision": "APPROVE", "reason": "SAMPLE COMPANY V2: physical count confirms the received purchase order quantity", "expectVariance": 4, "expectMovement": true },
-        { "partId": "SC-PART-BELT-06", "trackingMode": "NONE", "expectedQuantity": 0, "countedQuantity": 12, "submittedBy": "warehouse-associate", "decision": "APPROVE", "reason": "SAMPLE COMPANY V2: opening physical stock established by count", "expectVariance": 12, "expectMovement": true }
+        {
+          "partId": "SC-PART-COMPRESSOR-01",
+          "trackingMode": "NONE",
+          "expectedQuantity": 0,
+          "countedQuantity": 4,
+          "submittedBy": "warehouse-associate",
+          "decision": "APPROVE",
+          "reason": "SAMPLE COMPANY V2: physical count confirms the received purchase order quantity",
+          "expectVariance": 4,
+          "expectMovement": true
+        },
+        {
+          "partId": "SC-PART-BELT-06",
+          "trackingMode": "NONE",
+          "expectedQuantity": 0,
+          "countedQuantity": 12,
+          "submittedBy": "warehouse-associate",
+          "decision": "APPROVE",
+          "reason": "SAMPLE COMPANY V2: opening physical stock established by count",
+          "expectVariance": 12,
+          "expectMovement": true
+        }
       ],
       "reconciledBy": "warehouse-manager",
       "$comment": "SEPARATION OF DUTIES is real here: the Warehouse Associate submits and the Warehouse Manager reconciles. cycleCountRepository refuses a non-zero variance reconciled by its own submitter."
@@ -869,9 +2267,47 @@
     "blockedBy": "WORK_ORDER_POSTGRES_AUTHORITY_ABSENT",
     "$comment": "There is NO work order table in functions/migrations -- Work Orders remain Firestore-authoritative. This seed creates no Firestore document and declares no new Firebase business authority, so the whole Scenario D chain (service need -> Work Order -> technician work -> parts usage -> completion) is recorded here as desired state and written nowhere.",
     "desired": [
-      { "key": "wo-retail-freezer", "account": "synthetic-np-acct-retail", "location": "synthetic-np-loc-retail", "equipment": "sample-co-eq-retail-freezer-1", "complaint": "SYNTHETIC: freezer not holding temperature (fixture)", "desiredAssignee": "service-technician-a", "partsUsed": [{ "partId": "SC-PART-COMPRESSOR-01", "quantity": 1 }], "completion": "COMPLETED" },
-      { "key": "wo-national-grill", "account": "synthetic-np-acct-national", "location": "sample-co-loc-national-north", "equipment": "sample-co-eq-national-grill-north", "complaint": "SYNTHETIC: grill thermostat drift (fixture)", "desiredAssignee": "service-technician-b", "partsUsed": [{ "partId": "SC-PART-SEAL-KIT-03", "quantity": 1 }], "completion": "IN_PROGRESS" },
-      { "key": "wo-retail-b-fryer", "account": "sample-co-acct-retail-b", "location": "sample-co-loc-retail-b", "equipment": "sample-co-eq-retail-b-fryer", "complaint": "SYNTHETIC: contract call-out, fryer element (fixture)", "desiredAssignee": "contract-technician", "partsUsed": [], "completion": "SCHEDULED", "$comment": "Scenario G: legitimate CONTRACTOR work, distinct from ACTIVE employee work." }
+      {
+        "key": "wo-retail-freezer",
+        "account": "synthetic-np-acct-retail",
+        "location": "synthetic-np-loc-retail",
+        "equipment": "sample-co-eq-retail-freezer-1",
+        "complaint": "SYNTHETIC: freezer not holding temperature (fixture)",
+        "desiredAssignee": "service-technician-a",
+        "partsUsed": [
+          {
+            "partId": "SC-PART-COMPRESSOR-01",
+            "quantity": 1
+          }
+        ],
+        "completion": "COMPLETED"
+      },
+      {
+        "key": "wo-national-grill",
+        "account": "synthetic-np-acct-national",
+        "location": "sample-co-loc-national-north",
+        "equipment": "sample-co-eq-national-grill-north",
+        "complaint": "SYNTHETIC: grill thermostat drift (fixture)",
+        "desiredAssignee": "service-technician-b",
+        "partsUsed": [
+          {
+            "partId": "SC-PART-SEAL-KIT-03",
+            "quantity": 1
+          }
+        ],
+        "completion": "IN_PROGRESS"
+      },
+      {
+        "key": "wo-retail-b-fryer",
+        "account": "sample-co-acct-retail-b",
+        "location": "sample-co-loc-retail-b",
+        "equipment": "sample-co-eq-retail-b-fryer",
+        "complaint": "SYNTHETIC: contract call-out, fryer element (fixture)",
+        "desiredAssignee": "contract-technician",
+        "partsUsed": [],
+        "completion": "SCHEDULED",
+        "$comment": "Scenario G: legitimate CONTRACTOR work, distinct from ACTIVE employee work."
+      }
     ],
     "assignment": {
       "status": "BLOCKED",
@@ -891,8 +2327,26 @@
     "existingFixtureAuthority": "functions/scripts/fixtures/inboundWorkFixtures.mjs (reused verbatim as the shape authority; nothing here re-declares its schema) and functions/scripts/seedSandboxInboundWork.mjs (the existing Firestore seeder, deliberately NOT invoked by this orchestrator)",
     "$comment": "Inbound Work is Firestore-authoritative; there is no eos_* table for it. NO real mailbox and NO real email address appears here. The connection to the sample Account / Location is declared and asserted as BLOCKED.",
     "desired": [
-      { "key": "inbound-retail-freezer", "channel": "EMAIL", "fromAddress": "retail.primary@sandbox.invalid", "subject": "SYNTHETIC: freezer not holding temperature (fixture)", "account": "synthetic-np-acct-retail", "location": "synthetic-np-loc-retail", "equipment": "sample-co-eq-retail-freezer-1", "disposition": "ACCEPT_AS_NEW_WORK" },
-      { "key": "inbound-national-grill", "channel": "EMAIL", "fromAddress": "national.regional@sandbox.invalid", "subject": "SYNTHETIC: grill thermostat drift (fixture)", "account": "synthetic-np-acct-national", "location": "sample-co-loc-national-north", "equipment": "sample-co-eq-national-grill-north", "disposition": "ATTACH_TO_EXISTING" }
+      {
+        "key": "inbound-retail-freezer",
+        "channel": "EMAIL",
+        "fromAddress": "retail.primary@sandbox.invalid",
+        "subject": "SYNTHETIC: freezer not holding temperature (fixture)",
+        "account": "synthetic-np-acct-retail",
+        "location": "synthetic-np-loc-retail",
+        "equipment": "sample-co-eq-retail-freezer-1",
+        "disposition": "ACCEPT_AS_NEW_WORK"
+      },
+      {
+        "key": "inbound-national-grill",
+        "channel": "EMAIL",
+        "fromAddress": "national.regional@sandbox.invalid",
+        "subject": "SYNTHETIC: grill thermostat drift (fixture)",
+        "account": "synthetic-np-acct-national",
+        "location": "sample-co-loc-national-north",
+        "equipment": "sample-co-eq-national-grill-north",
+        "disposition": "ATTACH_TO_EXISTING"
+      }
     ]
   },
   "reportingFixtures": {
@@ -900,16 +2354,45 @@
     "coverageGap": "REPORTING_SAMPLE_COVERAGE",
     "$comment": "NOTHING here manufactures a report number. Reporting coverage is stated as which questions the seeded records make answerable, and which stay unanswerable and why.",
     "testableFromSeededRecords": [
-      { "object": "customer", "question": "Which Accounts exist, who owns each, and what is each one's status?", "backedBy": "eos_crm.accounts + owner_employee_id" },
-      { "object": "contact", "question": "Who are the Contacts per Account, and which is primary?", "backedBy": "eos_crm.contacts" },
-      { "object": "location", "question": "Which sites does each Account have and where are they?", "backedBy": "eos_crm.account_locations" },
-      { "object": "employee", "question": "Who works here, in what lifecycle status, reporting to whom?", "backedBy": "eos_workforce.employees + employee_reporting_relationships" },
-      { "object": "opportunity", "question": "What is in the pipeline, who owns it and who is accountable for it?", "backedBy": "eos_commercial.opportunities owner_employee_id + accountable_employee_id" }
+      {
+        "object": "customer",
+        "question": "Which Accounts exist, who owns each, and what is each one's status?",
+        "backedBy": "eos_crm.accounts + owner_employee_id"
+      },
+      {
+        "object": "contact",
+        "question": "Who are the Contacts per Account, and which is primary?",
+        "backedBy": "eos_crm.contacts"
+      },
+      {
+        "object": "location",
+        "question": "Which sites does each Account have and where are they?",
+        "backedBy": "eos_crm.account_locations"
+      },
+      {
+        "object": "employee",
+        "question": "Who works here, in what lifecycle status, reporting to whom?",
+        "backedBy": "eos_workforce.employees + employee_reporting_relationships"
+      },
+      {
+        "object": "opportunity",
+        "question": "What is in the pipeline, who owns it and who is accountable for it?",
+        "backedBy": "eos_commercial.opportunities owner_employee_id + accountable_employee_id"
+      }
     ],
     "notTestable": [
-      { "object": "equipment", "reason": "No installed Equipment can be seeded -- EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT." },
-      { "object": "workOrder", "reason": "No PostgreSQL Work Order authority -- WORK_ORDER_POSTGRES_AUTHORITY_ABSENT." },
-      { "object": "reportDefinition", "reason": "Saved report definitions are Firestore-authoritative (functions/src/reporting/savedDefinitionCommands.ts); this seed writes no Firestore." }
+      {
+        "object": "equipment",
+        "reason": "No installed Equipment can be seeded -- EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT."
+      },
+      {
+        "object": "workOrder",
+        "reason": "No PostgreSQL Work Order authority -- WORK_ORDER_POSTGRES_AUTHORITY_ABSENT."
+      },
+      {
+        "object": "reportDefinition",
+        "reason": "Saved report definitions are Firestore-authoritative (functions/src/reporting/savedDefinitionCommands.ts); this seed writes no Firestore."
+      }
     ]
   },
   "financialFixtures": {
@@ -924,161 +2407,753 @@
       "id": "A",
       "name": "RETAIL SALES LIFECYCLE",
       "narrative": "Retail Sales A owns Retail Account A, its primary Contact and its main Location, and carries an Opportunity through an Agreement to a Sales Order. Retail Sales B runs a separate Account at a different pipeline stage.",
-      "personas": ["retail-sales-a", "retail-sales-b", "general-manager", "office-manager"],
-      "objects": ["synthetic-np-acct-retail", "sample-co-acct-retail-b", "synthetic-np-contact-retail", "synthetic-np-loc-retail", "SYN-NP-OPP-0001", "SYN-NP-OPP-0002", "SAMPLE-CO-OPP-0005", "SAMPLE-CO-OPP-0006", "SYN-NP-SA-0001", "SAMPLE-CO-SA-0003", "SYN-NP-SO-0001", "SAMPLE-CO-SO-0003"],
-      "ownerEqualsAccountable": ["SYN-NP-OPP-0001", "SYN-NP-SA-0001", "SAMPLE-CO-OPP-0005", "SAMPLE-CO-SA-0003"],
-      "ownerDiffersFromAccountable": ["SYN-NP-OPP-0002", "SAMPLE-CO-OPP-0006", "SYN-NP-SO-0001", "SAMPLE-CO-SO-0003"],
+      "personas": [
+        "retail-sales-a",
+        "retail-sales-b",
+        "general-manager",
+        "office-manager"
+      ],
+      "objects": [
+        "synthetic-np-acct-retail",
+        "sample-co-acct-retail-b",
+        "synthetic-np-contact-retail",
+        "synthetic-np-loc-retail",
+        "SYN-NP-OPP-0001",
+        "SYN-NP-OPP-0002",
+        "SAMPLE-CO-OPP-0005",
+        "SAMPLE-CO-OPP-0006",
+        "SYN-NP-SA-0001",
+        "SAMPLE-CO-SA-0003",
+        "SYN-NP-SO-0001",
+        "SAMPLE-CO-SO-0003"
+      ],
+      "ownerEqualsAccountable": [
+        "SYN-NP-OPP-0001",
+        "SYN-NP-SA-0001",
+        "SAMPLE-CO-OPP-0005",
+        "SAMPLE-CO-SA-0003"
+      ],
+      "ownerDiffersFromAccountable": [
+        "SYN-NP-OPP-0002",
+        "SAMPLE-CO-OPP-0006",
+        "SYN-NP-SO-0001",
+        "SAMPLE-CO-SO-0003"
+      ],
       "status": "COVERED"
     },
     {
       "id": "B",
       "name": "NATIONAL ACCOUNTS",
       "narrative": "National Accounts Sales owns a National Account with three Contacts and three Locations, and carries it to an Agreement and a Sales Order. Distinct from retail by Job Role, Account segment and record set.",
-      "personas": ["national-accounts-sales", "general-manager"],
-      "objects": ["synthetic-np-acct-national", "synthetic-np-contact-national", "sample-co-contact-national-regional", "sample-co-contact-national-ap", "synthetic-np-loc-national", "sample-co-loc-national-north", "sample-co-loc-national-south", "SYN-NP-OPP-0003", "SYN-NP-OPP-0004", "SYN-NP-SA-0002", "SYN-NP-SO-0002"],
+      "personas": [
+        "national-accounts-sales",
+        "general-manager"
+      ],
+      "objects": [
+        "synthetic-np-acct-national",
+        "synthetic-np-contact-national",
+        "sample-co-contact-national-regional",
+        "sample-co-contact-national-ap",
+        "synthetic-np-loc-national",
+        "sample-co-loc-national-north",
+        "sample-co-loc-national-south",
+        "SYN-NP-OPP-0003",
+        "SYN-NP-OPP-0004",
+        "SYN-NP-SA-0002",
+        "SYN-NP-SO-0002"
+      ],
       "status": "COVERED"
     },
     {
       "id": "C",
       "name": "CUSTOMER + EQUIPMENT",
       "narrative": "Account -> Location -> installed Equipment -> Equipment Model.",
-      "personas": ["service-manager", "office-manager"],
+      "personas": [
+        "service-manager",
+        "office-manager"
+      ],
       "status": "PARTIAL",
-      "covered": ["Account", "Location", "Equipment Model"],
-      "blocked": ["Equipment (installed)"],
-      "blockedBy": ["EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT"]
+      "covered": [
+        "Account",
+        "Location",
+        "Equipment Model"
+      ],
+      "blocked": [
+        "Equipment (installed)"
+      ],
+      "blockedBy": [
+        "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT"
+      ]
     },
     {
       "id": "D",
       "name": "SERVICE",
       "narrative": "Customer -> Location -> Equipment -> service need -> inbound work -> Work Order -> technician work -> parts usage -> completion.",
-      "personas": ["dispatcher", "service-manager", "service-technician-a", "service-technician-b", "contract-technician"],
+      "personas": [
+        "dispatcher",
+        "service-manager",
+        "service-technician-a",
+        "service-technician-b",
+        "contract-technician"
+      ],
       "status": "BLOCKED",
-      "blockedBy": ["WORK_ORDER_POSTGRES_AUTHORITY_ABSENT", "INBOUND_WORK_POSTGRES_AUTHORITY_ABSENT", "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT", "EMPLOYEE_ASSIGNEE_PROJECTION"],
+      "blockedBy": [
+        "WORK_ORDER_POSTGRES_AUTHORITY_ABSENT",
+        "INBOUND_WORK_POSTGRES_AUTHORITY_ABSENT",
+        "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT",
+        "EMPLOYEE_ASSIGNEE_PROJECTION"
+      ],
       "completesAutomaticallyWhen": "A governed PostgreSQL Work Order authority exists AND EMP-RT-05 lands the governed Employee assignment authority. The desired chain is fully specified in `service.desired` so no new decision is needed then."
     },
     {
       "id": "E",
       "name": "PARTS / INVENTORY / PURCHASING",
       "narrative": "Part -> supplier -> warehouse -> bin -> reorder need -> Parts Manager -> purchase order -> receipt. Parts Manager records purchase orders and voids one; the Parts Associate raises the request and books the receipt.",
-      "personas": ["parts-manager", "parts-associate", "warehouse-manager"],
-      "objects": ["SC-PART-COMPRESSOR-01", "SC-PART-BELT-06", "SC-SUP-ACME", "SC-WH-MAIN", "RR-2026-000901", "RR-2026-000902", "SC-PO-000901", "SC-PO-000902", "RCV-2026-000901"],
+      "personas": [
+        "parts-manager",
+        "parts-associate",
+        "warehouse-manager"
+      ],
+      "objects": [
+        "SC-PART-COMPRESSOR-01",
+        "SC-PART-BELT-06",
+        "SC-SUP-ACME",
+        "SC-WH-MAIN",
+        "RR-2026-000901",
+        "RR-2026-000902",
+        "SC-PO-000901",
+        "SC-PO-000902",
+        "RO-2026-000901"
+      ],
       "status": "PARTIAL",
-      "blocked": ["receipt -> on-hand increase"],
-      "blockedBy": ["INVENTORY_RECEIPT_MOVEMENT_BLOCKED", "PARTS_DESCRIPTIVE_AUTHORITY_INACTIVE"]
+      "blocked": [
+        "receipt -> on-hand increase"
+      ],
+      "blockedBy": [
+        "INVENTORY_RECEIPT_MOVEMENT_BLOCKED",
+        "PARTS_POSTGRES_WRITER_INACTIVE"
+      ]
     },
     {
       "id": "F",
       "name": "WAREHOUSE / CYCLE COUNT",
       "narrative": "Warehouse -> bins -> cycle count -> discrepancy -> reconciliation, with a genuine separation of duties between the counting Warehouse Associate and the reconciling Warehouse Manager. The approved variances are the ONLY governed on-hand movements this seed creates.",
-      "personas": ["warehouse-manager", "warehouse-associate"],
-      "objects": ["SC-WH-MAIN", "SC-WH-SERVICE", "cc-clean", "cc-discrepancy-open", "cc-discrepancy-reconciled"],
+      "personas": [
+        "warehouse-manager",
+        "warehouse-associate"
+      ],
+      "objects": [
+        "SC-WH-MAIN",
+        "SC-WH-SERVICE",
+        "cc-clean",
+        "cc-discrepancy-open",
+        "cc-discrepancy-reconciled"
+      ],
       "status": "COVERED",
-      "blocked": ["inventory transfers between warehouses"],
-      "blockedBy": ["TRANSFER_ORDER_SEED_NOT_ATTEMPTED"]
+      "blocked": [
+        "inventory transfers between warehouses"
+      ],
+      "blockedBy": [
+        "TRANSFER_ORDER_SEED_NOT_ATTEMPTED"
+      ]
     },
     {
       "id": "G",
       "name": "EMPLOYEE LIFECYCLE",
       "narrative": "Technician On Leave is ON_LEAVE with a preserved reporting relationship and NO user access and no new current work. Contract Technician is CONTRACTOR, holds legitimate contractor work in the desired service chain, and is accountability-ELIGIBLE under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1 exactly as an ACTIVE employee is -- which is what makes CONTRACTOR distinct from ON_LEAVE rather than merely differently labelled.",
-      "personas": ["technician-on-leave", "contract-technician", "records-clerk"],
+      "personas": [
+        "technician-on-leave",
+        "contract-technician",
+        "records-clerk"
+      ],
       "status": "COVERED"
     },
     {
       "id": "H",
       "name": "MANAGEMENT",
       "narrative": "Managed Employees is non-vacuous at every level: Owner manages 1, General Manager manages 6, Service Manager manages 5, Parts Manager manages 2, Warehouse Manager manages 1, Office Manager manages 1. The General Manager is additionally the Accountable Person on three commercial records they do not own.",
-      "personas": ["owner-executive", "general-manager", "service-manager", "parts-manager", "warehouse-manager", "office-manager"],
-      "expectedDirectReportCounts": { "owner-executive": 1, "general-manager": 6, "service-manager": 5, "parts-manager": 2, "warehouse-manager": 1, "office-manager": 1 },
+      "personas": [
+        "owner-executive",
+        "general-manager",
+        "service-manager",
+        "parts-manager",
+        "warehouse-manager",
+        "office-manager"
+      ],
+      "expectedDirectReportCounts": {
+        "owner-executive": 1,
+        "general-manager": 6,
+        "service-manager": 5,
+        "parts-manager": 2,
+        "warehouse-manager": 1,
+        "office-manager": 1
+      },
       "status": "COVERED"
     }
   ],
   "dashboardCoverage": [
-    { "persona": "owner-executive", "testableQuestions": ["How many Employees, by lifecycle status?", "Who reports to whom, firm-wide?", "How many Accounts and who owns each?", "What is the whole commercial pipeline and who is accountable for each record?"], "notTestable": ["Revenue / margin (FINANCIAL_SAMPLE_COVERAGE)", "Service throughput (WORK_ORDER_POSTGRES_AUTHORITY_ABSENT)"] },
-    { "persona": "general-manager", "testableQuestions": ["Which department heads report to me?", "Which commercial records am I accountable for but do not own?", "Which Accounts are owned by which salesperson?"], "notTestable": ["Invoiced vs collected (FINANCIAL_SAMPLE_COVERAGE)"] },
-    { "persona": "retail-sales-a", "testableQuestions": ["Which Accounts, Contacts and Locations do I own?", "What is in my pipeline and at what stage?", "Which of my records is somebody else accountable for?"], "notTestable": ["Quota attainment (FINANCIAL_SAMPLE_COVERAGE)"] },
-    { "persona": "national-accounts-sales", "testableQuestions": ["Which national Account do I own and how many sites does it have?", "Which Contacts cover which site?"], "notTestable": ["Multi-site contract value (FINANCIAL_SAMPLE_COVERAGE)"] },
-    { "persona": "service-manager", "testableQuestions": ["Who are my technicians and what is each one's lifecycle status?", "Which technician is on leave and therefore unavailable?"], "notTestable": ["Open Work Orders, technician utilisation, first-time fix (WORK_ORDER_POSTGRES_AUTHORITY_ABSENT)"] },
-    { "persona": "service-technician-a", "testableQuestions": ["Who is my manager?", "What is my own Employee profile?"], "notTestable": ["My assigned Work Orders (WORK_ORDER_POSTGRES_AUTHORITY_ABSENT + EMPLOYEE_ASSIGNEE_PROJECTION)", "My truck stock (EMPLOYEE_TECHNICIAN_LINK_BLOCKED)"] },
-    { "persona": "parts-manager", "testableQuestions": ["What is in the reorder queue?", "Which purchase orders are outstanding, received or voided?", "Which supplier is preferred for a part?"], "notTestable": ["Stock value (PARTS_DESCRIPTIVE_AUTHORITY_INACTIVE + FINANCIAL_SAMPLE_COVERAGE)"] },
-    { "persona": "warehouse-manager", "testableQuestions": ["Which cycle counts are awaiting my review?", "Which variances did I approve and what movement did each post?", "What is the derived on-hand per part per location?"], "notTestable": ["Receipt-driven on-hand (INVENTORY_RECEIPT_MOVEMENT_BLOCKED)"] }
+    {
+      "persona": "owner-executive",
+      "testableQuestions": [
+        "How many Employees, by lifecycle status?",
+        "Who reports to whom, firm-wide?",
+        "How many Accounts and who owns each?",
+        "What is the whole commercial pipeline and who is accountable for each record?"
+      ],
+      "notTestable": [
+        "Revenue / margin (FINANCIAL_SAMPLE_COVERAGE)",
+        "Service throughput (WORK_ORDER_POSTGRES_AUTHORITY_ABSENT)"
+      ]
+    },
+    {
+      "persona": "general-manager",
+      "testableQuestions": [
+        "Which department heads report to me?",
+        "Which commercial records am I accountable for but do not own?",
+        "Which Accounts are owned by which salesperson?"
+      ],
+      "notTestable": [
+        "Invoiced vs collected (FINANCIAL_SAMPLE_COVERAGE)"
+      ]
+    },
+    {
+      "persona": "retail-sales-a",
+      "testableQuestions": [
+        "Which Accounts, Contacts and Locations do I own?",
+        "What is in my pipeline and at what stage?",
+        "Which of my records is somebody else accountable for?"
+      ],
+      "notTestable": [
+        "Quota attainment (FINANCIAL_SAMPLE_COVERAGE)"
+      ]
+    },
+    {
+      "persona": "national-accounts-sales",
+      "testableQuestions": [
+        "Which national Account do I own and how many sites does it have?",
+        "Which Contacts cover which site?"
+      ],
+      "notTestable": [
+        "Multi-site contract value (FINANCIAL_SAMPLE_COVERAGE)"
+      ]
+    },
+    {
+      "persona": "service-manager",
+      "testableQuestions": [
+        "Who are my technicians and what is each one's lifecycle status?",
+        "Which technician is on leave and therefore unavailable?"
+      ],
+      "notTestable": [
+        "Open Work Orders, technician utilisation, first-time fix (WORK_ORDER_POSTGRES_AUTHORITY_ABSENT)"
+      ]
+    },
+    {
+      "persona": "service-technician-a",
+      "testableQuestions": [
+        "Who is my manager?",
+        "What is my own Employee profile?"
+      ],
+      "notTestable": [
+        "My assigned Work Orders (WORK_ORDER_POSTGRES_AUTHORITY_ABSENT + EMPLOYEE_ASSIGNEE_PROJECTION)",
+        "My truck stock (EMPLOYEE_TECHNICIAN_LINK_BLOCKED)"
+      ]
+    },
+    {
+      "persona": "parts-manager",
+      "testableQuestions": [
+        "What is in the reorder queue?",
+        "Which purchase orders are outstanding, received or voided?",
+        "Which supplier is preferred for a part?"
+      ],
+      "notTestable": [
+        "Stock value (PARTS_POSTGRES_WRITER_INACTIVE + FINANCIAL_SAMPLE_COVERAGE)"
+      ]
+    },
+    {
+      "persona": "warehouse-manager",
+      "testableQuestions": [
+        "Which cycle counts are awaiting my review?",
+        "Which variances did I approve and what movement did each post?",
+        "What is the derived on-hand per part per location?"
+      ],
+      "notTestable": [
+        "Receipt-driven on-hand (INVENTORY_RECEIPT_MOVEMENT_BLOCKED)"
+      ]
+    }
   ],
   "relationshipAssertions": [
-    { "subject": "employee:retail-sales-a", "predicate": "OWNS", "object": "account:synthetic-np-acct-retail", "authority": "eos_crm.accounts.owner_employee_id" },
-    { "subject": "employee:national-accounts-sales", "predicate": "OWNS", "object": "account:synthetic-np-acct-national", "authority": "eos_crm.accounts.owner_employee_id" },
-    { "subject": "employee:retail-sales-b", "predicate": "OWNS", "object": "account:sample-co-acct-retail-b", "authority": "eos_crm.accounts.owner_employee_id" },
-    { "subject": "account:synthetic-np-acct-retail", "predicate": "HAS_CONTACT", "object": "contact:synthetic-np-contact-retail", "authority": "eos_crm.contacts.account_id" },
-    { "subject": "account:synthetic-np-acct-retail", "predicate": "HAS_CONTACT", "object": "contact:sample-co-contact-retail-secondary", "authority": "eos_crm.contacts.account_id" },
-    { "subject": "account:synthetic-np-acct-national", "predicate": "HAS_CONTACT", "object": "contact:synthetic-np-contact-national", "authority": "eos_crm.contacts.account_id" },
-    { "subject": "account:synthetic-np-acct-national", "predicate": "HAS_CONTACT", "object": "contact:sample-co-contact-national-regional", "authority": "eos_crm.contacts.account_id" },
-    { "subject": "account:synthetic-np-acct-national", "predicate": "HAS_CONTACT", "object": "contact:sample-co-contact-national-ap", "authority": "eos_crm.contacts.account_id" },
-    { "subject": "account:sample-co-acct-retail-b", "predicate": "HAS_CONTACT", "object": "contact:sample-co-contact-retail-b", "authority": "eos_crm.contacts.account_id" },
-    { "subject": "account:synthetic-np-acct-retail", "predicate": "HAS_LOCATION", "object": "location:synthetic-np-loc-retail", "authority": "eos_crm.account_locations.account_id" },
-    { "subject": "account:synthetic-np-acct-national", "predicate": "HAS_LOCATION", "object": "location:synthetic-np-loc-national", "authority": "eos_crm.account_locations.account_id" },
-    { "subject": "account:synthetic-np-acct-national", "predicate": "HAS_LOCATION", "object": "location:sample-co-loc-national-north", "authority": "eos_crm.account_locations.account_id" },
-    { "subject": "account:synthetic-np-acct-national", "predicate": "HAS_LOCATION", "object": "location:sample-co-loc-national-south", "authority": "eos_crm.account_locations.account_id" },
-    { "subject": "account:sample-co-acct-retail-b", "predicate": "HAS_LOCATION", "object": "location:sample-co-loc-retail-b", "authority": "eos_crm.account_locations.account_id" },
-    { "subject": "contact:synthetic-np-contact-retail", "predicate": "INHERITS_OWNER_FROM", "object": "account:synthetic-np-acct-retail", "authority": "eos_crm.contacts.owner_employee_id (inherited in the create transaction)" },
-    { "subject": "opportunity:SYN-NP-OPP-0001", "predicate": "FOR_ACCOUNT", "object": "account:synthetic-np-acct-retail", "authority": "eos_commercial.opportunities.account_id" },
-    { "subject": "employee:retail-sales-a", "predicate": "OWNS", "object": "opportunity:SYN-NP-OPP-0001", "authority": "eos_commercial.opportunities.owner_employee_id" },
-    { "subject": "employee:retail-sales-a", "predicate": "ACCOUNTABLE_FOR", "object": "opportunity:SYN-NP-OPP-0001", "authority": "eos_commercial.opportunities.accountable_employee_id (governed establishment + mint)" },
-    { "subject": "employee:general-manager", "predicate": "ACCOUNTABLE_FOR", "object": "opportunity:SYN-NP-OPP-0002", "authority": "eos_commercial.opportunities.accountable_employee_id (governed establishment + mint)" },
-    { "subject": "employee:retail-sales-b", "predicate": "OWNS", "object": "opportunity:SYN-NP-OPP-0002", "authority": "eos_commercial.opportunities.owner_employee_id", "$comment": "The owner != accountable proof, in one triple pair." },
-    { "subject": "employee:office-manager", "predicate": "ACCOUNTABLE_FOR", "object": "salesOrder:SYN-NP-SO-0001", "authority": "eos_commercial.sales_orders.accountable_employee_id" },
-    { "subject": "employee:general-manager", "predicate": "ACCOUNTABLE_FOR", "object": "salesOrder:SAMPLE-CO-SO-0003", "authority": "eos_commercial.sales_orders.accountable_employee_id" },
-    { "subject": "salesAgreement:SYN-NP-SA-0001", "predicate": "FROM_OPPORTUNITY", "object": "opportunity:SYN-NP-OPP-0001", "authority": "eos_commercial.sales_agreements.opportunity_id" },
-    { "subject": "salesOrder:SYN-NP-SO-0001", "predicate": "FROM_AGREEMENT", "object": "salesAgreement:SYN-NP-SA-0001", "authority": "eos_commercial.sales_orders.sales_agreement_id" },
-    { "subject": "employee:general-manager", "predicate": "REPORTS_TO", "object": "employee:owner-executive", "authority": "eos_workforce.employee_reporting_relationships" },
-    { "subject": "employee:service-technician-a", "predicate": "REPORTS_TO", "object": "employee:service-manager", "authority": "eos_workforce.employee_reporting_relationships" },
-    { "subject": "employee:warehouse-associate", "predicate": "REPORTS_TO", "object": "employee:warehouse-manager", "authority": "eos_workforce.employee_reporting_relationships" },
-    { "subject": "principal:synthetic-np-principal-retail-sales", "predicate": "LINKED_TO_EMPLOYEE", "object": "employee:retail-sales-a", "authority": "eos_policy.employee_principal_links" },
-    { "subject": "principal:synthetic-np-principal-retail-sales", "predicate": "HOLDS_SECURITY_ROLE", "object": "role:salesperson", "authority": "eos_policy.user_role_assignments" },
-    { "subject": "bin:SC-WH-MAIN/A-01-1-1", "predicate": "IN_WAREHOUSE", "object": "warehouse:SC-WH-MAIN", "authority": "eos_ops.bins.warehouse_id" },
-    { "subject": "truck:SC-TRUCK-A", "predicate": "HOMED_AT", "object": "warehouse:SC-WH-SERVICE", "authority": "eos_ops.trucks.home_warehouse_id" },
-    { "subject": "truck:SC-TRUCK-A", "predicate": "STOCKS_AT", "object": "mobileLocation:SC-MOBILE-TRUCK-A", "authority": "eos_ops.trucks.mobile_location_id" },
-    { "subject": "supplierCatalogItem:SC-SUP-ACME/SC-PART-COMPRESSOR-01", "predicate": "SUPPLIES_PART", "object": "part:SC-PART-COMPRESSOR-01", "authority": "eos_ops.supplier_catalog_items.part_id" },
-    { "subject": "reorderRequest:RR-2026-000901", "predicate": "FOR_PART", "object": "part:SC-PART-COMPRESSOR-01", "authority": "eos_ops.reorder_requests.part_id" },
-    { "subject": "reorderRequest:RR-2026-000901", "predicate": "AT_WAREHOUSE", "object": "warehouse:SC-WH-MAIN", "authority": "eos_ops.reorder_requests.warehouse_id" },
-    { "subject": "purchaseOrder:RR-2026-000901", "predicate": "FULFILS", "object": "reorderRequest:RR-2026-000901", "authority": "eos_ops.purchase_orders.id (the purchase order id IS the reorder request id in the legacy chain)" },
-    { "subject": "receivingOrder:RCV-2026-000901", "predicate": "RECEIVES", "object": "purchaseOrder:RR-2026-000901", "authority": "eos_ops.receiving_orders.source_purchase_order_id" },
-    { "subject": "cycleCountLine:cc-discrepancy-reconciled/SC-PART-COMPRESSOR-01", "predicate": "COUNTS_PART", "object": "part:SC-PART-COMPRESSOR-01", "authority": "eos_ops.cycle_count_lines.part_id" },
-    { "subject": "inventoryMovement:cc-discrepancy-reconciled/SC-PART-COMPRESSOR-01", "predicate": "ADJUSTS_ON_HAND_AT", "object": "warehouse:SC-WH-MAIN", "authority": "eos_ops.inventory_movements (source_kind CYCLE_COUNT_LINE)" }
+    {
+      "subject": "employee:retail-sales-a",
+      "predicate": "OWNS",
+      "object": "account:synthetic-np-acct-retail",
+      "authority": "eos_crm.accounts.owner_employee_id"
+    },
+    {
+      "subject": "employee:national-accounts-sales",
+      "predicate": "OWNS",
+      "object": "account:synthetic-np-acct-national",
+      "authority": "eos_crm.accounts.owner_employee_id"
+    },
+    {
+      "subject": "employee:retail-sales-b",
+      "predicate": "OWNS",
+      "object": "account:sample-co-acct-retail-b",
+      "authority": "eos_crm.accounts.owner_employee_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-retail",
+      "predicate": "HAS_CONTACT",
+      "object": "contact:synthetic-np-contact-retail",
+      "authority": "eos_crm.contacts.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-retail",
+      "predicate": "HAS_CONTACT",
+      "object": "contact:sample-co-contact-retail-secondary",
+      "authority": "eos_crm.contacts.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-national",
+      "predicate": "HAS_CONTACT",
+      "object": "contact:synthetic-np-contact-national",
+      "authority": "eos_crm.contacts.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-national",
+      "predicate": "HAS_CONTACT",
+      "object": "contact:sample-co-contact-national-regional",
+      "authority": "eos_crm.contacts.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-national",
+      "predicate": "HAS_CONTACT",
+      "object": "contact:sample-co-contact-national-ap",
+      "authority": "eos_crm.contacts.account_id"
+    },
+    {
+      "subject": "account:sample-co-acct-retail-b",
+      "predicate": "HAS_CONTACT",
+      "object": "contact:sample-co-contact-retail-b",
+      "authority": "eos_crm.contacts.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-retail",
+      "predicate": "HAS_LOCATION",
+      "object": "location:synthetic-np-loc-retail",
+      "authority": "eos_crm.account_locations.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-national",
+      "predicate": "HAS_LOCATION",
+      "object": "location:synthetic-np-loc-national",
+      "authority": "eos_crm.account_locations.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-national",
+      "predicate": "HAS_LOCATION",
+      "object": "location:sample-co-loc-national-north",
+      "authority": "eos_crm.account_locations.account_id"
+    },
+    {
+      "subject": "account:synthetic-np-acct-national",
+      "predicate": "HAS_LOCATION",
+      "object": "location:sample-co-loc-national-south",
+      "authority": "eos_crm.account_locations.account_id"
+    },
+    {
+      "subject": "account:sample-co-acct-retail-b",
+      "predicate": "HAS_LOCATION",
+      "object": "location:sample-co-loc-retail-b",
+      "authority": "eos_crm.account_locations.account_id"
+    },
+    {
+      "subject": "contact:synthetic-np-contact-retail",
+      "predicate": "INHERITS_OWNER_FROM",
+      "object": "account:synthetic-np-acct-retail",
+      "authority": "eos_crm.contacts.owner_employee_id (inherited in the create transaction)"
+    },
+    {
+      "subject": "opportunity:SYN-NP-OPP-0001",
+      "predicate": "FOR_ACCOUNT",
+      "object": "account:synthetic-np-acct-retail",
+      "authority": "eos_commercial.opportunities.account_id"
+    },
+    {
+      "subject": "employee:retail-sales-a",
+      "predicate": "OWNS",
+      "object": "opportunity:SYN-NP-OPP-0001",
+      "authority": "eos_commercial.opportunities.owner_employee_id"
+    },
+    {
+      "subject": "employee:retail-sales-a",
+      "predicate": "ACCOUNTABLE_FOR",
+      "object": "opportunity:SYN-NP-OPP-0001",
+      "authority": "eos_commercial.opportunities.accountable_employee_id (governed establishment + mint)"
+    },
+    {
+      "subject": "employee:general-manager",
+      "predicate": "ACCOUNTABLE_FOR",
+      "object": "opportunity:SYN-NP-OPP-0002",
+      "authority": "eos_commercial.opportunities.accountable_employee_id (governed establishment + mint)"
+    },
+    {
+      "subject": "employee:retail-sales-b",
+      "predicate": "OWNS",
+      "object": "opportunity:SYN-NP-OPP-0002",
+      "authority": "eos_commercial.opportunities.owner_employee_id",
+      "$comment": "The owner != accountable proof, in one triple pair."
+    },
+    {
+      "subject": "employee:office-manager",
+      "predicate": "ACCOUNTABLE_FOR",
+      "object": "salesOrder:SYN-NP-SO-0001",
+      "authority": "eos_commercial.sales_orders.accountable_employee_id"
+    },
+    {
+      "subject": "employee:general-manager",
+      "predicate": "ACCOUNTABLE_FOR",
+      "object": "salesOrder:SAMPLE-CO-SO-0003",
+      "authority": "eos_commercial.sales_orders.accountable_employee_id"
+    },
+    {
+      "subject": "salesAgreement:SYN-NP-SA-0001",
+      "predicate": "FROM_OPPORTUNITY",
+      "object": "opportunity:SYN-NP-OPP-0001",
+      "authority": "eos_commercial.sales_agreements.opportunity_id"
+    },
+    {
+      "subject": "salesOrder:SYN-NP-SO-0001",
+      "predicate": "FROM_AGREEMENT",
+      "object": "salesAgreement:SYN-NP-SA-0001",
+      "authority": "eos_commercial.sales_orders.sales_agreement_id"
+    },
+    {
+      "subject": "employee:general-manager",
+      "predicate": "REPORTS_TO",
+      "object": "employee:owner-executive",
+      "authority": "eos_workforce.employee_reporting_relationships"
+    },
+    {
+      "subject": "employee:service-technician-a",
+      "predicate": "REPORTS_TO",
+      "object": "employee:service-manager",
+      "authority": "eos_workforce.employee_reporting_relationships"
+    },
+    {
+      "subject": "employee:warehouse-associate",
+      "predicate": "REPORTS_TO",
+      "object": "employee:warehouse-manager",
+      "authority": "eos_workforce.employee_reporting_relationships"
+    },
+    {
+      "subject": "principal:synthetic-np-principal-retail-sales",
+      "predicate": "LINKED_TO_EMPLOYEE",
+      "object": "employee:retail-sales-a",
+      "authority": "eos_policy.employee_principal_links"
+    },
+    {
+      "subject": "principal:synthetic-np-principal-retail-sales",
+      "predicate": "HOLDS_SECURITY_ROLE",
+      "object": "role:salesperson",
+      "authority": "eos_policy.user_role_assignments"
+    },
+    {
+      "subject": "bin:SC-WH-MAIN/MAIN-A-1-1",
+      "predicate": "IN_WAREHOUSE",
+      "object": "warehouse:SC-WH-MAIN",
+      "authority": "eos_ops.bins.warehouse_id"
+    },
+    {
+      "subject": "truck:SC-TRUCK-A",
+      "predicate": "HOMED_AT",
+      "object": "warehouse:SC-WH-SERVICE",
+      "authority": "eos_ops.trucks.home_warehouse_id"
+    },
+    {
+      "subject": "truck:SC-TRUCK-A",
+      "predicate": "STOCKS_AT",
+      "object": "mobileLocation:SC-MOBILE-TRUCK-A",
+      "authority": "eos_ops.trucks.mobile_location_id"
+    },
+    {
+      "subject": "supplierCatalogItem:SC-SUP-ACME/SC-PART-COMPRESSOR-01",
+      "predicate": "SUPPLIES_PART",
+      "object": "part:SC-PART-COMPRESSOR-01",
+      "authority": "eos_ops.supplier_catalog_items.part_id"
+    },
+    {
+      "subject": "reorderRequest:RR-2026-000901",
+      "predicate": "FOR_PART",
+      "object": "part:SC-PART-COMPRESSOR-01",
+      "authority": "eos_ops.reorder_requests.part_id"
+    },
+    {
+      "subject": "reorderRequest:RR-2026-000901",
+      "predicate": "AT_WAREHOUSE",
+      "object": "warehouse:SC-WH-MAIN",
+      "authority": "eos_ops.reorder_requests.warehouse_id"
+    },
+    {
+      "subject": "purchaseOrder:RR-2026-000901",
+      "predicate": "FULFILS",
+      "object": "reorderRequest:RR-2026-000901",
+      "authority": "eos_ops.purchase_orders.id (the purchase order id IS the reorder request id in the legacy chain)"
+    },
+    {
+      "subject": "receivingOrder:RO-2026-000901",
+      "predicate": "RECEIVES",
+      "object": "purchaseOrder:RR-2026-000901",
+      "authority": "eos_ops.receiving_orders.source_purchase_order_id"
+    },
+    {
+      "subject": "cycleCountLine:cc-discrepancy-reconciled/SC-PART-COMPRESSOR-01",
+      "predicate": "COUNTS_PART",
+      "object": "part:SC-PART-COMPRESSOR-01",
+      "authority": "eos_ops.cycle_count_lines.part_id"
+    },
+    {
+      "subject": "inventoryMovement:cc-discrepancy-reconciled/SC-PART-COMPRESSOR-01",
+      "predicate": "ADJUSTS_ON_HAND_AT",
+      "object": "warehouse:SC-WH-MAIN",
+      "authority": "eos_ops.inventory_movements (source_kind CYCLE_COUNT_LINE)"
+    }
   ],
   "blockedRelationships": [
-    { "code": "WORK_ORDER_POSTGRES_AUTHORITY_ABSENT", "desired": "workOrder SERVICES equipment / AT location / FOR account", "missingAuthority": "No work order table exists in functions/migrations/*.sql. Work Orders remain Firestore-authoritative and no new Firebase business authority may be created.", "domains": ["service", "workOrders"] },
-    { "code": "EMPLOYEE_ASSIGNEE_PROJECTION", "desired": "employee ASSIGNED_TO workOrder", "missingAuthority": "No governed PostgreSQL Employee assignment authority in any domain. Tracked as EMP-RT-05. NO Employee assignment field is written by this seed anywhere.", "domains": ["service", "workOrders"] },
-    { "code": "INBOUND_WORK_POSTGRES_AUTHORITY_ABSENT", "desired": "inboundWork ORIGINATES account / location / equipment", "missingAuthority": "Inbound Work has no eos_* table; it is Firestore-authoritative (functions/src/inboundWork/**, scripts/seedSandboxInboundWork.mjs).", "domains": ["inboundWork"] },
-    { "code": "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT", "desired": "equipment INSTALLED_AT location / OF_MODEL equipmentModel", "missingAuthority": "installSerializedUnitAsEquipment (eosOps/equipmentCustody.ts:294) MOVES an existing AVAILABLE eos_ops.serialized_custody unit; nothing in functions/src INSERTs a serialized_custody row. Serialized acquisition is still a Firestore path.", "domains": ["equipment"] },
-    { "code": "EQUIPMENT_PART_COMPATIBILITY_POSTGRES_AUTHORITY_ABSENT", "desired": "part COMPATIBLE_WITH equipmentModel", "missingAuthority": "equipment_part_compatibility is a Firestore collection (functions/src/equipmentCompatibility/**); no PostgreSQL table exists.", "domains": ["parts", "equipmentModels"] },
-    { "code": "PARTS_DESCRIPTIVE_AUTHORITY_INACTIVE", "desired": "part HAS_NAME / HAS_STATUS / HAS_MANUFACTURER / HAS_CONTROL_TYPE", "missingAuthority": "eos_ops.parts is IDENTITY ONLY (migration 1759795200000). The PostgreSQL catalog writer that would carry descriptive facts is INACTIVE per catalogWriterState.ts CATALOG_WRITER_AUTHORITY = { firestore: OPEN, postgres: INACTIVE }, and this seed respects that committed writer state.", "domains": ["parts"] },
-    { "code": "INVENTORY_RECEIPT_MOVEMENT_BLOCKED", "desired": "receivingOrder INCREASES on-hand of part AT warehouse", "missingAuthority": "createReceivingOrder (eosOps/purchasingRepository.ts:539) writes receiving_orders + receiving_order_lines ONLY. The sole governed PostgreSQL writer of eos_ops.inventory_movements is cycleCountRepository.reconcileLine. Posting a receipt movement here would make this seed a second inventory authority.", "domains": ["inventory", "receiving"] },
-    { "code": "INVENTORY_OPENING_BALANCE_POSTGRES_WRITER_ABSENT", "desired": "warehouse HAS_OPENING_ON_HAND part", "missingAuthority": "Same finding as above, stated for the opening-balance case. Opening stock in this seed is established through an APPROVED cycle-count variance instead, which is governed and auditable.", "domains": ["inventory"] },
-    { "code": "EMPLOYEE_TECHNICIAN_LINK_BLOCKED", "desired": "employee OPERATES truck", "missingAuthority": "eos_ops.trucks (migration 1758326400000) has no employee or technician column, and no governed PostgreSQL Employee<->Technician relationship exists. Trucks and their mobile inventory locations are seeded independently; the person relationship is not invented.", "domains": ["trucks"] },
-    { "code": "COMMERCIAL_LINE_CATALOG_AUTHORITY_UNAVAILABLE", "desired": "opportunity/salesOrder HAS_LINE part / equipmentModel", "missingAuthority": "commercialCommandKernel.ts:110-116 refuses CATALOG_AUTHORITY_UNAVAILABLE for any PART / EQUIPMENT_MODEL line reference because no PostgreSQL CommercialCatalogAuthority is composed anywhere in functions/src. Commercial records are therefore seeded as headers with owner + accountable person and no lines.", "domains": ["commercial"] },
-    { "code": "FINANCIAL_SAMPLE_COVERAGE", "desired": "salesOrder BILLED_BY invoice; invoice SETTLED_BY payment", "missingAuthority": "Consequence of COMMERCIAL_LINE_CATALOG_AUTHORITY_UNAVAILABLE: an invoice without the priced lines it bills would be a manufactured number. The invoice and cash-application writers exist and are ready.", "domains": ["financials"] },
-    { "code": "REPORTING_SAMPLE_COVERAGE", "desired": "reportDefinition OVER equipment / workOrder objects", "missingAuthority": "Saved report definitions are Firestore-authoritative; the equipment and workOrder report objects have no seedable rows behind them here.", "domains": ["reporting"] },
-    { "code": "USER_ACCESS_DISABLED_STATE_NOT_SEEDABLE", "desired": "employee HAS_DISABLED_USER_ACCESS", "missingAuthority": "functions/src/adminPolicy/policyCommands.ts exposes createRole / assignRole / revokeRole and no principal-disable command. A DISABLED user-access state therefore cannot be established by a governed writer, so no persona in this manifest declares it; the two no-access personas declare NONE, which IS seedable (by seeding no Principal at all).", "domains": ["identityAccess"] },
-    { "code": "JOB_ROLE_POSTGRES_AUTHORITY_ABSENT", "desired": "employee HAS_JOB_ROLE jobRole", "missingAuthority": "EMP-RT-08. eos_workforce.employees has no job role column (migrations 1759104000000 + 1759838400000). Job Role stays manifest metadata and is written nowhere.", "domains": ["workforce"] },
-    { "code": "SANDBOX_PERSONA_PROVISIONING_GAP", "desired": "credential AUTHENTICATES_AS principal FOR employee", "missingAuthority": "The seeded Principals use identity provider `eos-synthetic-nonprod`, which no verifier recognizes. A signing-in persona needs a Firebase Auth account plus a `firebase`-provider Principal and its own Employee link. scripts/activateSandboxPersonas.js only sets a password on an ALREADY EXISTING @sandbox.invalid account and reports CREDENTIAL_ACCESS_FAILED for a missing one; scripts/provisionEmployeeAccess.js creates passwordless accounts. No safe existing path provisions a missing persona account from this workstream, and this seed opens no Firebase connection.", "domains": ["identityAccess", "sandboxCredentials"] },
-    { "code": "TRANSFER_ORDER_SEED_NOT_ATTEMPTED", "desired": "transferOrder MOVES part FROM warehouse TO warehouse", "missingAuthority": "createTransferOrder (eosOps/purchasingRepository.ts:721) exists and is governed, but a transfer that changes on-hand needs the movement writer that INVENTORY_RECEIPT_MOVEMENT_BLOCKED records as absent. A transfer order with no balance effect would misrepresent the scenario, so it is declared and not seeded.", "domains": ["inventory", "warehouse"] }
+    {
+      "code": "WORK_ORDER_POSTGRES_AUTHORITY_ABSENT",
+      "desired": "workOrder SERVICES equipment / AT location / FOR account",
+      "missingAuthority": "No work order table exists in functions/migrations/*.sql. Work Orders remain Firestore-authoritative and no new Firebase business authority may be created.",
+      "domains": [
+        "service",
+        "workOrders"
+      ]
+    },
+    {
+      "code": "EMPLOYEE_ASSIGNEE_PROJECTION",
+      "desired": "employee ASSIGNED_TO workOrder",
+      "missingAuthority": "No governed PostgreSQL Employee assignment authority in any domain. Tracked as EMP-RT-05. NO Employee assignment field is written by this seed anywhere.",
+      "domains": [
+        "service",
+        "workOrders"
+      ]
+    },
+    {
+      "code": "INBOUND_WORK_POSTGRES_AUTHORITY_ABSENT",
+      "desired": "inboundWork ORIGINATES account / location / equipment",
+      "missingAuthority": "Inbound Work has no eos_* table; it is Firestore-authoritative (functions/src/inboundWork/**, scripts/seedSandboxInboundWork.mjs).",
+      "domains": [
+        "inboundWork"
+      ]
+    },
+    {
+      "code": "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT",
+      "desired": "equipment INSTALLED_AT location / OF_MODEL equipmentModel",
+      "missingAuthority": "installSerializedUnitAsEquipment (eosOps/equipmentCustody.ts:294) MOVES an existing AVAILABLE eos_ops.serialized_custody unit; nothing in functions/src INSERTs a serialized_custody row. Serialized acquisition is still a Firestore path.",
+      "domains": [
+        "equipment"
+      ]
+    },
+    {
+      "code": "EQUIPMENT_PART_COMPATIBILITY_POSTGRES_AUTHORITY_ABSENT",
+      "desired": "part COMPATIBLE_WITH equipmentModel",
+      "missingAuthority": "equipment_part_compatibility is a Firestore collection (functions/src/equipmentCompatibility/**); no PostgreSQL table exists.",
+      "domains": [
+        "parts",
+        "equipmentModels"
+      ]
+    },
+    {
+      "code": "INVENTORY_RECEIPT_MOVEMENT_BLOCKED",
+      "desired": "receivingOrder INCREASES on-hand of part AT warehouse",
+      "missingAuthority": "createReceivingOrder (eosOps/purchasingRepository.ts:539) writes receiving_orders + receiving_order_lines ONLY. The sole governed PostgreSQL writer of eos_ops.inventory_movements is cycleCountRepository.reconcileLine. Posting a receipt movement here would make this seed a second inventory authority.",
+      "domains": [
+        "inventory",
+        "receiving"
+      ]
+    },
+    {
+      "code": "INVENTORY_OPENING_BALANCE_POSTGRES_WRITER_ABSENT",
+      "desired": "warehouse HAS_OPENING_ON_HAND part",
+      "missingAuthority": "Same finding as above, stated for the opening-balance case. Opening stock in this seed is established through an APPROVED cycle-count variance instead, which is governed and auditable.",
+      "domains": [
+        "inventory"
+      ]
+    },
+    {
+      "code": "EMPLOYEE_TECHNICIAN_LINK_BLOCKED",
+      "desired": "employee OPERATES truck",
+      "missingAuthority": "eos_ops.trucks (migration 1758326400000) has no employee or technician column, and no governed PostgreSQL Employee<->Technician relationship exists. Trucks and their mobile inventory locations are seeded independently; the person relationship is not invented.",
+      "domains": [
+        "trucks"
+      ]
+    },
+    {
+      "code": "COMMERCIAL_LINE_CATALOG_AUTHORITY_UNAVAILABLE",
+      "desired": "opportunity/salesOrder HAS_LINE part / equipmentModel",
+      "missingAuthority": "commercialCommandKernel.ts:110-116 refuses CATALOG_AUTHORITY_UNAVAILABLE for any PART / EQUIPMENT_MODEL line reference because no PostgreSQL CommercialCatalogAuthority is composed anywhere in functions/src. Commercial records are therefore seeded as headers with owner + accountable person and no lines.",
+      "domains": [
+        "commercial"
+      ]
+    },
+    {
+      "code": "FINANCIAL_SAMPLE_COVERAGE",
+      "desired": "salesOrder BILLED_BY invoice; invoice SETTLED_BY payment",
+      "missingAuthority": "Consequence of COMMERCIAL_LINE_CATALOG_AUTHORITY_UNAVAILABLE: an invoice without the priced lines it bills would be a manufactured number. The invoice and cash-application writers exist and are ready.",
+      "domains": [
+        "financials"
+      ]
+    },
+    {
+      "code": "REPORTING_SAMPLE_COVERAGE",
+      "desired": "reportDefinition OVER equipment / workOrder objects",
+      "missingAuthority": "Saved report definitions are Firestore-authoritative; the equipment and workOrder report objects have no seedable rows behind them here.",
+      "domains": [
+        "reporting"
+      ]
+    },
+    {
+      "code": "USER_ACCESS_DISABLED_STATE_NOT_SEEDABLE",
+      "desired": "employee HAS_DISABLED_USER_ACCESS",
+      "missingAuthority": "functions/src/adminPolicy/policyCommands.ts exposes createRole / assignRole / revokeRole and no principal-disable command. A DISABLED user-access state therefore cannot be established by a governed writer, so no persona in this manifest declares it; the two no-access personas declare NONE, which IS seedable (by seeding no Principal at all).",
+      "domains": [
+        "identityAccess"
+      ]
+    },
+    {
+      "code": "JOB_ROLE_POSTGRES_AUTHORITY_ABSENT",
+      "desired": "employee HAS_JOB_ROLE jobRole",
+      "missingAuthority": "EMP-RT-08. eos_workforce.employees has no job role column (migrations 1759104000000 + 1759838400000). Job Role stays manifest metadata and is written nowhere.",
+      "domains": [
+        "workforce"
+      ]
+    },
+    {
+      "code": "SANDBOX_PERSONA_PROVISIONING_GAP",
+      "desired": "credential AUTHENTICATES_AS principal FOR employee",
+      "missingAuthority": "The seeded Principals use identity provider `eos-synthetic-nonprod`, which no verifier recognizes. A signing-in persona needs a Firebase Auth account plus a `firebase`-provider Principal and its own Employee link. scripts/activateSandboxPersonas.js only sets a password on an ALREADY EXISTING @sandbox.invalid account and reports CREDENTIAL_ACCESS_FAILED for a missing one; scripts/provisionEmployeeAccess.js creates passwordless accounts. No safe existing path provisions a missing persona account from this workstream, and this seed opens no Firebase connection.",
+      "domains": [
+        "identityAccess",
+        "sandboxCredentials"
+      ]
+    },
+    {
+      "code": "TRANSFER_ORDER_SEED_NOT_ATTEMPTED",
+      "desired": "transferOrder MOVES part FROM warehouse TO warehouse",
+      "missingAuthority": "createTransferOrder (eosOps/purchasingRepository.ts:721) exists and is governed, but a transfer that changes on-hand needs the movement writer that INVENTORY_RECEIPT_MOVEMENT_BLOCKED records as absent. A transfer order with no balance effect would misrepresent the scenario, so it is declared and not seeded.",
+      "domains": [
+        "inventory",
+        "warehouse"
+      ]
+    },
+    {
+      "code": "CAPABILITY_VOCABULARY_PARTIAL",
+      "desired": "persona HOLDS capability (for every capability the Role catalog declares)",
+      "missingAuthority": "eos_policy.capabilities is registered by migration and currently holds 37 keys, while functions/src/access/permissionCatalog.ts declares several hundred. Ids such as workOrder.create, workOrder.transition, inventory.balance.read, inventory.catalog.read, audit.event.read, finance.*, reorder.* and warehouse.transferOrder.read have NO PostgreSQL capability row, so no grant can exist for them and no verifier can resolve them. The sample company's access contract is expressed strictly in the registered vocabulary rather than asserting capabilities the authority cannot represent.",
+      "domains": [
+        "identityAccess"
+      ]
+    },
+    {
+      "code": "CAPABILITY_GRANTED_BY_NO_ROLE",
+      "desired": "some Role HOLDS workOrder.lifecycle.dispatch / .complete / .cancel, inventory.cycleCount.close, inventory.workOrderConsumption.record",
+      "missingAuthority": "These five ids ARE registered in eos_policy.capabilities but no Role in compatibilityRoles.ts or governedBusinessRoles.ts declares them, so the Role-catalog derivation grants them to nobody. They are asserted as FORBIDDEN where a persona might otherwise be assumed to hold them, which is why the Owner/Executive contract forbids workOrder.lifecycle.dispatch.",
+      "domains": [
+        "identityAccess",
+        "service"
+      ]
+    },
+    {
+      "code": "SERVICE_MANAGER_WORK_ORDER_LIFECYCLE_NOT_IN_POSTGRES_VOCABULARY",
+      "desired": "service manager HOLDS workOrder.create / workOrder.transition / workOrder.cancel",
+      "missingAuthority": "The fieldManager Role declares the legacy workOrder.create / .transition / .cancel ids, none of which is registered in eos_policy.capabilities; the registered ids are workOrder.lifecycle.dispatch / .complete / .cancel, which no Role declares. The two halves have not met, so the Service Manager's work-order authority cannot be proved in PostgreSQL.",
+      "domains": [
+        "identityAccess",
+        "service"
+      ]
+    },
+    {
+      "code": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY",
+      "desired": "technician HOLDS at least one governed capability",
+      "missingAuthority": "The `technician` compatibility Role's eight permissions (workOrder.transition and seven reorder.* ids) are ALL outside the registered PostgreSQL capability vocabulary, so a technician resolves to an EMPTY effective capability set. Their contract therefore declares no required capability and proves the denials only. This is reported rather than papered over with a capability they do not hold.",
+      "domains": [
+        "identityAccess",
+        "service"
+      ]
+    },
+    {
+      "code": "PURCHASING_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY",
+      "desired": "parts manager HOLDS reorder.request.* / reorder.purchaseOrder.*",
+      "missingAuthority": "No reorder.* id is registered in eos_policy.capabilities. The purchasing RECORDS are seeded through the governed eos_ops purchasing repository, but the purchasing CAPABILITIES cannot be granted or resolved.",
+      "domains": [
+        "identityAccess",
+        "purchasing"
+      ]
+    },
+    {
+      "code": "WAREHOUSE_TRANSFER_AND_BIN_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY",
+      "desired": "warehouse manager HOLDS inventory.location.bin.manage / warehouse.transferOrder.read",
+      "missingAuthority": "inventory.location.bin.manage, inventory.location.bin.read, inventory.balance.read and warehouse.transferOrder.read are declared by Roles but are not registered in eos_policy.capabilities. The bins themselves are seeded through the governed warehouse/bin repository; the capabilities cannot be proved.",
+      "domains": [
+        "identityAccess",
+        "warehouse"
+      ]
+    },
+    {
+      "code": "NATIONAL_ACCOUNTS_SALES_HAS_NO_DISTINCT_SECURITY_ROLE",
+      "desired": "national accounts sales HOLDS a Security Role distinct from retail sales",
+      "missingAuthority": "The governed Role catalog has one `salesperson` Role. Retail Sales and National Accounts Sales are separate JOB Roles and are distinguished by Job Role, Account segment and record ownership -- never by Security Role. NO new Role is created to close this; it is reported as an ACCESS_MODEL_GAP with the persona, the desired access and the available Roles.",
+      "domains": [
+        "identityAccess"
+      ]
+    },
+    {
+      "code": "PARTS_ASSOCIATE_REORDER_EXECUTION_ONLY_VIA_TECHNICIAN_COMPATIBILITY_ROLE",
+      "desired": "parts associate HOLDS reorder.request.startPurchasing / .recordPurchaseOrder / .markReceived",
+      "missingAuthority": "Those ids live on the `technician` compatibility Role under an operationalRoleActive(PARTS_ASSOCIATE) CONDITION, and role_capabilities carries no condition. Assigning `technician` to a Parts Associate to obtain them would grant them unconditionally -- exactly the defect R-32 removed from that Role. The sample company assigns partsAssociate + inventoryReceivingClerk instead and reports the gap.",
+      "domains": [
+        "identityAccess",
+        "purchasing"
+      ]
+    },
+    {
+      "code": "PARTS_POSTGRES_WRITER_INACTIVE",
+      "desired": "part EXISTS in the PostgreSQL catalog with its name, status, control type and manufacturer",
+      "missingAuthority": "eos_ops.parts is the canonical PostgreSQL Part Master table and functions/src/catalogMaster/postgresPartMasterWriter.ts is its governed writer -- but catalogWriterState.ts CATALOG_WRITER_AUTHORITY declares postgres: INACTIVE, Firestore is still OPEN, and the table is filled only by the explicit catalog cutover. A governed writer that exists and is switched off is not an absent writer, so the direct-insert policy does not apply and this seed writes no Part row at all. The purchasing, supplier-catalog and cycle-count rows carry the declared part ids as unjoined governed keys (no foreign key references eos_ops.parts), so the operational chain still connects.",
+      "domains": [
+        "parts"
+      ]
+    }
   ],
   "directInserts": [
     {
       "table": "eos_workforce.employees",
       "why": "NO governed Employee writer exists in the repository. Migration 1759104000000 built the Employee AUTHORITY, not a write path, and functions/src/access/employeeProfileCommands.ts is the FIRESTORE profile command. This is the same finding, and the same disposition, that functions/scripts/seedSyntheticNonprodWorkforce.js already records and that Owner ruling 2026-09-14 accepted.",
-      "fields": ["id", "tenant_id", "employment_status", "operating_company_id", "employee_number", "display_name", "first_name", "middle_name", "last_name", "preferred_name", "job_title", "work_email", "work_phone", "mobile_phone", "address_street", "address_unit", "address_city", "address_state", "address_postal_code", "hire_date", "separation_date"],
+      "fields": [
+        "id",
+        "tenant_id",
+        "employment_status",
+        "operating_company_id",
+        "employee_number",
+        "display_name",
+        "first_name",
+        "middle_name",
+        "last_name",
+        "preferred_name",
+        "job_title",
+        "work_email",
+        "work_phone",
+        "mobile_phone",
+        "address_street",
+        "address_unit",
+        "address_city",
+        "address_state",
+        "address_postal_code",
+        "hire_date",
+        "separation_date"
+      ],
       "driftProtection": "INSERT ... ON CONFLICT DO NOTHING, then a full column-by-column comparison against the manifest. Any difference is FIXTURE_DRIFT and the run refuses. Profile columns are filled ADDITIVELY and only where the stored value IS NULL, so a v1-seeded Employee gains its profile without any value ever being overwritten.",
       "productionFence": "The whole script refuses before `pg` is resolved unless the registry --environment is non-production by role AND by project id, EOS_ENVIRONMENT reads exactly `nonprod`, the environment is exactly `platform-sandbox`, and the Certification world is refused by id. Proved by subprocess in functions/test/operatorScriptEnvironmentFence.test.mjs.",
       "runtimeReuse": "NONE. This SQL lives only in scripts/seedSampleCompany.js, which no application runtime path imports."
-    },
-    {
-      "table": "eos_ops.parts",
-      "why": "eos_ops.parts is IDENTITY ONLY and migration 1759795200000 states it has NO WRITER: it is the governed target, populated by an explicit catalog cutover. The catalog cutover copies FIRESTORE parts, which this workstream may not read. A synthetic sample company needs its own Part identities so that purchasing, supplier catalog and cycle-count rows reference a real catalog identity rather than a dangling string.",
-      "fields": ["id", "tenant_id", "created_by"],
-      "driftProtection": "INSERT ... ON CONFLICT (tenant_id, id) DO NOTHING. There is nothing else on the row to drift: the table has no descriptive or lifecycle column. A pre-existing row with the same identity is ALREADY_PRESENT, never rewritten.",
-      "productionFence": "Same fence as above.",
-      "runtimeReuse": "NONE.",
-      "scopeLimit": "IDENTITY ONLY. No descriptive Part fact is written anywhere, because the PostgreSQL catalog writer is INACTIVE."
     }
   ],
   "executionOrder": [
@@ -1096,7 +3171,7 @@
     "12. Equipment models (eos_ops.equipment_models; no dependency)",
     "13. Equipment (installed) -- BLOCKED, no write",
     "14. Commercial records + governed accountable person (account_id -> Accounts, owner/accountable -> Employees, opportunity/agreement -> earlier records)",
-    "15. Part identities (eos_ops.parts) -- before anything that references a part id",
+    "15. Part identities -- BLOCKED (the governed PostgreSQL Part Master writer is INACTIVE); no write",
     "16. Suppliers, then supplier catalog items (part_id -> parts, supplier_id -> suppliers)",
     "17. Warehouses, then bins (bins carry a composite FK to their warehouse)",
     "18. Mobile locations, then trucks (a truck's mobile location link needs the location; home_warehouse_id needs the warehouse)",
@@ -1105,5 +3180,7 @@
     "21. Service / inbound work -- BLOCKED, no write",
     "22. Derived reporting / financial consequences -- BLOCKED, no write",
     "23. Verification (functions/scripts/verifySampleCompany.js)"
-  ]
+  ],
+  "$binRackingVocabulary_comment": "eos_ops.bins constrains the racking in SQL: area ~ ^[A-Z][A-Z0-9_]{0,31}$, aisle ~ ^[A-Z]{1,2}$ (LETTERS ONLY, one or two), bay 0-9999, position 0-99999 (migration 1758240000000). The values below satisfy those checks; a numeric aisle would be refused by the database.",
+  "$operationalNumberFormats_comment": "eos_ops enforces the operational number formats in SQL: reorder requests ^RR-[0-9]{4}-[0-9]{6,}$ and receiving orders ^RO-[0-9]{4}-[0-9]{6,}$ (migration 1758672000000). The numbers below are in those formats; anything else is refused by the database rather than by this manifest."
 }
