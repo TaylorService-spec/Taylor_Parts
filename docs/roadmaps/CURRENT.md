@@ -16,6 +16,37 @@ That reconciliation is the current program-level authority for:
 
 The dedicated foundation workstream is [`2026-09-16-authorization-v2-application-platform-reset.md`](2026-09-16-authorization-v2-application-platform-reset.md).
 
+## Current execution state — controller refresh against `main @ 7ed9fe11`
+
+This section is the concise live status view. It is updated by small roadmap PRs when a gate changes; it is not a tracking subsystem.
+
+### Controlling delivery order
+
+```text
+CRM → Catalog / Supplier / Registry → Commercial → Employee / Workforce tails
+    → Work Orders / Service / operational tails → Authorization v2 + EOS session final cutover
+    → Firebase Auth retirement → zero-Firebase runtime/repository proof → Administration convergence
+    → final North Star / persona / browser acceptance → PWA packaging
+    → production cutover planning/authorization (separate Owner gate) → training LAST
+```
+
+Where the static Wave ordering in the reconciliation (§12) differs, **this order controls**. Safe Authorization v2 and Employee foundation work may proceed in parallel only when it does not conflict with the active migration lane. Neither Authorization v2 nor Firebase exit reopens accepted business semantics (see the parity fence below).
+
+### Lane state
+
+| Lane | Current authority | Last completed gate | Next gate | Blocker |
+|---|---|---|---|---|
+| **CRM** (#1925) — Accounts / Contacts / Locations | Firestore (writer state `FROZEN / INACTIVE`); PostgreSQL target built, inactive | #1926 server writers frozen + Render LIVE; #1927 source-quiescence proof merged; **#1929 merged** (`a2f4e457`) — direct Firestore CRM write grants removed in both Rules copies, reads kept for the snapshot only | Deploy #1929 Rules to nonprod Firebase project `eos-platform-sandbox` (explicit `--project`), verify live, then quiescence → census → COPY ONCE → verify → activate → Render → Vercel → retire → browser E2E | **External:** live Rules deploy/verification requires authenticated Firebase operator access; no CI deploys Rules. COPY and PG activation remain **HOLD** until done. |
+| **Employee / Workforce** (#1930 → #1931 W1A) | PostgreSQL reads; Firestore Employee profile writer still reachable | #1931 authorized and queued | W1A PG Employee profile command → W1B Render transport → W1C UI cutover + Firestore writer retirement | #1931 runtime execution recorded `BLOCKED_EXECUTION` (no execution capability); **no patch produced** — work to be done through the normal PR flow. Must not block CRM. |
+| **Catalog / Supplier / Registry** | PG writers / copy-once / verify merged; per-environment cutover evidence absent | tooling merged | starts after CRM reaches stable PG authority | — |
+| **Commercial** (C5) | Firestore-era Opportunity/Agreement/Order; C5 tooling merged **NOT RUN** | tooling merged | after Catalog | depends on CRM + Catalog |
+| **Work Orders / Service** | Firestore / Firebase Functions | #1915 assignment census (design input) | PG Work Order + assignment authority | — |
+| **Authorization v2 / session** | Principal/Membership/policy in PG; Firebase Auth proves identity | foundations exist | v2 model, OIDC bindings, EOS sessions, single evaluator | — |
+| **Zero-Firebase closure** | — | — | after domain + identity cutovers | — |
+| **Training** | — | — | **last**, after production cutover and Owner signoff | — |
+
+Environment fences: Production and Certification untouched; no dual write; no Firebase fallback; `.firebaserc` default project is never relied upon.
+
 ## Execution strategy — owner-approved hybrid migration
 
 The platform reset is executed through [`2026-09-16-parallel-v2-sandbox-cutover-strategy.md`](2026-09-16-parallel-v2-sandbox-cutover-strategy.md).

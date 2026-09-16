@@ -2,7 +2,7 @@
 
 **Status:** CURRENT PROGRAM ROADMAP / RECONCILIATION  
 **Owner:** Rudy DiGiorgio  
-**Repository baseline:** `origin/main @ d3ecd534395de29b346f5159fad9809cb54423aa` (2026-09-16)  
+**Repository baseline:** `origin/main @ d3ecd534395de29b346f5159fad9809cb54423aa` (2026-09-16); cutover status refreshed against `origin/main @ 7ed9fe11d0d79a3b8f80ee3627e3880689aa896b` — live lane state is kept in [`CURRENT.md`](CURRENT.md)  
 **Reconciles:** business objects, end-to-end business processes, platform foundations, PostgreSQL cutover, Firebase exit, Administration, application delivery, active/open work, and future capability register.  
 
 > This document is the current program-level answer to **where EOS is, what has been completed, what remains, and what must be retired**. Older roadmap snapshots remain historical evidence but must not be used as current implementation status when they disagree with this reconciliation or later repository evidence.
@@ -533,7 +533,7 @@ The program must report these states separately:
 
 ## 8.2 Target/migration code exists but cutover is not equivalent to completion
 
-- **CRM:** cutover census/export/copy/verify tooling is merged, but a merged tool does not mean the migration has been executed and runtime has fully flipped.
+- **CRM:** cutover census/export/copy/verify tooling is merged (#1916); legacy server writers are frozen and deployed (#1926); deterministic source-quiescence proof is merged (#1927); direct Firestore write grants for `accounts`/`contacts`/`locations` are removed in code (#1929, `a2f4e457`). The Rules change is **merged, not yet verified deployed** to nonprod, so census/COPY/PG activation remain **HOLD**. CRM is the current critical migration lane (#1925).
 - **Commercial:** C5 one-time migration tooling is merged and explicitly recorded as **NOT RUN** in the merge title/evidence.
 - **Catalog:** PostgreSQL catalog writers/copy-once/verify work is merged; each environment still requires explicit migration/cutover evidence before legacy retirement.
 - **Sample Company v2:** a strong connected nonprod world is merged and reveals blocked relationships rather than faking them; it is test/acceptance infrastructure, not proof that every production authority is cut over.
@@ -659,11 +659,12 @@ The repository has many historical/open tracking issues. The roadmap should not 
 
 Prioritize work where most target infrastructure already exists:
 
-1. Employee writer/lifecycle + Job Role + access admin.
-2. CRM cutover execution and runtime flip.
-3. Catalog cutover execution/runtime flip.
-4. Commercial C5 migration execution/runtime flip.
-5. Supplier/warehouse/bin/truck registry runtime convergence.
+1. CRM cutover execution and runtime flip (**current critical lane**, #1925).
+2. Catalog / Supplier / warehouse / bin / truck registry cutover execution and runtime flip.
+3. Commercial C5 migration execution/runtime flip.
+4. Employee writer/lifecycle + Job Role + access admin (#1930/#1931) — proceeds in parallel where non-conflicting but **does not block CRM**.
+
+> Controller ordering refresh (2026-09-16): the delivery order recorded in [`CURRENT.md`](CURRENT.md) controls where it differs from this Wave list. Wave 1 foundation work continues in parallel but its final session/Firebase Auth cutover follows the domain cutovers.
 
 **Exit:** these families have one PG authority, one Render command/read boundary, and no ordinary runtime Firestore dependency.
 
@@ -755,7 +756,7 @@ To keep this roadmap from becoming another stale snapshot:
 2. **Perform the object/source-of-truth census against current `main` and attach exact code authorities to the tables above.**
 3. **Reconcile/close/supersede stale open PRs, starting with #1821 and #1826 because they directly conflict with the newly adopted target.**
 4. **Finish Employee Operating Model inputs, Job Role authority and Employee writer because they are upstream of access and assignment.**
-5. **Complete the already-built CRM/Catalog/Commercial PG cutover operations rather than starting parallel replacements.**
+5. **Complete the already-built CRM → Catalog → Commercial PG cutover operations, in that order, rather than starting parallel replacements.** CRM is currently held only on the live nonprod Rules deployment of #1929.
 6. **Take Work Order + assignment as the first major operational PG convergence after those cuts, using #1915 as census input.**
 7. **Then converge Inventory/Purchasing/Receiving/Transfers/Cycle Counts, Equipment, and Inbound Work on Render/PG.**
 8. **Only after the operational core is converged, finish invoice/AR/payment and the broader management capabilities.**
