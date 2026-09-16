@@ -267,9 +267,18 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));
   assert.deepEqual(internal.map(rel), [], "a runtime Workforce module imports the internal writer or the migration modules");
   const client = walk(join(REPO, "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
-  // Exactly ONE dedicated Workforce API client may know the transport route (#1910); Employee UI modules consume that
-  // client abstraction and never name the route, the server module or the route constant themselves.
-  assert.deepEqual(client.filter((f) => /\/workforce\/employees|workforceHttp|WORKFORCE_ROUTE|eosWorkforce/.test(readFileSync(f, "utf8"))).map(rel),
+  // Exactly ONE dedicated Workforce API client may hold EXECUTABLE knowledge of the transport route (#1910): the route
+  // string, the route constant, the server module. Employee UI modules consume that client abstraction, and they may
+  // describe the architecture in comments -- which is why this scans comment-stripped source, as the checks above do.
+  const ROUTE_REFERENCE = /\/workforce\/employees|workforceHttp|WORKFORCE_ROUTE|eosWorkforce/;
+  assert.deepEqual(client.filter((f) => ROUTE_REFERENCE.test(code(f))).map(rel),
     ["field-ops-app-vite/src/services/workforceApiClient.js"]);
+  // NON-VACUITY: the predicate still catches a real dependency. A UI module whose EXECUTABLE source builds the route
+  // fails, while the same text inside a comment does not.
+  const leak = join(mkdtempSync(join(tmpdir(), "workforce-ratchet-")), "LeakedRoute.jsx");
+  writeFileSync(leak, 'const leaked = "/workforce/employees";\nexport default leaked;\n');
+  assert.ok(ROUTE_REFERENCE.test(code(leak)), "an executable Workforce route reference no longer fails the ratchet");
+  writeFileSync(leak, '// consumes the Workforce transport (/workforce/employees) through workforceApiClient\nexport default null;\n');
+  assert.ok(!ROUTE_REFERENCE.test(code(leak)), "a comment naming the architecture is treated as a dependency");
   assert.doesNotMatch(readFileSync(join(REPO, "firestore.rules"), "utf8"), /workforce\/employees|eosWorkforce/);
 });
