@@ -16,7 +16,7 @@ That reconciliation is the current program-level authority for:
 
 The dedicated foundation workstream is [`2026-09-16-authorization-v2-application-platform-reset.md`](2026-09-16-authorization-v2-application-platform-reset.md).
 
-## Execution strategy — parallel control plane, shared application
+## Execution strategy — owner-approved hybrid migration
 
 The platform reset is executed through [`2026-09-16-parallel-v2-sandbox-cutover-strategy.md`](2026-09-16-parallel-v2-sandbox-cutover-strategy.md).
 
