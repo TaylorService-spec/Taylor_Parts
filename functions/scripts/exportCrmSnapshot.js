@@ -22,12 +22,17 @@
 //   CERTIFICATION-FENCED     platform-certification / eos-platform-certification refused: that world is frozen.
 //   CHECKSUMMED, IMMUTABLE   --out and <out>.sha256 are created exclusively (flag "wx", mode 0600); an existing file is
 //                            never overwritten.
+//   QUIESCENCE-PROVABLE      sourceDataSha256 hashes only the exact three collection payloads (not exportedAt). A later
+//                            read may supply --expectSourceDataSha256 <digest>; any drift refuses BEFORE writing a file.
 //   NO SECRETS               no credential is read from argv or written to output; ADC is used by firebase-admin only.
 //
-// Every refusal happens BEFORE firebase-admin is loaded (functions/test/operatorScriptEnvironmentFence.test.mjs).
+// Every refusal happens BEFORE firebase-admin is loaded except SOURCE_DRIFT, which necessarily requires the bounded
+// read-only Firestore reads so the live source can be compared.
 //
 // Usage (operator workstation or Render Shell with EOS_ENVIRONMENT=nonprod and nonprod ADC):
 //   EOS_ENVIRONMENT=nonprod node scripts/exportCrmSnapshot.js --environment platform-sandbox --out ./crm-snapshot.json
+//   EOS_ENVIRONMENT=nonprod node scripts/exportCrmSnapshot.js --environment platform-sandbox --out ./crm-proof.json \
+//     --expectSourceDataSha256 <baseline sourceDataSha256>
 "use strict";
 
 const fs = require("node:fs");
@@ -41,6 +46,7 @@ const COLLECTIONS = Object.freeze(["accounts", "contacts", "locations"]);
 const FROZEN_ENVIRONMENTS = Object.freeze(["platform-certification"]);
 const FROZEN_PROJECTS = Object.freeze(["eos-platform-certification"]);
 const NONPROD_LABEL = "nonprod";
+const SHA256_HEX = /^[0-9a-f]{64}$/i;
 
 function assertExportInvocation(args, env) {
   const environmentId = args.environment;
@@ -69,7 +75,19 @@ function assertExportInvocation(args, env) {
   if (!args.out || args.out === "true") throw new Error("--out <file> is required.");
   const out = path.resolve(args.out);
   if (fs.existsSync(out) || fs.existsSync(`${out}.sha256`)) throw new Error(`REFUSED: ${out} (or its .sha256) already exists; a snapshot is never overwritten.`);
-  return { environmentId, projectId, out };
+
+  const expectedSourceDataSha256 = args.expectSourceDataSha256;
+  if (expectedSourceDataSha256 !== undefined
+    && (expectedSourceDataSha256 === "true" || !SHA256_HEX.test(expectedSourceDataSha256))) {
+    throw new Error("--expectSourceDataSha256 must be exactly 64 hexadecimal characters.");
+  }
+
+  return {
+    environmentId,
+    projectId,
+    out,
+    expectedSourceDataSha256: expectedSourceDataSha256 ? expectedSourceDataSha256.toLowerCase() : null,
+  };
 }
 
 /**
@@ -97,10 +115,24 @@ function encodeValue(value, Timestamp, where) {
   return { $unsupported: ctor };
 }
 
+/**
+ * Digest only the bounded CRM source payload. export timestamp / output path are intentionally excluded so repeated
+ * reads of an unchanged source produce the same digest. The exporter already sorts documents by id and stored map keys
+ * in encodeValue, making this deterministic for snapshots produced by this tool.
+ */
+function sourceDataDigest(snapshot) {
+  const payload = {};
+  for (const name of COLLECTIONS) {
+    if (!Array.isArray(snapshot[name])) throw new Error(`sourceDataDigest requires snapshot.${name} to be a list`);
+    payload[name] = snapshot[name];
+  }
+  return hash("sha256", JSON.stringify(payload));
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   // THE FENCE FIRST, before firebase-admin exists in this process.
-  const { environmentId, projectId, out } = assertExportInvocation(args, process.env);
+  const { environmentId, projectId, out, expectedSourceDataSha256 } = assertExportInvocation(args, process.env);
 
   const { initializeApp, applicationDefault } = require("firebase-admin/app");
   const { getFirestore, Timestamp } = require("firebase-admin/firestore");
@@ -119,17 +151,24 @@ async function main() {
       .map((d) => ({ id: d.id, data: encodeValue(d.data(), Timestamp, `${name}/${d.id}`) }))
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
+
+  const sourceDataSha256 = sourceDataDigest(snapshot);
+  if (expectedSourceDataSha256 && sourceDataSha256 !== expectedSourceDataSha256) {
+    throw new Error(`SOURCE_DRIFT: live CRM source digest ${sourceDataSha256} does not match expected ${expectedSourceDataSha256}; no snapshot file was written.`);
+  }
+
   const text = JSON.stringify(snapshot, null, 2) + "\n";
   const sha256 = hash("sha256", text);
   fs.writeFileSync(out, text, { encoding: "utf8", flag: "wx", mode: 0o600 });
   fs.writeFileSync(`${out}.sha256`, `${sha256}  ${path.basename(out)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
   console.log(JSON.stringify({
     marker: MIGRATION_ONLY_MARKER, environmentId, projectId, out,
-    accounts: snapshot.accounts.length, contacts: snapshot.contacts.length, locations: snapshot.locations.length, sha256,
+    accounts: snapshot.accounts.length, contacts: snapshot.contacts.length, locations: snapshot.locations.length,
+    sha256, sourceDataSha256, quiescence: expectedSourceDataSha256 ? "MATCH" : "BASELINE",
   }, null, 2));
 }
 
-module.exports = { assertExportInvocation, encodeValue, COLLECTIONS, MIGRATION_ONLY_MARKER };
+module.exports = { assertExportInvocation, encodeValue, sourceDataDigest, COLLECTIONS, MIGRATION_ONLY_MARKER };
 
 if (require.main === module) {
   main().catch((err) => {
