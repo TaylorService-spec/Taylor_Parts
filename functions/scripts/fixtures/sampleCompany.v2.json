@@ -17,7 +17,9 @@
     "responsibility": "Record Owner, Accountable Person and Assigned Person are three distinct facts and are never collapsed. Ownership is owner_employee_id; accountability is the governed establishment + mint; assignment has no PostgreSQL authority in any domain this manifest touches and is therefore never written.",
     "accountability": "GOVERNED/SEED: accountable_employee_id is persisted only from the value the governed establishment + mint produced, in the same transaction as the record, and only while it is still NULL. This is not live write activation and does not close activation blocker #2.",
     "catalogWriterState": "functions/src/catalogMaster/catalogWriterState.ts declares CATALOG_WRITER_AUTHORITY = { firestore: OPEN, postgres: INACTIVE }. This seed therefore NEVER invokes postgresPartMasterWriter or postgresEquipmentModelWriter. Part DESCRIPTIVE facts stay manifest metadata; only the Part IDENTITY row (eos_ops.parts) is seeded.",
-    "firebase": "Firebase is transitional credential entry only. This seed opens no Firebase connection, creates no Firestore document, and declares no Firebase business authority."
+    "firebase": "Firebase is transitional credential entry only. This seed opens no Firebase connection, creates no Firestore document, and declares no Firebase business authority.",
+    "runtimeIdentityProvider": "THE RUNTIME PROVIDER IS `firebase`, MEASURED NOT GUESSED. functions/src/eosApi/server.ts:101 reads `identityProvider: (env.EOS_IDENTITY_PROVIDER ?? \"firebase\").trim()`; :111-124 createFirebaseTokenVerifier returns `{ externalSubject: decoded.uid, identityProvider }` and reads ONLY the uid, never a custom claim; that pair goes straight into resolveOperationalContext -> resolvePrincipalContext, which looks the Principal up by (identity_provider, external_subject). render.yaml's eos-api-nonprod service does NOT set EOS_IDENTITY_PROVIDER, so the default `firebase` applies, and its GOOGLE_CLOUD_PROJECT is eos-platform-sandbox. functions/src/adminPolicy/principalContext.ts:38 declares FIREBASE_IDENTITY_PROVIDER = \"firebase\".",
+    "firebaseIsIdentityOnly": "Firebase Auth is TRANSITIONAL IDENTITY AND SESSION ONLY. It is never Employee authority, Security Role authority, capability authority, profile authority, ownership authority, workflow authority or any other business persistence. A Firebase uid is ONLY a Principal's external subject and is NEVER an Employee id. The Sample Company credential path uses firebase-admin/auth and is structurally forbidden from importing firebase-admin/firestore."
   },
   "eligibilityPolicy": {
     "policyId": "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1",
@@ -37,7 +39,9 @@
     "syntheticIdentityProvider": "eos-synthetic-nonprod",
     "workEmailDomain": "sandbox.invalid",
     "syntheticAddressPolicy": "Every street address is on a fictional street in the fictional city of Sampleton, state ZZ, postal code 00000. Every telephone number is in the NANP fiction-reserved 555-01XX range. None of these resolve to a real place or a real line.",
-    "$comment": "operatingCompanyKey is deliberately DISTINCT from any real Taylor operating company key. eos_ops rows this seed writes are therefore confined to a company nothing else in nonprod uses."
+    "$comment": "operatingCompanyKey is deliberately DISTINCT from any real Taylor operating company key. eos_ops rows this seed writes are therefore confined to a company nothing else in nonprod uses.",
+    "runtimeIdentityProvider": "firebase",
+    "sandboxFirebaseProjectId": "eos-platform-sandbox"
   },
   "jobRoles": [
     {
@@ -644,124 +648,286 @@
       "securityRoles": [
         "admin"
       ],
-      "$comment": "The ONE real administrator Principal in the nonprod tenant. REUSED verbatim: never recreated, never renamed, never re-credentialed, and its Role set is left exactly as v1 left it."
+      "$comment": "The ONE real administrator Principal in the nonprod tenant. REUSED verbatim: never recreated, never renamed, never re-credentialed, and its Role set is left exactly as v1 left it.",
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "EXISTING_ADMINISTRATOR",
+        "credentialEmail": null,
+        "disposition": "REUSE_UNCHANGED",
+        "$comment": "The ONE real sandbox Administrator Principal. Reused exactly as it is: never recreated, never re-subjected, its credential never rotated, its Role set never changed. It is linked to the Sample Owner/Executive Employee, and its visible person name comes from that Employee's display name through the governed Employee record -- never from its raw external subject."
+      },
+      "fixturePrincipal": null
     },
     {
       "employee": "general-manager",
-      "externalSubject": "synthetic-np-principal-general-manager",
-      "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)",
       "securityRoles": [
         "generalManager"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-general-manager",
+        "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "bailey.fixture@sandbox.invalid",
+        "displayName": "Bailey Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "office-manager",
-      "externalSubject": "synthetic-np-principal-office-manager",
-      "displayName": "SYNTHETIC NONPROD Office Manager (fixture, cannot sign in)",
       "securityRoles": [
         "officeManager"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-office-manager",
+        "displayName": "SYNTHETIC NONPROD Office Manager (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "casey.fixture@sandbox.invalid",
+        "displayName": "Casey Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "service-manager",
-      "externalSubject": "synthetic-np-principal-service-manager",
-      "displayName": "SYNTHETIC NONPROD Service Manager (fixture, cannot sign in)",
       "securityRoles": [
         "fieldManager"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-service-manager",
+        "displayName": "SYNTHETIC NONPROD Service Manager (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "devon.fixture@sandbox.invalid",
+        "displayName": "Devon Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "dispatcher",
-      "externalSubject": "synthetic-np-principal-dispatcher",
-      "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)",
       "securityRoles": [
         "dispatcher"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-dispatcher",
+        "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "emerson.fixture@sandbox.invalid",
+        "displayName": "Emerson Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "service-technician-a",
-      "externalSubject": "synthetic-np-principal-service-technician",
-      "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)",
       "securityRoles": [
         "technician"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-service-technician",
+        "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "finley.fixture@sandbox.invalid",
+        "displayName": "Finley Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "service-technician-b",
-      "externalSubject": "synthetic-np-principal-service-technician-b",
-      "displayName": "SYNTHETIC NONPROD Service Technician B (fixture, cannot sign in)",
       "securityRoles": [
         "technician"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-service-technician-b",
+        "displayName": "SYNTHETIC NONPROD Service Technician B (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "gray.fixture@sandbox.invalid",
+        "displayName": "Gray Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "retail-sales-a",
-      "externalSubject": "synthetic-np-principal-retail-sales",
-      "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)",
       "securityRoles": [
         "salesperson"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-retail-sales",
+        "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "harper.fixture@sandbox.invalid",
+        "displayName": "Harper Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "retail-sales-b",
-      "externalSubject": "synthetic-np-principal-retail-sales-b",
-      "displayName": "SYNTHETIC NONPROD Retail Sales B (fixture, cannot sign in)",
       "securityRoles": [
         "salesperson"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-retail-sales-b",
+        "displayName": "SYNTHETIC NONPROD Retail Sales B (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "indigo.fixture@sandbox.invalid",
+        "displayName": "Indigo Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "national-accounts-sales",
-      "externalSubject": "synthetic-np-principal-national-accounts-sales",
-      "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)",
       "securityRoles": [
         "salesperson"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-national-accounts-sales",
+        "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "jules.fixture@sandbox.invalid",
+        "displayName": "Jules Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "parts-manager",
-      "externalSubject": "synthetic-np-principal-parts-manager",
-      "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)",
       "securityRoles": [
         "partsManager",
         "purchasingManager"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-parts-manager",
+        "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "kai.fixture@sandbox.invalid",
+        "displayName": "Kai Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "parts-associate",
-      "externalSubject": "synthetic-np-principal-parts-associate",
-      "displayName": "SYNTHETIC NONPROD Parts Associate (fixture, cannot sign in)",
       "securityRoles": [
         "partsAssociate",
         "inventoryReceivingClerk"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-parts-associate",
+        "displayName": "SYNTHETIC NONPROD Parts Associate (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "logan.fixture@sandbox.invalid",
+        "displayName": "Logan Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "warehouse-manager",
-      "externalSubject": "synthetic-np-principal-warehouse-manager",
-      "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)",
       "securityRoles": [
         "warehouseManager",
         "inventoryCycleCountReconciler",
         "inventoryBinAdministrator"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-warehouse-manager",
+        "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "morgan.fixture@sandbox.invalid",
+        "displayName": "Morgan Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "warehouse-associate",
-      "externalSubject": "synthetic-np-principal-warehouse-associate",
-      "displayName": "SYNTHETIC NONPROD Warehouse Associate (fixture, cannot sign in)",
       "securityRoles": [
         "warehouseAssociate",
         "inventoryCycleCountCounter"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-warehouse-associate",
+        "displayName": "SYNTHETIC NONPROD Warehouse Associate (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "noor.fixture@sandbox.invalid",
+        "displayName": "Noor Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     },
     {
       "employee": "contract-technician",
-      "externalSubject": "synthetic-np-principal-contract-technician",
-      "displayName": "SYNTHETIC NONPROD Contract Technician (fixture, cannot sign in)",
       "securityRoles": [
         "technician"
-      ]
+      ],
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-contract-technician",
+        "displayName": "SYNTHETIC NONPROD Contract Technician (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      },
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "oakley.fixture@sandbox.invalid",
+        "displayName": "Oakley Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      }
     }
   ],
   "employeePrincipalLinks": {
@@ -997,7 +1163,11 @@
           "administration.users",
           "commercial.opportunities.write",
           "inventory.cycleCount"
-        ]
+        ],
+        "accessModelGap": {
+          "code": "WORK_ORDER_LIFECYCLE_AUTHORITY_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "service-manager": {
         "securityRoles": [
@@ -1032,7 +1202,10 @@
           "administration.users",
           "commercial.opportunities.write"
         ],
-        "accessModelGap": "SERVICE_MANAGER_WORK_ORDER_LIFECYCLE_NOT_IN_POSTGRES_VOCABULARY"
+        "accessModelGap": {
+          "code": "WORK_ORDER_LIFECYCLE_AUTHORITY_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "dispatcher": {
         "securityRoles": [
@@ -1067,7 +1240,11 @@
         "deniedSurfaces": [
           "administration.users",
           "employees.directory"
-        ]
+        ],
+        "accessModelGap": {
+          "code": "WORK_ORDER_LIFECYCLE_AUTHORITY_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "service-technician-a": {
         "securityRoles": [
@@ -1104,7 +1281,10 @@
           "commercial.opportunities"
         ],
         "$comment": "THE TECHNICIAN DENIAL PROOF the access contract calls for: a technician must not hold admin.employeeProfile.write.",
-        "accessModelGap": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY"
+        "accessModelGap": {
+          "code": "TECHNICIAN_AUTHORITY_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "service-technician-b": {
         "securityRoles": [
@@ -1139,7 +1319,10 @@
           "warehouse.management",
           "commercial.opportunities"
         ],
-        "accessModelGap": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY"
+        "accessModelGap": {
+          "code": "TECHNICIAN_AUTHORITY_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "retail-sales-a": {
         "securityRoles": [
@@ -1188,7 +1371,11 @@
           "inventory.cycleCount",
           "employees.directory"
         ],
-        "$comment": "THE SALESPERSON DENIAL PROOF: a salesperson must not hold warehouse management."
+        "$comment": "THE SALESPERSON DENIAL PROOF: a salesperson must not hold warehouse management.",
+        "accessModelGap": {
+          "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
+          "classification": "NOT_A_GAP"
+        }
       },
       "retail-sales-b": {
         "securityRoles": [
@@ -1219,7 +1406,11 @@
           "administration.users",
           "warehouse.management",
           "inventory.cycleCount"
-        ]
+        ],
+        "accessModelGap": {
+          "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
+          "classification": "NOT_A_GAP"
+        }
       },
       "national-accounts-sales": {
         "securityRoles": [
@@ -1256,7 +1447,10 @@
           "warehouse.management",
           "inventory.cycleCount"
         ],
-        "accessModelGap": "NATIONAL_ACCOUNTS_SALES_HAS_NO_DISTINCT_SECURITY_ROLE"
+        "accessModelGap": {
+          "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
+          "classification": "NOT_A_GAP"
+        }
       },
       "parts-manager": {
         "securityRoles": [
@@ -1293,7 +1487,10 @@
           "administration.users",
           "commercial.opportunities"
         ],
-        "accessModelGap": "PURCHASING_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY"
+        "accessModelGap": {
+          "code": "PURCHASING_RUNTIME_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "parts-associate": {
         "securityRoles": [
@@ -1329,7 +1526,10 @@
           "purchasing.approvals",
           "commercial.opportunities"
         ],
-        "accessModelGap": "PARTS_ASSOCIATE_REORDER_EXECUTION_ONLY_VIA_TECHNICIAN_COMPATIBILITY_ROLE"
+        "accessModelGap": {
+          "code": "PURCHASING_RUNTIME_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "warehouse-manager": {
         "securityRoles": [
@@ -1367,7 +1567,10 @@
           "administration.users",
           "commercial.opportunities"
         ],
-        "accessModelGap": "WAREHOUSE_TRANSFER_AND_BIN_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY"
+        "accessModelGap": {
+          "code": "PURCHASING_RUNTIME_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "warehouse-associate": {
         "securityRoles": [
@@ -1407,7 +1610,10 @@
           "commercial.opportunities"
         ],
         "$comment": "THE WAREHOUSE ASSOCIATE DENIAL PROOF: no administration, and no cycle-count RECONCILE -- the counter may never approve their own variance.",
-        "accessModelGap": "WAREHOUSE_TRANSFER_AND_BIN_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY"
+        "accessModelGap": {
+          "code": "WAREHOUSE_TRANSFER_AND_BIN_RUNTIME_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       },
       "contract-technician": {
         "securityRoles": [
@@ -1442,7 +1648,10 @@
           "warehouse.management",
           "commercial.opportunities"
         ],
-        "accessModelGap": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY"
+        "accessModelGap": {
+          "code": "TECHNICIAN_AUTHORITY_STILL_LEGACY",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        }
       }
     },
     "noAccessPersonas": {
@@ -1464,6 +1673,95 @@
           "*"
         ]
       }
+    },
+    "$gapClassification_comment": "EVERY access finding carries EXACTLY ONE of the five governed classes. The class decides what may be done about it, which is why a vague 'gap' is not allowed to exist here: SEED_GRANT_GAP = the capability IS registered in eos_policy.capabilities and the Role catalog DOES declare it for this Role, but the live role_capabilities row is missing -- the governed reconciliation may add it. POSTGRES_VOCABULARY_GAP = a legitimate, currently-governed PostgreSQL runtime operation whose capability is a governed platform capability, but eos_policy.capabilities has no registration -- NEVER auto-fixed here; the exact capability and authority evidence are returned and a registration migration is PROPOSED separately, never authored. DOMAIN_AUTHORITY_NOT_CUT_OVER = the function is still legacy/non-PostgreSQL, so the scenario stays BLOCKED and NO PostgreSQL capability is invented for it. NOT_A_GAP = the model is already correct and nothing should change. CONDITIONAL_AUTHORITY_GAP = role_capabilities cannot honestly encode the intended condition or scope. A Role is NEVER widened globally to make one persona scenario pass.",
+    "gapClasses": [
+      "SEED_GRANT_GAP",
+      "POSTGRES_VOCABULARY_GAP",
+      "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+      "NOT_A_GAP",
+      "CONDITIONAL_AUTHORITY_GAP"
+    ],
+    "accessFindings": [
+      {
+        "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
+        "classification": "NOT_A_GAP",
+        "personas": [
+          "retail-sales-a",
+          "retail-sales-b",
+          "national-accounts-sales"
+        ],
+        "finding": "Retail Sales and National Accounts Sales are SEPARATE Job Roles and both hold the single `salesperson` Security Role.",
+        "whyNotADefect": "Their APPLICATION PERMISSIONS are intentionally identical -- both own Accounts, run a pipeline, draft and accept agreements and raise Sales Orders. Job Role and Security Role are independent axes, and mirroring the Job Role vocabulary into the Security Role catalog would assert a permission difference that does not exist and would couple the two axes the rulings keep apart. The two populations are distinguished where the difference is real: Job Role, Account segment, record ownership and the reporting line.",
+        "action": "NONE. No Security Role is created. Previously reported as NATIONAL_ACCOUNTS_SALES_HAS_NO_DISTINCT_SECURITY_ROLE, which was the wrong framing."
+      },
+      {
+        "code": "TECHNICIAN_AUTHORITY_STILL_LEGACY",
+        "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+        "personas": [
+          "service-technician-a",
+          "service-technician-b",
+          "contract-technician"
+        ],
+        "finding": "The `technician` Role's eight permissions are workOrder.transition plus seven reorder.* ids. None is registered in eos_policy.capabilities, so a technician resolves to an EMPTY effective PostgreSQL capability set.",
+        "authorityEvidence": "Work Orders have no table in functions/migrations at all and the Reorder runtime is the Firestore command path; neither function has been cut over to PostgreSQL, so there is no governed PostgreSQL operation for these ids to authorize.",
+        "action": "BLOCKED. No PostgreSQL capability is invented and no Role is widened. The technician contract declares no required capability and proves the denials only. Completes when the Work Order and Reorder domains cut over."
+      },
+      {
+        "code": "WORK_ORDER_LIFECYCLE_AUTHORITY_STILL_LEGACY",
+        "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+        "personas": [
+          "service-manager",
+          "dispatcher",
+          "office-manager"
+        ],
+        "finding": "fieldManager/dispatcher/officeManager declare workOrder.create / .transition / .cancel, none of which is registered. eos_policy.capabilities separately registers workOrder.lifecycle.dispatch / .complete / .cancel, which NO Role in the catalog declares. The two halves have never met.",
+        "authorityEvidence": "No work order table exists in functions/migrations; the Work Order runtime remains Firestore-authoritative. The registered workOrder.lifecycle.* ids anticipate a cutover that has not happened.",
+        "action": "BLOCKED. Scenario D stays BLOCKED. The Owner/Executive contract FORBIDS workOrder.lifecycle.dispatch so that nobody can quietly start resolving it, and no Role is granted it."
+      },
+      {
+        "code": "PURCHASING_RUNTIME_STILL_LEGACY",
+        "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+        "personas": [
+          "parts-manager",
+          "parts-associate",
+          "warehouse-manager"
+        ],
+        "finding": "No reorder.* capability id is registered in eos_policy.capabilities.",
+        "authorityEvidence": "The eos_ops purchasing repository is a governed PostgreSQL WRITER, but nothing resolves a purchasing capability at request time: functions/src/eosOps/eosOpsHttp.ts:176 serves exactly one route, /operations/inventory, and its operation set is READ-only. The purchasing RUNTIME is still the Firestore command path, so there is no governed PostgreSQL operation for a reorder.* capability to authorize. This is deliberately NOT classified POSTGRES_VOCABULARY_GAP: registering a capability no PostgreSQL runtime checks would be inventing authority.",
+        "action": "BLOCKED. Purchasing RECORDS are seeded through the governed repository; purchasing CAPABILITIES are not granted or asserted."
+      },
+      {
+        "code": "WAREHOUSE_TRANSFER_AND_BIN_RUNTIME_STILL_LEGACY",
+        "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+        "personas": [
+          "warehouse-manager",
+          "warehouse-associate"
+        ],
+        "finding": "inventory.location.bin.manage, inventory.location.bin.read, inventory.balance.read and warehouse.transferOrder.read are declared by Roles but are not registered in eos_policy.capabilities.",
+        "authorityEvidence": "Same evidence as above: the warehouse/bin and transfer repositories are governed PostgreSQL writers with no request-time PostgreSQL authorization path. The bins themselves ARE seeded through the governed repository.",
+        "action": "BLOCKED. No capability invented. Cycle-count capabilities, which ARE registered and DO have a governed PostgreSQL path, are asserted normally and resolve."
+      },
+      {
+        "code": "PARTS_ASSOCIATE_REORDER_EXECUTION_IS_CONDITIONED",
+        "classification": "CONDITIONAL_AUTHORITY_GAP",
+        "personas": [
+          "parts-associate"
+        ],
+        "finding": "The reorder execution ids a Parts Associate would need (startPurchasing, recordPurchaseOrder, markReceived) live on the `technician` compatibility Role under an operationalRoleActive(PARTS_ASSOCIATE) CONDITION.",
+        "authorityEvidence": "eos_policy.role_capabilities carries a (role, capability) pair and NO condition column, so the condition cannot be represented. Assigning `technician` to a Parts Associate to obtain them would grant them UNCONDITIONALLY -- precisely the defect R-32 removed from that Role.",
+        "action": "BLOCKED. partsAssociate + inventoryReceivingClerk are assigned instead. The Role is NOT widened and `technician` is NOT assigned to a non-technician."
+      }
+    ],
+    "seedGrantGap": {
+      "classification": "SEED_GRANT_GAP",
+      "finding": "Every (Role, capability) pair the Role catalog declares for a Sample Company Role whose capability IS registered in eos_policy.capabilities but whose live role_capabilities row is missing.",
+      "action": "RECONCILED through the existing governed mechanism only (eosOps/migration/inventoryCapabilityGrantMigration.ts): dry run first, tenant-scoped, insert-missing-only, idempotent, unresolved Role or unknown capability refuses the run, no ad-hoc SQL, never a pair the Role catalog does not declare for that Role, and no new Security Role."
+    },
+    "postgresVocabularyGaps": {
+      "classification": "POSTGRES_VOCABULARY_GAP",
+      "found": [],
+      "$comment": "NONE FOUND, and that is a measured answer rather than an omission. Every capability the currently-wired PostgreSQL runtimes actually resolve -- the Administration, Workforce, Commercial, CRM and Operations transports -- is already registered: employee.record.read, admin.principalAccess.read, admin.employeeProfile.write, customer.record.*, opportunity.*, salesAgreement.*, salesOrder.*, inventory.cycleCount.*. The unregistered ids all belong to functions that have NOT been cut over, which is DOMAIN_AUTHORITY_NOT_CUT_OVER and not a registration omission. NO registration migration is proposed, because proposing one for a runtime that does not exist yet would be inventing authority."
     }
   },
   "accounts": [
@@ -2846,18 +3144,6 @@
       "authority": "eos_workforce.employee_reporting_relationships"
     },
     {
-      "subject": "principal:synthetic-np-principal-retail-sales",
-      "predicate": "LINKED_TO_EMPLOYEE",
-      "object": "employee:retail-sales-a",
-      "authority": "eos_policy.employee_principal_links"
-    },
-    {
-      "subject": "principal:synthetic-np-principal-retail-sales",
-      "predicate": "HOLDS_SECURITY_ROLE",
-      "object": "role:salesperson",
-      "authority": "eos_policy.user_role_assignments"
-    },
-    {
       "subject": "bin:SC-WH-MAIN/MAIN-A-1-1",
       "predicate": "IN_WAREHOUSE",
       "object": "warehouse:SC-WH-MAIN",
@@ -2916,6 +3202,24 @@
       "predicate": "ADJUSTS_ON_HAND_AT",
       "object": "warehouse:SC-WH-MAIN",
       "authority": "eos_ops.inventory_movements (source_kind CYCLE_COUNT_LINE)"
+    },
+    {
+      "subject": "loginPrincipal:harper.fixture@sandbox.invalid",
+      "predicate": "LINKED_TO_EMPLOYEE",
+      "object": "employee:retail-sales-a",
+      "authority": "eos_policy.employee_principal_links (status active) joined to eos_policy.principals where identity_provider = the runtime provider"
+    },
+    {
+      "subject": "loginPrincipal:harper.fixture@sandbox.invalid",
+      "predicate": "HOLDS_SECURITY_ROLE",
+      "object": "role:salesperson",
+      "authority": "eos_policy.user_role_assignments on the Principal the Employee is actively linked to"
+    },
+    {
+      "subject": "fixturePrincipal:synthetic-np-principal-retail-sales",
+      "predicate": "SUPERSEDED_BY_LOGIN_PRINCIPAL",
+      "object": "employee:retail-sales-a",
+      "authority": "eos_policy.tenant_memberships.status <> active plus a revoked eos_policy.employee_principal_links row -- history preserved, never deleted"
     }
   ],
   "blockedRelationships": [
@@ -3028,15 +3332,6 @@
       ]
     },
     {
-      "code": "SANDBOX_PERSONA_PROVISIONING_GAP",
-      "desired": "credential AUTHENTICATES_AS principal FOR employee",
-      "missingAuthority": "The seeded Principals use identity provider `eos-synthetic-nonprod`, which no verifier recognizes. A signing-in persona needs a Firebase Auth account plus a `firebase`-provider Principal and its own Employee link. scripts/activateSandboxPersonas.js only sets a password on an ALREADY EXISTING @sandbox.invalid account and reports CREDENTIAL_ACCESS_FAILED for a missing one; scripts/provisionEmployeeAccess.js creates passwordless accounts. No safe existing path provisions a missing persona account from this workstream, and this seed opens no Firebase connection.",
-      "domains": [
-        "identityAccess",
-        "sandboxCredentials"
-      ]
-    },
-    {
       "code": "TRANSFER_ORDER_SEED_NOT_ATTEMPTED",
       "desired": "transferOrder MOVES part FROM warehouse TO warehouse",
       "missingAuthority": "createTransferOrder (eosOps/purchasingRepository.ts:721) exists and is governed, but a transfer that changes on-hand needs the movement writer that INVENTORY_RECEIPT_MOVEMENT_BLOCKED records as absent. A transfer order with no balance effect would misrepresent the scenario, so it is declared and not seeded.",
@@ -3063,64 +3358,56 @@
       ]
     },
     {
-      "code": "SERVICE_MANAGER_WORK_ORDER_LIFECYCLE_NOT_IN_POSTGRES_VOCABULARY",
-      "desired": "service manager HOLDS workOrder.create / workOrder.transition / workOrder.cancel",
-      "missingAuthority": "The fieldManager Role declares the legacy workOrder.create / .transition / .cancel ids, none of which is registered in eos_policy.capabilities; the registered ids are workOrder.lifecycle.dispatch / .complete / .cancel, which no Role declares. The two halves have not met, so the Service Manager's work-order authority cannot be proved in PostgreSQL.",
+      "code": "PARTS_POSTGRES_WRITER_INACTIVE",
+      "desired": "part EXISTS in the PostgreSQL catalog with its name, status, control type and manufacturer",
+      "missingAuthority": "eos_ops.parts is the canonical PostgreSQL Part Master table and functions/src/catalogMaster/postgresPartMasterWriter.ts is its governed writer -- but catalogWriterState.ts CATALOG_WRITER_AUTHORITY declares postgres: INACTIVE, Firestore is still OPEN, and the table is filled only by the explicit catalog cutover. A governed writer that exists and is switched off is not an absent writer, so the direct-insert policy does not apply and this seed writes no Part row at all. The purchasing, supplier-catalog and cycle-count rows carry the declared part ids as unjoined governed keys (no foreign key references eos_ops.parts), so the operational chain still connects.",
+      "domains": [
+        "parts"
+      ]
+    },
+    {
+      "code": "TECHNICIAN_AUTHORITY_STILL_LEGACY",
+      "desired": "technician HOLDS a governed PostgreSQL capability",
+      "missingAuthority": "See expectedAccess.accessFindings: DOMAIN_AUTHORITY_NOT_CUT_OVER. Work Orders have no PostgreSQL table and the Reorder runtime is still the Firestore command path, so none of the technician Role's eight ids is registered in eos_policy.capabilities.",
       "domains": [
         "identityAccess",
         "service"
       ]
     },
     {
-      "code": "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY",
-      "desired": "technician HOLDS at least one governed capability",
-      "missingAuthority": "The `technician` compatibility Role's eight permissions (workOrder.transition and seven reorder.* ids) are ALL outside the registered PostgreSQL capability vocabulary, so a technician resolves to an EMPTY effective capability set. Their contract therefore declares no required capability and proves the denials only. This is reported rather than papered over with a capability they do not hold.",
+      "code": "WORK_ORDER_LIFECYCLE_AUTHORITY_STILL_LEGACY",
+      "desired": "service manager / dispatcher HOLDS work order lifecycle authority",
+      "missingAuthority": "See expectedAccess.accessFindings: DOMAIN_AUTHORITY_NOT_CUT_OVER. The declared ids are unregistered and the registered workOrder.lifecycle.* ids are declared by no Role; the Work Order domain has not been cut over.",
       "domains": [
         "identityAccess",
         "service"
       ]
     },
     {
-      "code": "PURCHASING_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY",
+      "code": "PURCHASING_RUNTIME_STILL_LEGACY",
       "desired": "parts manager HOLDS reorder.request.* / reorder.purchaseOrder.*",
-      "missingAuthority": "No reorder.* id is registered in eos_policy.capabilities. The purchasing RECORDS are seeded through the governed eos_ops purchasing repository, but the purchasing CAPABILITIES cannot be granted or resolved.",
+      "missingAuthority": "See expectedAccess.accessFindings: DOMAIN_AUTHORITY_NOT_CUT_OVER. eosOpsHttp.ts serves only /operations/inventory with a read-only operation set, so no PostgreSQL runtime resolves a purchasing capability.",
       "domains": [
         "identityAccess",
         "purchasing"
       ]
     },
     {
-      "code": "WAREHOUSE_TRANSFER_AND_BIN_CAPABILITIES_NOT_IN_POSTGRES_VOCABULARY",
-      "desired": "warehouse manager HOLDS inventory.location.bin.manage / warehouse.transferOrder.read",
-      "missingAuthority": "inventory.location.bin.manage, inventory.location.bin.read, inventory.balance.read and warehouse.transferOrder.read are declared by Roles but are not registered in eos_policy.capabilities. The bins themselves are seeded through the governed warehouse/bin repository; the capabilities cannot be proved.",
+      "code": "WAREHOUSE_TRANSFER_AND_BIN_RUNTIME_STILL_LEGACY",
+      "desired": "warehouse manager HOLDS bin and transfer capabilities",
+      "missingAuthority": "See expectedAccess.accessFindings: DOMAIN_AUTHORITY_NOT_CUT_OVER. Same evidence; the warehouse repositories are governed writers with no request-time PostgreSQL authorization path.",
       "domains": [
         "identityAccess",
         "warehouse"
       ]
     },
     {
-      "code": "NATIONAL_ACCOUNTS_SALES_HAS_NO_DISTINCT_SECURITY_ROLE",
-      "desired": "national accounts sales HOLDS a Security Role distinct from retail sales",
-      "missingAuthority": "The governed Role catalog has one `salesperson` Role. Retail Sales and National Accounts Sales are separate JOB Roles and are distinguished by Job Role, Account segment and record ownership -- never by Security Role. NO new Role is created to close this; it is reported as an ACCESS_MODEL_GAP with the persona, the desired access and the available Roles.",
-      "domains": [
-        "identityAccess"
-      ]
-    },
-    {
-      "code": "PARTS_ASSOCIATE_REORDER_EXECUTION_ONLY_VIA_TECHNICIAN_COMPATIBILITY_ROLE",
-      "desired": "parts associate HOLDS reorder.request.startPurchasing / .recordPurchaseOrder / .markReceived",
-      "missingAuthority": "Those ids live on the `technician` compatibility Role under an operationalRoleActive(PARTS_ASSOCIATE) CONDITION, and role_capabilities carries no condition. Assigning `technician` to a Parts Associate to obtain them would grant them unconditionally -- exactly the defect R-32 removed from that Role. The sample company assigns partsAssociate + inventoryReceivingClerk instead and reports the gap.",
+      "code": "PARTS_ASSOCIATE_REORDER_EXECUTION_IS_CONDITIONED",
+      "desired": "parts associate HOLDS conditioned reorder execution authority",
+      "missingAuthority": "See expectedAccess.accessFindings: CONDITIONAL_AUTHORITY_GAP. eos_policy.role_capabilities has no condition column, so operationalRoleActive(PARTS_ASSOCIATE) cannot be represented and granting the ids would grant them unconditionally.",
       "domains": [
         "identityAccess",
         "purchasing"
-      ]
-    },
-    {
-      "code": "PARTS_POSTGRES_WRITER_INACTIVE",
-      "desired": "part EXISTS in the PostgreSQL catalog with its name, status, control type and manufacturer",
-      "missingAuthority": "eos_ops.parts is the canonical PostgreSQL Part Master table and functions/src/catalogMaster/postgresPartMasterWriter.ts is its governed writer -- but catalogWriterState.ts CATALOG_WRITER_AUTHORITY declares postgres: INACTIVE, Firestore is still OPEN, and the table is filled only by the explicit catalog cutover. A governed writer that exists and is switched off is not an absent writer, so the direct-insert policy does not apply and this seed writes no Part row at all. The purchasing, supplier-catalog and cycle-count rows carry the declared part ids as unjoined governed keys (no foreign key references eos_ops.parts), so the operational chain still connects.",
-      "domains": [
-        "parts"
       ]
     }
   ],
@@ -3182,5 +3469,14 @@
     "23. Verification (functions/scripts/verifySampleCompany.js)"
   ],
   "$binRackingVocabulary_comment": "eos_ops.bins constrains the racking in SQL: area ~ ^[A-Z][A-Z0-9_]{0,31}$, aisle ~ ^[A-Z]{1,2}$ (LETTERS ONLY, one or two), bay 0-9999, position 0-99999 (migration 1758240000000). The values below satisfy those checks; a numeric aisle would be refused by the database.",
-  "$operationalNumberFormats_comment": "eos_ops enforces the operational number formats in SQL: reorder requests ^RR-[0-9]{4}-[0-9]{6,}$ and receiving orders ^RO-[0-9]{4}-[0-9]{6,}$ (migration 1758672000000). The numbers below are in those formats; anything else is refused by the database rather than by this manifest."
+  "$operationalNumberFormats_comment": "eos_ops enforces the operational number formats in SQL: reorder requests ^RR-[0-9]{4}-[0-9]{6,}$ and receiving orders ^RO-[0-9]{4}-[0-9]{6,}$ (migration 1758672000000). The numbers below are in those formats; anything else is refused by the database rather than by this manifest.",
+  "$principals_comment": "TWO PRINCIPALS PER INTERACTIVE PERSONA, AND ONLY ONE OF THEM ACTIVE. `fixturePrincipal` is the v1 `eos-synthetic-nonprod` Principal, which NO verifier recognizes and which therefore cannot sign in; `loginPrincipal` is the real `firebase`-provider Principal the deployed runtime actually resolves. The activate-logins phase ensures the sandbox Auth account, resolves the Principal from its uid, REVOKES the fixture link through the governed lifecycle and establishes the login link -- never two simultaneous active links for one Employee, which the partial unique index makes structurally impossible anyway.",
+  "sandboxCredentials": {
+    "emailDomain": "sandbox.invalid",
+    "firebaseProjectId": "eos-platform-sandbox",
+    "accountPolicy": "ABSENT -> create a passwordless sandbox-only Auth account. EXISTING -> REUSE; never delete and never recreate to reseed. MATERIALLY INCONSISTENT (disabled, or an email that is not the manifest's) -> FIXTURE_DRIFT and refuse.",
+    "passwordPolicy": "THE SAMPLE COMPANY CODE SETS NO PASSWORD AND GENERATES NO SECRET, EVER. Password activation is delegated to the existing proven tool, functions/scripts/activateSandboxPersonas.js --activate-missing, which already implements exactly the required semantics: a strong random password ONLY for a persona that has none, every working persona left untouched, merged into the gitignored credential file rather than replacing it, and an unparseable file refused. --rotate is deliberately OUTSIDE the Sample Company workflow.",
+    "credentialFile": "sandbox-credentials.local.json (gitignored; read only through scripts/sandboxCredentials.mjs)",
+    "activationCommand": "node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox --activate-missing --out <operator credential file>"
+  }
 }

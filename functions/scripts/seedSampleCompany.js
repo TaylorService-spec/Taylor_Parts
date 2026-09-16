@@ -14,11 +14,17 @@
 //
 // ============================ DEFAULT = PLAN. APPLY IS FIVE FACTS. ============================
 //
-//   --mode plan     (DEFAULT) reads, compares against the manifest, writes NOTHING, and reports what an
-//                   apply run would CREATE, what is ALREADY_PRESENT, and what is FIXTURE_DRIFT.
-//   --mode apply    writes. Requires ALL of: --apply, EOS_ENVIRONMENT exactly `nonprod`,
-//                   --environment platform-sandbox, --tenantKey taylor-nonprod, --performedBy <operator>.
-//   --mode verify   delegates to scripts/verifySampleCompany.js and emits its report.
+//   --mode plan            (DEFAULT) reads, compares against the manifest, writes NOTHING, and reports what
+//                          an apply run would CREATE, what is ALREADY_PRESENT, and what is FIXTURE_DRIFT.
+//   --mode apply           writes the BUSINESS world. Requires ALL of: --apply, EOS_ENVIRONMENT exactly
+//                          `nonprod`, --environment platform-sandbox, --tenantKey taylor-nonprod,
+//                          --performedBy <operator>.
+//   --mode activate-logins makes the interactive personas able to sign in: sandbox Auth account (created
+//                          PASSWORDLESS), `firebase` Principal, governed link transition, Security Roles,
+//                          fixture-Principal retirement. Separately explicit because it reaches the
+//                          credential layer; needs --apply and --firebaseProjectId as well. Dry run without
+//                          --apply. Creates NO secret and can rotate NOTHING.
+//   --mode verify          delegates to scripts/verifySampleCompany.js and emits its report.
 //
 // PRODUCTION AND CERTIFICATION FAIL BEFORE ANY CONNECTION. The fence runs before `pg` or `lib/` is resolved:
 // production is refused twice over (registry role AND the literal project id, via assertMeasurementTarget),
@@ -50,12 +56,36 @@
 //   Purchasing            createReorderRequest -> recordPurchaseOrder -> createReceivingOrder / voidPurchaseOrder.
 //   Cycle count           createSheet -> openLine -> submitCount -> reconcileLine (the ONLY governed
 //                         PostgreSQL writer of eos_ops.inventory_movements).
-//   Employee              DIRECT INSERT. No governed Employee writer exists; documented in the manifest's
-//                         directInserts, drift-protected, additive on profile columns, never an overwrite.
-//   Part identity         DIRECT INSERT into eos_ops.parts (identity only: id, tenant_id, created_by).
-//                         Documented in the manifest's directInserts.
+//   Employee              DIRECT INSERT -- the ONLY one. No governed Employee writer exists anywhere;
+//                         documented in the manifest's directInserts, drift-protected, additive on profile
+//                         columns, never an overwrite.
+//   Parts                 NOTHING IS WRITTEN. eos_ops.parts IS the canonical PostgreSQL Part Master table
+//                         and postgresPartMasterWriter.ts IS its governed writer -- but catalogWriterState.ts
+//                         declares that writer INACTIVE, so the direct-insert policy (which applies only
+//                         where NO governed writer exists) does not apply. The Part records are manifest
+//                         metadata carried as unjoined governed keys by the purchasing, supplier-catalog and
+//                         cycle-count rows; migration 026 states that no foreign key references the table.
 //
 // Job Role is written NOWHERE. It is manifest metadata until EMP-RT-08.
+//
+// ============================ IDENTITY: TWO PHASES, AND WHY ============================
+//
+// `--mode apply` seeds the v1-shaped NON-AUTHENTICATING fixture Principals (provider `eos-synthetic-nonprod`),
+// because that is what the existing nonprod world already holds and v2 is a superset of it. Those Principals
+// exercise every governed relationship and CANNOT SIGN IN: no verifier recognizes their provider.
+//
+// `--mode activate-logins` is what makes the personas real. The deployed runtime resolves a Principal by
+// (identityProvider, externalSubject) where the provider is `firebase` and the subject is the Firebase uid
+// (functions/src/eosApi/server.ts:101 and :111-124; render.yaml's eos-api-nonprod sets no
+// EOS_IDENTITY_PROVIDER, so the default applies). That phase ensures a passwordless @sandbox.invalid Auth
+// account, resolves the `firebase` Principal from its uid, TRANSITIONS the active Employee link off the
+// fixture Principal through the governed revoke/establish lifecycle, assigns the Security Roles to the
+// authenticating Principal, and retires the superseded fixture Principal's membership.
+//
+// IT IS A SEPARATE, EXPLICIT PHASE because it touches the credential layer. It still creates no secret: Auth
+// accounts are created PASSWORDLESS and password activation is delegated, unchanged, to the existing proven
+// scripts/activateSandboxPersonas.js --activate-missing. No ordinary rerun of anything here can rotate a
+// working persona's password, because no code here can set one.
 //
 // ============================ FAIL CLOSED ON DRIFT ============================
 //
@@ -78,6 +108,14 @@ const MANIFEST = require("./fixtures/sampleCompany.v2.json");
 /** Mirrored from functions/src/employeeIdentity/employeeAuthority.ts; a test asserts equality. */
 const EMPLOYMENT_STATUS_VALUES = Object.freeze(["ACTIVE", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]);
 const SYNTHETIC_IDENTITY_PROVIDER = "eos-synthetic-nonprod";
+/**
+ * THE PROVIDER THE DEPLOYED RUNTIME RESOLVES A PRINCIPAL UNDER. Measured, not chosen:
+ * functions/src/eosApi/server.ts:101 `(env.EOS_IDENTITY_PROVIDER ?? "firebase")`, :111-124 the verifier
+ * returns `{ externalSubject: decoded.uid, identityProvider }`, and render.yaml's eos-api-nonprod sets no
+ * EOS_IDENTITY_PROVIDER. functions/src/adminPolicy/principalContext.ts:38 declares the same string.
+ * functions/test/sampleCompanyManifest.test.mjs pins all three, so a change is a reviewed diff.
+ */
+const RUNTIME_IDENTITY_PROVIDER = "firebase";
 const DERIVE_FROM_OWNER = "DERIVE_FROM_OWNER";
 const USER_ACCESS_STATES = Object.freeze(["ENABLED", "DISABLED", "NONE"]);
 const JOB_ROLE_VOCABULARY = Object.freeze([
@@ -218,14 +256,39 @@ function validateManifest(m) {
     if (!Array.isArray(p.securityRoles) || p.securityRoles.length === 0) {
       refuse("MANIFEST_INVALID", `${p.employee}: explicit Security Roles are required`);
     }
+    // ---- the LOGIN Principal: the one the deployed runtime can actually resolve.
+    const login = p.loginPrincipal;
+    if (!login) refuse("MANIFEST_INVALID", `${p.employee}: every Principal must declare its loginPrincipal`);
+    if (login.identityProvider !== RUNTIME_IDENTITY_PROVIDER) {
+      refuse("MANIFEST_INVALID", `${p.employee}: a login Principal must use the runtime provider '${RUNTIME_IDENTITY_PROVIDER}', not '${login.identityProvider}'`);
+    }
+    // THE RULE THIS FILE EXISTS TO ENFORCE. A persona declared able to sign in may NEVER be routed through
+    // the non-authenticating fixture provider: no verifier recognizes it, so the login could never resolve.
+    if (employee.sandboxPersona?.interactiveLogin === true && login.identityProvider === SYNTHETIC_IDENTITY_PROVIDER) {
+      refuse("MANIFEST_INVALID", `${p.employee}: interactiveLogin is true but the login Principal uses ${SYNTHETIC_IDENTITY_PROVIDER}, which no verifier recognizes`);
+    }
     if (p.existingAdministrator) {
       administrators += 1;
+      if (login.externalSubject !== "EXISTING_ADMINISTRATOR") refuse("MANIFEST_INVALID", `${p.employee}: the reused administrator's subject is never restated in the manifest`);
+      if (p.fixturePrincipal !== null) refuse("MANIFEST_INVALID", `${p.employee}: the reused administrator has no fixture Principal to supersede`);
     } else {
-      if (!/^synthetic-np-principal-[a-z0-9-]+$/.test(p.externalSubject || "")) {
+      // A uid is discovered from the Auth account at activation time. A literal here would commit a
+      // credential subject to the repository and invite somebody to reuse it as an Employee id.
+      if (login.externalSubject !== "RESOLVED_FROM_AUTH_UID") {
+        refuse("MANIFEST_INVALID", `${p.employee}: a login subject is resolved from the sandbox Auth account, never written into the manifest`);
+      }
+      if (login.credentialEmail !== employee.workEmail) {
+        refuse("MANIFEST_INVALID", `${p.employee}: the credential email must be the Employee's own work email`);
+      }
+      const fixture = p.fixturePrincipal;
+      if (!fixture || fixture.identityProvider !== SYNTHETIC_IDENTITY_PROVIDER) {
+        refuse("MANIFEST_INVALID", `${p.employee}: the superseded fixture Principal must be declared under ${SYNTHETIC_IDENTITY_PROVIDER}`);
+      }
+      if (!/^synthetic-np-principal-[a-z0-9-]+$/.test(fixture.externalSubject || "")) {
         refuse("MANIFEST_INVALID", `${p.employee}: synthetic subjects must be synthetic-np-principal-*`);
       }
-      if (subjects.has(p.externalSubject)) refuse("MANIFEST_INVALID", `duplicate external subject ${p.externalSubject}`);
-      subjects.add(p.externalSubject);
+      if (subjects.has(fixture.externalSubject)) refuse("MANIFEST_INVALID", `duplicate external subject ${fixture.externalSubject}`);
+      subjects.add(fixture.externalSubject);
     }
   }
   if (administrators !== 1) refuse("MANIFEST_INVALID", "exactly one existing administrator Principal is reused");
@@ -443,8 +506,8 @@ function sampleCompanyCapabilityKeys(manifest = MANIFEST) {
 
 function assertSampleCompanyInvocation(args, env) {
   const mode = args.mode === undefined ? "plan" : args.mode;
-  if (!["plan", "apply", "verify"].includes(mode)) {
-    refuse("ARGUMENT_INVALID", "--mode must be one of plan, apply, verify (plan is the default and writes nothing)");
+  if (!["plan", "apply", "activate-logins", "verify"].includes(mode)) {
+    refuse("ARGUMENT_INVALID", "--mode must be one of plan, apply, activate-logins, verify (plan is the default and writes nothing)");
   }
   const { environmentId, connectionString } = assertMeasurementTarget(args, env);
   assertNonprodRuntime(env);
@@ -463,17 +526,27 @@ function assertSampleCompanyInvocation(args, env) {
   if (typeof args.existingAdminPrincipalId !== "string" || args.existingAdminPrincipalId.trim() === "" || args.existingAdminPrincipalId === "true") {
     refuse("ARGUMENT_REQUIRED", "--existingAdminPrincipalId is required: the administering Principal is named, never inferred, and its authority is read from its own Role assignments");
   }
-  const apply = mode === "apply";
-  if (apply && args.apply !== "true") {
-    refuse("ARGUMENT_REQUIRED", "--mode apply additionally requires the explicit --apply flag; a mode alone never writes");
+  const writes = mode === "apply" || mode === "activate-logins";
+  const apply = writes && args.apply === "true";
+  if (writes && args.apply !== "true") {
+    refuse("ARGUMENT_REQUIRED", `--mode ${mode} additionally requires the explicit --apply flag; a mode alone never writes`);
   }
-  if (!apply && args.apply === "true") {
-    refuse("ARGUMENT_INVALID", "--apply was given without --mode apply; refusing rather than guessing which one was meant");
+  if (!writes && args.apply === "true") {
+    refuse("ARGUMENT_INVALID", "--apply was given without a writing mode; refusing rather than guessing which one was meant");
+  }
+  // CREDENTIAL-LAYER WORK NAMES ITS FIREBASE PROJECT EXPLICITLY, and the sandbox Auth adapter refuses
+  // production and the Certification world by name before firebase-admin is resolved.
+  if (mode === "activate-logins" && (typeof args.firebaseProjectId !== "string" || args.firebaseProjectId === "true" || args.firebaseProjectId.trim() === "")) {
+    refuse("ARGUMENT_REQUIRED", "--mode activate-logins requires --firebaseProjectId <sandbox project>; the credential target is named, never inferred");
+  }
+  if (mode !== "activate-logins" && args.firebaseProjectId !== undefined) {
+    refuse("ARGUMENT_INVALID", "--firebaseProjectId belongs only to --mode activate-logins; no other mode touches the credential layer");
   }
   return {
     mode, apply, environmentId, connectionString,
     tenantKey: args.tenantKey, performedBy: args.performedBy,
     existingAdminPrincipalId: args.existingAdminPrincipalId,
+    firebaseProjectId: args.firebaseProjectId,
   };
 }
 
@@ -665,12 +738,26 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       principal = admin;
       ledger.record("principals", "ALREADY_PRESENT", "(the reused existing administrator)");
     } else {
-      principal = await repo.getPrincipalBySubject(SYNTHETIC_IDENTITY_PROVIDER, p.externalSubject);
-      ledger.record("principals", principal ? "ALREADY_PRESENT" : "CREATE", p.externalSubject);
+      // ONCE LOGIN ACTIVATION HAS RUN, THIS PHASE MUST NOT UNDO IT. The fixture Principal has been
+      // deliberately retired (membership disabled) and the Employee's active link moved to the `firebase`
+      // login Principal. Calling ensureTenantPrincipal here would re-activate the retired membership, and
+      // establishLink would collide with the login link -- so a superseded persona is left alone and said so.
+      const fixture = p.fixturePrincipal;
+      principal = await repo.getPrincipalBySubject(SYNTHETIC_IDENTITY_PROVIDER, fixture.externalSubject);
+      const superseded = principal
+        ? (await repo.getMembership(tenantId, principal.id))?.status !== "active"
+        : false;
+      if (superseded) {
+        ledger.record("principals", "ALREADY_PRESENT", `${fixture.externalSubject} (retired; superseded by the login Principal)`);
+        ledger.record("employeePrincipalLinks", "ALREADY_PRESENT", `${p.employee} (linked to the login Principal)`);
+        for (const key of p.securityRoles) ledger.record("roleAssignments", "ALREADY_PRESENT", `${p.employee}:${key} (held by the login Principal)`);
+        continue;
+      }
+      ledger.record("principals", principal ? "ALREADY_PRESENT" : "CREATE", fixture.externalSubject);
       if (apply) {
         principal = await ensureTenantPrincipal(repo, {
-          tenantId, externalSubject: p.externalSubject, identityProvider: SYNTHETIC_IDENTITY_PROVIDER,
-          displayName: p.displayName, actorUid, actorRoleKeys: adminRoleKeys,
+          tenantId, externalSubject: fixture.externalSubject, identityProvider: SYNTHETIC_IDENTITY_PROVIDER,
+          displayName: fixture.displayName, actorUid, actorRoleKeys: adminRoleKeys,
         });
       } else if (!principal) {
         // A plan run cannot read a link or an assignment for a Principal that does not exist yet. Both are
@@ -1155,11 +1242,19 @@ async function main() {
     return;
   }
 
+  // The sandbox Auth adapter's OWN fence runs here, before firebase-admin is resolved: production and the
+  // Certification world are refused by name, and an undeclared project fails closed.
+  const authDirectory = options.mode === "activate-logins"
+    ? require("./sampleCompany/sandboxAuthDirectory.js").createFirebaseSandboxAuthDirectory(options.firebaseProjectId)
+    : null;
+
   const pg = require("pg");
   const { resolvePolicyDatabaseConfig } = require("../lib/adminPolicy/policyDatabase.js");
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: options.connectionString, max: 4 }));
   try {
-    const result = await seedSampleCompany(pool, options);
+    const result = options.mode === "activate-logins"
+      ? await require("./sampleCompany/loginActivation.js").activateSampleCompanyLogins(pool, options, MANIFEST, authDirectory)
+      : await seedSampleCompany(pool, options);
     // eslint-disable-next-line no-console
     console.log(JSON.stringify({ environment: options.environmentId, runtimeLabel: "nonprod", ...result }, null, 2));
     process.exitCode = result.pass ? 0 : 1;
@@ -1183,6 +1278,7 @@ module.exports = {
   sampleCompanyCapabilityKeys,
   EMPLOYMENT_STATUS_VALUES,
   SYNTHETIC_IDENTITY_PROVIDER,
+  RUNTIME_IDENTITY_PROVIDER,
   JOB_ROLE_VOCABULARY,
   REQUIRED_ENVIRONMENT,
   REQUIRED_TENANT_KEY,

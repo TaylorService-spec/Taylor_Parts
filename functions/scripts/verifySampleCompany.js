@@ -36,14 +36,29 @@
 const { parseArgs } = require("./measureEmployeeReferenceIntegrity.js");
 const {
   assertSampleCompanyInvocation, validateManifest, sampleCompanyCapabilityKeys,
-  SYNTHETIC_IDENTITY_PROVIDER, PROFILE_COLUMNS, MANIFEST,
+  SYNTHETIC_IDENTITY_PROVIDER, RUNTIME_IDENTITY_PROVIDER, PROFILE_COLUMNS, MANIFEST,
 } = require("./seedSampleCompany.js");
 
 const COMMERCIAL_TABLE = Object.freeze({ OPPORTUNITY: "opportunities", SALES_AGREEMENT: "sales_agreements", SALES_ORDER: "sales_orders" });
 const COMMERCIAL_NUMBER = Object.freeze({ OPPORTUNITY: "opportunity_number", SALES_AGREEMENT: "sales_agreement_number", SALES_ORDER: "sales_order_number" });
 
-/** A subject is printable only if it is a declared synthetic fixture subject. Nothing else is ever echoed. */
-const printableSubject = (s) => (/^synthetic-np-principal-[a-z0-9-]+$/.test(String(s)) ? String(s) : "(redacted)");
+// NO SUBJECT IS EVER ECHOED. An earlier revision printed synthetic fixture subjects because they were
+// harmless strings; now that real Firebase uids flow through this file, every subject in the report is a
+// one-way fingerprint instead, so there is no rule to get wrong about which ones are safe to show.
+
+/** A stable, non-reversing handle for a credential subject. No report ever echoes a raw uid. */
+const fingerprint = (subject) =>
+  (subject ? `subject:${require("node:crypto").createHash("sha256").update(String(subject)).digest("hex").slice(0, 12)}` : null);
+
+/** The external subject of the Principal this Employee's ACTIVE link names, under one provider. */
+async function subjectOfActiveLink(client, tenantId, employeeId, identityProvider) {
+  const { rows } = await client.query(
+    `SELECT pr.external_subject FROM eos_policy.employee_principal_links l
+       JOIN eos_policy.principals pr ON pr.id = l.principal_id
+      WHERE l.tenant_id = $1 AND l.employee_id = $2 AND l.status = 'active' AND pr.identity_provider = $3`,
+    [tenantId, employeeId, identityProvider]);
+  return rows[0]?.external_subject ?? null;
+}
 
 /**
  * Verify the sample company. `client` is a pg Client already inside a READ ONLY transaction.
@@ -52,7 +67,7 @@ const printableSubject = (s) => (/^synthetic-np-principal-[a-z0-9-]+$/.test(Stri
  * `blockers` entry and `pass: false`. It throws only when it cannot read at all, because an absent answer
  * and an answer of "zero" are different facts and must never be conflated.
  */
-async function verifySampleCompany(client, options, manifest = MANIFEST) {
+async function verifySampleCompany(client, options, manifest = MANIFEST, authProbe = null) {
   const lookups = validateManifest(manifest);
   const { employees, principalsByEmployee } = lookups;
   const employeeId = (key) => employees.get(key).id;
@@ -124,11 +139,26 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
     status: completeProfiles === manifest.employees.length ? "COMPLETE" : completeProfiles === 0 ? "ABSENT" : "PARTIAL",
   };
 
-  await count("identity.principals",
-    `SELECT count(*)::int AS n FROM eos_policy.principals p JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id
-      WHERE m.tenant_id = $1 AND p.identity_provider = $2 AND p.external_subject = ANY($3::text[]) AND m.status = 'active' AND p.status = 'active'`,
-    [tenantId, SYNTHETIC_IDENTITY_PROVIDER, manifest.principals.filter((p) => !p.existingAdministrator).map((p) => p.externalSubject)],
-    manifest.principals.filter((p) => !p.existingAdministrator).length);
+  // THE LOGIN PRINCIPALS ARE THE ONES THAT MATTER: `firebase`-provider Principals with an ACTIVE membership
+  // are what a signed-in browser resolves to. The fixture Principals are counted separately, and the
+  // expectation for them is RETIREMENT rather than presence.
+  const interactivePersonas = manifest.principals.filter((p) => !p.existingAdministrator);
+  await count("identity.loginPrincipals",
+    `SELECT count(*)::int AS n FROM eos_policy.principals p
+       JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id
+       JOIN eos_policy.employee_principal_links l ON l.principal_id = p.id AND l.tenant_id = m.tenant_id AND l.status = 'active'
+      WHERE m.tenant_id = $1 AND p.identity_provider = $2 AND m.status = 'active' AND p.status = 'active'
+        AND l.employee_id = ANY($3::text[])`,
+    [tenantId, RUNTIME_IDENTITY_PROVIDER, interactivePersonas.map((p) => employeeId(p.employee))],
+    interactivePersonas.length);
+
+  await count("identity.retiredFixturePrincipals",
+    `SELECT count(*)::int AS n FROM eos_policy.principals p
+       JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id
+      WHERE m.tenant_id = $1 AND p.identity_provider = $2 AND m.status <> 'active'
+        AND p.external_subject = ANY($3::text[])`,
+    [tenantId, SYNTHETIC_IDENTITY_PROVIDER, interactivePersonas.map((p) => p.fixturePrincipal.externalSubject)],
+    interactivePersonas.length);
 
   await count("identity.employeePrincipalLinks",
     `SELECT count(*)::int AS n FROM eos_policy.employee_principal_links
@@ -255,27 +285,76 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
   for (const p of manifest.principals) {
     const employee = employees.get(p.employee);
     const contract = manifest.expectedAccess.personas[p.employee];
+    const interactiveLogin = employee.sandboxPersona?.interactiveLogin === true;
     const persona = {
       employeeKey: p.employee,
       employeeId: employee.id,
       jobRole: employee.jobRole,
       jobRoleAuthority: "MANIFEST_METADATA_ONLY",
       userAccessState: employee.userAccess.state,
-      interactiveLogin: employee.sandboxPersona?.interactiveLogin === true,
+      interactiveLogin,
+      // THE TWO READINESSES, KEPT APART. Authorization readiness is a statement about the governed
+      // PostgreSQL chain; login readiness additionally requires a sandbox credential that can actually
+      // sign in. A persona the Owner is told to log in as, whose account does not exist or cannot
+      // authenticate, is not "mostly ready" -- it is a persona nobody can use.
+      authorizationReady: false,
+      loginReady: false,
+      identityProvider: p.loginPrincipal.identityProvider,
+      credentialEmail: p.loginPrincipal.credentialEmail,
+      authAccount: authProbe ? "PENDING" : "NOT_PROBED",
+      subjectFingerprint: null,
       securityRoles: p.securityRoles,
-      externalSubject: p.existingAdministrator ? "(the reused existing administrator)" : printableSubject(p.externalSubject),
-      identityProvider: p.existingAdministrator ? "(unchanged)" : SYNTHETIC_IDENTITY_PROVIDER,
-      resolved: false, heldRoleKeys: [], requiredCapabilities: [], forbiddenCapabilities: [],
-      missingCapabilities: [], heldForbiddenCapabilities: [],
-      expectedSurfaces: contract.expectedSurfaces, deniedSurfaces: contract.deniedSurfaces,
+      heldRoleKeys: [],
+      requiredCapabilities: [],
+      forbiddenCapabilities: [],
+      missingCapabilities: [],
+      forbiddenCapabilityViolations: [],
+      expectedSurfaces: contract.expectedSurfaces,
+      deniedSurfaces: contract.deniedSurfaces,
       accessModelGap: contract.accessModelGap ?? null,
-      employeeLink: null, manager: null,
+      employeeLink: null,
+      fixturePrincipal: null,
+      manager: null,
     };
 
-    // THE WHOLE CHAIN. For a fixture Principal this runs through resolveOperationalContext exactly as a
-    // request would; for the reused administrator the subject is not printed, so its effective set is
-    // resolved from the Principal id through the same last hop instead.
-    let effective;
+    // ════════ the credential half ════════
+    //
+    // Admin-SDK only, and it needs no password: an account's existence, enabled state and whether it has a
+    // sign-in provider are all readable without one. That is what lets ordinary read-only verification stay
+    // free of the credential file while still telling the truth about whether a persona can log in.
+    let authUid = null;
+    if (interactiveLogin && !p.existingAdministrator) {
+      if (!authProbe) {
+        persona.authAccount = "NOT_PROBED";
+      } else {
+        const account = await authProbe(p.loginPrincipal.credentialEmail);
+        if (!account) {
+          persona.authAccount = "MISSING";
+          fail("access.sandboxAuthAccount", p.employee, `no sandbox Auth account exists for ${p.loginPrincipal.credentialEmail}`);
+        } else if (account.disabled) {
+          persona.authAccount = "DISABLED";
+          fail("access.sandboxAuthAccount", p.employee, "the sandbox Auth account is disabled and cannot sign in");
+        } else if (account.email !== p.loginPrincipal.credentialEmail) {
+          persona.authAccount = "EMAIL_MISMATCH";
+          fail("access.sandboxAuthAccount", p.employee, "the sandbox Auth account carries a different email identity");
+        } else if (!account.hasPassword) {
+          persona.authAccount = "NO_SIGN_IN_CREDENTIAL";
+          fail("access.sandboxAuthAccount", p.employee, "the sandbox Auth account has no enabled sign-in credential; run the existing activate-missing tool");
+        } else {
+          persona.authAccount = "READY";
+          authUid = account.uid;
+          persona.subjectFingerprint = fingerprint(account.uid);
+        }
+        // A uid is a credential subject and never a business identity.
+        if (account && manifest.employees.some((e) => e.id === account.uid)) {
+          fail("access.sandboxAuthAccount", p.employee, "the Auth uid collides with a Sample Company Employee id");
+        }
+      }
+    }
+
+    // ════════ the governed half: the WHOLE chain, resolved exactly as a request resolves it ════════
+    let effective = new Set();
+    let resolvedPrincipalId = null;
     try {
       if (p.existingAdministrator) {
         const assignments = await reader.listAssignmentsForPrincipal(tenantId, options.existingAdminPrincipalId);
@@ -283,38 +362,91 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
         const keyById = new Map(roles.map((r) => [r.id, r.key]));
         persona.heldRoleKeys = [...new Set(assignments.filter((a) => a.status === "active").map((a) => keyById.get(a.roleId)).filter(Boolean))].sort();
         effective = await capabilitiesForRoleKeys(client, tenantId, persona.heldRoleKeys);
+        resolvedPrincipalId = options.existingAdminPrincipalId;
+        // THE ADMINISTRATOR'S CREDENTIAL IS OUT OF SCOPE BY RULING: it is real, pre-existing, not a
+        // @sandbox.invalid fixture, and this workstream neither creates nor rotates it. What is NOT out of
+        // scope is honesty about what was checked -- so a run that performed no Auth probe reports this
+        // persona as unprobed too, rather than being the one persona that claims readiness for free.
+        persona.authAccount = authProbe ? "REUSED_EXISTING_ADMINISTRATOR" : "NOT_PROBED";
+        const adminPrincipal = await reader.getPrincipal(options.existingAdminPrincipalId);
+        persona.subjectFingerprint = adminPrincipal ? fingerprint(adminPrincipal.externalSubject) : null;
+        persona.authorizationReady = true;
       } else {
-        const ctx = await resolveOperationalContext(reader, client, {
-          identityProvider: SYNTHETIC_IDENTITY_PROVIDER, externalSubject: p.externalSubject, requestedTenantId: tenantId,
-        });
-        persona.heldRoleKeys = [...ctx.principalContext.heldRoleKeys].sort();
-        effective = ctx.capabilities;
+        // The subject is the one the Auth account actually carries -- never a manifest literal. Without an
+        // Auth probe there is no subject to resolve, which is itself the honest answer.
+        const subject = authUid ?? (await subjectOfActiveLink(client, tenantId, employee.id, p.loginPrincipal.identityProvider));
+        if (!subject) {
+          fail("access.resolution", p.employee, "no login Principal subject could be resolved for this persona");
+        } else {
+          const ctx = await resolveOperationalContext(reader, client, {
+            identityProvider: p.loginPrincipal.identityProvider, externalSubject: subject, requestedTenantId: tenantId,
+          });
+          persona.heldRoleKeys = [...ctx.principalContext.heldRoleKeys].sort();
+          effective = ctx.capabilities;
+          resolvedPrincipalId = ctx.principalContext.principalId ?? null;
+          persona.subjectFingerprint = persona.subjectFingerprint ?? fingerprint(subject);
+          persona.authorizationReady = true;
+        }
       }
-      persona.resolved = true;
     } catch (err) {
-      effective = new Set();
       fail("access.resolution", p.employee, `the identity chain did not resolve: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    // A Role ASSIGNED but not RESOLVED is a real finding, and the row count above would not have caught it.
     for (const roleKey of p.securityRoles) {
-      if (persona.resolved && !persona.heldRoleKeys.includes(roleKey)) {
+      if (persona.authorizationReady && !persona.heldRoleKeys.includes(roleKey)) {
         fail("access.roleAssignments", `${p.employee}:${roleKey}`, "the Role is declared but does not resolve as held");
       }
     }
     persona.requiredCapabilities = contract.requiredCapabilities.map((c) => ({ capability: c, held: effective.has(c) }));
     persona.forbiddenCapabilities = contract.forbiddenCapabilities.map((c) => ({ capability: c, held: effective.has(c) }));
     persona.missingCapabilities = contract.requiredCapabilities.filter((c) => !effective.has(c));
-    persona.heldForbiddenCapabilities = contract.forbiddenCapabilities.filter((c) => effective.has(c));
+    persona.forbiddenCapabilityViolations = contract.forbiddenCapabilities.filter((c) => effective.has(c));
     for (const c of persona.missingCapabilities) fail("access.requiredCapability", `${p.employee}:${c}`, "required but not resolved through the identity chain");
-    for (const c of persona.heldForbiddenCapabilities) fail("access.forbiddenCapability", `${p.employee}:${c}`, "FORBIDDEN but resolved as held");
+    for (const c of persona.forbiddenCapabilityViolations) fail("access.forbiddenCapability", `${p.employee}:${c}`, "FORBIDDEN but resolved as held");
 
-    // The Employee link is a separate fact from the Role assignment, and is checked separately.
+    // EXACTLY ONE active link, and it must name the Principal that actually authenticates.
     const link = await client.query(
-      `SELECT employee_id FROM eos_policy.employee_principal_links
+      `SELECT principal_id FROM eos_policy.employee_principal_links
         WHERE tenant_id = $1 AND status = 'active' AND employee_id = $2`, [tenantId, employee.id]);
-    persona.employeeLink = link.rows.length === 1 ? "ACTIVE" : "MISSING";
-    if (link.rows.length !== 1) fail("identity.employeePrincipalLinks", p.employee, "no single active Employee/Principal link");
+    if (link.rows.length !== 1) {
+      persona.employeeLink = link.rows.length === 0 ? "MISSING" : "AMBIGUOUS";
+      fail("identity.employeePrincipalLinks", p.employee, `expected exactly one active Employee/Principal link, found ${link.rows.length}`);
+    } else if (resolvedPrincipalId && link.rows[0].principal_id !== resolvedPrincipalId) {
+      persona.employeeLink = "LINKED_TO_A_DIFFERENT_PRINCIPAL";
+      fail("identity.employeePrincipalLinks", p.employee, "the active Employee link does not name the Principal that authenticates");
+    } else {
+      persona.employeeLink = "ACTIVE";
+    }
+
+    // The superseded fixture Principal must not still read as an active user-access persona.
+    if (p.fixturePrincipal) {
+      const fixture = await client.query(
+        `SELECT m.status FROM eos_policy.principals pr
+           JOIN eos_policy.tenant_memberships m ON m.principal_id = pr.id AND m.tenant_id = $1
+          WHERE pr.identity_provider = $2 AND pr.external_subject = $3`,
+        [tenantId, SYNTHETIC_IDENTITY_PROVIDER, p.fixturePrincipal.externalSubject]);
+      if (fixture.rows.length === 0) persona.fixturePrincipal = "NEVER_EXISTED";
+      else if (fixture.rows[0].status === "active") {
+        persona.fixturePrincipal = "STILL_ACTIVE";
+        fail("identity.fixturePrincipalRetirement", p.employee,
+          "the superseded non-authenticating fixture Principal still holds an ACTIVE membership and would present as a user-access persona");
+      } else {
+        persona.fixturePrincipal = "RETIRED";
+      }
+    }
+
+    // LOGIN READY is the conjunction, never a rounding-up of the authorization half.
+    persona.loginReady = persona.authorizationReady
+      && persona.employeeLink === "ACTIVE"
+      && persona.missingCapabilities.length === 0
+      && persona.forbiddenCapabilityViolations.length === 0
+      && (p.existingAdministrator ? persona.authAccount === "REUSED_EXISTING_ADMINISTRATOR" : persona.authAccount === "READY");
+    if (interactiveLogin && !persona.loginReady) {
+      fail("access.loginReady", p.employee,
+        persona.authAccount === "NOT_PROBED"
+          ? "interactiveLogin is declared but login readiness was not probed; a database-only verification cannot report this persona as usable"
+          : `interactiveLogin is declared but this persona is not login-ready (auth account ${persona.authAccount}, link ${persona.employeeLink})`);
+    }
     personas.push(persona);
   }
 
@@ -331,10 +463,15 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
     personas.push({
       employeeKey: key, employeeId: employee.id, jobRole: employee.jobRole, jobRoleAuthority: "MANIFEST_METADATA_ONLY",
       userAccessState: employee.userAccess.state, interactiveLogin: false, securityRoles: [],
-      externalSubject: null, identityProvider: null, resolved: true, heldRoleKeys: [],
-      requiredCapabilities: [], forbiddenCapabilities: [], missingCapabilities: [], heldForbiddenCapabilities: [],
+      // NO ACCESS IS A COMPLETE ANSWER, not a missing one: authorization readiness is vacuously true and
+      // login readiness is false because there is deliberately nothing to log in with.
+      authorizationReady: true, loginReady: false,
+      identityProvider: null, credentialEmail: null, authAccount: "NONE_BY_DESIGN", subjectFingerprint: null,
+      heldRoleKeys: [],
+      requiredCapabilities: [], forbiddenCapabilities: [], missingCapabilities: [], forbiddenCapabilityViolations: [],
       expectedSurfaces: [], deniedSurfaces: declared.deniedSurfaces,
-      accessModelGap: null, employeeLink: n === 0 ? "NONE_BY_DESIGN" : "UNEXPECTED", manager: null,
+      accessModelGap: null, employeeLink: n === 0 ? "NONE_BY_DESIGN" : "UNEXPECTED",
+      fixturePrincipal: null, manager: null,
     });
   }
 
@@ -421,21 +558,49 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
       return found === employeeId(object.split(":")[1]) ? "VERIFIED" : "MISMATCH";
     },
     LINKED_TO_EMPLOYEE: async (subject, object) => {
+      // Resolved through the ACTIVE link, and the Principal it names must carry the provider the deployed
+      // runtime resolves. A link to a Principal nobody can authenticate as is not a login.
+      const employeeKey = object.split(":")[1];
+      const credentialEmail = subject.slice(subject.indexOf(":") + 1);
+      const declared = manifest.principals.find((p) => p.employee === employeeKey);
+      if (!declared || declared.loginPrincipal.credentialEmail !== credentialEmail) return "MISMATCH";
       const { rows } = await client.query(
-        `SELECT l.employee_id FROM eos_policy.employee_principal_links l JOIN eos_policy.principals p ON p.id = l.principal_id
-          WHERE l.tenant_id = $1 AND l.status = 'active' AND p.identity_provider = $2 AND p.external_subject = $3`,
-        [tenantId, SYNTHETIC_IDENTITY_PROVIDER, subject.split(":")[1]]);
+        `SELECT pr.identity_provider FROM eos_policy.employee_principal_links l
+           JOIN eos_policy.principals pr ON pr.id = l.principal_id
+          WHERE l.tenant_id = $1 AND l.employee_id = $2 AND l.status = 'active'`,
+        [tenantId, employeeId(employeeKey)]);
       if (rows.length === 0) return "DANGLING";
-      return rows[0].employee_id === employeeId(object.split(":")[1]) ? "VERIFIED" : "MISMATCH";
+      return rows[0].identity_provider === RUNTIME_IDENTITY_PROVIDER ? "VERIFIED" : "MISMATCH";
     },
     HOLDS_SECURITY_ROLE: async (subject, object) => {
+      const credentialEmail = subject.slice(subject.indexOf(":") + 1);
+      const declared = manifest.principals.find((p) => p.loginPrincipal.credentialEmail === credentialEmail);
+      if (!declared) return "MISMATCH";
       const { rows } = await client.query(
         `SELECT 1 FROM eos_policy.user_role_assignments a
-           JOIN eos_policy.principals p ON p.id = a.principal_id
+           JOIN eos_policy.employee_principal_links l ON l.principal_id = a.principal_id AND l.tenant_id = a.tenant_id
+           JOIN eos_policy.principals pr ON pr.id = a.principal_id
            JOIN eos_policy.roles r ON r.id = a.role_id
-          WHERE a.tenant_id = $1 AND a.status = 'active' AND p.identity_provider = $2 AND p.external_subject = $3 AND r.key = $4`,
-        [tenantId, SYNTHETIC_IDENTITY_PROVIDER, subject.split(":")[1], object.split(":")[1]]);
+          WHERE a.tenant_id = $1 AND a.status = 'active' AND l.status = 'active'
+            AND l.employee_id = $2 AND pr.identity_provider = $3 AND r.key = $4`,
+        [tenantId, employeeId(declared.employee), RUNTIME_IDENTITY_PROVIDER, object.split(":")[1]]);
       return rows.length > 0 ? "VERIFIED" : "DANGLING";
+    },
+    SUPERSEDED_BY_LOGIN_PRINCIPAL: async (subject, object) => {
+      // The obsolete fixture Principal must be retired AND its link preserved as history -- both halves,
+      // because retiring it without keeping the record would be deleting evidence.
+      const fixtureSubject = subject.split(":")[1];
+      const { rows } = await client.query(
+        `SELECT m.status AS membership_status,
+                (SELECT count(*)::int FROM eos_policy.employee_principal_links l
+                  WHERE l.tenant_id = m.tenant_id AND l.principal_id = pr.id AND l.employee_id = $3 AND l.status = 'revoked') AS revoked_links
+           FROM eos_policy.principals pr
+           JOIN eos_policy.tenant_memberships m ON m.principal_id = pr.id AND m.tenant_id = $1
+          WHERE pr.identity_provider = $2 AND pr.external_subject = $4`,
+        [tenantId, SYNTHETIC_IDENTITY_PROVIDER, employeeId(object.split(":")[1]), fixtureSubject]);
+      if (rows.length === 0) return "DANGLING";
+      if (rows[0].membership_status === "active") return "MISMATCH";
+      return Number(rows[0].revoked_links) > 0 ? "VERIFIED" : "MISMATCH";
     },
     IN_WAREHOUSE: async (subject, object) => {
       const { rows } = await client.query(`SELECT 1 FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2`, [tenantId, object.split(":")[1]]);
@@ -541,6 +706,16 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
       blocked: manifest.blockedRelationships.length,
       assertions: relationshipResults,
     },
+    loginReadiness: {
+      identityProvider: RUNTIME_IDENTITY_PROVIDER,
+      authProbe: authProbe ? "PERFORMED" : "NOT_PERFORMED",
+      interactivePersonas: personas.filter((p) => p.interactiveLogin).length,
+      loginReady: personas.filter((p) => p.interactiveLogin && p.loginReady).length,
+      authorizationReady: personas.filter((p) => p.interactiveLogin && p.authorizationReady).length,
+      $comment: authProbe
+        ? "Both halves were checked: the governed PostgreSQL chain and the sandbox Auth account's ability to sign in."
+        : "DATABASE-ONLY. The credential half was not probed, so no interactive persona can be reported login-ready and this report does not pass. Re-run without --skipAuthProbe to prove login readiness.",
+    },
     access: {
       capabilityKeysDerivedFromRoleCatalog: capabilityKeys.size + capabilityVocabularyGap.length,
       capabilityKeysMeasurable: capabilityKeys.size,
@@ -554,7 +729,7 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
       },
       forbiddenCapabilityCoverage: {
         checked: personas.reduce((n, p) => n + p.forbiddenCapabilities.length, 0),
-        violations: personas.reduce((n, p) => n + p.heldForbiddenCapabilities.length, 0),
+        violations: personas.reduce((n, p) => n + p.forbiddenCapabilityViolations.length, 0),
       },
       accessModelGaps: personas.filter((p) => p.accessModelGap).map((p) => ({ persona: p.employeeKey, gap: p.accessModelGap })),
     },
@@ -566,6 +741,17 @@ async function verifySampleCompany(client, options, manifest = MANIFEST) {
 
 /** Entry point shared with `seedSampleCompany.js --mode verify`. The caller has already passed the fence. */
 async function verifySampleCompanyMain(options) {
+  // THE AUTH PROBE NEEDS NO PASSWORD AND NO CREDENTIAL FILE. It reads whether an account exists, whether it
+  // is enabled and whether it has a sign-in provider -- all Admin-SDK reads. `--skipAuthProbe` produces an
+  // explicitly database-only report which, by design, does NOT pass while any persona claims to be
+  // interactive: a Sample Company nobody has proven can log in is not a verified Sample Company.
+  let authProbe = null;
+  if (!options.skipAuthProbe) {
+    const { createFirebaseSandboxAuthDirectory } = require("./sampleCompany/sandboxAuthDirectory.js");
+    const directory = createFirebaseSandboxAuthDirectory(options.firebaseProjectId);
+    authProbe = (email) => directory.findByEmail(email);
+  }
+
   const pg = require("pg");
   const { resolvePolicyDatabaseConfig } = require("../lib/adminPolicy/policyDatabase.js");
   const client = new pg.Client(resolvePolicyDatabaseConfig({ connectionString: options.connectionString }));
@@ -574,7 +760,7 @@ async function verifySampleCompanyMain(options) {
   try {
     await client.query("BEGIN");
     await client.query("SET TRANSACTION READ ONLY");
-    report = await verifySampleCompany(client, options);
+    report = await verifySampleCompany(client, options, MANIFEST, authProbe);
     await client.query("COMMIT");
   } finally {
     await client.end();
@@ -588,7 +774,14 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   // The SAME fence the orchestrator uses, run here too: a verifier that could read production would be
   // an unauthorized read of customer data, and read-only is not a licence.
-  const options = assertSampleCompanyInvocation({ ...args, mode: "verify" }, process.env);
+  const skipAuthProbe = args.skipAuthProbe === "true";
+  // --firebaseProjectId belongs to the credential layer, so the shared fence only accepts it in
+  // activate-logins. The verifier needs it too when it probes Auth, so it is checked here instead.
+  const { firebaseProjectId, ...rest } = args;
+  if (!skipAuthProbe && (typeof firebaseProjectId !== "string" || firebaseProjectId === "true" || firebaseProjectId.trim() === "")) {
+    throw new Error("--firebaseProjectId <sandbox project> is required to prove login readiness; pass --skipAuthProbe for an explicitly database-only report, which does not pass while any persona is interactive");
+  }
+  const options = { ...assertSampleCompanyInvocation({ ...rest, mode: "verify" }, process.env), skipAuthProbe, firebaseProjectId };
   await verifySampleCompanyMain(options);
 }
 

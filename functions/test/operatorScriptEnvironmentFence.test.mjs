@@ -457,9 +457,19 @@ for (const [label, args, env, pattern] of [
   ["the wrong tenant", [...SAMPLE_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a))], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
   ["no performedBy", SAMPLE_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), SAMPLE_ENV, /--performedBy <operator> is required/],
   ["no administering principal", SAMPLE_ARGS.filter((a) => a !== "--existingAdminPrincipalId" && a !== "p"), SAMPLE_ENV, /--existingAdminPrincipalId is required/],
-  ["an unknown mode", [...SAMPLE_ARGS, "--mode", "destroy"], SAMPLE_ENV, /--mode must be one of plan, apply, verify/],
+  ["an unknown mode", [...SAMPLE_ARGS, "--mode", "destroy"], SAMPLE_ENV, /--mode must be one of plan, apply, activate-logins, verify/],
   ["apply mode without the explicit --apply", [...SAMPLE_ARGS, "--mode", "apply"], SAMPLE_ENV, /--mode apply additionally requires the explicit --apply/],
-  ["--apply without apply mode", [...SAMPLE_ARGS, "--apply"], SAMPLE_ENV, /--apply was given without --mode apply/],
+  ["--apply without a writing mode", [...SAMPLE_ARGS, "--apply"], SAMPLE_ENV, /--apply was given without a writing mode/],
+  // CREDENTIAL-LAYER WORK IS SEPARATELY EXPLICIT and names its own target. Each refusal still precedes
+  // firebase-admin resolving, which is what the preload proves.
+  ["activate-logins without the explicit --apply", [...SAMPLE_ARGS, "--mode", "activate-logins"], SAMPLE_ENV, /--mode activate-logins additionally requires the explicit --apply/],
+  ["activate-logins without a named Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply"], SAMPLE_ENV, /--mode activate-logins requires --firebaseProjectId/],
+  ["activate-logins against production", [...sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /production/],
+  ["activate-logins against the Certification world", [...sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["activate-logins naming the production Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "taylor-parts"], SAMPLE_ENV, /customer production project/],
+  ["activate-logins naming the Certification Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-certification"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["activate-logins naming an undeclared Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "someone-elses-project"], SAMPLE_ENV, /not a Firebase project declared/],
+  ["a Firebase project on a non-credential mode", [...SAMPLE_ARGS, "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /--firebaseProjectId belongs only to --mode activate-logins/],
 ]) {
   test(`sample company v2 seed: refuses (${label}) before any client library loads`, () => {
     const res = runCli(SAMPLE_SEED, args, env);
@@ -469,11 +479,14 @@ for (const [label, args, env, pattern] of [
 }
 
 for (const [label, args, env, pattern] of [
-  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--environment is required/],
-  ["production environment", sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), SAMPLE_ENV, /production/],
-  ["frozen Certification world", sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), SAMPLE_ENV, /Certification world, which is frozen/],
-  ["EOS_ENVIRONMENT not nonprod", SAMPLE_ARGS, { ...SAMPLE_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
-  ["no tenant key", ["--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p", "--skipAuthProbe"], SAMPLE_ENV, /--environment is required/],
+  ["production environment", [...sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), "--skipAuthProbe"], SAMPLE_ENV, /production/],
+  ["frozen Certification world", [...sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), "--skipAuthProbe"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["EOS_ENVIRONMENT not nonprod", [...SAMPLE_ARGS, "--skipAuthProbe"], { ...SAMPLE_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no tenant key", ["--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB", "--performedBy", "op", "--existingAdminPrincipalId", "p", "--skipAuthProbe"], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no Firebase project and no explicit database-only opt-out", SAMPLE_ARGS, SAMPLE_ENV, /--firebaseProjectId <sandbox project> is required to prove login readiness/],
+  ["a production Firebase project for the Auth probe", [...SAMPLE_ARGS, "--firebaseProjectId", "taylor-parts"], SAMPLE_ENV, /customer production project/],
+  ["the Certification Firebase project for the Auth probe", [...SAMPLE_ARGS, "--firebaseProjectId", "eos-platform-certification"], SAMPLE_ENV, /Certification world, which is frozen/],
 ]) {
   test(`sample company v2 verifier: refuses (${label}) before any client library loads`, () => {
     const res = runCli(SAMPLE_VERIFY, args, env);

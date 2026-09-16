@@ -161,8 +161,19 @@ test("a Principal carries no Job Role, and a Security Role is never inferred fro
 });
 
 test("exactly one existing administrator Principal is reused and never recreated", () => {
-  assert.equal(MANIFEST.principals.filter((p) => p.existingAdministrator).length, 1);
-  refusal((m) => { m.principals[1].existingAdministrator = true; }, /exactly one existing administrator Principal is reused/);
+  const administrators = MANIFEST.principals.filter((p) => p.existingAdministrator);
+  assert.equal(administrators.length, 1);
+  assert.equal(administrators[0].employee, "owner-executive");
+  assert.equal(administrators[0].fixturePrincipal, null, "the reused administrator supersedes nothing");
+  assert.equal(administrators[0].loginPrincipal.disposition, "REUSE_UNCHANGED");
+  assert.equal(administrators[0].loginPrincipal.externalSubject, "EXISTING_ADMINISTRATOR",
+    "the real administrator's credential subject is never written into the manifest");
+  refusal((m) => {
+    const second = m.principals[1];
+    second.existingAdministrator = true;
+    second.fixturePrincipal = null;
+    second.loginPrincipal.externalSubject = "EXISTING_ADMINISTRATOR";
+  }, /exactly one existing administrator Principal is reused/);
 });
 
 // ════════════════════════════ responsibility: three separate facts ════════════════════════════
@@ -329,8 +340,11 @@ test("interactive login is declared for exactly the personas with user access", 
     const interactive = e.sandboxPersona?.interactiveLogin === true;
     assert.equal(interactive, e.userAccess.state === "ENABLED", `${e.key}: interactive login must track user access`);
   }
-  assert.ok(MANIFEST.blockedRelationships.some((b) => b.code === "SANDBOX_PERSONA_PROVISIONING_GAP"),
-    "the credential half of interactive login is a declared gap, not a claim");
+  // The credential half is no longer a gap: it is a phase. Every interactive persona declares the sandbox
+  // account the activate-logins phase ensures, and the manifest names the existing tool that activates it.
+  assert.ok(MANIFEST.sandboxCredentials.activationCommand.includes("activateSandboxPersonas.js"));
+  assert.ok(MANIFEST.sandboxCredentials.activationCommand.includes("--activate-missing"));
+  assert.ok(!MANIFEST.sandboxCredentials.activationCommand.includes("--rotate"));
 });
 
 test("the capability key set is derived from the Role catalog, never hand-typed", () => {
@@ -391,7 +405,8 @@ test("every relationship assertion names a declared subject and object, and only
     ...MANIFEST.trucks.records.map((t) => `truck:${t.truckId}`),
     ...MANIFEST.trucks.mobileLocations.map((l) => `mobileLocation:${l.locationId}`),
     ...MANIFEST.parts.records.map((p) => `part:${p.partId}`),
-    ...MANIFEST.principals.filter((p) => !p.existingAdministrator).map((p) => `principal:${p.externalSubject}`),
+    ...MANIFEST.principals.filter((p) => !p.existingAdministrator).map((p) => `fixturePrincipal:${p.fixturePrincipal.externalSubject}`),
+    ...MANIFEST.principals.filter((p) => !p.existingAdministrator).map((p) => `loginPrincipal:${p.loginPrincipal.credentialEmail}`),
     ...MANIFEST.purchasing.map((p) => `reorderRequest:${p.reorderRequestNumber}`),
   ]);
   for (const a of MANIFEST.relationshipAssertions) {
@@ -413,7 +428,7 @@ test("every BLOCKED section names a declared blocker with a real missing authori
   }
   for (const code of ["WORK_ORDER_POSTGRES_AUTHORITY_ABSENT", "EMPLOYEE_ASSIGNEE_PROJECTION", "INBOUND_WORK_POSTGRES_AUTHORITY_ABSENT",
     "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT", "PARTS_POSTGRES_WRITER_INACTIVE", "EMPLOYEE_TECHNICIAN_LINK_BLOCKED",
-    "FINANCIAL_SAMPLE_COVERAGE", "REPORTING_SAMPLE_COVERAGE", "SANDBOX_PERSONA_PROVISIONING_GAP"]) {
+    "FINANCIAL_SAMPLE_COVERAGE", "REPORTING_SAMPLE_COVERAGE", "TECHNICIAN_AUTHORITY_STILL_LEGACY"]) {
     assert.ok(codes.has(code), `${code} must be declared`);
   }
   refusal((m) => { m.service.status = "BLOCKED"; m.service.blockedBy = "A_CODE_NOBODY_DECLARED"; },
@@ -487,7 +502,7 @@ test("plan is the default and writes nothing", () => {
 
 test("apply requires ALL FIVE facts together", () => {
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply" }, NONPROD), /--mode apply additionally requires the explicit --apply/);
-  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, apply: "true" }, NONPROD), /--apply was given without --mode apply/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, apply: "true" }, NONPROD), /--apply was given without a writing mode/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true" }, { ...NONPROD, EOS_ENVIRONMENT: "production" }), /EOS_ENVIRONMENT must read exactly 'nonprod'/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", tenantKey: "some-other-tenant" }, NONPROD), /--tenantKey taylor-nonprod is required/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", performedBy: undefined }, NONPROD), /--performedBy <operator> is required/);
@@ -503,11 +518,268 @@ test("production and the Certification world are refused, and platform-sandbox i
   // not the same as the one environment this sample company is for.
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, environment: "platform-integration" }, NONPROD), /exists only in 'platform-sandbox'/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, environment: undefined }, NONPROD), /--environment is required/);
-  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "destroy" }, NONPROD), /--mode must be one of plan, apply, verify/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "destroy" }, NONPROD), /--mode must be one of plan, apply, activate-logins, verify/);
 });
 
 test("the Certification world would pass a role-only fence, which is why it is refused by NAME", () => {
   const registry = JSON.parse(readFileSync(resolve(FUNCTIONS_DIR, "..", "config", "environments.json"), "utf8"));
   const certification = registry.environments.find((e) => e.id === "platform-certification");
   assert.equal(certification.role, "sandbox", "if this ever becomes 'production' the by-name refusal is still required");
+});
+
+// ════════════════════════════ INTERACTIVE LOGIN: the chain that makes a persona real ════════════════════════════
+
+test("the runtime identity provider is what the deployed runtime actually resolves, pinned in three places", () => {
+  // MEASURED, NOT CHOSEN. If any of these three moves, this pin is the reviewed diff that notices.
+  const server = readFileSync(resolve(FUNCTIONS_DIR, "src/eosApi/server.ts"), "utf8");
+  assert.match(server, /identityProvider:\s*\(env\.EOS_IDENTITY_PROVIDER \?\? "firebase"\)/,
+    "server.ts no longer defaults the identity provider to firebase");
+  assert.match(server, /return \{ externalSubject: decoded\.uid, identityProvider \}/,
+    "the verifier no longer maps the Firebase uid to the external subject");
+  const principalContext = readFileSync(resolve(FUNCTIONS_DIR, "src/adminPolicy/principalContext.ts"), "utf8");
+  assert.match(principalContext, /FIREBASE_IDENTITY_PROVIDER = "firebase"/);
+  const render = readFileSync(resolve(FUNCTIONS_DIR, "..", "render.yaml"), "utf8");
+  const nonprod = render.slice(render.indexOf("name: eos-api-nonprod"));
+  assert.ok(!/EOS_IDENTITY_PROVIDER/.test(nonprod.slice(0, nonprod.indexOf("- type:") + 1 || undefined)),
+    "eos-api-nonprod now sets EOS_IDENTITY_PROVIDER; the default no longer applies and the manifest must be revisited");
+  assert.equal(seed.RUNTIME_IDENTITY_PROVIDER, "firebase");
+  assert.equal(MANIFEST.company.runtimeIdentityProvider, "firebase");
+});
+
+test("(1) an interactive persona can NEVER be routed through the non-authenticating fixture provider", () => {
+  for (const p of MANIFEST.principals) {
+    const employee = MANIFEST.employees.find((e) => e.key === p.employee);
+    if (employee.sandboxPersona?.interactiveLogin !== true) continue;
+    assert.equal(p.loginPrincipal.identityProvider, "firebase", `${p.employee} must log in through the runtime provider`);
+    assert.notEqual(p.loginPrincipal.identityProvider, seed.SYNTHETIC_IDENTITY_PROVIDER);
+  }
+  refusal((m) => { m.principals[1].loginPrincipal.identityProvider = "eos-synthetic-nonprod"; },
+    /a login Principal must use the runtime provider 'firebase'/);
+});
+
+test("(2) no interactive persona resolves through a provider no verifier recognizes", () => {
+  // The fixture Principal still EXISTS in the manifest -- it is what the transition supersedes -- but it is
+  // never the thing a persona logs in as, and its disposition says so.
+  for (const p of MANIFEST.principals) {
+    if (p.existingAdministrator) continue;
+    assert.equal(p.fixturePrincipal.identityProvider, seed.SYNTHETIC_IDENTITY_PROVIDER);
+    assert.equal(p.fixturePrincipal.disposition, "SUPERSEDED_BY_LOGIN_PRINCIPAL");
+    assert.equal(p.loginPrincipal.disposition, "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK");
+  }
+  refusal((m) => { m.principals[2].fixturePrincipal.identityProvider = "firebase"; },
+    /the superseded fixture Principal must be declared under eos-synthetic-nonprod/);
+});
+
+// Comments are stripped FIRST throughout this section: a module that EXPLAINS why it does not reach
+// Firestore, or which tool owns passwords, is not a module that does either.
+const stripComments = (source) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+
+test("(3) the Sample Company credential path uses Firebase AUTH and never Firestore", () => {
+  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/loginActivation.js"]) {
+    const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
+    assert.ok(!/firebase-admin\/firestore|getFirestore|\.collection\(/.test(source),
+      `${file} reaches Firestore; eos_workforce.employees is the Employee authority and Firebase is identity only`);
+  }
+  const adapter = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/sandboxAuthDirectory.js"), "utf8");
+  assert.match(adapter, /require\("firebase-admin\/auth"\)/, "the adapter is the one place Auth is used");
+  // And the seed/verifier themselves never reach Firebase at all except through that adapter.
+  for (const file of ["scripts/seedSampleCompany.js", "scripts/verifySampleCompany.js"]) {
+    const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
+    assert.ok(!/require\("firebase-admin/.test(source), `${file} loads firebase-admin directly`);
+  }
+});
+
+test("(4) a Firebase uid is never an Employee id, and is never written into the manifest", () => {
+  for (const p of MANIFEST.principals) {
+    if (p.existingAdministrator) {
+      assert.equal(p.loginPrincipal.externalSubject, "EXISTING_ADMINISTRATOR");
+      continue;
+    }
+    assert.equal(p.loginPrincipal.externalSubject, "RESOLVED_FROM_AUTH_UID",
+      "a uid is discovered from the Auth account, never committed to the repository");
+  }
+  refusal((m) => { m.principals[1].loginPrincipal.externalSubject = "AbCdEfGhIjKlMnOpQrStUvWxYz01"; },
+    /a login subject is resolved from the sandbox Auth account, never written into the manifest/);
+  // The activation phase refuses a uid that collides with an Employee id, by name.
+  const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
+  assert.ok((activation.match(/UID_IS_NOT_AN_EMPLOYEE_ID/g) || []).length >= 2,
+    "both the direct uid==employeeId check and the collision-against-any-Employee check must be present");
+});
+
+test("(5)(6)(7) the credential layer cannot create, rotate or touch a secret from here", () => {
+  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/loginActivation.js", "scripts/seedSampleCompany.js"]) {
+    const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
+    // `hasPassword` READS whether an account can sign in; a bare `password` would SET one. Only the second
+    // is forbidden, and the distinction is the whole point of this assertion.
+    assert.ok(!/(?<![A-Za-z])password\s*[:=]/.test(source), `${file} sets a password value; the Sample Company sets none`);
+    assert.ok(!/randomBytes|updateUser\(/.test(source), `${file} can generate or set a credential`);
+  }
+  // (5) an existing account is REUSED, never deleted and never recreated.
+  const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
+  assert.match(activation, /record\.authAccount = "REUSED"/);
+  assert.ok(!/deleteUser|createUser\(/.test(activation), "the activation phase never deletes or directly creates an account");
+  // (6)(7) activation is delegated to the existing proven activate-missing tool, and --rotate is excluded.
+  assert.equal(MANIFEST.sandboxCredentials.passwordPolicy.includes("--rotate is deliberately OUTSIDE"), true);
+  const tool = readFileSync(resolve(FUNCTIONS_DIR, "scripts/activateSandboxPersonas.js"), "utf8");
+  assert.match(tool, /const missing = personas\.filter\(\(u\) => !u\.passwordHash\)/, "activate-missing no longer targets only passwordless personas");
+  assert.match(tool, /Refusing to overwrite a file whose contents cannot be preserved/, "the unparseable-file refusal is gone");
+});
+
+test("(8) a no-access Employee gets no Principal, no link and no Role -- ever", () => {
+  for (const key of Object.keys(MANIFEST.expectedAccess.noAccessPersonas)) {
+    const employee = MANIFEST.employees.find((e) => e.key === key);
+    assert.equal(employee.userAccess.state, "NONE");
+    assert.equal(employee.sandboxPersona.interactiveLogin, false);
+    assert.ok(!MANIFEST.principals.some((p) => p.employee === key), `${key} must have no Principal`);
+    assert.ok(!(key in MANIFEST.expectedAccess.personas), `${key} must have no access contract`);
+    assert.equal(MANIFEST.expectedAccess.noAccessPersonas[key].expectedPrincipals, 0);
+    assert.equal(MANIFEST.expectedAccess.noAccessPersonas[key].expectedRoleAssignments, 0);
+  }
+  // A credential is never created merely because an Employee exists.
+  const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
+  assert.match(activation, /record\.authAccount = "NOT_REQUESTED"/);
+});
+
+test("(9) exactly one active Employee link per interactive persona, enforced by the schema itself", () => {
+  const migration = readFileSync(resolve(FUNCTIONS_DIR, "migrations/1758412800000_employee-principal-linkage.sql"), "utf8");
+  assert.match(migration, /CREATE UNIQUE INDEX employee_principal_links_one_active_per_employee[\s\S]*?WHERE status = 'active'/);
+  assert.match(migration, /CREATE UNIQUE INDEX employee_principal_links_one_active_per_principal[\s\S]*?WHERE status = 'active'/);
+  // One declared login Principal per Employee, so the manifest cannot ask for two.
+  const seen = new Set();
+  for (const p of MANIFEST.principals) {
+    assert.ok(!seen.has(p.employee), `${p.employee} declares two Principals`);
+    seen.add(p.employee);
+  }
+});
+
+test("(10) the fixture link transition uses the governed lifecycle, never hand SQL", () => {
+  const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
+  // Revoke THEN establish, both through the repository.
+  assert.match(activation, /links\.revokeLinkForEmployee\(pool, tenantId, employee\.id\)/);
+  assert.match(activation, /links\.establishLink\(pool, \{/);
+  assert.ok(!/employee_principal_links/.test(activation.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")),
+    "the activation phase writes the link table by hand instead of through the repository");
+  // The superseded fixture Principal is retired through the governed transaction port, with an audit event.
+  assert.match(activation, /tx\.setTenantMembershipStatus\(membership\.id, "disabled"\)/);
+  assert.match(activation, /tx\.appendAudit\(/);
+  assert.ok(!/DELETE FROM/.test(activation), "history is preserved, never deleted for cosmetics");
+});
+
+test("(11)(12) a distinct Job Role does not require a distinct Security Role", () => {
+  const retail = MANIFEST.employees.find((e) => e.key === "retail-sales-a");
+  const national = MANIFEST.employees.find((e) => e.key === "national-accounts-sales");
+  // (12) the JOB Roles stay distinct.
+  assert.equal(retail.jobRole, "RETAIL_SALES");
+  assert.equal(national.jobRole, "NATIONAL_ACCOUNTS_SALES");
+  assert.notEqual(retail.jobRole, national.jobRole);
+  // (11) and they intentionally share one Security Role, which is NOT a defect.
+  const roleOf = (key) => MANIFEST.principals.find((p) => p.employee === key).securityRoles;
+  assert.deepEqual(roleOf("retail-sales-a"), ["salesperson"]);
+  assert.deepEqual(roleOf("national-accounts-sales"), ["salesperson"]);
+  const finding = MANIFEST.expectedAccess.accessFindings.find((f) => f.code === "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE");
+  assert.equal(finding.classification, "NOT_A_GAP");
+  assert.match(finding.action, /^NONE\./);
+  // THE TWO AXES ARE NOT 1:1, which is what "independent" means here. Three distinct Job Roles among the
+  // sales and technician populations resolve to two Security Roles, and no Security Role was created to
+  // mirror a Job Role name -- the seed creates no Role at all, which the catalog test pins separately.
+  const jobRolesInUse = new Set(MANIFEST.principals.map((p) => MANIFEST.employees.find((e) => e.key === p.employee).jobRole));
+  const securityRolesInUse = new Set(MANIFEST.principals.flatMap((p) => p.securityRoles));
+  assert.ok(jobRolesInUse.size > 1 && securityRolesInUse.size > 1);
+  const salesJobRoles = [...jobRolesInUse].filter((r) => r.endsWith("_SALES"));
+  assert.equal(salesJobRoles.length, 2, "both sales Job Roles are in use");
+  assert.equal(new Set(["retail-sales-a", "retail-sales-b", "national-accounts-sales"].flatMap(roleOf)).size, 1,
+    "the two sales Job Roles resolve to exactly one shared Security Role");
+});
+
+test("(13) the access-gap classification is exhaustive: every finding carries exactly one of the five classes", () => {
+  const CLASSES = ["SEED_GRANT_GAP", "POSTGRES_VOCABULARY_GAP", "DOMAIN_AUTHORITY_NOT_CUT_OVER", "NOT_A_GAP", "CONDITIONAL_AUTHORITY_GAP"];
+  assert.deepEqual(MANIFEST.expectedAccess.gapClasses, CLASSES);
+  assert.ok(MANIFEST.expectedAccess.accessFindings.length > 0);
+  for (const f of MANIFEST.expectedAccess.accessFindings) {
+    assert.ok(CLASSES.includes(f.classification), `${f.code} carries ${f.classification}`);
+    assert.ok(f.finding && f.action, `${f.code} must say what was found and what was done`);
+    if (f.classification !== "NOT_A_GAP") assert.ok(f.authorityEvidence, `${f.code} must carry authority evidence`);
+    for (const persona of f.personas) assert.ok(persona in MANIFEST.expectedAccess.personas, `${f.code} names unknown persona ${persona}`);
+  }
+  // Every persona-level gap points at a declared finding, and nothing is left unclassified.
+  for (const [key, p] of Object.entries(MANIFEST.expectedAccess.personas)) {
+    if (!p.accessModelGap) continue;
+    const finding = MANIFEST.expectedAccess.accessFindings.find((f) => f.code === p.accessModelGap.code);
+    assert.ok(finding, `${key} names undeclared finding ${p.accessModelGap.code}`);
+    assert.equal(p.accessModelGap.classification, finding.classification);
+  }
+  assert.equal(MANIFEST.expectedAccess.seedGrantGap.classification, "SEED_GRANT_GAP");
+  assert.equal(MANIFEST.expectedAccess.postgresVocabularyGaps.classification, "POSTGRES_VOCABULARY_GAP");
+});
+
+test("(14) SEED_GRANT_GAP reconciles only pairs the Role catalog declares for that Role", () => {
+  // The reconciliation derives its pairs from the Role objects themselves; it cannot invent one.
+  const migration = readFileSync(resolve(FUNCTIONS_DIR, "src/eosOps/migration/inventoryCapabilityGrantMigration.ts"), "utf8");
+  assert.match(migration, /for \(const permissionId of role\.permissions \?\? \[\]\)/,
+    "grants are no longer derived from the Role catalog's own permission arrays");
+  assert.match(migration, /status: "UNKNOWN_CAPABILITY"/);
+  assert.match(migration, /status: "UNRESOLVED_ROLE"/);
+  // And the orchestrator fails closed on either.
+  const source = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  assert.match(source, /CAPABILITY_GRANT_UNRESOLVED/);
+  assert.ok(!/INSERT INTO eos_policy\.role_capabilities/.test(source), "the seed writes a grant by hand");
+  assert.match(MANIFEST.expectedAccess.seedGrantGap.action, /no ad-hoc SQL/);
+});
+
+test("(15) DOMAIN_AUTHORITY_NOT_CUT_OVER never yields a synthetic capability or grant", () => {
+  const vocabulary = new Set(MANIFEST.expectedAccess.postgresCapabilityVocabulary);
+  const blocked = MANIFEST.expectedAccess.accessFindings.filter((f) => f.classification === "DOMAIN_AUTHORITY_NOT_CUT_OVER");
+  assert.ok(blocked.length > 0);
+  for (const f of blocked) {
+    assert.match(f.action, /^BLOCKED\./, `${f.code} must stay blocked`);
+    for (const persona of f.personas) {
+      // Nothing the blocked domain would need appears as a REQUIRED capability for its personas.
+      for (const cap of MANIFEST.expectedAccess.personas[persona].requiredCapabilities) {
+        assert.ok(vocabulary.has(cap), `${persona} requires ${cap}, which is outside the registered vocabulary`);
+      }
+    }
+  }
+  // No registration migration was authored for a runtime that does not exist.
+  assert.deepEqual(MANIFEST.expectedAccess.postgresVocabularyGaps.found, []);
+});
+
+test("(20) the Part direct-insert documentation matches the executable behaviour", () => {
+  const source = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  // THE EXECUTABLE FACT, read from the code rather than from a comment.
+  const inserts = [...source.matchAll(/INSERT INTO\s+([a-z_]+\.[a-z_]+)/g)].map((m) => m[1]);
+  assert.ok(!inserts.includes("eos_ops.parts"), "the seed inserts eos_ops.parts");
+  // Every claim about it agrees.
+  assert.deepEqual(MANIFEST.directInserts.map((d) => d.table), ["eos_workforce.employees"]);
+  assert.equal(MANIFEST.parts.status, "BLOCKED");
+  assert.match(source, /Parts\s+NOTHING IS WRITTEN/, "the orchestrator header still claims a Part direct insert");
+  assert.ok(!/Part identity\s+DIRECT INSERT/.test(source), "a stale direct-insert claim survives in the header");
+  // The purchasing fixtures are truthful about the part ids they carry.
+  assert.match(MANIFEST.blockedRelationships.find((b) => b.code === "PARTS_POSTGRES_WRITER_INACTIVE").missingAuthority,
+    /unjoined governed keys \(no foreign key references eos_ops\.parts\)/);
+  const declared = new Set(MANIFEST.parts.records.map((r) => r.partId));
+  for (const p of MANIFEST.purchasing) assert.ok(declared.has(p.partId));
+});
+
+test("activate-logins is a separately explicit phase that names its credential target", () => {
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "activate-logins" }, NONPROD),
+    /--mode activate-logins additionally requires the explicit --apply/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "activate-logins", apply: "true" }, NONPROD),
+    /--mode activate-logins requires --firebaseProjectId/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, firebaseProjectId: "eos-platform-sandbox" }, NONPROD),
+    /--firebaseProjectId belongs only to --mode activate-logins/);
+  const ok = assertSampleCompanyInvocation({ ...BASE, mode: "activate-logins", apply: "true", firebaseProjectId: "eos-platform-sandbox" }, NONPROD);
+  assert.equal(ok.mode, "activate-logins");
+  assert.equal(ok.apply, true);
+});
+
+test("the sandbox Auth adapter refuses production and the Certification world by name", async () => {
+  const { assertSandboxAuthTarget, assertSandboxEmail } = require("../scripts/sampleCompany/sandboxAuthDirectory.js");
+  assert.throws(() => assertSandboxAuthTarget("taylor-parts"), /customer production project/);
+  assert.throws(() => assertSandboxAuthTarget("eos-platform-certification"), /Certification world, which is frozen/);
+  assert.throws(() => assertSandboxAuthTarget("someone-elses-project"), /not a Firebase project declared/);
+  assert.throws(() => assertSandboxAuthTarget(undefined), /--firebaseProjectId is required/);
+  assert.equal(assertSandboxAuthTarget("eos-platform-sandbox"), "platform-sandbox");
+  // Only sandbox addresses are ever touched.
+  assert.throws(() => assertSandboxEmail("someone@taylorservice.com"), /is not a @sandbox.invalid address/);
+  assert.equal(assertSandboxEmail("harper.fixture@sandbox.invalid"), "harper.fixture@sandbox.invalid");
 });

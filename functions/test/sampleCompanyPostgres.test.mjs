@@ -26,6 +26,72 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const FUNCTIONS_DIR = resolve(HERE, "..");
 const require = createRequire(import.meta.url);
 const { MANIFEST } = require("../scripts/seedSampleCompany.js");
+const { verifySampleCompany } = require("../scripts/verifySampleCompany.js");
+const { activateSampleCompanyLogins } = require("../scripts/sampleCompany/loginActivation.js");
+
+/**
+ * An in-memory stand-in for the sandbox Auth directory.
+ *
+ * The real adapter is firebase-admin/auth and needs a project, credentials and a network. The PHASE it feeds
+ * is pure governed PostgreSQL work, so it takes the directory as a parameter and these tests hand it a
+ * double -- which is what lets the whole login transition be proved offline, in this process, with no
+ * Firebase anywhere. `hasPassword` is FALSE on a freshly created account, exactly as a passwordless account
+ * behaves until the existing activate-missing tool runs.
+ */
+function fakeAuthDirectory(initial = []) {
+  const accounts = new Map(initial.map((a) => [a.email, { disabled: false, hasPassword: false, ...a }]));
+  let created = 0;
+  return {
+    projectId: "eos-platform-sandbox",
+    accounts,
+    get createdCount() { return created; },
+    async findByEmail(email) { return accounts.get(email) ?? null; },
+    async createPasswordless({ email, displayName }) {
+      if (accounts.has(email)) throw new Error("createPasswordless called for an account that already exists");
+      created += 1;
+      const account = { uid: `sbxuid-${created}-${email.split("@")[0]}`, email, displayName, disabled: false, hasPassword: false };
+      accounts.set(email, account);
+      return account;
+    },
+    /** What the EXISTING scripts/activateSandboxPersonas.js --activate-missing tool would do. */
+    activateMissingPasswords() {
+      let activated = 0;
+      for (const account of accounts.values()) if (!account.hasPassword) { account.hasPassword = true; activated += 1; }
+      return activated;
+    },
+  };
+}
+
+const INTERACTIVE = MANIFEST.principals.filter((p) => !p.existingAdministrator);
+const activationOptions = (apply) => ({ tenantKey: TENANT_KEY, performedBy: "sample-company-proof", existingAdminPrincipalId: adminPrincipalId, apply });
+
+async function withPool(fn) {
+  const pool = new pg.Pool({ connectionString: dbUrl(), max: 2 });
+  try { return await fn(pool); } finally { await pool.end(); }
+}
+
+/**
+ * Run the verifier IN PROCESS so the Auth probe can be injected. The CLI path is exercised separately with
+ * --skipAuthProbe, which is the explicitly database-only report.
+ */
+async function verifyWith(authProbe) {
+  const client = new pg.Client({ connectionString: dbUrl() });
+  await client.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SET TRANSACTION READ ONLY");
+    const report = await verifySampleCompany(
+      client,
+      { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId },
+      MANIFEST,
+      authProbe,
+    );
+    await client.query("COMMIT");
+    return report;
+  } finally {
+    await client.end();
+  }
+}
 
 /**
  * The migration set this suite is written against, pinned BY NAME and by count -- never "latest".
@@ -82,7 +148,7 @@ const cli = (script, args, extraEnv = {}) =>
 const IDENTITY = () => ["--tenantKey", TENANT_KEY, "--existingAdminPrincipalId", adminPrincipalId, "--performedBy", "sample-company-proof"];
 const plan = (extra = []) => cli("seedSampleCompany.js", [...IDENTITY(), ...extra]);
 const apply = () => cli("seedSampleCompany.js", [...IDENTITY(), "--mode", "apply", "--apply"]);
-const verify = () => cli("verifySampleCompany.js", [...IDENTITY()]);
+const verify = () => cli("verifySampleCompany.js", [...IDENTITY(), "--skipAuthProbe"]);
 
 /** Everything this seed can touch. A "writes nothing" claim is only as good as the relations it counts. */
 const SEEDED_RELATIONS = [
@@ -360,59 +426,283 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     }
   });
 
+  // ════════════════ login activation: the phase that makes a persona real ════════════════
+
+  let authDirectory;
+  await t.test("activate-logins DRY RUN creates no Auth account and writes nothing", async () => {
+    const before = await rowCounts();
+    authDirectory = fakeAuthDirectory();
+    const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(false), MANIFEST, authDirectory));
+    assert.equal(report.applied, false);
+    assert.equal(report.pass, true);
+    assert.equal(authDirectory.createdCount, 0, "a dry run created a credential");
+    assert.equal(authDirectory.accounts.size, 0);
+    assert.equal(report.summary.authAccountsCreated, INTERACTIVE.length, "the plan must say what it would create");
+    assert.deepEqual(await rowCounts(), before);
+  });
+
+  await t.test("activate-logins builds the real chain: sandbox account -> firebase Principal -> link -> Employee", async () => {
+    authDirectory = fakeAuthDirectory();
+    const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(true), MANIFEST, authDirectory));
+    assert.equal(report.pass, true, JSON.stringify(report.drift));
+    assert.equal(report.identityProvider, "firebase");
+    assert.equal(report.summary.authAccountsCreated, INTERACTIVE.length);
+    assert.equal(report.summary.loginPrincipalsCreated, INTERACTIVE.length);
+    assert.equal(report.summary.linksTransitioned, INTERACTIVE.length);
+    assert.equal(report.summary.fixturePrincipalsRetired, INTERACTIVE.length);
+
+    // THE PROVIDER THE RUNTIME RESOLVES. Every interactive persona now has a `firebase` Principal whose
+    // subject is its Auth uid -- which is what a signed-in browser actually presents.
+    for (const p of INTERACTIVE) {
+      const employee = MANIFEST.employees.find((e) => e.key === p.employee);
+      const account = authDirectory.accounts.get(p.loginPrincipal.credentialEmail);
+      assert.ok(account, `${p.employee} has no sandbox account`);
+      const rows = (await q(`SELECT pr.identity_provider, pr.external_subject, l.status
+           FROM eos_policy.employee_principal_links l
+           JOIN eos_policy.principals pr ON pr.id = l.principal_id
+          WHERE l.employee_id = $1 AND l.status = 'active'`, [employee.id])).rows;
+      assert.equal(rows.length, 1, `${p.employee} must have exactly one active link`);
+      assert.equal(rows[0].identity_provider, "firebase");
+      assert.equal(rows[0].external_subject, account.uid);
+      // A uid is a credential subject, never a business identity.
+      assert.notEqual(account.uid, employee.id);
+    }
+  });
+
+  await t.test("the superseded fixture link is REVOKED, not deleted, and its Principal is retired", async () => {
+    for (const p of INTERACTIVE) {
+      const employee = MANIFEST.employees.find((e) => e.key === p.employee);
+      const history = (await q(
+        `SELECT l.status, pr.identity_provider FROM eos_policy.employee_principal_links l
+           JOIN eos_policy.principals pr ON pr.id = l.principal_id
+          WHERE l.employee_id = $1 ORDER BY l.created_at`, [employee.id])).rows;
+      assert.equal(history.length, 2, `${p.employee} should carry both the fixture link and the login link`);
+      assert.deepEqual(history.map((r) => r.status), ["revoked", "active"], "history was rewritten instead of preserved");
+      assert.equal(history[0].identity_provider, "eos-synthetic-nonprod");
+      assert.equal(history[1].identity_provider, "firebase");
+
+      // The obsolete synthetic Principal no longer presents as an active user-access persona.
+      const membership = (await q(
+        `SELECT m.status FROM eos_policy.principals pr
+           JOIN eos_policy.tenant_memberships m ON m.principal_id = pr.id
+          WHERE pr.identity_provider = $1 AND pr.external_subject = $2`,
+        ["eos-synthetic-nonprod", p.fixturePrincipal.externalSubject])).rows;
+      assert.equal(membership.length, 1, "the Principal row itself must survive as history");
+      assert.equal(membership[0].status, "disabled");
+    }
+    const audits = (await q(`SELECT count(*)::int AS n FROM eos_policy.audit_events WHERE action = 'sampleCompany.fixturePrincipal.retire'`)).rows[0].n;
+    assert.equal(audits, INTERACTIVE.length, "every retirement writes an audit event");
+  });
+
+  await t.test("(10) the Security Roles moved to the AUTHENTICATING Principal", async () => {
+    for (const p of INTERACTIVE) {
+      const account = authDirectory.accounts.get(p.loginPrincipal.credentialEmail);
+      const held = (await q(
+        `SELECT r.key FROM eos_policy.user_role_assignments a
+           JOIN eos_policy.principals pr ON pr.id = a.principal_id
+           JOIN eos_policy.roles r ON r.id = a.role_id
+          WHERE pr.identity_provider = 'firebase' AND pr.external_subject = $1 AND a.status = 'active'
+          ORDER BY r.key`, [account.uid])).rows.map((r) => r.key);
+      assert.deepEqual(held, [...p.securityRoles].sort(), `${p.employee} Security Roles on the login Principal`);
+    }
+  });
+
+  await t.test("activate-logins is idempotent and REUSES an existing Auth account", async () => {
+    const before = await rowCounts();
+    const createdBefore = authDirectory.createdCount;
+    const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(true), MANIFEST, authDirectory));
+    assert.equal(report.pass, true);
+    assert.equal(authDirectory.createdCount, createdBefore, "a rerun created a second Auth account");
+    assert.equal(report.summary.authAccountsReused, INTERACTIVE.length);
+    assert.equal(report.summary.authAccountsCreated, 0);
+    assert.equal(report.summary.linksTransitioned, 0);
+    // +1 for the reused real administrator, whose link is already correct and is never transitioned.
+    assert.equal(report.summary.linksAlreadyCorrect, INTERACTIVE.length + 1);
+    assert.equal(report.summary.fixturePrincipalsAlreadyRetired, INTERACTIVE.length);
+    assert.equal(report.summary.credentialsTouched, 0, "the Sample Company touched a credential");
+    assert.deepEqual(await rowCounts(), before);
+  });
+
+  await t.test("a BUSINESS apply after login activation does not resurrect the retired fixture Principals", async () => {
+    // The apply phase seeds fixture Principals. Once they have been superseded it must leave them retired,
+    // or every activation would be undone by the next ordinary reseed.
+    const r = apply();
+    assert.equal(r.status, 0, r.stderr);
+    const report = JSON.parse(r.stdout);
+    assert.equal(report.pass, true);
+    const stillDisabled = (await q(
+      `SELECT count(*)::int AS n FROM eos_policy.principals pr
+         JOIN eos_policy.tenant_memberships m ON m.principal_id = pr.id
+        WHERE pr.identity_provider = 'eos-synthetic-nonprod' AND m.status = 'disabled'`)).rows[0].n;
+    assert.equal(stillDisabled, INTERACTIVE.length, "an ordinary business apply re-activated a retired fixture Principal");
+    for (const p of INTERACTIVE) {
+      const employee = MANIFEST.employees.find((e) => e.key === p.employee);
+      const active = (await q(
+        `SELECT pr.identity_provider FROM eos_policy.employee_principal_links l
+           JOIN eos_policy.principals pr ON pr.id = l.principal_id
+          WHERE l.employee_id = $1 AND l.status = 'active'`, [employee.id])).rows;
+      assert.equal(active.length, 1);
+      assert.equal(active[0].identity_provider, "firebase", "the business apply moved the link back to the fixture Principal");
+    }
+  });
+
+  await t.test("(8) no-access Employees got no Auth account, no Principal and no link", async () => {
+    for (const key of Object.keys(MANIFEST.expectedAccess.noAccessPersonas)) {
+      const employee = MANIFEST.employees.find((e) => e.key === key);
+      assert.ok(!authDirectory.accounts.has(employee.workEmail), `${key} was given a credential merely because the Employee exists`);
+      const links = (await q(`SELECT count(*)::int AS n FROM eos_policy.employee_principal_links WHERE employee_id = $1`, [employee.id])).rows[0].n;
+      assert.equal(links, 0, `${key} has a Principal link`);
+    }
+  });
+
   // ════════════════ the verifier ════════════════
 
   let report;
-  await t.test("the verifier passes and reports every section the contract requires", async () => {
-    const r = verify();
-    assert.equal(r.status, 0, r.stderr || r.stdout);
-    report = JSON.parse(r.stdout);
+  await t.test("the verifier passes only once every interactive persona is LOGIN READY", async () => {
+    // Accounts exist but are still PASSWORDLESS -- exactly the state activate-logins leaves them in. The
+    // governed half is complete; the credential half is not, and the verifier must not round that up.
+    const passwordless = await verifyWith((email) => authDirectory.findByEmail(email));
+    assert.equal(passwordless.pass, false, "a persona with no sign-in credential was reported usable");
+    assert.ok(passwordless.drift.some((d) => d.domain === "access.sandboxAuthAccount"));
+    assert.ok(passwordless.personas.every((p) => !p.interactiveLogin || p.authorizationReady),
+      "the governed half should already be complete");
+    // Exactly ONE persona is login-ready at this point: the reused real administrator, whose credential is
+    // real, pre-existing and deliberately untouched. The fourteen sandbox personas have accounts but no way
+    // to sign in yet, and the report says so rather than averaging it away.
+    assert.equal(passwordless.loginReadiness.interactivePersonas, INTERACTIVE.length + 1);
+    assert.equal(passwordless.loginReadiness.loginReady, 1);
+    assert.equal(passwordless.loginReadiness.authorizationReady, passwordless.loginReadiness.interactivePersonas);
+    assert.equal(passwordless.personas.find((p) => p.employeeKey === "owner-executive").loginReady, true);
+
+    // Now the EXISTING activate-missing tool's effect: a password only where there was none.
+    assert.equal(authDirectory.activateMissingPasswords(), INTERACTIVE.length);
+    report = await verifyWith((email) => authDirectory.findByEmail(email));
+    assert.equal(report.pass, true, JSON.stringify(report.drift));
     assert.equal(report.sampleCompanyVersion, 2);
-    assert.equal(report.environment, "platform-sandbox");
-    assert.equal(report.tenant.key, TENANT_KEY);
     assert.equal(report.mode, "verify");
-    for (const key of ["domains", "personas", "scenarios", "relationships", "access", "drift", "blockers"]) {
+    for (const key of ["domains", "personas", "scenarios", "relationships", "access", "drift", "blockers", "loginReadiness"]) {
       assert.ok(key in report, `the report is missing ${key}`);
     }
-    assert.deepEqual(report.drift, []);
-    assert.equal(report.pass, true);
-    assert.equal(report.personas.length, MANIFEST.employees.length, "every Employee appears as a persona, access or not");
-    assert.equal(report.relationships.expected, MANIFEST.relationshipAssertions.length);
-    assert.equal(report.relationships.verified, MANIFEST.relationshipAssertions.length, JSON.stringify(report.relationships.assertions.filter((a) => a.status !== "VERIFIED")));
-    assert.equal(report.relationships.blocked, MANIFEST.blockedRelationships.length);
-    assert.ok(!r.stdout.includes(dbUrl()));
-    assert.ok(!r.stdout.includes(":password@"));
-    assert.ok(!r.stdout.includes("real-login-subject"), "the real administrator's credential subject was printed");
+    assert.equal(report.loginReadiness.identityProvider, "firebase");
+    assert.equal(report.loginReadiness.authProbe, "PERFORMED");
+    assert.equal(report.loginReadiness.loginReady, report.loginReadiness.interactivePersonas);
+    assert.equal(report.personas.length, MANIFEST.employees.length);
+    assert.equal(report.relationships.verified, MANIFEST.relationshipAssertions.length,
+      JSON.stringify(report.relationships.assertions.filter((a) => a.status !== "VERIFIED")));
   });
 
-  await t.test("the access section proves EFFECTIVE capability resolution, and proves the denials", async () => {
-    const coverage = report.access.requiredCapabilityCoverage;
-    assert.ok(coverage.expected > 0);
-    assert.equal(coverage.held, coverage.expected, "a required capability did not resolve through the identity chain");
-    assert.ok(report.access.forbiddenCapabilityCoverage.checked > 0);
-    assert.equal(report.access.forbiddenCapabilityCoverage.violations, 0);
-    assert.equal(report.access.missingGrants, 0);
-    assert.ok(report.access.grants.length > 0);
-    for (const g of report.access.grants) assert.ok("role" in g && "expectedCapability" in g && "liveGrant" in g && "status" in g);
+  await t.test("every persona result carries the full contract shape, and no report echoes a subject", async () => {
+    for (const persona of report.personas) {
+      for (const field of ["interactiveLogin", "loginReady", "authorizationReady", "employeeLink", "securityRoles",
+        "requiredCapabilities", "missingCapabilities", "forbiddenCapabilityViolations", "accessModelGap"]) {
+        assert.ok(field in persona, `${persona.employeeKey} is missing ${field}`);
+      }
+      if (persona.subjectFingerprint) assert.match(persona.subjectFingerprint, /^subject:[0-9a-f]{12}$/);
+    }
+    const serialized = JSON.stringify(report);
+    for (const account of authDirectory.accounts.values()) {
+      assert.ok(!serialized.includes(account.uid), "the report echoed a raw credential subject");
+    }
+    assert.ok(!serialized.includes("real-login-subject"), "the report echoed the administrator's subject");
+    assert.ok(!serialized.includes(":password@"));
+  });
 
-    const technician = report.personas.find((p) => p.employeeKey === "service-technician-a");
-    assert.equal(technician.resolved, true);
-    assert.ok(technician.heldRoleKeys.includes("technician"));
-    assert.ok(technician.forbiddenCapabilities.find((c) => c.capability === "admin.employeeProfile.write").held === false);
-    const associate = report.personas.find((p) => p.employeeKey === "warehouse-associate");
-    assert.ok(associate.forbiddenCapabilities.find((c) => c.capability === "inventory.cycleCount.reconcile").held === false);
-    assert.ok(associate.requiredCapabilities.find((c) => c.capability === "inventory.cycleCount.submit").held === true);
-    const salesperson = report.personas.find((p) => p.employeeKey === "retail-sales-a");
-    assert.ok(salesperson.forbiddenCapabilities.find((c) => c.capability === "inventory.transfer.create").held === false);
-    assert.ok(salesperson.forbiddenCapabilities.find((c) => c.capability === "inventory.stock.receive").held === false);
-    assert.ok(salesperson.requiredCapabilities.find((c) => c.capability === "opportunity.write").held === true);
-    // A technician resolves to an EMPTY effective set in this vocabulary -- reported as a gap, not glossed.
-    assert.deepEqual(technician.requiredCapabilities, []);
-    assert.equal(technician.accessModelGap, "TECHNICIAN_HOLDS_NO_POSTGRES_VOCABULARY_CAPABILITY");
-    // ACCESS_MODEL_GAP findings are reported, not hidden.
-    assert.ok(report.access.accessModelGaps.some((g) => g.persona === "national-accounts-sales"));
-    assert.ok(report.access.capabilityVocabularyGap.count > 0, "the Role-catalog / PostgreSQL vocabulary gap must be reported");
-    assert.equal(report.access.capabilityVocabularyGap.code, "CAPABILITY_VOCABULARY_PARTIAL");
+  await t.test("(16) the verifier FAILS when a persona is interactive but not login-ready", async () => {
+    // Nothing about the database changes -- only the credential half. The governed chain is still perfect,
+    // and the verification must still not pass, because nobody can actually sign in as this persona.
+    const email = INTERACTIVE[0].loginPrincipal.credentialEmail;
+    const account = authDirectory.accounts.get(email);
+    const restore = { ...account };
+    account.hasPassword = false;
+    try {
+      const broken = await verifyWith((e) => authDirectory.findByEmail(e));
+      assert.equal(broken.pass, false);
+      const persona = broken.personas.find((p) => p.credentialEmail === email);
+      assert.equal(persona.authorizationReady, true, "the governed half should be unaffected");
+      assert.equal(persona.loginReady, false);
+      assert.equal(persona.authAccount, "NO_SIGN_IN_CREDENTIAL");
+      assert.ok(broken.drift.some((d) => d.domain === "access.loginReady"));
+    } finally {
+      Object.assign(account, restore);
+    }
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
+  });
+
+  await t.test("(18) the verifier FAILS on a MISSING sandbox Auth account", async () => {
+    const email = INTERACTIVE[1].loginPrincipal.credentialEmail;
+    const account = authDirectory.accounts.get(email);
+    authDirectory.accounts.delete(email);
+    try {
+      const broken = await verifyWith((e) => authDirectory.findByEmail(e));
+      assert.equal(broken.pass, false);
+      const persona = broken.personas.find((p) => p.credentialEmail === email);
+      assert.equal(persona.authAccount, "MISSING");
+      assert.equal(persona.loginReady, false);
+    } finally {
+      authDirectory.accounts.set(email, account);
+    }
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
+  });
+
+  await t.test("(19) the verifier FAILS on a DISABLED sandbox Auth account", async () => {
+    const email = INTERACTIVE[2].loginPrincipal.credentialEmail;
+    const account = authDirectory.accounts.get(email);
+    account.disabled = true;
+    try {
+      const broken = await verifyWith((e) => authDirectory.findByEmail(e));
+      assert.equal(broken.pass, false);
+      const persona = broken.personas.find((p) => p.credentialEmail === email);
+      assert.equal(persona.authAccount, "DISABLED");
+      assert.equal(persona.loginReady, false);
+    } finally {
+      account.disabled = false;
+    }
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
+  });
+
+  await t.test("(17) the verifier FAILS when the Principal carries the wrong provider or the wrong subject", async () => {
+    const persona = INTERACTIVE[3];
+    const employee = MANIFEST.employees.find((e) => e.key === persona.employeeKey ?? persona.employee);
+    const account = authDirectory.accounts.get(persona.loginPrincipal.credentialEmail);
+
+    // WRONG SUBJECT: the Auth account's uid moves, so the token a browser presents would resolve to nothing.
+    const originalUid = account.uid;
+    account.uid = `${originalUid}-rotated`;
+    let broken = await verifyWith((e) => authDirectory.findByEmail(e));
+    assert.equal(broken.pass, false, "a Principal whose subject no longer matches the Auth account passed");
+    assert.ok(broken.drift.some((d) => d.domain === "access.resolution" || d.domain === "identity.employeePrincipalLinks"));
+    account.uid = originalUid;
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
+
+    // WRONG PROVIDER: the Principal is moved to the non-authenticating provider. Nothing else changes --
+    // the link, the Roles and the grants are all still there -- and it must still fail, because no verifier
+    // recognizes that provider and the persona could never sign in.
+    const moved = (await q(
+      `UPDATE eos_policy.principals SET identity_provider = 'eos-synthetic-nonprod'
+        WHERE identity_provider = 'firebase' AND external_subject = $1 RETURNING id`, [account.uid])).rows;
+    assert.equal(moved.length, 1);
+    try {
+      broken = await verifyWith((e) => authDirectory.findByEmail(e));
+      assert.equal(broken.pass, false, "a persona routed through a non-authenticating provider passed");
+    } finally {
+      await q(`UPDATE eos_policy.principals SET identity_provider = 'firebase' WHERE id = $1`, [moved[0].id]);
+    }
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
+    void employee;
+  });
+
+  await t.test("the CLI --skipAuthProbe report is explicitly database-only and does NOT pass", async () => {
+    const r = verify();
+    assert.equal(r.status, 1, "a database-only report must not claim the personas are usable");
+    const dbOnly = JSON.parse(r.stdout);
+    assert.equal(dbOnly.loginReadiness.authProbe, "NOT_PERFORMED");
+    assert.equal(dbOnly.loginReadiness.loginReady, 0);
+    assert.equal(dbOnly.pass, false);
+    // The governed half is still fully reported, which is what makes the mode useful.
+    assert.equal(dbOnly.domains["identity.loginPrincipals"].status, "COMPLETE");
+    assert.equal(dbOnly.domains["identity.retiredFixturePrincipals"].status, "COMPLETE");
+    assert.ok(dbOnly.drift.every((d) => d.domain === "access.loginReady"),
+      `a database-only run found non-credential drift: ${JSON.stringify(dbOnly.drift)}`);
   });
 
   await t.test("an ASSIGNED Role whose capabilities were never granted FAILS the verifier", async () => {
@@ -430,6 +720,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       assert.equal(broken.pass, false);
       assert.ok(broken.access.missingGrants > 0);
       assert.ok(broken.drift.some((d) => d.domain === "access.requiredCapability" && d.id.includes("opportunity.write")));
+      // The ASSIGNMENT row is untouched -- which is exactly why an assignment row proves nothing.
       // The assignment row is still there, which is exactly why the row alone proves nothing.
       const assignments = (await q(`SELECT count(*)::int AS n FROM eos_policy.user_role_assignments a
         JOIN eos_policy.roles r ON r.id = a.role_id WHERE r.key = 'salesperson' AND a.status = 'active'`)).rows[0].n;
@@ -461,27 +752,27 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       }
     };
     await reassign(dispatcher, owner);
-    let r = verify();
-    assert.equal(r.status, 1);
-    assert.ok(JSON.parse(r.stdout).drift.some((d) => d.domain === "workforce.reportingRelationships"));
+    let broken = await verifyWith((e) => authDirectory.findByEmail(e));
+    assert.equal(broken.pass, false);
+    assert.ok(broken.drift.some((d) => d.domain === "workforce.reportingRelationships"));
     await reassign(dispatcher, serviceManager);
 
     const account = MANIFEST.accounts[1];
     const rightOwner = MANIFEST.employees.find((e) => e.key === account.owner).id;
     await q(`UPDATE eos_crm.accounts SET owner_employee_id = $2 WHERE id = $1`, [account.id, owner]);
-    r = verify();
-    assert.equal(r.status, 1);
-    assert.ok(JSON.parse(r.stdout).drift.some((d) => d.domain === "relationships"));
+    broken = await verifyWith((e) => authDirectory.findByEmail(e));
+    assert.equal(broken.pass, false);
+    assert.ok(broken.drift.some((d) => d.domain === "relationships"));
     await q(`UPDATE eos_crm.accounts SET owner_employee_id = $2 WHERE id = $1`, [account.id, rightOwner]);
 
     const link = (await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE employee_id = $1 AND status = 'active' RETURNING id`, [dispatcher])).rows;
     assert.equal(link.length, 1);
-    r = verify();
-    assert.equal(r.status, 1);
-    assert.ok(JSON.parse(r.stdout).drift.some((d) => d.domain === "identity.employeePrincipalLinks"));
+    broken = await verifyWith((e) => authDirectory.findByEmail(e));
+    assert.equal(broken.pass, false);
+    assert.ok(broken.drift.some((d) => d.domain === "identity.employeePrincipalLinks"));
     await q(`UPDATE eos_policy.employee_principal_links SET status = 'active' WHERE id = $1`, [link[0].id]);
 
-    assert.equal(verify().status, 0, "the world was not restored");
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true, "the world was not restored");
   });
 
   await t.test("the verifier fails on a DANGLING reference rather than reading it as absent", async () => {
@@ -489,9 +780,8 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     const row = (await q(`SELECT * FROM eos_crm.contacts WHERE id = $1`, [contact.id])).rows[0];
     await q(`DELETE FROM eos_crm.contacts WHERE id = $1`, [contact.id]);
     try {
-      const r = verify();
-      assert.equal(r.status, 1);
-      const broken = JSON.parse(r.stdout);
+      const broken = await verifyWith((e) => authDirectory.findByEmail(e));
+      assert.equal(broken.pass, false);
       assert.ok(broken.relationships.assertions.some((a) => a.status === "DANGLING"));
       assert.equal(broken.domains["crm.contacts"].status, "PARTIAL");
     } finally {
@@ -499,7 +789,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       await q(`INSERT INTO eos_crm.contacts (${columns.map((c) => `"${c}"`).join(", ")})
                VALUES (${columns.map((_, i) => `$${i + 1}`).join(", ")})`, columns.map((c) => row[c]));
     }
-    assert.equal(verify().status, 0);
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
   });
 
   await t.test("the verifier reports blockers as BLOCKED, never as verified", async () => {
@@ -518,7 +808,8 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
 
   await t.test("the verifier is READ ONLY -- it changed nothing", async () => {
     const before = await rowCounts();
-    assert.equal(verify().status, 0);
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
+    verify();
     assert.deepEqual(await rowCounts(), before);
   });
 });

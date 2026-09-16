@@ -42,6 +42,7 @@ on:
       # twice over, the Certification world refused by NAME, and platform-sandbox required positively.
       - "functions/scripts/seedSampleCompany.js"
       - "functions/scripts/verifySampleCompany.js"
+      - "functions/scripts/sampleCompany/**"
       - "functions/scripts/fixtures/sampleCompany.v2.json"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"

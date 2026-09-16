@@ -115,6 +115,7 @@ on:
       # test:adminPolicyPostgres.
       - "functions/scripts/seedSampleCompany.js"
       - "functions/scripts/verifySampleCompany.js"
+      - "functions/scripts/sampleCompany/**"
       - "functions/scripts/fixtures/sampleCompany.v2.json"
       - "functions/test/sampleCompanyManifest.test.mjs"
       - "functions/test/sampleCompanyPostgres.test.mjs"
@@ -278,6 +279,7 @@ on:
       # test:adminPolicyPostgres.
       - "functions/scripts/seedSampleCompany.js"
       - "functions/scripts/verifySampleCompany.js"
+      - "functions/scripts/sampleCompany/**"
       - "functions/scripts/fixtures/sampleCompany.v2.json"
       - "functions/test/sampleCompanyManifest.test.mjs"
       - "functions/test/sampleCompanyPostgres.test.mjs"
