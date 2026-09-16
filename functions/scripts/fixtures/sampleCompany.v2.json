@@ -914,6 +914,7 @@
   },
   "financialFixtures": {
     "status": "BLOCKED",
+    "blockedBy": "FINANCIAL_SAMPLE_COVERAGE",
     "coverageGap": "FINANCIAL_SAMPLE_COVERAGE",
     "$comment": "NO ACCOUNTING DATA IS INVENTED. eos_commercial.invoices / invoice_lines / payments / payment_applications have governed writers (functions/src/eosOps/invoiceAuthority.ts, cashApplicationAuthority.ts), but an invoice is a CONSEQUENCE of priced Sales Order lines, and Sales Order LINES cannot be seeded: the commercial command layer refuses CATALOG_AUTHORITY_UNAVAILABLE for any PART / EQUIPMENT_MODEL line reference (commercialCommandKernel.ts:110-116) because no PostgreSQL CommercialCatalogAuthority is composed. Seeding an invoice without the priced lines it bills would be manufacturing a number. Refused; reported.",
     "unblockedBy": "A composed PostgreSQL CommercialCatalogAuthority implementing commercialCommandKernel.ts's CommercialCatalogAuthority port over eos_ops.parts + eos_ops.equipment_models."
