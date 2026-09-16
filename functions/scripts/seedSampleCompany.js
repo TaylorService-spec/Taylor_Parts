@@ -19,12 +19,26 @@
 //   --mode apply           writes the BUSINESS world. Requires ALL of: --apply, EOS_ENVIRONMENT exactly
 //                          `nonprod`, --environment platform-sandbox, --tenantKey taylor-nonprod,
 //                          --performedBy <operator>.
-//   --mode activate-logins makes the interactive personas able to sign in: sandbox Auth account (created
-//                          PASSWORDLESS), `firebase` Principal, governed link transition, Security Roles,
-//                          fixture-Principal retirement. Separately explicit because it reaches the
-//                          credential layer; needs --apply and --firebaseProjectId as well. Dry run without
-//                          --apply. Creates NO secret and can rotate NOTHING.
+//   --mode activate-logins makes the interactive personas RESOLVABLE: sandbox Auth account (created
+//                          PASSWORDLESS), `firebase` Principal, ATOMIC governed link transition, Security
+//                          Roles, fixture-Principal retirement. Needs --apply and --firebaseProjectId.
+//   --mode activate-credentials  makes those personas ABLE TO SIGN IN, by delegating to the existing
+//                          `activateMissingSandboxPasswords` in scripts/activateSandboxPersonas.js -- the
+//                          same function its own --activate-missing CLI calls -- narrowed by an explicit
+//                          allowlist to this manifest's interactive personas and nobody else. Needs --apply,
+//                          --firebaseProjectId and --credentialFile. Touches no database.
 //   --mode verify          delegates to scripts/verifySampleCompany.js and emits its report.
+//
+// THIS IS THE ONE OPERATOR ENTRY POINT. The whole provisioning sequence is five invocations of THIS script
+// and nothing else:
+//     1. --mode plan
+//     2. --mode apply --apply
+//     3. --mode activate-logins --apply --firebaseProjectId <sandbox project>
+//     4. --mode activate-credentials --apply --firebaseProjectId <sandbox project> --credentialFile <file>
+//     5. --mode verify --firebaseProjectId <sandbox project>
+// Each step is independently explicit, and steps 3-5 name the credential target rather than inferring it.
+// `--rotate` is REFUSED here by name: it would invalidate every saved credential including the Owner's, and
+// no path through this script can set a password on a persona that already has one.
 //
 // PRODUCTION AND CERTIFICATION FAIL BEFORE ANY CONNECTION. The fence runs before `pg` or `lib/` is resolved:
 // production is refused twice over (registry role AND the literal project id, via assertMeasurementTarget),
@@ -82,10 +96,12 @@
 // fixture Principal through the governed revoke/establish lifecycle, assigns the Security Roles to the
 // authenticating Principal, and retires the superseded fixture Principal's membership.
 //
-// IT IS A SEPARATE, EXPLICIT PHASE because it touches the credential layer. It still creates no secret: Auth
-// accounts are created PASSWORDLESS and password activation is delegated, unchanged, to the existing proven
-// scripts/activateSandboxPersonas.js --activate-missing. No ordinary rerun of anything here can rotate a
-// working persona's password, because no code here can set one.
+// IT IS A SEPARATE, EXPLICIT PHASE because it touches the credential layer, and password activation is a
+// SECOND separate phase again because it creates secrets. Neither reimplements anything: Auth accounts are
+// created PASSWORDLESS by activate-logins, and activate-credentials calls the existing
+// `activateMissingSandboxPasswords` implementation with an allowlist confined to this manifest's personas.
+// No ordinary rerun can rotate a working persona's password, because the delegated implementation only ever
+// touches an account that has none.
 //
 // ============================ FAIL CLOSED ON DRIFT ============================
 //
@@ -506,8 +522,8 @@ function sampleCompanyCapabilityKeys(manifest = MANIFEST) {
 
 function assertSampleCompanyInvocation(args, env) {
   const mode = args.mode === undefined ? "plan" : args.mode;
-  if (!["plan", "apply", "activate-logins", "verify"].includes(mode)) {
-    refuse("ARGUMENT_INVALID", "--mode must be one of plan, apply, activate-logins, verify (plan is the default and writes nothing)");
+  if (!["plan", "apply", "activate-logins", "activate-credentials", "verify"].includes(mode)) {
+    refuse("ARGUMENT_INVALID", "--mode must be one of plan, apply, activate-logins, activate-credentials, verify (plan is the default and writes nothing)");
   }
   const { environmentId, connectionString } = assertMeasurementTarget(args, env);
   assertNonprodRuntime(env);
@@ -526,7 +542,7 @@ function assertSampleCompanyInvocation(args, env) {
   if (typeof args.existingAdminPrincipalId !== "string" || args.existingAdminPrincipalId.trim() === "" || args.existingAdminPrincipalId === "true") {
     refuse("ARGUMENT_REQUIRED", "--existingAdminPrincipalId is required: the administering Principal is named, never inferred, and its authority is read from its own Role assignments");
   }
-  const writes = mode === "apply" || mode === "activate-logins";
+  const writes = mode === "apply" || mode === "activate-logins" || mode === "activate-credentials";
   const apply = writes && args.apply === "true";
   if (writes && args.apply !== "true") {
     refuse("ARGUMENT_REQUIRED", `--mode ${mode} additionally requires the explicit --apply flag; a mode alone never writes`);
@@ -536,17 +552,35 @@ function assertSampleCompanyInvocation(args, env) {
   }
   // CREDENTIAL-LAYER WORK NAMES ITS FIREBASE PROJECT EXPLICITLY, and the sandbox Auth adapter refuses
   // production and the Certification world by name before firebase-admin is resolved.
-  if (mode === "activate-logins" && (typeof args.firebaseProjectId !== "string" || args.firebaseProjectId === "true" || args.firebaseProjectId.trim() === "")) {
-    refuse("ARGUMENT_REQUIRED", "--mode activate-logins requires --firebaseProjectId <sandbox project>; the credential target is named, never inferred");
+  const credentialModes = ["activate-logins", "activate-credentials"];
+  if (credentialModes.includes(mode) && (typeof args.firebaseProjectId !== "string" || args.firebaseProjectId === "true" || args.firebaseProjectId.trim() === "")) {
+    refuse("ARGUMENT_REQUIRED", `--mode ${mode} requires --firebaseProjectId <sandbox project>; the credential target is named, never inferred`);
   }
-  if (mode !== "activate-logins" && args.firebaseProjectId !== undefined) {
-    refuse("ARGUMENT_INVALID", "--firebaseProjectId belongs only to --mode activate-logins; no other mode touches the credential layer");
+  if (!credentialModes.includes(mode) && args.firebaseProjectId !== undefined) {
+    refuse("ARGUMENT_INVALID", "--firebaseProjectId belongs only to the credential-layer modes; no other mode touches it");
+  }
+  // THE ROTATION FLAG CANNOT BE REACHED THROUGH THE SAMPLE COMPANY. It is refused by name here, and no code
+  // path from this script can set a password on a persona that already has one -- the delegated
+  // activate-missing implementation only ever touches an account with none.
+  if (args.rotate !== undefined) {
+    refuse("ARGUMENT_INVALID", "--rotate is not a Sample Company operation: it would invalidate every saved credential, including the Owner's. Run scripts/activateSandboxPersonas.js deliberately if that is genuinely meant.");
+  }
+  // The credential file is named, never defaulted, and must match the gitignore rule.
+  let credentialFile;
+  if (mode === "activate-credentials") {
+    credentialFile = args.credentialFile;
+    if (typeof credentialFile !== "string" || credentialFile === "true" || !/credentials\.local\.json$/.test(credentialFile)) {
+      refuse("ARGUMENT_REQUIRED", "--mode activate-credentials requires --credentialFile <path ending credentials.local.json>, so the merged file matches the gitignore rule");
+    }
+  } else if (args.credentialFile !== undefined) {
+    refuse("ARGUMENT_INVALID", "--credentialFile belongs only to --mode activate-credentials");
   }
   return {
     mode, apply, environmentId, connectionString,
     tenantKey: args.tenantKey, performedBy: args.performedBy,
     existingAdminPrincipalId: args.existingAdminPrincipalId,
     firebaseProjectId: args.firebaseProjectId,
+    credentialFile,
   };
 }
 
@@ -1244,9 +1278,22 @@ async function main() {
 
   // The sandbox Auth adapter's OWN fence runs here, before firebase-admin is resolved: production and the
   // Certification world are refused by name, and an undeclared project fails closed.
-  const authDirectory = options.mode === "activate-logins"
+  const credentialPhase = options.mode === "activate-logins" || options.mode === "activate-credentials";
+  const authDirectory = credentialPhase
     ? require("./sampleCompany/sandboxAuthDirectory.js").createFirebaseSandboxAuthDirectory(options.firebaseProjectId)
     : null;
+
+  // CREDENTIAL ACTIVATION NEEDS NO DATABASE. It is the one phase that touches only the identity provider,
+  // so it runs and returns before a pool is ever opened.
+  if (options.mode === "activate-credentials") {
+    const { activateSampleCompanyCredentials } = require("./sampleCompany/credentialActivation.js");
+    const { activateMissingSandboxPasswords } = require("./activateSandboxPersonas.js");
+    const result = await activateSampleCompanyCredentials(options, MANIFEST, authDirectory, activateMissingSandboxPasswords);
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify({ environment: options.environmentId, runtimeLabel: "nonprod", ...result }, null, 2));
+    process.exitCode = result.pass ? 0 : 1;
+    return;
+  }
 
   const pg = require("pg");
   const { resolvePolicyDatabaseConfig } = require("../lib/adminPolicy/policyDatabase.js");

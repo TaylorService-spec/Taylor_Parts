@@ -27,7 +27,8 @@ const FUNCTIONS_DIR = resolve(HERE, "..");
 const require = createRequire(import.meta.url);
 const { MANIFEST } = require("../scripts/seedSampleCompany.js");
 const { verifySampleCompany } = require("../scripts/verifySampleCompany.js");
-const { activateSampleCompanyLogins } = require("../scripts/sampleCompany/loginActivation.js");
+const { activateSampleCompanyLogins, transitionEmployeeLink } = require("../scripts/sampleCompany/loginActivation.js");
+const linkRepository = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
 
 /**
  * An in-memory stand-in for the sandbox Auth directory.
@@ -46,6 +47,11 @@ function fakeAuthDirectory(initial = []) {
     accounts,
     get createdCount() { return created; },
     async findByEmail(email) { return accounts.get(email) ?? null; },
+    /** READ ONLY, by uid -- how the reused real Administrator is proved without touching its credential. */
+    async findByUid(uid) {
+      for (const account of accounts.values()) if (account.uid === uid) return account;
+      return null;
+    },
     async createPasswordless({ email, displayName }) {
       if (accounts.has(email)) throw new Error("createPasswordless called for an account that already exists");
       created += 1;
@@ -54,9 +60,13 @@ function fakeAuthDirectory(initial = []) {
       return account;
     },
     /** What the EXISTING scripts/activateSandboxPersonas.js --activate-missing tool would do. */
-    activateMissingPasswords() {
+    activateMissingPasswords(emailAllowlist) {
+      const allowlist = emailAllowlist ? new Set(emailAllowlist) : null;
       let activated = 0;
-      for (const account of accounts.values()) if (!account.hasPassword) { account.hasPassword = true; activated += 1; }
+      for (const account of accounts.values()) {
+        if (allowlist && !allowlist.has(account.email)) continue;
+        if (!account.hasPassword) { account.hasPassword = true; activated += 1; }
+      }
       return activated;
     },
   };
@@ -74,7 +84,7 @@ async function withPool(fn) {
  * Run the verifier IN PROCESS so the Auth probe can be injected. The CLI path is exercised separately with
  * --skipAuthProbe, which is the explicitly database-only report.
  */
-async function verifyWith(authProbe) {
+async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid(uid)) {
   const client = new pg.Client({ connectionString: dbUrl() });
   await client.connect();
   try {
@@ -85,6 +95,7 @@ async function verifyWith(authProbe) {
       { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId },
       MANIFEST,
       authProbe,
+      uidProbe,
     );
     await client.query("COMMIT");
     return report;
@@ -139,6 +150,8 @@ const TENANT_KEY = "taylor-nonprod";
 const env = () => ({ ...process.env, SAMPLE_DB: dbUrl(), EOS_ENVIRONMENT: "nonprod" });
 let adminPrincipalId;
 let tenantId;
+/** Module scope, because the module-scope `verifyWith` closes over it. */
+let authDirectory;
 
 const cli = (script, args, extraEnv = {}) =>
   spawnSync(process.execPath, ["--require", preloadPath, `scripts/${script}`,
@@ -428,21 +441,22 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
 
   // ════════════════ login activation: the phase that makes a persona real ════════════════
 
-  let authDirectory;
   await t.test("activate-logins DRY RUN creates no Auth account and writes nothing", async () => {
     const before = await rowCounts();
-    authDirectory = fakeAuthDirectory();
+    authDirectory = fakeAuthDirectory([{ uid: "real-login-subject", email: "administrator@example.test", hasPassword: true }]);
     const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(false), MANIFEST, authDirectory));
     assert.equal(report.applied, false);
     assert.equal(report.pass, true);
     assert.equal(authDirectory.createdCount, 0, "a dry run created a credential");
-    assert.equal(authDirectory.accounts.size, 0);
+    assert.equal(authDirectory.accounts.size, 1, "only the pre-existing administrator account");
     assert.equal(report.summary.authAccountsCreated, INTERACTIVE.length, "the plan must say what it would create");
     assert.deepEqual(await rowCounts(), before);
   });
 
   await t.test("activate-logins builds the real chain: sandbox account -> firebase Principal -> link -> Employee", async () => {
-    authDirectory = fakeAuthDirectory();
+    // The reused real Administrator already has its own Auth account; it is NEVER created, renamed or
+    // re-credentialed here, only read. Its subject is the one the bootstrap gave it.
+    authDirectory = fakeAuthDirectory([{ uid: "real-login-subject", email: "administrator@example.test", hasPassword: true }]);
     const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(true), MANIFEST, authDirectory));
     assert.equal(report.pass, true, JSON.stringify(report.drift));
     assert.equal(report.identityProvider, "firebase");
@@ -555,6 +569,92 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     }
   });
 
+  await t.test("(9) a FAILED link transition rolls back and leaves the Employee's prior link ACTIVE", async () => {
+    // THE FAILURE THIS TRANSACTION EXISTS TO PREVENT. Revoke and establish are two writes to one fact --
+    // which Principal this Employee currently IS. Run as separate commits, a failure between them leaves the
+    // Employee with no active Principal at all: unable to log in, and invisible to every read that resolves
+    // through the link. Here the establish step is forced to fail at exactly that moment.
+    const employee = MANIFEST.employees.find((e) => e.key === "dispatcher");
+    const before = (await q(
+      `SELECT id, principal_id, status FROM eos_policy.employee_principal_links
+        WHERE employee_id = $1 ORDER BY created_at`, [employee.id])).rows;
+    const activeBefore = before.filter((r) => r.status === "active");
+    assert.equal(activeBefore.length, 1);
+
+    // A different Principal to move to -- the Owner/Executive's is already linked elsewhere, so use a
+    // freshly created one that is a legitimate transition target.
+    const target = await withPool(async (pool) => {
+      const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
+      const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
+      const repo = new PostgresPolicyRepository(pool);
+      const roles = await repo.listRoles(tenantId);
+      const keyById = new Map(roles.map((r) => [r.id, r.key]));
+      const adminRoleKeys = (await repo.listAssignmentsForPrincipal(tenantId, adminPrincipalId))
+        .filter((a) => a.status === "active").map((a) => keyById.get(a.roleId)).filter(Boolean);
+      return ensureTenantPrincipal(repo, {
+        tenantId, externalSubject: "rollback-proof-subject", identityProvider: "firebase",
+        displayName: "SAMPLE COMPANY V2 rollback proof", actorUid: "proof", actorRoleKeys: adminRoleKeys,
+      });
+    });
+
+    const boom = new Error("forced failure between revoke and establish");
+    await assert.rejects(
+      () => withPool((pool) => transitionEmployeeLink(pool, linkRepository, {
+        tenantId, employeeId: employee.id, toPrincipalId: target.id,
+        operatingCompanyId: MANIFEST.company.operatingCompanyId, assertedBy: "proof",
+      }, { failBeforeEstablish: async () => { throw boom; } })),
+      (err) => err === boom,
+    );
+
+    // ROLLED BACK: the prior link is still ACTIVE, there is still exactly one, and no new row was written.
+    const after = (await q(
+      `SELECT id, principal_id, status FROM eos_policy.employee_principal_links
+        WHERE employee_id = $1 ORDER BY created_at`, [employee.id])).rows;
+    assert.deepEqual(after, before, "the failed transition left a trace");
+    assert.equal(after.filter((r) => r.status === "active").length, 1, "the Employee was left with no active Principal");
+    assert.equal(after.filter((r) => r.status === "active")[0].principal_id, activeBefore[0].principal_id);
+    assert.ok(!after.some((r) => r.principal_id === target.id), "a link to the failed target survived");
+  });
+
+  await t.test("(10) a SUCCESSFUL transition leaves exactly one active link and retains the revoked history", async () => {
+    const employee = MANIFEST.employees.find((e) => e.key === "dispatcher");
+    const originalPrincipal = (await q(
+      `SELECT principal_id FROM eos_policy.employee_principal_links WHERE employee_id = $1 AND status = 'active'`,
+      [employee.id])).rows[0].principal_id;
+    const target = (await q(`SELECT id FROM eos_policy.principals WHERE external_subject = $1`, ["rollback-proof-subject"])).rows[0];
+
+    const outcome = await withPool((pool) => transitionEmployeeLink(pool, linkRepository, {
+      tenantId, employeeId: employee.id, toPrincipalId: target.id,
+      operatingCompanyId: MANIFEST.company.operatingCompanyId, assertedBy: "proof",
+    }));
+    assert.equal(outcome, "TRANSITIONED");
+
+    const rows = (await q(
+      `SELECT principal_id, status FROM eos_policy.employee_principal_links WHERE employee_id = $1 ORDER BY created_at`,
+      [employee.id])).rows;
+    assert.equal(rows.filter((r) => r.status === "active").length, 1, "exactly one active link");
+    assert.equal(rows.find((r) => r.status === "active").principal_id, target.id);
+    // HISTORY IS RETAINED, not deleted: the previous link is still there, marked revoked.
+    assert.ok(rows.some((r) => r.principal_id === originalPrincipal && r.status === "revoked"),
+      "the superseded link was deleted instead of revoked");
+    assert.ok(rows.length >= 3, "each transition appends rather than replaces");
+
+    // A repeat is a no-op rather than a second transition.
+    assert.equal(await withPool((pool) => transitionEmployeeLink(pool, linkRepository, {
+      tenantId, employeeId: employee.id, toPrincipalId: target.id,
+      operatingCompanyId: MANIFEST.company.operatingCompanyId, assertedBy: "proof",
+    })), "ALREADY_ACTIVE");
+
+    // Put the world back: the dispatcher belongs to its own login Principal.
+    await withPool((pool) => transitionEmployeeLink(pool, linkRepository, {
+      tenantId, employeeId: employee.id, toPrincipalId: originalPrincipal,
+      operatingCompanyId: MANIFEST.company.operatingCompanyId, assertedBy: "proof",
+    }));
+    assert.equal((await q(
+      `SELECT principal_id FROM eos_policy.employee_principal_links WHERE employee_id = $1 AND status = 'active'`,
+      [employee.id])).rows[0].principal_id, originalPrincipal);
+  });
+
   // ════════════════ the verifier ════════════════
 
   let report;
@@ -575,7 +675,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(passwordless.personas.find((p) => p.employeeKey === "owner-executive").loginReady, true);
 
     // Now the EXISTING activate-missing tool's effect: a password only where there was none.
-    assert.equal(authDirectory.activateMissingPasswords(), INTERACTIVE.length);
+    assert.equal(authDirectory.activateMissingPasswords(INTERACTIVE.map((p) => p.loginPrincipal.credentialEmail)), INTERACTIVE.length);
     report = await verifyWith((email) => authDirectory.findByEmail(email));
     assert.equal(report.pass, true, JSON.stringify(report.drift));
     assert.equal(report.sampleCompanyVersion, 2);
@@ -605,6 +705,62 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     }
     assert.ok(!serialized.includes("real-login-subject"), "the report echoed the administrator's subject");
     assert.ok(!serialized.includes(":password@"));
+  });
+
+  await t.test("(11)(12) the reused Administrator is LOGIN_READY only when a real read-only Auth probe proves it", async () => {
+    const administrator = report.personas.find((p) => p.employeeKey === "owner-executive");
+    assert.equal(administrator.interactiveLogin, true);
+    assert.equal(administrator.authAccount, "REUSED_EXISTING_ADMINISTRATOR");
+    assert.equal(administrator.loginReady, true);
+    assert.match(administrator.subjectFingerprint, /^subject:[0-9a-f]{12}$/);
+
+    // (11) WITHOUT the probe it must NOT claim readiness, even though every governed fact is unchanged.
+    const unprobed = await verifyWith((e) => authDirectory.findByEmail(e), null);
+    const unprobedAdmin = unprobed.personas.find((p) => p.employeeKey === "owner-executive");
+    assert.equal(unprobedAdmin.authorizationReady, true, "the governed half is unaffected");
+    assert.equal(unprobedAdmin.authAccount, "AUTH_NOT_PROBED");
+    assert.equal(unprobedAdmin.loginReady, false);
+    assert.equal(unprobed.pass, false);
+    assert.equal(unprobed.loginReadiness.administratorUidProbe, "NOT_PERFORMED");
+
+    // (12) a MISSING Administrator Auth account cannot report LOGIN_READY.
+    const account = authDirectory.accounts.get("administrator@example.test");
+    authDirectory.accounts.delete("administrator@example.test");
+    try {
+      const missing = await verifyWith((e) => authDirectory.findByEmail(e));
+      const missingAdmin = missing.personas.find((p) => p.employeeKey === "owner-executive");
+      assert.equal(missingAdmin.authAccount, "MISSING");
+      assert.equal(missingAdmin.loginReady, false);
+      assert.equal(missing.pass, false);
+    } finally {
+      authDirectory.accounts.set("administrator@example.test", account);
+    }
+
+    // ...and neither can a DISABLED one.
+    account.disabled = true;
+    try {
+      const disabled = await verifyWith((e) => authDirectory.findByEmail(e));
+      const disabledAdmin = disabled.personas.find((p) => p.employeeKey === "owner-executive");
+      assert.equal(disabledAdmin.authAccount, "DISABLED");
+      assert.equal(disabledAdmin.loginReady, false);
+      assert.equal(disabled.pass, false);
+    } finally {
+      account.disabled = false;
+    }
+
+    // ...nor one with no sign-in credential.
+    account.hasPassword = false;
+    try {
+      const noCredential = await verifyWith((e) => authDirectory.findByEmail(e));
+      assert.equal(noCredential.personas.find((p) => p.employeeKey === "owner-executive").authAccount, "NO_SIGN_IN_CREDENTIAL");
+      assert.equal(noCredential.pass, false);
+    } finally {
+      account.hasPassword = true;
+    }
+
+    // The Administrator's credential was only ever READ: the probe has no write path at all.
+    assert.equal(authDirectory.createdCount, INTERACTIVE.length, "the Administrator account was created or recreated");
+    assert.equal((await verifyWith((e) => authDirectory.findByEmail(e))).pass, true);
   });
 
   await t.test("(16) the verifier FAILS when a persona is interactive but not login-ready", async () => {

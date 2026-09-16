@@ -41,7 +41,15 @@
     "syntheticAddressPolicy": "Every street address is on a fictional street in the fictional city of Sampleton, state ZZ, postal code 00000. Every telephone number is in the NANP fiction-reserved 555-01XX range. None of these resolve to a real place or a real line.",
     "$comment": "operatingCompanyKey is deliberately DISTINCT from any real Taylor operating company key. eos_ops rows this seed writes are therefore confined to a company nothing else in nonprod uses.",
     "runtimeIdentityProvider": "firebase",
-    "sandboxFirebaseProjectId": "eos-platform-sandbox"
+    "sandboxFirebaseProjectId": "eos-platform-sandbox",
+    "operatorWorkflow": [
+      "1. node scripts/seedSampleCompany.js ... (--mode plan is the default; writes nothing)",
+      "2. ... --mode apply --apply                                   -- the business world",
+      "3. ... --mode activate-logins --apply --firebaseProjectId ...  -- sandbox Auth accounts (passwordless), firebase Principals, atomic link transition",
+      "4. ... --mode activate-credentials --apply --firebaseProjectId ... --credentialFile ... -- delegated, allowlisted password activation",
+      "5. ... --mode verify --firebaseProjectId ...                   -- AUTHORIZATION_READY and LOGIN_READY"
+    ],
+    "$operatorWorkflow_comment": "ONE SCRIPT, FIVE INVOCATIONS. Each step is independently explicit and there is no second command an operator must find; the credential step delegates rather than reimplementing. --rotate is not reachable from any of them."
   },
   "jobRoles": [
     {
@@ -3475,8 +3483,10 @@
     "emailDomain": "sandbox.invalid",
     "firebaseProjectId": "eos-platform-sandbox",
     "accountPolicy": "ABSENT -> create a passwordless sandbox-only Auth account. EXISTING -> REUSE; never delete and never recreate to reseed. MATERIALLY INCONSISTENT (disabled, or an email that is not the manifest's) -> FIXTURE_DRIFT and refuse.",
-    "passwordPolicy": "THE SAMPLE COMPANY CODE SETS NO PASSWORD AND GENERATES NO SECRET, EVER. Password activation is delegated to the existing proven tool, functions/scripts/activateSandboxPersonas.js --activate-missing, which already implements exactly the required semantics: a strong random password ONLY for a persona that has none, every working persona left untouched, merged into the gitignored credential file rather than replacing it, and an unparseable file refused. --rotate is deliberately OUTSIDE the Sample Company workflow.",
+    "passwordPolicy": "THE SAMPLE COMPANY GENERATES NO SECRET OF ITS OWN. --mode activate-credentials DELEGATES to activateMissingSandboxPasswords in functions/scripts/activateSandboxPersonas.js -- the same function that script's own --activate-missing CLI calls -- narrowed by an explicit allowlist to this manifest's interactive personas. Its semantics are unchanged: a strong random password ONLY for a persona that has none, every working persona left untouched, merged into the gitignored credential file rather than replacing it, an unparseable file refused. --rotate is REFUSED by name in the orchestrator and is unreachable through any Sample Company path.",
     "credentialFile": "sandbox-credentials.local.json (gitignored; read only through scripts/sandboxCredentials.mjs)",
-    "activationCommand": "node scripts/activateSandboxPersonas.js --projectId eos-platform-sandbox --activate-missing --out <operator credential file>"
+    "activationCommand": "node scripts/seedSampleCompany.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL --tenantKey taylor-nonprod --existingAdminPrincipalId <principal id> --performedBy <operator> --mode activate-credentials --apply --firebaseProjectId eos-platform-sandbox --credentialFile <operator file ending credentials.local.json>",
+    "delegatesTo": "functions/scripts/activateSandboxPersonas.js activateMissingSandboxPasswords (one implementation, called by both its own CLI and this orchestrator; never copied)",
+    "scope": "EXACTLY the manifest Employees with sandboxPersona.interactiveLogin = true. The reused real Administrator is EXCLUDED -- its credential is real, pre-existing and out of scope, and its credentialEmail is null so it cannot become an allowlist entry. An @sandbox.invalid account outside the allowlist is never mutated; an allowlisted account that does not exist is REPORTED, never silently skipped."
   }
 }

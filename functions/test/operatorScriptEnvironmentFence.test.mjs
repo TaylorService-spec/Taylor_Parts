@@ -457,7 +457,7 @@ for (const [label, args, env, pattern] of [
   ["the wrong tenant", [...SAMPLE_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a))], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
   ["no performedBy", SAMPLE_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), SAMPLE_ENV, /--performedBy <operator> is required/],
   ["no administering principal", SAMPLE_ARGS.filter((a) => a !== "--existingAdminPrincipalId" && a !== "p"), SAMPLE_ENV, /--existingAdminPrincipalId is required/],
-  ["an unknown mode", [...SAMPLE_ARGS, "--mode", "destroy"], SAMPLE_ENV, /--mode must be one of plan, apply, activate-logins, verify/],
+  ["an unknown mode", [...SAMPLE_ARGS, "--mode", "destroy"], SAMPLE_ENV, /--mode must be one of plan, apply, activate-logins, activate-credentials, verify/],
   ["apply mode without the explicit --apply", [...SAMPLE_ARGS, "--mode", "apply"], SAMPLE_ENV, /--mode apply additionally requires the explicit --apply/],
   ["--apply without a writing mode", [...SAMPLE_ARGS, "--apply"], SAMPLE_ENV, /--apply was given without a writing mode/],
   // CREDENTIAL-LAYER WORK IS SEPARATELY EXPLICIT and names its own target. Each refusal still precedes
@@ -469,7 +469,21 @@ for (const [label, args, env, pattern] of [
   ["activate-logins naming the production Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "taylor-parts"], SAMPLE_ENV, /customer production project/],
   ["activate-logins naming the Certification Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-certification"], SAMPLE_ENV, /Certification world, which is frozen/],
   ["activate-logins naming an undeclared Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "someone-elses-project"], SAMPLE_ENV, /not a Firebase project declared/],
-  ["a Firebase project on a non-credential mode", [...SAMPLE_ARGS, "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /--firebaseProjectId belongs only to --mode activate-logins/],
+  ["a Firebase project on a non-credential mode", [...SAMPLE_ARGS, "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /--firebaseProjectId belongs only to the credential-layer modes/],
+  // THE CREDENTIAL PHASE. Separately authorized, names its target and its output file, and --rotate cannot
+  // be reached through this script at all.
+  ["activate-credentials without --apply", [...SAMPLE_ARGS, "--mode", "activate-credentials"], SAMPLE_ENV, /--mode activate-credentials additionally requires the explicit --apply/],
+  ["activate-credentials without a named Firebase project", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply"], SAMPLE_ENV, /--mode activate-credentials requires --firebaseProjectId/],
+  ["activate-credentials without a credential file", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /--mode activate-credentials requires --credentialFile/],
+  ["activate-credentials with a credential file outside the gitignore rule", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--credentialFile", "/tmp/passwords.json"], SAMPLE_ENV, /--credentialFile <path ending credentials.local.json>/],
+  ["activate-credentials against the production Firebase project", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "taylor-parts", "--credentialFile", "/tmp/x-credentials.local.json"], SAMPLE_ENV, /customer production project/],
+  ["activate-credentials against the Certification Firebase project", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-certification", "--credentialFile", "/tmp/x-credentials.local.json"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["a credential file on a non-credential mode", [...SAMPLE_ARGS, "--credentialFile", "/tmp/x-credentials.local.json"], SAMPLE_ENV, /--credentialFile belongs only to --mode activate-credentials/],
+  ["--rotate, anywhere", [...SAMPLE_ARGS, "--rotate"], SAMPLE_ENV, /--rotate is not a Sample Company operation/],
+  ["--rotate on the credential phase", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--credentialFile", "/tmp/x-credentials.local.json", "--rotate"], SAMPLE_ENV, /--rotate is not a Sample Company operation/],
+  // THE AUTH TARGET MUST BE THE SAMPLE COMPANY'S OWN PROJECT. platform-integration declares no Firebase
+  // project, so the un-registered case is what a mistyped sandbox looks like in practice.
+  ["a Firebase project that is not platform-sandbox's", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-staging"], SAMPLE_ENV, /not a Firebase project declared/],
 ]) {
   test(`sample company v2 seed: refuses (${label}) before any client library loads`, () => {
     const res = runCli(SAMPLE_SEED, args, env);

@@ -342,9 +342,12 @@ test("interactive login is declared for exactly the personas with user access", 
   }
   // The credential half is no longer a gap: it is a phase. Every interactive persona declares the sandbox
   // account the activate-logins phase ensures, and the manifest names the existing tool that activates it.
-  assert.ok(MANIFEST.sandboxCredentials.activationCommand.includes("activateSandboxPersonas.js"));
-  assert.ok(MANIFEST.sandboxCredentials.activationCommand.includes("--activate-missing"));
+  // The documented command is the ORCHESTRATOR's own phase -- one entry point -- and it delegates.
+  assert.ok(MANIFEST.sandboxCredentials.activationCommand.includes("seedSampleCompany.js"));
+  assert.ok(MANIFEST.sandboxCredentials.activationCommand.includes("--mode activate-credentials"));
   assert.ok(!MANIFEST.sandboxCredentials.activationCommand.includes("--rotate"));
+  assert.ok(MANIFEST.sandboxCredentials.delegatesTo.includes("activateMissingSandboxPasswords"));
+  assert.equal(MANIFEST.company.operatorWorkflow.length, 5);
 });
 
 test("the capability key set is derived from the Role catalog, never hand-typed", () => {
@@ -518,7 +521,7 @@ test("production and the Certification world are refused, and platform-sandbox i
   // not the same as the one environment this sample company is for.
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, environment: "platform-integration" }, NONPROD), /exists only in 'platform-sandbox'/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, environment: undefined }, NONPROD), /--environment is required/);
-  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "destroy" }, NONPROD), /--mode must be one of plan, apply, activate-logins, verify/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "destroy" }, NONPROD), /--mode must be one of plan, apply, activate-logins, activate-credentials, verify/);
 });
 
 test("the Certification world would pass a role-only fence, which is why it is refused by NAME", () => {
@@ -607,7 +610,8 @@ test("(4) a Firebase uid is never an Employee id, and is never written into the 
 });
 
 test("(5)(6)(7) the credential layer cannot create, rotate or touch a secret from here", () => {
-  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/loginActivation.js", "scripts/seedSampleCompany.js"]) {
+  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/loginActivation.js",
+    "scripts/sampleCompany/credentialActivation.js", "scripts/seedSampleCompany.js"]) {
     const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
     // `hasPassword` READS whether an account can sign in; a bare `password` would SET one. Only the second
     // is forbidden, and the distinction is the whole point of this assertion.
@@ -618,11 +622,21 @@ test("(5)(6)(7) the credential layer cannot create, rotate or touch a secret fro
   const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
   assert.match(activation, /record\.authAccount = "REUSED"/);
   assert.ok(!/deleteUser|createUser\(/.test(activation), "the activation phase never deletes or directly creates an account");
-  // (6)(7) activation is delegated to the existing proven activate-missing tool, and --rotate is excluded.
-  assert.equal(MANIFEST.sandboxCredentials.passwordPolicy.includes("--rotate is deliberately OUTSIDE"), true);
+  // (6)(7) activation is DELEGATED to the existing proven implementation, and --rotate is unreachable.
+  assert.match(MANIFEST.sandboxCredentials.passwordPolicy, /--rotate is REFUSED by name/);
+  assert.match(MANIFEST.sandboxCredentials.scope, /reused real Administrator is EXCLUDED/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, rotate: "true" }, NONPROD),
+    /--rotate is not a Sample Company operation/);
   const tool = readFileSync(resolve(FUNCTIONS_DIR, "scripts/activateSandboxPersonas.js"), "utf8");
-  assert.match(tool, /const missing = personas\.filter\(\(u\) => !u\.passwordHash\)/, "activate-missing no longer targets only passwordless personas");
+  assert.match(tool, /const needingPassword = considered\.filter\(\(u\) => !u\.passwordHash\)/,
+    "activate-missing no longer targets only passwordless personas");
   assert.match(tool, /Refusing to overwrite a file whose contents cannot be preserved/, "the unparseable-file refusal is gone");
+  // THE STANDALONE CLI STILL EXISTS AND STILL BEHAVES THE SAME: the extraction added a require.main guard
+  // and an OPTIONAL allowlist, and changed nothing about the default path.
+  assert.match(tool, /if \(require\.main === module\)/, "requiring this module would now run its CLI");
+  assert.match(tool, /const allowlist = emailAllowlist \? new Set\(emailAllowlist\) : null;/);
+  assert.match(tool, /const considered = allowlist \? personas\.filter\(\(u\) => allowlist\.has\(u\.email\)\) : personas;/,
+    "the allowlist must NARROW the population, never widen it");
 });
 
 test("(8) a no-access Employee gets no Principal, no link and no Role -- ever", () => {
@@ -655,8 +669,8 @@ test("(9) exactly one active Employee link per interactive persona, enforced by 
 test("(10) the fixture link transition uses the governed lifecycle, never hand SQL", () => {
   const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
   // Revoke THEN establish, both through the repository.
-  assert.match(activation, /links\.revokeLinkForEmployee\(pool, tenantId, employee\.id\)/);
-  assert.match(activation, /links\.establishLink\(pool, \{/);
+  assert.match(activation, /links\.revokeLinkForEmployee\(client, input\.tenantId, input\.employeeId\)/);
+  assert.match(activation, /links\.establishLink\(client, \{/);
   assert.ok(!/employee_principal_links/.test(activation.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")),
     "the activation phase writes the link table by hand instead of through the repository");
   // The superseded fixture Principal is retired through the governed transaction port, with an audit event.
@@ -766,7 +780,7 @@ test("activate-logins is a separately explicit phase that names its credential t
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "activate-logins", apply: "true" }, NONPROD),
     /--mode activate-logins requires --firebaseProjectId/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, firebaseProjectId: "eos-platform-sandbox" }, NONPROD),
-    /--firebaseProjectId belongs only to --mode activate-logins/);
+    /--firebaseProjectId belongs only to the credential-layer modes/);
   const ok = assertSampleCompanyInvocation({ ...BASE, mode: "activate-logins", apply: "true", firebaseProjectId: "eos-platform-sandbox" }, NONPROD);
   assert.equal(ok.mode, "activate-logins");
   assert.equal(ok.apply, true);
@@ -782,4 +796,213 @@ test("the sandbox Auth adapter refuses production and the Certification world by
   // Only sandbox addresses are ever touched.
   assert.throws(() => assertSandboxEmail("someone@taylorservice.com"), /is not a @sandbox.invalid address/);
   assert.equal(assertSandboxEmail("harper.fixture@sandbox.invalid"), "harper.fixture@sandbox.invalid");
+});
+
+// ════════════════════════════ FINAL PRE-PR: one entry point, scoped credentials, exact target ════════════
+
+test("(1) seedSampleCompany.js is the SINGLE Sample Company operator entry point for every phase", () => {
+  // All five phases are reachable from this one script, each independently explicit.
+  for (const mode of ["plan", "apply", "activate-logins", "activate-credentials", "verify"]) {
+    const args = { ...BASE };
+    if (mode !== "plan") args.mode = mode;
+    if (mode === "apply" || mode === "activate-logins" || mode === "activate-credentials") args.apply = "true";
+    if (mode === "activate-logins" || mode === "activate-credentials") args.firebaseProjectId = "eos-platform-sandbox";
+    if (mode === "activate-credentials") args.credentialFile = "/tmp/sample-credentials.local.json";
+    const options = assertSampleCompanyInvocation(args, NONPROD);
+    assert.equal(options.mode, mode);
+  }
+  // And the orchestrator itself dispatches every one of them -- there is no phase the operator must leave
+  // this script to run.
+  const source = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  assert.match(source, /options\.mode === "activate-credentials"/);
+  assert.match(source, /options\.mode === "activate-logins"/);
+  assert.match(source, /options\.mode === "verify"/);
+  // The documented operator workflow is five invocations of THIS script and nothing else.
+  assert.match(source, /THIS IS THE ONE OPERATOR ENTRY POINT/);
+  const workflow = source.slice(source.indexOf("THIS IS THE ONE OPERATOR ENTRY POINT"), source.indexOf("`--rotate` is REFUSED"));
+  for (const step of ["--mode plan", "--mode apply --apply", "--mode activate-logins --apply", "--mode activate-credentials --apply", "--mode verify"]) {
+    assert.ok(workflow.includes(step), `the documented workflow omits ${step}`);
+  }
+  assert.ok(!/activateSandboxPersonas\.js --projectId/.test(workflow),
+    "the documented workflow still sends the operator to a second command");
+});
+
+test("(2) credential activation DELEGATES to the existing implementation and does not copy it", () => {
+  const phase = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/credentialActivation.js"), "utf8");
+  // It takes the activator as a parameter and calls it; it contains no generation of its own.
+  assert.match(phase, /await activator\(\{/);
+  assert.ok(!/randomBytes|updateUser\(|Sbx!/.test(phase), "the credential phase generates or sets a password itself");
+  // The orchestrator wires in the EXACT function the standalone CLI uses.
+  const source = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  assert.match(source, /const \{ activateMissingSandboxPasswords \} = require\("\.\/activateSandboxPersonas\.js"\)/);
+  const tool = readFileSync(resolve(FUNCTIONS_DIR, "scripts/activateSandboxPersonas.js"), "utf8");
+  assert.match(tool, /result = await activateMissingSandboxPasswords\(\{ auth, personas, outPath \}\)/,
+    "the standalone CLI no longer calls the shared implementation");
+  // Exactly ONE password-generating site in the whole Sample Company surface.
+  const generators = ["scripts/activateSandboxPersonas.js", "scripts/sampleCompany/credentialActivation.js",
+    "scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/loginActivation.js", "scripts/seedSampleCompany.js"]
+    .filter((f) => /randomBytes/.test(readFileSync(resolve(FUNCTIONS_DIR, f), "utf8")));
+  assert.deepEqual(generators, ["scripts/activateSandboxPersonas.js"]);
+});
+
+test("(3) Sample Company credential activation is confined to manifest personas", () => {
+  const { sampleCompanyCredentialAllowlist } = require("../scripts/sampleCompany/credentialActivation.js");
+  const allowlist = sampleCompanyCredentialAllowlist(MANIFEST);
+  const expected = MANIFEST.principals
+    .filter((p) => !p.existingAdministrator)
+    .map((p) => p.loginPrincipal.credentialEmail)
+    .sort();
+  assert.deepEqual(allowlist, expected);
+  assert.equal(allowlist.length, 14, "fourteen sandbox personas; the reused Administrator is excluded");
+  // THE REUSED ADMINISTRATOR IS NOT IN IT, and cannot be: its credentialEmail is null by construction.
+  const administrator = MANIFEST.principals.find((p) => p.existingAdministrator);
+  assert.equal(administrator.loginPrincipal.credentialEmail, null);
+  assert.ok(!allowlist.includes(null) && !allowlist.includes(undefined));
+  for (const email of allowlist) assert.ok(email.endsWith("@sandbox.invalid"));
+  // Every no-access Employee is absent.
+  for (const key of Object.keys(MANIFEST.expectedAccess.noAccessPersonas)) {
+    const employee = MANIFEST.employees.find((e) => e.key === key);
+    assert.ok(!allowlist.includes(employee.workEmail), `${key} must never be credential-activated`);
+  }
+});
+
+test("(4)(5) the allowlist narrows the existing implementation and never rotates a working credential", async () => {
+  const { activateMissingSandboxPasswords } = require("../scripts/activateSandboxPersonas.js");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const outPath = join(mkdtempSync(join(tmpdir(), "sample-creds-")), "sandbox-credentials.local.json");
+
+  const updated = [];
+  const auth = { async updateUser(uid) { updated.push(uid); } };
+  const personas = [
+    { uid: "u-mine-passwordless", email: "harper.fixture@sandbox.invalid", passwordHash: null },
+    { uid: "u-mine-working", email: "bailey.fixture@sandbox.invalid", passwordHash: "existing" },
+    { uid: "u-someone-else", email: "unrelated.persona@sandbox.invalid", passwordHash: null },
+  ];
+  const result = await activateMissingSandboxPasswords({
+    auth, personas, outPath,
+    emailAllowlist: ["harper.fixture@sandbox.invalid", "bailey.fixture@sandbox.invalid"],
+  });
+  // (4) THE UNRELATED PASSWORDLESS ACCOUNT IS UNTOUCHED, even though the un-narrowed call would have taken it.
+  assert.deepEqual(updated, ["u-mine-passwordless"]);
+  assert.deepEqual(result.activated, ["harper.fixture@sandbox.invalid"]);
+  // (5) the working Sample Company credential is left exactly alone.
+  assert.deepEqual(result.unchanged, ["bailey.fixture@sandbox.invalid"]);
+  assert.equal(result.scope, "ALLOWLIST");
+  assert.equal(result.considered, 2);
+  // The file is merged, and carries only what was activated here.
+  const written = JSON.parse(readFileSync(outPath, "utf8"));
+  assert.deepEqual(Object.keys(written), ["harper.fixture@sandbox.invalid"]);
+  assert.ok(!Object.prototype.hasOwnProperty.call(written, "unrelated.persona@sandbox.invalid"));
+  // NO PASSWORD IS EVER RETURNED.
+  assert.ok(!JSON.stringify(result).includes(written["harper.fixture@sandbox.invalid"]));
+});
+
+test("a MISSING allowlisted account is reported, never silently skipped", async () => {
+  const { activateMissingSandboxPasswords } = require("../scripts/activateSandboxPersonas.js");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const outPath = join(mkdtempSync(join(tmpdir(), "sample-creds-")), "sandbox-credentials.local.json");
+  const result = await activateMissingSandboxPasswords({
+    auth: { async updateUser() { throw new Error("must not be called"); } },
+    personas: [{ uid: "u1", email: "bailey.fixture@sandbox.invalid", passwordHash: "existing" }],
+    outPath,
+    emailAllowlist: ["bailey.fixture@sandbox.invalid", "nobody.here@sandbox.invalid"],
+  });
+  assert.deepEqual(result.missing, ["nobody.here@sandbox.invalid"]);
+  assert.deepEqual(result.activated, []);
+});
+
+test("the un-narrowed call behaves exactly as the standalone CLI always has", async () => {
+  const { activateMissingSandboxPasswords } = require("../scripts/activateSandboxPersonas.js");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const outPath = join(mkdtempSync(join(tmpdir(), "sample-creds-")), "sandbox-credentials.local.json");
+  const updated = [];
+  const result = await activateMissingSandboxPasswords({
+    auth: { async updateUser(uid) { updated.push(uid); } },
+    personas: [
+      { uid: "a", email: "a@sandbox.invalid", passwordHash: null },
+      { uid: "b", email: "b@sandbox.invalid", passwordHash: "existing" },
+    ],
+    outPath,
+  });
+  assert.equal(result.scope, "EVERY_SANDBOX_PERSONA");
+  assert.deepEqual(updated, ["a"], "the default path must still consider every sandbox persona");
+  assert.deepEqual(result.missing, [], "there is no allowlist, so nothing can be missing from one");
+});
+
+test("(6) --rotate cannot be reached through the Sample Company", () => {
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, rotate: "true" }, NONPROD), /--rotate is not a Sample Company operation/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "activate-credentials", apply: "true", firebaseProjectId: "eos-platform-sandbox", credentialFile: "/tmp/x-credentials.local.json", rotate: "true" }, NONPROD),
+    /--rotate is not a Sample Company operation/);
+  for (const file of ["scripts/seedSampleCompany.js", "scripts/sampleCompany/credentialActivation.js"]) {
+    const source = readFileSync(resolve(FUNCTIONS_DIR, file), "utf8");
+    assert.ok(!/rotate:\s*true|"--rotate"\s*\]/.test(source), `${file} can pass --rotate through`);
+  }
+});
+
+test("(7)(8) the Firebase project must be EXACTLY the one platform-sandbox registers", async () => {
+  const { assertSandboxAuthTarget, expectedSampleCompanyProjectId, REQUIRED_ENVIRONMENT } =
+    require("../scripts/sampleCompany/sandboxAuthDirectory.js");
+  // (7) resolved from the registry, not hard-coded a second time.
+  const registry = JSON.parse(readFileSync(resolve(FUNCTIONS_DIR, "..", "config", "environments.json"), "utf8"));
+  const sandbox = registry.environments.find((e) => e.id === REQUIRED_ENVIRONMENT);
+  assert.equal(expectedSampleCompanyProjectId(), sandbox.firebase.projectId);
+  assert.equal(assertSandboxAuthTarget(sandbox.firebase.projectId), REQUIRED_ENVIRONMENT);
+
+  // (8) ANOTHER LEGITIMATE NON-PRODUCTION PROJECT IS STILL REFUSED. The live registry happens to declare no
+  // second sandbox project today, so the rule is proved against a registry that does -- otherwise this test
+  // would pass for the wrong reason the moment one is added.
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const withExtra = structuredClone(registry);
+  withExtra.environments.push({
+    id: "platform-staging", role: "sandbox", deployment: "platform", status: "live",
+    firebase: { projectId: "eos-platform-staging" },
+  });
+  const registryPath = join(mkdtempSync(join(tmpdir(), "sample-registry-")), "environments.json");
+  writeFileSync(registryPath, JSON.stringify(withExtra, null, 2));
+  // It is registered, it is not production, it is not Certification -- and it is refused anyway, because a
+  // split target would key every Principal to a uid nobody in platform-sandbox can present.
+  assert.throws(() => assertSandboxAuthTarget("eos-platform-staging", registryPath),
+    /the Sample Company lives in 'platform-sandbox', whose registered Firebase project is 'eos-platform-sandbox'/);
+  assert.equal(assertSandboxAuthTarget("eos-platform-sandbox", registryPath), REQUIRED_ENVIRONMENT);
+  // The three independent refusals survive.
+  assert.throws(() => assertSandboxAuthTarget("taylor-parts", registryPath), /customer production project/);
+  assert.throws(() => assertSandboxAuthTarget("eos-platform-certification", registryPath), /Certification world, which is frozen/);
+  assert.throws(() => assertSandboxAuthTarget("taylor-parts-unregistered", registryPath), /not a Firebase project declared/);
+});
+
+test("(9) the link transition is ONE transaction, so a failure cannot strand an Employee", () => {
+  const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
+  const transition = activation.slice(activation.indexOf("async function transitionEmployeeLink"));
+  // One client, BEGIN/COMMIT, ROLLBACK on any failure -- and the current link re-read INSIDE the transaction.
+  assert.match(transition, /const client = await pool\.connect\(\);/);
+  assert.match(transition, /await client\.query\("BEGIN"\);/);
+  assert.match(transition, /await client\.query\("COMMIT"\);/);
+  assert.match(transition, /await client\.query\("ROLLBACK"\)/);
+  assert.match(transition, /readActiveLinkForEmployee\(client,/);
+  assert.match(transition, /revokeLinkForEmployee\(client,/);
+  assert.match(transition, /establishLink\(client,/);
+  assert.match(transition, /client\.release\(\)/);
+  // Still the governed repository, never hand SQL.
+  assert.ok(!/employee_principal_links/.test(stripComments(activation)),
+    "the transition writes the link table by hand instead of through the repository");
+});
+
+test("(13) the Sample Company Auth code still has zero Firestore imports or uses", () => {
+  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/credentialActivation.js",
+    "scripts/sampleCompany/loginActivation.js"]) {
+    const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
+    assert.ok(!/firebase-admin\/firestore|getFirestore|\.collection\(|FieldValue/.test(source),
+      `${file} reaches Firestore; Firebase is transitional identity only and eos_workforce.employees is the Employee authority`);
+  }
+  // The delegated activation implementation is Auth-only too.
+  const tool = stripComments(readFileSync(resolve(FUNCTIONS_DIR, "scripts/activateSandboxPersonas.js"), "utf8"));
+  assert.ok(!/firebase-admin\/firestore|getFirestore|\.collection\(/.test(tool));
 });

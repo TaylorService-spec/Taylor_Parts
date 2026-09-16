@@ -64,7 +64,7 @@ const refuse = (code, message) => {
  *
  * DRY RUN BY DEFAULT: with `apply` false nothing is created in Auth and nothing is written to PostgreSQL.
  */
-async function activateSampleCompanyLogins(pool, options, manifest, authDirectory) {
+async function activateSampleCompanyLogins(pool, options, manifest, authDirectory, deps = {}) {
   const apply = options.apply === true;
   const { PostgresPolicyRepository } = require("../../lib/adminPolicy/postgresPolicyRepository.js");
   const { ensureTenantPrincipal } = require("../../lib/adminPolicy/tenantBootstrap.js");
@@ -227,18 +227,13 @@ async function activateSampleCompanyLogins(pool, options, manifest, authDirector
       record.employeeLink = current ? "TRANSITION_FROM_FIXTURE" : "ESTABLISH";
       summary.linksTransitioned += 1;
       if (apply) {
-        // Revoke FIRST. establishLink refuses EMPLOYEE_ALREADY_LINKED otherwise, which is the index doing
-        // its job -- one Employee, one active login, never two.
-        if (current) await links.revokeLinkForEmployee(pool, tenantId, employee.id);
-        await links.establishLink(pool, {
+        await transitionEmployeeLink(pool, links, {
           tenantId,
-          principalId: loginPrincipal.id,
           employeeId: employee.id,
+          toPrincipalId: loginPrincipal.id,
           operatingCompanyId: manifest.company.operatingCompanyId,
-          linkSource: "OPERATOR_ASSERTED",
           assertedBy: actorUid,
-          assertionReason: LINK_REASON,
-        });
+        }, deps);
       }
     }
 
@@ -281,6 +276,60 @@ async function activateSampleCompanyLogins(pool, options, manifest, authDirector
     },
     pass: drift.length === 0,
   };
+}
+
+
+/**
+ * Move an Employee's ACTIVE link from its fixture Principal to its login Principal, ATOMICALLY.
+ *
+ * ============================ WHY ONE TRANSACTION ============================
+ *
+ * Revoke and establish are two writes to the same fact: WHICH Principal this Employee currently is. Run as
+ * two commits, a failure between them leaves the Employee with NO ACTIVE PRINCIPAL AT ALL -- the fixture
+ * login already gone, the real one not yet there -- which is strictly worse than either end state and is
+ * exactly the window the partial unique index cannot protect against, because at that instant nothing is
+ * ambiguous, there is simply nothing. So both happen inside ONE transaction on ONE client: on any failure
+ * the ROLLBACK leaves the PRIOR ACTIVE LINK ACTIVE and the Employee still resolves to somebody.
+ *
+ * The repository functions take a `LinkQueryable`, so the governed writers are used unchanged with a
+ * PoolClient in place of the Pool. No `employee_principal_links` SQL is written by hand here.
+ *
+ * THE CURRENT LINK IS RE-READ INSIDE THE TRANSACTION, not trusted from the earlier read: between the plan
+ * read and this write another operator could have moved it, and revoking whatever happens to be active
+ * without looking would silently discard their change.
+ *
+ * @param deps optional injection point used by the failure-injection test to make `establishLink` fail at
+ *             exactly the moment that would strand the Employee. Production passes nothing.
+ */
+async function transitionEmployeeLink(pool, links, input, deps = {}) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const current = await links.readActiveLinkForEmployee(client, input.tenantId, input.employeeId);
+    if (current && current.principalId === input.toPrincipalId) {
+      // Somebody else already did it. Nothing to revoke and nothing to establish.
+      await client.query("COMMIT");
+      return "ALREADY_ACTIVE";
+    }
+    if (current) await links.revokeLinkForEmployee(client, input.tenantId, input.employeeId);
+    if (deps.failBeforeEstablish) await deps.failBeforeEstablish(input);
+    await links.establishLink(client, {
+      tenantId: input.tenantId,
+      principalId: input.toPrincipalId,
+      employeeId: input.employeeId,
+      operatingCompanyId: input.operatingCompanyId,
+      linkSource: "OPERATOR_ASSERTED",
+      assertedBy: input.assertedBy,
+      assertionReason: LINK_REASON,
+    });
+    await client.query("COMMIT");
+    return current ? "TRANSITIONED" : "ESTABLISHED";
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
@@ -326,4 +375,4 @@ function fingerprint(subject) {
   return `subject:${require("node:crypto").createHash("sha256").update(String(subject)).digest("hex").slice(0, 12)}`;
 }
 
-module.exports = { activateSampleCompanyLogins, LoginActivationError, fingerprint };
+module.exports = { activateSampleCompanyLogins, transitionEmployeeLink, LoginActivationError, fingerprint };

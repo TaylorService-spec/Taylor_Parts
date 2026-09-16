@@ -67,7 +67,7 @@ async function subjectOfActiveLink(client, tenantId, employeeId, identityProvide
  * `blockers` entry and `pass: false`. It throws only when it cannot read at all, because an absent answer
  * and an answer of "zero" are different facts and must never be conflated.
  */
-async function verifySampleCompany(client, options, manifest = MANIFEST, authProbe = null) {
+async function verifySampleCompany(client, options, manifest = MANIFEST, authProbe = null, uidProbe = null) {
   const lookups = validateManifest(manifest);
   const { employees, principalsByEmployee } = lookups;
   const employeeId = (key) => employees.get(key).id;
@@ -363,14 +363,44 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
         persona.heldRoleKeys = [...new Set(assignments.filter((a) => a.status === "active").map((a) => keyById.get(a.roleId)).filter(Boolean))].sort();
         effective = await capabilitiesForRoleKeys(client, tenantId, persona.heldRoleKeys);
         resolvedPrincipalId = options.existingAdminPrincipalId;
-        // THE ADMINISTRATOR'S CREDENTIAL IS OUT OF SCOPE BY RULING: it is real, pre-existing, not a
-        // @sandbox.invalid fixture, and this workstream neither creates nor rotates it. What is NOT out of
-        // scope is honesty about what was checked -- so a run that performed no Auth probe reports this
-        // persona as unprobed too, rather than being the one persona that claims readiness for free.
-        persona.authAccount = authProbe ? "REUSED_EXISTING_ADMINISTRATOR" : "NOT_PROBED";
         const adminPrincipal = await reader.getPrincipal(options.existingAdminPrincipalId);
         persona.subjectFingerprint = adminPrincipal ? fingerprint(adminPrincipal.externalSubject) : null;
         persona.authorizationReady = true;
+
+        // THE ADMINISTRATOR'S CREDENTIAL IS UNCHANGED BUT NOT UNCHECKED.
+        //
+        // This workstream never creates it, renames it, or sets or rotates its password -- and that is
+        // exactly why its readiness has to be PROVED rather than assumed: nothing here would notice if the
+        // account had been disabled or deleted underneath us, and the Owner would be told to log in as an
+        // Administrator who cannot. The probe is READ ONLY and by UID, because the Principal's external
+        // subject is the only handle we legitimately hold for an account that has no manifest email.
+        if (!uidProbe) {
+          persona.authAccount = "AUTH_NOT_PROBED";
+        } else if (!adminPrincipal) {
+          persona.authAccount = "PRINCIPAL_NOT_FOUND";
+          fail("access.sandboxAuthAccount", p.employee, "the named administrator Principal does not exist");
+        } else if (adminPrincipal.identityProvider !== RUNTIME_IDENTITY_PROVIDER) {
+          persona.authAccount = "WRONG_PROVIDER";
+          fail("access.sandboxAuthAccount", p.employee,
+            `the administrator Principal resolves under '${adminPrincipal.identityProvider}', not the runtime provider`);
+        } else {
+          const account = await uidProbe(adminPrincipal.externalSubject);
+          if (!account) {
+            persona.authAccount = "MISSING";
+            fail("access.sandboxAuthAccount", p.employee, "no Auth account exists for the administrator Principal's subject");
+          } else if (account.disabled) {
+            persona.authAccount = "DISABLED";
+            fail("access.sandboxAuthAccount", p.employee, "the administrator's Auth account is disabled and cannot sign in");
+          } else if (account.uid !== adminPrincipal.externalSubject) {
+            persona.authAccount = "SUBJECT_MISMATCH";
+            fail("access.sandboxAuthAccount", p.employee, "the administrator Principal's subject does not match its Auth account");
+          } else if (!account.hasPassword) {
+            persona.authAccount = "NO_SIGN_IN_CREDENTIAL";
+            fail("access.sandboxAuthAccount", p.employee, "the administrator's Auth account has no enabled sign-in credential");
+          } else {
+            persona.authAccount = "REUSED_EXISTING_ADMINISTRATOR";
+          }
+        }
       } else {
         // The subject is the one the Auth account actually carries -- never a manifest literal. Without an
         // Auth probe there is no subject to resolve, which is itself the honest answer.
@@ -709,6 +739,7 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
     loginReadiness: {
       identityProvider: RUNTIME_IDENTITY_PROVIDER,
       authProbe: authProbe ? "PERFORMED" : "NOT_PERFORMED",
+      administratorUidProbe: uidProbe ? "PERFORMED" : "NOT_PERFORMED",
       interactivePersonas: personas.filter((p) => p.interactiveLogin).length,
       loginReady: personas.filter((p) => p.interactiveLogin && p.loginReady).length,
       authorizationReady: personas.filter((p) => p.interactiveLogin && p.authorizationReady).length,
@@ -746,10 +777,12 @@ async function verifySampleCompanyMain(options) {
   // explicitly database-only report which, by design, does NOT pass while any persona claims to be
   // interactive: a Sample Company nobody has proven can log in is not a verified Sample Company.
   let authProbe = null;
+  let uidProbe = null;
   if (!options.skipAuthProbe) {
     const { createFirebaseSandboxAuthDirectory } = require("./sampleCompany/sandboxAuthDirectory.js");
     const directory = createFirebaseSandboxAuthDirectory(options.firebaseProjectId);
     authProbe = (email) => directory.findByEmail(email);
+    uidProbe = (uid) => directory.findByUid(uid);
   }
 
   const pg = require("pg");
@@ -760,7 +793,7 @@ async function verifySampleCompanyMain(options) {
   try {
     await client.query("BEGIN");
     await client.query("SET TRANSACTION READ ONLY");
-    report = await verifySampleCompany(client, options, MANIFEST, authProbe);
+    report = await verifySampleCompany(client, options, MANIFEST, authProbe, uidProbe);
     await client.query("COMMIT");
   } finally {
     await client.end();
