@@ -110,6 +110,15 @@ on:
       - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
       - "functions/test/syntheticNonprodWorkforceSeed.test.mjs"
       - "functions/test/syntheticNonprodWorkforceSeedPostgres.test.mjs"
+      # SAMPLE COMPANY V2 -- the connected synthetic nonprod operating company (manifest, orchestrator,
+      # verifier and both suites). The offline suite runs in test:adminPolicy, the database suite in
+      # test:adminPolicyPostgres.
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/verifySampleCompany.js"
+      - "functions/scripts/sampleCompany/**"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
+      - "functions/test/sampleCompanyManifest.test.mjs"
+      - "functions/test/sampleCompanyPostgres.test.mjs"
       # BLOCKER #1: the PostgreSQL accountability history proof runs in test:adminPolicyPostgres.
       - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
       - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"
@@ -265,6 +274,15 @@ on:
       - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
       - "functions/test/syntheticNonprodWorkforceSeed.test.mjs"
       - "functions/test/syntheticNonprodWorkforceSeedPostgres.test.mjs"
+      # SAMPLE COMPANY V2 -- the connected synthetic nonprod operating company (manifest, orchestrator,
+      # verifier and both suites). The offline suite runs in test:adminPolicy, the database suite in
+      # test:adminPolicyPostgres.
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/verifySampleCompany.js"
+      - "functions/scripts/sampleCompany/**"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
+      - "functions/test/sampleCompanyManifest.test.mjs"
+      - "functions/test/sampleCompanyPostgres.test.mjs"
       # BLOCKER #1: the PostgreSQL accountability history proof runs in test:adminPolicyPostgres.
       - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
       - "functions/test/commercialAccountabilityHistoryPostgres.test.mjs"

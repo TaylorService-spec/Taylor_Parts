@@ -194,13 +194,22 @@ const CLASSIFIED_SCRIPTS = Object.freeze({
   // Owner ruling 2026-09-14: the fenced synthetic nonprod seed. Owners go through the governed CRM and commercial
   // writers; accountable persons through the mint (see the GOVERNED/SEED ratchet below).
   "scripts/seedSyntheticNonprodWorkforce.js": "GOVERNED/SEED",
+  // SAMPLE COMPANY V2 -- the same posture, superseding the v1 seed as a superset rather than replacing it.
+  // Record owners go through the governed CRM and commercial writers (createAccount / createContact /
+  // createAccountLocation / createCommercialRecord); accountable persons go through the establishment and the
+  // mint (see the GOVERNED/SEED ratchet below); assignment is written NOWHERE, because no governed
+  // PostgreSQL assignment authority exists in any domain it touches.
+  "scripts/seedSampleCompany.js": "GOVERNED/SEED",
 });
 
 /**
  * §5.2, pinned. Operator scripts that REACH accountability storage -- by importing the governed declaration or
  * establishment -- rather than by naming its field literals. Only GOVERNED/SEED is admissible here.
  */
-const GOVERNED_SEED_ACCOUNTABILITY_SCRIPTS = Object.freeze(["scripts/seedSyntheticNonprodWorkforce.js"]);
+const GOVERNED_SEED_ACCOUNTABILITY_SCRIPTS = Object.freeze([
+  "scripts/seedSampleCompany.js",
+  "scripts/seedSyntheticNonprodWorkforce.js",
+]);
 
 function walk(dir, exts) {
   const out = [];

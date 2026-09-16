@@ -38,6 +38,12 @@ on:
       - "functions/scripts/employeeProfileCutover.js"
       - "functions/scripts/exportEmployeeProfileSnapshot.js"
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      # SAMPLE COMPANY V2 (fence cases in operatorScriptEnvironmentFence.test.mjs): production refused
+      # twice over, the Certification world refused by NAME, and platform-sandbox required positively.
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/verifySampleCompany.js"
+      - "functions/scripts/sampleCompany/**"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/scripts/commercialC5.js"

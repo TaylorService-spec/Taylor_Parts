@@ -430,3 +430,81 @@ for (const [label, args, pattern] of [
     assert.match(out, pattern);
   });
 }
+
+// ============================ THE SAMPLE COMPANY V2 SEED AND VERIFIER ============================
+//
+// scripts/seedSampleCompany.js writes eos_workforce, eos_policy, eos_crm, eos_commercial and eos_ops
+// (--mode apply --apply) and scripts/verifySampleCompany.js reads all of them. Both must refuse before `pg`
+// is even resolved. Neither has a production mode, and BOTH refuse the Certification world by NAME -- it
+// carries role "sandbox" in config/environments.json, so a role-only fence would let it through.
+const SAMPLE_SEED = "scripts/seedSampleCompany.js";
+const SAMPLE_VERIFY = "scripts/verifySampleCompany.js";
+const SAMPLE_ENV = { EOS_ENVIRONMENT: "nonprod", SAMPLE_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const SAMPLE_ARGS = [
+  "--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB",
+  "--tenantKey", "taylor-nonprod", "--existingAdminPrincipalId", "p", "--performedBy", "op",
+];
+const sampleEnvSwap = (args, environment) => args.map((a) => (a === "platform-sandbox" ? environment : a));
+
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--environment is required/],
+  ["production environment", [...sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), "--mode", "apply", "--apply"], SAMPLE_ENV, /production/],
+  ["frozen Certification world", [...sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), "--mode", "apply", "--apply"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["any other non-production environment", [...sampleEnvSwap(SAMPLE_ARGS, "platform-integration")], SAMPLE_ENV, /exists only in 'platform-sandbox'/],
+  ["EOS_ENVIRONMENT not nonprod", [...SAMPLE_ARGS, "--mode", "apply", "--apply"], { ...SAMPLE_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", SAMPLE_ARGS, { SAMPLE_FENCE_DB: SAMPLE_ENV.SAMPLE_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no databaseUrlEnv", ["--environment", "platform-sandbox", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p"], SAMPLE_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["the wrong tenant", [...SAMPLE_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a))], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no performedBy", SAMPLE_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), SAMPLE_ENV, /--performedBy <operator> is required/],
+  ["no administering principal", SAMPLE_ARGS.filter((a) => a !== "--existingAdminPrincipalId" && a !== "p"), SAMPLE_ENV, /--existingAdminPrincipalId is required/],
+  ["an unknown mode", [...SAMPLE_ARGS, "--mode", "destroy"], SAMPLE_ENV, /--mode must be one of plan, apply, activate-logins, activate-credentials, verify/],
+  ["apply mode without the explicit --apply", [...SAMPLE_ARGS, "--mode", "apply"], SAMPLE_ENV, /--mode apply additionally requires the explicit --apply/],
+  ["--apply without a writing mode", [...SAMPLE_ARGS, "--apply"], SAMPLE_ENV, /--apply was given without a writing mode/],
+  // CREDENTIAL-LAYER WORK IS SEPARATELY EXPLICIT and names its own target. Each refusal still precedes
+  // firebase-admin resolving, which is what the preload proves.
+  ["activate-logins without the explicit --apply", [...SAMPLE_ARGS, "--mode", "activate-logins"], SAMPLE_ENV, /--mode activate-logins additionally requires the explicit --apply/],
+  ["activate-logins without a named Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply"], SAMPLE_ENV, /--mode activate-logins requires --firebaseProjectId/],
+  ["activate-logins against production", [...sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /production/],
+  ["activate-logins against the Certification world", [...sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["activate-logins naming the production Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "taylor-parts"], SAMPLE_ENV, /customer production project/],
+  ["activate-logins naming the Certification Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-certification"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["activate-logins naming an undeclared Firebase project", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "someone-elses-project"], SAMPLE_ENV, /not a Firebase project declared/],
+  ["a Firebase project on a non-credential mode", [...SAMPLE_ARGS, "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /--firebaseProjectId belongs only to the credential-layer modes/],
+  // THE CREDENTIAL PHASE. Separately authorized, names its target and its output file, and --rotate cannot
+  // be reached through this script at all.
+  ["activate-credentials without --apply", [...SAMPLE_ARGS, "--mode", "activate-credentials"], SAMPLE_ENV, /--mode activate-credentials additionally requires the explicit --apply/],
+  ["activate-credentials without a named Firebase project", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply"], SAMPLE_ENV, /--mode activate-credentials requires --firebaseProjectId/],
+  ["activate-credentials without a credential file", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], SAMPLE_ENV, /--mode activate-credentials requires --credentialFile/],
+  ["activate-credentials with a credential file outside the gitignore rule", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--credentialFile", "/tmp/passwords.json"], SAMPLE_ENV, /--credentialFile <path ending credentials.local.json>/],
+  ["activate-credentials against the production Firebase project", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "taylor-parts", "--credentialFile", "/tmp/x-credentials.local.json"], SAMPLE_ENV, /customer production project/],
+  ["activate-credentials against the Certification Firebase project", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-certification", "--credentialFile", "/tmp/x-credentials.local.json"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["a credential file on a non-credential mode", [...SAMPLE_ARGS, "--credentialFile", "/tmp/x-credentials.local.json"], SAMPLE_ENV, /--credentialFile belongs only to --mode activate-credentials/],
+  ["--rotate, anywhere", [...SAMPLE_ARGS, "--rotate"], SAMPLE_ENV, /--rotate is not a Sample Company operation/],
+  ["--rotate on the credential phase", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--credentialFile", "/tmp/x-credentials.local.json", "--rotate"], SAMPLE_ENV, /--rotate is not a Sample Company operation/],
+  // THE AUTH TARGET MUST BE THE SAMPLE COMPANY'S OWN PROJECT. platform-integration declares no Firebase
+  // project, so the un-registered case is what a mistyped sandbox looks like in practice.
+  ["a Firebase project that is not platform-sandbox's", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-staging"], SAMPLE_ENV, /not a Firebase project declared/],
+]) {
+  test(`sample company v2 seed: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(SAMPLE_SEED, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `sample company v2 seed, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p", "--skipAuthProbe"], SAMPLE_ENV, /--environment is required/],
+  ["production environment", [...sampleEnvSwap(SAMPLE_ARGS, "taylor-parts-production"), "--skipAuthProbe"], SAMPLE_ENV, /production/],
+  ["frozen Certification world", [...sampleEnvSwap(SAMPLE_ARGS, "platform-certification"), "--skipAuthProbe"], SAMPLE_ENV, /Certification world, which is frozen/],
+  ["EOS_ENVIRONMENT not nonprod", [...SAMPLE_ARGS, "--skipAuthProbe"], { ...SAMPLE_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no tenant key", ["--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB", "--performedBy", "op", "--existingAdminPrincipalId", "p", "--skipAuthProbe"], SAMPLE_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no Firebase project and no explicit database-only opt-out", SAMPLE_ARGS, SAMPLE_ENV, /--firebaseProjectId <sandbox project> is required to prove login readiness/],
+  ["a production Firebase project for the Auth probe", [...SAMPLE_ARGS, "--firebaseProjectId", "taylor-parts"], SAMPLE_ENV, /customer production project/],
+  ["the Certification Firebase project for the Auth probe", [...SAMPLE_ARGS, "--firebaseProjectId", "eos-platform-certification"], SAMPLE_ENV, /Certification world, which is frozen/],
+]) {
+  test(`sample company v2 verifier: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(SAMPLE_VERIFY, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `sample company v2 verifier, ${label}`);
+    assert.match(out, pattern);
+  });
+}

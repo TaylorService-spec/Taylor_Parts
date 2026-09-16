@@ -78,6 +78,72 @@ function assertNonProductionTarget(projectId) {
   return env;
 }
 
+
+/**
+ * ACTIVATE-MISSING, as a callable. THE ONE IMPLEMENTATION, used by this CLI and by the Sample Company
+ * orchestrator -- never copied, because a second password-generating path is a second thing to keep honest.
+ *
+ * The semantics are unchanged and are the reason this mode exists: a strong random password ONLY for a
+ * persona that has none; every working persona left untouched; the credential file MERGED rather than
+ * replaced, so the Owner's saved copy and any running mission survive; an unparseable file refused rather
+ * than overwritten. Nothing here logs, returns or compares a password value.
+ *
+ * `emailAllowlist` is the ONLY addition, and it is OPTIONAL. Absent -- which is how this CLI calls it -- the
+ * behaviour is byte-for-byte what it has always been: every @sandbox.invalid persona in the project is
+ * considered. Present, the call is narrowed to exactly those addresses, which is what lets the Sample
+ * Company activate its own fifteen personas without touching anybody else's sandbox account. An allowlisted
+ * address with NO account is REPORTED as missing, never silently skipped: a persona somebody expects to be
+ * able to log in as, whose account does not exist, is a finding rather than a no-op.
+ *
+ * @param auth           a firebase-admin Auth instance
+ * @param personas       the @sandbox.invalid users already listed from that project
+ * @param outPath        the gitignored credential file to merge into
+ * @param emailAllowlist optional iterable of addresses to confine this call to
+ * @returns { scope, considered, activated: string[], unchanged: string[], missing: string[] } -- EMAILS ONLY
+ */
+async function activateMissingSandboxPasswords({ auth, personas, outPath, emailAllowlist }) {
+  const allowlist = emailAllowlist ? new Set(emailAllowlist) : null;
+  for (const email of allowlist ?? []) {
+    if (!String(email).endsWith(SANDBOX_EMAIL_SUFFIX)) {
+      throw new Error(`REFUSING: '${email}' is not a ${SANDBOX_EMAIL_SUFFIX} address.`);
+    }
+  }
+  const considered = allowlist ? personas.filter((u) => allowlist.has(u.email)) : personas;
+  const missing = allowlist
+    ? [...allowlist].filter((email) => !personas.some((u) => u.email === email))
+    : [];
+  const needingPassword = considered.filter((u) => !u.passwordHash);
+  const unchanged = considered.filter((u) => u.passwordHash).map((u) => u.email);
+
+  if (needingPassword.length === 0) {
+    return { scope: allowlist ? "ALLOWLIST" : "EVERY_SANDBOX_PERSONA", considered: considered.length, activated: [], unchanged, missing };
+  }
+
+  // MERGE, never replace. Reading the existing file here is deliberate and is
+  // the one place this script reads it: writing a fresh file would silently drop
+  // the working personas' passwords, which is the exact harm this mode exists to
+  // avoid. Values are copied, never inspected, compared or logged.
+  let existing = {};
+  if (fs.existsSync(outPath)) {
+    try {
+      existing = JSON.parse(fs.readFileSync(outPath, "utf8"));
+    } catch {
+      throw new Error(`REFUSING: '${outPath}' exists but is not parseable JSON. Refusing to overwrite a file whose contents cannot be preserved.`);
+    }
+  }
+
+  const activated = [];
+  for (const u of needingPassword) {
+    const password = `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
+    await auth.updateUser(u.uid, { password, emailVerified: true });
+    existing[u.email] = password;
+    activated.push(u.email);
+  }
+  fs.writeFileSync(outPath, `${JSON.stringify(existing, null, 2)}\n`);
+
+  return { scope: allowlist ? "ALLOWLIST" : "EVERY_SANDBOX_PERSONA", considered: considered.length, activated, unchanged, missing };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   let env;
@@ -106,39 +172,22 @@ async function main() {
   const personas = list.users.filter((u) => u.email && u.email.endsWith(SANDBOX_EMAIL_SUFFIX));
 
   if (activateMissing) {
-    const missing = personas.filter((u) => !u.passwordHash);
-    if (missing.length === 0) {
+    let result;
+    try {
+      result = await activateMissingSandboxPasswords({ auth, personas, outPath });
+    } catch (err) {
+      console.error(err.message);
+      process.exitCode = 1;
+      return;
+    }
+    if (result.activated.length === 0 && result.missing.length === 0 && result.considered === result.unchanged.length) {
       console.log(`Every one of the ${personas.length} personas in '${env.id}' already has a password. Nothing to do.`);
       return;
     }
 
-    // MERGE, never replace. Reading the existing file here is deliberate and is
-    // the one place this script reads it: writing a fresh file would silently drop
-    // the working personas' passwords, which is the exact harm this mode exists to
-    // avoid. Values are copied, never inspected, compared or logged.
-    let existing = {};
-    if (fs.existsSync(outPath)) {
-      try {
-        existing = JSON.parse(fs.readFileSync(outPath, "utf8"));
-      } catch {
-        console.error(`REFUSING: '${outPath}' exists but is not parseable JSON. Refusing to overwrite a file whose contents cannot be preserved.`);
-        process.exitCode = 1;
-        return;
-      }
-    }
-
-    const activated = [];
-    for (const u of missing) {
-      const password = `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
-      await auth.updateUser(u.uid, { password, emailVerified: true });
-      existing[u.email] = password;
-      activated.push(u.email);
-    }
-    fs.writeFileSync(outPath, `${JSON.stringify(existing, null, 2)}\n`);
-
-    console.log(`Activated ${activated.length} persona(s) in '${env.id}' that previously had no password:`);
-    for (const email of activated) console.log(`  ${email}`);
-    console.log(`\nEvery other persona's password is UNCHANGED -- ${personas.length - activated.length} left alone.`);
+    console.log(`Activated ${result.activated.length} persona(s) in '${env.id}' that previously had no password:`);
+    for (const email of result.activated) console.log(`  ${email}`);
+    console.log(`\nEvery other persona's password is UNCHANGED -- ${personas.length - result.activated.length} left alone.`);
     console.log(`Credential file merged in place: ${outPath}`);
     console.log("Gitignored. Never commit or share it outside the sandbox.");
     return;
@@ -176,4 +225,10 @@ async function main() {
   console.log("This file is gitignored and must never be committed or shared outside the sandbox.");
 }
 
-main().catch((err) => { console.error("Activation failed:", err && err.message ? err.message : err); process.exitCode = 1; });
+module.exports = { activateMissingSandboxPasswords, assertNonProductionTarget, SANDBOX_EMAIL_SUFFIX };
+
+// STANDALONE CLI BEHAVIOUR IS UNCHANGED, and only runs when this file is the entry point -- so the Sample
+// Company can require() the activation function without the CLI executing.
+if (require.main === module) {
+  main().catch((err) => { console.error("Activation failed:", err && err.message ? err.message : err); process.exitCode = 1; });
+}
