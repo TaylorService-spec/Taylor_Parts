@@ -255,6 +255,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(planned.totals.FIXTURE_DRIFT, 0);
     assert.ok(planned.totals.BLOCKED > 0, "the blocked domains must be counted, not omitted");
     assert.equal(planned.capabilityGrants.appliedAdditions, 0);
+    assert.deepEqual(planned.capabilityGrants.roleScope, [...new Set(MANIFEST.principals.flatMap((p) => p.securityRoles))].sort());
     assert.deepEqual(await rowCounts(), before, "the plan changed the database");
   });
 
@@ -295,6 +296,19 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
 
     // BLOCKED means BLOCKED: nothing was written for a domain with no governed authority.
     assert.equal(counts["eos_ops.equipment"], 0, "installed Equipment is BLOCKED and must stay empty");
+  });
+
+  await t.test("apply granted capabilities ONLY to Roles a manifest Principal names", async () => {
+    const scope = new Set(MANIFEST.principals.flatMap((p) => p.securityRoles));
+    const granted = (await q(`SELECT DISTINCT r.key FROM eos_policy.role_capabilities rc
+      JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.granted_by LIKE 'sample-company-v2:%'`)).rows.map((r) => r.key);
+    assert.ok(granted.length > 0, "the apply granted nothing, so the scope proves nothing");
+    assert.deepEqual(granted.filter((k) => !scope.has(k)), [], "a Role outside the manifest was granted a capability");
+    for (const key of ["owner", "salesManager", "financeManager"]) {
+      const n = (await q(`SELECT count(*)::int AS n FROM eos_policy.role_capabilities rc
+        JOIN eos_policy.roles r ON r.id = rc.role_id WHERE r.key = $1`, [key])).rows[0].n;
+      assert.equal(n, 0, `${key} is not a Sample Company Role and must hold no grant from its apply`);
+    }
   });
 
   await t.test("the only inventory movements are the governed cycle-count adjustments", async () => {
