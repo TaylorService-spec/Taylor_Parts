@@ -142,6 +142,7 @@ holding the admin/dispatcher claim.
 | `scripts/ownershipBackfillSimulation.js` | **NOT APPLICABLE** | Read-only simulation. Its only `set` calls are on in-memory `Map`s. Writes nothing. |
 | `scripts/governance/effectiveAuthority.mjs` | **NOT APPLICABLE** | Read-only; names `ownerEmployeeId` in a projection. No write API call. |
 | `scripts/seedSyntheticNonprodWorkforce.js` | **GOVERNED/SEED** | Owner ruling 2026-09-14. The fenced synthetic NONPROD seed. Creation only: CRM and commercial owners are written through the governed `customerRepository` and `createCommercialRecord` writers; no ownership change, no reassignment. Refuses production by role and project id and refuses without `EOS_ENVIRONMENT=nonprod`. Its accountability half is classified in §5.2. |
+| `scripts/seedSampleCompany.js` | **GOVERNED/SEED** | SAMPLE COMPANY V2 (2026-09-15), the connected synthetic nonprod operating company. Same posture as the v1 seed above, which it supersedes as a SUPERSET rather than replacing: every CRM and commercial record owner is written through the governed `customerRepository` and `createCommercialRecord` writers, creation only, no ownership change and no reassignment. It additionally refuses any environment other than `platform-sandbox` and refuses the Certification world by NAME (that world carries role `sandbox` in the registry, so a role-only fence would not catch it). **Assignment is written nowhere**: no governed PostgreSQL assignment authority exists in any domain it touches, so the desired relationships are recorded as `blockedRelationships` in the manifest instead (EMPLOYEE_ASSIGNEE_PROJECTION / EMP-RT-05, EMPLOYEE_TECHNICIAN_LINK_BLOCKED). Its accountability half is classified in §5.2. |
 
 ---
 
@@ -199,6 +200,7 @@ authority was consulted in this process.
 | 6 | `src/salesAgreement/salesAgreementCommands.ts` | **GOVERNED** | Same creation verification. `SALES_AGREEMENT_DRAFT_EDITABLE_FIELDS` does not contain it and `buildUpdateSalesAgreementDraft` **rejects** every unnamed key (`FIELD_NOT_EDITABLE`), so the draft edit is not a path. |
 | 7 | `src/salesOrder/salesOrderCommands.ts` | **GOVERNED** | Same creation verification. There is **no** Sales Order field-edit command at all, so no edit path exists to classify. |
 | 8 | `scripts/seedSyntheticNonprodWorkforce.js` | **GOVERNED/SEED** | See §5.6. Nonprod-only; `accountable_employee_id` is persisted only from `accountablePersonFields(establishCreationAccountablePerson(...))`, in the record's own transaction, only while NULL. |
+| 8 | `scripts/seedSampleCompany.js` | **GOVERNED/SEED** | See §5.6. SAMPLE COMPANY V2. Nonprod-only and `platform-sandbox`-only; `accountable_employee_id` is persisted only from `accountablePersonFields(establishCreationAccountablePerson(...))`, in the record's own transaction, and only while it is still NULL. A manifest id never reaches the column directly, and an existing different value is `FIXTURE_DRIFT` and refuses rather than being overwritten. |
 | 9 | `src/eosCommercial/commercialAccountabilityRepository.ts` | **GOVERNED** | Owner ruling 2026-09-14, blocker #1 (Option B). The **PostgreSQL accountability audit authority**: accepts only a minted `EstablishedAccountablePerson`, refuses a person minted in another tenant, locks the record, and writes `accountable_employee_id` and its append-only `accountability_handoffs` row (`action` ESTABLISHMENT / HANDOFF, `source` = the mint's provenance) in **one PostgreSQL transaction**; a failed history write refuses the mutation. Imported by no callable and not exported from `index.ts`. See §5.5. |
 | 10 | `src/eosCommercial/commands/commercialCreation.ts` | **GOVERNED** | Commercial wave C2. Creation-time Accountable Person for every governed Commercial create: `establishCreationAccountablePerson` under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1, then the #1905 writer's `stageCommercialAccountablePersonChange` (ESTABLISHMENT history) in the create's transaction. Unwired. |
 | 11 | `src/commercialMigration/commercialC5Snapshot.ts` | **NOT APPLICABLE** | Commercial C5. Reads the recorded accountable person through `readStoredAccountablePerson` / `accountabilityRecordContext` for the migration census; never defaults it from the owner; writes nothing. Operator tool only. |
@@ -288,7 +290,9 @@ governed mint; or closure of activation blocker #2. **Activation blockers #1–#
 audit action exists, no deployed creation callable invokes governed establishment or the enforcement gate, and
 `updateOpportunity` still moves ownership without a handoff.
 
-`scripts/seedSyntheticNonprodWorkforce.js` is the only member. It is unreachable from `functions/src` and from
+`scripts/seedSyntheticNonprodWorkforce.js` and `scripts/seedSampleCompany.js` are the only members — the second supersedes the
+first as a superset, carrying every v1 id forward byte-identical rather than creating a second population. Both are unreachable
+from `functions/src` and from
 `index.ts`, runs only as an operator command in a process declaring `EOS_ENVIRONMENT=nonprod`, and the ratchet
 (§6 item 8) fails if another script reaches accountability storage or if this one stops being fenced and
 mint-gated. It exists because the Owner authorized a **synthetic** nonprod acceptance dataset; its rows are fixture

@@ -59,8 +59,14 @@ test("(44) the identity-only spine writer cannot become a live Commercial create
   const importers = [...walk(SRC, [".ts"]), ...walk(join(FUNCTIONS_DIR, "scripts"), [".js", ".mjs", ".cjs"])]
     .filter((f) => /\bcreateCommercialRecord\b/.test(strip(readFileSync(f, "utf8"))))
     .map(rel).sort();
-  assert.deepEqual(importers, ["scripts/seedSyntheticNonprodWorkforce.js", "src/eosCommercial/commercialOwnershipRepository.ts"],
-    "createCommercialRecord gained a caller other than its definition and the bounded synthetic nonprod seed");
+  // THE ALLOWLIST IS TWO BOUNDED NONPROD SEEDS AND THE DEFINITION, and nothing else. Both seeds are
+  // fenced to EOS_ENVIRONMENT=nonprod + platform-sandbox before `pg` resolves, refuse production twice
+  // over, and refuse the Certification world by name; neither is reachable from any transport, callable
+  // or client. scripts/seedSampleCompany.js is the Sample Company v2 orchestrator, which supersedes
+  // scripts/seedSyntheticNonprodWorkforce.js as a superset rather than replacing it.
+  assert.deepEqual(importers,
+    ["scripts/seedSampleCompany.js", "scripts/seedSyntheticNonprodWorkforce.js", "src/eosCommercial/commercialOwnershipRepository.ts"],
+    "createCommercialRecord gained a caller other than its definition and the two bounded synthetic nonprod seeds");
   for (const file of commandSources()) assert.doesNotMatch(strip(readFileSync(file, "utf8")), /createCommercialRecord/, `${rel(file)} uses the spine writer`);
   // A governed command refuses to drive a record that did not come through one.
   for (const service of ["opportunityCommandService.ts", "salesAgreementCommandService.ts"]) {
