@@ -1,6 +1,7 @@
 import { ACCOUNTS_COLLECTION } from "./constants";
 import { makeCollectionStore, TIMESTAMP_SHAPE } from "../firebase/collectionStore";
 import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
+import { assertClientCrmWriterOpen } from "./crmCutoverFreeze";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
 // Revives the previously dead domain/customers.js (zero importers,
@@ -10,9 +11,12 @@ import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 // recommendation). Same makeCollectionStore shape as jobsStore/
 // techniciansStore -- no transactional logic needed here, unlike
 // jobActions.js's assignJob(), since Accounts have no state machine
-// and no cross-document invariant to protect. Writes go through this
-// file directly (client-direct-write-with-rules), not a Cloud
-// Function -- see firestore.rules' accounts match block for why.
+// and no cross-document invariant to protect.
+//
+// During the nonprod CRM cutover the platform-sandbox bundle refuses these writes
+// before the collection store is called. This is a temporary client safety fuse,
+// not business authorization; PostgreSQL + EOS is the target authority and no new
+// Firebase Rules dependency is introduced.
 //
 // An Account is: { id, name, billingAddress?, status?, notes?, tags?,
 // customerNumber?, erpId?, accountingId?, legacyId?, createdAt,
@@ -31,14 +35,8 @@ import { normalizeNameForSearch, SEARCH_NAME_FIELD } from "./nameNormalization";
 // Commercial Profile fields (PR 1: defaultCurrency/purchaseOrderRequired/
 // invoiceDeliveryMethod/billingContact/accountOwner; PR 2:
 // paymentTerms/taxStatus) are additive and flow through this generic store
-// untouched -- there is no field-specific write logic here. The two PR-2
-// GOVERNED fields' value-validation AND admin-only-edit authorization are
-// enforced in firestore.rules, not in this client writer.
+// untouched -- there is no field-specific write logic here.
 //
-// INTERIM (audit-integrity invariant, per the Implementation Plan): this
-// admin/dispatcher client-direct-write path is valid only until PR 3b's
-// audit log + trusted server-side writer ship, at which point Commercial
-// Profile mutations move there and direct client mutation is Rules-denied.
 // ACCOUNTS ARE GOVERNED AS TIMESTAMP, and this is the one collection on the shared writer that is.
 //
 // metadata/definitions/account.js declares createdAt and updatedAt as TIMESTAMP, and the existing
@@ -76,10 +74,12 @@ function withDerivedSearchName(data) {
 }
 
 export function createAccount(data) {
+  assertClientCrmWriterOpen("account.clientCreate");
   return accountsStore.add(withDerivedSearchName(data));
 }
 
 export function updateAccount(id, data) {
+  assertClientCrmWriterOpen("account.clientUpdate");
   // THE SAME SHAPE THE CREATE PATH WRITES. This hardcoded Date.now(), so an edit re-broke a record
   // that had been created correctly -- the account sank down the date-ordered list the moment
   // anybody touched it. Asking the store for its own governed stamp means the two can never drift.
