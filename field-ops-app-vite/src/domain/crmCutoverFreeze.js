@@ -1,5 +1,3 @@
-import { APP_ENVIRONMENT } from "../firebase/firebase";
-
 // NONPROD CRM CUTOVER SAFETY FUSE
 //
 // This is not business authorization and it is not a second CRM authority. The canonical
@@ -9,6 +7,11 @@ import { APP_ENVIRONMENT } from "../firebase/firebase";
 // browser must stop originating Account / Contact / Location mutations before any Firestore
 // SDK call. Firestore Rules are deliberately NOT used as the new freeze mechanism: the target
 // architecture removes Firebase business authority rather than adding to it.
+//
+// The active environment is the same build-time registry value Vite already injects for the
+// application. Keeping this fuse independent of the Firebase module matters: contact/account
+// tests legitimately mock that module, and the freeze decision is an application-environment
+// fact rather than a Firebase SDK fact.
 //
 // This client fuse is intentionally exact-environment and temporary. It protects the current
 // deployed bundle while the source is frozen and measured. A stale older bundle is handled by
@@ -36,7 +39,7 @@ export class CrmCutoverFrozenError extends Error {
   }
 }
 
-export function assertClientCrmWriterOpen(writer, environmentId = APP_ENVIRONMENT.id) {
+export function assertClientCrmWriterOpen(writer, environmentId = __APP_ENVIRONMENT__.id) {
   if (!CRM_CLIENT_WRITERS.includes(writer)) {
     throw new Error(`Unknown CRM client writer '${String(writer)}'`);
   }
