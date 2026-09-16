@@ -100,7 +100,6 @@ test("the CRM cutover modules and the copy tool import no Firebase and name no F
   for (const file of [...CUTOVER_SOURCES, "scripts/crmCutover.js"]) {
     const code = stripComments(readFileSync(file, "utf8"));
     for (const p of FORBIDDEN) assert.doesNotMatch(code, p, `${file}: ${p}`);
-    // Firestore write shapes: a verb on a db/batch/transaction/document/collection handle, or a batch/transaction factory.
     assert.doesNotMatch(code, /\b(db|batch|txn|tx|ref|doc\([^)]*\)|collection\([^)]*\))\.(set|add|update|delete|create|commit)\s*\(/, file);
     assert.doesNotMatch(code, /\b(runTransaction|bulkWriter|writeBatch)\s*\(/, file);
   }
@@ -265,7 +264,6 @@ test("CERTIFICATION: marked fixtures are excluded with ids and reason; their chi
   s.locations.push(locationDoc("cw-acct-000-loc-00", "cw-acct-000", { certificationWorld: marker, fieldProvenance: {} }));
   s.contacts.push(contactDoc("con-under-cert", "cw-acct-000"));
   s.accounts.push(accountDoc("cw-acct-001"));
-  // The MARKER identifies a fixture, not the id prefix: a marked record with an ordinary id is excluded too.
   s.accounts.push(accountDoc("acct-marked-fixture", { certificationWorld: marker }));
   const { census, crm, evidence } = run(s);
   assert.deepEqual(census.certificationExcluded, { accounts: 2, contacts: 0, locations: 1 });
@@ -313,7 +311,6 @@ test("RULING 4: a child with no stated owner follows its OWN Account's owner, wi
   assert.ok(census.blockers.includes("CHILD_OWNER_UNDERIVABLE"));
   for (const id of ["con-under-ownerless", "loc-under-ownerless"]) assert.ok(![...crm.contacts, ...crm.locations].some((r) => r.id === id), `${id} was copied ownerless`);
   assert.ok(![...crm.contacts, ...crm.locations].some((r) => r.ownerEmployeeId === null), "a governed child is never ownerless");
-  // Every derived child has exactly one evidence entry, naming ITS Account and that Account's owner.
   const derivedIds = evidence.ownerDerivations.map((d) => `${d.collection}/${d.id}`);
   assert.deepEqual(derivedIds, ["contacts/con-bravo-1", "locations/loc-alpha-derived"]);
   const accountOwner = new Map(crm.accounts.map((a) => [a.id, a.ownerEmployeeId]));
@@ -323,7 +320,6 @@ test("RULING 4: a child with no stated owner follows its OWN Account's owner, wi
     assert.equal(d.ownerEmployeeId, accountOwner.get(child.accountId));
     assert.equal(child.ownerEmployeeId, d.ownerEmployeeId);
   }
-  // No child owner exists that is neither stated in the source nor evidenced.
   const statedChild = new Set([...s.contacts, ...s.locations].filter((d) => d.data.owner).map((d) => d.id));
   for (const r of [...crm.contacts, ...crm.locations]) assert.ok(statedChild.has(r.id) || derivedIds.some((x) => x.endsWith(`/${r.id}`)), `${r.id} has an owner without evidence`);
   const { ownerDerivationInconsistencies } = require("../lib/crm/crmCutoverCopy.js");
@@ -473,8 +469,8 @@ test("RULING 5: --retainDeclaredSyntheticSeedRows is refused for production and 
 
 const writerState = require("../lib/crm/crmWriterState.js");
 
-test("RULING 6: the committed CRM writer state is Firestore OPEN / PostgreSQL INACTIVE, coherent, with the four legal moves only", () => {
-  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" });
+test("RULING 6: the committed CRM writer state is Firestore FROZEN / PostgreSQL INACTIVE, coherent, with the four legal moves only", () => {
+  assert.deepEqual({ ...writerState.CRM_WRITER_AUTHORITY }, { firestore: "FROZEN", postgres: "INACTIVE" });
   assert.doesNotThrow(() => writerState.assertCrmWriterAuthorityCoherent(writerState.CRM_WRITER_AUTHORITY));
   const S = (firestore, postgres) => ({ firestore, postgres });
   assert.equal(writerState.assertCrmWriterTransition(S("OPEN", "INACTIVE"), S("FROZEN", "INACTIVE")), "FREEZE");
@@ -486,8 +482,8 @@ test("RULING 6: the committed CRM writer state is Firestore OPEN / PostgreSQL IN
   assert.throws(() => writerState.assertCrmWriterTransition(S("RETIRED", "ACTIVE"), S("FROZEN", "INACTIVE")), (e) => e.code === "CRM_WRITER_TRANSITION_NOT_ALLOWED");
   for (const [id, w] of Object.entries(writerState.FIRESTORE_CRM_WRITERS)) {
     if (w.enforcement !== "SERVER_GUARD") { assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id), /unknown server-side/); continue; }
-    assert.doesNotThrow(() => writerState.assertFirestoreCrmWriterOpen(id));
-    assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id, S("FROZEN", "INACTIVE")), (e) => e.code === "FIRESTORE_CRM_WRITER_FROZEN" && e.writer === id);
+    assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id), (e) => e.code === "FIRESTORE_CRM_WRITER_FROZEN" && e.writer === id);
+    assert.doesNotThrow(() => writerState.assertFirestoreCrmWriterOpen(id, S("OPEN", "INACTIVE")));
     assert.throws(() => writerState.assertFirestoreCrmWriterOpen(id, S("RETIRED", "ACTIVE")), (e) => e.code === "FIRESTORE_CRM_WRITER_RETIRED");
   }
 });
@@ -513,7 +509,6 @@ test("RULING 6: every server-side legacy CRM writer calls the guard with its own
   }
   const serverWriters = Object.entries(writerState.FIRESTORE_CRM_WRITERS).filter(([, w]) => w.enforcement === "SERVER_GUARD").map(([id]) => id);
   assert.deepEqual([...guarded].sort(), serverWriters.sort(), "a server-side CRM writer is registered without a proved guard");
-  // The customer import honours the freeze as a whole: before the job is claimed.
   const callables = stripComments(readFileSync("src/dataImport/dataImportCallables.ts", "utf8"));
   const exec = callables.slice(callables.indexOf("export const executeDataImportCallable"));
   assert.ok(exec.indexOf('assertFirestoreCrmWriterOpen("account.import")') >= 0);
