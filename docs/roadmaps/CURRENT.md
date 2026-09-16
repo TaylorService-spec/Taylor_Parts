@@ -16,13 +16,15 @@ That reconciliation is the current program-level authority for:
 
 The dedicated foundation workstream is [`2026-09-16-authorization-v2-application-platform-reset.md`](2026-09-16-authorization-v2-application-platform-reset.md).
 
-## Execution strategy — separate EOS v2 sandbox
+## Execution strategy — parallel control plane, shared application
 
 The platform reset is executed through [`2026-09-16-parallel-v2-sandbox-cutover-strategy.md`](2026-09-16-parallel-v2-sandbox-cutover-strategy.md).
 
-**Current EOS remains running and authoritative while EOS v2 is built beside it in an isolated nonproduction environment.** The v2 sandbox may duplicate current EOS code, connected synthetic data, sanitized sandbox snapshots and representative business state when that is the safest way to prove parity. Duplication during migration is acceptable; premature refactoring is not the goal.
+**Current EOS remains running and authoritative while the new identity/session/authorization/PostgreSQL/Render control plane is built beside it.** The default is to reuse the current application code and accepted business behavior rather than maintain a second independent EOS product.
 
-No domain moves merely because v2 code exists. Each bounded authority must pass current-state census, isolated replacement, deterministic parity, connected scenarios, data reconciliation, one-writer cutover, running-application acceptance and rollback/soak gates before the old path can be retired.
+Bounded modules may be routed to independently addressable v2 APIs in nonproduction after their replacement authority is proven. A full cloned v2 UI/application is permitted only when shared-code isolation cannot reliably prove parity; if used, it is temporary migration scaffolding with an explicit convergence/removal gate.
+
+No domain moves merely because v2 code exists. Each bounded authority must pass current-state census, isolated replacement, shared-code compatibility where applicable, deterministic parity, connected scenarios, data reconciliation, one-writer cutover, running-application acceptance, and rollback/soak gates before the old path can be retired.
 
 Broad dual-write is not the default. One system remains the business writer until a controlled cutover.
 
@@ -47,4 +49,5 @@ Do not report:
 - a UI as a completed business process when its governed backend action is unavailable;
 - a legacy path as retired until it is actually unreachable/removed;
 - a technical cutover as permission to redesign protected Parts/Inventory/Truck business semantics;
-- EOS v2 existence as permission to alter current EOS before parity and cutover gates pass.
+- EOS v2 existence as permission to alter current EOS before parity and cutover gates pass;
+- a full duplicate application as the default v2 strategy when shared application code can be safely reused.
