@@ -1,0 +1,32 @@
+name: CRM Source Quiescence Tests
+
+on:
+  pull_request:
+    paths:
+      - "functions/scripts/exportCrmSnapshot.js"
+      - "functions/test/crmQuiescence.test.mjs"
+      - ".github/workflows/crm-quiescence-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/scripts/exportCrmSnapshot.js"
+      - "functions/test/crmQuiescence.test.mjs"
+      - ".github/workflows/crm-quiescence-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  quiescence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Prove deterministic source digest and fail-closed expected digest contract
+        run: node --test test/crmQuiescence.test.mjs

@@ -25,12 +25,41 @@
 //
 // Refuses any project that is production by name or by registry role, and refuses the Certification world
 // by name. Only accounts whose email ends `@sandbox.invalid` are ever read or created.
+//
+// ============================ THE OPERATOR CREDENTIAL ============================
+//
+// Verifying a Firebase ID token needs only the project id and Google's public certificates, which is why the
+// deployed eos-api-nonprod runtime holds NO Google credential (render.yaml). ADMINISTERING Auth -- reading an
+// account by email, creating one, activating a password -- needs a real Google OAuth2 access token. On Render,
+// `applicationDefault()` has nothing to find and falls through to the Compute Engine metadata server, which
+// does not exist there (`getaddrinfo ENOTFOUND metadata.google.internal`).
+//
+// So the credential is supplied BY THE OPERATOR, FOR ONE SHELL, and never by the runtime:
+//
+//   EOS_FIREBASE_OPERATOR_ACCESS_TOKEN   a short-lived OAuth2 access token the operator minted outside the
+//                                        application (e.g. `gcloud auth print-access-token`). Read from the
+//                                        environment only -- never argv, which process listings and shell
+//                                        history expose. Never persisted, logged, serialized or echoed in an
+//                                        error; every message leaving this module is scrubbed of it.
+//   (absent)                             Application Default Credentials, for an environment that genuinely
+//                                        has them.
+//
+// A SUPPLIED TOKEN IS NEVER DOWNGRADED. If it is present it is the credential, full stop: a blank value is
+// refused, and a token Google rejects fails the preflight -- there is no retry with ADC. `preflight()` proves
+// the credential works with one Admin Auth READ before any caller does any PostgreSQL or Auth write.
 "use strict";
 
 const fs = require("node:fs");
 const path = require("node:path");
 
 const SANDBOX_EMAIL_SUFFIX = "@sandbox.invalid";
+/** OPERATOR ONLY. The one place a Google OAuth2 access token for Auth administration may come from. */
+const OPERATOR_ACCESS_TOKEN_ENV = "EOS_FIREBASE_OPERATOR_ACCESS_TOKEN";
+/**
+ * The lifetime the SDK is told the operator token has. The real expiry is Google's and unknown here; a token
+ * that has actually expired is rejected by Google and surfaces as a failed call, not a silent refresh.
+ */
+const OPERATOR_TOKEN_ASSUMED_LIFETIME_SECONDS = 3000;
 const PRODUCTION_PROJECT_ID = "taylor-parts";
 const CERTIFICATION_PROJECT_ID = "eos-platform-certification";
 /**
@@ -98,6 +127,53 @@ function assertSandboxAuthTarget(projectId, registryPath = DEFAULT_REGISTRY_PATH
   return environment.id;
 }
 
+/** The operator token from the environment, or null when none was supplied. A blank value is refused. */
+function readOperatorAccessToken(env = process.env) {
+  if (!Object.prototype.hasOwnProperty.call(env, OPERATOR_ACCESS_TOKEN_ENV)) return null;
+  const raw = env[OPERATOR_ACCESS_TOKEN_ENV];
+  const token = typeof raw === "string" ? raw.trim() : "";
+  if (token === "" || /\s/.test(token)) {
+    throw new SandboxAuthError("OPERATOR_TOKEN_INVALID", `${OPERATOR_ACCESS_TOKEN_ENV} is set but is not a single non-blank token; refusing rather than falling back to Application Default Credentials`);
+  }
+  return token;
+}
+
+/** Replace every occurrence of the operator token in a message. Safe to call when none was supplied. */
+function scrubOperatorSecret(text, env = process.env) {
+  const message = String(text);
+  let token = null;
+  try {
+    token = readOperatorAccessToken(env);
+  } catch {
+    return message;
+  }
+  return token ? message.split(token).join(`[${OPERATOR_ACCESS_TOKEN_ENV} redacted]`) : message;
+}
+
+/**
+ * OPERATOR ONLY. A firebase-admin `Credential` backed by a short-lived access token the operator supplied.
+ * The token lives only in this closure: the returned object has no enumerable state, so serializing or
+ * inspecting it reveals nothing.
+ */
+function createOperatorAccessTokenCredential(token) {
+  if (typeof token !== "string" || token.trim() === "") {
+    throw new SandboxAuthError("OPERATOR_TOKEN_INVALID", "an operator access token must be a non-blank string");
+  }
+  return Object.freeze({
+    getAccessToken: async () => ({ access_token: token, expires_in: OPERATOR_TOKEN_ASSUMED_LIFETIME_SECONDS }),
+  });
+}
+
+/**
+ * The ONE credential decision for Auth administration: the operator token when supplied, otherwise ADC.
+ * `source` is safe to report; the credential itself is not.
+ */
+function resolveAdminCredential(env, applicationDefault) {
+  const token = readOperatorAccessToken(env);
+  if (token !== null) return { source: "OPERATOR_ACCESS_TOKEN", credential: createOperatorAccessTokenCredential(token) };
+  return { source: "APPLICATION_DEFAULT", credential: applicationDefault() };
+}
+
 /** Only a sandbox address is ever touched. A real-looking address is refused, not skipped. */
 function assertSandboxEmail(email) {
   if (typeof email !== "string" || !email.endsWith(SANDBOX_EMAIL_SUFFIX)) {
@@ -112,17 +188,57 @@ function assertSandboxEmail(email) {
  * Returns the small interface the activation phase consumes, so that phase is testable against an
  * in-memory double and never needs Firebase in a test process.
  */
-function createFirebaseSandboxAuthDirectory(projectId) {
+function createFirebaseSandboxAuthDirectory(projectId, { env = process.env, sdk = null } = {}) {
   const environmentId = assertSandboxAuthTarget(projectId);
-  // AFTER the fence, never at module scope.
-  const { initializeApp, applicationDefault, getApps } = require("firebase-admin/app");
-  const { getAuth } = require("firebase-admin/auth");
-  const app = getApps().length > 0 ? getApps()[0] : initializeApp({ credential: applicationDefault(), projectId });
+  // The credential decision is made before the SDK is loaded, so a blank operator token is refused with no
+  // firebase-admin in the process either.
+  readOperatorAccessToken(env);
+  // AFTER the fence, never at module scope. `sdk` is a test seam only.
+  const { initializeApp, applicationDefault, getApps } = sdk ?? require("firebase-admin/app");
+  const { getAuth } = sdk ?? require("firebase-admin/auth");
+  if (getApps().length > 0) {
+    // An app initialized elsewhere carries a credential this module did not choose; refuse rather than guess.
+    throw new SandboxAuthError("AUTH_APP_ALREADY_INITIALIZED", "a Firebase app already exists in this process; the sandbox Auth adapter must be the one that initializes it");
+  }
+  let resolved;
+  try {
+    resolved = resolveAdminCredential(env, applicationDefault);
+  } catch (err) {
+    if (err instanceof SandboxAuthError) throw err;
+    throw new SandboxAuthError(
+      "OPERATOR_CREDENTIAL_UNAVAILABLE",
+      `no Google credential could be loaded for Firebase Auth administration of '${projectId}'. ` +
+        `Supply a short-lived Google OAuth2 access token in ${OPERATOR_ACCESS_TOKEN_ENV} for this shell (never as an argument). ` +
+        `Nothing was written. Cause: ${scrubOperatorSecret(err && err.message ? err.message : String(err), env)}`,
+    );
+  }
+  const { source: credentialSource, credential } = resolved;
+  const app = initializeApp({ credential, projectId });
   const auth = getAuth(app);
 
   return {
     environmentId,
     projectId,
+    /** OPERATOR_ACCESS_TOKEN or APPLICATION_DEFAULT. Names where the credential came from, never what it is. */
+    credentialSource,
+    /**
+     * PROVE THE CREDENTIAL BEFORE ANYTHING IS WRITTEN. One Admin Auth read against this project: if no token
+     * can be obtained, or Google rejects it, this refuses here rather than midway through persona processing.
+     */
+    async preflight() {
+      try {
+        await auth.listUsers(1);
+      } catch (err) {
+        const detail = scrubOperatorSecret(err && err.message ? err.message : String(err), env);
+        throw new SandboxAuthError(
+          "OPERATOR_CREDENTIAL_UNAVAILABLE",
+          `Firebase Auth administration of '${projectId}' could not be authorized using ${credentialSource}. ` +
+            `Supply a short-lived Google OAuth2 access token in ${OPERATOR_ACCESS_TOKEN_ENV} for this shell (never as an argument), ` +
+            `or run where Application Default Credentials exist. Nothing was written. Cause: ${detail}`,
+        );
+      }
+      return { projectId, credentialSource };
+    },
     /**
      * The Auth handle, exposed ONLY so the credential phase can hand it to the existing proven
      * `activateMissingSandboxPasswords` implementation rather than reimplementing password activation here.
@@ -186,6 +302,11 @@ function createFirebaseSandboxAuthDirectory(projectId) {
 
 module.exports = {
   createFirebaseSandboxAuthDirectory,
+  createOperatorAccessTokenCredential,
+  resolveAdminCredential,
+  readOperatorAccessToken,
+  scrubOperatorSecret,
+  OPERATOR_ACCESS_TOKEN_ENV,
   assertSandboxAuthTarget,
   expectedSampleCompanyProjectId,
   REQUIRED_ENVIRONMENT,

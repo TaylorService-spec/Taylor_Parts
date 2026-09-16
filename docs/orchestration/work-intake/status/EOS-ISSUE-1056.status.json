@@ -4,11 +4,11 @@
   "pointer": "status://EOS-ISSUE-1056",
   "work": "work://EOS-ISSUE-1056",
   "result": "result://EOS-ISSUE-1056",
-  "state": "BLOCKED_EXECUTION",
-  "currentWork": "required execution receipts missing: tests",
+  "state": "AWAITING_ARTIFACTIZATION",
+  "currentWork": "expected durable PATCH was not produced",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-17T00:19:51.960Z",
+  "updatedAt": "2026-09-16T22:30:32.856Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -39,5 +39,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-1056.status.json",
-  "sha256": "bcb2358d9c6d72350b1d23a9b5fc07d597378aebfd27670aae032cec0564d7f7"
+  "sha256": "079f350242b66fdc881bdf0f5a87f9c8fec14f53840d57f15c9232df85cc0ce4"
 }

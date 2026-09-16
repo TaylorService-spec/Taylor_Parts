@@ -8,11 +8,14 @@ import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
+import { COMPATIBILITY_ROLES } from "../lib/access/compatibilityRoles.js";
+import { GOVERNED_BUSINESS_ROLES } from "../lib/access/governedBusinessRoles.js";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.js";
 import {
   deriveLegacyRoleGrants,
   reconcileInventoryCapabilityGrants,
+  UnknownCanonicalRoleError,
 } from "../lib/eosOps/migration/inventoryCapabilityGrantMigration.js";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
@@ -91,6 +94,27 @@ test("deriveLegacyRoleGrants: inventoryReceivingClerk holds exactly inventory.st
   const grants = deriveLegacyRoleGrants();
   const receiveGrants = grants.filter((g) => g.roleKey === "inventoryReceivingClerk");
   assert.deepEqual(receiveGrants.map((g) => g.capabilityKey), ["inventory.stock.receive"]);
+});
+
+// ── Role scope. Limiting capability keys does not limit which Roles receive them; `roleKeys` does. ──
+
+test("deriveLegacyRoleGrants: omitting roleKeys considers every canonical Role (default unchanged)", () => {
+  const everyRole = Object.keys({ ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES });
+  assert.deepEqual(deriveLegacyRoleGrants(), deriveLegacyRoleGrants(undefined, everyRole));
+  assert.ok(new Set(deriveLegacyRoleGrants().map((g) => g.roleKey)).size > 1);
+});
+
+test("deriveLegacyRoleGrants: roleKeys limits grants to exactly those Roles, with the catalog's own permissions", () => {
+  const all = deriveLegacyRoleGrants();
+  const scoped = deriveLegacyRoleGrants(undefined, ["inventoryReceivingClerk"]);
+  assert.deepEqual(scoped, all.filter((g) => g.roleKey === "inventoryReceivingClerk"));
+  assert.ok(all.some((g) => g.roleKey !== "inventoryReceivingClerk"), "the fixture must prove something was excluded");
+  assert.deepEqual(deriveLegacyRoleGrants(undefined, []), []);
+});
+
+test("deriveLegacyRoleGrants: an unknown requested canonical Role fails closed", () => {
+  assert.throws(() => deriveLegacyRoleGrants(undefined, ["inventoryReceivingClerk", "aRoleNobodyDefined"]),
+    (err) => err instanceof UnknownCanonicalRoleError && err.roleKeys.join() === "aRoleNobodyDefined");
 });
 
 test("unknown tenant refuses outright", { skip: SKIP }, async () => {
@@ -175,4 +199,52 @@ test("cross-tenant isolation: applying for tenant A never grants tenant B's iden
   const reportB = await reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_B, actor: ACTOR });
   const stillProposedForB = reportB.rows.find((r) => r.roleKey === "inventoryReceivingClerk" && r.capabilityKey === "inventory.stock.receive");
   assert.equal(stillProposedForB.status, "PROPOSED", "tenant B's own Role must still show as ungranted");
+});
+
+test("roleKeys scope: dry run and apply touch only the requested Roles", { skip: SKIP }, async () => {
+  await reset();
+  await makeRole(TENANT_A, "inventoryReceivingClerk");
+  await makeRole(TENANT_A, "owner");
+  const unscoped = await reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_A, actor: ACTOR });
+  assert.ok(unscoped.rows.some((r) => r.roleKey !== "inventoryReceivingClerk"), "the fixture must prove an out-of-scope Role would be reconciled");
+
+  const roleKeys = ["inventoryReceivingClerk"];
+  const dry = await reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_A, actor: ACTOR, roleKeys });
+  assert.ok(dry.rows.length > 0);
+  assert.ok(dry.rows.every((r) => r.roleKey === "inventoryReceivingClerk"));
+  assert.equal(dry.appliedAdditions, 0);
+  assert.equal((await query("SELECT * FROM eos_policy.role_capabilities WHERE tenant_id = $1", [TENANT_A])).rowCount, 0);
+
+  const applied = await reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_A, apply: true, actor: ACTOR, roleKeys });
+  assert.equal(applied.appliedAdditions, dry.proposedAdditions);
+  assert.ok(applied.rows.every((r) => r.roleKey === "inventoryReceivingClerk"));
+  const granted = await query(
+    `SELECT DISTINCT r.key FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.tenant_id = $1`,
+    [TENANT_A],
+  );
+  assert.deepEqual(granted.rows.map((r) => r.key), ["inventoryReceivingClerk"], "a Role outside roleKeys was granted");
+});
+
+test("roleKeys scope: an unknown requested canonical Role is refused before anything is written", { skip: SKIP }, async () => {
+  await reset();
+  await makeRole(TENANT_A, "inventoryReceivingClerk");
+  await assert.rejects(
+    () => reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_A, apply: true, actor: ACTOR, roleKeys: ["inventoryReceivingClerk", "aRoleNobodyDefined"] }),
+    UnknownCanonicalRoleError,
+  );
+  assert.equal((await query("SELECT * FROM eos_policy.role_capabilities WHERE tenant_id = $1", [TENANT_A])).rowCount, 0);
+});
+
+test("roleKeys scope: unresolved-role and unknown-capability reporting are unchanged inside the scope", { skip: SKIP }, async () => {
+  await reset();
+  const unresolved = await reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_A, actor: ACTOR, roleKeys: ["inventoryReceivingClerk"] });
+  assert.ok(unresolved.unresolved.length > 0);
+  assert.ok(unresolved.unresolved.every((r) => r.status === "UNRESOLVED_ROLE" && r.roleKey === "inventoryReceivingClerk"));
+
+  await makeRole(TENANT_A, "inventoryReceivingClerk");
+  await query("DELETE FROM eos_policy.capabilities WHERE key = 'inventory.stock.receive'");
+  const unknown = await reconcileInventoryCapabilityGrants(pool, { tenantId: TENANT_A, actor: ACTOR, roleKeys: ["inventoryReceivingClerk"] });
+  const row = unknown.rows.find((r) => r.capabilityKey === "inventory.stock.receive");
+  assert.equal(row.status, "UNKNOWN_CAPABILITY");
+  assert.ok(unknown.unresolved.includes(row));
 });

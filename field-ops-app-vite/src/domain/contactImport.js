@@ -2,6 +2,7 @@ import { collection, doc, writeBatch } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { CONTACTS_COLLECTION } from "./constants";
 import { isWriteBlocked } from "../config/env";
+import { assertClientCrmWriterOpen } from "./crmCutoverFreeze";
 
 // Contact CSV import -- the WRITE path. All accepted contacts for ONE account are
 // written in a single Firestore `writeBatch` (bounded above by
@@ -10,27 +11,17 @@ import { isWriteBlocked } from "../config/env";
 // failure persists ZERO contacts -- an invalid/failed import can never leave a
 // partial set behind.
 //
-// This goes through the authenticated client SDK and Firestore Rules exactly like
-// the single Add-Contact path (contacts `allow create: if isAdminOrDispatcher()`,
-// no per-write cross-document invariant, so a batch of creates is Rules-legal for
-// the same session) -- NO Admin SDK, NO Rules bypass, NO Cloud Function, NO
-// production credential. It also respects the platform demo/panic write gate
-// (config/env.js's isWriteBlocked), returning a { blocked } sentinel rather than
-// writing, same convention as lib/firebaseSafe.js.
+// During the platform-sandbox CRM cutover this legacy client path is refused
+// before a Firestore batch is created. No Firebase Rules change is used as the
+// freeze mechanism. The path will be retired after PostgreSQL CRM activation.
 export async function importContacts(accountId, contacts = []) {
+  assertClientCrmWriterOpen("contact.clientImport");
   if (isWriteBlocked()) return { blocked: true };
   const now = Date.now();
   // Contact provenance convergence -- same client-direct-write posture as
   // domain/contacts.js: this timestamp/actor are CLIENT-SUPPLIED CLAIMS, not
-  // server-authoritative provenance (metadata/v2/provenance.js's SERVER-
-  // AUTHORITATIVE ideal), since Contact writes are not behind a trusted
-  // command. Converging the SHAPE across every write path is this change's
-  // scope. Actor identity reuses the same auth.currentUser?.uid ?? null
-  // pattern as every other client-direct-write domain module -- an import
-  // is still a human-triggered write, attributed to the signed-in operator
-  // who ran it (PROVENANCE_ORIGIN's "an import did this on a dispatcher's
-  // behalf" distinction belongs to the not-yet-implemented createdVia seam,
-  // not to createdBy itself).
+  // server-authoritative provenance. This remains legacy evidence only until
+  // the Firestore path is retired.
   const actorUid = auth.currentUser?.uid ?? null;
   const batch = writeBatch(db);
   const ids = [];

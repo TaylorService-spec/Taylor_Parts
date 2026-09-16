@@ -16,8 +16,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const FUNCTIONS_DIR = resolve(HERE, "..");
 
 const seed = require("../scripts/seedSampleCompany.js");
-const { MANIFEST, validateManifest, sampleCompanyCapabilityKeys, assertSampleCompanyInvocation,
+const { MANIFEST, validateManifest, sampleCompanyCapabilityKeys, sampleCompanyRoleKeys, assertSampleCompanyInvocation,
   EMPLOYMENT_STATUS_VALUES, JOB_ROLE_VOCABULARY, PROFILE_COLUMNS } = seed;
+const { deriveLegacyRoleGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
 const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
 const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
 const { PERMISSION_CATALOG } = require("../lib/access/permissionCatalog.js");
@@ -355,6 +356,35 @@ test("the capability key set is derived from the Role catalog, never hand-typed"
   const union = new Set(MANIFEST.principals.flatMap((p) => p.securityRoles).flatMap((r) => ROLE_CATALOG[r].permissions ?? []));
   assert.deepEqual([...keys].sort(), [...union].sort());
   assert.ok(keys.includes("admin.employeeProfile.write"), "the reporting-relationship command's own capability must be reconciled");
+});
+
+test("the capability Role scope is exactly the Roles manifest Principals name, deduplicated and sorted", () => {
+  const named = MANIFEST.principals.flatMap((p) => p.securityRoles);
+  assert.deepEqual(sampleCompanyRoleKeys(), [...new Set(named)].sort());
+  const m = clone();
+  m.principals = [{ ...m.principals[0], securityRoles: ["warehouseManager", "admin", "warehouseManager"] }];
+  assert.deepEqual(sampleCompanyRoleKeys(m), ["admin", "warehouseManager"]);
+});
+
+test("the capability reconciliation cannot reach a canonical Role the manifest does not name", () => {
+  const scope = sampleCompanyRoleKeys();
+  const outside = ["owner", "salesManager", "financeManager"];
+  for (const key of outside) {
+    assert.ok(ROLE_CATALOG[key], `${key} must be a canonical Role for this proof to mean anything`);
+    assert.ok(!scope.includes(key), `${key} is named by the manifest; pick an absent Role`);
+  }
+  const keys = sampleCompanyCapabilityKeys();
+  const unscoped = deriveLegacyRoleGrants(keys);
+  assert.ok(unscoped.some((g) => outside.includes(g.roleKey)), "without the scope these Roles WOULD be reconciled");
+  const scoped = deriveLegacyRoleGrants(keys, scope);
+  assert.ok(scoped.length > 0);
+  assert.ok(scoped.every((g) => scope.includes(g.roleKey)));
+
+  // Both reconciliation calls -- the dry run and the apply -- carry the scope.
+  const source = readFileSync(new URL("../scripts/seedSampleCompany.js", import.meta.url), "utf8");
+  const calls = source.match(/reconcileInventoryCapabilityGrants\(pool, \{[\s\S]*?\}\)/g) ?? [];
+  assert.equal(calls.length, 2);
+  for (const call of calls) assert.match(call, /\broleKeys\b/, `a reconciliation call is not Role-scoped: ${call}`);
 });
 
 // ════════════════════════════ cross-domain closure ════════════════════════════
@@ -1005,4 +1035,241 @@ test("(13) the Sample Company Auth code still has zero Firestore imports or uses
   // The delegated activation implementation is Auth-only too.
   const tool = stripComments(readFileSync(resolve(FUNCTIONS_DIR, "scripts/activateSandboxPersonas.js"), "utf8"));
   assert.ok(!/firebase-admin\/firestore|getFirestore|\.collection\(/.test(tool));
+});
+
+// ════════════════════════════ the OPERATOR credential seam for Auth administration ════════════════════════════
+//
+// Nothing here contacts Google. The adapter is driven through its `sdk` test seam with an in-memory double, and
+// the token is a fixture string that is not shaped like any real credential.
+
+const OPERATOR_TOKEN = "operator-token-fixture-0123456789abcdef";
+const SANDBOX_PROJECT = "eos-platform-sandbox";
+
+function fakeFirebaseSdk({ listUsers, users = [] } = {}) {
+  const calls = { initializeApp: [], applicationDefault: 0, createUser: [] };
+  let apps = [];
+  const byEmail = new Map(users.map((u) => [u.email, u]));
+  const auth = {
+    listUsers: listUsers ?? (async () => ({ users })),
+    async getUserByEmail(email) {
+      const user = byEmail.get(email);
+      if (!user) throw Object.assign(new Error("no user"), { code: "auth/user-not-found" });
+      return user;
+    },
+    async createUser(input) {
+      calls.createUser.push(input);
+      return { uid: `uid-${calls.createUser.length}`, email: input.email };
+    },
+  };
+  return {
+    calls,
+    auth,
+    sdk: {
+      getApps: () => apps,
+      applicationDefault: () => {
+        calls.applicationDefault += 1;
+        return { getAccessToken: async () => ({ access_token: "adc-fixture", expires_in: 60 }) };
+      },
+      initializeApp: (options) => {
+        calls.initializeApp.push(options);
+        const app = { options };
+        apps = [app];
+        return app;
+      },
+      getAuth: () => auth,
+    },
+  };
+}
+
+const adapter = () => require("../scripts/sampleCompany/sandboxAuthDirectory.js");
+
+test("(A) plan and business apply construct no Auth adapter and need no Google credential", () => {
+  // Both modes pass the fence with no operator token and no ADC in the environment.
+  for (const mode of ["plan", "apply"]) {
+    const args = { ...BASE, ...(mode === "apply" ? { mode, apply: "true" } : {}) };
+    assert.equal(assertSampleCompanyInvocation(args, NONPROD).mode, mode);
+  }
+  const main = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  const body = main.slice(main.indexOf("async function main()"));
+  // The adapter is constructed ONLY for the two credential phases; plan/apply fall through to the pool.
+  assert.match(body, /const credentialPhase = options\.mode === "activate-logins" \|\| options\.mode === "activate-credentials";/);
+  assert.match(body, /const authDirectory = credentialPhase\s*\?/);
+  // And the token is read in exactly one module: the adapter.
+  for (const file of ["scripts/seedSampleCompany.js", "scripts/verifySampleCompany.js", "scripts/sampleCompany/loginActivation.js",
+    "scripts/sampleCompany/credentialActivation.js"]) {
+    const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
+    assert.ok(!/env(\.EOS_FIREBASE_OPERATOR_ACCESS_TOKEN|\[\s*["'`]EOS_FIREBASE_OPERATOR_ACCESS_TOKEN)/.test(source), `${file} reads the operator token itself`);
+  }
+});
+
+test("(B) an explicit operator token becomes the Admin credential through the one sandbox Auth adapter", async () => {
+  const { createFirebaseSandboxAuthDirectory } = adapter();
+  const fake = fakeFirebaseSdk();
+  const directory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: OPERATOR_TOKEN }, sdk: fake.sdk });
+  assert.equal(directory.credentialSource, "OPERATOR_ACCESS_TOKEN");
+  assert.equal(fake.calls.applicationDefault, 0, "a supplied token must not also consult ADC");
+  assert.equal(fake.calls.initializeApp.length, 1);
+  const { credential, projectId } = fake.calls.initializeApp[0];
+  assert.equal(projectId, SANDBOX_PROJECT);
+  // The firebase-admin Credential contract: { access_token: string, expires_in: number }.
+  const token = await credential.getAccessToken();
+  assert.equal(token.access_token, OPERATOR_TOKEN);
+  assert.equal(typeof token.expires_in, "number");
+  assert.deepEqual(await directory.preflight(), { projectId: SANDBOX_PROJECT, credentialSource: "OPERATOR_ACCESS_TOKEN" });
+
+  // Absent a token, ADC is used exactly as before.
+  const adc = fakeFirebaseSdk();
+  const adcDirectory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: {}, sdk: adc.sdk });
+  assert.equal(adcDirectory.credentialSource, "APPLICATION_DEFAULT");
+  assert.equal(adc.calls.applicationDefault, 1);
+
+  // A blank token is refused -- never a silent downgrade to ADC -- and before the SDK is touched.
+  const blank = fakeFirebaseSdk();
+  assert.throws(() => createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: "  " }, sdk: blank.sdk }),
+    /OPERATOR_TOKEN_INVALID/);
+  assert.equal(blank.calls.initializeApp.length + blank.calls.applicationDefault, 0);
+
+  // No second initialization path: an app somebody else initialized is refused rather than reused.
+  assert.throws(() => createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: OPERATOR_TOKEN }, sdk: fake.sdk }),
+    /AUTH_APP_ALREADY_INITIALIZED/);
+});
+
+test("(C) the operator token is never returned, serialized, inspected or echoed in an error", async () => {
+  const { inspect } = await import("node:util");
+  const { createFirebaseSandboxAuthDirectory, createOperatorAccessTokenCredential, scrubOperatorSecret } = adapter();
+  const env = { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: OPERATOR_TOKEN };
+  const credential = createOperatorAccessTokenCredential(OPERATOR_TOKEN);
+  assert.ok(!JSON.stringify(credential).includes(OPERATOR_TOKEN));
+  assert.ok(!inspect(credential, { depth: 5, showHidden: true }).includes(OPERATOR_TOKEN));
+
+  const fake = fakeFirebaseSdk();
+  const directory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env, sdk: fake.sdk });
+  const { auth, ...reportable } = directory;
+  assert.ok(!JSON.stringify(reportable).includes(OPERATOR_TOKEN));
+  assert.ok(!inspect(reportable, { depth: 5 }).includes(OPERATOR_TOKEN));
+
+  // A failure whose message somehow carries the token is scrubbed on the way out of preflight...
+  const leaky = fakeFirebaseSdk({ listUsers: async () => { throw new Error(`401 for bearer ${OPERATOR_TOKEN}`); } });
+  const leakyDirectory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env, sdk: leaky.sdk });
+  await assert.rejects(() => leakyDirectory.preflight(), (err) => {
+    assert.match(err.message, /OPERATOR_CREDENTIAL_UNAVAILABLE/);
+    assert.ok(!err.message.includes(OPERATOR_TOKEN), "preflight echoed the token");
+    return true;
+  });
+  // ...and by the CLI entry points, which scrub every message they print.
+  assert.equal(scrubOperatorSecret(`x ${OPERATOR_TOKEN} y`, env), "x [EOS_FIREBASE_OPERATOR_ACCESS_TOKEN redacted] y");
+  for (const file of ["scripts/seedSampleCompany.js", "scripts/verifySampleCompany.js"]) {
+    const source = readFileSync(resolve(FUNCTIONS_DIR, file), "utf8");
+    assert.match(source.slice(source.lastIndexOf("if (require.main === module)")), /console\.error\(scrubOperatorSecret\(/,
+      `${file} prints an unscrubbed error`);
+  }
+  // Never accepted on the command line, and the refusal does not echo the value.
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "activate-logins", apply: "true", firebaseProjectId: SANDBOX_PROJECT, operatorAccessToken: OPERATOR_TOKEN }, NONPROD),
+    (err) => /only through the EOS_FIREBASE_OPERATOR_ACCESS_TOKEN environment variable/.test(err.message) && !err.message.includes(OPERATOR_TOKEN));
+});
+
+test("(D) a credential-layer run with no usable credential refuses at preflight, before any PostgreSQL or Auth write", async () => {
+  const { createFirebaseSandboxAuthDirectory } = adapter();
+  // Exactly the Render failure: no token, ADC falls through to a metadata server that does not exist.
+  const render = fakeFirebaseSdk({ listUsers: async () => { throw new Error("getaddrinfo ENOTFOUND metadata.google.internal"); } });
+  const directory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: {}, sdk: render.sdk });
+  await assert.rejects(() => directory.preflight(), (err) => {
+    assert.equal(err.code, "OPERATOR_CREDENTIAL_UNAVAILABLE");
+    assert.match(err.message, /EOS_FIREBASE_OPERATOR_ACCESS_TOKEN/);
+    assert.match(err.message, /Nothing was written/);
+    assert.match(err.message, /metadata\.google\.internal/);
+    return true;
+  });
+  assert.equal(render.calls.createUser.length, 0);
+
+  // THE ORDER IN THE ENTRY POINTS: preflight before the pool is opened and before either activation runs, and
+  // in the verifier before the database is connected.
+  const main = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  const body = main.slice(main.indexOf("async function main()"));
+  const preflightAt = body.indexOf("await authDirectory.preflight()");
+  assert.ok(preflightAt > 0, "the orchestrator does not preflight the credential");
+  for (const later of ["activateSampleCompanyCredentials(", "new pg.Pool(", "activateSampleCompanyLogins("]) {
+    assert.ok(body.indexOf(later) > preflightAt, `${later} can run before the credential preflight`);
+  }
+  const verify = readFileSync(resolve(FUNCTIONS_DIR, "scripts/verifySampleCompany.js"), "utf8");
+  const verifyMain = verify.slice(verify.indexOf("async function verifySampleCompanyMain"));
+  assert.ok(verifyMain.indexOf("await directory.preflight()") > 0);
+  assert.ok(verifyMain.indexOf("await directory.preflight()") < verifyMain.indexOf("await client.connect()"));
+
+  // THE FAILED LIVE ATTEMPT WROTE NOTHING. Before the persona loop the phase only READS (tenant, administrator,
+  // Roles, assignments); the administrator persona only reads its link; and for the first interactive persona
+  // the Auth lookup precedes every write the phase can make.
+  const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
+  const loop = activation.slice(activation.indexOf("for (const p of manifest.principals)"));
+  const lookup = loop.indexOf("await authDirectory.findByEmail(email)");
+  assert.ok(lookup > 0);
+  for (const write of ["createPasswordless(", "ensureTenantPrincipal(", "transitionEmployeeLink(pool", "assignRole(", "retireFixturePrincipal("]) {
+    assert.ok(loop.indexOf(write) > lookup, `${write} precedes the first Auth lookup`);
+  }
+  const beforeLoop = stripComments(activation.slice(activation.indexOf("async function activateSampleCompanyLogins"), activation.indexOf("for (const p of manifest.principals)")));
+  assert.ok(!/transact\(|ensureTenantPrincipal\(|assignRole\(|establishLink\(|revokeLink|\.query\(/.test(beforeLoop), "the phase writes before its persona loop");
+});
+
+test("(E) the wrong Firebase project is refused before the SDK or any credential is touched", () => {
+  const { createFirebaseSandboxAuthDirectory } = adapter();
+  for (const [project, pattern] of [["taylor-parts", /customer production project/], ["eos-platform-certification", /Certification world, which is frozen/],
+    ["someone-elses-project", /not a Firebase project declared/]]) {
+    const fake = fakeFirebaseSdk();
+    assert.throws(() => createFirebaseSandboxAuthDirectory(project, { env: { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: OPERATOR_TOKEN }, sdk: fake.sdk }), pattern);
+    assert.equal(fake.calls.initializeApp.length + fake.calls.applicationDefault, 0, `${project} reached the SDK`);
+  }
+});
+
+test("(F)(G) an operator token does not widen the sandbox email fence, and accounts are still created PASSWORDLESS", async () => {
+  const { createFirebaseSandboxAuthDirectory } = adapter();
+  const fake = fakeFirebaseSdk();
+  const directory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: OPERATOR_TOKEN }, sdk: fake.sdk });
+  await assert.rejects(() => directory.findByEmail("someone@taylorservice.com"), /EMAIL_REFUSED/);
+  await assert.rejects(() => directory.createPasswordless({ email: "someone@taylorservice.com", displayName: "x" }), /EMAIL_REFUSED/);
+  assert.equal(fake.calls.createUser.length, 0);
+
+  const created = await directory.createPasswordless({ email: "persona.fixture@sandbox.invalid", displayName: "Persona" });
+  assert.equal(created.hasPassword, false);
+  assert.deepEqual(Object.keys(fake.calls.createUser[0]).sort(), ["disabled", "displayName", "email", "emailVerified"],
+    "createUser was given something other than a passwordless account");
+});
+
+test("(H) activate-credentials uses the same token-backed adapter, delegates, and keeps the allowlist", async () => {
+  const { createFirebaseSandboxAuthDirectory } = adapter();
+  const { activateSampleCompanyCredentials, sampleCompanyCredentialAllowlist } = require("../scripts/sampleCompany/credentialActivation.js");
+  const allowlist = sampleCompanyCredentialAllowlist(MANIFEST);
+  const users = [
+    ...allowlist.map((email, i) => ({ uid: `u${i}`, email })),
+    { uid: "outsider", email: "not-this-company@sandbox.invalid" },
+  ];
+  const fake = fakeFirebaseSdk({ users });
+  const directory = createFirebaseSandboxAuthDirectory(SANDBOX_PROJECT, { env: { EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: OPERATOR_TOKEN }, sdk: fake.sdk });
+  let delegated = null;
+  const result = await activateSampleCompanyCredentials(
+    { apply: true, credentialFile: "/tmp/never-written-credentials.local.json" }, MANIFEST, directory,
+    async (input) => { delegated = input; return { activated: [...input.emailAllowlist], unchanged: [], missing: [] }; },
+  );
+  assert.equal(delegated.auth, fake.auth, "the delegated activator must receive the adapter's own Auth handle");
+  assert.deepEqual(delegated.emailAllowlist, allowlist);
+  assert.equal(result.outOfScopeSandboxAccounts, 1);
+  assert.ok(!JSON.stringify(result).includes(OPERATOR_TOKEN));
+  const main = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  assert.match(main, /const \{ activateMissingSandboxPasswords \} = require\("\.\/activateSandboxPersonas\.js"\);/);
+});
+
+test("(I)(J) no Firestore is introduced, and the runtime token verifier still holds no Admin credential", () => {
+  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/seedSampleCompany.js", "scripts/verifySampleCompany.js"]) {
+    const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
+    assert.ok(!/firebase-admin\/firestore|getFirestore|\.collection\(/.test(source), `${file} reaches Firestore`);
+  }
+  // The deployed API verifies ID tokens with a credential-less default app and knows nothing of the operator seam.
+  const server = readFileSync(resolve(FUNCTIONS_DIR, "src/eosApi/server.ts"), "utf8");
+  assert.match(server, /admin\.initializeApp\(\)/);
+  assert.ok(!/EOS_FIREBASE_OPERATOR_ACCESS_TOKEN|applicationDefault|credential\s*:/.test(stripComments(server)));
+  // And the Render blueprint declares no Google credential and no secret to paste.
+  const blueprint = readFileSync(resolve(FUNCTIONS_DIR, "..", "render.yaml"), "utf8");
+  const keys = [...blueprint.matchAll(/^\s*- key:\s*(\S+)/gm)].map((m) => m[1]);
+  assert.deepEqual(keys.sort(), ["DATABASE_URL", "EOS_ALLOWED_ORIGINS", "EOS_ENVIRONMENT", "GOOGLE_CLOUD_PROJECT"]);
+  assert.ok(!/sync:\s*false/.test(blueprint.replace(/#[^\n]*/g, "")));
+  assert.ok(!/^\s*- key:\s*EOS_FIREBASE_OPERATOR_ACCESS_TOKEN/m.test(blueprint), "the operator token must never be declared in the runtime config");
 });

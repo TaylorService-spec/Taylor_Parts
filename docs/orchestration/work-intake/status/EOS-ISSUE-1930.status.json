@@ -1,14 +1,14 @@
 {
   "schema": "eos.intake.status/2",
-  "requestId": "EOS-ISSUE-842",
-  "pointer": "status://EOS-ISSUE-842",
-  "work": "work://EOS-ISSUE-842",
-  "result": "result://EOS-ISSUE-842",
+  "requestId": "EOS-ISSUE-1930",
+  "pointer": "status://EOS-ISSUE-1930",
+  "work": "work://EOS-ISSUE-1930",
+  "result": "result://EOS-ISSUE-1930",
   "state": "BLOCKED_EXECUTION",
   "currentWork": "required execution capability (Bash/test/worker) was unavailable",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-09-16T22:52:18.246Z",
+  "updatedAt": "2026-09-16T22:32:35.101Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -29,8 +29,8 @@
   },
   "freshness": "UNKNOWN",
   "workArtifact": {
-    "location": "docs/orchestration/work-intake/EOS-ISSUE-842.work.json",
-    "sha256": "771f704ff330515d80d9718016c63fa31d5ebb3d38c1a1716fbbe3afe7d53781"
+    "location": "docs/orchestration/work-intake/EOS-ISSUE-1930.work.json",
+    "sha256": "1d86621ffeceac706a25d47da779cf58c2a74ec0f3734b3360284a17938f9186"
   },
   "resultRef": null,
   "artifactRefs": [],
@@ -38,6 +38,6 @@
     "producer": "GitHub Issue intake workflow",
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
-  "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-842.status.json",
-  "sha256": "cc450a6a4b1613b790246524fd481a1241f8cc04b1ba3c5739986678d6d31597"
+  "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-1930.status.json",
+  "sha256": "468f8fb6ce410a5f4e8b67e29f2d6cb3b571af2ed7f7e6dbed35ccd7582a5b31"
 }

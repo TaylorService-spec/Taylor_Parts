@@ -3,10 +3,12 @@
 // The CRM twin of functions/src/catalogMaster/catalogWriterState.ts, under the controller's CRM cutover ruling 6
 // (docs/architecture/crm-cutover-plan.md §6): two writer sets, NEVER two authoritative ones.
 //
-//   Firestore (legacy)  OPEN     the legacy CRM writers write, as today
+//   Firestore (legacy)  OPEN     the legacy CRM writers write
 //                       FROZEN   every server-side legacy CRM writer REFUSES before its first write (customer import,
-//                                sandbox seeds, ownership backfill); client-direct writers are frozen by the documented
-//                                Rules step. Reversible only while PostgreSQL is still INACTIVE (the rollback path).
+//                                sandbox seeds, ownership backfill); the deployed platform-sandbox client has an
+//                                explicit pre-Firestore cutover fuse for Account / Contact / Location mutations.
+//                                Firestore Rules are NOT the freeze authority. Stale-client risk is handled by source
+//                                quiescence proof before export/copy. Reversible only while PostgreSQL is INACTIVE.
 //                       RETIRED  refused for good; removal follows. Not reversible.
 //   PostgreSQL (target) INACTIVE nothing composes the eos_crm writers (or the PostgreSQL customer import) for use
 //                       ACTIVE   the governed PostgreSQL CRM authority accepts authoritative writes
@@ -30,8 +32,8 @@ export interface CrmWriterAuthority {
   readonly postgres: PostgresCrmWriterState;
 }
 
-/** THE COMMITTED STATE. Change only through an allowed transition, with the authorization the plan requires. */
-export const CRM_WRITER_AUTHORITY: CrmWriterAuthority = Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" });
+/** THE COMMITTED STATE. Nonprod CRM source is frozen; PostgreSQL writes are not active yet. */
+export const CRM_WRITER_AUTHORITY: CrmWriterAuthority = Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" });
 
 export const CRM_WRITER_TRANSITIONS = Object.freeze([
   Object.freeze({ name: "FREEZE", from: Object.freeze({ firestore: "OPEN", postgres: "INACTIVE" }), to: Object.freeze({ firestore: "FROZEN", postgres: "INACTIVE" }) }),
@@ -69,8 +71,8 @@ export function assertCrmWriterTransition(from: CrmWriterAuthority, to: CrmWrite
 
 /**
  * Every legacy Firestore CRM writer. SERVER_GUARD writers call assertFirestoreCrmWriterOpen with their own id before
- * their first write (crmCutover.test.mjs proves it). RULES_FREEZE writers are client-direct: Firestore Rules are their
- * only gate, and the Rules freeze is a documented, separately authorized step (firestore.rules is not edited here).
+ * their first write. CLIENT_FUSE writers are the browser-direct legacy paths; the platform-sandbox bundle refuses them
+ * before any Firestore mutation call. This is deliberately not a Firestore Rules freeze.
  */
 export const FIRESTORE_CRM_WRITERS = Object.freeze({
   "account.import": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/src/account/accountImportCommand.ts", entry: "createAccountFromImport; callable executeDataImport refuses a CUSTOMERS job before claiming it (dataImport/dataImportCallables.ts)" }),
@@ -78,9 +80,9 @@ export const FIRESTORE_CRM_WRITERS = Object.freeze({
   "crm.sandboxInboundSeed": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/seedSandboxInboundWork.mjs", entry: "main (accounts, locations, contacts create-if-absent)" }),
   "crm.ownershipBackfill": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/ownershipSandboxBackfill.js", entry: "main --apply (contacts / locations typed owner)" }),
   "crm.certificationAccountOwners": Object.freeze({ enforcement: "SERVER_GUARD", module: "functions/scripts/certificationWorld/seedAccountOwners.mjs", entry: "main --apply (the Account owner assignment map)" }),
-  "account.clientCreate": Object.freeze({ enforcement: "RULES_FREEZE", module: "field-ops-app-vite/src/domain/accounts.js", entry: "createAccount / updateAccount (firestore.rules accounts create/update)" }),
-  "contact.clientWrite": Object.freeze({ enforcement: "RULES_FREEZE", module: "field-ops-app-vite/src/domain/contacts.js, domain/contactImport.js", entry: "createContact / updateContact / importContacts (firestore.rules contacts create/update)" }),
-  "location.clientWrite": Object.freeze({ enforcement: "RULES_FREEZE", module: "field-ops-app-vite/src/domain/locations.js", entry: "createLocation / updateLocation (firestore.rules locations create/update)" }),
+  "account.clientWrite": Object.freeze({ enforcement: "CLIENT_FUSE", module: "field-ops-app-vite/src/domain/accounts.js", entry: "createAccount / updateAccount" }),
+  "contact.clientWrite": Object.freeze({ enforcement: "CLIENT_FUSE", module: "field-ops-app-vite/src/domain/contacts.js, field-ops-app-vite/src/domain/contactImport.js", entry: "createContact / updateContact / importContacts" }),
+  "location.clientWrite": Object.freeze({ enforcement: "CLIENT_FUSE", module: "field-ops-app-vite/src/domain/locations.js", entry: "createLocation / updateLocation" }),
 });
 
 export type FirestoreCrmWriterId = keyof typeof FIRESTORE_CRM_WRITERS;

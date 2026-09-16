@@ -1,0 +1,54 @@
+{
+  "requestId": "EOS-ISSUE-1931",
+  "title": "EMP-RT-W1A: PostgreSQL Employee profile command only",
+  "intent": "Recover EMP-RT-W1 after #1930 exceeded the runtime budget by splitting the work into a small server-only packet. This child establishes the governed PostgreSQL Employee profile mutation authority and focused proof. It does **not** wire HTTP transport or client UI.\n\nParent: #1930.\n\nRequired work:\n- Locate the existing canonical Employee profile normalization/validation semantics and reuse them rather than duplicating them.\n- Add a closed command/repository operation over `eos_workforce.employees`; no generic patch or SQL surface.\n- Validate an exact allowed input key set. Unknown or authority-shaped fields fail closed.\n- Require the target Employee to exist in the named tenant. A Principal id, Firebase uid/provider subject, or cross-tenant Employee id must never be accepted as a substitute.\n- Derive the actor from the trusted operational Principal context. Caller-supplied actor/tenant/role/capability fields are not authority.\n- Execute read-current → validate → update → audit in one transaction; any failure rolls back all effects.\n- If the existing profile domain includes a manager field, leave manager mutation **out of this child**. Reporting relationships remain their existing separate governed authority and are not duplicated here.\n- Add tests for a successful update, no-op/idempotent behavior if the existing command convention defines it, tenant isolation, inactive/no membership, missing capability, Employee-id/Principal-id separation, unknown fields, audit evidence, and rollback atomicity.\n- Add mutation/negative controls where practical for tenant predicate, capability check, and Employee-vs-Principal identity.\n\nCompletion:\n- Server command and repository code compile.\n- Focused PostgreSQL tests pass against a real test database where the existing lane provides one.\n- Focused offline validation/authorization tests pass.\n- `test:adminPolicy` / registered PostgreSQL lane remains green where touched.\n- Employee runtime/profile tests remain green.\n- Firebase Exit Guard and shim boundary remain green with no baseline increase.\n- Functions typecheck/build and `git diff --check` pass for touched scope.\n- No Firebase read/write path is added, no Rules change, no deployment, no merge, no production/Certification action.\n- Output is a reviewable PATCH with test receipts.",
+  "scope": [
+    "Implement one PostgreSQL Workforce command that updates existing governed Employee profile facts already stored in `eos_workforce.employees`.",
+    "Reuse existing Employee profile normalization/validation vocabulary.",
+    "Authorize through the existing EOS Principal → active tenant membership → Role/capability path and require `admin.employeeProfile.write`.",
+    "Keep every read/write tenant-scoped and Employee-id keyed.",
+    "Write governed audit evidence in the same transaction.",
+    "Add focused offline/PostgreSQL tests and only the smallest registrations needed for those tests.",
+    "Do not change Render transport, client UI, Firebase Rules, production, Certification, User Access, Job Roles, Security Roles, ownership/accountability/assignment, Work Order assignment, or training."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "EXPLICIT_DECLARATION",
+    "ambiguous": false,
+    "reason": "issue declared taskClass PATCH_PRODUCER"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/1931",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-09-16T22:05:38Z",
+    "authorizedExecutionProfile": "PATCH_PRODUCER",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-1931.work.json",
+  "sha256": "d9a0edff93c5a88a728d91fe9458dd54ef5f2c392e1fbf476b6f072c20ea9c81",
+  "createdAt": "2026-09-16T22:04:40Z",
+  "updatedAt": "2026-09-16T22:05:38Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/1931"
+    ],
+    "pullRequests": []
+  }
+}

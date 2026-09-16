@@ -5,10 +5,10 @@
   "work": "work://EOS-ISSUE-872",
   "result": "result://EOS-ISSUE-872",
   "state": "BLOCKED_EXECUTION",
-  "currentWork": "required execution capability (Bash/test/worker) was unavailable",
+  "currentWork": "required execution receipts missing: tests",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-17T01:05:12.583Z",
+  "updatedAt": "2026-09-16T23:11:03.821Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -39,5 +39,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-872.status.json",
-  "sha256": "4b157d3ebcb33668684c7724af083dd19fd7469b172e638f219d0916d25cac95"
+  "sha256": "6a15a1d4c11c556981b6265b589fb61bf74a504331f9b2c61579d5dc9139a064"
 }

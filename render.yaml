@@ -115,6 +115,20 @@ services:
       # a service-account private key pasted into an environment that never opens it: a real
       # credential, with a real blast radius, in exchange for nothing.
       #
+      # VERIFICATION IS NOT ADMINISTRATION. Everything above is about verifying ID tokens, which is all
+      # this runtime does. ADMINISTERING Firebase Auth -- looking an account up by email, creating one,
+      # setting a password -- DOES need a Google OAuth2 credential, and none belongs here: with no
+      # credential, firebase-admin's applicationDefault() falls through to the Compute Engine metadata
+      # server, which does not exist on Render (`getaddrinfo ENOTFOUND metadata.google.internal`).
+      # That is correct for this service and must stay that way.
+      #
+      # The Sample Company operator phases (seedSampleCompany.js --mode activate-logins /
+      # activate-credentials / verify) supply their credential EPHEMERALLY instead: the operator mints a
+      # short-lived access token outside the application and exports it as
+      # EOS_FIREBASE_OPERATOR_ACCESS_TOKEN in the one Render Shell session that runs the command. It is
+      # not declared below, not synced, not stored in the service's environment and never an argument.
+      # No permanent Firebase Admin credential or service-account key belongs in this runtime config.
+      #
       # NON-PRODUCTION project. `eos-platform-sandbox` is the Firebase identity the deployed
       # preview frontend actually signs into, read from config/environments.json -- the one registry
       # the Vite build injects from. `taylor-parts` (production) and `eos-platform-certification`
