@@ -38,6 +38,8 @@ on:
       - "field-ops-app-vite/test/employeeProfileDomain.test.mjs"
       - "field-ops-app-vite/test/changeHistoryModel.test.mjs"
       - "field-ops-app-vite/test/administrationUsersSurfaces.test.jsx"
+      - "field-ops-app-vite/test/adminUsersDirectory.test.jsx"
+      - "field-ops-app-vite/src/hooks/useWorkforceEmployeeDirectory.js"
       - "field-ops-app-vite/test/employeeOperatingProfile.test.jsx"
       - "field-ops-app-vite/test/workforceApiClient.test.jsx"
       - "field-ops-app-vite/src/services/workforceApiClient.js"
@@ -75,6 +77,7 @@ on:
       - "field-ops-app-vite/src/modules/employees/**"
       - "field-ops-app-vite/src/domain/employeeOperatingProfile.js"
       - "field-ops-app-vite/src/services/workforceApiClient.js"
+      - "field-ops-app-vite/src/hooks/useWorkforceEmployeeDirectory.js"
       - "field-ops-app-vite/src/hooks/useWorkforceRead.js"
       - "field-ops-app-vite/src/hooks/usePrincipalCredential.js"
       - "field-ops-app-vite/src/shared/ui/ChangeHistory.jsx"
@@ -126,8 +129,8 @@ jobs:
         run: node test/administrationPortalNav.test.mjs
         working-directory: field-ops-app-vite
 
-      - name: The rendered surfaces -- directory, record page, edit flow, history (vitest)
-        run: npx vitest run test/administrationUsersSurfaces.test.jsx
+      - name: The rendered surfaces -- the governed Employee directory, the record page, the retained editor, history (vitest)
+        run: npx vitest run test/administrationUsersSurfaces.test.jsx test/adminUsersDirectory.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Employee operating profile (Employee design v4.1) on the Workforce transport -- record, self view, client, pure domain (vitest)
