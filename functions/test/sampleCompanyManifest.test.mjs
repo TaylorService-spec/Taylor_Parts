@@ -16,8 +16,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const FUNCTIONS_DIR = resolve(HERE, "..");
 
 const seed = require("../scripts/seedSampleCompany.js");
-const { MANIFEST, validateManifest, sampleCompanyCapabilityKeys, assertSampleCompanyInvocation,
+const { MANIFEST, validateManifest, sampleCompanyCapabilityKeys, sampleCompanyRoleKeys, assertSampleCompanyInvocation,
   EMPLOYMENT_STATUS_VALUES, JOB_ROLE_VOCABULARY, PROFILE_COLUMNS } = seed;
+const { deriveLegacyRoleGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
 const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
 const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
 const { PERMISSION_CATALOG } = require("../lib/access/permissionCatalog.js");
@@ -355,6 +356,35 @@ test("the capability key set is derived from the Role catalog, never hand-typed"
   const union = new Set(MANIFEST.principals.flatMap((p) => p.securityRoles).flatMap((r) => ROLE_CATALOG[r].permissions ?? []));
   assert.deepEqual([...keys].sort(), [...union].sort());
   assert.ok(keys.includes("admin.employeeProfile.write"), "the reporting-relationship command's own capability must be reconciled");
+});
+
+test("the capability Role scope is exactly the Roles manifest Principals name, deduplicated and sorted", () => {
+  const named = MANIFEST.principals.flatMap((p) => p.securityRoles);
+  assert.deepEqual(sampleCompanyRoleKeys(), [...new Set(named)].sort());
+  const m = clone();
+  m.principals = [{ ...m.principals[0], securityRoles: ["warehouseManager", "admin", "warehouseManager"] }];
+  assert.deepEqual(sampleCompanyRoleKeys(m), ["admin", "warehouseManager"]);
+});
+
+test("the capability reconciliation cannot reach a canonical Role the manifest does not name", () => {
+  const scope = sampleCompanyRoleKeys();
+  const outside = ["owner", "salesManager", "financeManager"];
+  for (const key of outside) {
+    assert.ok(ROLE_CATALOG[key], `${key} must be a canonical Role for this proof to mean anything`);
+    assert.ok(!scope.includes(key), `${key} is named by the manifest; pick an absent Role`);
+  }
+  const keys = sampleCompanyCapabilityKeys();
+  const unscoped = deriveLegacyRoleGrants(keys);
+  assert.ok(unscoped.some((g) => outside.includes(g.roleKey)), "without the scope these Roles WOULD be reconciled");
+  const scoped = deriveLegacyRoleGrants(keys, scope);
+  assert.ok(scoped.length > 0);
+  assert.ok(scoped.every((g) => scope.includes(g.roleKey)));
+
+  // Both reconciliation calls -- the dry run and the apply -- carry the scope.
+  const source = readFileSync(new URL("../scripts/seedSampleCompany.js", import.meta.url), "utf8");
+  const calls = source.match(/reconcileInventoryCapabilityGrants\(pool, \{[\s\S]*?\}\)/g) ?? [];
+  assert.equal(calls.length, 2);
+  for (const call of calls) assert.match(call, /\broleKeys\b/, `a reconciliation call is not Role-scoped: ${call}`);
 });
 
 // ════════════════════════════ cross-domain closure ════════════════════════════

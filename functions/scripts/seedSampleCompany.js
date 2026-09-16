@@ -495,6 +495,15 @@ function validateManifest(m) {
   };
 }
 
+/**
+ * The exact Security Role scope of this sample company: every Role a manifest Principal names, deduplicated and
+ * sorted. The capability reconciliation is limited to THESE Roles -- limiting capability keys alone would still
+ * grant them to every other catalog Role that declares them, which is outside what seeding the sample company may do.
+ */
+function sampleCompanyRoleKeys(manifest = MANIFEST) {
+  return [...new Set(manifest.principals.flatMap((p) => p.securityRoles))].sort();
+}
+
 /** Every capability key the Roles this sample company uses declare. Derived from the Role catalog, never typed. */
 function sampleCompanyCapabilityKeys(manifest = MANIFEST) {
   const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
@@ -697,14 +706,15 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   }
   const capabilityKeys = catalogCapabilityKeys.filter((k) => liveVocabulary.has(k));
   const capabilityVocabularyGap = catalogCapabilityKeys.filter((k) => !liveVocabulary.has(k));
+  const roleKeys = sampleCompanyRoleKeys(manifest);
   const grantDryRun = await reconcileInventoryCapabilityGrants(pool, {
-    tenantId, apply: false, actor: `sample-company-v2:${actorUid}`, capabilityKeys,
+    tenantId, apply: false, actor: `sample-company-v2:${actorUid}`, capabilityKeys, roleKeys,
   });
   if (grantDryRun.unresolved.length > 0) {
     refuse("CAPABILITY_GRANT_UNRESOLVED", `${grantDryRun.unresolved.length} Role/capability pairs are UNRESOLVED_ROLE or UNKNOWN_CAPABILITY; the sample company fails closed rather than granting a substitute`);
   }
   const grantReport = apply
-    ? await reconcileInventoryCapabilityGrants(pool, { tenantId, apply: true, actor: `sample-company-v2:${actorUid}`, capabilityKeys })
+    ? await reconcileInventoryCapabilityGrants(pool, { tenantId, apply: true, actor: `sample-company-v2:${actorUid}`, capabilityKeys, roleKeys })
     : grantDryRun;
 
   // ---- 4 + 5. Employees, then their profile facts. DIRECT INSERT; documented in the manifest.
@@ -1249,6 +1259,7 @@ function finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId
       keysReconcilable: capabilityKeys.length,
       // Declared, named, and counted -- never silently dropped and never reported as UNKNOWN_CAPABILITY noise.
       capabilityVocabularyGap: { code: "CAPABILITY_VOCABULARY_PARTIAL", count: capabilityVocabularyGap.length, keys: capabilityVocabularyGap },
+      roleScope: sampleCompanyRoleKeys(manifest),
       apply: grantReport.apply,
       beforeCount: grantReport.beforeCount,
       proposedAdditions: grantReport.proposedAdditions,
@@ -1323,6 +1334,7 @@ module.exports = {
   validateManifest,
   assertSampleCompanyInvocation,
   sampleCompanyCapabilityKeys,
+  sampleCompanyRoleKeys,
   EMPLOYMENT_STATUS_VALUES,
   SYNTHETIC_IDENTITY_PROVIDER,
   RUNTIME_IDENTITY_PROVIDER,

@@ -22,6 +22,14 @@ import { newCapabilityKeys } from "./inventoryWriterCapabilityCensus";
 
 const SCHEMA = "eos_policy";
 
+export class UnknownCanonicalRoleError extends Error {
+  readonly roleKeys: readonly string[];
+  constructor(roleKeys: readonly string[]) {
+    super(`unknown canonical Role: ${roleKeys.join(", ")}; the Role catalog does not define it`);
+    this.roleKeys = roleKeys;
+  }
+}
+
 export interface LegacyRoleGrant {
   readonly roleKey: string;
   readonly capabilityKey: string;
@@ -33,12 +41,26 @@ export interface LegacyRoleGrant {
  * `authorize(...)` call resolves against (`access/resolveEffectivePermission.ts`'s `roles`
  * argument) -- never re-typed, so there is one source of truth for "which Role holds this" and it
  * cannot drift from what the running system actually grants.
+ *
+ * `roleKeys`, when supplied, limits the Roles considered -- limiting capability keys alone does not
+ * limit which Roles receive them. Omitted = every canonical Role (unchanged behaviour). A requested
+ * key the catalog does not define is refused, never silently ignored.
  */
-export function deriveLegacyRoleGrants(capabilityKeys: readonly string[] = newCapabilityKeys()): readonly LegacyRoleGrant[] {
+export function deriveLegacyRoleGrants(
+  capabilityKeys: readonly string[] = newCapabilityKeys(),
+  roleKeys?: readonly string[],
+): readonly LegacyRoleGrant[] {
   const keySet = new Set(capabilityKeys);
   const catalog: Readonly<Record<string, Role>> = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  let roles = Object.values(catalog);
+  if (roleKeys !== undefined) {
+    const unknown = [...new Set(roleKeys)].filter((key) => !Object.prototype.hasOwnProperty.call(catalog, key)).sort();
+    if (unknown.length > 0) throw new UnknownCanonicalRoleError(unknown);
+    const requested = new Set(roleKeys);
+    roles = roles.filter((role) => requested.has(role.id));
+  }
   const grants: LegacyRoleGrant[] = [];
-  for (const role of Object.values(catalog)) {
+  for (const role of roles) {
     for (const permissionId of role.permissions ?? []) {
       if (keySet.has(permissionId)) grants.push({ roleKey: role.id, capabilityKey: permissionId });
     }
@@ -80,6 +102,12 @@ export interface ReconcileOptions {
    * grant is always "what the Role catalog declares", never a hand-typed Role list.
    */
   readonly capabilityKeys?: readonly string[];
+  /**
+   * The canonical Role keys to reconcile. DEFAULT = every Role in the catalog. When supplied, ONLY those Roles
+   * are considered, so a caller scoped to a set of Roles (e.g. scripts/seedSampleCompany.js) cannot grant to any
+   * other. An entry the catalog does not define is refused.
+   */
+  readonly roleKeys?: readonly string[];
 }
 
 class UnknownTenantError extends Error {
@@ -101,7 +129,7 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
   const tenantRow = await pool.query<{ id: string }>(`SELECT id FROM ${SCHEMA}.tenants WHERE id = $1`, [tenantId]);
   if (tenantRow.rowCount === 0) throw new UnknownTenantError(tenantId);
 
-  const legacyGrants = deriveLegacyRoleGrants(options.capabilityKeys ?? newCapabilityKeys());
+  const legacyGrants = deriveLegacyRoleGrants(options.capabilityKeys ?? newCapabilityKeys(), options.roleKeys);
 
   const capRows = await pool.query<{ id: string; key: string }>(`SELECT id, key FROM ${SCHEMA}.capabilities`);
   const capabilityIdByKey = new Map(capRows.rows.map((r) => [r.key, r.id]));
