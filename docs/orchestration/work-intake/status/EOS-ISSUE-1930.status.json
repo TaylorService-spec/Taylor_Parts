@@ -4,11 +4,11 @@
   "pointer": "status://EOS-ISSUE-1930",
   "work": "work://EOS-ISSUE-1930",
   "result": "result://EOS-ISSUE-1930",
-  "state": "FAILED",
-  "currentWork": "runtime terminated abnormally (TIMEOUT)",
+  "state": "BLOCKED_EXECUTION",
+  "currentWork": "required execution capability (Bash/test/worker) was unavailable",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-09-16T21:46:13.076Z",
+  "updatedAt": "2026-09-16T22:32:35.101Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "actualProviderCostUsd": "UNKNOWN",
@@ -39,5 +39,5 @@
     "provenance": "Authenticated GitHub owner issue labeled eos-intake"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-ISSUE-1930.status.json",
-  "sha256": "19043ef45191d0c28d45cc998e48b0c569f5ff65b86d55780e2245132c60e14e"
+  "sha256": "468f8fb6ce410a5f4e8b67e29f2d6cb3b571af2ed7f7e6dbed35ccd7582a5b31"
 }
