@@ -1,5 +1,6 @@
 import { LOCATIONS_COLLECTION } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
+import { assertClientCrmWriterOpen } from "./crmCutoverFreeze";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
 // A Location is: { id, accountId, name, address, accessNotes?,
@@ -16,9 +17,11 @@ import { makeCollectionStore } from "../firebase/collectionStore";
 export const locationsStore = makeCollectionStore(LOCATIONS_COLLECTION);
 
 export function createLocation(accountId, data) {
+  assertClientCrmWriterOpen("location.clientCreate");
   return locationsStore.add({ ...data, accountId });
 }
 
 export function updateLocation(id, data) {
+  assertClientCrmWriterOpen("location.clientUpdate");
   return locationsStore.update(id, { ...data, updatedAt: Date.now() });
 }

@@ -1,6 +1,7 @@
 import { CONTACTS_COLLECTION } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth } from "../firebase/firebase";
+import { assertClientCrmWriterOpen } from "./crmCutoverFreeze";
 
 // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
 // A Contact is: { id, accountId, name, phone?, email?, role?,
@@ -11,21 +12,12 @@ import { auth } from "../firebase/firebase";
 // or route.
 export const contactsStore = makeCollectionStore(CONTACTS_COLLECTION);
 
-// Contact provenance convergence -- Contact is a client-direct write (no
-// callable; gated only by firestore.rules' isAdminOrDispatcher()), so unlike
-// the metadata/v2/provenance.js invariant's SERVER-AUTHORITATIVE ideal, the
-// actor and timestamp below are CLIENT-SUPPLIED CLAIMS, not server-verified
-// provenance -- any caller able to write a Contact is able to write these
-// values. Converging the SHAPE (createdAt/createdBy/updatedAt/updatedBy on
-// every write) is what this change makes; making the values
-// server-authoritative would require moving Contact writes behind a trusted
-// command, which is a separate, not-yet-authorized decision.
-//
-// Actor identity reuses the SAME auth.currentUser?.uid ?? null pattern every
-// other client-direct-write domain module already uses (e.g.
-// domain/inventoryReorderRequests.js, domain/inventoryActions.js) -- no new
-// actor-resolution path invented here.
+// Legacy Contact provenance remains client-supplied while this Firestore path exists. During the
+// platform-sandbox CRM cutover the client safety fuse below refuses before actor lookup or any
+// collection-store call. This does not add Firebase Rules authority; the path is being frozen for
+// migration and will be replaced by the governed PostgreSQL/EOS command path.
 export function createContact(accountId, data) {
+  assertClientCrmWriterOpen("contact.clientCreate");
   const now = Date.now();
   const actorUid = auth.currentUser?.uid ?? null;
   return contactsStore.add({
@@ -38,6 +30,7 @@ export function createContact(accountId, data) {
 }
 
 export function updateContact(id, data) {
+  assertClientCrmWriterOpen("contact.clientUpdate");
   return contactsStore.update(id, {
     ...data,
     updatedAt: Date.now(),

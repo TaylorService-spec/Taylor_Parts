@@ -120,3 +120,30 @@ test("MUTATION: the structural sweep can actually fail", () => {
   const anyWriter = files.filter((f) => /\b(addDoc|setDoc|updateDoc)\s*\(/.test(readFileSync(f, "utf8")));
   assert.ok(anyWriter.length > 0, "the write pattern matches nothing anywhere -- the regex has gone stale");
 });
+
+// --- nonprod CRM cutover freeze ---------------------------------------------
+
+test("platform-sandbox CRM client writes are fused before every legacy Firestore mutation path", () => {
+  const gate = readFileSync(path.join(srcDir, "domain", "crmCutoverFreeze.js"), "utf8");
+  assert.match(gate, /CRM_CUTOVER_FROZEN_ENVIRONMENT\s*=\s*"platform-sandbox"/);
+  assert.doesNotMatch(gate, /firestore\.rules|allow\s+(create|update|write)/i, "the client fuse must not become a Rules authority");
+
+  const cases = [
+    ["domain/accounts.js", "account.clientCreate", "accountsStore.add"],
+    ["domain/accounts.js", "account.clientUpdate", "accountsStore.update"],
+    ["domain/contacts.js", "contact.clientCreate", "contactsStore.add"],
+    ["domain/contacts.js", "contact.clientUpdate", "contactsStore.update"],
+    ["domain/contactImport.js", "contact.clientImport", "writeBatch(db)"],
+    ["domain/locations.js", "location.clientCreate", "locationsStore.add"],
+    ["domain/locations.js", "location.clientUpdate", "locationsStore.update"],
+  ];
+
+  for (const [rel, writer, mutation] of cases) {
+    const src = readFileSync(path.join(srcDir, rel), "utf8");
+    const guard = src.indexOf(`assertClientCrmWriterOpen("${writer}")`);
+    const write = src.indexOf(mutation);
+    assert.ok(guard >= 0, `${rel}: missing cutover fuse for ${writer}`);
+    assert.ok(write >= 0, `${rel}: expected mutation marker ${mutation} not found`);
+    assert.ok(guard < write, `${rel}: ${writer} must refuse before ${mutation}`);
+  }
+});
