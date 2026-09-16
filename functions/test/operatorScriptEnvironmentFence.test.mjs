@@ -484,6 +484,13 @@ for (const [label, args, env, pattern] of [
   // THE AUTH TARGET MUST BE THE SAMPLE COMPANY'S OWN PROJECT. platform-integration declares no Firebase
   // project, so the un-registered case is what a mistyped sandbox looks like in practice.
   ["a Firebase project that is not platform-sandbox's", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-staging"], SAMPLE_ENV, /not a Firebase project declared/],
+  // THE OPERATOR CREDENTIAL. Never an argument; a blank environment value is refused rather than downgraded to
+  // ADC; and verify, which probes Auth, keeps the exact project fence.
+  ["an operator token on the command line", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--operatorAccessToken", "operator-token-fixture-argv"], SAMPLE_ENV, /only through the EOS_FIREBASE_OPERATOR_ACCESS_TOKEN environment variable/],
+  ["a blank operator token", [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox"], { ...SAMPLE_ENV, EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: "   " }, /OPERATOR_TOKEN_INVALID/],
+  ["a blank operator token on the credential phase", [...SAMPLE_ARGS, "--mode", "activate-credentials", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--credentialFile", "/tmp/x-credentials.local.json"], { ...SAMPLE_ENV, EOS_FIREBASE_OPERATOR_ACCESS_TOKEN: "" }, /OPERATOR_TOKEN_INVALID/],
+  ["verify naming the production Firebase project", [...SAMPLE_ARGS, "--mode", "verify", "--firebaseProjectId", "taylor-parts"], SAMPLE_ENV, /customer production project/],
+  ["verify naming no Firebase project", [...SAMPLE_ARGS, "--mode", "verify"], SAMPLE_ENV, /--firebaseProjectId is required/],
 ]) {
   test(`sample company v2 seed: refuses (${label}) before any client library loads`, () => {
     const res = runCli(SAMPLE_SEED, args, env);
@@ -491,6 +498,24 @@ for (const [label, args, env, pattern] of [
     assert.match(out, pattern);
   });
 }
+
+test("sample company v2 seed: the argv operator-token refusal does not echo the value", () => {
+  const res = runCli(SAMPLE_SEED, [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox", "--operatorAccessToken", "operator-token-fixture-argv"], SAMPLE_ENV);
+  assert.ok(!`${res.stdout}${res.stderr}`.includes("operator-token-fixture-argv"));
+});
+
+// NO CREDENTIAL = REFUSED BEFORE POSTGRESQL. With no operator token and Application Default Credentials that
+// cannot be loaded, activate-logins must stop inside the Auth adapter: firebase-admin is loaded (that is where
+// the refusal lives) but `pg` never is, so no pool existed and nothing could have been written. Nothing here
+// reaches the network -- a named, missing ADC file fails synchronously, before any token request.
+test("sample company v2 seed: activate-logins with no usable credential refuses before pg is loaded", () => {
+  const res = runCli(SAMPLE_SEED, [...SAMPLE_ARGS, "--mode", "activate-logins", "--apply", "--firebaseProjectId", "eos-platform-sandbox"],
+    { ...SAMPLE_ENV, GOOGLE_APPLICATION_CREDENTIALS: "/nonexistent/eos-operator-adc.json" });
+  assert.equal(res.status, 2, `${res.stdout}${res.stderr}`);
+  assert.ok(!res.stderr.includes(`${SENTINEL}:pg`), "pg was loaded: the credential failure happened after the database could be reached");
+  assert.equal(res.stdout.trim(), "", "a refused run must print no report");
+  assert.match(res.stderr, /OPERATOR_CREDENTIAL_UNAVAILABLE: .*EOS_FIREBASE_OPERATOR_ACCESS_TOKEN.*Nothing was written/);
+});
 
 for (const [label, args, env, pattern] of [
   ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--existingAdminPrincipalId", "p", "--skipAuthProbe"], SAMPLE_ENV, /--environment is required/],

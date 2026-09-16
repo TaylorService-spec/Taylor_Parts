@@ -37,6 +37,9 @@
 //     4. --mode activate-credentials --apply --firebaseProjectId <sandbox project> --credentialFile <file>
 //     5. --mode verify --firebaseProjectId <sandbox project>
 // Each step is independently explicit, and steps 3-5 name the credential target rather than inferring it.
+// Steps 3-5 ADMINISTER Firebase Auth and so need a Google credential the Render runtime deliberately lacks: the
+// operator exports a short-lived access token as EOS_FIREBASE_OPERATOR_ACCESS_TOKEN in that shell only (never an
+// argument). Each step proves it with one Admin Auth read before writing anything (sampleCompany/sandboxAuthDirectory.js).
 // `--rotate` is REFUSED here by name: it would invalidate every saved credential including the Owner's, and
 // no path through this script can set a password on a persona that already has one.
 //
@@ -560,13 +563,21 @@ function assertSampleCompanyInvocation(args, env) {
     refuse("ARGUMENT_INVALID", "--apply was given without a writing mode; refusing rather than guessing which one was meant");
   }
   // CREDENTIAL-LAYER WORK NAMES ITS FIREBASE PROJECT EXPLICITLY, and the sandbox Auth adapter refuses
-  // production and the Certification world by name before firebase-admin is resolved.
+  // production and the Certification world by name before firebase-admin is resolved. `verify` probes Auth
+  // to prove login readiness, so it may name the project too (and the adapter refuses it when it does not).
   const credentialModes = ["activate-logins", "activate-credentials"];
   if (credentialModes.includes(mode) && (typeof args.firebaseProjectId !== "string" || args.firebaseProjectId === "true" || args.firebaseProjectId.trim() === "")) {
     refuse("ARGUMENT_REQUIRED", `--mode ${mode} requires --firebaseProjectId <sandbox project>; the credential target is named, never inferred`);
   }
-  if (!credentialModes.includes(mode) && args.firebaseProjectId !== undefined) {
+  if (!credentialModes.includes(mode) && mode !== "verify" && args.firebaseProjectId !== undefined) {
     refuse("ARGUMENT_INVALID", "--firebaseProjectId belongs only to the credential-layer modes; no other mode touches it");
+  }
+  // THE OPERATOR ACCESS TOKEN IS NEVER AN ARGUMENT. argv is visible in process listings and shell history; the
+  // token is read from EOS_FIREBASE_OPERATOR_ACCESS_TOKEN by the sandbox Auth adapter and nowhere else. The
+  // value is deliberately not echoed.
+  const tokenArgument = Object.keys(args).find((name) => /token|credential(?!File)|accessKey|secret/i.test(name));
+  if (tokenArgument !== undefined) {
+    refuse("ARGUMENT_INVALID", `--${tokenArgument} is not accepted: an operator credential is supplied only through the EOS_FIREBASE_OPERATOR_ACCESS_TOKEN environment variable, never on the command line`);
   }
   // THE ROTATION FLAG CANNOT BE REACHED THROUGH THE SAMPLE COMPANY. It is refused by name here, and no code
   // path from this script can set a password on a persona that already has one -- the delegated
@@ -1288,11 +1299,15 @@ async function main() {
   }
 
   // The sandbox Auth adapter's OWN fence runs here, before firebase-admin is resolved: production and the
-  // Certification world are refused by name, and an undeclared project fails closed.
+  // Certification world are refused by name, and an undeclared project fails closed. Plan and business apply
+  // never construct it, so they need no Google credential of any kind.
   const credentialPhase = options.mode === "activate-logins" || options.mode === "activate-credentials";
   const authDirectory = credentialPhase
-    ? require("./sampleCompany/sandboxAuthDirectory.js").createFirebaseSandboxAuthDirectory(options.firebaseProjectId)
+    ? require("./sampleCompany/sandboxAuthDirectory.js").createFirebaseSandboxAuthDirectory(options.firebaseProjectId, { env: process.env })
     : null;
+  // THE CREDENTIAL IS PROVED BEFORE ANYTHING IS WRITTEN -- to Auth or to PostgreSQL. A missing or rejected
+  // operator credential refuses here, not at the first persona.
+  if (authDirectory) await authDirectory.preflight();
 
   // CREDENTIAL ACTIVATION NEEDS NO DATABASE. It is the one phase that touches only the identity provider,
   // so it runs and returns before a pool is ever opened.
@@ -1301,7 +1316,7 @@ async function main() {
     const { activateMissingSandboxPasswords } = require("./activateSandboxPersonas.js");
     const result = await activateSampleCompanyCredentials(options, MANIFEST, authDirectory, activateMissingSandboxPasswords);
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ environment: options.environmentId, runtimeLabel: "nonprod", ...result }, null, 2));
+    console.log(JSON.stringify({ environment: options.environmentId, runtimeLabel: "nonprod", credentialSource: authDirectory.credentialSource, ...result }, null, 2));
     process.exitCode = result.pass ? 0 : 1;
     return;
   }
@@ -1314,19 +1329,15 @@ async function main() {
       ? await require("./sampleCompany/loginActivation.js").activateSampleCompanyLogins(pool, options, MANIFEST, authDirectory)
       : await seedSampleCompany(pool, options);
     // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ environment: options.environmentId, runtimeLabel: "nonprod", ...result }, null, 2));
+    console.log(JSON.stringify({
+      environment: options.environmentId, runtimeLabel: "nonprod",
+      ...(authDirectory ? { credentialSource: authDirectory.credentialSource } : {}),
+      ...result,
+    }, null, 2));
     process.exitCode = result.pass ? 0 : 1;
   } finally {
     await pool.end();
   }
-}
-
-if (require.main === module) {
-  main().catch((err) => {
-    // eslint-disable-next-line no-console
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exitCode = 2;
-  });
 }
 
 module.exports = {
@@ -1344,3 +1355,15 @@ module.exports = {
   PROFILE_COLUMNS,
   MANIFEST,
 };
+
+// AFTER module.exports, deliberately: `--mode verify` requires verifySampleCompany.js, which requires this
+// module back. Started any earlier, that require would see an empty exports object.
+if (require.main === module) {
+  main().catch((err) => {
+    // No message leaves this process carrying the operator access token, whatever raised it.
+    const { scrubOperatorSecret } = require("./sampleCompany/sandboxAuthDirectory.js");
+    // eslint-disable-next-line no-console
+    console.error(scrubOperatorSecret(err instanceof Error ? err.message : String(err), process.env));
+    process.exitCode = 2;
+  });
+}
