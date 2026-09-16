@@ -119,7 +119,9 @@ test("loading the compiled CRM cutover modules never resolves a Firebase package
 
 // ════════════════════ vocabulary parity ════════════════════
 
-test("the restated Account vocabularies are the client's and firestore.rules', exactly", () => {
+// firestore.rules is no longer a statement of these vocabularies: #1929 retired every direct Firestore CRM write grant
+// (and with it the Rules' Account write validation), so the client constants are the only legacy restatement left.
+test("the restated Account vocabularies are the client's, exactly", () => {
   const constants = readFileSync(join(REPO_ROOT, "field-ops-app-vite/src/domain/constants.js"), "utf8");
   const valuesOf = (name) => {
     const m = new RegExp(`export const ${name} = (?:Object\\.freeze\\()?\\{([^}]*)\\}`).exec(constants);
@@ -133,9 +135,6 @@ test("the restated Account vocabularies are the client's and firestore.rules', e
   assert.deepEqual(valuesOf("INVOICE_DELIVERY_METHOD"), [...snap.INVOICE_DELIVERY_METHODS]);
   assert.deepEqual(valuesOf("PAYMENT_TERMS"), [...snap.PAYMENT_TERMS]);
   assert.deepEqual(valuesOf("TAX_STATUS"), [...snap.TAX_STATUSES]);
-  const rules = readFileSync(join(REPO_ROOT, "firestore.rules"), "utf8");
-  assert.ok(rules.includes(`data.get('paymentTerms', null) in [${snap.PAYMENT_TERMS.map((v) => `'${v}'`).join(", ")}]`));
-  assert.ok(rules.includes(`data.get('taxStatus', null) in [${snap.TAX_STATUSES.map((v) => `'${v}'`).join(", ")}]`));
 });
 
 // ════════════════════ snapshot parse ════════════════════
