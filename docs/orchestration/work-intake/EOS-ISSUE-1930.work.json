@@ -1,0 +1,55 @@
+{
+  "requestId": "EOS-ISSUE-1930",
+  "title": "EMP-RT-W1: governed PostgreSQL Employee profile writer and Administration edit cutover",
+  "intent": "Close **EMP-RT-W1** by moving Employee profile editing onto the governed PostgreSQL Workforce authority already used by Employee reads. The current Employee page cannot safely edit because its legacy writer targets Firestore while the page reads PostgreSQL. This task removes that split without changing User Access, ownership, assignment, Job Role, or production state.\n\nRequired work:\n### Server command\n- Update only existing governed Employee profile columns already represented in `eos_workforce.employees`.\n- Tenant-scope every read/write. The record key is an EOS Employee id, never a Firebase uid or Principal id.\n- One transaction: read current row, validate, update, write governed audit evidence, commit; rollback everything on failure.\n- Caller-supplied tenant, Principal, role, capability, owner/accountable/assignee, Job Role, Security Role, provider subject, or audit actor fields must not become authority.\n- Do not write Principal/User Access state, Security Roles, Job Roles, ownership, accountability, assignment, credentials, or Firebase records.\n\n### Reporting relationship\n- If manager is editable, reuse the existing governed reporting-relationship command and preserve relationship history.\n- Profile and manager mutations must be atomic if both are submitted together; otherwise refuse rather than partially apply.\n\n### Render transport\n- Reuse the existing verifier, pool, tenant resolution, CORS, operational context, and deterministic non-leaking error model.\n- Keep the operation list closed. No generic patch or SQL endpoint.\n\n### Client cutover\n- Wire the existing Employee edit UI to the Workforce API.\n- Re-read the Employee from PostgreSQL after a successful mutation; do not make optimistic client state authoritative.\n- Remove the runtime dependency on the legacy Firestore `updateEmployeeProfile` path for Employee business editing.\n- No Firestore fallback and no dual write.\n- User Access remains a separate surface and authority.\n\n### Retirement ratchet\n- Firebase Exit baseline may only shrink. Delete only an actually unreachable legacy Employee business path; add no exception.\n\nCompletion:\nThe patch is complete only when all of the following are proved:\n- Focused offline and PostgreSQL tests cover profile update, tenant isolation, active membership/capability refusal, unknown fields, identity separation, audit/rollback atomicity, and manager behavior if manager is in scope.\n- UI tests prove Edit Employee uses the Workforce API, re-reads after success, and has no Firestore fallback.\n- Negative controls turn red for: missing tenant predicate, Principal id accepted as Employee id, capability bypass, Firestore fallback, and non-atomic manager/profile update when manager is in scope.\n- `test:adminPolicy` and the PostgreSQL lane pass where touched.\n- Employee runtime/profile suites pass.\n- Firebase Exit Guard and shim boundary pass; baseline does not grow.\n- Client typecheck/build, Functions build/tsc, and `git diff --check` pass.\n- No production or Certification action occurred; no Firebase Rules change occurred; no deployment or merge is performed by this task.\n- The result is a reviewable PATCH with test receipts, not an analysis-only artifact.",
+  "scope": [
+    "Add the smallest governed PostgreSQL Employee profile update command over the existing `eos_workforce.employees` profile facts.",
+    "Use existing Employee profile normalization and validation semantics; do not invent a second vocabulary.",
+    "Require `admin.employeeProfile.write` through the existing resolved Principal / active membership / role-capability path.",
+    "Add one closed mutation operation to the existing `/workforce/employees` Render transport.",
+    "Cut the existing Employee edit UI over to that operation and re-read PostgreSQL after success.",
+    "If manager changes are part of the existing edit form, compose the already-built reporting-relationship authority atomically or fail closed; do not create a second manager/history mechanism.",
+    "Remove/shrink legacy Firebase Employee business-write reach only where it becomes genuinely unreachable.",
+    "Keep User Access controls, Security Roles, Job Roles, ownership, accountability, assignment, credentials, EMP-RT-H1, EMP-RT-05, EMP-RT-08, production, Certification, and training out of scope."
+  ],
+  "execution": {
+    "taskClass": "PATCH_PRODUCER",
+    "expectedArtifactClass": "PATCH",
+    "requiredExecutionReceipts": [
+      "tests"
+    ],
+    "verifierRequired": true,
+    "signal": "EXPLICIT_DECLARATION",
+    "ambiguous": false,
+    "reason": "issue declared taskClass PATCH_PRODUCER"
+  },
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/1930",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-09-16T21:42:22Z",
+    "authorizedExecutionProfile": "PATCH_PRODUCER",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-1930.work.json",
+  "sha256": "1d86621ffeceac706a25d47da779cf58c2a74ec0f3734b3360284a17938f9186",
+  "createdAt": "2026-09-16T21:40:41Z",
+  "updatedAt": "2026-09-16T21:42:22Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/1930"
+    ],
+    "pullRequests": []
+  }
+}
