@@ -780,7 +780,10 @@ async function verifySampleCompanyMain(options) {
   let uidProbe = null;
   if (!options.skipAuthProbe) {
     const { createFirebaseSandboxAuthDirectory } = require("./sampleCompany/sandboxAuthDirectory.js");
-    const directory = createFirebaseSandboxAuthDirectory(options.firebaseProjectId);
+    // The SAME fenced adapter and operator credential seam as login and credential activation. Proved with
+    // one Admin Auth read before the database is opened, so a missing credential refuses up front.
+    const directory = createFirebaseSandboxAuthDirectory(options.firebaseProjectId, { env: process.env });
+    await directory.preflight();
     authProbe = (email) => directory.findByEmail(email);
     uidProbe = (uid) => directory.findByUid(uid);
   }
@@ -820,8 +823,9 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
+    const { scrubOperatorSecret } = require("./sampleCompany/sandboxAuthDirectory.js");
     // eslint-disable-next-line no-console
-    console.error(err instanceof Error ? err.message : String(err));
+    console.error(scrubOperatorSecret(err instanceof Error ? err.message : String(err), process.env));
     process.exitCode = 2;
   });
 }
