@@ -35,10 +35,12 @@ import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicy
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
 import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
+import { createCrmHttpHandler } from "../eosCrm/crmHttp";
 
-/** Which domain transport answers a request path. Everything not Operations, Commercial or Workforce is Administration. */
-export function eosApiDomainFor(url: string | undefined): "commercial" | "operations" | "workforce" | "administration" {
+/** Which domain transport answers a request path. Everything not Operations, Commercial, Workforce or CRM is Administration. */
+export function eosApiDomainFor(url: string | undefined): "crm" | "commercial" | "operations" | "workforce" | "administration" {
   const path = (url ?? "").split("?")[0];
+  if (path.startsWith("/crm/")) return "crm";
   if (path.startsWith("/commercial/")) return "commercial";
   if (path.startsWith("/workforce/")) return "workforce";
   if (path.startsWith("/operations/")) return "operations";
@@ -195,8 +197,22 @@ export async function startEosApi(
     allowedOrigins: config.allowedOrigins,
   });
 
+  // A FIFTH domain-separated handler: the governed PostgreSQL CRM transport (Account, Contact, customer site). Same
+  // repository, same pool, same verifier, same origins. Every operation refuses until the committed CRM writer authority
+  // (crm/crmWriterState.ts) is PostgreSQL ACTIVE -- composing the route does not activate PostgreSQL CRM.
+  const crmHandler = createCrmHttpHandler({
+    reader: repo,
+    pool,
+    verifyToken,
+    allowedOrigins: config.allowedOrigins,
+  });
+
   const server = createServer((req, res) => {
     const domain = eosApiDomainFor(req.url);
+    if (domain === "crm") {
+      void crmHandler(req as never, res as never);
+      return;
+    }
     if (domain === "commercial") {
       void commercialHandler(req as never, res as never);
       return;
