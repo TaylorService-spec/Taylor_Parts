@@ -16,6 +16,12 @@ That reconciliation is the current program-level authority for:
 
 The dedicated foundation workstream is [`2026-09-16-authorization-v2-application-platform-reset.md`](2026-09-16-authorization-v2-application-platform-reset.md).
 
+## Protected completed-domain guardrail
+
+Parts / Inventory / Warehouse / Bin / Truck / Mobile Location / Purchasing / Receiving / Transfer / Cycle Count and Work-Order inventory-effect convergence is additionally governed by [`2026-09-16-parts-inventory-truck-parity-fence.md`](2026-09-16-parts-inventory-truck-parity-fence.md).
+
+That fence is mandatory for Authorization v2, PostgreSQL, Render, zero-Firebase, migration, mobile/PWA, and Administration work that touches those domains. The platform reset is a **semantics-preserving migration by default**, not authorization to redesign already-completed business behavior. Any material business-behavior change requires separate explicit review/Owner authorization.
+
 Older dated roadmaps/reconciliations remain historical evidence. They must not override this current pointer when they describe an earlier architecture or implementation state.
 
 ## Maintenance rule
@@ -27,4 +33,5 @@ Do not report:
 - code merged as data cut over;
 - migration tooling as migration executed;
 - a UI as a completed business process when its governed backend action is unavailable;
-- a legacy path as retired until it is actually unreachable/removed.
+- a legacy path as retired until it is actually unreachable/removed;
+- a technical cutover as permission to redesign protected Parts/Inventory/Truck business semantics.
