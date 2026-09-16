@@ -3,13 +3,18 @@
 **Recorded:** 2026-09-16  
 **Status:** OWNER-DIRECTED FOUNDATIONAL WORKSTREAM  
 **Parent roadmap:** `2026-09-16-full-platform-roadmap-reconciliation.md`  
+**Execution strategy:** `2026-09-16-parallel-v2-sandbox-cutover-strategy.md`  
 **Target:** one client-agnostic identity/authorization/control plane on Render + PostgreSQL, with zero Firebase dependency.
 
 ## Decision
 
 The current EOS identity/access/roles/permissions implementation is to be **replaced rather than incrementally repaired**.
 
-This does **not** authorize deletion of business data or business modules. Customer, Employee, Sales, Service, Inventory, Purchasing, Equipment, Financial, Reporting and other domain records/workflows are retained and migrated as appropriate.
+This does **not** authorize deletion of business data, business modules, accepted workflows, or mature application code. Customer, Employee, Sales, Service, Inventory, Purchasing, Equipment, Financial, Reporting and other domain records/workflows are retained and migrated as appropriate.
+
+The replacement is built **beside** current EOS. The approved default is a parallel backend/control-plane rebuild with shared application code and bounded domain cutovers—not a wholesale clone of the entire EOS product and not an in-place rewrite.
+
+A full duplicated UI/application may be used temporarily only where shared-code isolation cannot prove parity safely; it must have an explicit convergence/removal gate.
 
 What is condemned is the fragmented control plane: overlapping role concepts, compatibility role logic, page/domain-specific authorization interpretation, Firebase-era business authority, and any path where authentication, Job Role, record responsibility and security permission are implicitly treated as the same thing.
 
@@ -228,6 +233,8 @@ A read-only explanation tool must answer:
 
 Do not add new Firebase dependencies.
 
+Firebase retirement occurs only after bounded replacement authorities are proven and cut over. The zero-Firebase objective is not permission to destabilize current working domains during construction.
+
 After replacement is proven, remove:
 
 - Firebase Auth runtime dependency;
@@ -239,7 +246,7 @@ After replacement is proven, remove:
 - compatibility role/permission logic that exists only to bridge Firebase-era behavior;
 - obsolete environment configuration, emulator setup and deployment/runbooks whose only purpose is the retired architecture.
 
-Migration preserves **facts**, not accidental architecture.
+Migration preserves **facts and accepted business behavior**, not accidental architecture.
 
 Preserve where valid:
 
@@ -249,6 +256,7 @@ Preserve where valid:
 - ownership/accountability/assignment facts;
 - manager/reporting relationships;
 - accepted business decisions and state machines;
+- mature validated application workflows;
 - audit/evidence retention required for history;
 - approved role/access intentions after they are re-expressed and verified under v2.
 
@@ -274,7 +282,9 @@ This supports later differentiated experiences—technician, warehouse/scanning,
 - Freeze creation of new parallel authorization/Firebase mechanisms.
 - Classify each current mechanism: retain as business fact, migrate, supersede, or delete after cutover.
 
-### B — PostgreSQL v2 schema
+### B — Parallel PostgreSQL v2 schema
+
+Build beside current EOS:
 
 - identity bindings;
 - Principals/memberships;
@@ -286,12 +296,15 @@ This supports later differentiated experiences—technician, warehouse/scanning,
 - sessions/revocation;
 - audit.
 
+No existing business domain is cut over merely because this schema exists.
+
 ### C — Identity gateway
 
 - Microsoft/Google OIDC;
 - safe existing-user rebinding;
 - EOS session issuance/refresh/logout/revocation;
-- no Firebase requirement.
+- no Firebase requirement;
+- prove in isolated nonproduction before changing current login routing.
 
 ### D — Authorization evaluator
 
@@ -311,15 +324,19 @@ This supports later differentiated experiences—technician, warehouse/scanning,
 - effective-access simulator;
 - audit.
 
-### F — Domain cutover census
+### F — Shared application integration + domain cutover census
 
 For every route/API/object/action/field/export/report/upload/workflow:
 
-- map required authority;
+- retain existing application behavior where valid;
+- replace legacy data/auth seams behind bounded interfaces;
+- map required v2 authority;
 - make UI consume effective-access result;
 - make Render independently enforce;
-- remove domain-specific/compatibility interpretation;
+- remove domain-specific/compatibility interpretation only after parity proof;
 - test denial directly at command/API level.
+
+Do not fork whole application areas without a concrete isolation need.
 
 ### G — Persona acceptance
 
@@ -333,14 +350,24 @@ Maintain a deterministic acceptance world including at least:
 - Parts/Warehouse;
 - Accounting/Controller.
 
-For each persona, define expected navigation, objects, record populations, fields and actions before testing. The running application must match the declared matrix.
+For each persona, define expected navigation, objects, record populations, fields and actions before testing. The running shared/v2-routed application must match the declared matrix.
 
-### H — Firebase removal
+### H — Bounded domain cutovers + Firebase removal
 
-- migrate last required records/commands;
-- prove no normal runtime business read/write/auth/session depends on Firebase;
-- remove SDK/config/functions/rules/deployment residue;
-- keep only historical migration evidence where retention is useful.
+For each bounded authority:
+
+- current-state census;
+- isolated v2 replacement;
+- shared-code compatibility where applicable;
+- deterministic parity;
+- connected scenario proof;
+- migration reconciliation;
+- exactly one writer at cutover;
+- running-application acceptance;
+- rollback/soak;
+- legacy retirement.
+
+Remove Firebase dependencies only as the final dependent authorities leave them.
 
 ### I — Training + closure
 
@@ -348,6 +375,14 @@ Training is the final signoff artifact:
 
 - Administrator: Employees, Users, roles, permissions, access troubleshooting, session revocation, audit.
 - End users: what access means, request/escalation process, denied/read-only states.
+
+## Protected mature domains
+
+Parts / Inventory / Warehouse / Bin / Truck / Mobile Location / Purchasing / Receiving / Transfer / Cycle Count and Work Order inventory effects are additionally governed by `2026-09-16-parts-inventory-truck-parity-fence.md`.
+
+They are not the proving ground for Authorization v2.
+
+The new control-plane pattern should first be proven on lower-coupling/already-advanced areas such as Workforce and selected CRM/catalog authorities. Mature inventory operations move only after the pattern, parity tooling and rollback discipline are proven.
 
 ## Effort planning range
 
@@ -357,24 +392,27 @@ Working planning estimate from the current platform state:
 - enterprise-hardened convergence including domain census, negative tests, migration/cutover proof and administration: roughly **20–30 engineering days total**;
 - expected calendar shape when treated as a focused foundation program: approximately **3–5 weeks**, with usable cuts delivered before final cleanup.
 
-The largest variable is not the evaluator itself. The largest variable is proving that every EOS page, endpoint, action, workflow, report, export and sensitive field uses it and that no parallel legacy authority remains.
+These are planning ranges, not commitments. The largest variable is not the evaluator itself. The largest variable is proving that every EOS page, endpoint, action, workflow, report, export and sensitive field uses the new authority without disturbing accepted business behavior.
 
 ## Completion criteria
 
 This workstream is complete only when:
 
-1. non-Firebase authentication works for accepted personas;
-2. EOS owns sessions/revocation;
-3. Employee, Principal and external identity are distinct and linked explicitly;
-4. Job Role and Security Role are distinct;
-5. one v2 evaluator is authoritative;
-6. every domain maps to v2 permissions and protected commands enforce server-side;
-7. Owner/Accountable/Assignee/Approver remain separate business facts;
-8. Admin can manage ordinary access without source-code changes;
-9. the effective-access simulator explains allows/denials;
-10. negative tests prove unauthorized direct API calls fail;
-11. web/PWA/mobile client architecture requires no authorization redesign;
-12. normal runtime has zero Firebase dependency;
-13. legacy authorization/Firebase paths are removed rather than merely unused;
-14. migration/audit evidence is retained;
-15. administrator/end-user training is complete and Owner acceptance is recorded.
+1. current EOS remained usable during construction and bounded migration;
+2. non-Firebase authentication works for accepted personas;
+3. EOS owns sessions/revocation;
+4. Employee, Principal and external identity are distinct and linked explicitly;
+5. Job Role and Security Role are distinct;
+6. one v2 evaluator is authoritative;
+7. every cut-over domain maps to v2 permissions and protected commands enforce server-side;
+8. accepted application/business behavior was reused or reproduced before replacement;
+9. Owner/Accountable/Assignee/Approver remain separate business facts;
+10. Admin can manage ordinary access without source-code changes;
+11. the effective-access simulator explains allows/denials;
+12. negative tests prove unauthorized direct API calls fail;
+13. web/PWA/mobile client architecture requires no authorization redesign;
+14. normal runtime has zero Firebase dependency;
+15. legacy authorization/Firebase paths are removed rather than merely unused;
+16. temporary duplicate UI/environments are converged/removed unless separately productized;
+17. migration/audit evidence is retained;
+18. administrator/end-user training is complete and Owner acceptance is recorded.
