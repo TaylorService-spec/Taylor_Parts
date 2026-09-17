@@ -65,8 +65,9 @@ export function newTrustedIdempotencyKey() {
  *   managerEmployeeId    the reporting relationship is its own governed authority -- the editor changes it through
  *                        establishReportingRelationship / endReportingRelationship, never as a profile key
  *   employmentStatus,
- *   operatingCompanyId   Employee LIFECYCLE facts. No governed lifecycle writer is served (RUNTIME_DEPENDENCIES
- *                        LIFECYCLE_WRITER in employeeOperatingProfile.js); the editor shows them read-only
+ *   operatingCompanyId   Employee LIFECYCLE facts. The governed lifecycle commands are served (EMP-RT-W2) but no
+ *                        control offers them yet (RUNTIME_DEPENDENCIES LIFECYCLE_WRITER in
+ *                        employeeOperatingProfile.js); the editor shows them read-only
  *   operationalRoles     not part of the governed Employee record at all (Owner ruling E)
  *   securityRole, userId User Access, not Employee facts
  *

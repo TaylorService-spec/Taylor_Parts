@@ -26,6 +26,7 @@ import {
   RESPONSIBILITY_AXIS,
   RUNTIME_DEPENDENCIES,
   USER_ACCESS_LINK,
+  WORKFORCE_READS,
   describeLifecycle,
   describeMyProfileFailure,
   describeResponsibilities,
@@ -525,7 +526,14 @@ describe("domain: failures in words", () => {
       expect(dep.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
       expect(dep.requiredApi).toMatch(/Governed/);
     }
-    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-H1", "EMP-RT-W2"]);
+    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-W2"]);
+    // EMP-RT-H1 (the governed Employee change history) is served now; nothing may still claim it is missing.
+    expect(Object.values(RUNTIME_DEPENDENCIES).some((d) => d.id === "EMP-RT-H1" || /HISTORY/.test(d.serverReason))).toBe(false);
+    expect(WORKFORCE_READS.EMPLOYEE_CHANGE_HISTORY).toEqual({ id: "EMP-RT-H1", operation: "listEmployeeChangeHistory" });
+    // EMP-RT-W2 (the lifecycle writer) is SERVED; only the control is missing, and the dependency says exactly that.
+    const lifecycleWriter = RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER;
+    expect(`${lifecycleWriter.today} ${lifecycleWriter.serverReason}`).not.toMatch(/not yet available|NOT_SERVED|no governed writer/i);
+    expect(lifecycleWriter.today).toMatch(/served by the Workforce service.*not editable on this page yet/);
     // EMP-RT-08 (Job Role) is served now; nothing may still claim it is missing.
     expect(Object.values(RUNTIME_DEPENDENCIES).some((d) => d.id === "EMP-RT-08" || /Job Role/.test(`${d.fact} ${d.today} ${d.serverReason}`))).toBe(false);
     // EMP-RT-W1 (the profile writer) is served now; nothing may still claim it is missing.
@@ -566,6 +574,8 @@ const EMPLOYEE_PAGE_MODULES = [
   "src/hooks/useWorkforceEmployeeDirectory.js",
   "src/hooks/usePrincipalCredential.js",
   "src/services/workforceApiClient.js",
+  "src/domain/employeeChangeHistory.js",
+  "src/modules/administration/EmployeeChangeHistorySection.jsx",
 ];
 
 describe("Employee business data no longer depends on Firestore", () => {

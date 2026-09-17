@@ -33,6 +33,8 @@ describe("the closed operation list", () => {
     expect(WORKFORCE_READ_OPERATIONS.some((n) => /assigned/i.test(n))).toBe(false);
     // EMP-RT-08 (Owner ruling): the Job Role reads are served -- business function only, under employee.record.read.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /jobRole/i.test(n)).sort()).toEqual(["listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listJobRoles"]);
+    // EMP-RT-H1: the governed Employee change history is served, and it is the only history read.
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /history/i.test(n)).sort()).toEqual(["listEmployeeChangeHistory", "listEmployeeJobRoleHistory"]);
   });
 
   it("mirrors the server's WORKFORCE command runners exactly: the governed Employee commands, nothing else", () => {

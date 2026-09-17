@@ -3137,6 +3137,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/trustedWriterCommands.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts",
           "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts"
         ],
         "clientReferences": [
@@ -3144,7 +3145,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

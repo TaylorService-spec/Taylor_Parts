@@ -24,7 +24,9 @@
 // no screen calls them yet (UI wiring follows the server proof). The EMP-RT-08 Job Role reads (listJobRoles,
 // listEmployeeJobRoleHistory, listEmployeesWithoutJobRole) and commands (createJobRole, updateJobRole,
 // assignEmployeeJobRole) are served and named the same way; the Administration Employee record and Users directory
-// use the three reads and assignEmployeeJobRole (admin.employeeJobRole.write). No screen maintains the catalog yet. EMP-RT-05 (assigned work) is NOT served and not a name here.
+// use the three reads and assignEmployeeJobRole (admin.employeeJobRole.write). No screen maintains the catalog yet.
+// listEmployeeChangeHistory (EMP-RT-H1, employee.record.read) is the governed Employee change history the Administration
+// Employee record renders; the actor's name is included only when the SERVER finds admin.principalAccess.read. EMP-RT-05 (assigned work) is NOT served and not a name here.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
@@ -40,6 +42,7 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listJobRoles",
   "listEmployeeJobRoleHistory",
   "listEmployeesWithoutJobRole",
+  "listEmployeeChangeHistory",
 ]);
 
 export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
