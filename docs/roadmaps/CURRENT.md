@@ -16,7 +16,7 @@ That reconciliation is the current program-level authority for:
 
 The dedicated foundation workstream is [`2026-09-16-authorization-v2-application-platform-reset.md`](2026-09-16-authorization-v2-application-platform-reset.md).
 
-## Current execution state — controller refresh against `main @ 7ed9fe11`
+## Current execution state — controller refresh against `main @ bf1e9c9f`
 
 This section is the concise live status view. It is updated by small roadmap PRs when a gate changes; it is not a tracking subsystem.
 
@@ -36,14 +36,16 @@ Where the static Wave ordering in the reconciliation (§12) differs, **this orde
 
 | Lane | Current authority | Last completed gate | Next gate | Blocker |
 |---|---|---|---|---|
-| **CRM** (#1925) — Accounts / Contacts / Locations | Firestore (writer state `FROZEN / INACTIVE`); PostgreSQL target built, inactive | #1926 server writers frozen + Render LIVE; #1927 source-quiescence proof merged; **#1929 merged** (`a2f4e457`) — direct Firestore CRM write grants removed in both Rules copies, reads kept for the snapshot only | Deploy #1929 Rules to nonprod Firebase project `eos-platform-sandbox` (explicit `--project`), verify live, then quiescence → census → COPY ONCE → verify → activate → Render → Vercel → retire → browser E2E | **External:** live Rules deploy/verification requires authenticated Firebase operator access; no CI deploys Rules. COPY and PG activation remain **HOLD** until done. |
-| **Employee / Workforce** (#1930 → #1931 W1A) | PostgreSQL reads; Firestore Employee profile writer still reachable | #1931 authorized and queued | W1A PG Employee profile command → W1B Render transport → W1C UI cutover + Firestore writer retirement | #1931 runtime execution recorded `BLOCKED_EXECUTION` (no execution capability); **no patch produced** — work to be done through the normal PR flow. Must not block CRM. |
-| **Catalog / Supplier / Registry** | PG writers / copy-once / verify merged; per-environment cutover evidence absent | tooling merged | starts after CRM reaches stable PG authority | — |
-| **Commercial** (C5) | Firestore-era Opportunity/Agreement/Order; C5 tooling merged **NOT RUN** | tooling merged | after Catalog | depends on CRM + Catalog |
+| **CRM** (#1925) — Accounts / Contacts / Locations | Firestore (writer state `FROZEN / INACTIVE`); PostgreSQL authority built, **inactive** | #1929 write-grant retirement merged. Behind the activation gate (inert until `ACTIVATE_POSTGRES`): **#1932** Render transport `/crm/customer`; **#1936** governed Account ownership history (`INITIAL_OWNER_ASSIGNMENT` / `OWNER_HANDOFF`, never ownerless) + atomic ≤200-row Contact import; **#1939** expected-current-owner precondition. #1934 reconciled suites left red by #1926/#1929. **CRM-8** client cutover built and held locally (build-time routed: `platform-sandbox` → EOS API, production unchanged) | Operator: deploy #1929 Rules to `eos-platform-sandbox` (explicit `--project`) → verify live → quiescence → export/census → blockers → COPY ONCE → verify → activate → open/merge CRM-8 → nonprod deploy → browser E2E → retire Firestore CRM → CRM COMPLETE → Catalog | **External operator credentials:** Firebase login + nonprod ADC (Rules deploy, snapshot export), Render Shell / nonprod `DATABASE_URL` (census/copy/verify). Ownerless legacy Accounts are advisory (post-cutover remediation set), not COPY blockers. |
+| **Employee / Workforce** (#1930) | **PostgreSQL** for Employee profile, manager and lifecycle writes | **#1933** W1A profile command; **#1935** W1B transport; **#1937** W1C Administration edit on PostgreSQL (combined profile + manager Save is one transaction; client Firestore profile writer retired); **#1938** EMP-RT-W2 lifecycle writer (status transitions = legacy parity table; operating company = tenant-scoped `eos_policy.tenant_operating_companies`) | Operator (nonprod): `tenantOperatingCompanyReconcileCli.js --tenantKey taylor-nonprod` dry run then `--apply`; W2 UI; retire server-side Firestore profile callable with the Functions retirement step | Operating-company changes fail closed in nonprod until the reconcile run. |
+| **Catalog / Supplier / Registry** | Firestore `OPEN / INACTIVE`; PG writers / copy-once / verify merged | tooling merged | starts after CRM COMPLETE (freezing earlier would halt nonprod Parts editing under the parity fence) | CRM |
+| **Commercial** (C5) | Firestore-era Opportunity/Agreement/Order; C5 tooling merged **NOT RUN** | tooling merged | after Catalog | CRM + Catalog |
 | **Work Orders / Service** | Firestore / Firebase Functions | #1915 assignment census (design input) | PG Work Order + assignment authority | — |
 | **Authorization v2 / session** | Principal/Membership/policy in PG; Firebase Auth proves identity | foundations exist | v2 model, OIDC bindings, EOS sessions, single evaluator | — |
 | **Zero-Firebase closure** | — | — | after domain + identity cutovers | — |
 | **Training** | — | — | **last**, after production cutover and Owner signoff | — |
+
+**Production Firebase fence (Owner ruling):** do **not** deploy `firestore.rules` from `main` to the production Firebase project — #1929 denies Account/Contact/Location client writes for the **nonprod** cutover only. No production Rules deploy until the production CRM cutover reaches that gate, and no new production Rules business logic. Firebase Functions deploys are manual; the CRM writer-state constant is global, so a manual production Functions deploy from `main` would also freeze production customer import.
 
 Environment fences: Production and Certification untouched; no dual write; no Firebase fallback; `.firebaserc` default project is never relied upon.
 
