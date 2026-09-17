@@ -98,9 +98,10 @@ test("eos_crm stands beside eos_policy and eos_ops, with its three record tables
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_crm' ORDER BY 1",
   );
   // Migration 008's three record tables, plus migration 025's (wave D1-A): the Account's normalized multi-valued
-  // business facts and the CRM create-idempotency receipts. Still no location or inventory table of any kind.
+  // business facts and the CRM create-idempotency receipts, plus migration 1759924800000's append-only Account
+  // ownership history. Still no location or inventory table of any kind.
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "account_lines_of_business", "account_locations", "account_relationship_types", "account_tags", "accounts",
+    "account_lines_of_business", "account_locations", "account_ownership_handoffs", "account_relationship_types", "account_tags", "accounts",
     "command_receipts", "contacts",
   ]);
 

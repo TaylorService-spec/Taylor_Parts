@@ -33,6 +33,7 @@ const crmSources = () => walk(CRM, [".ts"]);
 const rel = (f) => relative(FUNCTIONS_DIR, f).split("\\").join("/");
 const MIGRATION_024 = "1759622400000_crm-capability-vocabulary.sql";
 const MIGRATION_025 = "1759708800000_crm-account-business-facts-and-receipts.sql";
+const MIGRATION_HANDOFFS = "1759924800000_crm-account-ownership-handoffs.sql";
 const CRM_CAPABILITY_IDS = ["customer.governedField.write", "customer.record.create", "customer.record.read", "customer.record.update"];
 
 /** A pool that must never be reached: every refusal below happens before a connection is taken. */
@@ -110,8 +111,8 @@ test("(F4) migration 024 registers exactly that vocabulary, grants nothing, and 
 });
 
 test("(F5) no generic CRUD, no delete, no legacy or Job Role authority source", () => {
-  assert.deepEqual(Object.keys(accounts).filter((k) => typeof accounts[k] === "function").sort(), ["createAccount", "getAccount", "listAccounts", "updateAccount"]);
-  assert.deepEqual(Object.keys(contacts).filter((k) => typeof contacts[k] === "function").sort(), ["createContact", "getContact", "listAccountContacts", "updateContact"]);
+  assert.deepEqual(Object.keys(accounts).filter((k) => typeof accounts[k] === "function").sort(), ["createAccount", "getAccount", "listAccountOwnershipHandoffs", "listAccounts", "updateAccount"]);
+  assert.deepEqual(Object.keys(contacts).filter((k) => typeof contacts[k] === "function").sort(), ["createContact", "getContact", "importAccountContacts", "listAccountContacts", "updateContact"]);
   assert.deepEqual(Object.keys(sites).filter((k) => typeof sites[k] === "function").sort(), ["createAccountLocation", "getAccountLocation", "listAccountLocations", "updateAccountLocation"]);
   for (const file of crmSources()) {
     const src = strip(readFileSync(file, "utf8"));
@@ -147,6 +148,9 @@ test("(F7) no write without the capability, and a read capability never stands i
   await assert.rejects(accounts.createAccount(deps, readOnly, { name: "A", status: "ACTIVE" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(accounts.updateAccount(deps, readOnly, { accountId: "a1", name: "B" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(contacts.createContact(deps, readOnly, { accountId: "a1", name: "C" }), code("CAPABILITY_REQUIRED"));
+  await assert.rejects(contacts.importAccountContacts(deps, readOnly, { accountId: "a1", contacts: [{ name: "C" }] }), code("CAPABILITY_REQUIRED"));
+  await assert.rejects(contacts.importAccountContacts(deps, actor(new Set(["customer.record.read", "customer.record.update"])), { accountId: "a1", contacts: [{ name: "C" }] }), code("CAPABILITY_REQUIRED"));
+  await assert.rejects(accounts.updateAccount(deps, readOnly, { accountId: "a1", ownerEmployeeId: "e2" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(contacts.updateContact(deps, readOnly, { contactId: "c1", name: "C" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(sites.createAccountLocation(deps, readOnly, { accountId: "a1", name: "S" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(sites.updateAccountLocation(deps, readOnly, { accountLocationId: "s1", name: "S" }), code("CAPABILITY_REQUIRED"));
@@ -154,6 +158,7 @@ test("(F7) no write without the capability, and a read capability never stands i
   await assert.rejects(accounts.getAccount(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(accounts.listAccounts(deps, none, {}), code("CAPABILITY_REQUIRED"));
   await assert.rejects(contacts.listAccountContacts(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
+  await assert.rejects(accounts.listAccountOwnershipHandoffs(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(sites.getAccountLocation(deps, none, { accountLocationId: "s1" }), code("CAPABILITY_REQUIRED"));
   // Capabilities must be a resolved Set; an array of the right strings is not a resolved context.
   await assert.rejects(accounts.getAccount(deps, { tenantId: "t1", principalId: "p1", capabilities: [...ALL] }, { accountId: "a1" }), code("ACTOR_CONTEXT_REQUIRED"));
@@ -166,7 +171,9 @@ test("(F8) caller authority in input is refused on every operation", async () =>
     [accounts.updateAccount, { accountId: "a1", name: "A" }],
     [accounts.getAccount, { accountId: "a1" }],
     [accounts.listAccounts, {}],
+    [accounts.listAccountOwnershipHandoffs, { accountId: "a1" }],
     [contacts.createContact, { accountId: "a1", name: "C" }],
+    [contacts.importAccountContacts, { accountId: "a1", contacts: [{ name: "C" }] }],
     [contacts.updateContact, { contactId: "c1", name: "C" }],
     [contacts.getContact, { contactId: "c1" }],
     [contacts.listAccountContacts, { accountId: "a1" }],
@@ -184,7 +191,8 @@ test("(F8) caller authority in input is refused on every operation", async () =>
 });
 
 test("(F9) updates are allowlisted: attribution, ownership, relinking and free-form fields refuse", async () => {
-  for (const extra of ["ownerEmployeeId", "accountOwner", "createdBy", "updatedBy", "createdAt", "updatedAt", "id", "nameLower", "billingContact", "relationshipType", "owner"]) {
+  // ownerEmployeeId is accepted since migration 1759924800000 -- as a governed ownership handoff (F18), never an overwrite.
+  for (const extra of ["accountOwner", "createdBy", "updatedBy", "createdAt", "updatedAt", "id", "nameLower", "billingContact", "relationshipType", "owner"]) {
     await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", [extra]: "x" }), code("FIELD_NOT_ALLOWED"), `updateAccount accepted ${extra}`);
   }
   for (const extra of ["accountId", "ownerEmployeeId", "createdBy", "role"]) {
@@ -253,7 +261,16 @@ test("(F13) ACCOUNT OWNER: explicit, well-formed owner required; never derived",
   await passesValidation(accounts.createAccount(deps, actor(), { ...base, ownerEmployeeId: "e1" }));
   const src = strip(readFileSync(join(CRM, "accountAuthority.ts"), "utf8"));
   assert.doesNotMatch(src, /ownerEmployeeId\s*=\s*(principalId|actor|uid)|owner\s*\?\?\s*principalId|\?\?\s*principalId/, "the owner can fall back to the actor");
-  assert.doesNotMatch(src, /assignAccountOwner|owner_employee_id\s*=\s*\$/, "an owner change path exists (ACCOUNT_OWNER_HANDOFF_PENDING)");
+  assert.doesNotMatch(src, /assignAccountOwner/, "a bare owner-assignment path exists");
+  // The ONE owner change: inside stageAccountOwnershipHandoff, AFTER the append-only history INSERT, predicated on the
+  // predecessor read under FOR UPDATE. No other statement names the owner column as an assignment target.
+  const assignments = [...src.matchAll(/(?<!AND )owner_employee_id\s*=\s*\$\d/g)];
+  assert.equal(assignments.length, 1, "the owner column is assigned outside the governed handoff");
+  const stage = src.slice(src.indexOf("async function stageAccountOwnershipHandoff"), src.indexOf("const CREATE_FIELDS"));
+  assert.ok(stage.indexOf("INSERT INTO eos_crm.account_ownership_handoffs") >= 0 && stage.indexOf("INSERT INTO eos_crm.account_ownership_handoffs") < stage.indexOf("SET owner_employee_id = $3"),
+    "the owner moves without first appending its history");
+  assert.match(stage, /AND owner_employee_id = \$4/, "the owner move is not predicated on the locked predecessor");
+  assert.match(src, /SELECT payment_terms, tax_status, owner_employee_id FROM eos_crm\.accounts WHERE tenant_id = \$1 AND id = \$2 FOR UPDATE/);
 });
 
 test("(F14) governed fields: beyond the baseline requires customer.governedField.write, before any database access", async () => {
@@ -331,4 +348,63 @@ test("(F17) idempotency: creates require a key; only its hash is persisted; rece
   assert.match(mig, /idempotency_key_hash TEXT NOT NULL CHECK \(idempotency_key_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/);
   assert.match(mig, /CONSTRAINT command_receipts_one_per_key UNIQUE \(tenant_id, principal_id, operation, idempotency_key_hash\)/);
   assert.doesNotMatch(mig, /JSON(B)? .*legacy|firestore_document|raw_key|idempotency_key TEXT/i);
+});
+
+test("(F18) ACCOUNT OWNERSHIP HANDOFF: input is validated before the database; the vocabulary is Commercial's and migration's", async () => {
+  // Clearing refuses: a governed Account is never ownerless.
+  await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: null }), code("OWNER_REQUIRED"));
+  for (const bad of ["", "e 1", 7, { id: "e1" }]) {
+    await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: bad }), code("OWNER_INVALID"));
+  }
+  await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownershipHandoff: { reason: "x" }, name: "B" }), code("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE"));
+  for (const [handoff, expected] of [[{ source: "SELF_SERVICE" }, "HANDOFF_SOURCE_INVALID"], [{ reason: "r".repeat(501) }, "HANDOFF_REASON_INVALID"],
+    [{ reason: ["r"] }, "HANDOFF_REASON_INVALID"], [{ effectiveAt: "2020-01-01T00:00:00Z" }, "FIELD_NOT_ALLOWED"], [{ handedOffBy: "p9" }, "FIELD_NOT_ALLOWED"], [[], "HANDOFF_INVALID"]]) {
+    await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: "e2", ownershipHandoff: handoff }), code(expected), JSON.stringify(handoff));
+  }
+  await passesValidation(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: "e2" }));
+  await passesValidation(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: "e2", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "r".repeat(500) } }));
+  // The same three sources as the Commercial handoff and the migration CHECK, in the same order.
+  const commercial = require("../lib/eosCommercial/commercialOwnershipAuthority.js");
+  assert.deepEqual([...accounts.ACCOUNT_OWNERSHIP_HANDOFF_SOURCES], [...commercial.COMMERCIAL_HANDOFF_SOURCES]);
+  assert.equal(accounts.MAX_ACCOUNT_HANDOFF_REASON_LENGTH, 500);
+  const mig = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_HANDOFFS), "utf8").split("-- Down Migration")[0];
+  assert.deepEqual([...mig.match(/source IN \(([^)]*)\)/)[1].matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]), [...accounts.ACCOUNT_OWNERSHIP_HANDOFF_SOURCES]);
+  assert.match(mig, /char_length\(reason\) <= 500/);
+  assert.match(mig, /BEFORE UPDATE OR DELETE ON account_ownership_handoffs/);
+  assert.match(mig, /FOREIGN KEY \(tenant_id, account_id\) REFERENCES accounts \(tenant_id, id\)/);
+  const up = mig.replace(/^\s*--.*$/gm, "");
+  assert.doesNotMatch(up, /role_capabilities|eos_policy\.capabilities|eos_commercial|employees/, "the handoff migration grants, registers or reaches beyond CRM");
+  // No cascade: the handoff writer names no child table.
+  const src = strip(readFileSync(join(CRM, "accountAuthority.ts"), "utf8"));
+  assert.doesNotMatch(src, /UPDATE eos_crm\.(contacts|account_locations)/, "an Account handoff cascades to its children");
+});
+
+test("(F19) ATOMIC CONTACT IMPORT: bounded, validated row by row with createContact's rules, refused whole, before the database", async () => {
+  assert.equal(contacts.MAX_CONTACT_IMPORT_ROWS, 200);
+  const base = { idempotencyKey: "k", accountId: "a1" };
+  await assert.rejects(contacts.importAccountContacts(deps, actor(), { accountId: "a1", contacts: [{ name: "C" }] }), code("IDEMPOTENCY_KEY_REQUIRED"));
+  for (const list of [[], Array.from({ length: 201 }, () => ({ name: "C" })), undefined, "C", { name: "C" }]) {
+    await assert.rejects(contacts.importAccountContacts(deps, actor(), { ...base, contacts: list }), code("IMPORT_SIZE_INVALID"));
+  }
+  await assert.rejects(contacts.importAccountContacts(deps, actor(), { ...base, accountId: "not an id", contacts: [{ name: "C" }] }), code("RECORD_ID_REQUIRED"));
+  await assert.rejects(contacts.importAccountContacts(deps, actor(), { ...base, contacts: [{ name: "C" }], skipDuplicates: true }), code("FIELD_NOT_ALLOWED"));
+  const err = await contacts.importAccountContacts(deps, actor(), { ...base, contacts: [
+    { name: "ok" }, { name: " " }, { name: "C", isPrimary: true }, { name: "C", role: "Buyer" }, "row", { name: "C", email: 5 }, { name: "C", ownerEmployeeId: "e9" },
+  ] }).then(() => null, (e) => e);
+  assert.equal(err?.code, "IMPORT_ROWS_INVALID");
+  assert.equal(err.category, "INVALID_INPUT");
+  assert.deepEqual(err.findings.map((f) => [f.index, f.code]), [[1, "NAME_REQUIRED"], [2, "IMPORTED_CONTACT_NEVER_PRIMARY"], [3, "FIELD_NOT_ALLOWED"], [4, "INPUT_INVALID"], [5, "FIELD_INVALID"], [6, "FIELD_NOT_ALLOWED"]]);
+  await assert.rejects(contacts.importAccountContacts(deps, actor(), { ...base, contacts: [{ name: "C", principalId: "p9" }] }), code("CALLER_AUTHORITY_REFUSED"));
+  // Exactly 200 valid rows, one with isPrimary false, pass validation and reach the database.
+  await passesValidation(contacts.importAccountContacts(deps, actor(), { ...base, contacts: Array.from({ length: 200 }, (_, n) => ({ name: `C${n}`, isPrimary: n === 0 ? false : undefined })) }));
+  // One statement, one transaction, one receipt: the import runs through runCrmCreate and never loops a per-row create.
+  const src = strip(readFileSync(join(CRM, "contactAuthority.ts"), "utf8"));
+  const body = src.slice(src.indexOf("export function importAccountContacts"), src.indexOf("export function updateContact"));
+  assert.match(body, /runCrmCreate\(/);
+  assert.match(body, /"crm\.importAccountContacts"/);
+  assert.doesNotMatch(body, /createContact\(|pool\.connect|BEGIN|COMMIT/);
+  assert.match(body, /requireTenantAccount\(db, tenantId, accountId, "SHARE"\)/);
+  assert.match(body, /inheritOwnerFromAccount\(parent\.ownerEmployeeId\)/);
+  const mig = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_HANDOFFS), "utf8").split("-- Down Migration")[0];
+  assert.match(mig, /operation IN \('crm\.createAccount', 'crm\.createContact', 'crm\.createAccountLocation', 'crm\.importAccountContacts'\)/);
 });

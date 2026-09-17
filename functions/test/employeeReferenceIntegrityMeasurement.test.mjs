@@ -207,18 +207,20 @@ test("the script loads no Firebase module, so it cannot 'resolve' a reference fr
 
 // ════════════════════ 4. SCOPE — TWELVE COLUMNS, AND THE ACTOR COLUMNS DECLARED OUT ════════════════════
 
-test("the twelve Employee-id columns are the scope, each citing where it was read from", () => {
-  // Nine from waves 1-2C, plus the three credited-salesperson columns the Commercial C2 command layer writes.
-  assert.equal(EMPLOYEE_REFERENCE_COLUMNS.length, 12);
+test("the fourteen Employee-id columns are the scope, each citing where it was read from", () => {
+  // Nine from waves 1-2C, plus the three credited-salesperson columns the Commercial C2 command layer writes, plus the two
+  // append-only CRM Account ownership-history columns (migration 1759924800000).
+  assert.equal(EMPLOYEE_REFERENCE_COLUMNS.length, 14);
   assert.deepEqual(EMPLOYEE_REFERENCE_COLUMNS.filter((c) => c.column === "credited_salesperson_employee_id").map((c) => c.table), ["opportunities", "sales_agreements", "sales_orders"]);
   for (const c of EMPLOYEE_REFERENCE_COLUMNS) {
     assert.match(c.source, /^\d{13}:\d+$/, `${c.table}.${c.column} must cite migration:line`);
     assert.ok(["eos_policy", "eos_crm", "eos_commercial"].includes(c.schema));
   }
-  // The two append-only ones are flagged, because a bad value there is permanent by design (#189).
+  // The append-only ones are flagged, because a bad value there is permanent by design (#189).
   const appendOnly = EMPLOYEE_REFERENCE_COLUMNS.filter((c) => c.appendOnly);
-  assert.equal(appendOnly.length, 2);
-  assert.ok(appendOnly.every((c) => c.table === "ownership_handoffs"));
+  assert.equal(appendOnly.length, 4);
+  assert.deepEqual(appendOnly.map((c) => `${c.schema}.${c.table}`), ["eos_commercial.ownership_handoffs", "eos_commercial.ownership_handoffs",
+    "eos_crm.account_ownership_handoffs", "eos_crm.account_ownership_handoffs"]);
 });
 
 test("actor / credential columns are declared OUT OF SCOPE by name, not silently skipped", () => {
@@ -273,11 +275,11 @@ test("an absent Employee authority makes EVERY column AUTHORITY_UNAVAILABLE, not
   // and a report of "0 unresolved" would be a lie that authorizes moving the deferred foreign key.
   return measureEmployeeReferenceIntegrity(fakeClient({ present: [] })).then((report) => {
     assert.equal(report.authorityPresent, false);
-    assert.equal(report.columns.length, 12);
+    assert.equal(report.columns.length, 14);
     assert.ok(report.columns.every((c) => c.status === "AUTHORITY_UNAVAILABLE"));
-    assert.equal(report.unmeasured, 12);
+    assert.equal(report.unmeasured, 14);
     assert.equal(report.deferredForeignKeyPrecondition.met, false, "an unmeasurable database never meets the precondition");
-    assert.match(describeReport(report, "test"), /AUTHORITY_UNAVAILABLE for 12 column\(s\) -- these are NOT zeroes/);
+    assert.match(describeReport(report, "test"), /AUTHORITY_UNAVAILABLE for 14 column\(s\) -- these are NOT zeroes/);
   });
 });
 
@@ -289,7 +291,7 @@ test("a table that cannot be read is AUTHORITY_UNAVAILABLE for that column alone
   assert.equal(link.status, "AUTHORITY_UNAVAILABLE");
   assert.match(link.reason, /does not exist/);
   // The others still measured -- a partial outage is reported partially, not as a total failure.
-  assert.equal(report.columns.filter((c) => c.status === "MEASURED").length, 11);
+  assert.equal(report.columns.filter((c) => c.status === "MEASURED").length, 13);
   assert.equal(report.unmeasured, 1);
   assert.equal(report.deferredForeignKeyPrecondition.met, false);
   assert.match(report.deferredForeignKeyPrecondition.reason, /could not be measured/);
