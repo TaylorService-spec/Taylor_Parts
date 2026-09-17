@@ -33,6 +33,8 @@
 //   EMP-RT-W1B updateEmployeeProfile          admin.employeeProfile.write. The 17 profile facts only (W1A command).
 //   EMP-RT-W1B establishReportingRelationship admin.employeeProfile.write. Reporting relationship, history kept.
 //   EMP-RT-W1B endReportingRelationship       admin.employeeProfile.write.
+//   EMP-RT-W1C saveEmployeeEdit               admin.employeeProfile.write. ONLY a Save changing profile AND manager:
+//                                             both in one transaction, or neither.
 //   EMP-RT-W2  changeEmploymentStatus         admin.employeeProfile.write. Allowed transitions only.
 //   EMP-RT-W2  changeOperatingCompany         admin.employeeProfile.write. A known, active operating company only.
 // User Access, Security Roles and Job Roles are NOT served.
@@ -49,6 +51,7 @@ import { readEmployeePrincipalLink } from "./reads/employeePrincipalLinkRead";
 import { EmployeeCommandError } from "./commands/employeeCommandKernel";
 import { updateEmployeeProfile } from "./commands/employeeProfileCommand";
 import { endReportingRelationship, establishReportingRelationship } from "./commands/reportingRelationshipCommands";
+import { saveEmployeeEdit } from "./commands/employeeEditCommand";
 import { changeEmploymentStatus, changeOperatingCompany } from "./commands/employeeLifecycleCommand";
 
 export interface VerifiedIdentity {
@@ -89,6 +92,7 @@ const COMMAND_RUNNERS = Object.freeze({
   updateEmployeeProfile: command(updateEmployeeProfile),
   establishReportingRelationship: command(establishReportingRelationship),
   endReportingRelationship: command(endReportingRelationship),
+  saveEmployeeEdit: command(saveEmployeeEdit),
   changeEmploymentStatus: command(changeEmploymentStatus),
   changeOperatingCompany: command(changeOperatingCompany),
 } as const);

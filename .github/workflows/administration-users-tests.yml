@@ -24,7 +24,7 @@ on:
     paths:
       - "field-ops-app-vite/src/modules/administration/AdminUsers.jsx"
       - "field-ops-app-vite/src/modules/administration/UserDetail.jsx"
-      - "field-ops-app-vite/src/modules/administration/UserEditPanel.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeEditPanel.jsx"
       - "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
       - "field-ops-app-vite/src/modules/administration/AdministrationOverview.jsx"
       - "field-ops-app-vite/src/shared/ui/ChangeHistory.jsx"

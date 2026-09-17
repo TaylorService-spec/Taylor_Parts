@@ -88,9 +88,9 @@ const parsed = (res) => JSON.parse(res.body);
 
 const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"];
 
-const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "changeEmploymentStatus", "changeOperatingCompany"];
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany"];
 
-test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07 and exactly the three W1B Employee commands", () => {
+test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07 and exactly the W1B/W1C Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
   assert.deepEqual([...http.WORKFORCE_COMMAND_OPERATIONS], COMMANDS);
   assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);

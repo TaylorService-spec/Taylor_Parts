@@ -56,53 +56,66 @@ export interface ReportingChangeResult {
   readonly endedRelationshipId: string | null;
 }
 
+export interface PreparedEstablish { readonly employeeId: string; readonly managerEmployeeId: string; readonly reason: string | null }
+export interface PreparedEnd { readonly employeeId: string; readonly reason: string | null }
+
+/** Validate an establish input. Pure; runs before any connection. */
+export function prepareEstablish(input: Record<string, unknown>): PreparedEstablish {
+  const i = acceptOnly(input, ["employeeId", "managerEmployeeId", "reason"]);
+  const employeeId = requireId(i.employeeId, "employeeId");
+  const managerEmployeeId = requireId(i.managerEmployeeId, "managerEmployeeId");
+  if (employeeId === managerEmployeeId) refuse("REPORTING_SELF_MANAGER", "INVALID_INPUT", "an Employee cannot be their own manager");
+  return { employeeId, managerEmployeeId, reason: optionalReason(i.reason) };
+}
+
+/** Validate an end input. Pure; runs before any connection. */
+export function prepareEnd(input: Record<string, unknown>): PreparedEnd {
+  const i = acceptOnly(input, ["employeeId", "reason"]);
+  return { employeeId: requireId(i.employeeId, "employeeId"), reason: optionalReason(i.reason) };
+}
+
+/** The establish transaction body, for use inside an already-open governed Employee command transaction. */
+export async function applyEstablish(db: PoolClient, actor: EmployeeCommandActor, p: PreparedEstablish, at: Date): Promise<ReportingChangeResult> {
+  await lockEmployee(db, actor.tenantId, p.employeeId);
+  const manager = await db.query(`SELECT 1 FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [actor.tenantId, p.managerEmployeeId]);
+  if (manager.rows.length === 0) refuse("MANAGER_NOT_FOUND", "NOT_FOUND", "the manager is not an Employee of this tenant");
+  const current = await currentRelationship(db, actor.tenantId, p.employeeId);
+  if (current && current.manager_employee_id === p.managerEmployeeId) {
+    return { outcome: "NO_CHANGE", employeeId: p.employeeId, managerEmployeeId: p.managerEmployeeId, relationshipId: current.id, endedRelationshipId: null };
+  }
+  if (current) await endRow(db, actor.tenantId, current.id, actor.principalId, at);
+  const id = `err_${randomUUID()}`;
+  await db.query(
+    `INSERT INTO eos_workforce.employee_reporting_relationships
+       (id, tenant_id, employee_id, manager_employee_id, effective_from, established_by, established_at, source, reason)
+     VALUES ($1, $2, $3, $4, $5, $6, $5, 'GOVERNED_COMMAND', $7)`,
+    [id, actor.tenantId, p.employeeId, p.managerEmployeeId, at, actor.principalId, p.reason],
+  );
+  await audit(db, actor.tenantId, actor.principalId, "employee.reportingRelationship.establish", p.employeeId,
+    current ? { managerEmployeeId: current.manager_employee_id, relationshipId: current.id } : null,
+    { managerEmployeeId: p.managerEmployeeId, relationshipId: id }, p.reason, at);
+  return { outcome: current ? "CHANGED" : "ESTABLISHED", employeeId: p.employeeId, managerEmployeeId: p.managerEmployeeId, relationshipId: id, endedRelationshipId: current?.id ?? null };
+}
+
+/** The end transaction body, for use inside an already-open governed Employee command transaction. */
+export async function applyEnd(db: PoolClient, actor: EmployeeCommandActor, p: PreparedEnd, at: Date): Promise<ReportingChangeResult> {
+  await lockEmployee(db, actor.tenantId, p.employeeId);
+  const current = await currentRelationship(db, actor.tenantId, p.employeeId);
+  if (!current) refuse("REPORTING_RELATIONSHIP_NOT_FOUND", "NOT_FOUND", "the Employee has no current reporting relationship");
+  await endRow(db, actor.tenantId, current!.id, actor.principalId, at);
+  await audit(db, actor.tenantId, actor.principalId, "employee.reportingRelationship.end", p.employeeId,
+    { managerEmployeeId: current!.manager_employee_id, relationshipId: current!.id }, null, p.reason, at);
+  return { outcome: "ENDED", employeeId: p.employeeId, managerEmployeeId: null, relationshipId: null, endedRelationshipId: current!.id };
+}
+
+export { concurrentChange as reportingConcurrentChange };
+
 /** Make `managerEmployeeId` the CURRENT manager of `employeeId`, ending any different current relationship. */
 export function establishReportingRelationship(deps: EmployeeCommandDeps, actor: EmployeeCommandActor, input: Record<string, unknown>): Promise<ReportingChangeResult> {
-  return runEmployeeCommand(deps, actor,
-    () => {
-      const i = acceptOnly(input, ["employeeId", "managerEmployeeId", "reason"]);
-      const employeeId = requireId(i.employeeId, "employeeId");
-      const managerEmployeeId = requireId(i.managerEmployeeId, "managerEmployeeId");
-      if (employeeId === managerEmployeeId) refuse("REPORTING_SELF_MANAGER", "INVALID_INPUT", "an Employee cannot be their own manager");
-      return { employeeId, managerEmployeeId, reason: optionalReason(i.reason) };
-    },
-    async (db, p, at) => {
-      await lockEmployee(db, actor.tenantId, p.employeeId);
-      const manager = await db.query(`SELECT 1 FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [actor.tenantId, p.managerEmployeeId]);
-      if (manager.rows.length === 0) refuse("MANAGER_NOT_FOUND", "NOT_FOUND", "the manager is not an Employee of this tenant");
-      const current = await currentRelationship(db, actor.tenantId, p.employeeId);
-      if (current && current.manager_employee_id === p.managerEmployeeId) {
-        return { outcome: "NO_CHANGE", employeeId: p.employeeId, managerEmployeeId: p.managerEmployeeId, relationshipId: current.id, endedRelationshipId: null };
-      }
-      if (current) await endRow(db, actor.tenantId, current.id, actor.principalId, at);
-      const id = `err_${randomUUID()}`;
-      await db.query(
-        `INSERT INTO eos_workforce.employee_reporting_relationships
-           (id, tenant_id, employee_id, manager_employee_id, effective_from, established_by, established_at, source, reason)
-         VALUES ($1, $2, $3, $4, $5, $6, $5, 'GOVERNED_COMMAND', $7)`,
-        [id, actor.tenantId, p.employeeId, p.managerEmployeeId, at, actor.principalId, p.reason],
-      );
-      await audit(db, actor.tenantId, actor.principalId, "employee.reportingRelationship.establish", p.employeeId,
-        current ? { managerEmployeeId: current.manager_employee_id, relationshipId: current.id } : null,
-        { managerEmployeeId: p.managerEmployeeId, relationshipId: id }, p.reason, at);
-      return { outcome: current ? "CHANGED" : "ESTABLISHED", employeeId: p.employeeId, managerEmployeeId: p.managerEmployeeId, relationshipId: id, endedRelationshipId: current?.id ?? null };
-    }, concurrentChange);
+  return runEmployeeCommand(deps, actor, () => prepareEstablish(input), (db, p, at) => applyEstablish(db, actor, p, at), concurrentChange);
 }
 
 /** End the CURRENT reporting relationship of `employeeId`. The row stays, with effective_to set. */
 export function endReportingRelationship(deps: EmployeeCommandDeps, actor: EmployeeCommandActor, input: Record<string, unknown>): Promise<ReportingChangeResult> {
-  return runEmployeeCommand(deps, actor,
-    () => {
-      const i = acceptOnly(input, ["employeeId", "reason"]);
-      return { employeeId: requireId(i.employeeId, "employeeId"), reason: optionalReason(i.reason) };
-    },
-    async (db, p, at) => {
-      await lockEmployee(db, actor.tenantId, p.employeeId);
-      const current = await currentRelationship(db, actor.tenantId, p.employeeId);
-      if (!current) refuse("REPORTING_RELATIONSHIP_NOT_FOUND", "NOT_FOUND", "the Employee has no current reporting relationship");
-      await endRow(db, actor.tenantId, current!.id, actor.principalId, at);
-      await audit(db, actor.tenantId, actor.principalId, "employee.reportingRelationship.end", p.employeeId,
-        { managerEmployeeId: current!.manager_employee_id, relationshipId: current!.id }, null, p.reason, at);
-      return { outcome: "ENDED", employeeId: p.employeeId, managerEmployeeId: null, relationshipId: null, endedRelationshipId: current!.id };
-    }, concurrentChange);
+  return runEmployeeCommand(deps, actor, () => prepareEnd(input), (db, p, at) => applyEnd(db, actor, p, at), concurrentChange);
 }

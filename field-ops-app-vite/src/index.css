@@ -8649,9 +8649,9 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 .fo-my-profile { }
 .ns-emp-access { margin: 0 0 16px; }
 .ns-emp-sources { gap: 0; }
-/* A Workforce read failure, and the page-level "editing is not available" statement. */
+/* A Workforce read failure, and the page-level edit statements: not granted, or what a save did. */
 .ns-emp-failure { margin: 8px 0; }
-.ns-emp-edit-unavailable { margin: 0 0 18px; max-width: 68ch; }
+.ns-emp-edit-notice { margin: 0 0 18px; max-width: 68ch; }
 
 /* Records on a responsibility axis, family by family. The family label and every record title wrap -- a
    long Account name or number is never clipped. */
