@@ -66,6 +66,7 @@ import { SERIALIZED_ASSET_ACQUIRE_CAPABILITY_REQUEST } from "../src/access/seria
 import { WORK_ORDER_PARTS_PLAN_CAPABILITY_REQUEST } from "../src/access/workOrderPartsPlanCapabilityAccess.js";
 import { declaredPageCapabilities } from "../src/metadata/pageRuntime.js";
 import { accountRecordPage } from "../src/metadata/definitions/accountPage.js";
+import { WORKFORCE_CAPABILITY_REQUEST } from "../src/access/workforceCapabilityAccess.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(HERE, "../src");
@@ -83,6 +84,9 @@ const ALL_REQUEST_SETS = {
   SERIALIZED_ASSET_ACQUIRE_CAPABILITY_REQUEST,
   WORK_ORDER_PARTS_PLAN_CAPABILITY_REQUEST,
   ACCOUNT_PAGE_CAPABILITY_REQUEST: declaredPageCapabilities(accountRecordPage),
+  // Workforce census finding #17: asked of the PostgreSQL Workforce transport (readMyWorkforceCapabilities), NOT the
+  // Firebase feed. It is still a request set the app sends, so an id in it is asked -- by the authority that decides it.
+  WORKFORCE_CAPABILITY_REQUEST,
 };
 const ASKED = new Set(Object.values(ALL_REQUEST_SETS).flat());
 

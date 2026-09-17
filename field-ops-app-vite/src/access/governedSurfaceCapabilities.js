@@ -215,21 +215,22 @@ export const DASHBOARD_MODULE_CAPABILITY_IDS = Object.freeze([
  * principal whose access changed between them could be shown a control decided against a version
  * that no longer applies.
  *
- * The three ids are DIFFERENT AUTHORITIES and are asked for separately on purpose:
- *   employeeProfile.write=true, userStatus.write=false -> Edit User works, Enable/Disable protected
- *   userStatus.write=true, employeeProfile.write=false -> the reverse
+ * The ids are DIFFERENT AUTHORITIES and are asked for separately on purpose:
+ *   userStatus.write=true, roleAssignment.write=false  -> Enable/Disable works, Add Role protected
+ *   roleAssignment.write=true, userStatus.write=false  -> the reverse
  *   audit.event.read=false                             -> Change History states it cannot be read
+ * (admin.employeeProfile.write, once the first example here, is no longer asked of this feed: Edit Employee is a
+ * Workforce control offered from PostgreSQL -- see the note at the end of the list.)
  *
  * `admin.credentialReset.initiate` IS INCLUDED, and including it changes nothing about its gate.
  * It is registered `active: false`, so the resolver returns DENY (inactivePermission) wherever it
  * is not activated — verified against the real sandbox grant. Asking is not activating: what it buys
  * is that the reset surface is hidden because the SERVER said no, rather than because nobody asked.
  *
- * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION. All four ids are already registered and already held
+ * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION. Every id below is already registered and already held
  * (or not) by exactly the principals that already hold (or do not hold) them.
  */
 export const ADMINISTRATION_USERS_SURFACE_CAPABILITIES = Object.freeze([
-  "admin.employeeProfile.write",
   "admin.userStatus.write",
   "audit.event.read",
   "admin.credentialReset.initiate",
@@ -246,10 +247,11 @@ export const ADMINISTRATION_USERS_SURFACE_CAPABILITIES = Object.freeze([
   // control protected -- which is a coherent and useful state, not a half-broken one. The reverse
   // (write without read) is what this surface shipped as, and it is the defect being closed.
   "admin.principalAccess.read",
-  // JOB ROLE (EMP-RT-08, Owner ruling 2026-09-16). The record page's Job Role control is offered only on a positive
-  // decision for this id -- deliberately NOT admin.employeeProfile.write -- so the shell must ask for it, or an
-  // administrator who holds it would see the control protected. Asking is not granting; the command re-checks it.
-  "admin.employeeJobRole.write",
+  // NOT admin.employeeProfile.write OR admin.employeeJobRole.write ANY MORE (Workforce census finding #17). Edit
+  // Employee and the Job Role control are Workforce controls, authorized by PostgreSQL, and the record page now decides
+  // their offer from the Workforce read readMyWorkforceCapabilities -- the same capabilities the commands re-check.
+  // Nothing else in this client asks this feed about either id, so asking for them here would be a question whose
+  // answer no screen uses (and a second, possibly disagreeing, answer to the same question).
 ]);
 
 /**

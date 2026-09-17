@@ -27,12 +27,15 @@
 // use the three reads and assignEmployeeJobRole (admin.employeeJobRole.write). No screen maintains the catalog yet.
 // listEmployeeChangeHistory (EMP-RT-H1, employee.record.read) is the governed Employee change history the Administration
 // Employee record renders; the actor's name is included only when the SERVER finds admin.principalAccess.read. EMP-RT-05 (assigned work) is NOT served and not a name here.
+// readMyWorkforceCapabilities (finding #17) answers which Workforce controls the CALLER may be offered, from the same
+// PostgreSQL capabilities the commands re-check (hooks/useWorkforceCapabilities.js); it takes no input.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
 
 export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "readMyEmployeeProfile",
+  "readMyWorkforceCapabilities",
   "readEmployee",
   "listEmployees",
   "readEmployeePrincipalLink",
@@ -58,7 +61,7 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */
-export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS = Object.freeze(["readMyEmployeeProfile", "listEmployees"]);
+export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS = Object.freeze(["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees"]);
 
 const OPERATIONS = new Set([...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]);
 export const isWorkforceOperation = (name) => typeof name === "string" && OPERATIONS.has(name);

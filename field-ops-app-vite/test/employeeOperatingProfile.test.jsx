@@ -98,6 +98,9 @@ function makeWorkforce(overrides = {}, records = [DANA, LEE, SAM, KIM, PAT]) {
           return ok({ employee: DANA, principalLink: { linkId: "l-1", principalId: "pr-1", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } });
         case "listEmployeeJobRoleHistory":
           return ok({ employeeId: input.employeeId, current: null, items: [], truncated: false });
+        case "readMyWorkforceCapabilities":
+          // Finding #17: the caller's PostgreSQL Workforce capabilities -- none in this suite.
+          return ok({ capabilities: [] });
         case "listManagedEmployees":
         case "listRecordsOwnedByEmployee":
         case "listAccountabilitiesForEmployee":
@@ -171,7 +174,8 @@ describe("the Administration Employee record reads the governed Workforce transp
     expect(failure.closest("[data-workforce-failure]").getAttribute("data-workforce-failure")).toBe("UNAVAILABLE");
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(screen.queryByRole("heading", { level: 1 })).toBeNull();
-    expect(workforce.call.mock.calls.map((c) => c[0])).toEqual(["readEmployee"]);
+    // The record read and the page's own Workforce capability read (finding #17) -- nothing else, and no second source.
+    expect(workforce.call.mock.calls.map((c) => c[0]).sort()).toEqual(["readEmployee", "readMyWorkforceCapabilities"]);
   });
 
   it("a refused read (403) says not available to you -- not an outage, not a not-found", async () => {
@@ -571,6 +575,8 @@ const EMPLOYEE_PAGE_MODULES = [
   "src/modules/administration/EmployeeJobRoleControl.jsx",
   "src/modules/administration/JobRoleRemediation.jsx",
   "src/hooks/useWorkforceRead.js",
+  "src/hooks/useWorkforceCapabilities.js",
+  "src/access/workforceCapabilityAccess.js",
   "src/hooks/useWorkforceEmployeeDirectory.js",
   "src/hooks/usePrincipalCredential.js",
   "src/services/workforceApiClient.js",
@@ -597,6 +603,7 @@ describe("Employee business data no longer depends on Firestore", () => {
     expect(seams).toEqual([
       "../../access/administrationUsersClient",
       "../../hooks/usePrincipalCredential.js",
+      "../../hooks/useWorkforceCapabilities.js",
       "../../hooks/useWorkforceRead.js",
       "../../services/adminPolicyApiClient.js",
       "../../services/workforceApiClient.js",

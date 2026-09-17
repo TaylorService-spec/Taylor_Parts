@@ -22,6 +22,9 @@
 //
 //   EMP-RT-07 readMyEmployeeProfile           Own Employee via the governed link; no capability beyond an active
 //                                             Principal + membership + exactly one active link. No selector.
+//   #17       readMyWorkforceCapabilities     The caller's OWN resolved capabilities, intersected with the closed Workforce
+//                                             list -- what the Administration Employee pages OFFER. No capability beyond an
+//                                             active Principal + membership; no selector; no Role, Principal or other id.
 //   EMP-RT-01 readEmployee / listEmployees    employee.record.read. Business record + bounded directory; no Principal,
 //                                             provider, Role or account status.
 //   EMP-RT-02 readEmployeePrincipalLink       admin.principalAccess.read (Owner ruling B).
@@ -51,6 +54,7 @@ import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { EmployeeReadError, type EmployeeReadActor, type EmployeeReadErrorCategory } from "./reads/employeeReadKernel";
 import { readMyEmployeeProfile } from "./reads/myEmployeeProfile";
+import { readMyWorkforceCapabilities } from "./reads/myWorkforceCapabilities";
 import { listAccountabilitiesForEmployee, listRecordsOwnedByEmployee } from "./reads/employeeResponsibilityReads";
 import { listEmployees, listManagedEmployees, readEmployee } from "./reads/employeeDirectoryReads";
 import { readEmployeePrincipalLink } from "./reads/employeePrincipalLinkRead";
@@ -87,6 +91,7 @@ const command = read;
 
 const READ_RUNNERS = Object.freeze({
   readMyEmployeeProfile: read(readMyEmployeeProfile),
+  readMyWorkforceCapabilities: read(readMyWorkforceCapabilities),
   readEmployee: read(readEmployee),
   listEmployees: read(listEmployees),
   readEmployeePrincipalLink: read(readEmployeePrincipalLink),
@@ -122,8 +127,8 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze(Object.keys(COMMAND_RU
 export const isWorkforceOperation = (name: unknown): name is WorkforceOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
 
-/** The ONLY operations whose `input` may be omitted: the self read (no input at all) and the unfiltered directory. */
-export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile", "listEmployees"]);
+/** The ONLY operations whose `input` may be omitted: the two self reads (no input at all) and the unfiltered directory. */
+export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees"]);
 const OPTIONAL_INPUT = new Set<string>(WORKFORCE_OPTIONAL_INPUT_OPERATIONS);
 
 /** Fields that would state authority. Authority comes from the verified subject and PostgreSQL, never from the body. */

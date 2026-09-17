@@ -3168,11 +3168,10 @@
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/modules/administration/UserDetail.jsx"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3218,11 +3217,10 @@
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/employeeJobRole.js"
         ],
         "serverReferenceCount": 2,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

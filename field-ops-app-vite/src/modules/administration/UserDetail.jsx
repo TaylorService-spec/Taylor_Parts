@@ -5,6 +5,7 @@ import { administrationUsersClient } from "../../access/administrationUsersClien
 import { callPolicyApi } from "../../services/adminPolicyApiClient.js";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
 import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
+import { WORKFORCE_CAPABILITY_STATE, WORKFORCE_CAPABILITY_SUBJECT, useWorkforceCapabilities } from "../../hooks/useWorkforceCapabilities.js";
 import { CREDENTIAL_STATE, usePrincipalCredential } from "../../hooks/usePrincipalCredential.js";
 import LoadingState from "../../shared/ui/LoadingState";
 import RecordIdentity from "../../shared/ui/RecordIdentity.jsx";
@@ -91,13 +92,20 @@ import {
 // updateEmployeeProfile Firebase callable (which wrote the retired Firestore record) is not reachable from this
 // client any more: the seam no longer exports it.
 //
-// WHO IS OFFERED IT. Callers the trusted capability feed says hold admin.employeeProfile.write get a working
-// button (and `?edit=1` opens the form); everyone else keeps the protected button with that reason. That test only
-// decides what to OFFER: the command re-checks the capability server-side, and a 403 renders as "not authorized,
+// WHO IS OFFERED IT (Workforce census finding #17). The Workforce offer is decided by readMyWorkforceCapabilities
+// (hooks/useWorkforceCapabilities.js): the caller's PostgreSQL capabilities -- the SAME set the Workforce commands
+// re-check -- and never by the Firebase effective-access feed, so the offer and the authorization cannot disagree.
+// Callers it says hold admin.employeeProfile.write get a working button (and `?edit=1` opens the form); everyone else
+// keeps the protected button with that reason. While it is loading nothing is offered and nothing is refused; when it
+// fails the page says the permissions could not be read -- never "not granted" and never "not configured". That test
+// only decides what to OFFER: the command re-checks the capability server-side, and a 403 renders as "not authorized,
 // nothing saved" inside the form -- it is never hidden or turned into success.
 //
 // JOB ROLE IS NOT EDIT EMPLOYEE. The Job Role section (EMP-RT-08) has its own control, offered only to callers the
-// feed says hold admin.employeeJobRole.write (EmployeeJobRoleControl), and its own re-read after a change.
+// same Workforce read says hold admin.employeeJobRole.write (EmployeeJobRoleControl), and its own re-read after a change.
+//
+// USER ACCESS IS STILL THE FEED. `hasCapability` (the app-wide Firebase feed) is passed ONLY to the account and Role
+// actions (UserAccessActions), whose authorities still live there. It decides nothing about Workforce controls.
 //
 // NO OPTIMISTIC STATE. After a save that wrote something the form closes, the outcome is stated in words, and
 // record.reload() re-reads EMP-RT-01. A refused Save saved nothing and says so; there is no partial save. The page shows
@@ -114,9 +122,13 @@ export default function UserDetail({
   const [searchParams] = useSearchParams();
   const editRequested = searchParams.get("edit") === "1";
 
-  const canEdit = holdsCapability(hasCapability, EMPLOYEE_PROFILE_WRITE_CAPABILITY);
+  // THE WORKFORCE OFFER: PostgreSQL, read once per mount (and on Retry). Denied while loading, failed or signed out.
+  const workforceCapabilities = useWorkforceCapabilities({ client: workforce, principalKey: user?.uid ?? null });
+  const capabilitiesReady = workforceCapabilities.status === WORKFORCE_CAPABILITY_STATE.READY;
+  const capabilitiesFailed = workforceCapabilities.status === WORKFORCE_CAPABILITY_STATE.FAILED;
+  const canEdit = workforceCapabilities.has(EMPLOYEE_PROFILE_WRITE_CAPABILITY);
   // A SEPARATE authority (Owner ruling EMP-RT-08): admin.employeeProfile.write never offers the Job Role control.
-  const canAssignJobRole = holdsCapability(hasCapability, EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY);
+  const canAssignJobRole = workforceCapabilities.has(EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY);
   // `?edit=1` opens the form once the capability is known; Cancel or a save closes it and it stays closed.
   const [editOpen, setEditOpen] = useState(false);
   const [editClosed, setEditClosed] = useState(false);
@@ -213,7 +225,7 @@ export default function UserDetail({
     credential.status === CREDENTIAL_STATE.RESOLVED ? { displayName: name, userId: credential.subject } : null;
 
   return (
-    <div className="ns-page fo-user-detail" data-employee-record="READY">
+    <div className="ns-page fo-user-detail" data-employee-record="READY" data-workforce-capabilities={workforceCapabilities.status}>
       <div className="ns-page__utility">
         <span className="ns-page__context">
           <Link to="/administration/users">Users</Link>
@@ -234,7 +246,8 @@ export default function UserDetail({
           { key: "access", label: "User Access", value: access.words },
         ]}
         actions={
-          canEdit ? (
+          // Loading: nothing offered and nothing refused yet. Failed: protected, saying the permissions could not be read.
+          !capabilitiesReady && !capabilitiesFailed ? null : canEdit ? (
             editing ? null : (
               <Button
                 variant="primary"
@@ -249,14 +262,25 @@ export default function UserDetail({
               </Button>
             )
           ) : (
-            <Button variant="protected" id="employee-edit" data-user-action="edit" reason={EDIT_NOT_GRANTED_REASON}>
+            <Button
+              variant="protected"
+              id="employee-edit"
+              data-user-action="edit"
+              reason={capabilitiesFailed ? capabilityFailureWords(workforceCapabilities.error) : EDIT_NOT_GRANTED_REASON}
+            >
               Edit Employee
             </Button>
           )
         }
       />
 
-      {editRequested && !canEdit ? (
+      {editRequested && capabilitiesFailed ? (
+        <div className="ns-emp-edit-notice" data-employee-edit="CAPABILITIES_UNAVAILABLE">
+          <WorkforceFailure error={workforceCapabilities.error} subject={WORKFORCE_CAPABILITY_SUBJECT} onRetry={workforceCapabilities.reload} />
+        </div>
+      ) : null}
+
+      {editRequested && capabilitiesReady && !canEdit ? (
         <div className="ns-emp-edit-notice" data-employee-edit="NOT_GRANTED">
           <p className="ns-state ns-state--denied">{`Editing this Employee is not available to you. ${EDIT_NOT_GRANTED_REASON}`}</p>
         </div>
@@ -311,6 +335,9 @@ export default function UserDetail({
                 workforce={workforce}
                 canAssign={canAssignJobRole}
                 administersEmployees={canEdit}
+                capabilityStatus={workforceCapabilities.status}
+                capabilityError={workforceCapabilities.error}
+                onRetryCapabilities={workforceCapabilities.reload}
                 jobRole={jobRole}
                 onReread={() => {
                   reload();
@@ -411,18 +438,12 @@ function EditNotice({ notice }) {
 
 const EMPLOYEE_PROFILE_WRITE_CAPABILITY = "admin.employeeProfile.write";
 
-// What this session can actually know when the button is protected: the trusted feed did not return a positive
-// decision for admin.employeeProfile.write. It does not claim a cause (no grant, no feed, inactive capability).
-const EDIT_NOT_GRANTED_REASON = "The trusted access feed did not grant Employee profile editing (admin.employeeProfile.write) for your account.";
+// What this session can actually know when the button is protected: the Workforce capability read answered and did
+// not include admin.employeeProfile.write. It does not claim a cause (no Role, no grant reconciliation).
+const EDIT_NOT_GRANTED_REASON = "The Workforce service did not grant Employee profile editing (admin.employeeProfile.write) for your account.";
 
-function holdsCapability(hasCapability, id) {
-  if (typeof hasCapability !== "function") return false;
-  try {
-    return hasCapability(id) === true;
-  } catch {
-    return false;
-  }
-}
+// When the Workforce capability read itself failed: the page's usual honest unavailable wording, never "not granted".
+const capabilityFailureWords = (error) => describeWorkforceFailure(error, WORKFORCE_CAPABILITY_SUBJECT).words;
 
 /**
  * The account and Role actions, or the truthful reason they cannot be offered. They exist only for a credential
