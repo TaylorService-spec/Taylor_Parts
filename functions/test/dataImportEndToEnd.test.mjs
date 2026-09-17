@@ -290,11 +290,14 @@ await check("a file that is not a readable workbook is refused with its own reas
 
 // --------------------------------------------------------------- customers
 
-await check("a customer CSV becomes a governed Customer, searchable by the derived key", async () => {
+await check("CRM CUTOVER FREEZE: a customer CSV still stages, but executing it is refused whole -- nothing written, job not claimed", async () => {
+  // Since #1926 the legacy Firestore CRM writers are FROZEN for the CRM cutover (crm/crmWriterState.ts): the customer
+  // import refuses the job as a whole, before it is claimed and before any row is written. Staging is a preview and
+  // still works, so an administrator is told why, instead of a file silently producing nothing.
   const csv = [
     "CUSTOMER_NAME,BILLING_ADDRESS,STATUS,CUSTOMER_NUMBER",
-    `Seeded Soda Works ${run},1 Main St,ACTIVE,C-${run}`,
-    `Seeded Ice Co ${run},2 Main St,Prospect,C-${run}-2`,
+    `Frozen Soda Works ${run},1 Main St,ACTIVE,C-${run}`,
+    `Frozen Ice Co ${run},2 Main St,Prospect,C-${run}-2`,
   ].join("\n");
 
   const staged = await stageDataImport.run({ data: { fileName: "customers.csv", fileText: csv }, auth });
@@ -302,36 +305,31 @@ await check("a customer CSV becomes a governed Customer, searchable by the deriv
   assert.equal(staged.job.entityType, "CUSTOMERS", "the header must detect as Customers, not Parts");
   assert.deepEqual(staged.job.summary, { total: 2, ready: 2, warnings: 0, errors: 0 });
 
-  const done = await executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth });
-  assert.equal(done.job.status, "COMPLETED");
-  assert.equal(done.job.result.created, 2);
-
-  const id = deriveImportedAccountId(`Seeded Soda Works ${run}`);
-  const snap = await db.collection("accounts").doc(id).get();
-  assert.equal(snap.exists, true);
-  const data = snap.data();
-  assert.equal(data.name, `Seeded Soda Works ${run}`);
-  assert.equal(data.status, "ACTIVE");
-
-  // THE DERIVED SEARCH KEY. Without it the customer is permanently unfindable by the
-  // customer search box, and the symptom never points at the import that caused it.
-  assert.equal(data.nameLower, `Seeded Soda Works ${run}`.toLowerCase());
-
-  // THE GOVERNED CREATE BASELINE the accounts Rules enforce for every other writer. The
-  // Admin SDK bypasses Rules, so this is the only thing standing behind that guarantee here.
-  assert.equal(data.paymentTerms, undefined);
-  assert.equal(data.taxStatus, undefined);
-
-  // Timestamp-typed, not epoch millis: a number sorts BELOW every Timestamp under
-  // `updatedAt DESC`, so an imported customer would land at the bottom of the list it was
-  // imported into and be unreachable from it.
-  assert.equal(typeof data.updatedAt?.toDate, "function");
+  const auditsBefore = (await db.collection("auditEvents").where("action", "==", "createAccountFromImport").get()).size;
+  await assert.rejects(
+    executeDataImport.run({ data: { jobId: staged.job.jobId, approved: true }, auth }),
+    (err) => err.code === "failed-precondition" && err.details?.code === "FIRESTORE_CRM_WRITER_FROZEN",
+  );
+  for (const name of [`Frozen Soda Works ${run}`, `Frozen Ice Co ${run}`]) {
+    assert.equal((await db.collection("accounts").doc(deriveImportedAccountId(name)).get()).exists, false, `${name} was written`);
+  }
+  assert.equal((await db.collection("auditEvents").where("action", "==", "createAccountFromImport").get()).size, auditsBefore);
+  const jobs = (await listDataImportJobs.run({ data: {}, auth })).jobs;
+  const job = jobs.find((j) => j.jobId === staged.job.jobId);
+  assert.ok(job, "the staged job is no longer listed");
+  assert.notEqual(job.status, "COMPLETED");
+  assert.notEqual(job.status, "RUNNING", "a refused job was claimed");
 });
 
-await check("the customer command wrote its own audit event", async () => {
-  const events = await db.collection("auditEvents").where("action", "==", "createAccountFromImport").get();
-  assert.ok(events.docs.length >= 2, `expected an audit event per created Customer, saw ${events.docs.length}`);
-});
+// The entities below reference a customer. The customer import cannot create one while CRM is frozen, so the
+// pre-existing Customer they need is a fixture written directly to the emulator -- the same shape the import wrote.
+{
+  const soda = `Seeded Soda Works ${run}`;
+  await db.collection("accounts").doc(deriveImportedAccountId(soda)).set({
+    name: soda, nameLower: soda.toLowerCase(), status: "ACTIVE",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
 
 await check("re-staging the same customers finds them by NAME, not only by derived id", async () => {
   // The customers already in EOS were created through the interface with auto-ids, so the
@@ -626,10 +624,11 @@ await check("ACCEPTANCE: all five entities landed, and each is what it claims to
   assert.equal((await db.collection("fieldops_wos").get()).size, 0);
   assert.equal((await db.collection("fieldops_jobs").get()).size, 0);
 
-  // Every entity's write went through a command that audited it. Four distinct actions,
+  // Every entity's write went through a command that audited it. Distinct actions per entity,
   // which is what proves import did not grow a shortcut for any one of them.
   const actions = new Set((await db.collection("auditEvents").get()).docs.map((d) => String(d.data().action)));
-  for (const action of ["createPart", "createAccountFromImport", "createEquipmentFromImport", "createServiceHistoryFromImport"]) {
+  // createAccountFromImport is absent by design while the CRM cutover freeze holds (see the customer check above).
+  for (const action of ["createPart", "createEquipmentFromImport", "createServiceHistoryFromImport"]) {
     assert.ok(actions.has(action), `no audit event for ${action}`);
   }
 

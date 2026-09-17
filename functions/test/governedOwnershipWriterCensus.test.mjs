@@ -375,16 +375,19 @@ test("RECORDED: the four firestore.rules findings are unchanged, and accountOwne
       "Rules are Tier-2 HOLD, so this change did not come from this lane.",
   );
 
-  // locations and contacts: create/update with NO field constraint at all.
-  for (const collection of ["locations", "contacts"]) {
+  // accounts, locations and contacts: the three PERSON-axis client write paths the census recorded as BYPASS
+  // DEFECTS were CLOSED in the governed Rules by #1929 (CRM cutover): every client write is denied, so no client can
+  // write an owner field at all. If a write arm reappears, the census must be re-measured before trusting §3.
+  for (const collection of ["accounts", "locations", "contacts"]) {
     const at = rules.indexOf(`match /${collection}/{`);
     assert.ok(at > 0, `the ${collection} Rules block is gone — the census must be re-measured`);
-    const block = rules.slice(at, rules.indexOf("}", rules.indexOf("allow delete", at)));
+    const block = rules.slice(at, rules.indexOf("}", rules.indexOf("allow create, update, delete", at)));
     assert.ok(
-      /allow create, update: if isAdminOrDispatcher\(\);/.test(block),
-      `the ${collection} write statement changed. The census recorded it as unconstrained on the owner ` +
-        "field; re-measure before trusting §3.",
+      /allow create, update, delete: if false;/.test(block),
+      `the ${collection} write statement changed. The census records it as write-denied since #1929; ` +
+        "re-measure before trusting §3.",
     );
+    assert.doesNotMatch(block, /allow (create|update|write)[^;]*isAdmin/, `${collection} grants a client write again`);
   }
 
   // The commercial three stay Admin-SDK-only, which is why they have no client bypass.
@@ -610,8 +613,9 @@ test("GOVERNED/SEED: an operator script reaching accountability storage is class
     }
     // Unavailable to the runtime: no source module imports it.
     const name = script.split("/").pop().replace(/\.[cm]?js$/, "");
+    // Executable source only: a comment naming the script as an example caller is documentation, not a reach.
     for (const file of walk(SRC_DIR, [".ts"])) {
-      assert.ok(!readFileSync(file, "utf8").includes(name), `${relative(FUNCTIONS_DIR, file)} reaches the GOVERNED/SEED script`);
+      assert.ok(!stripComments(readFileSync(file, "utf8")).includes(name), `${relative(FUNCTIONS_DIR, file)} reaches the GOVERNED/SEED script`);
     }
   }
 });
