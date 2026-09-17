@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { locationRowFromCrm, readAllPages } from "../services/crmApiClient.js";
 
 // Work Order wizard -- Customer picker. Fetches the locations for the BOUNDED
 // set of visible candidate accounts in ONE batched query
@@ -41,34 +39,27 @@ export function useLocationsForAccounts(accountIds = []) {
     }
     setLoading(true);
     let active = true;
-    const q = query(collection(db, LOCATIONS_COLLECTION), where("accountId", "in", ids));
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        if (!active) return; // obsolete callback -- must not restore stale data
-        const grouped = new Map();
-        for (const d of snap.docs) {
-          const loc = { id: d.id, ...d.data() };
-          const list = grouped.get(loc.accountId) ?? [];
-          list.push(loc);
-          grouped.set(loc.accountId, list);
-        }
-        setByAccount(grouped);
-        setError(false);
-        setLoading(false);
-      },
-      (err) => {
+    // CRM CUTOVER: each Account's customer sites from the governed PostgreSQL CRM authority (EOS API). One-shot, bounded.
+    (async () => {
+      const grouped = new Map();
+      for (const accountId of ids) {
+        const res = await readAllPages("listAccountLocations", { accountId }, locationRowFromCrm);
         if (!active) return;
-        // Dev-only log; NEVER surfaced to the UI (no raw message/code/id).
-        console.error("useLocationsForAccounts: locations query failed", err);
-        setByAccount(new Map()); // clear any stale/partial results
-        setError(true);
-        setLoading(false);
+        if (!res.ok) {
+          console.error("useLocationsForAccounts: locations read failed", res.code);
+          setByAccount(new Map());
+          setError(true);
+          setLoading(false);
+          return;
+        }
+        grouped.set(accountId, res.rows);
       }
-    );
+      setByAccount(grouped);
+      setError(false);
+      setLoading(false);
+    })();
     return () => {
       active = false;
-      unsub();
     };
   }, [key, retryNonce]);
 

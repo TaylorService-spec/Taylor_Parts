@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase/firebase";
+import { useCallback } from "react";
 
 /**
  * Complete Account portfolio counts, from the governed aggregate read.
@@ -19,30 +17,9 @@ import { functions } from "../firebase/firebase";
  * when the real answer is that they may not see it.
  */
 export function useAccountPortfolioSummary({ enabled = true } = {}) {
-  const [summary, setSummary] = useState(null);
-  const [state, setState] = useState(enabled ? "LOADING" : "IDLE");
-
-  const load = useCallback(() => {
-    if (!enabled) return undefined;
-    let cancelled = false;
-    setState("LOADING");
-    httpsCallable(functions, "getAccountPortfolioSummary")()
-      .then((res) => {
-        if (cancelled) return;
-        setSummary(res?.data?.summary ?? null);
-        setState(res?.data?.summary ? "READY" : "UNAVAILABLE");
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setSummary(null);
-        setState(e?.code === "functions/permission-denied" ? "DENIED" : "UNAVAILABLE");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled]);
-
-  useEffect(() => load(), [load]);
-
-  return { summary, state, retry: load };
+  // CRM CUTOVER: the whole-book counts came from a Firebase callable over the retired Firestore `accounts` collection,
+  // which no longer holds the book of business. No PostgreSQL CRM aggregate exists yet, so the counts are UNAVAILABLE
+  // (rendered as a dash, never a zero) rather than a number about the wrong data.
+  const retry = useCallback(() => undefined, []);
+  return { summary: null, state: enabled ? "UNAVAILABLE" : "IDLE", retry };
 }

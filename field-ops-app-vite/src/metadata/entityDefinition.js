@@ -280,7 +280,8 @@ export function makeEntityDefinition(input = {}) {
   });
 }
 
-export const READ_VIA = Object.freeze(["CLIENT_DIRECT", "CALLABLE", "UNKNOWN"]);
+// EOS_API: served by the EOS trusted API over PostgreSQL (CRM cutover); a list source is selected per entity.
+export const READ_VIA = Object.freeze(["CLIENT_DIRECT", "CALLABLE", "EOS_API", "UNKNOWN"]);
 
 /**
  * Validate one EntityDefinition and everything it owns.

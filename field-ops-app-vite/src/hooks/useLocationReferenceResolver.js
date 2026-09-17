@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, documentId, getDocs, query, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { callCrmApi } from "../services/crmApiClient.js";
 import { REFERENCE_STATE } from "../metadata/referenceResolution.js";
 
 // RESOLVE LOCATION REFERENCES FOR A METADATA LIST, IN ONE BATCHED READ.
@@ -79,14 +77,14 @@ export function useLocationNames(locationIds) {
       const map = new Map();
       let status = LOCATION_NAMES_STATUS.READY;
       try {
+        // CRM CUTOVER: customer-site names come from the governed PostgreSQL CRM authority (EOS API).
         for (let i = 0; i < ids.length; i += CHUNK) {
-          const snap = await getDocs(
-            query(collection(db, LOCATIONS_COLLECTION), where(documentId(), "in", ids.slice(i, i + CHUNK))),
-          );
-          snap.forEach((d) => {
-            const name = pickLocationName(d.data());
-            if (name) map.set(d.id, name);
-          });
+          const results = await Promise.all(ids.slice(i, i + CHUNK).map((accountLocationId) => callCrmApi("getAccountLocation", { accountLocationId })));
+          for (const res of results) {
+            if (res.ok) { const name = pickLocationName(res.result); if (name) map.set(res.result.accountLocationId, name); continue; }
+            if (res.code === "ACCOUNT_LOCATION_NOT_FOUND" || res.code === "RECORD_ID_REQUIRED") continue;
+            throw Object.assign(new Error(res.message), { code: ["CAPABILITY_REQUIRED", "FORBIDDEN", "ACTOR_NOT_TENANT_MEMBER"].includes(res.code) ? "permission-denied" : res.code });
+          }
         }
       } catch (err) {
         status = err?.code === "permission-denied" ? LOCATION_NAMES_STATUS.DENIED : LOCATION_NAMES_STATUS.ERROR;

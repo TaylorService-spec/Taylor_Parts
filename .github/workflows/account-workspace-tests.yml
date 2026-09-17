@@ -27,6 +27,15 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
+      # CRM cutover: Account / Contact / customer-site client paths on the EOS API (PostgreSQL CRM).
+      - "field-ops-app-vite/src/services/crmApiClient.js"
+      - "field-ops-app-vite/src/metadata/crmListSource.js"
+      - "field-ops-app-vite/src/domain/accounts.js"
+      - "field-ops-app-vite/src/domain/contacts.js"
+      - "field-ops-app-vite/src/domain/locations.js"
+      - "field-ops-app-vite/src/domain/contactImport.js"
+      - "field-ops-app-vite/src/hooks/useCrmRead.js"
+      - "field-ops-app-vite/test/crmClientCutover.test.jsx"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -58,6 +67,15 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
+      # CRM cutover: Account / Contact / customer-site client paths on the EOS API (PostgreSQL CRM).
+      - "field-ops-app-vite/src/services/crmApiClient.js"
+      - "field-ops-app-vite/src/metadata/crmListSource.js"
+      - "field-ops-app-vite/src/domain/accounts.js"
+      - "field-ops-app-vite/src/domain/contacts.js"
+      - "field-ops-app-vite/src/domain/locations.js"
+      - "field-ops-app-vite/src/domain/contactImport.js"
+      - "field-ops-app-vite/src/hooks/useCrmRead.js"
+      - "field-ops-app-vite/test/crmClientCutover.test.jsx"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -138,6 +156,11 @@ jobs:
       # the whole-book portfolio cards staying whole-book under paging.
       - name: Customers structured list + related-field projection
         run: npx vitest run test/accountsStructuredList.test.jsx
+        working-directory: field-ops-app-vite
+
+      # CRM cutover: writers, reads and the Customers list source use the EOS API CRM route only -- no Firestore, no fallback.
+      - name: CRM client cutover (EOS API only)
+        run: npx vitest run test/crmClientCutover.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Lint
