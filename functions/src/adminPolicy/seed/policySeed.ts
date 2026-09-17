@@ -68,21 +68,58 @@ export interface SeedResult {
   readonly missingRoleKeys: readonly string[];
 }
 
-interface SnapshotField {
+export interface SnapshotField {
   key: string; label: string; description: string | null; dataType: string; required: boolean;
   allowedValues: string[]; defaultValue: string | null; searchable: boolean; sortable: boolean;
   reportable: boolean; sensitivity: string; referenceTo: string | null;
 }
-interface SnapshotObject {
+export interface SnapshotObject {
   key: string; label: string; labelPlural: string | null; description: string | null; domain: string;
   supportsDelete: boolean; capabilitiesByVerb: Record<CredVerb, string[]>; fields: SnapshotField[];
 }
 
 const VERBS: readonly CredVerb[] = ["C", "R", "E", "D"];
 
-/** Every Role the platform declares, compatibility and governed alike, keyed by its id. */
-function allRoles(): Record<string, { id: string; name: string; description: string; permissions: readonly string[] }> {
+/** One declared Role, as the seed reads it. */
+export interface SeedRoleDefinition { id: string; name: string; description: string; permissions: readonly string[] }
+
+/**
+ * Every Role the platform declares, compatibility and governed alike, keyed by its id.
+ *
+ * Exported so the role-catalog reconcile (seed/roleCatalogReconcile.ts) reads the SAME catalog the seed does.
+ */
+export function seedRoleDefinitions(): Record<string, SeedRoleDefinition> {
   return { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES } as never;
+}
+const allRoles = seedRoleDefinitions;
+
+/** The snapshot's Objects, ORDERED BY KEY. Shared with the role-catalog reconcile. */
+export function seedObjects(): readonly SnapshotObject[] {
+  return [...((snapshot as unknown as { objects: SnapshotObject[] }).objects)]
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+/** The `createRole` input the seed writes for a catalog Role. Shared so the reconcile cannot drift from it. */
+export function seedRoleInput(key: string, definition: SeedRoleDefinition) {
+  return {
+    key,
+    name: definition.name ?? key,
+    description: definition.description ?? null,
+    origin: "SYSTEM" as const,
+    // PROTECTED: cannot be deleted or stripped of administering authority, so ordinary
+    // configuration cannot leave the tenant unadministrable.
+    protected: PROTECTED_ROLE_KEYS.includes(key),
+  };
+}
+
+/** Refuse a snapshot this seed does not understand, rather than half-read it. */
+export function assertSupportedSeedSnapshot(): void {
+  if ((snapshot as { snapshotVersion: number }).snapshotVersion !== SUPPORTED_SNAPSHOT_VERSION) {
+    throw new Error(
+      `policySeedSnapshot.json is version ${(snapshot as { snapshotVersion: number }).snapshotVersion}, ` +
+      `and this seed understands ${SUPPORTED_SNAPSHOT_VERSION}`,
+    );
+  }
 }
 
 /**
@@ -108,7 +145,7 @@ export function deriveObjectCred(
 }
 
 /** Does this Role get any grant at all on this object? An all-false row is not worth storing. */
-const hasAnyGrant = (cred: CredSet) => VERBS.some((v) => cred[v]);
+export const hasAnyGrant = (cred: CredSet) => VERBS.some((v) => cred[v]);
 
 /**
  * Seed one tenant.
@@ -121,16 +158,10 @@ export async function seedTenantPolicy(
   tenantId: TenantId,
   actorUid: string,
 ): Promise<SeedResult> {
-  if ((snapshot as { snapshotVersion: number }).snapshotVersion !== SUPPORTED_SNAPSHOT_VERSION) {
-    throw new Error(
-      `policySeedSnapshot.json is version ${(snapshot as { snapshotVersion: number }).snapshotVersion}, ` +
-      `and this seed understands ${SUPPORTED_SNAPSHOT_VERSION}`,
-    );
-  }
+  assertSupportedSeedSnapshot();
 
-  const objects = [...((snapshot as unknown as { objects: SnapshotObject[] }).objects)]
-    // ORDERED BY KEY, so the run is deterministic regardless of the snapshot's own ordering.
-    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  // ORDERED BY KEY, so the run is deterministic regardless of the snapshot's own ordering.
+  const objects = seedObjects();
 
   const roleDefinitions = allRoles();
   const roleKeys = Object.keys(roleDefinitions).sort();
@@ -200,15 +231,7 @@ export async function seedTenantPolicy(
       const definition = roleDefinitions[key];
       let id = existingRoles.get(key)?.id ?? null;
       if (id === null) {
-        const row = await tx.createRole({
-          key,
-          name: definition.name ?? key,
-          description: definition.description ?? null,
-          origin: "SYSTEM",
-          // PROTECTED: cannot be deleted or stripped of administering authority, so ordinary
-          // configuration cannot leave the tenant unadministrable.
-          protected: PROTECTED_ROLE_KEYS.includes(key),
-        });
+        const row = await tx.createRole(seedRoleInput(key, definition));
         id = row.id;
         created.roles += 1;
       }

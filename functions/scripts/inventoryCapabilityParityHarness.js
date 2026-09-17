@@ -26,7 +26,7 @@
 //
 // Six of the eight writers check a capability string through `resolveEffectivePermission` against
 // Firestore `roleAssignments` + `users/{uid}.accessVersion` -- the exact mechanism
-// functions/src/adminPolicy/migration/firestorePolicyParityHarness.ts already proves for role
+// functions/src/adminPolicy/migration/roleAssignmentCensus.ts (successor to the former parity harness) censuses for role
 // ASSIGNMENTS; this harness proves the further step of CAPABILITY resolution for these particular
 // operations. The other two (`inventory.workOrderConsumption.record`,
 // `workOrder.lifecycle.{dispatch,cancel,complete}`) check a hardcoded `users/{uid}.role` string

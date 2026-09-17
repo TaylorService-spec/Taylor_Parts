@@ -18,15 +18,14 @@ import { join } from "node:path";
 
 const POLICY_DIR = "src/adminPolicy";
 
-/** Files permitted to read Firestore for MIGRATION only. Each needs a reason, and today there are none. */
-const TRANSITIONAL_ADAPTERS = Object.freeze({
-  "src\\adminPolicy\\migration\\firestorePolicyParityHarness.ts":
-    "MIGRATION PARITY ONLY, and READ ONLY. It compares the legacy Firestore roleAssignments and " +
-    "users/{uid}.accessVersion against the PostgreSQL policy so a cutover can be proved rather than " +
-    "assumed. Nothing in the running system calls it, it returns no Firestore data as policy, and " +
-    "it has no write path. DELETE it -- and this entry -- once every tenant reports IN_PARITY and " +
-    "the legacy collection is unread.",
-});
+/**
+ * Files permitted to read Firestore for MIGRATION only. Each needs a reason, and today there are none.
+ *
+ * The former entry, migration/firestorePolicyParityHarness.ts, was replaced by migration/roleAssignmentCensus.ts,
+ * which reaches BOTH stores through injected readers and imports no Firebase module at all. The one legacy read
+ * lives in functions/scripts/roleAssignmentCensusCli.js (FIREBASE_EXIT_MIGRATION_ONLY), outside this subsystem.
+ */
+const TRANSITIONAL_ADAPTERS = Object.freeze({});
 
 /** Windows and POSIX spell the same path differently; the allowlist should not have to care. */
 const isTransitional = (file) =>
@@ -269,10 +268,21 @@ test("NOTHING in the running system imports the transitional harness", () => {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) { walk(path); continue; }
       if (!/\.(ts|tsx|js|jsx|mjs)$/.test(entry)) continue;
-      if (path.includes("firestorePolicyParityHarness")) continue;
-      if (/firestorePolicyParityHarness/.test(readFileSync(path, "utf8"))) offenders.push(path);
+      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$/.test(path)) continue;
+      if (/firestorePolicyParityHarness|roleAssignmentCensus/.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };
   for (const root of roots) walk(root);
   assert.deepEqual(offenders, [], "the parity harness is run by a person, never by the product");
+});
+
+test("the role assignment census holds NO write path in either store", () => {
+  // It succeeded the parity harness and is Firebase-free, so the general guards above already cover its imports.
+  // What they do not cover is the POLICY side: a census holding a transaction handle could "repair" what it finds,
+  // destroying the evidence that drift existed.
+  const code = stripComments(readFileSync("src/adminPolicy/migration/roleAssignmentCensus.ts", "utf8"));
+  for (const verb of [/\btransact\s*\(/, /\bappendAudit\s*\(/, /\bcreate(?!Hash\b)[A-Z]\w*\s*\(/, /\bset[A-Z]\w*\s*\(/, /\bbump[A-Z]\w*\s*\(/, /\bupdate[A-Z]\w*\s*\(/]) {
+    assert.equal(verb.test(code), false, `the census must not call ${verb}`);
+  }
+  assert.doesNotMatch(code, /PolicyRepository\b|PolicyTransaction\b/, "it takes the READ port only");
 });
