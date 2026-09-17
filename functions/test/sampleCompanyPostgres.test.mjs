@@ -115,7 +115,7 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
  */
 // Moved deliberately for 1759924800000 (CRM Account ownership handoffs + import receipt operation): an EMPTY append-only
 // table and a widened command_receipts operation vocabulary. The seed writes neither; nothing asserted here changes.
-const PINNED_LAST_MIGRATION = "1759924800000_crm-account-ownership-handoffs";
+const PINNED_LAST_MIGRATION = "1759924800000_crm-account-ownership-history";
 const PINNED_MIGRATION_COUNT = 29;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;

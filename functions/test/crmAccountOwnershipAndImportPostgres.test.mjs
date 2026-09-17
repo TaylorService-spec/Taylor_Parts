@@ -1,7 +1,8 @@
 // Against a real postgres:16 -- the two governed CRM capabilities the CRM client cutover (CRM-8) requires:
 //
-//   A. Account ownership handoff: updateAccount's `ownerEmployeeId` + `ownershipHandoff`, the append-only
-//      eos_crm.account_ownership_handoffs history (migration 1759924800000), and listAccountOwnershipHandoffs.
+//   A. Account ownership history: updateAccount's `ownerEmployeeId` + `ownershipHandoff` as OWNER_HANDOFF (owned Account)
+//      or INITIAL_OWNER_ASSIGNMENT (legacy ownerless Account, Owner ruling option b), the append-only
+//      eos_crm.account_ownership_history (migration 1759924800000), and listAccountOwnershipHistory.
 //   B. The atomic CSV Contact import: importAccountContacts -- 1..200 Contacts for ONE Account, all or none, one receipt.
 //
 // Its OWN database, migrated by the normal runner through the whole set, dropped in ONE t.after that ends the pool first.
@@ -62,7 +63,7 @@ const failingOn = (pool, pattern) => ({
   },
 });
 
-test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
+test("CRM Account ownership history and atomic Contact import, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
   execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up", "--migrations-dir", "migrations"], {
     cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, stdio: "pipe",
@@ -75,7 +76,7 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
   const q = (text, values = []) => pool.query(text, values);
   const deps = { pool };
   const count = async (table, where = "TRUE", values = []) => Number((await q(`SELECT count(*)::int n FROM eos_crm.${table} WHERE ${where}`, values)).rows[0].n);
-  const history = (accountId) => q(`SELECT * FROM eos_crm.account_ownership_handoffs WHERE account_id = $1 ORDER BY effective_at, id`, [accountId]).then((r) => r.rows);
+  const history = (accountId) => q(`SELECT * FROM eos_crm.account_ownership_history WHERE account_id = $1 ORDER BY effective_at, id`, [accountId]).then((r) => r.rows);
   const ownerOf = async (accountId) => (await q(`SELECT owner_employee_id FROM eos_crm.accounts WHERE id = $1`, [accountId])).rows[0].owner_employee_id;
 
   // ── the world ──
@@ -86,7 +87,11 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
   }
   await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES
     ('e-a','t1','ACTIVE','taylor'), ('e-b','t1','ACTIVE','taylor'), ('e-c','t1','ACTIVE','taylor'), ('e-t2','t2','ACTIVE','taylor')`);
-  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-legacy-ownerless','t1','Ownerless Diner','PROSPECT','import','import')`);
+  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES
+    ('acct-legacy-ownerless','t1','Ownerless Diner','PROSPECT','import','import'),
+    ('acct-remediate','t1','Remediation Cafe','ACTIVE','import','import'),
+    ('acct-remediate-2','t1','Second Remediation Cafe','ACTIVE','import','import'),
+    ('acct-remediate-t2','t2','Tenant Two Ownerless','ACTIVE','import','import')`);
 
   const acct = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "Handoff Co", status: "ACTIVE", ownerEmployeeId: "e-a" });
   const child = await contacts.createContact(deps, A1, { idempotencyKey: K(), accountId: acct.accountId, name: "Child Contact" });
@@ -104,19 +109,19 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
     const rows = await history(acct.accountId);
     assert.equal(rows.length, 1);
     const [h] = rows;
-    assert.match(h.id, /^acohf_[0-9a-f-]{36}$/);
+    assert.match(h.id, /^acown_[0-9a-f-]{36}$/);
     assert.deepEqual(
-      { tenant: h.tenant_id, previous: h.previous_owner_employee_id, next: h.new_owner_employee_id, source: h.source, reason: h.reason, by: h.handed_off_by },
-      { tenant: "t1", previous: "e-a", next: "e-b", source: "CUSTOMER_HANDOFF_REVIEW", reason: "territory realignment", by: "p-updater" },
+      { tenant: h.tenant_id, event: h.event, previous: h.previous_owner_employee_id, next: h.new_owner_employee_id, source: h.source, reason: h.reason, by: h.changed_by },
+      { tenant: "t1", event: "OWNER_HANDOFF", previous: "e-a", next: "e-b", source: "CUSTOMER_HANDOFF_REVIEW", reason: "territory realignment", by: "p-updater" },
     );
     // Same transaction: recorded at the transaction's server now(); effective once the Account lock was held.
     assert.equal(h.created_at.toISOString(), updated.updatedAt);
     assert.ok(h.effective_at >= h.created_at && h.effective_at - h.created_at < 60_000, "effective_at is not the handoff statement's server time");
     // Through the governed read, newest first.
-    const listed = await accounts.listAccountOwnershipHandoffs(deps, A1, { accountId: acct.accountId });
+    const listed = await accounts.listAccountOwnershipHistory(deps, A1, { accountId: acct.accountId });
     assert.deepEqual(listed.items, [{
-      handoffId: h.id, accountId: acct.accountId, previousOwnerEmployeeId: "e-a", newOwnerEmployeeId: "e-b", source: "CUSTOMER_HANDOFF_REVIEW",
-      reason: "territory realignment", handedOffBy: "p-updater", effectiveAt: h.effective_at.toISOString(), createdAt: updated.updatedAt,
+      historyId: h.id, accountId: acct.accountId, event: "OWNER_HANDOFF", previousOwnerEmployeeId: "e-a", newOwnerEmployeeId: "e-b", source: "CUSTOMER_HANDOFF_REVIEW",
+      reason: "territory realignment", changedBy: "p-updater", effectiveAt: h.effective_at.toISOString(), createdAt: updated.updatedAt,
     }]);
     assert.equal(listed.truncated, false);
   });
@@ -138,14 +143,14 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
     const seen = [];
     let cursor;
     do {
-      const page = await accounts.listAccountOwnershipHandoffs(deps, A1, { accountId: acct.accountId, limit: 2, ...(cursor ? { cursor } : {}) });
+      const page = await accounts.listAccountOwnershipHistory(deps, A1, { accountId: acct.accountId, limit: 2, ...(cursor ? { cursor } : {}) });
       seen.push(...page.items.map((i) => i.newOwnerEmployeeId));
       cursor = page.nextCursor;
     } while (cursor);
     assert.deepEqual(seen, ["e-a", "e-c", "e-b"]);
-    await assert.rejects(accounts.listAccountOwnershipHandoffs(deps, A1, { accountId: acct.accountId, limit: 201 }), code("PAGE_SIZE_INVALID"));
-    const foreignCursor = Buffer.from(JSON.stringify({ v: 1, f: "accountOwnershipHandoff", n: "not-a-time", id: "x" })).toString("base64url");
-    await assert.rejects(accounts.listAccountOwnershipHandoffs(deps, A1, { accountId: acct.accountId, cursor: foreignCursor }), code("CURSOR_INVALID"));
+    await assert.rejects(accounts.listAccountOwnershipHistory(deps, A1, { accountId: acct.accountId, limit: 201 }), code("PAGE_SIZE_INVALID"));
+    const foreignCursor = Buffer.from(JSON.stringify({ v: 1, f: "accountOwnershipHistory", n: "not-a-time", id: "x" })).toString("base64url");
+    await assert.rejects(accounts.listAccountOwnershipHistory(deps, A1, { accountId: acct.accountId, cursor: foreignCursor }), code("CURSOR_INVALID"));
   });
 
   await t.test("(A4) the same owner is a no-op for ownership; ownershipHandoff without an owner change refuses and writes nothing", async () => {
@@ -185,27 +190,31 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
     const recent = (await history(acct.accountId)).slice(-3);
     assert.deepEqual(recent.map((r) => r.source), ["DIRECT_HANDOFF", "CUSTOMER_HANDOFF_REVIEW", "ADMIN_CORRECTION"]);
     assert.ok(recent.every((r) => r.reason.length === 500));
-    const raw = (source, reason, prev = "e-a", next = "e-b") => q(`INSERT INTO eos_crm.account_ownership_handoffs
-      (id, tenant_id, account_id, previous_owner_employee_id, new_owner_employee_id, source, reason, handed_off_by, effective_at)
-      VALUES ($1, 't1', $2, $3, $4, $5, $6, 'p-raw', now())`, [`raw-${randomUUID()}`, acct.accountId, prev, next, source, reason]);
-    await assert.rejects(raw("WHIM", null), (e) => e.constraint === "account_ownership_handoffs_source_vocabulary");
-    await assert.rejects(raw("DIRECT_HANDOFF", " padded "), (e) => e.constraint === "account_ownership_handoffs_reason_shape");
-    await assert.rejects(raw("DIRECT_HANDOFF", "z".repeat(501)), (e) => e.constraint === "account_ownership_handoffs_reason_shape");
-    await assert.rejects(raw("DIRECT_HANDOFF", null, "e-a", "e-a"), (e) => e.constraint === "account_ownership_handoffs_is_not_a_no_op");
-    await assert.rejects(q(`INSERT INTO eos_crm.account_ownership_handoffs
-      (id, tenant_id, account_id, previous_owner_employee_id, new_owner_employee_id, source, handed_off_by, effective_at)
-      VALUES ('raw-null', 't1', $1, NULL, 'e-b', 'DIRECT_HANDOFF', 'p-raw', now())`, [acct.accountId]), (e) => e.code === "23502");
+    const raw = (event, source, reason, prev = "e-a", next = "e-b", account = acct.accountId, tenant = "t1") => q(`INSERT INTO eos_crm.account_ownership_history
+      (id, tenant_id, account_id, event, previous_owner_employee_id, new_owner_employee_id, source, reason, changed_by, effective_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'p-raw', now())`, [`raw-${randomUUID()}`, tenant, account, event, prev, next, source, reason]);
+    // (Initial-assignment shapes are proven on an Account with no history: the ordering trigger runs before the CHECKs.)
+    const shape = (e) => e.constraint === "account_ownership_history_event_shape";
+    await assert.rejects(raw("OWNER_HANDOFF", "WHIM", null), shape);
+    await assert.rejects(raw("OWNER_HANDOFF", null, null), shape, "a handoff without a source");
+    await assert.rejects(raw("OWNER_HANDOFF", "DIRECT_HANDOFF", null, null, "e-b"), shape, "a handoff without a predecessor");
+    await assert.rejects(raw("OWNER_HANDOFF", "DIRECT_HANDOFF", null, "e-a", "e-a"), shape, "a no-op handoff");
+    await assert.rejects(raw("INITIAL_OWNER_ASSIGNMENT", null, null, "e-a", "e-b", "acct-legacy-ownerless"), shape, "an initial assignment with an invented prior owner");
+    await assert.rejects(raw("INITIAL_OWNER_ASSIGNMENT", "DIRECT_HANDOFF", null, null, "e-b", "acct-legacy-ownerless"), shape, "an initial assignment with a handoff source");
+    await assert.rejects(raw("TRANSFER", "DIRECT_HANDOFF", null), (e) => ["account_ownership_history_event_shape", "account_ownership_history_event_vocabulary"].includes(e.constraint));
+    await assert.rejects(raw("OWNER_HANDOFF", "DIRECT_HANDOFF", " padded "), (e) => e.constraint === "account_ownership_history_reason_shape");
+    await assert.rejects(raw("OWNER_HANDOFF", "DIRECT_HANDOFF", "z".repeat(501)), (e) => e.constraint === "account_ownership_history_reason_shape");
+    // Initial assignment may not follow any other event of the Account.
+    await assert.rejects(raw("INITIAL_OWNER_ASSIGNMENT", null, null, null, "e-b"), (e) => e.constraint === "account_ownership_history_initial_assignment_first");
     // A cross-tenant history row is unrepresentable.
-    await assert.rejects(q(`INSERT INTO eos_crm.account_ownership_handoffs
-      (id, tenant_id, account_id, previous_owner_employee_id, new_owner_employee_id, source, handed_off_by, effective_at)
-      VALUES ('raw-x', 't2', $1, 'e-a', 'e-b', 'DIRECT_HANDOFF', 'p-raw', now())`, [acct.accountId]), (e) => e.constraint === "account_ownership_handoffs_account_same_tenant");
+    await assert.rejects(raw("OWNER_HANDOFF", "DIRECT_HANDOFF", null, "e-a", "e-b", acct.accountId, "t2"), (e) => e.constraint === "account_ownership_history_account_same_tenant");
   });
 
   await t.test("(A7) history is append-only: UPDATE and DELETE are refused by the store", async () => {
     const [first] = await history(acct.accountId);
-    await assert.rejects(q(`UPDATE eos_crm.account_ownership_handoffs SET reason = 'rewritten' WHERE id = $1`, [first.id]), /append-only: UPDATE/);
-    await assert.rejects(q(`DELETE FROM eos_crm.account_ownership_handoffs WHERE id = $1`, [first.id]), /append-only: DELETE/);
-    await assert.rejects(q(`DELETE FROM eos_crm.account_ownership_handoffs`), /append-only: DELETE/);
+    await assert.rejects(q(`UPDATE eos_crm.account_ownership_history SET reason = 'rewritten' WHERE id = $1`, [first.id]), /append-only: UPDATE/);
+    await assert.rejects(q(`DELETE FROM eos_crm.account_ownership_history WHERE id = $1`, [first.id]), /append-only: DELETE/);
+    await assert.rejects(q(`DELETE FROM eos_crm.account_ownership_history`), /append-only: DELETE/);
     assert.deepEqual((await history(acct.accountId))[0], first);
   });
 
@@ -216,19 +225,91 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
     await assert.rejects(accounts.updateAccount(deps, reader, { accountId: acct.accountId, ownerEmployeeId: "e-c" }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(accounts.updateAccount(deps, governedOnly, { accountId: acct.accountId, ownerEmployeeId: "e-c" }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(accounts.updateAccount(deps, A2, { accountId: acct.accountId, ownerEmployeeId: "e-t2" }), code("ACCOUNT_NOT_FOUND"));
-    await assert.rejects(accounts.listAccountOwnershipHandoffs(deps, A2, { accountId: acct.accountId }), code("ACCOUNT_NOT_FOUND"));
-    await assert.rejects(accounts.listAccountOwnershipHandoffs(deps, { ...A1, capabilities: new Set(["customer.record.update"]) }, { accountId: acct.accountId }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(accounts.listAccountOwnershipHistory(deps, A2, { accountId: acct.accountId }), code("ACCOUNT_NOT_FOUND"));
+    await assert.rejects(accounts.listAccountOwnershipHistory(deps, { ...A1, capabilities: new Set(["customer.record.update"]) }, { accountId: acct.accountId }), code("CAPABILITY_REQUIRED"));
     await assert.rejects(accounts.updateAccount(deps, A1, { accountId: acct.accountId, ownerEmployeeId: "e-c", tenantId: "t2" }), code("CALLER_AUTHORITY_REFUSED"));
     assert.deepEqual([await ownerOf(acct.accountId), (await history(acct.accountId)).length], before);
-    assert.deepEqual((await accounts.listAccountOwnershipHandoffs(deps, A2, { accountId: acct2.accountId })).items, []);
+    assert.deepEqual((await accounts.listAccountOwnershipHistory(deps, A2, { accountId: acct2.accountId })).items, []);
   });
 
-  await t.test("(A9) a LEGACY ownerless Account's first owner is not a handoff: refused, nothing written", async () => {
-    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-legacy-ownerless", ownerEmployeeId: "e-a", notes: "x" }), code("ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED"));
-    assert.equal(await ownerOf("acct-legacy-ownerless"), null);
-    assert.equal(await count("account_ownership_handoffs", "account_id = 'acct-legacy-ownerless'"), 0);
-    // Its other fields remain editable.
-    assert.equal((await accounts.updateAccount(deps, A1, { accountId: "acct-legacy-ownerless", notes: "still editable" })).notes, "still editable");
+  await t.test("(A9) INITIAL_OWNER_ASSIGNMENT: a legacy ownerless Account's first owner -- no invented predecessor, no source, the Principal as actor", async () => {
+    const assigned = await accounts.updateAccount(deps, UPDATER, { accountId: "acct-remediate", ownerEmployeeId: "e-a", notes: "remediated", ownershipHandoff: { reason: "  post-cutover remediation " } });
+    assert.deepEqual([assigned.ownerEmployeeId, assigned.notes, assigned.updatedBy], ["e-a", "remediated", "p-updater"]);
+    const [h, ...rest] = await history("acct-remediate");
+    assert.equal(rest.length, 0);
+    assert.deepEqual({ event: h.event, previous: h.previous_owner_employee_id, next: h.new_owner_employee_id, source: h.source, reason: h.reason, by: h.changed_by },
+      { event: "INITIAL_OWNER_ASSIGNMENT", previous: null, next: "e-a", source: null, reason: "post-cutover remediation", by: "p-updater" });
+    assert.notEqual(h.changed_by, "import", "the legacy creator/assigner is never fabricated as the actor");
+    const listed = await accounts.listAccountOwnershipHistory(deps, A1, { accountId: "acct-remediate" });
+    assert.deepEqual(listed.items.map((i) => [i.event, i.previousOwnerEmployeeId, i.newOwnerEmployeeId, i.source, i.changedBy]),
+      [["INITIAL_OWNER_ASSIGNMENT", null, "e-a", null, "p-updater"]]);
+    // Without any ownershipHandoff terms: reason null.
+    await accounts.updateAccount(deps, A1, { accountId: "acct-remediate-2", ownerEmployeeId: "e-c" });
+    assert.deepEqual((await history("acct-remediate-2")).map((r) => [r.event, r.previous_owner_employee_id, r.source, r.reason, r.changed_by]),
+      [["INITIAL_OWNER_ASSIGNMENT", null, null, null, "p-t1"]]);
+  });
+
+  await t.test("(A9b) initial assignment refusals: a source, clearing, unresolvable owners, capability and tenancy -- nothing written", async () => {
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-still-ownerless','t1','Still Ownerless','ACTIVE','import','import')`);
+    const id = "acct-still-ownerless";
+    for (const source of ["DIRECT_HANDOFF", "CUSTOMER_HANDOFF_REVIEW", "ADMIN_CORRECTION"]) {
+      await assert.rejects(accounts.updateAccount(deps, A1, { accountId: id, ownerEmployeeId: "e-a", ownershipHandoff: { source } }), code("INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED"));
+    }
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: id, ownerEmployeeId: "e-a", ownershipHandoff: { source: "WHIM" } }), code("HANDOFF_SOURCE_INVALID"));
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: id, ownerEmployeeId: null }), code("OWNER_REQUIRED"));
+    for (const [owner, expected] of [["e-t2", "OWNER_NOT_FOUND"], ["e-nobody", "OWNER_NOT_FOUND"], ["p-t1", "OWNER_NOT_FOUND"], ["e a", "OWNER_INVALID"]]) {
+      await assert.rejects(accounts.updateAccount(deps, A1, { accountId: id, ownerEmployeeId: owner, notes: "must not land" }), code(expected), owner);
+    }
+    await assert.rejects(accounts.updateAccount(deps, { ...A1, capabilities: new Set(["customer.record.read", "customer.record.create", "customer.governedField.write"]) }, { accountId: id, ownerEmployeeId: "e-a" }), code("CAPABILITY_REQUIRED"));
+    await assert.rejects(accounts.updateAccount(deps, A2, { accountId: id, ownerEmployeeId: "e-t2" }), code("ACCOUNT_NOT_FOUND"));
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-remediate-t2", ownerEmployeeId: "e-a" }), code("ACCOUNT_NOT_FOUND"));
+    assert.equal(await ownerOf(id), null);
+    assert.equal(await ownerOf("acct-remediate-t2"), null);
+    assert.equal(await count("account_ownership_history", "account_id IN ($1, 'acct-remediate-t2')", [id]), 0);
+    assert.notEqual((await accounts.getAccount(deps, A1, { accountId: id })).notes, "must not land");
+  });
+
+  await t.test("(A9c) the chain: a handoff after the initial assignment names it as predecessor; owner -> null refused; a second initial assignment is refused by the store", async () => {
+    await accounts.updateAccount(deps, A1, { accountId: "acct-remediate", ownerEmployeeId: "e-b", ownershipHandoff: { source: "ADMIN_CORRECTION", reason: "wrong rep" } });
+    await accounts.updateAccount(deps, A1, { accountId: "acct-remediate", ownerEmployeeId: "e-c" });
+    const rows = await history("acct-remediate");
+    assert.deepEqual(rows.map((r) => [r.event, r.previous_owner_employee_id, r.new_owner_employee_id, r.source]), [
+      ["INITIAL_OWNER_ASSIGNMENT", null, "e-a", null], ["OWNER_HANDOFF", "e-a", "e-b", "ADMIN_CORRECTION"], ["OWNER_HANDOFF", "e-b", "e-c", "DIRECT_HANDOFF"],
+    ]);
+    const listed = await accounts.listAccountOwnershipHistory(deps, A1, { accountId: "acct-remediate" });
+    assert.deepEqual(listed.items.map((i) => i.event), ["OWNER_HANDOFF", "OWNER_HANDOFF", "INITIAL_OWNER_ASSIGNMENT"], "newest first");
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-remediate", ownerEmployeeId: null }), code("OWNER_REQUIRED"));
+    assert.equal(await ownerOf("acct-remediate"), "e-c");
+    // Even if the owner column were forced back to NULL outside the authority, a second INITIAL_OWNER_ASSIGNMENT refuses.
+    await q(`UPDATE eos_crm.accounts SET owner_employee_id = NULL WHERE id = 'acct-remediate-2'`);
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-remediate-2", ownerEmployeeId: "e-a" }), code("INITIAL_OWNER_ALREADY_ASSIGNED"));
+    assert.equal(await ownerOf("acct-remediate-2"), null, "the refused assignment moved the owner");
+    const second = `INSERT INTO eos_crm.account_ownership_history (id, tenant_id, account_id, event, new_owner_employee_id, changed_by, effective_at)
+      VALUES ('raw-second-initial', 't1', 'acct-remediate-2', 'INITIAL_OWNER_ASSIGNMENT', 'e-b', 'p-raw', now())`;
+    await assert.rejects(q(second), (e) => e.constraint === "account_ownership_history_initial_assignment_first");
+    // The partial unique index holds the same line on its own (ordering trigger disabled in a rolled-back transaction).
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("ALTER TABLE eos_crm.account_ownership_history DISABLE TRIGGER account_ownership_history_initial_assignment_first");
+      await assert.rejects(client.query(second), (e) => e.constraint === "account_ownership_history_one_initial_assignment");
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+    // The initial assignment is append-only like every event.
+    const [initial] = await history("acct-remediate");
+    await assert.rejects(q(`UPDATE eos_crm.account_ownership_history SET previous_owner_employee_id = 'e-z' WHERE id = $1`, [initial.id]), /append-only: UPDATE/);
+    await assert.rejects(q(`DELETE FROM eos_crm.account_ownership_history WHERE id = $1`, [initial.id]), /append-only: DELETE/);
+  });
+
+  await t.test("(A9d) NO CASCADE on initial assignment: children of the remediated Account keep their own owner", async () => {
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-remediate-kids','t1','Kids Cafe','ACTIVE','import','import')`);
+    await q(`INSERT INTO eos_crm.contacts (id, tenant_id, account_id, name, owner_employee_id, created_by, updated_by) VALUES ('con-kid','t1','acct-remediate-kids','Kid','e-c','import','import')`);
+    await q(`INSERT INTO eos_crm.account_locations (id, tenant_id, account_id, name, owner_employee_id, created_by, updated_by) VALUES ('loc-kid','t1','acct-remediate-kids','Kid Site','e-c','import','import')`);
+    await accounts.updateAccount(deps, A1, { accountId: "acct-remediate-kids", ownerEmployeeId: "e-a" });
+    assert.equal((await q(`SELECT owner_employee_id FROM eos_crm.contacts WHERE id = 'con-kid'`)).rows[0].owner_employee_id, "e-c");
+    assert.equal((await q(`SELECT owner_employee_id FROM eos_crm.account_locations WHERE id = 'loc-kid'`)).rows[0].owner_employee_id, "e-c");
   });
 
   await t.test("(A10) atomicity: a failure after the history row rolls back the row, the owner and every other change", async () => {
@@ -261,7 +342,7 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
       await Promise.all(["e-a", "e-b", "e-c"].map((owner) =>
         accounts.updateAccount(deps, A1, { accountId: race.accountId, ownerEmployeeId: owner }).catch(() => null)));
     }
-    // Ordered by EFFECTIVE time (what listAccountOwnershipHandoffs pages by), every predecessor is the previous new owner.
+    // Ordered by EFFECTIVE time (what listAccountOwnershipHistory pages by), every predecessor is the previous new owner.
     const rows = await history(race.accountId);
     assert.ok(rows.length >= 2);
     assert.equal(rows[0].previous_owner_employee_id, "e-a");
@@ -393,7 +474,7 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
 
   await t.test("(C1) migration 1759924800000 refuses to roll back while handoff history or import receipts exist", async (st) => {
     const names = (await q(`SELECT name FROM public.pgmigrations ORDER BY run_on DESC, id DESC`)).rows.map((r) => r.name);
-    if (names[0] !== "1759924800000_crm-account-ownership-handoffs") {
+    if (names[0] !== "1759924800000_crm-account-ownership-history") {
       st.diagnostic(`skipped: ${names[0]} is the last-run migration, so down 1 would not reach 1759924800000`);
       return;
     }
@@ -401,6 +482,6 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
       { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl() }, encoding: "utf8" });
     assert.notEqual(down.status, 0);
     assert.match(down.stdout + down.stderr, /refuses to drop CRM Account ownership history or Contact import receipts/);
-    assert.ok((await q(`SELECT to_regclass('eos_crm.account_ownership_handoffs') AS t`)).rows[0].t);
+    assert.ok((await q(`SELECT to_regclass('eos_crm.account_ownership_history') AS t`)).rows[0].t);
   });
 });

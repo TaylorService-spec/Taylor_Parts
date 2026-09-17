@@ -101,7 +101,7 @@ test("eos_crm stands beside eos_policy and eos_ops, with its three record tables
   // business facts and the CRM create-idempotency receipts, plus migration 1759924800000's append-only Account
   // ownership history. Still no location or inventory table of any kind.
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "account_lines_of_business", "account_locations", "account_ownership_handoffs", "account_relationship_types", "account_tags", "accounts",
+    "account_lines_of_business", "account_locations", "account_ownership_history", "account_relationship_types", "account_tags", "accounts",
     "command_receipts", "contacts",
   ]);
 

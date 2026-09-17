@@ -128,7 +128,8 @@ const EMPLOYEE_AUTHORITY = { schema: "eos_workforce", table: "employees", idColu
 /**
  * The fourteen columns in the migration set that hold a business EMPLOYEE id. The three credited-salesperson columns
  * (migration 022) joined when the Commercial wave C2 command layer began writing them; the two append-only CRM Account
- * ownership-history columns (migration 1759924800000) when the governed Account handoff writer arrived.
+ * ownership-history columns (migration 1759924800000) when the governed Account ownership-history writer arrived
+ * (previous owner is NULL only for an INITIAL_OWNER_ASSIGNMENT).
  *
  * Each carries the migration and line it was read from, because a census whose scope cannot be
  * re-verified at source is a list somebody will trust without checking. `appendOnly` marks a column on
@@ -147,8 +148,8 @@ const EMPLOYEE_REFERENCE_COLUMNS = Object.freeze([
   { schema: "eos_commercial", table: "opportunities", column: "credited_salesperson_employee_id", nullable: true, appendOnly: false, source: "1759449600000:89" },
   { schema: "eos_commercial", table: "sales_agreements", column: "credited_salesperson_employee_id", nullable: true, appendOnly: false, source: "1759449600000:121" },
   { schema: "eos_commercial", table: "sales_orders", column: "credited_salesperson_employee_id", nullable: true, appendOnly: false, source: "1759449600000:181" },
-  { schema: "eos_crm", table: "account_ownership_handoffs", column: "previous_owner_employee_id", nullable: false, appendOnly: true, source: "1759924800000:54" },
-  { schema: "eos_crm", table: "account_ownership_handoffs", column: "new_owner_employee_id", nullable: false, appendOnly: true, source: "1759924800000:55" },
+  { schema: "eos_crm", table: "account_ownership_history", column: "previous_owner_employee_id", nullable: true, appendOnly: true, source: "1759924800000:69" },
+  { schema: "eos_crm", table: "account_ownership_history", column: "new_owner_employee_id", nullable: false, appendOnly: true, source: "1759924800000:70" },
 ]);
 
 /**

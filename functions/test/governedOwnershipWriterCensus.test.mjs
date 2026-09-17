@@ -166,7 +166,8 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   "src/eosCommercial/commands/commercialCreation.ts": "NOT APPLICABLE",
   // CRM wave D1-A: the governed PostgreSQL CRM authority layer. Unwired. Contact / customer-site owners are written only
   // at creation (inherited, including the atomic Contact import). The Account owner is explicit at creation and changes
-  // ONLY through the governed handoff (locked predecessor, append-only eos_crm.account_ownership_handoffs, one transaction).
+  // ONLY through the governed ownership-history writer (locked predecessor; append-only eos_crm.account_ownership_history
+  // OWNER_HANDOFF, or INITIAL_OWNER_ASSIGNMENT for a legacy ownerless Account; one transaction).
   "src/eosCrm/accountAuthority.ts": "GOVERNED",
   "src/eosCrm/contactAuthority.ts": "INERT",
   "src/eosCrm/accountLocationAuthority.ts": "INERT",

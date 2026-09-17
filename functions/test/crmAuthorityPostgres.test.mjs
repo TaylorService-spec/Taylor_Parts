@@ -254,7 +254,7 @@ test("governed PostgreSQL CRM authority, in PostgreSQL", { skip: SKIP, concurren
 
   await t.test("(9) updates are allowlisted and change only what they name", async () => {
     const before = (await q(`SELECT owner_employee_id, created_by, created_at FROM eos_crm.accounts WHERE id = $1`, [acct1.accountId])).rows[0];
-    // ownerEmployeeId is a governed ownership handoff since migration 1759924800000 (crmAccountHandoffAndImportPostgres).
+    // ownerEmployeeId is a governed ownership handoff since migration 1759924800000 (crmAccountOwnershipAndImportPostgres).
     for (const extra of ["accountOwner", "createdBy", "createdAt", "updatedBy", "id", "nameLower"]) {
       await assert.rejects(accounts.updateAccount(deps, A1, { accountId: acct1.accountId, status: "INACTIVE", [extra]: "p-evil" }), code("FIELD_NOT_ALLOWED"));
     }

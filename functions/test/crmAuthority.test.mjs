@@ -33,7 +33,7 @@ const crmSources = () => walk(CRM, [".ts"]);
 const rel = (f) => relative(FUNCTIONS_DIR, f).split("\\").join("/");
 const MIGRATION_024 = "1759622400000_crm-capability-vocabulary.sql";
 const MIGRATION_025 = "1759708800000_crm-account-business-facts-and-receipts.sql";
-const MIGRATION_HANDOFFS = "1759924800000_crm-account-ownership-handoffs.sql";
+const MIGRATION_HANDOFFS = "1759924800000_crm-account-ownership-history.sql";
 const CRM_CAPABILITY_IDS = ["customer.governedField.write", "customer.record.create", "customer.record.read", "customer.record.update"];
 
 /** A pool that must never be reached: every refusal below happens before a connection is taken. */
@@ -111,7 +111,7 @@ test("(F4) migration 024 registers exactly that vocabulary, grants nothing, and 
 });
 
 test("(F5) no generic CRUD, no delete, no legacy or Job Role authority source", () => {
-  assert.deepEqual(Object.keys(accounts).filter((k) => typeof accounts[k] === "function").sort(), ["createAccount", "getAccount", "listAccountOwnershipHandoffs", "listAccounts", "updateAccount"]);
+  assert.deepEqual(Object.keys(accounts).filter((k) => typeof accounts[k] === "function").sort(), ["createAccount", "getAccount", "listAccountOwnershipHistory", "listAccounts", "updateAccount"]);
   assert.deepEqual(Object.keys(contacts).filter((k) => typeof contacts[k] === "function").sort(), ["createContact", "getContact", "importAccountContacts", "listAccountContacts", "updateContact"]);
   assert.deepEqual(Object.keys(sites).filter((k) => typeof sites[k] === "function").sort(), ["createAccountLocation", "getAccountLocation", "listAccountLocations", "updateAccountLocation"]);
   for (const file of crmSources()) {
@@ -158,7 +158,7 @@ test("(F7) no write without the capability, and a read capability never stands i
   await assert.rejects(accounts.getAccount(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(accounts.listAccounts(deps, none, {}), code("CAPABILITY_REQUIRED"));
   await assert.rejects(contacts.listAccountContacts(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
-  await assert.rejects(accounts.listAccountOwnershipHandoffs(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
+  await assert.rejects(accounts.listAccountOwnershipHistory(deps, none, { accountId: "a1" }), code("CAPABILITY_REQUIRED"));
   await assert.rejects(sites.getAccountLocation(deps, none, { accountLocationId: "s1" }), code("CAPABILITY_REQUIRED"));
   // Capabilities must be a resolved Set; an array of the right strings is not a resolved context.
   await assert.rejects(accounts.getAccount(deps, { tenantId: "t1", principalId: "p1", capabilities: [...ALL] }, { accountId: "a1" }), code("ACTOR_CONTEXT_REQUIRED"));
@@ -171,7 +171,7 @@ test("(F8) caller authority in input is refused on every operation", async () =>
     [accounts.updateAccount, { accountId: "a1", name: "A" }],
     [accounts.getAccount, { accountId: "a1" }],
     [accounts.listAccounts, {}],
-    [accounts.listAccountOwnershipHandoffs, { accountId: "a1" }],
+    [accounts.listAccountOwnershipHistory, { accountId: "a1" }],
     [contacts.createContact, { accountId: "a1", name: "C" }],
     [contacts.importAccountContacts, { accountId: "a1", contacts: [{ name: "C" }] }],
     [contacts.updateContact, { contactId: "c1", name: "C" }],
@@ -262,14 +262,18 @@ test("(F13) ACCOUNT OWNER: explicit, well-formed owner required; never derived",
   const src = strip(readFileSync(join(CRM, "accountAuthority.ts"), "utf8"));
   assert.doesNotMatch(src, /ownerEmployeeId\s*=\s*(principalId|actor|uid)|owner\s*\?\?\s*principalId|\?\?\s*principalId/, "the owner can fall back to the actor");
   assert.doesNotMatch(src, /assignAccountOwner/, "a bare owner-assignment path exists");
-  // The ONE owner change: inside stageAccountOwnershipHandoff, AFTER the append-only history INSERT, predicated on the
+  // The ONE owner change: inside stageAccountOwnershipChange, AFTER the append-only history INSERT, predicated on the
   // predecessor read under FOR UPDATE. No other statement names the owner column as an assignment target.
-  const assignments = [...src.matchAll(/(?<!AND )owner_employee_id\s*=\s*\$\d/g)];
-  assert.equal(assignments.length, 1, "the owner column is assigned outside the governed handoff");
-  const stage = src.slice(src.indexOf("async function stageAccountOwnershipHandoff"), src.indexOf("const CREATE_FIELDS"));
-  assert.ok(stage.indexOf("INSERT INTO eos_crm.account_ownership_handoffs") >= 0 && stage.indexOf("INSERT INTO eos_crm.account_ownership_handoffs") < stage.indexOf("SET owner_employee_id = $3"),
+  const assignments = [...src.matchAll(/owner_employee_id\s*=\s*\$\d/g)];
+  assert.equal(assignments.length, 1, "the owner column is assigned outside the governed ownership-history writer");
+  const stage = src.slice(src.indexOf("async function stageAccountOwnershipChange"), src.indexOf("const CREATE_FIELDS"));
+  assert.ok(stage.indexOf("INSERT INTO eos_crm.account_ownership_history") >= 0 && stage.indexOf("INSERT INTO eos_crm.account_ownership_history") < stage.indexOf("SET owner_employee_id = $3"),
     "the owner moves without first appending its history");
-  assert.match(stage, /AND owner_employee_id = \$4/, "the owner move is not predicated on the locked predecessor");
+  assert.match(stage, /AND owner_employee_id IS NOT DISTINCT FROM \$4/, "the owner move is not predicated on the locked predecessor");
+  // The event is decided by the LOCKED predecessor only: null -> INITIAL_OWNER_ASSIGNMENT with no source; else OWNER_HANDOFF.
+  assert.match(stage, /previousOwnerEmployeeId === null \? "INITIAL_OWNER_ASSIGNMENT" : "OWNER_HANDOFF"/);
+  assert.match(stage, /event === "OWNER_HANDOFF" \? terms\.source : null/);
+  assert.doesNotMatch(src, /ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED|ACCOUNT_OWNER_HANDOFF_PENDING/);
   assert.match(src, /SELECT payment_terms, tax_status, owner_employee_id FROM eos_crm\.accounts WHERE tenant_id = \$1 AND id = \$2 FOR UPDATE/);
 });
 
@@ -350,7 +354,7 @@ test("(F17) idempotency: creates require a key; only its hash is persisted; rece
   assert.doesNotMatch(mig, /JSON(B)? .*legacy|firestore_document|raw_key|idempotency_key TEXT/i);
 });
 
-test("(F18) ACCOUNT OWNERSHIP HANDOFF: input is validated before the database; the vocabulary is Commercial's and migration's", async () => {
+test("(F18) ACCOUNT OWNERSHIP HISTORY: input is validated before the database; the vocabulary is Commercial's and migration's", async () => {
   // Clearing refuses: a governed Account is never ownerless.
   await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: null }), code("OWNER_REQUIRED"));
   for (const bad of ["", "e 1", 7, { id: "e1" }]) {
@@ -358,7 +362,7 @@ test("(F18) ACCOUNT OWNERSHIP HANDOFF: input is validated before the database; t
   }
   await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownershipHandoff: { reason: "x" }, name: "B" }), code("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE"));
   for (const [handoff, expected] of [[{ source: "SELF_SERVICE" }, "HANDOFF_SOURCE_INVALID"], [{ reason: "r".repeat(501) }, "HANDOFF_REASON_INVALID"],
-    [{ reason: ["r"] }, "HANDOFF_REASON_INVALID"], [{ effectiveAt: "2020-01-01T00:00:00Z" }, "FIELD_NOT_ALLOWED"], [{ handedOffBy: "p9" }, "FIELD_NOT_ALLOWED"], [[], "HANDOFF_INVALID"]]) {
+    [{ reason: ["r"] }, "HANDOFF_REASON_INVALID"], [{ effectiveAt: "2020-01-01T00:00:00Z" }, "FIELD_NOT_ALLOWED"], [{ changedBy: "p9" }, "FIELD_NOT_ALLOWED"], [[], "HANDOFF_INVALID"]]) {
     await assert.rejects(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: "e2", ownershipHandoff: handoff }), code(expected), JSON.stringify(handoff));
   }
   await passesValidation(accounts.updateAccount(deps, actor(), { accountId: "a1", ownerEmployeeId: "e2" }));
@@ -369,8 +373,15 @@ test("(F18) ACCOUNT OWNERSHIP HANDOFF: input is validated before the database; t
   assert.equal(accounts.MAX_ACCOUNT_HANDOFF_REASON_LENGTH, 500);
   const mig = readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_HANDOFFS), "utf8").split("-- Down Migration")[0];
   assert.deepEqual([...mig.match(/source IN \(([^)]*)\)/)[1].matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]), [...accounts.ACCOUNT_OWNERSHIP_HANDOFF_SOURCES]);
+  // Owner ruling (option b): two events, each with its exact shape, one initial assignment first and at most once.
+  assert.deepEqual([...accounts.ACCOUNT_OWNERSHIP_EVENTS], ["OWNER_HANDOFF", "INITIAL_OWNER_ASSIGNMENT"]);
+  assert.deepEqual([...mig.match(/event IN \(([^)]*)\)/)[1].matchAll(/'([A-Z_]+)'/g)].map((m) => m[1]), [...accounts.ACCOUNT_OWNERSHIP_EVENTS]);
+  assert.match(mig, /event = 'OWNER_HANDOFF'\s+AND previous_owner_employee_id IS NOT NULL\s+AND previous_owner_employee_id <> new_owner_employee_id\s+AND source IS NOT NULL/);
+  assert.match(mig, /event = 'INITIAL_OWNER_ASSIGNMENT'\s+AND previous_owner_employee_id IS NULL\s+AND source IS NULL/);
+  assert.match(mig, /CREATE UNIQUE INDEX account_ownership_history_one_initial_assignment\s+ON account_ownership_history \(tenant_id, account_id\) WHERE event = 'INITIAL_OWNER_ASSIGNMENT'/);
+  assert.match(mig, /BEFORE INSERT ON account_ownership_history/);
   assert.match(mig, /char_length\(reason\) <= 500/);
-  assert.match(mig, /BEFORE UPDATE OR DELETE ON account_ownership_handoffs/);
+  assert.match(mig, /BEFORE UPDATE OR DELETE ON account_ownership_history/);
   assert.match(mig, /FOREIGN KEY \(tenant_id, account_id\) REFERENCES accounts \(tenant_id, id\)/);
   const up = mig.replace(/^\s*--.*$/gm, "");
   assert.doesNotMatch(up, /role_capabilities|eos_policy\.capabilities|eos_commercial|employees/, "the handoff migration grants, registers or reaches beyond CRM");

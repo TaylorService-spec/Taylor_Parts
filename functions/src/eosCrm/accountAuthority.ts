@@ -3,10 +3,10 @@
 //   createAccount                  customer.record.create   idempotent; an EXPLICIT same-tenant Employee owner is REQUIRED
 //   updateAccount                  customer.record.update   the business-field allowlist; paymentTerms / taxStatus changes
 //                                                           also require customer.governedField.write; an owner change is
-//                                                           a governed ownership handoff (below)
+//                                                           a governed ownership-history event (below)
 //   getAccount                     customer.record.read     one Account of the actor's tenant, with every governed business fact
 //   listAccounts                   customer.record.read     bounded keyset list, optional status filter and folded-name prefix
-//   listAccountOwnershipHandoffs   customer.record.read     one Account's append-only ownership history, newest first, bounded
+//   listAccountOwnershipHistory    customer.record.read     one Account's append-only ownership history, newest first, bounded
 //
 // IDENTITY. `eos_crm.accounts.id` is THE canonical Account id: `eos_commercial.*.account_id` references it through the
 // composite (tenant_id, account_id) foreign keys of migration 1759449600000. There is no mapping id; a new Account's id
@@ -19,22 +19,22 @@
 // changes go through a governed Account ownership-handoff writer (prior owner, new owner, effective time, changed-by
 // Principal, governed reason/source).
 //
-// OWNERSHIP HANDOFF (migration 1759924800000) -- PARITY with the Commercial Opportunity edit (opportunityCommandService
-// + stageCommercialOwnershipTransfer), under the EXISTING customer.record.update: the legacy
-// product let whoever could edit an Account change its owner, so no capability is added.
-//   * `ownerEmployeeId` on updateAccount, with an optional `ownershipHandoff: { source?, reason? }`. Source defaults to
-//     DIRECT_HANDOFF; reason is trimmed, blank means none, at most 500 characters.
-//   * The CURRENT owner is read under FOR UPDATE, never supplied. The same owner is a no-op for ownership (no history row).
-//     A different owner must resolve exactly as at creation (requireOwnerEmployee), then ONE append-only
-//     eos_crm.account_ownership_handoffs row and the owner column move in the SAME transaction as every other field
-//     change and the updated_by / updated_at attribution. effective_at is the INSERT's statement_timestamp(), taken AFTER
-//     the FOR UPDATE lock was granted, so concurrent handoffs order by effective time exactly as they serialized (the
-//     transaction-start now() of a handoff that waited on the lock would predate the one it waited for).
-//   * `ownerEmployeeId: null` refuses OWNER_REQUIRED: a governed Account is never made ownerless. `ownershipHandoff`
-//     without an owner change refuses OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE.
-//   * A LEGACY OWNERLESS Account (migration 008's OWNERLESS state, carried by the cutover) receiving its first owner is an
-//     initial assignment, not a handoff; no ruling governs it, so it refuses ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED.
-//   * NO CASCADE: Contacts and customer sites keep their own owner (their owner was inherited at creation only).
+// OWNERSHIP HISTORY (migration 1759924800000) -- PARITY with the Commercial Opportunity edit (opportunityCommandService
+// + stageCommercialOwnershipTransfer), under the EXISTING customer.record.update: the legacy product let whoever could
+// edit an Account change its owner, so no capability is added. `ownerEmployeeId` on updateAccount, with an optional
+// `ownershipHandoff: { source?, reason? }`; the CURRENT owner is read under FOR UPDATE, never supplied:
+//   * same owner                    no-op for ownership, no history row (naming ownershipHandoff with it refuses).
+//   * owner A -> different owner B  OWNER_HANDOFF: previous A, new B, source (default DIRECT_HANDOFF), optional reason.
+//   * NO owner -> owner B           INITIAL_OWNER_ASSIGNMENT (Owner ruling, option b): a legacy OWNERLESS Account (migration
+//                                   008's state, carried by the cutover) receives its first owner. It is not a handoff:
+//                                   no previous owner is invented, no source applies (naming ownershipHandoff.source
+//                                   refuses INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED), reason stays optional, and the
+//                                   legacy accountOwner.assignedBy* actor is never fabricated -- the actor is the Principal.
+//   * owner -> null                 refuses OWNER_REQUIRED: a governed Account is never made ownerless.
+// A new owner resolves exactly as at creation (requireOwnerEmployee). The history row and the owner column move in the
+// SAME transaction as every other field change and the updated_by / updated_at attribution. effective_at is the INSERT's
+// statement_timestamp(), taken AFTER the FOR UPDATE lock was granted, so concurrent changes order by effective time
+// exactly as they serialized. NO CASCADE: Contacts and customer sites keep their own owner (inherited at creation only).
 //
 // BILLING ADDRESS. Owner ruling: a single free-text billing address is never parsed into the structured parts; it is
 // refused here (FIELD_INVALID) and belongs only in import staging / reconciliation evidence until resolved.
@@ -340,13 +340,19 @@ export type AccountOwnershipHandoffSource = (typeof ACCOUNT_OWNERSHIP_HANDOFF_SO
 export const MAX_ACCOUNT_HANDOFF_REASON_LENGTH = 500;
 const DEFAULT_HANDOFF_SOURCE: AccountOwnershipHandoffSource = "DIRECT_HANDOFF";
 
-interface HandoffTerms {
+export const ACCOUNT_OWNERSHIP_EVENTS = Object.freeze(["OWNER_HANDOFF", "INITIAL_OWNER_ASSIGNMENT"] as const);
+export type AccountOwnershipEvent = (typeof ACCOUNT_OWNERSHIP_EVENTS)[number];
+
+interface OwnershipTerms {
+  /** Whether the caller named ownershipHandoff at all / named its source. */
+  readonly named: boolean;
+  readonly sourceNamed: boolean;
   readonly source: AccountOwnershipHandoffSource;
   readonly reason: string | null;
 }
 
-function ownershipHandoffTerms(value: unknown): HandoffTerms {
-  if (value === undefined) return { source: DEFAULT_HANDOFF_SOURCE, reason: null };
+function ownershipTerms(value: unknown): OwnershipTerms {
+  if (value === undefined) return { named: false, sourceNamed: false, source: DEFAULT_HANDOFF_SOURCE, reason: null };
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     fail("HANDOFF_INVALID", "INVALID_INPUT", "ownershipHandoff must be an object { source?, reason? }");
   }
@@ -366,30 +372,33 @@ function ownershipHandoffTerms(value: unknown): HandoffTerms {
     }
     reason = trimmed === "" ? null : trimmed;
   }
-  return { source: source as AccountOwnershipHandoffSource, reason };
+  return { named: true, sourceNamed: record.source !== undefined, source: source as AccountOwnershipHandoffSource, reason };
 }
 
 /**
- * Append the handoff and move the current owner, on the CALLER's transaction. `previousOwnerEmployeeId` is the value the
- * caller read under FOR UPDATE in this same transaction. One Account; nothing cascades to its Contacts or sites.
+ * Append ONE ownership-history event and move the current owner, on the CALLER's transaction. `previousOwnerEmployeeId`
+ * is the value the caller read under FOR UPDATE in this same transaction: null makes the event INITIAL_OWNER_ASSIGNMENT
+ * (no source), otherwise OWNER_HANDOFF. One Account; nothing cascades to its Contacts or sites.
  */
-async function stageAccountOwnershipHandoff(
+async function stageAccountOwnershipChange(
   db: PoolClient,
   tenantId: string,
   principalId: string,
   accountId: string,
-  previousOwnerEmployeeId: string,
+  previousOwnerEmployeeId: string | null,
   newOwnerEmployeeId: string,
-  terms: HandoffTerms,
+  terms: OwnershipTerms,
 ): Promise<void> {
+  const event: AccountOwnershipEvent = previousOwnerEmployeeId === null ? "INITIAL_OWNER_ASSIGNMENT" : "OWNER_HANDOFF";
   await db.query(
-    `INSERT INTO eos_crm.account_ownership_handoffs
-       (id, tenant_id, account_id, previous_owner_employee_id, new_owner_employee_id, source, reason, handed_off_by, effective_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, statement_timestamp())`,
-    [`acohf_${randomUUID()}`, tenantId, accountId, previousOwnerEmployeeId, newOwnerEmployeeId, terms.source, terms.reason, principalId],
+    `INSERT INTO eos_crm.account_ownership_history
+       (id, tenant_id, account_id, event, previous_owner_employee_id, new_owner_employee_id, source, reason, changed_by, effective_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, statement_timestamp())`,
+    [`acown_${randomUUID()}`, tenantId, accountId, event, previousOwnerEmployeeId, newOwnerEmployeeId,
+      event === "OWNER_HANDOFF" ? terms.source : null, terms.reason, principalId],
   );
   await db.query(
-    `UPDATE eos_crm.accounts SET owner_employee_id = $3 WHERE tenant_id = $1 AND id = $2 AND owner_employee_id = $4`,
+    `UPDATE eos_crm.accounts SET owner_employee_id = $3 WHERE tenant_id = $1 AND id = $2 AND owner_employee_id IS NOT DISTINCT FROM $4`,
     [tenantId, accountId, newOwnerEmployeeId, previousOwnerEmployeeId],
   );
 }
@@ -447,13 +456,13 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       if (i.ownershipHandoff !== undefined && owner === null) {
         fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "ownershipHandoff describes an owner change; name ownerEmployeeId");
       }
-      const handoff = { named: i.ownershipHandoff !== undefined, terms: ownershipHandoffTerms(i.ownershipHandoff) };
+      const terms = ownershipTerms(i.ownershipHandoff);
       if (fields.columns.size === 0 && SET_FIELDS.every((f) => i[f] === undefined) && owner === null) {
         fail("NO_CHANGES_REQUESTED", "INVALID_INPUT", "an update must name at least one accepted field");
       }
-      return { accountId: requireRecordId(i.accountId, "accountId"), fields, owner, handoff };
+      return { accountId: requireRecordId(i.accountId, "accountId"), fields, owner, terms };
     },
-    async (db, principal, { accountId, fields, owner, handoff }) => {
+    async (db, principal, { accountId, fields, owner, terms }) => {
       const { tenantId, principalId } = principal;
       const current = await db.query<{ payment_terms: string | null; tax_status: string | null; owner_employee_id: string | null }>(
         `SELECT payment_terms, tax_status, owner_employee_id FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
@@ -466,15 +475,15 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       }
       if (owner !== null) {
         const previous = current.rows[0].owner_employee_id;
-        if (previous === null) {
-          fail("ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED", "PRECONDITION_FAILED",
-            "this Account has no owner; a first owner assignment is not an ownership handoff and no governed path exists for it");
+        if (previous === null && terms.sourceNamed) {
+          fail("INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED", "INVALID_INPUT",
+            "this Account has no owner: its first owner is an INITIAL_OWNER_ASSIGNMENT, not a handoff, and takes no handoff source");
         }
         if (owner === previous) {
-          if (handoff.named) fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "the Account is already owned by that Employee; there is no handoff to record");
+          if (terms.named) fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "the Account is already owned by that Employee; there is no ownership change to record");
         } else {
           const newOwner = await requireOwnerEmployee(db, tenantId, owner);
-          await stageAccountOwnershipHandoff(db, tenantId, principalId, accountId, previous as string, newOwner, handoff.terms);
+          await stageAccountOwnershipChange(db, tenantId, principalId, accountId, previous, newOwner, terms);
         }
       }
       const set = assignmentsOf(fields.columns, Object.fromEntries([...fields.columns.keys()].map((c) => [c, c])), 4);
@@ -554,72 +563,77 @@ export function listAccounts(deps: CrmDeps, actor: CrmActorContext, input: unkno
 
 // ════════════════════ ownership history ════════════════════
 
-export interface AccountOwnershipHandoffProjection {
-  readonly handoffId: string;
+export interface AccountOwnershipHistoryProjection {
+  readonly historyId: string;
   readonly accountId: string;
-  readonly previousOwnerEmployeeId: string;
+  readonly event: AccountOwnershipEvent;
+  /** null only for INITIAL_OWNER_ASSIGNMENT: no prior owner is ever invented. */
+  readonly previousOwnerEmployeeId: string | null;
   readonly newOwnerEmployeeId: string;
-  readonly source: AccountOwnershipHandoffSource;
+  /** null only for INITIAL_OWNER_ASSIGNMENT: the handoff vocabulary does not describe a first assignment. */
+  readonly source: AccountOwnershipHandoffSource | null;
   readonly reason: string | null;
-  readonly handedOffBy: string;
+  readonly changedBy: string;
   readonly effectiveAt: string;
   readonly createdAt: string;
 }
 
-export interface AccountOwnershipHandoffPage {
-  readonly items: AccountOwnershipHandoffProjection[];
+export interface AccountOwnershipHistoryPage {
+  readonly items: AccountOwnershipHistoryProjection[];
   readonly truncated: boolean;
   readonly nextCursor: string | null;
 }
 
-interface HandoffRow {
+interface HistoryRow {
   id: string;
   account_id: string;
-  previous_owner_employee_id: string;
+  event: AccountOwnershipEvent;
+  previous_owner_employee_id: string | null;
   new_owner_employee_id: string;
-  source: AccountOwnershipHandoffSource;
+  source: AccountOwnershipHandoffSource | null;
   reason: string | null;
-  handed_off_by: string;
+  changed_by: string;
   effective_at: Date;
   created_at: Date;
   /** The keyset position: effective_at as UTC text at microsecond precision. */
   folded_name: string;
 }
 
-const HANDOFF_CURSOR_FAMILY = "accountOwnershipHandoff";
-const HANDOFF_POSITION = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+const HISTORY_CURSOR_FAMILY = "accountOwnershipHistory";
+const HISTORY_POSITION = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
 
-export function listAccountOwnershipHandoffs(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<AccountOwnershipHandoffPage> {
+export function listAccountOwnershipHistory(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<AccountOwnershipHistoryPage> {
   return runCrmRead(
     deps,
     actor,
     CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
     () => {
       const i = requireAllowlistedInput(input, ["accountId", "limit", "cursor"]);
-      const cursor = decodeCrmCursor(HANDOFF_CURSOR_FAMILY, i.cursor);
-      if (cursor && !HANDOFF_POSITION.test(cursor.name)) fail("CURSOR_INVALID", "INVALID_INPUT", "cursor is not a valid position for this list");
+      const cursor = decodeCrmCursor(HISTORY_CURSOR_FAMILY, i.cursor);
+      if (cursor && !HISTORY_POSITION.test(cursor.name)) fail("CURSOR_INVALID", "INVALID_INPUT", "cursor is not a valid position for this list");
       return { accountId: requireRecordId(i.accountId, "accountId"), limit: requirePageSize(i.limit), cursor };
     },
     async (db, tenantId, { accountId, limit, cursor }) => {
       await requireTenantAccount(db, tenantId, accountId);
-      const { rows } = await db.query<HandoffRow>(
-        `SELECT id, account_id, previous_owner_employee_id, new_owner_employee_id, source, reason, handed_off_by, effective_at, created_at,
+      const { rows } = await db.query<HistoryRow>(
+        `SELECT id, account_id, event, previous_owner_employee_id, new_owner_employee_id, source, reason, changed_by, effective_at, created_at,
                 to_char(effective_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS folded_name
-           FROM eos_crm.account_ownership_handoffs
+           FROM eos_crm.account_ownership_history
           WHERE tenant_id = $1 AND account_id = $2
             AND ($3::timestamptz IS NULL OR (effective_at, id) < ($3::timestamptz, $4::text))
           ORDER BY effective_at DESC, id DESC
           LIMIT $5`,
         [tenantId, accountId, cursor?.name ?? null, cursor?.id ?? null, limit + 1],
       );
-      return pageOf(HANDOFF_CURSOR_FAMILY, rows, limit, (row) => ({
-        handoffId: row.id,
+      return pageOf(HISTORY_CURSOR_FAMILY, rows, limit, (row) => ({
+        historyId: row.id,
         accountId: row.account_id,
+        event: row.event,
         previousOwnerEmployeeId: row.previous_owner_employee_id,
         newOwnerEmployeeId: row.new_owner_employee_id,
         source: row.source,
         reason: row.reason,
-        handedOffBy: row.handed_off_by,
+        changedBy: row.changed_by,
         effectiveAt: isoOf(row.effective_at),
         createdAt: isoOf(row.created_at),
       }));

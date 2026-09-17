@@ -21,7 +21,7 @@ import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type CrmErrorCategory, type CrmRowFinding } from "./crmAuthorityKernel";
-import { createAccount, getAccount, listAccountOwnershipHandoffs, listAccounts, updateAccount } from "./accountAuthority";
+import { createAccount, getAccount, listAccountOwnershipHistory, listAccounts, updateAccount } from "./accountAuthority";
 import { createContact, getContact, importAccountContacts, listAccountContacts, updateContact } from "./contactAuthority";
 import { createAccountLocation, getAccountLocation, listAccountLocations, updateAccountLocation } from "./accountLocationAuthority";
 import { CRM_WRITER_AUTHORITY, PostgresCrmWriterInactiveError, assertPostgresCrmWriterActive, type CrmWriterAuthority } from "../crm/crmWriterState";
@@ -45,7 +45,7 @@ type Input = Record<string, unknown>;
 type Runner = (deps: { pool: Pool }, actor: CrmActorContext, input: Input) => Promise<unknown>;
 
 const RUNNERS = Object.freeze({
-  createAccount, updateAccount, getAccount, listAccounts, listAccountOwnershipHandoffs,
+  createAccount, updateAccount, getAccount, listAccounts, listAccountOwnershipHistory,
   createContact, importAccountContacts, updateContact, getContact, listAccountContacts,
   createAccountLocation, updateAccountLocation, getAccountLocation, listAccountLocations,
 } as const satisfies Record<string, Runner>);

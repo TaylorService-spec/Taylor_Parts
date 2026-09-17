@@ -27,7 +27,7 @@ const RECORD = ["customer.record.read", "customer.record.create", "customer.reco
 test("offline: the CRM transport is a closed, authenticated envelope routed by server.ts", async () => {
   assert.deepEqual([...http.CRM_OPERATIONS].sort(), [
     "createAccount", "createAccountLocation", "createContact", "getAccount", "getAccountLocation", "getContact",
-    "importAccountContacts", "listAccountContacts", "listAccountLocations", "listAccountOwnershipHandoffs", "listAccounts",
+    "importAccountContacts", "listAccountContacts", "listAccountLocations", "listAccountOwnershipHistory", "listAccounts",
     "updateAccount", "updateAccountLocation", "updateContact",
   ]);
   assert.equal(http.CRM_OPERATIONS.length, 14);
@@ -179,11 +179,20 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
     const handed = await call(editor, "updateAccount", { accountId: account.accountId, ownerEmployeeId: "e-1b", ownershipHandoff: { reason: "coverage" } });
     assert.equal(handed.status, 200, JSON.stringify(handed.body));
     assert.equal(handed.body.result.ownerEmployeeId, "e-1b");
-    const history = await call(reader, "listAccountOwnershipHandoffs", { accountId: account.accountId });
+    const history = await call(reader, "listAccountOwnershipHistory", { accountId: account.accountId });
     assert.equal(history.status, 200);
-    assert.deepEqual(history.body.result.items.map((h) => [h.previousOwnerEmployeeId, h.newOwnerEmployeeId, h.source, h.reason, h.handedOffBy]),
-      [["e-1", "e-1b", "DIRECT_HANDOFF", "coverage", editor.principalId]]);
-    assert.equal((await call(other, "listAccountOwnershipHandoffs", { accountId: account.accountId })).status, 404);
+    assert.deepEqual(history.body.result.items.map((h) => [h.event, h.previousOwnerEmployeeId, h.newOwnerEmployeeId, h.source, h.reason, h.changedBy]),
+      [["OWNER_HANDOFF", "e-1", "e-1b", "DIRECT_HANDOFF", "coverage", editor.principalId]]);
+    // A legacy ownerless Account's first owner: INITIAL_OWNER_ASSIGNMENT; a handoff source on it refuses 400.
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-http-ownerless','t1','Ownerless','ACTIVE','import','import')`);
+    const withSource = await call(editor, "updateAccount", { accountId: "acct-http-ownerless", ownerEmployeeId: "e-1", ownershipHandoff: { source: "DIRECT_HANDOFF" } });
+    assert.deepEqual([withSource.status, withSource.body.code], [400, "INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED"]);
+    const initial = await call(editor, "updateAccount", { accountId: "acct-http-ownerless", ownerEmployeeId: "e-1" });
+    assert.deepEqual([initial.status, initial.body.result.ownerEmployeeId], [200, "e-1"]);
+    const first = await call(reader, "listAccountOwnershipHistory", { accountId: "acct-http-ownerless" });
+    assert.deepEqual(first.body.result.items.map((h) => [h.event, h.previousOwnerEmployeeId, h.newOwnerEmployeeId, h.source, h.changedBy]),
+      [["INITIAL_OWNER_ASSIGNMENT", null, "e-1", null, editor.principalId]]);
+    assert.equal((await call(other, "listAccountOwnershipHistory", { accountId: account.accountId })).status, 404);
     const cleared = await call(editor, "updateAccount", { accountId: account.accountId, ownerEmployeeId: null });
     assert.deepEqual([cleared.status, cleared.body.code], [400, "OWNER_REQUIRED"]);
     assert.deepEqual([(await call(reader, "updateAccount", { accountId: account.accountId, ownerEmployeeId: "e-1" })).status], [403]);

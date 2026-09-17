@@ -336,6 +336,13 @@ export interface CrmCensus {
   /** Distinct Employee ids named as owners by selected records, with how many records name each. */
   readonly ownerReferences: Readonly<Record<string, number>>;
   readonly ownerless: Readonly<Record<CrmCollection, number>>;
+  /**
+   * The named POST-CUTOVER ownership-remediation set: every selected legacy OWNERLESS Account id (ascii order). It is NOT a
+   * COPY ONCE blocker (each carries only the ADVISORY OWNERLESS_LEGACY finding) and no owner is inferred for it; after
+   * activation each Account receives its first owner through the governed eos_crm updateAccount INITIAL_OWNER_ASSIGNMENT
+   * (Owner ruling, option b). Children under these Accounts with no stated owner stay blocked (CHILD_OWNER_UNDERIVABLE).
+   */
+  readonly ownershipRemediation: { readonly accounts: readonly string[] };
   readonly duplicateFoldedNames: readonly { readonly foldedName: string; readonly accountIds: readonly string[] }[];
   readonly findings: readonly CrmFinding[];
   readonly blockers: readonly string[];
@@ -940,6 +947,7 @@ function assembleCensus(i: AssembleInput): CrmCensus {
     billingAddressShapes: i.billingAddressShapes,
     ownerReferences: sortedBag(i.ownerReferences),
     ownerless: i.ownerless,
+    ownershipRemediation: { accounts: i.crm.accounts.filter((a) => a.ownerEmployeeId === null).map((a) => a.id).sort(asciiSort) },
     duplicateFoldedNames: i.duplicateFoldedNames,
     findings,
     blockers,

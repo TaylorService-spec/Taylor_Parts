@@ -96,10 +96,11 @@ const CONSTRAINT_CODES: Readonly<Record<string, [string, CrmErrorCategory]>> = O
   command_receipts_one_per_key: ["IDEMPOTENCY_CONFLICT", "CONFLICT"],
   command_receipts_member_fk: ["ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN"],
   // Migration 1759924800000: the append-only Account ownership history.
-  account_ownership_handoffs_account_same_tenant: ["ACCOUNT_NOT_FOUND", "NOT_FOUND"],
-  account_ownership_handoffs_is_not_a_no_op: ["HANDOFF_NO_OP", "INVALID_INPUT"],
-  account_ownership_handoffs_source_vocabulary: ["HANDOFF_SOURCE_INVALID", "INVALID_INPUT"],
-  account_ownership_handoffs_reason_shape: ["HANDOFF_REASON_INVALID", "INVALID_INPUT"],
+  account_ownership_history_account_same_tenant: ["ACCOUNT_NOT_FOUND", "NOT_FOUND"],
+  account_ownership_history_event_shape: ["OWNERSHIP_EVENT_INVALID", "INVALID_INPUT"],
+  account_ownership_history_reason_shape: ["HANDOFF_REASON_INVALID", "INVALID_INPUT"],
+  account_ownership_history_one_initial_assignment: ["INITIAL_OWNER_ALREADY_ASSIGNED", "CONFLICT"],
+  account_ownership_history_initial_assignment_first: ["INITIAL_OWNER_ALREADY_ASSIGNED", "CONFLICT"],
 });
 
 /** The pure CRM vocabulary's own refusals (functions/src/crm/customerIdentity.ts), kept as governed input refusals. */

@@ -220,7 +220,7 @@ test("the fourteen Employee-id columns are the scope, each citing where it was r
   const appendOnly = EMPLOYEE_REFERENCE_COLUMNS.filter((c) => c.appendOnly);
   assert.equal(appendOnly.length, 4);
   assert.deepEqual(appendOnly.map((c) => `${c.schema}.${c.table}`), ["eos_commercial.ownership_handoffs", "eos_commercial.ownership_handoffs",
-    "eos_crm.account_ownership_handoffs", "eos_crm.account_ownership_handoffs"]);
+    "eos_crm.account_ownership_history", "eos_crm.account_ownership_history"]);
 });
 
 test("actor / credential columns are declared OUT OF SCOPE by name, not silently skipped", () => {
