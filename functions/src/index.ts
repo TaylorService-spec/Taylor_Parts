@@ -276,11 +276,10 @@ export {
   listResetEligibleUsers,
 } from "./access/adminCredentialCallables";
 
-// --- ADMINISTRATION USERS CONSOLIDATION surface: the Employee profile write + the
-// record-scoped Change History read ---
+// --- ADMINISTRATION USERS CONSOLIDATION surface: the record-scoped (legacy) Change History read ---
 // Same posture as every surface above: deployed to eos-platform-sandbox under the per-environment
-// activation program, NOT deployed to the production project. Both re-authorize server-side on a
-// governed capability (admin.employeeProfile.write / audit.event.read).
+// activation program, NOT deployed to the production project. It re-authorizes server-side on a
+// governed capability (audit.event.read).
 //
 // CORRECTED 2026-09-06. This said both "DENY today in every environment for the standing platform
 // reason -- no principal holds a roleAssignments document". That was true when written and is now
@@ -290,8 +289,12 @@ export {
 // principal holding no qualifying Role -- the ordinary fail-closed path. Neither weakens
 // firestore.rules: employees stays client-write-denied and auditEvents stays client-read-denied,
 // so these callables are the only paths that exist.
+//
+// RETIRED 2026-09-17 (EMP-RT-H1 lane): the legacy `updateEmployeeProfile` callable is NO LONGER EXPORTED. It wrote the
+// retired Firestore `employees` record and `employee_number_registry` after the copy-once cutover (#1913) made
+// PostgreSQL the Employee authority, and no client has called it since #1937 -- the browser edits through the governed
+// Workforce commands (eosWorkforce/workforceHttp.ts). Only the legacy history read stays exported.
 export {
-  updateEmployeeProfile,
   listRecordChangeHistory,
 } from "./access/administrationUsersCallables";
 

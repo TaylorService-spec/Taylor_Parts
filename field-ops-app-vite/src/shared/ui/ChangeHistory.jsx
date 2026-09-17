@@ -60,6 +60,14 @@ const ABSENT = "—";
  *                    NOT the same as an empty history, and rendered as a failure rather than as
  *                    "nothing has happened to this record".
  * @param title       section heading. Defaults to the pattern's own name.
+ * @param meta        optional section meta line (e.g. which trail this is, when a record shows two).
+ * @param sectionId   the section's DOM id. A record showing two trails gives each its own.
+ * @param testId      the table's data-testid.
+ * @param loadingMessage / unavailableTitle   the words for those two states, so two trails on one page stay distinct.
+ * @param unknownActorLabel  what Changed By says when the row carries no actor name.
+ * @param showReason  render the optional Reason column (row.reason). Only for a trail that records reasons.
+ * @param caption     a short note under the heading about how to read the rows.
+ * @param footer      rendered under the rows (e.g. a "Show more" control for a paged read). Not while loading/unavailable.
  */
 export default function ChangeHistory({
   rows = [],
@@ -68,7 +76,17 @@ export default function ChangeHistory({
   onRetry = null,
   title = "Change History",
   emptyMessage = "No recorded changes for this record yet.",
+  meta = null,
+  sectionId = "change-history",
+  testId = "change-history-table",
+  loadingMessage = "Loading change history…",
+  unavailableTitle = "Change history unavailable",
+  unknownActorLabel = "Unknown user",
+  footer = null,
+  showReason = false,
+  caption = null,
 }) {
+  const columns = showReason ? [...COLUMNS, { key: "reason", label: "Reason", sortable: false }] : COLUMNS;
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [field, setField] = useState(ALL_FIELDS);
   const [actor, setActor] = useState(ALL_FIELDS);
@@ -109,14 +127,15 @@ export default function ChangeHistory({
     hasHistory && (activeField !== ALL_FIELDS || activeActor !== ALL_FIELDS || from !== "" || to !== "");
 
   return (
-    <RuledSection title={title} id="change-history">
+    <RuledSection title={title} meta={meta} id={sectionId}>
+      {caption ? <p className="fo-muted ns-emp-note" data-history-caption>{caption}</p> : null}
       {loading ? (
-        <LoadingState>Loading change history…</LoadingState>
+        <LoadingState>{loadingMessage}</LoadingState>
       ) : unavailable ? (
         // A read we could not perform is NOT an empty history. Saying "no changes" here would
         // assert something about the record that we have no basis for.
         <FailureState
-          title="Change history unavailable"
+          title={unavailableTitle}
           message={unavailable}
           action={
             onRetry ? (
@@ -182,13 +201,15 @@ export default function ChangeHistory({
               {/* --stack is the established handheld recomposition: the header row is hidden and
                   each cell renders its own label from data-label, so a five-column audit table
                   stays readable at 320px instead of scrolling sideways. */}
-              <table className="fo-table fo-table--stack fo-history__table" data-testid="change-history-table">
+              <table className="fo-table fo-table--stack fo-history__table" data-testid={testId}>
                 <caption className="fo-visually-hidden">
                   {title} — {shown.length} {shown.length === 1 ? "entry" : "entries"}
                 </caption>
                 <thead>
                   <tr>
-                    {COLUMNS.map((col) => (
+                    {columns.map((col) => col.sortable === false ? (
+                      <th key={col.key} scope="col">{col.label}</th>
+                    ) : (
                       <th key={col.key} scope="col" aria-sort={ariaSortFor(sort, col.key)}>
                         <button
                           type="button"
@@ -224,13 +245,15 @@ export default function ChangeHistory({
                       </td>
                       <td data-label="Previous">{row.previousValue ?? ABSENT}</td>
                       <td data-label="New">{row.newValue ?? ABSENT}</td>
-                      <td data-label="Changed By">{row.changedByLabel ?? "Unknown user"}</td>
+                      <td data-label="Changed By">{row.changedByLabel ?? unknownActorLabel}</td>
+                      {showReason ? <td data-label="Reason">{row.reason ?? ABSENT}</td> : null}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+          {footer}
         </>
       )}
     </RuledSection>

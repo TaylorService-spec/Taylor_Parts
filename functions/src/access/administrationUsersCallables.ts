@@ -1,5 +1,9 @@
-// ADMINISTRATION USERS CONSOLIDATION -- the callable adapters for the two new Administration >
-// Users surfaces: the governed Employee profile write, and the record-scoped Change History read.
+// ADMINISTRATION USERS CONSOLIDATION -- the callable adapter for the record-scoped Change History read.
+//
+// RETIRED (2026-09-17): the `updateEmployeeProfile` callable adapter that used to live here is removed. It wrote
+// the retired Firestore `employees` record + `employee_number_registry`; PostgreSQL is the Employee authority
+// (#1913) and the browser uses the governed Workforce commands (#1937). employeeProfileCommands.ts is kept only
+// for its vocabulary and the unit-tested record of the legacy writer; it is not exposed.
 //
 // The SAME thin-adapter contract accessCommandCallables.ts sets, and for the same three reasons:
 // `actorUid` is derived from the AUTHENTICATED SERVER CONTEXT and from nothing else (a client that
@@ -12,12 +16,11 @@
 //
 // DEPLOYMENT POSTURE, unchanged from every other surface in this file's neighbourhood: these
 // deploy to eos-platform-sandbox under the per-environment activation program and are NOT deployed
-// to the production project. Both deny today in every environment for the standing platform
+// to the production project. It denies today in every environment for the standing platform
 // reason -- no principal holds a `roleAssignments` document, so every governed capability
 // resolution denies -- which the Users surface states on screen rather than hiding.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
-import * as employeeProfile from "./employeeProfileCommands";
 import * as changeHistory from "./recordChangeHistoryReadService";
 
 const REGION = "us-central1";
@@ -36,74 +39,19 @@ function asRecord(data: unknown): Record<string, unknown> {
 function mapError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
 
-  // Entirely about the caller's own submitted input -- which field, which vocabulary. Safe, and
-  // the only class of message an edit form can actually act on.
-  if (
-    err instanceof employeeProfile.InvalidInputError ||
-    err instanceof changeHistory.InvalidInputError
-  ) {
+  // Entirely about the caller's own submitted input. Safe, and actionable.
+  if (err instanceof changeHistory.InvalidInputError) {
     return new HttpsError("invalid-argument", err.message);
   }
 
   // The specific denial REASON is access-model internal state. The caller learns that they may
   // not, never why the resolver said so.
-  if (
-    err instanceof employeeProfile.UnauthorizedActorError ||
-    err instanceof changeHistory.UnauthorizedActorError
-  ) {
+  if (err instanceof changeHistory.UnauthorizedActorError) {
     return new HttpsError("permission-denied", "You are not authorized to perform this action.");
-  }
-
-  // "The employee does not exist" and "the manager you chose does not exist" are both facts about
-  // ids the CALLER submitted, and both are actionable. Neither names a collection path.
-  if (err instanceof employeeProfile.EmployeeNotFoundError) {
-    return new HttpsError("not-found", "This employee record could not be found.");
-  }
-  if (err instanceof employeeProfile.UnknownManagerError) {
-    return new HttpsError("failed-precondition", "The selected manager is not an existing employee.");
-  }
-
-  if (err instanceof employeeProfile.IdempotencyKeyConflictError) {
-    return new HttpsError(
-      "already-exists",
-      "This request key has already been used for a different request. Try again.",
-    );
-  }
-
-  // The number the caller themselves submitted is already assigned. Safe to say plainly, and the
-  // only thing they can act on -- and deliberately WITHOUT naming who holds it: an administrator
-  // editing one record does not need another person's identity to fix their own typo.
-  if (err instanceof employeeProfile.EmployeeNumberTakenError) {
-    return new HttpsError(
-      "already-exists",
-      "That Employee ID is already assigned to another employee. Choose a different one.",
-    );
   }
 
   return new HttpsError("internal", "An unexpected error occurred. Please try again.");
 }
-
-/**
- * Edit an Employee's profile / employment record.
- *
- * `changes` is a field-key map. The command rejects any key outside its editable set BY NAME,
- * including securityRole, userId and account status -- so this adapter needs no allow-list of its
- * own, and cannot drift from the one that enforces.
- */
-export const updateEmployeeProfile = onCall({ region: REGION }, async (request) => {
-  const actorUid = requireActorUid(request);
-  const data = asRecord(request.data);
-  try {
-    return await employeeProfile.updateEmployeeProfile({
-      actorUid,
-      employeeId: data.employeeId as string,
-      changes: asRecord(data.changes),
-      idempotencyKey: data.idempotencyKey as string,
-    });
-  } catch (err) {
-    throw mapError(err);
-  }
-});
 
 /**
  * One record's authoritative change history, newest first.

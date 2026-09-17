@@ -38,11 +38,13 @@ export const WORKFORCE_READS = Object.freeze({
   JOB_ROLE_HISTORY: Object.freeze({ id: "EMP-RT-08", operation: "listEmployeeJobRoleHistory" }),
   JOB_ROLE_CATALOG: Object.freeze({ id: "EMP-RT-08", operation: "listJobRoles" }),
   EMPLOYEES_WITHOUT_JOB_ROLE: Object.freeze({ id: "EMP-RT-08", operation: "listEmployeesWithoutJobRole" }),
+  // EMP-RT-H1 is SERVED: the governed PostgreSQL Employee change history (no longer a runtime dependency below).
+  EMPLOYEE_CHANGE_HISTORY: Object.freeze({ id: "EMP-RT-H1", operation: "listEmployeeChangeHistory" }),
 });
 
 export const EMPLOYEE_RUNTIME_DEPENDENCY = "EMPLOYEE_RUNTIME_DEPENDENCY";
 
-/** Facts the design needs that no governed read serves. Each renders as a named, truthful unavailable state. */
+/** Facts the design needs that this client cannot offer yet. Each renders as a named, truthful unavailable state. */
 export const RUNTIME_DEPENDENCIES = Object.freeze({
   ASSIGNED_WORK_READ: Object.freeze({
     id: "EMP-RT-05",
@@ -55,27 +57,18 @@ export const RUNTIME_DEPENDENCIES = Object.freeze({
       "Governed read listAssignedWorkForEmployee { employeeId }, over a PostgreSQL assignment authority and a governed Employee ↔ Technician projection.",
   }),
   // The profile facts and the reporting relationship ARE editable now (EMP-RT-W1, served as Workforce commands by
-  // W1B). What is still not served is the Employee LIFECYCLE writer: Employment Status and Operating Company are
-  // lifecycle / business-authority facts the profile command refuses by name, so the editor shows them read-only
-  // with this dependency rather than inventing a writer. The id is the next Employee writer tail after W1.
+  // W1B). The Employee LIFECYCLE writer IS served too (EMP-RT-W2: changeEmploymentStatus / changeOperatingCompany on the
+  // Workforce transport). What is missing is only the UI: no Administration control offers those two commands yet, so
+  // Employment Status and Operating Company are shown read-only on this page. The id stays the writer's design id.
   LIFECYCLE_WRITER: Object.freeze({
     id: "EMP-RT-W2",
     kind: EMPLOYEE_RUNTIME_DEPENDENCY,
-    serverReason: "EMPLOYEE_LIFECYCLE_WRITER_NOT_SERVED",
-    fact: "Changing Employment Status or Operating Company",
+    serverReason: "EMPLOYEE_LIFECYCLE_CONTROL_NOT_BUILT",
+    fact: "Changing Employment Status or Operating Company on this page",
     today:
-      "Employment Status and Operating Company are governed by the Employee lifecycle authority, which is not yet available. The governed profile command refuses both, so they are shown here and not edited.",
+      "Employment Status and Operating Company are served by the Workforce service (the governed lifecycle commands), but they are not editable on this page yet, so they are shown here and not edited.",
     requiredApi:
-      "Governed Workforce Employee lifecycle command (status transitions and operating company) over eos_workforce.employees, audited in PostgreSQL.",
-  }),
-  EMPLOYEE_HISTORY_READ: Object.freeze({
-    id: "EMP-RT-H1",
-    kind: EMPLOYEE_RUNTIME_DEPENDENCY,
-    serverReason: "EMPLOYEE_HISTORY_NOT_SERVED",
-    fact: "Governed Employee change history",
-    today:
-      "The change history below is the legacy audit trail (pre-cutover profile changes and account/Role events). No governed PostgreSQL Employee history read is served yet.",
-    requiredApi: "Governed read listEmployeeChangeHistory { employeeId } over eos_policy.audit_events for the Employee record.",
+      "Governed Workforce commands changeEmploymentStatus / changeOperatingCompany (served) wired into an Administration lifecycle control.",
   }),
 });
 

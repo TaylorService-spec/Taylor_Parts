@@ -86,6 +86,9 @@ export function normalizeHistoryRow(raw, { fieldLabels = {}, eventLabels = {} } 
     // person is expected to recognize (DECISIONS #106).
     changedByLabel: isBlank(raw.changedByLabel) ? null : String(raw.changedByLabel),
     summary: isBlank(raw.summary) ? "" : String(raw.summary),
+    // The person's own note on the change, where the trail records one (the governed Employee trail does). Null when
+    // absent -- a surface whose trail carries no reasons does not show the Reason column at all.
+    reason: isBlank(raw.reason) ? null : String(raw.reason),
   });
 }
 

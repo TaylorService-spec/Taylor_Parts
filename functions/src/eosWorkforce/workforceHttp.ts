@@ -33,6 +33,9 @@
 //   EMP-RT-08 createJobRole / updateJobRole / assignEmployeeJobRole                      admin.employeeJobRole.write.
 //             A Job Role is a business function only: no Security Role, permission, ownership, assignment,
 //             reporting or operating-company authority is read or written by these operations.
+//   EMP-RT-H1 listEmployeeChangeHistory      employee.record.read. The governed Employee audit trail (six closed actions,
+//                                             projected values); the actor's display name only with
+//                                             admin.principalAccess.read, never a Principal id.
 //   EMP-RT-W1B updateEmployeeProfile          admin.employeeProfile.write. The 17 profile facts only (W1A command).
 //   EMP-RT-W1B establishReportingRelationship admin.employeeProfile.write. Reporting relationship, history kept.
 //   EMP-RT-W1B endReportingRelationship       admin.employeeProfile.write.
@@ -58,6 +61,7 @@ import { saveEmployeeEdit } from "./commands/employeeEditCommand";
 import { changeEmploymentStatus, changeOperatingCompany } from "./commands/employeeLifecycleCommand";
 import { assignEmployeeJobRole, createJobRole, updateJobRole } from "./commands/employeeJobRoleCommands";
 import { listEmployeeJobRoleHistory, listEmployeesWithoutJobRole, listJobRoles } from "./reads/jobRoleReads";
+import { listEmployeeChangeHistory } from "./reads/employeeChangeHistoryRead";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -92,6 +96,7 @@ const READ_RUNNERS = Object.freeze({
   listJobRoles: read(listJobRoles),
   listEmployeeJobRoleHistory: read(listEmployeeJobRoleHistory),
   listEmployeesWithoutJobRole: read(listEmployeesWithoutJobRole),
+  listEmployeeChangeHistory: read(listEmployeeChangeHistory),
 } as const);
 
 // ════════════════════ the closed operation list (commands) ════════════════════

@@ -559,7 +559,7 @@ describe("Edit Employee is offered by capability, and the server stays the autho
     const locked = form.querySelector('[data-employee-edit-locked="LIFECYCLE"]');
     expect(locked.textContent).toMatch(/Active/);
     expect(locked.textContent).toMatch(/Taylor Freezer of Arizona/);
-    expect(within(form).getAllByText(/governed by the Employee lifecycle authority, which is not yet available/).length).toBeGreaterThan(0);
+    expect(within(form).getAllByText(/served by the Workforce service through the governed lifecycle\s+commands, but they are not editable on this page yet/).length).toBeGreaterThan(0);
     expect(form.querySelector('[data-runtime-dependency="EMP-RT-W2"]')).toBeTruthy();
     expect(within(form).queryByRole("checkbox")).toBeNull();
   });
@@ -770,9 +770,10 @@ describe("Change History sits at the bottom of the record and shows AUDITED even
     expect(within(bodyRows[1]).getByText("Account Status")).toBeTruthy();
   });
 
-  it("it is the LAST thing on the page", async () => {
+  it("the LEGACY trail is the LAST thing on the page, labelled as the pre-cutover legacy trail", async () => {
     renderDetail(okHistory(HISTORY));
-    const heading = await screen.findByRole("heading", { name: "Change History" });
+    const heading = await screen.findByRole("heading", { name: "Legacy Change History" });
+    expect(heading.closest("section").textContent).toMatch(/Pre-cutover legacy trail/);
     const headings = screen.getAllByRole("heading");
     expect(headings.at(-1)).toBe(heading);
   });
@@ -871,7 +872,7 @@ describe("Change History sits at the bottom of the record and shows AUDITED even
       () => new Promise((resolve) => { release = () => resolve({ ok: true, rows: [] }); }),
     );
     renderDetail(client);
-    expect(await screen.findByText("Loading change history…")).toBeTruthy();
+    expect(await screen.findByText("Loading the legacy change history…")).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "Field" })).toBeNull();
     expect(screen.queryByText("No changes recorded")).toBeNull();
     await act(async () => { release(); });
@@ -881,7 +882,7 @@ describe("Change History sits at the bottom of the record and shows AUDITED even
     const client = okHistory();
     client.listRecordChangeHistory = vi.fn().mockResolvedValue({ ok: false, result: "UNAVAILABLE" });
     renderDetail(client);
-    expect(await screen.findByText("Change history unavailable")).toBeTruthy();
+    expect(await screen.findByText("Legacy change history unavailable")).toBeTruthy();
     expect(screen.queryByText(/No changes recorded/)).toBeNull();
   });
 
@@ -1089,5 +1090,173 @@ describe("Job Role is not part of Edit Employee or of Security Role actions", ()
     // The control never offers anything under admin.employeeProfile.write.
     expect(src("src/modules/administration/EmployeeJobRoleControl.jsx")).not.toMatch(/employeeProfile\.write"/);
     expect(src("src/modules/administration/EmployeeJobRoleControl.jsx")).not.toMatch(/from\s+["']firebase|httpsCallable|firestore/i);
+  });
+});
+
+// ════════════════════ GOVERNED CHANGE HISTORY (EMP-RT-H1) ════════════════════
+//
+// The governed trail is listEmployeeChangeHistory on the Workforce transport. It renders in the shared Change History
+// grammar with human words, sits ABOVE the legacy (pre-cutover) trail, is re-read after a saved edit and after a Job
+// Role assignment, and states refused / failed / empty as three different facts.
+
+const governedSection = () => document.querySelector("#employee-change-history");
+const governedState = () => document.querySelector("[data-governed-history]")?.getAttribute("data-governed-history");
+const governedReads = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "listEmployeeChangeHistory");
+const GOVERNED_ITEMS = [
+  {
+    eventId: "audit_new", action: "employee.jobRole.assign", occurredAt: "2026-09-15T10:00:00.000Z",
+    before: { jobRoleId: "retail-sales", jobRoleDisplayName: "Retail Sales" }, after: { jobRoleId: "national-accounts-sales", jobRoleDisplayName: "National Accounts Sales" },
+    reason: null, changedBy: { displayName: "Avery Admin" },
+  },
+  {
+    eventId: "audit_mid", action: "employee.reportingRelationship.establish", occurredAt: "2026-09-12T10:00:00.000Z",
+    before: null, after: { managerEmployeeId: "emp-2", managerDisplayName: "Mike Jones" }, reason: "reorganised team", changedBy: null,
+  },
+  {
+    eventId: "audit_old", action: "employee.profile.update", occurredAt: "2026-09-01T10:00:00.000Z",
+    before: { jobTitle: "Service Technician" }, after: { jobTitle: "Senior Service Technician" }, reason: "promotion", changedBy: { displayName: "Avery Admin" },
+  },
+];
+const governedPage = (items, nextCursor = null) => ({ ok: true, result: { employeeId: "emp-1", items, truncated: nextCursor !== null, nextCursor } });
+
+describe("the governed Change History (EMP-RT-H1)", () => {
+  it("renders human labels newest first, names the actor only when the server did, and is scoped to this Employee", async () => {
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(GOVERNED_ITEMS) });
+    renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+    const table = await screen.findByTestId("governed-change-history-table");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((r) => r.getAttribute("data-history-row"))).toEqual(["audit_new:jobRole", "audit_mid:managerEmployeeId", "audit_old:jobTitle"]);
+    expect(rows.map((r) => [...r.querySelectorAll("td")].slice(1).map((td) => td.textContent))).toEqual([
+      ["Job Role", "Retail Sales", "National Accounts Sales", "Avery Admin", "—"],
+      ["Manager", "—", "Mike Jones", "Not shown", "reorganised team"],
+      ["Job Title", "Service Technician", "Senior Service Technician", "Avery Admin", "promotion"],
+    ]);
+    expect(table.textContent).not.toMatch(/retail-sales|national-accounts-sales|emp-2|employee\.jobRole|pr-/);
+    expect(governedReads(workforce)).toEqual([["listEmployeeChangeHistory", { employeeId: "emp-1", limit: 50 }]]);
+    expect(within(governedSection()).getByRole("heading", { name: "Change History" })).toBeTruthy();
+    expect(governedSection().textContent).toMatch(/Governed Employee changes, from the Workforce service \(EMP-RT-H1\)/);
+  });
+
+  it("shows each governed change's own reason in a Reason column -- profile, reporting, lifecycle and Job Role", async () => {
+    const at = (n) => `2026-09-1${n}T10:00:00.000Z`;
+    const items = [
+      { eventId: "a4", action: "employee.jobRole.assign", occurredAt: at(4), before: null, after: { jobRoleId: "x", jobRoleDisplayName: "Retail Sales" }, reason: "hired into retail", changedBy: null },
+      { eventId: "a3", action: "employee.operatingCompany.change", occurredAt: at(3), before: { operatingCompanyId: "taylor" }, after: { operatingCompanyId: "taylor" }, reason: "company move", changedBy: null },
+      { eventId: "a2", action: "employee.employmentStatus.change", occurredAt: at(2), before: { employmentStatus: "ACTIVE" }, after: { employmentStatus: "ON_LEAVE" }, reason: "medical leave", changedBy: null },
+      { eventId: "a1", action: "employee.reportingRelationship.end", occurredAt: at(1), before: { managerEmployeeId: "emp-2", managerDisplayName: "Mike Jones" }, after: null, reason: "manager left", changedBy: null },
+      { eventId: "a0", action: "employee.profile.update", occurredAt: at(0), before: { jobTitle: "A" }, after: { jobTitle: "B" }, reason: null, changedBy: null },
+    ];
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(items) });
+    renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+    const table = await screen.findByTestId("governed-change-history-table");
+    expect(within(table).getByRole("columnheader", { name: "Reason" })).toBeTruthy();
+    const reasons = within(table).getAllByRole("row").slice(1).map((r) => r.querySelector('td[data-label="Reason"]').textContent);
+    expect(reasons).toEqual(["hired into retail", "company move", "medical leave", "manager left", "—"]);
+    // The legacy trail records no reasons, so it has no Reason column.
+    const legacy = await screen.findByTestId("change-history-table");
+    expect(within(legacy).queryByRole("columnheader", { name: "Reason" })).toBeNull();
+    expect(legacy.querySelector('td[data-label="Reason"]')).toBeNull();
+  });
+
+  it("states that manager and Job Role names are shown as they are named today -- on the governed trail only", async () => {
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(GOVERNED_ITEMS) });
+    renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+    await screen.findByTestId("governed-change-history-table");
+    expect(governedSection().querySelector("[data-history-caption]").textContent)
+      .toBe("Manager and Job Role names are shown as they are named today, not as they were named at the time of the change.");
+    expect(document.querySelector("#legacy-change-history [data-history-caption]")).toBeNull();
+  });
+
+  it("keeps the legacy trail visible, labelled as the pre-cutover legacy trail, BELOW the governed one -- never merged", async () => {
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(GOVERNED_ITEMS) });
+    renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+    const legacyTable = await screen.findByTestId("change-history-table");
+    const governedTable = await screen.findByTestId("governed-change-history-table");
+    const legacy = document.querySelector("#legacy-change-history");
+    expect(within(legacy).getByRole("heading", { name: "Legacy Change History" })).toBeTruthy();
+    expect(legacy.textContent).toMatch(/Pre-cutover legacy trail/);
+    expect(governedSection().compareDocumentPosition(legacy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(legacyTable).getAllByRole("row").slice(1).map((r) => r.getAttribute("data-history-row"))).toEqual(["h1", "h2"]);
+    expect(governedTable.querySelector('[data-history-row="h1"]')).toBeNull();
+    expect(legacyTable.querySelector('[data-history-row^="audit_"]')).toBeNull();
+  });
+
+  it("empty, refused and failed are three different statements; only a failure offers retry", async () => {
+    const cases = [
+      [governedPage([]), "READY", /No governed changes have been recorded for this Employee yet\./, false],
+      [{ ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 }, "REFUSED", /Change history not available to you/, false],
+      [{ ok: false, code: "INTERNAL", status: 500 }, "FAILED", /Change history could not be loaded/, true],
+    ];
+    for (const [answer, state, words, retry] of cases) {
+      cleanup();
+      const workforce = makeWorkforce({ listEmployeeChangeHistory: answer });
+      renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+      await waitFor(() => expect(governedState()).toBe(state));
+      expect(governedSection().textContent).toMatch(words);
+      expect(Boolean(within(governedSection()).queryByRole("button", { name: "Try again" })), state).toBe(retry);
+      expect(screen.queryByTestId("governed-change-history-table")).toBeNull();
+      // The legacy trail is unaffected by the governed read's outcome.
+      expect(await screen.findByTestId("change-history-table")).toBeTruthy();
+    }
+  });
+
+  it("a retry after a failure reads again", async () => {
+    let calls = 0;
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: () => (++calls === 1 ? { ok: false, code: "UNREACHABLE" } : governedPage(GOVERNED_ITEMS)) });
+    renderDetail(okHistory(), "emp-1", "", undefined, workforce);
+    await waitFor(() => expect(governedState()).toBe("FAILED"));
+    fireEvent.click(within(governedSection()).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByTestId("governed-change-history-table")).toBeTruthy();
+    expect(governedReads(workforce).length).toBe(2);
+  });
+
+  it("Show more appends the next page with the server's cursor; no cursor, no button", async () => {
+    const workforce = makeWorkforce({
+      listEmployeeChangeHistory: (input) => (input.cursor === "c-2" ? governedPage(GOVERNED_ITEMS.slice(2)) : governedPage(GOVERNED_ITEMS.slice(0, 2), "c-2")),
+    });
+    renderDetail(okHistory(), "emp-1", "", undefined, workforce);
+    await screen.findByTestId("governed-change-history-table");
+    expect(within(screen.getByTestId("governed-change-history-table")).getAllByRole("row").length - 1).toBe(2);
+    fireEvent.click(within(governedSection()).getByRole("button", { name: "Show more" }));
+    await waitFor(() => expect(within(screen.getByTestId("governed-change-history-table")).getAllByRole("row").length - 1).toBe(3));
+    expect(governedReads(workforce).at(-1)).toEqual(["listEmployeeChangeHistory", { employeeId: "emp-1", limit: 50, cursor: "c-2" }]);
+    expect(within(governedSection()).queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("is re-read after a successful Edit Employee save", async () => {
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage([]), updateEmployeeProfile: UPDATED(["jobTitle"]) });
+    await openEditor(workforce);
+    await waitFor(() => expect(governedState()).toBe("READY"));
+    const before = governedReads(workforce).length;
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(/^Saved: Job Title\./);
+    await waitFor(() => expect(governedReads(workforce).length).toBeGreaterThan(before));
+    await waitFor(() => expect(governedState()).toBe("READY"));
+  });
+
+  it("is re-read after a Job Role assignment", async () => {
+    const workforce = makeWorkforce({
+      listEmployeeChangeHistory: governedPage([]),
+      assignEmployeeJobRole: { ok: true, result: { outcome: "ASSIGNED", employeeId: "emp-1", jobRoleId: "retail-sales", assignmentId: "ejr-1", endedAssignmentId: null } },
+    });
+    const select = await openJobRoleControl(workforce);
+    await waitFor(() => expect(governedState()).toBe("READY"));
+    const before = governedReads(workforce).length;
+    fireEvent.change(select, { target: { value: "retail-sales" } });
+    fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
+    await within(jobRoleSection()).findByText(/Job Role assigned: Retail Sales\./);
+    await waitFor(() => expect(governedReads(workforce).length).toBe(before + 1));
+  });
+
+  it("static: the governed history modules add no Firebase import and read only through the injected Workforce client", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    for (const rel of ["src/modules/administration/EmployeeChangeHistorySection.jsx", "src/domain/employeeChangeHistory.js"]) {
+      const src = readFileSync(path.resolve(process.cwd(), rel), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+      expect(src, rel).not.toMatch(/firebase|firestore|httpsCallable|administrationUsersClient|listRecordChangeHistory/i);
+    }
+    const section = readFileSync(path.resolve(process.cwd(), "src/modules/administration/EmployeeChangeHistorySection.jsx"), "utf8");
+    expect(section).not.toMatch(/services\/|hooks\//);
   });
 });

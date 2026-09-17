@@ -242,6 +242,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/employeeChangeHistoryDomain.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/employeeSession.test.mjs",
       "runner": "node"
     },

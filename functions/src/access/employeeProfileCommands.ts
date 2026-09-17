@@ -1,5 +1,17 @@
 // ADMINISTRATION USERS CONSOLIDATION -- the trusted Employee PROFILE writer.
 //
+// ════════════════════ RETIRED: NO LONGER EXPOSED (2026-09-17) ════════════════════
+//
+// The `updateEmployeeProfile` callable that wrapped this command has been REMOVED from
+// administrationUsersCallables.ts and from functions/src/index.ts. PostgreSQL has been the Employee
+// authority since the copy-once cutover (#1913); the browser writes only through the governed Workforce
+// commands (eosWorkforce/commands, served by eosWorkforce/workforceHttp.ts) and has not called this
+// command since #1937. Nothing deployable reaches updateEmployeeProfile below any more.
+//
+// The module stays because it is the canonical home of EMPLOYMENT_STATUS_VALUES / the legacy editable-field
+// vocabulary pinned by several modules and tests, and its command logic stays unit-tested as the record of
+// what the pre-cutover Firestore trail (still read by listRecordChangeHistory) was written by. Do not re-export it.
+//
 // ════════════════════ WHY A COMMAND EXISTS AT ALL ════════════════════
 //
 // firestore.rules' employees/{employeeId} block is `allow create, update, delete: if false`.
@@ -253,8 +265,9 @@ export interface UpdateEmployeeProfileInput {
 // Event contract has no field that can carry one for a field-change action -- `handoffReason` is
 // closed to OWNERSHIP_HANDOFF, and `summary` is a generated sentence rather than a place to put
 // user text past a weaker guard. Widening the immutable trail's contract to add free-text notes is
-// a governance change, not a side effect of an edit form, so the shared Change History component
-// renders its optional Reason column empty for this record type until that contract exists.
+// a governance change, not a side effect of an edit form, so the legacy trail carries no reasons and the
+// shared Change History component does not show its optional Reason column for it. (The governed PostgreSQL
+// Employee trail, EMP-RT-H1, does record a reason and shows that column.)
 
 export interface UpdateEmployeeProfileOutcome {
   status: "applied" | "unchanged" | "replayed";

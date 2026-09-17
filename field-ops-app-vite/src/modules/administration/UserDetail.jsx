@@ -22,6 +22,7 @@ import {
 import UserAccessActions from "./UserAccessActions.jsx";
 import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
 import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
+import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import { EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY } from "../../domain/employeeJobRole.js";
 import {
   RUNTIME_DEPENDENCIES,
@@ -70,8 +71,16 @@ import {
 //     concerns keyed by the Firebase Auth uid -- the CREDENTIAL. The uid is reached along the governed chain
 //     Employee -> EMP-RT-02 link -> Principal -> (identity provider, external subject) from the Administration
 //     API's listTenantPrincipals. Never from an Employee document.
-//   * Change History (listRecordChangeHistory): the legacy audit trail -- pre-cutover profile changes and
-//     account/Role events. Labelled as legacy; the governed Employee history read is tail EMP-RT-H1.
+//   * Legacy Change History (listRecordChangeHistory): the legacy audit trail -- pre-cutover profile changes and
+//     account/Role events. Kept visible and labelled as the pre-cutover legacy trail.
+//
+// ════════════════════ TWO HISTORIES, NEVER MERGED ════════════════════
+//
+//   * Change History (EMP-RT-H1 listEmployeeChangeHistory): the GOVERNED trail -- every change made through the
+//     governed Workforce commands (profile, manager, Employment Status, Operating Company, Job Role), read from the
+//     PostgreSQL audit authority. Re-read after a saved edit and after a Job Role assignment.
+//   * Legacy Change History (above): what happened before the cutover. Its rows are not copied into, merged with or
+//     de-duplicated against the governed trail; each section says which trail it is.
 //
 // ════════════════════ EDITING: THE GOVERNED WORKFORCE COMMANDS, AND THEN A RE-READ ════════════════════
 //
@@ -127,7 +136,11 @@ export default function UserDetail({
   const principalId = principalLink.status === WORKFORCE_READ_STATE.READY ? principalLink.data?.link?.principalId ?? null : null;
   const credential = usePrincipalCredential(principalId, { policyCall });
 
-  // ── CHANGE HISTORY (legacy audit trail), read through the trusted callable.
+  // ── GOVERNED CHANGE HISTORY (EMP-RT-H1): bumped after anything on this page writes the Employee.
+  const [governedHistoryKey, setGovernedHistoryKey] = useState(0);
+  const rereadGovernedHistory = () => setGovernedHistoryKey((n) => n + 1);
+
+  // ── LEGACY CHANGE HISTORY (pre-cutover audit trail), read through the trusted callable.
   const [history, setHistory] = useState({ loading: true, rows: [], unavailable: null });
   const [historyNonce, setHistoryNonce] = useState(0);
   useEffect(() => {
@@ -265,6 +278,7 @@ export default function UserDetail({
             setEditNotice(described);
             // Re-read the authority. Never render what was typed as the record.
             record.reload();
+            rereadGovernedHistory();
           }}
         />
       ) : null}
@@ -298,7 +312,10 @@ export default function UserDetail({
                 canAssign={canAssignJobRole}
                 administersEmployees={canEdit}
                 jobRole={jobRole}
-                onReread={reload}
+                onReread={() => {
+                  reload();
+                  rereadGovernedHistory();
+                }}
               />
             )}
           />
@@ -341,7 +358,7 @@ export default function UserDetail({
               {
                 key: "edits",
                 label: "Edits",
-                source: `The governed Workforce commands: profile facts through updateEmployeeProfile, the manager through establishReportingRelationship / endReportingRelationship. Employment Status and Operating Company have no governed writer yet (${RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER.id}).`,
+                source: `The governed Workforce commands: profile facts through updateEmployeeProfile, the manager through establishReportingRelationship / endReportingRelationship. Employment Status and Operating Company are served by the Workforce service (${RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER.id}) but are not editable on this page yet.`,
               },
               {
                 key: "jobRole",
@@ -356,19 +373,26 @@ export default function UserDetail({
               {
                 key: "history",
                 label: "Change history",
-                source: `The legacy audit trail. A governed Employee history read is not served (${RUNTIME_DEPENDENCIES.EMPLOYEE_HISTORY_READ.id}).`,
+                source: `Change History is the governed PostgreSQL Employee audit trail, read through the Workforce service (${WORKFORCE_READS.EMPLOYEE_CHANGE_HISTORY.id}). Legacy Change History is the pre-cutover legacy audit trail, kept for the record.`,
               },
             ]}
           />
         </aside>
       </div>
 
+      <EmployeeChangeHistorySection employeeId={employee.employeeId} workforce={workforce} reloadKey={governedHistoryKey} />
+
       <ChangeHistory
+        title="Legacy Change History"
+        meta="Pre-cutover legacy trail — changes recorded before the governed Employee authority"
+        sectionId="legacy-change-history"
+        loadingMessage="Loading the legacy change history…"
+        unavailableTitle="Legacy change history unavailable"
         rows={historyRows}
         loading={history.loading}
         unavailable={history.unavailable}
         onRetry={() => setHistoryNonce((n) => n + 1)}
-        emptyMessage="No recorded changes for this Employee yet."
+        emptyMessage="No legacy (pre-cutover) changes were recorded for this Employee."
       />
     </div>
   );

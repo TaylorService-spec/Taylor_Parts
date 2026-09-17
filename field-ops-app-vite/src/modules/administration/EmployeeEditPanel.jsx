@@ -215,11 +215,11 @@ export default function EmployeeEditPanel({ employee, workforce, onCancel, onSav
           <dd>{recordCompanyName(base) ?? (base.operatingCompanyId ? "Unavailable" : "Not recorded")}</dd>
         </dl>
         <p className="fo-muted ns-emp-note">
-          Employment Status and Operating Company are governed by the Employee lifecycle authority, which is not yet
-          available, so they are not changed from this form. Operational Roles are not part of the governed Employee
+          Employment Status and Operating Company are served by the Workforce service through the governed lifecycle
+          commands, but they are not editable on this page yet, so they are not changed from this form. Operational Roles are not part of the governed Employee
           record, and Security Roles are User Access — neither is edited here.
         </p>
-        <RuntimeDependency dependency={RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER} lead="Changing the Employee lifecycle is not available." />
+        <RuntimeDependency dependency={RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER} lead="Changing the Employee lifecycle is not available on this page yet." />
       </RuledSection>
 
       {saveError ? (
