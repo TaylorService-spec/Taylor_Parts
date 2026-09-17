@@ -117,6 +117,12 @@ or models it.
 **Rules are Tier-2 HOLD. These are RECORDED, NOT FIXED.** No line of `firestore.rules` was changed by this wave.
 All four brief claims were independently verified at this baseline.
 
+> **Update 2026-09-16 (#1929, CRM cutover #1925/#1928):** the three PERSON-axis rows below (`accounts`, `locations`,
+> `contacts`) are **CLOSED in the governed Rules** — each collection is now `allow create, update, delete: if false;`
+> (reads retained only for the migration snapshot), so no client can write an owner field. They remain recorded as
+> measured. Live closure requires the #1929 Rules to be deployed to the nonprod Firebase project; until that is
+> verified the defects must be treated as live there. The `fieldops_jobs` COMPANY-axis row is unchanged.
+
 | statement | verified finding | classification |
 |---|---|---|
 | `accounts/{accountId}` — `allow update` (**`firestore.rules:1335`**) | `isAdminOrDispatcher() && accountGovernedFieldsValid(...) && (isAdmin() \|\| accountGovernedFieldsUnchanged())`. The `isAdmin()` branch **short-circuits** the equality helper, and **`accountOwner` occurs 0 times in the entire file** — so no Rules constraint of any kind applies to `accountOwner`. An admin client can rewrite record ownership directly. | **BYPASS DEFECT** — live for any admin client |
