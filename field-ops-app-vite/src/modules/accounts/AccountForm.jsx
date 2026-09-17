@@ -11,6 +11,18 @@ import IdentityLine from "./IdentityLine";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
 import { Button } from "../../shared/ui/primitives";
+import {
+  ACCOUNT_OWNER_CHANGE,
+  ACCOUNT_OWNERSHIP_HANDOFF_SOURCES,
+  ACCOUNT_OWNERSHIP_HANDOFF_SOURCE_LABEL,
+  DEFAULT_ACCOUNT_OWNERSHIP_HANDOFF_SOURCE,
+  MAX_ACCOUNT_HANDOFF_REASON_LENGTH,
+  accountOwnerChange,
+} from "../../domain/accountOwnershipChange.js";
+import { crmRefusalMessage } from "../../domain/crmRefusal.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 // Sprint 2.0.2 -- Customer Foundation. Shared create/edit form,
 // internal name AccountForm per the naming convention (rendered UI
@@ -82,6 +94,15 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [taxStatus, setTaxStatus] = useState(initialValues?.taxStatus ?? "");
   const [billingContactId, setBillingContactId] = useState(initialValues?.billingContact?.contactId ?? "");
   const [accountOwner, setAccountOwner] = useState(initialValues?.accountOwner ?? null);
+  // PLATFORM-SANDBOX ONLY (governed PostgreSQL CRM owner changes -- domain/accountOwnershipChange.js): editing an
+  // existing customer compares the owner it was opened with to the one now chosen. No hook and no state is added for it:
+  // the handoff source and reason are plain form controls read at submit, so every other build's form is unchanged.
+  // `false` in every other build.
+  const governedOwnerEdit = CRM_VIA_EOS_API && Boolean(initialValues);
+  const initialOwnerEmployeeId = governedOwnerEdit ? (initialValues.accountOwner?.assignedToEmployeeId ?? null) : null;
+  const ownerChangeKind = governedOwnerEdit
+    ? accountOwnerChange({ previousOwnerEmployeeId: initialOwnerEmployeeId, nextOwnerEmployeeId: accountOwner?.assignedToEmployeeId ?? null }).kind
+    : null;
   const [submitAttempted, setSubmitAttempted] = useState(false);
   // Save-time (post-validation) failure -- e.g. a Rules permission-denied. Shown
   // inside the form so the creation overlay stays open and the user can retry.
@@ -173,12 +194,22 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
 
   async function handleSubmit(e) {
     e.preventDefault();
+    // Platform-sandbox: the stated handoff terms, read from their controls before anything awaits.
+    const ownershipChange = governedOwnerEdit
+      ? {
+        previousOwnerEmployeeId: initialOwnerEmployeeId,
+        source: e.currentTarget.elements.namedItem("account-owner-handoff-source")?.value ?? null,
+        reason: e.currentTarget.elements.namedItem("account-owner-change-reason")?.value ?? null,
+      }
+      : null;
     if (submittingRef.current) return; // a save is already in flight
     setSubmitAttempted(true);
     setSaveError(null);
     const trimmedName = name.trim();
     if (!trimmedName) return;
     if (!cpValid) return; // errors are already rendered beside each field
+    // Platform-sandbox: an owned customer is never made ownerless; the refusal is rendered beside the owner picker.
+    if (governedOwnerEdit && ownerChangeKind === ACCOUNT_OWNER_CHANGE.CLEAR_REFUSED) return;
 
     const trimmedCurrency = defaultCurrency.trim().toUpperCase();
 
@@ -225,6 +256,9 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       taxStatus: taxStatus || null,
       billingContact: billingContactId ? { contactId: billingContactId } : null,
       accountOwner,
+      // Platform-sandbox only: the owner this edit started from and the stated handoff terms. The EOS API writer turns
+      // them into an OWNER_HANDOFF or an INITIAL_OWNER_ASSIGNMENT (never a source for the latter).
+      ...(governedOwnerEdit ? { ownershipChange } : {}),
     };
 
     // Await the save so a post-validation failure (e.g. a Rules permission-
@@ -244,7 +278,9 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       await onSubmit(payload);
     } catch (err) {
       console.error("Account save failed:", err);
-      setSaveError(accountSaveErrorMessage(err));
+      // Platform-sandbox: the governed CRM's refusal, stated exactly. Every other build: the legacy safe copy.
+      if (CRM_VIA_EOS_API) setSaveError(crmRefusalMessage(err));
+      else setSaveError(accountSaveErrorMessage(err));
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -463,7 +499,18 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
               {/* CURRENT owner, re-resolved from userId -- not the stored
                   historical snapshot; loading/error/unknown states preserved. */}
               <IdentityLine label="Current owner" identity={currentOwnerIdentity} />
-              <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</Button>
+              {governedOwnerEdit && initialOwnerEmployeeId ? (
+                // Platform-sandbox: the governed CRM refuses an ownerless customer (OWNER_REQUIRED), so clearing is
+                // not offered. A pending change can be undone by keeping the current owner.
+                <>
+                  {ownerChangeKind === ACCOUNT_OWNER_CHANGE.OWNER_HANDOFF && (
+                    <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(initialValues.accountOwner)}>Keep current owner</Button>
+                  )}
+                  <p className="fo-muted">An owner is required: choose another owner to hand this customer off. The owner cannot be cleared.</p>
+                </>
+              ) : (
+                <Button type="button" variant="tertiary" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</Button>
+              )}
             </div>
           )}
           <EmployeeAssignmentPicker
@@ -473,6 +520,36 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             disabled={authLoading}
           />
           <FormError>{errors.accountOwner}</FormError>
+          {governedOwnerEdit && ownerChangeKind === ACCOUNT_OWNER_CHANGE.CLEAR_REFUSED && (
+            <FormError role="alert">An owner is required. Choose another owner, or keep the current owner.</FormError>
+          )}
+          {governedOwnerEdit && ownerChangeKind === ACCOUNT_OWNER_CHANGE.OWNER_HANDOFF && (
+            <Field id="account-owner-handoff-source" label="Handoff source" required>
+              <select id="account-owner-handoff-source" name="account-owner-handoff-source" className="fo-wizard-control" defaultValue={DEFAULT_ACCOUNT_OWNERSHIP_HANDOFF_SOURCE}>
+                {ACCOUNT_OWNERSHIP_HANDOFF_SOURCES.map((source) => (
+                  <option key={source} value={source}>{ACCOUNT_OWNERSHIP_HANDOFF_SOURCE_LABEL[source]}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {governedOwnerEdit && ownerChangeKind === ACCOUNT_OWNER_CHANGE.INITIAL_OWNER_ASSIGNMENT && (
+            <p className="fo-muted">This customer has no owner yet, so this is its first owner assignment.</p>
+          )}
+          {governedOwnerEdit && (ownerChangeKind === ACCOUNT_OWNER_CHANGE.OWNER_HANDOFF || ownerChangeKind === ACCOUNT_OWNER_CHANGE.INITIAL_OWNER_ASSIGNMENT) && (
+            <Field
+              id="account-owner-change-reason"
+              label={ownerChangeKind === ACCOUNT_OWNER_CHANGE.OWNER_HANDOFF ? "Handoff reason (optional)" : "Assignment reason (optional)"}
+            >
+              <textarea
+                id="account-owner-change-reason"
+                name="account-owner-change-reason"
+                className="fo-wizard-control"
+                defaultValue=""
+                maxLength={MAX_ACCOUNT_HANDOFF_REASON_LENGTH}
+                rows={2}
+              />
+            </Field>
+          )}
         </div>
       </fieldset>
 

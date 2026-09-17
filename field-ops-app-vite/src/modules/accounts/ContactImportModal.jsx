@@ -10,8 +10,34 @@ import {
   SUPPORTED_CONTACT_FIELDS,
   MAX_IMPORT_ROWS,
 } from "../../domain/contactCsvImport";
-import { importContacts } from "../../domain/contactImport";
+import { importContacts, newContactImportKey } from "../../domain/contactImport";
+import { contactImportRefusal } from "../../domain/crmRefusal.js";
 import { Button } from "../../shared/ui/primitives";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
+
+// PLATFORM-SANDBOX ONLY: the idempotency key of each import INTENT, keyed by the validated preview object the user
+// confirms. A retry of that same preview reuses its key (the server replays the recorded result instead of importing
+// twice); validating again creates a new preview object and therefore a new intent. null in every other build.
+const importKeysByIntent = CRM_VIA_EOS_API ? new WeakMap() : null;
+
+/** PLATFORM-SANDBOX ONLY: a refused import -- nothing was imported -- with the server's findings by CSV row. */
+function ImportRefusal({ refusal }) {
+  return (
+    <div className="fo-warning fo-contact-import-save-error" role="alert">
+      {refusal.message}
+      {refusal.findings.length > 0 && (
+        <ul className="fo-contact-import-errors">
+          {refusal.findings.slice(0, 10).map((f, i) => (
+            <li key={i}>{f.rowNumber === null ? f.text : `Row ${f.rowNumber}: ${f.text}`}</li>
+          ))}
+          {refusal.findings.length > 10 && <li>…and {refusal.findings.length - 10} more</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 // Customer Contact CSV import (Issue #209). An accessible, three-step flow inside
 // the shared PR #201 Modal: select a .csv, map columns to the supported Contact
@@ -106,6 +132,7 @@ export default function ContactImportModal({ accountId, accountName, existingCon
   function handleValidate() {
     if (!mappingCheck.valid) return;
     setValidation(validateRows(parsed.rows, mapping, existingContacts, { maxRows: MAX_IMPORT_ROWS }));
+    if (CRM_VIA_EOS_API) setSaveError("");
     setStep("preview");
   }
 
@@ -116,7 +143,14 @@ export default function ContactImportModal({ accountId, accountName, existingCon
     setImporting(true);
     setSaveError("");
     try {
-      const result = await importContacts(accountId, validation.accepted.map((a) => a.contact));
+      const contacts = validation.accepted.map((a) => a.contact);
+      let result;
+      if (CRM_VIA_EOS_API) {
+        if (!importKeysByIntent.has(validation)) importKeysByIntent.set(validation, newContactImportKey());
+        result = await importContacts(accountId, contacts, { idempotencyKey: importKeysByIntent.get(validation) });
+      } else {
+        result = await importContacts(accountId, contacts);
+      }
       if (result?.blocked) {
         const e = new Error("blocked");
         e.blocked = true;
@@ -134,7 +168,8 @@ export default function ContactImportModal({ accountId, accountName, existingCon
     } catch (err) {
       // Keep the modal open; show safe copy (never a raw Firebase detail).
       console.error("Contact import failed:", err);
-      setSaveError(contactImportErrorMessage(err));
+      // Platform-sandbox: the refusal object (message + findings); every other build: the legacy safe copy string.
+      setSaveError(CRM_VIA_EOS_API ? contactImportRefusal(err, validation.accepted) : contactImportErrorMessage(err));
     } finally {
       importingRef.current = false;
       setImporting(false);
@@ -265,7 +300,9 @@ export default function ContactImportModal({ accountId, accountName, existingCon
               </div>
             )}
 
-            {saveError && <div className="fo-warning fo-contact-import-save-error" role="alert">{saveError}</div>}
+            {saveError && (CRM_VIA_EOS_API
+              ? <ImportRefusal refusal={saveError} />
+              : <div className="fo-warning fo-contact-import-save-error" role="alert">{saveError}</div>)}
 
             <div className="fo-wizard-actions">
               <Button type="button" variant="tertiary" onClick={() => setStep("map")} disabled={importing}>Back</Button>

@@ -15,6 +15,7 @@ import { formatAddress } from "../../domain/address";
 import { telHref } from "../../domain/phoneLink.js";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
+import AccountOwnershipHistorySectionEosApi from "./crm/eosApi/AccountOwnershipHistorySection.jsx";
 import ContactCreateModal from "./ContactCreateModal";
 import LocationCreateModal from "./LocationCreateModal";
 import AccountHealthStrip from "./AccountHealthStrip";
@@ -57,6 +58,10 @@ import {
 
 // Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
 const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
+
+// Platform-sandbox only: the governed ownership history beside the owner fact. null in every other build (the legacy
+// Firestore Account has no ownership history), so nothing renders there.
+const AccountOwnershipHistorySection = CRM_VIA_EOS_API ? AccountOwnershipHistorySectionEosApi : null;
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // THE CUSTOMER RECORD, AGAINST THE APPROVED ACCOUNT NORTH STAR P1 COMPOSITION.
@@ -415,6 +420,8 @@ export default function AccountDetail() {
   const workOrderCount = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
 
   const [isEditing, setIsEditing] = useState(false);
+  // Platform-sandbox only: bumped after a save so the ownership history is re-read with the Account.
+  const [ownershipHistoryRefresh, setOwnershipHistoryRefresh] = useState(0);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -475,7 +482,10 @@ export default function AccountDetail() {
     // CRM AUTHORITY ROUTE (domain/crmAuthorityRoute.js): the EOS API read is one-shot, not a subscription, so a
     // platform-sandbox build re-reads the persisted record rather than show the request back. Every other build keeps
     // its live Firestore listener, which delivers the change itself; nothing is re-subscribed there.
-    if (CRM_VIA_EOS_API) retryAccount();
+    if (CRM_VIA_EOS_API) {
+      retryAccount();
+      setOwnershipHistoryRefresh((n) => n + 1);
+    }
   }
 
   // Called by LocationCreateModal. On a blocked/denied write this THROWS so the
@@ -729,6 +739,14 @@ export default function AccountDetail() {
       directoryError={directoryError}
     />
   );
+  const ownershipHistory = AccountOwnershipHistorySection ? (
+    <AccountOwnershipHistorySection
+      accountId={account.id}
+      refreshKey={ownershipHistoryRefresh}
+      byEmployeeId={byEmployeeId}
+      directoryLoading={directoryLoading}
+    />
+  ) : null;
 
   // NOTES & IDENTIFIERS -- collapsed by default, matching accountPage.js's own
   // collapsedByDefault: true. Low-value metadata stays secondary; it is not promoted into the
@@ -846,6 +864,7 @@ export default function AccountDetail() {
                     <summary className="ns-more__summary">More</summary>
                     {contactsAndLocations}
                     {commercialProfile}
+                    {ownershipHistory}
                     {receivables}
                     {notesAndIdentifiers}
                   </details>
@@ -876,6 +895,7 @@ export default function AccountDetail() {
                       page — this is the approved composition's load-bearing change from #1511. */}
                   {contactsAndLocations}
                   {commercialProfile}
+                  {ownershipHistory}
                   {notesAndIdentifiers}
                 </aside>
               </div>

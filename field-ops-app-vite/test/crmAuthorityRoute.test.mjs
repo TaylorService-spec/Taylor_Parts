@@ -85,7 +85,7 @@ const SELECTORS = {
   "src/domain/accounts.js": ["createAccount", "updateAccount"],
   "src/domain/contacts.js": ["createContact", "updateContact"],
   "src/domain/locations.js": ["createLocation", "updateLocation"],
-  "src/domain/contactImport.js": ["importContacts"],
+  "src/domain/contactImport.js": ["importContacts", "newContactImportKey"],
   "src/hooks/useAccount.js": ["useAccount"],
   "src/hooks/useAccountPicker.js": ["useAccountPicker"],
   "src/hooks/useAccountPortfolioSummary.js": ["useAccountPortfolioSummary"],
@@ -98,6 +98,7 @@ const SELECTORS = {
   "src/hooks/useLocationReferenceResolver.js": ["readLocationNameMap"],
   "src/hooks/useInstalledEquipmentPage.js": ["defaultReadNames"],
   "src/hooks/useMetadataList.js": ["fetchCrmAccountPageForBuild"],
+  "src/modules/accounts/AccountDetail.jsx": ["AccountOwnershipHistorySection"],
 };
 
 /** Modules that only adapt PRESENTATION to the route; they select no implementation. */
@@ -105,12 +106,14 @@ const PRESENTATION = [
   "src/domain/commercialProfile.js",
   "src/metadata/definitions/account.js",
   "src/metadata/entityDefinition.js",
-  "src/modules/accounts/AccountDetail.jsx",
+  "src/modules/accounts/AccountForm.jsx",
+  "src/modules/accounts/ContactImportModal.jsx",
 ];
 
 const EOS_PATH = () => [
   ...walk(path.join(srcDir, "domain", "crm", "eosApi")),
   ...walk(path.join(srcDir, "hooks", "crm", "eosApi")),
+  ...walk(path.join(srcDir, "modules", "accounts", "crm", "eosApi")),
   path.join(srcDir, "metadata", "crmListSource.js"),
 ].map(rel);
 
@@ -169,9 +172,9 @@ test("no legacy Firestore-path module imports the CRM API client or the CRM list
 test("every routed module selects ONCE, with a top-level ternary, and references each EOS binding only there", () => {
   for (const [f, selected] of Object.entries(SELECTORS)) {
     const code = stripComments(read(f));
-    const eosBindings = [...code.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)]
-      .filter((m) => /\/crm\/eosApi\/|crmListSource\.js$/.test(m[2]))
-      .flatMap((m) => m[1].split(",").map((part) => part.trim().split(/\s+as\s+/).pop()).filter(Boolean));
+    const eosBindings = [...code.matchAll(/import\s+(?:([\w$]+)|\{([^}]*)\})\s*from\s*["']([^"']+)["']/g)]
+      .filter((m) => /\/crm\/eosApi\/|crmListSource\.js$/.test(m[3]))
+      .flatMap((m) => (m[1] ? [m[1]] : m[2].split(",").map((part) => part.trim().split(/\s+as\s+/).pop()).filter(Boolean)));
     assert.equal(eosBindings.length, selected.length, `${f}: expected one EOS binding per selection, found ${eosBindings}`);
 
     for (const name of selected) {

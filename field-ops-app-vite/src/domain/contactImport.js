@@ -3,7 +3,7 @@ import { auth, db } from "../firebase/firebase";
 import { CONTACTS_COLLECTION } from "./constants";
 import { isWriteBlocked } from "../config/env";
 import { assertClientCrmWriterOpen } from "./crmCutoverFreeze";
-import { importContacts as importContactsEosApi } from "./crm/eosApi/contactImport.js";
+import { importContacts as importContactsEosApi, newContactImportKey as newContactImportKeyEosApi } from "./crm/eosApi/contactImport.js";
 
 // Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
 const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
@@ -56,3 +56,6 @@ async function importContactsFirestore(accountId, contacts = []) {
 // uses the EOS API implementation (domain/crm/eosApi/contactImport.js); every other build -- production included -- uses the legacy
 // Firestore implementation above, unchanged. No runtime switch and no fallback between the two.
 export const importContacts = CRM_VIA_EOS_API ? importContactsEosApi : importContactsFirestore;
+// One idempotency key per import intent, created only by a platform-sandbox build's import modal. null elsewhere: the
+// legacy atomic writeBatch has no idempotency receipt.
+export const newContactImportKey = CRM_VIA_EOS_API ? newContactImportKeyEosApi : null;

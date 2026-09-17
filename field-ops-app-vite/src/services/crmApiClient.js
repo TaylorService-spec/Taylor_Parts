@@ -15,12 +15,14 @@ export const CRM_ROUTE = "/crm/customer";
 
 export const CRM_OPERATIONS = /* @__PURE__ */ Object.freeze([
   "createAccount", "updateAccount", "getAccount", "listAccounts",
-  "createContact", "updateContact", "getContact", "listAccountContacts",
+  "listAccountOwnershipHistory",
+  "createContact", "importAccountContacts", "updateContact", "getContact", "listAccountContacts",
   "createAccountLocation", "updateAccountLocation", "getAccountLocation", "listAccountLocations",
 ]);
 const KNOWN = /* @__PURE__ */ new Set(CRM_OPERATIONS);
 
-const failure = (code, message, status = null) => Object.freeze({ ok: false, code, message, status });
+const failure = (code, message, status = null, findings = undefined) =>
+  Object.freeze({ ok: false, code, message, status, ...(findings ? { findings } : {}) });
 
 /** A random idempotency key for one create attempt. */
 export function newIdempotencyKey() {
@@ -65,8 +67,14 @@ export async function callCrmApi(operation, input = {}, options = {}) {
   }
   if (!body || typeof body !== "object") return failure("INTERNAL", `the EOS API returned ${response.status}`, response.status);
   if (body.ok === true) return Object.freeze({ ok: true, result: body.result, operation });
+  // `findings` (per-row, indexed) accompany a row-validated refusal such as importAccountContacts IMPORT_ROWS_INVALID.
+  const findings = Array.isArray(body.findings)
+    ? Object.freeze(body.findings.filter((f) => f && Number.isInteger(f.index)).map((f) => Object.freeze({
+      index: f.index, code: typeof f.code === "string" ? f.code : "INVALID", message: typeof f.message === "string" ? f.message : "",
+    })))
+    : undefined;
   return failure(typeof body.code === "string" ? body.code : "INTERNAL",
-    typeof body.message === "string" ? body.message : "the request could not be completed", response.status);
+    typeof body.message === "string" ? body.message : "the request could not be completed", response.status, findings);
 }
 
 /** The same call, for writers whose callers already handle a thrown error. */
@@ -76,6 +84,7 @@ export async function requireCrmApi(operation, input) {
     const err = new Error(res.message);
     err.code = res.code;
     err.status = res.status;
+    if (res.findings) err.findings = res.findings;
     throw err;
   }
   return res.result;
