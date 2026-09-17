@@ -147,6 +147,8 @@ on:
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
       - "functions/test/employeeProfileAuthority.test.mjs"
       - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
+      - "functions/test/employeeProfileCommand.test.mjs"
+      - "functions/test/employeeProfileCommandPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"
@@ -312,6 +314,8 @@ on:
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
       - "functions/test/employeeProfileAuthority.test.mjs"
       - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
+      - "functions/test/employeeProfileCommand.test.mjs"
+      - "functions/test/employeeProfileCommandPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"
