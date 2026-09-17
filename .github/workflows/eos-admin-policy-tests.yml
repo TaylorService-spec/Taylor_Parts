@@ -78,6 +78,15 @@ on:
       - "functions/test/crmCustomerPostgres.test.mjs"
       # CRM CUTOVER (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
       # and their suites (test:adminPolicy / test:adminPolicyPostgres after the D1-A integration).
+      # SECURITY ROLE AUTHORITY CONVERGENCE: read-only assignment census + role-key completeness reconcile.
+      - "functions/scripts/roleAssignmentCensusCli.js"
+      - "functions/scripts/policyRoleCatalogReconcileCli.js"
+      - "functions/test/roleAssignmentCensus.test.mjs"
+      - "functions/test/roleAssignmentCensusCli.test.mjs"
+      - "functions/test/roleAssignmentCensusPostgres.test.mjs"
+      - "functions/test/support/roleAssignmentCensusFixture.mjs"
+      - "functions/test/policyRoleCatalogReconcile.test.mjs"
+      - "functions/test/policyRoleCatalogReconcilePostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
@@ -251,6 +260,15 @@ on:
       - "functions/test/crmCustomerPostgres.test.mjs"
       # CRM CUTOVER (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
       # and their suites (test:adminPolicy / test:adminPolicyPostgres after the D1-A integration).
+      # SECURITY ROLE AUTHORITY CONVERGENCE: read-only assignment census + role-key completeness reconcile.
+      - "functions/scripts/roleAssignmentCensusCli.js"
+      - "functions/scripts/policyRoleCatalogReconcileCli.js"
+      - "functions/test/roleAssignmentCensus.test.mjs"
+      - "functions/test/roleAssignmentCensusCli.test.mjs"
+      - "functions/test/roleAssignmentCensusPostgres.test.mjs"
+      - "functions/test/support/roleAssignmentCensusFixture.mjs"
+      - "functions/test/policyRoleCatalogReconcile.test.mjs"
+      - "functions/test/policyRoleCatalogReconcilePostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"

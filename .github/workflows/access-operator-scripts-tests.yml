@@ -38,6 +38,9 @@ on:
       - "functions/scripts/employeeProfileCutover.js"
       - "functions/scripts/exportEmployeeProfileSnapshot.js"
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      # SECURITY ROLE AUTHORITY CONVERGENCE (fence cases in operatorScriptEnvironmentFence.test.mjs).
+      - "functions/scripts/roleAssignmentCensusCli.js"
+      - "functions/scripts/policyRoleCatalogReconcileCli.js"
       # SAMPLE COMPANY V2 (fence cases in operatorScriptEnvironmentFence.test.mjs): production refused
       # twice over, the Certification world refused by NAME, and platform-sandbox required positively.
       - "functions/scripts/seedSampleCompany.js"
@@ -74,6 +77,9 @@ on:
       - "functions/scripts/employeeProfileCutover.js"
       - "functions/scripts/exportEmployeeProfileSnapshot.js"
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
+      # SECURITY ROLE AUTHORITY CONVERGENCE (fence cases in operatorScriptEnvironmentFence.test.mjs).
+      - "functions/scripts/roleAssignmentCensusCli.js"
+      - "functions/scripts/policyRoleCatalogReconcileCli.js"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/scripts/commercialC5.js"

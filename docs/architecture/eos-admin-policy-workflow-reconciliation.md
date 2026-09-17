@@ -345,10 +345,16 @@ None from this tranche.
    via `scripts/buildAdminPolicySeedSnapshot.mjs`, with a drift guard. 24 objects, 228 fields, 46
    Roles, 5 workflow families as DRAFT versions. Deterministic, tenant-aware, idempotent, versioned,
    auditable and safe to rerun — each asserted.
-5. **Parity, then cutover** — `migration/firestorePolicyParityHarness.ts` reads the legacy Firestore
-   assignments and access versions and reports the difference. It is READ ONLY, is called by nothing
-   in the running system, and is **not** a dual read or a fallback. IN PARITY requires agreement on
-   assignments, scope, status AND access version.
+5. **Census, then cutover** — `migration/roleAssignmentCensus.ts` (successor to the former
+   `firestorePolicyParityHarness.ts`) compares the legacy Firestore assignments with the PostgreSQL
+   tenant through injected readers; the one legacy read is the operator script
+   `functions/scripts/roleAssignmentCensusCli.js` (FIREBASE_EXIT_MIGRATION_ONLY). It resolves each
+   legacy uid to a Principal by `(firebase, subject)`, judges each assignment by its OWN store's
+   access-version rule (the two counters are never compared), flags scoped and conditioned-role grants
+   MIGRATION_REFUSED_UNTIL_EVALUATOR_PARITY, and reports `users.role` separately as LEGACY_USERS_ROLE.
+   It is READ ONLY, is called by nothing in the running system, and is **not** a dual read or a
+   fallback. Missing catalog Role keys in an existing tenant are added by
+   `seed/roleCatalogReconcile.ts` (`functions/scripts/policyRoleCatalogReconcileCli.js`, dry run by default).
 6. **Cutover** — DB becomes authoritative; code declarations become the seed only. *Not yet done.*
 7. **Retire** — delete the parity harness and its guard allowlist entry, then `roleAssignments/{id}`,
    `users/{uid}.accessVersion`, and the legacy role strings in the two workflow mirrors. *Not yet

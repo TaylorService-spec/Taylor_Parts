@@ -326,6 +326,57 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ SECURITY ROLE AUTHORITY CONVERGENCE ============================
+//
+// scripts/roleAssignmentCensusCli.js is a FIREBASE_EXIT_MIGRATION_ONLY read of the legacy Security Role assignment
+// collections plus a read-only PostgreSQL census; scripts/policyRoleCatalogReconcileCli.js adds missing catalog Roles
+// to ONE existing tenant (--apply). Both must refuse before firebase-admin / pg / lib/ is resolved.
+const ROLE_CENSUS = "scripts/roleAssignmentCensusCli.js";
+const ROLE_ENV = { EOS_ENVIRONMENT: "nonprod", ROLE_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const ROLE_CENSUS_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "ROLE_FENCE_DB", "--tenantKey", "taylor-nonprod", "--out", "/nonexistent/census.json"];
+const roleEnvSwap = (args, to) => args.map((a) => (a === "platform-sandbox" ? to : a));
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--databaseUrlEnv", "ROLE_FENCE_DB", "--tenantKey", "taylor-nonprod", "--out", "/nonexistent/c.json"], ROLE_ENV, /--environment is required/],
+  ["a --projectId instead of a registry environment", [...ROLE_CENSUS_ARGS, "--projectId", "eos-platform-sandbox"], ROLE_ENV, /--projectId is not accepted/],
+  ["production environment", roleEnvSwap(ROLE_CENSUS_ARGS, "taylor-parts-production"), ROLE_ENV, /production/],
+  ["production, even confirmed", [...roleEnvSwap(ROLE_CENSUS_ARGS, "taylor-parts-production"), "--confirmProduction", "taylor-parts"], ROLE_ENV, /production/],
+  ["frozen Certification world", roleEnvSwap(ROLE_CENSUS_ARGS, "platform-certification"), ROLE_ENV, /Certification world, which is frozen/],
+  ["undeclared environment", roleEnvSwap(ROLE_CENSUS_ARGS, "someone-elses-env"), ROLE_ENV, /byte-identical to an environment id/],
+  ["environment with no Firebase project", roleEnvSwap(ROLE_CENSUS_ARGS, "local-emulator"), ROLE_ENV, /declares no Firebase project/],
+  ["EOS_ENVIRONMENT not nonprod", ROLE_CENSUS_ARGS, { ...ROLE_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", ROLE_CENSUS_ARGS, { ...ROLE_ENV, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no databaseUrlEnv", ROLE_CENSUS_ARGS.filter((a) => a !== "--databaseUrlEnv" && a !== "ROLE_FENCE_DB"), ROLE_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["a Firestore emulator host", ROLE_CENSUS_ARGS, { ...ROLE_ENV, FIRESTORE_EMULATOR_HOST: "127.0.0.1:8182" }, /FIRESTORE_EMULATOR_HOST/],
+  ["no tenant key", ROLE_CENSUS_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), ROLE_ENV, /--tenantKey is required/],
+  ["no out file", ROLE_CENSUS_ARGS.slice(0, 6), ROLE_ENV, /--out <file> is required/],
+  ["an existing out file", [...ROLE_CENSUS_ARGS.slice(0, 6), "--out", ROLE_CENSUS], ROLE_ENV, /never overwritten/],
+]) {
+  test(`role assignment census (FIREBASE_EXIT_MIGRATION_ONLY): refuses (${label}) before any client library loads`, () => {
+    const res = runCli(ROLE_CENSUS, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `role assignment census, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+const ROLE_RECONCILE = "scripts/policyRoleCatalogReconcileCli.js";
+const ROLE_RECONCILE_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "ROLE_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--apply"];
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--apply"], ROLE_ENV, /--environment is required/],
+  ["production environment", roleEnvSwap(ROLE_RECONCILE_ARGS, "taylor-parts-production"), ROLE_ENV, /production/],
+  ["frozen Certification world", roleEnvSwap(ROLE_RECONCILE_ARGS, "platform-certification"), ROLE_ENV, /Certification world, which is frozen/],
+  ["EOS_ENVIRONMENT not nonprod", ROLE_RECONCILE_ARGS, { ...ROLE_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no databaseUrlEnv", ROLE_RECONCILE_ARGS.filter((a) => a !== "--databaseUrlEnv" && a !== "ROLE_FENCE_DB"), ROLE_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["no tenant key", ROLE_RECONCILE_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), ROLE_ENV, /--tenantKey is required/],
+  ["no performedBy", ROLE_RECONCILE_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), ROLE_ENV, /--performedBy <operator> is required/],
+  ["an existing out file", [...ROLE_RECONCILE_ARGS, "--out", ROLE_RECONCILE], ROLE_ENV, /never overwritten/],
+]) {
+  test(`policy role catalog reconcile: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(ROLE_RECONCILE, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `policy role catalog reconcile, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 const EMP_EXPORT = "scripts/exportEmployeeProfileSnapshot.js";
 for (const [label, args, pattern] of [
   ["no project", ["--out", "/nonexistent/x.json"], /--projectId is required/],

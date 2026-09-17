@@ -144,7 +144,6 @@
         "functions/src/access/trustedWriterCommands.ts",
         "functions/src/account/accountImportCommand.ts",
         "functions/src/account/accountPortfolioSummary.ts",
-        "functions/src/adminPolicy/migration/firestorePolicyParityHarness.ts",
         "functions/src/ai/workOrderReadinessContext.ts",
         "functions/src/callerContext.ts",
         "functions/src/completeAssignedJob.ts",
