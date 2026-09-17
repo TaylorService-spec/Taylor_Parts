@@ -13,6 +13,11 @@
 //   * owner -> no owner             never sent: the server refuses OWNER_REQUIRED, so the client refuses first.
 // The server reads the current owner under lock and decides the recorded event; this only shapes what the form asks for.
 //
+// OWNER PRECONDITION: every owner change also names `expectedCurrentOwnerEmployeeId` -- the owner the edit was opened
+// with (null = it was read ownerless). If the locked current owner differs, the server refuses the WHOLE command
+// with 412 ACCOUNT_OWNER_CHANGED_SINCE_READ. It is never named without an owner change (the server refuses that,
+// 400 OWNER_PRECONDITION_WITHOUT_OWNER_CHANGE).
+//
 // Module constants are annotated pure so a build that never routes to the EOS API drops this module entirely.
 
 export const ACCOUNT_OWNERSHIP_HANDOFF_SOURCES = /* @__PURE__ */ Object.freeze(["DIRECT_HANDOFF", "CUSTOMER_HANDOFF_REVIEW", "ADMIN_CORRECTION"]);
@@ -52,12 +57,16 @@ export function accountOwnerChange({ previousOwnerEmployeeId = null, nextOwnerEm
   if (previous === null) {
     return {
       kind: ACCOUNT_OWNER_CHANGE.INITIAL_OWNER_ASSIGNMENT,
-      input: { ownerEmployeeId: next, ...(trimmedReason ? { ownershipHandoff: { reason: trimmedReason } } : {}) },
+      input: { ownerEmployeeId: next, expectedCurrentOwnerEmployeeId: null, ...(trimmedReason ? { ownershipHandoff: { reason: trimmedReason } } : {}) },
     };
   }
   const chosen = ACCOUNT_OWNERSHIP_HANDOFF_SOURCES.includes(source) ? source : DEFAULT_ACCOUNT_OWNERSHIP_HANDOFF_SOURCE;
   return {
     kind: ACCOUNT_OWNER_CHANGE.OWNER_HANDOFF,
-    input: { ownerEmployeeId: next, ownershipHandoff: { source: chosen, ...(trimmedReason ? { reason: trimmedReason } : {}) } },
+    input: {
+      ownerEmployeeId: next,
+      expectedCurrentOwnerEmployeeId: previous,
+      ownershipHandoff: { source: chosen, ...(trimmedReason ? { reason: trimmedReason } : {}) },
+    },
   };
 }

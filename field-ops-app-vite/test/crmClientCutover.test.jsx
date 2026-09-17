@@ -68,6 +68,7 @@ const crmList = await import("../src/metadata/crmListSource.js");
 const { default: AccountForm } = await import("../src/modules/accounts/AccountForm.jsx");
 const { default: ContactImportModal } = await import("../src/modules/accounts/ContactImportModal.jsx");
 const { newContactImportKey } = await import("../src/domain/contactImport.js");
+const { crmRefusalMessage } = await import("../src/domain/crmRefusal.js");
 const { default: AccountOwnershipHistorySection } = await import("../src/modules/accounts/crm/eosApi/AccountOwnershipHistorySection.jsx");
 const { useLocation } = await import("../src/hooks/useLocation.js");
 const { useAccountNamesWithStatus, ACCOUNT_NAMES_STATUS } = await import("../src/hooks/useAccountNames.js");
@@ -125,7 +126,7 @@ describe("writers use the CRM route only", () => {
     });
     expect(calls.map((c) => c.operation)).toEqual(["updateAccount"]);
     expect(calls[0].input).toEqual({
-      accountId: "acct_1", name: "X", ownerEmployeeId: "e-2",
+      accountId: "acct_1", name: "X", ownerEmployeeId: "e-2", expectedCurrentOwnerEmployeeId: "e-1",
       ownershipHandoff: { source: "CUSTOMER_HANDOFF_REVIEW", reason: "territory change" },
     });
     expect(row.ownerEmployeeId).toBe("e-2");
@@ -139,8 +140,8 @@ describe("writers use the CRM route only", () => {
     await accounts.updateAccount("acct_1", {
       accountOwner: { assignedToEmployeeId: "e-1" }, ownershipChange: { previousOwnerEmployeeId: null, source: "ADMIN_CORRECTION", reason: "remediation" },
     });
-    expect(calls[0].input).toEqual({ accountId: "acct_1", ownerEmployeeId: "e-1" });
-    expect(calls[1].input).toEqual({ accountId: "acct_1", ownerEmployeeId: "e-1", ownershipHandoff: { reason: "remediation" } });
+    expect(calls[0].input).toEqual({ accountId: "acct_1", ownerEmployeeId: "e-1", expectedCurrentOwnerEmployeeId: null });
+    expect(calls[1].input).toEqual({ accountId: "acct_1", ownerEmployeeId: "e-1", expectedCurrentOwnerEmployeeId: null, ownershipHandoff: { reason: "remediation" } });
   });
 
   it("updateAccount: clearing an existing owner is refused OWNER_REQUIRED before anything is sent", async () => {
@@ -150,11 +151,20 @@ describe("writers use the CRM route only", () => {
     expect(firestoreCalls).toEqual([]);
   });
 
-  it("updateAccount: with no stated starting owner the Account is read first, then the change is shaped from it", async () => {
-    reply = (op) => ({ ok: true, result: op === "getAccount" ? { ...ACCOUNT, ownerEmployeeId: null } : ACCOUNT });
-    await accounts.updateAccount("acct_1", { accountOwner: { assignedToEmployeeId: "e-1" } });
-    expect(calls.map((c) => c.operation)).toEqual(["getAccount", "updateAccount"]);
-    expect(calls[1].input).toEqual({ accountId: "acct_1", ownerEmployeeId: "e-1" });
+  it("updateAccount: no pre-read -- an owner named without the edit's starting owner is refused, nothing sent", async () => {
+    await expect(accounts.updateAccount("acct_1", { accountOwner: { assignedToEmployeeId: "e-1" } }))
+      .rejects.toMatchObject({ code: "OWNER_CHANGE_UNSTATED", status: 400 });
+    expect(calls).toEqual([]);
+  });
+
+  it("updateAccount: 412 ACCOUNT_OWNER_CHANGED_SINCE_READ is thrown as refused, stated plainly, and never retried", async () => {
+    reply = () => ({ ok: false, status: 412, code: "ACCOUNT_OWNER_CHANGED_SINCE_READ", message: "the Account's owner changed since it was read; re-read the Account and decide again" });
+    const err = await accounts.updateAccount("acct_1", { name: "X", accountOwner: { assignedToEmployeeId: "e-2" }, ownershipChange: { previousOwnerEmployeeId: "e-1" } }).catch((e) => e);
+    expect(err).toMatchObject({ code: "ACCOUNT_OWNER_CHANGED_SINCE_READ", status: 412 });
+    expect(calls.map((c) => c.operation)).toEqual(["updateAccount"]);
+    expect(calls[0].input).toMatchObject({ ownerEmployeeId: "e-2", expectedCurrentOwnerEmployeeId: "e-1" });
+    expect(crmRefusalMessage(err)).toBe("Nothing was saved: this customer's owner changed after you opened it. The customer has been re-read -- review the owner and save again.");
+    expect(firestoreCalls).toEqual([]);
   });
 
   it("updateAccount: a server refusal is thrown with its exact code and status", async () => {
@@ -362,7 +372,7 @@ describe("platform-sandbox Account form: owner handoff vs initial assignment", (
     reply = () => ({ ok: true, result: ACCOUNT });
     await accounts.updateAccount("acct_1", onSubmit.mock.calls[0][0]);
     expect(calls.at(-1).operation).toBe("updateAccount");
-    expect(calls.at(-1).input).toMatchObject({ ownerEmployeeId: "e-2", ownershipHandoff: { reason: "remediation" } });
+    expect(calls.at(-1).input).toMatchObject({ ownerEmployeeId: "e-2", expectedCurrentOwnerEmployeeId: null, ownershipHandoff: { reason: "remediation" } });
     expect(calls.at(-1).input.ownershipHandoff).not.toHaveProperty("source");
     expect(firestoreCalls).toEqual([]);
   });

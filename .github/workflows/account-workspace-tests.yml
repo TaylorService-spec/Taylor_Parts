@@ -59,6 +59,7 @@ on:
       - "field-ops-app-vite/vite.config.js"
       - "config/environments.json"
       - "field-ops-app-vite/test/crmClientCutover.test.jsx"
+      - "field-ops-app-vite/test/crmAccountOwnerPrecondition.test.jsx"
       - "field-ops-app-vite/test/crmAuthorityRoute.test.mjs"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
@@ -123,6 +124,7 @@ on:
       - "field-ops-app-vite/vite.config.js"
       - "config/environments.json"
       - "field-ops-app-vite/test/crmClientCutover.test.jsx"
+      - "field-ops-app-vite/test/crmAccountOwnerPrecondition.test.jsx"
       - "field-ops-app-vite/test/crmAuthorityRoute.test.mjs"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
@@ -215,7 +217,7 @@ jobs:
       # The platform-sandbox selection of the public CRM modules: writers, reads and the Customers list use the EOS API
       # route only; a refusal or an unreachable API is a failure, never a Firestore read.
       - name: CRM client cutover, platform-sandbox selection (EOS API only)
-        run: npx vitest run test/crmClientCutover.test.jsx
+        run: npx vitest run test/crmClientCutover.test.jsx test/crmAccountOwnerPrecondition.test.jsx
         working-directory: field-ops-app-vite
 
       # The production-capable bundle must not carry the EOS CRM route at all (tree-shaken, not merely unreachable),

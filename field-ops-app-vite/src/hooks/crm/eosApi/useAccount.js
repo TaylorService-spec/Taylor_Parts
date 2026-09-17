@@ -16,5 +16,8 @@ export function useAccount(accountId) {
     if (res.code === "ACCOUNT_NOT_FOUND" || res.code === "RECORD_ID_REQUIRED") return { value: null };
     return { error: crmReadErrorMessage(res, "customers") };
   });
-  return { account: value, loading: accountId ? loading : false, error, retry, checkedAt };
+  // A RE-READ of the Account already on screen (retry after a save or a refused save) is not "loading": the page keeps
+  // rendering -- an open edit form keeps its typed values -- and the fresh record replaces the old one when it answers.
+  const refreshing = loading && value !== null && value.id === accountId;
+  return { account: value, loading: accountId ? loading && !refreshing : false, error, retry, checkedAt };
 }

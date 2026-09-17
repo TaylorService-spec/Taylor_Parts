@@ -21,6 +21,9 @@ export function crmRefusalMessage(err) {
   if (code === "NOT_CONFIGURED") return "Customer records are unavailable: the EOS service is not configured for this environment.";
   if (code === "NOT_SIGNED_IN") return "Sign in to change customer records.";
   if (code === "UNREACHABLE") return "Can't reach the server right now. Nothing was saved. Check your connection and try again.";
+  if (code === "ACCOUNT_OWNER_CHANGED_SINCE_READ") {
+    return "Nothing was saved: this customer's owner changed after you opened it. The customer has been re-read -- review the owner and save again.";
+  }
   const lead = LEAD_BY_STATUS[err?.status] ?? "The request could not be completed.";
   return `${lead} ${message.charAt(0).toUpperCase()}${message.slice(1)} (${code}).`;
 }

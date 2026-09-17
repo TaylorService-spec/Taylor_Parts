@@ -471,7 +471,23 @@ export default function AccountDetail() {
   // fell straight through to setIsEditing(false), closing the form as if the
   // save succeeded while silently discarding the user's edits.
   async function handleEditSubmit(values) {
-    const result = await updateAccount(account.id, values);
+    let result;
+    if (CRM_VIA_EOS_API) {
+      try {
+        result = await updateAccount(account.id, values);
+      } catch (err) {
+        // The owner changed since this edit was opened (412 ACCOUNT_OWNER_CHANGED_SINCE_READ): nothing was saved. Re-read
+        // the Account and its ownership history, keep the form open with its typed values (AccountForm keeps them on a
+        // thrown save), and let the person decide again -- never resubmitted automatically.
+        if (err?.code === "ACCOUNT_OWNER_CHANGED_SINCE_READ") {
+          retryAccount();
+          setOwnershipHistoryRefresh((n) => n + 1);
+        }
+        throw err;
+      }
+    } else {
+      result = await updateAccount(account.id, values);
+    }
     if (result?.blocked) {
       const blockedErr = new Error("write blocked");
       blockedErr.blocked = true;
