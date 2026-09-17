@@ -1,10 +1,11 @@
-// The browser's route to the governed PostgreSQL Employee (Workforce) reads.
+// The browser's route to the governed PostgreSQL Employee (Workforce) reads and commands.
 //
 //   browser -> THIS -> POST /workforce/employees (EOS trusted API, functions/src/eosWorkforce/workforceHttp.ts)
 //           -> verified bearer -> EOS Principal + tenant membership + capabilities -> PostgreSQL
 //
 // and never browser -> Firestore for Employee business data, with no fallback of any kind: a refused or failed
-// read is returned as a value the screen renders, never papered over with another source.
+// read or command is returned as a value the screen renders, never papered over with another source -- and never
+// retried against another writer.
 //
 // ════════════════════ ONE AUTH SCHEME, REUSED ════════════════════
 //
@@ -15,8 +16,12 @@
 //
 // ════════════════════ THE CLOSED LIST ════════════════════
 //
-// Reads only, mirrored from WORKFORCE_READ_OPERATIONS so a typo fails here rather than as a 404.
-// EMP-RT-05 (assigned work) and EMP-RT-08 (Job Role) are NOT served by the server and are not names here.
+// Mirrored from the server's WORKFORCE_READ_OPERATIONS and WORKFORCE_COMMAND_OPERATIONS so a typo fails here rather
+// than as a 404. The three commands (EMP-RT-W1B) are the governed Employee writers the Administration editor uses:
+// the seventeen profile facts, and the reporting relationship established or ended. Every one requires
+// admin.employeeProfile.write, which the SERVER checks; nothing here states tenant, principal or capabilities.
+// EMP-RT-05 (assigned work), EMP-RT-08 (Job Role) and any Employee lifecycle / status writer are NOT served by the
+// server and are not names here.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
@@ -31,10 +36,16 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listAccountabilitiesForEmployee",
 ]);
 
+export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
+  "updateEmployeeProfile",
+  "establishReportingRelationship",
+  "endReportingRelationship",
+]);
+
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */
 export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS = Object.freeze(["readMyEmployeeProfile", "listEmployees"]);
 
-const OPERATIONS = new Set(WORKFORCE_READ_OPERATIONS);
+const OPERATIONS = new Set([...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]);
 export const isWorkforceOperation = (name) => typeof name === "string" && OPERATIONS.has(name);
 
 /**
@@ -74,7 +85,7 @@ export function workforceFailureCategory(status, serverCode) {
 }
 
 /**
- * Call one named Workforce read.
+ * Call one named Workforce read or command.
  *
  * Returns `{ ok: true, result, operation }` or `{ ok: false, code, reason, status, message }`. It never throws.
  * `options`: baseUrl, getIdToken, tenantId, signal, fetchImpl -- all injectable so the envelope can be proven.

@@ -3163,14 +3163,15 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/employeeProfileCommands.ts",
-          "functions/src/eosWorkforce/commands/reportingRelationshipCommands.ts",
+          "functions/src/eosWorkforce/commands/employeeCommandKernel.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/modules/administration/UserDetail.jsx"
         ],
         "serverReferenceCount": 3,
-        "clientReferenceCount": 1,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

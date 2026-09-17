@@ -7,10 +7,12 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  WORKFORCE_COMMAND_OPERATIONS,
   WORKFORCE_OPTIONAL_INPUT_OPERATIONS,
   WORKFORCE_READ_OPERATIONS,
   WORKFORCE_ROUTE,
   callWorkforceApi,
+  isWorkforceOperation,
   workforceFailureCategory,
 } from "../src/services/workforceApiClient.js";
 
@@ -29,6 +31,29 @@ describe("the closed operation list", () => {
     expect(WORKFORCE_ROUTE).toBe("/workforce/employees");
     expect([...WORKFORCE_OPTIONAL_INPUT_OPERATIONS].sort()).toEqual(["listEmployees", "readMyEmployeeProfile"]);
     expect(WORKFORCE_READ_OPERATIONS.some((n) => /assigned|jobRole/i.test(n))).toBe(false);
+  });
+
+  it("mirrors the server's WORKFORCE command runners exactly: the three governed Employee commands, nothing else", () => {
+    const server = read("../functions/src/eosWorkforce/workforceHttp.ts");
+    const start = server.indexOf("const COMMAND_RUNNERS");
+    const block = server.slice(start, server.indexOf("} as const);", start));
+    const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*command\(/gm)].map((m) => m[1]);
+    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship"]);
+    expect([...WORKFORCE_COMMAND_OPERATIONS]).toEqual(names);
+    for (const name of [...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]) expect(isWorkforceOperation(name), name).toBe(true);
+    // No lifecycle, Job Role, Security Role or generic patch writer is a name the browser can send.
+    for (const name of ["setEmploymentStatus", "updateEmployee", "patchEmployee", "assignSecurityRole", "listEmployeeJobRoles", "updateEmployeeLifecycle", "", null, undefined, 42]) {
+      expect(isWorkforceOperation(name), String(name)).toBe(false);
+    }
+  });
+
+  it("a command travels in the same envelope as a read -- { operation, input }, bearer, no authority in the body", async () => {
+    const fetchImpl = respond(200, { ok: true, operation: "updateEmployeeProfile", result: { outcome: "UPDATED", employeeId: "emp-1", changedFields: ["jobTitle"], auditEventId: "ae-1" } });
+    const out = await callWorkforceApi("updateEmployeeProfile", { employeeId: "emp-1", changes: { jobTitle: "Lead" } }, opts(fetchImpl));
+    expect(out).toMatchObject({ ok: true, operation: "updateEmployeeProfile", result: { outcome: "UPDATED" } });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("https://eos.example.test/workforce/employees");
+    expect(JSON.parse(init.body)).toEqual({ operation: "updateEmployeeProfile", input: { employeeId: "emp-1", changes: { jobTitle: "Lead" } } });
   });
 
   it("an unknown name never leaves the browser", async () => {

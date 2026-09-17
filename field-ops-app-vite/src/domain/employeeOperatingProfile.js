@@ -60,14 +60,19 @@ export const RUNTIME_DEPENDENCIES = Object.freeze({
     requiredApi:
       "Governed Job Role authority and read listEmployeeJobRoles { employeeId } (requires the Owner's Job Role vocabulary decision first).",
   }),
-  PROFILE_WRITER: Object.freeze({
-    id: "EMP-RT-W1",
+  // The profile facts and the reporting relationship ARE editable now (EMP-RT-W1, served as Workforce commands by
+  // W1B). What is still not served is the Employee LIFECYCLE writer: Employment Status and Operating Company are
+  // lifecycle / business-authority facts the profile command refuses by name, so the editor shows them read-only
+  // with this dependency rather than inventing a writer. The id is the next Employee writer tail after W1.
+  LIFECYCLE_WRITER: Object.freeze({
+    id: "EMP-RT-W2",
     kind: EMPLOYEE_RUNTIME_DEPENDENCY,
-    serverReason: "PROFILE_WRITER_NOT_SERVED",
-    fact: "Editing the Employee record",
+    serverReason: "EMPLOYEE_LIFECYCLE_WRITER_NOT_SERVED",
+    fact: "Changing Employment Status or Operating Company",
     today:
-      "PostgreSQL is the Employee profile authority after the copy-once cutover, and no governed PostgreSQL profile writer is served. The legacy writer updates the retired Firestore record, which this page no longer reads, so it is not offered here.",
-    requiredApi: "Governed Workforce command updateEmployeeProfile { employeeId, changes, idempotencyKey } over eos_workforce.employees, audited in PostgreSQL.",
+      "Employment Status and Operating Company are governed by the Employee lifecycle authority, which is not yet available. The governed profile command refuses both, so they are shown here and not edited.",
+    requiredApi:
+      "Governed Workforce Employee lifecycle command (status transitions and operating company) over eos_workforce.employees, audited in PostgreSQL.",
   }),
   EMPLOYEE_HISTORY_READ: Object.freeze({
     id: "EMP-RT-H1",
