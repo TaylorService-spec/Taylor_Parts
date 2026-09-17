@@ -334,6 +334,28 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     assert.equal((await q(`SELECT owner_employee_id FROM eos_crm.account_locations WHERE id = 'loc-kid'`)).rows[0].owner_employee_id, "e-c");
   });
 
+  await t.test("(A9e) OWNER PRECONDITION: a stale read never turns an intended first assignment into a handoff, or a handoff into anything else", async () => {
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-precond','t1','Precondition Diner','ACTIVE','import','import')`);
+    // Form A and form B both read the Account as OWNERLESS. A assigns first; B's stale "first assignment" must refuse.
+    await accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-a", expectedCurrentOwnerEmployeeId: null });
+    assert.deepEqual((await history("acct-precond")).map((r) => r.event), ["INITIAL_OWNER_ASSIGNMENT"]);
+    await assert.rejects(
+      accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-b", expectedCurrentOwnerEmployeeId: null, ownershipHandoff: { reason: "first owner" } }),
+      code("ACCOUNT_OWNER_CHANGED_SINCE_READ"));
+    assert.deepEqual([await ownerOf("acct-precond"), (await history("acct-precond")).length], ["e-a", 1], "the stale first assignment became a handoff");
+    // A stale expected OWNER refuses too; the matching one proceeds as a handoff.
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-b" }), code("ACCOUNT_OWNER_CHANGED_SINCE_READ"));
+    await accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-c", expectedCurrentOwnerEmployeeId: "e-a", ownershipHandoff: { source: "ADMIN_CORRECTION" } });
+    assert.deepEqual((await history("acct-precond")).map((r) => [r.event, r.previous_owner_employee_id, r.new_owner_employee_id]),
+      [["INITIAL_OWNER_ASSIGNMENT", null, "e-a"], ["OWNER_HANDOFF", "e-a", "e-c"]]);
+    // A refused precondition rolls back the other fields of the same command.
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-b", expectedCurrentOwnerEmployeeId: "e-a", notes: "must not persist" }), code("ACCOUNT_OWNER_CHANGED_SINCE_READ"));
+    assert.equal((await q(`SELECT notes FROM eos_crm.accounts WHERE id = 'acct-precond'`)).rows[0].notes, null);
+    // Only meaningful with an owner change; still optional (omitting it keeps the unconditional behaviour).
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-precond", notes: "x", expectedCurrentOwnerEmployeeId: "e-c" }), code("OWNER_PRECONDITION_WITHOUT_OWNER_CHANGE"));
+    await assert.rejects(accounts.updateAccount(deps, A1, { accountId: "acct-precond", ownerEmployeeId: "e-a", expectedCurrentOwnerEmployeeId: "not a/valid id" }), code("OWNER_INVALID"));
+  });
+
   await t.test("(A10) atomicity: a failure after the history row rolls back the row, the owner and every other change", async () => {
     const before = [await ownerOf(acct.accountId), (await history(acct.accountId)).length];
     const broken = failingOn(pool, /updated_by = \$3, updated_at = now\(\)/);
