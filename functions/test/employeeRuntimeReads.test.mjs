@@ -88,7 +88,7 @@ const parsed = (res) => JSON.parse(res.body);
 
 const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"];
 
-const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship"];
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "changeEmploymentStatus", "changeOperatingCompany"];
 
 test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07 and exactly the three W1B Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
@@ -96,7 +96,7 @@ test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07 and exac
   assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);
   assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
   const src = code(HTTP_SOURCE);
-  assert.doesNotMatch(src, /MUTATION|transition|assign(ed)?Work|JobRole|employmentStatus|operatingCompanyId|migration\//);
+  assert.doesNotMatch(src, /MUTATION|assign(ed)?Work|JobRole|migration\//);
   const runners = /const READ_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
   assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), OPERATIONS);
   const commandRunners = /const COMMAND_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
