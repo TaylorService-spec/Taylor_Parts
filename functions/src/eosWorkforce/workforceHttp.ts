@@ -1,4 +1,4 @@
-// The HTTP transport for the governed PostgreSQL Employee (Workforce) reads -- the Employee runtime reads lane.
+// The HTTP transport for the governed PostgreSQL Employee (Workforce) reads and the governed Employee commands (EMP-RT-W1B).
 // Domain-separated from Administration, Operations and Commercial, and modelled exactly on commercialHttp.ts.
 //
 // ════════════════════ A TRANSPORT, AND ONLY A TRANSPORT ════════════════════
@@ -7,9 +7,10 @@
 //               -> resolveOperationalContext (EOS Principal, ACTIVE tenant membership, qualifying Roles,
 //                  eos_policy.role_capabilities) -- the SAME resolver the Operations and Commercial transports use
 //               -> the resolved actor { tenantId, principalId = EOS Principal id, capabilities }
-//               -> ONE READ operation from the closed list below -> a safe HTTP response
+//               -> ONE operation from the closed lists below -> a safe HTTP response
 //
-// No SQL, no capability policy and no Employee rule lives here. There are no mutations: every operation is a read.
+// No SQL, no capability policy and no Employee rule lives here. Reads call eosWorkforce/reads; the three commands call
+// the internal governed commands in eosWorkforce/commands, which own their own capability check, transaction and audit.
 // The external subject is used ONLY to resolve the Principal and is never handed to a read, so no Employee can be
 // matched by it.
 //
@@ -29,7 +30,12 @@
 //   EMP-RT-06 listManagedEmployees            employee.record.read over eos_workforce.employee_reporting_relationships.
 //   EMP-RT-05 listAssignedWorkForEmployee     NOT SERVED -- ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES (held, Owner ruling H).
 //   EMP-RT-08 Job Role                        NOT IMPLEMENTED -- no governed Job Role authority (standing ruling).
-// The reporting-relationship WRITER (eosWorkforce/commands) is an internal command and is not served here.
+//   EMP-RT-W1B updateEmployeeProfile          admin.employeeProfile.write. The 17 profile facts only (W1A command).
+//   EMP-RT-W1B establishReportingRelationship admin.employeeProfile.write. Reporting relationship, history kept.
+//   EMP-RT-W1B endReportingRelationship       admin.employeeProfile.write.
+//   EMP-RT-W1C saveEmployeeEdit               admin.employeeProfile.write. ONLY a Save changing profile AND manager:
+//                                             both in one transaction, or neither.
+// Employee lifecycle (employmentStatus / operatingCompanyId), User Access, Security Roles and Job Roles are NOT served.
 // An unserved name is an ordinary unknown operation (404); nothing is stubbed.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
@@ -40,6 +46,10 @@ import { readMyEmployeeProfile } from "./reads/myEmployeeProfile";
 import { listAccountabilitiesForEmployee, listRecordsOwnedByEmployee } from "./reads/employeeResponsibilityReads";
 import { listEmployees, listManagedEmployees, readEmployee } from "./reads/employeeDirectoryReads";
 import { readEmployeePrincipalLink } from "./reads/employeePrincipalLinkRead";
+import { EmployeeCommandError } from "./commands/employeeCommandKernel";
+import { updateEmployeeProfile } from "./commands/employeeProfileCommand";
+import { endReportingRelationship, establishReportingRelationship } from "./commands/reportingRelationshipCommands";
+import { saveEmployeeEdit } from "./commands/employeeEditCommand";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -58,6 +68,8 @@ type Input = Record<string, unknown>;
 type Runner = (deps: WorkforceApiDeps, actor: EmployeeReadActor, input: Input) => Promise<unknown>;
 const read = (fn: (d: { pool: Pool }, a: EmployeeReadActor, i: Input) => Promise<unknown>): Runner =>
   (deps, actor, input) => fn({ pool: deps.pool }, actor, input);
+/** The same pool-only adapter, named for what it composes: a governed command owns its transaction, never the transport. */
+const command = read;
 
 // ════════════════════ the closed operation list (reads only) ════════════════════
 
@@ -71,11 +83,23 @@ const READ_RUNNERS = Object.freeze({
   listAccountabilitiesForEmployee: read(listAccountabilitiesForEmployee),
 } as const);
 
-export type WorkforceOperation = keyof typeof READ_RUNNERS;
+// ════════════════════ the closed operation list (commands) ════════════════════
+
+const COMMAND_RUNNERS = Object.freeze({
+  updateEmployeeProfile: command(updateEmployeeProfile),
+  establishReportingRelationship: command(establishReportingRelationship),
+  endReportingRelationship: command(endReportingRelationship),
+  saveEmployeeEdit: command(saveEmployeeEdit),
+} as const);
+
+const RUNNERS: Readonly<Record<string, Runner>> = Object.freeze({ ...READ_RUNNERS, ...COMMAND_RUNNERS });
+
+export type WorkforceOperation = keyof typeof READ_RUNNERS | keyof typeof COMMAND_RUNNERS;
 export const WORKFORCE_READ_OPERATIONS = Object.freeze(Object.keys(READ_RUNNERS) as WorkforceOperation[]);
+export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze(Object.keys(COMMAND_RUNNERS) as WorkforceOperation[]);
 
 export const isWorkforceOperation = (name: unknown): name is WorkforceOperation =>
-  typeof name === "string" && Object.prototype.hasOwnProperty.call(READ_RUNNERS, name);
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
 
 /** The ONLY operations whose `input` may be omitted: the self read (no input at all) and the unfiltered directory. */
 export const WORKFORCE_OPTIONAL_INPUT_OPERATIONS: readonly WorkforceOperation[] = Object.freeze(["readMyEmployeeProfile", "listEmployees"]);
@@ -126,12 +150,12 @@ export async function executeWorkforceOperation(
       principalId: ctx.principalContext.uid,
       capabilities: ctx.capabilities,
     });
-    return { ok: true, operation, result: await READ_RUNNERS[operation](deps, actor, request.input) };
+    return { ok: true, operation, result: await RUNNERS[operation](deps, actor, request.input) };
   } catch (err) {
     if (err instanceof PrincipalContextError) {
       return { ok: false, operation, code: "FORBIDDEN", message: err.refusal, status: 403 };
     }
-    if (err instanceof EmployeeReadError) {
+    if (err instanceof EmployeeReadError || err instanceof EmployeeCommandError) {
       return { ok: false, operation, code: err.code, message: err.message, status: STATUS_BY_CATEGORY[err.category] ?? 500 };
     }
     // eslint-disable-next-line no-console -- same posture as the sibling transports' unhandled-error log

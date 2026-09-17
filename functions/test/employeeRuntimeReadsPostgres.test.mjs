@@ -299,9 +299,14 @@ test("Employee runtime reads end to end over the real policy, Workforce and Comm
     assert.deepEqual([selfAuthority.status, selfAuthority.body.code], [400, "AUTHORITY_FIELD_NOT_ACCEPTED"]);
     const foreignTenant = await call(reader, "listRecordsOwnedByEmployee", { employeeId: "e-owner-a", family: "OPPORTUNITY" }, { "x-eos-tenant": "t2" });
     assert.deepEqual([foreignTenant.status, foreignTenant.body.message], [403, "TENANT_NOT_A_MEMBERSHIP"]);
-    for (const operation of ["listAssignedWorkForEmployee", "listEmployeeJobRoles", "establishReportingRelationship", "endReportingRelationship"]) {
+    for (const operation of ["listAssignedWorkForEmployee", "listEmployeeJobRoles"]) {
       const res = await call(reader, operation, { employeeId: "e-owner-a" });
       assert.deepEqual([res.status, res.body.code], [404, "UNKNOWN_OPERATION"], operation);
+    }
+    // W1B serves the Employee commands; a read-only caller is refused by the command's own capability check.
+    for (const operation of ["establishReportingRelationship", "endReportingRelationship"]) {
+      const res = await call(reader, operation, { employeeId: "e-owner-a" });
+      assert.deepEqual([res.status, res.body.code], [403, "CAPABILITY_REQUIRED"], operation);
     }
   });
 

@@ -1,4 +1,4 @@
-// ADMINISTRATION > USERS -- the directory, the record page, the retained editor, and the shared history.
+// ADMINISTRATION > USERS -- the record page, the governed Employee editor, and the shared history.
 //
 // The RECORD page reads Employee business data only from the governed Workforce transport, injected here as a mocked client (no Firestore mock exists
 // in this file, because the record page has no Firestore read to mock). The legacy account callables are
@@ -18,27 +18,11 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 // The DIRECTORY has its own suite (adminUsersDirectory.test.jsx) since it moved to the governed
-// Workforce read; this file is the record page, the retained editor and the shared history.
+// Workforce read; this file is the record page, the governed editor and the shared history.
 import UserDetail from "../src/modules/administration/UserDetail.jsx";
-import UserEditPanel from "../src/modules/administration/UserEditPanel.jsx";
-import { OPERATIONAL_ROLE_OPTIONS } from "../src/domain/employeeProfile.js";
+import { NEVER_SENT_EMPLOYEE_KEYS } from "../src/domain/employeeProfile.js";
 import { REPORT_CAPABILITY_REQUEST } from "../src/access/reportCapabilityAccess.js";
 import { ADMINISTRATION_USERS_SURFACE_CAPABILITIES } from "../src/access/governedSurfaceCapabilities.js";
-
-// The legacy Firestore-shaped Employee record, kept for the retained (unmounted) editor only.
-const JOHN = {
-  id: "emp-1",
-  employeeId: "emp-1",
-  displayName: "John Smith",
-  employmentStatus: "ACTIVE",
-  operationalRoles: ["TECHNICIAN"],
-  securityRole: "technician",
-  userId: "uid-john",
-  jobTitle: "Senior Service Technician",
-  employeeNumber: "TAZ-0042",
-  operatingCompanyId: "taylor",
-  managerEmployeeId: "emp-2",
-};
 
 // ── The governed Workforce projections (EMP-RT-01) the RECORD page reads. Test fixtures only.
 const nameOf = (displayName) => ({ displayName, firstName: null, middleName: null, lastName: null, preferredName: null });
@@ -76,12 +60,28 @@ function seedRecords(list = [JOHN_REC, MIKE_REC]) {
   records = Object.fromEntries(list.map((r) => [r.employeeId, r]));
 }
 
-/** A mocked Workforce transport: the closed operations, answered from `records`. */
-function makeWorkforce() {
+/**
+ * A mocked Workforce transport: the closed operations, answered from `records`. `commands` answers the three
+ * governed commands (each a value or a function of the input); an unanswered command is UNKNOWN_OPERATION, so a
+ * test that forgot to expect a write fails loudly instead of passing on a silent success.
+ */
+function makeWorkforce(commands = {}) {
   return {
     call: vi.fn(async (operation, input) => {
       const rec = input?.employeeId ? records[input.employeeId] : null;
+      if (Object.prototype.hasOwnProperty.call(commands, operation)) {
+        const answer = commands[operation];
+        return typeof answer === "function" ? answer(input) : answer;
+      }
       switch (operation) {
+        case "listEmployees":
+          return {
+            ok: true,
+            result: {
+              items: Object.values(records).map((r) => ({ employeeId: r.employeeId, displayName: r.displayName, employeeNumber: r.employeeNumber, employmentStatus: r.employmentStatus, operatingCompanyId: r.operatingCompanyId, jobTitle: r.jobTitle })),
+              nextCursor: null,
+            },
+          };
         case "readEmployee":
           return rec ? { ok: true, result: rec } : { ok: false, code: "NOT_FOUND", reason: "EMPLOYEE_NOT_FOUND", status: 404 };
         case "readEmployeePrincipalLink":
@@ -118,7 +118,6 @@ const policyCall = vi.fn(async () => ({
 const ENABLED_NO_ROLES = { authExists: true, accountStatus: "enabled", assignments: [] };
 
 const okHistory = (rows = [], access = ENABLED_NO_ROLES) => ({
-  updateEmployeeProfile: vi.fn().mockResolvedValue({ ok: true, result: "APPLIED", changedFields: [] }),
   setUserStatus: vi.fn(),
   assignApprovedRole: vi.fn().mockResolvedValue({ ok: true, result: "APPLIED", assignmentId: "a-1" }),
   revokeRole: vi.fn().mockResolvedValue({ ok: true, result: "APPLIED" }),
@@ -187,7 +186,7 @@ describe("User Detail is read-only by default", () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.queryByRole("textbox")).toBeNull();
-    // Shown, and protected: no governed PostgreSQL profile writer is served (EMP-RT-W1).
+    // Shown, and protected for a caller the trusted feed has not granted admin.employeeProfile.write.
     expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(true);
   });
 
@@ -474,205 +473,244 @@ describe("EOS access and security stay independent, and fail closed", () => {
     expect(screen.queryByRole("button", { name: /Send password reset/ })).toBeNull();
     // The only callable this page may touch without a capability is the history read.
     expect(client.setUserStatus).not.toHaveBeenCalled();
-    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
+    expect(client).not.toHaveProperty("updateEmployeeProfile");
   });
 });
 
-// ════════════════════ EDIT USER ════════════════════
+// ════════════════════ EDIT EMPLOYEE ════════════════════
+//
+// The record page offers the governed editor to a caller the trusted feed says holds admin.employeeProfile.write,
+// and keeps the protected button for everyone else. The editor works on the PostgreSQL record, writes only through
+// the three governed Workforce commands, and the page RE-READS the record after any write. The server remains the
+// authority: every refusal below is a command answer the page must render, not something the capability test hides.
 
-const onClose = vi.fn();
-/** The editor, rendered directly against the legacy Firestore-shaped record it was built for. */
-const renderEditor = (client) =>
-  render(
-    <MemoryRouter>
-      <UserEditPanel
-        employee={JOHN}
-        candidates={new Map([["emp-1", JOHN], ["emp-2", { id: "emp-2", displayName: "Mike Jones", employmentStatus: "ACTIVE" }]])}
-        client={client}
-        actorUid="actor-1"
-        onClose={onClose}
-        onSaved={vi.fn()}
-      />
-    </MemoryRouter>,
-  );
+const EDIT_GRANTED = (id) => id === "admin.employeeProfile.write";
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit"];
+const commandCalls = (workforce) => workforce.call.mock.calls.filter(([operation]) => COMMANDS.includes(operation));
+const readCount = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "readEmployee").length;
+const UPDATED = (changedFields) => ({ ok: true, result: { outcome: "UPDATED", employeeId: "emp-1", changedFields, auditEventId: "ae-1" } });
 
-describe("Edit Employee is not offered on the record, and the retained editor stays governed", () => {
-  // THE RECORD PAGE NO LONGER MOUNTS THE EDITOR. PostgreSQL is the Employee profile authority after the
-  // copy-once cutover and no governed profile writer is served; the legacy command writes the retired
-  // Firestore record this page no longer reads (EMP-RT-W1). The editor component and its command seam are
-  // kept, and proved directly below, for the day a governed writer is served.
-  it("the record page offers Edit Employee protected, with the stated reason, and opens no form", async () => {
-    const client = okHistory();
-    renderDetail(client);
+async function openEditor(workforce, { client = okHistory(), search = "" } = {}) {
+  renderDetail(client, "emp-1", search, EDIT_GRANTED, workforce);
+  if (!search) fireEvent.click(await screen.findByRole("button", { name: "Edit Employee" }));
+  await screen.findByRole("button", { name: "Save" });
+  // The Manager control is usable only once the governed directory has been read.
+  await waitFor(() => expect(screen.getByLabelText("Manager").disabled).toBe(false));
+}
+
+describe("Edit Employee is offered by capability, and the server stays the authority", () => {
+  it("without admin.employeeProfile.write the button is protected, with the stated reason, and opens nothing", async () => {
+    const workforce = makeWorkforce();
+    renderDetail(okHistory(), "emp-1", "", (id) => id === "admin.userStatus.write", workforce);
     const edit = await screen.findByRole("button", { name: "Edit Employee" });
     expect(edit.hasAttribute("disabled")).toBe(true);
-    expect(screen.getAllByText(/no governed Employee profile writer is served/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/did not grant Employee profile editing/i).length).toBeGreaterThan(0);
     fireEvent.click(edit);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
+    expect(commandCalls(workforce)).toEqual([]);
   });
 
-  it("the directory's Edit action (?edit=1) lands on the truthful unavailable state, not a form", async () => {
-    renderDetail(okHistory(), "emp-1", "?edit=1");
+  it("?edit=1 without the capability states that editing is not available to this caller -- no form, no directory read", async () => {
+    const workforce = makeWorkforce();
+    renderDetail(okHistory(), "emp-1", "?edit=1", undefined, workforce);
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    expect(document.querySelector('[data-employee-edit="UNAVAILABLE"] [data-runtime-dependency="EMP-RT-W1"]')).toBeTruthy();
+    expect(document.querySelector('[data-employee-edit="NOT_GRANTED"]').textContent).toMatch(/not available to you/);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(workforce.call.mock.calls.some(([operation]) => operation === "listEmployees")).toBe(false);
   });
 
-  it("Employment Status is a closed picklist and Security Role is absent entirely", async () => {
-    renderEditor(okHistory());
-    const status = await screen.findByLabelText(/Employment Status/);
-    expect(status.tagName).toBe("SELECT");
-    expect(within(status).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Active", "On Leave", "Inactive", "Terminated", "Retired", "Contractor",
+  it("with the capability the button is live and opens the editor seeded from the PostgreSQL record", async () => {
+    const workforce = makeWorkforce();
+    renderDetail(okHistory(), "emp-1", "", EDIT_GRANTED, workforce);
+    const edit = await screen.findByRole("button", { name: "Edit Employee" });
+    expect(edit.hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(edit);
+    expect((await screen.findByLabelText("Job Title")).value).toBe("Senior Service Technician");
+    expect(screen.getByLabelText("Employee ID").value).toBe("TAZ-0042");
+    expect(screen.getByLabelText("Display Name").value).toBe("John Smith");
+    await waitFor(() => expect(screen.getByLabelText("Manager").value).toBe("emp-2"));
+  });
+
+  it("?edit=1 with the capability opens the editor directly", async () => {
+    await openEditor(makeWorkforce(), { search: "?edit=1" });
+    expect(document.querySelector('[data-employee-edit="OPEN"]')).toBeTruthy();
+  });
+
+  it("Employment Status, Operating Company and Operational Roles are read-only, with their authority named; no Security or Job Role control", async () => {
+    await openEditor(makeWorkforce());
+    const form = document.querySelector('[data-employee-edit="OPEN"]');
+    for (const label of [/Employment Status/, /Operating Company/, /Operational Roles/, /Security Role/, /Job Role/]) {
+      expect(within(form).queryByLabelText(label), String(label)).toBeNull();
+    }
+    const locked = form.querySelector('[data-employee-edit-locked="LIFECYCLE"]');
+    expect(locked.textContent).toMatch(/Active/);
+    expect(locked.textContent).toMatch(/Taylor Freezer of Arizona/);
+    expect(within(form).getAllByText(/governed by the Employee lifecycle authority, which is not yet available/).length).toBeGreaterThan(0);
+    expect(form.querySelector('[data-runtime-dependency="EMP-RT-W2"]')).toBeTruthy();
+    expect(within(form).queryByRole("checkbox")).toBeNull();
+  });
+
+  it("Manager is a closed choice of real Employees from the governed directory, excluding this Employee", async () => {
+    seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
+    const workforce = makeWorkforce();
+    await openEditor(workforce);
+    const manager = screen.getByLabelText("Manager");
+    expect(manager.tagName).toBe("SELECT");
+    expect(within(manager).getAllByRole("option").map((o) => o.textContent)).toEqual(["No manager recorded", "Mike Jones", "Pat Lee"]);
+    expect(workforce.call.mock.calls.some(([operation]) => operation === "listEmployees")).toBe(true);
+  });
+});
+
+describe("Save sends only what changed, as ONE governed command per Save", () => {
+  it("a profile edit sends ONLY the changed key to updateEmployeeProfile, and no manager command", async () => {
+    const workforce = makeWorkforce({ updateEmployeeProfile: UPDATED(["jobTitle"]) });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Service Manager" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
+    const [[operation, input]] = commandCalls(workforce);
+    expect(operation).toBe("updateEmployeeProfile");
+    expect(input).toEqual({ employeeId: "emp-1", changes: { jobTitle: "Service Manager" } });
+  });
+
+  it("no lifecycle, eligibility, access or authority key is ever sent by any command", async () => {
+    const workforce = makeWorkforce({
+      saveEmployeeEdit: { ok: true, result: { employeeId: "emp-1", profile: { outcome: "UPDATED", changedFields: ["jobTitle", "hireDate"] }, manager: { outcome: "CHANGED" } } },
+    });
+    seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
+    fireEvent.change(screen.getByLabelText("Hire Date"), { target: { value: "2021-01-04" } });
+    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
+    for (const [, input] of commandCalls(workforce)) {
+      const keys = [...Object.keys(input), ...Object.keys(input.changes ?? {}), ...Object.keys(input.manager ?? {})];
+      for (const forbidden of NEVER_SENT_EMPLOYEE_KEYS) expect(keys, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  it("a profile AND manager change in one Save is ONE saveEmployeeEdit call -- never two sequenced commands", async () => {
+    seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
+    const workforce = makeWorkforce({
+      saveEmployeeEdit: { ok: true, result: { employeeId: "emp-1", profile: { outcome: "UPDATED", changedFields: ["jobTitle"] }, manager: { outcome: "CHANGED" } } },
+    });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
+    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
+    expect(commandCalls(workforce)).toEqual([
+      ["saveEmployeeEdit", { employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: "ESTABLISH", managerEmployeeId: "emp-3" } }],
     ]);
-    // Security Role is not on the edit form at all -- not as a control, and not as read-only context.
-    expect(screen.queryByLabelText(/Security Role/)).toBeNull();
-    expect(screen.queryByText(/Mirrors the legacy identity role/)).toBeNull();
   });
 
-  it("Operational Roles is a multi-select over the canonical vocabulary", async () => {
-    renderEditor(okHistory());
-    const group = await screen.findByRole("group", { name: "Operational Roles" });
-    const boxes = within(group).getAllByRole("checkbox");
-    expect(boxes.length).toBe(8);
-    expect(within(group).getByLabelText("Technician").checked).toBe(true);
-    expect(within(group).getByLabelText("Parts Manager").checked).toBe(false);
-  });
-
-  // ── THE ROLES ARE ONE GRID, NOT EIGHT PLACED CONTROLS ──
-  //
-  // jsdom has no layout engine, so the column count and the pixel alignment are proven by
-  // measurement instead (scripts/adminUserEditRolesProbe.mjs: 7 distinct checkbox x positions
-  // before, 2 or 1 after, one row pitch, one label offset). What IS worth pinning here is the
-  // structure that lets the CSS do it -- uniform sibling items under one containment context,
-  // with nothing positioned per role -- and that fixing the layout changed no role and no order.
-  it("every operational role is present, in the canonical order, none hidden", async () => {
-    renderEditor(okHistory());
-    const group = await screen.findByRole("group", { name: "Operational Roles" });
-    expect(within(group).getAllByRole("checkbox").map((b) => b.closest("label").textContent)).toEqual(
-      OPERATIONAL_ROLE_OPTIONS.map((o) => o.label),
-    );
-  });
-
-  it("the roles are uniform siblings inside the containment context the grid measures", async () => {
-    renderEditor(okHistory());
-    const group = await screen.findByRole("group", { name: "Operational Roles" });
-    // One container, one item class, no per-role wrapper and no inline positioning: the columns
-    // come from the grid or they do not come at all.
-    const items = [...group.children].filter((el) => el.tagName === "LABEL");
-    expect(items.length).toBe(OPERATIONAL_ROLE_OPTIONS.length);
-    expect(items.every((el) => el.className === "fo-checkbox")).toBe(true);
-    expect(items.every((el) => el.getAttribute("style") === null)).toBe(true);
-    expect(group.parentElement.classList.contains("fo-role-grid")).toBe(true);
-  });
-
-  it("the explanatory line is outside the grid, so it is not a ninth role", async () => {
-    renderEditor(okHistory());
-    const group = await screen.findByRole("group", { name: "Operational Roles" });
-    const note = screen.getByText(/Operational roles are eligibility for work/);
-    expect(group.contains(note)).toBe(false);
-  });
-
-  it("Save sends ONLY the changed field, through the trusted command", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    const title = await screen.findByLabelText(/Job Title/);
-    fireEvent.change(title, { target: { value: "Service Manager" } });
+  it("a manager-only change calls only establishReportingRelationship", async () => {
+    seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
+    const workforce = makeWorkforce({ establishReportingRelationship: { ok: true, result: { outcome: "CHANGED" } } });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(client.updateEmployeeProfile).toHaveBeenCalledTimes(1);
-    const payload = client.updateEmployeeProfile.mock.calls[0][0];
-    expect(payload.employeeId).toBe("emp-1");
-    expect(payload.changes).toEqual({ jobTitle: "Service Manager" });
-    expect(payload.idempotencyKey).toMatch(/^[A-Za-z0-9_-]{8,200}$/);
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
+    expect(commandCalls(workforce)[0]).toEqual(["establishReportingRelationship", { employeeId: "emp-1", managerEmployeeId: "emp-3" }]);
   });
 
-  it("changing an operational role sends operationalRoles and NOTHING about security", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    const group = await screen.findByRole("group", { name: "Operational Roles" });
-    fireEvent.click(within(group).getByLabelText("Parts Manager"));
+  it("clearing the manager calls endReportingRelationship", async () => {
+    const workforce = makeWorkforce({ endReportingRelationship: { ok: true, result: { outcome: "ENDED" } } });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    const { changes } = client.updateEmployeeProfile.mock.calls[0][0];
-    expect(Object.keys(changes)).toEqual(["operationalRoles"]);
-    expect(changes).not.toHaveProperty("securityRole");
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
+    expect(commandCalls(workforce)[0]).toEqual(["endReportingRelationship", { employeeId: "emp-1" }]);
   });
 
-  it("changing employment status sends employmentStatus and NOTHING about account status", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    const status = await screen.findByLabelText(/Employment Status/);
-    fireEvent.change(status, { target: { value: "TERMINATED" } });
+  it("an unchanged form sends nothing and says so", async () => {
+    const workforce = makeWorkforce();
+    await openEditor(workforce);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    const { changes } = client.updateEmployeeProfile.mock.calls[0][0];
-    expect(Object.keys(changes)).toEqual(["employmentStatus"]);
-    expect(client.setUserStatus).not.toHaveBeenCalled();
+    expect(await screen.findByText("Nothing was changed.")).toBeTruthy();
+    expect(commandCalls(workforce)).toEqual([]);
   });
 
-  it("Cancel discards the changes and sends nothing", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    fireEvent.change(await screen.findByLabelText(/Job Title/), { target: { value: "Nope" } });
+  it("Cancel discards the changes, sends nothing, and closes the form", async () => {
+    const workforce = makeWorkforce();
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Nope" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(commandCalls(workforce)).toEqual([]);
   });
 
-  it("a save with nothing changed does not call the command", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    await screen.findByRole("button", { name: "Save" });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
-    expect(screen.getByText("Nothing was changed.")).toBeTruthy();
-  });
-
-  it("an unauthorized save fails closed and says nothing was saved", async () => {
-    const client = okHistory();
-    client.updateEmployeeProfile = vi.fn().mockResolvedValue({ ok: false, result: "DENIED" });
-    renderEditor(client);
-    fireEvent.change(await screen.findByLabelText(/Job Title/), { target: { value: "Service Manager" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText(/not authorized to edit this user\. Nothing was saved/i)).toBeTruthy();
-  });
-
-  it("client validation blocks an obviously bad value before any round trip", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    fireEvent.change(await screen.findByLabelText(/Display Name/), { target: { value: "  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(screen.getByText("Enter a display name.")).toBeTruthy();
-    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
-  });
-
-  it("a malformed Employee ID is refused before a round trip", async () => {
-    const client = okHistory();
-    renderEditor(client);
-    fireEvent.change(await screen.findByLabelText(/Employee ID/), { target: { value: "has space" } });
+  it("client validation blocks a malformed Employee ID or a cleared display name before any round trip", async () => {
+    const workforce = makeWorkforce();
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Employee ID"), { target: { value: "has space" } });
+    fireEvent.change(screen.getByLabelText("Display Name"), { target: { value: "  " } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText(/no spaces/i)).toBeTruthy();
-    expect(client.updateEmployeeProfile).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter a display name.")).toBeTruthy();
+    expect(commandCalls(workforce)).toEqual([]);
+  });
+});
+
+describe("Save outcomes are the server's answers, stated exactly", () => {
+  it("403 from the command renders not-authorized, nothing saved, no re-read, no success", async () => {
+    const workforce = makeWorkforce({ saveEmployeeEdit: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
+    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("You are not authorized to edit this Employee. Nothing was saved.")).toBeTruthy();
+    expect(commandCalls(workforce).map(([operation]) => operation)).toEqual(["saveEmployeeEdit"]);
+    // The form stays open with what the person typed; nothing claims success and the record is not re-read.
+    expect(screen.getByLabelText("Job Title").value).toBe("Lead");
+    expect(document.querySelector("[data-employee-edit-result]")).toBeNull();
+    expect(screen.queryByText(/^Saved/)).toBeNull();
+    expect(readCount(workforce)).toBe(1);
   });
 
-  it("a DUPLICATE Employee ID comes back as an actionable message, not as an outage", async () => {
-    // Uniqueness is enforced transactionally by the command, which this client cannot check without
-    // reading every employee. What it must do is render the refusal as something to fix.
-    const client = okHistory();
-    client.updateEmployeeProfile = vi.fn().mockResolvedValue({
-      ok: false,
-      result: "INVALID",
-      message: "That Employee ID is already assigned to another employee. Choose a different one.",
-    });
-    renderEditor(client);
-    // A DIFFERENT number from the one this record already holds -- an unchanged value is a no-op
-    // and would never reach the command.
-    fireEvent.change(await screen.findByLabelText(/Employee ID/), { target: { value: "TAZ-0099" } });
+  it("409 EMPLOYEE_NUMBER_TAKEN comes back as an actionable message, not an outage", async () => {
+    const workforce = makeWorkforce({ updateEmployeeProfile: { ok: false, code: "CONFLICT", reason: "EMPLOYEE_NUMBER_TAKEN", status: 409 } });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Employee ID"), { target: { value: "TAZ-0099" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText(/already assigned to another employee/i)).toBeTruthy();
+    expect(await screen.findByText(/That Employee ID is already held by another Employee\. Choose a different one\. Nothing was saved\./)).toBeTruthy();
+    expect(document.getElementById("employee-edit-error").textContent).not.toMatch(/could not|not configured|not confirmed/i);
+  });
+
+  it("a combined Save refused at the manager step: nothing saved, no partial notice, the form stays open, no re-read", async () => {
+    const workforce = makeWorkforce({ saveEmployeeEdit: { ok: false, code: "NOT_FOUND", reason: "REPORTING_RELATIONSHIP_NOT_FOUND", status: 404 } });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
+    fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Nothing was saved: this Employee no longer has a current manager to remove.")).toBeTruthy();
+    expect(commandCalls(workforce).map(([operation]) => operation)).toEqual(["saveEmployeeEdit"]);
+    expect(document.querySelector("[data-employee-edit-result]")).toBeNull();
+    expect(screen.getByLabelText("Job Title").value).toBe("Lead");
+    expect(readCount(workforce)).toBe(1);
+  });
+
+  it("success re-reads the record and renders ONLY what the read returns -- never what was typed", async () => {
+    // The command answers UPDATED, but the authority (the re-read) holds a different value -- e.g. another
+    // administrator's concurrent write. The page must show the authority, not the form.
+    const workforce = makeWorkforce({
+      updateEmployeeProfile: (input) => {
+        records["emp-1"] = { ...records["emp-1"], jobTitle: "Stored By Server" };
+        return UPDATED(Object.keys(input.changes));
+      },
+    });
+    await openEditor(workforce);
+    fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Typed Title" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(readCount(workforce)).toBe(2));
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    expect(document.querySelector('[data-employee-edit-result="SAVED"]').textContent).toMatch(/^Saved: Job Title\./);
+    expect(readCount(workforce)).toBe(2);
+    expect(screen.getAllByText(/Stored By Server/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Typed Title/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 });
 
