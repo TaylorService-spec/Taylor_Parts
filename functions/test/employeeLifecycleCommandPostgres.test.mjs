@@ -20,6 +20,8 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const lifecycle = require("../lib/eosWorkforce/commands/employeeLifecycleCommand.js");
+const companies = require("../lib/eosWorkforce/migration/tenantOperatingCompanies.js");
+const reconcileCli = require("../scripts/tenantOperatingCompanyReconcileCli.js");
 const http = require("../lib/eosWorkforce/workforceHttp.js");
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
 const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
@@ -97,6 +99,42 @@ test("changeEmploymentStatus / changeOperatingCompany over the real Workforce an
   const deps = { pool };
   const adminActor = await resolveActor(admin);
   const life = async (id) => (await q(`SELECT employment_status::text AS status, operating_company_id AS company, updated_at FROM eos_workforce.employees WHERE id = $1`, [id])).rows[0];
+  const links = async (tenant) => (await q(`SELECT operating_company_id AS id, status FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 ORDER BY 1`, [tenant])).rows;
+
+  await t.test("tenant <-> operating company reconciliation: dry run writes nothing; apply links only the evidence; idempotent; never deactivates or reactivates", async () => {
+    const dry = await companies.reconcileTenantOperatingCompanies(pool, { tenantId: "t1", companyIds: ["taylor", "ventana"], source: "test-evidence", actor: "tenant-operating-companies:test" });
+    assert.deepEqual([dry.additions, dry.applied, await links("t1")], [["taylor", "ventana"], false, []]);
+    const applied = await companies.reconcileTenantOperatingCompanies(pool, { tenantId: "t1", companyIds: ["ventana", "taylor"], source: "test-evidence", actor: "tenant-operating-companies:test", apply: true });
+    assert.deepEqual([applied.additions, applied.applied], [["taylor", "ventana"], true]);
+    assert.deepEqual(await links("t1"), [{ id: "taylor", status: "ACTIVE" }, { id: "ventana", status: "ACTIVE" }]);
+    const again = await companies.reconcileTenantOperatingCompanies(pool, { tenantId: "t1", companyIds: ["taylor", "ventana"], source: "test-evidence", actor: "tenant-operating-companies:test", apply: true });
+    assert.deepEqual([again.additions, again.applied, again.alreadyActive], [[], false, ["taylor", "ventana"]]);
+    // t2 is linked to taylor only: ventana is KNOWN to the code but NOT authorized for t2.
+    await companies.reconcileTenantOperatingCompanies(pool, { tenantId: "t2", companyIds: ["taylor"], source: "test-evidence", actor: "tenant-operating-companies:test", apply: true });
+    // An INACTIVE link is reported, never reactivated; a link absent from the evidence is reported, never removed.
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1', 'retired-co', 'INACTIVE', 'test', 'test', 'test')`);
+    const report = await companies.reconcileTenantOperatingCompanies(pool, { tenantId: "t1", companyIds: ["taylor", "retired-co"], source: "test-evidence", actor: "tenant-operating-companies:test", apply: true });
+    assert.deepEqual([report.inactiveNotReactivated, report.linkedButNotInEvidence, report.applied], [["retired-co"], ["ventana"], false]);
+    assert.equal((await links("t1")).length, 3);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = 'tenant.operatingCompanies.reconcile'`)).rows[0].n, 2, "one audit per applying run");
+    await assert.rejects(companies.reconcileTenantOperatingCompanies(pool, { tenantId: "t-missing", companyIds: ["taylor"], source: "x", actor: "x", apply: true }), /never creates one/);
+    await assert.rejects(q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by) VALUES ('t1', 'Bad Co', 'ACTIVE', 's', 'a', 'a')`), (e) => e.code === "23514");
+  });
+
+  await t.test("reconcile CLI fence and evidence: only an Owner-ruled environment with a matching evidence file; production / Certification refused", () => {
+    assert.deepEqual(reconcileCli.loadEvidence("platform-sandbox").companyIds, ["taylor", "ventana"]);
+    for (const env of ["taylor-parts-production", "platform-certification", "platform-integration", "local-emulator"]) {
+      assert.throws(() => reconcileCli.loadEvidence(env), /no governed operating-company evidence/, env);
+    }
+    const base = { environment: "platform-sandbox", databaseUrlEnv: "DB", tenantKey: "taylor-nonprod", performedBy: "op" };
+    const env = { DB: "postgres://x", EOS_ENVIRONMENT: "nonprod" };
+    assert.equal(reconcileCli.assertReconcileInvocation(base, env).apply, false, "dry run by default");
+    assert.throws(() => reconcileCli.assertReconcileInvocation({ ...base, environment: "taylor-parts-production" }, env));
+    assert.throws(() => reconcileCli.assertReconcileInvocation({ ...base, environment: "platform-certification" }, env), /frozen/);
+    assert.throws(() => reconcileCli.assertReconcileInvocation(base, { ...env, EOS_ENVIRONMENT: "production" }));
+    assert.throws(() => reconcileCli.assertReconcileInvocation({ ...base, tenantKey: undefined }, env), /tenantKey/);
+  });
+
   const lifeAudits = async (id) => (await q(`SELECT action, actor_uid, before, after, reason FROM eos_policy.audit_events WHERE target_kind = 'employee' AND target_id = $1 AND action LIKE 'employee.%.change' ORDER BY occurred_at, id`, [id])).rows;
 
   await t.test("valid status transition: updated, audited with the EOS Principal; same status is NO_CHANGE", async () => {
@@ -139,13 +177,18 @@ test("changeEmploymentStatus / changeOperatingCompany over the real Workforce an
     assert.equal((await lifeAudits("e-t1-narrow")).length, 1);
   });
 
-  await t.test("valid operating-company change; unknown / malformed company refused; nothing written on refusal", async () => {
+  await t.test("operating company: same-tenant authorized change succeeds; unauthorized, cross-tenant, unknown, inactive and malformed refused", async () => {
     const res = await lifecycle.changeOperatingCompany(deps, adminActor, { employeeId: "e-other", operatingCompanyId: "ventana" });
     assert.deepEqual([res.outcome, res.previous, res.current], ["CHANGED", "taylor", "ventana"]);
     assert.equal((await life("e-other")).company, "ventana");
     assert.deepEqual((await lifeAudits("e-other")).map((a) => [a.action, a.before, a.after]),
       [["employee.operatingCompany.change", { operatingCompanyId: "taylor" }, { operatingCompanyId: "ventana" }]]);
-    for (const [bad, code] of [["acme", "OPERATING_COMPANY_UNKNOWN"], ["Ventana", "OPERATING_COMPANY_INVALID"], ["", "OPERATING_COMPANY_INVALID"], [null, "OPERATING_COMPANY_INVALID"]]) {
+    // Known to the code, but NOT authorized for tenant t2 (cross-tenant relationship refused).
+    await employee("e-t2-co", "t2");
+    await assert.rejects(lifecycle.changeOperatingCompany(deps, await resolveActor(t2Admin), { employeeId: "e-t2-co", operatingCompanyId: "ventana" }), (e) => e.code === "OPERATING_COMPANY_NOT_AUTHORIZED_FOR_TENANT");
+    assert.equal((await life("e-t2-co")).company, "taylor");
+    for (const [bad, code] of [["acme", "OPERATING_COMPANY_NOT_AUTHORIZED_FOR_TENANT"], ["retired-co", "OPERATING_COMPANY_INACTIVE"],
+      ["Ventana", "OPERATING_COMPANY_INVALID"], ["", "OPERATING_COMPANY_INVALID"], [null, "OPERATING_COMPANY_INVALID"]]) {
       await assert.rejects(lifecycle.changeOperatingCompany(deps, adminActor, { employeeId: "e-other", operatingCompanyId: bad }), (e) => e.code === code, String(bad));
     }
     assert.equal((await life("e-other")).company, "ventana");
@@ -218,7 +261,7 @@ test("changeEmploymentStatus / changeOperatingCompany over the real Workforce an
     };
     const ok = await call("changeEmploymentStatus", { employeeId: "e-linked", employmentStatus: "CONTRACTOR" });
     assert.deepEqual([ok.status, ok.body.result.current], [200, "CONTRACTOR"]);
-    assert.deepEqual([(await call("changeOperatingCompany", { employeeId: "e-linked", operatingCompanyId: "acme" })).body.code], ["OPERATING_COMPANY_UNKNOWN"]);
+    assert.deepEqual([(await call("changeOperatingCompany", { employeeId: "e-linked", operatingCompanyId: "acme" })).body.code], ["OPERATING_COMPANY_NOT_AUTHORIZED_FOR_TENANT"]);
     const stated = await call("changeEmploymentStatus", { employeeId: "e-linked", employmentStatus: "ACTIVE", tenantId: "t2" });
     assert.deepEqual([stated.status, stated.body.code], [400, "AUTHORITY_FIELD_NOT_ACCEPTED"]);
     const probe = spawnSync(process.execPath, ["-e", `const M=require("module");const l=M._load;M._load=function(r,...a){if(/firebase/i.test(r)){process.exit(97)}return l.call(this,r,...a)};require("./lib/eosWorkforce/commands/employeeLifecycleCommand.js");require("./lib/eosWorkforce/workforceHttp.js")`], { cwd: FUNCTIONS_DIR });

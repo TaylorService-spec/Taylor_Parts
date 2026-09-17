@@ -8,19 +8,21 @@
 // ════════════════════ WHAT IT CHANGES ════════════════════
 //
 //   changeEmploymentStatus   { employeeId, employmentStatus, reason? }   only along EMPLOYMENT_STATUS_TRANSITIONS
-//   changeOperatingCompany   { employeeId, operatingCompanyId, reason? } only to a RESOLVED (known, active) company
+//   changeOperatingCompany   { employeeId, operatingCompanyId, reason? } only to a company ACTIVE and authorized for the
+//                                                                          Employee's tenant (eos_policy.tenant_operating_companies)
 //
 // Nothing else: no profile fact, manager, Security Role, Job Role, User Access, ownership, accountability, assignment,
 // credential or Firebase record. A caller-supplied actor, tenant, role, capability, company authority or audit identity
 // is refused as unknown input. No generic patch.
 //
-// ════════════════════ POLICY CONSTANTS (pending Owner ruling) ════════════════════
+// ════════════════════ OWNER RULINGS (2026-09-16) ════════════════════
 //
-// The repository holds NO employment-status transition graph and NO tenant <-> operating-company relationship. Until
-// the Owner rules, both are stated here at LEGACY PARITY, explicitly, in one place each:
-//   * EMPLOYMENT_STATUS_TRANSITIONS: every status may move to every OTHER status (the legacy command's behaviour).
-//   * operating company: ownership/operatingCompanyAuthority.ts must RESOLVE the id (known and active). There is no
-//     tenant relationship table to check against, so none is invented.
+//   * Transitions, option (a): LEGACY PARITY. EMPLOYMENT_STATUS_TRANSITIONS lets every canonical status move to every
+//     OTHER canonical status. It is the ONE place a future lifecycle policy tightens the matrix; no restriction (e.g.
+//     TERMINATED/RETIRED irreversible) is assumed before the Owner adopts it.
+//   * Operating company, option (b): TENANT-SCOPED governed PostgreSQL authority. A code-recognised id is not enough;
+//     the target must have an ACTIVE eos_policy.tenant_operating_companies row for the ACTOR's tenant (read FOR SHARE in
+//     the same transaction). Not linked -- unknown, or linked only to another tenant -- and INACTIVE both fail closed.
 //
 // ════════════════════ TRANSACTION ════════════════════
 //
@@ -32,14 +34,13 @@ import {
   EmployeeCommandError, type EmployeeCommandActor, type EmployeeCommandDeps,
 } from "./employeeCommandKernel";
 import { EMPLOYMENT_STATUS_VALUES } from "../../employeeIdentity/employeeAuthority";
-import { resolveOperatingCompany } from "../../ownership/operatingCompanyAuthority";
 
 export type EmploymentStatus = (typeof EMPLOYMENT_STATUS_VALUES)[number];
 
 export const EMPLOYMENT_STATUS_CHANGE_ACTION = "employee.employmentStatus.change";
 export const OPERATING_COMPANY_CHANGE_ACTION = "employee.operatingCompany.change";
 
-/** from -> allowed targets. LEGACY PARITY pending Owner ruling: every status to every other status. */
+/** from -> allowed targets. Owner ruling (a), LEGACY PARITY: every canonical status to every other canonical status. */
 export const EMPLOYMENT_STATUS_TRANSITIONS: Readonly<Record<EmploymentStatus, readonly EmploymentStatus[]>> = Object.freeze(
   Object.fromEntries(EMPLOYMENT_STATUS_VALUES.map((from) => [from, Object.freeze(EMPLOYMENT_STATUS_VALUES.filter((to) => to !== from))])) as
     Record<EmploymentStatus, readonly EmploymentStatus[]>,
@@ -63,6 +64,8 @@ async function lockedLifecycle(db: PoolClient, tenantId: string, employeeId: str
   );
   return rows[0] as { employment_status: string; operating_company_id: string };
 }
+
+const COMPANY_ID_SHAPE = /^[a-z][a-z0-9_-]{1,62}$/;
 
 const noUniqueConstraint = () => new EmployeeCommandError("COMMAND_FAILED", "FAILED", "the command could not be completed");
 
@@ -99,14 +102,21 @@ export function changeOperatingCompany(deps: EmployeeCommandDeps, actor: Employe
   return runEmployeeCommand(deps, actor,
     () => {
       const i = acceptOnly(input, ["employeeId", "operatingCompanyId", "reason"]);
-      const resolved = resolveOperatingCompany(i.operatingCompanyId);
-      if (resolved.state !== "RESOLVED") {
-        refuse(`OPERATING_COMPANY_${resolved.state}`, "INVALID_INPUT", `the operating company is ${resolved.state.toLowerCase()}; only a known, active operating company is accepted`);
+      if (typeof i.operatingCompanyId !== "string" || !COMPANY_ID_SHAPE.test(i.operatingCompanyId)) {
+        refuse("OPERATING_COMPANY_INVALID", "INVALID_INPUT", "operatingCompanyId must be a well-formed operating company id");
       }
-      return { employeeId: requireId(i.employeeId, "employeeId"), companyId: resolved.company!.id, reason: optionalReason(i.reason) };
+      return { employeeId: requireId(i.employeeId, "employeeId"), companyId: i.operatingCompanyId as string, reason: optionalReason(i.reason) };
     },
     async (db, p, at) => {
       const current = await lockedLifecycle(db, actor.tenantId, p.employeeId);
+      const link = await db.query(
+        `SELECT status FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1 AND operating_company_id = $2 FOR SHARE`,
+        [actor.tenantId, p.companyId],
+      );
+      if (link.rows.length === 0) {
+        refuse("OPERATING_COMPANY_NOT_AUTHORIZED_FOR_TENANT", "PRECONDITION_FAILED", "the operating company is not authorized for this tenant");
+      }
+      if (link.rows[0].status !== "ACTIVE") refuse("OPERATING_COMPANY_INACTIVE", "PRECONDITION_FAILED", "the operating company is inactive for this tenant");
       const from = current.operating_company_id;
       if (from === p.companyId) return { outcome: "NO_CHANGE", employeeId: p.employeeId, previous: from, current: from, auditEventId: null };
       await db.query(
