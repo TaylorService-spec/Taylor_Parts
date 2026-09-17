@@ -418,20 +418,13 @@ describe("Job Role is the governed EMP-RT-08 read, business function only, never
     expect(within(section("Job Role")).queryByText(/Security Role:|Add Role|Remove Role/)).toBeNull();
   });
 
-  it("the self view reads the same governed history for the resolved Employee, with no control", async () => {
+  it("the self view shows no Job Role section and makes no Job Role read (no governed self read exists)", async () => {
     const workforce = makeWorkforce({ listEmployeeJobRoleHistory: HISTORY });
     renderSelf(workforce);
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    const jobRole = section("Job Role");
-    await waitFor(() => expect(within(jobRole).getAllByText(/National Accounts Sales/).length).toBeGreaterThan(0));
-    expect(workforce.call).toHaveBeenCalledWith("listEmployeeJobRoleHistory", { employeeId: "emp-1" });
-    expect(jobRole.querySelector("[data-job-role-control]")).toBeNull();
-    expect(within(jobRole).queryByRole("button")).toBeNull();
-    cleanup();
-
-    renderSelf(makeWorkforce({ listEmployeeJobRoleHistory: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
-    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    await waitFor(() => expect(screen.getByText("Your Job Role is not available to you.")).toBeTruthy());
+    expect(screen.queryByRole("heading", { level: 2, name: "Job Role" })).toBeNull();
+    expect(document.querySelector("[data-job-role-section], [data-employee-job-role]")).toBeNull();
+    expect(workforce.call.mock.calls.some(([operation]) => /JobRole/.test(operation))).toBe(false);
   });
 
   it("domain: words come only from the read; inactive roles are never assignable; the command input is closed", () => {

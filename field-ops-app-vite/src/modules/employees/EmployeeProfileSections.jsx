@@ -77,9 +77,10 @@ export function EmployeeLifecycle({ status }) {
  *
  * `control` (optional) is a render function the Administration record passes to offer the governed Job Role
  * control; it receives { jobRole, reload } -- `jobRole` is null until the read is READY -- so a change is followed by
- * a RE-READ of this section, never by rendering what was chosen. The self view passes none.
+ * a RE-READ of this section, never by rendering what was chosen. Administration only: the self view has no Job Role
+ * section, because no governed self read of one's own Job Role exists (listEmployeeJobRoleHistory is employee.record.read).
  */
-export function JobRoleSection({ employeeId, client, control = null, subject = "This Employee's Job Role" }) {
+export function JobRoleSection({ employeeId, client, control = null }) {
   const read = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_HISTORY.operation, employeeId ? { employeeId } : null, { client });
   let body;
   let jobRole = null;
@@ -88,7 +89,7 @@ export function JobRoleSection({ employeeId, client, control = null, subject = "
   } else if (read.status === WORKFORCE_READ_STATE.FAILED) {
     body = (
       <div data-employee-job-role={describeWorkforceFailure(read.error).kind}>
-        <WorkforceFailure error={read.error} subject={subject} onRetry={read.reload} readId={WORKFORCE_READS.JOB_ROLE_HISTORY.id} />
+        <WorkforceFailure error={read.error} subject="This Employee's Job Role" onRetry={read.reload} readId={WORKFORCE_READS.JOB_ROLE_HISTORY.id} />
       </div>
     );
   } else {

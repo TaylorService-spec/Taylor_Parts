@@ -21,7 +21,6 @@ import {
 } from "../../domain/employeeOperatingProfile.js";
 import {
   EmployeeLifecycle,
-  JobRoleSection,
   ManagedEmployeesSection,
   ManagerFact,
   ResponsibilitySection,
@@ -148,8 +147,6 @@ export default function MyEmployeeProfile({ workforce = workforceApiClient }) {
             <ManagerFact manager={describeManager(employee)} linkPeople={false} />
           </RuledSection>
 
-          {/* Read-only: your Job Role and its history (EMP-RT-08). The Workforce service decides whether you may read it. */}
-          <JobRoleSection employeeId={employee.employeeId} client={workforce} subject="Your Job Role" />
           {securityRole}
         </div>
 
@@ -162,11 +159,6 @@ export default function MyEmployeeProfile({ workforce = workforceApiClient }) {
                 key: "employee",
                 label: "Your Employee record",
                 source: `The governed PostgreSQL Employee authority, resolved from your sign-in through your governed Employee link (${WORKFORCE_READS.MY_PROFILE.id}).`,
-              },
-              {
-                key: "jobRole",
-                label: "Job Role",
-                source: `The governed PostgreSQL Job Role authority (${WORKFORCE_READS.JOB_ROLE_HISTORY.id}). Your business function only — never access.`,
               },
               {
                 key: "role",
