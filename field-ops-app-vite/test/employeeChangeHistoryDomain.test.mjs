@@ -39,7 +39,8 @@ test("a profile update is one row per changed field, in profile order, with the 
     ["Work Email", null, "bob@example.com", "Avery Admin"],
     ["City", "Mesa", "Phoenix", "Avery Admin"],
   ]);
-  assert.deepEqual([rows[0].summary, rows[0].occurredAt], ["promotion", Date.parse("2026-09-10T12:00:00.000Z")]);
+  assert.deepEqual([rows[0].reason, rows[0].occurredAt], ["promotion", Date.parse("2026-09-10T12:00:00.000Z")]);
+  assert.ok(rows.every((r) => r.reason === "promotion"), "every field row of one event carries that event's reason");
   assert.equal(new Set(rows.map((r) => r.id)).size, 3, "row ids collide");
 });
 
@@ -69,6 +70,7 @@ test("changedBy is shown only when the server returned a name; an unknown action
     item("jobRole.catalog.update", null, null),
   ]);
   assert.equal(rows.length, 1);
+  assert.equal(rows[0].reason, null, "an absent reason is null, never an empty string or a generated sentence");
   assert.deepEqual([rows[0].changedByLabel, rows[0].changedById], [null, ""]);
   assert.deepEqual(governedHistoryRows(null), []);
   assert.deepEqual(governedHistoryRows([{ action: GOVERNED_EMPLOYEE_HISTORY_ACTION.PROFILE_UPDATE }]), [], "an item without an event id became a row");

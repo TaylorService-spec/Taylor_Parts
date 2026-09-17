@@ -93,7 +93,7 @@ test("an unresolved actor is never shown as a uid", () => {
 });
 
 test("no credential material can reach a row, because no field carries it", () => {
-  // The row model has a fixed shape: id, time, field, values, actor, summary. A reset link, token
+  // The row model has a fixed shape: id, time, field, values, actor, summary, reason. A reset link, token
   // or password has nowhere to go even if a caller passed one.
   const [row] = normalizeHistoryRows(
     [{ ...RAW[0], oobCode: "SECRET", resetLink: "https://example/x", password: "hunter2" }],
@@ -111,6 +111,7 @@ test("no credential material can reach a row, because no field carries it", () =
     "occurredAt",
     "outcome",
     "previousValue",
+    "reason",
     "summary",
   ]);
   assert.ok(!JSON.stringify(row).includes("hunter2"));

@@ -108,6 +108,8 @@ export default function EmployeeChangeHistorySection({ employeeId, workforce, re
         onRetry={failure?.retryable ? () => setNonce((n) => n + 1) : null}
         emptyMessage="No governed changes have been recorded for this Employee yet."
         footer={footer}
+        showReason
+        caption="Manager and Job Role names are shown as they are named today, not as they were named at the time of the change."
       />
     </div>
   );

@@ -86,7 +86,8 @@ export function governedHistoryRowsForItem(item) {
     // The Changed By filter groups by the name the server returned. There is no Principal id to group by, by design.
     changedById: actorName ?? "",
     changedByLabel: actorName,
-    summary: isBlank(item.reason) ? "" : String(item.reason),
+    summary: "",
+    reason: isBlank(item.reason) ? null : String(item.reason),
   };
   const row = (fieldKey, previousValue, newValue) => ({ ...base, id: `${item.eventId}:${fieldKey}`, fieldKey, previousValue, newValue });
   const before = side(item.before);

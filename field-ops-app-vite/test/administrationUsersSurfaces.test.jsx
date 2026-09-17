@@ -1110,7 +1110,7 @@ const GOVERNED_ITEMS = [
   },
   {
     eventId: "audit_mid", action: "employee.reportingRelationship.establish", occurredAt: "2026-09-12T10:00:00.000Z",
-    before: null, after: { managerEmployeeId: "emp-2", managerDisplayName: "Mike Jones" }, reason: null, changedBy: null,
+    before: null, after: { managerEmployeeId: "emp-2", managerDisplayName: "Mike Jones" }, reason: "reorganised team", changedBy: null,
   },
   {
     eventId: "audit_old", action: "employee.profile.update", occurredAt: "2026-09-01T10:00:00.000Z",
@@ -1127,14 +1127,44 @@ describe("the governed Change History (EMP-RT-H1)", () => {
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows.map((r) => r.getAttribute("data-history-row"))).toEqual(["audit_new:jobRole", "audit_mid:managerEmployeeId", "audit_old:jobTitle"]);
     expect(rows.map((r) => [...r.querySelectorAll("td")].slice(1).map((td) => td.textContent))).toEqual([
-      ["Job Role", "Retail Sales", "National Accounts Sales", "Avery Admin"],
-      ["Manager", "—", "Mike Jones", "Not shown"],
-      ["Job Title", "Service Technician", "Senior Service Technician", "Avery Admin"],
+      ["Job Role", "Retail Sales", "National Accounts Sales", "Avery Admin", "—"],
+      ["Manager", "—", "Mike Jones", "Not shown", "reorganised team"],
+      ["Job Title", "Service Technician", "Senior Service Technician", "Avery Admin", "promotion"],
     ]);
     expect(table.textContent).not.toMatch(/retail-sales|national-accounts-sales|emp-2|employee\.jobRole|pr-/);
     expect(governedReads(workforce)).toEqual([["listEmployeeChangeHistory", { employeeId: "emp-1", limit: 50 }]]);
     expect(within(governedSection()).getByRole("heading", { name: "Change History" })).toBeTruthy();
     expect(governedSection().textContent).toMatch(/Governed Employee changes, from the Workforce service \(EMP-RT-H1\)/);
+  });
+
+  it("shows each governed change's own reason in a Reason column -- profile, reporting, lifecycle and Job Role", async () => {
+    const at = (n) => `2026-09-1${n}T10:00:00.000Z`;
+    const items = [
+      { eventId: "a4", action: "employee.jobRole.assign", occurredAt: at(4), before: null, after: { jobRoleId: "x", jobRoleDisplayName: "Retail Sales" }, reason: "hired into retail", changedBy: null },
+      { eventId: "a3", action: "employee.operatingCompany.change", occurredAt: at(3), before: { operatingCompanyId: "taylor" }, after: { operatingCompanyId: "taylor" }, reason: "company move", changedBy: null },
+      { eventId: "a2", action: "employee.employmentStatus.change", occurredAt: at(2), before: { employmentStatus: "ACTIVE" }, after: { employmentStatus: "ON_LEAVE" }, reason: "medical leave", changedBy: null },
+      { eventId: "a1", action: "employee.reportingRelationship.end", occurredAt: at(1), before: { managerEmployeeId: "emp-2", managerDisplayName: "Mike Jones" }, after: null, reason: "manager left", changedBy: null },
+      { eventId: "a0", action: "employee.profile.update", occurredAt: at(0), before: { jobTitle: "A" }, after: { jobTitle: "B" }, reason: null, changedBy: null },
+    ];
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(items) });
+    renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+    const table = await screen.findByTestId("governed-change-history-table");
+    expect(within(table).getByRole("columnheader", { name: "Reason" })).toBeTruthy();
+    const reasons = within(table).getAllByRole("row").slice(1).map((r) => r.querySelector('td[data-label="Reason"]').textContent);
+    expect(reasons).toEqual(["hired into retail", "company move", "medical leave", "manager left", "—"]);
+    // The legacy trail records no reasons, so it has no Reason column.
+    const legacy = await screen.findByTestId("change-history-table");
+    expect(within(legacy).queryByRole("columnheader", { name: "Reason" })).toBeNull();
+    expect(legacy.querySelector('td[data-label="Reason"]')).toBeNull();
+  });
+
+  it("states that manager and Job Role names are shown as they are named today -- on the governed trail only", async () => {
+    const workforce = makeWorkforce({ listEmployeeChangeHistory: governedPage(GOVERNED_ITEMS) });
+    renderDetail(okHistory(HISTORY), "emp-1", "", undefined, workforce);
+    await screen.findByTestId("governed-change-history-table");
+    expect(governedSection().querySelector("[data-history-caption]").textContent)
+      .toBe("Manager and Job Role names are shown as they are named today, not as they were named at the time of the change.");
+    expect(document.querySelector("#legacy-change-history [data-history-caption]")).toBeNull();
   });
 
   it("keeps the legacy trail visible, labelled as the pre-cutover legacy trail, BELOW the governed one -- never merged", async () => {

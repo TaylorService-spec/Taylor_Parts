@@ -65,6 +65,8 @@ const ABSENT = "—";
  * @param testId      the table's data-testid.
  * @param loadingMessage / unavailableTitle   the words for those two states, so two trails on one page stay distinct.
  * @param unknownActorLabel  what Changed By says when the row carries no actor name.
+ * @param showReason  render the optional Reason column (row.reason). Only for a trail that records reasons.
+ * @param caption     a short note under the heading about how to read the rows.
  * @param footer      rendered under the rows (e.g. a "Show more" control for a paged read). Not while loading/unavailable.
  */
 export default function ChangeHistory({
@@ -81,7 +83,10 @@ export default function ChangeHistory({
   unavailableTitle = "Change history unavailable",
   unknownActorLabel = "Unknown user",
   footer = null,
+  showReason = false,
+  caption = null,
 }) {
+  const columns = showReason ? [...COLUMNS, { key: "reason", label: "Reason", sortable: false }] : COLUMNS;
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [field, setField] = useState(ALL_FIELDS);
   const [actor, setActor] = useState(ALL_FIELDS);
@@ -123,6 +128,7 @@ export default function ChangeHistory({
 
   return (
     <RuledSection title={title} meta={meta} id={sectionId}>
+      {caption ? <p className="fo-muted ns-emp-note" data-history-caption>{caption}</p> : null}
       {loading ? (
         <LoadingState>{loadingMessage}</LoadingState>
       ) : unavailable ? (
@@ -201,7 +207,9 @@ export default function ChangeHistory({
                 </caption>
                 <thead>
                   <tr>
-                    {COLUMNS.map((col) => (
+                    {columns.map((col) => col.sortable === false ? (
+                      <th key={col.key} scope="col">{col.label}</th>
+                    ) : (
                       <th key={col.key} scope="col" aria-sort={ariaSortFor(sort, col.key)}>
                         <button
                           type="button"
@@ -238,6 +246,7 @@ export default function ChangeHistory({
                       <td data-label="Previous">{row.previousValue ?? ABSENT}</td>
                       <td data-label="New">{row.newValue ?? ABSENT}</td>
                       <td data-label="Changed By">{row.changedByLabel ?? unknownActorLabel}</td>
+                      {showReason ? <td data-label="Reason">{row.reason ?? ABSENT}</td> : null}
                     </tr>
                   ))}
                 </tbody>
