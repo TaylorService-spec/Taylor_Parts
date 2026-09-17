@@ -40,6 +40,9 @@ import { isUnsupportedReason } from "./unsupportedReason.js";
 import { ABSENCE } from "./absence.js";
 import { validateGap } from "./gapRegister.js";
 
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
+
 /** Field data types v1. Deliberately small — add one only when a real EOS field needs it. */
 export const FIELD_TYPE = Object.freeze([
   "STRING",
@@ -280,8 +283,12 @@ export function makeEntityDefinition(input = {}) {
   });
 }
 
-// EOS_API: served by the EOS trusted API over PostgreSQL (CRM cutover); a list source is selected per entity.
-export const READ_VIA = Object.freeze(["CLIENT_DIRECT", "CALLABLE", "EOS_API", "UNKNOWN"]);
+// EOS_API: served by the EOS trusted API over PostgreSQL. The vocabulary carries it ONLY in a build whose CRM is routed
+// there (platform-sandbox -- domain/crmAuthorityRoute.js), where the Account entity declares it. Every other build's
+// vocabulary is the legacy three values, unchanged.
+export const READ_VIA = Object.freeze(CRM_VIA_EOS_API
+  ? ["CLIENT_DIRECT", "CALLABLE", "EOS_API", "UNKNOWN"]
+  : ["CLIENT_DIRECT", "CALLABLE", "UNKNOWN"]);
 
 /**
  * Validate one EntityDefinition and everything it owns.

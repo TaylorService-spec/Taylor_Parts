@@ -1,3 +1,6 @@
+// EOS API (PostgreSQL CRM) read lifecycle shared by the hooks in this directory. Only reachable from a build where
+// CRM_VIA_EOS_API is true (domain/crmAuthorityRoute.js).
+//
 import { useCallback, useEffect, useState } from "react";
 
 // One-shot EOS API read with the lifecycle every CRM hook shares: loading, a SAFE error, an obsolete-response guard and

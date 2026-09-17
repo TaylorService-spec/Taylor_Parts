@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { callCrmApi } from "../services/crmApiClient.js";
+import { collection, getDocs, query, where, documentId } from "firebase/firestore";
+import { db } from "../firebase/firebase";
+import { ACCOUNTS_COLLECTION } from "../domain/constants";
+import { readAccountNameMap as readAccountNameMapEosApi } from "./crm/eosApi/crmReferenceNames.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 // W4 (human-readable IDs). Resolves a SET of account ids -> Map<accountId, name>,
 // for surfaces that render many work orders and must show a human-readable
@@ -52,6 +58,28 @@ export const ACCOUNT_NAMES_STATUS = Object.freeze({
   ERROR: "ERROR",
 });
 
+// ════════════════════ BUILD-TIME CRM AUTHORITY ROUTE ════════════════════
+// The batched name read is selected ONCE, from the build's environment (domain/crmAuthorityRoute.js): a
+// platform-sandbox build reads from the governed PostgreSQL CRM through the EOS API (hooks/crm/eosApi/crmReferenceNames.js); every other build --
+// production included -- runs the legacy Firestore read below, unchanged. A top-level ternary on imported bindings,
+// so the bundler drops the unselected side; no runtime switch and no fallback between the two. Both throw on
+// failure, so DENIED / ERROR handling below is shared.
+async function readAccountNameMapFirestore(ids) {
+  const map = new Map();
+  for (const idChunk of chunk(ids, 10)) {
+    const snap = await getDocs(
+      query(collection(db, ACCOUNTS_COLLECTION), where(documentId(), "in", idChunk))
+    );
+    snap.forEach((d) => {
+      const name = d.data()?.name;
+      if (typeof name === "string" && name) map.set(d.id, name);
+    });
+  }
+  return map;
+}
+
+const readAccountNameMap = CRM_VIA_EOS_API ? readAccountNameMapEosApi : readAccountNameMapFirestore;
+
 /**
  * The batched read, with its outcome.
  *
@@ -74,18 +102,10 @@ export function useAccountNamesWithStatus(accountIds) {
     setResult((prev) => ({ names: prev.names, status: ACCOUNT_NAMES_STATUS.LOADING }));
 
     (async () => {
-      const map = new Map();
+      let map = new Map();
       let status = ACCOUNT_NAMES_STATUS.READY;
       try {
-        // CRM CUTOVER: names come from the governed PostgreSQL CRM authority (EOS API), a bounded set of point reads.
-        for (const idChunk of chunk(ids, 10)) {
-          const results = await Promise.all(idChunk.map((accountId) => callCrmApi("getAccount", { accountId })));
-          for (const res of results) {
-            if (res.ok) { if (res.result.name) map.set(res.result.accountId, res.result.name); continue; }
-            if (res.code === "ACCOUNT_NOT_FOUND" || res.code === "RECORD_ID_REQUIRED") continue;
-            throw Object.assign(new Error(res.message), { code: ["CAPABILITY_REQUIRED", "FORBIDDEN", "ACTOR_NOT_TENANT_MEMBER"].includes(res.code) ? "permission-denied" : res.code });
-          }
-        }
+        map = await readAccountNameMap(ids);
       } catch (err) {
         // DENIED IS KEPT SEPARATE from every other failure. A refusal is permanent for this viewer
         // and says nothing about whether the record exists; anything else may succeed on a retry.

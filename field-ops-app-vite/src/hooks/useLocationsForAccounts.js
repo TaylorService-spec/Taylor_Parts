@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { locationRowFromCrm, readAllPages } from "../services/crmApiClient.js";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../firebase/firebase";
+import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { useLocationsForAccounts as useLocationsForAccountsEosApi } from "./crm/eosApi/useLocationsForAccounts.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 // Work Order wizard -- Customer picker. Fetches the locations for the BOUNDED
 // set of visible candidate accounts in ONE batched query
@@ -17,7 +23,7 @@ import { locationRowFromCrm, readAllPages } from "../services/crmApiClient.js";
 //
 // A sibling of useLocationsForAccount (single account) -- not a modification of
 // it, so the existing Step 2 single-account listener is untouched.
-export function useLocationsForAccounts(accountIds = []) {
+function useLocationsForAccountsFirestore(accountIds = []) {
   // Stable primitive dependency: the query only re-subscribes when the actual
   // set of candidate ids changes, not on every array-identity change.
   const key = accountIds.join(",");
@@ -39,27 +45,34 @@ export function useLocationsForAccounts(accountIds = []) {
     }
     setLoading(true);
     let active = true;
-    // CRM CUTOVER: each Account's customer sites from the governed PostgreSQL CRM authority (EOS API). One-shot, bounded.
-    (async () => {
-      const grouped = new Map();
-      for (const accountId of ids) {
-        const res = await readAllPages("listAccountLocations", { accountId }, locationRowFromCrm);
-        if (!active) return;
-        if (!res.ok) {
-          console.error("useLocationsForAccounts: locations read failed", res.code);
-          setByAccount(new Map());
-          setError(true);
-          setLoading(false);
-          return;
+    const q = query(collection(db, LOCATIONS_COLLECTION), where("accountId", "in", ids));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        if (!active) return; // obsolete callback -- must not restore stale data
+        const grouped = new Map();
+        for (const d of snap.docs) {
+          const loc = { id: d.id, ...d.data() };
+          const list = grouped.get(loc.accountId) ?? [];
+          list.push(loc);
+          grouped.set(loc.accountId, list);
         }
-        grouped.set(accountId, res.rows);
+        setByAccount(grouped);
+        setError(false);
+        setLoading(false);
+      },
+      (err) => {
+        if (!active) return;
+        // Dev-only log; NEVER surfaced to the UI (no raw message/code/id).
+        console.error("useLocationsForAccounts: locations query failed", err);
+        setByAccount(new Map()); // clear any stale/partial results
+        setError(true);
+        setLoading(false);
       }
-      setByAccount(grouped);
-      setError(false);
-      setLoading(false);
-    })();
+    );
     return () => {
       active = false;
+      unsub();
     };
   }, [key, retryNonce]);
 
@@ -67,3 +80,9 @@ export function useLocationsForAccounts(accountIds = []) {
 
   return { byAccount, loading, error, retry };
 }
+
+// ════════════════════ BUILD-TIME CRM AUTHORITY ROUTE ════════════════════
+// `useLocationsForAccounts` is selected ONCE, from the build's environment (domain/crmAuthorityRoute.js): a platform-sandbox build
+// uses the EOS API implementation (hooks/crm/eosApi/useLocationsForAccounts.js); every other build -- production included -- uses the legacy
+// Firestore implementation above, unchanged. No runtime switch and no fallback between the two.
+export const useLocationsForAccounts = CRM_VIA_EOS_API ? useLocationsForAccountsEosApi : useLocationsForAccountsFirestore;

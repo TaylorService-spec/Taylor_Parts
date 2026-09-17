@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { accountRowFromCrm, callCrmApi } from "../services/crmApiClient.js";
+import { collection, getDocs, limit as fsLimit, orderBy, query, where } from "firebase/firestore";
+import { db } from "../firebase/firebase";
 import { accountSearchQueryShape, interpretAccountSearchRead, ACCOUNT_SEARCH_CAP } from "../domain/accountSearch.js";
+import { useAccountSearch as useAccountSearchEosApi } from "./crm/eosApi/useAccountSearch.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 // The ONLY place this feature touches Firestore. domain/accountSearch.js decided
 // everything already — the prefix range, the bound, the +1 truncation probe, every
@@ -16,7 +21,7 @@ import { accountSearchQueryShape, interpretAccountSearchRead, ACCOUNT_SEARCH_CAP
 // typed. getDocs matches what the box actually does.
 const DEBOUNCE_MS = 300;
 
-export function useAccountSearch(term, { cap = ACCOUNT_SEARCH_CAP } = {}) {
+function useAccountSearchFirestore(term, { cap = ACCOUNT_SEARCH_CAP } = {}) {
   const [raw, setRaw] = useState({ docs: null, loading: false, error: null });
   // Guards against a slow earlier query's response landing after a newer keystroke and
   // overwriting the newer (or blank) result — the same stale-response race useMetadataList
@@ -37,11 +42,16 @@ export function useAccountSearch(term, { cap = ACCOUNT_SEARCH_CAP } = {}) {
 
     const timer = setTimeout(async () => {
       try {
-        // CRM CUTOVER: the folded-name prefix search runs against the governed PostgreSQL CRM authority (EOS API).
-        const res = await callCrmApi("listAccounts", { nameStartsWith: String(term).trim(), limit: Math.min(shape.limit, 200) });
+        const q = query(
+          collection(db, shape.collection),
+          where(shape.fieldPath, ">=", shape.start),
+          where(shape.fieldPath, "<=", shape.end),
+          orderBy(shape.fieldPath, "asc"),
+          fsLimit(shape.limit)
+        );
+        const snap = await getDocs(q);
         if (token !== requestRef.current) return;
-        if (!res.ok) throw Object.assign(new Error(res.message), { code: res.code });
-        setRaw({ docs: res.result.items.map(accountRowFromCrm), loading: false, error: null });
+        setRaw({ docs: snap.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false, error: null });
       } catch (error) {
         if (token !== requestRef.current) return;
         // docs stays null, not [], so a failed read is never mistaken downstream for a
@@ -55,3 +65,9 @@ export function useAccountSearch(term, { cap = ACCOUNT_SEARCH_CAP } = {}) {
 
   return interpretAccountSearchRead({ term, ...raw, cap });
 }
+
+// ════════════════════ BUILD-TIME CRM AUTHORITY ROUTE ════════════════════
+// `useAccountSearch` is selected ONCE, from the build's environment (domain/crmAuthorityRoute.js): a platform-sandbox build
+// uses the EOS API implementation (hooks/crm/eosApi/useAccountSearch.js); every other build -- production included -- uses the legacy
+// Firestore implementation above, unchanged. No runtime switch and no fallback between the two.
+export const useAccountSearch = CRM_VIA_EOS_API ? useAccountSearchEosApi : useAccountSearchFirestore;

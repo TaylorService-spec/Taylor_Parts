@@ -5,6 +5,9 @@ import { fetchPage as fetchFirestorePage } from "../metadata/firestoreListSource
 import { fetchPage as fetchCallablePage } from "../metadata/callableListSource.js";
 import { fetchPage as fetchCrmAccountPage } from "../metadata/crmListSource.js";
 
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
+
 // Drives a metadata list: descriptor -> page -> presentation model.
 //
 // It owns paging state and nothing else. Every judgement — which filters are legal, the
@@ -37,8 +40,13 @@ function resolveReadCallable(def, entity) {
   return def?.readCallable || entity?.readCallable || null;
 }
 
+// BUILD-TIME CRM AUTHORITY ROUTE (domain/crmAuthorityRoute.js): only a platform-sandbox build carries the PostgreSQL
+// CRM Account list source. In every other build this is null -- a top-level ternary on imported bindings, so the
+// bundler drops crmListSource.js entirely -- and the Account list stays CLIENT_DIRECT.
+const fetchCrmAccountPageForBuild = CRM_VIA_EOS_API ? fetchCrmAccountPage : null;
+
 function selectListSource(entity, def) {
-  if (entity?.readVia === "EOS_API" && entity?.id === "account") return fetchCrmAccountPage;
+  if (fetchCrmAccountPageForBuild && entity?.readVia === "EOS_API" && entity?.id === "account") return fetchCrmAccountPageForBuild;
   if (entity?.readVia === "CLIENT_DIRECT") return fetchFirestorePage;
   if (entity?.readVia === "CALLABLE" && resolveReadCallable(def, entity)) return fetchCallablePage;
   // UNKNOWN readVia, or CALLABLE with no readCallable resolved (neither the list view nor

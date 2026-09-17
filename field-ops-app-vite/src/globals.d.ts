@@ -26,3 +26,7 @@ declare const __APP_READINESS__: Record<string, boolean>;
 // [] in a production build (resolveEnvironment.mjs is role-keyed). Presentation-
 // only UI preview input; never authoritative.
 declare const __APP_CAPABILITY_ACTIVATION_OVERRIDES__: string[];
+
+// CRM-8 -- build-time CRM authority route, computed by src/domain/crmAuthorityRoute.js's closed allowlist from the
+// environment id (true only for platform-sandbox). Routed modules read it behind a typeof guard; absent = legacy.
+declare const __APP_CRM_VIA_EOS_API__: boolean;

@@ -30,6 +30,9 @@ import {
   TAX_STATUS_LABEL,
 } from "../../domain/accountCommercialVocabulary.js";
 
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
+
 // The FIRST real EntityDefinition and ListViewDefinition — Account, behind /customers.
 //
 // Everything the contracts and runtimes promise has until now been exercised only by
@@ -67,8 +70,10 @@ export const accountEntity = makeEntityDefinition({
   collection: ACCOUNTS_COLLECTION,
   // Firestore rules are the gate for accounts today; the Phase 0 audit found both
   // patterns in use, and recording which one this is stops the runtime from assuming.
-  // CRM CUTOVER: served by the governed PostgreSQL CRM authority through the EOS API (metadata/crmListSource.js).
-  readVia: "EOS_API",
+  //
+  // CRM AUTHORITY ROUTE (domain/crmAuthorityRoute.js): a platform-sandbox build serves this entity from the governed
+  // PostgreSQL CRM through the EOS API (metadata/crmListSource.js). Every other build keeps CLIENT_DIRECT, unchanged.
+  readVia: CRM_VIA_EOS_API ? "EOS_API" : "CLIENT_DIRECT",
   // The account's name is how a human identifies it. There is no reference number for
   // an Account, and declaring one that does not exist would license a surface to render
   // a document id in its place — the exact defect corrected on Sales Orders (#1124).
@@ -586,6 +591,10 @@ export const accountEntity = makeEntityDefinition({
   ],
 });
 
+// CRM AUTHORITY ROUTE (domain/crmAuthorityRoute.js). In a platform-sandbox build the index is served by the PostgreSQL
+// CRM list (listAccounts), which orders by folded name and filters by status ONLY, so that build declares exactly
+// that and nothing more -- no control offers a query the source would refuse. Every other build declares the legacy
+// Firestore list below, unchanged.
 export const accountIndexList = makeListViewDefinition({
   emptyGuidance:
     "A customer is the account everything else hangs off — its locations are where service happens, and its work orders, equipment, and financial summary all roll up here.",
@@ -595,7 +604,7 @@ export const accountIndexList = makeListViewDefinition({
   surface: "INDEX",
   columns: [
     makeColumn({ fieldId: "name", sortable: true }),
-    makeColumn({ fieldId: "status" }),
+    makeColumn({ fieldId: "status", sortable: !CRM_VIA_EOS_API }),
     makeColumn({ fieldId: "relationshipTypes" }),
     makeColumn({ fieldId: "lineOfBusiness" }),
     makeColumn({ fieldId: "accountOwnerEmployeeId" }),
@@ -603,20 +612,28 @@ export const accountIndexList = makeListViewDefinition({
     // know which exist is to read every account, and rebuilding the facet from the current page
     // would present "the tags on these fifty rows" as "the tags that exist".
     makeColumn({ fieldId: "tags" }),
-    makeColumn({ fieldId: "createdAt" }),
+    makeColumn({ fieldId: "createdAt", sortable: !CRM_VIA_EOS_API }),
     // The DEFAULT SORT's own field. A list ordered by most-recently-touched that does not show
     // when each row was touched asks the reader to take the ordering on faith.
-    makeColumn({ fieldId: "updatedAt" }),
+    makeColumn({ fieldId: "updatedAt", sortable: !CRM_VIA_EOS_API }),
   ],
   filters: [
     makeFilter({ fieldId: "status", operators: ["EQUALS", "IN"] }),
-    // CRM CUTOVER: the PostgreSQL CRM list serves name order and a status filter only; nothing else is declared,
-    // so no control offers a query the source would refuse.
+    ...(CRM_VIA_EOS_API ? [] : [
+      makeFilter({ fieldId: "relationshipTypes", operators: ["ARRAY_CONTAINS"] }),
+      // THE THIRD FILTER, and its cost was checked before it was declared. Array filters do not
+      // combine with each other, so this adds one index FAMILY rather than doubling the set — and
+      // the combination `relationshipTypes AND lineOfBusiness` is refused at the query planner
+      // (MULTIPLE_ARRAY_FILTERS), because Firestore cannot serve it at any index cost.
+      makeFilter({ fieldId: "lineOfBusiness", operators: ["ARRAY_CONTAINS"] }),
+    ]),
   ],
   // Most-recently-touched first is the ordering that makes a first page useful when the
   // set is larger than anyone will scroll. Name-ascending is available as a sort but is
   // a poor default: it makes page one a permanent property of the alphabet.
-  defaultSort: [makeSort({ fieldId: "name", direction: "ASC" })],
+  defaultSort: [CRM_VIA_EOS_API
+    ? makeSort({ fieldId: "name", direction: "ASC" })
+    : makeSort({ fieldId: "updatedAt", direction: "DESC" })],
   pageSize: 50,
   savedViews: [
     // At 250,000 accounts an unfiltered first page answers nobody's question, so the
@@ -626,7 +643,9 @@ export const accountIndexList = makeListViewDefinition({
       id: "active",
       label: "Active customers",
       filters: [{ fieldId: "status", operator: "EQUALS", value: ACCOUNT_STATUS.ACTIVE }],
-      sort: [makeSort({ fieldId: "name", direction: "ASC" })],
+      sort: [CRM_VIA_EOS_API
+        ? makeSort({ fieldId: "name", direction: "ASC" })
+        : makeSort({ fieldId: "updatedAt", direction: "DESC" })],
     }),
   ],
   rowNavigationTo: "/customers/:id",

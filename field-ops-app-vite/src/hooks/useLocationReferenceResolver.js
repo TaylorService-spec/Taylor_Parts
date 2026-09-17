@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { callCrmApi } from "../services/crmApiClient.js";
+import { collection, documentId, getDocs, query, where } from "firebase/firestore";
+import { db } from "../firebase/firebase";
+import { LOCATIONS_COLLECTION } from "../domain/constants";
+import { readLocationNameMap as readLocationNameMapEosApi } from "./crm/eosApi/crmReferenceNames.js";
 import { REFERENCE_STATE } from "../metadata/referenceResolution.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 // RESOLVE LOCATION REFERENCES FOR A METADATA LIST, IN ONE BATCHED READ.
 //
@@ -56,6 +62,28 @@ export function pickLocationName(data) {
   return null;
 }
 
+// ════════════════════ BUILD-TIME CRM AUTHORITY ROUTE ════════════════════
+// The batched name read is selected ONCE, from the build's environment (domain/crmAuthorityRoute.js): a
+// platform-sandbox build reads from the governed PostgreSQL CRM through the EOS API (hooks/crm/eosApi/crmReferenceNames.js); every other build --
+// production included -- runs the legacy Firestore read below, unchanged. A top-level ternary on imported bindings,
+// so the bundler drops the unselected side; no runtime switch and no fallback between the two. Both throw on
+// failure, so DENIED / ERROR handling below is shared.
+async function readLocationNameMapFirestore(ids, pickName) {
+  const map = new Map();
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const snap = await getDocs(
+      query(collection(db, LOCATIONS_COLLECTION), where(documentId(), "in", ids.slice(i, i + CHUNK))),
+    );
+    snap.forEach((d) => {
+      const name = pickName(d.data());
+      if (name) map.set(d.id, name);
+    });
+  }
+  return map;
+}
+
+const readLocationNameMap = CRM_VIA_EOS_API ? readLocationNameMapEosApi : readLocationNameMapFirestore;
+
 /** The batched read, with its outcome. */
 export function useLocationNames(locationIds) {
   const [result, setResult] = useState(() => ({ names: new Map(), status: LOCATION_NAMES_STATUS.IDLE }));
@@ -74,18 +102,10 @@ export function useLocationNames(locationIds) {
     setResult((prev) => ({ names: prev.names, status: LOCATION_NAMES_STATUS.LOADING }));
 
     (async () => {
-      const map = new Map();
+      let map = new Map();
       let status = LOCATION_NAMES_STATUS.READY;
       try {
-        // CRM CUTOVER: customer-site names come from the governed PostgreSQL CRM authority (EOS API).
-        for (let i = 0; i < ids.length; i += CHUNK) {
-          const results = await Promise.all(ids.slice(i, i + CHUNK).map((accountLocationId) => callCrmApi("getAccountLocation", { accountLocationId })));
-          for (const res of results) {
-            if (res.ok) { const name = pickLocationName(res.result); if (name) map.set(res.result.accountLocationId, name); continue; }
-            if (res.code === "ACCOUNT_LOCATION_NOT_FOUND" || res.code === "RECORD_ID_REQUIRED") continue;
-            throw Object.assign(new Error(res.message), { code: ["CAPABILITY_REQUIRED", "FORBIDDEN", "ACTOR_NOT_TENANT_MEMBER"].includes(res.code) ? "permission-denied" : res.code });
-          }
-        }
+        map = await readLocationNameMap(ids, pickLocationName);
       } catch (err) {
         status = err?.code === "permission-denied" ? LOCATION_NAMES_STATUS.DENIED : LOCATION_NAMES_STATUS.ERROR;
       }

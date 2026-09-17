@@ -6,6 +6,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 import { resolveEnvironment } from '../scripts/resolveEnvironment.mjs'
+import { crmViaEosApiFor } from './src/domain/crmAuthorityRoute.js'
 
 // O-3 — environment identity comes from the ONE registry (config/environments.json),
 // never from hard-coded literals in source. Select with VITE_ENVIRONMENT_ID; the
@@ -110,6 +111,11 @@ export default defineConfig({
     __APP_ENVIRONMENT__: JSON.stringify({
       id: APP_ENV.id, role: APP_ENV.role, deployment: APP_ENV.deployment,
     }),
+    // CRM authority route (CRM-8). Whether THIS build's CRM reads/writes go to the EOS API (PostgreSQL CRM) instead of
+    // the legacy Firestore path -- decided by src/domain/crmAuthorityRoute.js's closed allowlist from the resolved
+    // environment id above (true only for platform-sandbox), never set separately. A boolean literal so the bundler
+    // drops the unselected implementation: the production bundle carries no EOS CRM route. See that module's header.
+    __APP_CRM_VIA_EOS_API__: JSON.stringify(crmViaEosApiFor(APP_ENV.id)),
     __APP_READINESS__: JSON.stringify(APP_ENV.readiness),
     // Per-environment capability activation (spec 2026-08-14). The spine
     // override id set is baked in AT BUILD TIME from the resolved environment,
@@ -122,5 +128,10 @@ export default defineConfig({
   plugins: [react(), emitVersionManifest(APP_COMMIT, APP_ENV)],
   build: {
     chunkSizeWarningLimit: 800,
+    rolldownOptions: {
+      treeshake: {
+        moduleSideEffects: (id) => !/[\\/]src[\\/](services[\\/]crmApiClient\.js|metadata[\\/]crmListSource\.js|(hooks|domain)[\\/]crm[\\/]eosApi[\\/])/.test(id),
+      },
+    },
   },
 })

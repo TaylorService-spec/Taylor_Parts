@@ -55,6 +55,9 @@ import {
   buildAccountRelatedListPresentation,
 } from "../../metadata/definitions/accountPageComponents.js";
 
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════
 // THE CUSTOMER RECORD, AGAINST THE APPROVED ACCOUNT NORTH STAR P1 COMPOSITION.
 //
@@ -469,8 +472,10 @@ export default function AccountDetail() {
     }
     setIsEditing(false);
     setFocusFieldId(null);
-    // A one-shot read, not a subscription: re-read the persisted record rather than show the request back.
-    retryAccount();
+    // CRM AUTHORITY ROUTE (domain/crmAuthorityRoute.js): the EOS API read is one-shot, not a subscription, so a
+    // platform-sandbox build re-reads the persisted record rather than show the request back. Every other build keeps
+    // its live Firestore listener, which delivers the change itself; nothing is re-subscribed there.
+    if (CRM_VIA_EOS_API) retryAccount();
   }
 
   // Called by LocationCreateModal. On a blocked/denied write this THROWS so the
@@ -485,7 +490,7 @@ export default function AccountDetail() {
       throw blockedErr;
     }
     setShowLocationModal(false);
-    retryLocations();
+    if (CRM_VIA_EOS_API) retryLocations();
     setPendingLocationFocus(created.id);
     setLocationAnnouncement(`Location ${created.name} added.`);
   }
@@ -499,7 +504,7 @@ export default function AccountDetail() {
       throw blockedErr;
     }
     setShowContactModal(false);
-    retryContacts();
+    if (CRM_VIA_EOS_API) retryContacts();
     setPendingContactFocus(created.id);
     setContactAnnouncement(`Contact ${created.name} added.`);
   }
@@ -508,7 +513,7 @@ export default function AccountDetail() {
   // announce the totals, and queue focus onto the first imported Contact; the live
   // subscription renders the new rows itself (no manual insert/refetch).
   function handleImported({ importedIds, importedCount, skippedDuplicates, rejected, firstName }) {
-    retryContacts();
+    if (CRM_VIA_EOS_API) retryContacts();
     setShowImport(false);
     setPendingContactFocus(importedIds?.[0] ?? null);
     const skipPart = skippedDuplicates ? `, ${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped` : "";

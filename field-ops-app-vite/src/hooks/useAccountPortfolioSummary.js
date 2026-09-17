@@ -1,4 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../firebase/firebase";
+import { useAccountPortfolioSummary as useAccountPortfolioSummaryEosApi } from "./crm/eosApi/useAccountPortfolioSummary.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 /**
  * Complete Account portfolio counts, from the governed aggregate read.
@@ -16,10 +22,37 @@ import { useCallback } from "react";
  * this program: a surface that renders "—" for both tells someone their data is missing
  * when the real answer is that they may not see it.
  */
-export function useAccountPortfolioSummary({ enabled = true } = {}) {
-  // CRM CUTOVER: the whole-book counts came from a Firebase callable over the retired Firestore `accounts` collection,
-  // which no longer holds the book of business. No PostgreSQL CRM aggregate exists yet, so the counts are UNAVAILABLE
-  // (rendered as a dash, never a zero) rather than a number about the wrong data.
-  const retry = useCallback(() => undefined, []);
-  return { summary: null, state: enabled ? "UNAVAILABLE" : "IDLE", retry };
+function useAccountPortfolioSummaryFirestore({ enabled = true } = {}) {
+  const [summary, setSummary] = useState(null);
+  const [state, setState] = useState(enabled ? "LOADING" : "IDLE");
+
+  const load = useCallback(() => {
+    if (!enabled) return undefined;
+    let cancelled = false;
+    setState("LOADING");
+    httpsCallable(functions, "getAccountPortfolioSummary")()
+      .then((res) => {
+        if (cancelled) return;
+        setSummary(res?.data?.summary ?? null);
+        setState(res?.data?.summary ? "READY" : "UNAVAILABLE");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setSummary(null);
+        setState(e?.code === "functions/permission-denied" ? "DENIED" : "UNAVAILABLE");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
+  useEffect(() => load(), [load]);
+
+  return { summary, state, retry: load };
 }
+
+// ════════════════════ BUILD-TIME CRM AUTHORITY ROUTE ════════════════════
+// `useAccountPortfolioSummary` is selected ONCE, from the build's environment (domain/crmAuthorityRoute.js): a platform-sandbox build
+// uses the EOS API implementation (hooks/crm/eosApi/useAccountPortfolioSummary.js); every other build -- production included -- uses the legacy
+// Firestore implementation above, unchanged. No runtime switch and no fallback between the two.
+export const useAccountPortfolioSummary = CRM_VIA_EOS_API ? useAccountPortfolioSummaryEosApi : useAccountPortfolioSummaryFirestore;

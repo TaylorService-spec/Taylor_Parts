@@ -8,14 +8,17 @@
 import { auth } from "../firebase/firebase.js";
 import { policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
+// SIDE-EFFECT FREE AT MODULE LOAD (the /* @__PURE__ */ annotations below): only a platform-sandbox build selects the EOS
+// CRM path (domain/crmAuthorityRoute.js), and every other build must be able to drop this module entirely -- a
+// top-level call the bundler cannot prove pure would keep it as a side-effect import in the production bundle.
 export const CRM_ROUTE = "/crm/customer";
 
-export const CRM_OPERATIONS = Object.freeze([
+export const CRM_OPERATIONS = /* @__PURE__ */ Object.freeze([
   "createAccount", "updateAccount", "getAccount", "listAccounts",
   "createContact", "updateContact", "getContact", "listAccountContacts",
   "createAccountLocation", "updateAccountLocation", "getAccountLocation", "listAccountLocations",
 ]);
-const KNOWN = new Set(CRM_OPERATIONS);
+const KNOWN = /* @__PURE__ */ new Set(CRM_OPERATIONS);
 
 const failure = (code, message, status = null) => Object.freeze({ ok: false, code, message, status });
 

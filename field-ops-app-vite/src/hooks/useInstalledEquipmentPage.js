@@ -14,9 +14,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collection, query, orderBy, limit, startAfter, getDocs, where, documentId } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { EQUIPMENT_COLLECTION, ACCOUNTS_COLLECTION, LOCATIONS_COLLECTION } from "../domain/constants";
-import { callCrmApi } from "../services/crmApiClient.js";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 import { collectAccountIds, collectLocationIds } from "../domain/installedEquipmentListView";
+import { readEquipmentReferenceNames as readNamesEosApi } from "./crm/eosApi/crmReferenceNames.js";
+
+// Build-time CRM authority route (domain/crmAuthorityRoute.js): true only in a platform-sandbox build.
+const CRM_VIA_EOS_API = typeof __APP_CRM_VIA_EOS_API__ === "boolean" && __APP_CRM_VIA_EOS_API__;
 
 export const EQUIPMENT_PAGE_SIZE = 25;
 const NAME_BATCH = 10; // Firestore `in` limit (conservative)
@@ -59,22 +62,7 @@ async function defaultReadEquipmentPage({ cursor, pageSize }) {
 }
 
 // Resolve names for ONLY the given ids, in bounded batches.
-async function defaultReadNames({ collectionName, ids }) {
-  // CRM CUTOVER: Account and customer-site names come from the governed PostgreSQL CRM authority (EOS API), never from
-  // the retired Firestore collections.
-  if (collectionName === ACCOUNTS_COLLECTION || collectionName === LOCATIONS_COLLECTION) {
-    const op = collectionName === ACCOUNTS_COLLECTION ? ["getAccount", "accountId", "ACCOUNT_NOT_FOUND"] : ["getAccountLocation", "accountLocationId", "ACCOUNT_LOCATION_NOT_FOUND"];
-    const crmMap = new Map();
-    for (let i = 0; i < ids.length; i += NAME_BATCH) {
-      const results = await Promise.all(ids.slice(i, i + NAME_BATCH).map((id) => callCrmApi(op[0], { [op[1]]: id })));
-      results.forEach((res, n) => {
-        if (res.ok) { if (res.result.name) crmMap.set(ids[i + n], res.result.name); return; }
-        if (res.code === op[2] || res.code === "RECORD_ID_REQUIRED") return;
-        throw Object.assign(new Error(res.message), { code: ["CAPABILITY_REQUIRED", "FORBIDDEN", "ACTOR_NOT_TENANT_MEMBER"].includes(res.code) ? "permission-denied" : res.code });
-      });
-    }
-    return crmMap;
-  }
+async function defaultReadNamesFirestore({ collectionName, ids }) {
   const map = new Map();
   for (let i = 0; i < ids.length; i += NAME_BATCH) {
     const batch = ids.slice(i, i + NAME_BATCH);
@@ -87,6 +75,13 @@ async function defaultReadNames({ collectionName, ids }) {
   }
   return map;
 }
+
+// BUILD-TIME CRM AUTHORITY ROUTE (domain/crmAuthorityRoute.js): a platform-sandbox build resolves Account and
+// customer-site names from the governed PostgreSQL CRM through the EOS API (hooks/crm/eosApi/crmReferenceNames.js);
+// every other build -- production included -- keeps the Firestore read above, unchanged. Selected once per build
+// (a top-level ternary on imported bindings); no runtime switch, no fallback. The equipment page read itself is not
+// CRM and is untouched.
+const defaultReadNames = CRM_VIA_EOS_API ? readNamesEosApi : defaultReadNamesFirestore;
 
 export function useInstalledEquipmentPage(accessVersion, deps = {}) {
   const readEquipmentPage = deps.readEquipmentPage ?? defaultReadEquipmentPage;
