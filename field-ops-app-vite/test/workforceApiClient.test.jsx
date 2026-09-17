@@ -38,7 +38,7 @@ describe("the closed operation list", () => {
     const start = server.indexOf("const COMMAND_RUNNERS");
     const block = server.slice(start, server.indexOf("} as const);", start));
     const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*command\(/gm)].map((m) => m[1]);
-    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit"]);
+    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany"]);
     expect([...WORKFORCE_COMMAND_OPERATIONS]).toEqual(names);
     for (const name of [...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]) expect(isWorkforceOperation(name), name).toBe(true);
     // No lifecycle, Job Role, Security Role or generic patch writer is a name the browser can send.

@@ -20,8 +20,9 @@
 // than as a 404. The three commands (EMP-RT-W1B) are the governed Employee writers the Administration editor uses:
 // the seventeen profile facts, and the reporting relationship established or ended. Every one requires
 // admin.employeeProfile.write, which the SERVER checks; nothing here states tenant, principal or capabilities.
-// EMP-RT-05 (assigned work), EMP-RT-08 (Job Role) and any Employee lifecycle / status writer are NOT served by the
-// server and are not names here.
+// changeEmploymentStatus / changeOperatingCompany (EMP-RT-W2) are served and named so the list mirrors the server;
+// no screen calls them yet (UI wiring follows the server proof). EMP-RT-05 (assigned work) and EMP-RT-08 (Job Role)
+// are NOT served by the server and are not names here.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
@@ -41,6 +42,8 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
   "establishReportingRelationship",
   "endReportingRelationship",
   "saveEmployeeEdit",
+  "changeEmploymentStatus",
+  "changeOperatingCompany",
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */
