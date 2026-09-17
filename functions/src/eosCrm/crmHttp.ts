@@ -20,9 +20,9 @@ import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
-import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type CrmErrorCategory } from "./crmAuthorityKernel";
-import { createAccount, getAccount, listAccounts, updateAccount } from "./accountAuthority";
-import { createContact, getContact, listAccountContacts, updateContact } from "./contactAuthority";
+import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type CrmErrorCategory, type CrmRowFinding } from "./crmAuthorityKernel";
+import { createAccount, getAccount, listAccountOwnershipHandoffs, listAccounts, updateAccount } from "./accountAuthority";
+import { createContact, getContact, importAccountContacts, listAccountContacts, updateContact } from "./contactAuthority";
 import { createAccountLocation, getAccountLocation, listAccountLocations, updateAccountLocation } from "./accountLocationAuthority";
 import { CRM_WRITER_AUTHORITY, PostgresCrmWriterInactiveError, assertPostgresCrmWriterActive, type CrmWriterAuthority } from "../crm/crmWriterState";
 
@@ -45,8 +45,8 @@ type Input = Record<string, unknown>;
 type Runner = (deps: { pool: Pool }, actor: CrmActorContext, input: Input) => Promise<unknown>;
 
 const RUNNERS = Object.freeze({
-  createAccount, updateAccount, getAccount, listAccounts,
-  createContact, updateContact, getContact, listAccountContacts,
+  createAccount, updateAccount, getAccount, listAccounts, listAccountOwnershipHandoffs,
+  createContact, importAccountContacts, updateContact, getContact, listAccountContacts,
   createAccountLocation, updateAccountLocation, getAccountLocation, listAccountLocations,
 } as const satisfies Record<string, Runner>);
 
@@ -61,7 +61,11 @@ export const STATUS_BY_CATEGORY: Readonly<Record<CrmErrorCategory, number>> = Ob
 
 export type CrmApiResult =
   | { readonly ok: true; readonly operation: CrmOperation; readonly result: unknown }
-  | { readonly ok: false; readonly operation: string; readonly code: string; readonly message: string; readonly status: number };
+  | {
+      readonly ok: false; readonly operation: string; readonly code: string; readonly message: string; readonly status: number;
+      /** Per-row refusals of a multi-row command (importAccountContacts), by zero-based row index. */
+      readonly findings?: readonly CrmRowFinding[];
+    };
 
 /** Execute one named CRM operation for an already-verified caller. */
 export async function executeCrmOperation(
@@ -93,7 +97,10 @@ export async function executeCrmOperation(
     }
     if (err instanceof PrincipalContextError) return { ok: false, operation, code: "FORBIDDEN", message: err.refusal, status: 403 };
     if (err instanceof CrmAuthorityError) {
-      return { ok: false, operation, code: err.code, message: err.message, status: STATUS_BY_CATEGORY[err.category] ?? 500 };
+      return {
+        ok: false, operation, code: err.code, message: err.message, status: STATUS_BY_CATEGORY[err.category] ?? 500,
+        ...(err.findings ? { findings: err.findings } : {}),
+      };
     }
     // eslint-disable-next-line no-console -- same posture as the sibling transports' unhandled-error log
     console.error("[crmHttp] unhandled", err);
@@ -128,8 +135,8 @@ const baseHeaders = (origin: string | null): Record<string, string> => ({
   ...(origin ? { "access-control-allow-origin": origin, vary: "Origin" } : {}),
 });
 const json = (status: number, body: unknown, origin: string | null): HttpResponseShape => ({ status, headers: baseHeaders(origin), body: JSON.stringify(body) });
-const failure = (status: number, operation: string, code: string, message: string, origin: string | null) =>
-  json(status, { ok: false, operation, code, message }, origin);
+const failure = (status: number, operation: string, code: string, message: string, origin: string | null, findings?: readonly CrmRowFinding[]) =>
+  json(status, { ok: false, operation, code, message, ...(findings ? { findings } : {}) }, origin);
 
 /**
  *   POST    /crm/customer   { "operation": <closed name>, "input": { ... } }. Authenticated.
@@ -190,7 +197,7 @@ export async function handleCrmRequest(options: CrmHttpOptions, request: HttpReq
     input: input as Input,
   });
   if (result.ok) return json(200, result, origin);
-  return failure(result.status, result.operation, result.code, result.message, origin);
+  return failure(result.status, result.operation, result.code, result.message, origin, result.findings);
 }
 
 /** Adapt the pure handler onto node:http, matching the sibling transports' adapters. */

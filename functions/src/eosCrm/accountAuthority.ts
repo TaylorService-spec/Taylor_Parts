@@ -1,10 +1,12 @@
 // Governed PostgreSQL Account authority -- wave D1-A. Internal; nothing external invokes it yet.
 //
-//   createAccount   customer.record.create   idempotent; an EXPLICIT same-tenant Employee owner is REQUIRED
-//   updateAccount   customer.record.update   the business-field allowlist; paymentTerms / taxStatus changes also
-//                                            require customer.governedField.write
-//   getAccount      customer.record.read     one Account of the actor's tenant, with every governed business fact
-//   listAccounts    customer.record.read     bounded keyset list, optional status filter and folded-name prefix
+//   createAccount                  customer.record.create   idempotent; an EXPLICIT same-tenant Employee owner is REQUIRED
+//   updateAccount                  customer.record.update   the business-field allowlist; paymentTerms / taxStatus changes
+//                                                           also require customer.governedField.write; an owner change is
+//                                                           a governed ownership handoff (below)
+//   getAccount                     customer.record.read     one Account of the actor's tenant, with every governed business fact
+//   listAccounts                   customer.record.read     bounded keyset list, optional status filter and folded-name prefix
+//   listAccountOwnershipHandoffs   customer.record.read     one Account's append-only ownership history, newest first, bounded
 //
 // IDENTITY. `eos_crm.accounts.id` is THE canonical Account id: `eos_commercial.*.account_id` references it through the
 // composite (tenant_id, account_id) foreign keys of migration 1759449600000. There is no mapping id; a new Account's id
@@ -13,11 +15,24 @@
 // OWNERSHIP IS NOT ATTRIBUTION. `created_by` / `updated_by` are the acting EOS Principal. The owner is an Employee the
 // governed PostgreSQL Employee authority RESOLVES in this tenant, supplied explicitly at creation. It is never derived
 // from the Principal, a Firebase uid, a Security Role, a Job Role or the creator, and this authority cannot create an
-// ownerless Account. Owner change after creation is ACCOUNT_OWNER_HANDOFF_PENDING: no governed PostgreSQL handoff writer
-// supports the Account family (eos_commercial's ownership_handoffs name Commercial records only), so it is not offered
-// here and never through customer.record.update. Owner ruling: legacy accountOwner.assignedBy* / assignedAt never become
-// Account columns; future changes go through a governed Account ownership-handoff writer (prior owner, new owner,
-// effective time, changed-by Principal, governed reason/source).
+// ownerless Account. Owner ruling: legacy accountOwner.assignedBy* / assignedAt never become Account columns; owner
+// changes go through a governed Account ownership-handoff writer (prior owner, new owner, effective time, changed-by
+// Principal, governed reason/source).
+//
+// OWNERSHIP HANDOFF (migration 1759924800000) -- PARITY with the Commercial edit (eosCommercial/commands/
+// opportunityCommandService.ts + stageCommercialOwnershipTransfer), under the EXISTING customer.record.update: the legacy
+// product let whoever could edit an Account change its owner, so no capability is added.
+//   * `ownerEmployeeId` on updateAccount, with an optional `ownershipHandoff: { source?, reason? }`. Source defaults to
+//     DIRECT_HANDOFF; reason is trimmed, blank means none, at most 500 characters.
+//   * The CURRENT owner is read under FOR UPDATE, never supplied. The same owner is a no-op for ownership (no history row).
+//     A different owner must resolve exactly as at creation (requireOwnerEmployee), then ONE append-only
+//     eos_crm.account_ownership_handoffs row and the owner column move in the SAME transaction as every other field
+//     change and the updated_by / updated_at attribution.
+//   * `ownerEmployeeId: null` refuses OWNER_REQUIRED: a governed Account is never made ownerless. `ownershipHandoff`
+//     without an owner change refuses OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE.
+//   * A LEGACY OWNERLESS Account (migration 008's OWNERLESS state, carried by the cutover) receiving its first owner is an
+//     initial assignment, not a handoff; no ruling governs it, so it refuses ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED.
+//   * NO CASCADE: Contacts and customer sites keep their own owner (their owner was inherited at creation only).
 //
 // BILLING ADDRESS. Owner ruling: a single free-text billing address is never parsed into the structured parts; it is
 // refused here (FIELD_INVALID) and belongs only in import staging / reconciliation evidence until resolved.
@@ -55,6 +70,7 @@ import {
   requireName,
   requirePageSize,
   requireRecordId,
+  requireTenantAccount,
   runCrmCommand,
   runCrmCreate,
   runCrmRead,
@@ -308,8 +324,76 @@ async function requireOwnerEmployee(db: PoolClient, tenantId: string, employeeId
   return fail("OWNER_NOT_FOUND", "NOT_FOUND", "the owner is not an Employee of this tenant");
 }
 
+/** An explicit owner id, shaped like an Employee id. Absent or null is OWNER_REQUIRED: a governed Account is never ownerless. */
+function requireOwnerEmployeeId(value: unknown): string {
+  if (value === undefined || value === null) fail("OWNER_REQUIRED", "INVALID_INPUT", "an Account requires an explicit owner: an Employee of this tenant");
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,200}$/.test(value)) fail("OWNER_INVALID", "INVALID_INPUT", "ownerEmployeeId must be an Employee id");
+  return value as string;
+}
+
+/** Mirrors OWNERSHIP_HANDOFF_SOURCES (access/auditEventWriter.ts), COMMERCIAL_HANDOFF_SOURCES and migration 1759924800000. */
+export const ACCOUNT_OWNERSHIP_HANDOFF_SOURCES = Object.freeze(["DIRECT_HANDOFF", "CUSTOMER_HANDOFF_REVIEW", "ADMIN_CORRECTION"] as const);
+export type AccountOwnershipHandoffSource = (typeof ACCOUNT_OWNERSHIP_HANDOFF_SOURCES)[number];
+/** The audit writer's MAX_HANDOFF_REASON_LENGTH, as eos_commercial.ownership_handoffs holds it. */
+export const MAX_ACCOUNT_HANDOFF_REASON_LENGTH = 500;
+const DEFAULT_HANDOFF_SOURCE: AccountOwnershipHandoffSource = "DIRECT_HANDOFF";
+
+interface HandoffTerms {
+  readonly source: AccountOwnershipHandoffSource;
+  readonly reason: string | null;
+}
+
+function ownershipHandoffTerms(value: unknown): HandoffTerms {
+  if (value === undefined) return { source: DEFAULT_HANDOFF_SOURCE, reason: null };
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    fail("HANDOFF_INVALID", "INVALID_INPUT", "ownershipHandoff must be an object { source?, reason? }");
+  }
+  const record = value as Record<string, unknown>;
+  const unknown = Object.keys(record).filter((k) => k !== "source" && k !== "reason");
+  if (unknown.length > 0) fail("FIELD_NOT_ALLOWED", "INVALID_INPUT", `not an accepted ownershipHandoff field: ${unknown.sort().join(", ")}`);
+  const source = record.source === undefined ? DEFAULT_HANDOFF_SOURCE : record.source;
+  if (typeof source !== "string" || !(ACCOUNT_OWNERSHIP_HANDOFF_SOURCES as readonly string[]).includes(source)) {
+    fail("HANDOFF_SOURCE_INVALID", "INVALID_INPUT", `ownershipHandoff.source must be one of ${ACCOUNT_OWNERSHIP_HANDOFF_SOURCES.join(", ")}`);
+  }
+  let reason: string | null = null;
+  if (record.reason !== undefined && record.reason !== null) {
+    if (typeof record.reason !== "string") fail("HANDOFF_REASON_INVALID", "INVALID_INPUT", "ownershipHandoff.reason must be a string or null");
+    const trimmed = (record.reason as string).trim();
+    if (trimmed.length > MAX_ACCOUNT_HANDOFF_REASON_LENGTH) {
+      fail("HANDOFF_REASON_INVALID", "INVALID_INPUT", `ownershipHandoff.reason must be at most ${MAX_ACCOUNT_HANDOFF_REASON_LENGTH} characters`);
+    }
+    reason = trimmed === "" ? null : trimmed;
+  }
+  return { source: source as AccountOwnershipHandoffSource, reason };
+}
+
+/**
+ * Append the handoff and move the current owner, on the CALLER's transaction. `previousOwnerEmployeeId` is the value the
+ * caller read under FOR UPDATE in this same transaction. One Account; nothing cascades to its Contacts or sites.
+ */
+async function stageAccountOwnershipHandoff(
+  db: PoolClient,
+  tenantId: string,
+  principalId: string,
+  accountId: string,
+  previousOwnerEmployeeId: string,
+  newOwnerEmployeeId: string,
+  terms: HandoffTerms,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO eos_crm.account_ownership_handoffs
+       (id, tenant_id, account_id, previous_owner_employee_id, new_owner_employee_id, source, reason, handed_off_by, effective_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
+    [`acohf_${randomUUID()}`, tenantId, accountId, previousOwnerEmployeeId, newOwnerEmployeeId, terms.source, terms.reason, principalId],
+  );
+  await db.query(
+    `UPDATE eos_crm.accounts SET owner_employee_id = $3 WHERE tenant_id = $1 AND id = $2 AND owner_employee_id = $4`,
+    [tenantId, accountId, newOwnerEmployeeId, previousOwnerEmployeeId],
+  );
+}
+
 const CREATE_FIELDS = ["idempotencyKey", "ownerEmployeeId", "billingAddress", ...SET_FIELDS, ...Object.keys(SCALAR_FIELDS).filter((f) => f !== "billingContactId")];
-const UPDATE_FIELDS = ["accountId", "billingAddress", ...SET_FIELDS, ...Object.keys(SCALAR_FIELDS)];
+const UPDATE_FIELDS = ["accountId", "ownerEmployeeId", "ownershipHandoff", "billingAddress", ...SET_FIELDS, ...Object.keys(SCALAR_FIELDS)];
 
 // ════════════════════ commands ════════════════════
 
@@ -322,19 +406,14 @@ export function createAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
     () => {
       const i = requireAllowlistedInput(input, CREATE_FIELDS);
       const { idempotencyKey, request } = splitIdempotentInput(i);
-      if (i.ownerEmployeeId === undefined || i.ownerEmployeeId === null) {
-        fail("OWNER_REQUIRED", "INVALID_INPUT", "an Account requires an explicit owner: an Employee of this tenant");
-      }
-      if (typeof i.ownerEmployeeId !== "string" || !/^[A-Za-z0-9_-]{1,200}$/.test(i.ownerEmployeeId)) {
-        fail("OWNER_INVALID", "INVALID_INPUT", "ownerEmployeeId must be an Employee id");
-      }
+      const owner = requireOwnerEmployeeId(i.ownerEmployeeId);
       if (i.name === undefined) fail("NAME_REQUIRED", "INVALID_INPUT", "an Account requires a name");
       if (i.status === undefined) fail("STATUS_INVALID", "INVALID_INPUT", `status is required: one of ${CRM_ACCOUNT_STATUSES.join(", ")}`);
       const fields = accountFields(i);
       const paymentTerms = (fields.columns.get("payment_terms") ?? null) as string | null;
       const taxStatus = (fields.columns.get("tax_status") ?? null) as string | null;
       if (!isUngovernedPaymentTerms(paymentTerms) || !isUngovernedTaxStatus(taxStatus)) requireGovernedFieldCapability(actor);
-      return { idempotencyKey, request, owner: i.ownerEmployeeId as string, fields };
+      return { idempotencyKey, request, owner, fields };
     },
     async (db, { tenantId, principalId }, { owner, fields }) => {
       const ownerEmployeeId = await requireOwnerEmployee(db, tenantId, owner);
@@ -361,21 +440,40 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
     () => {
       const i = requireAllowlistedInput(input, UPDATE_FIELDS);
       const fields = accountFields(i);
-      if (fields.columns.size === 0 && SET_FIELDS.every((f) => i[f] === undefined)) {
+      // `ownerEmployeeId: null` is named, and refuses: clearing the owner is never an update.
+      const owner = i.ownerEmployeeId === undefined ? null : requireOwnerEmployeeId(i.ownerEmployeeId);
+      if (i.ownershipHandoff !== undefined && owner === null) {
+        fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "ownershipHandoff describes an owner change; name ownerEmployeeId");
+      }
+      const handoff = { named: i.ownershipHandoff !== undefined, terms: ownershipHandoffTerms(i.ownershipHandoff) };
+      if (fields.columns.size === 0 && SET_FIELDS.every((f) => i[f] === undefined) && owner === null) {
         fail("NO_CHANGES_REQUESTED", "INVALID_INPUT", "an update must name at least one accepted field");
       }
-      return { accountId: requireRecordId(i.accountId, "accountId"), fields };
+      return { accountId: requireRecordId(i.accountId, "accountId"), fields, owner, handoff };
     },
-    async (db, principal, { accountId, fields }) => {
+    async (db, principal, { accountId, fields, owner, handoff }) => {
       const { tenantId, principalId } = principal;
-      const current = await db.query<{ payment_terms: string | null; tax_status: string | null }>(
-        `SELECT payment_terms, tax_status FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+      const current = await db.query<{ payment_terms: string | null; tax_status: string | null; owner_employee_id: string | null }>(
+        `SELECT payment_terms, tax_status, owner_employee_id FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
         [tenantId, accountId],
       );
       if (current.rows.length === 0) fail("ACCOUNT_NOT_FOUND", "NOT_FOUND", "the Account does not exist in this tenant");
       // accountGovernedFieldsUnchanged: naming a governed field with its CURRENT value is not a governed write.
       for (const column of ["payment_terms", "tax_status"] as const) {
         if (fields.columns.has(column) && fields.columns.get(column) !== current.rows[0][column]) requireGovernedFieldCapability(principal);
+      }
+      if (owner !== null) {
+        const previous = current.rows[0].owner_employee_id;
+        if (previous === null) {
+          fail("ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED", "PRECONDITION_FAILED",
+            "this Account has no owner; a first owner assignment is not an ownership handoff and no governed path exists for it");
+        }
+        if (owner === previous) {
+          if (handoff.named) fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "the Account is already owned by that Employee; there is no handoff to record");
+        } else {
+          const newOwner = await requireOwnerEmployee(db, tenantId, owner);
+          await stageAccountOwnershipHandoff(db, tenantId, principalId, accountId, previous as string, newOwner, handoff.terms);
+        }
       }
       const set = assignmentsOf(fields.columns, Object.fromEntries([...fields.columns.keys()].map((c) => [c, c])), 4);
       const assignments = set.sql === "" ? "" : set.sql + ", ";
@@ -448,6 +546,81 @@ export function listAccounts(deps: CrmDeps, actor: CrmActorContext, input: unkno
         [tenantId, statuses, prefix, cursor?.name ?? null, cursor?.id ?? null, limit + 1],
       );
       return pageOf("account", rows, limit, project);
+    },
+  );
+}
+
+// ════════════════════ ownership history ════════════════════
+
+export interface AccountOwnershipHandoffProjection {
+  readonly handoffId: string;
+  readonly accountId: string;
+  readonly previousOwnerEmployeeId: string;
+  readonly newOwnerEmployeeId: string;
+  readonly source: AccountOwnershipHandoffSource;
+  readonly reason: string | null;
+  readonly handedOffBy: string;
+  readonly effectiveAt: string;
+  readonly createdAt: string;
+}
+
+export interface AccountOwnershipHandoffPage {
+  readonly items: AccountOwnershipHandoffProjection[];
+  readonly truncated: boolean;
+  readonly nextCursor: string | null;
+}
+
+interface HandoffRow {
+  id: string;
+  account_id: string;
+  previous_owner_employee_id: string;
+  new_owner_employee_id: string;
+  source: AccountOwnershipHandoffSource;
+  reason: string | null;
+  handed_off_by: string;
+  effective_at: Date;
+  created_at: Date;
+  /** The keyset position: effective_at as UTC text at microsecond precision. */
+  folded_name: string;
+}
+
+const HANDOFF_CURSOR_FAMILY = "accountOwnershipHandoff";
+const HANDOFF_POSITION = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+
+export function listAccountOwnershipHandoffs(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<AccountOwnershipHandoffPage> {
+  return runCrmRead(
+    deps,
+    actor,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_READ,
+    () => {
+      const i = requireAllowlistedInput(input, ["accountId", "limit", "cursor"]);
+      const cursor = decodeCrmCursor(HANDOFF_CURSOR_FAMILY, i.cursor);
+      if (cursor && !HANDOFF_POSITION.test(cursor.name)) fail("CURSOR_INVALID", "INVALID_INPUT", "cursor is not a valid position for this list");
+      return { accountId: requireRecordId(i.accountId, "accountId"), limit: requirePageSize(i.limit), cursor };
+    },
+    async (db, tenantId, { accountId, limit, cursor }) => {
+      await requireTenantAccount(db, tenantId, accountId);
+      const { rows } = await db.query<HandoffRow>(
+        `SELECT id, account_id, previous_owner_employee_id, new_owner_employee_id, source, reason, handed_off_by, effective_at, created_at,
+                to_char(effective_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS folded_name
+           FROM eos_crm.account_ownership_handoffs
+          WHERE tenant_id = $1 AND account_id = $2
+            AND ($3::timestamptz IS NULL OR (effective_at, id) < ($3::timestamptz, $4::text))
+          ORDER BY effective_at DESC, id DESC
+          LIMIT $5`,
+        [tenantId, accountId, cursor?.name ?? null, cursor?.id ?? null, limit + 1],
+      );
+      return pageOf(HANDOFF_CURSOR_FAMILY, rows, limit, (row) => ({
+        handoffId: row.id,
+        accountId: row.account_id,
+        previousOwnerEmployeeId: row.previous_owner_employee_id,
+        newOwnerEmployeeId: row.new_owner_employee_id,
+        source: row.source,
+        reason: row.reason,
+        handedOffBy: row.handed_off_by,
+        effectiveAt: isoOf(row.effective_at),
+        createdAt: isoOf(row.created_at),
+      }));
     },
   );
 }

@@ -55,16 +55,26 @@ export type CrmErrorCategory =
   | "UNAVAILABLE"
   | "FAILED";
 
-/** The ONLY error that leaves a governed CRM operation. Same (code, category, message) shape as CommercialCommandError. */
+/** One refused row of a multi-row command (e.g. a Contact import), by its zero-based index in the caller's input. */
+export interface CrmRowFinding {
+  readonly index: number;
+  readonly code: string;
+  readonly message: string;
+}
+
+/**
+ * The ONLY error that leaves a governed CRM operation. Same (code, category, message) shape as CommercialCommandError.
+ * A multi-row command that refuses as a whole additionally names every refused row in `findings`.
+ */
 export class CrmAuthorityError extends Error {
-  constructor(readonly code: string, readonly category: CrmErrorCategory, message: string) {
+  constructor(readonly code: string, readonly category: CrmErrorCategory, message: string, readonly findings?: readonly CrmRowFinding[]) {
     super(message);
     this.name = "CrmAuthorityError";
   }
 }
 
-export const fail = (code: string, category: CrmErrorCategory, message: string): never => {
-  throw new CrmAuthorityError(code, category, message);
+export const fail = (code: string, category: CrmErrorCategory, message: string, findings?: readonly CrmRowFinding[]): never => {
+  throw new CrmAuthorityError(code, category, message, findings);
 };
 
 export type Queryable = Pick<PoolClient, "query">;
@@ -85,6 +95,11 @@ const CONSTRAINT_CODES: Readonly<Record<string, [string, CrmErrorCategory]>> = O
   account_tags_unique_per_account: ["FIELD_INVALID", "INVALID_INPUT"],
   command_receipts_one_per_key: ["IDEMPOTENCY_CONFLICT", "CONFLICT"],
   command_receipts_member_fk: ["ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN"],
+  // Migration 1759924800000: the append-only Account ownership history.
+  account_ownership_handoffs_account_same_tenant: ["ACCOUNT_NOT_FOUND", "NOT_FOUND"],
+  account_ownership_handoffs_is_not_a_no_op: ["HANDOFF_NO_OP", "INVALID_INPUT"],
+  account_ownership_handoffs_source_vocabulary: ["HANDOFF_SOURCE_INVALID", "INVALID_INPUT"],
+  account_ownership_handoffs_reason_shape: ["HANDOFF_REASON_INVALID", "INVALID_INPUT"],
 });
 
 /** The pure CRM vocabulary's own refusals (functions/src/crm/customerIdentity.ts), kept as governed input refusals. */
@@ -284,7 +299,7 @@ export async function runCrmCommand<P, R>(
 
 // ════════════════════ create idempotency ════════════════════
 
-export type CrmCreateOperation = "crm.createAccount" | "crm.createContact" | "crm.createAccountLocation";
+export type CrmCreateOperation = "crm.createAccount" | "crm.createContact" | "crm.createAccountLocation" | "crm.importAccountContacts";
 export type CrmTargetType = "ACCOUNT" | "CONTACT" | "ACCOUNT_LOCATION";
 export type CrmReplayable<R> = R & { readonly replayed: boolean };
 
