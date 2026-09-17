@@ -126,7 +126,7 @@ field blocks** (`UNCLASSIFIED_SOURCE_FIELD`).
 | `accountOwner.assignedToEmployeeId` | `owner_employee_id` | A | must resolve to an Employee **of the target tenant** in `eos_workforce.employees` (governed employment status) → else `OWNER_UNRESOLVED` blocker. Absent/empty assignee → NULL (**legacy OWNERLESS row**, advisory; the authority refuses ownerless *creation*, not legacy rows). Never matched by uid or name. |
 | `accountOwner.assignedToUserId` | — | provenance | Firebase uid → **evidence file only** |
 | `accountOwner.assignedToDisplayName` | — | D | display snapshot; not migrated |
-| `accountOwner.assignedByEmployeeId / assignedByUserId / assignedByDisplayName / assignedAt` | — | E (ruled) | **migration evidence only.** Never Account columns. A one-time transform into ownership history is allowed **only once a governed Account ownership-handoff history exists** — it does not (#1912 `ACCOUNT_OWNER_HANDOFF_PENDING`). Never fabricated into governed history. |
+| `accountOwner.assignedByEmployeeId / assignedByUserId / assignedByDisplayName / assignedAt` | — | E (ruled) | **migration evidence only.** Never Account columns. A one-time transform into ownership history is allowed **only once a governed Account ownership-handoff history exists** — the governed history now exists (`eos_crm.account_ownership_handoffs`, migration 1759924800000), but no transform of legacy provenance into it is built or authorized. Never fabricated into governed history. |
 | `billingAddress {street,city,state,zip}` | `billing_address_street/_city/_state/_postal_code` | A | structured parts map **directly** (`zip` → `_postal_code`); blank part → NULL; unknown part → blocker |
 | `billingAddress` **free-text string** | — | C | **never parsed, no structure invented** (controller ruling 1). Held verbatim in the census/copy evidence (`billingAddressResolution`), Account marked `BILLING_ADDRESS_REQUIRES_RESOLUTION` (**reconciliation blocker**). No permanent free-text column, no staging shadow authority. Repo-controlled fixtures: none writes a free-text billing address (the only writer is Data Import at runtime, `customerImportContract.ts:66-73,177`), so there is no fixture to remediate. Production: read-only census only; an unresolved real record needs a later Owner data decision. |
 | `notes`, `customerNumber`, `erpId`, `accountingId`, `legacyId` | same-named snake columns | A | optional text; opaque; not unique (D-C1-4) |
@@ -293,8 +293,8 @@ refused; `STATUS_BY_CATEGORY` from `CrmAuthorityError.category`; body cap; CORS 
 
 - **Route:** `CRM_ROUTE = "/crm/customers"`; `server.ts` `eosApiDomainFor` gains `path.startsWith("/crm/") → "crm"` and composes `createCrmHttpHandler` beside the commercial handler (a separate PR; not this lane).
 - **Closed read list (`customer.record.read`):** `getAccount`, `listAccounts`, `getContact`, `listAccountContacts`, `getAccountLocation`, `listAccountLocations`.
-- **Closed mutation list:** `createAccount` (`customer.record.create`, explicit same-tenant Employee owner, idempotency key), `updateAccount` (`customer.record.update`; `paymentTerms`/`taxStatus` changes also `customer.governedField.write`), `createContact`, `updateContact`, `createAccountLocation`, `updateAccountLocation` (`customer.record.create/update`, V1 ruling).
-- **Not offered:** Account owner change (`ACCOUNT_OWNER_HANDOFF_PENDING`), delete, status-transition enforcement (D-C1-5 proposed), any generic/table route, any copy/migration operation (the cutover stays an operator tool, never an API).
+- **Closed mutation list:** `createAccount` (`customer.record.create`, explicit same-tenant Employee owner, idempotency key), `updateAccount` (`customer.record.update`; `paymentTerms`/`taxStatus` changes also `customer.governedField.write`; an `ownerEmployeeId` change is a governed ownership handoff with optional `ownershipHandoff: { source, reason }` recorded append-only in `eos_crm.account_ownership_handoffs`, no cascade), `createContact`, `importAccountContacts` (`customer.record.create`; atomic 1..200 rows, never primary), `updateContact`, `createAccountLocation`, `updateAccountLocation` (`customer.record.create/update`, V1 ruling). Read: `listAccountOwnershipHandoffs` (`customer.record.read`).
+- **Not offered:** first owner assignment of a legacy ownerless Account (`ACCOUNT_OWNER_ASSIGNMENT_NOT_GOVERNED`, no ruling), delete, status-transition enforcement (D-C1-5 proposed), any generic/table route, any copy/migration operation (the cutover stays an operator tool, never an API).
 - **Read gaps to close before client cutover:** a bounded **status count** read replacing `getAccountPortfolioSummary`; an **id-batch name** read replacing `useAccountNames`/`useLocationReferenceResolver`/`useInstalledEquipmentPage`; an **email → Contact** lookup replacing `inboundCandidateResolution.ts:75`; a **name-prefix search** replacing `useAccountSearch`. Each is a new closed read in `src/eosCrm`, capability `customer.record.read`.
 
 **Sequencing:** the transport is composed **after** a reconciled verify and **after** PostgreSQL writers are activated
@@ -327,7 +327,7 @@ verification tooling that must not run after the freeze; **REMOVE** — deleted 
 | 13 | Contacts of an Account | `hooks/useContactsForAccount.js:39` (AccountDetail.jsx:392-394; billing contact choice in AccountForm) | R contacts | **MUST** (billing contact is an Account fact) | `listAccountContacts` |
 | 14 | Add Contact | `AccountDetail.jsx:491` → `domain/contacts.js:28` | W contacts | FOLLOW | `createContact` |
 | 15 | updateContact | `domain/contacts.js:40` (no caller) | W contacts | REMOVE | `updateContact` if a UI is added |
-| 16 | Contact CSV import | `ContactImportModal.jsx:119` → `domain/contactImport.js:20-56` | W contacts (batch) | FOLLOW | `createContact` per row with idempotency keys (atomic-batch semantics change — §9) |
+| 16 | Contact CSV import | `ContactImportModal.jsx:119` → `domain/contactImport.js:20-56` | W contacts (batch) | FOLLOW | `importAccountContacts` (atomic, 1..200 rows, all or none, one idempotency receipt — the legacy batch semantics kept) |
 | 17 | Sites of an Account | `hooks/useLocationsForAccount.js:60` (AccountDetail.jsx, WorkOrderWizard.jsx:118, InboundWorkWorkspace.jsx:240, InstallAtCustomer.jsx:54) | R locations | FOLLOW | `listAccountLocations` |
 | 18 | Sites of many Accounts | `hooks/useLocationsForAccounts.js:44` (CustomerPicker.jsx:42) | R locations | FOLLOW | `listAccountLocations` per Account or a batch read |
 | 19 | One site / id resolution | `hooks/useLocation.js:42` (WorkOrderDetailPage.jsx:6), `useLocationReferenceResolver.js:84`, `domain/locationSubscription.js` | R locations | FOLLOW | `getAccountLocation` / id-batch read |
@@ -384,7 +384,7 @@ RETIRE_FIRESTORE; OPEN/ACTIVE is incoherent and nothing leaves ACTIVE.
 **Freeze window (ruling 6).** No fixed duration: the shortest controlled interval freeze legacy writers → export → copy →
 verify/reconcile → activate PostgreSQL authority → retire old writers → unfreeze on the new authority. No legacy mutation
 may slip through after the freeze begins; an import that cannot honour the freeze atomically stays disabled (contact CSV
-import is client-direct and is frozen by the Rules step; the PostgreSQL replacement is per-row idempotent creates).
+import is client-direct and is frozen by the Rules step; the PostgreSQL replacement is the atomic `importAccountContacts`).
 
 ### 6.3 Sequence (each step separately authorized and evidenced)
 
