@@ -53,9 +53,10 @@ import { UsersPolicyPanel } from "./PolicyStorePanels.jsx";
 // ════════════════════ A ROW CLICK READS. EDIT IS A DESTINATION. ════════════════════
 //
 // Clicking a row (or its name) opens the Employee record READ-ONLY. Nothing here ever turns a row into
-// an editable field. The Edit action opens the same record with `?edit=1`, where editing states that it
-// is unavailable: PostgreSQL is the Employee profile authority and no governed profile writer is served
-// yet (EMP-RT-W1). The destination is kept so the answer is given in one place rather than two.
+// an editable field. The Edit action opens the same record with `?edit=1`, and the RECORD PAGE decides:
+// for a caller holding admin.employeeProfile.write it opens the governed editor (the Workforce profile and
+// reporting-relationship commands, EMP-RT-W1); for anyone else it says editing is not available to them.
+// The destination is kept so that answer, and the server's own refusal, are given in one place, not two.
 export default function AdminUsers({ workforce = workforceApiClient }) {
   const navigate = useNavigate();
   const directory = useWorkforceEmployeeDirectory({ client: workforce });

@@ -20,6 +20,7 @@ import {
   EMPLOYEE_TARGET_TYPE,
 } from "../../domain/employeeProfile.js";
 import UserAccessActions from "./UserAccessActions.jsx";
+import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
 import {
   RUNTIME_DEPENDENCIES,
   WORKFORCE_READS,
@@ -41,7 +42,6 @@ import {
   ManagerFact,
   PrincipalLinkDetails,
   ResponsibilitySection,
-  RuntimeDependency,
   SourceSection,
   UserAccessRelationship,
   WorkforceFailure,
@@ -58,6 +58,10 @@ import {
 // Firestore employee directory is not read here at all, and nothing falls back to it: a refused read says
 // "not available to you", a failed read says it could not be loaded.
 //
+// Edits go the same way: the profile facts and the reporting relationship are written only by the governed Workforce
+// commands (EMP-RT-W1B updateEmployeeProfile, establishReportingRelationship, endReportingRelationship), and the
+// page then RE-READS the record from the same transport. See "EDITING" below.
+//
 // ════════════════════ WHAT REMAINS ON LEGACY CALLABLES, AND WHY ════════════════════
 //
 //   * Account status, governed Role add/remove and password reset (UserAccessActions): USER ACCESS / security
@@ -67,13 +71,23 @@ import {
 //   * Change History (listRecordChangeHistory): the legacy audit trail -- pre-cutover profile changes and
 //     account/Role events. Labelled as legacy; the governed Employee history read is tail EMP-RT-H1.
 //
-// ════════════════════ EDITING IS NOT OFFERED ════════════════════
+// ════════════════════ EDITING: THE GOVERNED WORKFORCE COMMANDS, AND THEN A RE-READ ════════════════════
 //
 // PostgreSQL is the Employee profile authority after the copy-once cutover (#1913, Owner ruling F, no dual write),
-// and no governed PostgreSQL profile writer is served. The legacy updateEmployeeProfile callable writes the
-// retired Firestore record, which this page no longer reads -- a save would change nothing a reader can see and
-// would create drift the cutover verifier refuses. So Edit Employee is shown protected, with that reason
-// (tail EMP-RT-W1), rather than wired to a writer whose result the page cannot show.
+// and the governed PostgreSQL writers are served (EMP-RT-W1A commands on the W1B transport). Edit Employee opens
+// EmployeeEditPanel, which sends only the changed profile facts and, separately, the reporting relationship change
+// -- never Employment Status, Operating Company, Operational Roles, a Security Role or a Job Role. The legacy
+// updateEmployeeProfile Firebase callable (which wrote the retired Firestore record) is not reachable from this
+// client any more: the seam no longer exports it.
+//
+// WHO IS OFFERED IT. Callers the trusted capability feed says hold admin.employeeProfile.write get a working
+// button (and `?edit=1` opens the form); everyone else keeps the protected button with that reason. That test only
+// decides what to OFFER: the command re-checks the capability server-side, and a 403 renders as "not authorized,
+// nothing saved" inside the form -- it is never hidden or turned into success.
+//
+// NO OPTIMISTIC STATE. After a save that wrote something the form closes, the outcome is stated in words, and
+// record.reload() re-reads EMP-RT-01. A refused Save saved nothing and says so; there is no partial save. The page shows
+// only what that read returns; the rail sections remount with the record and re-read too.
 export default function UserDetail({
   client = administrationUsersClient,
   workforce = workforceApiClient,
@@ -85,6 +99,13 @@ export default function UserDetail({
   const { user } = useAuth() ?? {};
   const [searchParams] = useSearchParams();
   const editRequested = searchParams.get("edit") === "1";
+
+  const canEdit = holdsCapability(hasCapability, EMPLOYEE_PROFILE_WRITE_CAPABILITY);
+  // `?edit=1` opens the form once the capability is known; Cancel or a save closes it and it stays closed.
+  const [editOpen, setEditOpen] = useState(false);
+  const [editClosed, setEditClosed] = useState(false);
+  const [editNotice, setEditNotice] = useState(null);
+  const editing = canEdit && (editOpen || (editRequested && !editClosed));
 
   const record = useWorkforceRead(WORKFORCE_READS.EMPLOYEE_RECORD.operation, employeeId ? { employeeId } : null, { client: workforce });
   const employee = record.status === WORKFORCE_READ_STATE.READY ? record.data : null;
@@ -155,6 +176,8 @@ export default function UserDetail({
   if (record.status === WORKFORCE_READ_STATE.FAILED) {
     return (
       <div className="ns-page fo-user-detail" data-employee-record="FAILED">
+        {/* A save that wrote something is still stated when the re-read after it fails. */}
+        {editNotice ? <EditNotice notice={editNotice} /> : null}
         <WorkforceFailure error={record.error} subject="This Employee record" onRetry={record.reload} readId={WORKFORCE_READS.EMPLOYEE_RECORD.id} />
         <div className="fo-btn-row">{backToUsers}</div>
       </div>
@@ -191,21 +214,52 @@ export default function UserDetail({
           { key: "access", label: "User Access", value: access.words },
         ]}
         actions={
-          <Button
-            variant="protected"
-            id="employee-edit"
-            data-user-action="edit"
-            reason={`Editing is not available: no governed Employee profile writer is served (${RUNTIME_DEPENDENCIES.PROFILE_WRITER.id}).`}
-          >
-            Edit Employee
-          </Button>
+          canEdit ? (
+            editing ? null : (
+              <Button
+                variant="primary"
+                id="employee-edit"
+                data-user-action="edit"
+                onClick={() => {
+                  setEditNotice(null);
+                  setEditOpen(true);
+                }}
+              >
+                Edit Employee
+              </Button>
+            )
+          ) : (
+            <Button variant="protected" id="employee-edit" data-user-action="edit" reason={EDIT_NOT_GRANTED_REASON}>
+              Edit Employee
+            </Button>
+          )
         }
       />
 
-      {editRequested ? (
-        <div className="ns-emp-edit-unavailable" data-employee-edit="UNAVAILABLE">
-          <RuntimeDependency dependency={RUNTIME_DEPENDENCIES.PROFILE_WRITER} lead="Editing this Employee is not available." />
+      {editRequested && !canEdit ? (
+        <div className="ns-emp-edit-notice" data-employee-edit="NOT_GRANTED">
+          <p className="ns-state ns-state--denied">{`Editing this Employee is not available to you. ${EDIT_NOT_GRANTED_REASON}`}</p>
         </div>
+      ) : null}
+
+      {editNotice ? <EditNotice notice={editNotice} /> : null}
+
+      {editing ? (
+        <EmployeeEditPanel
+          employee={employee}
+          workforce={workforce}
+          onCancel={() => {
+            setEditOpen(false);
+            setEditClosed(true);
+          }}
+          onSaved={(described) => {
+            setEditOpen(false);
+            setEditClosed(true);
+            setEditNotice(described);
+            // Re-read the authority. Never render what was typed as the record.
+            record.reload();
+          }}
+        />
       ) : null}
 
       <div className="ns-record-body">
@@ -263,6 +317,11 @@ export default function UserDetail({
                 source: `Workforce reads ${WORKFORCE_READS.OWNED_RECORDS.id}, ${WORKFORCE_READS.ACCOUNTABILITIES.id} and ${WORKFORCE_READS.MANAGED_EMPLOYEES.id}. Assigned work is not served (${RUNTIME_DEPENDENCIES.ASSIGNED_WORK_READ.id}).`,
               },
               {
+                key: "edits",
+                label: "Edits",
+                source: `The governed Workforce commands: profile facts through updateEmployeeProfile, the manager through establishReportingRelationship / endReportingRelationship. Employment Status and Operating Company have no governed writer yet (${RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER.id}).`,
+              },
+              {
                 key: "access",
                 label: "Account status & Roles",
                 source: `The legacy trusted account callables, on the credential of the Principal linked through ${WORKFORCE_READS.PRINCIPAL_LINK.id}.`,
@@ -286,6 +345,32 @@ export default function UserDetail({
       />
     </div>
   );
+}
+
+/** What the last save did, in the domain's exact words (describeEmployeeEditResult). */
+function EditNotice({ notice }) {
+  return (
+    <div className="ns-emp-edit-notice" data-employee-edit-result={notice.state}>
+      <p className={notice.state === "SAVED" ? "ns-state" : "ns-state ns-state--denied"} role="status">
+        {notice.words}
+      </p>
+    </div>
+  );
+}
+
+const EMPLOYEE_PROFILE_WRITE_CAPABILITY = "admin.employeeProfile.write";
+
+// What this session can actually know when the button is protected: the trusted feed did not return a positive
+// decision for admin.employeeProfile.write. It does not claim a cause (no grant, no feed, inactive capability).
+const EDIT_NOT_GRANTED_REASON = "The trusted access feed did not grant Employee profile editing (admin.employeeProfile.write) for your account.";
+
+function holdsCapability(hasCapability, id) {
+  if (typeof hasCapability !== "function") return false;
+  try {
+    return hasCapability(id) === true;
+  } catch {
+    return false;
+  }
 }
 
 /**

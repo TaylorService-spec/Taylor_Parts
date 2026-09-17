@@ -13,15 +13,16 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  EDITABLE_FIELDS,
+  EMPLOYEE_EDIT_RESULT,
   EMPLOYEE_EVENT_LABELS,
   EMPLOYEE_FIELD_LABELS,
   EMPLOYEE_TARGET_TYPE,
-  EMPLOYMENT_STATUS_OPTIONS,
   EOS_ACCESS,
-  OPERATING_COMPANY_OPTIONS,
-  OPERATIONAL_ROLE_OPTIONS,
+  MANAGER_CHANGE,
+  NEVER_SENT_EMPLOYEE_KEYS,
+  PROFILE_FIELDS,
   changedProfileFields,
+  describeEmployeeEditResult,
   employeeCompanyName,
   employeeDisplayName,
   employeeNameIsAbsent,
@@ -29,14 +30,16 @@ import {
   employmentFields,
   eosAccessState,
   identityFields,
+  managerChange,
   newTrustedIdempotencyKey,
   operationalRoleLabels,
   readField,
+  readProfileField,
+  saveEmployeeEdit,
   securityRoleWords,
   seedEditValues,
   validateProfileValues,
 } from "../src/domain/employeeProfile.js";
-import { OPERATIONAL_ROLES, EMPLOYMENT_STATUS_VALUES } from "../src/domain/employeeVocabulary.js";
 
 const JOHN = Object.freeze({
   id: "emp-1",
@@ -51,6 +54,23 @@ const JOHN = Object.freeze({
   operatingCompanyId: "taylor",
   managerEmployeeId: "emp-2",
   address: { city: "Phoenix", state: "AZ" },
+});
+
+// The governed PostgreSQL record (EMP-RT-01 readEmployee) -- the shape the editor seeds from and diffs against.
+const JOHN_REC = Object.freeze({
+  employeeId: "emp-1",
+  employmentStatus: "ACTIVE",
+  operatingCompanyId: "taylor",
+  employeeNumber: "TAZ-0042",
+  displayName: "John Smith",
+  name: { displayName: "John Smith", firstName: "John", middleName: null, lastName: "Smith", preferredName: null },
+  jobTitle: "Senior Service Technician",
+  contact: { workEmail: "john@taylor.test", workPhone: null, mobilePhone: null },
+  address: { street: null, unit: null, city: "Phoenix", state: "AZ", postalCode: null },
+  hireDate: "2020-03-02",
+  separationDate: null,
+  currentManager: { managerEmployeeId: "emp-2", displayName: "Mike Jones", effectiveFrom: "2026-01-05T00:00:00.000Z" },
+  userAccess: "LINKED",
 });
 
 // ════════════════════ identity ════════════════════
@@ -78,7 +98,7 @@ test("the subtitle carries the BUSINESS employee number, never the technical doc
 });
 
 test("employeeNumber and employeeId are different fields, and only one is editable", () => {
-  const editable = EDITABLE_FIELDS.map((f) => f.key);
+  const editable = PROFILE_FIELDS.map((f) => f.key);
   assert.ok(editable.includes("employeeNumber"));
   assert.ok(!editable.includes("employeeId"), "the technical document id is immutable");
   assert.equal(EMPLOYEE_FIELD_LABELS.employeeNumber, "Employee ID");
@@ -86,30 +106,21 @@ test("employeeNumber and employeeId are different fields, and only one is editab
 
 // ════════════════════ the independence rules ════════════════════
 
-test("Security Role is not editable through this surface at all", () => {
-  const editable = EDITABLE_FIELDS.map((f) => f.key);
-  for (const forbidden of ["securityRole", "role", "userId", "accountStatus"]) {
+test("Security Role, lifecycle, eligibility and the manager are not PROFILE fields of this surface", () => {
+  const editable = PROFILE_FIELDS.map((f) => f.key);
+  for (const forbidden of ["securityRole", "role", "userId", "accountStatus", "jobRole", ...NEVER_SENT_EMPLOYEE_KEYS, "managerEmployeeId"]) {
     assert.ok(!editable.includes(forbidden), `${forbidden} must not be an editable profile field`);
   }
   // It is still RENDERED -- as the mirror it is.
   assert.equal(securityRoleWords(JOHN), "Technician");
 });
 
-test("changing operational roles sends operationalRoles and nothing else", () => {
-  const values = { ...seedEditValues(JOHN), operationalRoles: ["TECHNICIAN"] };
-  const changes = changedProfileFields(values, JOHN);
-  assert.deepEqual(Object.keys(changes), ["operationalRoles"]);
-  assert.deepEqual(changes.operationalRoles, ["TECHNICIAN"]);
-});
-
-test("changing employment status sends employmentStatus and nothing else", () => {
-  const values = { ...seedEditValues(JOHN), employmentStatus: "TERMINATED" };
-  const changes = changedProfileFields(values, JOHN);
-  assert.deepEqual(Object.keys(changes), ["employmentStatus"]);
-  // Nothing here can express "and also disable their account" -- account status is not a field of
-  // this payload and there is no code path that would add one.
-  assert.ok(!("accountStatus" in changes));
-  assert.ok(!("userId" in changes));
+test("no edit of any value can put a lifecycle, eligibility or access key into the profile change set", () => {
+  const values = { ...seedEditValues(JOHN_REC), employmentStatus: "TERMINATED", operatingCompanyId: "ventana", operationalRoles: ["TECHNICIAN"], securityRole: "admin", jobTitle: "Lead" };
+  const changes = changedProfileFields(values, JOHN_REC);
+  assert.deepEqual(changes, { jobTitle: "Lead" });
+  for (const key of NEVER_SENT_EMPLOYEE_KEYS) assert.ok(!(key in changes), key);
+  assert.ok(!("managerEmployeeId" in changes), "the manager is a relationship, never a profile change");
 });
 
 test("EOS access state is derived from the account LINKAGE, never from employment status", () => {
@@ -124,50 +135,63 @@ test("EOS access state is derived from the account LINKAGE, never from employmen
 
 // ════════════════════ the diff ════════════════════
 
+test("the editor seeds from the governed PostgreSQL record shape, not the Firestore document", () => {
+  const values = seedEditValues(JOHN_REC);
+  assert.equal(values.displayName, "John Smith");
+  assert.equal(values.firstName, "John");
+  assert.equal(values.workEmail, "john@taylor.test");
+  assert.equal(values["address.city"], "Phoenix");
+  assert.equal(values.hireDate, "2020-03-02");
+  assert.equal(values.separationDate, "");
+  assert.equal(values.managerEmployeeId, "emp-2");
+  assert.deepEqual(Object.keys(values).sort(), [...PROFILE_FIELDS.map((f) => f.key), "managerEmployeeId"].sort());
+  // The STORED display name, not the read's derived one.
+  assert.equal(readProfileField({ displayName: "Derived", name: { displayName: null } }, "displayName"), null);
+});
+
 test("a save sends ONLY what changed, compared against the record the form was seeded from", () => {
-  const values = seedEditValues(JOHN);
-  assert.deepEqual(changedProfileFields(values, JOHN), {}, "an untouched form changes nothing");
+  const values = seedEditValues(JOHN_REC);
+  assert.deepEqual(changedProfileFields(values, JOHN_REC), {}, "an untouched form changes nothing");
 
   values.jobTitle = "Service Manager";
-  assert.deepEqual(changedProfileFields(values, JOHN), { jobTitle: "Service Manager" });
+  assert.deepEqual(changedProfileFields(values, JOHN_REC), { jobTitle: "Service Manager" });
 });
 
 test("whitespace is not a change, and a cleared field is an ABSENCE rather than an empty string", () => {
-  const values = seedEditValues(JOHN);
+  const values = seedEditValues(JOHN_REC);
   values.jobTitle = "  Senior Service Technician  ";
-  assert.deepEqual(changedProfileFields(values, JOHN), {}, "trimming to the same value is no change");
+  assert.deepEqual(changedProfileFields(values, JOHN_REC), {}, "trimming to the same value is no change");
 
   values.jobTitle = "";
-  assert.deepEqual(changedProfileFields(values, JOHN), { jobTitle: null });
-});
-
-test("reordering operational roles is not a change", () => {
-  const values = { ...seedEditValues(JOHN), operationalRoles: ["PARTS_ASSOCIATE", "TECHNICIAN"] };
-  // The seed is ["TECHNICIAN","PARTS_ASSOCIATE"]; both normalize to declared vocabulary order.
-  assert.deepEqual(changedProfileFields(values, JOHN), {});
+  assert.deepEqual(changedProfileFields(values, JOHN_REC), { jobTitle: null });
 });
 
 test("a nested address key diffs as its own field", () => {
-  const values = { ...seedEditValues(JOHN), "address.city": "Tucson" };
-  assert.deepEqual(changedProfileFields(values, JOHN), { "address.city": "Tucson" });
+  const values = { ...seedEditValues(JOHN_REC), "address.city": "Tucson" };
+  assert.deepEqual(changedProfileFields(values, JOHN_REC), { "address.city": "Tucson" });
   assert.equal(readField(JOHN, "address.city"), "Phoenix");
   assert.equal(readField(JOHN, "address.postalCode"), undefined);
 });
 
+test("the manager change is its own decision: unchanged, established, or ended", () => {
+  const seed = seedEditValues(JOHN_REC);
+  assert.equal(managerChange(seed, JOHN_REC).action, MANAGER_CHANGE.NONE);
+  assert.deepEqual(managerChange({ ...seed, managerEmployeeId: "emp-3" }, JOHN_REC), { action: MANAGER_CHANGE.ESTABLISH, managerEmployeeId: "emp-3" });
+  assert.deepEqual(managerChange({ ...seed, managerEmployeeId: "" }, JOHN_REC), { action: MANAGER_CHANGE.END, managerEmployeeId: null });
+  const noManager = { ...JOHN_REC, currentManager: null };
+  assert.equal(managerChange(seedEditValues(noManager), noManager).action, MANAGER_CHANGE.NONE);
+  assert.equal(managerChange({ ...seedEditValues(noManager), managerEmployeeId: "emp-2" }, noManager).action, MANAGER_CHANGE.ESTABLISH);
+});
+
 // ════════════════════ validation ════════════════════
 
-test("employment status is a closed picklist and operational roles come from the canonical vocabulary", () => {
-  assert.deepEqual(EMPLOYMENT_STATUS_OPTIONS.map((o) => o.value), [...EMPLOYMENT_STATUS_VALUES]);
-  assert.deepEqual(OPERATIONAL_ROLE_OPTIONS.map((o) => o.value), [...OPERATIONAL_ROLES]);
-  assert.ok(OPERATIONAL_ROLE_OPTIONS.every((o) => o.label && o.label !== o.value), "every role has words");
-
-  const bad = validateProfileValues({
-    ...seedEditValues(JOHN),
-    employmentStatus: "PROBATION",
-    operationalRoles: ["SUPERVISOR"],
-  });
-  assert.ok(bad.employmentStatus);
-  assert.ok(bad.operationalRoles);
+test("a recorded display name cannot be cleared, but a record with none stored is not blocked", () => {
+  assert.ok(validateProfileValues({ ...seedEditValues(JOHN_REC), displayName: "  " }, JOHN_REC).displayName);
+  const derivedOnly = { ...JOHN_REC, name: { ...JOHN_REC.name, displayName: null } };
+  assert.equal(validateProfileValues(seedEditValues(derivedOnly), derivedOnly).displayName, undefined);
+  // Lifecycle and eligibility are not validated here, because they are not edited here.
+  const errors = validateProfileValues({ ...seedEditValues(JOHN_REC), employmentStatus: "PROBATION", operationalRoles: ["SUPERVISOR"] }, JOHN_REC);
+  assert.deepEqual(errors, {});
 });
 
 test("the business employee number is a CODE, and the shape rule mirrors the enforcing one", () => {
@@ -187,9 +211,9 @@ test("the business employee number is a CODE, and the shape rule mirrors the enf
     undefined,
   );
 
-  // The pattern is the ENFORCING one, read from the command rather than restated.
+  // The pattern is the ENFORCING one, read from the governed PostgreSQL vocabulary rather than restated.
   const enforcing = readFileSync(
-    fileURLToPath(new URL("../../functions/src/access/employeeProfileCommands.ts", import.meta.url)),
+    fileURLToPath(new URL("../../functions/src/eosWorkforce/employeeProfileVocabulary.ts", import.meta.url)),
     "utf8",
   );
   assert.match(enforcing, /EMPLOYEE_NUMBER_PATTERN = \/\^\[A-Za-z0-9\]\[A-Za-z0-9\._-\]\{0,31\}\$\//);
@@ -197,15 +221,15 @@ test("the business employee number is a CODE, and the shape rule mirrors the enf
 
 test("a display name is required, and a malformed email or date is caught before a round trip", () => {
   const errors = validateProfileValues({
-    ...seedEditValues(JOHN),
+    ...seedEditValues(JOHN_REC),
     displayName: "   ",
     workEmail: "nope",
     hireDate: "3 March",
-  });
+  }, JOHN_REC);
   assert.ok(errors.displayName);
   assert.ok(errors.workEmail);
   assert.ok(errors.hireDate);
-  assert.deepEqual(validateProfileValues(seedEditValues(JOHN)), {});
+  assert.deepEqual(validateProfileValues(seedEditValues(JOHN_REC), JOHN_REC), {});
 });
 
 // ════════════════════ references and honest absence ════════════════════
@@ -214,7 +238,6 @@ test("the operating company resolves through the governed authority, never throu
   assert.equal(employeeCompanyName(JOHN), "Taylor Freezer of Arizona");
   assert.equal(employeeCompanyName({ operatingCompanyId: null }), null);
   assert.equal(employeeCompanyName({ operatingCompanyId: "not-a-company" }), null);
-  assert.deepEqual(OPERATING_COMPANY_OPTIONS.map((o) => o.value).sort(), ["taylor", "ventana"]);
 });
 
 test("a recorded-but-unresolvable company reads as UNAVAILABLE, an absent one as NOT RECORDED", () => {
@@ -243,9 +266,13 @@ test("an employee with no operational roles holds none -- that is an answer, not
 
 test("the trail's targetType and the field labels are the ones the shared history component needs", () => {
   assert.equal(EMPLOYEE_TARGET_TYPE, "employee");
-  // Every editable field has a label, so no Change History row can render a machine key.
-  for (const f of EDITABLE_FIELDS) {
+  // Every editable field has a label, so no Change History row can render a machine key -- and so do the
+  // pre-cutover legacy trail's fields the governed editor no longer writes.
+  for (const f of PROFILE_FIELDS) {
     assert.equal(EMPLOYEE_FIELD_LABELS[f.key], f.label, `${f.key} must have display words`);
+  }
+  for (const legacy of ["managerEmployeeId", "employmentStatus", "operatingCompanyId", "operationalRoles"]) {
+    assert.ok(EMPLOYEE_FIELD_LABELS[legacy], `${legacy} must keep display words for legacy history rows`);
   }
   // And the events that change no single field have words too.
   for (const action of ["setUserStatus", "initiateAdminPasswordReset", "updateEmployeeProfile"]) {
@@ -263,17 +290,111 @@ test("the idempotency key is narrowed to the alphabet the trusted commands accep
   }
 });
 
-test("the editable set matches the trusted command's, so the form cannot offer what it refuses", () => {
+test("the profile field set matches the governed PostgreSQL writer's vocabulary, so the form cannot offer what it refuses", () => {
   const enforcing = readFileSync(
-    fileURLToPath(new URL("../../functions/src/access/employeeProfileCommands.ts", import.meta.url)),
+    fileURLToPath(new URL("../../functions/src/eosWorkforce/employeeProfileVocabulary.ts", import.meta.url)),
     "utf8",
   );
-  const block = /EDITABLE_EMPLOYEE_FIELDS[\s\S]*?\n\] as const\);/.exec(enforcing);
-  assert.ok(block, "EDITABLE_EMPLOYEE_FIELDS must still exist in the trusted command");
-  const serverKeys = [...block[0].matchAll(/\{ key: "([a-zA-Z.]+)", kind:/g)].map((m) => m[1]);
-  assert.deepEqual(
-    EDITABLE_FIELDS.map((f) => f.key).sort(),
-    serverKeys.sort(),
-    "the form's fields and the command's enforced fields must be the same set",
-  );
+  const block = /PROFILE_FIELD_MAP[\s\S]*?\n\]\);/.exec(enforcing);
+  assert.ok(block, "PROFILE_FIELD_MAP must still exist in the governed vocabulary");
+  const serverKeys = [...block[0].matchAll(/\["([a-zA-Z.]+)", "[a-z_]+", "[A-Z_]+"\]/g)].map((m) => m[1]);
+  assert.equal(serverKeys.length, 17);
+  assert.deepEqual(PROFILE_FIELDS.map((f) => f.key), serverKeys, "the form's fields and the writer's enforced fields must be the same, in order");
+});
+
+// ════════════════════ the save: one governed command per Save, reported exactly ════════════════════
+
+const fakeWorkforce = (answers = {}) => {
+  const calls = [];
+  return {
+    calls,
+    call: async (operation, input) => {
+      calls.push([operation, input]);
+      const answer = answers[operation];
+      return typeof answer === "function" ? answer(input) : answer ?? { ok: false, code: "UNKNOWN_OPERATION" };
+    },
+  };
+};
+const UPDATED = (changedFields) => ({ ok: true, result: { outcome: "UPDATED", employeeId: "emp-1", changedFields, auditEventId: "ae-1" } });
+
+test("nothing changed: no command is called", async () => {
+  const w = fakeWorkforce();
+  const saved = await saveEmployeeEdit({ workforce: w, employeeId: "emp-1", changes: {}, manager: { action: MANAGER_CHANGE.NONE } });
+  assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.NOTHING_CHANGED);
+  assert.deepEqual(w.calls, []);
+  assert.equal(describeEmployeeEditResult(saved).words, "Nothing was changed.");
+});
+
+test("profile AND manager in one Save: ONE combined command; the input carries no authority and no lifecycle key", async () => {
+  const w = fakeWorkforce({
+    saveEmployeeEdit: { ok: true, result: { employeeId: "emp-1", profile: { outcome: "UPDATED", changedFields: ["jobTitle"] }, manager: { outcome: "CHANGED" } } },
+  });
+  const saved = await saveEmployeeEdit({
+    workforce: w,
+    employeeId: "emp-1",
+    changes: { jobTitle: "Lead", employmentStatus: "TERMINATED" },
+    manager: { action: MANAGER_CHANGE.ESTABLISH, managerEmployeeId: "emp-3" },
+  });
+  assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.SAVED);
+  assert.deepEqual(w.calls, [
+    ["saveEmployeeEdit", { employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: "ESTABLISH", managerEmployeeId: "emp-3" } }],
+  ]);
+  const described = describeEmployeeEditResult(saved);
+  assert.equal(described.reload, true);
+  assert.match(described.words, /^Saved: Job Title, Manager\./);
+});
+
+test("profile only -> updateEmployeeProfile; manager only -> the reporting command; clearing -> END in the combined input", async () => {
+  const profileOnly = fakeWorkforce({ updateEmployeeProfile: UPDATED(["jobTitle"]) });
+  await saveEmployeeEdit({ workforce: profileOnly, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.NONE } });
+  assert.deepEqual(profileOnly.calls.map((c) => c[0]), ["updateEmployeeProfile"]);
+  const managerOnly = fakeWorkforce({ endReportingRelationship: { ok: true, result: { outcome: "ENDED" } } });
+  await saveEmployeeEdit({ workforce: managerOnly, employeeId: "emp-1", changes: {}, manager: { action: MANAGER_CHANGE.END } });
+  assert.deepEqual(managerOnly.calls, [["endReportingRelationship", { employeeId: "emp-1" }]]);
+  const combinedEnd = fakeWorkforce({ saveEmployeeEdit: { ok: true, result: { profile: { outcome: "UPDATED", changedFields: ["jobTitle"] }, manager: { outcome: "ENDED" } } } });
+  await saveEmployeeEdit({ workforce: combinedEnd, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.END } });
+  assert.deepEqual(combinedEnd.calls, [["saveEmployeeEdit", { employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: "END" } }]]);
+});
+
+test("a refused combined Save writes nothing and is never described as partly saved", async () => {
+  const w = fakeWorkforce({ saveEmployeeEdit: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
+  const saved = await saveEmployeeEdit({ workforce: w, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.END } });
+  assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.NOT_SAVED);
+  assert.deepEqual(w.calls.map((c) => c[0]), ["saveEmployeeEdit"]);
+  assert.deepEqual(describeEmployeeEditResult(saved), { state: "NOT_SAVED", words: "You are not authorized to edit this Employee. Nothing was saved.", reload: false });
+  assert.equal(Object.values(EMPLOYEE_EDIT_RESULT).includes("PARTIAL"), false, "a partial-success outcome exists");
+});
+
+test("a taken employee number is actionable, and an unreachable service is never called saved or refused", async () => {
+  const taken = await saveEmployeeEdit({
+    workforce: fakeWorkforce({ updateEmployeeProfile: { ok: false, code: "CONFLICT", reason: "EMPLOYEE_NUMBER_TAKEN", status: 409 } }),
+    employeeId: "emp-1",
+    changes: { employeeNumber: "TAZ-0099" },
+    manager: { action: MANAGER_CHANGE.NONE },
+  });
+  assert.match(describeEmployeeEditResult(taken).words, /already held by another Employee\. Choose a different one\. Nothing was saved\./);
+  const down = await saveEmployeeEdit({
+    workforce: fakeWorkforce({ updateEmployeeProfile: { ok: false, code: "UNREACHABLE" } }),
+    employeeId: "emp-1",
+    changes: { jobTitle: "Lead" },
+    manager: { action: MANAGER_CHANGE.NONE },
+  });
+  assert.equal(down.state, EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED);
+  assert.match(describeEmployeeEditResult(down).words, /not confirmed/);
+  assert.doesNotMatch(describeEmployeeEditResult(down).words, /Nothing was saved|Saved/);
+});
+
+test("a combined Save refused at the manager step saves NOTHING -- the profile change is not claimed", async () => {
+  const w = fakeWorkforce({ saveEmployeeEdit: { ok: false, code: "NOT_FOUND", reason: "REPORTING_RELATIONSHIP_NOT_FOUND", status: 404 } });
+  const saved = await saveEmployeeEdit({ workforce: w, employeeId: "emp-1", changes: { jobTitle: "Lead", workEmail: "j@t.test" }, manager: { action: MANAGER_CHANGE.END } });
+  assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.NOT_SAVED);
+  const described = describeEmployeeEditResult(saved);
+  assert.deepEqual(described, { state: "NOT_SAVED", words: "Nothing was saved: this Employee no longer has a current manager to remove.", reload: false });
+  assert.doesNotMatch(described.words, /were saved|Job Title/);
+  const down = await saveEmployeeEdit({
+    workforce: fakeWorkforce({ saveEmployeeEdit: { ok: false, code: "UNREACHABLE" } }),
+    employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.ESTABLISH, managerEmployeeId: "emp-3" },
+  });
+  assert.equal(down.state, EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED);
+  assert.doesNotMatch(describeEmployeeEditResult(down).words, /Nothing was saved|Saved|were saved/);
 });

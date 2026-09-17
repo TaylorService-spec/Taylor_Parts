@@ -1,6 +1,14 @@
-// ADMINISTRATION USERS CONSOLIDATION -- the client SEAM for the Administration > Users callables:
-// the two new ones (updateEmployeeProfile, listRecordChangeHistory) and the EXISTING setUserStatus,
-// named here rather than reimplemented.
+// ADMINISTRATION USERS CONSOLIDATION -- the client SEAM for the Administration > Users callables that
+// remain: the legacy audit read (listRecordChangeHistory) and the EXISTING User Access commands
+// (setUserStatus, assignApprovedRole, revokeRole, readPrincipalAccessState), named here rather than
+// reimplemented.
+//
+// NO EMPLOYEE PROFILE WRITER LIVES HERE ANY MORE (EMP-RT-W1C). The `updateEmployeeProfile` callable
+// wrote the retired Firestore employees record; PostgreSQL has been the Employee authority since the
+// copy-once cutover, and the Administration editor now writes only through the governed Workforce
+// commands (services/workforceApiClient.js). The wrapper was removed rather than left unused, so no
+// screen can reach the retired writer by accident. The server-side callable itself is untouched by
+// this seam and is retired separately.
 //
 // Mirrors adminPasswordResetClient.js exactly, and for the same reasons: a deliberately THIN
 // wrapper so `firebase` stays out of the unit tests, with every judgement (validation, diffing,
@@ -19,7 +27,6 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase/firebase";
 
-const UPDATE_CALLABLE = "updateEmployeeProfile";
 const HISTORY_CALLABLE = "listRecordChangeHistory";
 // The EXISTING Issue #226 trusted command. Named here, not reimplemented.
 const STATUS_CALLABLE = "setUserStatus";
@@ -55,9 +62,9 @@ export function mapAdminUserError(err) {
       return { result: ADMIN_USER_RESULT.DENIED, message: null };
     case "invalid-argument":
     case "failed-precondition":
-    // `already-exists` covers a taken employee number and a reused request key. Both messages are
-    // about what the CALLER submitted and both are actionable, so both are forwarded -- and neither
-    // names another person or any server state. Mapping it to UNAVAILABLE (the old default) would
+    // `already-exists` covers a reused request key (and, on the retired profile callable, a taken
+    // employee number). Such messages are about what the CALLER submitted and are actionable, so they
+    // are forwarded -- and none names another person or any server state. Mapping it to UNAVAILABLE (the old default) would
     // have told an administrator the service was down when the truth was a duplicate they can fix.
     case "already-exists":
       return { result: ADMIN_USER_RESULT.INVALID, message: err?.message ?? null };
@@ -65,26 +72,6 @@ export function mapAdminUserError(err) {
       return { result: ADMIN_USER_RESULT.NOT_FOUND, message: null };
     default:
       return { result: ADMIN_USER_RESULT.UNAVAILABLE, message: null };
-  }
-}
-
-/**
- * Save profile changes. Resolves (never rejects).
- *
- * `changes` is a field-key map; actorUid is derived server-side from the authenticated context and
- * is never sent from here.
- */
-export async function updateEmployeeProfile({ employeeId, changes, idempotencyKey }) {
-  try {
-    const res = await httpsCallable(functions, UPDATE_CALLABLE)({ employeeId, changes, idempotencyKey });
-    const status = res?.data?.status;
-    return {
-      ok: true,
-      result: status === "unchanged" ? ADMIN_USER_RESULT.UNCHANGED : ADMIN_USER_RESULT.APPLIED,
-      changedFields: Array.isArray(res?.data?.changedFields) ? res.data.changedFields : [],
-    };
-  } catch (err) {
-    return { ok: false, ...mapAdminUserError(err) };
   }
 }
 
@@ -113,7 +100,7 @@ export async function setUserStatus({ principalUid, status, idempotencyKey }) {
  * privileged Role outright (that is grantRole's two-person route), resolves the roleId against its
  * own server-side allowlist, re-authorizes the caller on `admin.roleAssignment.write`, and writes
  * one audited roleAssignment. `actorUid` is derived server-side from the authenticated context and
- * is never sent from here, exactly as with the three commands above.
+ * is never sent from here, exactly as with setUserStatus above.
  *
  * `scope` is passed through rather than defaulted in this seam: what a Role means at global vs a
  * narrower scope is a governance question the command owns, and a default invented here would be
@@ -205,7 +192,6 @@ export async function listRecordChangeHistory({ targetType, targetId, limit }) {
 
 /** The seam object the Users surfaces consume (injectable for tests). */
 export const administrationUsersClient = {
-  updateEmployeeProfile,
   setUserStatus,
   assignApprovedRole,
   revokeRole,
