@@ -20,6 +20,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const command = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
+const http = require("../lib/eosWorkforce/workforceHttp.js");
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
 const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
@@ -194,6 +195,48 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
     }
     assert.deepEqual(await profile("e-other"), before);
     assert.equal((await audits("e-other")).length, auditsBefore);
+  });
+
+  // ════════════════════ W1B: the Render Workforce transport ════════════════════
+  await t.test("W1B transport: authenticated commands resolve the EOS Principal; capability, tenant, authority fields and conflicts map to HTTP", async () => {
+    const world = { reader: repo, pool, allowedOrigins: [], verifyToken: async (token) => {
+      const subject = { "tok-admin": admin.subject, "tok-gm": gm.subject, "tok-t2": t2Admin.subject }[token];
+      if (!subject) throw new Error("invalid token");
+      return { externalSubject: subject, identityProvider: "firebase" };
+    } };
+    await employee("e-http", "t1", { display_name: "Http Person" });
+    await employee("e-http-mgr", "t1", { display_name: "Http Manager" });
+    const call = async (token, operation, input, headers = {}) => {
+      const res = await http.handleWorkforceRequest(world, { method: "POST", url: "/workforce/employees", headers: { authorization: `Bearer ${token}`, ...headers }, body: JSON.stringify({ operation, input }) });
+      return { status: res.status, body: JSON.parse(res.body) };
+    };
+
+    const ok = await call("tok-admin", "updateEmployeeProfile", { employeeId: "e-http", changes: { jobTitle: "Dispatcher", "address.state": "AZ" } });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepEqual(ok.body.result.changedFields, ["jobTitle", "address.state"]);
+    const trail = await audits("e-http");
+    assert.deepEqual([trail.length, trail[0].actor_uid], [1, admin.principalId]);
+    // Re-read the authoritative state through the governed read, as the client will.
+    const reread = await call("tok-admin", "readEmployee", { employeeId: "e-http" });
+    assert.deepEqual([reread.status, reread.body.result.jobTitle], [200, "Dispatcher"]);
+
+    assert.deepEqual([(await call("tok-gm", "updateEmployeeProfile", { employeeId: "e-http", changes: { jobTitle: "x" } })).status], [403]);
+    assert.equal((await call("tok-t2", "updateEmployeeProfile", { employeeId: "e-http", changes: { jobTitle: "x" } })).status, 404);
+    assert.equal((await call("tok-admin", "updateEmployeeProfile", { employeeId: "e-http", changes: { jobTitle: "x" } }, { "x-eos-tenant": "t2" })).status, 403);
+    const stated = await call("tok-admin", "updateEmployeeProfile", { employeeId: "e-http", tenantId: "t2", changes: { jobTitle: "x" } });
+    assert.deepEqual([stated.status, stated.body.code], [400, "AUTHORITY_FIELD_NOT_ACCEPTED"]);
+    const lifecycle = await call("tok-admin", "updateEmployeeProfile", { employeeId: "e-http", changes: { employmentStatus: "TERMINATED" } });
+    assert.deepEqual([lifecycle.status, lifecycle.body.code], [400, "INPUT_FIELD_NOT_ACCEPTED"]);
+    const taken = await call("tok-admin", "updateEmployeeProfile", { employeeId: "e-http", changes: { employeeNumber: "taz-0001" } });
+    assert.deepEqual([taken.status, taken.body.code], [409, "EMPLOYEE_NUMBER_TAKEN"]);
+    assert.equal((await profile("e-http")).job_title, "Dispatcher", "a refused request changed the profile");
+
+    const established = await call("tok-admin", "establishReportingRelationship", { employeeId: "e-http", managerEmployeeId: "e-http-mgr" });
+    assert.deepEqual([established.status, established.body.result.outcome], [200, "ESTABLISHED"]);
+    assert.equal((await call("tok-gm", "endReportingRelationship", { employeeId: "e-http" })).status, 403);
+    const ended = await call("tok-admin", "endReportingRelationship", { employeeId: "e-http" });
+    assert.deepEqual([ended.status, ended.body.result.outcome], [200, "ENDED"]);
+    assert.equal((await call("tok-admin", "endReportingRelationship", { employeeId: "e-http" })).status, 404);
   });
 
   // ════════════════════ mutation controls ════════════════════
