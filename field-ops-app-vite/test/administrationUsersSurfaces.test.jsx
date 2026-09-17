@@ -938,14 +938,40 @@ describe("the Job Role control is offered only by admin.employeeJobRole.write", 
     expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || WRITE_OPERATIONS.includes(operation))).toBe(false);
   });
 
-  it("admin.employeeProfile.write ALONE does not offer it -- Edit Employee is live, the Job Role control is not", async () => {
+  it("admin.employeeProfile.write ALONE does not offer it: an Employee administrator without the Job Role grant sees the tenant is NOT CONFIGURED", async () => {
     const workforce = makeWorkforce();
     renderDetail(okHistory(), "emp-1", "", EDIT_GRANTED, workforce);
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(false);
-    const button = await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" });
-    expect(button.hasAttribute("disabled")).toBe(true);
-    expect(jobRoleSection().querySelector('[data-job-role-control="NOT_GRANTED"]')).toBeTruthy();
+    const state = await waitFor(() => {
+      const el = jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    expect(state.getAttribute("data-job-role-not-configured")).toBe("GRANT");
+    expect(state.textContent).toMatch(/Job Role administration is not configured for this tenant\./);
+    expect(state.textContent).toMatch(/not been granted admin\.employeeJobRole\.write/);
+    expect(within(jobRoleSection()).queryByRole("button", { name: /Assign Job Role|Change Job Role/ })).toBeNull();
+    expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || WRITE_OPERATIONS.includes(operation))).toBe(false);
+  });
+
+  it("a granted caller on a tenant whose catalog has no ACTIVE Job Role sees NOT CONFIGURED -- never an empty dropdown", async () => {
+    for (const items of [[], [{ jobRoleId: "legacy-estimator", displayName: "Legacy Estimator", status: "INACTIVE" }]]) {
+      cleanup();
+      const workforce = makeWorkforce({ listJobRoles: { ok: true, result: { items } } });
+      renderDetail(okHistory(), "emp-1", "", JOB_ROLE_GRANTED, workforce);
+      await screen.findByRole("heading", { level: 1, name: "John Smith" });
+      const state = await waitFor(() => {
+        const el = jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]');
+        expect(el).toBeTruthy();
+        return el;
+      });
+      expect(state.getAttribute("data-job-role-not-configured")).toBe("CATALOG");
+      expect(state.textContent).toMatch(/Job Role administration is not configured for this tenant\./);
+      expect(within(jobRoleSection()).queryByRole("button", { name: /Assign Job Role|Change Job Role/ })).toBeNull();
+      expect(within(jobRoleSection()).queryByRole("combobox")).toBeNull();
+      expect(assignCalls(workforce)).toEqual([]);
+    }
   });
 
   it("with admin.employeeJobRole.write it is a closed choice of ACTIVE catalog roles; inactive roles are not offered", async () => {

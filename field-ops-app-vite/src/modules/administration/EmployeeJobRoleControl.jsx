@@ -33,12 +33,24 @@ import { WorkforceFailure } from "../employees/EmployeeProfileSections.jsx";
 // listJobRoles (an inactive role is never offered). ASSIGNED / CHANGED closes the form, states the outcome and
 // re-reads the history; NO_CHANGE says nothing changed; every refusal is stated exactly and nothing is shown as
 // saved. Nothing optimistic: the section shows only what its read returns.
+//
+// ════════════════════ FAIL CLOSED WHEN THE TENANT IS NOT CONFIGURED ════════════════════
+//
+// An unconfigured tenant is never presented as a business with zero Job Roles. Two configuration facts must exist:
+//   * the administrator grant: a caller who administers Employees (admin.employeeProfile.write) but is not granted
+//     admin.employeeJobRole.write means the grant reconciliation has not run for this tenant;
+//   * an ACTIVE catalog: for a granted caller the catalog is read up front, and zero ACTIVE roles means the launch
+//     catalog has not been seeded.
+// Either way the control shows JOB_ROLE_NOT_CONFIGURED_WORDS -- no Assign button, no empty dropdown. A caller who
+// administers no Employees keeps the ordinary protected button.
 
 const NO_INPUT = Object.freeze({});
 
+export const JOB_ROLE_NOT_CONFIGURED_WORDS = "Job Role administration is not configured for this tenant.";
+
 const NOT_GRANTED_REASON = `The trusted access feed did not grant Job Role assignment (${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}) for your account.`;
 
-export default function EmployeeJobRoleControl({ employeeId, workforce, canAssign, jobRole, onReread }) {
+export default function EmployeeJobRoleControl({ employeeId, workforce, canAssign, administersEmployees = false, jobRole, onReread }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState("");
   const [reason, setReason] = useState("");
@@ -47,11 +59,25 @@ export default function EmployeeJobRoleControl({ employeeId, workforce, canAssig
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
-  // The catalog is read only when the form is open, and only for a caller offered the control.
-  const catalog = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_CATALOG.operation, canAssign && open ? NO_INPUT : null, { client: workforce });
+  // The catalog is read for a granted caller up front, so an unseeded tenant is stated before anything is offered.
+  const catalog = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_CATALOG.operation, canAssign ? NO_INPUT : null, { client: workforce });
   const options = catalog.status === WORKFORCE_READ_STATE.READY ? assignableJobRoles(catalog.data) : [];
 
   const label = jobRole?.current ? "Change Job Role" : "Assign Job Role";
+
+  const notConfigured = (why) => (
+    <div className="ns-emp-edit-notice" data-job-role-control="NOT_CONFIGURED" data-job-role-not-configured={why}>
+      <p className="ns-state ns-state--na" role="status">{JOB_ROLE_NOT_CONFIGURED_WORDS}</p>
+      <p className="fo-muted ns-emp-note">
+        {why === "GRANT"
+          ? `Administrator Security Roles have not been granted ${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}.`
+          : "The company's Job Role catalog has no active Job Role."}
+      </p>
+    </div>
+  );
+
+  if (!canAssign && administersEmployees) return notConfigured("GRANT");
+  if (canAssign && catalog.status === WORKFORCE_READ_STATE.READY && options.length === 0) return notConfigured("CATALOG");
 
   if (!canAssign) {
     return (
@@ -128,12 +154,6 @@ export default function EmployeeJobRoleControl({ employeeId, workforce, canAssig
     chooser = <LoadingState>Reading the Job Role catalog…</LoadingState>;
   } else if (catalog.status === WORKFORCE_READ_STATE.FAILED) {
     chooser = <WorkforceFailure error={catalog.error} subject="The Job Role catalog" onRetry={catalog.reload} readId={WORKFORCE_READS.JOB_ROLE_CATALOG.id} />;
-  } else if (options.length === 0) {
-    chooser = (
-      <p className="ns-state ns-state--na" data-job-role-catalog="NO_ACTIVE">
-        No active Job Role exists in this company&apos;s catalog, so none can be assigned.
-      </p>
-    );
   } else {
     chooser = (
       <>

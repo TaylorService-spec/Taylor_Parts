@@ -296,6 +296,7 @@ export default function UserDetail({
                 employeeId={employee.employeeId}
                 workforce={workforce}
                 canAssign={canAssignJobRole}
+                administersEmployees={canEdit}
                 jobRole={jobRole}
                 onReread={reload}
               />
