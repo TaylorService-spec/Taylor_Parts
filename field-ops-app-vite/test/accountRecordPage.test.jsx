@@ -28,7 +28,6 @@ const read = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
 const SHELL = read("src/metadata/MetadataRecordPage.jsx");
 const DETAIL = read("src/modules/accounts/AccountDetail.jsx");
 const FORM = read("src/modules/accounts/AccountForm.jsx");
-const RULES = read("../firestore.rules");
 const CSS = read("src/index.css");
 
 const fieldGroups = accountRecordPage.sections.filter((s) => s.kind === "FIELD_GROUP");
@@ -158,11 +157,11 @@ describe("editability comes from the governed command, not from optimism", () =>
     expect(pageFieldIds.has("updatedAt")).toBe(true);
   });
 
-  it("the two governed fields are admin-only, mirroring Rules rather than restating it", () => {
-    // firestore.rules accountGovernedFieldsUnchanged(): a dispatcher may update only if these are
-    // unchanged. Asserted against the rule text so the mirror cannot drift from the enforcement.
+  it("the two governed fields are admin-only", () => {
+    // Rules no longer state this: #1929 retired every direct Firestore CRM write grant, taking the
+    // accountGovernedFieldsUnchanged() predicate with it. The enforcing authority is the governed
+    // PostgreSQL CRM command (customer.governedField.write); this is the page's presentation of it.
     for (const fieldId of ACCOUNT_GOVERNED_FIELD_IDS) {
-      expect(RULES).toMatch(new RegExp(`request\\.resource\\.data\\.get\\('${fieldId}'`));
       expect(fieldEditability(accountRecordPage, fieldId, { isAdmin: false, adminOnlyFieldIds: ACCOUNT_GOVERNED_FIELD_IDS }))
         .toEqual({ editable: false, reason: "ADMIN_ONLY" });
       expect(fieldEditability(accountRecordPage, fieldId, { isAdmin: true, adminOnlyFieldIds: ACCOUNT_GOVERNED_FIELD_IDS }).editable)
