@@ -156,6 +156,7 @@ on:
       - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
       - "functions/test/crmAuthority.test.mjs"
       - "functions/test/crmAuthorityPostgres.test.mjs"
+      - "functions/test/crmTransportPostgres.test.mjs"
       # Lane D catalog reference authority FOUNDATION (#1911): inert schema + adapter + tests, not composed.
       - "functions/src/catalogAuthority/**"
       - "functions/migrations/1759795200000_catalog-part-identity-reference-authority.sql"
@@ -322,6 +323,7 @@ on:
       - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
       - "functions/test/crmAuthority.test.mjs"
       - "functions/test/crmAuthorityPostgres.test.mjs"
+      - "functions/test/crmTransportPostgres.test.mjs"
       # Lane D catalog reference authority FOUNDATION (#1911): inert schema + adapter + tests, not composed.
       - "functions/src/catalogAuthority/**"
       - "functions/migrations/1759795200000_catalog-part-identity-reference-authority.sql"
