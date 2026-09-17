@@ -115,9 +115,9 @@ describe("no record route was created to make a row clickable", () => {
 
   it("a row click READS and never edits", () => {
     // The product invariant, asserted where somebody would break it: clicking a row opens the
-    // record read-only, and editing is a separate deliberate act. The banner now reads "EDIT IS A
-    // DESTINATION" because editing itself is stated as unavailable on the record (EMP-RT-W1): no
-    // governed PostgreSQL Employee profile writer is served, so "EDIT EDITS" would be false here.
+    // record read-only, and editing is a separate deliberate act. The banner reads "EDIT IS A
+    // DESTINATION" because the record page, not this row, decides whether the governed editor opens
+    // (EMP-RT-W1: offered only to a caller holding admin.employeeProfile.write, re-checked server-side).
     expect(EMPLOYEES).toMatch(/A ROW CLICK READS\. EDIT IS A DESTINATION\./);
     expect(code(EMPLOYEES)).not.toMatch(/contentEditable/);
   });

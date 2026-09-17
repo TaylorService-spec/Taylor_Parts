@@ -1,6 +1,7 @@
 // Governed PostgreSQL Contact authority -- wave D1-A. Internal; nothing external invokes it yet.
 //
 //   createContact        a person AT an Account of the actor's tenant; owner inherited from that Account AT CREATION
+//   importAccountContacts  the atomic CSV import: 1..200 Contacts for ONE Account, all or none, one idempotency receipt
 //   updateContact        name, email, phone, contactRole, isPrimary ONLY -- never the Account, owner or attribution
 //   getContact           one Contact of the actor's tenant
 //   listAccountContacts  bounded keyset list of one Account's Contacts
@@ -12,6 +13,20 @@
 //
 // TENANCY. The parent Account is read in the actor's tenant only, and `contacts_account_same_tenant` -- the composite
 // (tenant_id, account_id) foreign key -- makes a cross-tenant link unrepresentable even if that read were skipped.
+//
+// ATOMIC IMPORT. The legacy CSV import (field-ops-app-vite contactImport.js, retired by the CRM freeze) wrote every
+// accepted Contact for ONE Account in a single atomic Firestore batch: all or none, at most MAX_IMPORT_ROWS = 200
+// (contactCsvImport.js), never primary. importAccountContacts keeps exactly that contract in PostgreSQL:
+//   * the SAME capability as createContact (customer.record.create) and the SAME per-row validation (contactFields,
+//     name required), applied to EVERY row before the database is touched; any refused row refuses the WHOLE import
+//     with INVALID_INPUT and a per-row indexed `findings` list, and writes nothing;
+//   * isPrimary: imported Contacts are never primary -- `isPrimary: true` on a row is a finding, false is accepted;
+//   * ONE transaction: the parent Account is read in the actor's tenant under FOR SHARE, every row is inserted with the
+//     owner inherited from it exactly as createContact does, and any database failure rolls back every row;
+//   * ONE idempotency receipt for the whole import (operation crm.importAccountContacts, target the Account), in the same
+//     transaction: a replay returns the recorded result, a different request under the key refuses.
+//   * duplicates: createContact has NO server duplicate rule, so neither does the import. The legacy duplicate SKIP
+//     (contactDuplicateKey, email / name+phone against existing Contacts) was a client preview step, not a write rule.
 //
 // A Contact is not a login: nothing here references eos_policy.principals except as the acting writer.
 import { randomUUID } from "node:crypto";
@@ -33,6 +48,8 @@ import {
   runCrmCreate,
   runCrmRead,
   splitIdempotentInput,
+  CrmAuthorityError,
+  type CrmRowFinding,
   type CrmActorContext,
   type CrmDeps,
   type CrmReplayable,
@@ -108,6 +125,15 @@ function contactFields(i: Record<string, unknown>): Map<string, unknown> {
   return changes;
 }
 
+const CONTACT_ROW_FIELDS = Object.keys(CONTACT_UPDATE_COLUMNS);
+
+/** createContact's row validation, exactly: allowlist, field shapes, name required. */
+function contactCreateFields(i: Record<string, unknown>): Map<string, unknown> {
+  const fields = contactFields(i);
+  if (!fields.has("name")) fail("NAME_REQUIRED", "INVALID_INPUT", "a Contact requires a name");
+  return fields;
+}
+
 // ════════════════════ commands ════════════════════
 
 export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<CrmReplayable<ContactProjection>> {
@@ -117,10 +143,9 @@ export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
     CRM_CAPABILITIES.CUSTOMER_RECORD_CREATE,
     "crm.createContact",
     () => {
-      const i = requireAllowlistedInput(input, ["idempotencyKey", "accountId", ...Object.keys(CONTACT_UPDATE_COLUMNS)]);
+      const i = requireAllowlistedInput(input, ["idempotencyKey", "accountId", ...CONTACT_ROW_FIELDS]);
       const { idempotencyKey, request } = splitIdempotentInput(i);
-      const fields = contactFields(i);
-      if (!fields.has("name")) fail("NAME_REQUIRED", "INVALID_INPUT", "a Contact requires a name");
+      const fields = contactCreateFields(i);
       return { idempotencyKey, request, accountId: requireRecordId(i.accountId, "accountId"), fields };
     },
     async (db, { tenantId, principalId }, { accountId, fields }) => {
@@ -134,6 +159,74 @@ export function createContact(deps: CrmDeps, actor: CrmActorContext, input: unkn
           fields.get("contactRole") ?? null, fields.get("isPrimary") ?? false, inheritOwnerFromAccount(parent.ownerEmployeeId), principalId],
       );
       return { result: project(rows[0]), targetType: "CONTACT", targetId: rows[0].id };
+    },
+  );
+}
+
+/** The legacy CSV import's documented bound (contactCsvImport.js MAX_IMPORT_ROWS). A larger import refuses whole. */
+export const MAX_CONTACT_IMPORT_ROWS = 200;
+
+export interface ContactImportResult {
+  readonly accountId: string;
+  readonly importedCount: number;
+  /** In the caller's row order. */
+  readonly contacts: ContactProjection[];
+}
+
+export function importAccountContacts(deps: CrmDeps, actor: CrmActorContext, input: unknown): Promise<CrmReplayable<ContactImportResult>> {
+  return runCrmCreate(
+    deps,
+    actor,
+    CRM_CAPABILITIES.CUSTOMER_RECORD_CREATE,
+    "crm.importAccountContacts",
+    () => {
+      const i = requireAllowlistedInput(input, ["idempotencyKey", "accountId", "contacts"]);
+      const { idempotencyKey, request } = splitIdempotentInput(i);
+      const accountId = requireRecordId(i.accountId, "accountId");
+      if (!Array.isArray(i.contacts) || i.contacts.length === 0 || i.contacts.length > MAX_CONTACT_IMPORT_ROWS) {
+        fail("IMPORT_SIZE_INVALID", "INVALID_INPUT", `contacts must be an array of 1 to ${MAX_CONTACT_IMPORT_ROWS} Contacts`);
+      }
+      const findings: CrmRowFinding[] = [];
+      const rows: Map<string, unknown>[] = [];
+      (i.contacts as unknown[]).forEach((row, index) => {
+        try {
+          const fields = contactCreateFields(requireAllowlistedInput(row, CONTACT_ROW_FIELDS));
+          if (fields.get("isPrimary") === true) {
+            fail("IMPORTED_CONTACT_NEVER_PRIMARY", "INVALID_INPUT", "an imported Contact is never primary; choose the primary Contact on the Contact itself");
+          }
+          rows.push(fields);
+        } catch (err) {
+          if (!(err instanceof CrmAuthorityError)) throw err;
+          // A row naming authority is not a row mistake: the whole call is refused as the forged request it is.
+          if (err.category === "FORBIDDEN") throw err;
+          findings.push({ index, code: err.code, message: err.message });
+        }
+      });
+      if (findings.length > 0) {
+        const listed = findings.slice(0, 10).map((f) => `${f.index} (${f.code})`).join(", ");
+        fail("IMPORT_ROWS_INVALID", "INVALID_INPUT",
+          `${findings.length} of ${(i.contacts as unknown[]).length} rows were refused, so nothing was imported: ${listed}${findings.length > 10 ? ", ..." : ""}`, findings);
+      }
+      return { idempotencyKey, request, accountId, rows };
+    },
+    async (db, { tenantId, principalId }, { accountId, rows }) => {
+      const parent = await requireTenantAccount(db, tenantId, accountId, "SHARE");
+      const owner = inheritOwnerFromAccount(parent.ownerEmployeeId);
+      const ids = rows.map(() => `cont_${randomUUID()}`);
+      const column = (field: string) => rows.map((r) => (r.get(field) ?? null) as string | null);
+      const inserted = await db.query<ContactRow>(
+        `INSERT INTO eos_crm.contacts
+           (id, tenant_id, account_id, name, email, phone, contact_role, is_primary, owner_employee_id, created_by, updated_by)
+         SELECT r.id, $1, $2, r.name, r.email, r.phone, r.contact_role, FALSE, $3, $4, $4
+           FROM unnest($5::text[], $6::text[], $7::text[], $8::text[], $9::text[]) WITH ORDINALITY AS r(id, name, email, phone, contact_role, ord)
+          ORDER BY r.ord
+         RETURNING ${COLUMNS}`,
+        [tenantId, parent.id, owner, principalId, ids, column("name"), column("email"), column("phone"), column("contactRole")],
+      );
+      if (inserted.rows.length !== rows.length) fail("CRM_COMMAND_FAILED", "FAILED", "the command could not be completed");
+      const byId = new Map(inserted.rows.map((row) => [row.id, project(row)]));
+      const contacts = ids.map((id) => byId.get(id) as ContactProjection);
+      return { result: { accountId: parent.id, importedCount: contacts.length, contacts }, targetType: "ACCOUNT", targetId: parent.id };
     },
   );
 }

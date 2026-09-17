@@ -347,4 +347,19 @@ test("CRM cutover copy once / verify, in PostgreSQL", { skip: SKIP, concurrency:
     await q(`DELETE FROM eos_crm.command_receipts WHERE target_id = $1`, [projection.accountId]);
     await q(`DELETE FROM eos_crm.accounts WHERE id = $1`, [projection.accountId]);
   });
+  await t.test("(15) OWNERSHIP REMEDIATION: the copied ownerless Account was named, did not block, and gets its first owner as a governed INITIAL_OWNER_ASSIGNMENT", async () => {
+    assert.deepEqual(clean.census.ownershipRemediation, { accounts: ["acct-ownerless"] });
+    assert.equal(clean.census.copyReady, true, "an ownerless legacy Account blocked the copy");
+    assert.deepEqual(clean.census.findings.filter((f) => f.id === "acct-ownerless" && f.code === "OWNERLESS_LEGACY").map((f) => f.severity), ["ADVISORY"]);
+    const deps = { pool };
+    const writer = { tenantId: "t1", principalId: ACTOR, capabilities: new Set(["customer.record.read", "customer.record.update"]) };
+    const assigned = await accounts.updateAccount(deps, writer, { accountId: "acct-ownerless", ownerEmployeeId: "emp-owner-2" });
+    assert.equal(assigned.ownerEmployeeId, "emp-owner-2");
+    const history = await accounts.listAccountOwnershipHistory(deps, writer, { accountId: "acct-ownerless" });
+    assert.deepEqual(history.items.map((h) => [h.event, h.previousOwnerEmployeeId, h.newOwnerEmployeeId, h.source, h.changedBy]),
+      [["INITIAL_OWNER_ASSIGNMENT", null, "emp-owner-2", null, ACTOR]]);
+    // The legacy assigner/uids from the snapshot provenance are never the recorded actor.
+    const raw = (await q(`SELECT row_to_json(h)::text AS j FROM eos_crm.account_ownership_history h WHERE account_id = 'acct-ownerless'`)).rows;
+    for (const r of raw) for (const uid of [FAKE_UID_A, FAKE_UID_B, "emp-manager-1"]) assert.ok(!r.j.includes(uid), `history carries ${uid}`);
+  });
 });

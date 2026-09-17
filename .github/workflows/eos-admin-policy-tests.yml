@@ -147,14 +147,18 @@ on:
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
       - "functions/test/employeeProfileAuthority.test.mjs"
       - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
+      - "functions/test/employeeProfileCommand.test.mjs"
+      - "functions/test/employeeProfileCommandPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"
       - "functions/migrations/1759622400000_crm-capability-vocabulary.sql"
       - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
+      - "functions/migrations/1759924800000_crm-account-ownership-history.sql"
       - "functions/test/crmAuthority.test.mjs"
       - "functions/test/crmAuthorityPostgres.test.mjs"
       - "functions/test/crmTransportPostgres.test.mjs"
+      - "functions/test/crmAccountOwnershipAndImportPostgres.test.mjs"
       # Lane D catalog reference authority FOUNDATION (#1911): inert schema + adapter + tests, not composed.
       - "functions/src/catalogAuthority/**"
       - "functions/migrations/1759795200000_catalog-part-identity-reference-authority.sql"
@@ -312,14 +316,18 @@ on:
       - "functions/scripts/employeeCapabilityGrantMigrationCli.js"
       - "functions/test/employeeProfileAuthority.test.mjs"
       - "functions/test/employeeProfileAuthorityPostgres.test.mjs"
+      - "functions/test/employeeProfileCommand.test.mjs"
+      - "functions/test/employeeProfileCommandPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"
       - "functions/migrations/1759622400000_crm-capability-vocabulary.sql"
       - "functions/migrations/1759708800000_crm-account-business-facts-and-receipts.sql"
+      - "functions/migrations/1759924800000_crm-account-ownership-history.sql"
       - "functions/test/crmAuthority.test.mjs"
       - "functions/test/crmAuthorityPostgres.test.mjs"
       - "functions/test/crmTransportPostgres.test.mjs"
+      - "functions/test/crmAccountOwnershipAndImportPostgres.test.mjs"
       # Lane D catalog reference authority FOUNDATION (#1911): inert schema + adapter + tests, not composed.
       - "functions/src/catalogAuthority/**"
       - "functions/migrations/1759795200000_catalog-part-identity-reference-authority.sql"

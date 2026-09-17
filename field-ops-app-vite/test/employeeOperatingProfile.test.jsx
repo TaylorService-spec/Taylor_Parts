@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 let session = { user: { uid: "uid-dana" }, role: "admin", loading: false };
@@ -104,7 +104,6 @@ function makeWorkforce(overrides = {}, records = [DANA, LEE, SAM, KIM, PAT]) {
 const policyCall = vi.fn(async () => ({ ok: true, data: [{ id: "pr-1", displayName: "Dana Reyes", externalSubject: "uid-dana", identityProvider: "firebase", status: "active" }] }));
 
 const legacyClient = () => ({
-  updateEmployeeProfile: vi.fn(),
   setUserStatus: vi.fn(),
   assignApprovedRole: vi.fn(),
   revokeRole: vi.fn(),
@@ -425,7 +424,9 @@ describe("domain: failures in words", () => {
       expect(dep.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
       expect(dep.requiredApi).toMatch(/Governed/);
     }
-    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-08", "EMP-RT-H1", "EMP-RT-W1"]);
+    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-08", "EMP-RT-H1", "EMP-RT-W2"]);
+    // EMP-RT-W1 (the profile writer) is served now; nothing may still claim it is missing.
+    expect(Object.values(RUNTIME_DEPENDENCIES).some((d) => d.id === "EMP-RT-W1" || /profile writer is served|PROFILE_WRITER/.test(`${d.today} ${d.serverReason}`))).toBe(false);
   });
 });
 
@@ -454,7 +455,9 @@ const EMPLOYEE_PAGE_MODULES = [
   "src/modules/employees/EmployeeProfileSections.jsx",
   "src/modules/employees/MyEmployeeProfile.jsx",
   "src/modules/administration/UserDetail.jsx",
+  "src/modules/administration/EmployeeEditPanel.jsx",
   "src/hooks/useWorkforceRead.js",
+  "src/hooks/useWorkforceEmployeeDirectory.js",
   "src/hooks/usePrincipalCredential.js",
   "src/services/workforceApiClient.js",
 ];
@@ -486,6 +489,17 @@ describe("Employee business data no longer depends on Firestore", () => {
     expect(src).not.toMatch(/updateEmployeeProfile\s*\(/);
     expect(src).not.toMatch(/UserEditPanel/);
     expect(src).not.toMatch(/managerEmployeeId\s*\?/);
+  });
+
+  it("the editor's only seams are the governed Workforce directory hook and the pure domain -- no legacy callable", () => {
+    const src = code(read("src/modules/administration/EmployeeEditPanel.jsx"));
+    const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services|auth)\/[^"']*)["']/g)].map((m) => m[1]).sort();
+    expect(seams).toEqual(["../../hooks/useWorkforceEmployeeDirectory.js"]);
+    expect(src).not.toMatch(/administrationUsersClient|client\.updateEmployeeProfile|idempotencyKey/);
+    expect(src).not.toMatch(/employmentStatus"|operatingCompanyId"|operationalRoles/);
+    // The retired Firestore-shaped editor is gone, and the seam no longer exports the retired writer.
+    expect(existsSync(path.resolve(process.cwd(), "src/modules/administration/UserEditPanel.jsx"))).toBe(false);
+    expect(code(read("src/access/administrationUsersClient.js"))).not.toMatch(/updateEmployeeProfile/);
   });
 
   it("the self view's seams are the Workforce transport and the session (for sign-in and Security Role only)", () => {

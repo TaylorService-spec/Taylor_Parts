@@ -93,7 +93,17 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 //     identically to an oversight.
 //
 //     Both governed copies were re-verified byte-identical before this moved.
-const GOVERNED_RULES_SHA256 = "43d848caaa3112c7b2b26259fffb4da46cd832c0713099485795717bbfe54252";
+//   43d848caaa3112c7b2b26259fffb4da46cd832c0713099485795717bbfe54252 -- the ruleset before #1929 (c9399b52) retired
+//     every direct Firestore CRM write grant for the CRM cutover (#1925/#1928). The ENTIRE non-comment delta is:
+//     accounts, contacts and locations `allow create, update` arms (and the five Account governed-field helper
+//     functions only those arms called) replaced by `allow create, update, delete: if false;`. Reads are untouched.
+//     It GRANTS NOTHING and only NARROWS: three collections go from admin/dispatcher-writable to write-denied.
+//
+//     RE-PINNED by synchronisation, never by editing Rules to fit a hash. Proven before moving it: the old pin
+//     matched c9399b52~1 exactly, c9399b52 hashes to the new pin, and both governed copies are byte-identical.
+//     This pin is AHEAD OF LIVE until the #1929 Rules are deployed to eos-platform-sandbox: until then this
+//     verifier refusing LIVE != GOVERNED is the correct signal to deploy, and must not be resolved by moving the pin back.
+const GOVERNED_RULES_SHA256 = "e198ebe1736df8a2c153924c698e023f2210104fab87be3557785a4eb57b42bd";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

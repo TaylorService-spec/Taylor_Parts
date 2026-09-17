@@ -30,3 +30,4 @@ jobs:
           node-version: 22
       - name: Prove deterministic source digest and fail-closed expected digest contract
         run: node --test test/crmQuiescence.test.mjs
+        working-directory: functions

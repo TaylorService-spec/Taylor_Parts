@@ -581,15 +581,24 @@ test("employmentStatus mirrors domain/constants.js EMPLOYMENT_STATUS, its canoni
   assert.deepEqual([...EMPLOYMENT_STATUS_VALUES], fromConstants);
 });
 
-test("the editable field set matches the client's, so the form cannot offer what the command refuses", () => {
+test("the client no longer targets this callable: its form fields are the governed PostgreSQL profile vocabulary", () => {
+  // EMP-RT-W1C retired the client wrapper for this callable. The Administration editor now writes through the
+  // governed Workforce commands, so the client's field list mirrors the PostgreSQL writer's seventeen profile keys
+  // (asserted exactly in field-ops-app-vite/test/employeeProfileDomain.test.mjs), not this command's list. What stays
+  // true, and is pinned here, is that every client field is one this legacy command also knew, and that the only
+  // keys this command accepts beyond them are the four the governed writer refuses by name.
   const clientSrc = readFileSync(
     join(HERE, "../../field-ops-app-vite/src/domain/employeeProfile.js"),
     "utf8",
   );
   const clientKeys = [...clientSrc.matchAll(/\{ key: "([a-zA-Z.]+)", label:/g)].map((m) => m[1]);
+  const legacyKeys = EDITABLE_EMPLOYEE_FIELDS.map((f) => f.key);
+  assert.equal(clientKeys.length, 17);
+  for (const key of clientKeys) assert.ok(legacyKeys.includes(key), `${key} is not a field this command knew`);
   assert.deepEqual(
-    EDITABLE_EMPLOYEE_FIELDS.map((f) => f.key).sort(),
-    clientKeys.sort(),
-    "the enforcing list and the form's list must name the same fields",
+    legacyKeys.filter((k) => !clientKeys.includes(k)).sort(),
+    ["employmentStatus", "managerEmployeeId", "operatingCompanyId", "operationalRoles"],
   );
+  const adminClient = readFileSync(join(HERE, "../../field-ops-app-vite/src/access/administrationUsersClient.js"), "utf8");
+  assert.doesNotMatch(adminClient.replace(/\/\/.*$/gm, ""), /updateEmployeeProfile/, "the client seam must not reach the retired callable");
 });

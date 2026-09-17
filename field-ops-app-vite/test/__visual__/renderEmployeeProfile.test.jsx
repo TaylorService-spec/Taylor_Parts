@@ -71,7 +71,6 @@ const workforce = {
 const policyCall = async () => ({ ok: true, data: [{ id: "pr-1", externalSubject: "uid-dana", identityProvider: "firebase", displayName: "Dana", status: "active" }] });
 
 const client = {
-  updateEmployeeProfile: async () => ({ ok: true }),
   setUserStatus: async () => ({ ok: true }),
   assignApprovedRole: async () => ({ ok: true }),
   revokeRole: async () => ({ ok: true }),

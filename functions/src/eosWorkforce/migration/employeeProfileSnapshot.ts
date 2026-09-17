@@ -21,6 +21,10 @@
 // for reconciliation, never overwritten by a profile copy).
 import { createHash } from "node:crypto";
 
+import { PROFILE_COLUMNS, PROFILE_FIELD_MAP, normalizeProfileValue, type ProfileColumn } from "../employeeProfileVocabulary";
+
+export { PROFILE_COLUMNS, type ProfileColumn } from "../employeeProfileVocabulary";
+
 export const SNAPSHOT_FORMAT = "EOS_EMPLOYEE_PROFILE_SNAPSHOT";
 export const SNAPSHOT_VERSION = 1;
 
@@ -40,38 +44,8 @@ export interface EmployeeProfileSnapshot {
   readonly employees: readonly SnapshotEmployee[];
 }
 
-/** The PostgreSQL profile columns, in a fixed order. */
-export const PROFILE_COLUMNS = Object.freeze([
-  "employee_number", "display_name", "first_name", "middle_name", "last_name", "preferred_name", "job_title", "work_email",
-  "work_phone", "mobile_phone", "address_street", "address_unit", "address_city", "address_state", "address_postal_code",
-  "hire_date", "separation_date",
-] as const);
-export type ProfileColumn = (typeof PROFILE_COLUMNS)[number];
 
-/** Firestore dotted source path -> PostgreSQL column, and the command's validator kind. */
-const FIELD_MAP: readonly (readonly [string, ProfileColumn, "TEXT" | "EMAIL" | "DATE" | "EMPLOYEE_NUMBER"])[] = Object.freeze([
-  ["employeeNumber", "employee_number", "EMPLOYEE_NUMBER"],
-  ["displayName", "display_name", "TEXT"],
-  ["firstName", "first_name", "TEXT"],
-  ["middleName", "middle_name", "TEXT"],
-  ["lastName", "last_name", "TEXT"],
-  ["preferredName", "preferred_name", "TEXT"],
-  ["jobTitle", "job_title", "TEXT"],
-  ["workEmail", "work_email", "EMAIL"],
-  ["workPhone", "work_phone", "TEXT"],
-  ["mobilePhone", "mobile_phone", "TEXT"],
-  ["address.street", "address_street", "TEXT"],
-  ["address.unit", "address_unit", "TEXT"],
-  ["address.city", "address_city", "TEXT"],
-  ["address.state", "address_state", "TEXT"],
-  ["address.postalCode", "address_postal_code", "TEXT"],
-  ["hireDate", "hire_date", "DATE"],
-  ["separationDate", "separation_date", "DATE"],
-]);
 
-const EMPLOYEE_NUMBER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ID_SHAPE = (v: unknown): v is string => typeof v === "string" && v !== "" && v.trim() === v && v.length <= 200 && !v.includes("/");
 
 export type CanonicalProfile = { readonly id: string } & { readonly [K in ProfileColumn]: string | null };
@@ -144,25 +118,6 @@ function readAt(data: Record<string, unknown>, dotted: string): unknown {
   return (v as Record<string, unknown>)[tail];
 }
 
-function isRealCalendarDay(text: string): boolean {
-  if (!CALENDAR_DATE_PATTERN.test(text)) return false;
-  const d = new Date(`${text}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === text;
-}
-
-/** The command's normalization. Returns [value] or a finding code. */
-function normalize(kind: "TEXT" | "EMAIL" | "DATE" | "EMPLOYEE_NUMBER", raw: unknown): { value: string | null } | { code: string } {
-  if (raw === undefined || raw === null) return { value: null };
-  if (typeof raw !== "string") return { code: "NOT_A_STRING" };
-  const text = raw.trim();
-  if (text === "") return { value: null };
-  if (text.length > 200) return { code: "TOO_LONG" };
-  if (kind === "EMAIL" && !EMAIL_SHAPE.test(text)) return { code: "EMAIL_SHAPE_INVALID" };
-  if (kind === "DATE" && !isRealCalendarDay(text)) return { code: "CALENDAR_DATE_INVALID" };
-  if (kind === "EMPLOYEE_NUMBER" && !EMPLOYEE_NUMBER_PATTERN.test(text)) return { code: "EMPLOYEE_NUMBER_SHAPE_INVALID" };
-  return { value: text };
-}
-
 const byId = <T extends { id: string }>(a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 export function censusEmployeeProfileSnapshot(snapshot: EmployeeProfileSnapshot): { census: EmployeeProfileCensus; canonical: CanonicalEmployeeProfiles } {
@@ -185,10 +140,10 @@ export function censusEmployeeProfileSnapshot(snapshot: EmployeeProfileSnapshot)
     if (Array.isArray(doc.data.operationalRoles) && doc.data.operationalRoles.length > 0) operationalRolesNotMigrated += 1;
 
     const profile: Record<string, string | null> = { id: doc.id };
-    for (const [path, column, kind] of FIELD_MAP) {
+    for (const [path, column, kind] of PROFILE_FIELD_MAP) {
       const raw = readAt(doc.data, path);
       if (typeof raw === "symbol") { blockers.push({ id: doc.id, field: path, code: "ADDRESS_NOT_A_MAP" }); profile[column] = null; continue; }
-      const n = normalize(kind, raw);
+      const n = normalizeProfileValue(kind, raw);
       if ("code" in n) { blockers.push({ id: doc.id, field: path, code: n.code }); profile[column] = null; continue; }
       profile[column] = n.value;
     }
@@ -203,7 +158,7 @@ export function censusEmployeeProfileSnapshot(snapshot: EmployeeProfileSnapshot)
       numbers.set(key, [...(numbers.get(key) ?? []), doc.id]);
     }
 
-    const m = normalize("TEXT", doc.data.managerEmployeeId);
+    const m = normalizeProfileValue("TEXT", doc.data.managerEmployeeId);
     if ("code" in m) blockers.push({ id: doc.id, field: "managerEmployeeId", code: m.code });
     else if (m.value !== null) {
       if (!ID_SHAPE(m.value)) blockers.push({ id: doc.id, field: "managerEmployeeId", code: "MANAGER_ID_INVALID" });
