@@ -35,7 +35,9 @@
 //   EMP-RT-W1B endReportingRelationship       admin.employeeProfile.write.
 //   EMP-RT-W1C saveEmployeeEdit               admin.employeeProfile.write. ONLY a Save changing profile AND manager:
 //                                             both in one transaction, or neither.
-// Employee lifecycle (employmentStatus / operatingCompanyId), User Access, Security Roles and Job Roles are NOT served.
+//   EMP-RT-W2  changeEmploymentStatus         admin.employeeProfile.write. Allowed transitions only.
+//   EMP-RT-W2  changeOperatingCompany         admin.employeeProfile.write. A known, active operating company only.
+// User Access, Security Roles and Job Roles are NOT served.
 // An unserved name is an ordinary unknown operation (404); nothing is stubbed.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
@@ -50,6 +52,7 @@ import { EmployeeCommandError } from "./commands/employeeCommandKernel";
 import { updateEmployeeProfile } from "./commands/employeeProfileCommand";
 import { endReportingRelationship, establishReportingRelationship } from "./commands/reportingRelationshipCommands";
 import { saveEmployeeEdit } from "./commands/employeeEditCommand";
+import { changeEmploymentStatus, changeOperatingCompany } from "./commands/employeeLifecycleCommand";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -90,6 +93,8 @@ const COMMAND_RUNNERS = Object.freeze({
   establishReportingRelationship: command(establishReportingRelationship),
   endReportingRelationship: command(endReportingRelationship),
   saveEmployeeEdit: command(saveEmployeeEdit),
+  changeEmploymentStatus: command(changeEmploymentStatus),
+  changeOperatingCompany: command(changeOperatingCompany),
 } as const);
 
 const RUNNERS: Readonly<Record<string, Runner>> = Object.freeze({ ...READ_RUNNERS, ...COMMAND_RUNNERS });
