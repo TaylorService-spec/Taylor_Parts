@@ -393,7 +393,11 @@ async function stageAccountOwnershipChange(
   await db.query(
     `INSERT INTO eos_crm.account_ownership_history
        (id, tenant_id, account_id, event, previous_owner_employee_id, new_owner_employee_id, source, reason, changed_by, effective_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, statement_timestamp())`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+             -- Strictly after this Account's previous event even if the wall clock stepped back: the Account row lock
+             -- serializes ownership writers, so the chain's effective order is its causal order.
+             GREATEST(statement_timestamp(), (SELECT max(effective_at) + interval '1 microsecond' FROM eos_crm.account_ownership_history
+                                              WHERE tenant_id = $2 AND account_id = $3)))`,
     [`acown_${randomUUID()}`, tenantId, accountId, event, previousOwnerEmployeeId, newOwnerEmployeeId,
       event === "OWNER_HANDOFF" ? terms.source : null, terms.reason, principalId],
   );

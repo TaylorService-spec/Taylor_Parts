@@ -303,6 +303,28 @@ test("CRM Account ownership history and atomic Contact import, in PostgreSQL", {
     await assert.rejects(q(`DELETE FROM eos_crm.account_ownership_history WHERE id = $1`, [initial.id]), /append-only: DELETE/);
   });
 
+  await t.test("(A9d) the chain stays in causal order even when the wall clock steps back", async () => {
+    // Simulate a clock step-back: push the latest recorded event far into the future, then change the owner again.
+    const [latest] = (await q(`SELECT id, effective_at FROM eos_crm.account_ownership_history WHERE account_id = 'acct-remediate' ORDER BY effective_at DESC LIMIT 1`)).rows;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("ALTER TABLE eos_crm.account_ownership_history DISABLE TRIGGER USER");
+      await client.query(`UPDATE eos_crm.account_ownership_history SET effective_at = now() + interval '1 day' WHERE id = $1`, [latest.id]);
+      await client.query("ALTER TABLE eos_crm.account_ownership_history ENABLE TRIGGER USER");
+      await client.query("COMMIT");
+    } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+    const before = await ownerOf("acct-remediate");
+    const next = before === "e-a" ? "e-b" : "e-a";
+    await accounts.updateAccount(deps, A1, { accountId: "acct-remediate", ownerEmployeeId: next });
+    const rows = await history("acct-remediate");
+    const last = rows[rows.length - 1];
+    assert.deepEqual([last.previous_owner_employee_id, last.new_owner_employee_id], [before, next], "the newest event is not last in effective order");
+    // Compared in SQL: a JS Date drops the microsecond that separates them.
+    const strict = await q(`SELECT (SELECT effective_at FROM eos_crm.account_ownership_history WHERE id = $1) > (SELECT effective_at FROM eos_crm.account_ownership_history WHERE id = $2) AS ok`, [last.id, rows[rows.length - 2].id]);
+    assert.equal(strict.rows[0].ok, true);
+  });
+
   await t.test("(A9d) NO CASCADE on initial assignment: children of the remediated Account keep their own owner", async () => {
     await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-remediate-kids','t1','Kids Cafe','ACTIVE','import','import')`);
     await q(`INSERT INTO eos_crm.contacts (id, tenant_id, account_id, name, owner_employee_id, created_by, updated_by) VALUES ('con-kid','t1','acct-remediate-kids','Kid','e-c','import','import')`);
