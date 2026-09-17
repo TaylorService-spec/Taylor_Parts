@@ -1048,6 +1048,19 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.employeeWorkEligibility",
     action: "write",
   }),
+  // OPERATIONAL SCOPE (Owner ruling 2026-09-17, operationalRoles decomposition). SEPARATE from
+  // admin.employeeWorkEligibility.write by ruling: deciding WHICH warehouses an Employee covers is not the authority
+  // that decides WHAT KIND of work they are qualified for. A scope GRANTS NO APPLICATION ACCESS and expresses no
+  // qualification -- it answers only "is this Employee explicitly scoped to this warehouse?" Scope must never
+  // substitute for qualification, nor qualification for scope. Declared WITHOUT an `active` flag, like its siblings;
+  // the PostgreSQL runtime still decides every command by eos_policy.role_capabilities.
+  Object.freeze({
+    id: "admin.employeeOperationalScope.write",
+    description:
+      "Assign and end an Employee's operational scopes -- the specific warehouses they are authorized for. A scope confers no Security Role, capability, permission, Job Role, work-eligibility qualification, ownership, assignment, reporting or operating-company authority, and never grants application access.",
+    resource: "admin.employeeOperationalScope",
+    action: "write",
+  }),
   Object.freeze({
     id: "admin.accessRequest.decide",
     description: "Approve or reject a pending Access Request.",

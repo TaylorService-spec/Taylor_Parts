@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 150,
+    "capabilities": 151,
     "catalogActive": 0,
-    "catalogInactive": 150,
+    "catalogInactive": 151,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 48,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 150,
-    "parsed": 150,
+    "raw": 151,
+    "parsed": 151,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 124,
+    "SERVER_REFERENCED": 125,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
@@ -3246,6 +3246,27 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/eosWorkforce/workEligibilityVocabulary.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 1,
+        "clientReferenceCount": 0,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.employeeOperationalScope.write",
+      "resource": "admin.employeeOperationalScope",
+      "action": "write",
+      "description": "Assign and end an Employee's operational scopes -- the specific warehouses they are authorized for. A scope confers no Security Role, capability, permission, Job Role, work-eligibility qualification, ownership, assignment, reporting or operating-company authority, and never grants application access.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/eosWorkforce/operationalScopeVocabulary.ts"
         ],
         "clientReferences": [],
         "serverReferenceCount": 1,
