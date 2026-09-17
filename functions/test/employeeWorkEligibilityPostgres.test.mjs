@@ -16,7 +16,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
+import { readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
@@ -27,6 +28,18 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const vocab = require("../lib/eosWorkforce/workEligibilityVocabulary.js");
+
+const MIGRATION_FILE = "1760054400000_employee-work-eligibility-authority.sql";
+/**
+ * How many migrations must be reversed to reach THIS one. Computed, never hardcoded: a later migration must not
+ * silently turn this suite's "the reversal refuses" proof into a reversal of someone else's migration.
+ */
+const DOWN_STEPS_TO_REACH_THIS_MIGRATION = (() => {
+  const files = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
+  const index = files.indexOf(MIGRATION_FILE);
+  if (index < 0) throw new Error(`${MIGRATION_FILE} is missing: this suite proves that migration's guarantees`);
+  return files.length - index;
+})();
 
 const dbUrlFor = (name) => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); };
 async function withClient(url, fn) {
@@ -45,9 +58,10 @@ test("Employee Work Eligibility authority: closed platform vocabulary, no access
     await pool?.end();
     await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
   });
-  const migrate = (direction) => execFileSync(
+  const migrate = (direction, steps) => execFileSync(
     process.execPath,
-    ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", direction, "--migrations-dir", "migrations"],
+    ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", direction, ...(steps ? [String(steps)] : []),
+      "--migrations-dir", "migrations"],
     { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" },
   );
   migrate("up");
@@ -168,7 +182,8 @@ test("Employee Work Eligibility authority: closed platform vocabulary, no access
 
   await t.test("the down migration refuses to destroy recorded qualification history", async () => {
     let message = null;
-    try { migrate("down"); } catch (err) { message = `${err.stdout ?? ""}${err.stderr ?? ""}${err.message}`; }
+    try { migrate("down", DOWN_STEPS_TO_REACH_THIS_MIGRATION); }
+    catch (err) { message = `${err.stdout ?? ""}${err.stderr ?? ""}${err.message}`; }
     assert.ok(message, "reversing the migration with rows recorded must fail");
     assert.match(message, /refuses to reverse/);
     const still = (await q(`SELECT count(*)::int n FROM eos_workforce.employee_work_eligibility`)).rows[0].n;
