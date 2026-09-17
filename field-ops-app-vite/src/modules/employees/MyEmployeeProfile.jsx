@@ -21,7 +21,6 @@ import {
 } from "../../domain/employeeOperatingProfile.js";
 import {
   EmployeeLifecycle,
-  JobRoleSection,
   ManagedEmployeesSection,
   ManagerFact,
   ResponsibilitySection,
@@ -148,7 +147,6 @@ export default function MyEmployeeProfile({ workforce = workforceApiClient }) {
             <ManagerFact manager={describeManager(employee)} linkPeople={false} />
           </RuledSection>
 
-          <JobRoleSection />
           {securityRole}
         </div>
 

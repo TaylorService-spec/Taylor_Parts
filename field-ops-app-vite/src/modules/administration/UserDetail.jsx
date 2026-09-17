@@ -21,6 +21,8 @@ import {
 } from "../../domain/employeeProfile.js";
 import UserAccessActions from "./UserAccessActions.jsx";
 import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
+import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
+import { EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY } from "../../domain/employeeJobRole.js";
 import {
   RUNTIME_DEPENDENCIES,
   WORKFORCE_READS,
@@ -85,6 +87,9 @@ import {
 // decides what to OFFER: the command re-checks the capability server-side, and a 403 renders as "not authorized,
 // nothing saved" inside the form -- it is never hidden or turned into success.
 //
+// JOB ROLE IS NOT EDIT EMPLOYEE. The Job Role section (EMP-RT-08) has its own control, offered only to callers the
+// feed says hold admin.employeeJobRole.write (EmployeeJobRoleControl), and its own re-read after a change.
+//
 // NO OPTIMISTIC STATE. After a save that wrote something the form closes, the outcome is stated in words, and
 // record.reload() re-reads EMP-RT-01. A refused Save saved nothing and says so; there is no partial save. The page shows
 // only what that read returns; the rail sections remount with the record and re-read too.
@@ -101,6 +106,8 @@ export default function UserDetail({
   const editRequested = searchParams.get("edit") === "1";
 
   const canEdit = holdsCapability(hasCapability, EMPLOYEE_PROFILE_WRITE_CAPABILITY);
+  // A SEPARATE authority (Owner ruling EMP-RT-08): admin.employeeProfile.write never offers the Job Role control.
+  const canAssignJobRole = holdsCapability(hasCapability, EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY);
   // `?edit=1` opens the form once the capability is known; Cancel or a save closes it and it stays closed.
   const [editOpen, setEditOpen] = useState(false);
   const [editClosed, setEditClosed] = useState(false);
@@ -279,7 +286,22 @@ export default function UserDetail({
             <ManagerFact manager={manager} />
           </RuledSection>
 
-          <JobRoleSection />
+          {/* JOB ROLE (EMP-RT-08): business function only, its own section and its own governed control --
+              not part of Edit Employee's Save and not part of User Access / Security Roles below. */}
+          <JobRoleSection
+            employeeId={employee.employeeId}
+            client={workforce}
+            control={({ jobRole, reload }) => (
+              <EmployeeJobRoleControl
+                employeeId={employee.employeeId}
+                workforce={workforce}
+                canAssign={canAssignJobRole}
+                administersEmployees={canEdit}
+                jobRole={jobRole}
+                onReread={reload}
+              />
+            )}
+          />
 
           {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
               (EMP-RT-02, server-gated), and the account/Role actions on the credential behind that Principal. */}
@@ -320,6 +342,11 @@ export default function UserDetail({
                 key: "edits",
                 label: "Edits",
                 source: `The governed Workforce commands: profile facts through updateEmployeeProfile, the manager through establishReportingRelationship / endReportingRelationship. Employment Status and Operating Company have no governed writer yet (${RUNTIME_DEPENDENCIES.LIFECYCLE_WRITER.id}).`,
+              },
+              {
+                key: "jobRole",
+                label: "Job Role",
+                source: `The governed PostgreSQL Job Role authority (${WORKFORCE_READS.JOB_ROLE_HISTORY.id}), read through listEmployeeJobRoleHistory and changed only through assignEmployeeJobRole under ${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}. Business function only: it changes no access.`,
               },
               {
                 key: "access",

@@ -246,6 +246,10 @@ export const ADMINISTRATION_USERS_SURFACE_CAPABILITIES = Object.freeze([
   // control protected -- which is a coherent and useful state, not a half-broken one. The reverse
   // (write without read) is what this surface shipped as, and it is the defect being closed.
   "admin.principalAccess.read",
+  // JOB ROLE (EMP-RT-08, Owner ruling 2026-09-16). The record page's Job Role control is offered only on a positive
+  // decision for this id -- deliberately NOT admin.employeeProfile.write -- so the shell must ask for it, or an
+  // administrator who holds it would see the control protected. Asking is not granting; the command re-checks it.
+  "admin.employeeJobRole.write",
 ]);
 
 /**

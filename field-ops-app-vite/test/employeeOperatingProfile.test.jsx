@@ -20,14 +20,12 @@ import {
   ACCOUNTABLE_RECORD_FAMILIES,
   EMPLOYEE_LIFECYCLE_VALUES,
   EMPLOYEE_RUNTIME_DEPENDENCY,
-  JOB_ROLE_STATE,
   LIFECYCLE_STANDING,
   MY_PROFILE_STATE,
   OWNED_RECORD_FAMILIES,
   RESPONSIBILITY_AXIS,
   RUNTIME_DEPENDENCIES,
   USER_ACCESS_LINK,
-  describeJobRole,
   describeLifecycle,
   describeMyProfileFailure,
   describeResponsibilities,
@@ -36,6 +34,13 @@ import {
   explainWhyInFrontOfMe,
 } from "../src/domain/employeeOperatingProfile.js";
 import { EMPLOYMENT_STATUS_VALUES } from "../src/domain/employeeVocabulary.js";
+import {
+  JOB_ROLE_STATE,
+  assignableJobRoles,
+  describeEmployeeJobRole,
+  describeJobRoleRemediation,
+  jobRoleAssignInput,
+} from "../src/domain/employeeJobRole.js";
 
 const read = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
 const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^[ \t]*\/\/.*$/gm, "").replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
@@ -90,6 +95,8 @@ function makeWorkforce(overrides = {}, records = [DANA, LEE, SAM, KIM, PAT]) {
           return ok({ employeeId: input.employeeId, userAccess: byId[input.employeeId]?.userAccess, link: byId[input.employeeId]?.userAccess === "LINKED" ? LINK : null });
         case "readMyEmployeeProfile":
           return ok({ employee: DANA, principalLink: { linkId: "l-1", principalId: "pr-1", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } });
+        case "listEmployeeJobRoleHistory":
+          return ok({ employeeId: input.employeeId, current: null, items: [], truncated: false });
         case "listManagedEmployees":
         case "listRecordsOwnedByEmployee":
         case "listAccountabilitiesForEmployee":
@@ -327,22 +334,116 @@ describe("the Employee lifecycle is exactly six statuses, each displayable and r
 
 // ════════════════════ JOB ROLE ════════════════════
 
-describe("Job Role is not governed and is never inferred", () => {
-  it("a sales title and a salesperson Security Role still show Job Role: Not yet governed", async () => {
+// EMP-RT-08 listEmployeeJobRoleHistory projections, test-only.
+const jrItem = (over) => ({ assignmentId: "a-1", jobRoleId: "retail-sales", displayName: "Retail Sales", jobRoleStatus: "ACTIVE", current: false, effectiveFrom: "2026-01-01T00:00:00.000Z", effectiveTo: null, reason: null, ...over });
+const NATIONAL_CURRENT = jrItem({ assignmentId: "a-2", jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales", current: true, effectiveFrom: "2026-06-01T00:00:00.000Z", reason: "Moved to national accounts" });
+const RETAIL_ENDED = jrItem({ effectiveFrom: "2026-01-15T00:00:00.000Z", effectiveTo: "2026-06-01T00:00:00.000Z" });
+const HISTORY = ok({ employeeId: "emp-1", current: NATIONAL_CURRENT, items: [NATIONAL_CURRENT, RETAIL_ENDED], truncated: false });
+
+describe("Job Role is the governed EMP-RT-08 read, business function only, never inferred", () => {
+  it("renders the current Job Role and its history, newest first, with dates and reason", async () => {
+    const workforce = makeWorkforce({ listEmployeeJobRoleHistory: HISTORY });
+    renderRecord("emp-1", workforce);
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    const jobRole = section("Job Role");
+    await waitFor(() => expect(jobRole.querySelector('[data-employee-job-role="ASSIGNED"]')).toBeTruthy());
+    expect(workforce.call).toHaveBeenCalledWith("listEmployeeJobRoleHistory", { employeeId: "emp-1" });
+    const current = jobRole.querySelector("[data-employee-job-role]");
+    expect(current.textContent).toMatch(/National Accounts Sales/);
+    expect(current.textContent).toMatch(/since 2026-06-01/);
+    const rows = within(within(jobRole).getByRole("list", { name: "Job Role history, newest first" })).getAllByRole("listitem");
+    expect(rows.map((r) => r.getAttribute("data-job-role-assignment"))).toEqual(["CURRENT", "ENDED"]);
+    expect(rows[0].textContent).toMatch(/National Accounts Sales.*From 2026-06-01 · current.*Reason: Moved to national accounts/);
+    expect(rows[1].textContent).toMatch(/Retail Sales.*2026-01-15 to 2026-06-01/);
+    // The caption: business function, and no access change.
+    expect(within(jobRole).getByText(/describes the Employee's business function\. It does not change access/)).toBeTruthy();
+  });
+
+  it("no Job Role is stated honestly -- a sales title and a salesperson Security Role infer nothing", async () => {
     session = { user: { uid: "uid-dana" }, role: "salesperson", loading: false };
     renderRecord("emp-1");
     await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
-    const jobRole = document.querySelector("[data-employee-job-role]");
-    expect(jobRole.getAttribute("data-employee-job-role")).toBe(JOB_ROLE_STATE.NOT_GOVERNED);
+    const jobRole = section("Job Role");
+    await waitFor(() => expect(jobRole.querySelector(`[data-employee-job-role="${JOB_ROLE_STATE.NONE}"]`)).toBeTruthy());
+    expect(within(jobRole).getByText("No Job Role assigned")).toBeTruthy();
+    expect(within(jobRole).getByText("No Job Role has been recorded for this Employee.")).toBeTruthy();
     expect(jobRole.textContent).not.toMatch(/Account Executive|salesperson|Salesperson/);
-    expect(jobRole.querySelector('[data-runtime-dependency="EMP-RT-08"]')).toBeTruthy();
+    // EMP-RT-08 is served: no runtime-dependency placeholder remains.
+    expect(jobRole.querySelector("[data-runtime-dependency]")).toBeNull();
   });
 
-  it("domain: takes no input; Retail Sales and National Accounts Sales remain two future roles", () => {
-    expect(describeJobRole.length).toBe(0);
-    expect(describeJobRole().explanation).toMatch(/Retail Sales and National Accounts Sales will be separate Job Roles/);
-    expect(RUNTIME_DEPENDENCIES.JOB_ROLE_AUTHORITY.serverReason).toBe("JOB_ROLE_AUTHORITY_NOT_IMPLEMENTED");
-    expect(read("src/domain/employeeOperatingProfile.js")).not.toMatch(/["']SALES["']/);
+  it("an inactive current Job Role is labelled inactive", async () => {
+    const inactive = jrItem({ current: true, jobRoleStatus: "INACTIVE", displayName: "Retail Sales" });
+    renderRecord("emp-1", makeWorkforce({ listEmployeeJobRoleHistory: ok({ employeeId: "emp-1", current: inactive, items: [inactive], truncated: false }) }));
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    const jobRole = section("Job Role");
+    await waitFor(() => expect(within(jobRole).getByText("Inactive Job Role")).toBeTruthy());
+    expect(within(jobRole).getByText(/inactive in the catalog/)).toBeTruthy();
+    expect(within(jobRole).getByText(/Retail Sales \(inactive\)/)).toBeTruthy();
+  });
+
+  it("refused, failed and loading are distinct states -- never 'No Job Role assigned'", async () => {
+    renderRecord("emp-1", makeWorkforce({ listEmployeeJobRoleHistory: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    await waitFor(() => expect(within(section("Job Role")).getByText("This Employee's Job Role is not available to you.")).toBeTruthy());
+    expect(within(section("Job Role")).queryByText("No Job Role assigned")).toBeNull();
+    expect(within(section("Job Role")).queryByRole("button", { name: "Retry" })).toBeNull();
+    cleanup();
+
+    let n = 0;
+    const workforce = makeWorkforce({ listEmployeeJobRoleHistory: () => (n++ === 0 ? fail("UNREACHABLE") : HISTORY) });
+    renderRecord("emp-1", workforce);
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    await waitFor(() => expect(section("Job Role").querySelector('[data-employee-job-role="UNAVAILABLE"]')).toBeTruthy());
+    expect(within(section("Job Role")).getByText(/could not be loaded from the Workforce service/)).toBeTruthy();
+    const retries = within(section("Job Role")).getAllByRole("button", { name: "Retry" });
+    retries[0].click();
+    await waitFor(() => expect(section("Job Role").querySelector('[data-employee-job-role="ASSIGNED"]')).toBeTruthy());
+    cleanup();
+
+    renderRecord("emp-1", makeWorkforce({ listEmployeeJobRoleHistory: () => new Promise(() => {}) }));
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    expect(within(section("Job Role")).getByText("Reading the Job Role…")).toBeTruthy();
+  });
+
+  it("Job Role is its own section: nothing about it appears inside User Access or the employment facts", async () => {
+    renderRecord("emp-1", makeWorkforce({ listEmployeeJobRoleHistory: HISTORY }), legacyClient(), () => true);
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    await waitFor(() => expect(section("Job Role").querySelector('[data-employee-job-role="ASSIGNED"]')).toBeTruthy());
+    for (const other of ["User Access", "Employment & business context", "Responsibility"]) {
+      const s = section(other);
+      expect(s.querySelector("[data-job-role-section], [data-job-role-control], [data-employee-job-role]"), other).toBeNull();
+      expect(s.textContent, other).not.toMatch(/National Accounts Sales|Assign Job Role|Change Job Role/);
+    }
+    expect(within(section("Job Role")).queryByText(/Security Role:|Add Role|Remove Role/)).toBeNull();
+  });
+
+  it("the self view shows no Job Role section and makes no Job Role read (no governed self read exists)", async () => {
+    const workforce = makeWorkforce({ listEmployeeJobRoleHistory: HISTORY });
+    renderSelf(workforce);
+    await screen.findByRole("heading", { level: 1, name: "Dana Reyes" });
+    expect(screen.queryByRole("heading", { level: 2, name: "Job Role" })).toBeNull();
+    expect(document.querySelector("[data-job-role-section], [data-employee-job-role]")).toBeNull();
+    expect(workforce.call.mock.calls.some(([operation]) => /JobRole/.test(operation))).toBe(false);
+  });
+
+  it("domain: words come only from the read; inactive roles are never assignable; the command input is closed", () => {
+    expect(describeEmployeeJobRole({ current: null, items: [], truncated: false })).toMatchObject({ state: "NONE", words: "No Job Role assigned" });
+    expect(describeEmployeeJobRole(HISTORY.result)).toMatchObject({ state: "ASSIGNED", words: "National Accounts Sales" });
+    expect(
+      assignableJobRoles({
+        items: [
+          { jobRoleId: "retail-sales", displayName: "Retail Sales", status: "ACTIVE" },
+          { jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales", status: "ACTIVE" },
+          { jobRoleId: "old-role", displayName: "Old Role", status: "INACTIVE" },
+        ],
+      }).map((o) => o.value),
+    ).toEqual(["national-accounts-sales", "retail-sales"]);
+    expect(jobRoleAssignInput({ employeeId: "e", jobRoleId: "r", reason: "  " })).toEqual({ employeeId: "e", jobRoleId: "r" });
+    expect(jobRoleAssignInput({ employeeId: "e", jobRoleId: "r", reason: " why " })).toEqual({ employeeId: "e", jobRoleId: "r", reason: "why" });
+    expect(describeJobRoleRemediation({ count: 0 })).toBeNull();
+    expect(describeJobRoleRemediation({ count: 3 }).words).toBe("3 Employees have no Job Role");
+    expect(read("src/domain/employeeJobRole.js")).not.toMatch(/["']SALES["']/);
   });
 });
 
@@ -424,7 +525,9 @@ describe("domain: failures in words", () => {
       expect(dep.kind).toBe(EMPLOYEE_RUNTIME_DEPENDENCY);
       expect(dep.requiredApi).toMatch(/Governed/);
     }
-    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-08", "EMP-RT-H1", "EMP-RT-W2"]);
+    expect(Object.values(RUNTIME_DEPENDENCIES).map((d) => d.id).sort()).toEqual(["EMP-RT-05", "EMP-RT-H1", "EMP-RT-W2"]);
+    // EMP-RT-08 (Job Role) is served now; nothing may still claim it is missing.
+    expect(Object.values(RUNTIME_DEPENDENCIES).some((d) => d.id === "EMP-RT-08" || /Job Role/.test(`${d.fact} ${d.today} ${d.serverReason}`))).toBe(false);
     // EMP-RT-W1 (the profile writer) is served now; nothing may still claim it is missing.
     expect(Object.values(RUNTIME_DEPENDENCIES).some((d) => d.id === "EMP-RT-W1" || /profile writer is served|PROFILE_WRITER/.test(`${d.today} ${d.serverReason}`))).toBe(false);
   });
@@ -456,6 +559,9 @@ const EMPLOYEE_PAGE_MODULES = [
   "src/modules/employees/MyEmployeeProfile.jsx",
   "src/modules/administration/UserDetail.jsx",
   "src/modules/administration/EmployeeEditPanel.jsx",
+  "src/domain/employeeJobRole.js",
+  "src/modules/administration/EmployeeJobRoleControl.jsx",
+  "src/modules/administration/JobRoleRemediation.jsx",
   "src/hooks/useWorkforceRead.js",
   "src/hooks/useWorkforceEmployeeDirectory.js",
   "src/hooks/usePrincipalCredential.js",

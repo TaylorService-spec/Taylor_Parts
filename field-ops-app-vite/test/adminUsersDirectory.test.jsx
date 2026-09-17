@@ -46,11 +46,18 @@ const PAGE_TWO = [item({ employeeId: "pg-emp-7", displayName: "Kim Wu", employme
 const ok = (result) => ({ ok: true, result });
 const fail = (code, reason = null, status = null) => ({ ok: false, code, reason, status, message: "refused" });
 
-/** A mocked Workforce transport that pages: the first call returns a cursor, the second consumes it. */
-function makeWorkforce({ pages = [PAGE_ONE], cursors = [null], failWith = null } = {}) {
+// EMP-RT-08 listEmployeesWithoutJobRole: nobody is missing a Job Role unless a test says otherwise.
+const NONE_WITHOUT_JOB_ROLE = ok({ count: 0, items: [], truncated: false, nextCursor: null });
+
+/**
+ * A mocked Workforce transport that pages: the first call returns a cursor, the second consumes it. `withoutJobRole`
+ * answers the EMP-RT-08 remediation read (a value, or a function of the input).
+ */
+function makeWorkforce({ pages = [PAGE_ONE], cursors = [null], failWith = null, withoutJobRole = NONE_WITHOUT_JOB_ROLE } = {}) {
   let call = 0;
   return {
     call: vi.fn(async (operation, input) => {
+      if (operation === "listEmployeesWithoutJobRole") return typeof withoutJobRole === "function" ? withoutJobRole(input) : withoutJobRole;
       if (operation !== "listEmployees") return fail("UNKNOWN_OPERATION");
       if (failWith && call === 0) {
         call += 1;
@@ -62,6 +69,8 @@ function makeWorkforce({ pages = [PAGE_ONE], cursors = [null], failWith = null }
     }),
   };
 }
+
+const directoryCalls = (workforce) => workforce.call.mock.calls.filter((c) => c[0] === "listEmployees");
 
 const renderDirectory = (workforce = makeWorkforce()) => {
   render(
@@ -81,8 +90,7 @@ describe("the directory is the governed PostgreSQL Employee read", () => {
   it("invokes listEmployees and renders the projection it returns", async () => {
     const workforce = renderDirectory();
     expect(await screen.findByText("John Smith")).toBeTruthy();
-    expect(workforce.call).toHaveBeenCalledTimes(1);
-    expect(workforce.call.mock.calls[0][0]).toBe("listEmployees");
+    expect(directoryCalls(workforce).length).toBe(1);
     expect(screen.getByRole("heading", { name: "Users" })).toBeTruthy();
     expect(screen.getByText("Pat Lee")).toBeTruthy();
     expect(screen.getByText("TAZ-0042")).toBeTruthy();
@@ -151,7 +159,7 @@ describe("pagination follows the read's own cursor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
     expect(await screen.findByText("Kim Wu")).toBeTruthy();
-    expect(workforce.call.mock.calls[1]).toEqual(["listEmployees", { cursor: "cursor-1" }]);
+    expect(directoryCalls(workforce)[1]).toEqual(["listEmployees", { cursor: "cursor-1" }]);
     // Appended, not replaced.
     expect(screen.getByText("John Smith")).toBeTruthy();
     expect(screen.getByText("Terminated")).toBeTruthy();
@@ -175,12 +183,12 @@ describe("failures are stated, and nothing else is read", () => {
     expect(await screen.findByText(/could not be loaded from the Workforce service/)).toBeTruthy();
     expect(screen.queryByText("John Smith")).toBeNull();
     expect(screen.queryByText("Nothing here yet")).toBeNull();
-    // Only the one operation was ever called.
-    expect(workforce.call.mock.calls.every((c) => c[0] === "listEmployees")).toBe(true);
+    // Only the directory read (and, beside it, its own EMP-RT-08 remediation read) was ever called -- no second source.
+    expect(workforce.call.mock.calls.every((c) => c[0] === "listEmployees" || c[0] === "listEmployeesWithoutJobRole")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("John Smith")).toBeTruthy();
-    expect(workforce.call.mock.calls.length).toBe(2);
+    expect(directoryCalls(workforce).length).toBe(2);
   });
 
   it("a refusal says not available to you -- never an empty directory", async () => {
@@ -212,6 +220,75 @@ describe("Employee and Principal stay separate on this page", () => {
   });
 });
 
+// ════════════════════ EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08) ════════════════════
+
+describe("the Job Role remediation count is its own governed read", () => {
+  const MISSING = [
+    item({ employeeId: "pg-emp-21", displayName: "Rae Quinn" }),
+    item({ employeeId: "pg-emp-22", displayName: "Sol Vega", employmentStatus: "ON_LEAVE" }),
+  ];
+
+  it("states 'N Employees have no Job Role' and lists them, each linking to its record", async () => {
+    const workforce = renderDirectory(makeWorkforce({ withoutJobRole: ok({ count: 2, items: MISSING, truncated: false, nextCursor: null }) }));
+    expect(await screen.findByText("2 Employees have no Job Role")).toBeTruthy();
+    // The read is sent with no tenant, principal or capability -- an empty input.
+    expect(workforce.call.mock.calls.filter((c) => c[0] === "listEmployeesWithoutJobRole")).toEqual([["listEmployeesWithoutJobRole", {}]]);
+    const list = screen.getByRole("list", { name: "Employees without a Job Role" });
+    expect(within(list).getByRole("link", { name: "Rae Quinn" }).getAttribute("href")).toBe("/administration/users/pg-emp-21");
+    expect(within(list).getByRole("link", { name: "Sol Vega" }).getAttribute("href")).toBe("/administration/users/pg-emp-22");
+    // Still not a directory column.
+    expect(screen.queryByRole("columnheader", { name: "Job Role" })).toBeNull();
+  });
+
+  it("one Employee reads in the singular", async () => {
+    renderDirectory(makeWorkforce({ withoutJobRole: ok({ count: 1, items: MISSING.slice(0, 1), truncated: false, nextCursor: null }) }));
+    expect(await screen.findByText("1 Employee has no Job Role")).toBeTruthy();
+  });
+
+  it("the list pages by the read's own cursor", async () => {
+    const workforce = renderDirectory(
+      makeWorkforce({
+        withoutJobRole: (input) =>
+          input?.cursor === "jr-cursor"
+            ? ok({ count: 2, items: MISSING.slice(1), truncated: false, nextCursor: null })
+            : ok({ count: 2, items: MISSING.slice(0, 1), truncated: true, nextCursor: "jr-cursor" }),
+      }),
+    );
+    await screen.findByText("2 Employees have no Job Role");
+    fireEvent.click(screen.getByRole("button", { name: "Show more Employees without a Job Role" }));
+    expect(await screen.findByRole("link", { name: "Sol Vega" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Rae Quinn" })).toBeTruthy();
+    expect(workforce.call).toHaveBeenCalledWith("listEmployeesWithoutJobRole", { cursor: "jr-cursor" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Show more Employees without a Job Role" })).toBeNull());
+  });
+
+  it("a zero count renders nothing", async () => {
+    renderDirectory();
+    await screen.findByText("John Smith");
+    await waitFor(() => expect(document.querySelector("[data-job-role-remediation]")).toBeNull());
+    expect(screen.queryByText(/have no Job Role|has no Job Role/)).toBeNull();
+  });
+
+  it("a refusal is stated, never shown as nobody missing a Job Role", async () => {
+    renderDirectory(makeWorkforce({ withoutJobRole: fail("FORBIDDEN", "CAPABILITY_REQUIRED", 403) }));
+    expect(await screen.findByText("The count of Employees without a Job Role is not available to you.")).toBeTruthy();
+    expect(document.querySelector("[data-job-role-remediation]").getAttribute("data-job-role-remediation")).toBe("FAILED");
+    // The directory itself is unaffected.
+    expect(await screen.findByText("John Smith")).toBeTruthy();
+  });
+
+  it("an outage is stated with Retry, and Retry re-reads", async () => {
+    let n = 0;
+    const workforce = renderDirectory(
+      makeWorkforce({ withoutJobRole: () => (n++ === 0 ? fail("UNREACHABLE") : ok({ count: 1, items: MISSING.slice(0, 1), truncated: false, nextCursor: null })) }),
+    );
+    expect(await screen.findByText(/The count of Employees without a Job Role could not be loaded from the Workforce service/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("1 Employee has no Job Role")).toBeTruthy();
+    expect(workforce.call.mock.calls.filter((c) => c[0] === "listEmployeesWithoutJobRole").length).toBe(2);
+  });
+});
+
 // ════════════════════ STATIC RATCHET ════════════════════
 
 describe("no Firestore Employee-directory read remains", () => {
@@ -223,6 +300,14 @@ describe("no Firestore Employee-directory read remains", () => {
     expect(src).not.toMatch(/useEmployeeDirectory|domain\/employees/);
     const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|services|access)\/[^"']*)["']/g)].map((m) => m[1]).sort();
     expect(seams).toEqual(["../../hooks/useWorkforceEmployeeDirectory.js", "../../services/workforceApiClient.js"]);
+  });
+
+  it("the Job Role remediation reads only the Workforce transport it is handed", () => {
+    const src = code(read("src/modules/administration/JobRoleRemediation.jsx"));
+    expect(src).toMatch(/workforce\.call\(operation/);
+    expect(src).not.toMatch(/from\s+["']firebase(\/[a-z-]+)?["']/);
+    expect(src).not.toMatch(/useMetadataList|firestore|httpsCallable/i);
+    expect(src).not.toMatch(/tenantId|principalId|capabilit/);
   });
 
   it("the directory hook holds the governed read only -- one operation, no fallback", () => {
