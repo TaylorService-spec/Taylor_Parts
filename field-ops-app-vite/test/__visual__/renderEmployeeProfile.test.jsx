@@ -58,6 +58,9 @@ const workforce = {
         const ended = { assignmentId: "a-1", jobRoleId: "retail-sales", displayName: "Retail Sales", jobRoleStatus: "INACTIVE", current: false, effectiveFrom: "2025-01-15T00:00:00.000Z", effectiveTo: "2026-06-01T00:00:00.000Z", reason: null };
         return { ok: true, result: { employeeId: "emp-1", current, items: [current, ended], truncated: false } };
       }
+      case "readMyWorkforceCapabilities":
+        // Finding #17: the Workforce offer comes from this PostgreSQL read, so the harness grants it here.
+        return { ok: true, result: { capabilities: ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write"] } };
       case "listJobRoles":
         return { ok: true, result: { items: [{ jobRoleId: "retail-sales", displayName: "Retail Sales", status: "ACTIVE" }, { jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales", status: "ACTIVE" }] } };
       case "listManagedEmployees":

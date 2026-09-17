@@ -4,6 +4,7 @@ import { Button } from "../../shared/ui/primitives/index.js";
 import LoadingState from "../../shared/ui/LoadingState";
 import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
 import { WORKFORCE_READS } from "../../domain/employeeOperatingProfile.js";
+import { WORKFORCE_CAPABILITY_STATE, WORKFORCE_CAPABILITY_SUBJECT } from "../../hooks/useWorkforceCapabilities.js";
 import {
   EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY,
   JOB_ROLE_ASSIGN_OPERATION,
@@ -23,10 +24,12 @@ import { WorkforceFailure } from "../employees/EmployeeProfileSections.jsx";
 // Role section and nowhere else: it is not part of Edit Employee's Save (EmployeeEditPanel sends no Job Role), and it
 // is not a Security Role action (UserAccessActions never sees it). Changing a Job Role changes no access.
 //
-// WHO IS OFFERED IT. Only a caller the trusted capability feed says holds admin.employeeJobRole.write -- never
-// admin.employeeProfile.write, which is a different authority. Everyone else sees the page's usual protected button
-// with the reason. That test decides only what to OFFER: the command re-checks the capability server-side, and a 403
-// renders as "not authorized, nothing saved".
+// WHO IS OFFERED IT. Only a caller the PostgreSQL Workforce capability read (readMyWorkforceCapabilities, finding #17)
+// says holds admin.employeeJobRole.write -- never admin.employeeProfile.write, which is a different authority, and never
+// the Firebase effective-access feed. Everyone else sees the page's usual protected button with the reason. While that
+// read is loading nothing is offered or refused; if it FAILED the control says the permissions could not be read and
+// offers Retry -- it never claims "not granted" or "not configured" from a read that did not answer. That test decides
+// only what to OFFER: the command re-checks the capability server-side, and a 403 renders as "not authorized, nothing saved".
 //
 // ONE COMMAND, THEN A RE-READ. Save sends exactly { employeeId, jobRoleId, reason? } as ONE assignEmployeeJobRole
 // call -- no tenant, principal, actor or capability. The choice is a closed list of the ACTIVE catalog roles from
@@ -37,8 +40,9 @@ import { WorkforceFailure } from "../employees/EmployeeProfileSections.jsx";
 // ════════════════════ FAIL CLOSED WHEN THE TENANT IS NOT CONFIGURED ════════════════════
 //
 // An unconfigured tenant is never presented as a business with zero Job Roles. Two configuration facts must exist:
-//   * the administrator grant: a caller who administers Employees (admin.employeeProfile.write) but is not granted
-//     admin.employeeJobRole.write means the grant reconciliation has not run for this tenant;
+//   * the administrator grant: a caller the Workforce read says administers Employees (admin.employeeProfile.write) but
+//     is not granted admin.employeeJobRole.write means the grant reconciliation has not run for this tenant. Both facts
+//     come from ONE successful PostgreSQL answer; a failed read is not evidence of either;
 //   * an ACTIVE catalog: for a granted caller the catalog is read up front, and zero ACTIVE roles means the launch
 //     catalog has not been seeded.
 // Either way the control shows JOB_ROLE_NOT_CONFIGURED_WORDS -- no Assign button, no empty dropdown. A caller who
@@ -48,9 +52,22 @@ const NO_INPUT = Object.freeze({});
 
 export const JOB_ROLE_NOT_CONFIGURED_WORDS = "Job Role administration is not configured for this tenant.";
 
-const NOT_GRANTED_REASON = `The trusted access feed did not grant Job Role assignment (${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}) for your account.`;
+const NOT_GRANTED_REASON = `The Workforce service did not grant Job Role assignment (${EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY}) for your account.`;
 
-export default function EmployeeJobRoleControl({ employeeId, workforce, canAssign, administersEmployees = false, jobRole, onReread }) {
+export default function EmployeeJobRoleControl({
+  employeeId,
+  workforce,
+  canAssign,
+  administersEmployees = false,
+  // The Workforce capability read's state. Defaults to LOADING, so a caller that does not say offers nothing.
+  capabilityStatus = WORKFORCE_CAPABILITY_STATE.LOADING,
+  capabilityError = null,
+  onRetryCapabilities = null,
+  jobRole,
+  onReread,
+}) {
+  const capabilitiesReady = capabilityStatus === WORKFORCE_CAPABILITY_STATE.READY;
+  const offered = capabilitiesReady && canAssign === true;
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState("");
   const [reason, setReason] = useState("");
@@ -60,7 +77,7 @@ export default function EmployeeJobRoleControl({ employeeId, workforce, canAssig
   const submittingRef = useRef(false);
 
   // The catalog is read for a granted caller up front, so an unseeded tenant is stated before anything is offered.
-  const catalog = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_CATALOG.operation, canAssign ? NO_INPUT : null, { client: workforce });
+  const catalog = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_CATALOG.operation, offered ? NO_INPUT : null, { client: workforce });
   const options = catalog.status === WORKFORCE_READ_STATE.READY ? assignableJobRoles(catalog.data) : [];
 
   const label = jobRole?.current ? "Change Job Role" : "Assign Job Role";
@@ -76,10 +93,25 @@ export default function EmployeeJobRoleControl({ employeeId, workforce, canAssig
     </div>
   );
 
-  if (!canAssign && administersEmployees) return notConfigured("GRANT");
-  if (canAssign && catalog.status === WORKFORCE_READ_STATE.READY && options.length === 0) return notConfigured("CATALOG");
+  if (capabilityStatus === WORKFORCE_CAPABILITY_STATE.FAILED) {
+    return (
+      <div className="ns-emp-edit-notice" data-job-role-control="CAPABILITIES_UNAVAILABLE">
+        <WorkforceFailure error={capabilityError} subject={WORKFORCE_CAPABILITY_SUBJECT} onRetry={onRetryCapabilities} />
+      </div>
+    );
+  }
+  if (!capabilitiesReady) {
+    return (
+      <div data-job-role-control="CHECKING">
+        <LoadingState>Checking your Job Role permissions…</LoadingState>
+      </div>
+    );
+  }
 
-  if (!canAssign) {
+  if (!offered && administersEmployees === true) return notConfigured("GRANT");
+  if (offered && catalog.status === WORKFORCE_READ_STATE.READY && options.length === 0) return notConfigured("CATALOG");
+
+  if (!offered) {
     return (
       <div className="fo-btn-row" data-job-role-control="NOT_GRANTED">
         <Button variant="protected" id="employee-job-role-assign" reason={NOT_GRANTED_REASON}>

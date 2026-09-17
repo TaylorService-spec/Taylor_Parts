@@ -3138,15 +3138,17 @@
           "functions/src/access/trustedWriterCommands.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
           "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts",
-          "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts"
+          "functions/src/eosWorkforce/reads/employeePrincipalLinkRead.ts",
+          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 5,
-        "clientReferenceCount": 3,
+        "serverReferenceCount": 6,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3165,13 +3167,14 @@
         "serverReferences": [
           "functions/src/access/employeeProfileCommands.ts",
           "functions/src/eosWorkforce/commands/employeeCommandKernel.ts",
-          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/modules/administration/UserDetail.jsx"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3191,13 +3194,15 @@
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
-          "functions/src/eosWorkforce/reads/employeeDirectoryReads.ts"
+          "functions/src/eosWorkforce/reads/employeeDirectoryReads.ts",
+          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedBusinessRoles.ts"
+          "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
         ],
-        "serverReferenceCount": 3,
-        "clientReferenceCount": 1,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3215,13 +3220,14 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts",
-          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
         "clientReferences": [
-          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
           "field-ops-app-vite/src/domain/employeeJobRole.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
       },

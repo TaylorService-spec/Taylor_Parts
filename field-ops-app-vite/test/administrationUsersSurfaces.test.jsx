@@ -73,7 +73,10 @@ function seedRecords(list = [JOHN_REC, MIKE_REC]) {
  * test that forgot to expect a write fails loudly instead of passing on a silent success.
  */
 function makeWorkforce(commands = {}) {
-  return {
+  const workforce = {
+    // readMyWorkforceCapabilities (finding #17): the caller's PostgreSQL Workforce capabilities. None unless a test
+    // grants them with `grant(workforce, ids)` or answers the operation itself through `commands`.
+    grants: [],
     call: vi.fn(async (operation, input) => {
       const rec = input?.employeeId ? records[input.employeeId] : null;
       if (Object.prototype.hasOwnProperty.call(commands, operation)) {
@@ -110,12 +113,18 @@ function makeWorkforce(commands = {}) {
         case "listRecordsOwnedByEmployee":
         case "listAccountabilitiesForEmployee":
           return { ok: true, result: { items: [], truncated: false, nextCursor: null } };
+        case "readMyWorkforceCapabilities":
+          return { ok: true, result: { capabilities: [...workforce.grants] } };
         default:
           return { ok: false, code: "UNKNOWN_OPERATION" };
       }
     }),
   };
+  return workforce;
 }
+
+/** Grant Workforce capabilities through the PostgreSQL capability read -- the ONLY source of the Workforce offer. */
+const grant = (workforce, ids) => Object.assign(workforce, { grants: [...ids] });
 
 /** The Administration API's listTenantPrincipals: the Principal -> credential mapping. */
 const policyCall = vi.fn(async () => ({
@@ -450,7 +459,6 @@ describe("EOS access and security stay independent, and fail closed", () => {
     // reads as denied. That is fail-closed and correct, and it is also why Enable/Disable stayed
     // permanently protected for a principal who genuinely held the grant. The fix is to ask.
     for (const id of [
-      "admin.employeeProfile.write",
       "admin.userStatus.write",
       "audit.event.read",
       "admin.credentialReset.initiate",
@@ -462,10 +470,13 @@ describe("EOS access and security stay independent, and fail closed", () => {
       // governed Roles listed. This is the same defect for the third time in this workstream, which
       // is why every id the surface consults is enumerated here rather than spot-checked.
       "admin.principalAccess.read",
-      // EMP-RT-08: the Job Role control's own authority. Unasked, it would be protected for an administrator who holds it.
-      "admin.employeeJobRole.write",
     ]) {
       expect(REPORT_CAPABILITY_REQUEST, id).toContain(id);
+    }
+    // Finding #17: the Workforce ids are NOT asked of this feed. Their offer comes from readMyWorkforceCapabilities.
+    for (const id of ["admin.employeeProfile.write", "admin.employeeJobRole.write"]) {
+      expect(ADMINISTRATION_USERS_SURFACE_CAPABILITIES, id).not.toContain(id);
+      expect(REPORT_CAPABILITY_REQUEST, id).not.toContain(id);
     }
   });
 
@@ -497,14 +508,16 @@ describe("EOS access and security stay independent, and fail closed", () => {
 // the three governed Workforce commands, and the page RE-READS the record after any write. The server remains the
 // authority: every refusal below is a command answer the page must render, not something the capability test hides.
 
-const EDIT_GRANTED = (id) => id === "admin.employeeProfile.write";
+// Granted through the Workforce capability read. The Firebase feed is given NO grant in these tests, so an editor that
+// opens proves the offer follows PostgreSQL.
+const EDIT_GRANTED = ["admin.employeeProfile.write"];
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit"];
 const commandCalls = (workforce) => workforce.call.mock.calls.filter(([operation]) => COMMANDS.includes(operation));
 const readCount = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "readEmployee").length;
 const UPDATED = (changedFields) => ({ ok: true, result: { outcome: "UPDATED", employeeId: "emp-1", changedFields, auditEventId: "ae-1" } });
 
 async function openEditor(workforce, { client = okHistory(), search = "" } = {}) {
-  renderDetail(client, "emp-1", search, EDIT_GRANTED, workforce);
+  renderDetail(client, "emp-1", search, () => false, grant(workforce, EDIT_GRANTED));
   if (!search) fireEvent.click(await screen.findByRole("button", { name: "Edit Employee" }));
   await screen.findByRole("button", { name: "Save" });
   // The Manager control is usable only once the governed directory has been read.
@@ -534,7 +547,7 @@ describe("Edit Employee is offered by capability, and the server stays the autho
 
   it("with the capability the button is live and opens the editor seeded from the PostgreSQL record", async () => {
     const workforce = makeWorkforce();
-    renderDetail(okHistory(), "emp-1", "", EDIT_GRANTED, workforce);
+    renderDetail(okHistory(), "emp-1", "", undefined, grant(workforce, EDIT_GRANTED));
     const edit = await screen.findByRole("button", { name: "Edit Employee" });
     expect(edit.hasAttribute("disabled")).toBe(false);
     expect(screen.queryByRole("textbox")).toBeNull();
@@ -913,14 +926,14 @@ describe("Change History sits at the bottom of the record and shows AUDITED even
 // by admin.employeeProfile.write -- lives in the Job Role section, sends exactly { employeeId, jobRoleId, reason? } as
 // ONE assignEmployeeJobRole, and is followed by a RE-READ of the history. Every refusal is the server's, stated exactly.
 
-const JOB_ROLE_GRANTED = (id) => id === "admin.employeeJobRole.write";
+const JOB_ROLE_GRANTED = ["admin.employeeJobRole.write"];
 const jobRoleSection = () => screen.getByRole("heading", { level: 2, name: "Job Role" }).closest("section");
 const assignCalls = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "assignEmployeeJobRole");
 const historyReads = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "listEmployeeJobRoleHistory").length;
 const WRITE_OPERATIONS = ["assignEmployeeJobRole", "createJobRole", "updateJobRole", ...COMMANDS];
 
-async function openJobRoleControl(workforce, hasCapability = JOB_ROLE_GRANTED) {
-  renderDetail(okHistory(), "emp-1", "", hasCapability, workforce);
+async function openJobRoleControl(workforce, grants = JOB_ROLE_GRANTED) {
+  renderDetail(okHistory(), "emp-1", "", () => false, grant(workforce, grants));
   await screen.findByRole("heading", { level: 1, name: "John Smith" });
   fireEvent.click(await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" }));
   return within(jobRoleSection()).findByLabelText("Job Role");
@@ -941,9 +954,9 @@ describe("the Job Role control is offered only by admin.employeeJobRole.write", 
 
   it("admin.employeeProfile.write ALONE does not offer it: an Employee administrator without the Job Role grant sees the tenant is NOT CONFIGURED", async () => {
     const workforce = makeWorkforce();
-    renderDetail(okHistory(), "emp-1", "", EDIT_GRANTED, workforce);
+    renderDetail(okHistory(), "emp-1", "", undefined, grant(workforce, EDIT_GRANTED));
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(false);
+    expect((await screen.findByRole("button", { name: "Edit Employee" })).hasAttribute("disabled")).toBe(false);
     const state = await waitFor(() => {
       const el = jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]');
       expect(el).toBeTruthy();
@@ -960,7 +973,7 @@ describe("the Job Role control is offered only by admin.employeeJobRole.write", 
     for (const items of [[], [{ jobRoleId: "legacy-estimator", displayName: "Legacy Estimator", status: "INACTIVE" }]]) {
       cleanup();
       const workforce = makeWorkforce({ listJobRoles: { ok: true, result: { items } } });
-      renderDetail(okHistory(), "emp-1", "", JOB_ROLE_GRANTED, workforce);
+      renderDetail(okHistory(), "emp-1", "", undefined, grant(workforce, JOB_ROLE_GRANTED));
       await screen.findByRole("heading", { level: 1, name: "John Smith" });
       const state = await waitFor(() => {
         const el = jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]');
@@ -990,7 +1003,7 @@ describe("the Job Role control is offered only by admin.employeeJobRole.write", 
 
   it("a catalog that cannot be read is stated, and nothing can be saved", async () => {
     const workforce = makeWorkforce({ listJobRoles: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
-    renderDetail(okHistory(), "emp-1", "", JOB_ROLE_GRANTED, workforce);
+    renderDetail(okHistory(), "emp-1", "", undefined, grant(workforce, JOB_ROLE_GRANTED));
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     fireEvent.click(await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" }));
     expect(await within(jobRoleSection()).findByText("The Job Role catalog is not available to you.")).toBeTruthy();
@@ -1090,6 +1103,153 @@ describe("Job Role is not part of Edit Employee or of Security Role actions", ()
     // The control never offers anything under admin.employeeProfile.write.
     expect(src("src/modules/administration/EmployeeJobRoleControl.jsx")).not.toMatch(/employeeProfile\.write"/);
     expect(src("src/modules/administration/EmployeeJobRoleControl.jsx")).not.toMatch(/from\s+["']firebase|httpsCallable|firestore/i);
+  });
+});
+
+// ════════════════════ FINDING #17: THE WORKFORCE OFFER FOLLOWS POSTGRESQL, NOT THE FIREBASE FEED ════════════════════
+//
+// Edit Employee and the Job Role control are offered from readMyWorkforceCapabilities -- the caller's PostgreSQL
+// capabilities, the same set the Workforce commands re-check. Each test below injects a Firebase feed that says the
+// OPPOSITE, so a page still reading the feed for these controls fails. User Access actions still follow the feed.
+
+const capabilityReads = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "readMyWorkforceCapabilities");
+const ALL_WORKFORCE = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write"];
+const FEED_GRANTS_ALL = () => true;
+const FEED_DENIES_ALL = () => false;
+
+describe("finding #17: Workforce controls are offered from the PostgreSQL capability read", () => {
+  it("the feed grants everything, PostgreSQL grants nothing: Edit Employee and Job Role are NOT offered", async () => {
+    const workforce = makeWorkforce();
+    renderDetail(okHistory(), "emp-1", "?edit=1", FEED_GRANTS_ALL, workforce);
+    const edit = await screen.findByRole("button", { name: "Edit Employee" });
+    expect(edit.hasAttribute("disabled")).toBe(true);
+    expect(screen.getAllByText(/Workforce service did not grant Employee profile editing/).length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-employee-edit="NOT_GRANTED"]')).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    const control = await waitFor(() => {
+      const el = jobRoleSection().querySelector('[data-job-role-control="NOT_GRANTED"]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    expect(within(control).getByRole("button", { name: "Assign Job Role" }).hasAttribute("disabled")).toBe(true);
+    expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || operation === "listEmployees")).toBe(false);
+    // ...while the User Access actions, whose authority is still the feed, stay live from it.
+    expect((await screen.findByRole("button", { name: /Disable Account/ })).hasAttribute("disabled")).toBe(false);
+  });
+
+  it("the feed denies everything, PostgreSQL grants the Workforce ids: both controls are offered; User Access stays protected", async () => {
+    const workforce = grant(makeWorkforce(), ALL_WORKFORCE);
+    renderDetail(okHistory(), "emp-1", "", FEED_DENIES_ALL, workforce);
+    const edit = await screen.findByRole("button", { name: "Edit Employee" });
+    expect(edit.hasAttribute("disabled")).toBe(false);
+    const assign = await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" });
+    expect(assign.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(assign);
+    expect(await within(jobRoleSection()).findByLabelText("Job Role")).toBeTruthy();
+    // admin.principalAccess.read held in PostgreSQL does NOT unlock the Firebase-authorized account actions.
+    await waitFor(() => expect(document.querySelector("[data-user-account-status]")).toBeTruthy());
+    const accountActions = screen.queryAllByRole("button", { name: /Disable Account|Enable Account|Add Role|Send password reset/ });
+    for (const button of accountActions) expect(button.hasAttribute("disabled"), button.textContent).toBe(true);
+  });
+
+  it("employee.record.read alone (a General Manager) offers neither control, and is not called NOT CONFIGURED", async () => {
+    const workforce = grant(makeWorkforce(), ["employee.record.read"]);
+    renderDetail(okHistory(), "emp-1", "", FEED_GRANTS_ALL, workforce);
+    expect((await screen.findByRole("button", { name: "Edit Employee" })).hasAttribute("disabled")).toBe(true);
+    await waitFor(() => expect(jobRoleSection().querySelector('[data-job-role-control="NOT_GRANTED"]')).toBeTruthy());
+    expect(jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]')).toBeNull();
+  });
+
+  it("the NOT CONFIGURED (grant) distinction comes from PostgreSQL too: profile write held there, Job Role write not -- whatever the feed says", async () => {
+    const workforce = grant(makeWorkforce(), ["employee.record.read", "admin.employeeProfile.write"]);
+    renderDetail(okHistory(), "emp-1", "", FEED_GRANTS_ALL, workforce);
+    const state = await waitFor(() => {
+      const el = jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    expect(state.getAttribute("data-job-role-not-configured")).toBe("GRANT");
+  });
+
+  it("reads the capabilities ONCE per page mount, with no input -- nothing identifying the caller is sent", async () => {
+    const workforce = grant(makeWorkforce(), ALL_WORKFORCE);
+    renderDetail(okHistory(), "emp-1", "", FEED_DENIES_ALL, workforce);
+    await screen.findByRole("button", { name: "Edit Employee" });
+    await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" });
+    expect(capabilityReads(workforce)).toEqual([["readMyWorkforceCapabilities", undefined]]);
+  });
+
+  it("while the capability read is in flight nothing is offered and nothing is refused", async () => {
+    let answer;
+    const pending = new Promise((resolve) => { answer = resolve; });
+    const workforce = makeWorkforce({ readMyWorkforceCapabilities: () => pending });
+    renderDetail(okHistory(), "emp-1", "?edit=1", FEED_GRANTS_ALL, workforce);
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    await waitFor(() => expect(jobRoleSection().querySelector('[data-job-role-control="CHECKING"]')).toBeTruthy());
+    expect(document.querySelector('[data-workforce-capabilities="loading"]')).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Edit Employee" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(document.querySelector("[data-employee-edit]")).toBeNull();
+    expect(screen.queryByText(/did not grant/)).toBeNull();
+    expect(within(jobRoleSection()).queryByRole("button", { name: /Assign Job Role|Change Job Role/ })).toBeNull();
+    expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || operation === "listEmployees")).toBe(false);
+    // The answer arrives: now, and only now, the editor opens.
+    await act(async () => answer({ ok: true, result: { capabilities: ["admin.employeeProfile.write"] } }));
+    expect(await screen.findByRole("button", { name: "Save" })).toBeTruthy();
+  });
+
+  for (const [label, outcome, words] of [
+    ["an outage", { ok: false, code: "UNREACHABLE", reason: null, status: null }, "Your Workforce permission check could not be loaded from the Workforce service. Nothing else was used in its place."],
+    ["a refusal", { ok: false, code: "FORBIDDEN", reason: "ACTOR_NOT_TENANT_MEMBER", status: 403 }, "Your Workforce permission check is not available to you."],
+    ["a malformed answer", { ok: true, result: { capabilities: ["admin.employeeProfile.write", "admin.everything"] } }, "Your Workforce permission check could not be loaded from the Workforce service. Nothing else was used in its place."],
+    ["a missing list", { ok: true, result: {} }, "Your Workforce permission check could not be loaded from the Workforce service. Nothing else was used in its place."],
+  ]) {
+    it(`${label} is stated honestly: nothing offered, never "not granted" or "not configured", whatever the feed says`, async () => {
+      const workforce = makeWorkforce({ readMyWorkforceCapabilities: outcome });
+      renderDetail(okHistory(), "emp-1", "?edit=1", FEED_GRANTS_ALL, workforce);
+      const edit = await screen.findByRole("button", { name: "Edit Employee" });
+      expect(edit.hasAttribute("disabled")).toBe(true);
+      expect(document.querySelector('[data-employee-edit="CAPABILITIES_UNAVAILABLE"]').textContent).toContain(words);
+      expect(document.querySelector('[data-employee-edit="NOT_GRANTED"]')).toBeNull();
+      const control = await waitFor(() => {
+        const el = jobRoleSection().querySelector('[data-job-role-control="CAPABILITIES_UNAVAILABLE"]');
+        expect(el).toBeTruthy();
+        return el;
+      });
+      expect(control.textContent).toContain(words);
+      expect(jobRoleSection().querySelector('[data-job-role-control="NOT_CONFIGURED"]')).toBeNull();
+      expect(screen.queryByText(/did not grant|not configured/i)).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+      expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || operation === "listEmployees")).toBe(false);
+    });
+  }
+
+  it("Retry after a failed capability read re-reads it, and a granted answer then offers the controls", async () => {
+    let calls = 0;
+    const workforce = makeWorkforce({
+      readMyWorkforceCapabilities: () => (++calls === 1 ? { ok: false, code: "UNREACHABLE" } : { ok: true, result: { capabilities: ALL_WORKFORCE } }),
+    });
+    renderDetail(okHistory(), "emp-1", "", FEED_DENIES_ALL, workforce);
+    const control = await waitFor(() => {
+      const el = jobRoleSection().querySelector('[data-job-role-control="CAPABILITIES_UNAVAILABLE"]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    fireEvent.click(within(control).getByRole("button", { name: "Retry" }));
+    expect((await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" })).hasAttribute("disabled")).toBe(false);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(false));
+    expect(capabilityReads(workforce)).toHaveLength(2);
+  });
+
+  it("static: UserDetail no longer asks the feed about a Workforce id; only UserAccessActions receives hasCapability", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const src = readFileSync(path.resolve(process.cwd(), "src/modules/administration/UserDetail.jsx"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    expect(src).not.toMatch(/hasCapability\(/);
+    expect(src).not.toMatch(/holdsCapability/);
+    expect([...src.matchAll(/hasCapability=\{hasCapability\}/g)]).toHaveLength(2);
+    expect(src).toMatch(/<UserAccessActions [^>]*hasCapability=\{hasCapability\}/);
+    expect(src).toMatch(/useWorkforceCapabilities\(\{ client: workforce, principalKey: user\?\.uid \?\? null \}\)/);
   });
 });
 

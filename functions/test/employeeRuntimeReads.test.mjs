@@ -86,14 +86,14 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory"];
+const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory"];
 
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole"];
 
 test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08, H1 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
   assert.deepEqual([...http.WORKFORCE_COMMAND_OPERATIONS], COMMANDS);
-  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);
+  assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "listEmployees"]);
   assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
   const src = code(HTTP_SOURCE);
   assert.doesNotMatch(src, /MUTATION|assign(ed)?Work|migration\//);
@@ -239,8 +239,11 @@ const JOB_ROLE_MODULES = ["jobRoleReads.ts", "employeeJobRoleCommands.ts"];
 // EMP-RT-H1: the governed change history NAMES every Employee audit action (Job Role and operating company included)
 // because it reports them. It is ruled separately below: it changes nothing and reads no access authority.
 const HISTORY_MODULE = "employeeChangeHistoryRead.ts";
+// Finding #17: the self capability read NAMES admin.employeeJobRole.write as one of its four closed ids. It is ruled
+// separately below: it names capability ids only and reads nothing.
+const CAPABILITY_MODULE = "myWorkforceCapabilities.ts";
 test("no Job Role, Security Role or operationalRoles is produced, inferred or named anywhere in the Workforce reads or commands", () => {
-  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])].filter((f) => !f.endsWith(HISTORY_MODULE));
+  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])].filter((f) => !f.endsWith(HISTORY_MODULE) && !f.endsWith(CAPABILITY_MODULE));
   assert.deepEqual(JOB_ROLE_MODULES.map((m) => files.some((f) => f.endsWith(m))), [true, true], "the Job Role modules moved");
   for (const f of files.filter((f) => !JOB_ROLE_MODULES.some((m) => f.endsWith(m)))) {
     assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS|operationalRoles|operational_roles/, rel(f));
@@ -361,4 +364,55 @@ test("RETIRED: the legacy updateEmployeeProfile Firebase callable is not exporte
   assert.match(index, /listRecordChangeHistory,\s*\} from "\.\/access\/administrationUsersCallables"/);
   const callables = code(join(SRC, "access", "administrationUsersCallables.ts"));
   assert.doesNotMatch(callables, /updateEmployeeProfile|employeeProfileCommands/);
+});
+
+// ════════════════════ finding #17: readMyWorkforceCapabilities ════════════════════
+
+const selfCapabilities = require("../lib/eosWorkforce/reads/myWorkforceCapabilities.js");
+const WORKFORCE_IDS = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write"];
+
+test("#17 readMyWorkforceCapabilities: the resolved capabilities intersected with the closed Workforce list, nothing else", async () => {
+  assert.deepEqual([...selfCapabilities.WORKFORCE_CAPABILITY_IDS], WORKFORCE_IDS);
+  assert.ok(Object.isFrozen(selfCapabilities.WORKFORCE_CAPABILITY_IDS));
+  for (const [held, expected] of [
+    [["opportunity.read", "admin.employeeJobRole.write", "inventory.cycleCount.create", "admin.employeeProfile.write", "employee.record.read", "admin.principalAccess.read", "admin.userStatus.write"], WORKFORCE_IDS],
+    [["employee.record.read", "opportunity.read"], ["employee.record.read"]],
+    [["opportunity.read", "customer.record.read"], []],
+    [[], []],
+  ]) {
+    const w = fakeWorld({ capabilities: held });
+    const res = await post(w, { operation: "readMyWorkforceCapabilities" });
+    assert.equal(res.status, 200, res.body);
+    assert.deepEqual(parsed(res), { ok: true, operation: "readMyWorkforceCapabilities", result: { capabilities: expected } });
+    assert.doesNotMatch(res.body, /p-eos-alice|subj-alice|sales|"t1"|opportunity|inventory|userStatus|customer/);
+    // The kernel's read-only snapshot and membership check ran; nothing else touched the database.
+    assert.deepEqual(w.clientStatements.map((s) => s.text.trim().split(/\s+/)[0]), ["BEGIN", "SELECT", "COMMIT"]);
+  }
+  const empty = await post(fakeWorld({ capabilities: ["employee.record.read"] }), { operation: "readMyWorkforceCapabilities", input: {} });
+  assert.deepEqual(parsed(empty).result, { capabilities: ["employee.record.read"] });
+});
+
+test("#17 readMyWorkforceCapabilities: a selector or authority field refuses before the database; a non-member refuses in the transaction", async () => {
+  const w = fakeWorld({ capabilities: WORKFORCE_IDS });
+  const selector = await post(w, { operation: "readMyWorkforceCapabilities", input: { employeeId: "e1" } });
+  assert.deepEqual([selector.status, parsed(selector).code], [400, "INPUT_FIELD_NOT_ACCEPTED"]);
+  for (const field of ["principalId", "capabilities", "roles", "tenantId"]) {
+    const res = await post(w, { operation: "readMyWorkforceCapabilities", input: { [field]: "x" } });
+    assert.deepEqual([res.status, parsed(res).code], [400, "AUTHORITY_FIELD_NOT_ACCEPTED"], field);
+  }
+  assert.equal(w.connects(), 0);
+  const notMember = fakeWorld({ capabilities: WORKFORCE_IDS, member: false });
+  const res = await post(notMember, { operation: "readMyWorkforceCapabilities" });
+  assert.deepEqual([res.status, parsed(res).code], [403, "ACTOR_NOT_TENANT_MEMBER"]);
+  assert.doesNotMatch(res.body, /admin\.|employee\.record/);
+});
+
+test("#17 readMyWorkforceCapabilities: static -- no SQL, no second capability resolution, requires nothing, names four existing ids", () => {
+  const src = code(join(READS, CAPABILITY_MODULE));
+  assert.doesNotMatch(src, /\bSELECT\b|\bINSERT\b|\bUPDATE\s|\bDELETE\b|eos_policy|eos_workforce|role_capabilities|db\.query|client\.query/);
+  assert.doesNotMatch(src, /resolveOperationalContext|capabilitiesForRoleKeys|heldRoleKeys|principalContext|roleKey/);
+  assert.match(src, /runEmployeeRead\(deps, actor, \(\) => acceptOnly\(input, \[\]\), \(\) => \[\],/);
+  assert.match(src, /WORKFORCE_CAPABILITY_IDS\.filter\(\(id\) => actor\.capabilities\.has\(id\)\)/);
+  assert.deepEqual([...src.matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1]), WORKFORCE_IDS);
+  assert.doesNotMatch(src, /securityRole|operationalRoles|jobRoleId|assignEmployeeJobRole/);
 });

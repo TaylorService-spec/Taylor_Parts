@@ -42,6 +42,13 @@ on:
       - "field-ops-app-vite/src/hooks/useWorkforceEmployeeDirectory.js"
       - "field-ops-app-vite/test/employeeOperatingProfile.test.jsx"
       - "field-ops-app-vite/test/workforceApiClient.test.jsx"
+      # Workforce census finding #17: the Workforce offer from the PostgreSQL capability read.
+      - "field-ops-app-vite/test/useWorkforceCapabilities.test.jsx"
+      - "field-ops-app-vite/src/hooks/useWorkforceCapabilities.js"
+      - "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
+      - "field-ops-app-vite/src/modules/administration/EmployeeJobRoleControl.jsx"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
       - "field-ops-app-vite/src/services/workforceApiClient.js"
       - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
       - "field-ops-app-vite/src/hooks/useWorkforceRead.js"
@@ -134,7 +141,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Employee operating profile (Employee design v4.1) on the Workforce transport -- record, self view, client, pure domain (vitest)
-        run: npx vitest run test/employeeOperatingProfile.test.jsx test/workforceApiClient.test.jsx
+        run: npx vitest run test/employeeOperatingProfile.test.jsx test/workforceApiClient.test.jsx test/useWorkforceCapabilities.test.jsx
         working-directory: field-ops-app-vite
 
       - name: Composition conformance -- the record and collection grammars
