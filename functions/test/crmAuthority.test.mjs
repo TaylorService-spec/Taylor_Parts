@@ -61,16 +61,18 @@ test("(F1) no Firebase: no CRM authority module names it, and loading every one 
   assert.equal(probe.status, 0, `a D1-A module transitively loaded Firebase: ${probe.stderr}`);
 });
 
-test("(F2) not wired: nothing outside src/eosCrm imports it, and no runtime surface or client names it", () => {
-  // The ONE sanctioned outside importer is the CRM cutover (docs/architecture/crm-cutover-plan.md): its census imports the
-  // authority's vocabularies and bounds so it cannot accept what the authority refuses. It is itself unwired -- only
-  // functions/scripts/crmCutover.js loads it -- which the second assertion keeps true.
+test("(F2) the only runtime entry point is the CRM transport composed by server.ts; the client never imports it", () => {
+  // The ONE sanctioned outside importer besides the transport is the CRM cutover (docs/architecture/crm-cutover-plan.md):
+  // its census imports the authority's vocabularies and bounds so it cannot accept what the authority refuses. It is
+  // itself unwired -- only functions/scripts/crmCutover.js loads it -- which the second assertion keeps true.
   const CUTOVER = new Set(["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverCopy.ts", "src/crm/postgresCustomerImport.ts"]);
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(CRM) && /eosCrm\//.test(readFileSync(f, "utf8")));
-  assert.deepEqual(importers.map(rel).filter((f) => !CUTOVER.has(f)), [], "a module outside the CRM authority layer imports it");
+  assert.deepEqual(importers.map(rel).filter((f) => !CUTOVER.has(f)), ["src/eosApi/server.ts"], "a module other than server.ts or the cutover imports the CRM authority layer");
   const cutoverImporters = walk(SRC, [".ts"]).filter((f) => !/src[\\/]crm[\\/]crmCutover/.test(f) && /crmCutover(Snapshot|Copy|Target)|postgresCustomerImport/.test(strip(readFileSync(f, "utf8"))) && !/src[\\/]crm[\\/]postgresCustomerImport/.test(f));
   assert.deepEqual(cutoverImporters.map(rel), [], "a runtime module imports the CRM cutover");
-  for (const surface of ["index.ts", "eosApi/server.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
+  const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
+  assert.deepEqual([...server.matchAll(/from "([^"]*eosCrm[^"]*)"/g)].map((m) => m[1]), ["../eosCrm/crmHttp"]);
+  for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts", "eosCommercial/commercialHttp.ts", "eosWorkforce/workforceHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCrm|crmAuthorityKernel|accountAuthority|contactAuthority|accountLocationAuthority/, `${surface} reaches the CRM authority layer`);
   }
   const client = walk(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
