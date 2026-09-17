@@ -65,17 +65,31 @@ test("withSearchableName pairs the display name with its derived copy, unchanged
 
 // --- the writers -------------------------------------------------------------
 
-test("CRM CUTOVER: both canonical writers go to the governed PostgreSQL CRM authority, which folds the name itself", () => {
-  // The derived search field is gone with Firestore: eos_crm searches `lower(btrim(name))`, computed by the database from
-  // the one stored name, so no writer can leave it stale. The writers must send no nameLower and must use the CRM route.
+test("both canonical writers derive the field, and neither does it at the call site", () => {
+  // Derivation lives IN the writer so a caller cannot forget what it never had to remember.
+  //
+  // CRM AUTHORITY ROUTE (CRM-8): the legacy Firestore writers are `createAccountFirestore` / `updateAccountFirestore`,
+  // and the public `createAccount` / `updateAccount` select them in every build except platform-sandbox (see
+  // src/domain/crmAuthorityRoute.js). The derivation requirement applies to the Firestore writers unchanged.
   const src = readFileSync(path.join(srcDir, CANONICAL_WRITER), "utf8");
-  const create = src.match(/export async function createAccount[\s\S]*?\n\}/);
-  const update = src.match(/export async function updateAccount[\s\S]*?\n\}/);
+  const create = src.match(/function createAccountFirestore[\s\S]*?\n\}/);
+  const update = src.match(/function updateAccountFirestore[\s\S]*?\n\}/);
+  assert.match(src, /^export const createAccount = CRM_VIA_EOS_API \? createAccountEosApi : createAccountFirestore;$/m);
+  assert.match(src, /^export const updateAccount = CRM_VIA_EOS_API \? updateAccountEosApi : updateAccountFirestore;$/m);
   assert.ok(create, "createAccount not found -- this guard's premise has expired");
   assert.ok(update, "updateAccount not found -- this guard's premise has expired");
-  assert.match(create[0], /requireCrmApi\("createAccount"/);
-  assert.match(update[0], /requireCrmApi\("updateAccount"/);
-  assert.doesNotMatch(src.replace(/\/\/[^\n]*/g, ""), /nameLower|SEARCH_NAME_FIELD|firebase\/firestore/);
+  assert.match(create[0], /withDerivedSearchName/, "createAccount writes a name without deriving nameLower");
+  assert.match(update[0], /withDerivedSearchName/, "updateAccount writes a name without deriving nameLower");
+});
+
+test("a partial update that does not touch the name must not clobber the derived field", () => {
+  // Deriving unconditionally would write nameLower:"" for any status-only edit, silently removing
+  // that customer from search. The writer must skip derivation when `name` is absent -- asserted
+  // here against the source, since the branch is what matters.
+  const src = readFileSync(path.join(srcDir, CANONICAL_WRITER), "utf8");
+  const fn = src.match(/function withDerivedSearchName[\s\S]*?\n\}/);
+  assert.ok(fn, "withDerivedSearchName not found");
+  assert.match(fn[0], /"name" in data/, "the derivation must be conditional on the payload carrying a name");
 });
 
 // --- the structural invariant ------------------------------------------------

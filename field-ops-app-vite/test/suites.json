@@ -134,6 +134,10 @@
       "runner": "node"
     },
     {
+      "file": "test/crmAuthorityRoute.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/crmSalesNav.test.mjs",
       "runner": "node"
     },

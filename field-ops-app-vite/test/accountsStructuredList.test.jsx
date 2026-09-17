@@ -168,20 +168,18 @@ describe("the controls come from Account metadata", () => {
     const offered = [...screen.getByLabelText(/^field$/i).querySelectorAll("option")]
       .map((o) => o.value).filter(Boolean);
     expect(offered.slice().sort()).toEqual(accountIndexList.filters.map((f) => f.fieldId).sort());
-    // CRM CUTOVER: the PostgreSQL CRM list serves a status filter only.
-    expect(offered).toEqual(["status"]);
+    expect(offered).toContain("lineOfBusiness");
   });
 
   it("the value picker shows human labels, never enum tokens", async () => {
     setup();
     await screen.findByText("Harbor Grill Restaurant Group");
     fireEvent.click(screen.getByRole("button", { name: /add filter/i }));
-    fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "status" } });
+    fireEvent.change(screen.getByLabelText(/^field$/i), { target: { value: "lineOfBusiness" } });
 
     const values = [...(await screen.findByLabelText(/^value$/i)).querySelectorAll("option")]
       .map((o) => o.textContent).filter((t) => t !== "Choose a value…");
-    expect(values.length).toBeGreaterThan(0);
-    for (const v of values) expect(v).not.toMatch(/^[A-Z_]+$/);
+    expect(values).toEqual(["Taylor", "Ventana"]);
   });
 
   it("offers no sort on an array field — an array has no order to sort by", async () => {
@@ -220,24 +218,72 @@ describe("the controls come from Account metadata", () => {
   });
 
   it("an active filter is a visible, individually removable chip", async () => {
-    setup({ search: "f=status:EQUALS:ACTIVE" });
+    setup({ search: "f=lineOfBusiness:ARRAY_CONTAINS:VENTANA" });
     await screen.findByText("Harbor Grill Restaurant Group");
     const chips = [...document.querySelectorAll(".fo-listctl__chip")];
     expect(chips).toHaveLength(1);
-    expect(chips[0].textContent).toMatch(/^Status: /);
+    expect(chips[0].textContent).toContain("Line of Business: Ventana");
     // Removable on its own, not only via a "clear everything".
-    expect(screen.getByRole("button", { name: /Remove filter Status/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Remove filter Line of Business/i })).toBeTruthy();
   });
 });
 
 // ═════════════════════════════════════════ THE ARRAY LIMIT
 
-describe("array filters are not served by the PostgreSQL CRM list", () => {
-  it("a URL asking for Relationship or Line of Business never reaches the query", async () => {
+describe("two array filters — the honest refusal", () => {
+  it("Relationship ALONE is executed", async () => {
+    setup({ search: "f=relationshipTypes:ARRAY_CONTAINS:CUSTOMER" });
+    await screen.findByText("Harbor Grill Restaurant Group");
+    expect(h.lastRequest.descriptor.filters).toEqual([
+      { fieldId: "relationshipTypes", operator: "ARRAY_CONTAINS", value: "CUSTOMER" },
+    ]);
+  });
+
+  it("Line of Business ALONE is executed", async () => {
+    setup({ search: "f=lineOfBusiness:ARRAY_CONTAINS:TAYLOR" });
+    await screen.findByText("Harbor Grill Restaurant Group");
+    expect(h.lastRequest.descriptor.filters).toEqual([
+      { fieldId: "lineOfBusiness", operator: "ARRAY_CONTAINS", value: "TAYLOR" },
+    ]);
+  });
+
+  it("BOTH TOGETHER is refused whole, and said out loud", async () => {
     setup({ search: "f=relationshipTypes:ARRAY_CONTAINS:CUSTOMER&f=lineOfBusiness:ARRAY_CONTAINS:TAYLOR" });
-    await waitFor(() => expect(h.lastRequest).toBeTruthy());
-    const filters = h.lastRequest.descriptor?.filters ?? [];
-    expect(filters.some((f) => f.fieldId === "relationshipTypes" || f.fieldId === "lineOfBusiness")).toBe(false);
+    const notice = await screen.findByRole("status", { name: /criteria not applied/i });
+
+    // NO DESCRIPTOR AT ALL. Firestore permits one array filter per query and no index changes
+    // that, so the request is rejected rather than half-applied.
+    expect(h.lastRequest.descriptor).toBeNull();
+    expect(h.lastRequest.errors.some((e) => e.kind === "MULTIPLE_ARRAY_FILTERS")).toBe(true);
+
+    // BUSINESS LANGUAGE. The runtime's own message names the database, the field ids and an index
+    // concept — all true, none of it for a person choosing customers.
+    expect(notice.textContent).toMatch(/only one of these can be used at a time/i);
+    expect(notice.textContent).not.toMatch(/firestore/i);
+    expect(notice.textContent).not.toMatch(/index/i);
+    expect(notice.textContent).not.toMatch(/lineOfBusiness/);
+    // A REFUSAL and a DROP get different words. Nothing runs, so nothing is shown -- calling an
+    // empty screen "broader than requested" would describe the opposite of what is on it.
+    expect(notice.textContent).toMatch(/no customers are shown/i);
+    expect(notice.textContent).toMatch(/Remove one of them/i);
+    expect(notice.textContent).not.toMatch(/broader than requested/i);
+    // And no doubled full stop where the runtime message already ended in one.
+    expect(notice.textContent).not.toContain("..");
+  });
+
+  it("neither array filter is silently preferred over the other", async () => {
+    setup({ search: "f=lineOfBusiness:ARRAY_CONTAINS:TAYLOR&f=relationshipTypes:ARRAY_CONTAINS:VENDOR" });
+    await screen.findByRole("status", { name: /criteria not applied/i });
+    // Applying whichever came first would return a set that does not match what was asked for,
+    // while looking as though it did — the worst available outcome.
+    expect(h.lastRequest.descriptor).toBeNull();
+  });
+
+  it("status + ONE array filter is fine — the limit is on arrays, not on filters", async () => {
+    setup({ search: "f=status:EQUALS:ACTIVE&f=lineOfBusiness:ARRAY_CONTAINS:TAYLOR" });
+    await screen.findByText("Harbor Grill Restaurant Group");
+    expect(h.lastRequest.errors).toEqual([]);
+    expect(h.lastRequest.descriptor.filters).toHaveLength(2);
   });
 });
 
@@ -322,11 +368,13 @@ describe("the read stays bounded", () => {
     expect(h.lastRequest.descriptor.limit).toBe(accountIndexList.pageSize + 1);
   });
 
-  it("the default sort is NAME — the order the PostgreSQL CRM list serves", async () => {
+  it("the default sort is PRESERVED — most recently touched first", async () => {
     setup();
     await screen.findByText("Harbor Grill Restaurant Group");
-    expect(h.lastRequest.descriptor.sort[0]).toEqual({ fieldId: "name", direction: "ASC" });
-    expect(h.lastRequest.descriptor.sort[1]).toEqual({ fieldId: "__name__", direction: "ASC" });
+    expect(h.lastRequest.descriptor.sort[0]).toEqual({ fieldId: "updatedAt", direction: "DESC" });
+    // And the tiebreaker follows its direction, which is what keeps the query on the index
+    // Firestore maintains for free.
+    expect(h.lastRequest.descriptor.sort[1]).toEqual({ fieldId: "__name__", direction: "DESC" });
   });
 
   it("a URL sort overrides the default", async () => {

@@ -27,15 +27,36 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
-      # CRM cutover: Account / Contact / customer-site client paths on the EOS API (PostgreSQL CRM).
+      # CRM-8 build-time CRM authority route: legacy Firestore path everywhere except a platform-sandbox build, which
+      # uses the EOS API (PostgreSQL CRM). The route, both implementations, and the bundle check below.
+      - "field-ops-app-vite/src/domain/crmAuthorityRoute.js"
+      - "field-ops-app-vite/src/domain/crmCutoverFreeze.js"
+      - "field-ops-app-vite/src/domain/crm/eosApi/**"
+      - "field-ops-app-vite/src/hooks/crm/eosApi/**"
       - "field-ops-app-vite/src/services/crmApiClient.js"
       - "field-ops-app-vite/src/metadata/crmListSource.js"
+      - "field-ops-app-vite/src/metadata/entityDefinition.js"
       - "field-ops-app-vite/src/domain/accounts.js"
       - "field-ops-app-vite/src/domain/contacts.js"
       - "field-ops-app-vite/src/domain/locations.js"
       - "field-ops-app-vite/src/domain/contactImport.js"
-      - "field-ops-app-vite/src/hooks/useCrmRead.js"
+      - "field-ops-app-vite/src/domain/commercialProfile.js"
+      - "field-ops-app-vite/src/hooks/useAccount.js"
+      - "field-ops-app-vite/src/hooks/useAccountNames.js"
+      - "field-ops-app-vite/src/hooks/useAccountPicker.js"
+      - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
+      - "field-ops-app-vite/src/hooks/useAccountSearch.js"
+      - "field-ops-app-vite/src/hooks/useContactsForAccount.js"
+      - "field-ops-app-vite/src/hooks/useInstalledEquipmentPage.js"
+      - "field-ops-app-vite/src/hooks/useLocation.js"
+      - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
+      - "field-ops-app-vite/src/hooks/useLocationsForAccount.js"
+      - "field-ops-app-vite/src/hooks/useLocationsForAccounts.js"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/vite.config.js"
+      - "config/environments.json"
       - "field-ops-app-vite/test/crmClientCutover.test.jsx"
+      - "field-ops-app-vite/test/crmAuthorityRoute.test.mjs"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -67,15 +88,36 @@ on:
       - "field-ops-app-vite/src/modules/accounts/AccountsList.jsx"
       - "field-ops-app-vite/src/metadata/definitions/account.js"
       - "field-ops-app-vite/test/accountsStructuredList.test.jsx"
-      # CRM cutover: Account / Contact / customer-site client paths on the EOS API (PostgreSQL CRM).
+      # CRM-8 build-time CRM authority route: legacy Firestore path everywhere except a platform-sandbox build, which
+      # uses the EOS API (PostgreSQL CRM). The route, both implementations, and the bundle check below.
+      - "field-ops-app-vite/src/domain/crmAuthorityRoute.js"
+      - "field-ops-app-vite/src/domain/crmCutoverFreeze.js"
+      - "field-ops-app-vite/src/domain/crm/eosApi/**"
+      - "field-ops-app-vite/src/hooks/crm/eosApi/**"
       - "field-ops-app-vite/src/services/crmApiClient.js"
       - "field-ops-app-vite/src/metadata/crmListSource.js"
+      - "field-ops-app-vite/src/metadata/entityDefinition.js"
       - "field-ops-app-vite/src/domain/accounts.js"
       - "field-ops-app-vite/src/domain/contacts.js"
       - "field-ops-app-vite/src/domain/locations.js"
       - "field-ops-app-vite/src/domain/contactImport.js"
-      - "field-ops-app-vite/src/hooks/useCrmRead.js"
+      - "field-ops-app-vite/src/domain/commercialProfile.js"
+      - "field-ops-app-vite/src/hooks/useAccount.js"
+      - "field-ops-app-vite/src/hooks/useAccountNames.js"
+      - "field-ops-app-vite/src/hooks/useAccountPicker.js"
+      - "field-ops-app-vite/src/hooks/useAccountPortfolioSummary.js"
+      - "field-ops-app-vite/src/hooks/useAccountSearch.js"
+      - "field-ops-app-vite/src/hooks/useContactsForAccount.js"
+      - "field-ops-app-vite/src/hooks/useInstalledEquipmentPage.js"
+      - "field-ops-app-vite/src/hooks/useLocation.js"
+      - "field-ops-app-vite/src/hooks/useLocationReferenceResolver.js"
+      - "field-ops-app-vite/src/hooks/useLocationsForAccount.js"
+      - "field-ops-app-vite/src/hooks/useLocationsForAccounts.js"
+      - "field-ops-app-vite/src/hooks/useMetadataList.js"
+      - "field-ops-app-vite/vite.config.js"
+      - "config/environments.json"
       - "field-ops-app-vite/test/crmClientCutover.test.jsx"
+      - "field-ops-app-vite/test/crmAuthorityRoute.test.mjs"
       - "field-ops-app-vite/src/hooks/useAccountAr.js"
       - "field-ops-app-vite/test/accountArInFlightSharing.test.mjs"
       - "field-ops-app-vite/test/accountFinancialsSection.test.jsx"
@@ -158,9 +200,31 @@ jobs:
         run: npx vitest run test/accountsStructuredList.test.jsx
         working-directory: field-ops-app-vite
 
-      # CRM cutover: writers, reads and the Customers list source use the EOS API CRM route only -- no Firestore, no fallback.
-      - name: CRM client cutover (EOS API only)
+      # CRM-8: the build-time CRM authority route. Static selection, closed allowlist, no fallback, EOS path free of
+      # Firebase business runtime.
+      - name: CRM authority route contract (offline)
+        run: node --test test/crmAuthorityRoute.test.mjs
+        working-directory: field-ops-app-vite
+
+      # The platform-sandbox selection of the public CRM modules: writers, reads and the Customers list use the EOS API
+      # route only; a refusal or an unreachable API is a failure, never a Firestore read.
+      - name: CRM client cutover, platform-sandbox selection (EOS API only)
         run: npx vitest run test/crmClientCutover.test.jsx
+        working-directory: field-ops-app-vite
+
+      # The production-capable bundle must not carry the EOS CRM route at all (tree-shaken, not merely unreachable),
+      # and the platform-sandbox bundle must. Builds only -- nothing is deployed.
+      - name: CRM route present only in the platform-sandbox bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          for env in taylor-parts-production platform-sandbox; do
+            VITE_ENVIRONMENT_ID="$env" npx vite build --outDir "$RUNNER_TEMP/dist-$env" --emptyOutDir --logLevel error
+          done
+          if grep -rlF "/crm/customer" "$RUNNER_TEMP/dist-taylor-parts-production"; then
+            echo "::error::the taylor-parts-production bundle carries the EOS CRM route"; exit 1
+          fi
+          grep -rqF "/crm/customer" "$RUNNER_TEMP/dist-platform-sandbox" || { echo "::error::the platform-sandbox bundle lost the EOS CRM route"; exit 1; }
         working-directory: field-ops-app-vite
 
       - name: Lint
