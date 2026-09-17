@@ -1033,6 +1033,21 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.employeeJobRole",
     action: "write",
   }),
+  // WORK ELIGIBILITY (Owner ruling 2026-09-17, operationalRoles decomposition). Deliberately NOT
+  // admin.employeeProfile.write and NOT admin.employeeJobRole.write: deciding who is QUALIFIED to perform a kind of
+  // operational work is its own narrow authority, separately governable from editing a profile or setting a business
+  // function. A qualification GRANTS NO APPLICATION ACCESS -- it is only ever a secondary business restriction on top
+  // of a security capability, and it confers no Security Role, permission, Job Role, ownership, assignment, reporting
+  // or operating-company authority. Declared WITHOUT an `active` flag, exactly like admin.employeeJobRole.write, so
+  // the administration access feed answers for the admin Roles; the PostgreSQL runtime still decides every command by
+  // eos_policy.role_capabilities.
+  Object.freeze({
+    id: "admin.employeeWorkEligibility.write",
+    description:
+      "Assign and end an Employee's Work Eligibility qualifications. A qualification proves the Employee is qualified for a kind of operational work: it confers no Security Role, capability, permission, Job Role, ownership, assignment, reporting or operating-company authority, and never grants application access.",
+    resource: "admin.employeeWorkEligibility",
+    action: "write",
+  }),
   Object.freeze({
     id: "admin.accessRequest.decide",
     description: "Approve or reject a pending Access Request.",

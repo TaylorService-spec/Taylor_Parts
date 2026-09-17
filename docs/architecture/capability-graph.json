@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 149,
+    "capabilities": 150,
     "catalogActive": 0,
-    "catalogInactive": 149,
+    "catalogInactive": 150,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 48,
@@ -25,15 +25,15 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 149,
-    "parsed": 149,
+    "raw": 150,
+    "parsed": 150,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
     "SERVER_REFERENCED": 123,
     "CLIENT_ONLY": 2,
-    "NO_IMPLEMENTATION_EVIDENCE": 3
+    "NO_IMPLEMENTATION_EVIDENCE": 4
   },
   "guideStatuses": {},
   "flows": [
@@ -3230,6 +3230,25 @@
         "serverReferenceCount": 3,
         "clientReferenceCount": 2,
         "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.employeeWorkEligibility.write",
+      "resource": "admin.employeeWorkEligibility",
+      "action": "write",
+      "description": "Assign and end an Employee's Work Eligibility qualifications. A qualification proves the Employee is qualified for a kind of operational work: it confers no Security Role, capability, permission, Job Role, ownership, assignment, reporting or operating-company authority, and never grants application access.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [],
+        "clientReferences": [],
+        "serverReferenceCount": 0,
+        "clientReferenceCount": 0,
+        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
       },
       "environmentActivation": {
         "eligible": false,
