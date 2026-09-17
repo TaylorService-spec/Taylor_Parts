@@ -3213,11 +3213,14 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
+          "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
         ],
-        "clientReferences": [],
-        "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferences": [
+          "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+        ],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

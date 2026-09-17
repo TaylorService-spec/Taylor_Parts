@@ -52,6 +52,14 @@ const workforce = {
         return { ok: true, result: { employee: EMPLOYEE, principalLink: { linkId: "l", principalId: "pr-1", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } } };
       case "readEmployeePrincipalLink":
         return { ok: true, result: { employeeId: "emp-1", userAccess: "LINKED", link: { linkId: "l", principalId: "pr-1", principalDisplayName: "Dana Reyes-Montgomery", principalStatus: "active", membershipStatus: "active", linkSource: "GOVERNED_ASSERTION", linkedAt: "2026-09-01T00:00:00.000Z", assertedBy: null } } };
+      case "listEmployeeJobRoleHistory": {
+        // EMP-RT-08: a current National Accounts Sales role with a long reason, and the ended Retail Sales role before it.
+        const current = { assignmentId: "a-2", jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales", jobRoleStatus: "ACTIVE", current: true, effectiveFrom: "2026-06-01T00:00:00.000Z", effectiveTo: null, reason: LONG };
+        const ended = { assignmentId: "a-1", jobRoleId: "retail-sales", displayName: "Retail Sales", jobRoleStatus: "INACTIVE", current: false, effectiveFrom: "2025-01-15T00:00:00.000Z", effectiveTo: "2026-06-01T00:00:00.000Z", reason: null };
+        return { ok: true, result: { employeeId: "emp-1", current, items: [current, ended], truncated: false } };
+      }
+      case "listJobRoles":
+        return { ok: true, result: { items: [{ jobRoleId: "retail-sales", displayName: "Retail Sales", status: "ACTIVE" }, { jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales", status: "ACTIVE" }] } };
       case "listManagedEmployees":
         return { ok: true, result: { items: [{ employeeId: "emp-7", displayName: "Alexandra Konstantinopoulou-Whitfield", employmentStatus: "ACTIVE", employeeNumber: null, operatingCompanyId: "taylor", jobTitle: null, reportingSince: "2026-01-01" }], truncated: false } };
       case "listRecordsOwnedByEmployee":

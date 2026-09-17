@@ -9,6 +9,8 @@ import { employeeDirectoryPresentation } from "../../domain/employeeOperatingPro
 // authorizes and it is not the same record as an employee -- the panel says so rather than
 // letting the proximity of the two tables imply they are one thing.
 import { UsersPolicyPanel } from "./PolicyStorePanels.jsx";
+// EMP-RT-08: Employees with no Job Role, counted by the governed read so an administrator can assign them explicitly.
+import JobRoleRemediation from "./JobRoleRemediation.jsx";
 
 // ADMINISTRATION → USERS -- the one people-management destination.
 //
@@ -43,6 +45,10 @@ import { UsersPolicyPanel } from "./PolicyStorePanels.jsx";
 // -- but this page no longer reads through it and holds no Firestore dependency of any kind. There is
 // no fallback: a refusal renders "not available to you" and an outage renders a retryable failure,
 // neither of them as an empty directory.
+//
+// EMPLOYEES WITHOUT A JOB ROLE. Above the directory, JobRoleRemediation states the EMP-RT-08 count of Employees with
+// no current Job Role (listEmployeesWithoutJobRole) and lists them, each linking to their record, where the Job Role
+// section offers the governed control. It is a separate read: Job Role is still not a directory column.
 //
 // WHAT IS NOT SHOWN, BECAUSE THE GOVERNED READ DOES NOT RETURN IT. The projection is employeeId,
 // display name, employee number, employment status, operating company and job title. Account status,
@@ -117,6 +123,9 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
         Employee fact — a person&apos;s linkage is on their record, and the Roles a Principal holds are
         in the panel below.
       </p>
+      {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count, never a directory column and never
+          inferred from a title or a Security Role. Silent when the count is 0; a refused or failed read is stated. */}
+      <JobRoleRemediation workforce={workforce} />
       {/* THE DIRECTORY IS MEASURED AGAINST ITSELF, NOT THE WINDOW. This wrapper exists only to
           be a containment context: `.fo-users-directory` in index.css asks how much width the
           directory actually has once the application rail has taken its share, and recomposes

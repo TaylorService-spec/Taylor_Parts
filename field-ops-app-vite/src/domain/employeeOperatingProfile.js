@@ -12,9 +12,10 @@
 //
 //   EMPLOYEE      != USER ACCESS    an Employee may exist with no login; a login may exist with no Employee.
 //   CREDENTIAL    != PRINCIPAL != EMPLOYEE   (CREDENTIAL -> PRINCIPAL -> governed EMPLOYEE LINK -> EMPLOYEE)
-//   JOB ROLE      != SECURITY ROLE  Job Role has no governed authority: NOT GOVERNED, never inferred from the
-//                                   Security Role, eligibility markers, title or department. Retail Sales and
-//                                   National Accounts Sales are never one generic Sales role.
+//   JOB ROLE      != SECURITY ROLE  Job Role is business function only (EMP-RT-08, governed PostgreSQL authority):
+//                                   it confers no access and is never inferred from the Security Role, eligibility
+//                                   markers, title or department. Retail Sales and National Accounts Sales are
+//                                   distinct Job Roles, never one generic Sales role.
 //   RECORD OWNER  != ACCOUNTABLE PERSON != ASSIGNED PERSON   three axes, three reads, three states.
 //
 // PURE. No React, no Firebase, no network.
@@ -34,6 +35,9 @@ export const WORKFORCE_READS = Object.freeze({
   ACCOUNTABILITIES: Object.freeze({ id: "EMP-RT-04", operation: "listAccountabilitiesForEmployee" }),
   MANAGED_EMPLOYEES: Object.freeze({ id: "EMP-RT-06", operation: "listManagedEmployees" }),
   MY_PROFILE: Object.freeze({ id: "EMP-RT-07", operation: "readMyEmployeeProfile" }),
+  JOB_ROLE_HISTORY: Object.freeze({ id: "EMP-RT-08", operation: "listEmployeeJobRoleHistory" }),
+  JOB_ROLE_CATALOG: Object.freeze({ id: "EMP-RT-08", operation: "listJobRoles" }),
+  EMPLOYEES_WITHOUT_JOB_ROLE: Object.freeze({ id: "EMP-RT-08", operation: "listEmployeesWithoutJobRole" }),
 });
 
 export const EMPLOYEE_RUNTIME_DEPENDENCY = "EMPLOYEE_RUNTIME_DEPENDENCY";
@@ -49,16 +53,6 @@ export const RUNTIME_DEPENDENCIES = Object.freeze({
       "Work assignment authority is not in PostgreSQL, so the Workforce service does not serve assigned work. EOS does not guess it from technician or user ids.",
     requiredApi:
       "Governed read listAssignedWorkForEmployee { employeeId }, over a PostgreSQL assignment authority and a governed Employee ↔ Technician projection.",
-  }),
-  JOB_ROLE_AUTHORITY: Object.freeze({
-    id: "EMP-RT-08",
-    kind: EMPLOYEE_RUNTIME_DEPENDENCY,
-    serverReason: "JOB_ROLE_AUTHORITY_NOT_IMPLEMENTED",
-    fact: "Job Role",
-    today:
-      "No governed Job Role authority exists. Which Job Roles exist -- including Retail Sales and National Accounts Sales as two separate roles -- is not yet governed.",
-    requiredApi:
-      "Governed Job Role authority and read listEmployeeJobRoles { employeeId } (requires the Owner's Job Role vocabulary decision first).",
   }),
   // The profile facts and the reporting relationship ARE editable now (EMP-RT-W1, served as Workforce commands by
   // W1B). What is still not served is the Employee LIFECYCLE writer: Employment Status and Operating Company are
@@ -222,18 +216,9 @@ export function describeUserAccessRelationship(userAccess) {
 }
 
 // ════════════════════ JOB ROLE ════════════════════
-
-export const JOB_ROLE_STATE = Object.freeze({ NOT_GOVERNED: "NOT_GOVERNED" });
-
-export function describeJobRole() {
-  return {
-    state: JOB_ROLE_STATE.NOT_GOVERNED,
-    words: "Not yet governed",
-    explanation:
-      "EOS does not yet hold a governed Job Role for anyone. Job Role is business work, not access: it is never taken from the Security Role, operational eligibility, the job title or a department. Retail Sales and National Accounts Sales will be separate Job Roles.",
-    dependency: RUNTIME_DEPENDENCIES.JOB_ROLE_AUTHORITY,
-  };
-}
+//
+// Served since EMP-RT-08 (Owner ruling 2026-09-16): the governed PostgreSQL Job Role authority. Its words live in
+// domain/employeeJobRole.js -- a Job Role is business function only and is never read from anything on this record.
 
 // ════════════════════ RESPONSIBILITY ════════════════════
 
@@ -378,7 +363,8 @@ export function describeMyProfileFailure(error) {
 //
 // The Administration → Users directory renders exactly the bounded projection the governed read returns --
 // employeeId, displayName, employeeNumber, employmentStatus, operatingCompanyId, jobTitle -- and nothing else.
-// There is no account status, no Security Role, no Job Role and no Firebase uid in it, so no column claims one.
+// There is no account status, no Security Role, no Job Role and no Firebase uid in it, so no column claims one. (The
+// Job Role remediation count beside the directory is its own EMP-RT-08 read, never a column.)
 
 export const EMPLOYEE_DIRECTORY_COLUMNS = Object.freeze([
   Object.freeze({ fieldId: "displayName", label: "Name" }),

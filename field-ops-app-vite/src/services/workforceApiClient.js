@@ -23,7 +23,8 @@
 // changeEmploymentStatus / changeOperatingCompany (EMP-RT-W2) are served and named so the list mirrors the server;
 // no screen calls them yet (UI wiring follows the server proof). The EMP-RT-08 Job Role reads (listJobRoles,
 // listEmployeeJobRoleHistory, listEmployeesWithoutJobRole) and commands (createJobRole, updateJobRole,
-// assignEmployeeJobRole) are served and named the same way. EMP-RT-05 (assigned work) is NOT served and not a name here.
+// assignEmployeeJobRole) are served and named the same way; the Administration Employee record and Users directory
+// use the three reads and assignEmployeeJobRole (admin.employeeJobRole.write). No screen maintains the catalog yet. EMP-RT-05 (assigned work) is NOT served and not a name here.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";

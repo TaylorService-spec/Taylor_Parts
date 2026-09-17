@@ -55,6 +55,13 @@ const JOHN_REC = record({
 const MIKE_REC = record({ employeeId: "emp-2", displayName: "Mike Jones" });
 const PAT_REC = record({ employeeId: "emp-3", displayName: "Pat Lee", employmentStatus: "CONTRACTOR" });
 
+// EMP-RT-08 listJobRoles, test-only: two distinct sales Job Roles and one INACTIVE role that must never be offered.
+const JOB_ROLE_CATALOG = [
+  { jobRoleId: "retail-sales", displayName: "Retail Sales", status: "ACTIVE" },
+  { jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales", status: "ACTIVE" },
+  { jobRoleId: "legacy-estimator", displayName: "Legacy Estimator", status: "INACTIVE" },
+];
+
 let records = {};
 function seedRecords(list = [JOHN_REC, MIKE_REC]) {
   records = Object.fromEntries(list.map((r) => [r.employeeId, r]));
@@ -95,6 +102,10 @@ function makeWorkforce(commands = {}) {
                 : null,
             },
           };
+        case "listEmployeeJobRoleHistory":
+          return { ok: true, result: { employeeId: input.employeeId, current: null, items: [], truncated: false } };
+        case "listJobRoles":
+          return { ok: true, result: { items: JOB_ROLE_CATALOG } };
         case "listManagedEmployees":
         case "listRecordsOwnedByEmployee":
         case "listAccountabilitiesForEmployee":
@@ -451,6 +462,8 @@ describe("EOS access and security stay independent, and fail closed", () => {
       // governed Roles listed. This is the same defect for the third time in this workstream, which
       // is why every id the surface consults is enumerated here rather than spot-checked.
       "admin.principalAccess.read",
+      // EMP-RT-08: the Job Role control's own authority. Unasked, it would be protected for an administrator who holds it.
+      "admin.employeeJobRole.write",
     ]) {
       expect(REPORT_CAPABILITY_REQUEST, id).toContain(id);
     }
@@ -890,5 +903,165 @@ describe("Change History sits at the bottom of the record and shows AUDITED even
       targetType: "employee",
       targetId: "emp-1",
     });
+  });
+});
+
+// ════════════════════ JOB ROLE (EMP-RT-08) ════════════════════
+//
+// A Job Role is the Employee's business function only. Its control is offered by admin.employeeJobRole.write -- never
+// by admin.employeeProfile.write -- lives in the Job Role section, sends exactly { employeeId, jobRoleId, reason? } as
+// ONE assignEmployeeJobRole, and is followed by a RE-READ of the history. Every refusal is the server's, stated exactly.
+
+const JOB_ROLE_GRANTED = (id) => id === "admin.employeeJobRole.write";
+const jobRoleSection = () => screen.getByRole("heading", { level: 2, name: "Job Role" }).closest("section");
+const assignCalls = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "assignEmployeeJobRole");
+const historyReads = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "listEmployeeJobRoleHistory").length;
+const WRITE_OPERATIONS = ["assignEmployeeJobRole", "createJobRole", "updateJobRole", ...COMMANDS];
+
+async function openJobRoleControl(workforce, hasCapability = JOB_ROLE_GRANTED) {
+  renderDetail(okHistory(), "emp-1", "", hasCapability, workforce);
+  await screen.findByRole("heading", { level: 1, name: "John Smith" });
+  fireEvent.click(await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" }));
+  return within(jobRoleSection()).findByLabelText("Job Role");
+}
+
+describe("the Job Role control is offered only by admin.employeeJobRole.write", () => {
+  it("without any capability the control is protected with its reason, and nothing is read or written", async () => {
+    const workforce = makeWorkforce();
+    renderDetail(okHistory(), "emp-1", "", undefined, workforce);
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    const button = await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(within(jobRoleSection()).getByText(/did not grant Job Role assignment \(admin\.employeeJobRole\.write\)/)).toBeTruthy();
+    fireEvent.click(button);
+    expect(within(jobRoleSection()).queryByLabelText("Job Role")).toBeNull();
+    expect(workforce.call.mock.calls.some(([operation]) => operation === "listJobRoles" || WRITE_OPERATIONS.includes(operation))).toBe(false);
+  });
+
+  it("admin.employeeProfile.write ALONE does not offer it -- Edit Employee is live, the Job Role control is not", async () => {
+    const workforce = makeWorkforce();
+    renderDetail(okHistory(), "emp-1", "", EDIT_GRANTED, workforce);
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(false);
+    const button = await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(jobRoleSection().querySelector('[data-job-role-control="NOT_GRANTED"]')).toBeTruthy();
+  });
+
+  it("with admin.employeeJobRole.write it is a closed choice of ACTIVE catalog roles; inactive roles are not offered", async () => {
+    const workforce = makeWorkforce();
+    const select = await openJobRoleControl(workforce);
+    expect(select.tagName).toBe("SELECT");
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a Job Role", "National Accounts Sales", "Retail Sales"]);
+    expect(within(select).queryByRole("option", { name: "Legacy Estimator" })).toBeNull();
+    expect(workforce.call).toHaveBeenCalledWith("listJobRoles", {});
+    // Holding only the Job Role authority does not open the profile editor.
+    expect(screen.getByRole("button", { name: "Edit Employee" }).hasAttribute("disabled")).toBe(true);
+    // Save is not possible until a Job Role is chosen.
+    expect(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("a catalog that cannot be read is stated, and nothing can be saved", async () => {
+    const workforce = makeWorkforce({ listJobRoles: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
+    renderDetail(okHistory(), "emp-1", "", JOB_ROLE_GRANTED, workforce);
+    await screen.findByRole("heading", { level: 1, name: "John Smith" });
+    fireEvent.click(await within(jobRoleSection()).findByRole("button", { name: "Assign Job Role" }));
+    expect(await within(jobRoleSection()).findByText("The Job Role catalog is not available to you.")).toBeTruthy();
+    expect(within(jobRoleSection()).queryByLabelText("Job Role")).toBeNull();
+    expect(assignCalls(workforce)).toEqual([]);
+  });
+});
+
+describe("assigning a Job Role is ONE governed command, then a re-read", () => {
+  it("sends exactly { employeeId, jobRoleId } and re-reads the history, rendering only what the read returns", async () => {
+    let assigned = false;
+    const current = { assignmentId: "ejr-1", jobRoleId: "retail-sales", displayName: "Retail Sales", jobRoleStatus: "ACTIVE", current: true, effectiveFrom: "2026-09-17T10:00:00.000Z", effectiveTo: null, reason: null };
+    const workforce = makeWorkforce({
+      assignEmployeeJobRole: () => {
+        assigned = true;
+        return { ok: true, result: { outcome: "ASSIGNED", employeeId: "emp-1", jobRoleId: "retail-sales", assignmentId: "ejr-1", endedAssignmentId: null } };
+      },
+      listEmployeeJobRoleHistory: (input) => ({
+        ok: true,
+        result: assigned ? { employeeId: input.employeeId, current, items: [current], truncated: false } : { employeeId: input.employeeId, current: null, items: [], truncated: false },
+      }),
+    });
+    const select = await openJobRoleControl(workforce);
+    const readsBefore = historyReads(workforce);
+    fireEvent.change(select, { target: { value: "retail-sales" } });
+    fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
+    expect(await within(jobRoleSection()).findByText(/Job Role assigned: Retail Sales\. Access, Security Roles and permissions are unchanged\./)).toBeTruthy();
+    expect(assignCalls(workforce)).toEqual([["assignEmployeeJobRole", { employeeId: "emp-1", jobRoleId: "retail-sales" }]]);
+    await waitFor(() => expect(jobRoleSection().querySelector('[data-employee-job-role="ASSIGNED"]')).toBeTruthy());
+    expect(historyReads(workforce)).toBe(readsBefore + 1);
+    expect(within(jobRoleSection()).getByRole("button", { name: "Change Job Role" })).toBeTruthy();
+    // No other writer and no profile command ran.
+    expect(workforce.call.mock.calls.filter(([operation]) => WRITE_OPERATIONS.includes(operation)).map(([operation]) => operation)).toEqual(["assignEmployeeJobRole"]);
+  });
+
+  it("a written reason is sent trimmed; no tenant, principal, capability or Security Role is ever sent", async () => {
+    const workforce = makeWorkforce({ assignEmployeeJobRole: { ok: true, result: { outcome: "CHANGED", employeeId: "emp-1", jobRoleId: "national-accounts-sales", assignmentId: "ejr-2", endedAssignmentId: "ejr-1" } } });
+    const select = await openJobRoleControl(workforce);
+    fireEvent.change(select, { target: { value: "national-accounts-sales" } });
+    fireEvent.change(within(jobRoleSection()).getByLabelText("Reason (optional)"), { target: { value: "  Moved to national accounts  " } });
+    fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
+    expect(await within(jobRoleSection()).findByText(/Job Role changed to National Accounts Sales/)).toBeTruthy();
+    const [[, input]] = assignCalls(workforce);
+    expect(input).toEqual({ employeeId: "emp-1", jobRoleId: "national-accounts-sales", reason: "Moved to national accounts" });
+    for (const key of ["tenantId", "principalId", "actorUid", "capability", "capabilities", "securityRole", "role", ...NEVER_SENT_EMPLOYEE_KEYS]) {
+      expect(input, key).not.toHaveProperty(key);
+    }
+  });
+
+  it("NO_CHANGE says nothing changed and does not re-read", async () => {
+    const workforce = makeWorkforce({ assignEmployeeJobRole: { ok: true, result: { outcome: "NO_CHANGE", employeeId: "emp-1", jobRoleId: "retail-sales", assignmentId: "ejr-1", endedAssignmentId: null } } });
+    const select = await openJobRoleControl(workforce);
+    const readsBefore = historyReads(workforce);
+    fireEvent.change(select, { target: { value: "retail-sales" } });
+    fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
+    expect(await within(jobRoleSection()).findByText("Nothing changed: Retail Sales is already this Employee's current Job Role.")).toBeTruthy();
+    expect(historyReads(workforce)).toBe(readsBefore);
+  });
+
+  for (const [label, refusal, words] of [
+    ["403", { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 }, "You are not authorized to change this Employee's Job Role (admin.employeeJobRole.write). Nothing was saved."],
+    ["412 inactive", { ok: false, code: "PRECONDITION_FAILED", reason: "JOB_ROLE_INACTIVE", status: 412 }, "That Job Role is inactive and cannot be assigned. Nothing was saved."],
+    ["409 concurrent", { ok: false, code: "CONFLICT", reason: "JOB_ROLE_CONCURRENT_CHANGE", status: 409 }, "This Employee's Job Role was changed by someone else at the same time. Review the current Job Role and try again. Nothing was saved."],
+    ["404 Job Role", { ok: false, code: "NOT_FOUND", reason: "JOB_ROLE_NOT_FOUND", status: 404 }, "That Job Role does not exist in this company's Job Role catalog. Nothing was saved."],
+    ["404 Employee", { ok: false, code: "NOT_FOUND", reason: "EMPLOYEE_NOT_FOUND", status: 404 }, "This Employee record could not be found. Nothing was saved."],
+  ]) {
+    it(`a ${label} refusal is stated exactly; the form stays open and nothing is shown as saved`, async () => {
+      const workforce = makeWorkforce({ assignEmployeeJobRole: refusal });
+      const select = await openJobRoleControl(workforce);
+      fireEvent.change(select, { target: { value: "retail-sales" } });
+      fireEvent.click(within(jobRoleSection()).getByRole("button", { name: "Save Job Role" }));
+      const alert = await within(jobRoleSection()).findByRole("alert");
+      expect(alert.textContent).toBe(words);
+      expect(within(jobRoleSection()).getByLabelText("Job Role").value).toBe("retail-sales");
+      expect(jobRoleSection().querySelector('[data-employee-job-role="NONE"]')).toBeTruthy();
+      expect(within(jobRoleSection()).queryByText(/Job Role assigned:|Job Role changed to/)).toBeNull();
+      expect(assignCalls(workforce).length).toBe(1);
+    });
+  }
+});
+
+describe("Job Role is not part of Edit Employee or of Security Role actions", () => {
+  it("the Edit Employee form carries no Job Role control and Save sends none", async () => {
+    await openEditor(makeWorkforce(), { search: "?edit=1" });
+    const form = document.querySelector('[data-employee-edit="OPEN"]');
+    expect(form.querySelector("[data-job-role-control]")).toBeNull();
+    expect(within(form).queryByLabelText("Job Role")).toBeNull();
+  });
+
+  it("static: the editor, the User Access actions and the profile domain never name the Job Role command", async () => {
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const src = (rel) => readFileSync(path.resolve(process.cwd(), rel), "utf8");
+    for (const rel of ["src/modules/administration/EmployeeEditPanel.jsx", "src/modules/administration/UserAccessActions.jsx", "src/domain/employeeProfile.js"]) {
+      expect(src(rel), rel).not.toMatch(/assignEmployeeJobRole|employeeJobRole\.write|EmployeeJobRoleControl/);
+    }
+    // The control never offers anything under admin.employeeProfile.write.
+    expect(src("src/modules/administration/EmployeeJobRoleControl.jsx")).not.toMatch(/employeeProfile\.write"/);
+    expect(src("src/modules/administration/EmployeeJobRoleControl.jsx")).not.toMatch(/from\s+["']firebase|httpsCallable|firestore/i);
   });
 });

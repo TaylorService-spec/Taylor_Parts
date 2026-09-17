@@ -13,7 +13,6 @@ import { WORKFORCE_READ_STATE, useEmployeeResponsibility, useWorkforceRead } fro
 import {
   RECORD_FAMILY_LABEL,
   WORKFORCE_READS,
-  describeJobRole,
   describeLifecycle,
   describeRecordItem,
   describeResponsibilities,
@@ -21,6 +20,7 @@ import {
   describeWorkforceFailure,
   recordDisplayName,
 } from "../../domain/employeeOperatingProfile.js";
+import { JOB_ROLE_CAPTION, describeEmployeeJobRole } from "../../domain/employeeJobRole.js";
 
 /** One named runtime dependency: the short statement, and the detail behind a disclosure. */
 export function RuntimeDependency({ dependency, lead = "Not available yet." }) {
@@ -70,19 +70,86 @@ export function EmployeeLifecycle({ status }) {
   );
 }
 
-/** Job Role -- not governed, and nothing about the person is an input to it. */
-export function JobRoleSection() {
-  const jobRole = describeJobRole();
+/**
+ * Job Role (EMP-RT-08) -- the Employee's BUSINESS FUNCTION: the current Job Role and its history, from the governed
+ * PostgreSQL read listEmployeeJobRoleHistory, and nothing else. It is its own section, apart from User Access /
+ * Security Roles, employment facts, the manager and responsibility, because it confers none of them.
+ *
+ * `control` (optional) is a render function the Administration record passes to offer the governed Job Role
+ * control; it receives { jobRole, reload } -- `jobRole` is null until the read is READY -- so a change is followed by
+ * a RE-READ of this section, never by rendering what was chosen. The self view passes none.
+ */
+export function JobRoleSection({ employeeId, client, control = null, subject = "This Employee's Job Role" }) {
+  const read = useWorkforceRead(WORKFORCE_READS.JOB_ROLE_HISTORY.operation, employeeId ? { employeeId } : null, { client });
+  let body;
+  let jobRole = null;
+  if (read.status === WORKFORCE_READ_STATE.IDLE || read.status === WORKFORCE_READ_STATE.LOADING) {
+    body = <LoadingState>Reading the Job Role…</LoadingState>;
+  } else if (read.status === WORKFORCE_READ_STATE.FAILED) {
+    body = (
+      <div data-employee-job-role={describeWorkforceFailure(read.error).kind}>
+        <WorkforceFailure error={read.error} subject={subject} onRetry={read.reload} readId={WORKFORCE_READS.JOB_ROLE_HISTORY.id} />
+      </div>
+    );
+  } else {
+    jobRole = describeEmployeeJobRole(read.data);
+    body = (
+      <>
+        <dl className="fo-detail-list ns-emp-facts">
+          <dt>Current Job Role</dt>
+          <dd data-employee-job-role={jobRole.state} data-job-role-id={jobRole.current?.jobRoleId ?? ""}>
+            {jobRole.current ? (
+              <>
+                <strong>{jobRole.words}</strong>
+                {jobRole.current.inactive ? (
+                  <>
+                    {" "}
+                    <StatusPill tone="neutral">Inactive Job Role</StatusPill>
+                  </>
+                ) : null}
+                {jobRole.current.from ? <span className="fo-muted">{` · since ${jobRole.current.from}`}</span> : null}
+                {jobRole.inactiveNote ? <p className="fo-muted ns-emp-note">{jobRole.inactiveNote}</p> : null}
+              </>
+            ) : (
+              <>
+                <strong>{jobRole.words}</strong>
+                <p className="fo-muted ns-emp-note">{jobRole.noneNote}</p>
+              </>
+            )}
+          </dd>
+          <dt>Job Role history</dt>
+          <dd data-job-role-history={jobRole.history.length}>
+            {jobRole.history.length === 0 ? (
+              <span className="fo-muted">No Job Role has been recorded for this Employee.</span>
+            ) : (
+              <>
+                <ol className="ns-emp-records" aria-label="Job Role history, newest first">
+                  {jobRole.history.map((h) => (
+                    <li key={h.key} className="ns-emp-record" data-job-role-assignment={h.current ? "CURRENT" : "ENDED"}>
+                      <span className="ns-emp-record__title">
+                        {h.name}
+                        {h.inactive ? " (inactive)" : ""}
+                      </span>
+                      <span className="ns-emp-record__state">{h.period}</span>
+                      {h.reason ? <span className="ns-emp-record__state">{`Reason: ${h.reason}`}</span> : null}
+                    </li>
+                  ))}
+                </ol>
+                {jobRole.truncated ? <p className="fo-muted ns-emp-note">Older Job Role history exists than is shown here.</p> : null}
+              </>
+            )}
+          </dd>
+        </dl>
+      </>
+    );
+  }
   return (
-    <RuledSection title="Job Role">
-      <dl className="fo-detail-list ns-emp-facts">
-        <dt>Job Role</dt>
-        <dd data-employee-job-role={jobRole.state}>
-          <strong>{jobRole.words}</strong>
-          <p className="fo-muted ns-emp-note">{jobRole.explanation}</p>
-          <RuntimeDependency dependency={jobRole.dependency} lead="No governed Job Role authority." />
-        </dd>
-      </dl>
+    <RuledSection title="Job Role" meta="Business function — does not change access">
+      <div data-job-role-section="">
+        <p className="fo-muted ns-emp-note">{JOB_ROLE_CAPTION}</p>
+        {body}
+        {control ? control({ jobRole, reload: read.reload }) : null}
+      </div>
     </RuledSection>
   );
 }
