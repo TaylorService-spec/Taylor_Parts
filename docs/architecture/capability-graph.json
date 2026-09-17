@@ -3163,7 +3163,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/employeeProfileCommands.ts",
-          "functions/src/eosWorkforce/commands/reportingRelationshipCommands.ts",
+          "functions/src/eosWorkforce/commands/employeeCommandKernel.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
         ],
         "clientReferences": [
