@@ -5,9 +5,9 @@
   "activationOverrides": 92
  },
  "catalog": {
-  "total": 148,
-  "globallyActive": 38,
-  "activeInThisEnvironment": 130,
+  "total": 149,
+  "globallyActive": 39,
+  "activeInThisEnvironment": 131,
   "inactiveInThisEnvironment": 18
  },
  "employeesEvaluated": 47,
@@ -48,10 +48,10 @@
   "zeroOperable": []
  },
  "authoritySource": {
-  "operableHoldingsTotal": 2176,
+  "operableHoldingsTotal": 2177,
   "fromCompatibilityRoleOnly": 1257,
   "fromGovernedRoleOnly": 488,
-  "fromBoth": 431,
+  "fromBoth": 432,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
@@ -427,8 +427,8 @@
     "owner"
    ],
    "functionalRoles": [],
-   "grantedCount": 148,
-   "operableCount": 130,
+   "grantedCount": 149,
+   "operableCount": 131,
    "assignments": [
     {
      "workstream": "ACCESS_ADMINISTRATION",
