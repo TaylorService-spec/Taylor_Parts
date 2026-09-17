@@ -47,9 +47,9 @@ Evidence of reference. **Not** proof that a callable exists, except where stated
 | Class | Count | Means |
 | --- | ---: | --- |
 | EXPORTED | 21 | An exported callable in `index.ts` names this capability |
-| SERVER_REFERENCED | 123 | Referenced under `functions/src`; no callable matched |
+| SERVER_REFERENCED | 124 | Referenced under `functions/src`; no callable matched |
 | CLIENT_ONLY | 2 | Referenced only in the client app |
-| NO_IMPLEMENTATION_EVIDENCE | 4 | No literal reference found — **may be a false negative** for ids assembled indirectly |
+| NO_IMPLEMENTATION_EVIDENCE | 3 | No literal reference found — **may be a false negative** for ids assembled indirectly |
 
 ## Environment activation
 

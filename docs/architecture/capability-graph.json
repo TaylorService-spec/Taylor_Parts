@@ -31,9 +31,9 @@
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 123,
+    "SERVER_REFERENCED": 124,
     "CLIENT_ONLY": 2,
-    "NO_IMPLEMENTATION_EVIDENCE": 4
+    "NO_IMPLEMENTATION_EVIDENCE": 3
   },
   "guideStatuses": {},
   "flows": [
@@ -3244,11 +3244,13 @@
       "catalogActive": false,
       "implementation": {
         "exportedCallables": [],
-        "serverReferences": [],
+        "serverReferences": [
+          "functions/src/eosWorkforce/workEligibilityVocabulary.ts"
+        ],
         "clientReferences": [],
-        "serverReferenceCount": 0,
+        "serverReferenceCount": 1,
         "clientReferenceCount": 0,
-        "evidence": "NO_IMPLEMENTATION_EVIDENCE"
+        "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
         "eligible": false,
