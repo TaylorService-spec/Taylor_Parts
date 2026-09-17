@@ -151,6 +151,7 @@ on:
       - "functions/test/employeeProfileCommandPostgres.test.mjs"
       - "functions/test/employeeLifecycleCommandPostgres.test.mjs"
       - "functions/test/employeeJobRolePostgres.test.mjs"
+      - "functions/test/employeeChangeHistoryPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"
@@ -322,6 +323,7 @@ on:
       - "functions/test/employeeProfileCommandPostgres.test.mjs"
       - "functions/test/employeeLifecycleCommandPostgres.test.mjs"
       - "functions/test/employeeJobRolePostgres.test.mjs"
+      - "functions/test/employeeChangeHistoryPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/eosCrm/**"

@@ -86,11 +86,11 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole"];
+const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory"];
 
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole"];
 
-test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08 and exactly the governed Employee commands", () => {
+test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08, H1 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
   assert.deepEqual([...http.WORKFORCE_COMMAND_OPERATIONS], COMMANDS);
   assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);
@@ -236,8 +236,11 @@ test("owner and accountable stay two axes over two columns; no credited salesper
 // names no Job Role; and the Job Role modules themselves never touch Security Role, operational roles, ownership,
 // accountability, assignment, the reporting relationship or operating company.
 const JOB_ROLE_MODULES = ["jobRoleReads.ts", "employeeJobRoleCommands.ts"];
+// EMP-RT-H1: the governed change history NAMES every Employee audit action (Job Role and operating company included)
+// because it reports them. It is ruled separately below: it changes nothing and reads no access authority.
+const HISTORY_MODULE = "employeeChangeHistoryRead.ts";
 test("no Job Role, Security Role or operationalRoles is produced, inferred or named anywhere in the Workforce reads or commands", () => {
-  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])];
+  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])].filter((f) => !f.endsWith(HISTORY_MODULE));
   assert.deepEqual(JOB_ROLE_MODULES.map((m) => files.some((f) => f.endsWith(m))), [true, true], "the Job Role modules moved");
   for (const f of files.filter((f) => !JOB_ROLE_MODULES.some((m) => f.endsWith(m)))) {
     assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS|operationalRoles|operational_roles/, rel(f));
@@ -297,4 +300,65 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   writeFileSync(leak, '// consumes the Workforce transport (/workforce/employees) through workforceApiClient\nexport default null;\n');
   assert.ok(!ROUTE_REFERENCE.test(code(leak)), "a comment naming the architecture is treated as a dependency");
   assert.doesNotMatch(readFileSync(join(REPO, "firestore.rules"), "utf8"), /workforce\/employees|eosWorkforce/);
+});
+
+// ════════════════════ EMP-RT-H1: governed Employee change history ════════════════════
+
+const history = require("../lib/eosWorkforce/reads/employeeChangeHistoryRead.js");
+
+test("EMP-RT-H1 history: the closed action list is exactly the governed commands' Employee audit actions", () => {
+  const profileCmd = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
+  const lifecycle = require("../lib/eosWorkforce/commands/employeeLifecycleCommand.js");
+  const jobRoleCmd = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
+  assert.deepEqual([...history.EMPLOYEE_CHANGE_HISTORY_ACTIONS], [
+    profileCmd.EMPLOYEE_PROFILE_UPDATE_ACTION,
+    "employee.reportingRelationship.establish",
+    "employee.reportingRelationship.end",
+    lifecycle.EMPLOYMENT_STATUS_CHANGE_ACTION,
+    lifecycle.OPERATING_COMPANY_CHANGE_ACTION,
+    jobRoleCmd.JOB_ROLE_ASSIGN_ACTION,
+  ]);
+  // Every action a Workforce command audits against an Employee is in the list, and nothing else is.
+  const commandSources = walk(join(WORKFORCE, "commands"), [".ts"]).map(code).join("\n");
+  const audited = new Set([...commandSources.matchAll(/"(employee\.[a-zA-Z]+\.[a-zA-Z]+)"/g)].map((m) => m[1]));
+  assert.deepEqual([...audited].sort(), [...history.EMPLOYEE_CHANGE_HISTORY_ACTIONS].sort());
+});
+
+test("EMP-RT-H1 history: read-only, no Principal identity returned, no access authority read, employee.record.read gate", () => {
+  const src = code(join(READS, HISTORY_MODULE));
+  assert.doesNotMatch(src, /\bINSERT\b|\bUPDATE\s|\bDELETE\b|FOR UPDATE|FOR SHARE/);
+  assert.doesNotMatch(src, /role_capabilities|user_role_assignments|employee_principal_links|securityRole|operationalRoles|owner_employee_id|accountab|salesperson/i);
+  // actor_uid is used ONLY as a join key, never selected; the only principals column read is display_name.
+  assert.equal((src.match(/actor_uid/g) ?? []).length, 1);
+  assert.match(src, /LEFT JOIN eos_policy\.principals pr ON pr\.id = a\.actor_uid/);
+  assert.deepEqual([...src.matchAll(/\bpr\.(\w+)/g)].map((m) => m[1]).sort(), ["display_name", "id"]);
+  assert.match(src, /\(\) => \[EMPLOYEE_RECORD_READ\]/);
+  assert.match(src, /a\.tenant_id = \$1 AND a\.target_kind = 'employee' AND a\.target_id = \$2 AND a\.action = ANY\(\$3::text\[\]\)/);
+});
+
+test("EMP-RT-H1 history: missing employee.record.read and invalid input refuse before the database", async () => {
+  for (const [caps, input, status, code_] of [
+    [["opportunity.read"], { employeeId: "e1" }, 403, "CAPABILITY_REQUIRED"],
+    [["employee.record.read"], {}, 400, "EMPLOYEE_ID_REQUIRED"],
+    [["employee.record.read"], { employeeId: "e1", limit: 9999 }, 400, "PAGE_SIZE_INVALID"],
+    [["employee.record.read"], { employeeId: "e1", cursor: "garbage" }, 400, "CURSOR_INVALID"],
+    [["employee.record.read"], { employeeId: "e1", action: "tenant.operatingCompanies.reconcile" }, 400, "INPUT_FIELD_NOT_ACCEPTED"],
+  ]) {
+    const w = fakeWorld({ capabilities: caps });
+    const res = await post(w, { operation: "listEmployeeChangeHistory", input });
+    assert.deepEqual([res.status, parsed(res).code], [status, code_], JSON.stringify(input));
+    assert.equal(w.connects(), 0);
+  }
+  // A cursor minted for one Employee cannot reposition another Employee's history.
+  const foreign = kernel.encodeEmployeeCursor("change-history:e2", { number: "2026-01-01T00:00:00.000000Z", id: "audit_x" });
+  const w = fakeWorld({ capabilities: ["employee.record.read"] });
+  assert.equal(parsed(await post(w, { operation: "listEmployeeChangeHistory", input: { employeeId: "e1", cursor: foreign } })).code, "CURSOR_INVALID");
+});
+
+test("RETIRED: the legacy updateEmployeeProfile Firebase callable is not exported; the legacy history read still is", () => {
+  const index = code(join(SRC, "index.ts"));
+  assert.doesNotMatch(index, /\bupdateEmployeeProfile\b/);
+  assert.match(index, /listRecordChangeHistory,\s*\} from "\.\/access\/administrationUsersCallables"/);
+  const callables = code(join(SRC, "access", "administrationUsersCallables.ts"));
+  assert.doesNotMatch(callables, /updateEmployeeProfile|employeeProfileCommands/);
 });
