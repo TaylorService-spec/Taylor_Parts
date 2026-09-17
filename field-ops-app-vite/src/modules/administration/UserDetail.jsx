@@ -85,8 +85,8 @@ import {
 // decides what to OFFER: the command re-checks the capability server-side, and a 403 renders as "not authorized,
 // nothing saved" inside the form -- it is never hidden or turned into success.
 //
-// NO OPTIMISTIC STATE. After any save that wrote something the form closes, the outcome is stated in words
-// (including a partial save: profile saved, manager not), and record.reload() re-reads EMP-RT-01. The page shows
+// NO OPTIMISTIC STATE. After a save that wrote something the form closes, the outcome is stated in words, and
+// record.reload() re-reads EMP-RT-01. A refused Save saved nothing and says so; there is no partial save. The page shows
 // only what that read returns; the rail sections remount with the record and re-read too.
 export default function UserDetail({
   client = administrationUsersClient,

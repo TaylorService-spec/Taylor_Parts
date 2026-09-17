@@ -40,6 +40,7 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
   "updateEmployeeProfile",
   "establishReportingRelationship",
   "endReportingRelationship",
+  "saveEmployeeEdit",
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */

@@ -90,38 +90,52 @@ async function currentProfile(db: PoolClient, tenantId: string, employeeId: stri
   return rows[0] as Record<ProfileColumn, string | null>;
 }
 
+export interface PreparedProfileUpdate {
+  readonly employeeId: string;
+  readonly changes: Changes;
+  readonly reason: string | null;
+}
+
+/** Validate a profile update input. Pure; runs before any connection. */
+export function prepareProfileUpdate(input: Record<string, unknown>): PreparedProfileUpdate {
+  const i = acceptOnly(input, ["employeeId", "changes", "reason"]);
+  return { employeeId: requireId(i.employeeId, "employeeId"), changes: prepareChanges(i.changes), reason: optionalReason(i.reason) };
+}
+
+/**
+ * The profile transaction body, for use inside an already-open governed Employee command transaction (this command, or
+ * the combined Employee edit). Locks the Employee; writes nothing and audits nothing when nothing changed.
+ */
+export async function applyProfileUpdate(db: PoolClient, actor: EmployeeCommandActor, p: PreparedProfileUpdate, at: Date): Promise<EmployeeProfileChangeResult> {
+  await lockEmployee(db, actor.tenantId, p.employeeId);
+  const columns = [...p.changes.values()].map((c) => c.column);
+  const current = await currentProfile(db, actor.tenantId, p.employeeId, columns);
+  const changed = [...p.changes].filter(([, c]) => (current[c.column] ?? null) !== c.value);
+  if (changed.length === 0) return { outcome: "NO_CHANGE", employeeId: p.employeeId, changedFields: [], auditEventId: null };
+
+  const number = changed.find(([, c]) => c.column === "employee_number")?.[1].value;
+  if (number) {
+    const held = await db.query(
+      `SELECT 1 FROM eos_workforce.employees WHERE tenant_id = $1 AND id <> $2 AND upper(employee_number) = upper($3)`,
+      [actor.tenantId, p.employeeId, number],
+    );
+    if (held.rows.length > 0) refuse("EMPLOYEE_NUMBER_TAKEN", "CONFLICT", "another Employee of this tenant holds that employee number");
+  }
+
+  await db.query(
+    `UPDATE eos_workforce.employees SET ${changed.map(([, c], i) => `${c.column} = $${i + 3}`).join(", ")}, updated_at = $${changed.length + 3}
+      WHERE tenant_id = $1 AND id = $2`,
+    [actor.tenantId, p.employeeId, ...changed.map(([, c]) => c.value), at],
+  );
+  const before = Object.fromEntries(changed.map(([key, c]) => [key, current[c.column] ?? null]));
+  const after = Object.fromEntries(changed.map(([key, c]) => [key, c.value]));
+  const auditEventId = await appendEmployeeAudit(db, actor.tenantId, actor.principalId, EMPLOYEE_PROFILE_UPDATE_ACTION, p.employeeId, before, after, p.reason, at);
+  return { outcome: "UPDATED", employeeId: p.employeeId, changedFields: changed.map(([key]) => key), auditEventId };
+}
+
+export const employeeNumberTaken = () => new EmployeeCommandError("EMPLOYEE_NUMBER_TAKEN", "CONFLICT", "another Employee of this tenant holds that employee number");
+
 /** Update governed profile facts of one Employee of the actor's tenant. */
 export function updateEmployeeProfile(deps: EmployeeCommandDeps, actor: EmployeeCommandActor, input: Record<string, unknown>): Promise<EmployeeProfileChangeResult> {
-  return runEmployeeCommand(deps, actor,
-    () => {
-      const i = acceptOnly(input, ["employeeId", "changes", "reason"]);
-      return { employeeId: requireId(i.employeeId, "employeeId"), changes: prepareChanges(i.changes), reason: optionalReason(i.reason) };
-    },
-    async (db, p, at) => {
-      await lockEmployee(db, actor.tenantId, p.employeeId);
-      const columns = [...p.changes.values()].map((c) => c.column);
-      const current = await currentProfile(db, actor.tenantId, p.employeeId, columns);
-      const changed = [...p.changes].filter(([, c]) => (current[c.column] ?? null) !== c.value);
-      if (changed.length === 0) return { outcome: "NO_CHANGE", employeeId: p.employeeId, changedFields: [], auditEventId: null };
-
-      const number = changed.find(([, c]) => c.column === "employee_number")?.[1].value;
-      if (number) {
-        const held = await db.query(
-          `SELECT 1 FROM eos_workforce.employees WHERE tenant_id = $1 AND id <> $2 AND upper(employee_number) = upper($3)`,
-          [actor.tenantId, p.employeeId, number],
-        );
-        if (held.rows.length > 0) refuse("EMPLOYEE_NUMBER_TAKEN", "CONFLICT", "another Employee of this tenant holds that employee number");
-      }
-
-      await db.query(
-        `UPDATE eos_workforce.employees SET ${changed.map(([, c], i) => `${c.column} = $${i + 3}`).join(", ")}, updated_at = $${changed.length + 3}
-          WHERE tenant_id = $1 AND id = $2`,
-        [actor.tenantId, p.employeeId, ...changed.map(([, c]) => c.value), at],
-      );
-      const before = Object.fromEntries(changed.map(([key, c]) => [key, current[c.column] ?? null]));
-      const after = Object.fromEntries(changed.map(([key, c]) => [key, c.value]));
-      const auditEventId = await appendEmployeeAudit(db, actor.tenantId, actor.principalId, EMPLOYEE_PROFILE_UPDATE_ACTION, p.employeeId, before, after, p.reason, at);
-      return { outcome: "UPDATED", employeeId: p.employeeId, changedFields: changed.map(([key]) => key), auditEventId };
-    },
-    () => new EmployeeCommandError("EMPLOYEE_NUMBER_TAKEN", "CONFLICT", "another Employee of this tenant holds that employee number"));
+  return runEmployeeCommand(deps, actor, () => prepareProfileUpdate(input), (db, p, at) => applyProfileUpdate(db, actor, p, at), employeeNumberTaken);
 }

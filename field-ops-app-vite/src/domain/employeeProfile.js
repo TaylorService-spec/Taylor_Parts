@@ -500,32 +500,35 @@ export function validateProfileValues(values, base = null) {
   return errors;
 }
 
-// ════════════════════ THE SAVE: TWO GOVERNED COMMANDS, IN ORDER, REPORTED EXACTLY ════════════════════
+// ════════════════════ THE SAVE: ONE GOVERNED COMMAND PER SUBMITTED SAVE ════════════════════
+//
+// A Save is ONE server transaction, whatever it changes:
+//   profile only          -> updateEmployeeProfile
+//   manager only          -> establishReportingRelationship / endReportingRelationship
+//   profile AND manager   -> saveEmployeeEdit -- both effects and their audit events commit together, or neither does
+// There is no client-side sequencing of two writes, no compensation, and no partial-success outcome.
 
 export const EMPLOYEE_EDIT_RESULT = Object.freeze({
   /** Nothing differed from the seed; no command was called. */
   NOTHING_CHANGED: "NOTHING_CHANGED",
-  /** Every command called succeeded (an UPDATED/CHANGED or a NO_CHANGE convergence). */
+  /** The one command called succeeded (an UPDATED/CHANGED or a NO_CHANGE convergence). */
   SAVED: "SAVED",
-  /** The first command called was refused or failed. Nothing was written. */
+  /** The command was refused or failed. Nothing was written. */
   NOT_SAVED: "NOT_SAVED",
-  /** The first command's result is unknown (the service could not be reached). Not confirmed either way. */
+  /** The command's result is unknown (the service could not be reached). Not confirmed either way. */
   NOT_CONFIRMED: "NOT_CONFIRMED",
-  /** The profile was written, and the manager change after it was refused, failed or is unconfirmed. */
-  PARTIAL: "PARTIAL",
 });
 
 /**
  * Run the save against the injected Workforce client (`{ call(operation, input) }`). Never throws.
  *
- * The input carries ONLY { employeeId, changes } and { employeeId, managerEmployeeId } -- never a tenant, principal,
- * capability or lifecycle field. The profile command runs first; the manager command runs only if the profile
- * command succeeded (or had nothing to send), so a refusal of the first leaves nothing half-written.
+ * The input carries ONLY { employeeId, changes } and the manager intent -- never a tenant, principal, capability or
+ * lifecycle field. Exactly one command is called per Save.
  */
 export async function saveEmployeeEdit({ workforce, employeeId, changes, manager }) {
   const profileKeys = Object.keys(changes ?? {}).filter((k) => PROFILE_RECORD_PATH[k]);
   const managerAction = manager?.action ?? MANAGER_CHANGE.NONE;
-  const result = { profile: null, manager: null };
+  const result = { profile: null, manager: null, managerAction };
   if (profileKeys.length === 0 && managerAction === MANAGER_CHANGE.NONE) return { ...result, state: EMPLOYEE_EDIT_RESULT.NOTHING_CHANGED };
 
   const call = async (operation, input) => {
@@ -536,29 +539,37 @@ export async function saveEmployeeEdit({ workforce, employeeId, changes, manager
       return { ok: false, code: "INTERNAL" };
     }
   };
+  const failed = (outcome, part) => ({
+    ...result, [part]: outcome, failedPart: part,
+    state: outcome.code === "UNREACHABLE" ? EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED : EMPLOYEE_EDIT_RESULT.NOT_SAVED,
+  });
+  const sent = Object.fromEntries(profileKeys.map((k) => [k, changes[k]]));
 
+  if (profileKeys.length > 0 && managerAction !== MANAGER_CHANGE.NONE) {
+    const managerInput = managerAction === MANAGER_CHANGE.ESTABLISH
+      ? { action: "ESTABLISH", managerEmployeeId: manager.managerEmployeeId }
+      : { action: "END" };
+    const combined = await call("saveEmployeeEdit", { employeeId, changes: sent, manager: managerInput });
+    if (!combined.ok) return failed(combined, MANAGER_FAILURE_REASONS.has(combined.reason) ? "manager" : "profile");
+    return {
+      ...result,
+      profile: { ok: true, result: combined.result?.profile },
+      manager: { ok: true, result: combined.result?.manager },
+      state: EMPLOYEE_EDIT_RESULT.SAVED,
+    };
+  }
   if (profileKeys.length > 0) {
-    const sent = Object.fromEntries(profileKeys.map((k) => [k, changes[k]]));
-    result.profile = await call("updateEmployeeProfile", { employeeId, changes: sent });
-    if (!result.profile.ok) {
-      return { ...result, state: result.profile.code === "UNREACHABLE" ? EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED : EMPLOYEE_EDIT_RESULT.NOT_SAVED };
-    }
+    const profile = await call("updateEmployeeProfile", { employeeId, changes: sent });
+    return profile.ok ? { ...result, profile, state: EMPLOYEE_EDIT_RESULT.SAVED } : failed(profile, "profile");
   }
-
-  if (managerAction !== MANAGER_CHANGE.NONE) {
-    result.manager =
-      managerAction === MANAGER_CHANGE.ESTABLISH
-        ? await call("establishReportingRelationship", { employeeId, managerEmployeeId: manager.managerEmployeeId })
-        : await call("endReportingRelationship", { employeeId });
-    result.managerAction = managerAction;
-    if (!result.manager.ok) {
-      const profileWritten = result.profile?.ok === true && result.profile.result?.outcome === "UPDATED";
-      if (profileWritten) return { ...result, state: EMPLOYEE_EDIT_RESULT.PARTIAL };
-      return { ...result, state: result.manager.code === "UNREACHABLE" ? EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED : EMPLOYEE_EDIT_RESULT.NOT_SAVED };
-    }
-  }
-  return { ...result, state: EMPLOYEE_EDIT_RESULT.SAVED };
+  const managerOutcome = managerAction === MANAGER_CHANGE.ESTABLISH
+    ? await call("establishReportingRelationship", { employeeId, managerEmployeeId: manager.managerEmployeeId })
+    : await call("endReportingRelationship", { employeeId });
+  return managerOutcome.ok ? { ...result, manager: managerOutcome, state: EMPLOYEE_EDIT_RESULT.SAVED } : failed(managerOutcome, "manager");
 }
+
+/** Server refusal reasons that are about the manager part of a Save (so the sentence names the manager). */
+const MANAGER_FAILURE_REASONS = new Set(["MANAGER_NOT_FOUND", "REPORTING_RELATIONSHIP_NOT_FOUND", "REPORTING_SELF_MANAGER", "REPORTING_CONCURRENT_CHANGE"]);
 
 /** A profile command failure, as a sentence. */
 function profileFailureWords(error) {
@@ -626,7 +637,7 @@ const listWords = (labels) => labels.join(", ");
  * The save result in words: { state, words, reload }. `reload` is true whenever something MAY have been written,
  * so the page re-reads the authoritative record instead of rendering what was typed.
  *
- * It never claims more than the commands returned: a partial save names what was saved and what was not.
+ * It never claims more than the command returned. One Save is one transaction, so a refusal always means nothing was saved.
  */
 export function describeEmployeeEditResult(saved) {
   const state = saved?.state;
@@ -634,30 +645,22 @@ export function describeEmployeeEditResult(saved) {
   const changedLabels = updated
     ? (Array.isArray(saved.profile.result?.changedFields) ? saved.profile.result.changedFields : []).map((k) => EMPLOYEE_FIELD_LABELS[k] ?? k)
     : [];
-  const managerNoun = saved?.managerAction === MANAGER_CHANGE.END ? "manager removal" : "manager change";
-  const managerUnreachable = saved?.manager?.ok === false && saved.manager.code === "UNREACHABLE";
   switch (state) {
     case EMPLOYEE_EDIT_RESULT.NOTHING_CHANGED:
       return { state, words: "Nothing was changed.", reload: false };
     case EMPLOYEE_EDIT_RESULT.NOT_SAVED:
     case EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED: {
-      if (saved.profile && !saved.profile.ok) {
-        const words = profileFailureWords(saved.profile);
+      const outcome = saved[saved.failedPart] ?? {};
+      if (saved.failedPart === "profile") {
+        const words = profileFailureWords(outcome);
         return { state, words: state === EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED ? words : `${words} Nothing was saved.`, reload: false };
       }
-      const clause = managerFailureWords(saved.manager);
-      const already = saved.profile?.ok ? " The profile already held the values entered." : "";
+      const clause = managerFailureWords(outcome);
       if (state === EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED) {
-        return { state, words: `The ${managerNoun} is not confirmed: ${clause}.${already} Reload the record to see what is stored.`, reload: false };
+        return { state, words: `This save is not confirmed: ${clause}. Reload the record to see what is stored.`, reload: false };
       }
-      return { state, words: `Nothing was saved: ${clause}.${already}`, reload: false };
+      return { state, words: `Nothing was saved: ${clause}.`, reload: false };
     }
-    case EMPLOYEE_EDIT_RESULT.PARTIAL:
-      return {
-        state,
-        words: `The profile changes were saved (${listWords(changedLabels)}). The ${managerNoun} ${managerUnreachable ? "is not confirmed" : "was NOT saved"}: ${managerFailureWords(saved.manager)}. The record below is re-read from the Employee authority.`,
-        reload: true,
-      };
     case EMPLOYEE_EDIT_RESULT.SAVED: {
       const parts = [...changedLabels];
       const managerOutcome = saved.manager?.ok ? saved.manager.result?.outcome : null;

@@ -66,7 +66,7 @@ export async function runEmployeeCommand<P, R>(
   actor: EmployeeCommandActor,
   prepare: () => P,
   body: (client: PoolClient, prepared: P, at: Date) => Promise<R>,
-  onUniqueViolation: () => EmployeeCommandError,
+  onUniqueViolation: (err: { constraint?: string }) => EmployeeCommandError,
 ): Promise<R> {
   let client: PoolClient | undefined;
   try {
@@ -89,7 +89,7 @@ export async function runEmployeeCommand<P, R>(
   } catch (err) {
     if (client) await client.query("ROLLBACK").catch(() => undefined);
     if (err instanceof EmployeeCommandError) throw err;
-    if ((err as { code?: string })?.code === "23505") throw onUniqueViolation();
+    if ((err as { code?: string })?.code === "23505") throw onUniqueViolation(err as { constraint?: string });
     throw new EmployeeCommandError("COMMAND_FAILED", "FAILED", "the command could not be completed");
   } finally {
     client?.release();

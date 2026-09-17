@@ -25,13 +25,12 @@ import { RuntimeDependency } from "../employees/EmployeeProfileSections.jsx";
 // EDIT EMPLOYEE -- the deliberate, governed edit of one Employee's PROFILE and REPORTING RELATIONSHIP, on the
 // governed PostgreSQL record (EMP-RT-01 readEmployee), through the governed Workforce commands (EMP-RT-W1B).
 //
-// ════════════════════ TWO WRITERS, IN A FIXED ORDER, AND NOTHING ELSE ════════════════════
+// ════════════════════ ONE SAVE, ONE GOVERNED TRANSACTION ════════════════════
 //
-// Save sends updateEmployeeProfile with ONLY the changed profile keys (the seventeen PROFILE_FIELDS), then -- only
-// if the Manager changed -- establishReportingRelationship (a new manager) or endReportingRelationship (cleared).
-// Profile first: if it is refused nothing else is attempted, so a refusal leaves nothing half-written. If the
-// profile lands and the manager command does not, the result says exactly that (domain describeEmployeeEditResult)
-// and never claims success. Nothing here writes Firestore or calls a Firebase callable: the legacy
+// Save sends ONLY the changed profile keys (the seventeen PROFILE_FIELDS) and the Manager intent, as exactly ONE
+// command: updateEmployeeProfile (profile only), establishReportingRelationship / endReportingRelationship (manager
+// only), or saveEmployeeEdit (both -- one server transaction: every effect and audit event commits, or none does).
+// There is no client-side ordering of two writes and no partial-success outcome (domain saveEmployeeEdit). Nothing here writes Firestore or calls a Firebase callable: the legacy
 // updateEmployeeProfile callable wrote the retired Firestore record and is no longer reachable from this client.
 // No tenant, principal or capability is ever sent -- the server resolves all three from the verified caller, and
 // its admin.employeeProfile.write check is the authority; the page's capability test only decides what to offer.

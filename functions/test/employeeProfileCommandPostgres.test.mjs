@@ -21,6 +21,8 @@ const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const command = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
 const http = require("../lib/eosWorkforce/workforceHttp.js");
+const edit = require("../lib/eosWorkforce/commands/employeeEditCommand.js");
+const reporting = require("../lib/eosWorkforce/commands/reportingRelationshipCommands.js");
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
 const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
@@ -237,6 +239,77 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
     const ended = await call("tok-admin", "endReportingRelationship", { employeeId: "e-http" });
     assert.deepEqual([ended.status, ended.body.result.outcome], [200, "ENDED"]);
     assert.equal((await call("tok-admin", "endReportingRelationship", { employeeId: "e-http" })).status, 404);
+  });
+
+  // ════════════════════ W1C: combined profile + manager Save is ONE transaction ════════════════════
+  await t.test("W1C saveEmployeeEdit: profile AND manager commit together, or neither commits", async () => {
+    await employee("e-combo", "t1", { display_name: "Combo Person", job_title: "Tech" });
+    await employee("e-combo-mgr1", "t1", { display_name: "Manager One" });
+    await employee("e-combo-mgr2", "t1", { display_name: "Manager Two" });
+    const rel = async () => (await q(`SELECT id, manager_employee_id, effective_to IS NULL AS current FROM eos_workforce.employee_reporting_relationships WHERE employee_id = 'e-combo' ORDER BY established_at, id`)).rows;
+    const snapshot = async () => ({ profile: await profile("e-combo"), rel: await rel(), audits: (await audits("e-combo")).length });
+
+    // Closed: only the combined case.
+    await assert.rejects(edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "x" } }), (e) => e.code === "COMBINED_EDIT_REQUIRES_BOTH");
+    await assert.rejects(edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", manager: { action: "END" } }), (e) => e.code === "COMBINED_EDIT_REQUIRES_BOTH");
+    await assert.rejects(edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "x" }, manager: { action: "REPLACE" } }), (e) => e.code === "MANAGER_ACTION_INVALID");
+    await assert.rejects(edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { employmentStatus: "TERMINATED" }, manager: { action: "END" } }), (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED");
+    await assert.rejects(edit.saveEmployeeEdit(deps, await resolveActor(gm), { employeeId: "e-combo", changes: { jobTitle: "x" }, manager: { action: "ESTABLISH", managerEmployeeId: "e-combo-mgr1" } }), (e) => e.code === "CAPABILITY_REQUIRED");
+
+    // Success: both effects, both audit events, same instant.
+    const ok = await edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "Lead Tech" }, manager: { action: "ESTABLISH", managerEmployeeId: "e-combo-mgr1" }, reason: "promotion" });
+    assert.deepEqual([ok.profile.outcome, ok.manager.outcome], ["UPDATED", "ESTABLISHED"]);
+    assert.equal((await profile("e-combo")).job_title, "Lead Tech");
+    assert.deepEqual((await rel()).map((r) => [r.manager_employee_id, r.current]), [["e-combo-mgr1", true]]);
+    const trail = (await q(`SELECT action, actor_uid, occurred_at, reason FROM eos_policy.audit_events WHERE target_id = 'e-combo' ORDER BY action`)).rows;
+    assert.deepEqual(trail.map((a) => a.action), ["employee.profile.update", "employee.reportingRelationship.establish"]);
+    assert.ok(trail.every((a) => a.actor_uid === adminActor.principalId && a.reason === "promotion"));
+    assert.equal(trail[0].occurred_at.getTime(), trail[1].occurred_at.getTime(), "one Save, one transaction instant");
+
+    // INJECTED FAILURE on the manager ESTABLISH step, after the profile step has already run inside the transaction.
+    const inject = async (name, timing, fn) => {
+      await q(`CREATE FUNCTION ${name}() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'injected reporting failure'; END $$ LANGUAGE plpgsql`);
+      await q(`CREATE TRIGGER ${name} ${timing} ON eos_workforce.employee_reporting_relationships FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+      try { await fn(); } finally {
+        await q(`DROP TRIGGER ${name} ON eos_workforce.employee_reporting_relationships`);
+        await q(`DROP FUNCTION ${name}()`);
+      }
+    };
+    let before = await snapshot();
+    await inject("test_fail_reporting_insert", "BEFORE INSERT", async () => {
+      await assert.rejects(
+        edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "MUST NOT PERSIST", "address.city": "Nowhere" }, manager: { action: "ESTABLISH", managerEmployeeId: "e-combo-mgr2" } }),
+        (e) => e.code === "COMMAND_FAILED" && !/injected/.test(e.message));
+    });
+    assert.deepEqual(await snapshot(), before, "ESTABLISH failure left a partial effect (profile, relationship or audit)");
+
+    // INJECTED FAILURE on the manager END step (the relationship UPDATE), after the profile step.
+    before = await snapshot();
+    await inject("test_fail_reporting_update", "BEFORE UPDATE", async () => {
+      await assert.rejects(
+        edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "MUST NOT PERSIST" }, manager: { action: "END" } }),
+        (e) => e.code === "COMMAND_FAILED");
+    });
+    assert.deepEqual(await snapshot(), before, "END failure left a partial effect");
+
+    // A governed refusal at the manager step (after profile validation and the profile write) also leaves nothing.
+    before = await snapshot();
+    await assert.rejects(
+      edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "MUST NOT PERSIST" }, manager: { action: "ESTABLISH", managerEmployeeId: "e-t2" } }),
+      (e) => e.code === "MANAGER_NOT_FOUND");
+    assert.deepEqual(await snapshot(), before, "a manager refusal left the profile write");
+
+    // Success on END, then the combined Save through the transport.
+    const ended = await edit.saveEmployeeEdit(deps, adminActor, { employeeId: "e-combo", changes: { jobTitle: "Senior Tech" }, manager: { action: "END" } });
+    assert.deepEqual([ended.profile.outcome, ended.manager.outcome], ["UPDATED", "ENDED"]);
+    assert.deepEqual((await rel()).map((r) => r.current), [false]);
+    const world = { reader: repo, pool, allowedOrigins: [], verifyToken: async () => ({ externalSubject: admin.subject, identityProvider: "firebase" }) };
+    const res = await http.handleWorkforceRequest(world, { method: "POST", url: "/workforce/employees", headers: { authorization: "Bearer t" },
+      body: JSON.stringify({ operation: "saveEmployeeEdit", input: { employeeId: "e-combo", changes: { jobTitle: "Crew Lead" }, manager: { action: "ESTABLISH", managerEmployeeId: "e-combo-mgr2" } } }) });
+    assert.equal(res.status, 200, res.body);
+    assert.deepEqual([(await profile("e-combo")).job_title, (await rel()).filter((r) => r.current).map((r) => r.manager_employee_id)], ["Crew Lead", ["e-combo-mgr2"]]);
+    // The single commands still behave as before.
+    assert.equal((await reporting.endReportingRelationship(deps, adminActor, { employeeId: "e-combo" })).outcome, "ENDED");
   });
 
   // ════════════════════ mutation controls ════════════════════

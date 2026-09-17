@@ -485,7 +485,7 @@ describe("EOS access and security stay independent, and fail closed", () => {
 // authority: every refusal below is a command answer the page must render, not something the capability test hides.
 
 const EDIT_GRANTED = (id) => id === "admin.employeeProfile.write";
-const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship"];
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit"];
 const commandCalls = (workforce) => workforce.call.mock.calls.filter(([operation]) => COMMANDS.includes(operation));
 const readCount = (workforce) => workforce.call.mock.calls.filter(([operation]) => operation === "readEmployee").length;
 const UPDATED = (changedFields) => ({ ok: true, result: { outcome: "UPDATED", employeeId: "emp-1", changedFields, auditEventId: "ae-1" } });
@@ -562,7 +562,7 @@ describe("Edit Employee is offered by capability, and the server stays the autho
   });
 });
 
-describe("Save sends only what changed, through the governed commands, in order", () => {
+describe("Save sends only what changed, as ONE governed command per Save", () => {
   it("a profile edit sends ONLY the changed key to updateEmployeeProfile, and no manager command", async () => {
     const workforce = makeWorkforce({ updateEmployeeProfile: UPDATED(["jobTitle"]) });
     await openEditor(workforce);
@@ -576,8 +576,7 @@ describe("Save sends only what changed, through the governed commands, in order"
 
   it("no lifecycle, eligibility, access or authority key is ever sent by any command", async () => {
     const workforce = makeWorkforce({
-      updateEmployeeProfile: UPDATED(["jobTitle", "hireDate"]),
-      establishReportingRelationship: { ok: true, result: { outcome: "CHANGED" } },
+      saveEmployeeEdit: { ok: true, result: { employeeId: "emp-1", profile: { outcome: "UPDATED", changedFields: ["jobTitle", "hireDate"] }, manager: { outcome: "CHANGED" } } },
     });
     seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
     await openEditor(workforce);
@@ -585,27 +584,25 @@ describe("Save sends only what changed, through the governed commands, in order"
     fireEvent.change(screen.getByLabelText("Hire Date"), { target: { value: "2021-01-04" } });
     fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(commandCalls(workforce).length).toBe(2));
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
     for (const [, input] of commandCalls(workforce)) {
-      const keys = [...Object.keys(input), ...Object.keys(input.changes ?? {})];
+      const keys = [...Object.keys(input), ...Object.keys(input.changes ?? {}), ...Object.keys(input.manager ?? {})];
       for (const forbidden of NEVER_SENT_EMPLOYEE_KEYS) expect(keys, forbidden).not.toContain(forbidden);
     }
   });
 
-  it("a manager change calls establishReportingRelationship AFTER the profile command", async () => {
+  it("a profile AND manager change in one Save is ONE saveEmployeeEdit call -- never two sequenced commands", async () => {
     seedRecords([JOHN_REC, MIKE_REC, PAT_REC]);
     const workforce = makeWorkforce({
-      updateEmployeeProfile: UPDATED(["jobTitle"]),
-      establishReportingRelationship: { ok: true, result: { outcome: "CHANGED" } },
+      saveEmployeeEdit: { ok: true, result: { employeeId: "emp-1", profile: { outcome: "UPDATED", changedFields: ["jobTitle"] }, manager: { outcome: "CHANGED" } } },
     });
     await openEditor(workforce);
     fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
     fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "emp-3" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(commandCalls(workforce).length).toBe(2));
+    await waitFor(() => expect(commandCalls(workforce).length).toBe(1));
     expect(commandCalls(workforce)).toEqual([
-      ["updateEmployeeProfile", { employeeId: "emp-1", changes: { jobTitle: "Lead" } }],
-      ["establishReportingRelationship", { employeeId: "emp-1", managerEmployeeId: "emp-3" }],
+      ["saveEmployeeEdit", { employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: "ESTABLISH", managerEmployeeId: "emp-3" } }],
     ]);
   });
 
@@ -658,14 +655,14 @@ describe("Save sends only what changed, through the governed commands, in order"
 });
 
 describe("Save outcomes are the server's answers, stated exactly", () => {
-  it("403 from the command renders not-authorized, nothing saved, no manager command, no re-read, no success", async () => {
-    const workforce = makeWorkforce({ updateEmployeeProfile: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
+  it("403 from the command renders not-authorized, nothing saved, no re-read, no success", async () => {
+    const workforce = makeWorkforce({ saveEmployeeEdit: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
     await openEditor(workforce);
     fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
     fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("You are not authorized to edit this Employee. Nothing was saved.")).toBeTruthy();
-    expect(commandCalls(workforce).map(([operation]) => operation)).toEqual(["updateEmployeeProfile"]);
+    expect(commandCalls(workforce).map(([operation]) => operation)).toEqual(["saveEmployeeEdit"]);
     // The form stays open with what the person typed; nothing claims success and the record is not re-read.
     expect(screen.getByLabelText("Job Title").value).toBe("Lead");
     expect(document.querySelector("[data-employee-edit-result]")).toBeNull();
@@ -682,24 +679,17 @@ describe("Save outcomes are the server's answers, stated exactly", () => {
     expect(document.getElementById("employee-edit-error").textContent).not.toMatch(/could not|not configured|not confirmed/i);
   });
 
-  it("profile saved but manager refused: the page says precisely what was saved and what was not, and re-reads", async () => {
-    const workforce = makeWorkforce({
-      updateEmployeeProfile: UPDATED(["jobTitle"]),
-      endReportingRelationship: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 },
-    });
+  it("a combined Save refused at the manager step: nothing saved, no partial notice, the form stays open, no re-read", async () => {
+    const workforce = makeWorkforce({ saveEmployeeEdit: { ok: false, code: "NOT_FOUND", reason: "REPORTING_RELATIONSHIP_NOT_FOUND", status: 404 } });
     await openEditor(workforce);
     fireEvent.change(screen.getByLabelText("Job Title"), { target: { value: "Lead" } });
     fireEvent.change(screen.getByLabelText("Manager"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    // The notice is stated only once the re-read has come back (the page shows only what that read returns).
-    await waitFor(() => expect(readCount(workforce)).toBe(2));
-    await screen.findByRole("heading", { level: 1, name: "John Smith" });
-    const notice = document.querySelector('[data-employee-edit-result="PARTIAL"]');
-    expect(notice.textContent).toBe(
-      "The profile changes were saved (Job Title). The manager removal was NOT saved: you are not authorized to change this Employee's manager. The record below is re-read from the Employee authority.",
-    );
-    expect(readCount(workforce)).toBe(2);
-    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(await screen.findByText("Nothing was saved: this Employee no longer has a current manager to remove.")).toBeTruthy();
+    expect(commandCalls(workforce).map(([operation]) => operation)).toEqual(["saveEmployeeEdit"]);
+    expect(document.querySelector("[data-employee-edit-result]")).toBeNull();
+    expect(screen.getByLabelText("Job Title").value).toBe("Lead");
+    expect(readCount(workforce)).toBe(1);
   });
 
   it("success re-reads the record and renders ONLY what the read returns -- never what was typed", async () => {

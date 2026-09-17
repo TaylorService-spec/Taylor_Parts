@@ -302,7 +302,7 @@ test("the profile field set matches the governed PostgreSQL writer's vocabulary,
   assert.deepEqual(PROFILE_FIELDS.map((f) => f.key), serverKeys, "the form's fields and the writer's enforced fields must be the same, in order");
 });
 
-// ════════════════════ the save: governed commands, in order, reported exactly ════════════════════
+// ════════════════════ the save: one governed command per Save, reported exactly ════════════════════
 
 const fakeWorkforce = (answers = {}) => {
   const calls = [];
@@ -325,10 +325,9 @@ test("nothing changed: no command is called", async () => {
   assert.equal(describeEmployeeEditResult(saved).words, "Nothing was changed.");
 });
 
-test("profile first, then the manager; the inputs carry no authority and no lifecycle key", async () => {
+test("profile AND manager in one Save: ONE combined command; the input carries no authority and no lifecycle key", async () => {
   const w = fakeWorkforce({
-    updateEmployeeProfile: UPDATED(["jobTitle"]),
-    establishReportingRelationship: { ok: true, result: { outcome: "CHANGED" } },
+    saveEmployeeEdit: { ok: true, result: { employeeId: "emp-1", profile: { outcome: "UPDATED", changedFields: ["jobTitle"] }, manager: { outcome: "CHANGED" } } },
   });
   const saved = await saveEmployeeEdit({
     workforce: w,
@@ -338,20 +337,32 @@ test("profile first, then the manager; the inputs carry no authority and no life
   });
   assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.SAVED);
   assert.deepEqual(w.calls, [
-    ["updateEmployeeProfile", { employeeId: "emp-1", changes: { jobTitle: "Lead" } }],
-    ["establishReportingRelationship", { employeeId: "emp-1", managerEmployeeId: "emp-3" }],
+    ["saveEmployeeEdit", { employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: "ESTABLISH", managerEmployeeId: "emp-3" } }],
   ]);
   const described = describeEmployeeEditResult(saved);
   assert.equal(described.reload, true);
   assert.match(described.words, /^Saved: Job Title, Manager\./);
 });
 
-test("a refused profile command stops the save: the manager command is never attempted, nothing is claimed", async () => {
-  const w = fakeWorkforce({ updateEmployeeProfile: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
+test("profile only -> updateEmployeeProfile; manager only -> the reporting command; clearing -> END in the combined input", async () => {
+  const profileOnly = fakeWorkforce({ updateEmployeeProfile: UPDATED(["jobTitle"]) });
+  await saveEmployeeEdit({ workforce: profileOnly, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.NONE } });
+  assert.deepEqual(profileOnly.calls.map((c) => c[0]), ["updateEmployeeProfile"]);
+  const managerOnly = fakeWorkforce({ endReportingRelationship: { ok: true, result: { outcome: "ENDED" } } });
+  await saveEmployeeEdit({ workforce: managerOnly, employeeId: "emp-1", changes: {}, manager: { action: MANAGER_CHANGE.END } });
+  assert.deepEqual(managerOnly.calls, [["endReportingRelationship", { employeeId: "emp-1" }]]);
+  const combinedEnd = fakeWorkforce({ saveEmployeeEdit: { ok: true, result: { profile: { outcome: "UPDATED", changedFields: ["jobTitle"] }, manager: { outcome: "ENDED" } } } });
+  await saveEmployeeEdit({ workforce: combinedEnd, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.END } });
+  assert.deepEqual(combinedEnd.calls, [["saveEmployeeEdit", { employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: "END" } }]]);
+});
+
+test("a refused combined Save writes nothing and is never described as partly saved", async () => {
+  const w = fakeWorkforce({ saveEmployeeEdit: { ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED", status: 403 } });
   const saved = await saveEmployeeEdit({ workforce: w, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.END } });
   assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.NOT_SAVED);
-  assert.deepEqual(w.calls.map((c) => c[0]), ["updateEmployeeProfile"]);
+  assert.deepEqual(w.calls.map((c) => c[0]), ["saveEmployeeEdit"]);
   assert.deepEqual(describeEmployeeEditResult(saved), { state: "NOT_SAVED", words: "You are not authorized to edit this Employee. Nothing was saved.", reload: false });
+  assert.equal(Object.values(EMPLOYEE_EDIT_RESULT).includes("PARTIAL"), false, "a partial-success outcome exists");
 });
 
 test("a taken employee number is actionable, and an unreachable service is never called saved or refused", async () => {
@@ -373,27 +384,17 @@ test("a taken employee number is actionable, and an unreachable service is never
   assert.doesNotMatch(describeEmployeeEditResult(down).words, /Nothing was saved|Saved/);
 });
 
-test("profile saved, manager refused: PARTIAL, naming exactly what was saved and what was not", async () => {
-  const w = fakeWorkforce({
-    updateEmployeeProfile: UPDATED(["jobTitle", "workEmail"]),
-    endReportingRelationship: { ok: false, code: "NOT_FOUND", reason: "REPORTING_RELATIONSHIP_NOT_FOUND", status: 404 },
-  });
+test("a combined Save refused at the manager step saves NOTHING -- the profile change is not claimed", async () => {
+  const w = fakeWorkforce({ saveEmployeeEdit: { ok: false, code: "NOT_FOUND", reason: "REPORTING_RELATIONSHIP_NOT_FOUND", status: 404 } });
   const saved = await saveEmployeeEdit({ workforce: w, employeeId: "emp-1", changes: { jobTitle: "Lead", workEmail: "j@t.test" }, manager: { action: MANAGER_CHANGE.END } });
-  assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.PARTIAL);
-  const described = describeEmployeeEditResult(saved);
-  assert.equal(described.reload, true);
-  assert.equal(
-    described.words,
-    "The profile changes were saved (Job Title, Work Email). The manager removal was NOT saved: this Employee no longer has a current manager to remove. The record below is re-read from the Employee authority.",
-  );
-});
-
-test("a profile that converged (NO_CHANGE) and a refused manager is NOT a partial save: nothing was written", async () => {
-  const w = fakeWorkforce({
-    updateEmployeeProfile: { ok: true, result: { outcome: "NO_CHANGE", employeeId: "emp-1", changedFields: [], auditEventId: null } },
-    establishReportingRelationship: { ok: false, code: "NOT_FOUND", reason: "MANAGER_NOT_FOUND", status: 404 },
-  });
-  const saved = await saveEmployeeEdit({ workforce: w, employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.ESTABLISH, managerEmployeeId: "emp-x" } });
   assert.equal(saved.state, EMPLOYEE_EDIT_RESULT.NOT_SAVED);
-  assert.match(describeEmployeeEditResult(saved).words, /^Nothing was saved: the chosen manager is not an Employee of this company\./);
+  const described = describeEmployeeEditResult(saved);
+  assert.deepEqual(described, { state: "NOT_SAVED", words: "Nothing was saved: this Employee no longer has a current manager to remove.", reload: false });
+  assert.doesNotMatch(described.words, /were saved|Job Title/);
+  const down = await saveEmployeeEdit({
+    workforce: fakeWorkforce({ saveEmployeeEdit: { ok: false, code: "UNREACHABLE" } }),
+    employeeId: "emp-1", changes: { jobTitle: "Lead" }, manager: { action: MANAGER_CHANGE.ESTABLISH, managerEmployeeId: "emp-3" },
+  });
+  assert.equal(down.state, EMPLOYEE_EDIT_RESULT.NOT_CONFIRMED);
+  assert.doesNotMatch(describeEmployeeEditResult(down).words, /Nothing was saved|Saved|were saved/);
 });
