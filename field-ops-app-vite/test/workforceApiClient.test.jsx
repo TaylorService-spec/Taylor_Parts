@@ -22,7 +22,7 @@ const respond = (status, body) => vi.fn(async () => ({ ok: status >= 200 && stat
 const opts = (fetchImpl, extra = {}) => ({ baseUrl: "https://eos.example.test/", getIdToken: async () => "tok-123", fetchImpl, ...extra });
 
 describe("the closed operation list", () => {
-  it("mirrors the server's WORKFORCE read runners exactly, and serves no EMP-RT-05 / EMP-RT-08 name", () => {
+  it("mirrors the server's WORKFORCE read runners exactly, and serves no EMP-RT-05 name", () => {
     const server = read("../functions/src/eosWorkforce/workforceHttp.ts");
     const block = server.slice(server.indexOf("const READ_RUNNERS"), server.indexOf("} as const);", server.indexOf("const READ_RUNNERS")));
     const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*read\(/gm)].map((m) => m[1]).sort();
@@ -30,7 +30,9 @@ describe("the closed operation list", () => {
     expect(server).toMatch(/WORKFORCE_ROUTE = "\/workforce\/employees"/);
     expect(WORKFORCE_ROUTE).toBe("/workforce/employees");
     expect([...WORKFORCE_OPTIONAL_INPUT_OPERATIONS].sort()).toEqual(["listEmployees", "readMyEmployeeProfile"]);
-    expect(WORKFORCE_READ_OPERATIONS.some((n) => /assigned|jobRole/i.test(n))).toBe(false);
+    expect(WORKFORCE_READ_OPERATIONS.some((n) => /assigned/i.test(n))).toBe(false);
+    // EMP-RT-08 (Owner ruling): the Job Role reads are served -- business function only, under employee.record.read.
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /jobRole/i.test(n)).sort()).toEqual(["listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listJobRoles"]);
   });
 
   it("mirrors the server's WORKFORCE command runners exactly: the governed Employee commands, nothing else", () => {
@@ -38,10 +40,10 @@ describe("the closed operation list", () => {
     const start = server.indexOf("const COMMAND_RUNNERS");
     const block = server.slice(start, server.indexOf("} as const);", start));
     const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*command\(/gm)].map((m) => m[1]);
-    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany"]);
+    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole"]);
     expect([...WORKFORCE_COMMAND_OPERATIONS]).toEqual(names);
     for (const name of [...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]) expect(isWorkforceOperation(name), name).toBe(true);
-    // No lifecycle, Job Role, Security Role or generic patch writer is a name the browser can send.
+    // No Security Role, generic patch or unserved writer is a name the browser can send.
     for (const name of ["setEmploymentStatus", "updateEmployee", "patchEmployee", "assignSecurityRole", "listEmployeeJobRoles", "updateEmployeeLifecycle", "", null, undefined, 42]) {
       expect(isWorkforceOperation(name), String(name)).toBe(false);
     }

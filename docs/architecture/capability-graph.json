@@ -12,9 +12,9 @@
     "docs/roadmaps/business-capability-register.md"
   ],
   "counts": {
-    "capabilities": 148,
+    "capabilities": 149,
     "catalogActive": 0,
-    "catalogInactive": 148,
+    "catalogInactive": 149,
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 48,
@@ -25,13 +25,13 @@
     "parityIssues": 0
   },
   "catalogCountCheck": {
-    "raw": 148,
-    "parsed": 148,
+    "raw": 149,
+    "parsed": 149,
     "ok": true
   },
   "implementationEvidence": {
     "EXPORTED": 21,
-    "SERVER_REFERENCED": 122,
+    "SERVER_REFERENCED": 123,
     "CLIENT_ONLY": 2,
     "NO_IMPLEMENTATION_EVIDENCE": 3
   },
@@ -3197,6 +3197,28 @@
         ],
         "serverReferenceCount": 3,
         "clientReferenceCount": 1,
+        "evidence": "SERVER_REFERENCED"
+      },
+      "environmentActivation": {
+        "eligible": false,
+        "environments": []
+      }
+    },
+    {
+      "id": "admin.employeeJobRole.write",
+      "resource": "admin.employeeJobRole",
+      "action": "write",
+      "description": "Maintain the tenant Job Role catalog and assign an Employee's current Job Role. A Job Role is a business function only: it confers no Security Role, permission, ownership, assignment, reporting or operating-company authority.",
+      "catalogActive": false,
+      "implementation": {
+        "exportedCallables": [],
+        "serverReferences": [
+          "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts",
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts"
+        ],
+        "clientReferences": [],
+        "serverReferenceCount": 2,
+        "clientReferenceCount": 0,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

@@ -331,7 +331,7 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
     const leaked = await noTenant.updateEmployeeProfile(deps, adminActor, { employeeId: "e-t2", changes: { jobTitle: "mutant" } }).then(() => "accepted", (e) => e.code);
     assert.notEqual(leaked, "EMPLOYEE_NOT_FOUND", "without the tenant predicate the foreign Employee was still refused: the isolation test is vacuous");
 
-    const noCapability = mutant("capability", "if (!actor.capabilities.has(exports.EMPLOYEE_PROFILE_WRITE))", "if (false)");
+    const noCapability = mutant("capability", "if (!actor.capabilities.has(requiredCapability))", "if (false)");
     const gmActor = await resolveActor(gm);
     const escalated = await noCapability.updateEmployeeProfile(deps, gmActor, { employeeId: "e-other", changes: { jobTitle: "mutant gm" } }).then((r) => r.outcome, (e) => e.code);
     assert.equal(escalated, "UPDATED", "without the capability check the General Manager was still refused: the capability test is vacuous");

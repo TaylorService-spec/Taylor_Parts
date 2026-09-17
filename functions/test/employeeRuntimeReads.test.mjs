@@ -86,17 +86,17 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"];
+const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole"];
 
-const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany"];
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole"];
 
-test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07 and exactly the W1B/W1C Employee commands", () => {
+test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
   assert.deepEqual([...http.WORKFORCE_COMMAND_OPERATIONS], COMMANDS);
   assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);
   assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
   const src = code(HTTP_SOURCE);
-  assert.doesNotMatch(src, /MUTATION|assign(ed)?Work|JobRole|migration\//);
+  assert.doesNotMatch(src, /MUTATION|assign(ed)?Work|migration\//);
   const runners = /const READ_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
   assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), OPERATIONS);
   const commandRunners = /const COMMAND_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
@@ -232,15 +232,24 @@ test("owner and accountable stay two axes over two columns; no credited salesper
   }
 });
 
+// EMP-RT-08: Job Role now has its OWN governed modules. Every OTHER Workforce read or command still produces, infers or
+// names no Job Role; and the Job Role modules themselves never touch Security Role, operational roles, ownership,
+// accountability, assignment, the reporting relationship or operating company.
+const JOB_ROLE_MODULES = ["jobRoleReads.ts", "employeeJobRoleCommands.ts"];
 test("no Job Role, Security Role or operationalRoles is produced, inferred or named anywhere in the Workforce reads or commands", () => {
-  for (const f of [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])]) {
+  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])];
+  assert.deepEqual(JOB_ROLE_MODULES.map((m) => files.some((f) => f.endsWith(m))), [true, true], "the Job Role modules moved");
+  for (const f of files.filter((f) => !JOB_ROLE_MODULES.some((m) => f.endsWith(m)))) {
     assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS|operationalRoles|operational_roles/, rel(f));
+  }
+  for (const f of files.filter((f) => JOB_ROLE_MODULES.some((m) => f.endsWith(m)))) {
+    assert.doesNotMatch(code(f), /securityRole|role_capabilities|user_role_assignments|heldRoleKeys|operationalRoles|operational_roles|owner_employee_id|accountab|assignee|reporting_relationships|operating_company|salesperson/i, rel(f));
   }
 });
 
 test("capabilities: only existing read ids, each registered in the catalog AND the PostgreSQL vocabulary; none invented", () => {
   const used = new Set([...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"]), HTTP_SOURCE].flatMap((f) => [...code(f).matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1])).filter((s) => /\.(read|write)$/.test(s)));
-  assert.deepEqual([...used].sort(), ["admin.employeeProfile.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read", "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+  assert.deepEqual([...used].sort(), ["admin.employeeJobRole.write", "admin.employeeProfile.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read", "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
   for (const id of used) {

@@ -21,8 +21,9 @@
 // the seventeen profile facts, and the reporting relationship established or ended. Every one requires
 // admin.employeeProfile.write, which the SERVER checks; nothing here states tenant, principal or capabilities.
 // changeEmploymentStatus / changeOperatingCompany (EMP-RT-W2) are served and named so the list mirrors the server;
-// no screen calls them yet (UI wiring follows the server proof). EMP-RT-05 (assigned work) and EMP-RT-08 (Job Role)
-// are NOT served by the server and are not names here.
+// no screen calls them yet (UI wiring follows the server proof). The EMP-RT-08 Job Role reads (listJobRoles,
+// listEmployeeJobRoleHistory, listEmployeesWithoutJobRole) and commands (createJobRole, updateJobRole,
+// assignEmployeeJobRole) are served and named the same way. EMP-RT-05 (assigned work) is NOT served and not a name here.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
@@ -35,6 +36,9 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listManagedEmployees",
   "listRecordsOwnedByEmployee",
   "listAccountabilitiesForEmployee",
+  "listJobRoles",
+  "listEmployeeJobRoleHistory",
+  "listEmployeesWithoutJobRole",
 ]);
 
 export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
@@ -44,6 +48,9 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
   "saveEmployeeEdit",
   "changeEmploymentStatus",
   "changeOperatingCompany",
+  "createJobRole",
+  "updateJobRole",
+  "assignEmployeeJobRole",
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */
