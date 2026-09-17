@@ -109,14 +109,14 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
       { tenant: h.tenant_id, previous: h.previous_owner_employee_id, next: h.new_owner_employee_id, source: h.source, reason: h.reason, by: h.handed_off_by },
       { tenant: "t1", previous: "e-a", next: "e-b", source: "CUSTOMER_HANDOFF_REVIEW", reason: "territory realignment", by: "p-updater" },
     );
-    // Same transaction: the effective time IS the Account's update time (the transaction's server now()).
-    assert.equal(h.effective_at.toISOString(), updated.updatedAt);
+    // Same transaction: recorded at the transaction's server now(); effective once the Account lock was held.
     assert.equal(h.created_at.toISOString(), updated.updatedAt);
+    assert.ok(h.effective_at >= h.created_at && h.effective_at - h.created_at < 60_000, "effective_at is not the handoff statement's server time");
     // Through the governed read, newest first.
     const listed = await accounts.listAccountOwnershipHandoffs(deps, A1, { accountId: acct.accountId });
     assert.deepEqual(listed.items, [{
       handoffId: h.id, accountId: acct.accountId, previousOwnerEmployeeId: "e-a", newOwnerEmployeeId: "e-b", source: "CUSTOMER_HANDOFF_REVIEW",
-      reason: "territory realignment", handedOffBy: "p-updater", effectiveAt: updated.updatedAt, createdAt: updated.updatedAt,
+      reason: "territory realignment", handedOffBy: "p-updater", effectiveAt: h.effective_at.toISOString(), createdAt: updated.updatedAt,
     }]);
     assert.equal(listed.truncated, false);
   });
@@ -241,20 +241,34 @@ test("CRM Account ownership handoff and atomic Contact import, in PostgreSQL", {
 
   await t.test("(A11) concurrent handoffs serialize on the locked Account: the history is one unbroken chain", async () => {
     const race = await accounts.createAccount(deps, A1, { idempotencyKey: K(), name: "Race Co", status: "ACTIVE", ownerEmployeeId: "e-a" });
+    // Deterministic interleaving: the second handoff's transaction STARTS while the first holds the lock, and waits.
+    const holder = await pool.connect();
     const racePool = new pg.Pool({ connectionString: dbUrl(), max: 4 });
     try {
-      await Promise.all([
-        accounts.updateAccount({ pool: racePool }, A1, { accountId: race.accountId, ownerEmployeeId: "e-b" }),
-        accounts.updateAccount({ pool: racePool }, A1, { accountId: race.accountId, ownerEmployeeId: "e-c" }),
-      ]);
+      await holder.query("BEGIN");
+      await holder.query(`SELECT 1 FROM eos_crm.accounts WHERE id = $1 FOR UPDATE`, [race.accountId]);
+      const first = accounts.updateAccount({ pool: racePool }, A1, { accountId: race.accountId, ownerEmployeeId: "e-b" });
+      await new Promise((r) => setTimeout(r, 150));
+      const second = accounts.updateAccount({ pool: racePool }, A1, { accountId: race.accountId, ownerEmployeeId: "e-c" });
+      await new Promise((r) => setTimeout(r, 150));
+      await holder.query("COMMIT");
+      await Promise.all([first, second]);
     } finally {
+      holder.release();
       await racePool.end();
     }
+    for (let round = 0; round < 5; round++) {
+      await Promise.all(["e-a", "e-b", "e-c"].map((owner) =>
+        accounts.updateAccount(deps, A1, { accountId: race.accountId, ownerEmployeeId: owner }).catch(() => null)));
+    }
+    // Ordered by EFFECTIVE time (what listAccountOwnershipHandoffs pages by), every predecessor is the previous new owner.
     const rows = await history(race.accountId);
-    assert.equal(rows.length, 2);
+    assert.ok(rows.length >= 2);
     assert.equal(rows[0].previous_owner_employee_id, "e-a");
-    assert.equal(rows[1].previous_owner_employee_id, rows[0].new_owner_employee_id, "a handoff recorded a predecessor who never held the Account");
-    assert.equal(await ownerOf(race.accountId), rows[1].new_owner_employee_id);
+    for (let n = 1; n < rows.length; n++) {
+      assert.equal(rows[n].previous_owner_employee_id, rows[n - 1].new_owner_employee_id, `link ${n}: a handoff recorded a predecessor who never held the Account`);
+    }
+    assert.equal(await ownerOf(race.accountId), rows[rows.length - 1].new_owner_employee_id);
   });
 
   // ════════════════════ B. atomic Contact import ════════════════════

@@ -19,15 +19,17 @@
 // changes go through a governed Account ownership-handoff writer (prior owner, new owner, effective time, changed-by
 // Principal, governed reason/source).
 //
-// OWNERSHIP HANDOFF (migration 1759924800000) -- PARITY with the Commercial edit (eosCommercial/commands/
-// opportunityCommandService.ts + stageCommercialOwnershipTransfer), under the EXISTING customer.record.update: the legacy
+// OWNERSHIP HANDOFF (migration 1759924800000) -- PARITY with the Commercial Opportunity edit (opportunityCommandService
+// + stageCommercialOwnershipTransfer), under the EXISTING customer.record.update: the legacy
 // product let whoever could edit an Account change its owner, so no capability is added.
 //   * `ownerEmployeeId` on updateAccount, with an optional `ownershipHandoff: { source?, reason? }`. Source defaults to
 //     DIRECT_HANDOFF; reason is trimmed, blank means none, at most 500 characters.
 //   * The CURRENT owner is read under FOR UPDATE, never supplied. The same owner is a no-op for ownership (no history row).
 //     A different owner must resolve exactly as at creation (requireOwnerEmployee), then ONE append-only
 //     eos_crm.account_ownership_handoffs row and the owner column move in the SAME transaction as every other field
-//     change and the updated_by / updated_at attribution.
+//     change and the updated_by / updated_at attribution. effective_at is the INSERT's statement_timestamp(), taken AFTER
+//     the FOR UPDATE lock was granted, so concurrent handoffs order by effective time exactly as they serialized (the
+//     transaction-start now() of a handoff that waited on the lock would predate the one it waited for).
 //   * `ownerEmployeeId: null` refuses OWNER_REQUIRED: a governed Account is never made ownerless. `ownershipHandoff`
 //     without an owner change refuses OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE.
 //   * A LEGACY OWNERLESS Account (migration 008's OWNERLESS state, carried by the cutover) receiving its first owner is an
@@ -383,7 +385,7 @@ async function stageAccountOwnershipHandoff(
   await db.query(
     `INSERT INTO eos_crm.account_ownership_handoffs
        (id, tenant_id, account_id, previous_owner_employee_id, new_owner_employee_id, source, reason, handed_off_by, effective_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, statement_timestamp())`,
     [`acohf_${randomUUID()}`, tenantId, accountId, previousOwnerEmployeeId, newOwnerEmployeeId, terms.source, terms.reason, principalId],
   );
   await db.query(

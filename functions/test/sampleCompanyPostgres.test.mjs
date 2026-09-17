@@ -113,8 +113,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
  * altering the world under the test. (`up <name>` is NOT used: node-pg-migrate reorders under it, which puts
  * migration 027 ahead of the 026 it depends on.)
  */
-const PINNED_LAST_MIGRATION = "1759881600000_catalog-master-descriptive-authority";
-const PINNED_MIGRATION_COUNT = 28;
+// Moved deliberately for 1759924800000 (CRM Account ownership handoffs + import receipt operation): an EMPTY append-only
+// table and a widened command_receipts operation vocabulary. The seed writes neither; nothing asserted here changes.
+const PINNED_LAST_MIGRATION = "1759924800000_crm-account-ownership-handoffs";
+const PINNED_MIGRATION_COUNT = 29;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
