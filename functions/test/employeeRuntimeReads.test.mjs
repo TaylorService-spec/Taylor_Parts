@@ -88,15 +88,20 @@ const parsed = (res) => JSON.parse(res.body);
 
 const OPERATIONS = ["readMyEmployeeProfile", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee"];
 
-test("the operation list is closed and read-only: EMP-RT-01, 02, 03, 04, 06 and 07", () => {
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship"];
+
+test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07 and exactly the three W1B Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
+  assert.deepEqual([...http.WORKFORCE_COMMAND_OPERATIONS], COMMANDS);
   assert.deepEqual([...http.WORKFORCE_OPTIONAL_INPUT_OPERATIONS], ["readMyEmployeeProfile", "listEmployees"]);
   assert.equal(http.WORKFORCE_ROUTE, "/workforce/employees");
   const src = code(HTTP_SOURCE);
-  assert.doesNotMatch(src, /MUTATION|command\(|transition|assign(ed)?Work|JobRole|establishReporting|endReporting|eosWorkforce\/commands|\.\/commands\//);
+  assert.doesNotMatch(src, /MUTATION|transition|assign(ed)?Work|JobRole|employmentStatus|operatingCompanyId|migration\//);
   const runners = /const READ_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
   assert.deepEqual([...runners.matchAll(/(\w+): read\(/g)].map((m) => m[1]), OPERATIONS);
-  for (const blocked of ["listAssignedWorkForEmployee", "listEmployeeJobRoles", "establishReportingRelationship", "endReportingRelationship"]) {
+  const commandRunners = /const COMMAND_RUNNERS = Object\.freeze\(\{([\s\S]*?)\}\s*as const\)/.exec(src)[1];
+  assert.deepEqual([...commandRunners.matchAll(/(\w+): command\((\w+)\)/g)].map((m) => [m[1], m[2]]), COMMANDS.map((c) => [c, c]));
+  for (const blocked of ["listAssignedWorkForEmployee", "listEmployeeJobRoles", "setEmploymentStatus", "assignSecurityRole", "updateEmployee", "patchEmployee"]) {
     assert.equal(http.isWorkforceOperation(blocked), false, blocked);
   }
 });
@@ -264,8 +269,10 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   // The reporting writer's commands module borrows only the error-category TYPE from the read kernel.
   const outsideWorkforce = walk(SRC, [".ts"]).filter((f) => !f.startsWith(WORKFORCE) && /eosWorkforce/.test(code(f)));
   assert.deepEqual(outsideWorkforce.map(rel), ["functions/src/eosApi/server.ts"]);
+  // The transport is the ONE runtime importer of the internal governed commands (W1B); nothing runtime imports migration.
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));
-  assert.deepEqual(internal.map(rel), [], "a runtime Workforce module imports the internal writer or the migration modules");
+  assert.deepEqual(internal.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"], "a runtime Workforce module other than the transport imports the internal writer");
+  assert.doesNotMatch(code(HTTP_SOURCE), /["'][./]*\/?migration\//, "the transport imports a migration module");
   const client = walk(join(REPO, "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
   // Exactly ONE dedicated Workforce API client may hold EXECUTABLE knowledge of the transport route (#1910): the route
   // string, the route constant, the server module. Employee UI modules consume that client abstraction, and they may

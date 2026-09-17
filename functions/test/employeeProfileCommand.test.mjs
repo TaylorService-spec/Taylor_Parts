@@ -90,14 +90,15 @@ test("normalization: the Firestore command's validators, refused before the data
   assert.deepEqual(vocabulary.normalizeProfileValue("DATE", "2024-02-29"), { value: "2024-02-29" });
 });
 
-test("boundary: no Firebase, no transport, no Rules; the runtime layers do not import the internal writer", () => {
+test("boundary: no Firebase, no Rules; the Workforce transport (W1B) is the only module that composes the command", () => {
   for (const file of ["commands/employeeProfileCommand.ts", "commands/employeeCommandKernel.ts", "employeeProfileVocabulary.ts"]) {
     const src = strip(readFileSync(join(SRC, file), "utf8"));
     assert.doesNotMatch(src, /firebase|firestore|from "\.\.\/migration\//i, file);
     const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
     assert.ok(imports.every((i) => ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel"].includes(i)), `${file}: ${imports}`);
   }
-  assert.doesNotMatch(readFileSync(join(SRC, "workforceHttp.ts"), "utf8"), /employeeProfileCommand|updateEmployeeProfile/);
+  assert.match(strip(readFileSync(join(SRC, "workforceHttp.ts"), "utf8")), /updateEmployeeProfile: command\(updateEmployeeProfile\)/);
+  assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "..", "firestore.rules"), "utf8"), /employeeProfileCommand|workforce\/employees/);
   // Every statement the command issues is tenant-scoped.
   const body = strip(readFileSync(join(SRC, "commands", "employeeProfileCommand.ts"), "utf8"));
   const tables = (body.match(/eos_workforce\.employees/g) ?? []).length;
