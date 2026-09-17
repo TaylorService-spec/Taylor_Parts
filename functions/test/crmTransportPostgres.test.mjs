@@ -27,8 +27,10 @@ const RECORD = ["customer.record.read", "customer.record.create", "customer.reco
 test("offline: the CRM transport is a closed, authenticated envelope routed by server.ts", async () => {
   assert.deepEqual([...http.CRM_OPERATIONS].sort(), [
     "createAccount", "createAccountLocation", "createContact", "getAccount", "getAccountLocation", "getContact",
-    "listAccountContacts", "listAccountLocations", "listAccounts", "updateAccount", "updateAccountLocation", "updateContact",
+    "importAccountContacts", "listAccountContacts", "listAccountLocations", "listAccountOwnershipHistory", "listAccounts",
+    "updateAccount", "updateAccountLocation", "updateContact",
   ]);
+  assert.equal(http.CRM_OPERATIONS.length, 14);
   for (const name of ["deleteAccount", "runSQL", "assignAccountOwner", "toString", "__proto__", "constructor"]) assert.equal(http.isCrmOperation(name), false, name);
   assert.deepEqual([eosApiDomainFor("/crm/customer"), eosApiDomainFor("/crm/customer?x=1"), eosApiDomainFor("/commercial/sales"), eosApiDomainFor("/crmcustomer")],
     ["crm", "crm", "commercial", "administration"]);
@@ -52,10 +54,13 @@ test("offline: the CRM transport is a closed, authenticated envelope routed by s
   // refused 503 before the caller context is resolved or any table is read -- reader and pool here would throw.
   assert.equal(CRM_WRITER_AUTHORITY.postgres, "INACTIVE", "PostgreSQL CRM was activated: replace this gate proof with the activation evidence");
   const authenticated = { reader: null, pool: null, verifyToken: async () => ({ externalSubject: "s", identityProvider: "firebase" }), allowedOrigins: [] };
+  let gated = 0;
   for (const operation of http.CRM_OPERATIONS) {
+    gated++;
     const res = await http.handleCrmRequest(authenticated, { method: "POST", url: "/crm/customer", headers: { authorization: "Bearer ok" }, body: JSON.stringify({ operation, input: {} }) });
     assert.deepEqual([res.status, JSON.parse(res.body).code], [503, "POSTGRES_CRM_WRITER_INACTIVE"], operation);
   }
+  assert.equal(gated, 14, "every CRM operation, including the ownership history read and the Contact import, is behind the gate");
   // Composition never supplies the test seam: the committed constant decides in the running API.
   assert.doesNotMatch(readFileSync(resolve(FUNCTIONS_DIR, "src/eosApi/server.ts"), "utf8"), /writerAuthority/);
   // No Firebase module loads with the transport.
@@ -85,7 +90,7 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
   const deps = { reader: repo, pool, writerAuthority: ACTIVE, verifyToken: async (token) => { const s = TOKENS.get(token); if (!s) throw new Error("bad"); return { externalSubject: s, identityProvider: "firebase" }; }, allowedOrigins: [] };
 
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
-  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-1','t1','ACTIVE','taylor'), ('e-2','t2','ACTIVE','taylor')`);
+  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-1','t1','ACTIVE','taylor'), ('e-1b','t1','ACTIVE','taylor'), ('e-2','t2','ACTIVE','taylor')`);
   const actorFor = (tenantId) => ({ tenantId, uid: "uid-fixture-admin" });
   const makeActor = async (tenantId, subject, keys) => {
     const principalId = await repo.transact(actorFor(tenantId), async (tx) => {
@@ -170,6 +175,42 @@ test("CRM transport end to end, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
       { method: "POST", url: "/crm/customer", headers: { authorization: "Bearer x" }, body: JSON.stringify({ operation: "getAccount", input: { accountId: account.accountId } }) });
     assert.equal(unknown.status, 403);
   });
+  await t.test("(9) Account ownership handoff and the atomic Contact import through the transport", async () => {
+    const handed = await call(editor, "updateAccount", { accountId: account.accountId, ownerEmployeeId: "e-1b", ownershipHandoff: { reason: "coverage" } });
+    assert.equal(handed.status, 200, JSON.stringify(handed.body));
+    assert.equal(handed.body.result.ownerEmployeeId, "e-1b");
+    const history = await call(reader, "listAccountOwnershipHistory", { accountId: account.accountId });
+    assert.equal(history.status, 200);
+    assert.deepEqual(history.body.result.items.map((h) => [h.event, h.previousOwnerEmployeeId, h.newOwnerEmployeeId, h.source, h.reason, h.changedBy]),
+      [["OWNER_HANDOFF", "e-1", "e-1b", "DIRECT_HANDOFF", "coverage", editor.principalId]]);
+    // A legacy ownerless Account's first owner: INITIAL_OWNER_ASSIGNMENT; a handoff source on it refuses 400.
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, created_by, updated_by) VALUES ('acct-http-ownerless','t1','Ownerless','ACTIVE','import','import')`);
+    const withSource = await call(editor, "updateAccount", { accountId: "acct-http-ownerless", ownerEmployeeId: "e-1", ownershipHandoff: { source: "DIRECT_HANDOFF" } });
+    assert.deepEqual([withSource.status, withSource.body.code], [400, "INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED"]);
+    const initial = await call(editor, "updateAccount", { accountId: "acct-http-ownerless", ownerEmployeeId: "e-1" });
+    assert.deepEqual([initial.status, initial.body.result.ownerEmployeeId], [200, "e-1"]);
+    const first = await call(reader, "listAccountOwnershipHistory", { accountId: "acct-http-ownerless" });
+    assert.deepEqual(first.body.result.items.map((h) => [h.event, h.previousOwnerEmployeeId, h.newOwnerEmployeeId, h.source, h.changedBy]),
+      [["INITIAL_OWNER_ASSIGNMENT", null, "e-1", null, editor.principalId]]);
+    assert.equal((await call(other, "listAccountOwnershipHistory", { accountId: account.accountId })).status, 404);
+    const cleared = await call(editor, "updateAccount", { accountId: account.accountId, ownerEmployeeId: null });
+    assert.deepEqual([cleared.status, cleared.body.code], [400, "OWNER_REQUIRED"]);
+    assert.deepEqual([(await call(reader, "updateAccount", { accountId: account.accountId, ownerEmployeeId: "e-1" })).status], [403]);
+
+    const input = { idempotencyKey: key(), accountId: account.accountId, contacts: [{ name: "Imp One", email: "one@example.com" }, { name: "Imp Two" }] };
+    const imported = await call(editor, "importAccountContacts", input);
+    assert.equal(imported.status, 200, JSON.stringify(imported.body));
+    assert.deepEqual(imported.body.result.contacts.map((c) => [c.name, c.ownerEmployeeId, c.isPrimary, c.createdBy]),
+      [["Imp One", "e-1b", false, editor.principalId], ["Imp Two", "e-1b", false, editor.principalId]]);
+    assert.equal((await call(editor, "importAccountContacts", input)).body.result.replayed, true);
+    const refused = await call(editor, "importAccountContacts", { idempotencyKey: key(), accountId: account.accountId, contacts: [{ name: "Fine" }, { name: "" }, { name: "Boss", isPrimary: true }] });
+    assert.deepEqual([refused.status, refused.body.code], [400, "IMPORT_ROWS_INVALID"]);
+    assert.deepEqual(refused.body.findings.map((f) => [f.index, f.code]), [[1, "NAME_REQUIRED"], [2, "IMPORTED_CONTACT_NEVER_PRIMARY"]]);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_crm.contacts WHERE name IN ('Fine', 'Boss')`)).rows[0].n, 0);
+    assert.equal((await call(reader, "importAccountContacts", { idempotencyKey: key(), accountId: account.accountId, contacts: [{ name: "X" }] })).status, 403);
+    assert.equal((await call(other, "importAccountContacts", { idempotencyKey: key(), accountId: account.accountId, contacts: [{ name: "X" }] })).status, 404);
+  });
+
   await t.test("committed state: with the real database and a fully capable caller, nothing is read or written while INACTIVE", async () => {
     const committed = { ...deps, writerAuthority: undefined };
     const before = (await q(`SELECT (SELECT count(*) FROM eos_crm.accounts)::int a, (SELECT count(*) FROM eos_crm.contacts)::int c, (SELECT count(*) FROM eos_policy.audit_events)::int e`)).rows[0];

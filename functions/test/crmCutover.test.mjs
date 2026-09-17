@@ -158,6 +158,10 @@ test("a clean snapshot is NOT copy-ready until owners are measured, then is, wit
   assert.deepEqual(census.counts, { accounts: 3, contacts: 2, locations: 2 });
   assert.deepEqual(census.selected, { accounts: 3, contacts: 2, locations: 2 });
   assert.deepEqual(census.ownerless, { accounts: 1, contacts: 0, locations: 0 }, "a legacy ownerless Account is carried; no child is ownerless");
+  // Owner ruling (option b): legacy ownerless Accounts are a NAMED post-cutover remediation set, ADVISORY, never a blocker.
+  assert.deepEqual(census.ownershipRemediation, { accounts: ["acct-ownerless"] });
+  assert.deepEqual(census.findings.filter((f) => f.code === "OWNERLESS_LEGACY").map((f) => [f.id, f.severity]), [["acct-ownerless", "ADVISORY"]]);
+  assert.ok(!census.blockers.includes("OWNERLESS_LEGACY"));
   assert.deepEqual(census.ownerReferences, { "emp-owner-1": 4, "emp-owner-2": 2 });
   assert.deepEqual(census.statusDistribution, { ACTIVE: 2, PROSPECT: 1 });
   assert.deepEqual(census.addressShapes, { nested: 1, flat: 1, both: 0, absent: 0 });
@@ -308,6 +312,8 @@ test("RULING 4: a child with no stated owner follows its OWN Account's owner, wi
   const { census, crm, evidence } = run(s);
   assert.deepEqual(census.findings.filter((f) => f.code === "CHILD_OWNER_UNDERIVABLE").map((f) => f.id).sort(), ["con-under-ownerless", "loc-under-ownerless"]);
   assert.ok(census.blockers.includes("CHILD_OWNER_UNDERIVABLE"));
+  // The remediation set does not relax ruling 4: the Account is named for remediation AND its unstated-owner children block.
+  assert.deepEqual(census.ownershipRemediation, { accounts: ["acct-ownerless"] });
   for (const id of ["con-under-ownerless", "loc-under-ownerless"]) assert.ok(![...crm.contacts, ...crm.locations].some((r) => r.id === id), `${id} was copied ownerless`);
   assert.ok(![...crm.contacts, ...crm.locations].some((r) => r.ownerEmployeeId === null), "a governed child is never ownerless");
   const derivedIds = evidence.ownerDerivations.map((d) => `${d.collection}/${d.id}`);

@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { hash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -54,7 +54,12 @@ const CLOCK = () => new Date("2026-09-14T12:00:00.000Z");
 
 test("catalog cutover, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${DB_NAME}`));
-  runner(["up"]);
+  // Migrated THROUGH 027 by count (the Sample Company pin technique): the 027 rollback-guard proof below uses `down 1`,
+  // which reaches 027 only while it is the last-run migration. Later migrations are not what this suite proves.
+  const sqlFiles = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
+  const through027 = sqlFiles.indexOf("1759881600000_catalog-master-descriptive-authority.sql") + 1;
+  assert.ok(through027 > 0, "migration 027 is missing");
+  runner(["up", String(through027)]);
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 8 });
   t.after(async () => {
     await pool.end();
