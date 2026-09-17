@@ -31,6 +31,10 @@
 //                                   refuses INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED), reason stays optional, and the
 //                                   legacy accountOwner.assignedBy* actor is never fabricated -- the actor is the Principal.
 //   * owner -> null                 refuses OWNER_REQUIRED: a governed Account is never made ownerless.
+//   * expectedCurrentOwnerEmployeeId (optional; null = "I read it ownerless"): when named, the change applies only if
+//                                   the locked current owner still matches, else ACCOUNT_OWNER_CHANGED_SINCE_READ (412)
+//                                   and nothing in the command is written -- a stale form never turns an intended first
+//                                   assignment into a handoff, or a handoff into a different one.
 // A new owner resolves exactly as at creation (requireOwnerEmployee). The history row and the owner column move in the
 // SAME transaction as every other field change and the updated_by / updated_at attribution. effective_at is the INSERT's
 // statement_timestamp(), taken AFTER the FOR UPDATE lock was granted, so concurrent changes order by effective time
@@ -408,7 +412,7 @@ async function stageAccountOwnershipChange(
 }
 
 const CREATE_FIELDS = ["idempotencyKey", "ownerEmployeeId", "billingAddress", ...SET_FIELDS, ...Object.keys(SCALAR_FIELDS).filter((f) => f !== "billingContactId")];
-const UPDATE_FIELDS = ["accountId", "ownerEmployeeId", "ownershipHandoff", "billingAddress", ...SET_FIELDS, ...Object.keys(SCALAR_FIELDS)];
+const UPDATE_FIELDS = ["accountId", "ownerEmployeeId", "expectedCurrentOwnerEmployeeId", "ownershipHandoff", "billingAddress", ...SET_FIELDS, ...Object.keys(SCALAR_FIELDS)];
 
 // ════════════════════ commands ════════════════════
 
@@ -461,12 +465,20 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
         fail("OWNERSHIP_HANDOFF_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "ownershipHandoff describes an owner change; name ownerEmployeeId");
       }
       const terms = ownershipTerms(i.ownershipHandoff);
+      // OPTIMISTIC OWNER PRECONDITION: the owner the caller last read (null = it read the Account as ownerless). When
+      // named, the change applies only if the locked current owner still matches, so a form opened before someone
+      // else's assignment or handoff can never silently turn an intended first assignment into a handoff (or back).
+      const expectsOwner = Object.prototype.hasOwnProperty.call(i, "expectedCurrentOwnerEmployeeId");
+      if (expectsOwner && owner === null) {
+        fail("OWNER_PRECONDITION_WITHOUT_OWNER_CHANGE", "INVALID_INPUT", "expectedCurrentOwnerEmployeeId applies only to an owner change; name ownerEmployeeId");
+      }
+      const expectedOwner = !expectsOwner || i.expectedCurrentOwnerEmployeeId === null ? null : requireOwnerEmployeeId(i.expectedCurrentOwnerEmployeeId);
       if (fields.columns.size === 0 && SET_FIELDS.every((f) => i[f] === undefined) && owner === null) {
         fail("NO_CHANGES_REQUESTED", "INVALID_INPUT", "an update must name at least one accepted field");
       }
-      return { accountId: requireRecordId(i.accountId, "accountId"), fields, owner, terms };
+      return { accountId: requireRecordId(i.accountId, "accountId"), fields, owner, terms, expectsOwner, expectedOwner };
     },
-    async (db, principal, { accountId, fields, owner, terms }) => {
+    async (db, principal, { accountId, fields, owner, terms, expectsOwner, expectedOwner }) => {
       const { tenantId, principalId } = principal;
       const current = await db.query<{ payment_terms: string | null; tax_status: string | null; owner_employee_id: string | null }>(
         `SELECT payment_terms, tax_status, owner_employee_id FROM eos_crm.accounts WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
@@ -479,6 +491,10 @@ export function updateAccount(deps: CrmDeps, actor: CrmActorContext, input: unkn
       }
       if (owner !== null) {
         const previous = current.rows[0].owner_employee_id;
+        if (expectsOwner && previous !== expectedOwner) {
+          fail("ACCOUNT_OWNER_CHANGED_SINCE_READ", "PRECONDITION_FAILED",
+            "the Account's owner changed since it was read; re-read the Account and decide again");
+        }
         if (previous === null && terms.sourceNamed) {
           fail("INITIAL_OWNER_ASSIGNMENT_SOURCE_NOT_ALLOWED", "INVALID_INPUT",
             "this Account has no owner: its first owner is an INITIAL_OWNER_ASSIGNMENT, not a handoff, and takes no handoff source");
