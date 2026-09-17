@@ -1025,6 +1025,20 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // EMPLOYEE JOB ROLE WRITE -- EMP-RT-08, Owner ruling 2026-09-16. Maintains the TENANT Job Role catalog and assigns an
+  // Employee's one current primary Job Role (append-only history), served by the governed PostgreSQL Workforce commands.
+  // Deliberately NOT admin.employeeProfile.write: Job Role is a separate business authority and separately governable.
+  // A Job Role is a business function only -- holding or assigning one confers no Security Role, permission, ownership,
+  // assignment, reporting or operating-company authority. Registered active:false: the PostgreSQL runtime decides by
+  // eos_policy.role_capabilities.
+  Object.freeze({
+    id: "admin.employeeJobRole.write",
+    description:
+      "Maintain the tenant Job Role catalog and assign an Employee's current Job Role. A Job Role is a business function only: it confers no Security Role, permission, ownership, assignment, reporting or operating-company authority.",
+    resource: "admin.employeeJobRole",
+    action: "write",
+    active: false,
+  }),
   Object.freeze({
     id: "admin.accessRequest.decide",
     description: "Approve or reject a pending Access Request.",

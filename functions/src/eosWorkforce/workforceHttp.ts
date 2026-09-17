@@ -29,7 +29,10 @@
 //   EMP-RT-04 listAccountabilitiesForEmployee the Commercial families, gated by each family's read capability.
 //   EMP-RT-06 listManagedEmployees            employee.record.read over eos_workforce.employee_reporting_relationships.
 //   EMP-RT-05 listAssignedWorkForEmployee     NOT SERVED -- ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES (held, Owner ruling H).
-//   EMP-RT-08 Job Role                        NOT IMPLEMENTED -- no governed Job Role authority (standing ruling).
+//   EMP-RT-08 listJobRoles / listEmployeeJobRoleHistory / listEmployeesWithoutJobRole   employee.record.read.
+//   EMP-RT-08 createJobRole / updateJobRole / assignEmployeeJobRole                      admin.employeeJobRole.write.
+//             A Job Role is a business function only: no Security Role, permission, ownership, assignment,
+//             reporting or operating-company authority is read or written by these operations.
 //   EMP-RT-W1B updateEmployeeProfile          admin.employeeProfile.write. The 17 profile facts only (W1A command).
 //   EMP-RT-W1B establishReportingRelationship admin.employeeProfile.write. Reporting relationship, history kept.
 //   EMP-RT-W1B endReportingRelationship       admin.employeeProfile.write.
@@ -53,6 +56,8 @@ import { updateEmployeeProfile } from "./commands/employeeProfileCommand";
 import { endReportingRelationship, establishReportingRelationship } from "./commands/reportingRelationshipCommands";
 import { saveEmployeeEdit } from "./commands/employeeEditCommand";
 import { changeEmploymentStatus, changeOperatingCompany } from "./commands/employeeLifecycleCommand";
+import { assignEmployeeJobRole, createJobRole, updateJobRole } from "./commands/employeeJobRoleCommands";
+import { listEmployeeJobRoleHistory, listEmployeesWithoutJobRole, listJobRoles } from "./reads/jobRoleReads";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -84,6 +89,9 @@ const READ_RUNNERS = Object.freeze({
   listManagedEmployees: read(listManagedEmployees),
   listRecordsOwnedByEmployee: read(listRecordsOwnedByEmployee),
   listAccountabilitiesForEmployee: read(listAccountabilitiesForEmployee),
+  listJobRoles: read(listJobRoles),
+  listEmployeeJobRoleHistory: read(listEmployeeJobRoleHistory),
+  listEmployeesWithoutJobRole: read(listEmployeesWithoutJobRole),
 } as const);
 
 // ════════════════════ the closed operation list (commands) ════════════════════
@@ -95,6 +103,9 @@ const COMMAND_RUNNERS = Object.freeze({
   saveEmployeeEdit: command(saveEmployeeEdit),
   changeEmploymentStatus: command(changeEmploymentStatus),
   changeOperatingCompany: command(changeOperatingCompany),
+  createJobRole: command(createJobRole),
+  updateJobRole: command(updateJobRole),
+  assignEmployeeJobRole: command(assignEmployeeJobRole),
 } as const);
 
 const RUNNERS: Readonly<Record<string, Runner>> = Object.freeze({ ...READ_RUNNERS, ...COMMAND_RUNNERS });

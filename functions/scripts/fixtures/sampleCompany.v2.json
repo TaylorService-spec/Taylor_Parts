@@ -1024,6 +1024,7 @@
     "$contract": "Per login-capable persona: requiredCapabilities MUST all resolve through Credential -> Principal -> membership -> Role assignments -> role_capabilities -> effective set; forbiddenCapabilities MUST NOT. The verifier resolves the EFFECTIVE set with functions/src/eosOps/capabilityAuthority.ts capabilitiesForRoleKeys and never accepts the existence of an assignment row as proof.",
     "postgresCapabilityVocabulary": [
       "admin.dataImport.execute",
+      "admin.employeeJobRole.write",
       "admin.employeeProfile.write",
       "admin.principalAccess.read",
       "customer.governedField.write",
@@ -1061,13 +1062,14 @@
       "workOrder.lifecycle.complete",
       "workOrder.lifecycle.dispatch"
     ],
-    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 37 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
+    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 38 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
     "personas": {
       "owner-executive": {
         "securityRoles": [
           "admin"
         ],
         "requiredCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "employee.record.read",
@@ -1115,6 +1117,7 @@
           "inventory.catalog.manage"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1150,6 +1153,7 @@
           "customer.record.update"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "employee.record.read",
@@ -1187,6 +1191,7 @@
           "salesOrder.read"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "employee.record.read",
@@ -1229,6 +1234,7 @@
           "inventory.stock.receive"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1260,6 +1266,7 @@
         ],
         "requiredCapabilities": [],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1300,6 +1307,7 @@
         ],
         "requiredCapabilities": [],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1350,6 +1358,7 @@
           "salesOrder.write"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1396,6 +1405,7 @@
           "salesOrder.write"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "employee.record.read",
@@ -1434,6 +1444,7 @@
           "salesOrder.write"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "employee.record.read",
@@ -1471,6 +1482,7 @@
           "salesOrder.read"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1511,6 +1523,7 @@
           "salesOrder.read"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1552,6 +1565,7 @@
           "salesOrder.read"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1592,6 +1606,7 @@
           "salesOrder.read"
         ],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",
@@ -1629,6 +1644,7 @@
         ],
         "requiredCapabilities": [],
         "forbiddenCapabilities": [
+          "admin.employeeJobRole.write",
           "admin.employeeProfile.write",
           "admin.principalAccess.read",
           "admin.dataImport.execute",

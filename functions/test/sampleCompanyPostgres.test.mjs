@@ -117,8 +117,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // table and a widened command_receipts operation vocabulary. The seed writes neither; nothing asserted here changes.
 // Moved deliberately for 1759968000000 (EMP-RT-W2 tenant <-> operating company authority): an EMPTY eos_policy table with
 // no seed rows. The Sample Company seed writes nothing to it; nothing asserted here changes.
-const PINNED_LAST_MIGRATION = "1759968000000_tenant-operating-company-authority";
-const PINNED_MIGRATION_COUNT = 30;
+// Moved deliberately for 1760011200000 (EMP-RT-08 Job Role authority): an EMPTY catalog and assignment history plus one
+// capability vocabulary row. The Sample Company seed writes neither; nothing asserted here changes.
+const PINNED_LAST_MIGRATION = "1760011200000_employee-job-role-authority";
+const PINNED_MIGRATION_COUNT = 31;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

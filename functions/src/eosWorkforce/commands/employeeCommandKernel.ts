@@ -67,13 +67,14 @@ export async function runEmployeeCommand<P, R>(
   prepare: () => P,
   body: (client: PoolClient, prepared: P, at: Date) => Promise<R>,
   onUniqueViolation: (err: { constraint?: string }) => EmployeeCommandError,
+  requiredCapability: string = EMPLOYEE_PROFILE_WRITE,
 ): Promise<R> {
   let client: PoolClient | undefined;
   try {
     if (!actor || !ID_SHAPE(actor.tenantId) || !ID_SHAPE(actor.principalId) || !(actor.capabilities instanceof Set)) {
       refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant, principal and capability set are required");
     }
-    if (!actor.capabilities.has(EMPLOYEE_PROFILE_WRITE)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${EMPLOYEE_PROFILE_WRITE}`);
+    if (!actor.capabilities.has(requiredCapability)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${requiredCapability}`);
     const prepared = prepare();
     client = await deps.pool.connect();
     await client.query("BEGIN");

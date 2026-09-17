@@ -127,7 +127,14 @@ test("(21) the deferred Employee FK stays deferred and (23) blocker #3 stays ope
   assert.doesNotMatch(readFileSync(join(REPO_ROOT, "firestore.rules"), "utf8"), /number_counters|command_receipts/);
 });
 
-test("(22) Job Role authority is still not implemented in PostgreSQL", () => {
-  const all = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, ""));
-  assert.ok(!all.some((sql) => /CREATE TABLE[^(]*job_role|ADD COLUMN\s+job_role/i.test(sql)));
+// EMP-RT-08 (Owner ruling 2026-09-16) now defines the Job Role authority -- in its OWN migration, as an Employee business
+// function in eos_workforce. The commercial schema must still never carry a Job Role: no commercial table, column or
+// mapping keys on one (Retail / National Accounts Sales are Job Roles, never record ownership or permission).
+test("(22) Job Role authority lives only in the EMP-RT-08 Workforce migration; no commercial or other table carries a Job Role", () => {
+  const files = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"));
+  const sql = (f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, "");
+  const defining = files.filter((f) => /CREATE TABLE[^(]*job_role|ADD COLUMN\s+job_role/i.test(sql(f)));
+  assert.deepEqual(defining, ["1760011200000_employee-job-role-authority.sql"]);
+  for (const f of files.filter((f) => !defining.includes(f))) assert.doesNotMatch(sql(f), /job_role/i, f);
+  assert.doesNotMatch(sql(defining[0]), /eos_commercial|eos_crm|owner_employee_id|accountab|user_role_assignments/i);
 });

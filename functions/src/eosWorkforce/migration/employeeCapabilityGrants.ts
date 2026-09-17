@@ -10,6 +10,7 @@
 //   employee.record.read          admin (whole-catalog composition), owner (spreads admin), generalManager (declared)
 //   admin.principalAccess.read    admin, owner
 //   admin.employeeProfile.write   admin, owner
+//   admin.employeeJobRole.write   admin, owner (EMP-RT-08; never by Job Role, never to managers)
 // functions/test/employeeProfileAuthority.test.mjs pins that set, so a Role gaining one of these ids is a reviewed diff.
 import type { Pool } from "pg";
 import { reconcileInventoryCapabilityGrants, type ReconcileReport } from "../../eosOps/migration/inventoryCapabilityGrantMigration";
@@ -18,6 +19,7 @@ export const EMPLOYEE_CAPABILITY_GRANT_KEYS = Object.freeze([
   "employee.record.read",
   "admin.principalAccess.read",
   "admin.employeeProfile.write",
+  "admin.employeeJobRole.write",
 ] as const);
 
 export function reconcileEmployeeCapabilityGrants(
