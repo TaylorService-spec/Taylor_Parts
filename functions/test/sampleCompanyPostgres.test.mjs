@@ -119,8 +119,12 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // no seed rows. The Sample Company seed writes nothing to it; nothing asserted here changes.
 // Moved deliberately for 1760011200000 (EMP-RT-08 Job Role authority): an EMPTY catalog and assignment history plus one
 // capability vocabulary row. The Sample Company seed writes neither; nothing asserted here changes.
-const PINNED_LAST_MIGRATION = "1760011200000_employee-job-role-authority";
-const PINNED_MIGRATION_COUNT = 31;
+//
+// Moved deliberately again for 1760054400000 (Work Eligibility authority, operationalRoles decomposition step A): an
+// EMPTY qualification history plus one capability vocabulary row, granted to no Role. The table is not in
+// SEEDED_RELATIONS and the Sample Company seed writes no qualification, so every row count asserted here is unchanged.
+const PINNED_LAST_MIGRATION = "1760054400000_employee-work-eligibility-authority";
+const PINNED_MIGRATION_COUNT = 32;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

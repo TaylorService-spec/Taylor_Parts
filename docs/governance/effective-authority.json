@@ -1,15 +1,15 @@
 {
  "catalog": {
-  "total": 149,
-  "active": 39,
+  "total": 150,
+  "active": 40,
   "inactive": 110
  },
  "heldByNobody": [],
  "ownerAdminOnly": {
-  "total": 22,
+  "total": 23,
   "byStatus": {
    "UNCLASSIFIED": 2,
-   "DELIBERATELY_PRIVILEGED_ONLY": 11,
+   "DELIBERATELY_PRIVILEGED_ONLY": 12,
    "RECORDED_GAP": 9
   },
   "capabilities": [
@@ -103,6 +103,12 @@
     "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
    },
    {
+    "capability": "admin.employeeWorkEligibility.write",
+    "active": true,
+    "status": "DELIBERATELY_PRIVILEGED_ONLY",
+    "why": "Owner decision 2026-08-21 (General Manager Option 2): capability and role administration stays with Owner/Admin. The highest BUSINESS role is not security administration, and two-person control over privilege is preserved."
+   },
+   {
     "capability": "admin.accessRequest.decide",
     "active": true,
     "status": "DELIBERATELY_PRIVILEGED_ONLY",
@@ -161,8 +167,8 @@
    "roleId": "owner",
    "label": "Owner",
    "composedFunctionalRoles": [],
-   "grantedCount": 149,
-   "operableCount": 39,
+   "grantedCount": 150,
+   "operableCount": 40,
    "blockedCount": 110,
    "granted": [
     "admin.accessRequest.decide",
@@ -171,6 +177,7 @@
     "admin.dataImport.stage",
     "admin.employeeJobRole.write",
     "admin.employeeProfile.write",
+    "admin.employeeWorkEligibility.write",
     "admin.principalAccess.read",
     "admin.roleAssignment.write",
     "admin.userStatus.write",
@@ -319,6 +326,7 @@
     "admin.accessRequest.decide",
     "admin.employeeJobRole.write",
     "admin.employeeProfile.write",
+    "admin.employeeWorkEligibility.write",
     "admin.principalAccess.read",
     "admin.roleAssignment.write",
     "admin.userStatus.write",

@@ -1026,6 +1026,7 @@
       "admin.dataImport.execute",
       "admin.employeeJobRole.write",
       "admin.employeeProfile.write",
+      "admin.employeeWorkEligibility.write",
       "admin.principalAccess.read",
       "customer.governedField.write",
       "customer.record.create",
@@ -1062,7 +1063,7 @@
       "workOrder.lifecycle.complete",
       "workOrder.lifecycle.dispatch"
     ],
-    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 38 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
+    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 39 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
     "personas": {
       "owner-executive": {
         "securityRoles": [
