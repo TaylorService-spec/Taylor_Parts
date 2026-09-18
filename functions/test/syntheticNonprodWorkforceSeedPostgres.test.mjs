@@ -245,12 +245,13 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
   await t.test("(16) the deferred Employee foreign key was not activated", async () => {
     const applied = (await q("SELECT name FROM public.pgmigrations")).rows.map((r) => r.name);
     assert.ok(!applied.some((n) => n.includes("employee-principal-link-employee-fk")));
-    // The governed reporting relation (Owner ruling D), the Job Role assignment history (EMP-RT-08) and the Work
-    // Eligibility qualification history (operationalRoles decomposition, step A) key onto employees by design; no
-    // EXISTING person-reference column does.
+    // The governed reporting relation (Owner ruling D), the Job Role assignment history (EMP-RT-08), the Work
+    // Eligibility qualification history (decomposition step A) and the Operational Scope history (step B) key onto
+    // employees by design; no EXISTING person-reference column does.
     const fks = (await q(`SELECT count(*)::int AS n FROM pg_constraint WHERE contype = 'f' AND confrelid = 'eos_workforce.employees'::regclass
                             AND conrelid NOT IN ('eos_workforce.employee_reporting_relationships'::regclass, 'eos_workforce.employee_job_role_assignments'::regclass,
-                                                 'eos_workforce.employee_work_eligibility'::regclass)`)).rows[0].n;
+                                                 'eos_workforce.employee_work_eligibility'::regclass,
+                                                 'eos_workforce.employee_operational_scopes'::regclass)`)).rows[0].n;
     assert.equal(fks, 0);
   });
 });
