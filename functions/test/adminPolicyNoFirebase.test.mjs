@@ -260,7 +260,9 @@ test("NOTHING in the running system imports the transitional harness", () => {
   // check is repo-wide rather than directory-wide, because the import that would matter most is the
   // one from outside this subsystem.
   //
-  // conditionKindInventory.ts is held to the SAME rule and named in both patterns: it is migration-only
+  // conditionKindInventory.ts and effectiveAccessParity.ts are held to the SAME rule and named in both patterns.
+  // The parity comparator in particular must stay out of the product: it decides nothing at request time, and a
+  // runtime that imported it would be consulting a migration proof instead of the authority. Both are migration-only
   // (it classifies the live Conditions for the evaluator-parity work and decides no access), so the product
   // must not import it either -- and it is skipped as a SOURCE because its own documentation necessarily
   // names the census it feeds. The match is on text, not on imports, so a module that explains a sibling
@@ -274,8 +276,8 @@ test("NOTHING in the running system imports the transitional harness", () => {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) { walk(path); continue; }
       if (!/\.(ts|tsx|js|jsx|mjs)$/.test(entry)) continue;
-      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$|conditionKindInventory\.ts$|legacyConsumerLedger\.ts$/.test(path)) continue;
-      if (/firestorePolicyParityHarness|roleAssignmentCensus|conditionKindInventory|legacyConsumerLedger/.test(readFileSync(path, "utf8"))) offenders.push(path);
+      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$|conditionKindInventory\.ts$|legacyConsumerLedger\.ts$|effectiveAccessParity\.ts$/.test(path)) continue;
+      if (/firestorePolicyParityHarness|roleAssignmentCensus|conditionKindInventory|legacyConsumerLedger|effectiveAccessParity/.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };
   for (const root of roots) walk(root);
