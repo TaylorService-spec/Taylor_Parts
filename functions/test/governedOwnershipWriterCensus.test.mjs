@@ -142,6 +142,10 @@ const CLASSIFIED_SOURCE_MODULES = Object.freeze({
   "src/salesOrder/salesOrderCommands.ts": "NOT APPLICABLE",
   "src/salesAgreement/agreementToSalesOrder.ts": "NOT APPLICABLE",
   "src/ownership/creationOwnerResolution.ts": "NOT APPLICABLE",
+  // The assignedToUserId consumer census NAMES accountOwner only to record that the CRM/Commercial Person
+  // Assignment map shares that field name with the Reorder seam and is a DIFFERENT authority. It is pure data:
+  // it writes no ownership, reads none at runtime, and nothing in the product imports it.
+  "src/eosOps/migration/assignedToUserIdCensus.ts": "NOT APPLICABLE",
   // The pure rule the bounded backfill scripts consume.
   "src/ownership/ownershipBackfillRules.ts": "LEGACY",
   // PostgreSQL / migration modules no callable can reach.
