@@ -29,6 +29,11 @@
 // Employee record renders; the actor's name is included only when the SERVER finds admin.principalAccess.read. EMP-RT-05 (assigned work) is NOT served and not a name here.
 // readMyWorkforceCapabilities (finding #17) answers which Workforce controls the CALLER may be offered, from the same
 // PostgreSQL capabilities the commands re-check (hooks/useWorkforceCapabilities.js); it takes no input.
+// The operationalRoles decomposition (step C) adds the WORK ELIGIBILITY reads/commands
+// (admin.employeeWorkEligibility.write) and the OPERATIONAL SCOPE reads/commands
+// (admin.employeeOperationalScope.write). They are served and named here so the list keeps mirroring the server; no
+// screen calls them yet, exactly as EMP-RT-W2 was named ahead of its UI. Qualification and warehouse scope are
+// SEPARATE authorities and separate capabilities: neither grants the other, and neither grants application access.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
@@ -46,6 +51,10 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listEmployeeJobRoleHistory",
   "listEmployeesWithoutJobRole",
   "listEmployeeChangeHistory",
+  "listEmployeeWorkEligibility",
+  "listEmployeeWorkEligibilityHistory",
+  "listEmployeeOperationalScopes",
+  "listEmployeeOperationalScopeHistory",
 ]);
 
 export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
@@ -58,6 +67,10 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
   "createJobRole",
   "updateJobRole",
   "assignEmployeeJobRole",
+  "assignEmployeeWorkEligibility",
+  "endEmployeeWorkEligibility",
+  "assignEmployeeOperationalScope",
+  "endEmployeeOperationalScope",
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */

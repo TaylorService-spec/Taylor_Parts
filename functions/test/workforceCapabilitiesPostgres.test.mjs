@@ -26,7 +26,9 @@ const http = require("../lib/eosWorkforce/workforceHttp.js");
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 
-const WORKFORCE_IDS = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write"];
+const WORKFORCE_IDS = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write",
+  // Step C (operationalRoles decomposition): the qualification and warehouse-scope Administration capabilities.
+  "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"];
 
 const dbUrlFor = (name) => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); };
 async function withClient(url, fn) {
@@ -127,7 +129,7 @@ test("readMyWorkforceCapabilities over the real policy authority", { skip: SKIP,
   const nobody = await makePrincipal("t1", "firebase-uid-nobody");
   const t2Admin = await makePrincipal("t2", "firebase-uid-t2-admin", "admin");
 
-  await t.test("Administrator: exactly the four Workforce ids -- and none of the other capabilities its Role holds", async () => {
+  await t.test("Administrator: exactly the six Workforce ids -- and none of the other capabilities its Role holds", async () => {
     const res = await call(admin);
     assert.deepEqual([res.status, res.body], [200, { ok: true, operation: "readMyWorkforceCapabilities", result: { capabilities: WORKFORCE_IDS } }]);
     // The Role really does hold the non-Workforce grants: they resolve, and they are simply not disclosed.

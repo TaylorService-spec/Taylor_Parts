@@ -21,7 +21,7 @@
 // CAPABILITY. None beyond an active Principal with an active membership: it only tells a caller about themselves, and
 // accepts no selector, so it cannot describe anyone else. It confers nothing -- every command still re-checks.
 //
-// NO NEW CAPABILITY. The list names four EXISTING ids only; none is invented and none is granted here.
+// NO NEW CAPABILITY. The list names six EXISTING ids only; none is invented and none is granted here.
 import { acceptOnly, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps } from "./employeeReadKernel";
 
 /** The closed list of Workforce capability ids a caller may learn it holds. Existing ids only. */
@@ -30,6 +30,10 @@ export const WORKFORCE_CAPABILITY_IDS = Object.freeze([
   "admin.principalAccess.read",
   "admin.employeeProfile.write",
   "admin.employeeJobRole.write",
+  // Step C. Listed so the Administration Employee pages can OFFER the qualification and scope controls to a caller who
+  // actually holds each capability. Being offerable is not being authorized: every command re-checks its own capability.
+  "admin.employeeWorkEligibility.write",
+  "admin.employeeOperationalScope.write",
 ] as const);
 
 export interface MyWorkforceCapabilities {

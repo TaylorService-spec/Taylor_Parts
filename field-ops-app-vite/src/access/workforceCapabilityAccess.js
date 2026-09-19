@@ -16,6 +16,8 @@ export const WORKFORCE_CAPABILITY_REQUEST = Object.freeze([
   "admin.principalAccess.read",
   "admin.employeeProfile.write",
   "admin.employeeJobRole.write",
+  "admin.employeeWorkEligibility.write",
+  "admin.employeeOperationalScope.write",
 ]);
 
 const KNOWN = new Set(WORKFORCE_CAPABILITY_REQUEST);
