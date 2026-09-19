@@ -311,6 +311,13 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
 
   // ── migration EVIDENCE: survives J and K by design ──
   entry({
+    path: "functions/src/eosWorkforce/migration/partsAssignabilityExclusion.ts",
+    consumer: "measures what the legacy securityRole == technician picker filter excludes, for the Owner ruling",
+    terms: ["operationalRoles"], classification: "MIGRATION_EVIDENCE",
+    replacementAuthority: null, replacementPr: null, status: "BLOCKED",
+    blockedReason: "LEGACY_SEMANTIC_CONFLICT: the filter is neither ported nor dropped until the Owner rules on it",
+  }),
+  entry({
     path: "functions/src/adminPolicy/migration/conditionKindInventory.ts",
     // Both names appear in its RULING STRINGS -- the dispositions cite the decomposition by name. Strings are code
     // to the derivation, correctly: a rationale is shipped text, not a comment, so the ledger must account for it.
