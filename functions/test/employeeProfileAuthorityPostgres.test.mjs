@@ -170,10 +170,17 @@ test("employee.record.read, admin.principalAccess.read and the reporting writer 
     const applied = await grants.reconcileEmployeeCapabilityGrants(pool, { tenantId: "t1", apply: true, actor: "employee-capability-grants:test" });
     assert.deepEqual(applied.unresolved, []);
     const held = (await q(`SELECT r.key AS role, c.key AS capability FROM eos_policy.role_capabilities rc JOIN eos_policy.roles r ON r.id = rc.role_id JOIN eos_policy.capabilities c ON c.id = rc.capability_id WHERE rc.tenant_id='t1' ORDER BY 1, 2`)).rows;
+    // Step C adds admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write. The derivation, not
+    // this list, decides the holders -- and it still yields ONLY the two administrator Roles: General Manager gains
+    // neither, and no operational Role appears at all.
     assert.deepEqual(held, [
-      { role: "admin", capability: "admin.employeeJobRole.write" }, { role: "admin", capability: "admin.employeeProfile.write" }, { role: "admin", capability: "admin.principalAccess.read" }, { role: "admin", capability: "employee.record.read" },
+      { role: "admin", capability: "admin.employeeJobRole.write" }, { role: "admin", capability: "admin.employeeOperationalScope.write" },
+      { role: "admin", capability: "admin.employeeProfile.write" }, { role: "admin", capability: "admin.employeeWorkEligibility.write" },
+      { role: "admin", capability: "admin.principalAccess.read" }, { role: "admin", capability: "employee.record.read" },
       { role: "generalManager", capability: "employee.record.read" },
-      { role: "owner", capability: "admin.employeeJobRole.write" }, { role: "owner", capability: "admin.employeeProfile.write" }, { role: "owner", capability: "admin.principalAccess.read" }, { role: "owner", capability: "employee.record.read" },
+      { role: "owner", capability: "admin.employeeJobRole.write" }, { role: "owner", capability: "admin.employeeOperationalScope.write" },
+      { role: "owner", capability: "admin.employeeProfile.write" }, { role: "owner", capability: "admin.employeeWorkEligibility.write" },
+      { role: "owner", capability: "admin.principalAccess.read" }, { role: "owner", capability: "employee.record.read" },
     ]);
     const rerun = await grants.reconcileEmployeeCapabilityGrants(pool, { tenantId: "t1", apply: true, actor: "employee-capability-grants:test" });
     assert.equal(rerun.appliedAdditions, 0);

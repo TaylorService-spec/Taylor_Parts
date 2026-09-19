@@ -34,6 +34,10 @@
 //   EMP-RT-05 listAssignedWorkForEmployee     NOT SERVED -- ASSIGNMENT_AUTHORITY_NOT_IN_POSTGRES (held, Owner ruling H).
 //   EMP-RT-08 listJobRoles / listEmployeeJobRoleHistory / listEmployeesWithoutJobRole   employee.record.read.
 //   EMP-RT-08 createJobRole / updateJobRole / assignEmployeeJobRole                      admin.employeeJobRole.write.
+//   step C   listEmployeeWorkEligibility / ...History                                    employee.record.read.
+//   step C   assignEmployeeWorkEligibility / endEmployeeWorkEligibility                  admin.employeeWorkEligibility.write.
+//   step C   listEmployeeOperationalScopes / ...History                                  employee.record.read.
+//   step C   assignEmployeeOperationalScope / endEmployeeOperationalScope                admin.employeeOperationalScope.write.
 //             A Job Role is a business function only: no Security Role, permission, ownership, assignment,
 //             reporting or operating-company authority is read or written by these operations.
 //   EMP-RT-H1 listEmployeeChangeHistory      employee.record.read. The governed Employee audit trail (six closed actions,
@@ -66,6 +70,10 @@ import { changeEmploymentStatus, changeOperatingCompany } from "./commands/emplo
 import { assignEmployeeJobRole, createJobRole, updateJobRole } from "./commands/employeeJobRoleCommands";
 import { listEmployeeJobRoleHistory, listEmployeesWithoutJobRole, listJobRoles } from "./reads/jobRoleReads";
 import { listEmployeeChangeHistory } from "./reads/employeeChangeHistoryRead";
+import { assignEmployeeWorkEligibility, endEmployeeWorkEligibility } from "./commands/employeeWorkEligibilityCommands";
+import { assignEmployeeOperationalScope, endEmployeeOperationalScope } from "./commands/employeeOperationalScopeCommands";
+import { listEmployeeWorkEligibility, listEmployeeWorkEligibilityHistory } from "./reads/workEligibilityReads";
+import { listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory } from "./reads/operationalScopeReads";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -102,6 +110,10 @@ const READ_RUNNERS = Object.freeze({
   listEmployeeJobRoleHistory: read(listEmployeeJobRoleHistory),
   listEmployeesWithoutJobRole: read(listEmployeesWithoutJobRole),
   listEmployeeChangeHistory: read(listEmployeeChangeHistory),
+  listEmployeeWorkEligibility: read(listEmployeeWorkEligibility),
+  listEmployeeWorkEligibilityHistory: read(listEmployeeWorkEligibilityHistory),
+  listEmployeeOperationalScopes: read(listEmployeeOperationalScopes),
+  listEmployeeOperationalScopeHistory: read(listEmployeeOperationalScopeHistory),
 } as const);
 
 // ════════════════════ the closed operation list (commands) ════════════════════
@@ -116,6 +128,10 @@ const COMMAND_RUNNERS = Object.freeze({
   createJobRole: command(createJobRole),
   updateJobRole: command(updateJobRole),
   assignEmployeeJobRole: command(assignEmployeeJobRole),
+  assignEmployeeWorkEligibility: command(assignEmployeeWorkEligibility),
+  endEmployeeWorkEligibility: command(endEmployeeWorkEligibility),
+  assignEmployeeOperationalScope: command(assignEmployeeOperationalScope),
+  endEmployeeOperationalScope: command(endEmployeeOperationalScope),
 } as const);
 
 const RUNNERS: Readonly<Record<string, Runner>> = Object.freeze({ ...READ_RUNNERS, ...COMMAND_RUNNERS });

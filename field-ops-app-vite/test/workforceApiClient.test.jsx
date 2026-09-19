@@ -36,7 +36,11 @@ describe("the closed operation list", () => {
     // EMP-RT-08 (Owner ruling): the Job Role reads are served -- business function only, under employee.record.read.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /jobRole/i.test(n)).sort()).toEqual(["listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listJobRoles"]);
     // EMP-RT-H1: the governed Employee change history is served, and it is the only history read.
-    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /history/i.test(n)).sort()).toEqual(["listEmployeeChangeHistory", "listEmployeeJobRoleHistory"]);
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /history/i.test(n)).sort()).toEqual([
+      "listEmployeeChangeHistory", "listEmployeeJobRoleHistory", "listEmployeeOperationalScopeHistory", "listEmployeeWorkEligibilityHistory"]);
+    // Step C: qualification and warehouse scope are served as SEPARATE reads -- neither is folded into the other.
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /eligibility/i.test(n)).sort()).toEqual(["listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory"]);
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /scope/i.test(n)).sort()).toEqual(["listEmployeeOperationalScopeHistory", "listEmployeeOperationalScopes"]);
   });
 
   it("mirrors the server's WORKFORCE command runners exactly: the governed Employee commands, nothing else", () => {
@@ -44,7 +48,9 @@ describe("the closed operation list", () => {
     const start = server.indexOf("const COMMAND_RUNNERS");
     const block = server.slice(start, server.indexOf("} as const);", start));
     const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*command\(/gm)].map((m) => m[1]);
-    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole"]);
+    expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit",
+      "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
+      "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope"]);
     expect([...WORKFORCE_COMMAND_OPERATIONS]).toEqual(names);
     for (const name of [...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]) expect(isWorkforceOperation(name), name).toBe(true);
     // No Security Role, generic patch or unserved writer is a name the browser can send.
