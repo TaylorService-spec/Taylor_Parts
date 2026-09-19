@@ -291,7 +291,12 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && /eosWorkforce\/reads\/|["']\.\/reads\/(employee|myEmployeeProfile)/.test(readFileSync(f, "utf8")));
   assert.deepEqual(importers.map(rel), ["functions/src/eosWorkforce/workforceHttp.ts"]);
   // The reporting writer's commands module borrows only the error-category TYPE from the read kernel.
-  const outsideWorkforce = walk(SRC, [".ts"]).filter((f) => !f.startsWith(WORKFORCE) && /eosWorkforce/.test(code(f)));
+  // The retirement ledger NAMES Workforce paths as DATA -- it is a migration-only inventory of legacy consumers and
+  // imports nothing at all. This guard is about IMPORTERS, so it is excluded by path rather than listed as one: a
+  // real import from it would still have to name a reads/ or commands/ module, which the checks around this catch.
+  const LEDGER = join(SRC, "adminPolicy", "migration", "legacyConsumerLedger.ts");
+  const outsideWorkforce = walk(SRC, [".ts"])
+    .filter((f) => !f.startsWith(WORKFORCE) && f !== LEDGER && /eosWorkforce/.test(code(f)));
   assert.deepEqual(outsideWorkforce.map(rel), ["functions/src/eosApi/server.ts"]);
   // The transport is the ONE runtime importer of the internal governed commands (W1B); nothing runtime imports migration.
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));

@@ -274,8 +274,8 @@ test("NOTHING in the running system imports the transitional harness", () => {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) { walk(path); continue; }
       if (!/\.(ts|tsx|js|jsx|mjs)$/.test(entry)) continue;
-      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$|conditionKindInventory\.ts$/.test(path)) continue;
-      if (/firestorePolicyParityHarness|roleAssignmentCensus|conditionKindInventory/.test(readFileSync(path, "utf8"))) offenders.push(path);
+      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$|conditionKindInventory\.ts$|legacyConsumerLedger\.ts$/.test(path)) continue;
+      if (/firestorePolicyParityHarness|roleAssignmentCensus|conditionKindInventory|legacyConsumerLedger/.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };
   for (const root of roots) walk(root);
