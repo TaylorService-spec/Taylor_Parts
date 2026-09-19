@@ -33,6 +33,25 @@
 // NO QUALIFICATION IS INFERRED FROM JOB ROLE. `Parts / Warehouse` is presentation. An Employee holding that Job
 // Role and no WAREHOUSE_OPERATIONS qualification is NOT assignable, and the read never consults job_roles.
 //
+// THE LINKED PRINCIPAL IS MANDATORY, AND NOT A CALLER'S CHOICE. The legacy query ALWAYS required `userId != null`,
+// so exposing a flag that turns the predicate off would let a caller obtain Employees the legacy path never returned
+// -- a behavioural widening introduced by a migration, which is precisely what a cutover may not do. There is no
+// input that disables it. If a workflow ever genuinely needs to assign work to an Employee with no login, that is a
+// separate business-policy decision and a separate reviewed read contract, not a parameter on this one.
+//
+// WHAT "LINKED" MEANS HERE IS WHAT IT ALREADY MEANT. readEmployeePrincipalLink answers `userAccess: "LINKED"` for an
+// ACTIVE link row in the actor's tenant, so this read uses exactly that and nothing more:
+//
+//   STRUCTURAL, NOT DUPLICATED   the link's composite FK (tenant_id, principal_id) -> tenant_memberships already
+//                                guarantees the Principal EXISTS and is a MEMBER OF THIS TENANT. A row cannot be
+//                                written otherwise, so re-checking it here would assert what the database enforces.
+//   CHECKED HERE                 `status = 'active'`. The table keeps revoked links as history, and a revoked link is
+//                                not a login -- "some link row exists" is the wrong question.
+//   DELIBERATELY NOT CHECKED     the Principal's own status and its membership STATUS. readEmployeePrincipalLink
+//                                REPORTS both and filters on neither, so filtering here would invent a NARROWER
+//                                eligibility rule than either the legacy path or the established authority. This
+//                                migration preserves semantics; it does not tighten them either.
+//
 // NO SECURITY IS CONFERRED. Being assignable is not permission to act: every governed command still checks its own
 // capability. Visibility here reuses employee.record.read, the same business visibility as the Employee directory.
 import {
@@ -78,7 +97,7 @@ export function listAssignableEmployees(
   const scope = "assignable-employees";
   return runEmployeeRead(deps, actor,
     () => {
-      acceptOnly(input, ["qualificationCode", "warehouseId", "requireLinkedPrincipal", "limit", "cursor"]);
+      acceptOnly(input, ["qualificationCode", "warehouseId", "limit", "cursor"]);
       const code = input?.qualificationCode;
       if (!isWorkEligibilityCode(code)) {
         refuse("WORK_ELIGIBILITY_CODE_INVALID", "INVALID_INPUT", `qualificationCode must be one of ${WORK_ELIGIBILITY_CODES.join(", ")}`);
@@ -87,15 +106,8 @@ export function listAssignableEmployees(
       if (warehouseId !== undefined && warehouseId !== null && !ID_SHAPE(warehouseId)) {
         refuse("WAREHOUSE_ID_INVALID", "INVALID_INPUT", "warehouseId must be a governed warehouse id");
       }
-      const requireLinkedPrincipal = input?.requireLinkedPrincipal;
-      if (requireLinkedPrincipal !== undefined && typeof requireLinkedPrincipal !== "boolean") {
-        refuse("REQUIRE_LINKED_PRINCIPAL_INVALID", "INVALID_INPUT", "requireLinkedPrincipal must be a boolean");
-      }
       return {
         code: code as WorkEligibilityCode,
-        // The legacy query defaulted requireLinkedUser to true, because work is assigned to someone who can log in
-        // and act on it. Same default, same reason.
-        requireLinkedPrincipal: requireLinkedPrincipal === undefined ? true : requireLinkedPrincipal,
         warehouseId: ID_SHAPE(warehouseId) ? warehouseId : null,
         limit: requirePageSize(input?.limit),
         cursor: decodeEmployeeCursor(scope, input?.cursor),
@@ -107,9 +119,10 @@ export function listAssignableEmployees(
       const qualified = `EXISTS (SELECT 1 FROM eos_workforce.employee_work_eligibility q
                                   WHERE q.tenant_id = e.tenant_id AND q.employee_id = e.id
                                     AND q.qualification_code = $2 AND q.effective_to IS NULL)`;
-      // ACCOUNT: work is assigned to someone who can log in and act on it.
+      // ACCOUNT: work is assigned to someone who can log in and act on it. ALWAYS applied, never optional, and
+      // ACTIVE-only -- the table keeps revoked links as history and a revoked link is not a login.
       const linked = `EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
-                               WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id)`;
+                               WHERE l.tenant_id = e.tenant_id AND l.employee_id = e.id AND l.status = 'active')`;
       // SCOPE: only when the workflow named a warehouse. Never added because the Employee happens to be qualified.
       //
       // Null-guarded rather than omitted, so $5 is always bound: a predicate built by string concatenation that
@@ -124,7 +137,7 @@ export function listAssignableEmployees(
         // naming it unqualified here would depend on a search_path this read deliberately does not set.
         `e.employment_status::text = ANY($3::text[])`,
         qualified,
-        ...(p.requireLinkedPrincipal ? [linked] : []),
+        linked,
         scoped,
         `($4::text IS NULL OR e.id > $4::text)`,
       ];

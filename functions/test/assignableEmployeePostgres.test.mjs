@@ -140,9 +140,49 @@ test("assignable Employees: qualification, lifecycle and account, each independe
     await q(`UPDATE eos_workforce.employees SET employment_status = 'ON_LEAVE' WHERE id = 'e-onleave'`);
   });
 
-  await t.test("ACCOUNT is load-bearing, and requireLinkedPrincipal defaults to true as the legacy query did", async () => {
+  await t.test("ACCOUNT is MANDATORY: no linked Principal is never assignable, and NO input can disable the predicate", async () => {
+    // (2) qualified and ACTIVE, but no link.
     assert.ok(!(await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-unlinked"));
-    assert.ok((await ids({ qualificationCode: "WAREHOUSE_OPERATIONS", requireLinkedPrincipal: false })).includes("e-unlinked"));
+
+    // (3)(4) THE BYPASS IS GONE. The legacy query ALWAYS required userId != null, so a caller-controlled way to skip
+    // it would return Employees the legacy path never returned -- a widening introduced by the migration itself.
+    for (const value of [false, true, "false", null, 0]) {
+      await assert.rejects(
+        reads.listAssignableEmployees(deps, admin, { qualificationCode: "WAREHOUSE_OPERATIONS", requireLinkedPrincipal: value }),
+        (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED",
+        `requireLinkedPrincipal: ${JSON.stringify(value)} was accepted`);
+    }
+    // Nor under any other name a caller might try.
+    for (const field of ["requireLinkedUser", "includeUnlinked", "linked", "userId"]) {
+      await assert.rejects(reads.listAssignableEmployees(deps, admin, { qualificationCode: "WAREHOUSE_OPERATIONS", [field]: false }),
+        (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED", `${field} was accepted`);
+    }
+    // And the predicate is unconditional in the source: not built from a flag at all.
+    const src = require("node:fs").readFileSync(`${FUNCTIONS_DIR}/src/eosWorkforce/reads/assignableEmployeeReads.ts`, "utf8");
+    assert.doesNotMatch(src, /requireLinkedPrincipal|requireLinkedUser/, "a bypass name survives in the read");
+  });
+
+  await t.test("ACTIVE LINK, not merely a historical row: a REVOKED link is not a login", async () => {
+    // The table keeps revoked links as history. "Some link row exists" is the wrong question; the established
+    // readEmployeePrincipalLink answers LINKED only for an ACTIVE row, and this read uses exactly that rule.
+    assert.ok((await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-full"));
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'revoked' WHERE employee_id = 'e-full'`);
+    assert.ok(!(await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-full"),
+      "a revoked link still counted as a login");
+    await q(`UPDATE eos_policy.employee_principal_links SET status = 'active' WHERE employee_id = 'e-full'`);
+    assert.ok((await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-full"));
+  });
+
+  await t.test("the link's tenancy and membership are STRUCTURAL, so the read does not duplicate them", async () => {
+    // The composite FK (tenant_id, principal_id) -> tenant_memberships means a link cannot name a Principal that is
+    // not a member of THAT tenant. Proving the guarantee rather than re-checking it in the query.
+    await assert.rejects(
+      q(`INSERT INTO eos_policy.employee_principal_links (id, tenant_id, principal_id, employee_id, operating_company_id, link_source, asserted_by, assertion_reason)
+         VALUES ('epl-bogus', 't1', 'p-not-a-member', 'e-unlinked', 'taylor', 'OPERATOR_ASSERTED', 'f', 'test')`),
+      (e) => e.code === "23503", "a link to a non-member Principal was accepted");
+    // The read therefore checks only what the database cannot: that the link is current.
+    const src = require("node:fs").readFileSync(`${FUNCTIONS_DIR}/src/eosWorkforce/reads/assignableEmployeeReads.ts`, "utf8");
+    assert.match(src, /employee_principal_links l\s*\n?\s*WHERE l\.tenant_id = e\.tenant_id AND l\.employee_id = e\.id AND l\.status = 'active'/);
   });
 
   await t.test("SCOPE is load-bearing ONLY when the workflow names a warehouse, and is never inferred", async () => {
@@ -184,7 +224,7 @@ test("assignable Employees: qualification, lifecycle and account, each independe
       await assert.rejects(reads.listAssignableEmployees(deps, admin, { qualificationCode: code }),
         (e) => e.code === "WORK_ELIGIBILITY_CODE_INVALID", `qualificationCode ${JSON.stringify(code)} accepted`);
     }
-    for (const extra of ["tenantId", "principalId", "capabilities", "operationalRoles", "jobRoleId"]) {
+    for (const extra of ["tenantId", "principalId", "capabilities", "operationalRoles", "jobRoleId", "employmentStatus"]) {
       await assert.rejects(reads.listAssignableEmployees(deps, admin, { qualificationCode: "WAREHOUSE_OPERATIONS", [extra]: "x" }),
         (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED", `accepted ${extra}`);
     }
