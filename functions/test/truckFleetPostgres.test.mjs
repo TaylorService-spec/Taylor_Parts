@@ -331,8 +331,13 @@ test("the repository exposes no way to rewrite either id, and no assignment hist
   assert.equal(names.some((n) => /rename|renameTruck|changeLocationId|setTruckId/i.test(n)), false);
   assert.equal(names.some((n) => /delete|drop|truncate|history/i.test(n)), false);
 
+  // The rule is about the TRUCK binding: a truck is REBOUND, never versioned, so no truck/location assignment or
+  // history table may appear. Scoped to truck and mobile-location names rather than scanning all of eos_ops --
+  // the schema now also holds the Owner-ruled Reorder Employee assignment history, which is a different object's
+  // deliberate authority and not a regression in this one.
   const { rows } = await query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops'`);
-  assert.equal(rows.some((r) => /assignment|history/.test(r.table_name)), false);
+  const truckShaped = rows.map((r) => r.table_name).filter((t) => /truck|mobile_location/.test(t));
+  assert.equal(truckShaped.some((t) => /assignment|history/.test(t)), false, `a truck assignment/history table exists: ${truckShaped.join(", ")}`);
 });
 
 // ============================ the unlinked-location reality ============================
