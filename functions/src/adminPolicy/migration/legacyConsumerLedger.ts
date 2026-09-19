@@ -311,6 +311,16 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
 
   // ── migration EVIDENCE: survives J and K by design ──
   entry({
+    path: "functions/src/eosWorkforce/migration/partsAssignabilityExclusion.ts",
+    // The Owner RULED the securityRole == technician predicate retired
+    // (APPROVED_LEGACY_UI_RESTRICTION_RETIREMENT), so this no longer blocks the Parts/Warehouse conversion on
+    // policy grounds. It remains as evidence worth collecting when operator access exists.
+    consumer: "measures what the RETIRED securityRole == technician picker filter used to exclude",
+    terms: ["operationalRoles"], classification: "MIGRATION_EVIDENCE",
+    replacementAuthority: null, replacementPr: null, status: "NOT_STARTED",
+    blockedReason: null,
+  }),
+  entry({
     path: "functions/src/adminPolicy/migration/conditionKindInventory.ts",
     // Both names appear in its RULING STRINGS -- the dispositions cite the decomposition by name. Strings are code
     // to the derivation, correctly: a rationale is shipped text, not a comment, so the ledger must account for it.
