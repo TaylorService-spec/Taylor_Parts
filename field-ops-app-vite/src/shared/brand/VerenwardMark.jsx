@@ -15,8 +15,8 @@
  * Brand hierarchy this component expresses:
  *   Verenward                — provisional parent brand
  *   Enterprise Operations OS — the platform
- * The IMPLEMENTATION (e.g. Taylor Parts) is identified separately by the caller
- * and is never replaced by brand naming.
+ * The WORKSPACE (e.g. Taylor Freezer of Arizona) is identified separately by
+ * the caller and is never replaced by brand naming.
  *
  * Variants:
  *   icon      — mark only (favicons, tight chrome, mobile headers)
