@@ -41,6 +41,8 @@ describe("the closed operation list", () => {
     // Step C: qualification and warehouse scope are served as SEPARATE reads -- neither is folded into the other.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /eligibility/i.test(n)).sort()).toEqual(["listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory"]);
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /scope/i.test(n)).sort()).toEqual(["listEmployeeOperationalScopeHistory", "listEmployeeOperationalScopes"]);
+    // Step G: exactly one assignable-Employee read, and it is a read.
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /assignable/i.test(n))).toEqual(["listAssignableEmployees"]);
   });
 
   it("mirrors the server's WORKFORCE command runners exactly: the governed Employee commands, nothing else", () => {

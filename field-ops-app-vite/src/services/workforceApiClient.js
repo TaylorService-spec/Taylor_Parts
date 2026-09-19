@@ -34,6 +34,9 @@
 // (admin.employeeOperationalScope.write). They are served and named here so the list keeps mirroring the server; no
 // screen calls them yet, exactly as EMP-RT-W2 was named ahead of its UI. Qualification and warehouse scope are
 // SEPARATE authorities and separate capabilities: neither grants the other, and neither grants application access.
+// listAssignableEmployees (step G, employee.record.read) answers "who may be offered work of this kind" from the
+// governed PostgreSQL authorities. It is served and named here ahead of the client cutover; the legacy Firestore
+// buildAssignableEmployeesQuery is still what the pickers call until that separate PR lands.
 import { currentIdToken, policyApiBaseUrl } from "./adminPolicyApiClient.js";
 
 export const WORKFORCE_ROUTE = "/workforce/employees";
@@ -55,6 +58,7 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listEmployeeWorkEligibilityHistory",
   "listEmployeeOperationalScopes",
   "listEmployeeOperationalScopeHistory",
+  "listAssignableEmployees",
 ]);
 
 export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([

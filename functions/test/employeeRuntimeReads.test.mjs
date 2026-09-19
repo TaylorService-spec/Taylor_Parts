@@ -88,7 +88,9 @@ const parsed = (res) => JSON.parse(res.body);
 
 const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory",
   // Step C (operationalRoles decomposition): the qualification and warehouse-scope reads.
-  "listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory", "listEmployeeOperationalScopes", "listEmployeeOperationalScopeHistory"];
+  "listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory", "listEmployeeOperationalScopes", "listEmployeeOperationalScopeHistory",
+  // Step G: the governed assignable-Employee read.
+  "listAssignableEmployees"];
 
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
   // Step C: each authority gets an assign and an end -- never a generic patch, and never one command for both.

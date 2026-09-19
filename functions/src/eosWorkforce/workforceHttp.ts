@@ -38,6 +38,7 @@
 //   step C   assignEmployeeWorkEligibility / endEmployeeWorkEligibility                  admin.employeeWorkEligibility.write.
 //   step C   listEmployeeOperationalScopes / ...History                                  employee.record.read.
 //   step C   assignEmployeeOperationalScope / endEmployeeOperationalScope                admin.employeeOperationalScope.write.
+//   step G   listAssignableEmployees                                                      employee.record.read.
 //             A Job Role is a business function only: no Security Role, permission, ownership, assignment,
 //             reporting or operating-company authority is read or written by these operations.
 //   EMP-RT-H1 listEmployeeChangeHistory      employee.record.read. The governed Employee audit trail (six closed actions,
@@ -74,6 +75,7 @@ import { assignEmployeeWorkEligibility, endEmployeeWorkEligibility } from "./com
 import { assignEmployeeOperationalScope, endEmployeeOperationalScope } from "./commands/employeeOperationalScopeCommands";
 import { listEmployeeWorkEligibility, listEmployeeWorkEligibilityHistory } from "./reads/workEligibilityReads";
 import { listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory } from "./reads/operationalScopeReads";
+import { listAssignableEmployees } from "./reads/assignableEmployeeReads";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -114,6 +116,7 @@ const READ_RUNNERS = Object.freeze({
   listEmployeeWorkEligibilityHistory: read(listEmployeeWorkEligibilityHistory),
   listEmployeeOperationalScopes: read(listEmployeeOperationalScopes),
   listEmployeeOperationalScopeHistory: read(listEmployeeOperationalScopeHistory),
+  listAssignableEmployees: read(listAssignableEmployees),
 } as const);
 
 // ════════════════════ the closed operation list (commands) ════════════════════
