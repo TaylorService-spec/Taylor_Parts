@@ -183,6 +183,29 @@ test("B: the evaluator consumes scope -- global-only without a scope, and scoped
   assert.equal(access.resolveObjectAccess(scopedOnly, "reorderRequest", { scopeType: "location", scopeValue: "loc-tucson" }).basis, "noQualifyingAssignment");
 });
 
+test("B: an assignment record that OMITS scopeType is global, not unknown", async () => {
+  // REGRESSION. user_role_assignments.scope_type is NOT NULL DEFAULT 'global', so a record without one means the
+  // default -- an in-memory or legacy record, never a scoped grant. Reading absence as an unknown type fails closed
+  // on every such record and silently revokes access that exists today, which is the opposite of what carrying
+  // scope is for. Proved through loadPrincipalPolicy, because the normalization belongs at the read boundary.
+  const { loadPrincipalPolicy } = access;
+  const reader = {
+    listAssignmentsForPrincipal: async () => [
+      { roleId: "r-global", status: "active", accessVersionAtGrant: 1 },                       // no scopeType at all
+      { roleId: "r-blank", status: "active", accessVersionAtGrant: 1, scopeType: "", scopeValue: null },
+    ],
+    getAccessVersion: async () => ({ accessVersion: 1 }),
+    listObjects: async () => [{ id: "o1", key: "reorderRequest", supportsDelete: false }],
+    listObjectPermissions: async () => [{ objectId: "o1", roleId: "r-global", cred: { C: false, R: true, E: false, D: false } }],
+    listFieldOverrides: async () => [],
+  };
+  const policy = await loadPrincipalPolicy(reader, "t1", ACTOR);
+  assert.deepEqual([...policy.qualifyingRoleIds].sort(), ["r-blank", "r-global"], "an absent scope removed the Role");
+  assert.ok(policy.qualifyingAssignments.every((a) => a.scopeType === "global"));
+  // And the decision is unchanged: the Role still grants what it granted before scope was carried.
+  assert.deepEqual(access.resolveObjectAccess(policy, "reorderRequest").cred, { C: false, R: true, E: false, D: false });
+});
+
 test("B: a policy built before scope was carried decides exactly as it used to", () => {
   const objects = [{ id: "o1", key: "reorderRequest", supportsDelete: false }];
   const legacy = {

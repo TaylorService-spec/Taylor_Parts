@@ -199,9 +199,14 @@ export async function loadPrincipalPolicy(
   // Every qualifying assignment keeps its scope. `qualifyingRoleIds` narrows to the GLOBAL ones, so no existing
   // caller can reach a scoped Role without asking for a scope -- the change can only ever remove authority, never
   // add it. Today the product creates global assignments only, so this list is unchanged in practice.
+  //
+  // AN ABSENT scopeType IS `global`, NOT AN UNKNOWN TYPE. `user_role_assignments.scope_type` is NOT NULL DEFAULT
+  // 'global', so a record that omits it means the default -- an in-memory or legacy record, never a scoped grant.
+  // Reading absence as unknown would fail-closed on every such record and silently revoke access that exists today,
+  // which is the opposite of what carrying scope is for. Genuinely unknown TYPES still refuse, in assignmentScope.ts.
   const qualifyingAssignments: QualifyingAssignment[] = qualifying.map((a) => ({
     roleId: a.roleId,
-    scopeType: typeof a.scopeType === "string" ? a.scopeType : "",
+    scopeType: typeof a.scopeType === "string" && a.scopeType !== "" ? a.scopeType : "global",
     scopeValue: typeof a.scopeValue === "string" ? a.scopeValue : null,
   }));
   const globalRoleIds = [...new Set(qualifyingAssignments.filter(isGlobalAssignment).map((a) => a.roleId))];
