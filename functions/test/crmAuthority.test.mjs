@@ -69,7 +69,11 @@ test("(F2) the only runtime entry point is the CRM transport composed by server.
   const CUTOVER = new Set(["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverCopy.ts", "src/crm/postgresCustomerImport.ts"]);
   const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(CRM) && /eosCrm\//.test(readFileSync(f, "utf8")));
   assert.deepEqual(importers.map(rel).filter((f) => !CUTOVER.has(f)), ["src/eosApi/server.ts"], "a module other than server.ts or the cutover imports the CRM authority layer");
-  const cutoverImporters = walk(SRC, [".ts"]).filter((f) => !/src[\\/]crm[\\/]crmCutover/.test(f) && /crmCutover(Snapshot|Copy|Target)|postgresCustomerImport/.test(strip(readFileSync(f, "utf8"))) && !/src[\\/]crm[\\/]postgresCustomerImport/.test(f));
+  // The assignedToUserId census NAMES crmCutoverSnapshot.ts as an entry PATH -- it is a migration-only inventory of
+  // which files use that field, and it imports nothing at all. This guard is about IMPORTERS, so the census is
+  // excluded by path rather than by widening the pattern, which would stop catching a real import.
+  const CENSUS = join(SRC, "eosOps", "migration", "assignedToUserIdCensus.ts");
+  const cutoverImporters = walk(SRC, [".ts"]).filter((f) => f !== CENSUS && !/src[\\/]crm[\\/]crmCutover/.test(f) && /crmCutover(Snapshot|Copy|Target)|postgresCustomerImport/.test(strip(readFileSync(f, "utf8"))) && !/src[\\/]crm[\\/]postgresCustomerImport/.test(f));
   assert.deepEqual(cutoverImporters.map(rel), [], "a runtime module imports the CRM cutover");
   const server = strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8"));
   assert.deepEqual([...server.matchAll(/from "([^"]*eosCrm[^"]*)"/g)].map((m) => m[1]), ["../eosCrm/crmHttp"]);
