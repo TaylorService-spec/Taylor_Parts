@@ -259,6 +259,12 @@ test("NOTHING in the running system imports the transitional harness", () => {
   // A dual read is what this becomes if a resolver, a command or a callable starts calling it. The
   // check is repo-wide rather than directory-wide, because the import that would matter most is the
   // one from outside this subsystem.
+  //
+  // conditionKindInventory.ts is held to the SAME rule and named in both patterns: it is migration-only
+  // (it classifies the live Conditions for the evaluator-parity work and decides no access), so the product
+  // must not import it either -- and it is skipped as a SOURCE because its own documentation necessarily
+  // names the census it feeds. The match is on text, not on imports, so a module that explains a sibling
+  // would otherwise be indistinguishable from one that calls it.
   const roots = ["src", "../field-ops-app-vite/src"];
   const offenders = [];
   const walk = (dir) => {
@@ -268,8 +274,8 @@ test("NOTHING in the running system imports the transitional harness", () => {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) { walk(path); continue; }
       if (!/\.(ts|tsx|js|jsx|mjs)$/.test(entry)) continue;
-      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$/.test(path)) continue;
-      if (/firestorePolicyParityHarness|roleAssignmentCensus/.test(readFileSync(path, "utf8"))) offenders.push(path);
+      if (/firestorePolicyParityHarness|roleAssignmentCensus\.ts$|conditionKindInventory\.ts$/.test(path)) continue;
+      if (/firestorePolicyParityHarness|roleAssignmentCensus|conditionKindInventory/.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };
   for (const root of roots) walk(root);
