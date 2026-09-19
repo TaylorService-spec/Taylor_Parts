@@ -86,9 +86,13 @@ const parsed = (res) => JSON.parse(res.body);
 
 // ════════════════════ closed surface ════════════════════
 
-const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory"];
+const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory",
+  // Step C (operationalRoles decomposition): the qualification and warehouse-scope reads.
+  "listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory", "listEmployeeOperationalScopes", "listEmployeeOperationalScopeHistory"];
 
-const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole"];
+const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
+  // Step C: each authority gets an assign and an end -- never a generic patch, and never one command for both.
+  "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope"];
 
 test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08, H1 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
@@ -255,7 +259,12 @@ test("no Job Role, Security Role or operationalRoles is produced, inferred or na
 
 test("capabilities: only existing read ids, each registered in the catalog AND the PostgreSQL vocabulary; none invented", () => {
   const used = new Set([...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"]), HTTP_SOURCE].flatMap((f) => [...code(f).matchAll(/"([a-zA-Z]+\.[a-zA-Z.]+)"/g)].map((m) => m[1])).filter((s) => /\.(read|write)$/.test(s)));
-  assert.deepEqual([...used].sort(), ["admin.employeeJobRole.write", "admin.employeeProfile.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read", "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
+  // Step C adds the two decomposition capabilities. They reach this set through the CLOSED offerable list in
+  // myWorkforceCapabilities.ts; the commands themselves import their capability id from the shared vocabulary module,
+  // so there is still exactly one place each id is spelled.
+  assert.deepEqual([...used].sort(), ["admin.employeeJobRole.write", "admin.employeeOperationalScope.write", "admin.employeeProfile.write",
+    "admin.employeeWorkEligibility.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read",
+    "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
   for (const id of used) {
@@ -369,13 +378,14 @@ test("RETIRED: the legacy updateEmployeeProfile Firebase callable is not exporte
 // ════════════════════ finding #17: readMyWorkforceCapabilities ════════════════════
 
 const selfCapabilities = require("../lib/eosWorkforce/reads/myWorkforceCapabilities.js");
-const WORKFORCE_IDS = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write"];
+const WORKFORCE_IDS = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write",
+  "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"];
 
 test("#17 readMyWorkforceCapabilities: the resolved capabilities intersected with the closed Workforce list, nothing else", async () => {
   assert.deepEqual([...selfCapabilities.WORKFORCE_CAPABILITY_IDS], WORKFORCE_IDS);
   assert.ok(Object.isFrozen(selfCapabilities.WORKFORCE_CAPABILITY_IDS));
   for (const [held, expected] of [
-    [["opportunity.read", "admin.employeeJobRole.write", "inventory.cycleCount.create", "admin.employeeProfile.write", "employee.record.read", "admin.principalAccess.read", "admin.userStatus.write"], WORKFORCE_IDS],
+    [["opportunity.read", "admin.employeeJobRole.write", "inventory.cycleCount.create", "admin.employeeProfile.write", "employee.record.read", "admin.principalAccess.read", "admin.userStatus.write", "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"], WORKFORCE_IDS],
     [["employee.record.read", "opportunity.read"], ["employee.record.read"]],
     [["opportunity.read", "customer.record.read"], []],
     [[], []],

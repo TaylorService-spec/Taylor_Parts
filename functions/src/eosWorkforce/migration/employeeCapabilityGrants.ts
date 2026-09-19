@@ -11,6 +11,8 @@
 //   admin.principalAccess.read    admin, owner
 //   admin.employeeProfile.write   admin, owner
 //   admin.employeeJobRole.write   admin, owner (EMP-RT-08; never by Job Role, never to managers)
+//   admin.employeeWorkEligibility.write   admin, owner (step C; qualification is administered, never earned by Role)
+//   admin.employeeOperationalScope.write  admin, owner (step C; separate capability from qualification, by ruling)
 // functions/test/employeeProfileAuthority.test.mjs pins that set, so a Role gaining one of these ids is a reviewed diff.
 import type { Pool } from "pg";
 import { reconcileInventoryCapabilityGrants, type ReconcileReport } from "../../eosOps/migration/inventoryCapabilityGrantMigration";
@@ -20,6 +22,11 @@ export const EMPLOYEE_CAPABILITY_GRANT_KEYS = Object.freeze([
   "admin.principalAccess.read",
   "admin.employeeProfile.write",
   "admin.employeeJobRole.write",
+  // The operationalRoles decomposition's two narrow Administration capabilities (Owner ruling 2026-09-17). Listing a
+  // key here does NOT decide who holds it: the holders are DERIVED from the Role catalog, and the derivation yields
+  // admin and owner only -- never a manager, never an operational Role, and never a Job Role.
+  "admin.employeeWorkEligibility.write",
+  "admin.employeeOperationalScope.write",
 ] as const);
 
 export function reconcileEmployeeCapabilityGrants(

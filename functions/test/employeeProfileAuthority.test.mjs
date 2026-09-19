@@ -54,9 +54,11 @@ test("employee.record.read is registered once, active:false, with its exact scop
 
 test("role holders come from the Role catalog: exactly Administrator, Owner and General Manager -- never the operational Roles", () => {
   assert.deepEqual(deriveLegacyRoleGrants(EMPLOYEE_CAPABILITY_GRANT_KEYS).map((g) => `${g.roleKey}:${g.capabilityKey}`), [
-    "admin:admin.employeeJobRole.write", "admin:admin.employeeProfile.write", "admin:admin.principalAccess.read", "admin:employee.record.read",
+    "admin:admin.employeeJobRole.write", "admin:admin.employeeOperationalScope.write", "admin:admin.employeeProfile.write",
+    "admin:admin.employeeWorkEligibility.write", "admin:admin.principalAccess.read", "admin:employee.record.read",
     "generalManager:employee.record.read",
-    "owner:admin.employeeJobRole.write", "owner:admin.employeeProfile.write", "owner:admin.principalAccess.read", "owner:employee.record.read",
+    "owner:admin.employeeJobRole.write", "owner:admin.employeeOperationalScope.write", "owner:admin.employeeProfile.write",
+    "owner:admin.employeeWorkEligibility.write", "owner:admin.principalAccess.read", "owner:employee.record.read",
   ]);
   // EMP-RT-08 ruling: admin.employeeJobRole.write only for the admin-level Roles that administer Employees -- never to
   // managers, never to operational Roles, and never derived from a Job Role.
@@ -65,6 +67,10 @@ test("role holders come from the Role catalog: exactly Administrator, Owner and 
     assert.ok(roles[key], `${key} is not a catalog Role`);
     assert.ok(!roles[key].permissions.includes("employee.record.read"), `${key} holds employee.record.read`);
     assert.ok(!roles[key].permissions.includes("admin.employeeJobRole.write"), `${key} holds admin.employeeJobRole.write`);
+    // Step C: the same fence for the decomposition's two capabilities. WAREHOUSE_OPERATIONS qualification and
+    // warehouse scope are ADMINISTERED facts -- holding warehouseManager must never confer authority to grant them.
+    assert.ok(!roles[key].permissions.includes("admin.employeeWorkEligibility.write"), `${key} holds admin.employeeWorkEligibility.write`);
+    assert.ok(!roles[key].permissions.includes("admin.employeeOperationalScope.write"), `${key} holds admin.employeeOperationalScope.write`);
   }
   assert.ok(!roles.generalManager.permissions.some((p) => p.startsWith("admin.")), "General Manager gained an admin.* capability");
 });

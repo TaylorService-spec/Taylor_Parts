@@ -3245,11 +3245,15 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts",
           "functions/src/eosWorkforce/workEligibilityVocabulary.ts"
         ],
-        "clientReferences": [],
-        "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferences": [
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3266,11 +3270,15 @@
       "implementation": {
         "exportedCallables": [],
         "serverReferences": [
-          "functions/src/eosWorkforce/operationalScopeVocabulary.ts"
+          "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
+          "functions/src/eosWorkforce/operationalScopeVocabulary.ts",
+          "functions/src/eosWorkforce/reads/myWorkforceCapabilities.ts"
         ],
-        "clientReferences": [],
-        "serverReferenceCount": 1,
-        "clientReferenceCount": 0,
+        "clientReferences": [
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
+        ],
+        "serverReferenceCount": 3,
+        "clientReferenceCount": 1,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
