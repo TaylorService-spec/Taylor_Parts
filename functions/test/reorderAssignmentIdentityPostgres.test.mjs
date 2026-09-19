@@ -69,6 +69,20 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   await employee("e-onleave", "t1", "ON_LEAVE"); await link("e-onleave", actorPrincipal);
   await employee("e-t2", "t2");  await link("e-t2", t2Principal, "t2");
 
+  // Every Employee the existing proofs assign must now hold the qualification the OPERATION requires.
+  const qualify = (employeeId, tenant = "t1") => q(
+    `INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
+     VALUES ($1, $2, $3, 'WAREHOUSE_OPERATIONS', now(), 'fixture')`, [`ewe-${employeeId}`, tenant, employeeId]);
+  for (const id of ["e-assignee", "e-other", "e-unlinked", "e-onleave"]) await qualify(id);
+  await qualify("e-t2", "t2");
+
+  const jobRoleFor = async (employeeId) => {
+    await q(`INSERT INTO eos_workforce.job_roles (tenant_id, id, display_name, status, created_by, updated_by)
+             VALUES ('t1', 'parts-warehouse', 'Parts / Warehouse', 'ACTIVE', 'f', 'f') ON CONFLICT DO NOTHING`);
+    await q(`INSERT INTO eos_workforce.employee_job_role_assignments (id, tenant_id, employee_id, job_role_id, effective_from, assigned_by)
+             VALUES ($1, 't1', $2, 'parts-warehouse', now(), 'fixture')`, [`ejr-${employeeId}`, employeeId]);
+  };
+
   const actor = { tenantId: "t1", principalId: actorPrincipal, capabilities: new Set([authority.REORDER_REQUEST_ASSIGN]) };
   const deps = { pool };
   const RR = "rr-1";
@@ -180,6 +194,85 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
     }
     assert.deepEqual((await q(`SELECT id, assigned_employee_id, effective_to FROM eos_ops.reorder_request_assignments ORDER BY id`)).rows, before,
       "a failed assignment left a row behind, or ended the prior one");
+  });
+
+
+  await t.test("QUALIFICATION is enforced by the COMMAND, not only by the picker", async () => {
+    // The defect this proves closed: a caller holding reorder.request.assign could bypass the picker entirely and
+    // submit any ACTIVE, linked Employee. The command now consumes the SAME authority the read does.
+    await employee("e-unqualified");
+    const unqualifiedPrincipal = await principal("t1", "uid-unqualified");
+    await link("e-unqualified", unqualifiedPrincipal);
+    // ACTIVE + active governed link + NO WAREHOUSE_OPERATIONS -> refused, invoking the command directly.
+    await assert.rejects(
+      authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-unqualified" }),
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE" && /WAREHOUSE_OPERATIONS/.test(e.message));
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.reorder_request_assignments WHERE reorder_request_id = 'rr-q'`)).rows[0].n, 0);
+
+    // Job Role alone does not qualify.
+    await jobRoleFor("e-unqualified");
+    await assert.rejects(
+      authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-unqualified" }),
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE", "a Job Role conferred qualification");
+    // Nor does a Security Role: the assignee's own Principal holds one, and it creates no qualification.
+    await q(`INSERT INTO eos_policy.roles (id, tenant_id, key, name, origin, protected, created_by, updated_by)
+             VALUES ('role-wh', 't1', 'warehouseManager', 'warehouseManager', 'CUSTOM', false, 'f', 'f')`);
+    await assert.rejects(
+      authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-unqualified" }),
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE");
+
+    // Granting the qualification -- and nothing else -- makes the SAME Employee assignable.
+    await qualify("e-unqualified");
+    assert.equal((await authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-unqualified" })).outcome, "ASSIGNED");
+    // ENDING it makes them unassignable again: the predicate is current, not historical.
+    await q(`UPDATE eos_workforce.employee_work_eligibility SET effective_to = now(), ended_by = 'f', ended_at = now()
+              WHERE employee_id = 'e-unqualified' AND effective_to IS NULL`);
+    await assert.rejects(
+      authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q2", employeeId: "e-unqualified" }),
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE");
+    // The qualification is NOT a caller input: it cannot be chosen, renamed or turned off.
+    for (const field of ["qualificationCode", "qualification", "skipQualification", "warehouseId"]) {
+      await assert.rejects(
+        authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-assignee", [field]: "x" }),
+        (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED", `${field} was accepted`);
+    }
+  });
+
+  await t.test("PROVENANCE: a native row must name its actor; only a MIGRATED row may record an unknown one", async () => {
+    // A live command always writes NATIVE with the calling Principal.
+    const row = (await q(`SELECT provenance, assigned_by_principal_id FROM eos_ops.reorder_request_assignments
+                           WHERE reorder_request_id = $1 AND effective_to IS NULL`, [RR])).rows[0];
+    assert.deepEqual([row.provenance, row.assigned_by_principal_id], ["NATIVE", actorPrincipal]);
+
+    // A NATIVE row with no actor is refused by the database, not merely by the command.
+    await assert.rejects(q(
+      `INSERT INTO eos_ops.reorder_request_assignments (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id)
+       VALUES ('rra-bad', 't1', 'rr-native-null', 'e-assignee', now(), 'NATIVE', NULL)`), /native_actor_present/);
+
+    // A MIGRATED row MAY record an unknown historical assignor -- truthfully, as NULL.
+    await q(`INSERT INTO eos_ops.reorder_request_assignments (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id)
+             VALUES ('rra-legacy', 't1', 'rr-legacy', 'e-assignee', now(), 'MIGRATED', NULL)`);
+    const legacy = (await q(`SELECT provenance, assigned_by_principal_id FROM eos_ops.reorder_request_assignments WHERE id = 'rra-legacy'`)).rows[0];
+    assert.deepEqual([legacy.provenance, legacy.assigned_by_principal_id], ["MIGRATED", null]);
+    // The business assignee is still exact -- an unknown historical actor never makes the CURRENT assignee unknown.
+    assert.equal((await authority.readAssignedEmployee(pool, "t1", "rr-legacy")).assignedEmployeeId, "e-assignee");
+
+    // A claimed actor must be a REAL same-tenant member: structural, not a shape check.
+    await assert.rejects(q(
+      `INSERT INTO eos_ops.reorder_request_assignments (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id)
+       VALUES ('rra-fake', 't1', 'rr-fake', 'e-assignee', now(), 'MIGRATED', 'p-not-a-member')`), (e) => e.code === "23503");
+    // A foreign-tenant Principal cannot be the actor either.
+    await assert.rejects(q(
+      `INSERT INTO eos_ops.reorder_request_assignments (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id)
+       VALUES ('rra-foreign', 't1', 'rr-foreign', 'e-assignee', now(), 'MIGRATED', $1)`, [t2Principal]), (e) => e.code === "23503");
+
+    // Provenance is immutable: a migrated row cannot later claim to be native, or the reverse.
+    await assert.rejects(q(`UPDATE eos_ops.reorder_request_assignments SET provenance = 'NATIVE' WHERE id = 'rra-legacy'`), /keeps history/);
+    // MIGRATION EXECUTION is a different question, recorded as an audit event by the copy tool -- never here.
+    const cols = (await q(`SELECT column_name FROM information_schema.columns
+                            WHERE table_schema = 'eos_ops' AND table_name = 'reorder_request_assignments'`)).rows.map((r) => r.column_name);
+    assert.deepEqual(cols.filter((c) => /migration|executed|imported|run_id|batch/.test(c)), [],
+      "migration-execution provenance must not live on the assignment row");
   });
 
   await t.test("(16)(17) no dual write, no fallback, and no uid may be stored", async () => {

@@ -39,6 +39,11 @@
 -- alone never grants; capability alone never satisfies an own-assignment condition where one is required. That is
 -- the same shape as the isOwnAssignment evaluator parity already built for eos_policy.
 --
+-- WHO EXECUTED A MIGRATION IS A DIFFERENT QUESTION AGAIN, and it is not a column here. The repository already
+-- records it as an audit event on the copy itself (`crm.cutover.copy`, `catalog.cutover.copy`,
+-- `employee.profile.cutover.copy`), naming the performing Principal as the actor. The copy tool follows that
+-- convention, so "who ran the import" can never be mistaken for "who assigned this Reorder".
+--
 -- INERT ON ARRIVAL. This migration creates the authority and grants nothing. No row is seeded, no client writes it,
 -- and the Firestore path remains authoritative until a separate, reviewed activation moves the writer. Creating the
 -- table is not cutting over.
@@ -61,6 +66,15 @@ INSERT INTO capabilities (id, key, description) VALUES
 
 SET search_path = eos_ops, public;
 
+-- PROVENANCE, following the convention `ops_location_provenance` already set for eos_ops.warehouses: the same two
+-- words, because a second vocabulary for the same idea is how two readers reach different conclusions.
+--
+-- It exists because `assigned_by_principal_id` is truthful for a NATIVE assignment and may be UNKNOWABLE for a
+-- MIGRATED one: legacy rows carry `assignedBy` as a Firebase uid, and some will not resolve to a governed
+-- Principal. The honest record of that is NULL plus MIGRATED -- never a fabricated Principal, never the migration
+-- operator standing in for whoever actually assigned the work years ago, and never the uid itself.
+CREATE TYPE ops_assignment_provenance AS ENUM ('NATIVE', 'MIGRATED');
+
 CREATE TABLE reorder_request_assignments (
     id                       TEXT PRIMARY KEY,
     tenant_id                TEXT        NOT NULL REFERENCES eos_policy.tenants(id),
@@ -72,8 +86,15 @@ CREATE TABLE reorder_request_assignments (
     assigned_employee_id     TEXT        NOT NULL,
     effective_from           TIMESTAMPTZ NOT NULL,
     effective_to             TIMESTAMPTZ,
-    -- THE ACTOR, a different concept: the EOS Principal who performed the assignment. Never the assignee.
-    assigned_by_principal_id TEXT        NOT NULL,
+    -- Whether this row records an assignment made HERE or one copied from the legacy store. It is what makes a
+    -- NULL historical actor distinguishable from a malformed native row.
+    provenance               ops_assignment_provenance NOT NULL,
+    -- THE ACTOR, a different concept from the assignee: the EOS Principal who performed the assignment.
+    --
+    -- NULLABLE, and constrained below: a NATIVE assignment always has one, because a live command always knows who
+    -- called it. A MIGRATED assignment may not, and "we do not know" is the only truthful thing to record when the
+    -- legacy uid resolves to nobody.
+    assigned_by_principal_id TEXT,
     ended_by_principal_id    TEXT,
     ended_at                 TIMESTAMPTZ,
     reason                   TEXT,
@@ -90,7 +111,20 @@ CREATE TABLE reorder_request_assignments (
         OR (effective_to IS NOT NULL AND ended_by_principal_id IS NOT NULL
             AND btrim(ended_by_principal_id) <> '' AND ended_at IS NOT NULL)
     ),
-    CONSTRAINT reorder_assignment_actor_present CHECK (btrim(assigned_by_principal_id) <> ''),
+    -- A NATIVE row MUST name its actor; a MIGRATED row may not be able to. A native row therefore cannot claim
+    -- migrated provenance to escape the requirement, and a migrated row's NULL is a recorded fact rather than an
+    -- omission. Blank is never acceptable in either case.
+    CONSTRAINT reorder_assignment_native_actor_present CHECK (
+        (provenance = 'NATIVE' AND assigned_by_principal_id IS NOT NULL AND btrim(assigned_by_principal_id) <> '')
+        OR (provenance = 'MIGRATED' AND (assigned_by_principal_id IS NULL OR btrim(assigned_by_principal_id) <> ''))
+    ),
+    -- STRUCTURAL TRUTHFULNESS, not a shape check: a non-null actor must be a real Principal with a membership in
+    -- THIS tenant. A composite foreign key is unenforced when a column is NULL, so this constrains exactly the rows
+    -- that claim an actor and leaves the honestly-unknown ones alone.
+    CONSTRAINT reorder_assignment_actor_member_fk
+        FOREIGN KEY (tenant_id, assigned_by_principal_id) REFERENCES eos_policy.tenant_memberships (tenant_id, principal_id),
+    CONSTRAINT reorder_assignment_ended_by_member_fk
+        FOREIGN KEY (tenant_id, ended_by_principal_id) REFERENCES eos_policy.tenant_memberships (tenant_id, principal_id),
     CONSTRAINT reorder_assignment_reason_length
         CHECK (reason IS NULL OR (btrim(reason) <> '' AND char_length(reason) <= 500))
 );
@@ -122,6 +156,7 @@ BEGIN
        OR NEW.assigned_employee_id IS DISTINCT FROM OLD.assigned_employee_id
        OR NEW.effective_from IS DISTINCT FROM OLD.effective_from
        OR NEW.assigned_by_principal_id IS DISTINCT FROM OLD.assigned_by_principal_id
+       OR NEW.provenance IS DISTINCT FROM OLD.provenance
        OR NEW.reason IS DISTINCT FROM OLD.reason OR NEW.effective_to IS NULL THEN
         RAISE EXCEPTION 'reorder_request_assignments keeps history: the only permitted change ends a current assignment';
     END IF;
@@ -154,4 +189,5 @@ $$;
 DROP TRIGGER IF EXISTS reorder_request_assignments_keep_history ON eos_ops.reorder_request_assignments;
 DROP FUNCTION IF EXISTS eos_ops.refuse_reorder_assignment_history_mutation();
 DROP TABLE IF EXISTS eos_ops.reorder_request_assignments;
+DROP TYPE IF EXISTS eos_ops.ops_assignment_provenance;
 DELETE FROM eos_policy.capabilities WHERE id = 'cap_reorder_request_assign';

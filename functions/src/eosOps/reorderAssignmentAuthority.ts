@@ -45,6 +45,18 @@ import { randomUUID } from "node:crypto";
 /** The EXISTING capability for this action (access/permissionCatalog.ts). Not a new one invented for the seam. */
 export const REORDER_REQUEST_ASSIGN = "reorder.request.assign";
 
+/**
+ * The Work Eligibility this business operation requires, fixed by the operation.
+ *
+ * Not a caller input and not configurable: a client that could choose the qualification could choose one nobody
+ * needs. Parts/Warehouse assignment is CASE A, so no Operational Scope is required -- the proven workflow is not
+ * warehouse-specific, and the authority supporting scope is not a reason to demand it.
+ */
+export const REORDER_ASSIGNMENT_QUALIFICATION = "WAREHOUSE_OPERATIONS";
+
+/** Provenance of an assignment row, matching the eos_ops convention. A live command only ever writes NATIVE. */
+export const NATIVE_ASSIGNMENT_PROVENANCE = "NATIVE";
+
 export type ReorderAssignmentErrorCategory =
   | "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN" | "FAILED";
 
@@ -130,9 +142,11 @@ export async function assignReorderRequestToEmployee(
       [actor.tenantId, employeeId],
     );
     if (employee.rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
-    // The governed assignability policy, applied at assignment time: the same employment policy and active link the
-    // assignable-Employee read uses. Qualification is NOT re-checked here -- that is the picker's question, and
-    // re-deciding it in the writer would give two authorities one answer to disagree about.
+    // THE GOVERNED ASSIGNABILITY POLICY, ENFORCED HERE. The picker is a discovery experience; this command is the
+    // business boundary. Both CONSUME the same single authority -- the read uses eos_workforce.employee_work_eligibility
+    // to SHOW valid candidates, and this uses it to REFUSE an invalid submitted one. That is one authority with two
+    // consumers, not two authorities: leaving the check to the picker would make a client the only enforcement, so a
+    // caller holding reorder.request.assign could bypass it and submit any ACTIVE linked Employee.
     if (employee.rows[0].status !== "ACTIVE") {
       refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED", "only an ACTIVE Employee may be assigned work");
     }
@@ -142,6 +156,19 @@ export async function assignReorderRequestToEmployee(
     );
     if (linked.rows.length === 0) {
       refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED", "the Employee has no active governed login and cannot be assigned work");
+    }
+    // QUALIFICATION. Fixed by the business operation, never selected by the caller: there is deliberately no
+    // qualificationCode input, because "which qualification does Reorder assignment require" is not a client's
+    // question. Parts/Warehouse assignment is CASE A, so warehouse scope is NOT required -- the currently proven
+    // workflow is not warehouse-specific, and requiring scope here would narrow it.
+    const qualified = await client.query(
+      `SELECT 1 FROM eos_workforce.employee_work_eligibility
+        WHERE tenant_id = $1 AND employee_id = $2 AND qualification_code = $3 AND effective_to IS NULL`,
+      [actor.tenantId, employeeId, REORDER_ASSIGNMENT_QUALIFICATION],
+    );
+    if (qualified.rows.length === 0) {
+      refuse("EMPLOYEE_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+        `the Employee does not currently hold the ${REORDER_ASSIGNMENT_QUALIFICATION} qualification`);
     }
 
     const { rows } = await client.query(
@@ -165,9 +192,9 @@ export async function assignReorderRequestToEmployee(
     const id = `rra_${randomUUID()}`;
     await client.query(
       `INSERT INTO eos_ops.reorder_request_assignments
-         (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, assigned_by_principal_id, reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [id, actor.tenantId, reorderRequestId, employeeId, at, actor.principalId, reason],
+         (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id, reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, actor.tenantId, reorderRequestId, employeeId, at, NATIVE_ASSIGNMENT_PROVENANCE, actor.principalId, reason],
     );
     await client.query(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
