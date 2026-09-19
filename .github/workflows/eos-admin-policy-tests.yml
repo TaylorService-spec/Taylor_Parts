@@ -161,6 +161,9 @@ on:
       - "functions/test/employeeLifecycleCommandPostgres.test.mjs"
       - "functions/test/employeeJobRolePostgres.test.mjs"
       - "functions/test/employeeEligibilityScopeCommandPostgres.test.mjs"
+      - "functions/test/legacyWorkforceEvidence.test.mjs"
+      - "functions/test/legacyWorkforceEvidencePostgres.test.mjs"
+      - "functions/scripts/legacyWorkforceEvidenceCli.js"
       - "functions/test/employeeChangeHistoryPostgres.test.mjs"
       - "functions/test/workforceCapabilitiesPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
@@ -344,6 +347,9 @@ on:
       - "functions/test/employeeLifecycleCommandPostgres.test.mjs"
       - "functions/test/employeeJobRolePostgres.test.mjs"
       - "functions/test/employeeEligibilityScopeCommandPostgres.test.mjs"
+      - "functions/test/legacyWorkforceEvidence.test.mjs"
+      - "functions/test/legacyWorkforceEvidencePostgres.test.mjs"
+      - "functions/scripts/legacyWorkforceEvidenceCli.js"
       - "functions/test/employeeChangeHistoryPostgres.test.mjs"
       - "functions/test/workforceCapabilitiesPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
