@@ -48,6 +48,7 @@ import type {
   TenantId,
 } from "./types";
 import type { PolicyReader } from "./policyRepository";
+import { assignmentsInScope, isGlobalAssignment, type AssignmentScope, type DecisionScope } from "./assignmentScope";
 
 /** Why a decision came out the way it did. Reported so a denial can be explained without guessing. */
 export type AccessBasis =
@@ -60,6 +61,11 @@ export type AccessBasis =
   | "fieldInherited"
   | "fieldOverride"
   | "doorwayClosed";
+
+/** One qualifying assignment: its Role and the scope it was granted in. */
+export interface QualifyingAssignment extends AssignmentScope {
+  readonly roleId: string;
+}
 
 export interface ObjectAccessDecision {
   readonly cred: CredSet;
@@ -75,8 +81,16 @@ export interface FieldAccessDecision {
 export interface PrincipalPolicy {
   readonly tenantId: TenantId;
   readonly principalId: string;
-  /** Ids of the assignments that QUALIFIED -- active, and not stale. */
+  /** Ids of the assignments that QUALIFIED -- active, and not stale. GLOBAL assignments only (see below). */
   readonly qualifyingRoleIds: readonly string[];
+  /**
+   * Every qualifying assignment WITH its scope, so a decision can narrow by scope.
+   *
+   * `qualifyingRoleIds` deliberately lists only the GLOBAL ones: it is what every existing caller reads, and a
+   * scoped Role must not reach an unscoped decision through it. A scoped assignment is reachable only by stating a
+   * DecisionScope, which is the whole point of carrying scope this far.
+   */
+  readonly qualifyingAssignments: readonly QualifyingAssignment[];
   readonly objects: readonly ObjectRecord[];
   readonly objectPermissions: readonly RoleObjectPermissionRecord[];
   readonly fieldOverrides: readonly RoleFieldPermissionOverrideRecord[];
@@ -85,6 +99,18 @@ export interface PrincipalPolicy {
 }
 
 const ALL_DENY: CredSet = EMPTY_CRED;
+
+/**
+ * The policy's scoped assignments, tolerating a policy built before this field existed.
+ *
+ * A hand-constructed policy carrying only `qualifyingRoleIds` is read as GLOBAL assignments -- which is exactly what
+ * those ids meant before scope was carried, so an older caller keeps its previous decision rather than silently
+ * losing all access to a missing field.
+ */
+function qualifyingAssignmentsOf(policy: PrincipalPolicy): readonly QualifyingAssignment[] {
+  if (Array.isArray(policy.qualifyingAssignments)) return policy.qualifyingAssignments;
+  return (policy.qualifyingRoleIds ?? []).map((roleId) => ({ roleId, scopeType: "global", scopeValue: null }));
+}
 
 /** Union of complete CRED sets. Additive: any Role granting a verb grants it. */
 function unionCred(sets: readonly CredSet[]): CredSet {
@@ -170,7 +196,18 @@ export async function loadPrincipalPolicy(
     qualifying.push(a);
   }
 
-  const roleIds = [...new Set(qualifying.map((a) => a.roleId))];
+  // Every qualifying assignment keeps its scope. `qualifyingRoleIds` narrows to the GLOBAL ones, so no existing
+  // caller can reach a scoped Role without asking for a scope -- the change can only ever remove authority, never
+  // add it. Today the product creates global assignments only, so this list is unchanged in practice.
+  const qualifyingAssignments: QualifyingAssignment[] = qualifying.map((a) => ({
+    roleId: a.roleId,
+    scopeType: typeof a.scopeType === "string" ? a.scopeType : "",
+    scopeValue: typeof a.scopeValue === "string" ? a.scopeValue : null,
+  }));
+  const globalRoleIds = [...new Set(qualifyingAssignments.filter(isGlobalAssignment).map((a) => a.roleId))];
+  // Object permissions are still loaded for EVERY qualifying Role, scoped or not: a scoped decision must be able to
+  // read the permissions of the Role its scope admits.
+  const roleIds = [...new Set(qualifyingAssignments.map((a) => a.roleId))];
   const [objectPermissions, fieldOverrides] = await Promise.all([
     roleIds.length ? reader.listObjectPermissions(tenantId, roleIds) : Promise.resolve([]),
     roleIds.length ? reader.listFieldOverrides(tenantId, roleIds) : Promise.resolve([]),
@@ -179,7 +216,8 @@ export async function loadPrincipalPolicy(
   return {
     tenantId,
     principalId,
-    qualifyingRoleIds: roleIds,
+    qualifyingRoleIds: globalRoleIds,
+    qualifyingAssignments,
     objects,
     objectPermissions,
     fieldOverrides,
@@ -192,6 +230,7 @@ function emptyPolicy(tenantId: TenantId, principalId: string): PrincipalPolicy {
     tenantId,
     principalId,
     qualifyingRoleIds: [],
+    qualifyingAssignments: [],
     objects: [],
     objectPermissions: [],
     fieldOverrides: [],
@@ -206,15 +245,22 @@ function emptyPolicy(tenantId: TenantId, principalId: string): PrincipalPolicy {
  * name and asking them to resolve an opaque id first would put policy identifiers into application
  * code -- exactly the coupling the DAL boundary exists to prevent.
  */
-export function resolveObjectAccess(policy: PrincipalPolicy, objectKey: string): ObjectAccessDecision {
+export function resolveObjectAccess(
+  policy: PrincipalPolicy, objectKey: string, decisionScope: DecisionScope | null = null,
+): ObjectAccessDecision {
   const object = policy.objects.find((o) => o.key === objectKey);
   if (!object) return { cred: ALL_DENY, basis: "unknownObject" };
-  if (policy.qualifyingRoleIds.length === 0) {
+  // SCOPE NARROWS, NEVER WIDENS. With no stated scope this keeps the GLOBAL assignments only -- the exact set
+  // `qualifyingRoleIds` already described -- so every existing caller decides precisely as before. Stating a scope
+  // ADDS the assignments scoped to it and keeps the global ones, because a global grant applies everywhere
+  // including inside a scope.
+  const admitted = [...new Set(assignmentsInScope(qualifyingAssignmentsOf(policy), decisionScope).map((a) => a.roleId))];
+  if (admitted.length === 0) {
     return { cred: ALL_DENY, basis: policy.hadStaleAssignment ? "staleAccessVersion" : "noQualifyingAssignment" };
   }
 
   const sets = policy.objectPermissions
-    .filter((p) => p.objectId === object.id && policy.qualifyingRoleIds.includes(p.roleId))
+    .filter((p) => p.objectId === object.id && admitted.includes(p.roleId))
     // A malformed row is DROPPED, not repaired. It contributes nothing to the union, so a corrupt
     // row can only ever narrow the result -- never widen it.
     .filter((p) => isCredSet(p.cred))
