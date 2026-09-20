@@ -7,6 +7,7 @@ import {
   LEGACY_TRANSITIONS, RETIREMENT_GATES, readReorderRetirementGates, assigneeOnlyTransitions,
 } from "../lib/eosOps/migration/reorderFirestoreRetirementGate.js";
 import { assignmentCutoverReadiness } from "../lib/eosOps/migration/assignedToUserIdCensus.js";
+import { reorderRuntimeActivationReadiness } from "../lib/eosOps/migration/reorderFirestoreRuntimeCensus.js";
 
 /** The status transitions firestore.rules' reorder_requests block actually permits. */
 function transitionsFromRules() {
@@ -54,17 +55,22 @@ test("the assignee-only restrictions are carried over, not quietly dropped", () 
   assert.ok(cancels.every((x) => x.assigneeOnly === false));
 });
 
-test("the gate is COMPUTED, and the two it cannot close are stated as such", () => {
+test("the gate is COMPUTED: coverage is met, the runtime cutover is not, and two need an operator", () => {
   const reading = readReorderRetirementGates({
     blockingAssigneeConsumers: assignmentCutoverReadiness().blockedBy,
+    runtimeFirestoreConsumers: reorderRuntimeActivationReadiness().blockedBy,
   });
   assert.equal(reading.mayRetire, false, "nothing in this repository may declare Firestore retired");
 
   const byGate = new Map(reading.gates.map((g) => [g.gate, g]));
   assert.deepEqual([...byGate.keys()].sort(), [...RETIREMENT_GATES].sort());
 
-  // The two the code closed.
+  // Coverage is MET -- every transition has a command.
   assert.equal(byGate.get("TRANSITION_COVERAGE").state, "MET");
+  // But the RUNTIME gate is OPEN, which is the distinction that matters: a command existing and a
+  // caller using it are different facts. One Firebase Functions read still holds it shut.
+  assert.equal(byGate.get("RUNTIME_CUTOVER").state, "OPEN");
+  assert.match(byGate.get("RUNTIME_CUTOVER").detail, /workOrderReadinessContext/);
   // firestore.rules is the only remaining uid consumer, and its comparisons stop mattering exactly
   // when the Rules are retired -- which is the gate below, not this one.
   assert.equal(byGate.get("ASSIGNEE_IDENTITY").state, "MET");
@@ -78,6 +84,7 @@ test("the gate is COMPUTED, and the two it cannot close are stated as such", () 
 test("a uid consumer other than the Rules holds the identity gate shut", () => {
   const withStray = readReorderRetirementGates({
     blockingAssigneeConsumers: ["firestore.rules", "field-ops-app-vite/src/somewhere.js"],
+    runtimeFirestoreConsumers: [],
   });
   const gate = withStray.gates.find((g) => g.gate === "ASSIGNEE_IDENTITY");
   assert.equal(gate.state, "OPEN", "a client still deciding from a uid would survive the Rules retirement");
@@ -87,6 +94,7 @@ test("a uid consumer other than the Rules holds the identity gate shut", () => {
 test("an uncovered transition holds the coverage gate shut", () => {
   const reading = readReorderRetirementGates({
     blockingAssigneeConsumers: [],
+    runtimeFirestoreConsumers: [],
     transitions: [...LEGACY_TRANSITIONS, { from: "ORDERED", to: "SOMETHING_NEW", governedBy: null, assigneeOnly: false, note: "x" }],
   });
   const gate = reading.gates.find((g) => g.gate === "TRANSITION_COVERAGE");
@@ -94,9 +102,10 @@ test("an uncovered transition holds the coverage gate shut", () => {
   assert.match(gate.detail, /ORDERED->SOMETHING_NEW/);
 });
 
-test("all four gates MET is the only way to read mayRetire true", () => {
+test("every gate MET is the only way to read mayRetire true", () => {
   const reading = readReorderRetirementGates({
     blockingAssigneeConsumers: [],
+    runtimeFirestoreConsumers: [],
     copyVerifiedInEnvironment: true,
     rulesRetiredAndDeployed: true,
   });
@@ -104,6 +113,11 @@ test("all four gates MET is the only way to read mayRetire true", () => {
   assert.deepEqual(reading.awaitingOperator, []);
   // And removing any one of them closes it again.
   assert.equal(readReorderRetirementGates({
-    blockingAssigneeConsumers: [], copyVerifiedInEnvironment: true,
+    blockingAssigneeConsumers: [], runtimeFirestoreConsumers: [], copyVerifiedInEnvironment: true,
   }).mayRetire, false);
+  // A single surviving runtime consumer closes it on its own, even with everything else done.
+  assert.equal(readReorderRetirementGates({
+    blockingAssigneeConsumers: [], runtimeFirestoreConsumers: ["x/live.js"],
+    copyVerifiedInEnvironment: true, rulesRetiredAndDeployed: true,
+  }).mayRetire, false, "a live Firestore Reorder read must block retirement by itself");
 });

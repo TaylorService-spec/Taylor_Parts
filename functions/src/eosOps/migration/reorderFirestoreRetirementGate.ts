@@ -15,6 +15,14 @@
 export const RETIREMENT_GATES = Object.freeze([
   /** Every legacy write transition has a governed PostgreSQL command that answers it. */
   "TRANSITION_COVERAGE",
+  /**
+   * NOTHING AT RUNTIME STILL REACHES FIRESTORE FOR A REORDER.
+   *
+   * TRANSITION_COVERAGE proves the replacement commands EXIST. It does not prove anything CALLS
+   * them, and those are different facts -- the commands were all present and correct while the
+   * client was still writing straight to Firestore. This gate is the one that decides activation.
+   */
+  "RUNTIME_CUTOVER",
   /** No consumer still decides Reorder access from a Firebase uid. */
   "ASSIGNEE_IDENTITY",
   /** The legacy objects have been copied and VERIFY passed, in the real environment. */
@@ -125,6 +133,8 @@ export interface RetirementReading {
  */
 export function readReorderRetirementGates(input: {
   readonly blockingAssigneeConsumers: readonly string[];
+  /** From reorderFirestoreRuntimeCensus.reorderRuntimeActivationReadiness().blockedBy. */
+  readonly runtimeFirestoreConsumers: readonly string[];
   readonly copyVerifiedInEnvironment?: boolean;
   readonly rulesRetiredAndDeployed?: boolean;
   readonly transitions?: readonly LegacyTransition[];
@@ -139,6 +149,15 @@ export function readReorderRetirementGates(input: {
       detail: uncovered.length === 0
         ? `all ${transitions.length} legacy transitions have a governed command`
         : `no governed command answers: ${uncovered.map((x) => `${x.from ?? "(create)"}->${x.to}`).join(", ")}`,
+    },
+    {
+      gate: "RUNTIME_CUTOVER",
+      // ZERO, and nothing else. Not "only diagnostics", not "only one".
+      state: input.runtimeFirestoreConsumers.length === 0 ? "MET" : "OPEN",
+      detail: input.runtimeFirestoreConsumers.length === 0
+        ? "no runtime code reaches Firestore for a Reorder Request"
+        : `${input.runtimeFirestoreConsumers.length} runtime consumer(s) still reach Firestore: `
+          + [...input.runtimeFirestoreConsumers].sort().join(", "),
     },
     {
       gate: "ASSIGNEE_IDENTITY",

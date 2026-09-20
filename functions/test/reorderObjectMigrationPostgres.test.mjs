@@ -42,7 +42,7 @@ const doc = (id, over = {}) => ({
     purchaseOrderId: null, orderedBy: null, orderedAt: null, receivedBy: null, receivedAt: null,
     cancelledBy: null, cancelledAt: null, cancellationReason: null,
     voidedBy: null, voidedAt: null, voidReason: null,
-    warehouseId: "wh-1", operatingCompanyId: "sample-co",
+    warehouseId: "wh-1", operatingCompanyId: "taylor",
     ...over,
   },
 });
@@ -78,6 +78,24 @@ test("legacy Reorder object copy: complete parity, resolved identity, all-or-not
   await warehouse("wh-1", "sample-co");
   await warehouse("wh-other-co", "different-co");
 
+  // RULING 2: the company and the key are DIFFERENT VOCABULARIES, and this fixture makes them
+  // different VALUES on purpose -- company `taylor` operates under eos_ops key `sample-co`, exactly
+  // as the sample company binds `taylor` to `sample-co-synthetic`. A migration that assumed they
+  // were equal would fail every assertion below.
+  const authorizeCompany = (companyId, tenant = "t1") => q(
+    `INSERT INTO eos_policy.tenant_operating_companies
+       (tenant_id, operating_company_id, status, source, established_by, updated_by)
+     VALUES ($1, $2, 'ACTIVE', 'fixture', 'f', 'f')`, [tenant, companyId]);
+  const bindKey = (companyId, key, status = "ACTIVE", tenant = "t1") => q(
+    `INSERT INTO eos_policy.tenant_operating_company_keys
+       (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+     VALUES ($1, $2, $3, $4, 'NATIVE', 'fixture', 'f', 'f')`, [tenant, companyId, key, status]);
+  await authorizeCompany("taylor");
+  await bindKey("taylor", "sample-co");
+  // An authorized company with an INACTIVE binding, and an authorized company with NO binding.
+  await authorizeCompany("ventana");
+  await bindKey("ventana", "different-co", "INACTIVE");
+
   const run = (source, over = {}) => copy.copyReorderObjectsOnce(pool, {
     tenantId: "t1", source, performedByPrincipalId: executor, ...over,
   });
@@ -98,6 +116,25 @@ test("legacy Reorder object copy: complete parity, resolved identity, all-or-not
     assert.equal(p.counts.MIGRATABLE, 1);
     assert.equal(p.counts.REFUSED, 3);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.reorder_requests`)).rows[0].n, before);
+  });
+
+  await t.test("RULING 2: the company id is never used as the key", async () => {
+    // `taylor` binds to `sample-co`, so a copied row must carry the KEY and never the company id.
+    const p = await copy.dryRunReorderObjectMigration(pool, { tenantId: "t1", source: [doc("rr-bind")] });
+    assert.equal(p.rows[0].disposition, "MIGRATABLE");
+    assert.equal(p.rows[0].row.operatingCompanyKey, "sample-co");
+    assert.notEqual(p.rows[0].row.operatingCompanyKey, "taylor");
+  });
+
+  await t.test("RULING 2: an unbound company is refused, not assumed equal to its key", async () => {
+    // `no-such-co` is not even an authorized company; `ventana` is authorized but its binding is
+    // INACTIVE. Neither may resolve, and neither may fall back to using the id as the key.
+    for (const companyId of ["no-such-co", "ventana"]) {
+      const p = await copy.dryRunReorderObjectMigration(pool, {
+        tenantId: "t1", source: [doc(`rr-${companyId}`, { operatingCompanyId: companyId })] });
+      assert.equal(p.rows[0].refusalCode, "COMPANY_KEY_BINDING_MISSING", companyId);
+      assert.match(p.rows[0].detail, /NOT usable as the key/);
+    }
   });
 
   await t.test("RULING 3: a warehouse from another operating company is refused, never reconciled", async () => {

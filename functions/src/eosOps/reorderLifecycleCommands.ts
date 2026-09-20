@@ -231,6 +231,23 @@ export async function createGovernedReorderRequest(
       refuse("WAREHOUSE_NO_COMPANY", "PRECONDITION_FAILED",
         "the warehouse carries no governed operating company, so a reorder against it has no owner");
     }
+    // RULING 2 AT THE CREATION BOUNDARY. A non-empty key is not operating-company authority: the key
+    // must be BOUND, for this tenant, to a company the tenant is authorized to operate as, and both
+    // the company and the binding must be ACTIVE. Read here rather than trusted from the warehouse
+    // row, so a warehouse carrying a key nobody governs cannot raise a Reorder.
+    const bound = await client.query(
+      `SELECT 1 FROM eos_policy.tenant_operating_company_keys b
+         JOIN eos_policy.tenant_operating_companies c
+           ON c.tenant_id = b.tenant_id AND c.operating_company_id = b.operating_company_id
+        WHERE b.tenant_id = $1 AND b.operating_company_key = $2
+          AND b.status = 'ACTIVE' AND c.status = 'ACTIVE'`,
+      [actor.tenantId, companyKey],
+    );
+    if (bound.rows.length === 0) {
+      refuse("OPERATING_COMPANY_NOT_GOVERNED", "PRECONDITION_FAILED",
+        `the warehouse's operating company key "${companyKey}" is not bound to an ACTIVE operating `
+        + "company this tenant is authorized to operate as");
+    }
 
     const id = `rr_${randomUUID()}`;
     const at = deps.now?.() ?? new Date();

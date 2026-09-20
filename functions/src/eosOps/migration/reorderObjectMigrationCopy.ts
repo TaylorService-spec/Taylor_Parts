@@ -46,6 +46,16 @@ async function readResolutionView(
 
   const warehouses = await client.query(
     `SELECT id, operating_company_key FROM eos_ops.warehouses WHERE tenant_id = $1`, [tenantId]);
+
+  // THE BINDING, and only where every link is ACTIVE: an authorized ACTIVE company joined to an
+  // ACTIVE key binding. An INACTIVE company or an INACTIVE binding yields NO row, so the classifier
+  // refuses rather than resolving through something the tenant has retired.
+  const bindings = await client.query(
+    `SELECT b.operating_company_id, b.operating_company_key
+       FROM eos_policy.tenant_operating_company_keys b
+       JOIN eos_policy.tenant_operating_companies c
+         ON c.tenant_id = b.tenant_id AND c.operating_company_id = b.operating_company_id
+      WHERE b.tenant_id = $1 AND b.status = 'ACTIVE' AND c.status = 'ACTIVE'`, [tenantId]);
   const existing = await client.query(
     `SELECT id FROM eos_ops.reorder_requests WHERE tenant_id = $1`, [tenantId]);
 
@@ -53,6 +63,7 @@ async function readResolutionView(
     tenantId,
     byUid,
     warehouseCompany: new Map(warehouses.rows.map((r) => [r.id, r.operating_company_key])),
+    companyKeyByCompanyId: new Map(bindings.rows.map((r) => [r.operating_company_id, r.operating_company_key])),
     existingReorderIds: new Set(existing.rows.map((r) => r.id)),
   });
 }

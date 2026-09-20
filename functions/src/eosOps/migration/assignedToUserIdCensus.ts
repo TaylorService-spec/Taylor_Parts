@@ -166,6 +166,11 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
       + "assignment authority rather than to a Reorder column",
     occurrences: 1, status: "NOT_STARTED",
   }),
+  e({
+    path: "functions/src/eosOps/migration/reorderFirestoreRuntimeCensus.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "names the field once, in the record of which client files stopped comparing a uid to it",
+    occurrences: 1, status: "NOT_STARTED",
+  }),
 
   // ── COMMERCIAL: the same NAME, a different object, a different seam ──
   //

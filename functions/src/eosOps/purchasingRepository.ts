@@ -145,10 +145,28 @@ export interface CreateReorderRequestRow {
   readonly reorderRequestNumber?: string | null;
 }
 
+/**
+ * Low-level INSERT of a Reorder Request row.
+ *
+ * ════════════════════ THIS IS NOT THE LIVE REORDER SEMANTICS ════════════════════
+ *
+ * `createGovernedReorderRequest` (reorderLifecycleCommands.ts) is. It is the command that checks the
+ * capability, reads the operating company FROM the governed warehouse rather than accepting one, and
+ * refuses an inactive or foreign warehouse. NONE of that is here, and none of it should be inferred
+ * from here.
+ *
+ * This function exists for the sample-company seed, which builds a world from repository primitives
+ * rather than by calling commands it has no capability context for. It is QUARANTINED to that role:
+ * it defines no business rule, and a second caller wanting "create a Reorder" wants the command.
+ *
+ * `requestedByPrincipalId` IS AN EOS PRINCIPAL. It was previously named `actorId` and the seed passed
+ * an operator token into it, which is how a uid-shaped string came to sit in a governed identity
+ * column. The name states the requirement and the foreign key enforces it.
+ */
 export async function createReorderRequest(
   pool: Pool,
   tenantId: string,
-  actorId: string,
+  requestedByPrincipalId: string,
   operatingCompanyKey: OperatingCompanyKey,
   row: CreateReorderRequestRow,
 ): Promise<ReorderRequestRecord> {
@@ -167,7 +185,7 @@ export async function createReorderRequest(
     [
       id, tenantId, companyKey, row.partId, row.warehouseId, row.status,
       row.requestedQuantity, row.recommendedQuantity ?? null, row.workOrderId ?? null,
-      row.reorderRequestNumber ?? null, actorId,
+      row.reorderRequestNumber ?? null, requestedByPrincipalId,
     ],
   );
   return {

@@ -1144,7 +1144,10 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
         else ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
         continue;
       }
-      const request = await purchasing.createReorderRequest(pool, tenantId, actorUid, companyKey, {
+      // THE ADMINISTERING PRINCIPAL, not actorUid. reorder_requests.requested_by is a governed EOS
+      // Principal and now carries a foreign key saying so; passing the operator token here is what
+      // put a uid-shaped string in that column in the first place.
+      const request = await purchasing.createReorderRequest(pool, tenantId, admin.id, companyKey, {
         partId: p.partId, warehouseId: p.warehouseId, status: "PURCHASING_IN_PROGRESS",
         requestedQuantity: p.requestedQuantity, recommendedQuantity: p.recommendedQuantity,
         reorderRequestNumber: p.reorderRequestNumber,

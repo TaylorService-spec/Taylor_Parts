@@ -1690,6 +1690,7 @@
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
+          "functions/src/eosOps/reorderLifecycleCommands.ts",
           "functions/src/reorderRequest/reorderCallables.ts"
         ],
         "clientReferences": [
@@ -1700,7 +1701,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/adminWorkflowView.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },

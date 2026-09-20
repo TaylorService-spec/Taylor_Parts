@@ -76,6 +76,18 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
            VALUES ('wh-1','t1','sample-co','WH','Sampleton','ACTIVE','NATIVE','f','f'),
                   ('wh-idle','t1','sample-co','WH2','Sampleton','INACTIVE','NATIVE','f','f')`);
 
+  // RULING 2: the warehouse's eos_ops key must be BOUND to an ACTIVE company this tenant may operate
+  // as. Company `taylor` operates under key `sample-co` -- deliberately different values.
+  await q(`INSERT INTO eos_policy.tenant_operating_companies
+             (tenant_id, operating_company_id, status, source, established_by, updated_by)
+           VALUES ('t1','taylor','ACTIVE','fixture','f','f')`);
+  await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+             (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+           VALUES ('t1','taylor','sample-co','ACTIVE','NATIVE','fixture','f','f')`);
+  // A warehouse whose key nobody governs. Creating against it must refuse.
+  await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+           VALUES ('wh-ungoverned','t1','not-a-bound-key','WH3','Sampleton','ACTIVE','NATIVE','f','f')`);
+
   const actor = (principalId, caps = ALL) => ({ tenantId: "t1", principalId, capabilities: new Set(caps) });
   const deps = { pool };
   const create = (over = {}) => life.createGovernedReorderRequest(deps, actor(pManager), {
@@ -99,6 +111,8 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     await assert.rejects(create({ warehouseId: "wh-idle" }), /ACTIVE warehouse/);
     // And there is no default: omitting the warehouse is refused, never resolved to the only one.
     await assert.rejects(create({ warehouseId: undefined }), /a warehouse is required/);
+    // RULING 2: a valid-looking slug is not operating-company authority.
+    await assert.rejects(create({ warehouseId: "wh-ungoverned" }), /not bound to an ACTIVE operating company/);
   });
 
   await t.test("a manual request states a real quantity", async () => {

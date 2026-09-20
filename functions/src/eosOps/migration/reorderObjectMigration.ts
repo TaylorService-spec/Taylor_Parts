@@ -35,8 +35,12 @@ import {
 export const REORDER_OBJECT_REFUSAL_CODES = [
   /** The warehouse names no warehouse in this tenant. Never inferred from the part or the requester. */
   "WAREHOUSE_NOT_IN_TENANT",
-  /** RULING 3: the warehouse's governed operating company disagrees with the Reorder's. */
+  /** RULING 3: the warehouse's governed operating company disagrees with the Reorder's BOUND key. */
   "WAREHOUSE_COMPANY_DISAGREEMENT",
+  /** The legacy operatingCompanyId is not an ACTIVE operating company for this tenant. */
+  "COMPANY_NOT_ACTIVE_FOR_TENANT",
+  /** No ACTIVE binding says which eos_ops key this company operates under. NEVER assumed equal. */
+  "COMPANY_KEY_BINDING_MISSING",
   /** A review decision outside the two firestore.rules admits. */
   "UNKNOWN_REVIEW_DECISION",
   /** A decision without its moment, or a moment without its decision. Half a review is not a review. */
@@ -88,6 +92,14 @@ export interface ReorderResolutionView {
   readonly byUid: ReadonlyMap<string, UidPrincipal | null>;
   /** warehouse id -> its governed operating_company_key, for warehouses in THIS tenant only. */
   readonly warehouseCompany: ReadonlyMap<string, string>;
+  /**
+   * governed operating_company_id -> the eos_ops operating_company_key it operates under.
+   *
+   * ACTIVE bindings only, and ACTIVE companies only. Absence is a REFUSAL, never a licence to use
+   * the company id as the key: they are different vocabularies, and the sample company sets them to
+   * different values deliberately.
+   */
+  readonly companyKeyByCompanyId: ReadonlyMap<string, string>;
   /** Reorder ids the governed authority already holds for this tenant. */
   readonly existingReorderIds: ReadonlySet<string>;
 }
@@ -247,15 +259,38 @@ function classifyOne(
     });
   }
 
-  // ── RULING 3, the half that is unambiguous: the warehouse and the company must agree ──
+  // ══════════ RULING 2: THE COMPANY IS RESOLVED THROUGH A BINDING, NEVER ASSUMED EQUAL ══════════
+  //
+  // The legacy document carries an operatingCompanyId -- a governed COMPANY. The target column holds
+  // an operating_company_key -- an opaque eos_ops PARTITION KEY. mapLegacyReorderRequest returns the
+  // legacy value under the name `operatingCompanyKey`, and using THAT would be exactly the equality
+  // assumption this refuses: `core.operatingCompanyKey` is deliberately not read below.
+  //
+  // The chain, every link proved: the company is ACTIVE for this tenant -> an ACTIVE binding says
+  // which key it operates under -> the warehouse is this tenant's -> the warehouse's key IS that
+  // bound key. Any missing link is a refusal.
+  const legacyCompanyId = text((data as Record<string, unknown>).operatingCompanyId);
+  if (legacyCompanyId === null) {
+    return refuse(core.id, "MISSING_OPERATING_COMPANY", "operatingCompanyId is required", none);
+  }
+  const boundKey = view.companyKeyByCompanyId.get(legacyCompanyId);
+  if (boundKey === undefined) {
+    // Two different facts share this refusal only when the view cannot tell them apart; the copy's
+    // view is built from ACTIVE companies joined to ACTIVE bindings, so the reader is told which.
+    return refuse(core.id, "COMPANY_KEY_BINDING_MISSING",
+      `no ACTIVE binding says which eos_ops key operating company "${legacyCompanyId}" operates under `
+      + "in this tenant; the company id is NOT usable as the key", none);
+  }
+
   const warehouseCompany = view.warehouseCompany.get(core.warehouseId);
   if (warehouseCompany === undefined) {
     return refuse(core.id, "WAREHOUSE_NOT_IN_TENANT",
       `warehouseId "${core.warehouseId}" names no warehouse in this tenant`, none);
   }
-  if (warehouseCompany !== core.operatingCompanyKey) {
+  if (warehouseCompany !== boundKey) {
     return refuse(core.id, "WAREHOUSE_COMPANY_DISAGREEMENT",
-      "the Reorder's operating company disagrees with its warehouse's governed operating company", none);
+      `the Reorder's operating company binds to key "${boundKey}" but its warehouse carries `
+      + `"${warehouseCompany}"`, none);
   }
 
   // ── the derived pointer, PROVEN rather than assumed ──
@@ -333,7 +368,7 @@ function classifyOne(
     actorDispositions: Object.freeze(dispositions),
     row: Object.freeze({
       id: core.id,
-      operatingCompanyKey: core.operatingCompanyKey,
+      operatingCompanyKey: boundKey,
       partId: core.partId,
       warehouseId: core.warehouseId,
       status: core.status,
