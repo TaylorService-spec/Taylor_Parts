@@ -127,8 +127,14 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1760097600000 (Operational Scope authority, step B): an EMPTY warehouse-scope history
 // plus one capability vocabulary row, granted to no Role. The table is not in SEEDED_RELATIONS and the Sample Company
 // seed writes no scope, so every row count asserted here is unchanged.
-const PINNED_LAST_MIGRATION = "1760140800000_reorder-assignment-identity";
-const PINNED_MIGRATION_COUNT = 34;
+//
+// Moved deliberately for 1762560000000 (the Catalog Part Alias authority, the first member of the
+// Catalog lane's reserved migration range). Every row count asserted here is unchanged: the seed
+// writes no Part alias, so eos_ops.part_aliases stays empty, and the alias table is referenced by
+// nothing the seed touches. This pin moves because a migration was ADDED, not because the seeded
+// world changed.
+const PINNED_LAST_MIGRATION = "1762560000000_catalog-part-alias-authority";
+const PINNED_MIGRATION_COUNT = 35;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

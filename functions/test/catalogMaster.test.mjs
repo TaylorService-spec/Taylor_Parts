@@ -106,13 +106,19 @@ test("the snapshot export encodes Timestamps and refuses every other non-JSON Fi
 
 const EXPORTER = "scripts/exportCatalogSnapshot.js";
 
-test("the exporter is explicitly marked as the migration-only exception and allowlists exactly two source collections", () => {
+test("the exporter is explicitly marked as the migration-only exception and allowlists exactly three source collections", () => {
   const ex = require("../scripts/exportCatalogSnapshot.js");
   assert.equal(ex.FIREBASE_EXIT_MIGRATION_ONLY, "FIREBASE_EXIT_MIGRATION_ONLY");
   assert.match(readFileSync(EXPORTER, "utf8").split("\n")[0], /^\/\/ FIREBASE_EXIT_MIGRATION_ONLY$/);
-  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["parts", "equipment_models"]);
+  // `part_aliases` joined the allowlist with the PostgreSQL alias authority: an alias and the Part it
+  // names must come from ONE snapshot, or the copy has two pictures taken at different instants.
+  assert.deepEqual(Object.values(ex.SOURCE_COLLECTIONS), ["parts", "equipment_models", "part_aliases"]);
   assert.equal(ex.assertAllowlisted("parts"), "parts");
-  for (const other of ["users", "part_aliases", "equipment_model_aliases", "auditEvents", ""]) assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted/);
+  assert.equal(ex.assertAllowlisted("part_aliases"), "part_aliases");
+  // The allowlist is still EXACT. Everything else is still refused.
+  for (const other of ["users", "equipment_model_aliases", "auditEvents", "part_supplier_items", ""]) {
+    assert.throws(() => ex.assertAllowlisted(other), /not an allowlisted/);
+  }
   const code = stripComments(readFileSync(EXPORTER, "utf8"));
   assert.deepEqual([...code.matchAll(/\bdb\.collection\((.*?)\)\.get\(/g)].map((m) => m[1]), ["assertAllowlisted(name)"], "every collection read goes through the allowlist");
 });
@@ -228,8 +234,8 @@ test("the Part callables map FROZEN and RETIRED to failed-precondition, not inte
 test("a clean snapshot is copy-ready, with exact counts, statuses and the non-master fields it leaves behind", () => {
   const { census, catalog } = censusCatalogSnapshot(parseCatalogSnapshot(cleanSnapshot()));
   assert.equal(census.copyReady, true, JSON.stringify(census.blockers));
-  assert.deepEqual(census.counts, { parts: 4, equipmentModels: 3 });
-  assert.deepEqual(census.selected, { parts: 4, equipmentModels: 3 });
+  assert.deepEqual(census.counts, { parts: 4, equipmentModels: 3, partAliases: 0 });
+  assert.deepEqual(census.selected, { parts: 4, equipmentModels: 3, partAliases: 0 });
   assert.deepEqual(census.statusDistribution, { parts: { ACTIVE: 3, DRAFT: 1 }, equipmentModels: { ACTIVE: 1, DRAFT: 1, RETIRED: 1 } });
   assert.deepEqual(census.nonMasterFields.parts, { partTrackingMode: 4, sku: 4, unitOfMeasure: 4 });
   assert.deepEqual(census.nonMasterFields.equipmentModels, {});
@@ -302,7 +308,7 @@ test("identified Certification fixtures are ALWAYS excluded, listed with id and 
   const { census, catalog } = censusCatalogSnapshot(parseCatalogSnapshot(s));
   assert.equal(census.copyReady, true, JSON.stringify(census.blockers));
   assert.deepEqual(census.certificationExcluded, {
-    counts: { parts: 2, equipmentModels: 1 },
+    counts: { parts: 2, equipmentModels: 1, partAliases: 0 },
     records: [
       { kind: "equipment_model", id: "CERT--MODEL-1", reason: "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker" },
       { kind: "part", id: "CW-P-0000", reason: "CERTIFICATION_FIXTURE_EXCLUDED:certificationWorld-marker" },

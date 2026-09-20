@@ -72,6 +72,9 @@ const CONSTRAINT_CODES: Readonly<Record<string, [string, CatalogErrorCategory]>>
   parts_pkey: ["PART_ALREADY_EXISTS", "CONFLICT"],
   equipment_models_pkey: ["EQUIPMENT_MODEL_ALREADY_EXISTS", "CONFLICT"],
   part_equipment_model_same_tenant: ["EQUIPMENT_MODEL_NOT_FOUND", "NOT_FOUND"],
+  part_aliases_pkey: ["ALIAS_IDENTITY_TAKEN", "CONFLICT"],
+  part_alias_identity_unique: ["ALIAS_IDENTITY_TAKEN", "CONFLICT"],
+  part_alias_part_same_tenant: ["PART_NOT_FOUND", "NOT_FOUND"],
 });
 
 /** Every error leaving a catalog command is a CatalogMasterError. Nothing else crosses the boundary. */
@@ -91,7 +94,9 @@ export function translateCatalogError(err: unknown): CatalogMasterError {
 
 export interface CatalogAuditEntry {
   readonly action: string;
-  readonly targetKind: "part" | "equipment_model";
+  // `part_alias` joined the Catalog bounded context with the PostgreSQL alias authority: an alias is
+  // Part IDENTITY, audited beside the Part rather than in a domain of its own.
+  readonly targetKind: "part" | "equipment_model" | "part_alias";
   readonly targetId: string;
   readonly before: unknown;
   readonly after: unknown;
