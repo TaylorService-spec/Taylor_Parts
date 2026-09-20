@@ -246,12 +246,14 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
     const applied = (await q("SELECT name FROM public.pgmigrations")).rows.map((r) => r.name);
     assert.ok(!applied.some((n) => n.includes("employee-principal-link-employee-fk")));
     // The governed reporting relation (Owner ruling D), the Job Role assignment history (EMP-RT-08), the Work
-    // Eligibility qualification history (decomposition step A) and the Operational Scope history (step B) key onto
-    // employees by design; no EXISTING person-reference column does.
+    // Eligibility qualification history (decomposition step A), the Operational Scope history (step B) and the
+    // Reorder assignment identity (the Employee IS the business assignee, so the reference is the point) key onto
+    // employees BY DESIGN; no EXISTING person-reference column does.
     const fks = (await q(`SELECT count(*)::int AS n FROM pg_constraint WHERE contype = 'f' AND confrelid = 'eos_workforce.employees'::regclass
                             AND conrelid NOT IN ('eos_workforce.employee_reporting_relationships'::regclass, 'eos_workforce.employee_job_role_assignments'::regclass,
                                                  'eos_workforce.employee_work_eligibility'::regclass,
-                                                 'eos_workforce.employee_operational_scopes'::regclass)`)).rows[0].n;
+                                                 'eos_workforce.employee_operational_scopes'::regclass,
+                                                 'eos_ops.reorder_request_assignments'::regclass)`)).rows[0].n;
     assert.equal(fks, 0);
   });
 });
