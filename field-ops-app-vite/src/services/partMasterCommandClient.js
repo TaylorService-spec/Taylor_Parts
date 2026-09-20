@@ -1,34 +1,53 @@
-// Part Master (ADR-009 G2) -- the injectable CLIENT SEAM for the three trusted Part write callables.
-// Deliberately THIN (mirrors truckRegistryCommandClient.js / adminPasswordResetClient.js): it builds the
-// EXACT request payload each callable expects and invokes it via httpsCallable, so `firebase` stays out
-// of the unit tests and ALL outcome mapping stays in the pure domain (domain/partMasterWrite.js).
+// Part Master WRITES, through the GOVERNED RENDER CATALOG API.
 //
-// Server-derived identity: actorUid is taken ONLY from request.auth.uid inside each callable -- it is
-// NEVER part of any payload built here. There is ONE Part authority (partMasterCommands); this client
-// invokes it, it does not reimplement it.
+//   browser -> services/catalogApiClient.js -> POST /operations/catalog -> PostgreSQL
 //
-// NOT-DEPLOYED / FAIL-CLOSED: these callables are exported from functions/src/index.ts under their frozen
-// public names but are NOT deployed and NO capability is granted. This client is only ever invoked when
-// the write-readiness seam (config/partMasterWriteReadiness.js) is true; usePartMasterWrite guarantees
-// ZERO invocations while readiness is false. This file performs no runtime probing.
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../firebase/firebase";
+// This used to invoke the three Firebase callables (createPart / updatePart / changePartStatus).
+// Those remain EXPORTED and deployed -- they are legacy authority pending retirement, and removing
+// an export is a deployment, not a code change -- but nothing in this application calls them any
+// more. There is no fallback: a refused or failed command is returned as a value the screen renders.
+//
+// Server-derived identity, unchanged in principle and stronger in practice: the actor was
+// `request.auth.uid` inside the callable and is now the EOS Principal the Catalog API resolves from
+// the bearer token. Neither is ever part of a payload built here.
+//
+// ONE Part authority. This client invokes it; it does not reimplement it.
+import { catalogApiClient } from "./catalogApiClient.js";
 
-// onCall export names (functions/src/index.ts), region bound by firebase.js. Frozen public names.
-export const PART_MASTER_CALLABLES = Object.freeze({
+/** The governed Catalog operations, mirrored from the server so a typo fails here, not as a 404. */
+export const PART_MASTER_OPERATIONS = Object.freeze({
   create: "createPart",
   update: "updatePart",
   changeStatus: "changePartStatus",
 });
 
-const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
+/**
+ * Kept under its frozen name so existing callers and tests are unaffected by the move.
+ *
+ * The VALUES changed from Firebase callable names to Catalog operation names because they are now
+ * operations rather than callables; the keys did not.
+ */
+export const PART_MASTER_CALLABLES = PART_MASTER_OPERATIONS;
 
-// Each method sends ONLY the fields its callable reads (see partMasterCallables.ts). idempotencyKey +
-// expectedVersion are supplied by the caller (usePartMasterWrite).
+const call = async (operation, input, deps = {}) => {
+  const client = deps.client ?? catalogApiClient;
+  const res = await client.call(operation, input);
+  // The shape the domain mapper already expects: the result on success, and the governed refusal
+  // itself on failure. Nothing is retried anywhere else.
+  if (res.ok) return res.result;
+  const err = new Error(res.message ?? "the Catalog command was refused");
+  err.code = res.code;
+  err.reason = res.reason ?? null;
+  throw err;
+};
+
+// Each method sends ONLY the fields its operation reads. expectedVersion is supplied by the caller
+// (usePartMasterWrite). idempotencyKey is accepted and ignored by the governed command, which is
+// content-addressed: an identical resend is a replay by construction rather than by a key.
 export const partMasterCommandClient = Object.freeze({
-  createPart: ({ idempotencyKey, part }) => call(PART_MASTER_CALLABLES.create, { idempotencyKey, part }),
-  updatePart: ({ idempotencyKey, partId, expectedVersion, changes }) =>
-    call(PART_MASTER_CALLABLES.update, { idempotencyKey, partId, expectedVersion, changes }),
-  changePartStatus: ({ idempotencyKey, partId, expectedVersion, newStatus }) =>
-    call(PART_MASTER_CALLABLES.changeStatus, { idempotencyKey, partId, expectedVersion, newStatus }),
+  createPart: ({ part }, deps) => call(PART_MASTER_OPERATIONS.create, { part }, deps),
+  updatePart: ({ partId, expectedVersion, changes }, deps) =>
+    call(PART_MASTER_OPERATIONS.update, { partId, expectedVersion, changes }, deps),
+  changePartStatus: ({ partId, expectedVersion, newStatus }, deps) =>
+    call(PART_MASTER_OPERATIONS.changeStatus, { partId, expectedVersion, newStatus }, deps),
 });

@@ -90,16 +90,17 @@ const e = (entry: CatalogCensusEntry): CatalogCensusEntry => Object.freeze(entry
  * makes the remaining work measurable rather than asserted.
  */
 export const CATALOG_RUNTIME_CENSUS: readonly CatalogCensusEntry[] = Object.freeze([
-  // ══════════ CLIENT: direct Firestore reads. THE REAL GAP ══════════
-  e({ path: "field-ops-app-vite/src/services/partMasterQueries.js", object: "PART",
-    classification: "FIRESTORE_RUNTIME_READ",
-    consumer: "fetchPartMasterList reads the WHOLE parts collection; six surfaces depend on it (PART_CATALOGUE_WHOLE_COLLECTION_READ)" }),
-  e({ path: "field-ops-app-vite/src/hooks/useWholeUnitParts.js", object: "PART",
-    classification: "FIRESTORE_RUNTIME_READ", consumer: "queries parts where wholeUnit == true, capped but still a direct catalogue read" }),
-  e({ path: "field-ops-app-vite/src/hooks/useSerialTrackedParts.js", object: "PART",
-    classification: "FIRESTORE_RUNTIME_READ", consumer: "queries parts by tracking mode, directly against Firestore" }),
+  // ══════════ CLIENT: CUT OVER ══════════
+  //
+  // Every Part read and write in the browser now reaches the governed Render Catalog API. The four
+  // modules that read Firestore directly are gone from this section entirely -- not reclassified,
+  // gone -- because they no longer name a Catalog collection in executable code.
+  e({ path: "field-ops-app-vite/src/services/catalogApiClient.js", object: "PART",
+    classification: "RENDER_RUNTIME",
+    consumer: "the browser's one route to the governed PostgreSQL Catalog. No fallback: a failure is a returned value" }),
   e({ path: "field-ops-app-vite/src/modules/inventory/PartsList.jsx", object: "PART",
-    classification: "FIRESTORE_RUNTIME_READ", consumer: "the Parts administration list reads the collection directly" }),
+    classification: "DEAD",
+    consumer: "a navigation comment, a search-provider key and a singular/plural label; its catalogue read moved to searchParts" }),
 
   // ══════════ SERVER: the Firestore Catalog authority ══════════
   //

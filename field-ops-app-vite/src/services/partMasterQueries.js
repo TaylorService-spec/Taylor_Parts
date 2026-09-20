@@ -1,73 +1,92 @@
-// INV-1 Phase 1, PR 1.9 -- read-only Part Master client service. One-shot
-// authorized read of `parts` (Rules: admin/dispatcher read-only; ALL
-// client writes denied). Imports ONLY read APIs; performs no writes; reads
-// no inventory quantities (stock truth stays the ledger); never invokes
-// the PR 1.6 resolver, PR 1.7 snapshot module, or PR 1.8 tooling.
+// Part Master client reads, through the GOVERNED RENDER CATALOG API.
 //
-// ============================ PAGING IS OPT-IN, AND LIVES ELSEWHERE ============================
+//   browser -> services/catalogApiClient.js -> POST /operations/catalog -> PostgreSQL
 //
-// This module owns exactly one read: the WHOLE `parts` collection. That is deliberate, and the
-// reasoning is in `fetchPartMasterList`'s own note — seven surfaces need every part, and for each of
-// them a silent first page produces a wrong ANSWER rather than a slow one.
+// and never browser -> Firestore. There is no fallback here of any kind: a refused or failed read is
+// returned as a value the caller renders.
 //
-// The bounded, cursored, index-verified page read is `services/partMasterPageQuery.js`, which takes a
-// query descriptor from `metadata/listRuntime`. Paging is opted into BY NAME, never inherited.
+// ════════════════════ WHAT CHANGED, AND WHY IT IS NOT A PORT ════════════════════
 //
-// Mounting a filter UI over an unbounded fetch would ship the fetch-all anti-pattern with a nicer
-// front end. Making this shared reader bounded so a list got paging for free would be worse.
-import { collection, getDocs, query } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+// This module used to own exactly one read: the WHOLE `parts` collection, because seven surfaces
+// each needed "every part" and a silent first page would have produced a wrong ANSWER rather than a
+// slow one. That reasoning was correct about Firestore and is the wrong shape to carry across.
+//
+// Re-exposing a fetch-all over HTTP would have moved the cost one hop further away and added a
+// server paying for it too. So each caller was mapped to the question it actually asks, and the
+// answers are three BOUNDED operations:
+//
+//   readPart(partId)          one Part -- Part Detail
+//   readPartsByIds(ids)       the ids a page already holds -- canonical name resolution
+//   searchParts(...)          a bounded, searchable, keyset-paged page -- lists and pickers
+//
+// `fetchPartMasterList` is deliberately GONE rather than reimplemented. A function with that name
+// backed by a paged API would either lie about completeness or loop until it had everything, and
+// both are worse than making each caller say what it needs.
+import { catalogApiClient } from "./catalogApiClient.js";
 import { toPartListView } from "../domain/partMasterView";
 
-const PARTS_COLLECTION = "parts";
-
-/**
- * Fetch the WHOLE governed Part Master list view. Unchanged.
- *
- * ============================ WHY THIS STAYED UNBOUNDED ============================
- *
- * The obvious move was to make this bounded and let every caller inherit paging. That is wrong here,
- * and finding out why was the useful part of this migration: this function is not a list reader, it is
- * the platform's CATALOGUE reader. Six surfaces depend on getting ALL of it --
- *
- *   - hooks/useCanonicalPartNames   resolves any partId a screen happens to mention
- *   - modules/scan/LookupScan       scans a number that could be any part in the catalogue
- *   - receiving/ReceiveAgainstPurchaseOrder + workOrders/WorkOrderPartsPlanEditor   part pickers
- *   - inventoryRole/WarehouseManagerHome   catalogue view
- *   - modules/inventory/PartDetail   composes one part's view through the shared composer
- *
- * -- and for every one of them a silent first page is worse than a slow read. A scanner that cannot
- * find part 51 reports the part does not exist. A name resolver missing a page renders a raw id. Those
- * are wrong ANSWERS, not slow ones, and nothing on screen would say so.
- *
- * So paging is opted INTO by name (fetchPartMasterPage) and never inherited. The remaining
- * whole-collection reads are a REAL and recorded gap -- PART_CATALOGUE_WHOLE_COLLECTION_READ -- and the
- * fix for each is a targeted read of its own (lookup by part number, a searched picker), not a page
- * size quietly imposed on a question that needs the whole catalogue.
- *
- * Resolves `{ ok:true, parts, invalid }` or `{ ok:false, code }` where code is "permission-denied"
- * (denied by Rules) or "unavailable".
- */
-export async function fetchPartMasterList() {
-  try {
-    const snap = await getDocs(query(collection(db, PARTS_COLLECTION)));
-    return { ok: true, ...toPartListView(snap.docs.map((d) => ({ id: d.id, data: d.data() }))) };
-  } catch (err) {
-    return { ok: false, code: err && err.code === "permission-denied" ? "permission-denied" : "unavailable" };
-  }
+/** `{ ok:true, part }` or `{ ok:false, code, message }`. A missing Part is `ok:true, part:null`. */
+export async function fetchPart(partId, deps = {}) {
+  const client = deps.client ?? catalogApiClient;
+  const res = await client.call("readPart", { partId });
+  return res.ok ? { ok: true, part: res.result ?? null } : res;
 }
 
 /**
- * The surfaces still reading the whole `parts` collection, named rather than left implicit.
+ * Resolve the canonical names of ids a caller ALREADY holds.
  *
- * Recorded so the count can only go down deliberately. Each entry wants a targeted read, and until it
- * has one this is what "Parts at scale" actually costs.
+ * The bounded replacement for "load the catalogue and look them up": the resolver knows exactly
+ * which ids it needs, and asking for those is the whole difference.
  */
-export const PART_CATALOGUE_WHOLE_COLLECTION_READ = Object.freeze([
-  "hooks/useCanonicalPartNames",
-  "modules/receiving/ReceiveAgainstPurchaseOrder",
-  "modules/workOrders/WorkOrderPartsPlanEditor",
-  "modules/inventoryRole/WarehouseManagerHome",
-  "modules/inventory/PartsList",
-  "modules/inventory/PartDetail",
-]);
+export async function fetchPartsByIds(partIds, deps = {}) {
+  const ids = [...new Set((partIds ?? []).filter((id) => typeof id === "string" && id.trim() !== ""))];
+  if (ids.length === 0) return { ok: true, parts: [] };
+  const client = deps.client ?? catalogApiClient;
+  const res = await client.call("readPartsByIds", { partIds: ids });
+  return res.ok ? { ok: true, parts: res.result ?? [] } : res;
+}
+
+/**
+ * A bounded, searchable page of the catalogue.
+ *
+ * `filters` are GOVERNED query vocabulary the SERVER understands -- `status`, `controlType`,
+ * `wholeUnit`. They are passed through and applied in PostgreSQL. Filtering in the browser would
+ * mean fetching everything first, which is the behaviour this module exists to stop.
+ */
+export async function searchParts({ query = "", status, controlType, wholeUnit, limit, cursor } = {}, deps = {}) {
+  const client = deps.client ?? catalogApiClient;
+  const res = await client.call("searchParts", {
+    query,
+    ...(status === undefined ? {} : { status }),
+    ...(controlType === undefined ? {} : { controlType }),
+    ...(wholeUnit === undefined ? {} : { wholeUnit }),
+    ...(limit === undefined ? {} : { limit }),
+    ...(cursor === undefined || cursor === null ? {} : { cursor }),
+  });
+  if (!res.ok) return res;
+  const page = res.result ?? { parts: [], nextCursor: null };
+  // The SAME pure view mapping the Firestore reader used, so the screens are unchanged by the move.
+  return { ok: true, ...toPartListView((page.parts ?? []).map((p) => ({ id: p.id, data: p }))), nextCursor: page.nextCursor ?? null };
+}
+
+/** How many Parts this tenant holds, for a screen that shows a total without listing it. */
+export async function countParts(deps = {}) {
+  const client = deps.client ?? catalogApiClient;
+  const res = await client.call("countParts", {});
+  return res.ok ? { ok: true, total: res.result ?? 0 } : res;
+}
+
+/**
+ * The surfaces that USED to read the whole `parts` collection, and what each asks now.
+ *
+ * Kept as a record rather than deleted: it is the list this cutover had to answer, and naming the
+ * replacement for each is what makes "nothing still fetches everything" checkable.
+ */
+export const PART_CATALOGUE_WHOLE_COLLECTION_READ_RETIRED = Object.freeze({
+  "hooks/useCanonicalPartNames": "readPartsByIds(exact ids)",
+  "modules/receiving/ReceiveAgainstPurchaseOrder": "searchParts (bounded picker)",
+  "modules/workOrders/WorkOrderPartsPlanEditor": "searchParts (bounded picker)",
+  "modules/inventoryRole/WarehouseManagerHome": "searchParts (bounded)",
+  "modules/inventory/PartsList": "searchParts + countParts",
+  "modules/inventory/PartDetail": "readPart(partId)",
+});

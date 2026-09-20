@@ -122,6 +122,8 @@ export async function executeCatalogOperation(
         return ok(await withClient((c) => searchParts(c, actor.tenantId, {
           query: typeof input.query === "string" ? input.query : undefined,
           status: typeof input.status === "string" ? input.status : undefined,
+          controlType: typeof input.controlType === "string" ? input.controlType : undefined,
+          wholeUnit: typeof input.wholeUnit === "boolean" ? input.wholeUnit : undefined,
           limit: typeof input.limit === "number" ? input.limit : undefined,
           cursor: typeof input.cursor === "string" ? input.cursor : null,
         })));

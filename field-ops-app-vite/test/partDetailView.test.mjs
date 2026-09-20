@@ -296,7 +296,13 @@ check("wiring: PartDetail no longer imports the static getCatalogItem metadata s
 check("wiring: PartDetail composes via the governed view + uses the existing canonical read", () => {
   assert.ok(/buildPartDetailView/.test(DETAIL_SRC));
   assert.ok(/selectPartLedger/.test(DETAIL_SRC));
-  assert.ok(/fetchPartMasterList/.test(DETAIL_SRC), "must reuse PR 1.9's read -- no new query surface");
+  // The shared read moved from the whole-collection Firestore fetch to the governed Render Catalog
+  // search. The rule this pins is unchanged -- PartDetail reuses the SHARED read rather than opening
+  // a query surface of its own -- only the read it shares is now bounded and reaches PostgreSQL.
+  assert.ok(/searchParts/.test(DETAIL_SRC), "must reuse the shared governed read -- no new query surface");
+  // Executable text only: the word appearing in prose about what the read is NOT proves nothing.
+  const executable = DETAIL_SRC.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+  assert.ok(!/getDocs|collection\(db/.test(executable), "and it must not read Firestore directly");
 });
 check("wiring: the raw-param ledger filter is gone (re-pointed to resolved identity)", () => {
   assert.ok(!/t\.partId === partId/.test(DETAIL_SRC), "ledger filter must key on resolvedPartId");

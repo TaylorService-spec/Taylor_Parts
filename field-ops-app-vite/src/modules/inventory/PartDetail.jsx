@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
-import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { searchParts } from "../../services/partMasterQueries";
 import UsedInEquipmentSection from "./UsedInEquipmentSection";
 import PartsInfoDisclosure from "./PartsInfoDisclosure.jsx";
 import { canViewCompatibility } from "../../domain/equipmentCompatibilitySection.js";
@@ -73,7 +73,7 @@ import {
 //
 // INV-CONVERGENCE-E C2 -- catalog metadata NO LONGER comes from the static
 // per-sku catalog lookup. It is the GOVERNED compatibility-adapter output: the live
-// canonical `parts` read (fetchPartMasterList, PR 1.9 -- the same authorized
+// canonical `parts` read (searchParts, PR 1.9 -- the same authorized
 // one-shot read C1 uses, no new query surface) composed with the static catalog
 // through buildPartsWorkspace(), via the pure domain/partDetailView.js. The static
 // PARTS_CATALOG remains the compatibility INPUT to that composition, not a parallel
@@ -1287,7 +1287,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
   const [searchParams] = useSearchParams();
   const requestId = searchParams.get("requestId") || undefined;
   // INV-CONVERGENCE-E C2 -- live canonical `parts` read (one-shot, PR 1.9's
-  // fetchPartMasterList; the SAME authorized read C1 uses -- no new query surface).
+  // searchParts; the SAME authorized read C1 uses -- no new query surface).
   // null until the first read resolves. Mapped to the canonicalRead status contract
   // the pure buildPartDetailView() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
   const [canonicalRead, setCanonicalRead] = useState(null);
@@ -1301,7 +1301,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
     // composes one part plus its relationships through a composer that expects the whole set, so a
     // first page would truncate a detail screen and look like missing data rather than like paging.
     // Recorded in PART_CATALOGUE_WHOLE_COLLECTION_READ alongside the other five.
-    fetchPartMasterList().then((result) => {
+    searchParts({ limit: 100 }).then((result) => {
       if (cancelled) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
@@ -1540,7 +1540,7 @@ export default function PartDetail({ hasCapability, accessVersion, writeDeps } =
           <Link to="/inventory">Inventory → Parts</Link>
           {identity.titleIsAbsent ? null : ` → ${identity.title}`}
         </span>
-        {/* NO LIVE INDICATOR. The canonical Parts read is a one-shot getDocs, not a subscription —
+        {/* NO LIVE INDICATOR. The canonical Parts read is a one-shot governed Catalog query, not a subscription —
             this record does not update on its own, and claiming otherwise is the kind of small
             false promise a dispatcher plans around. */}
       </div>

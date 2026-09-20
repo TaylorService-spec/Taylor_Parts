@@ -69,9 +69,19 @@ export async function readPartsByIds(
 }
 
 export interface PartSearchInput {
-  /** Matched against the part id, internal part number and name. Case-insensitive, prefix-ish. */
+  /** Matched against the part id, internal part number and name. Case-insensitive, substring. */
   readonly query?: string;
   readonly status?: string;
+  /**
+   * GOVERNED FILTERS, applied in PostgreSQL.
+   *
+   * The whole-unit and serial-tracked pickers each need one of these. They are part of the query
+   * CONTRACT rather than something a caller filters for itself, because the alternative is fetching
+   * the catalogue to the browser and narrowing it there -- which is the behaviour this module exists
+   * to make unreachable. Extending the contract is the cheaper answer, and the only honest one.
+   */
+  readonly controlType?: string;
+  readonly wholeUnit?: boolean;
   readonly limit?: number;
   /** The `nextCursor` from a previous page. */
   readonly cursor?: string | null;
@@ -92,6 +102,8 @@ export async function searchParts(
   const q = typeof input.query === "string" && input.query.trim() !== "" ? input.query.trim() : null;
   const status = typeof input.status === "string" && input.status.trim() !== "" ? input.status.trim() : null;
   const cursor = typeof input.cursor === "string" && input.cursor.trim() !== "" ? input.cursor.trim() : null;
+  const controlType = typeof input.controlType === "string" && input.controlType.trim() !== "" ? input.controlType.trim() : null;
+  const wholeUnit = typeof input.wholeUnit === "boolean" ? input.wholeUnit : null;
 
   const { rows } = await client.query(
     `${PART_SELECT}
@@ -99,9 +111,11 @@ export async function searchParts(
         AND ($2::text IS NULL OR (id ILIKE '%' || $2 || '%' OR internal_part_number ILIKE '%' || $2 || '%' OR name ILIKE '%' || $2 || '%'))
         AND ($3::text IS NULL OR status::text = $3)
         AND ($4::text IS NULL OR id > $4)
+        AND ($6::text IS NULL OR control_type::text = $6)
+        AND ($7::boolean IS NULL OR whole_unit = $7)
       ORDER BY id
       LIMIT $5`,
-    [tenantId, q, status, cursor, limit + 1],
+    [tenantId, q, status, cursor, limit + 1, controlType, wholeUnit],
   );
   // One row beyond the page is read to decide whether there IS a next page, and is then dropped. A
   // caller is never told "there might be more" on a guess.
