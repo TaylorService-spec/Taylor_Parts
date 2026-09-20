@@ -1054,7 +1054,17 @@
       "opportunity.createSalesOrder",
       "opportunity.read",
       "opportunity.write",
+      "reorder.request.approve",
       "reorder.request.assign",
+      "reorder.request.cancel",
+      "reorder.request.create.manual",
+      "reorder.request.create.system",
+      "reorder.request.markReceived",
+      "reorder.request.postPurchasingUpdate",
+      "reorder.request.read.own",
+      "reorder.request.read.queue",
+      "reorder.request.reject",
+      "reorder.request.startPurchasing",
       "salesAgreement.accept",
       "salesAgreement.create",
       "salesAgreement.read",
@@ -1065,7 +1075,7 @@
       "workOrder.lifecycle.complete",
       "workOrder.lifecycle.dispatch"
     ],
-    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 41 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
+    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 51 ids and no others -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
     "personas": {
       "owner-executive": {
         "securityRoles": [
