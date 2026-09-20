@@ -85,11 +85,12 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
   // been copied yet, and inventing a Reorder to satisfy an assignment would invert the dependency.
   await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
            VALUES ('wh-1', 't1', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture')`);
+  // requested_by is a governed Principal (migration 037), so the fixture names a real one.
   await q(`INSERT INTO eos_ops.reorder_requests
              (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity,
               requested_by, updated_by, provenance, recommendation_status, quantity_source)
            VALUES ('rr-race', 't1', 'sample-co', 'PART-1', 'wh-1', 'READY_FOR_PARTS_MANAGER', 1,
-                   'fixture', 'fixture', 'NATIVE', 'BELOW_MIN', 'MANUAL')`);
+                   $1, $1, 'NATIVE', 'BELOW_MIN', 'MANUAL')`, [pManager]);
 
   await t.test("DRY RUN classifies every source row and writes nothing", async () => {
     const before = (await q(`SELECT count(*)::int n FROM eos_ops.reorder_request_assignments`)).rows[0].n;

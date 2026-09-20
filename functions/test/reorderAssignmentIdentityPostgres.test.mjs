@@ -44,21 +44,6 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   const repo = new PostgresPolicyRepository(pool);
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1'), ('t2','t2','T2')`);
 
-  // THE REORDER OBJECT NOW LIVES HERE. When this suite was written the Reorder was a Firestore
-  // document and `reorder_request_id` could only be opaque; the domain cutover moved the object, so
-  // assignment targets a real governed row and refuses one this tenant does not have.
-  await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
-           VALUES ('wh-1', 't1', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture'),
-                  ('wh-2', 't2', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture')`);
-  const reorder = (id, tenant = "t1", status = "READY_FOR_PARTS_MANAGER") => q(
-    `INSERT INTO eos_ops.reorder_requests
-       (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity,
-        requested_by, updated_by, provenance, recommendation_status, quantity_source)
-     VALUES ($1, $2, 'sample-co', 'PART-1', $3, $4, 1, 'fixture', 'fixture', 'NATIVE', 'BELOW_MIN', 'MANUAL')`,
-    [id, tenant, tenant === "t1" ? "wh-1" : "wh-2", status]);
-  for (const id of ["rr-1", "rr-legacy", "rr-native", "rr-q", "rr-q2", "rr-x"]) await reorder(id);
-  await reorder("rr-foreign", "t2");
-
   const fixture = (tenantId) => ({ tenantId, uid: "uid-fixture" });
   const principal = async (tenantId, subject) => repo.transact(fixture(tenantId), async (tx) => {
     const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
@@ -78,6 +63,26 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   const assigneePrincipal = await principal("t1", "uid-assignee");
   const otherPrincipal = await principal("t1", "uid-other");
   const t2Principal = await principal("t2", "uid-t2");
+
+  // THE REORDER OBJECT NOW LIVES HERE. When this suite was written the Reorder was a Firestore
+  // document and `reorder_request_id` could only be opaque; the domain cutover moved the object, so
+  // assignment targets a real governed row and refuses one this tenant does not have.
+  //
+  // requested_by is a governed Principal (migration 037), so these fixtures name real ones. The t2
+  // row names the t2 Principal: the foreign key is composite, so one tenant's Reorder cannot name
+  // another tenant's member even by accident.
+  await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+           VALUES ('wh-1', 't1', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture'),
+                  ('wh-2', 't2', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture')`);
+  const reorder = (id, tenant = "t1", status = "READY_FOR_PARTS_MANAGER") => q(
+    `INSERT INTO eos_ops.reorder_requests
+       (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity,
+        requested_by, updated_by, provenance, recommendation_status, quantity_source)
+     VALUES ($1, $2, 'sample-co', 'PART-1', $3, $4, 1, $5, $5, 'NATIVE', 'BELOW_MIN', 'MANUAL')`,
+    [id, tenant, tenant === "t1" ? "wh-1" : "wh-2", status,
+      tenant === "t1" ? assigneePrincipal : t2Principal]);
+  for (const id of ["rr-1", "rr-legacy", "rr-native", "rr-q", "rr-q2", "rr-x"]) await reorder(id);
+  await reorder("rr-foreign", "t2");
   await employee("e-assignee");  await link("e-assignee", assigneePrincipal);
   await employee("e-other");     await link("e-other", otherPrincipal);
   await employee("e-unlinked");

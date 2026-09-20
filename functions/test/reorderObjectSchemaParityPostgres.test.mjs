@@ -124,10 +124,11 @@ test("the Reorder object schema provides every place the parity matrix sends a f
         `SELECT conname, confrelid::regclass::text AS refs FROM pg_constraint
           WHERE conrelid = 'eos_ops.reorder_requests'::regclass AND contype = 'f'`);
       const byName = new Map(rows.map((r) => [r.conname, r.refs]));
-      // requested_by is NOT here: its one existing writer passes an operator token, not a Principal.
-      assert.ok(!byName.has("reorder_requested_by_member_fk"),
-        "constraining requested_by would re-specify an identity convention shared across eos_ops");
-      for (const fk of ["reorder_reviewed_by_member_fk",
+      // requested_by IS here now. Migration 035 deliberately left it out, on the reasoning that the
+      // eos_ops actor convention meant "operator token" -- the Owner ruling is narrower: for the
+      // REORDER domain the governed actor is an EOS Principal, and the seed-only repository path
+      // does not get to define that. Migration 037 adds the key and the seed passes a Principal.
+      for (const fk of ["reorder_requested_by_member_fk", "reorder_reviewed_by_member_fk",
         "reorder_purchasing_started_by_member_fk", "reorder_last_purchasing_update_by_member_fk",
         "reorder_cancelled_by_member_fk", "reorder_received_by_member_fk"]) {
         assert.ok(byName.has(fk), `${fk} is missing, so an actor column is unconstrained`);
