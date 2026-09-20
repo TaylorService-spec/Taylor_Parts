@@ -25,6 +25,8 @@ const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
 
 const TENANT = "tenant-purchasing";
+/** The governed Principal this suite acts as. requested_by is a Principal id, not a uid. */
+const ACTOR = "prn-purchasing-fixture";
 // OPAQUE, and deliberately not a real company name. Nothing this schema does may depend on which
 // operating companies a deployment happens to have.
 const CO_A = "oc-alpha";
@@ -68,6 +70,19 @@ async function reset() {
     "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",
     [TENANT],
   );
+  // reorder_requests.requested_by is a governed EOS Principal (migration 037), so the fixture
+  // actor has to be one. It used to be the bare string "u-1", which is exactly the uid-shaped
+  // value that foreign key exists to keep out of a governed identity column.
+  await seed.query(
+    `INSERT INTO eos_policy.principals (id, identity_provider, external_subject, status)
+     VALUES ($1, 'firebase', 'fixture-purchasing-actor', 'active') ON CONFLICT DO NOTHING`,
+    [ACTOR],
+  );
+  await seed.query(
+    `INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id, status)
+     VALUES ($3, $1, $2, 'active') ON CONFLICT DO NOTHING`,
+    [TENANT, ACTOR, `tm-${ACTOR}`],
+  );
   await seed.end();
 }
 
@@ -85,7 +100,7 @@ const columnsOf = (table) => query(
 
 /** A reorder request parked in the state its purchase order may be recorded from. */
 async function seedRecordableRequest(suffix, company = CO_A) {
-  return po.createReorderRequest(repoPool(), TENANT, "u-1", company, {
+  return po.createReorderRequest(repoPool(), TENANT, ACTOR, company, {
     partId: `PRT-00000${suffix}`,
     warehouseId: "wh-1",
     status: po.PO_RECORDABLE_STATUS,
@@ -237,7 +252,7 @@ test("a reorder request has AT MOST ONE purchase order -- the PO_ALREADY_EXISTS 
 
 test("a purchase order cannot be recorded from a state that is not PURCHASING_IN_PROGRESS", { skip: SKIP }, async () => {
   await reset();
-  const request = await po.createReorderRequest(repoPool(), TENANT, "u-1", CO_A, {
+  const request = await po.createReorderRequest(repoPool(), TENANT, ACTOR, CO_A, {
     partId: "PRT-000003", warehouseId: "wh-1", status: "PENDING_REVIEW", requestedQuantity: 1,
   });
   await assert.rejects(
@@ -335,7 +350,7 @@ test("every purchasing table refuses a row with no operating company", { skip: S
 test("the repository refuses a missing company before SQL ever sees it", { skip: SKIP }, async () => {
   await reset();
   await assert.rejects(
-    () => po.createReorderRequest(repoPool(), TENANT, "u-1", "", {
+    () => po.createReorderRequest(repoPool(), TENANT, ACTOR, "", {
       partId: "PRT-000007", warehouseId: "wh-1", status: "PENDING_REVIEW", requestedQuantity: 1,
     }),
     OperatingCompanyAuthorityError,
