@@ -75,6 +75,7 @@ export const RETIREMENT_BLOCKING: readonly RuntimeClassification[] = Object.free
 ]);
 
 export interface RuntimeCensusEntry {
+  /** The census key is (path, object). A file touching two objects has two entries. */
   readonly path: string;
   readonly object: ReorderLegacyObject;
   readonly classification: RuntimeClassification;
@@ -88,120 +89,121 @@ const e = (entry: RuntimeCensusEntry): RuntimeCensusEntry => Object.freeze(entry
 
 export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Object.freeze([
   // ══════════ the Rules: the authority itself, retired at the final deployment step ══════════
+  e({ path: "firestore.rules", object: "REORDER_REQUEST", classification: "RULES_AUTHORITY",
+    consumer: "the reorder_requests match block -- where Firestore's Reorder authority lives", occurrences: 10 }),
+  e({ path: "firestore.rules", object: "PURCHASE_ORDER", classification: "RULES_AUTHORITY",
+    consumer: "the reorder_purchase_orders match block", occurrences: 9 }),
+  e({ path: "firestore.rules", object: "PURCHASE_ORDER_VOID", classification: "RULES_AUTHORITY",
+    consumer: "the reorder_purchase_order_voids match block", occurrences: 8 }),
+
+  // ══════════ THE DEFECT THIS MODEL EXISTS TO CATCH ══════════
   e({
-    path: "firestore.rules", object: "REORDER_REQUEST", classification: "RULES_AUTHORITY",
-    consumer: "the reorder_requests, reorder_purchase_orders and reorder_purchase_order_voids match "
-      + "blocks -- where Firestore's Reorder authority actually lives, retired by a deployment",
-    occurrences: 27,
+    path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "REORDER_REQUEST",
+    classification: "FIRESTORE_RUNTIME_WRITE",
+    consumer: "THE LEGACY ORDERED -> RECEIVED WRITE. On a REORDER_PURCHASE_ORDER-sourced receipt it "
+      + "updates the Firestore Reorder Request with { status: RECEIVED, receivedAt, receivedBy } in "
+      + "the receiving transaction. A live Firestore Reorder writer, in the receiving path, that a "
+      + "one-row-per-file census could not see because the same file also reads a purchase order.",
+    occurrences: 1,
+  }),
+  e({
+    path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "PURCHASE_ORDER",
+    classification: "FIRESTORE_RUNTIME_WRITE",
+    consumer: "sets the purchase order status to RECEIVED in the same transaction", occurrences: 1,
+  }),
+  e({
+    path: "functions/src/inventoryReceiving/receivingSourceResolver.ts", object: "PURCHASE_ORDER",
+    classification: "FIRESTORE_RUNTIME_READ",
+    consumer: "resolves a receipt's source purchase order from Firestore. THE CONTINUITY SEAM: a "
+      + "purchase order recorded in PostgreSQL by the governed command is invisible here.",
+    occurrences: 1,
   }),
 
   // ══════════ the Firebase callable authority: DEPLOYED, not dead ══════════
   e({
     path: "functions/src/reorderRequest/reorderCallables.ts", object: "REORDER_REQUEST",
     classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
-    consumer: "createReorderRequest, recordReorderPurchaseOrder and listReorderWarehouseOptions. No "
-      + "repository caller remains -- the client calls the governed PostgreSQL commands -- but all "
-      + "three are still exported from index.ts, so they are deployed and externally invokable. "
-      + "Legacy business authority until the export is removed AND that removal is deployed.",
-    occurrences: 2,
-  }),
-
-  // ══════════ REORDER_REQUEST: what still reaches Firestore at runtime ══════════
-  //
-  // Nothing. The Work Order readiness projection was the last one, and Owner Ruling A retired its
-  // procurement source rather than bridging it: that runtime is Firebase Functions, it has no
-  // PostgreSQL access, and it reports PROCUREMENT_SOURCE_UNAVAILABLE instead of the false NONE a
-  // vanished source would otherwise produce.
-
-  // ══════════ REORDER_REQUEST: names it, reaches nothing ══════════
-  e({
-    path: "field-ops-app-vite/src/domain/constants.js", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "the collection-name constants. Naming a collection is not reaching it.", occurrences: 3,
-  }),
-  e({
-    path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "the Reorder Request metadata definition's collection binding", occurrences: 5,
-  }),
-  e({
-    path: "field-ops-app-vite/src/domain/reporting/reportCatalog.js", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "names the collection in the client report catalog", occurrences: 2,
-  }),
-  e({
-    path: "functions/src/reporting/reportCatalog.ts", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "names the collection in the trusted report catalog", occurrences: 2,
-  }),
-  e({
-    path: "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "the legacy authorization surface census names the collection as evidence", occurrences: 3,
-  }),
-  e({
-    path: "functions/src/access/legacyAuthorizationSurface.ts", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "the same census, server side", occurrences: 3,
-  }),
-  e({
-    path: "functions/src/ownership/ownershipDerivation.ts", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "names the collection in the ownership family map", occurrences: 2,
-  }),
-  e({
-    path: "functions/src/ownership/ownershipMatrix.ts", object: "REORDER_REQUEST", classification: "DEAD",
-    consumer: "names the collection in the ownership matrix", occurrences: 2,
-  }),
-
-  // ══════════ MIGRATION EVIDENCE ══════════
-  e({
-    path: "functions/src/eosOps/migration/reorderFieldParityMatrix.ts", object: "REORDER_REQUEST",
-    classification: "MIGRATION_EVIDENCE", consumer: "the parity matrix names the source collection", occurrences: 1,
-  }),
-  e({
-    path: "functions/src/eosOps/migration/reorderObjectMigrationCopy.ts", object: "REORDER_REQUEST",
-    classification: "MIGRATION_EVIDENCE", consumer: "the COPY executor names the source collection", occurrences: 1,
-  }),
-  e({
-    path: "functions/src/eosOps/migration/assignedToUserIdCensus.ts", object: "REORDER_REQUEST",
-    classification: "MIGRATION_EVIDENCE", consumer: "the assignee census names the collection", occurrences: 1,
-  }),
-  e({
-    path: "functions/src/eosOps/migration/purchasingMigrationMapping.ts", object: "REORDER_REQUEST",
-    classification: "MIGRATION_EVIDENCE", consumer: "the mapping contract names the target column", occurrences: 1,
-  }),
-
-  // ══════════ PURCHASE_ORDER / VOID: a DIFFERENT object, and NOT this cutover ══════════
-  //
-  // Listed because the derivation finds them and because a Firestore Reorder retirement eventually
-  // needs them, but they do not gate THIS activation: the Reorder Request object can become
-  // PostgreSQL-authoritative while the purchase order is still Firestore's, exactly as the
-  // assignment authority shipped before the object did.
-  e({
-    path: "field-ops-app-vite/src/services/operationsQueries.ts", object: "PURCHASE_ORDER",
-    classification: "FIRESTORE_RUNTIME_READ",
-    consumer: "the Procurement panel's purchase-order read. Its REORDER side now comes from the "
-      + "governed PostgreSQL authority; only the purchase order is still Firestore's.",
+    consumer: "createReorderRequest and recordReorderPurchaseOrder write the Reorder Request. No "
+      + "repository caller remains, but both are exported from index.ts and therefore deployed and "
+      + "externally invokable.",
     occurrences: 1,
   }),
   e({
-    path: "functions/src/inventoryReceiving/receivingSourceResolver.ts", object: "PURCHASE_ORDER",
-    classification: "FIRESTORE_RUNTIME_READ", consumer: "resolves a receipt's source purchase order", occurrences: 1,
+    path: "functions/src/reorderRequest/reorderCallables.ts", object: "PURCHASE_ORDER",
+    classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
+    consumer: "recordReorderPurchaseOrder creates the purchase order document", occurrences: 1,
   }),
+
+  // ══════════ the Procurement panel's remaining purchase-order read ══════════
   e({
-    path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "PURCHASE_ORDER",
-    classification: "FIRESTORE_RUNTIME_READ", consumer: "reads the purchase order a receipt is against", occurrences: 2,
+    path: "field-ops-app-vite/src/services/operationsQueries.ts", object: "PURCHASE_ORDER",
+    classification: "FIRESTORE_RUNTIME_READ",
+    consumer: "the Procurement panel's purchase-order read; its Reorder side is governed now", occurrences: 1,
   }),
-  e({
-    path: "functions/src/supplierMaster/reorderPurchaseOrderSupplierMigration.ts", object: "PURCHASE_ORDER",
-    classification: "MIGRATION_EVIDENCE", consumer: "the supplier back-fill's source census", occurrences: 1,
-  }),
-  e({
-    path: "functions/src/supplierMaster/reorderPurchaseOrderSupplierMigrationExecute.ts", object: "PURCHASE_ORDER",
-    classification: "MIGRATION_EVIDENCE", consumer: "the supplier back-fill executor", occurrences: 1,
-  }),
-  e({
-    path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "PURCHASE_ORDER",
-    classification: "DEAD", consumer: "the purchase order metadata definition's collection binding", occurrences: 5,
-  }),
-  e({
-    path: "field-ops-app-vite/src/metadata/definitions/purchaseOrderVoid.js", object: "PURCHASE_ORDER_VOID",
-    classification: "DEAD", consumer: "the void metadata definition's collection binding", occurrences: 2,
-  }),
+
+  // ══════════ MIGRATION EVIDENCE ══════════
+  e({ path: "functions/src/eosOps/migration/reorderFieldParityMatrix.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE", consumer: "the parity matrix names the source collection", occurrences: 1 }),
+  e({ path: "functions/src/eosOps/migration/reorderObjectMigrationCopy.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE", consumer: "the COPY executor names the source collection", occurrences: 1 }),
+  e({ path: "functions/src/eosOps/migration/assignedToUserIdCensus.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE", consumer: "the assignee census names the collection", occurrences: 1 }),
+  e({ path: "functions/src/eosOps/migration/purchasingMigrationMapping.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE", consumer: "the mapping contract names the target column", occurrences: 1 }),
+  e({ path: "functions/src/supplierMaster/reorderPurchaseOrderSupplierMigration.ts", object: "PURCHASE_ORDER",
+    classification: "MIGRATION_EVIDENCE", consumer: "the supplier back-fill's source census", occurrences: 1 }),
+  e({ path: "functions/src/supplierMaster/reorderPurchaseOrderSupplierMigrationExecute.ts", object: "PURCHASE_ORDER",
+    classification: "MIGRATION_EVIDENCE", consumer: "the supplier back-fill executor", occurrences: 1 }),
+
+  // ══════════ names them, reaches nothing ══════════
+  e({ path: "field-ops-app-vite/src/domain/constants.js", object: "REORDER_REQUEST", classification: "DEAD",
+    consumer: "the collection-name constant", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/domain/constants.js", object: "PURCHASE_ORDER", classification: "DEAD",
+    consumer: "the collection-name constant", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/domain/constants.js", object: "PURCHASE_ORDER_VOID", classification: "DEAD",
+    consumer: "the collection-name constant", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "the Reorder Request metadata binding", occurrences: 2 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "its related-object binding", occurrences: 2 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/reorderRequest.js", object: "PURCHASE_ORDER_VOID",
+    classification: "DEAD", consumer: "its related-object binding", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "the purchase order metadata binding", occurrences: 3 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "its related-object binding", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrder.js", object: "PURCHASE_ORDER_VOID",
+    classification: "DEAD", consumer: "its related-object binding", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/metadata/definitions/purchaseOrderVoid.js", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "the void metadata binding's related object", occurrences: 2 }),
+  e({ path: "field-ops-app-vite/src/domain/reporting/reportCatalog.js", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "names the collection in the client report catalog", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/domain/reporting/reportCatalog.js", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "names the collection in the client report catalog", occurrences: 1 }),
+  e({ path: "functions/src/reporting/reportCatalog.ts", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "names the collection in the trusted report catalog", occurrences: 1 }),
+  e({ path: "functions/src/reporting/reportCatalog.ts", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "names the collection in the trusted report catalog", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "the legacy authorization surface census, client side", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "the same census", occurrences: 1 }),
+  e({ path: "field-ops-app-vite/src/access/legacyAuthorizationSurface.ts", object: "PURCHASE_ORDER_VOID",
+    classification: "DEAD", consumer: "the same census", occurrences: 1 }),
+  e({ path: "functions/src/access/legacyAuthorizationSurface.ts", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "the legacy authorization surface census, server side", occurrences: 1 }),
+  e({ path: "functions/src/access/legacyAuthorizationSurface.ts", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "the same census", occurrences: 1 }),
+  e({ path: "functions/src/access/legacyAuthorizationSurface.ts", object: "PURCHASE_ORDER_VOID",
+    classification: "DEAD", consumer: "the same census", occurrences: 1 }),
+  e({ path: "functions/src/ownership/ownershipDerivation.ts", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "names the collection in the ownership family map", occurrences: 1 }),
+  e({ path: "functions/src/ownership/ownershipDerivation.ts", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "names the collection in the ownership family map", occurrences: 1 }),
+  e({ path: "functions/src/ownership/ownershipMatrix.ts", object: "REORDER_REQUEST",
+    classification: "DEAD", consumer: "names the collection in the ownership matrix", occurrences: 1 }),
+  e({ path: "functions/src/ownership/ownershipMatrix.ts", object: "PURCHASE_ORDER",
+    classification: "DEAD", consumer: "names the collection in the ownership matrix", occurrences: 1 }),
 ]);
 
 export interface RuntimeActivationReadiness {

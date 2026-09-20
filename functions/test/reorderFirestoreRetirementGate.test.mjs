@@ -67,10 +67,12 @@ test("the gate is COMPUTED: coverage is met, the runtime cutover is not, and two
 
   // Coverage is MET -- every transition has a command.
   assert.equal(byGate.get("TRANSITION_COVERAGE").state, "MET");
-  // And the RUNTIME gate is MET: every live caller moved. The distinction it exists for remains --
-  // a command existing and a caller using it are different facts -- and it is checked against the
-  // derived census rather than asserted here.
-  assert.equal(byGate.get("RUNTIME_CUTOVER").state, "MET");
+  // The RUNTIME gate is OPEN, and this is exactly the distinction it exists for: a command
+  // existing and a caller using it are different facts. The receiving path still performs the
+  // legacy ORDERED -> RECEIVED write against the Firestore Reorder Request, which a
+  // one-row-per-file census could not see.
+  assert.equal(byGate.get("RUNTIME_CUTOVER").state, "OPEN");
+  assert.match(byGate.get("RUNTIME_CUTOVER").detail, /receiveInventoryStockCommand/);
   // firestore.rules is the only remaining uid consumer, and its comparisons stop mattering exactly
   // when the Rules are retired -- which is the gate below, not this one.
   assert.equal(byGate.get("ASSIGNEE_IDENTITY").state, "MET");

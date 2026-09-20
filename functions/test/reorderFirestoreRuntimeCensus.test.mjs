@@ -30,19 +30,35 @@ const SELF = "functions/src/eosOps/migration/reorderFirestoreRuntimeCensus.ts";
 /** The Reorder Firebase callables. Reaching ANY of these from the client is a legacy consumer. */
 const REORDER_CALLABLES = ["createReorderRequest", "recordReorderPurchaseOrder", "listReorderWarehouseOptions"];
 
+/**
+ * (path, OBJECT) -> occurrences. NOT (path) -> occurrences.
+ *
+ * THE KEY IS THE WHOLE POINT. The previous version keyed by path alone, so a file touching two
+ * collections got ONE row -- and `receiveInventoryStockCommand.ts`, which reads a purchase order
+ * AND writes the Reorder Request, was recorded as a purchase-order read while its live Firestore
+ * Reorder WRITE went unrecorded. Emitting a pair per object makes that impossible to express.
+ */
+const COLLECTION_OBJECT = Object.freeze({
+  reorder_requests: "REORDER_REQUEST",
+  reorder_purchase_orders: "PURCHASE_ORDER",
+  reorder_purchase_order_voids: "PURCHASE_ORDER_VOID",
+});
+
 function derive() {
   const files = [];
   for (const r of ["functions/src", "field-ops-app-vite/src"]) walk(join(REPO, r), files);
   files.push(join(REPO, "firestore.rules"));
-  const TERM = /(eos_ops\.|\$\{SCHEMA\}\.)?\b(reorder_requests|reorder_purchase_orders|reorder_purchase_order_voids)\b/g;
   const found = new Map();
   for (const f of files) {
     const src = strip(readFileSync(f, "utf8"));
-    let n = 0, m;
-    TERM.lastIndex = 0;
-    while ((m = TERM.exec(src))) if (!m[1]) n += 1;
     const path = rel(f);
-    if (n > 0 && path !== SELF) found.set(path, n);
+    if (path === SELF) continue;
+    for (const [collection, object] of Object.entries(COLLECTION_OBJECT)) {
+      const re = new RegExp(`(eos_ops\\.|\\$\\{SCHEMA\\}\\.)?\\b${collection}\\b`, "g");
+      let n = 0, m;
+      while ((m = re.exec(src))) if (!m[1]) n += 1;
+      if (n > 0) found.set(`${path}|${object}`, n);
+    }
   }
   return found;
 }
@@ -85,17 +101,34 @@ function deriveCallableConsumers(injected) {
 }
 
 const derived = derive();
-const byPath = new Map(REORDER_LEGACY_RUNTIME_CENSUS.map((c) => [c.path, c]));
+const byPath = new Map(REORDER_LEGACY_RUNTIME_CENSUS.map((c) => [`${c.path}|${c.object}`, c]));
 
-test("the census and the repository name exactly the same Firestore Reorder consumers", () => {
+test("the census and the repository name exactly the same (file, OBJECT) pairs", () => {
   assert.deepEqual([...byPath.keys()].sort(), [...derived.keys()].sort(),
-    "a consumer appeared or disappeared: classify the new one, or remove the entry whose file no longer reaches the collection");
-  assert.equal(byPath.size, REORDER_LEGACY_RUNTIME_CENSUS.length, "a path is listed twice");
+    "a consumer appeared or disappeared: classify the new one, or remove the entry whose file no longer reaches that collection");
+  assert.equal(byPath.size, REORDER_LEGACY_RUNTIME_CENSUS.length, "a (path, object) pair is listed twice");
+});
+
+test("a file touching two objects has two entries -- the defect this key exists to prevent", () => {
+  // receiveInventoryStockCommand.ts READS a purchase order and WRITES the Reorder Request. Under a
+  // one-row-per-file census the read was recorded and the write vanished, and the activation gate
+  // read ZERO runtime consumers while a live Firestore Reorder writer sat in the receiving path.
+  const receiving = [...byPath.keys()].filter((k) => k.startsWith("functions/src/inventoryReceiving/receiveInventoryStockCommand.ts|"));
+  assert.deepEqual(receiving.sort(), [
+    "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts|PURCHASE_ORDER",
+    "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts|REORDER_REQUEST",
+  ]);
+  const reorderSide = byPath.get("functions/src/inventoryReceiving/receiveInventoryStockCommand.ts|REORDER_REQUEST");
+  assert.equal(reorderSide.classification, "FIRESTORE_RUNTIME_WRITE",
+    "the legacy ORDERED -> RECEIVED transition is a WRITE, and classifying it as a read hid it");
+  // And the claim is checked against the source, not taken on trust.
+  const src = strip(readFileSync(join(REPO, "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts"), "utf8"));
+  assert.match(src, /status:\s*RECEIVED/, "the legacy transition write is no longer present -- reclassify it");
 });
 
 test("every recorded occurrence count is the real one", () => {
-  for (const [path, count] of derived) {
-    assert.equal(byPath.get(path).occurrences, count, `${path} records the wrong occurrence count`);
+  for (const [key, count] of derived) {
+    assert.equal(byPath.get(key).occurrences, count, `${key} records the wrong occurrence count`);
   }
 });
 
@@ -140,7 +173,8 @@ test("the schema qualifier really is what separates PostgreSQL from Firestore", 
     "functions/src/eosOps/purchasingRepository.ts",
     "functions/src/eosOps/reorderAssignmentAuthority.ts",
   ]) {
-    assert.ok(!derived.has(pg), `${pg} is PostgreSQL and must not count as a Firestore consumer`);
+    assert.ok(![...derived.keys()].some((k) => k.startsWith(`${pg}|`)),
+      `${pg} is PostgreSQL and must not count as a Firestore consumer`);
   }
 });
 
@@ -161,12 +195,13 @@ test("the client no longer reaches Firestore for any Reorder Request lifecycle a
     "field-ops-app-vite/src/modules/inventory/PartDetail.jsx",
     "field-ops-app-vite/src/hooks/useReorderWarehouseOptions.js",
   ]) {
-    assert.ok(!derived.has(converted), `${converted} still reaches a Firestore Reorder collection`);
+    assert.ok(![...derived.keys()].some((k) => k.startsWith(`${converted}|`)),
+      `${converted} still reaches a Firestore Reorder collection`);
   }
 });
 
 test("an exported Firebase callable is DEPLOYED legacy authority, never DEAD", () => {
-  const callables = byPath.get("functions/src/reorderRequest/reorderCallables.ts");
+  const callables = byPath.get("functions/src/reorderRequest/reorderCallables.ts|REORDER_REQUEST");
   assert.equal(callables.classification, "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
     "a callable with no repository callers is still deployed and externally invokable; DEAD would be a lie");
   // The claim is checked: it must actually still be exported from the Functions entry point.
@@ -178,22 +213,30 @@ test("an exported Firebase callable is DEPLOYED legacy authority, never DEAD", (
 
 test("THE HARD GATE: activation requires ZERO Reorder runtime consumers of any kind", () => {
   const readiness = reorderRuntimeActivationReadiness();
-  assert.equal(readiness.ready, true, `still blocked by: ${readiness.blockedBy.join(", ")}`);
-  assert.equal(readiness.runtimeConsumerCount, 0);
+  // NOT READY, and the honest reason: the receiving path still writes the Firestore Reorder Request
+  // on an ORDERED -> RECEIVED receipt. The previous census reported ZERO here, which was the whole
+  // defect -- a gate that measures the wrong key reads green over a live writer.
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.blockedBy,
+    ["functions/src/inventoryReceiving/receiveInventoryStockCommand.ts"]);
+  assert.equal(readiness.runtimeConsumerCount, 1);
 
-  // ACTIVATION IS NOT RETIREMENT. The deployed callables still block the Firebase retirement, which
-  // is a later step, and the two must not be read as one.
+  // ACTIVATION IS NOT RETIREMENT. The deployed callables additionally block the Firebase
+  // retirement, which is a later step, and the two must not be read as one.
   assert.equal(readiness.firebaseRetired, false);
-  assert.deepEqual(readiness.firebaseRetirementBlockedBy,
-    ["functions/src/reorderRequest/reorderCallables.ts"]);
+  assert.ok(readiness.firebaseRetirementBlockedBy.includes("functions/src/reorderRequest/reorderCallables.ts"));
 
   // The purchase-order surface is REPORTED and deliberately outside this gate.
   assert.ok(readiness.purchaseOrderRuntimeConsumers.length > 0,
     "the purchase-order object's consumers must be reported, never zero by omission");
 
-  // The gate is DERIVED, not asserted: ONE reintroduced consumer of any blocking kind closes it.
+  // The gate is DERIVED, not asserted: with the blocking entries removed it opens, and ONE
+  // reintroduced consumer of any blocking kind closes it again.
+  const cleared = REORDER_LEGACY_RUNTIME_CENSUS.filter((c) =>
+    !(c.object === "REORDER_REQUEST" && ACTIVATION_BLOCKING.includes(c.classification)));
+  assert.equal(reorderRuntimeActivationReadiness(cleared).ready, true);
   for (const classification of ACTIVATION_BLOCKING) {
-    assert.equal(reorderRuntimeActivationReadiness([...REORDER_LEGACY_RUNTIME_CENSUS, {
+    assert.equal(reorderRuntimeActivationReadiness([...cleared, {
       path: "x/live.js", object: "REORDER_REQUEST", classification, consumer: "x", occurrences: 1,
     }]).ready, false, `a single ${classification} must hold activation shut on its own`);
   }
