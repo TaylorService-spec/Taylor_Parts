@@ -73,8 +73,16 @@ CREATE TABLE work_orders (
     priority                 SMALLINT NOT NULL,
     severity                 ops_work_order_severity,
 
-    -- WHO and WHERE. The customer is a governed Account; the location is opaque, as migration 005
-    -- treats location ids, because Location authority is not owned by this schema.
+    -- WHO and WHERE. BOTH OPAQUE, carried as data and never joined as identity -- the same
+    -- treatment migration 005 gives `location_id` and migration 008 gives `warehouse_id`, and for
+    -- the same reason: CRM and Commercial authority are not owned by this schema.
+    --
+    -- This is a DELIBERATE reversal. These began as cross-schema foreign keys, and the cost showed
+    -- up immediately: a foreign key into eos_commercial.sales_orders made that domain's own test
+    -- suite unable to TRUNCATE its tables, and naming the referent pulled the whole Work Order
+    -- family into an unrelated domain's cleanup. Existence is enforced where #1961 ruling 3 puts
+    -- the equivalent warehouse/company check -- at the creation and import boundary, validated
+    -- once -- not by a constraint that couples two schemas' lifecycles together forever.
     customer_id              TEXT NOT NULL,
     location_id              TEXT NOT NULL,
     equipment_id             TEXT,
@@ -126,12 +134,13 @@ CREATE TABLE work_orders (
     CONSTRAINT work_orders_native_actor_present CHECK (
         (provenance = 'NATIVE' AND created_by_principal_id IS NOT NULL)
         OR (provenance = 'MIGRATED')),
-    CONSTRAINT work_orders_customer_fk FOREIGN KEY (tenant_id, customer_id)
-        REFERENCES eos_crm.accounts (tenant_id, id),
+    CONSTRAINT work_orders_customer_is_stated CHECK (btrim(customer_id) <> ''),
+    CONSTRAINT work_orders_location_is_stated CHECK (btrim(location_id) <> ''),
+    -- Equipment IS foreign-keyed: it lives in eos_ops, so this couples nothing across a domain
+    -- boundary, and an installed machine a Work Order names must really be one this tenant has.
     CONSTRAINT work_orders_equipment_fk FOREIGN KEY (tenant_id, equipment_id)
         REFERENCES eos_ops.equipment (tenant_id, id),
-    CONSTRAINT work_orders_sales_order_fk FOREIGN KEY (tenant_id, sales_order_id)
-        REFERENCES eos_commercial.sales_orders (tenant_id, id),
+    -- eos_policy IS referenced by every schema: identity is the one authority they all share.
     CONSTRAINT work_orders_created_by_member_fk FOREIGN KEY (tenant_id, created_by_principal_id)
         REFERENCES eos_policy.tenant_memberships (tenant_id, principal_id),
     CONSTRAINT work_orders_updated_by_member_fk FOREIGN KEY (tenant_id, updated_by_principal_id)
@@ -298,8 +307,8 @@ CREATE TABLE work_order_sales_order_lines (
     PRIMARY KEY (tenant_id, work_order_id, sales_order_id, sales_order_line_id),
     CONSTRAINT wo_so_line_work_order_fk FOREIGN KEY (tenant_id, work_order_id)
         REFERENCES work_orders (tenant_id, id),
-    CONSTRAINT wo_so_line_sales_order_fk FOREIGN KEY (tenant_id, sales_order_id)
-        REFERENCES eos_commercial.sales_orders (tenant_id, id)
+    -- Opaque for the same reason as the parent's sales_order_id, and checked at the same boundary.
+    CONSTRAINT wo_so_line_sales_order_stated CHECK (btrim(sales_order_id) <> '')
 );
 
 -- Down Migration

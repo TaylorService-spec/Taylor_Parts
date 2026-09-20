@@ -79,6 +79,28 @@ test("the governed Work Order authority provides what the parity matrix sends it
       assert.match(byName.get("wo_assignment_work_order_fk"), /work_orders/);
     });
 
+    await t.test("cross-DOMAIN references are opaque; only same-schema and identity are foreign keys", async () => {
+      // CRM and Commercial authority are not owned by eos_ops, the same way Warehouse authority is
+      // not (migrations 005 and 008). A foreign key into eos_commercial.sales_orders made that
+      // domain's own suite unable to TRUNCATE its tables, and naming the referent dragged the whole
+      // Work Order family into an unrelated domain's cleanup. Existence is checked at the creation
+      // and import boundary instead -- where #1961 ruling 3 puts the equivalent warehouse check.
+      const { rows } = await c.query(
+        `SELECT confrelid::regclass::text AS refs FROM pg_constraint
+          WHERE conrelid = 'eos_ops.work_orders'::regclass AND contype = 'f'`);
+      const refs = rows.map((r) => r.refs).sort();
+      assert.ok(!refs.some((r) => /sales_orders|accounts/.test(r)),
+        "a cross-domain foreign key couples two schemas' lifecycles together forever");
+      // Equipment is eos_ops -- same schema, no cross-domain coupling. Identity is eos_policy,
+      // which every schema references because it is the one authority they all share.
+      assert.ok(refs.some((r) => /equipment/.test(r)));
+      assert.ok(refs.some((r) => /tenant_memberships/.test(r)));
+      // And the opaque references still have to say something.
+      for (const name of ["work_orders_customer_is_stated", "work_orders_location_is_stated"]) {
+        assert.equal((await c.query(`SELECT 1 FROM pg_constraint WHERE conname = $1`, [name])).rows.length, 1, name);
+      }
+    });
+
     await t.test("no column anywhere in the Work Order authority can hold a uid or a technician id", async () => {
       const { rows } = await c.query(
         `SELECT table_name, column_name FROM information_schema.columns

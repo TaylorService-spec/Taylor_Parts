@@ -120,7 +120,7 @@ export const WORK_ORDER_FIELD_PARITY_MATRIX: readonly WorkOrderFieldParity[] = O
   // ── the objects this Work Order points at ──
   f({
     legacyField: "customerId", disposition: "GOVERNED_WORK_ORDER_FACT",
-    targetAuthority: "eos_ops.work_orders.customer_id -> eos_crm.accounts", copied: true,
+    targetAuthority: "eos_ops.work_orders.customer_id (OPAQUE -- CRM authority is not owned by this schema; existence checked at the creation/import boundary)", copied: true,
     identityConversion: "NONE", schemaParityCorrection: true,
     blocker: "names no Account in this tenant. NEVER inferred from the location or the equipment.",
   }),
@@ -138,7 +138,7 @@ export const WORK_ORDER_FIELD_PARITY_MATRIX: readonly WorkOrderFieldParity[] = O
   }),
   f({
     legacyField: "salesOrderId", disposition: "GOVERNED_OTHER_OBJECT_FACT",
-    targetAuthority: "eos_ops.work_orders.sales_order_id -> eos_commercial.sales_orders (NULLABLE)",
+    targetAuthority: "eos_ops.work_orders.sales_order_id (OPAQUE, NULLABLE -- Commercial authority is not owned by this schema)",
     copied: true, identityConversion: "NONE", schemaParityCorrection: true,
     blocker: "present but names no Sales Order in this tenant",
   }),
