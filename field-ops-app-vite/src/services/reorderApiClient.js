@@ -31,6 +31,8 @@ export const REORDER_ROUTE = "/operations/inventory";
 export const REORDER_READ_OPERATIONS = Object.freeze([
   "readReorderQueue",
   "readMyAssignedReorders",
+  "readReorderRequest",
+  "readMyReorderHistory",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -42,6 +44,7 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
   "postPurchasingUpdate",
   "markReorderReceived",
   "cancelReorderRequest",
+  "recordReorderPurchaseOrder",
   "voidReorderPurchaseOrder",
 ]);
 
@@ -49,6 +52,7 @@ export const REORDER_COMMAND_OPERATIONS = Object.freeze([
 export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "readReorderQueue",
   "readMyAssignedReorders",
+  "readMyReorderHistory",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);
@@ -97,6 +101,11 @@ export function reorderFailureCategory(status, serverCode) {
  *
  * Returns `{ ok: true, result, operation }` or `{ ok: false, code, reason, status, message }`.
  * It never throws. `options`: baseUrl, getIdToken, tenantId, signal, fetchImpl.
+ *
+ * @param {string} operation
+ * @param {Record<string, unknown>} [input]
+ * @param {Record<string, unknown>} [options]
+ * @returns {Promise<{ok: true, operation: string, result: unknown} | {ok: false, code: string, message: string, reason: string|null, status: number|null}>}
  */
 export async function callReorderApi(operation, input = undefined, options = {}) {
   if (!isReorderOperation(operation)) {

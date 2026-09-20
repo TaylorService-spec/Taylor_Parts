@@ -20,14 +20,15 @@ test("both Operations lists are closed, and name exactly what the transport serv
   // and reading your own assigned work are different questions with different capabilities, so they
   // are different operations rather than one operation with a flag.
   assert.deepEqual(OPERATIONS_READ_OPERATIONS,
-    ["resolveMyCapabilities", "readReorderQueue", "readMyAssignedReorders"]);
+    ["resolveMyCapabilities", "readReorderQueue", "readMyAssignedReorders",
+      "readReorderRequest", "readMyReorderHistory"]);
   // The Reorder lifecycle. Composing a route activates nothing: each refuses unless the caller holds
   // the capability the Role catalog already governs, and the three assignee-scoped commands refuse
   // again unless the caller resolves to the assigned Employee.
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
-    "voidReorderPurchaseOrder",
+    "recordReorderPurchaseOrder", "voidReorderPurchaseOrder",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);

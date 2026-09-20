@@ -1,5 +1,4 @@
 import { doc, runTransaction } from "firebase/firestore";
-import { submitRecordReorderPurchaseOrder } from "../services/reorderCallableClient.js";
 import { db, auth } from "../firebase/firebase";
 import { fromMajorString } from "./money.js";
 import { isWriteBlocked } from "../config/env";
@@ -130,7 +129,11 @@ export function recordPurchaseOrder(
   //
   // partId is deliberately NOT sent. The server reads it from the request inside the transaction,
   // so the PO cannot be recorded against a part the request never named.
-  return submitRecordReorderPurchaseOrder({
+  // THE GOVERNED POSTGRESQL COMMAND. The Firebase callable performed both writes in one Admin-SDK
+  // transaction; recordReorderPurchaseOrder performs the same two in one PostgreSQL transaction, so
+  // the atomicity did not weaken -- the authority moved. The callable is not called as a fallback:
+  // two write authorities for one command is what this cutover exists to end.
+  return reorderApiClient.call("recordReorderPurchaseOrder", {
     reorderRequestId,
     supplierName: trimmedSupplier,
     externalPoNumber: trimmedPoNumber,

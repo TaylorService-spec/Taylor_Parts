@@ -38,6 +38,8 @@ export const REORDER_READ_QUEUE = "reorder.request.read.queue";
 export const REORDER_READ_OWN = "reorder.request.read.own";
 /** Already registered by migration 1760140800000's sibling catalog; a void is the PO's business. */
 export const REORDER_PO_VOID = "reorder.purchaseOrder.void";
+/** Also already in the Role catalog; recording the PO is what moves a Reorder to ORDERED. */
+export const REORDER_RECORD_PO = "reorder.request.recordPurchaseOrder";
 
 /** Pre-ORDERED statuses a Reorder may be cancelled from. ORDERED is VOIDED's business, not this one. */
 export const CANCELLABLE_STATUSES = Object.freeze([
@@ -456,6 +458,76 @@ export async function cancelReorderRequest(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Record the purchase order
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Record the purchase order, which is what moves a Reorder to ORDERED.
+ *
+ * This was a Firebase callable performing both writes in one Admin-SDK transaction. The atomicity
+ * has not weakened -- purchasingRepository.recordPurchaseOrder does the same two writes in one
+ * PostgreSQL transaction -- but the authority has moved, and the callable is no longer part of it.
+ *
+ * NOT assignee-scoped: the legacy did not restrict it to the assignee either, and inventing a
+ * restriction on the way across narrows access as surely as dropping one widens it.
+ *
+ * partId is deliberately not an input. The repository reads it from the request inside the
+ * transaction, so a purchase order cannot be recorded against a part the request never named.
+ */
+export async function recordReorderPurchaseOrder(
+  deps: { readonly pool: Pool; readonly recordPurchaseOrder?: typeof import("./purchasingRepository.js").recordPurchaseOrder },
+  actor: ReorderActor,
+  input: Record<string, unknown>,
+): Promise<{ readonly reorderRequestId: string; readonly status: string; readonly purchaseOrderId: string }> {
+  requireActor(actor, REORDER_RECORD_PO);
+  const i = acceptOnly(input, ["reorderRequestId", "supplierName", "externalPoNumber", "orderedQuantity",
+    "orderedDate", "expectedArrivalDate", "unitPriceMinor", "currency"]);
+  if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
+  const supplierName = optionalText(i.supplierName, "supplierName", 200);
+  if (supplierName === null) refuse("SUPPLIER_REQUIRED", "INVALID_INPUT", "supplierName is required");
+  const externalPoNumber = optionalText(i.externalPoNumber, "externalPoNumber", 100);
+  if (externalPoNumber === null) refuse("PO_NUMBER_REQUIRED", "INVALID_INPUT", "externalPoNumber is required");
+  if (!Number.isSafeInteger(i.orderedQuantity) || (i.orderedQuantity as number) <= 0) {
+    refuse("QUANTITY_INVALID", "INVALID_INPUT", "orderedQuantity must be a whole number greater than zero");
+  }
+  for (const [field, value] of [["orderedDate", i.orderedDate], ["expectedArrivalDate", i.expectedArrivalDate]] as const) {
+    if (value === undefined || value === null) {
+      if (field === "orderedDate") refuse("ORDERED_DATE_REQUIRED", "INVALID_INPUT", "orderedDate is required");
+      continue;
+    }
+    // An ISO calendar day, never a locale string handed to a Date constructor.
+    if (typeof value !== "string" || !ISO_DAY.test(value)) {
+      refuse("DATE_INVALID", "INVALID_INPUT", `${field} must be an ISO calendar day`);
+    }
+  }
+  // An amount without a currency, or a currency without an amount, is not a price.
+  const hasAmount = i.unitPriceMinor !== undefined && i.unitPriceMinor !== null;
+  const hasCurrency = i.currency !== undefined && i.currency !== null;
+  if (hasAmount !== hasCurrency) {
+    refuse("PRICE_INVALID", "INVALID_INPUT", "a price states both an amount and its currency, or neither");
+  }
+  if (hasAmount && !Number.isSafeInteger(i.unitPriceMinor)) {
+    refuse("PRICE_INVALID", "INVALID_INPUT", "unitPriceMinor must be a whole number of minor units");
+  }
+  if (hasCurrency && !(typeof i.currency === "string" && /^[A-Z]{3}$/.test(i.currency))) {
+    refuse("PRICE_INVALID", "INVALID_INPUT", "currency must be a three-letter code");
+  }
+
+  const run = deps.recordPurchaseOrder ?? (await import("./purchasingRepository.js")).recordPurchaseOrder;
+  const record = await run(deps.pool, actor.tenantId, actor.principalId, i.reorderRequestId as string, {
+    supplierName: supplierName as string, externalPoNumber: externalPoNumber as string,
+    orderedQuantity: i.orderedQuantity as number,
+    orderedDate: i.orderedDate as string,
+    expectedArrivalDate: (i.expectedArrivalDate as string | null) ?? null,
+    unitPriceMinor: hasAmount ? (i.unitPriceMinor as number) : null,
+    currency: hasCurrency ? (i.currency as string) : null,
+  });
+  // The purchase order's identity IS the request's (ruling R-16); it is returned rather than
+  // restated so no caller can come to believe there are two ids.
+  return { reorderRequestId: i.reorderRequestId as string, status: "ORDERED", purchaseOrderId: record.purchaseOrderId };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Void the purchase order
 // ---------------------------------------------------------------------------------------------
 
@@ -509,12 +581,43 @@ export async function voidReorderPurchaseOrder(
 // Reads
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A governed Reorder, as the screens read it.
+ *
+ * This is the whole business record, not a thin queue projection: the screens render urgency,
+ * review notes, purchasing progress and the cancellation reason, and a read that answered less
+ * would send them back to Firestore for the rest -- which is the dual-read this cutover exists to
+ * prevent.
+ *
+ * `id` is present ALONGSIDE `reorderRequestId` on purpose. The client has always keyed a Reorder by
+ * `.id`, and renaming that in the same change that moves the authority would mix a cosmetic churn
+ * into a migration, making a reviewer check every render site for a reason unrelated to identity.
+ */
 export interface ReorderQueueItem {
+  readonly id: string;
   readonly reorderRequestId: string;
   readonly partId: string;
   readonly warehouseId: string;
   readonly status: string;
-  readonly requestedQuantity: number;
+  readonly requestedQty: number;
+  readonly recommendedQty: number | null;
+  readonly recommendationStatus: string | null;
+  readonly quantitySource: string | null;
+  readonly urgency: string | null;
+  readonly workOrderId: string | null;
+  readonly reorderRequestNumber: string | null;
+  readonly createdAt: string | null;
+  readonly reviewDecision: string | null;
+  readonly reviewNotes: string | null;
+  readonly reviewedAt: string | null;
+  readonly purchasingStartedAt: string | null;
+  readonly purchasingNotes: string | null;
+  readonly vendorContacted: boolean | null;
+  readonly expectedAvailabilityDate: string | null;
+  readonly lastPurchasingUpdateAt: string | null;
+  readonly cancelledAt: string | null;
+  readonly cancellationReason: string | null;
+  readonly receivedAt: string | null;
   readonly assignedEmployeeId: string | null;
   readonly currentOwner: string | null;
   /**
@@ -529,19 +632,52 @@ export interface ReorderQueueItem {
 
 const QUEUE_SELECT = `
   SELECT r.id, r.part_id, r.warehouse_id, r.status::text AS status, r.requested_quantity,
-         a.assigned_employee_id
+         r.recommended_quantity, r.recommendation_status, r.quantity_source, r.urgency,
+         r.work_order_id, r.reorder_request_number, r.created_at,
+         r.review_decision, r.review_notes, r.reviewed_at,
+         r.purchasing_started_at, r.purchasing_notes, r.vendor_contacted,
+         r.expected_availability_date, r.last_purchasing_update_at,
+         r.cancelled_at, r.cancellation_reason, r.received_at,
+         a.assigned_employee_id, a.assigned_by_principal_id
     FROM eos_ops.reorder_requests r
     LEFT JOIN eos_ops.reorder_request_assignments a
       ON a.tenant_id = r.tenant_id AND a.reorder_request_id = r.id AND a.effective_to IS NULL`;
 
+const iso = (v: unknown): string | null =>
+  v instanceof Date ? v.toISOString() : (v === null || v === undefined ? null : String(v));
+/** A DATE column, kept as the calendar day it is -- never widened into an instant with a timezone. */
+const day = (v: unknown): string | null =>
+  v instanceof Date ? v.toISOString().slice(0, 10) : (v === null || v === undefined ? null : String(v));
+
 const toItem = (
   r: Record<string, unknown>, currentOwner: string | null, callerEmployeeId: string | null,
 ): ReorderQueueItem => Object.freeze({
+  id: r.id as string,
   reorderRequestId: r.id as string,
   partId: r.part_id as string,
   warehouseId: r.warehouse_id as string,
   status: r.status as string,
-  requestedQuantity: Number(r.requested_quantity),
+  requestedQty: Number(r.requested_quantity),
+  recommendedQty: r.recommended_quantity === null || r.recommended_quantity === undefined
+    ? null : Number(r.recommended_quantity),
+  recommendationStatus: (r.recommendation_status as string | null) ?? null,
+  quantitySource: (r.quantity_source as string | null) ?? null,
+  urgency: (r.urgency as string | null) ?? null,
+  workOrderId: (r.work_order_id as string | null) ?? null,
+  reorderRequestNumber: (r.reorder_request_number as string | null) ?? null,
+  createdAt: iso(r.created_at),
+  reviewDecision: (r.review_decision as string | null) ?? null,
+  reviewNotes: (r.review_notes as string | null) ?? null,
+  reviewedAt: iso(r.reviewed_at),
+  purchasingStartedAt: iso(r.purchasing_started_at),
+  purchasingNotes: (r.purchasing_notes as string | null) ?? null,
+  vendorContacted: r.vendor_contacted === null || r.vendor_contacted === undefined
+    ? null : Boolean(r.vendor_contacted),
+  expectedAvailabilityDate: day(r.expected_availability_date),
+  lastPurchasingUpdateAt: iso(r.last_purchasing_update_at),
+  cancelledAt: iso(r.cancelled_at),
+  cancellationReason: (r.cancellation_reason as string | null) ?? null,
+  receivedAt: iso(r.received_at),
   assignedEmployeeId: (r.assigned_employee_id as string | null) ?? null,
   currentOwner,
   // Employee compared to Employee. A null caller Employee (an unlinked Principal) is never the
@@ -562,13 +698,101 @@ async function callerEmployee(pool: Pool, tenantId: string, principalId: string)
   return rows.length === 1 ? (rows[0].employee_id as string) : null;
 }
 
-/** The whole queue. Requires the queue capability, which is a different question from "my work". */
+/**
+ * The queue. Requires the queue capability, which is a different question from "my work".
+ *
+ * The filters replace the Firestore `where()` clauses the client used to build for itself --
+ * by status, by several statuses, and by part. They NARROW a read the caller may already perform,
+ * so none of them is an authorization decision; the capability above is.
+ */
 export async function readReorderQueue(
+  deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown> = {},
+): Promise<readonly ReorderQueueItem[]> {
+  requireActor(actor, REORDER_READ_QUEUE);
+  const i = acceptOnly(input, ["statuses", "partId", "limit", "beforeCreatedAt", "beforeId"]);
+
+  let statuses: string[] | null = null;
+  if (i.statuses !== undefined && i.statuses !== null) {
+    if (!Array.isArray(i.statuses) || i.statuses.some((x) => !ID_SHAPE(x))) {
+      refuse("STATUSES_INVALID", "INVALID_INPUT", "statuses must be an array of status names");
+    }
+    statuses = i.statuses as string[];
+  }
+  if (i.partId !== undefined && i.partId !== null && !ID_SHAPE(i.partId)) {
+    refuse("PART_ID_INVALID", "INVALID_INPUT", "partId must be a governed Part id");
+  }
+  const limit = i.limit === undefined || i.limit === null ? null : i.limit;
+  if (limit !== null && (!Number.isSafeInteger(limit) || (limit as number) <= 0 || (limit as number) > 500)) {
+    refuse("LIMIT_INVALID", "INVALID_INPUT", "limit must be a whole number between 1 and 500");
+  }
+  // A KEYSET cursor on the exact sort key, not an offset. Offset paging silently repeats or skips
+  // rows when the underlying set changes between pages, and a "Load More" that quietly drops a
+  // Reorder is worse than one that refuses.
+  const beforeCreatedAt = i.beforeCreatedAt ?? null;
+  const beforeId = i.beforeId ?? null;
+  if ((beforeCreatedAt === null) !== (beforeId === null)) {
+    refuse("CURSOR_INVALID", "INVALID_INPUT", "a cursor states both beforeCreatedAt and beforeId, or neither");
+  }
+  if (beforeCreatedAt !== null && (typeof beforeCreatedAt !== "string" || Number.isNaN(Date.parse(beforeCreatedAt)))) {
+    refuse("CURSOR_INVALID", "INVALID_INPUT", "beforeCreatedAt must be an ISO instant");
+  }
+  if (beforeId !== null && !ID_SHAPE(beforeId)) {
+    refuse("CURSOR_INVALID", "INVALID_INPUT", "beforeId must be a Reorder Request id");
+  }
+
+  const [{ rows }, mine] = await Promise.all([
+    deps.pool.query(
+      `${QUEUE_SELECT}
+        WHERE r.tenant_id = $1
+          AND ($2::text[] IS NULL OR r.status::text = ANY($2::text[]))
+          AND ($3::text IS NULL OR r.part_id = $3)
+          AND ($5::timestamptz IS NULL
+               OR (r.created_at, r.id) < ($5::timestamptz, $6::text))
+        ORDER BY r.created_at DESC, r.id DESC
+        LIMIT COALESCE($4::int, 500)`,
+      [actor.tenantId, statuses, i.partId ?? null, limit, beforeCreatedAt, beforeId]),
+    callerEmployee(deps.pool, actor.tenantId, actor.principalId),
+  ]);
+  return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));
+}
+
+/** One Reorder Request, by id. Same capability as the queue it is a row of. */
+export async function readReorderRequest(
+  deps: { readonly pool: Pool }, actor: ReorderActor, input: Record<string, unknown>,
+): Promise<ReorderQueueItem | null> {
+  requireActor(actor, REORDER_READ_QUEUE);
+  const i = acceptOnly(input, ["reorderRequestId"]);
+  if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
+  const [{ rows }, mine] = await Promise.all([
+    deps.pool.query(`${QUEUE_SELECT} WHERE r.tenant_id = $1 AND r.id = $2`, [actor.tenantId, i.reorderRequestId]),
+    callerEmployee(deps.pool, actor.tenantId, actor.principalId),
+  ]);
+  const row = rows[0];
+  return row ? toItem(row, deriveReorderCurrentOwner(String(row.status)), mine) : null;
+}
+
+/**
+ * "Requests I personally reviewed or assigned."
+ *
+ * ANOTHER UID SEAM, CLOSED THE SAME WAY. The legacy read was two Firestore queries,
+ * `where("reviewedBy","==",uid)` and `where("assignedBy","==",uid)`, so a caller named the identity
+ * whose history it wanted. Here the caller names nothing: the scope is the caller's own Principal.
+ *
+ * It requires the QUEUE capability rather than read.own, and that is deliberate -- a holder of
+ * read.queue may already read every one of these rows, so narrowing to their own actions grants
+ * nothing new. Reusing read.own would have stretched "assigned to me" to mean "acted on by me".
+ */
+export async function readMyReorderHistory(
   deps: { readonly pool: Pool }, actor: ReorderActor,
 ): Promise<readonly ReorderQueueItem[]> {
   requireActor(actor, REORDER_READ_QUEUE);
   const [{ rows }, mine] = await Promise.all([
-    deps.pool.query(`${QUEUE_SELECT} WHERE r.tenant_id = $1 ORDER BY r.created_at DESC, r.id`, [actor.tenantId]),
+    deps.pool.query(
+      `${QUEUE_SELECT}
+        WHERE r.tenant_id = $1
+          AND (r.reviewed_by_principal_id = $2 OR a.assigned_by_principal_id = $2)
+        ORDER BY r.created_at DESC, r.id`,
+      [actor.tenantId, actor.principalId]),
     callerEmployee(deps.pool, actor.tenantId, actor.principalId),
   ]);
   return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));

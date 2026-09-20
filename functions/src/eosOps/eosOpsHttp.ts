@@ -21,7 +21,8 @@ import { resolveOperationalContext } from "./capabilityAuthority";
 import {
   ReorderLifecycleError, createGovernedReorderRequest, reviewReorderRequest,
   startPurchasingOnReorder, postPurchasingUpdate, markReorderReceived, cancelReorderRequest,
-  readReorderQueue, readMyAssignedReorders, voidReorderPurchaseOrder, type ReorderActor,
+  readReorderQueue, readMyAssignedReorders, readReorderRequest, readMyReorderHistory,
+  recordReorderPurchaseOrder, voidReorderPurchaseOrder, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -48,6 +49,8 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   // they are different capabilities and different operations.
   "readReorderQueue",
   "readMyAssignedReorders",
+  "readReorderRequest",
+  "readMyReorderHistory",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -66,6 +69,7 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "postPurchasingUpdate",
   "markReorderReceived",
   "cancelReorderRequest",
+  "recordReorderPurchaseOrder",
   "voidReorderPurchaseOrder",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
@@ -155,7 +159,15 @@ export async function executeOperation(
       }
       case "readReorderQueue": {
         const { actor, pool } = await reorderActor();
-        return ok(await readReorderQueue({ pool }, actor));
+        return ok(await readReorderQueue({ pool }, actor, request.input ?? {}));
+      }
+      case "readReorderRequest": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "readMyReorderHistory": {
+        const { actor, pool } = await reorderActor();
+        return ok(await readMyReorderHistory({ pool }, actor));
       }
       case "readMyAssignedReorders": {
         const { actor, pool } = await reorderActor();
@@ -188,6 +200,10 @@ export async function executeOperation(
       case "cancelReorderRequest": {
         const { actor, pool } = await reorderActor();
         return ok(await cancelReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "recordReorderPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await recordReorderPurchaseOrder({ pool }, actor, request.input ?? {}));
       }
       case "voidReorderPurchaseOrder": {
         const { actor, pool } = await reorderActor();
