@@ -7,7 +7,7 @@ import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
   useReorderRequests,
   useReorderRequestsByStatus,
-  useReorderRequestsAssignedTo,
+  useMyAssignedReorderRequests,
   useReorderRequestsByStatuses,
   useReorderRequestsHistory,
   useReorderRequestById,
@@ -449,12 +449,12 @@ export default function PartsList({ accessVersion, writeDeps } = {}) {
   const { data: partsManagerQueue, loading: partsManagerLoading, error: partsManagerError } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
   );
-  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading, error: partsAssociateWaitingError } = useMyAssignedReorderRequests(
+    // NO uid. The server scopes this to the caller's own Employee through the governed assignment;
+    // the browser no longer states whose work it is asking for.
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
   );
-  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading, error: partsAssociateInProgressError } = useMyAssignedReorderRequests(
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
   const {

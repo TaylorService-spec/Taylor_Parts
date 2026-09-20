@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter, where } from "firebase/firestore";
-import { db } from "../firebase/firebase";
-import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
+import { reorderApiClient } from "../services/reorderApiClient.js";
+import { REORDER_REQUEST_STATUS } from "../domain/constants";
 
 // Bug fix -- Reorder Request notifications/queues (Notification Panel,
 // Parts Manager Queue, Parts Associate Queue, PartDetail.jsx) only
@@ -35,7 +34,9 @@ import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/c
 // Writes still go exclusively through domain/inventoryReorderRequests.js
 // (createReorderRequest/reviewReorderRequest/assignReorderRequest/
 // startPurchasing) -- nothing here writes, only reads.
-const reorderRequestsRef = collection(db, REORDER_REQUESTS_COLLECTION);
+// THE FIRESTORE COLLECTION HANDLE IS GONE, and so is every import of firebase/firestore in this
+// file. Each hook below reads the governed PostgreSQL authority instead, with no fallback: leaving
+// the handle here would keep a second read path one line away from being used again.
 
 function toDocs(snap) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -66,68 +67,108 @@ export function useReorderRequests(enabled = true) {
 // the Parts Manager Queue (READY_FOR_PARTS_MANAGER), the Purchasing
 // Started notification (PURCHASING_IN_PROGRESS), and their
 // Notification Panel sections, without a second read implementation.
-export function useReorderRequestsByStatus(status, enabled = true) {
+// ════════════════════ ONE GOVERNED READ SEAM ════════════════════
+//
+// Every hook below asked Firestore directly. They now ask the governed PostgreSQL authority through
+// services/reorderApiClient.js, and there is NO Firestore fallback in any of them: a refused or
+// failed read is returned as a value the screen renders, never retried against another source.
+//
+// NOT LIVE SUBSCRIPTIONS ANY MORE. onSnapshot is gone with the Firestore reads, so these fetch on
+// their inputs changing rather than streaming. The screens already render loading and error states,
+// and a queue that lags a few seconds is a far smaller problem than a queue whose authority
+// disagrees with the one the writes go to.
+function useGovernedReorderRead(operation, input, enabled, deps, select) {
+  // The client is an INJECTION SEAM, not reactive state: an inline `{ client }` object would hand
+  // this a new identity every render and the effect would re-read in a loop.
+  const clientRef = useRef(deps?.client ?? reorderApiClient);
+  clientRef.current = deps?.client ?? reorderApiClient;
+  const selectRef = useRef(select);
+  selectRef.current = select;
+  const [state, setState] = useState({ data: select ? select([]) : [], loading: enabled, error: null });
+  // Inputs are compared by VALUE: callers build `{ statuses: [...] }` inline, so comparing by
+  // identity would re-read forever.
+  const inputKey = JSON.stringify(input ?? null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: null });
+      return undefined;
+    }
+    let cancelled = false;
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    clientRef.current.call(operation, input ?? undefined)
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          // The server's OWN reason is preserved where it gave one: "you hold no capability" and
+          // "the service is unreachable" are different answers and screens render them differently.
+          setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: res.reason ?? res.code });
+          return;
+        }
+        const rows = Array.isArray(res.result) ? res.result : (res.result ? [res.result] : []);
+        setState({ data: selectRef.current ? selectRef.current(rows) : rows, loading: false, error: null });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ data: selectRef.current ? selectRef.current([]) : [], loading: false, error: "unknown" });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- input is compared by value via inputKey
+  }, [operation, inputKey, enabled]);
+
+  return state;
+}
+
+export function useReorderRequestsByStatus(status, enabled = true, deps = {}) {
+  return useGovernedReorderRead("readReorderQueue", { statuses: [status] }, enabled && !!status, deps);
+}
+
+// ════════════════════ "MY ASSIGNED WORK", AFTER THE REORDER DOMAIN CUTOVER ════════════════════
+//
+// This was `where("assignedToUserId", "==", userId)` -- a Firestore query scoped by a FIREBASE UID.
+// A uid is not an Employee, so that filter was only ever right by coincidence of provisioning, and
+// it could not be right at all for an Employee whose login was re-provisioned.
+//
+// It now asks the governed PostgreSQL authority instead. The server resolves the CALLER to an
+// Employee through an active employee_principal_link and scopes the read by the governed assignment;
+// the browser no longer states, or knows, whose work it is asking for. There is deliberately no
+// userId parameter: a caller that could name someone else's work is a caller that could read it.
+//
+// A Principal with no active Employee link gets an empty list, which is the honest answer rather
+// than an error -- an unlinked Principal is not an Employee and has no assigned work.
+//
+// NOT A LIVE SUBSCRIPTION. The Firestore onSnapshot listener is gone with the Firestore read; this
+// fetches once per (status, enabled) change. The screens using it already render a loading and an
+// error state, and a stale queue is a smaller problem than a queue scoped by the wrong identity.
+export function useMyAssignedReorderRequests(status, enabled = true, deps = {}) {
+  // The client is an INJECTION SEAM, not reactive state. Holding it in a ref keeps it out of the
+  // effect's dependencies: a caller that passes an inline `{ client }` object would otherwise hand
+  // this a new identity on every render, and the effect would re-read, re-render and re-read again.
+  const clientRef = useRef(deps.client ?? reorderApiClient);
+  clientRef.current = deps.client ?? reorderApiClient;
   const [state, setState] = useState({ data: [], loading: enabled, error: null });
 
   useEffect(() => {
     if (!enabled) {
       setState({ data: [], loading: false, error: null });
-      return;
+      return undefined;
     }
-
+    let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("status", "==", status));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      // W2: preserve the read error instead of swallowing it, so consumers can
-      // distinguish a failed read from a genuinely-empty result (mirrors
-      // useReorderRequestsByStatuses). err.code is the Firestore SDK error code.
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
+    clientRef.current.call("readMyAssignedReorders")
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          // The refusal is preserved, not flattened: "you hold no capability" and "the service is
+          // unreachable" are different answers and the screen renders them differently.
+          setState({ data: [], loading: false, error: res.reason ?? res.code });
+          return;
+        }
+        const all = Array.isArray(res.result) ? res.result : [];
+        setState({ data: status ? all.filter((r) => r.status === status) : all, loading: false, error: null });
+      })
+      .catch(() => { if (!cancelled) setState({ data: [], loading: false, error: "unknown" }); });
+    return () => { cancelled = true; };
   }, [status, enabled]);
-
-  return state;
-}
-
-// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The
-// platform's first per-user filtered read, filtered to a specific
-// assignedToUserId -- used by the Parts Associate Queue (PartsList.jsx)
-// and the Notification Panel's "Assigned to You" section.
-// firestore.rules' read access is still role-level (admin/dispatcher,
-// unchanged) -- this filter is a server-side query constraint, same as
-// subscribeAssignedWorkOrders()'s where() clause, not an access-control
-// boundary.
-//
-// Sprint 2.1.7 -- Purchase Execution Foundation. `status` is an
-// explicit parameter (was hardcoded to ASSIGNED_TO_PARTS_ASSOCIATE) so
-// this same hook serves both the Parts Associate Queue's "Waiting"
-// (ASSIGNED_TO_PARTS_ASSOCIATE) and "In Progress"
-// (PURCHASING_IN_PROGRESS) sections, still filtered to one person.
-export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
-  const [state, setState] = useState({ data: [], loading: enabled, error: null });
-
-  useEffect(() => {
-    if (!enabled || !userId) {
-      setState({ data: [], loading: false, error: null });
-      return;
-    }
-
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("assignedToUserId", "==", userId), where("status", "==", status));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      // W2: preserve the read error (see useReorderRequestsByStatus) so the
-      // Parts Associate Waiting/In-Progress sections can distinguish a failed
-      // read from genuinely-empty personal work.
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
-  }, [userId, status, enabled]);
 
   return state;
 }
@@ -171,60 +212,22 @@ export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
 // r4 C, Fix 2 -- previously always `null`, silently indistinguishable from
 // "no request exists yet"). Existing callers that don't destructure `error`
 // are unaffected either way.
-export function useReorderRequestForPart(partId, requestId) {
-  const [state, setState] = useState({ data: null, loading: true, error: null });
+export function useReorderRequestForPart(partId, requestId, deps = {}) {
+  // Two shapes, one read. With a known id it is that request; without, it is the most recent request
+  // for the part. The id branch still proves the request belongs to the part asked about -- a
+  // mismatch is a DIFFERENT fact from "no request exists", and the caller distinguishes them.
+  const byId = useGovernedReorderRead("readReorderRequest", { reorderRequestId: requestId },
+    !!requestId, deps, (rows) => rows[0] ?? null);
+  const byPart = useGovernedReorderRead("readReorderQueue", { partId },
+    !requestId && !!partId, deps, (rows) => rows[0] ?? null);
 
-  useEffect(() => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-
-    if (requestId) {
-      const ref = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
-      const unsubscribe = onSnapshot(
-        ref,
-        (snap) => {
-          if (!snap.exists()) {
-            setState({ data: null, loading: false, error: "not_found" });
-            return;
-          }
-          const data = { id: snap.id, ...snap.data() };
-          if (data.partId !== partId) {
-            setState({ data: null, loading: false, error: "mismatch" });
-            return;
-          }
-          setState({ data, loading: false, error: null });
-        },
-        // Site-work r4 C, Fix 2: preserve the real read error (mirrors
-        // useReorderRequestById/useReorderRequestsByStatus above) instead of
-        // discarding it into "not_found" -- a denied/failed read is not the same
-        // fact as "this document does not exist", and a caller (PartDetail.jsx)
-        // needs to tell them apart. "not_found" now only ever comes from the
-        // snap.exists() check above, never from this error callback.
-        (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-      );
-
-      return unsubscribe;
-    }
-
-    const q = query(reorderRequestsRef, where("partId", "==", partId));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const forPart = toDocs(snap).sort((a, b) => b.createdAt - a.createdAt);
-        setState({ data: forPart[0] ?? null, loading: false, error: null });
-      },
-      // Site-work r4 C, Fix 2: preserve the real read error instead of discarding
-      // it to null -- a failed read on the no-requestId (most-recent-for-part)
-      // path used to render identically to "no request exists yet", hiding a
-      // denied/unavailable read from the caller.
-      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
-  }, [partId, requestId]);
-
-  const refresh = useCallback(() => {}, []);
-
-  return { ...state, refresh };
+  if (requestId) {
+    if (byId.loading || byId.error) return { data: null, loading: byId.loading, error: byId.error };
+    if (!byId.data) return { data: null, loading: false, error: "not_found" };
+    if (byId.data.partId !== partId) return { data: null, loading: false, error: "mismatch" };
+    return byId;
+  }
+  return byPart;
 }
 
 // Inventory Operational Queue, PR A (docs/specifications/inventory-
@@ -245,27 +248,9 @@ export function useReorderRequestForPart(partId, requestId) {
 //
 // Single-field `in` query -- no composite index required, same as every
 // other reorder_requests query in this file.
-export function useReorderRequestsByStatuses(statuses, enabled = true) {
-  const [state, setState] = useState({ data: [], loading: enabled, error: null });
-
-  useEffect(() => {
-    if (!enabled || !statuses?.length) {
-      setState({ data: [], loading: false, error: null });
-      return;
-    }
-
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("status", "in", statuses));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
-  }, [statuses.join(","), enabled]);
-
-  return state;
+export function useReorderRequestsByStatuses(statuses, enabled = true, deps = {}) {
+  return useGovernedReorderRead("readReorderQueue", { statuses },
+    enabled && !!statuses?.length, deps);
 }
 
 // Inventory Operational Queue, PR C (docs/specifications/inventory-
@@ -300,14 +285,29 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
 // and the EXACT component tree that consumes it into a real error/empty
 // render, through the same state machine production traffic uses, with
 // no network mocking and no component-level bypass.
-export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, cursor }) {
-  const constraints = [where("status", "in", statuses), orderBy("createdAt", "desc"), limit(pageSize)];
-  if (cursor) constraints.push(startAfter(cursor));
-  const snap = await getDocs(query(reorderRequestsRef, ...constraints));
+export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, cursor }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  // A KEYSET cursor -- the (createdAt, id) of the last row of the previous page -- not an offset.
+  // The Firestore startAfter() cursor this replaces was keyset too, so the paging behaviour is the
+  // same one the screens were built against.
+  const res = await client.call("readReorderQueue", {
+    statuses,
+    limit: pageSize,
+    ...(cursor ? { beforeCreatedAt: cursor.createdAt, beforeId: cursor.id } : {}),
+  });
+  if (!res.ok) {
+    // THROWN, not returned empty: the hook's catch turns this into its error state, and an empty
+    // page would render as "no history" -- a failed read is not the same fact as no history.
+    const err = new Error(res.message ?? "the Reorder history could not be read");
+    err.code = res.reason ?? res.code;
+    throw err;
+  }
+  const docs = Array.isArray(res.result) ? res.result : [];
+  const last = docs.length ? docs[docs.length - 1] : null;
   return {
-    docs: toDocs(snap),
-    lastVisible: snap.docs.length ? snap.docs[snap.docs.length - 1] : null,
-    size: snap.docs.length,
+    docs,
+    lastVisible: last ? { createdAt: last.createdAt, id: last.id } : null,
+    size: docs.length,
   };
 }
 
@@ -377,39 +377,14 @@ const TERMINAL_STATUSES = new Set([
   REORDER_REQUEST_STATUS.REJECTED,
 ]);
 
-export function useReviewedRequestsHistory(uid) {
-  const [state, setState] = useState({ data: [], loading: !!uid, error: null });
-
-  useEffect(() => {
-    if (!uid) {
-      setState({ data: [], loading: false, error: null });
-      return;
-    }
-
-    let cancelled = false;
-    setState({ data: [], loading: true, error: null });
-
-    Promise.all([
-      getDocs(query(reorderRequestsRef, where("reviewedBy", "==", uid))),
-      getDocs(query(reorderRequestsRef, where("assignedBy", "==", uid))),
-    ])
-      .then(([reviewedSnap, assignedSnap]) => {
-        if (cancelled) return;
-        const byId = new Map();
-        for (const d of [...toDocs(reviewedSnap), ...toDocs(assignedSnap)]) byId.set(d.id, d);
-        const relevant = [...byId.values()].filter((d) => TERMINAL_STATUSES.has(d.status));
-        setState({ data: relevant, loading: false, error: null });
-      })
-      .catch((err) => {
-        if (!cancelled) setState({ data: [], loading: false, error: err.code ?? "unknown" });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [uid]);
-
-  return state;
+export function useReviewedRequestsHistory(_uid, deps = {}) {
+  // THE UID PARAMETER IS IGNORED, and kept only so the existing call sites need not change in the
+  // same commit that moves the authority. The legacy read was two Firestore queries,
+  // where("reviewedBy","==",uid) and where("assignedBy","==",uid), so the CALLER named whose history
+  // it wanted. The governed read scopes to the caller's own Principal and accepts no identity at
+  // all -- a caller that could name someone else's history is a caller that could read it.
+  return useGovernedReorderRead("readMyReorderHistory", undefined, true, deps,
+    (rows) => rows.filter((r) => TERMINAL_STATUSES.has(r.status)));
 }
 
 // Inventory Operational Queue, PR C. A second, independent function --
@@ -419,31 +394,12 @@ export function useReviewedRequestsHistory(uid) {
 // without "Load More"-ing through the entire history). Same
 // doc()/onSnapshot() pattern useReorderRequestForPart()'s requestId
 // branch already uses, above.
-export function useReorderRequestById(requestId) {
-  const [state, setState] = useState({ data: null, loading: !!requestId, error: null });
-
-  useEffect(() => {
-    if (!requestId) {
-      setState({ data: null, loading: false, error: null });
-      return;
-    }
-
-    setState({ data: null, loading: true, error: null });
-    const ref = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
-    const unsubscribe = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setState({ data: null, loading: false, error: "not_found" });
-          return;
-        }
-        setState({ data: { id: snap.id, ...snap.data() }, loading: false, error: null });
-      },
-      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
-  }, [requestId]);
-
-  return state;
+export function useReorderRequestById(requestId, deps = {}) {
+  const read = useGovernedReorderRead("readReorderRequest", { reorderRequestId: requestId },
+    !!requestId, deps, (rows) => rows[0] ?? null);
+  if (!requestId) return { data: null, loading: false, error: null };
+  // A read that succeeded and found nothing is "not_found"; a read that FAILED keeps its own error.
+  // Collapsing the two would tell a caller a request does not exist when it was simply not readable.
+  if (!read.loading && !read.error && read.data === null) return { data: null, loading: false, error: "not_found" };
+  return read;
 }

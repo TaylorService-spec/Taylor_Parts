@@ -42,6 +42,18 @@ const FIXTURE_PO = {
 // `reorder_requests` / `reorder_purchase_orders` (live) are.
 const queriedCollections = [];
 
+// THE REORDER SIDE MOVED to the governed PostgreSQL authority; the PURCHASE ORDER side is a
+// different object and is still Firestore's. The point of this suite survives the move intact:
+// the panel must read the LIVE reorder purchase orders and never the dormant Epic-5 collection.
+const reorderCalls = [];
+vi.mock("../src/services/reorderApiClient.js", () => ({
+  reorderApiClient: {
+    call: async (operation, input) => {
+      reorderCalls.push({ operation, input });
+      return { ok: true, result: [{ ...FIXTURE_REQUEST, id: FIXTURE_REQUEST.id }] };
+    },
+  },
+}));
 vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({
   collection: (_db, name) => ({ __collection: name }),
@@ -67,14 +79,18 @@ vi.mock("firebase/firestore", () => ({
 afterEach(() => {
   cleanup();
   queriedCollections.length = 0;
+  reorderCalls.length = 0;
 });
 
 describe("operationsQueries.fetchProcurementPurchaseOrders (site-work r4 item A)", () => {
-  it("queries reorder_requests + reorder_purchase_orders, never the dormant purchase_orders collection", async () => {
+  it("reads Reorders from the governed authority and POs from the LIVE reorder collection", async () => {
     const { fetchProcurementPurchaseOrders } = await import("../src/services/operationsQueries");
     const rows = await fetchProcurementPurchaseOrders();
 
-    expect(queriedCollections).toContain("reorder_requests");
+    // The Reorder side no longer touches Firestore at all.
+    expect(reorderCalls.map((c) => c.operation)).toEqual(["readReorderQueue"]);
+    expect(queriedCollections).not.toContain("reorder_requests");
+    // The purchase order side is unchanged, and still never the dormant Epic-5 collection.
     expect(queriedCollections).toContain("reorder_purchase_orders");
     expect(queriedCollections).not.toContain("purchase_orders");
 

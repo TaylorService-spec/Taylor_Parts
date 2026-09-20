@@ -91,24 +91,39 @@ test("TWO OBJECTS share the name, and only REORDER gates the Reorder retirement"
   }
 });
 
-test("the cutover gate is COMPUTED, and every authorization consumer is still unconverted", () => {
+test("the cutover gate is COMPUTED, and exactly one consumer still holds it shut", () => {
   const readiness = assignmentCutoverReadiness();
   assert.equal(readiness.ready, false, "the governed assignment must not be live while any uid consumer decides access");
-  // The seam was originally scoped to write transitions alone; the derivation proves reads are in it too.
-  assert.ok(readiness.blockingByClassification.ASSIGNEE_READ_AUTHORIZATION > 0,
-    "an assignee-scoped READ consumer must be counted: the cutover cannot move writes alone");
-  assert.ok(readiness.blockingByClassification.ASSIGNMENT_WRITE > 0);
-  assert.ok(readiness.blockingByClassification.ASSIGNEE_ACTION_AUTHORIZATION > 0);
+
+  // THE WHOLE CLIENT SURFACE HAS MOVED. The writes, the assignee-only actions and the assignee-scoped
+  // read are gone from the census because their files no longer name the field at all -- which is
+  // what conversion looks like when it is real rather than declared.
+  assert.equal(readiness.blockingByClassification.ASSIGNMENT_WRITE, undefined,
+    "the assignment writer still names the field");
+  assert.equal(readiness.blockingByClassification.ASSIGNEE_READ_AUTHORIZATION, undefined,
+    "an assignee-scoped read still names the field");
+
+  // What is left is firestore.rules, where the uid comparison is actually ENFORCED. It stops
+  // mattering when Firestore stops being Reorder authority, which is an ACTIVATION and not a code
+  // change -- and one fenced from production.
+  assert.deepEqual(readiness.blockedBy, ["firestore.rules"],
+    "the only thing still deciding Reorder access from a uid should be the Rules file");
+  assert.equal(readiness.blockingByClassification.ASSIGNEE_ACTION_AUTHORIZATION, 1);
 
   // The gate is derived from status, not asserted: converting the blocking set must open it.
   const pretend = ASSIGNED_TO_USER_ID_CENSUS.map((c) =>
     BLOCKING_CLASSIFICATIONS.includes(c.classification) ? { ...c, status: "CONVERTED" } : c);
   assert.equal(assignmentCutoverReadiness(pretend).ready, true);
-  // And converting only the writes does NOT open it -- the whole assignee seam moves together.
-  const writesOnly = ASSIGNED_TO_USER_ID_CENSUS.map((c) =>
-    c.classification === "ASSIGNMENT_WRITE" ? { ...c, status: "CONVERTED" } : c);
-  assert.equal(assignmentCutoverReadiness(writesOnly).ready, false,
-    "moving the writer alone must not open the gate: that is the forbidden dual-authority state");
+
+  // And the derivation still refuses a partial move: a census that regained a write consumer without
+  // its reads must not be readable as ready.
+  const regained = [
+    ...ASSIGNED_TO_USER_ID_CENSUS.map((c) => ({ ...c, status: "CONVERTED" })),
+    { path: "x/writer.js", object: "REORDER", classification: "ASSIGNMENT_WRITE",
+      consumer: "hypothetical", occurrences: 1, status: "NOT_STARTED" },
+  ];
+  assert.equal(assignmentCutoverReadiness(regained).ready, false,
+    "a single unconverted writer must hold the gate shut on its own");
 });
 
 test("nothing is CONVERTED yet: the governed assignment authority exists but is inert", () => {

@@ -68,7 +68,22 @@ const e = (entry: CensusEntry): CensusEntry => Object.freeze(entry);
 /**
  * Every executable consumer, comments excluded.
  *
- * Nothing is CONVERTED: the governed assignment authority exists but is inert, and not one consumer has moved.
+ * ════════════════════ WHAT THE REORDER DOMAIN CUTOVER REMOVED ════════════════════
+ *
+ * Five entries are gone from this list because their files no longer name the field AT ALL, which is
+ * what conversion looks like when it is real. They were the entire blocking client surface:
+ *
+ *   inventoryReorderRequests.js   the assignment write -- now the governed command, naming an Employee
+ *   ManagerQueuePanel.jsx         the picked value -- now the Employee id the picker already chose
+ *   PartDetail.jsx                five `user.uid === request.assignedToUserId` guards -- now the
+ *                                 server's own `isAssignee`, computed from Employee to Employee
+ *   reorderPurchaseOrders.js      the void's assignee check -- now the governed command's
+ *   useReorderRequests.js         `where(assignedToUserId == uid)` -- now readMyAssignedReorders,
+ *                                 scoped server side with no uid stated by the browser
+ *
+ * WHAT REMAINS BLOCKING IS firestore.rules, and only that. Its twenty-four occurrences are where the
+ * uid comparison is actually ENFORCED, and they stop mattering when Firestore stops being Reorder
+ * authority -- which is an activation, not a code change, and is fenced from production.
  */
 export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze([
   // ── Firestore Rules: where the uid comparison is actually enforced ──
@@ -83,37 +98,8 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
     occurrences: 24, status: "NOT_STARTED",
   }),
 
-  // ── the assignment writer ──
-  e({
-    path: "field-ops-app-vite/src/domain/inventoryReorderRequests.js", object: "REORDER", classification: "ASSIGNMENT_WRITE",
-    consumer: "assignReorderRequest writes the uid into assignedToUserId through a direct client Firestore write",
-    occurrences: 3, status: "NOT_STARTED",
-  }),
-  e({
-    path: "field-ops-app-vite/src/shared/reorder/ManagerQueuePanel.jsx", object: "REORDER", classification: "ASSIGNMENT_WRITE",
-    consumer: "holds the picked uid as assignedToUserId and submits the assignment",
-    occurrences: 3, status: "NOT_STARTED",
-  }),
 
-  // ── assignee-only ACTION authorization, client side ──
-  e({
-    path: "field-ops-app-vite/src/modules/inventory/PartDetail.jsx", object: "REORDER", classification: "ASSIGNEE_ACTION_AUTHORIZATION",
-    consumer: "five separate `isAssignee = user.uid === request.assignedToUserId` guards, plus the assignment form "
-      + "and assignee display",
-    occurrences: 12, status: "NOT_STARTED",
-  }),
-  e({
-    path: "field-ops-app-vite/src/domain/reorderPurchaseOrders.js", object: "REORDER", classification: "ASSIGNEE_ACTION_AUTHORIZATION",
-    consumer: "refuses a purchase-order action unless the caller's uid equals the request's assignedToUserId",
-    occurrences: 1, status: "NOT_STARTED",
-  }),
 
-  // ── assignee-scoped READ authorization ──
-  e({
-    path: "field-ops-app-vite/src/hooks/useReorderRequests.js", object: "REORDER", classification: "ASSIGNEE_READ_AUTHORIZATION",
-    consumer: "queries `where(assignedToUserId == uid)` -- the 'my assigned work' read, matched by the Rules read arm",
-    occurrences: 1, status: "NOT_STARTED",
-  }),
 
   // ── presentation and notification routing: retire with the field, block nothing ──
   e({
@@ -173,6 +159,17 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
     consumer: "the DRY RUN / COPY / VERIFY executor: gathers the source uids for resolution and records the legacy "
       + "field as the copy's audit reason",
     occurrences: 3, status: "NOT_STARTED",
+  }),
+  e({
+    path: "functions/src/eosOps/migration/reorderFieldParityMatrix.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "names the field once, as the legacy key whose disposition sends it to the governed Employee "
+      + "assignment authority rather than to a Reorder column",
+    occurrences: 1, status: "NOT_STARTED",
+  }),
+  e({
+    path: "functions/src/eosOps/migration/reorderFirestoreRuntimeCensus.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "names the field once, in the record of which client files stopped comparing a uid to it",
+    occurrences: 1, status: "NOT_STARTED",
   }),
 
   // ── COMMERCIAL: the same NAME, a different object, a different seam ──

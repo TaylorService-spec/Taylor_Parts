@@ -156,7 +156,13 @@ test("the physical movement vocabulary stays WAREHOUSE | BIN | MOBILE -- EQUIPME
 });
 
 test("resolveOpsLocation takes the typed PAIR and refuses MOBILE by name", () => {
-  assert.match(repositorySource, /export async function resolveOpsLocation\(\s*pool: Pool,\s*tenantId: string,\s*ref: OpsLocationRef,/);
+  // The CONNECTION type is deliberately not pinned: it was widened to `Pool | PoolClient` so the
+  // governed receipt can resolve its destination inside the transaction that writes the receipt.
+  // What this test is about is the SHAPE of the location argument, which is unchanged.
+  assert.match(
+    repositorySource,
+    /export async function resolveOpsLocation\([\s\S]{0,400}?tenantId: string,\s*ref: OpsLocationRef,/,
+  );
   assert.match(repositorySource, /LOCATION_TYPE_NOT_IN_POSTGRES/);
   // A bare id never resolves: every exported read that returns a location goes through the pair.
   assert.equal(/export async function resolveOpsLocation\([^)]*locationId: string[^)]*\)/.test(repositorySource), false);

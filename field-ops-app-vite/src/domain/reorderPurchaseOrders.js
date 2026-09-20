@@ -1,6 +1,3 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { submitRecordReorderPurchaseOrder } from "../services/reorderCallableClient.js";
-import { db, auth } from "../firebase/firebase";
 import { fromMajorString } from "./money.js";
 import { isWriteBlocked } from "../config/env";
 import {
@@ -10,6 +7,7 @@ import {
   REORDER_REQUESTS_COLLECTION,
   REORDER_REQUEST_STATUS,
 } from "./constants";
+import { reorderApiClient } from "../services/reorderApiClient.js";
 
 // Sprint 2.1.10 -- Purchase Order Foundation. The ONLY writer of
 // reorder_purchase_orders, and the only place that ever transitions a
@@ -129,7 +127,11 @@ export function recordPurchaseOrder(
   //
   // partId is deliberately NOT sent. The server reads it from the request inside the transaction,
   // so the PO cannot be recorded against a part the request never named.
-  return submitRecordReorderPurchaseOrder({
+  // THE GOVERNED POSTGRESQL COMMAND. The Firebase callable performed both writes in one Admin-SDK
+  // transaction; recordReorderPurchaseOrder performs the same two in one PostgreSQL transaction, so
+  // the atomicity did not weaken -- the authority moved. The callable is not called as a fallback:
+  // two write authorities for one command is what this cutover exists to end.
+  return reorderApiClient.call("recordReorderPurchaseOrder", {
     reorderRequestId,
     supplierName: trimmedSupplier,
     externalPoNumber: trimmedPoNumber,
@@ -173,69 +175,25 @@ export function recordPurchaseOrder(
 // recordPurchaseOrder() above and cancelReorderRequest() in
 // domain/inventoryReorderRequests.js) -- Rules are the actual
 // enforcement, not this check.
-export function voidPurchaseOrder(reorderRequestId, { reason }) {
-  if (isWriteBlocked()) {
-    console.warn("WRITE BLOCKED (voidPurchaseOrder)", reorderRequestId);
-    return Promise.resolve({ blocked: true });
-  }
-
-  const trimmedReason = reason?.trim() || "";
+/**
+ * Void a Reorder's purchase order.
+ *
+ * WAS: a client Firestore transaction that read three documents, checked
+ * `reorderRequest.assignedToUserId !== auth.currentUser.uid`, and wrote the void record itself. The
+ * RESTRICTION was right -- only the assignee may void -- but the browser was both the authority that
+ * decided it and the writer that acted on it, and it decided it by comparing a Firebase uid.
+ *
+ * NOW: the governed command decides. The server resolves the caller to an Employee through an active
+ * employee_principal_link, and the void record is written by the PostgreSQL purchasing authority,
+ * which copies the company and part from the purchase order it voids.
+ *
+ * Returns the client envelope rather than throwing, so a refusal is a value the screen renders.
+ */
+export function voidPurchaseOrder(reorderRequestId, { reason }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
   if (!trimmedReason) {
     throw new Error("A reason is required to void this Purchase Order.");
   }
-
-  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, reorderRequestId);
-  const purchaseOrderRef = doc(db, PURCHASE_ORDERS_COLLECTION, reorderRequestId);
-  const voidRef = doc(db, REORDER_PURCHASE_ORDER_VOIDS_COLLECTION, reorderRequestId);
-
-  return runTransaction(db, async (transaction) => {
-    // Firestore transactions require all reads before any writes.
-    const [reorderRequestSnap, purchaseOrderSnap, voidSnap] = await Promise.all([
-      transaction.get(reorderRequestRef),
-      transaction.get(purchaseOrderRef),
-      transaction.get(voidRef),
-    ]);
-
-    if (!reorderRequestSnap.exists()) {
-      throw new Error("Reorder Request not found.");
-    }
-    if (!purchaseOrderSnap.exists()) {
-      throw new Error("No Purchase Order is recorded for this Reorder Request.");
-    }
-    if (voidSnap.exists()) {
-      throw new Error("This Purchase Order has already been voided.");
-    }
-
-    const reorderRequest = reorderRequestSnap.data();
-    const purchaseOrder = purchaseOrderSnap.data();
-
-    if (reorderRequest.status !== REORDER_REQUEST_STATUS.ORDERED) {
-      throw new Error("This Reorder Request is not currently ORDERED.");
-    }
-    if (purchaseOrder.status !== PURCHASE_ORDER_STATUS.ORDERED) {
-      throw new Error("This Purchase Order is not currently ORDERED.");
-    }
-    if (reorderRequest.assignedToUserId !== (auth.currentUser?.uid ?? null)) {
-      throw new Error("Only the assigned Parts Associate can void this Purchase Order.");
-    }
-
-    const now = Date.now();
-    const voidedBy = auth.currentUser?.uid ?? null;
-
-    transaction.set(voidRef, {
-      reorderPurchaseOrderId: reorderRequestId,
-      reorderRequestId,
-      partId: purchaseOrder.partId,
-      voidedBy,
-      reason: trimmedReason,
-      createdAt: now,
-    });
-
-    transaction.update(reorderRequestRef, {
-      status: REORDER_REQUEST_STATUS.VOIDED,
-      voidedBy,
-      voidedAt: now,
-      voidReason: trimmedReason,
-    });
-  });
+  return client.call("voidReorderPurchaseOrder", { reorderRequestId, voidReason: trimmedReason });
 }

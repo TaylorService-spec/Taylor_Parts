@@ -1144,7 +1144,10 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
         else ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
         continue;
       }
-      const request = await purchasing.createReorderRequest(pool, tenantId, actorUid, companyKey, {
+      // THE ADMINISTERING PRINCIPAL, not actorUid. reorder_requests.requested_by is a governed EOS
+      // Principal and now carries a foreign key saying so; passing the operator token here is what
+      // put a uid-shaped string in that column in the first place.
+      const request = await purchasing.createReorderRequest(pool, tenantId, admin.id, companyKey, {
         partId: p.partId, warehouseId: p.warehouseId, status: "PURCHASING_IN_PROGRESS",
         requestedQuantity: p.requestedQuantity, recommendedQuantity: p.recommendedQuantity,
         reorderRequestNumber: p.reorderRequestNumber,
@@ -1158,7 +1161,9 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
     if (po.rows.length === 0) {
       ledger.record("purchaseOrders", "CREATE", p.purchaseOrder.externalPoNumber);
       if (apply) {
-        await purchasing.recordPurchaseOrder(pool, tenantId, actorUid, requestId, {
+        // purchase_orders.created_by is a governed Principal (migration 039), as is the Reorder's
+        // updated_by that this same transaction writes.
+        await purchasing.recordPurchaseOrder(pool, tenantId, admin.id, requestId, {
           supplierName: p.purchaseOrder.supplierName, externalPoNumber: p.purchaseOrder.externalPoNumber,
           orderedQuantity: p.purchaseOrder.orderedQuantity, orderedDate: p.purchaseOrder.orderedDate,
           expectedArrivalDate: p.purchaseOrder.expectedArrivalDate,
@@ -1182,6 +1187,11 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
             purchaseOrderId: requestId, reorderRequestId: requestId, sourceKind: p.receipt.sourceKind,
             receivingLocation: p.receipt.receivingLocation, status: p.receipt.status,
             receivingOrderNumber: p.receipt.receivingOrderNumber, idempotencyKey: p.receipt.idempotencyKey,
+            // WHEN THE GOODS ARRIVED, from the manifest -- never the seed's own clock. A fixture
+            // whose business time moved every time it was re-seeded would make the receipt, the
+            // purchase order it was ordered against and the expected arrival date disagree by
+            // however long ago the environment was built.
+            receivedAt: new Date(p.receipt.receivedAt),
             lines: p.receipt.lines,
           });
         }
@@ -1194,7 +1204,8 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
         ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
         // A void is append-only and reachable only from ORDERED. The purchase order document itself is
         // never mutated: the void is its own row, which is what preserves the immutability rule.
-        if (apply) await purchasing.voidPurchaseOrder(pool, tenantId, actorUid, requestId, p.void.reason);
+        // purchase_order_voids.voided_by is a governed Principal (migration 039).
+        if (apply) await purchasing.voidPurchaseOrder(pool, tenantId, admin.id, requestId, p.void.reason);
       } else {
         ledger.record("purchaseOrderVoids", "ALREADY_PRESENT", p.purchaseOrder.externalPoNumber);
       }

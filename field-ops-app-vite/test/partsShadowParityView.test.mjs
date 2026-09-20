@@ -95,9 +95,18 @@ check("production reader bundle wires the existing one-shot readers via readOnce
   assert.ok(/__APP_COMMIT__/.test(src), "adapterCommit sourced from the injected build id __APP_COMMIT__");
   assert.ok(!/adapterCommit:\s*null/.test(src), "no longer the foundation null commit");
 });
-check("the new one-shot readers exist and use the LIVE reorder collections (not dormant purchase_orders)", () => {
+check("the one-shot readers read the GOVERNED Reorder authority and the LIVE purchase orders", () => {
   const src = read("src/services/operationsQueries.ts");
-  assert.ok(/reorder_requests/.test(src) && /fetchReorderRequests/.test(src));
+  // THE REORDER SIDE MOVED. It used to read the live `reorder_requests` Firestore collection; the
+  // Reorder Domain Cutover made PostgreSQL the authority, so a parity diagnostic still reading
+  // Firestore would be comparing the new world against a window nobody writes to any more.
+  assert.ok(/fetchReorderRequests/.test(src), "the reorder reader still exists");
+  assert.ok(/reorderApiClient/.test(src) && /readReorderQueue/.test(src),
+    "the reorder reader must go through the governed PostgreSQL read");
+  assert.ok(!/\breorder_requests\b/.test(src),
+    "operationsQueries must no longer name the Firestore reorder_requests collection");
+  // The PURCHASE ORDER side is a DIFFERENT object with its own cutover, and is still Firestore's --
+  // still the LIVE reorder_purchase_orders, never the dormant Epic-5 purchase_orders.
   assert.ok(/reorder_purchase_orders/.test(src) && /fetchReorderPurchaseOrders/.test(src));
   assert.ok(!/onSnapshot\s*\(/.test(src), "operationsQueries stays one-shot (no onSnapshot call)");
 });

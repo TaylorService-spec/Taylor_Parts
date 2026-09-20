@@ -459,11 +459,24 @@ test("transfers, picks and adjustments still cannot create acquisition cost", ()
     if (rel === "finance/acquisitionCost.ts") continue;
     if (/buildAcquisitionCostFact/.test(readFileSync(file, "utf8"))) producers.push(rel);
   }
+  // TWO producers, ONE producing EVENT. Both are receipts: the Firestore receiving command, and the
+  // PostgreSQL receiving authority that replaces it for the Reorder chain. `acquisitionCostAuthority`
+  // is not a third path to cost -- it is called only by `receiveReorderStockCommand`, and the
+  // assertion below proves that rather than assuming it.
   assert.deepEqual(
-    producers,
-    ["inventoryReceiving/receiveInventoryStockCommand.ts"],
+    producers.slice().sort(),
+    ["eosOps/acquisitionCostAuthority.ts", "inventoryReceiving/receiveInventoryStockCommand.ts"],
     "RECEIPT is the only producer of acquisition cost — a transfer, pick, stage, put-away or adjustment must never create one",
   );
+  // The PostgreSQL producer is reachable from the RECEIPT and from nothing else.
+  const callers = [];
+  for (const file of walk(SRC)) {
+    const rel = file.slice(SRC.length + 1).replace(/\\/g, "/");
+    if (rel === "eosOps/acquisitionCostAuthority.ts") continue;
+    if (/acquisitionCostAuthority/.test(readFileSync(file, "utf8"))) callers.push(rel);
+  }
+  assert.deepEqual(callers, ["eosOps/receiveReorderStockCommand.ts"],
+    "only the governed receipt may reach the PostgreSQL cost authority");
   for (const rel of ["inventoryTransfer/inventoryTransfer.ts", "cycleCount/cycleCountVariance.ts"]) {
     let src;
     try { src = code(rel); } catch { continue; }

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
-import { useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
+import { useMyAssignedReorderRequests } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
@@ -31,12 +31,11 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
   // is threaded from App so an access change re-runs the read and invalidates the prior
   // name map before the replacement read settles.
   const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
-  const { data: waiting, loading: waitingLoading, error: waitingError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: waiting, loading: waitingLoading, error: waitingError } = useMyAssignedReorderRequests(
+    // NO uid: the governed read resolves the caller to an Employee server side.
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
   );
-  const { data: inProgress, loading: inProgressLoading, error: inProgressError } = useReorderRequestsAssignedTo(
-    user?.uid,
+  const { data: inProgress, loading: inProgressLoading, error: inProgressError } = useMyAssignedReorderRequests(
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
   const [selectedRequestId, setSelectedRequestId] = useState(null);

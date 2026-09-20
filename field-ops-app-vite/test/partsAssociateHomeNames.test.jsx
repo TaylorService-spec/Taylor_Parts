@@ -17,7 +17,7 @@ vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1" 
 vi.mock("../src/hooks/useReorderRequests", () => {
   const waitingRow = [{ id: "r1", partId: "TST-9001", quantity: 3, urgency: "HIGH" }];
   return {
-    useReorderRequestsAssignedTo: (uid, status) =>
+    useMyAssignedReorderRequests: (status) =>
       status === "ASSIGNED_TO_PARTS_ASSOCIATE" ? ({ data: waitingRow, loading: false }) : ({ data: [], loading: false }),
     useReorderRequestById: () => ({ data: null, loading: false }),
   };

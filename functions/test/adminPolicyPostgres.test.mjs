@@ -151,12 +151,16 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "audit_events", "capabilities", "employee_principal_links", "object_fields", "objects",
     "principal_access_versions", "principals",
     "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
-    "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies", "tenants",
+    "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies",
+    "tenant_operating_company_keys", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-three tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+  ], "twenty-four tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
      "(operational capabilities), one from 008 (the Employee <-> Principal linkage), one from EMP-RT-W2 " +
-     "(tenant <-> operating company authority). Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
+     "(tenant <-> operating company authority), and one from the Reorder Domain Cutover binding that " +
+     "authorized company to the OPAQUE eos_ops partition key it operates under -- they are different " +
+     "vocabularies and the binding is the only governed statement that connects them. " +
+     "Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -221,7 +225,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 23, "and up restores all twenty-three");
+  assert.equal(back.rows[0].n, 24, "and up restores all twenty-four");
 });
 
 test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {

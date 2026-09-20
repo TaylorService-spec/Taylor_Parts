@@ -63,6 +63,26 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   const assigneePrincipal = await principal("t1", "uid-assignee");
   const otherPrincipal = await principal("t1", "uid-other");
   const t2Principal = await principal("t2", "uid-t2");
+
+  // THE REORDER OBJECT NOW LIVES HERE. When this suite was written the Reorder was a Firestore
+  // document and `reorder_request_id` could only be opaque; the domain cutover moved the object, so
+  // assignment targets a real governed row and refuses one this tenant does not have.
+  //
+  // requested_by is a governed Principal (migration 037), so these fixtures name real ones. The t2
+  // row names the t2 Principal: the foreign key is composite, so one tenant's Reorder cannot name
+  // another tenant's member even by accident.
+  await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+           VALUES ('wh-1', 't1', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture'),
+                  ('wh-2', 't2', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture')`);
+  const reorder = (id, tenant = "t1", status = "READY_FOR_PARTS_MANAGER") => q(
+    `INSERT INTO eos_ops.reorder_requests
+       (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity,
+        requested_by, updated_by, provenance, recommendation_status, quantity_source)
+     VALUES ($1, $2, 'sample-co', 'PART-1', $3, $4, 1, $5, $5, 'NATIVE', 'BELOW_MIN', 'MANUAL')`,
+    [id, tenant, tenant === "t1" ? "wh-1" : "wh-2", status,
+      tenant === "t1" ? assigneePrincipal : t2Principal]);
+  for (const id of ["rr-1", "rr-legacy", "rr-native", "rr-q", "rr-q2", "rr-x"]) await reorder(id);
+  await reorder("rr-foreign", "t2");
   await employee("e-assignee");  await link("e-assignee", assigneePrincipal);
   await employee("e-other");     await link("e-other", otherPrincipal);
   await employee("e-unlinked");
@@ -166,6 +186,12 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   });
 
   await t.test("reassignment ends the prior assignment; the same Employee is NO_CHANGE; history is kept", async () => {
+    // Assignment fires only from READY_FOR_PARTS_MANAGER (firestore.rules' Assign arm), and the
+    // first assignment moved this Reorder past it. The state this exercises -- a governed
+    // assignment already present while the Reorder still awaits assignment -- is exactly what a
+    // legacy assignment COPY produces, so it is reached here the same way: by putting the Reorder
+    // back in the status the copy would have left it in.
+    await q(`UPDATE eos_ops.reorder_requests SET status='READY_FOR_PARTS_MANAGER' WHERE id=$1`, [RR]);
     const again = await authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: RR, employeeId: "e-assignee" });
     assert.equal(again.outcome, "NO_CHANGE");
     const moved = await authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: RR, employeeId: "e-other" });
@@ -181,6 +207,7 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   });
 
   await t.test("(15) an audit failure rolls the assignment back atomically", async () => {
+    await q(`UPDATE eos_ops.reorder_requests SET status='READY_FOR_PARTS_MANAGER' WHERE id=$1`, [RR]);
     const before = (await q(`SELECT id, assigned_employee_id, effective_to FROM eos_ops.reorder_request_assignments ORDER BY id`)).rows;
     await q(`CREATE FUNCTION test_refuse_assign_audit() RETURNS trigger AS $$ BEGIN
                IF NEW.action = 'reorderRequest.assign' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`);

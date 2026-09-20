@@ -150,7 +150,7 @@ check("the notification control was MOVED, not rebuilt -- it owns its own gate",
   assert.ok(control.includes("if (!canSeeReorderRequests) return null;"), "the control lost its own gate");
   assert.ok(control.includes("enabled: canSeeReorderRequests"), "the canonical-name read is no longer gated");
   // The same four governed reads, the same projection, the same permission preview.
-  for (const kept of ["useReorderRequests", "useReorderRequestsByStatus", "useReorderRequestsAssignedTo",
+  for (const kept of ["useReorderRequests", "useReorderRequestsByStatus", "useMyAssignedReorderRequests",
                       "partsAttentionItems", "groupPartsAttentionItemsBySection",
                       "reorder.request.read.queue", "NotificationPanel"]) {
     assert.ok(control.includes(kept), kept + " was lost in the move");

@@ -227,7 +227,10 @@ test("an ADMIN with no governed capability retrieves nothing -- the role string 
   // a denied fact never existed in the process and could never reach a prompt, a log or a cache.
   assert.deepEqual(deps.reads, { balances: 0, reservations: 0, reorders: 0 });
   assert.deepEqual(result.plannedParts[0].warehouse, { status: "UNAVAILABLE" });
-  assert.deepEqual(result.plannedParts[0].procurement, { status: "NONE" });
+  // Owner Ruling A: the procurement SOURCE is retired from this runtime, so the honest answer is
+  // UNAVAILABLE rather than NONE -- and that is now true for every caller, denied or not. The
+  // authorization assertion above is unaffected: the source is still never read.
+  assert.deepEqual(result.plannedParts[0].procurement, { status: "UNAVAILABLE" });
 });
 
 test("each dimension is gated by its OWN governed capability, independently", async () => {
@@ -242,10 +245,19 @@ test("each dimension is gated by its OWN governed capability, independently", as
   const procurementOnly = probe({ [PROCUREMENT_EVIDENCE_READ_CAPABILITY]: true });
   const b = await assembleWorkOrderReadinessContext({ principalUid: "u1", workOrderId: "wo-1" }, procurementOnly);
   assert.equal(b.capabilities.warehouse, false);
-  assert.equal(b.capabilities.purchasing, true);
   assert.equal(b.capabilities.requestReorder, false, "reading the queue is not permission to create");
   assert.equal(procurementOnly.reads.balances, 0, "inventory was denied, so its source must not be read");
-  assert.deepEqual(b.plannedParts[0].procurement, { status: "PENDING" });
+  // OWNER RULING A. This principal HOLDS the procurement capability and still gets nothing, because
+  // the source is retired from this runtime -- capability and availability are different questions
+  // and the answer here is availability. The dimension remains independently GATED, which is what
+  // this test is about: granting procurement did not grant warehouse, and vice versa.
+  assert.equal(b.capabilities.purchasing, false, "no source, whatever the caller holds");
+  assert.equal(procurementOnly.reads.reorders, 0, "the retired source is not read for anyone");
+  assert.deepEqual(b.plannedParts[0].procurement, { status: "UNAVAILABLE" });
+  // The caller's own authority is still reported, and is NOT the reason they got nothing.
+  assert.ok(!b.limitations.includes("PROCUREMENT_READ_NOT_AUTHORIZED"),
+    "this principal IS authorized; only the source is missing");
+  assert.ok(b.limitations.includes("PROCUREMENT_SOURCE_UNAVAILABLE"));
 });
 
 test("reorder eligibility is a suggestion gate resolved from its own create capability", async () => {
@@ -287,7 +299,10 @@ test("a denied dimension contributes nothing to what is sent to the model", asyn
 
   // The procurement source was never read, so no procurement STATE can be described -- only the
   // absence, which is a fact about EOS rather than about a record the principal may not see.
-  assert.match(envelope, /procurement none/);
+  // UNAVAILABLE rather than NONE since Owner Ruling A: the model is told the dimension cannot be
+  // answered, never that there is nothing on order.
+  assert.match(envelope, /procurement unavailable/);
+  assert.doesNotMatch(envelope, /procurement none/);
   assert.doesNotMatch(envelope, /PURCHASING_IN_PROGRESS|pending|ordered|received/i);
   // And no identifier, customer or internal key crosses the boundary.
   for (const secret of ["part-1", "customer-1", "tech-1", "wo-1"]) {
