@@ -49,6 +49,28 @@ export async function buildMigrationResolutionView(
   const client = await pool.connect();
   try {
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const view = await readResolutionView(client, tenantId, uids);
+    await client.query("COMMIT");
+    return view;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * The reads themselves, against ANY open client.
+ *
+ * Separated so the COPY can build its authoritative view INSIDE the transaction that writes. A plan computed in an
+ * earlier snapshot is a plan about a database that may already have changed -- and the one change that matters
+ * most, someone assigning through the governed command, is exactly the one a copy must not overwrite.
+ */
+async function readResolutionView(
+  client: Pick<PoolClient, "query">, tenantId: string, uids: readonly string[],
+): Promise<MigrationResolutionView> {
+  {
     const distinct = [...new Set(uids)].filter((u) => typeof u === "string" && u !== "");
     const byUid = new Map<string, UidResolution | null>();
     if (distinct.length > 0) {
@@ -85,18 +107,12 @@ export async function buildMigrationResolutionView(
       `SELECT reorder_request_id, assigned_employee_id FROM eos_ops.reorder_request_assignments
         WHERE tenant_id = $1 AND effective_to IS NULL`, [tenantId],
     );
-    await client.query("COMMIT");
     return Object.freeze({
       tenantId,
       byUid,
       employees: new Set(employees.rows.map((r) => r.id as string)),
       currentAssignments: new Map(current.rows.map((r) => [r.reorder_request_id as string, r.assigned_employee_id as string])),
     });
-  } catch (err) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
   }
 }
 
@@ -135,27 +151,53 @@ export async function copyReorderAssignmentsOnce(
   },
 ): Promise<CopyResult> {
   const uids = input.source.flatMap((r) => [r.assignedToUserId, r.assignedBy].filter((v): v is string => typeof v === "string"));
-  const view = await buildMigrationResolutionView(pool, input.tenantId, uids);
-  const plan = planReorderAssignmentMigration(input.source, view);
-  if (plan.blockedReorderIds.length > 0) {
-    return Object.freeze({
-      plan, inserted: 0, applied: false,
-      refusal: `${plan.blockedReorderIds.length} source assignment(s) did not resolve to an exact Employee; `
-        + "resolve them before copying -- a partial copy would leave two answers to 'who is assigned'",
-    });
-  }
-  if (plan.copyable.length === 0) {
-    return Object.freeze({ plan, inserted: 0, applied: false, refusal: "nothing to copy" });
-  }
-
   const client: PoolClient = await pool.connect();
   try {
     await client.query("BEGIN");
+
+    // THE AUTHORITATIVE PLAN, BUILT HERE. Not carried in from an earlier snapshot: between a dry run and a copy
+    // someone may have assigned through the governed command, and planning against a stale view is exactly how a
+    // governed assignment gets silently replaced. The rows this transaction writes are decided by what this
+    // transaction can see.
+    const plan = planReorderAssignmentMigration(input.source, await readResolutionView(client, input.tenantId, uids));
+
+    // THE EXECUTOR IS VALIDATED, NOT TRUSTED. It becomes audit provenance answering "who ran this import", so a
+    // string nobody can account for must not become that answer. Checked in THIS transaction, against the same
+    // active-Principal-and-membership rule every governed command applies.
+    const executorId = input.performedByPrincipalId;
+    const executorShaped = typeof executorId === "string" && executorId !== "" && executorId.trim() === executorId;
+    const executor = executorShaped
+      ? await client.query(
+        `SELECT 1 FROM eos_policy.tenant_memberships m JOIN eos_policy.principals p ON p.id = m.principal_id
+          WHERE m.tenant_id = $1 AND m.principal_id = $2 AND m.status = 'active' AND p.status = 'active'`,
+        [input.tenantId, executorId])
+      : { rows: [] as unknown[] };
+    if (executor.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return Object.freeze({
+        plan, inserted: 0, applied: false,
+        refusal: "the migration executor is not an active Principal with an active membership in this tenant",
+      });
+    }
+
+    if (plan.blockedReorderIds.length > 0) {
+      await client.query("ROLLBACK");
+      return Object.freeze({
+        plan, inserted: 0, applied: false,
+        refusal: `${plan.blockedReorderIds.length} source assignment(s) did not resolve to an exact Employee; `
+          + "resolve them before copying -- a partial copy would leave two answers to 'who is assigned'",
+      });
+    }
+    if (plan.copyable.length === 0) {
+      await client.query("ROLLBACK");
+      return Object.freeze({ plan, inserted: 0, applied: false, refusal: "nothing to copy" });
+    }
+
     const at = input.now?.() ?? new Date();
     let inserted = 0;
     for (const row of plan.copyable) {
-      // A governed assignment appearing since the view was read means someone assigned through the command; the
-      // partial unique index would refuse it anyway, and refusing deliberately says why.
+      // Locked as well as planned: the plan proves nothing was governed when it was read, and the lock keeps that
+      // true until commit. The partial unique index would refuse a race anyway; refusing here says why.
       const existing = await client.query(
         `SELECT 1 FROM eos_ops.reorder_request_assignments
           WHERE tenant_id = $1 AND reorder_request_id = $2 AND effective_to IS NULL FOR UPDATE`,

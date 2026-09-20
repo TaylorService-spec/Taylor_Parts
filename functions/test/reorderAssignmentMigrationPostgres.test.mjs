@@ -69,6 +69,14 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
   await employee("e-bob");   await link("e-bob", pBob);
   await employee("e-t2", "t2"); await link("e-t2", pT2, "t2");
 
+  // The governed command requires the qualification, so any Employee this suite assigns THROUGH it must hold one.
+  // The COPY path deliberately does not re-check qualification: it migrates an assignment that already exists.
+  const qualify = (employeeId) => q(
+    `INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
+     VALUES ($1, 't1', $2, 'WAREHOUSE_OPERATIONS', now(), 'fixture')`, [`ewe-${employeeId}`, employeeId]);
+  await qualify("e-alice");
+  await qualify("e-bob");
+
   const src = (reorderRequestId, assignedToUserId, assignedBy = "uid-manager") => ({ reorderRequestId, assignedToUserId, assignedBy });
 
   await t.test("DRY RUN classifies every source row and writes nothing", async () => {
@@ -171,11 +179,64 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
     assert.equal((await authority.readAssignedEmployee(pool, "t1", "rr-1")).assignedEmployeeId, "e-alice", "the governed assignment changed");
   });
 
+
+  await t.test("the AUTHORITATIVE plan is built inside the copy transaction, not carried in from a dry run", async () => {
+    // A dry run taken BEFORE a governed assignment exists would say rr-race is copyable. If the copy trusted that
+    // plan it would either overwrite the governed assignment or fail on the unique index; instead it re-plans
+    // inside its own transaction and sees the row that appeared in between.
+    const source = [src("rr-race", "uid-alice")];
+    const stale = await copy.dryRunReorderAssignmentMigration(pool, { tenantId: "t1", source });
+    assert.equal(stale.copyable.length, 1, "the dry run must consider it copyable before the race");
+
+    // Someone assigns through the governed command in between.
+    await authority.assignReorderRequestToEmployee({ pool }, {
+      tenantId: "t1", principalId: pManager, capabilities: new Set([authority.REORDER_REQUEST_ASSIGN]),
+    }, { reorderRequestId: "rr-race", employeeId: "e-bob" });
+
+    const result = await copy.copyReorderAssignmentsOnce(pool, { tenantId: "t1", performedByPrincipalId: executor, source });
+    // Re-planned inside the transaction: the governed assignee now DISAGREES with the source, so it blocks.
+    assert.equal(result.applied, false);
+    assert.equal(result.plan.rows[0].disposition, "REMEDIATION_REQUIRED",
+      "the copy planned against a stale view instead of its own transaction");
+    assert.equal((await authority.readAssignedEmployee(pool, "t1", "rr-race")).assignedEmployeeId, "e-bob",
+      "the governed assignment was overwritten");
+  });
+
+  await t.test("the migration EXECUTOR is validated inside the transaction before it becomes audit provenance", async () => {
+    const source = [src("rr-exec", "uid-alice")];
+    const auditsBefore = (await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = $1`, [copy.MIGRATION_COPY_ACTION])).rows[0].n;
+
+    // An id nobody can account for must never become "who ran this import".
+    const strangers = ["p-not-a-principal", "", "  ", "uid-alice"];
+    for (const who of strangers) {
+      const refused = await copy.copyReorderAssignmentsOnce(pool, { tenantId: "t1", performedByPrincipalId: who, source });
+      assert.equal(refused.applied, false, `executor ${JSON.stringify(who)} was accepted`);
+      assert.match(refused.refusal, /migration executor/);
+    }
+    // A real Principal of ANOTHER tenant is not an executor here either.
+    const foreign = await copy.copyReorderAssignmentsOnce(pool, { tenantId: "t1", performedByPrincipalId: pT2, source });
+    assert.equal(foreign.applied, false);
+    // A disabled Principal is refused even though it is a member.
+    await q(`UPDATE eos_policy.principals SET status = 'disabled' WHERE id = $1`, [executor]);
+    const disabled = await copy.copyReorderAssignmentsOnce(pool, { tenantId: "t1", performedByPrincipalId: executor, source });
+    assert.equal(disabled.applied, false);
+    await q(`UPDATE eos_policy.principals SET status = 'active' WHERE id = $1`, [executor]);
+
+    // Nothing was written, and no audit event claimed an unaccountable executor.
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.reorder_request_assignments WHERE reorder_request_id = 'rr-exec'`)).rows[0].n, 0);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = $1`, [copy.MIGRATION_COPY_ACTION])).rows[0].n, auditsBefore);
+
+    // The validated executor succeeds.
+    const ok = await copy.copyReorderAssignmentsOnce(pool, { tenantId: "t1", performedByPrincipalId: executor, source });
+    assert.deepEqual([ok.applied, ok.inserted], [true, 1]);
+  });
+
   await t.test("VERIFY proves the copy, and no Firebase uid reached governed assignment state", async () => {
-    const source = [src("rr-1", "uid-alice"), src("rr-2", "uid-bob"), src("rr-3", "uid-alice", "uid-long-gone")];
+    const source = [src("rr-1", "uid-alice"), src("rr-2", "uid-bob"), src("rr-3", "uid-alice", "uid-long-gone"),
+      src("rr-exec", "uid-alice")];
     const verified = await copy.verifyReorderAssignmentMigration(pool, { tenantId: "t1", source });
     assert.deepEqual([verified.passed, verified.findings, verified.uidStoredAnywhere], [true, [], false]);
-    assert.equal(verified.checked, 3);
+    assert.equal(verified.checked, 4);
 
     // VERIFY must FAIL when the governed state disagrees with the source.
     await q(`UPDATE eos_ops.reorder_request_assignments SET effective_to = now(), ended_by_principal_id = $1, ended_at = now()
