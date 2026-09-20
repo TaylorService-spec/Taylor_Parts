@@ -10,6 +10,7 @@ import { isWriteBlocked } from "../config/env";
 // cleanup, and deleting a tested module as a side effect of an authority migration would be scope
 // this change has no business taking.
 import { isCancellableReorderRequestStatus } from "./reorderRequestCancelGuard";
+import { reorderApiClient } from "../services/reorderApiClient.js";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry; Inventory
@@ -224,19 +225,30 @@ export function reviewReorderRequest(requestId, { decision, notes }) {
 // not a picker. This is the platform's first per-user workflow
 // ownership field -- `currentOwner` stays role-level (PARTS_ASSOCIATE),
 // while `assignedToUserId` carries the individual identity.
-export function assignReorderRequest(requestId, { assignedToUserId }) {
-  const trimmedUserId = assignedToUserId?.trim() || "";
-  if (!trimmedUserId) {
-    throw new Error("A Parts Associate user ID is required to assign this Reorder Request.");
+/**
+ * Assign a Reorder Request to an EMPLOYEE.
+ *
+ * WAS: a direct client Firestore write that set `assignedToUserId` to a Firebase uid, alongside the
+ * status and owner. THREE things were wrong with that, and the cutover fixes all three at once.
+ *
+ *   1. THE ASSIGNEE WAS A UID. Work is assigned to a person the business employs, not to a login.
+ *      The governed authority names an Employee, and a uid has no column to land in.
+ *   2. THE CLIENT WAS THE WRITER. A browser cannot be the authority for who may assign work, nor for
+ *      whether the Employee is active, linked and qualified. The server checks all of it, in one
+ *      transaction, and refuses with a reason.
+ *   3. THE STATUS MOVED SEPARATELY. Assigning and advancing were two fields in one client write, so
+ *      a partial write could leave a Reorder assigned but not advanced. They are now one transaction.
+ *
+ * Returns the client envelope ({ ok, result } or { ok:false, code, reason, message }) rather than
+ * throwing, so a refusal is a value the screen renders.
+ */
+export function assignReorderRequest(requestId, { employeeId }, deps = {}) {
+  const client = deps.client ?? reorderApiClient;
+  const trimmed = typeof employeeId === "string" ? employeeId.trim() : "";
+  if (!trimmed) {
+    throw new Error("An Employee is required to assign this Reorder Request.");
   }
-
-  return reorderRequestsStore.update(requestId, {
-    status: REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
-    currentOwner: REORDER_REQUEST_OWNER.PARTS_ASSOCIATE,
-    assignedToUserId: trimmedUserId,
-    assignedBy: auth.currentUser?.uid ?? null,
-    assignedAt: Date.now(),
-  });
+  return client.call("assignReorderRequest", { reorderRequestId: requestId, employeeId: trimmed });
 }
 
 // Sprint 2.1.7 -- Purchase Execution Foundation. The only writer of a

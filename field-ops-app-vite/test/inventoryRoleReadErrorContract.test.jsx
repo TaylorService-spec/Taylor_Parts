@@ -25,7 +25,7 @@ vi.mock("firebase/firestore", () => ({
   },
 }));
 
-import { useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../src/hooks/useReorderRequests";
+import { useReorderRequestsByStatus, useMyAssignedReorderRequests } from "../src/hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../src/hooks/useInventoryActions";
 
 beforeEach(() => {
@@ -60,13 +60,54 @@ describe("useReorderRequestsByStatus -- read-error contract", () => {
   });
 });
 
-describe("useReorderRequestsAssignedTo -- read-error contract", () => {
-  it("a failed read sets error; a code-less error falls back to 'unknown'", () => {
-    const { result } = renderHook(() => useReorderRequestsAssignedTo("u1", "ASSIGNED_TO_PARTS_ASSOCIATE"));
-    expect(result.current.error).toBe(null);
-    act(() => capturedError({}));
+// "My assigned work" no longer reads Firestore at all, so there is no onSnapshot error callback to
+// drive. Its refusal path is now the governed client's envelope, and the contract that matters is
+// the same one: a failed read is REPORTED, never rendered as an empty queue.
+describe("useMyAssignedReorderRequests -- read-error contract", () => {
+  const withClient = (call) => renderHook(() =>
+    useMyAssignedReorderRequests("ASSIGNED_TO_PARTS_ASSOCIATE", true, { client: { call } }));
+
+  it("a refusal is surfaced by the server's OWN reason, not flattened to a generic failure", async () => {
+    const { result } = withClient(async () => ({ ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED" }));
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("CAPABILITY_REQUIRED");
+    expect(result.current.data).toEqual([]);
+  });
+
+  it("a refusal with no specific reason falls back to the category", async () => {
+    const { result } = withClient(async () => ({ ok: false, code: "UNREACHABLE", reason: null }));
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("UNREACHABLE");
+  });
+
+  it("a thrown transport error becomes 'unknown' rather than an empty queue that looks like no work", async () => {
+    const { result } = withClient(async () => { throw new Error("boom"); });
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("unknown");
     expect(result.current.data).toEqual([]);
+  });
+
+  it("a successful read filters to the requested status and reports no error", async () => {
+    const { result } = withClient(async () => ({ ok: true, result: [
+      { reorderRequestId: "a", status: "ASSIGNED_TO_PARTS_ASSOCIATE" },
+      { reorderRequestId: "b", status: "PURCHASING_IN_PROGRESS" },
+    ] }));
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe(null);
+    expect(result.current.data.map((r) => r.reorderRequestId)).toEqual(["a"]);
+  });
+
+  it("the hook states no identity: the server scopes the read to the caller's own Employee", async () => {
+    let seen;
+    const { result } = withClient(async (operation, input) => {
+      seen = { operation, input };
+      return { ok: true, result: [] };
+    });
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(seen.operation).toBe("readMyAssignedReorders");
+    // No uid, no employee id, no input at all -- a caller that could name someone else's work is a
+    // caller that could read it.
+    expect(seen.input).toBe(undefined);
   });
 });
 

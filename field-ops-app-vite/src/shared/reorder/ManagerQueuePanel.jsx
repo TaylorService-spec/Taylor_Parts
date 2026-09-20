@@ -21,8 +21,9 @@ import { Button } from "../ui/primitives/index.js";
 // granted). The server-side trusted command is the SAME either way; this component invokes
 // no new write path.
 function AssignPanel({ request, resolveName, onAssigned, onClose }) {
+  // The picker chose an Employee; the Employee id is what the governed assignment authority names,
+  // so it is what gets submitted. The uid it used to derive is not read at all.
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
-  const [assignedToUserId, setAssignedToUserId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const partName = resolveName(request.partId);
@@ -40,7 +41,6 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
 
   function handleEmployeeSelect(employee) {
     setSelectedEmployeeId(employee.employeeId);
-    setAssignedToUserId(employee.userId);
   }
 
   async function handleAssign(e) {
@@ -48,7 +48,12 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
     setSubmitting(true);
     setError(null);
     try {
-      await assignReorderRequest(request.id, { assignedToUserId });
+      const res = await assignReorderRequest(request.id, { employeeId: selectedEmployeeId });
+      if (!res?.ok) {
+        setError(res?.message ?? "the assignment was refused");
+        setSubmitting(false);
+        return;
+      }
       onAssigned();
     } catch (err) {
       setError(err.message);
@@ -75,7 +80,7 @@ function AssignPanel({ request, resolveName, onAssigned, onClose }) {
           placeholder="Search employees by name..."
         />
         <div className="disp-board-toolbar">
-          <Button type="submit" loading={submitting} disabled={!assignedToUserId}>
+          <Button type="submit" loading={submitting} disabled={!selectedEmployeeId}>
             Assign
           </Button>
         </div>

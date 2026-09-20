@@ -36,6 +36,8 @@ export const REORDER_MARK_RECEIVED = "reorder.request.markReceived";
 export const REORDER_CANCEL = "reorder.request.cancel";
 export const REORDER_READ_QUEUE = "reorder.request.read.queue";
 export const REORDER_READ_OWN = "reorder.request.read.own";
+/** Already registered by migration 1760140800000's sibling catalog; a void is the PO's business. */
+export const REORDER_PO_VOID = "reorder.purchaseOrder.void";
 
 /** Pre-ORDERED statuses a Reorder may be cancelled from. ORDERED is VOIDED's business, not this one. */
 export const CANCELLABLE_STATUSES = Object.freeze([
@@ -448,6 +450,56 @@ export async function cancelReorderRequest(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Void the purchase order
+// ---------------------------------------------------------------------------------------------
+
+export interface VoidResult {
+  readonly reorderRequestId: string;
+  readonly status: string;
+  /** The Principal recorded on the void. The repository states it; this does not restate it. */
+  readonly voidedBy: string;
+  readonly reason: string;
+}
+
+/**
+ * Void a Reorder's purchase order. ASSIGNEE ONLY, matching the legacy restriction exactly.
+ *
+ * The legacy client enforced this inside a Firestore transaction with
+ * `reorderRequest.assignedToUserId !== auth.currentUser.uid`. The restriction is kept; the identity
+ * model is not. The void RECORD itself is written by purchasingRepository.voidPurchaseOrder, which
+ * copies the company and part from the purchase order it voids and never touches that order --
+ * this command adds the authorization the repository deliberately does not own.
+ *
+ * THE ASSIGNEE CHECK RUNS FIRST AND IN ITS OWN TRANSACTION. That is a real, stated limitation: the
+ * repository opens its own transaction, so a reassignment landing in between would not be seen.
+ * Assignment fires only from READY_FOR_PARTS_MANAGER and this fires only from ORDERED, so the two
+ * cannot race through governed commands -- the window exists only against a direct database write.
+ */
+export async function voidReorderPurchaseOrder(
+  deps: { readonly pool: Pool; readonly now?: () => Date; readonly voidPurchaseOrder?: typeof import("./purchasingRepository.js").voidPurchaseOrder },
+  actor: ReorderActor,
+  input: Record<string, unknown>,
+): Promise<VoidResult> {
+  requireActor(actor, REORDER_PO_VOID);
+  const i = acceptOnly(input, ["reorderRequestId", "voidReason"]);
+  if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
+  const maybe = optionalText(i.voidReason, "voidReason");
+  if (maybe === null) refuse("VOID_REASON_REQUIRED", "INVALID_INPUT", "a void records why, or it records nothing");
+  const reason: string = maybe as string;
+  const reorderRequestId = i.reorderRequestId as string;
+
+  const isAssignee = await isCallerTheAssignedEmployee(deps.pool, actor.tenantId, actor.principalId, reorderRequestId);
+  if (!isAssignee) {
+    refuse("NOT_THE_ASSIGNEE", "FORBIDDEN",
+      "only the Employee the Reorder Request is assigned to may void its purchase order");
+  }
+  const run = deps.voidPurchaseOrder
+    ?? (await import("./purchasingRepository.js")).voidPurchaseOrder;
+  const record = await run(deps.pool, actor.tenantId, actor.principalId, reorderRequestId, reason);
+  return { reorderRequestId, status: "VOIDED", voidedBy: record.voidedBy, reason: record.reason };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------------------------
 
@@ -459,6 +511,14 @@ export interface ReorderQueueItem {
   readonly requestedQuantity: number;
   readonly assignedEmployeeId: string | null;
   readonly currentOwner: string | null;
+  /**
+   * Is the CALLER the assigned Employee?
+   *
+   * Answered here, server side, so no screen has to compute it. The legacy client computed
+   * `user.uid === request.assignedToUserId`, which made every rendering surface a place the identity
+   * model could be got wrong independently.
+   */
+  readonly isAssignee: boolean;
 }
 
 const QUEUE_SELECT = `
@@ -468,7 +528,9 @@ const QUEUE_SELECT = `
     LEFT JOIN eos_ops.reorder_request_assignments a
       ON a.tenant_id = r.tenant_id AND a.reorder_request_id = r.id AND a.effective_to IS NULL`;
 
-const toItem = (r: Record<string, unknown>, currentOwner: string | null): ReorderQueueItem => Object.freeze({
+const toItem = (
+  r: Record<string, unknown>, currentOwner: string | null, callerEmployeeId: string | null,
+): ReorderQueueItem => Object.freeze({
   reorderRequestId: r.id as string,
   partId: r.part_id as string,
   warehouseId: r.warehouse_id as string,
@@ -476,16 +538,31 @@ const toItem = (r: Record<string, unknown>, currentOwner: string | null): Reorde
   requestedQuantity: Number(r.requested_quantity),
   assignedEmployeeId: (r.assigned_employee_id as string | null) ?? null,
   currentOwner,
+  // Employee compared to Employee. A null caller Employee (an unlinked Principal) is never the
+  // assignee, and a null assignment is nobody's.
+  isAssignee: callerEmployeeId !== null && r.assigned_employee_id === callerEmployeeId,
 });
+
+/** The caller's Employee, through an ACTIVE link. Null when the Principal is not a linked Employee. */
+async function callerEmployee(pool: Pool, tenantId: string, principalId: string): Promise<string | null> {
+  const { rows } = await pool.query(
+    `SELECT employee_id FROM eos_policy.employee_principal_links
+      WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`,
+    [tenantId, principalId]);
+  // More than one active link is ambiguous, and ambiguity is never resolved by choosing.
+  return rows.length === 1 ? (rows[0].employee_id as string) : null;
+}
 
 /** The whole queue. Requires the queue capability, which is a different question from "my work". */
 export async function readReorderQueue(
   deps: { readonly pool: Pool }, actor: ReorderActor,
 ): Promise<readonly ReorderQueueItem[]> {
   requireActor(actor, REORDER_READ_QUEUE);
-  const { rows } = await deps.pool.query(
-    `${QUEUE_SELECT} WHERE r.tenant_id = $1 ORDER BY r.created_at DESC, r.id`, [actor.tenantId]);
-  return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)))));
+  const [{ rows }, mine] = await Promise.all([
+    deps.pool.query(`${QUEUE_SELECT} WHERE r.tenant_id = $1 ORDER BY r.created_at DESC, r.id`, [actor.tenantId]),
+    callerEmployee(deps.pool, actor.tenantId, actor.principalId),
+  ]);
+  return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));
 }
 
 /**
@@ -508,5 +585,8 @@ export async function readMyAssignedReorders(
      WHERE r.tenant_id = $1 AND l.principal_id = $2
      ORDER BY r.created_at DESC, r.id`,
     [actor.tenantId, actor.principalId]);
-  return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)))));
+  // Every row here IS the caller's by construction, but the flag is computed the same way rather
+  // than asserted -- one definition of "is the assignee", not two that could drift apart.
+  const mine = await callerEmployee(deps.pool, actor.tenantId, actor.principalId);
+  return Object.freeze(rows.map((r) => toItem(r, deriveReorderCurrentOwner(String(r.status)), mine)));
 }

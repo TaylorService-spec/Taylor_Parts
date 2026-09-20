@@ -25,7 +25,7 @@ vi.mock("../src/hooks/useReorderRequests", () => {
     useReorderRequests: r,
     useReorderRequestsByStatus: () => ({ data: [managerQueueRow], loading: false, error: null }),
     useReorderRequestsByStatuses: () => ({ data: [], loading: false, error: null }),
-    useReorderRequestsAssignedTo: (uid, status) =>
+    useMyAssignedReorderRequests: (status) =>
       status === "ASSIGNED_TO_PARTS_ASSOCIATE"
         ? { data: [associateWaitingRow], loading: false, error: null }
         : { data: [], loading: false, error: null },
@@ -168,13 +168,19 @@ describe("ManagerQueuePanel: the Assign panel opens beside the selected card", (
     expect(document.activeElement).toBe(trigger);
   });
 
-  it("8+9: submits the selected request id and the selected employee's linked userId, unchanged", async () => {
+  it("8+9: submits the selected request id and the selected EMPLOYEE -- never the linked uid", async () => {
     renderQueue();
     fireEvent.click(assignButtons()[1]);
     fireEvent.click(screen.getByRole("button", { name: "pick-emp-77" }));
     fireEvent.click(screen.getByRole("button", { name: /^assign$/i }));
     await waitFor(() => expect(assignReorderRequest).toHaveBeenCalledTimes(1));
-    expect(assignReorderRequest).toHaveBeenCalledWith("req-second", { assignedToUserId: "user-77" });
+    // The picker always chose an Employee; the panel used to derive that Employee's Firebase uid and
+    // submit THAT, so a correct choice became a uid on the way to the database. The governed
+    // assignment authority names an Employee, so the Employee id is simply what is submitted.
+    expect(assignReorderRequest).toHaveBeenCalledWith("req-second", { employeeId: "emp-77" });
+    const [, payload] = assignReorderRequest.mock.calls[0];
+    expect(payload).not.toHaveProperty("assignedToUserId");
+    expect(JSON.stringify(payload)).not.toContain("user-77");
   });
 
   it("10: a rejected assignment shows its error INSIDE the selected queue item", async () => {

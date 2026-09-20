@@ -27,6 +27,7 @@ test("both Operations lists are closed, and name exactly what the transport serv
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
+    "voidReorderPurchaseOrder",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);

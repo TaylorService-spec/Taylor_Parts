@@ -15,7 +15,7 @@ vi.mock("../src/data/partsCatalog", () => ({
 vi.mock("../src/auth/AuthContext", () => ({ useAuth: () => ({ user: { uid: "u1", email: "a@b.c" }, role: "admin", logout: () => {} }) }));
 vi.mock("../src/hooks/useReorderRequests", () => {
   const r = () => ({ data: [{ id: "r1", partId: "TST-9001", urgency: "HIGH" }] });
-  return { useReorderRequests: r, useReorderRequestsByStatus: r, useReorderRequestsAssignedTo: r };
+  return { useReorderRequests: r, useReorderRequestsByStatus: r, useMyAssignedReorderRequests: r };
 });
 // canSeeReorderRequests is controlled per-test via a hoisted flag (default true so
 // NotificationPanel mounts); set perm.canSee=false to simulate an unauthorized/non-notification role.

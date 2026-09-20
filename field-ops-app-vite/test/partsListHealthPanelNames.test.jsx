@@ -17,7 +17,7 @@ vi.mock("../src/hooks/useReorderRequests", () => {
   const r = () => ({ data: [], loading: false, hasMore: false, loadMore: () => {}, refresh: () => {}, error: null });
   return {
     useReorderRequests: r, useReorderRequestsByStatus: r, useReorderRequestsByStatuses: r,
-    useReorderRequestsAssignedTo: r, useReorderRequestsHistory: r, useReorderRequestById: r,
+    useMyAssignedReorderRequests: r, useReorderRequestsHistory: r, useReorderRequestById: r,
     fetchReorderRequestsHistoryPage: async () => ({ items: [], hasMore: false }),
   };
 });

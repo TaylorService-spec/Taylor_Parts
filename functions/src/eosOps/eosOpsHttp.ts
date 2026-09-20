@@ -21,7 +21,7 @@ import { resolveOperationalContext } from "./capabilityAuthority";
 import {
   ReorderLifecycleError, createGovernedReorderRequest, reviewReorderRequest,
   startPurchasingOnReorder, postPurchasingUpdate, markReorderReceived, cancelReorderRequest,
-  readReorderQueue, readMyAssignedReorders, type ReorderActor,
+  readReorderQueue, readMyAssignedReorders, voidReorderPurchaseOrder, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -66,6 +66,7 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "postPurchasingUpdate",
   "markReorderReceived",
   "cancelReorderRequest",
+  "voidReorderPurchaseOrder",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -187,6 +188,10 @@ export async function executeOperation(
       case "cancelReorderRequest": {
         const { actor, pool } = await reorderActor();
         return ok(await cancelReorderRequest({ pool }, actor, request.input ?? {}));
+      }
+      case "voidReorderPurchaseOrder": {
+        const { actor, pool } = await reorderActor();
+        return ok(await voidReorderPurchaseOrder({ pool }, actor, request.input ?? {}));
       }
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Operations operation" };

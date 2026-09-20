@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import { reorderApiClient } from "../services/reorderApiClient.js";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
 
 // Bug fix -- Reorder Request notifications/queues (Notification Panel,
@@ -92,42 +93,53 @@ export function useReorderRequestsByStatus(status, enabled = true) {
   return state;
 }
 
-// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The
-// platform's first per-user filtered read, filtered to a specific
-// assignedToUserId -- used by the Parts Associate Queue (PartsList.jsx)
-// and the Notification Panel's "Assigned to You" section.
-// firestore.rules' read access is still role-level (admin/dispatcher,
-// unchanged) -- this filter is a server-side query constraint, same as
-// subscribeAssignedWorkOrders()'s where() clause, not an access-control
-// boundary.
+// ════════════════════ "MY ASSIGNED WORK", AFTER THE REORDER DOMAIN CUTOVER ════════════════════
 //
-// Sprint 2.1.7 -- Purchase Execution Foundation. `status` is an
-// explicit parameter (was hardcoded to ASSIGNED_TO_PARTS_ASSOCIATE) so
-// this same hook serves both the Parts Associate Queue's "Waiting"
-// (ASSIGNED_TO_PARTS_ASSOCIATE) and "In Progress"
-// (PURCHASING_IN_PROGRESS) sections, still filtered to one person.
-export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
+// This was `where("assignedToUserId", "==", userId)` -- a Firestore query scoped by a FIREBASE UID.
+// A uid is not an Employee, so that filter was only ever right by coincidence of provisioning, and
+// it could not be right at all for an Employee whose login was re-provisioned.
+//
+// It now asks the governed PostgreSQL authority instead. The server resolves the CALLER to an
+// Employee through an active employee_principal_link and scopes the read by the governed assignment;
+// the browser no longer states, or knows, whose work it is asking for. There is deliberately no
+// userId parameter: a caller that could name someone else's work is a caller that could read it.
+//
+// A Principal with no active Employee link gets an empty list, which is the honest answer rather
+// than an error -- an unlinked Principal is not an Employee and has no assigned work.
+//
+// NOT A LIVE SUBSCRIPTION. The Firestore onSnapshot listener is gone with the Firestore read; this
+// fetches once per (status, enabled) change. The screens using it already render a loading and an
+// error state, and a stale queue is a smaller problem than a queue scoped by the wrong identity.
+export function useMyAssignedReorderRequests(status, enabled = true, deps = {}) {
+  // The client is an INJECTION SEAM, not reactive state. Holding it in a ref keeps it out of the
+  // effect's dependencies: a caller that passes an inline `{ client }` object would otherwise hand
+  // this a new identity on every render, and the effect would re-read, re-render and re-read again.
+  const clientRef = useRef(deps.client ?? reorderApiClient);
+  clientRef.current = deps.client ?? reorderApiClient;
   const [state, setState] = useState({ data: [], loading: enabled, error: null });
 
   useEffect(() => {
-    if (!enabled || !userId) {
+    if (!enabled) {
       setState({ data: [], loading: false, error: null });
-      return;
+      return undefined;
     }
-
+    let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
-    const q = query(reorderRequestsRef, where("assignedToUserId", "==", userId), where("status", "==", status));
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
-      // W2: preserve the read error (see useReorderRequestsByStatus) so the
-      // Parts Associate Waiting/In-Progress sections can distinguish a failed
-      // read from genuinely-empty personal work.
-      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
-    );
-
-    return unsubscribe;
-  }, [userId, status, enabled]);
+    clientRef.current.call("readMyAssignedReorders")
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          // The refusal is preserved, not flattened: "you hold no capability" and "the service is
+          // unreachable" are different answers and the screen renders them differently.
+          setState({ data: [], loading: false, error: res.reason ?? res.code });
+          return;
+        }
+        const all = Array.isArray(res.result) ? res.result : [];
+        setState({ data: status ? all.filter((r) => r.status === status) : all, loading: false, error: null });
+      })
+      .catch(() => { if (!cancelled) setState({ data: [], loading: false, error: "unknown" }); });
+    return () => { cancelled = true; };
+  }, [status, enabled]);
 
   return state;
 }
