@@ -555,7 +555,10 @@ async function callerEmployee(pool: Pool, tenantId: string, principalId: string)
     `SELECT employee_id FROM eos_policy.employee_principal_links
       WHERE tenant_id = $1 AND principal_id = $2 AND status = 'active'`,
     [tenantId, principalId]);
-  // More than one active link is ambiguous, and ambiguity is never resolved by choosing.
+  // A UNIQUE index (employee_principal_links_one_active_per_principal) already makes more than one
+  // active link impossible, so this cannot currently fire. It is written as a refusal rather than a
+  // `rows[0]` anyway: if that index is ever relaxed, the failure should be "nobody" and not
+  // whichever row the planner returned first.
   return rows.length === 1 ? (rows[0].employee_id as string) : null;
 }
 
