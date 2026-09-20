@@ -27,6 +27,22 @@ const POLICY_DIR = "src/adminPolicy";
  */
 const TRANSITIONAL_ADAPTERS = Object.freeze({});
 
+/**
+ * Files that name a replaced Firestore location as DETECTION VOCABULARY, not as persistence.
+ *
+ * Deliberately a SEPARATE list from TRANSITIONAL_ADAPTERS, which is for code that still reaches
+ * Firestore and is scheduled for deletion. These files are permanent and reach nothing: they carry
+ * the string so they can RECOGNISE it. Filing them as transitional would say the opposite of what
+ * is true, and would promise a deletion that is never coming.
+ */
+const DETECTION_VOCABULARY = Object.freeze({
+  // BUSINESS_AXIS_TERMS lists the legacy authorities an access explanation may never cite --
+  // `users.role` among them. Detecting the term is the entire point of holding it.
+  "adminPolicy/accessExplanation.ts": "the conflation guard's forbidden-term vocabulary",
+});
+const isDetectionVocabulary = (file) =>
+  Object.keys(DETECTION_VOCABULARY).some((k) => file === k || file.replace(/\\/g, "/").endsWith(k));
+
 /** Windows and POSIX spell the same path differently; the allowlist should not have to care. */
 const isTransitional = (file) =>
   Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file) ||
@@ -113,7 +129,7 @@ test("the policy modules name no Firestore collection as their persistence", () 
     // The parity harness NAMES these collections on purpose -- reading them is its entire job, and
     // it is the one file allowed to. Its allowlist entry carries the reason and the condition under
     // which it gets deleted.
-    if (isTransitional(file)) continue;
+    if (isTransitional(file) || isDetectionVocabulary(file)) continue;
     const source = readFileSync(file, "utf8");
     // Comments are where these SHOULD appear -- explaining what was replaced and why. Strip them and
     // check the code, so the reasoning stays and the coupling cannot come back.
