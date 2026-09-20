@@ -43,20 +43,40 @@ describe("useReorderRequestsByStatus -- read-error contract", () => {
     expect(result.current.error).toBe(null);
   });
 
-  it("a failed read sets error to the Firestore error code (not swallowed)", () => {
-    const { result } = renderHook(() => useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER"));
-    act(() => capturedError({ code: "permission-denied" }));
-    expect(result.current.error).toBe("permission-denied");
-    expect(result.current.loading).toBe(false);
+  // This hook reads the governed PostgreSQL authority now, so there is no onSnapshot error callback
+  // to drive. The contract it exists for is unchanged: a failed read is REPORTED, never rendered as
+  // an empty queue, because "no requests" and "could not read requests" are different facts.
+  const withClient = (call) => renderHook(() =>
+    useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER", true, { client: { call } }));
+
+  it("a failed read keeps the server's own refusal reason (not swallowed)", async () => {
+    const { result } = withClient(async () => ({ ok: false, code: "FORBIDDEN", reason: "CAPABILITY_REQUIRED" }));
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("CAPABILITY_REQUIRED");
     expect(result.current.data).toEqual([]);
   });
 
-  it("a successful read clears error back to null", () => {
-    const { result } = renderHook(() => useReorderRequestsByStatus("READY_FOR_PARTS_MANAGER"));
-    act(() => capturedError({ code: "unavailable" }));
-    expect(result.current.error).toBe("unavailable");
-    act(() => capturedNext({ docs: [] }));
+  it("a refusal with no specific reason falls back to its category", async () => {
+    const { result } = withClient(async () => ({ ok: false, code: "UNREACHABLE", reason: null }));
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("UNREACHABLE");
+  });
+
+  it("a successful read reports no error and returns its rows", async () => {
+    const { result } = withClient(async () => ({ ok: true, result: [{ id: "a" }] }));
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe(null);
+    expect(result.current.data.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("the status is what it asks for, and it asks the queue read", async () => {
+    let seen;
+    const { result } = withClient(async (operation, input) => {
+      seen = { operation, input };
+      return { ok: true, result: [] };
+    });
+    await vi.waitFor(() => expect(result.current.loading).toBe(false));
+    expect(seen).toEqual({ operation: "readReorderQueue", input: { statuses: ["READY_FOR_PARTS_MANAGER"] } });
   });
 });
 

@@ -1,5 +1,3 @@
-import { doc, runTransaction } from "firebase/firestore";
-import { db, auth } from "../firebase/firebase";
 import { fromMajorString } from "./money.js";
 import { isWriteBlocked } from "../config/env";
 import {

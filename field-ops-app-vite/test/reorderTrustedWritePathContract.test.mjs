@@ -62,18 +62,30 @@ test("no application code performs the Record-PO transition to ORDERED directly"
   assert.deepEqual(offenders.map((f) => f.path), [], "these still perform the ORDERED transition client-side");
 });
 
-test("the two migrated commands go through the trusted callable transport", () => {
+test("the two migrated commands go through the GOVERNED PostgreSQL transport", () => {
+  // THE TRANSPORT MOVED AGAIN. These two commands went client-write -> Firebase callable in
+  // Workstream 2B, and callable -> governed PostgreSQL command in the Reorder Domain Cutover. The
+  // contract this test exists for is unchanged: ONE write authority, reached one way, with no path
+  // back to the retired one.
   const create = FILES.find((f) => f.path === "domain/inventoryReorderRequests.js");
   const po = FILES.find((f) => f.path === "domain/reorderPurchaseOrders.js");
   assert.ok(create && po, "both reorder domain modules must exist");
-  assert.match(code(create.text), /submitCreateReorderRequest\s*\(/);
-  assert.match(code(po.text), /submitRecordReorderPurchaseOrder\s*\(/);
+  assert.match(code(create.text), /reorderApiClient\.call\(\s*"createReorderRequest"/);
+  assert.match(code(po.text), /reorderApiClient\.call\(\s*"recordReorderPurchaseOrder"/);
 
-  // NO FALLBACK: neither may still reach the retired write on a failure path. If a `catch` ever
-  // routes back into a direct write, that is two write authorities again, which is the thing the
-  // Rules retirement exists to prevent.
+  // NO FALLBACK, and now NOTHING TO FALL BACK TO: neither module imports firebase/firestore at all,
+  // so a `catch` cannot route back into a direct write even by accident.
+  for (const f of [create, po]) {
+    assert.doesNotMatch(code(f.text), /from\s+"firebase\/firestore"/,
+      `${f.path} still imports firebase/firestore, which is a second write authority one line away`);
+  }
   assert.doesNotMatch(code(create.text), /catch[\s\S]{0,200}reorderRequestsStore\s*\.\s*add/);
   assert.doesNotMatch(code(po.text), /catch[\s\S]{0,200}transaction\s*\.\s*set\s*\(\s*purchaseOrderRef/);
+  // And the retired callable transport has no caller left in either module.
+  for (const f of [create, po]) {
+    assert.doesNotMatch(code(f.text), /submitCreateReorderRequest|submitRecordReorderPurchaseOrder/,
+      `${f.path} still calls the Firebase callable Reorder authority`);
+  }
 });
 
 test("the client NEVER sends operatingCompanyId, on any reorder path", () => {

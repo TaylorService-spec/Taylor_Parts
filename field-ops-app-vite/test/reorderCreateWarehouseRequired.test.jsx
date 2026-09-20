@@ -11,9 +11,20 @@
 // -- the exact thing the check exists to prevent. So the absence of any fallback is asserted too.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const submitCreateReorderRequest = vi.fn(() => Promise.resolve({ id: "r1" }));
+// THE TRANSPORT MOVED to the governed PostgreSQL command in the Reorder Domain Cutover. The
+// contract under test is unchanged: a warehouse is required, passed verbatim, and no company is
+// ever authored by the browser.
+const call = vi.fn(() => Promise.resolve({ ok: true, result: { reorderRequestId: "r1" } }));
+const submitCreateReorderRequest = {
+  get mock() { return { calls: call.mock.calls.map((args) => [args[1]]) }; },
+  mockClear: () => call.mockClear(),
+};
+vi.mock("../src/services/reorderApiClient.js", () => ({
+  reorderApiClient: { call: (...args) => call(...args) },
+  callReorderApi: (...args) => call(...args),
+}));
 vi.mock("../src/services/reorderCallableClient.js", () => ({
-  submitCreateReorderRequest: (...args) => submitCreateReorderRequest(...args),
+  submitCreateReorderRequest: () => { throw new Error("the retired callable must not be used"); },
   submitRecordReorderPurchaseOrder: vi.fn(),
 }));
 // The retired direct-write path must not be reachable from this test either: if createReorderRequest
@@ -48,11 +59,11 @@ const refusal = (input) => {
 };
 
 describe("createReorderRequest -- the governed warehouse is required", () => {
-  beforeEach(() => submitCreateReorderRequest.mockClear());
+  beforeEach(() => call.mockClear());
 
   it("refuses a request that names no warehouse", () => {
     expect(refusal({ ...READY })).toMatch(/warehouse is required/i);
-    expect(submitCreateReorderRequest).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it("treats null, empty and whitespace-only as no warehouse", () => {
@@ -61,7 +72,7 @@ describe("createReorderRequest -- the governed warehouse is required", () => {
     for (const warehouseId of [null, undefined, "", "   ", "\t"]) {
       expect(refusal({ ...READY, warehouseId })).toMatch(/warehouse is required/i);
     }
-    expect(submitCreateReorderRequest).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it("refuses a non-string rather than coercing one into an id", () => {

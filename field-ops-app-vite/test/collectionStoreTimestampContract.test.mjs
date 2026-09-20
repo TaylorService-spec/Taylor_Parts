@@ -103,9 +103,15 @@ test("every shared-writer store was found", () => {
   // ledger. Retiring recordInventoryAction() while leaving a live .add()-capable handle beside it
   // would have shut the front door and left the side one open, so the handle went too.
   //
+  // FLOOR LOWERED 5 -> 4 (Reorder Domain Cutover). domain/inventoryReorderRequests.js exported
+  // reorderRequestsStore until the Reorder object moved to governed PostgreSQL. Every writer in that
+  // file now calls a governed command, so the collection handle had no caller -- and leaving an
+  // .add()/.update()-capable handle beside the retired write path is the same side door the
+  // inventoryActionsStore removal closed: the front door shut, the side one left open.
+  //
   // The floor exists so a store cannot vanish unnoticed. It moves only with a reason, and only
   // down by the number actually removed -- never re-raised to paper over a later disappearance.
-  assert.ok(stores.length >= 5, `expected the known stores, found ${stores.length}`);
+  assert.ok(stores.length >= 4, `expected the known stores, found ${stores.length}`);
   assert.ok(stores.every((s) => s.collection), `a store's collection could not be resolved: ${JSON.stringify(stores.filter((s) => !s.collection))}`);
 });
 
