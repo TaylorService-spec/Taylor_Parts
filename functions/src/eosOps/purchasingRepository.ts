@@ -91,6 +91,15 @@ export type TransferOrderStatus = (typeof TRANSFER_ORDER_STATUSES)[number];
  * command core and this one may not import it), so the constant is named identically and a test
  * pins the two equal rather than leaving the duplication unguarded.
  */
+/**
+ * A Reorder raised through this command, as opposed to one copied from the legacy Firestore object.
+ *
+ * The distinction is not decoration: a MIGRATED row may legitimately have no known requester, and
+ * the constraint that keeps the native guarantee intact is keyed on this value.
+ */
+export const NATIVE_REORDER_PROVENANCE = "NATIVE";
+export const MIGRATED_REORDER_PROVENANCE = "MIGRATED";
+
 export const PO_RECORDABLE_STATUS: ReorderRequestStatus = "PURCHASING_IN_PROGRESS";
 
 /** The ONLY state a purchase order may be voided from. VOIDED is reachable from ORDERED and nowhere else. */
@@ -148,11 +157,13 @@ export async function createReorderRequest(
   const companyKey = requireOperatingCompanyKey(operatingCompanyKey);
   const id = newId("rr");
   await pool.query(
+    // `provenance` is STATED, never defaulted -- migration 035 drops the column default precisely so
+    // that a row raised through this command cannot be mistaken for one lifted out of Firestore.
     `INSERT INTO ${SCHEMA}.reorder_requests
        (id, tenant_id, operating_company_key, part_id, warehouse_id, status,
         requested_quantity, recommended_quantity, work_order_id, reorder_request_number,
-        requested_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)`,
+        requested_by, updated_by, provenance)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, '${NATIVE_REORDER_PROVENANCE}')`,
     [
       id, tenantId, companyKey, row.partId, row.warehouseId, row.status,
       row.requestedQuantity, row.recommendedQuantity ?? null, row.workOrderId ?? null,
