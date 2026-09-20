@@ -36,13 +36,20 @@ import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
 import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 import { createCrmHttpHandler } from "../eosCrm/crmHttp";
+import { createCatalogHttpHandler, CATALOG_ROUTE } from "../catalogMaster/catalogHttp";
+import { createPostgresCatalogReferenceAuthority } from "../catalogAuthority/postgresCatalogReferenceAuthority";
 
-/** Which domain transport answers a request path. Everything not Operations, Commercial, Workforce or CRM is Administration. */
-export function eosApiDomainFor(url: string | undefined): "crm" | "commercial" | "operations" | "workforce" | "administration" {
+/** Which domain transport answers a request path. Everything not Catalog, Operations, Commercial, Workforce or CRM is Administration. */
+export function eosApiDomainFor(url: string | undefined): "catalog" | "crm" | "commercial" | "operations" | "workforce" | "administration" {
   const path = (url ?? "").split("?")[0];
   if (path.startsWith("/crm/")) return "crm";
   if (path.startsWith("/commercial/")) return "commercial";
   if (path.startsWith("/workforce/")) return "workforce";
+  // CATALOG IS CHECKED BEFORE OPERATIONS, and that order is the whole of it: `/operations/catalog`
+  // begins with `/operations/`, so the broader test would swallow it and the Operations handler
+  // would answer UNKNOWN_OPERATION for every Catalog call -- a mounted route that is unreachable,
+  // which reads exactly like "the Catalog API does not work".
+  if (path === CATALOG_ROUTE || path.startsWith(`${CATALOG_ROUTE}/`)) return "catalog";
   if (path.startsWith("/operations/")) return "operations";
   return "administration";
 }
@@ -179,13 +186,27 @@ export async function startEosApi(
     allowedOrigins: config.allowedOrigins,
   });
 
+  // THE GOVERNED POSTGRESQL CATALOG AUTHORITY, composed ONCE and shared.
+  //
+  // Commercial's commands already ask it whether a PART or EQUIPMENT_MODEL line reference exists,
+  // INSIDE their own PostgreSQL transaction. Until now nothing was composed, so every
+  // product-reference command failed closed with CATALOG_AUTHORITY_UNAVAILABLE -- correctly, because
+  // no authority existed to answer. One now does, so the refusal goes.
+  //
+  // It is passed as a REPOSITORY, not as an HTTP client. Commercial must not call
+  // `/operations/catalog` over the network: that would validate a reference in one transaction and
+  // commit the agreement in another, with nothing making the two agree, and it would turn one
+  // Render handler into a client of another.
+  const catalogReferenceAuthority = createPostgresCatalogReferenceAuthority();
+
   // A THIRD domain-separated handler: the governed PostgreSQL Commercial transport (wave C4). Same repository, same
-  // pool, same verifier. No catalog authority is composed, so product-reference commands stay refused.
+  // pool, same verifier -- and now the shared catalog authority, so product-reference commands resolve.
   const commercialHandler = createCommercialHttpHandler({
     reader: repo,
     pool,
     verifyToken,
     allowedOrigins: config.allowedOrigins,
+    catalog: catalogReferenceAuthority,
   });
 
   // A FOURTH domain-separated handler: the governed PostgreSQL Employee (Workforce) reads. Same repository, same pool,
@@ -207,8 +228,23 @@ export async function startEosApi(
     allowedOrigins: config.allowedOrigins,
   });
 
+  // A SIXTH domain-separated handler: the governed PostgreSQL Catalog transport (Part Master, Part
+  // identity, Equipment Model). Same repository, same pool, same verifier, same origins. Mounting a
+  // route does not activate anything: every operation still checks the governed capability, and the
+  // Firestore Catalog writers remain the committed authority until the cutover moves them.
+  const catalogHandler = createCatalogHttpHandler({
+    reader: repo,
+    pool,
+    verifyToken,
+    allowedOrigins: config.allowedOrigins,
+  });
+
   const server = createServer((req, res) => {
     const domain = eosApiDomainFor(req.url);
+    if (domain === "catalog") {
+      void catalogHandler(req as never, res as never);
+      return;
+    }
     if (domain === "crm") {
       void crmHandler(req as never, res as never);
       return;

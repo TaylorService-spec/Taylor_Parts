@@ -133,7 +133,7 @@ export const CATALOG_RUNTIME_CENSUS: readonly CatalogCensusEntry[] = Object.free
   // ══════════ THE TARGET, BUILT AND INERT ══════════
   e({ path: "functions/src/catalogMaster/catalogHttp.ts", object: "PART",
     classification: "RENDER_RUNTIME",
-    consumer: "the governed Render Catalog API: bounded reads and the Part commands. BUILT / INERT -- no client calls it yet" }),
+    consumer: "the governed Render Catalog API: bounded reads and the Part commands. MOUNTED on the Render server at /operations/catalog (Lane 1)" }),
   e({ path: "functions/src/catalogMaster/postgresCatalogReads.ts", object: "PART",
     classification: "RENDER_RUNTIME", consumer: "the bounded PostgreSQL Part reads the API serves" }),
 

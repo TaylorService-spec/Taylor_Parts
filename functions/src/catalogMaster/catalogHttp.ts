@@ -25,6 +25,7 @@ import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
+import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { CatalogMasterError, type CatalogActorContext } from "./catalogMasterKernel.js";
 import { createPart, updatePart, changePartStatus } from "./postgresPartMasterWriter.js";
 import {
@@ -62,6 +63,8 @@ const READS = new Set<string>(CATALOG_READ_OPERATIONS);
 const MUTATIONS = new Set<string>(CATALOG_MUTATION_OPERATIONS);
 export const isCatalogOperation = (name: unknown): name is CatalogOperation =>
   typeof name === "string" && (READS.has(name) || MUTATIONS.has(name));
+
+export const CATALOG_ROUTE = "/operations/catalog";
 
 export type CatalogApiFailureCode =
   | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_INPUT"
@@ -182,4 +185,192 @@ export async function executeCatalogOperation(
   }
 }
 
-export const CATALOG_ROUTE = "/operations/catalog";
+
+// ═══════════════════════════════════ THE TRANSPORT ═══════════════════════════════════
+//
+// Adapted onto node:http exactly as the Operations, Commercial, Workforce and CRM transports are:
+// same verifier, same pool, same origin handling, same body limit. It is a SIXTH domain-separated
+// handler rather than an operation added to an existing list -- merging Catalog into the Operations
+// route would make one closed list answer for two domains, and the first time either grew the other
+// would have to be reviewed for it.
+
+export interface CatalogHttpOptions extends CatalogApiDeps {
+  readonly verifyToken: TokenVerifier;
+  readonly allowedOrigins?: readonly string[];
+}
+
+export interface HttpRequestLike {
+  readonly method?: string;
+  readonly url?: string;
+  readonly headers: Record<string, string | string[] | undefined>;
+  readonly body?: string;
+}
+
+export interface HttpResponseShape {
+  readonly status: number;
+  readonly headers: Record<string, string>;
+  readonly body: string;
+}
+
+const STATUS_BY_CODE: Readonly<Record<CatalogApiFailureCode, number>> = Object.freeze({
+  UNKNOWN_OPERATION: 404,
+  UNAUTHENTICATED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  INVALID_INPUT: 400,
+  PRECONDITION_FAILED: 412,
+  CONFLICT: 409,
+  UNAVAILABLE: 503,
+  INTERNAL: 500,
+});
+
+const MAX_BODY_BYTES = 1_000_000;
+
+function baseHeaders(origin: string | null): Record<string, string> {
+  return {
+    "content-type": "application/json; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    ...(origin ? { "access-control-allow-origin": origin, vary: "Origin" } : {}),
+  };
+}
+const json = (status: number, body: unknown, origin: string | null): HttpResponseShape => ({
+  status, headers: baseHeaders(origin), body: JSON.stringify(body),
+});
+
+const header = (req: HttpRequestLike, name: string) => req.headers?.[name] ?? req.headers?.[name.toLowerCase()];
+const singleHeader = (value: string | string[] | undefined): string | null => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return typeof value === "string" && value.length > 0 ? value : null;
+};
+function bearerToken(value: string | string[] | undefined): string | null {
+  const raw = singleHeader(value);
+  if (!raw) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(raw.trim());
+  return match ? match[1].trim() : null;
+}
+function pathOf(url: string): string {
+  const idx = url.indexOf("?");
+  const path = idx >= 0 ? url.slice(0, idx) : url;
+  return path.length > 1 && path.endsWith("/") ? path.slice(0, -1) : path;
+}
+function resolveOrigin(allowed: readonly string[] | undefined, value: string | string[] | undefined): string | null {
+  const origin = singleHeader(value);
+  if (!origin || !allowed || allowed.length === 0) return null;
+  return allowed.includes(origin) ? origin : null;
+}
+function parseBody(body: string | undefined): Record<string, unknown> {
+  if (!body || body.trim().length === 0) return {};
+  const parsed: unknown = JSON.parse(body);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+  return parsed as Record<string, unknown>;
+}
+function readBody(req: { on: Function }): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > MAX_BODY_BYTES) { reject(new Error("request body too large")); return; }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+/**
+ * Handle one request.
+ *
+ *   POST /operations/catalog   one named operation from the closed lists above. Authenticated.
+ *   OPTIONS *                  CORS preflight.
+ *
+ * `/health` is process-wide and served by the Administration handler; this transport answers only
+ * its own route.
+ */
+export async function handleCatalogRequest(
+  options: CatalogHttpOptions,
+  request: HttpRequestLike,
+): Promise<HttpResponseShape> {
+  const method = (request.method ?? "GET").toUpperCase();
+  const path = pathOf(request.url ?? "/");
+  const origin = resolveOrigin(options.allowedOrigins, header(request, "origin"));
+
+  if (method === "OPTIONS") {
+    return {
+      status: 204,
+      headers: {
+        ...baseHeaders(origin),
+        "access-control-allow-methods": "POST, OPTIONS",
+        "access-control-allow-headers": "authorization, content-type, x-eos-tenant",
+        "access-control-max-age": "600",
+      },
+      body: "",
+    };
+  }
+
+  if (path !== CATALOG_ROUTE) {
+    return json(404, { ok: false, operation: path, code: "UNKNOWN_OPERATION", message: "no such Catalog route" }, origin);
+  }
+  if (method !== "POST") return json(405, { ok: false, code: "UNKNOWN_OPERATION", message: "use POST" }, origin);
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = parseBody(request.body);
+  } catch {
+    return json(400, { ok: false, code: "INVALID_INPUT", message: "body must be a JSON object" }, origin);
+  }
+
+  const operation = payload.operation;
+  if (!isCatalogOperation(operation)) {
+    return json(404, { ok: false, operation: String(operation ?? ""), code: "UNKNOWN_OPERATION", message: "no such Catalog operation" }, origin);
+  }
+
+  // AUTHENTICATION BEFORE ANYTHING ELSE. A caller with no token learns which operations exist and
+  // nothing more, and no database connection is taken on their behalf.
+  const bearer = bearerToken(header(request, "authorization"));
+  if (!bearer) {
+    return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "a bearer token is required" }, origin);
+  }
+  let identity: VerifiedIdentity;
+  try {
+    identity = await options.verifyToken(bearer);
+  } catch {
+    return json(401, { ok: false, operation, code: "UNAUTHENTICATED", message: "the token could not be verified" }, origin);
+  }
+
+  const result = await executeCatalogOperation(options, {
+    caller: {
+      externalSubject: identity.externalSubject,
+      identityProvider: identity.identityProvider,
+      // STATED, never adopted: the server checks it against membership.
+      requestedTenantId: singleHeader(header(request, "x-eos-tenant")),
+    },
+    operation,
+    input: payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+      ? payload.input as Record<string, unknown>
+      : {},
+  });
+
+  if (result.ok) return json(200, result, origin);
+  return json(STATUS_BY_CODE[result.code] ?? 500, result, origin);
+}
+
+/** Adapt the pure handler onto node:http, matching every other EOS transport's adapter. */
+export function createCatalogHttpHandler(options: CatalogHttpOptions) {
+  return async function nodeHandler(
+    req: { method?: string; url?: string; headers: Record<string, string | string[] | undefined>; on: Function },
+    res: { writeHead: Function; end: Function },
+  ): Promise<void> {
+    const body = await readBody(req);
+    let response: HttpResponseShape;
+    try {
+      response = await handleCatalogRequest(options, { method: req.method, url: req.url, headers: req.headers, body });
+    } catch (err) {
+      console.error("[catalogHttp] unhandled", err);
+      response = json(500, { ok: false, code: "INTERNAL", message: "the request could not be completed" }, null);
+    }
+    res.writeHead(response.status, response.headers);
+    res.end(response.body);
+  };
+}

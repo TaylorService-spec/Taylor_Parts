@@ -52,22 +52,50 @@ test("the verdict rules on a fake database: own kind first, then the other kind,
   assert.deepEqual(await authority.verifyReferences(nonBoolean, "t1", [{ kind: "PART", ref: "x" }]), ["NOT_FOUND"], "only a real boolean true is existence");
 });
 
-// CATALOG_CUTOVER_TAIL. This PR is an INERT FOUNDATION. eos_ops.parts and eos_ops.equipment_models are empty in every
-// environment, so a composed PostgreSQL catalog would answer NOT_FOUND for every real product -- a false answer.
-// CATALOG_AUTHORITY_UNAVAILABLE is the truthful deployed behaviour until population and reconciliation are PROVEN by
-// the governed catalog cutover. Only that cutover may compose this adapter and relax this ratchet.
-test("ratchet: nothing composes the catalog authority -- server.ts supplies no catalog, and no runtime module imports catalogAuthority/**", () => {
+// CATALOG_CUTOVER_TAIL, RELEASED BY THE CATALOG CUTOVER LANE -- which is the condition the previous
+// ratchet named for its own removal ("Only that cutover may compose this adapter and relax this
+// ratchet"). The authority is now composed, ONCE, in eosApi/server.ts.
+//
+// THE REASON THE OLD RATCHET GAVE HAS NOT EXPIRED, and is now an ORDERING CONSTRAINT rather than a
+// ban: eos_ops.parts is still empty in every environment, so the composed authority answers
+// NOT_FOUND for every real product until the Catalog COPY runs. That turns an honest
+// CATALOG_AUTHORITY_UNAVAILABLE into a false REFERENCE_NOT_FOUND -- for anything that CALLS the
+// PostgreSQL Commercial commands. Nothing does: the browser still invokes the Firebase Sales
+// Agreement callables. So the constraint is:
+//
+//   the Commercial CLIENT cutover must not ship before Catalog reconciliation.
+//
+// Both halves are asserted below, so the constraint cannot be lost by someone reading only the code.
+test("the catalog authority is composed EXACTLY ONCE, as a repository, and never as an HTTP client", () => {
   const SRC = join(FUNCTIONS_DIR, "src");
   const server = strip(readFileSync(join(SRC, "eosApi/server.ts"), "utf8"));
-  assert.doesNotMatch(server, /catalogAuthority|CatalogReferenceAuthority|createPostgresCatalog/, "server.ts composes the catalog authority");
+  assert.equal((server.match(/createPostgresCatalogReferenceAuthority\(\)/g) ?? []).length, 1,
+    "one authority, shared -- a second would be a second answer to the same question");
   const handlerCall = server.match(/createCommercialHttpHandler\(\{([\s\S]*?)\}\)/);
-  assert.ok(handlerCall, "server.ts no longer composes the Commercial handler where this ratchet expects it");
-  assert.doesNotMatch(handlerCall[1], /\bcatalog\b/, "server.ts hands the Commercial handler a catalog");
+  assert.ok(handlerCall, "server.ts still composes the Commercial handler");
+  assert.match(handlerCall[1], /catalog: catalogReferenceAuthority/, "and hands it the authority");
+
+  // A REPOSITORY, never a URL. Commercial calling /operations/catalog would validate a reference in
+  // one transaction and commit the agreement in another.
+  assert.doesNotMatch(server, /fetch\(/, "the server composition makes no HTTP call");
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
   const importers = walk(SRC)
     .filter((f) => /\.(ts|js|mjs|cjs)$/.test(f) && !f.startsWith(join(SRC, "catalogAuthority")))
-    .filter((f) => /catalogAuthority\b|postgresCatalogReferenceAuthority/.test(strip(readFileSync(f, "utf8"))));
-  assert.deepEqual(importers, [], "a runtime module imports the catalog authority");
+    .filter((f) => /catalogAuthority\b|postgresCatalogReferenceAuthority/.test(strip(readFileSync(f, "utf8"))))
+    .map((f) => f.slice(FUNCTIONS_DIR.length + 1).split("\\").join("/"));
+  assert.deepEqual(importers, ["src/eosApi/server.ts"],
+    "only the server composition imports the authority; no command constructs its own");
+});
+
+test("ORDERING CONSTRAINT: the Commercial client has NOT been cut over, and must not be before reconciliation", () => {
+  // While eos_ops.parts is empty, a composed authority answers NOT_FOUND for every real product. That
+  // is only reachable by something that CALLS the PostgreSQL Commercial commands -- and the browser
+  // still calls the Firebase callables. This test fails the moment that stops being true, which is
+  // exactly when a person needs to re-read the constraint above.
+  const client = join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src", "services", "salesAgreementCommandClient.js");
+  const src = strip(readFileSync(client, "utf8"));
+  assert.match(src, /httpsCallable/,
+    "the Commercial client moved to Render: Catalog reconciliation must have happened first");
 });
 
 test("migration 026 is additive, standalone and carries no data, writer or cross-schema dependency beyond tenants", () => {

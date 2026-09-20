@@ -57,7 +57,10 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
   });
   const q = (text, values = []) => pool.query(text, values);
   const deps = { pool, catalog };
-  const bare = { pool }; // no catalog authority: the deployed shape today
+  // NO catalog authority composed. This is no longer the deployed shape -- eosApi/server.ts now
+  // composes the real one -- but the refusal must stay reachable and stay correct: a composition
+  // that omits the authority has to refuse rather than skip the reference check.
+  const bare = { pool };
   const count = async (table, where = "true", values = []) => (await q(`SELECT count(*)::int n FROM eos_commercial.${table} WHERE ${where}`, values)).rows[0].n;
   const withTrigger = async (table, fn) => {
     const name = `force_fail_${table}`;

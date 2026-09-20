@@ -22,6 +22,27 @@
 // DEPLOYED business operation that reaches it. `deployedReachable` is that distinction, and the
 // companion suite derives it from the import graph rather than trusting this list.
 
+/**
+ * THE STANDING PROJECTION RULE, after PostgreSQL Catalog activation.
+ *
+ * An optional projection -- Part balance, AI readiness, any enrichment whose absence changes no
+ * business truth -- has exactly two permitted behaviours:
+ *
+ *   1. consume the PostgreSQL Catalog, or
+ *   2. report UNAVAILABLE, explicitly, where a person can see it.
+ *
+ * It may NOT keep reading the frozen or retired Firestore Catalog and present that as current truth.
+ * There is NO stale-read compatibility period, and the reason is that a stale read is the only
+ * failure here that looks like success: a screen showing last month's part names is indistinguishable
+ * from a screen showing this month's, and the person reading it has no way to tell. An UNAVAILABLE
+ * projection is a worse experience and an honest one.
+ */
+export const PROJECTION_RULE_AFTER_ACTIVATION = Object.freeze({
+  permitted: Object.freeze(["CONSUME_POSTGRES_CATALOG", "REPORT_UNAVAILABLE"] as const),
+  forbidden: Object.freeze(["READ_FROZEN_FIRESTORE_CATALOG"] as const),
+  staleReadCompatibilityPeriod: false,
+} as const);
+
 export const LEDGER_RUNTIMES = Object.freeze(["FIREBASE_FUNCTIONS", "RENDER_POSTGRES", "BROWSER"] as const);
 export type LedgerRuntime = (typeof LEDGER_RUNTIMES)[number];
 
@@ -140,15 +161,17 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
     catalogFact: "PART and EQUIPMENT_MODEL existence, validated INSIDE the Sales Agreement Firestore transaction",
     classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
     deployedReachable: true,
-    replacementAuthority: null,
+    replacementAuthority: "eosCommercial/commands/salesAgreementCommandService + salesOrderCommandService (PostgreSQL, SERVED, Catalog COMPOSED)",
     activationBlocking: true,
     retirementBlocking: true,
     reason:
-      "CATALOG_ACTIVATION_DEPENDENCY: SALES_AGREEMENT_REFERENCE_VALIDATION. The Sales Agreement command "
-      + "itself still executes in Firebase, so its reference check cannot consume PostgreSQL Catalog "
-      + "without a bridge. Replacing the read with an HTTP call would validate against one store and "
-      + "commit in another, with nothing making the two agree. The validation is NOT weakened and the "
-      + "Sales Agreement implementation is untouched: it moves when Commercial moves.",
+      "CATALOG_ACTIVATION_DEPENDENCY: COMMERCIAL_CLIENT_CUTOVER -- and NO LONGER a missing authority. "
+      + "The PostgreSQL Sales Agreement and Sales Order commands exist, are served on /commercial/, and "
+      + "now resolve PART / EQUIPMENT_MODEL references against eos_ops inside their OWN transaction: "
+      + "the Catalog authority is composed in eosApi/server.ts, so CATALOG_AUTHORITY_UNAVAILABLE no "
+      + "longer fires there. What keeps THIS file live is that the browser still calls the FIREBASE "
+      + "Sales Agreement callables (services/salesAgreementCommandClient.js invokes httpsCallable). "
+      + "The remaining work is a Commercial CLIENT cutover, not a Commercial migration.",
   }),
   d({
     consumer: "functions/src/workOrderInstall/workOrderInstallCommand.ts",
@@ -182,6 +205,38 @@ export const CATALOG_ACTIVATION_DEPENDENCIES: readonly CatalogDependency[] = Obj
       + "commands still run in Firebase, so resolving against PostgreSQL would be a bridge. The "
       + "COMPATIBILITY RELATIONSHIP data is a separate authority the Catalog slice does not own and "
       + "does not migrate; only the model identity is Catalog's.",
+  }),
+
+  d({
+    consumer: "functions/src/dataImport/firestoreDataImportAdapters.ts",
+    owningDomain: "dataImport",
+    currentRuntime: "FIREBASE_FUNCTIONS",
+    catalogFact: "MUTATES Parts -- it calls the governed Firestore createPart command",
+    classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
+    deployedReachable: true,
+    replacementAuthority: null,
+    activationBlocking: true,
+    retirementBlocking: true,
+    reason:
+      "DATA_IMPORT_RUNTIME_MIGRATION_BLOCKER. Data Import does NOT bypass the Part authority -- it "
+      + "calls the governed createPart -- which is why it cannot simply be repointed: the command it "
+      + "calls is the Firestore one, and `executeDataImport` itself is a Firebase callable with no "
+      + "Render counterpart. There is no Render Data Import runtime, no PostgreSQL import table and no "
+      + "import operation on any transport. Reaching PostgreSQL Catalog from here would require either "
+      + "a Firebase -> Render HTTP call or a Firebase -> PostgreSQL pool, and both are forbidden. Data "
+      + "Import moves when a Render Data Import runtime exists.",
+  }),
+  d({
+    consumer: "functions/src/dataImport/firestoreInventoryImportAdapters.ts",
+    owningDomain: "dataImport",
+    currentRuntime: "FIREBASE_FUNCTIONS",
+    catalogFact: "Part existence and internal part number, to resolve import references",
+    classification: "ACTIVE_DEPLOYED_BUSINESS_PATH",
+    deployedReachable: true,
+    replacementAuthority: null,
+    activationBlocking: true,
+    retirementBlocking: true,
+    reason: "Same runtime blocker as the Part-mutating adapter: it reads Parts inside the Firebase import.",
   }),
 
   // ══════════ NOT REACHABLE FROM A DEPLOYED ENTRYPOINT ══════════
