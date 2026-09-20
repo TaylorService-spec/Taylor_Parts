@@ -273,6 +273,12 @@ export async function reviewReorderRequest(
   requireActor(actor, i.decision === "APPROVED" ? REORDER_APPROVE : REORDER_REJECT);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
   const reviewNotes = optionalText(i.reviewNotes, "reviewNotes");
+  // A REJECTION STATES WHY. firestore.rules requires it (`status != "REJECTED" || reviewNotes is
+  // string && size() > 0`) and an approval does not, so the asymmetry is preserved rather than
+  // smoothed into "notes are always optional" on the way across.
+  if (i.decision === "REJECTED" && reviewNotes === null) {
+    refuse("REVIEW_NOTES_REQUIRED", "INVALID_INPUT", "a rejection states why");
+  }
 
   return inTransaction(deps.pool, async (client) => {
     const current = await lockReorder(client, actor.tenantId, i.reorderRequestId as string);

@@ -1906,7 +1906,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/adminPolicy/workflowSeeds.ts"
+          "functions/src/adminPolicy/workflowSeeds.ts",
+          "functions/src/eosOps/reorderLifecycleCommands.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -1915,7 +1916,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/adminWorkflowView.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },

@@ -132,6 +132,12 @@ test("the governed Reorder lifecycle: capability first, then the assignee narrow
     assert.equal(rows[0].reviewed_by_principal_id, pManager);
     assert.ok(rows[0].reviewed_at);
     await assert.rejects(life.reviewReorderRequest(deps, actor(pManager), { reorderRequestId: rr, decision: "APPROVED" }), /not under review/);
+    // A rejection states why; an approval need not. The legacy Rules drew that line and it is kept.
+    const other = (await create()).reorderRequestId;
+    await assert.rejects(life.reviewReorderRequest(deps, actor(pManager), { reorderRequestId: other, decision: "REJECTED" }), /states why/);
+    const rejected = await life.reviewReorderRequest(deps, actor(pManager), {
+      reorderRequestId: other, decision: "REJECTED", reviewNotes: "stock arrived another way" });
+    assert.equal(rejected.status, "REJECTED");
   });
 
   await t.test("assignment advances the status in the same transaction", async () => {
