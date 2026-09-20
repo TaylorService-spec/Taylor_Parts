@@ -185,6 +185,28 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     consumer: "the Procurement panel's purchase-order read; its Reorder side is governed now", occurrences: 1,
   }),
 
+  // ══════════ THE SYNTHETIC FIXTURE DECLARATION ══════════
+  //
+  // It NAMES the three Reorder collections, in executable code, so the derivation finds it and it
+  // must be classified. It is MIGRATION_EVIDENCE, not a consumer: it reads nothing, writes nothing
+  // and reaches no authority. It states which documents in those collections are repository-authored
+  // SBX-SCN-001 scenario fixtures rather than business records -- the distinction the governed
+  // migration mapper correctly refuses to blur, and which the retirement tool acts on.
+  //
+  // Classifying it as a consumer would make the activation gate count a declaration as a blocker;
+  // leaving it out would make the census and the repository disagree.
+  e({ path: "functions/src/sandboxFixtures/reorderScenarioFixtures.ts", object: "REORDER_REQUEST",
+    classification: "MIGRATION_EVIDENCE",
+    consumer: "declares the 5 synthetic ro-sbx Reorder Request fixtures and how to recognise one",
+    occurrences: 8 }),
+  e({ path: "functions/src/sandboxFixtures/reorderScenarioFixtures.ts", object: "PURCHASE_ORDER",
+    classification: "MIGRATION_EVIDENCE",
+    consumer: "declares the 3 synthetic ro-sbx purchase order fixtures", occurrences: 5 }),
+  e({ path: "functions/src/sandboxFixtures/reorderScenarioFixtures.ts", object: "PURCHASE_ORDER_VOID",
+    classification: "MIGRATION_EVIDENCE",
+    consumer: "names the void collection in the retirement scope; the scenario declares no void fixture",
+    occurrences: 2 }),
+
   // ══════════ MIGRATION EVIDENCE ══════════
   e({ path: "functions/src/eosOps/migration/reorderFieldParityMatrix.ts", object: "REORDER_REQUEST",
     classification: "MIGRATION_EVIDENCE", consumer: "the parity matrix names the source collection", occurrences: 1 }),
