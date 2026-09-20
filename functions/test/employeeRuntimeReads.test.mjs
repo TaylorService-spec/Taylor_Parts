@@ -297,8 +297,12 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
   // imports nothing at all. This guard is about IMPORTERS, so it is excluded by path rather than listed as one: a
   // real import from it would still have to name a reads/ or commands/ module, which the checks around this catch.
   const LEDGER = join(SRC, "adminPolicy", "migration", "legacyConsumerLedger.ts");
+  // The programme census names Workforce paths as DATA for the same reason and on the same terms:
+  // it is a planning inventory of Firebase dependencies BY DOMAIN, decides nothing, is read by no
+  // runtime, and imports nothing. Excluded by path exactly as the ledger is.
+  const PROGRAMME_CENSUS = join(SRC, "programCensus", "firebaseExitDomainCensus.ts");
   const outsideWorkforce = walk(SRC, [".ts"])
-    .filter((f) => !f.startsWith(WORKFORCE) && f !== LEDGER && /eosWorkforce/.test(code(f)));
+    .filter((f) => !f.startsWith(WORKFORCE) && f !== LEDGER && f !== PROGRAMME_CENSUS && /eosWorkforce/.test(code(f)));
   assert.deepEqual(outsideWorkforce.map(rel), ["functions/src/eosApi/server.ts"]);
   // The transport is the ONE runtime importer of the internal governed commands (W1B); nothing runtime imports migration.
   const internal = walk(WORKFORCE, [".ts"]).filter((f) => /["'][./]*\/?(commands|migration)\//.test(code(f)) && !f.includes(`${WORKFORCE}/migration/`));

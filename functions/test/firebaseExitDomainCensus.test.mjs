@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import {
   FIREBASE_EXIT_DOMAINS, FIREBASE_EXIT_DOMAIN_ACCOUNTS, MIGRATION_STATES,
   domainFor, censusByDomain, notStartedDomains, cutOverDomains,
-} from "../lib/adminPolicy/migration/firebaseExitDomainCensus.js";
+} from "../lib/programCensus/firebaseExitDomainCensus.js";
 
 /** The four BUSINESS categories. firebase_auth and firebase_admin_app are allowed after exit. */
 const BUSINESS = ["frontend.firestore_client", "frontend.firebase_functions_client",

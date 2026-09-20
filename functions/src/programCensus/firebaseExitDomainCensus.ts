@@ -1,4 +1,10 @@
-// THE ZERO-FIREBASE PROGRAM CENSUS -- Firebase business dependencies, grouped by business domain.
+// THE ZERO-FIREBASE PROGRAMME CENSUS -- Firebase business dependencies, grouped by business domain.
+//
+// DELIBERATELY NOT UNDER adminPolicy/. This is a programme-planning census, not a policy module:
+// it decides nothing, is read by no runtime, and describes the whole repository rather than the
+// authorization subsystem. Filing it under adminPolicy would put a document about every domain
+// inside the one domain it happens to mention most, and would subject prose describing legacy
+// Firestore locations to a guard that exists to stop the policy engine PERSISTING to them.
 //
 // Pure data plus derivations: no database, no Firebase, no I/O, no clock. Its companion suite reads
 // the COMMITTED exit baseline and asserts every business-dependent file maps to exactly one domain,
