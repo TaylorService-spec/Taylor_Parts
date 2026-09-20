@@ -158,6 +158,23 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
     consumer: "seeds the performance story's assigned work", occurrences: 1, status: "NOT_STARTED",
   }),
 
+  // The migration tooling for THIS seam. It reads the legacy field as the migration SOURCE and resolves it to an
+  // Employee; it never writes it, never decides access from it, and never copies the uid forward. It is the only
+  // code that may keep naming the field after the authorization consumers move, because reading a field in order to
+  // retire it is not a dependency on it -- and it retires with the field, so it gates nothing.
+  e({
+    path: "functions/src/eosOps/migration/reorderAssignmentMigration.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "the pure classifier: names the field on the legacy source row and resolves it through the uid "
+      + "resolution map to an Employee disposition",
+    occurrences: 3, status: "NOT_STARTED",
+  }),
+  e({
+    path: "functions/src/eosOps/migration/reorderAssignmentMigrationCopy.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "the DRY RUN / COPY / VERIFY executor: gathers the source uids for resolution and records the legacy "
+      + "field as the copy's audit reason",
+    occurrences: 3, status: "NOT_STARTED",
+  }),
+
   // ── COMMERCIAL: the same NAME, a different object, a different seam ──
   //
   // The Person Assignment map already carries assignedToEmployeeId beside the uid, so it does not have the identity

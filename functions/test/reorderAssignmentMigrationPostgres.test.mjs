@@ -235,8 +235,20 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
     const source = [src("rr-1", "uid-alice"), src("rr-2", "uid-bob"), src("rr-3", "uid-alice", "uid-long-gone"),
       src("rr-exec", "uid-alice")];
     const verified = await copy.verifyReorderAssignmentMigration(pool, { tenantId: "t1", source });
-    assert.deepEqual([verified.passed, verified.findings, verified.uidStoredAnywhere], [true, [], false]);
+    assert.deepEqual([verified.passed, verified.findings], [true, []]);
     assert.equal(verified.checked, 4);
+    // STRUCTURAL, not string equality: the authority has no uid-shaped column, and the honestly-unknown historical
+    // assignor is counted rather than treated as a violation.
+    assert.deepEqual([...verified.uidShapedColumns], []);
+    assert.equal(verified.unresolvedProvenance, 1, "rr-3 records an unknown historical assignor");
+
+    // A governed id that HAPPENS to equal some Firebase external_subject is NOT evidence a uid was stored: two
+    // opaque namespaces may share characters. Proved by making the collision real and asserting VERIFY still passes.
+    await q(`INSERT INTO eos_policy.principals (id, identity_provider, external_subject, status)
+             VALUES ('p-collision', 'firebase', $1, 'active')`, ["e-alice"]);
+    const collided = await copy.verifyReorderAssignmentMigration(pool, { tenantId: "t1", source });
+    assert.equal(collided.passed, true, "a raw-value collision was mistaken for a stored uid");
+    assert.deepEqual([...collided.uidShapedColumns], []);
 
     // VERIFY must FAIL when the governed state disagrees with the source.
     await q(`UPDATE eos_ops.reorder_request_assignments SET effective_to = now(), ended_by_principal_id = $1, ended_at = now()

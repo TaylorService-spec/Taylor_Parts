@@ -153,7 +153,14 @@ export async function copyReorderAssignmentsOnce(
   const uids = input.source.flatMap((r) => [r.assignedToUserId, r.assignedBy].filter((v): v is string => typeof v === "string"));
   const client: PoolClient = await pool.connect();
   try {
-    await client.query("BEGIN");
+    // ONE CONSISTENT SNAPSHOT. `readResolutionView` issues four SELECTs -- Principals and membership, Employee
+    // links, Employees, current assignments -- and under READ COMMITTED each could observe a different committed
+    // state, so the "plan" would describe a database that never existed at any instant. A COPY ONCE decides what to
+    // write from one governed snapshot, which is also what the DRY RUN already uses.
+    //
+    // This is a READ-consistency choice, not a write guard: the partial unique index and the explicit FOR UPDATE
+    // refusal below remain the protection against a concurrent assignment.
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
 
     // THE AUTHORITATIVE PLAN, BUILT HERE. Not carried in from an earlier snapshot: between a dry run and a copy
     // someone may have assigned through the governed command, and planning against a stale view is exactly how a
@@ -245,7 +252,13 @@ export interface VerifyFinding {
 export interface VerifyResult {
   readonly checked: number;
   readonly findings: readonly VerifyFinding[];
-  readonly uidStoredAnywhere: boolean;
+  /**
+   * Columns in the assignment authority whose NAME could hold a uid. A STRUCTURAL violation -- the schema has none,
+   * and a migration that added one would be caught here rather than by guessing at values.
+   */
+  readonly uidShapedColumns: readonly string[];
+  /** Rows honestly recording an unknown historical assignor. Expected, and never a failure. */
+  readonly unresolvedProvenance: number;
   readonly passed: boolean;
 }
 
@@ -294,22 +307,49 @@ export async function verifyReorderAssignmentMigration(
     if (byRequest.has(id)) findings.push({ reorderRequestId: id, problem: "a BLOCKED source row was copied anyway" });
   }
 
-  // No Firebase uid may appear in governed assignment state. The schema has no uid column, so this catches a uid
-  // smuggled into a column that does exist.
-  const subjects = await pool.query(
-    `SELECT count(*)::int AS n FROM eos_ops.reorder_request_assignments a
-      WHERE a.tenant_id = $1 AND (
-        EXISTS (SELECT 1 FROM eos_policy.principals p WHERE p.identity_provider = $2 AND p.external_subject = a.assigned_employee_id)
-        OR EXISTS (SELECT 1 FROM eos_policy.principals p WHERE p.identity_provider = $2 AND p.external_subject = a.assigned_by_principal_id))`,
-    [input.tenantId, FIREBASE_IDENTITY_PROVIDER],
+  // NO UID CAN BE STORED -- proved STRUCTURALLY, not by comparing opaque strings.
+  //
+  // An earlier version flagged a violation when a governed id happened to equal some Firebase external_subject.
+  // That is not identity reasoning: two opaque namespaces may contain the same characters without one being the
+  // other, and a governed Principal id "abc" is not a uid merely because some unrelated Principal's subject is
+  // also "abc". Authority and type decide meaning, so the proofs are about the schema and its foreign keys.
+  const columns = await pool.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'eos_ops' AND table_name = 'reorder_request_assignments'`,
   );
-  const uidStoredAnywhere = subjects.rows[0].n > 0;
-  if (uidStoredAnywhere) findings.push({ reorderRequestId: "", problem: "a Firebase external subject appears in governed assignment state" });
+  const uidShapedColumn = columns.rows.map((r) => r.column_name as string)
+    .filter((c) => /uid|external_subject|user_id/.test(c));
+  if (uidShapedColumn.length > 0) {
+    findings.push({ reorderRequestId: "", problem: `the assignment authority grew a uid-shaped column: ${uidShapedColumn.join(", ")}` });
+  }
+  // Every assignee resolves through the governed Employee foreign key, and every non-null actor through the
+  // same-tenant membership foreign key. A uid could not satisfy either -- which is what makes it unstorable.
+  const unresolved = await pool.query(
+    `SELECT a.reorder_request_id,
+            (e.id IS NULL) AS assignee_unresolved,
+            (a.assigned_by_principal_id IS NOT NULL AND m.principal_id IS NULL) AS actor_unresolved,
+            (a.provenance = 'MIGRATED' AND a.assigned_by_principal_id IS NULL) AS unresolved_provenance
+       FROM eos_ops.reorder_request_assignments a
+       LEFT JOIN eos_workforce.employees e ON e.tenant_id = a.tenant_id AND e.id = a.assigned_employee_id
+       LEFT JOIN eos_policy.tenant_memberships m ON m.tenant_id = a.tenant_id AND m.principal_id = a.assigned_by_principal_id
+      WHERE a.tenant_id = $1 AND a.effective_to IS NULL`,
+    [input.tenantId],
+  );
+  for (const r of unresolved.rows) {
+    if (r.assignee_unresolved) {
+      findings.push({ reorderRequestId: r.reorder_request_id as string, problem: "the assignee does not resolve to a governed Employee" });
+    }
+    if (r.actor_unresolved) {
+      findings.push({ reorderRequestId: r.reorder_request_id as string, problem: "the historical actor does not resolve to a same-tenant Principal" });
+    }
+  }
+  const unresolvedProvenance = unresolved.rows.filter((r) => r.unresolved_provenance).length;
 
   return Object.freeze({
     checked: expected.length,
     findings: Object.freeze(findings),
-    uidStoredAnywhere,
+    uidShapedColumns: Object.freeze(uidShapedColumn),
+    unresolvedProvenance,
     passed: findings.length === 0 && plan.blockedReorderIds.length === 0,
   });
 }
