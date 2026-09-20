@@ -119,8 +119,15 @@ test("a file touching two objects has two entries -- the defect this key exists 
     "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts|REORDER_REQUEST",
   ]);
   const reorderSide = byPath.get("functions/src/inventoryReceiving/receiveInventoryStockCommand.ts|REORDER_REQUEST");
-  assert.equal(reorderSide.classification, "FIRESTORE_RUNTIME_WRITE",
+  // A WRITE classification, and one that BLOCKS. The cutover freeze gave this writer its own name
+  // (FIRESTORE_SOURCE_WRITER_FROZEN) once its refusal was built, and that name is deliberately still
+  // in ACTIVATION_BLOCKING: the freeze constant is FALSE today, so the writer is live. Accepting
+  // either name proves the point the original assertion was making -- this is not a read -- without
+  // pinning the census to a vocabulary that grew for a good reason.
+  assert.ok(["FIRESTORE_RUNTIME_WRITE", "FIRESTORE_SOURCE_WRITER_FROZEN"].includes(reorderSide.classification),
     "the legacy ORDERED -> RECEIVED transition is a WRITE, and classifying it as a read hid it");
+  assert.ok(ACTIVATION_BLOCKING.includes(reorderSide.classification),
+    "a source writer that still runs must keep blocking activation, frozen-in-waiting or not");
   // And the claim is checked against the source, not taken on trust.
   const src = strip(readFileSync(join(REPO, "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts"), "utf8"));
   assert.match(src, /status:\s*RECEIVED/, "the legacy transition write is no longer present -- reclassify it");

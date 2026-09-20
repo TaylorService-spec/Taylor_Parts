@@ -46,6 +46,7 @@ import {
   type ReceivingIdempotencyStore,
 } from "./receivingRepository.js";
 import { resolveReceivingSource } from "./receivingSourceResolver.js";
+import { assertReorderSourceWritable } from "../reorderRequest/reorderSourceFreeze.js";
 import { validateReceivingBatch, type ResolvedPartAuthority } from "./receivingBatchValidation.js";
 import { allocateReceivingOrderNumber } from "./receivingOrderNumbering.js";
 import {
@@ -229,6 +230,16 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     let reqRef: DocumentReference | null = null;
     let reqStatus: unknown = null;
     if (!resolved.isCanonical) {
+      // THE CUTOVER GATE, ON THE LEGACY BRANCH ONLY.
+      //
+      // This branch is the Firestore Reorder WRITE the first census missed: it transitions
+      // reorder_requests ORDERED -> RECEIVED. It is therefore one of the source writers the freeze
+      // must cover, and it is frozen with the rest of the Reorder chain.
+      //
+      // Placed HERE rather than at the command's entry point, deliberately. A canonical
+      // PURCHASE_ORDER receipt shares this command and must keep working unchanged until its own
+      // cutover -- freezing the entry point would stop a workflow this cutover has no mandate over.
+      assertReorderSourceWritable("receiveInventoryStockLegacyReorder");
       const reorderRequestId = resolved.reorderRequestId as string;
       reqRef = deps.db.collection(REORDER_REQUESTS_COLLECTION).doc(reorderRequestId);
       const reqSnap = await txn.get(reqRef);

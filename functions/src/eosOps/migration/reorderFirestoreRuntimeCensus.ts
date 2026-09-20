@@ -39,6 +39,19 @@ export const RUNTIME_CLASSIFICATIONS = Object.freeze([
   "FIRESTORE_RUNTIME_READ",
   /** Live code that WRITES it directly. BLOCKS activation. */
   "FIRESTORE_RUNTIME_WRITE",
+  /**
+   * A Firestore source WRITER that is gated by the cutover freeze
+   * (`reorderSourceFreeze.assertReorderSourceWritable`).
+   *
+   * STILL BLOCKS ACTIVATION, and that is the point of giving it its own name rather than moving it
+   * out of the blocking set. The freeze is a constant that is FALSE today: the writer is present,
+   * deployed and answering, and it stops writing only when the freeze is turned on. Classifying it
+   * as "handled" would let the gate open while the code that mutates the source is still live.
+   *
+   * What it does buy is truthfulness about WHY a consumer is still here: this one has its refusal
+   * built and waiting, and a plain FIRESTORE_RUNTIME_WRITE does not.
+   */
+  "FIRESTORE_SOURCE_WRITER_FROZEN",
   /** A client module that reaches a Reorder Firebase callable, directly or through a wrapper. BLOCKS. */
   "CALLABLE_CLIENT_WRAPPER",
   /**
@@ -59,7 +72,8 @@ export type RuntimeClassification = (typeof RUNTIME_CLASSIFICATIONS)[number];
 
 /** The three that block PostgreSQL activation. */
 export const ACTIVATION_BLOCKING: readonly RuntimeClassification[] = Object.freeze([
-  "FIRESTORE_RUNTIME_READ", "FIRESTORE_RUNTIME_WRITE", "CALLABLE_CLIENT_WRAPPER",
+  "FIRESTORE_RUNTIME_READ", "FIRESTORE_RUNTIME_WRITE", "FIRESTORE_SOURCE_WRITER_FROZEN",
+  "CALLABLE_CLIENT_WRAPPER",
 ]);
 
 /**
@@ -96,6 +110,19 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
   e({ path: "firestore.rules", object: "PURCHASE_ORDER_VOID", classification: "RULES_AUTHORITY",
     consumer: "the reorder_purchase_order_voids match block", occurrences: 8 }),
 
+  // ══════════ WHERE THE FREEZE AND THE PURCHASE-ORDER MIGRATION ARE ══════════
+  //
+  // `reorderRequest/reorderSourceFreeze.ts` (the cutover write gate) and
+  // `eosOps/migration/reorderPurchaseOrderMigration{,Copy}.ts` (the Purchase Order / void DRY RUN,
+  // COPY ONCE and VERIFY) appear in NO entry here, for the same reason the PostgreSQL receipt does:
+  // neither names an UNQUALIFIED Firestore collection in executable code. The freeze names them only
+  // in prose, and the migration layer addresses `${SCHEMA}.`-qualified PostgreSQL tables.
+  //
+  // This census MEASURES; it is not a place to advertise that something exists. Listing them would
+  // make the derivation and the census disagree, and the gate reads the census's length as a count
+  // of blockers. What the freeze DOES change here is the classification of the writers it gates --
+  // see FIRESTORE_SOURCE_WRITER_FROZEN below, which still blocks activation.
+
   // ══════════ WHERE THE REPLACEMENT IS, AND WHY IT IS NOT LISTED ══════════
   //
   // `functions/src/eosOps/receiveReorderStockCommand.ts` is the governed PostgreSQL receipt that
@@ -113,11 +140,13 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
   // ══════════ THE DEFECT THIS MODEL EXISTS TO CATCH ══════════
   e({
     path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "REORDER_REQUEST",
-    classification: "FIRESTORE_RUNTIME_WRITE",
+    classification: "FIRESTORE_SOURCE_WRITER_FROZEN",
     consumer: "THE LEGACY ORDERED -> RECEIVED WRITE. On a REORDER_PURCHASE_ORDER-sourced receipt it "
       + "updates the Firestore Reorder Request with { status: RECEIVED, receivedAt, receivedBy } in "
       + "the receiving transaction. A live Firestore Reorder writer, in the receiving path, that a "
-      + "one-row-per-file census could not see because the same file also reads a purchase order.",
+      + "one-row-per-file census could not see because the same file also reads a purchase order. "
+      + "NOW GATED by reorderSourceFreeze on the LEGACY BRANCH ONLY -- the canonical PURCHASE_ORDER "
+      + "receipt shares this command and is deliberately NOT frozen, because it has its own cutover.",
     occurrences: 1,
   }),
   e({
@@ -139,7 +168,8 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
     classification: "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
     consumer: "createReorderRequest and recordReorderPurchaseOrder write the Reorder Request. No "
       + "repository caller remains, but both are exported from index.ts and therefore deployed and "
-      + "externally invokable.",
+      + "externally invokable. Both persist functions are GATED by reorderSourceFreeze, which is the "
+      + "half of the freeze that Rules cannot provide: firestore.rules do not constrain the Admin SDK.",
     occurrences: 1,
   }),
   e({
