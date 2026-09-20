@@ -130,30 +130,54 @@ ALTER TABLE reorder_requests
     ADD CONSTRAINT reorder_received_with_moment
         CHECK (status <> 'RECEIVED' OR received_at IS NOT NULL) NOT VALID;
 
--- ════════════════════ RULING 3: THE OPERATING COMPANY MUST BE GOVERNED ════════════════════
+-- ════════════════════ RULING 3, AND WHY IT IS NOT A FOREIGN KEY HERE ════════════════════
 --
--- requireOperatingCompanyKey is a non-empty-string check and never consults the ownership registry,
--- so today a valid-looking slug reaches a governed column unchallenged. A valid-looking slug is not
--- operating-company authority.
+-- A valid-looking slug is not operating-company authority, and requireOperatingCompanyKey is only a
+-- non-empty-string check. But the obvious fix -- a foreign key from operating_company_key into
+-- eos_policy.tenant_operating_companies -- IS WRONG, because the two columns are not the same
+-- vocabulary:
 --
--- NOT VALID governs every future write without rewriting history, exactly as
--- opportunities_account_fk does in the Commercial parity migration.
+--   eos_policy.tenant_operating_companies.operating_company_id  the GOVERNED COMPANY ID. A closed
+--       registry: ownership/operatingCompanyAuthority.ts declares exactly `taylor` and `ventana`.
+--   eos_ops.*.operating_company_key                             an OPAQUE PARTITION KEY. Migration
+--       007 states it is opaque here because "Warehouse authority is not owned by this schema".
 --
--- The warehouse/company AGREEMENT is deliberately NOT a foreign key. A composite FK into
--- warehouses (tenant_id, id, operating_company_key) would re-derive the pair forever, so a warehouse
--- later changing company would break or silently restate every historical Reorder raised against it.
--- The company stored at creation is a fact about that moment. The creation and import boundaries
--- validate the pair ONCE; nothing re-derives it afterwards.
-ALTER TABLE reorder_requests
-    ADD CONSTRAINT reorder_operating_company_governed
-        FOREIGN KEY (tenant_id, operating_company_key)
-        REFERENCES eos_policy.tenant_operating_companies (tenant_id, operating_company_id) NOT VALID;
+-- The sample company proves they are deliberately distinct rather than accidentally divergent: its
+-- manifest sets operatingCompanyId `taylor` and operatingCompanyKey `sample-co-synthetic`, and says
+-- why -- "eos_ops rows this seed writes are therefore confined to a company nothing else in nonprod
+-- uses". A foreign key between them would join two vocabularies and fail every governed seed.
+--
+-- So the tenant-authority half of Ruling 3 is NOT implemented here, and is NOT quietly downgraded
+-- either: it is raised for Owner decision, because unifying the two spaces is a domain change well
+-- outside a Reorder cutover.
+--
+-- What IS enforced, at the creation and import boundary where Ruling 3 puts it, is the half that is
+-- unambiguous because both sides live in the SAME space: the warehouse must exist in this tenant and
+-- its operating_company_key must agree with the Reorder's. That is validated ONCE, at creation and
+-- at import. It is deliberately not a composite foreign key into warehouses, which would re-derive
+-- the pair forever and silently restate every historical Reorder whenever a warehouse changed hands.
 
--- Every actor column is a Principal who is a member of THIS tenant. Composite keys throughout: a
--- bare principal_id reference would let one tenant's Reorder name another tenant's member.
+-- ════════════════════ A SEAM THIS MIGRATION FOUND AND DOES NOT PAPER OVER ════════════════════
+--
+-- The NEW *_principal_id columns below are foreign-keyed to tenant membership, because the only
+-- things that will ever write them are the copy (which resolves uid -> Principal exactly) and the
+-- governed lifecycle commands this cutover adds.
+--
+-- `requested_by` IS DELIBERATELY NOT AMONG THEM, and that is a finding rather than an omission.
+-- Ruling 2 takes as its premise that the native PostgreSQL path already means "requested_by = EOS
+-- Principal id". The repository says otherwise: createReorderRequest's only caller is
+-- scripts/seedSampleCompany.js, which passes `actorUid = options.performedBy` -- an operator-supplied
+-- token. Adding the foreign key proved it empirically: every seeded Reorder violated it.
+--
+-- And this is not local to Reorder. The same `actorUid` is what createAccount, createContact,
+-- createWarehouse and createMobileLocation pass into created_by / updated_by, so the actor columns
+-- across eos_ops share one meaning, and it is not "Principal id". Re-specifying that here would
+-- silently re-define an identity convention for a whole schema on the way past a Reorder cutover.
+--
+-- So the constraint below keeps what IS true today -- a NATIVE row states a non-blank actor -- the
+-- copy writes resolved Principal ids into the new columns, and the eos_ops actor-identity seam is
+-- raised for Owner decision as its own question.
 ALTER TABLE reorder_requests
-    ADD CONSTRAINT reorder_requested_by_member_fk FOREIGN KEY (tenant_id, requested_by)
-        REFERENCES eos_policy.tenant_memberships (tenant_id, principal_id) NOT VALID,
     ADD CONSTRAINT reorder_reviewed_by_member_fk FOREIGN KEY (tenant_id, reviewed_by_principal_id)
         REFERENCES eos_policy.tenant_memberships (tenant_id, principal_id) NOT VALID,
     ADD CONSTRAINT reorder_purchasing_started_by_member_fk
@@ -184,8 +208,6 @@ ALTER TABLE reorder_requests
     DROP CONSTRAINT IF EXISTS reorder_review_decided_with_moment,
     DROP CONSTRAINT IF EXISTS reorder_cancelled_with_moment,
     DROP CONSTRAINT IF EXISTS reorder_received_with_moment,
-    DROP CONSTRAINT IF EXISTS reorder_operating_company_governed,
-    DROP CONSTRAINT IF EXISTS reorder_requested_by_member_fk,
     DROP CONSTRAINT IF EXISTS reorder_reviewed_by_member_fk,
     DROP CONSTRAINT IF EXISTS reorder_purchasing_started_by_member_fk,
     DROP CONSTRAINT IF EXISTS reorder_last_purchasing_update_by_member_fk,

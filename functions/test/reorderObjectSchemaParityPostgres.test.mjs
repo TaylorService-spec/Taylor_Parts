@@ -106,17 +106,28 @@ test("the Reorder object schema provides every place the parity matrix sends a f
         "a provenance default would let a migrated row pass itself off as natively raised");
     });
 
-    await t.test("the operating company is governed, not merely non-blank (RULING 3)", async () => {
+    await t.test("the operating company is NOT foreign-keyed to the tenant authority, deliberately", async () => {
+      // operating_company_key is an OPAQUE PARTITION KEY; tenant_operating_companies.operating_company_id
+      // is a CLOSED GOVERNED REGISTRY (`taylor`, `ventana`). The sample company deliberately sets them
+      // to different values. A foreign key between them would join two vocabularies, so the governed
+      // check belongs at the creation/import boundary -- and the tenant-authority half of Ruling 3 is
+      // raised for Owner decision rather than guessed at here.
+      const { rows } = await c.query(
+        `SELECT confrelid::regclass::text AS refs FROM pg_constraint
+          WHERE conrelid = 'eos_ops.reorder_requests'::regclass AND contype = 'f'`);
+      assert.ok(!rows.some((r) => /tenant_operating_companies/.test(r.refs)),
+        "operating_company_key and operating_company_id are different vocabularies; a foreign key between them is wrong");
+    });
+
+    await t.test("every actor column is a member of THIS tenant", async () => {
       const { rows } = await c.query(
         `SELECT conname, confrelid::regclass::text AS refs FROM pg_constraint
           WHERE conrelid = 'eos_ops.reorder_requests'::regclass AND contype = 'f'`);
       const byName = new Map(rows.map((r) => [r.conname, r.refs]));
-      assert.ok(byName.has("reorder_operating_company_governed"),
-        "a valid-looking slug still reaches the governed column unchallenged");
-      assert.match(byName.get("reorder_operating_company_governed"), /tenant_operating_companies/);
-
-      // Every actor column is a member of THIS tenant: composite keys throughout.
-      for (const fk of ["reorder_requested_by_member_fk", "reorder_reviewed_by_member_fk",
+      // requested_by is NOT here: its one existing writer passes an operator token, not a Principal.
+      assert.ok(!byName.has("reorder_requested_by_member_fk"),
+        "constraining requested_by would re-specify an identity convention shared across eos_ops");
+      for (const fk of ["reorder_reviewed_by_member_fk",
         "reorder_purchasing_started_by_member_fk", "reorder_last_purchasing_update_by_member_fk",
         "reorder_cancelled_by_member_fk", "reorder_received_by_member_fk"]) {
         assert.ok(byName.has(fk), `${fk} is missing, so an actor column is unconstrained`);
