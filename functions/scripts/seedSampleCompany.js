@@ -1161,7 +1161,9 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
     if (po.rows.length === 0) {
       ledger.record("purchaseOrders", "CREATE", p.purchaseOrder.externalPoNumber);
       if (apply) {
-        await purchasing.recordPurchaseOrder(pool, tenantId, actorUid, requestId, {
+        // purchase_orders.created_by is a governed Principal (migration 039), as is the Reorder's
+        // updated_by that this same transaction writes.
+        await purchasing.recordPurchaseOrder(pool, tenantId, admin.id, requestId, {
           supplierName: p.purchaseOrder.supplierName, externalPoNumber: p.purchaseOrder.externalPoNumber,
           orderedQuantity: p.purchaseOrder.orderedQuantity, orderedDate: p.purchaseOrder.orderedDate,
           expectedArrivalDate: p.purchaseOrder.expectedArrivalDate,
@@ -1197,7 +1199,8 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
         ledger.record("purchaseOrderVoids", "CREATE", p.purchaseOrder.externalPoNumber);
         // A void is append-only and reachable only from ORDERED. The purchase order document itself is
         // never mutated: the void is its own row, which is what preserves the immutability rule.
-        if (apply) await purchasing.voidPurchaseOrder(pool, tenantId, actorUid, requestId, p.void.reason);
+        // purchase_order_voids.voided_by is a governed Principal (migration 039).
+        if (apply) await purchasing.voidPurchaseOrder(pool, tenantId, admin.id, requestId, p.void.reason);
       } else {
         ledger.record("purchaseOrderVoids", "ALREADY_PRESENT", p.purchaseOrder.externalPoNumber);
       }
