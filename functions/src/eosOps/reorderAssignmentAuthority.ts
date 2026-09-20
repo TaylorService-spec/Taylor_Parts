@@ -57,6 +57,17 @@ export const REORDER_ASSIGNMENT_QUALIFICATION = "WAREHOUSE_OPERATIONS";
 /** Provenance of an assignment row, matching the eos_ops convention. A live command only ever writes NATIVE. */
 export const NATIVE_ASSIGNMENT_PROVENANCE = "NATIVE";
 
+/**
+ * The statuses a Reorder Request may be assigned from.
+ *
+ * READY_FOR_PARTS_MANAGER is the first assignment; ASSIGNED_TO_PARTS_ASSOCIATE is a reassignment,
+ * which is a real business action and not an error. Anything later is deliberately excluded --
+ * reassigning work that is already ordered or received does not move the work, it rewrites history.
+ */
+export const ASSIGNABLE_REORDER_STATUSES = Object.freeze([
+  "READY_FOR_PARTS_MANAGER", "ASSIGNED_TO_PARTS_ASSOCIATE",
+] as const);
+
 export type ReorderAssignmentErrorCategory =
   | "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN" | "FAILED";
 
@@ -171,6 +182,31 @@ export async function assignReorderRequestToEmployee(
         `the Employee does not currently hold the ${REORDER_ASSIGNMENT_QUALIFICATION} qualification`);
     }
 
+    // ════════ THE REORDER OBJECT, NOW THAT POSTGRESQL OWNS IT ════════
+    //
+    // When this authority was built the Reorder lived in Firestore, so `reorder_request_id` was
+    // necessarily opaque -- there was no row here to point at. The domain cutover moved the object,
+    // and an assignment to a Reorder this tenant does not have is no longer a reference nobody can
+    // check: it is simply wrong, so it is refused.
+    //
+    // Assigning also ADVANCES THE STATUS, in this same transaction. The legacy client did both in
+    // one client-side write (inventoryReorderRequests.js set status and currentOwner alongside the
+    // assignee), and splitting them across two commands would let a Reorder sit assigned-but-not-
+    // advanced, which is a state the lifecycle has no name for.
+    const target = await client.query(
+      `SELECT status::text AS status FROM eos_ops.reorder_requests
+        WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+      [actor.tenantId, reorderRequestId],
+    );
+    if (target.rows.length === 0) {
+      refuse("REORDER_NOT_FOUND", "NOT_FOUND", "the Reorder Request does not exist in this tenant");
+    }
+    const targetStatus = target.rows[0].status as string;
+    if (!(ASSIGNABLE_REORDER_STATUSES as readonly string[]).includes(targetStatus)) {
+      refuse("REORDER_NOT_ASSIGNABLE", "PRECONDITION_FAILED",
+        `a Reorder Request in ${targetStatus} is not awaiting assignment`);
+    }
+
     const { rows } = await client.query(
       `SELECT id, assigned_employee_id FROM eos_ops.reorder_request_assignments
         WHERE tenant_id = $1 AND reorder_request_id = $2 AND effective_to IS NULL FOR UPDATE`,
@@ -195,6 +231,13 @@ export async function assignReorderRequestToEmployee(
          (id, tenant_id, reorder_request_id, assigned_employee_id, effective_from, provenance, assigned_by_principal_id, reason)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [id, actor.tenantId, reorderRequestId, employeeId, at, NATIVE_ASSIGNMENT_PROVENANCE, actor.principalId, reason],
+    );
+    // The status moves with the assignment, and updated_by records the Principal who did it.
+    await client.query(
+      `UPDATE eos_ops.reorder_requests
+          SET status = 'ASSIGNED_TO_PARTS_ASSOCIATE', updated_by = $3, updated_at = $4
+        WHERE tenant_id = $1 AND id = $2`,
+      [actor.tenantId, reorderRequestId, actor.principalId, at],
     );
     await client.query(
       `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, occurred_at, reason)
@@ -247,7 +290,11 @@ export async function readAssignedEmployee(
  * It NARROWS an already-held capability and grants nothing on its own.
  */
 export async function isCallerTheAssignedEmployee(
-  pool: Pool, tenantId: string, callerPrincipalId: string, reorderRequestId: string,
+  // A Pool OR a PoolClient: an authorization decision made outside the transaction that acts on it
+  // can be overtaken between the check and the write, so every caller inside a transaction passes
+  // its own client and reads the same snapshot it is about to write against.
+  pool: Pick<Pool, "query"> | Pick<PoolClient, "query">,
+  tenantId: string, callerPrincipalId: string, reorderRequestId: string,
 ): Promise<boolean> {
   if (!ID_SHAPE(tenantId) || !ID_SHAPE(callerPrincipalId) || !ID_SHAPE(reorderRequestId)) return false;
   const { rows } = await pool.query(
