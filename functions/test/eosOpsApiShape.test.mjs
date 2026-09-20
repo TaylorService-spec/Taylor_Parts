@@ -10,15 +10,32 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   OPERATIONS_READ_OPERATIONS,
+  OPERATIONS_MUTATION_OPERATIONS,
   isOperationsOperation,
   handleOperationsRequest,
 } from "../lib/eosOps/eosOpsHttp.js";
 
-test("the Operations read list is closed and names exactly one P0 operation", () => {
-  assert.deepEqual(OPERATIONS_READ_OPERATIONS, ["resolveMyCapabilities"]);
-  assert.equal(isOperationsOperation("resolveMyCapabilities"), true);
+test("both Operations lists are closed, and name exactly what the transport serves", () => {
+  // The P0 capability read, plus the two Reorder reads the domain cutover adds. Reading the queue
+  // and reading your own assigned work are different questions with different capabilities, so they
+  // are different operations rather than one operation with a flag.
+  assert.deepEqual(OPERATIONS_READ_OPERATIONS,
+    ["resolveMyCapabilities", "readReorderQueue", "readMyAssignedReorders"]);
+  // The Reorder lifecycle. Composing a route activates nothing: each refuses unless the caller holds
+  // the capability the Role catalog already governs, and the three assignee-scoped commands refuse
+  // again unless the caller resolves to the assigned Employee.
+  assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
+    "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
+    "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
+  ]);
+  for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
+    assert.equal(isOperationsOperation(name), true, name);
+  }
   assert.equal(isOperationsOperation("mutateAnything"), false);
   assert.equal(isOperationsOperation("runSQL"), false);
+  // The lists do not overlap: an operation is a read or a mutation, never quietly both.
+  const reads = new Set(OPERATIONS_READ_OPERATIONS);
+  assert.ok(!OPERATIONS_MUTATION_OPERATIONS.some((m) => reads.has(m)));
 });
 
 test("an operation not on the list is UNKNOWN_OPERATION, unauthenticated or not", async () => {
