@@ -287,13 +287,18 @@ test("the canonical frontend shim exports the Firestore and Functions HANDLES an
     "auth must never appear here -- Firebase Auth identity is permitted by Owner ruling");
 });
 
-test("all 71 importers of the frontend handle shim's db/functions also import the fenced " +
+test("all 68 importers of the frontend handle shim's db/functions also import the fenced " +
   "dependency DIRECTLY, so the guard's own baseline already governs every one of them -- which " +
   "is why this shim's tolerated consumer set is empty rather than unexamined", () => {
   const live = buildCensus(REPO_ROOT);
   const shim = live.shims.find((entry) => entry.shim === "field-ops-app-vite/src/firebase/firebase.js");
   assert.deepEqual(shim.consumers, []);
-  assert.equal(live.observed.alreadyFencedConsumers, 71,
+  // 71 -> 68: the Reorder Domain Cutover's three modules stopped importing the shim's handles AND
+  // the fenced dependency, so they left both sets together. That is the outcome this assertion is
+  // watching for -- the failure mode it guards against is the OTHER one, where a file drops the
+  // direct import but keeps reaching Firestore through the shim, which would empty this count
+  // while filling the tolerated-consumer list asserted above.
+  assert.equal(live.observed.alreadyFencedConsumers, 68,
     "if this drops, a former guard baseline entry now reaches Firestore only through the shim and " +
     "must appear as a censused consumer instead");
 });
