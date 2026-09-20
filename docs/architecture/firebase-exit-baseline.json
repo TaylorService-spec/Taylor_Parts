@@ -106,7 +106,6 @@
         "field-ops-app-vite/src/services/performanceGoalClient.js",
         "field-ops-app-vite/src/services/privilegedApprovalClient.js",
         "field-ops-app-vite/src/services/receivingCallableClient.js",
-        "field-ops-app-vite/src/services/reorderCallableClient.js",
         "field-ops-app-vite/src/services/returnCommandClient.js",
         "field-ops-app-vite/src/services/salesAgreementCommandClient.js",
         "field-ops-app-vite/src/services/salesOrderCommandClient.js",

@@ -91,8 +91,14 @@ test("the two migrated commands go through the GOVERNED PostgreSQL transport", (
 test("the client NEVER sends operatingCompanyId, on any reorder path", () => {
   // The server refuses a supplied company outright, so sending one would fail the command rather
   // than be ignored. This asserts the browser has no code that could send it at all.
-  const transport = FILES.find((f) => f.path === "services/reorderCallableClient.js");
-  assert.ok(transport, "the reorder callable transport must exist");
+  // THE CALLABLE TRANSPORT IS GONE. It fenced a browser->Firebase-Functions path that no longer
+  // exists: every Reorder read and write goes to the governed PostgreSQL authority through
+  // services/reorderApiClient.js. Its absence is the assertion now, because an unused wrapper round
+  // a Firebase callable is a second authority one import away.
+  assert.equal(FILES.find((f) => f.path === "services/reorderCallableClient.js"), undefined,
+    "the retired Firebase callable transport must not exist");
+  const transport = FILES.find((f) => f.path === "services/reorderApiClient.js");
+  assert.ok(transport, "the governed reorder transport must exist");
   assert.doesNotMatch(code(transport.text), /operatingCompanyId\s*:/, "the transport must never put a company in a payload");
 
   for (const path of ["domain/inventoryReorderRequests.js", "domain/reorderPurchaseOrders.js"]) {

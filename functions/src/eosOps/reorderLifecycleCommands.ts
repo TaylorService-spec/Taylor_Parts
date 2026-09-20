@@ -610,6 +610,15 @@ export async function voidReorderPurchaseOrder(
  * `.id`, and renaming that in the same change that moves the authority would mix a cosmetic churn
  * into a migration, making a reviewer check every render site for a reason unrelated to identity.
  */
+/** The same three answers the legacy callable gave. Collapsing them would lie to the picker. */
+export type ReorderWarehouseReason =
+  "GOVERNED_ASSIGNMENT" | "NO_GOVERNED_WAREHOUSE_AUTHORITY" | "AUTHORITY_UNRESOLVED";
+
+export interface ReorderWarehouseOption {
+  readonly warehouseId: string;
+  readonly label: string;
+}
+
 export interface ReorderQueueItem {
   readonly id: string;
   readonly reorderRequestId: string;
@@ -786,6 +795,57 @@ export async function readReorderRequest(
   ]);
   const row = rows[0];
   return row ? toItem(row, deriveReorderCurrentOwner(String(row.status)), mine) : null;
+}
+
+/**
+ * WHICH WAREHOUSES MAY THIS CALLER RAISE A REORDER FOR?
+ *
+ * The governed replacement for the `listReorderWarehouseOptions` Firebase callable. Same question,
+ * same authorizing capability as the create it serves -- if you may not raise a reorder, there is
+ * no reorder warehouse list for you to see -- and the same three-way answer, because "you may not
+ * do this", "you may, but no warehouse is governed to you" and "a read failed" are three different
+ * sentences and a picker that collapses them lies to the person using it.
+ *
+ * The scope is the caller's governed WAREHOUSE operational scope (employee_operational_scopes),
+ * resolved through their Employee. There is no operational-role fallback and no Firestore read.
+ *
+ * A warehouse is offered only when it is ACTIVE and its operating company key is BOUND to an ACTIVE
+ * company this tenant may operate as -- the same Ruling 2 check the create itself applies, so the
+ * picker cannot offer a warehouse the create would then refuse.
+ */
+export async function listReorderWarehouseOptions(
+  deps: { readonly pool: Pool }, actor: ReorderActor,
+): Promise<{ readonly options: readonly ReorderWarehouseOption[]; readonly reason: ReorderWarehouseReason }> {
+  requireActor(actor, REORDER_CREATE_MANUAL);
+  const employeeId = await callerEmployee(deps.pool, actor.tenantId, actor.principalId);
+  if (employeeId === null) {
+    // Not "no warehouses": this caller resolves to no Employee, so their scope cannot be read at
+    // all. Fail closed, and say which of the three answers this is.
+    return { options: Object.freeze([]), reason: "AUTHORITY_UNRESOLVED" };
+  }
+  const { rows } = await deps.pool.query(
+    `SELECT w.id, w.name, w.site_label
+       FROM eos_ops.warehouses w
+       JOIN eos_workforce.employee_operational_scopes s
+         ON s.tenant_id = w.tenant_id AND s.scope_id = w.id
+        AND s.scope_type = 'WAREHOUSE' AND s.effective_to IS NULL
+       JOIN eos_policy.tenant_operating_company_keys b
+         ON b.tenant_id = w.tenant_id AND b.operating_company_key = w.operating_company_key
+        AND b.status = 'ACTIVE'
+       JOIN eos_policy.tenant_operating_companies c
+         ON c.tenant_id = b.tenant_id AND c.operating_company_id = b.operating_company_id
+        AND c.status = 'ACTIVE'
+      WHERE w.tenant_id = $1 AND s.employee_id = $2 AND w.status = 'ACTIVE'
+      ORDER BY w.name, w.id`,
+    [actor.tenantId, employeeId]);
+  const options = Object.freeze(rows.map((r) => Object.freeze({
+    warehouseId: r.id as string,
+    label: `${r.name as string} (${r.site_label as string})`,
+  })));
+  return {
+    options,
+    reason: options.length > 0 ? "GOVERNED_ASSIGNMENT" : "NO_GOVERNED_WAREHOUSE_AUTHORITY",
+  };
 }
 
 /**

@@ -23,10 +23,6 @@ vi.mock("../src/services/reorderApiClient.js", () => ({
   reorderApiClient: { call: (...args) => call(...args) },
   callReorderApi: (...args) => call(...args),
 }));
-vi.mock("../src/services/reorderCallableClient.js", () => ({
-  submitCreateReorderRequest: () => { throw new Error("the retired callable must not be used"); },
-  submitRecordReorderPurchaseOrder: vi.fn(),
-}));
 // The retired direct-write path must not be reachable from this test either: if createReorderRequest
 // ever falls back to it, this store throws rather than quietly succeeding.
 vi.mock("../src/firebase/collectionStore", () => ({

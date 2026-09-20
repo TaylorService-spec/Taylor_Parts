@@ -280,10 +280,14 @@ export interface RecordPurchaseOrderInput {
  * PO_ALREADY_EXISTS. The last one is also the schema's (the primary key), and is checked here so the
  * caller gets the domain reason rather than a unique-violation.
  */
+/**
+ * `actorPrincipalId` IS AN EOS PRINCIPAL. It lands in `purchase_orders.created_by` and in the
+ * request's `updated_by`, and migration 039 constrains both to a member of this tenant.
+ */
 export async function recordPurchaseOrder(
   pool: Pool,
   tenantId: string,
-  actorId: string,
+  actorPrincipalId: string,
   reorderRequestId: string,
   input: RecordPurchaseOrderInput,
 ): Promise<PurchaseOrderRecord> {
@@ -333,14 +337,14 @@ export async function recordPurchaseOrder(
         reorderRequestId, tenantId, companyKey, request.part_id,
         input.supplierName, input.externalPoNumber, input.orderedQuantity,
         input.orderedDate, input.expectedArrivalDate ?? null,
-        priced, currency, input.priceAuthorityVersion ?? null, actorId,
+        priced, currency, input.priceAuthorityVersion ?? null, actorPrincipalId,
       ],
     );
     await client.query(
       `UPDATE ${SCHEMA}.reorder_requests
           SET status = 'ORDERED', updated_by = $3, updated_at = now()
         WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, reorderRequestId, actorId],
+      [tenantId, reorderRequestId, actorPrincipalId],
     );
 
     await client.query("COMMIT");
@@ -421,10 +425,14 @@ export interface PurchaseOrderVoidRecord {
  * transaction — not supplied, and not re-derived — so a void can never attribute itself to a company
  * or a part the purchase order it voids did not carry.
  */
+/**
+ * `actorPrincipalId` IS AN EOS PRINCIPAL. It lands in `purchase_order_voids.voided_by` and in the
+ * request's `updated_by`, and migration 039 constrains both to a member of this tenant.
+ */
 export async function voidPurchaseOrder(
   pool: Pool,
   tenantId: string,
-  actorId: string,
+  actorPrincipalId: string,
   purchaseOrderId: string,
   reason: string,
 ): Promise<PurchaseOrderVoidRecord> {
@@ -469,13 +477,13 @@ export async function voidPurchaseOrder(
       `INSERT INTO ${SCHEMA}.purchase_order_voids
          (purchase_order_id, tenant_id, operating_company_key, part_id, reason, voided_by)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [purchaseOrderId, tenantId, companyKey, source.part_id, reason, actorId],
+      [purchaseOrderId, tenantId, companyKey, source.part_id, reason, actorPrincipalId],
     );
     await client.query(
       `UPDATE ${SCHEMA}.reorder_requests
           SET status = 'VOIDED', updated_by = $3, updated_at = now()
         WHERE tenant_id = $1 AND id = $2`,
-      [tenantId, purchaseOrderId, actorId],
+      [tenantId, purchaseOrderId, actorPrincipalId],
     );
 
     await client.query("COMMIT");
@@ -485,7 +493,7 @@ export async function voidPurchaseOrder(
       operatingCompanyKey: companyKey,
       partId: source.part_id,
       reason,
-      voidedBy: actorId,
+      voidedBy: actorPrincipalId,
     };
   } catch (err) {
     await rollbackQuietly(client);

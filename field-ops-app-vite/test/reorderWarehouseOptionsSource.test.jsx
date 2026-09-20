@@ -11,10 +11,15 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const invoke = vi.fn();
+// THE TRUSTED SOURCE MOVED, and this file's subject did not: it is still "ONE read authority for
+// this selector, with no way back to another one". The source is now the governed PostgreSQL
+// warehouse authority through services/reorderApiClient.js, and the Firebase callable transport it
+// used to fence has been DELETED rather than left exported.
+const call = vi.fn();
+const invoke = { call: (...args) => call(...args) };
 vi.mock("../src/firebase/firebase.js", () => ({ db: {}, auth: {}, functions: {} }));
 
-import { fetchReorderWarehouseOptions, REORDER_CALLABLES } from "../src/services/reorderCallableClient.js";
+import { fetchReorderWarehouseOptions } from "../src/services/reorderApiClient.js";
 import { useReorderWarehouseOptions } from "../src/hooks/useReorderWarehouseOptions.js";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -25,9 +30,11 @@ const code = (path) =>
 
 describe("fetchReorderWarehouseOptions — the transport", () => {
   it("calls the trusted projection, with no arguments of its own to get wrong", async () => {
-    invoke.mockResolvedValue({ options: [{ warehouseId: "wh-main", label: "Main" }], reason: "UNSCOPED_SECURITY_ROLE" });
+    call.mockResolvedValue({ ok: true, result: { options: [{ warehouseId: "wh-main", label: "Main" }], reason: "UNSCOPED_SECURITY_ROLE" } });
     const result = await fetchReorderWarehouseOptions(invoke);
-    expect(invoke).toHaveBeenCalledWith(REORDER_CALLABLES.listReorderWarehouseOptions, {});
+    // No input at all. The server decides scope from the authenticated principal, and a
+    // client-supplied filter would be a second opinion about who the caller is.
+    expect(call).toHaveBeenCalledWith("listReorderWarehouseOptions");
     // The server decides scope from the authenticated principal. A client-supplied filter would be
     // a second opinion about who the caller is.
     expect(result.options).toEqual([{ value: "wh-main", label: "Main" }]);
@@ -36,7 +43,7 @@ describe("fetchReorderWarehouseOptions — the transport", () => {
 
   it("survives a malformed or empty response without inventing an option", async () => {
     for (const data of [{}, null, { options: null }, { options: "nope" }]) {
-      invoke.mockResolvedValue(data);
+      call.mockResolvedValue({ ok: true, result: data });
       const result = await fetchReorderWarehouseOptions(invoke);
       expect(result.options).toEqual([]);
       expect(result.reason).toBe(null);
@@ -44,10 +51,10 @@ describe("fetchReorderWarehouseOptions — the transport", () => {
   });
 
   it("drops an option with no id, and falls back to the id when the label is missing", async () => {
-    invoke.mockResolvedValue({
+    call.mockResolvedValue({ ok: true, result: {
       options: [{ warehouseId: "wh-a", label: "" }, { warehouseId: "", label: "Ghost" }, { label: "No id at all" }],
       reason: null,
-    });
+    } });
     const { options } = await fetchReorderWarehouseOptions(invoke);
     expect(options).toEqual([{ value: "wh-a", label: "wh-a" }]);
   });
@@ -118,12 +125,12 @@ describe("ONE selector, ONE read authority", () => {
     expect(src).not.toMatch(/getDocs|httpsCallable|fetchReorderWarehouseOptions|useReorderWarehouseOptions/);
   });
 
-  it("the transport still never sends a company, on the new path either", () => {
-    expect(code("services/reorderCallableClient.js")).not.toMatch(/operatingCompanyId\s*:/);
+  it("the transport still never sends a company, on the governed path either", () => {
+    expect(code("services/reorderApiClient.js")).not.toMatch(/operatingCompanyId\s*:/);
   });
 
   it("no warehouse id or company is hard-coded on any reorder surface", () => {
-    for (const path of [...SURFACES, "hooks/useReorderWarehouseOptions.js", "services/reorderCallableClient.js"]) {
+    for (const path of [...SURFACES, "hooks/useReorderWarehouseOptions.js", "services/reorderApiClient.js"]) {
       expect(code(path)).not.toMatch(/["'`]wh-/);
       expect(code(path)).not.toMatch(/["'](taylor|ventana)["']/i);
     }

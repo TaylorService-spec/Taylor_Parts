@@ -21,7 +21,7 @@ test("both Operations lists are closed, and name exactly what the transport serv
   // are different operations rather than one operation with a flag.
   assert.deepEqual(OPERATIONS_READ_OPERATIONS,
     ["resolveMyCapabilities", "readReorderQueue", "readMyAssignedReorders",
-      "readReorderRequest", "readMyReorderHistory"]);
+      "readReorderRequest", "readMyReorderHistory", "listReorderWarehouseOptions"]);
   // The Reorder lifecycle. Composing a route activates nothing: each refuses unless the caller holds
   // the capability the Role catalog already governs, and the three assignee-scoped commands refuse
   // again unless the caller resolves to the assigned Employee.

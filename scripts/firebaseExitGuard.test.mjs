@@ -984,7 +984,7 @@ test("classification is a strict SUPERSET: every file the specifier matcher alon
     SERVER_PROBE).has("server.firebase_admin_firestore"));
 });
 
-test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 362 " +
+test("the live tree still produces EXACTLY the committed baseline after the namespace fix -- 361 " +
   "guarded entries across four populated categories, nothing lost and nothing reclassified", () => {
   const scanResults = scan(REPO_ROOT);
   const baseline = loadCommittedBaseline(REPO_ROOT);
@@ -994,7 +994,11 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     // hooks/useReorderRequests.js -- every Reorder read and write now goes to the governed
     // PostgreSQL authority, so the handles went with the imports (shrink-only; never grown).
     "frontend.firestore_client": 52,
-    "frontend.firebase_functions_client": 55,
+    // 55 -> 54: services/reorderCallableClient.js was DELETED by the Reorder Domain Cutover. Every
+    // Reorder read and write reaches the governed PostgreSQL authority through reorderApiClient.js,
+    // so the Firebase callable transport had no importer -- and an unused wrapper round a callable
+    // is a second authority one import away (shrink-only; never grown).
+    "frontend.firebase_functions_client": 54,
     // 184 -> 183: the Firestore policy parity harness (adminPolicy/migration/firestorePolicyParityHarness.ts) was
     // deleted with its baseline entry by the role-assignment census (shrink-only; never grown).
     "server.firebase_admin_firestore": 183,
@@ -1009,5 +1013,5 @@ test("the live tree still produces EXACTLY the committed baseline after the name
     assert.deepEqual([...observed].sort(), [...baselineSetFor(baseline, category.key)].sort(),
       `${category.key} membership changed`);
   }
-  assert.equal(total, 362);
+  assert.equal(total, 361);
 });

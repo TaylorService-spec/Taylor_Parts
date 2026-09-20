@@ -67,18 +67,22 @@ test("the gate is COMPUTED: coverage is met, the runtime cutover is not, and two
 
   // Coverage is MET -- every transition has a command.
   assert.equal(byGate.get("TRANSITION_COVERAGE").state, "MET");
-  // But the RUNTIME gate is OPEN, which is the distinction that matters: a command existing and a
-  // caller using it are different facts. One Firebase Functions read still holds it shut.
-  assert.equal(byGate.get("RUNTIME_CUTOVER").state, "OPEN");
-  assert.match(byGate.get("RUNTIME_CUTOVER").detail, /workOrderReadinessContext/);
+  // And the RUNTIME gate is MET: every live caller moved. The distinction it exists for remains --
+  // a command existing and a caller using it are different facts -- and it is checked against the
+  // derived census rather than asserted here.
+  assert.equal(byGate.get("RUNTIME_CUTOVER").state, "MET");
   // firestore.rules is the only remaining uid consumer, and its comparisons stop mattering exactly
   // when the Rules are retired -- which is the gate below, not this one.
   assert.equal(byGate.get("ASSIGNEE_IDENTITY").state, "MET");
 
   // The two only an operator can close, in a real environment.
+  assert.equal(byGate.get("SOURCE_WRITE_FROZEN").state, "REQUIRES_OPERATOR");
   assert.equal(byGate.get("OBJECT_COPY_VERIFIED").state, "REQUIRES_OPERATOR");
   assert.equal(byGate.get("RULES_RETIRED").state, "REQUIRES_OPERATOR");
-  assert.deepEqual([...reading.awaitingOperator].sort(), ["OBJECT_COPY_VERIFIED", "RULES_RETIRED"]);
+  assert.deepEqual([...reading.awaitingOperator].sort(),
+    ["OBJECT_COPY_VERIFIED", "RULES_RETIRED", "SOURCE_WRITE_FROZEN"]);
+  // The freeze gate says WHY a Rules-only freeze is not enough, because that is the mistake it exists to stop.
+  assert.match(byGate.get("SOURCE_WRITE_FROZEN").detail, /Admin SDK/);
 });
 
 test("a uid consumer other than the Rules holds the identity gate shut", () => {
@@ -106,6 +110,7 @@ test("every gate MET is the only way to read mayRetire true", () => {
   const reading = readReorderRetirementGates({
     blockingAssigneeConsumers: [],
     runtimeFirestoreConsumers: [],
+    sourceWriteFrozenAndQuiescent: true,
     copyVerifiedInEnvironment: true,
     rulesRetiredAndDeployed: true,
   });
@@ -115,9 +120,14 @@ test("every gate MET is the only way to read mayRetire true", () => {
   assert.equal(readReorderRetirementGates({
     blockingAssigneeConsumers: [], runtimeFirestoreConsumers: [], copyVerifiedInEnvironment: true,
   }).mayRetire, false);
+  // A copy taken without a proven freeze is a photograph of a moving subject.
+  assert.equal(readReorderRetirementGates({
+    blockingAssigneeConsumers: [], runtimeFirestoreConsumers: [],
+    copyVerifiedInEnvironment: true, rulesRetiredAndDeployed: true,
+  }).mayRetire, false, "an unfrozen source must block retirement by itself");
   // A single surviving runtime consumer closes it on its own, even with everything else done.
   assert.equal(readReorderRetirementGates({
     blockingAssigneeConsumers: [], runtimeFirestoreConsumers: ["x/live.js"],
-    copyVerifiedInEnvironment: true, rulesRetiredAndDeployed: true,
+    sourceWriteFrozenAndQuiescent: true, copyVerifiedInEnvironment: true, rulesRetiredAndDeployed: true,
   }).mayRetire, false, "a live Firestore Reorder read must block retirement by itself");
 });

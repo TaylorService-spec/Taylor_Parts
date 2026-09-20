@@ -1,13 +1,16 @@
-// The runtime census's proof. The census must not be satisfiable by forgetting a file, so the
-// executable consumer set is DERIVED from the repository and checked in both directions.
+// The runtime census's proof.
+//
+// The census must not be satisfiable by forgetting a file, and -- the defect that made its first
+// version wrong -- it must not be satisfiable by a consumer reaching a Firebase callable THROUGH A
+// WRAPPER. So the derivation follows IMPORTS, not just names.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, statSync, readFileSync } from "node:fs";
+import { readdirSync, statSync, readFileSync, existsSync } from "node:fs";
 import { join, relative, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  REORDER_FIRESTORE_RUNTIME_CENSUS, RUNTIME_CLASSIFICATIONS, REORDER_FIRESTORE_OBJECTS,
-  BLOCKING_RUNTIME_CLASSIFICATIONS, reorderRuntimeActivationReadiness,
+  REORDER_LEGACY_RUNTIME_CENSUS, RUNTIME_CLASSIFICATIONS, REORDER_LEGACY_OBJECTS,
+  ACTIVATION_BLOCKING, reorderRuntimeActivationReadiness,
 } from "../lib/eosOps/migration/reorderFirestoreRuntimeCensus.js";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -21,14 +24,11 @@ const walk = (d, o = []) => {
   } catch { /* a missing root is not a consumer */ }
   return o;
 };
-
-/**
- * The executable Firestore Reorder consumers, derived.
- *
- * A schema qualifier means PostgreSQL. Without that discriminator every governed command this
- * cutover added would count as a Firestore consumer and the gate could never open.
- */
+const rel = (f) => relative(REPO, f).split("\\").join("/");
 const SELF = "functions/src/eosOps/migration/reorderFirestoreRuntimeCensus.ts";
+
+/** The Reorder Firebase callables. Reaching ANY of these from the client is a legacy consumer. */
+const REORDER_CALLABLES = ["createReorderRequest", "recordReorderPurchaseOrder", "listReorderWarehouseOptions"];
 
 function derive() {
   const files = [];
@@ -41,21 +41,56 @@ function derive() {
     let n = 0, m;
     TERM.lastIndex = 0;
     while ((m = TERM.exec(src))) if (!m[1]) n += 1;
-    const rel = relative(REPO, f).split("\\").join("/");
-    // The census names every collection it classifies. Counting itself would make it its own
-    // consumer, exactly as the assignedToUserId census excludes itself.
-    if (n > 0 && rel !== SELF) found.set(rel, n);
+    const path = rel(f);
+    if (n > 0 && path !== SELF) found.set(path, n);
   }
   return found;
 }
 
+/**
+ * Every CLIENT module that reaches a Reorder Firebase callable, however many wrappers deep.
+ *
+ * THE INDIRECTION THE FIRST CENSUS MISSED. A module that calls `fetchReorderWarehouseOptions` is a
+ * consumer of `listReorderWarehouseOptions` even though it never names it, so the search starts at
+ * the modules that name a callable and walks IMPORTERS outward to a fixed point.
+ */
+function deriveCallableConsumers(injected) {
+  const texts = injected ?? new Map(
+    walk(join(REPO, "field-ops-app-vite/src")).map((f) => [rel(f), strip(readFileSync(f, "utf8"))]));
+
+  // Seed: modules that invoke a Reorder callable by name through the Firebase functions SDK.
+  const reaching = new Set();
+  for (const [path, src] of texts) {
+    if (/httpsCallable|firebase\/functions/.test(src) && REORDER_CALLABLES.some((c) => src.includes(c))) {
+      reaching.add(path);
+    }
+  }
+  // Closure: anyone importing a module that reaches, reaches.
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const [path, src] of texts) {
+      if (reaching.has(path)) continue;
+      for (const target of reaching) {
+        // Match the import by basename, which is how these modules reference each other.
+        const base = target.split("/").pop().replace(/\.(js|jsx|ts|tsx)$/, "");
+        if (new RegExp(`from\\s+["'][^"']*\\b${base}(\\.js|\\.jsx|\\.ts|\\.tsx)?["']`).test(src)) {
+          reaching.add(path);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return reaching;
+}
+
 const derived = derive();
-const byPath = new Map(REORDER_FIRESTORE_RUNTIME_CENSUS.map((c) => [c.path, c]));
+const byPath = new Map(REORDER_LEGACY_RUNTIME_CENSUS.map((c) => [c.path, c]));
 
 test("the census and the repository name exactly the same Firestore Reorder consumers", () => {
   assert.deepEqual([...byPath.keys()].sort(), [...derived.keys()].sort(),
     "a consumer appeared or disappeared: classify the new one, or remove the entry whose file no longer reaches the collection");
-  assert.equal(byPath.size, REORDER_FIRESTORE_RUNTIME_CENSUS.length, "a path is listed twice");
+  assert.equal(byPath.size, REORDER_LEGACY_RUNTIME_CENSUS.length, "a path is listed twice");
 });
 
 test("every recorded occurrence count is the real one", () => {
@@ -64,10 +99,42 @@ test("every recorded occurrence count is the real one", () => {
   }
 });
 
+test("NO CLIENT MODULE reaches a Reorder Firebase callable, directly or through any wrapper", () => {
+  // THE CORRECTION. The first census asked only whether a file named `submitCreateReorderRequest`,
+  // and missed `fetchReorderWarehouseOptions` -> `listReorderWarehouseOptions`, which a hook and a
+  // dashboard were both using. This walks importers to a fixed point instead.
+  const consumers = [...deriveCallableConsumers()].sort();
+  assert.deepEqual(consumers, [],
+    `these client modules still reach a Reorder Firebase callable: ${consumers.join(", ")}`);
+});
+
+test("the indirection walk actually works -- this is what makes the emptiness above mean something", () => {
+  // WITHOUT THIS, THE TEST ABOVE IS VACUOUS. The callable transport has been deleted, so the seed
+  // set is empty and the closure would report "no consumers" even if the walk were broken. This
+  // runs the same function over a synthetic two-hop tree: a transport that names the callable, a
+  // wrapper that imports it and names nothing, and a screen that imports the wrapper.
+  const synthetic = new Map([
+    ["src/services/legacyTransport.js",
+      'import { httpsCallable } from "firebase/functions";\nexport const go = () => httpsCallable(fns, "listReorderWarehouseOptions");'],
+    ["src/hooks/useThing.js", 'import { go } from "../services/legacyTransport.js";\nexport const useThing = () => go();'],
+    ["src/screens/Screen.jsx", 'import { useThing } from "../hooks/useThing.js";\nexport const S = () => useThing();'],
+    ["src/unrelated/Other.jsx", 'export const O = () => null;'],
+  ]);
+  const found = [...deriveCallableConsumers(synthetic)].sort();
+  assert.deepEqual(found, [
+    "src/hooks/useThing.js",
+    "src/screens/Screen.jsx",
+    "src/services/legacyTransport.js",
+  ], "the walk must reach a consumer two wrappers away, and must not sweep in unrelated modules");
+});
+
+test("the retired callable transport is gone, not merely unused", () => {
+  // An unused wrapper round a Firebase callable is a second authority one import away.
+  assert.ok(!existsSync(join(REPO, "field-ops-app-vite/src/services/reorderCallableClient.js")),
+    "the Firebase callable transport must not exist");
+});
+
 test("the schema qualifier really is what separates PostgreSQL from Firestore", () => {
-  // The governed lifecycle commands and the repository name `reorder_requests` constantly -- as an
-  // eos_ops TABLE. If the discriminator broke, they would appear here and the gate would be
-  // unsatisfiable, so their ABSENCE is the assertion.
   for (const pg of [
     "functions/src/eosOps/reorderLifecycleCommands.ts",
     "functions/src/eosOps/purchasingRepository.ts",
@@ -78,72 +145,64 @@ test("the schema qualifier really is what separates PostgreSQL from Firestore", 
 });
 
 test("every entry is classified from the closed vocabulary and names its object", () => {
-  for (const c of REORDER_FIRESTORE_RUNTIME_CENSUS) {
+  for (const c of REORDER_LEGACY_RUNTIME_CENSUS) {
     assert.ok(RUNTIME_CLASSIFICATIONS.includes(c.classification), `${c.path}: ${c.classification}`);
-    assert.ok(REORDER_FIRESTORE_OBJECTS.includes(c.object), `${c.path}: ${c.object}`);
+    assert.ok(REORDER_LEGACY_OBJECTS.includes(c.object), `${c.path}: ${c.object}`);
     assert.ok(c.consumer.trim().length > 0, `${c.path} says nothing about what it does`);
     assert.ok(Number.isInteger(c.occurrences) && c.occurrences > 0);
   }
 });
 
-test("the client no longer reaches Firestore for a Reorder Request lifecycle action", () => {
-  // These four files carried the whole live client surface. Their absence from the derived set is
-  // the fact the cutover turns on -- a comment claiming conversion would not be.
+test("the client no longer reaches Firestore for any Reorder Request lifecycle action", () => {
   for (const converted of [
     "field-ops-app-vite/src/hooks/useReorderRequests.js",
     "field-ops-app-vite/src/domain/inventoryReorderRequests.js",
     "field-ops-app-vite/src/domain/reorderPurchaseOrders.js",
     "field-ops-app-vite/src/modules/inventory/PartDetail.jsx",
+    "field-ops-app-vite/src/hooks/useReorderWarehouseOptions.js",
   ]) {
     assert.ok(!derived.has(converted), `${converted} still reaches a Firestore Reorder collection`);
   }
 });
 
-test("the Firebase callable Reorder authority has no callers left", () => {
+test("an exported Firebase callable is DEPLOYED legacy authority, never DEAD", () => {
   const callables = byPath.get("functions/src/reorderRequest/reorderCallables.ts");
-  assert.equal(callables.classification, "DEAD",
-    "the callable authority still has a caller, so it is live runtime write authority");
-  // DEAD is a claim about reachability, and this is the check of that claim: nothing in the client
-  // may still invoke the callable client's submit functions.
-  const clientFiles = walk(join(REPO, "field-ops-app-vite/src"));
-  const callers = clientFiles.filter((f) =>
-    !f.endsWith("reorderCallableClient.js")
-    && /submitCreateReorderRequest|submitRecordReorderPurchaseOrder/.test(strip(readFileSync(f, "utf8"))));
-  assert.deepEqual(callers.map((f) => relative(REPO, f)), [],
-    "a client module still calls the Firebase callable Reorder authority");
+  assert.equal(callables.classification, "DEPLOYED_LEGACY_AUTHORITY_NO_REPO_CALLERS",
+    "a callable with no repository callers is still deployed and externally invokable; DEAD would be a lie");
+  // The claim is checked: it must actually still be exported from the Functions entry point.
+  const index = strip(readFileSync(join(REPO, "functions/src/index.ts"), "utf8"));
+  for (const name of REORDER_CALLABLES) {
+    assert.ok(index.includes(name), `${name} is no longer exported -- reclassify it as retired`);
+  }
 });
 
-test("THE HARD GATE: activation requires ZERO runtime Firestore consumers of the Reorder Request", () => {
+test("THE HARD GATE: activation requires ZERO Reorder runtime consumers of any kind", () => {
   const readiness = reorderRuntimeActivationReadiness();
-  // This is the honest current state. It is NOT ready, and the two that hold it shut are named.
-  assert.equal(readiness.ready, false);
-  // ONE runtime consumer remains, and it is not a client file: it runs in FIREBASE FUNCTIONS, which
-  // has no PostgreSQL access. Converting it would require the Functions -> PostgreSQL pool that was
-  // explicitly refused, so it is a question about where that read should live, not an oversight.
-  assert.deepEqual(readiness.blockedBy, [
-    "functions/src/ai/workOrderReadinessContext.ts",
-  ], "the runtime consumers still reaching Firestore for a Reorder Request");
-  assert.equal(readiness.runtimeConsumerCount, 1);
+  assert.equal(readiness.ready, true, `still blocked by: ${readiness.blockedBy.join(", ")}`);
+  assert.equal(readiness.runtimeConsumerCount, 0);
 
-  // The purchase-order surface is REPORTED and deliberately outside this gate -- a different object
-  // with its own authority. Stated so the count is never zero merely by omission.
-  assert.ok(readiness.purchaseOrderRuntimeConsumers.length > 0);
+  // ACTIVATION IS NOT RETIREMENT. The deployed callables still block the Firebase retirement, which
+  // is a later step, and the two must not be read as one.
+  assert.equal(readiness.firebaseRetired, false);
+  assert.deepEqual(readiness.firebaseRetirementBlockedBy,
+    ["functions/src/reorderRequest/reorderCallables.ts"]);
 
-  // The gate is DERIVED from the census, not asserted: converting the blocking set opens it.
-  const converted = REORDER_FIRESTORE_RUNTIME_CENSUS.filter((c) =>
-    !(c.object === "REORDER_REQUEST" && BLOCKING_RUNTIME_CLASSIFICATIONS.includes(c.classification)));
-  assert.equal(reorderRuntimeActivationReadiness(converted).ready, true);
+  // The purchase-order surface is REPORTED and deliberately outside this gate.
+  assert.ok(readiness.purchaseOrderRuntimeConsumers.length > 0,
+    "the purchase-order object's consumers must be reported, never zero by omission");
 
-  // And ONE reintroduced runtime consumer closes it again.
-  assert.equal(reorderRuntimeActivationReadiness([...converted, {
-    path: "x/live.js", object: "REORDER_REQUEST", classification: "RUNTIME_READ", consumer: "x", occurrences: 1,
-  }]).ready, false, "a single runtime Firestore read must hold activation shut on its own");
+  // The gate is DERIVED, not asserted: ONE reintroduced consumer of any blocking kind closes it.
+  for (const classification of ACTIVATION_BLOCKING) {
+    assert.equal(reorderRuntimeActivationReadiness([...REORDER_LEGACY_RUNTIME_CENSUS, {
+      path: "x/live.js", object: "REORDER_REQUEST", classification, consumer: "x", occurrences: 1,
+    }]).ready, false, `a single ${classification} must hold activation shut on its own`);
+  }
 });
 
 test("neither migration evidence nor the Rules authority can ever hold the gate shut", () => {
-  const onlyExcused = REORDER_FIRESTORE_RUNTIME_CENSUS.filter((c) =>
+  const excused = REORDER_LEGACY_RUNTIME_CENSUS.filter((c) =>
     c.classification === "MIGRATION_EVIDENCE" || c.classification === "RULES_AUTHORITY");
-  assert.ok(onlyExcused.length > 0);
-  assert.equal(reorderRuntimeActivationReadiness(onlyExcused).ready, true,
+  assert.ok(excused.length > 0);
+  assert.equal(reorderRuntimeActivationReadiness(excused).ready, true,
     "evidence reaches nothing and the Rules are retired at the deployment step");
 });

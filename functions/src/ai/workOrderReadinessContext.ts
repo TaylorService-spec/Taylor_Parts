@@ -34,10 +34,9 @@ import {
   sanitizeWorkOrderFacts,
   type WorkOrderContextActor,
 } from "./workOrderContext";
-import { strongestReadinessProcurementStatus } from "./workOrderReadinessSources";
+import { strongestReadinessProcurementStatus, type ReadinessProcurementStatus } from "./workOrderReadinessSources";
 import { AIError } from "./types";
 
-const REORDER_REQUESTS_COLLECTION = "reorder_requests";
 
 export interface WorkOrderReadinessSourceLine {
   readonly name: string | null;
@@ -47,7 +46,7 @@ export interface WorkOrderReadinessSourceLine {
   readonly reservedForJob: number;
   readonly warehouse: Readonly<{ status: "KNOWN"; available: number } | { status: "UNKNOWN" } | { status: "UNAVAILABLE" }>;
   readonly truck: Readonly<{ status: "UNAVAILABLE" }>;
-  readonly procurement: Readonly<{ status: "PENDING" | "ORDERED" | "RECEIVED" | "NONE" }>;
+  readonly procurement: Readonly<{ status: "PENDING" | "ORDERED" | "RECEIVED" | "NONE" | "UNAVAILABLE" }>;
 }
 
 export interface WorkOrderReadinessContextResult {
@@ -158,7 +157,23 @@ export async function assembleWorkOrderReadinessContext(
   // capability catalog never saw. A principal whose governed authority was revoked kept procurement
   // visibility here for as long as the legacy field said "admin", and nothing in the reorder surface
   // recorded that it had been read.
-  const procurementReadable = permitted(PROCUREMENT_EVIDENCE_READ_CAPABILITY);
+  // ════════════════════ THE PROCUREMENT SOURCE IS RETIRED FROM THIS RUNTIME ════════════════════
+  //
+  // This read asked Firestore `reorder_requests`. The Reorder Domain Cutover moved that object to
+  // governed PostgreSQL, and this runtime is FIREBASE FUNCTIONS, which has no PostgreSQL access --
+  // and is not going to get one, nor a call across to Render for business data.
+  //
+  // So the dimension is retired here rather than answered from a source that is no longer the
+  // authority. It is NOT reported as NONE: "the governed evidence says there is no procurement" and
+  // "this runtime has no authoritative procurement source" are different sentences, and a
+  // technician told the first when the second is true has been misinformed, not merely underserved.
+  //
+  // The capability read is retained and still resolved, because whether the CALLER may see
+  // procurement is a separate question from whether this runtime can answer it -- and the answer
+  // to the first must not silently become "no" for a reason that has nothing to do with authority.
+  const procurementCallerPermitted = permitted(PROCUREMENT_EVIDENCE_READ_CAPABILITY);
+  // Nothing in this runtime can read procurement evidence any more, whatever the caller holds.
+  const procurementReadable = false as const;
 
   // EXISTING ACTION ELIGIBILITY, NOT A NEW AUTHORITY. Whether the already-existing
   // requestReorderForRecommendation action may be PROPOSED to this user -- resolved against the same
@@ -179,9 +194,8 @@ export async function assembleWorkOrderReadinessContext(
     access.inventoryBalanceReadable && canonicalPartIds.length > 0
       ? deps.loadReservationRows(input.workOrderId)
       : Promise.resolve([]),
-    procurementReadable && canonicalPartIds.length > 0
-      ? deps.loadReorderRows(input.workOrderId)
-      : Promise.resolve([]),
+    // Never loaded: there is no authoritative source in this runtime to load from.
+    Promise.resolve([] as readonly Record<string, unknown>[]),
   ]);
 
   const balanceByPart = new Map(balances.map((balance) => [balance.partId, balance]));
@@ -193,9 +207,9 @@ export async function assembleWorkOrderReadinessContext(
     const reservation = line.partId
       ? openWorkOrderReserved((reservationsByPart.get(line.partId) ?? []) as Array<{ type: string; quantity: number; workOrderId?: string }>)
       : 0;
-    const procurement = line.partId && procurementReadable
+    const procurement: ReadinessProcurementStatus = line.partId && procurementReadable
       ? strongestReadinessProcurementStatus((reordersByPart.get(line.partId) ?? []).map((row) => row.status))
-      : "NONE";
+      : "UNAVAILABLE";
 
     return Object.freeze({
       name: line.name,
@@ -214,7 +228,10 @@ export async function assembleWorkOrderReadinessContext(
   const facts = sanitizeWorkOrderFacts(workOrder);
   const limitations = [
     ...access.limitations,
-    ...(procurementReadable ? [] : ["PROCUREMENT_READ_NOT_AUTHORIZED"]),
+    // The caller's own authority is still reported when they lack it -- a separate fact from the
+    // source being gone, and a reader deserves to know which applies to them.
+    ...(procurementCallerPermitted ? [] : ["PROCUREMENT_READ_NOT_AUTHORIZED"]),
+    "PROCUREMENT_SOURCE_UNAVAILABLE",
     "TRUCK_INVENTORY_UNAVAILABLE",
   ];
 
@@ -225,6 +242,9 @@ export async function assembleWorkOrderReadinessContext(
     capabilities: Object.freeze({
       warehouse: access.inventoryBalanceReadable,
       truckInventory: false as const,
+      // FALSE because this runtime cannot answer, not because the caller may not ask. The
+      // limitations say which, and PROCUREMENT_SOURCE_UNAVAILABLE is always present until the
+      // readiness projection itself moves to Render and reads the governed Reorder authority.
       purchasing: procurementReadable,
       requestReorder: requestReorderEligible,
     }),
@@ -307,12 +327,10 @@ function realDependencies(db: Firestore): WorkOrderReadinessContextDependencies 
         .get();
       return snap.docs.map((doc) => doc.data() as Record<string, unknown>);
     },
-    loadReorderRows: async (workOrderId) => {
-      const snap = await db.collection(REORDER_REQUESTS_COLLECTION)
-        .where("workOrderId", "==", workOrderId)
-        .get();
-      return snap.docs.map((doc) => doc.data() as Record<string, unknown>);
-    },
+    // loadReorderRows is GONE with its Firestore read. The dependency stays in the interface so the
+    // contract records what this projection once answered and will answer again from the governed
+    // Reorder authority once readiness itself runs on Render.
+    loadReorderRows: async () => [],
   };
 }
 

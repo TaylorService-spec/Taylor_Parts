@@ -33,6 +33,7 @@ export const REORDER_READ_OPERATIONS = Object.freeze([
   "readMyAssignedReorders",
   "readReorderRequest",
   "readMyReorderHistory",
+  "listReorderWarehouseOptions",
 ]);
 
 /** Mirrors the server's OPERATIONS_MUTATION_OPERATIONS. */
@@ -53,6 +54,7 @@ export const REORDER_OPTIONAL_INPUT_OPERATIONS = Object.freeze([
   "readReorderQueue",
   "readMyAssignedReorders",
   "readMyReorderHistory",
+  "listReorderWarehouseOptions",
 ]);
 
 const OPERATIONS = new Set([...REORDER_READ_OPERATIONS, ...REORDER_COMMAND_OPERATIONS]);
@@ -165,3 +167,35 @@ export async function callReorderApi(operation, input = undefined, options = {})
 
 /** The injectable seam pages and hooks take. */
 export const reorderApiClient = Object.freeze({ call: callReorderApi });
+
+/**
+ * Which warehouses may this caller raise a reorder for?
+ *
+ * WAS a Firebase callable (`listReorderWarehouseOptions`). The question and the three-way answer are
+ * unchanged; the authority moved. The server scopes it to the caller's own Employee through their
+ * governed WAREHOUSE operational scope, so the browser names no identity and no warehouse.
+ *
+ * Returns `{ options: [{ value, label }], reason }`. An empty list with a `reason` is a REAL ANSWER,
+ * not an error: a principal may legitimately be governed to no warehouse at all, and the selector
+ * renders that differently from a failed read.
+ *
+ * THROWS on refusal, because the hook's catch is what turns a failed read into a visible error
+ * state -- returning an empty list here would render as "no warehouses exist".
+ */
+export async function fetchReorderWarehouseOptions(client = reorderApiClient) {
+  const res = await client.call("listReorderWarehouseOptions");
+  if (!res.ok) {
+    const err = new Error(res.message ?? "the reorder warehouse options could not be read");
+    err.code = res.reason ?? res.code;
+    throw err;
+  }
+  const options = Array.isArray(res.result?.options) ? res.result.options : [];
+  return {
+    // Mapped to the selector's { value, label } shape here rather than in the component, so the
+    // component stays presentational and the wire shape stays the server's business.
+    options: options
+      .filter((o) => typeof o?.warehouseId === "string" && o.warehouseId !== "")
+      .map((o) => ({ value: o.warehouseId, label: typeof o.label === "string" && o.label !== "" ? o.label : o.warehouseId })),
+    reason: typeof res.result?.reason === "string" ? res.result.reason : null,
+  };
+}

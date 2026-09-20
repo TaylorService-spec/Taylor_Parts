@@ -22,6 +22,7 @@ import {
   ReorderLifecycleError, createGovernedReorderRequest, reviewReorderRequest,
   startPurchasingOnReorder, postPurchasingUpdate, markReorderReceived, cancelReorderRequest,
   readReorderQueue, readMyAssignedReorders, readReorderRequest, readMyReorderHistory,
+  listReorderWarehouseOptions,
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
@@ -51,6 +52,7 @@ export const OPERATIONS_READ_OPERATIONS = Object.freeze([
   "readMyAssignedReorders",
   "readReorderRequest",
   "readMyReorderHistory",
+  "listReorderWarehouseOptions",
 ] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
 
@@ -168,6 +170,10 @@ export async function executeOperation(
       case "readMyReorderHistory": {
         const { actor, pool } = await reorderActor();
         return ok(await readMyReorderHistory({ pool }, actor));
+      }
+      case "listReorderWarehouseOptions": {
+        const { actor, pool } = await reorderActor();
+        return ok(await listReorderWarehouseOptions({ pool }, actor));
       }
       case "readMyAssignedReorders": {
         const { actor, pool } = await reorderActor();

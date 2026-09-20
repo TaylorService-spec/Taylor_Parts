@@ -25,6 +25,18 @@ export const RETIREMENT_GATES = Object.freeze([
   "RUNTIME_CUTOVER",
   /** No consumer still decides Reorder access from a Firebase uid. */
   "ASSIGNEE_IDENTITY",
+  /**
+   * THE SOURCE IS FROZEN, AND THE FREEZE REACHES THE ADMIN SDK.
+   *
+   * Firestore Rules do NOT constrain the Firebase Admin SDK. A Rules-only freeze therefore stops
+   * the browser and leaves the legacy callables -- createReorderRequest, recordReorderPurchaseOrder
+   * -- free to keep changing the very population being copied, which would make the copy a
+   * photograph of a moving subject.
+   *
+   * The freeze must deny client writes through Rules AND make the legacy callable/Admin-SDK writers
+   * refuse, and quiescence must be proved after both.
+   */
+  "SOURCE_WRITE_FROZEN",
   /** The legacy objects have been copied and VERIFY passed, in the real environment. */
   "OBJECT_COPY_VERIFIED",
   /** The Rules arms that make Firestore authoritative have been removed and deployed. */
@@ -135,6 +147,8 @@ export function readReorderRetirementGates(input: {
   readonly blockingAssigneeConsumers: readonly string[];
   /** From reorderFirestoreRuntimeCensus.reorderRuntimeActivationReadiness().blockedBy. */
   readonly runtimeFirestoreConsumers: readonly string[];
+  /** Rules deny client writes AND the legacy callable/Admin-SDK writers refuse, proven quiescent. */
+  readonly sourceWriteFrozenAndQuiescent?: boolean;
   readonly copyVerifiedInEnvironment?: boolean;
   readonly rulesRetiredAndDeployed?: boolean;
   readonly transitions?: readonly LegacyTransition[];
@@ -168,6 +182,14 @@ export function readReorderRetirementGates(input: {
       detail: input.blockingAssigneeConsumers.length === 0
         ? "no consumer decides Reorder access from a uid"
         : `still deciding from a uid: ${[...input.blockingAssigneeConsumers].sort().join(", ")}`,
+    },
+    {
+      gate: "SOURCE_WRITE_FROZEN",
+      state: input.sourceWriteFrozenAndQuiescent === true ? "MET" : "REQUIRES_OPERATOR",
+      detail: input.sourceWriteFrozenAndQuiescent === true
+        ? "client writes denied by Rules, legacy callable/Admin-SDK writers refusing, quiescence proved"
+        : "a Rules-only freeze does not bind the Firebase Admin SDK: the legacy callables must be "
+          + "made to refuse as well, and quiescence proved after both",
     },
     {
       gate: "OBJECT_COPY_VERIFIED",
