@@ -174,6 +174,12 @@ export const ASSIGNED_TO_USER_ID_CENSUS: readonly CensusEntry[] = Object.freeze(
       + "field as the copy's audit reason",
     occurrences: 3, status: "NOT_STARTED",
   }),
+  e({
+    path: "functions/src/eosOps/migration/reorderFieldParityMatrix.ts", object: "REORDER", classification: "MIGRATION_EVIDENCE",
+    consumer: "names the field once, as the legacy key whose disposition sends it to the governed Employee "
+      + "assignment authority rather than to a Reorder column",
+    occurrences: 1, status: "NOT_STARTED",
+  }),
 
   // ── COMMERCIAL: the same NAME, a different object, a different seam ──
   //
