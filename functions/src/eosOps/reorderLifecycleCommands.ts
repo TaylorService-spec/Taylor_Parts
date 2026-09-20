@@ -401,12 +401,93 @@ export async function postPurchasingUpdate(
   });
 }
 
-/** Close out as received. ASSIGNEE ONLY, and only from ORDERED. */
+/**
+ * RECEIVING ACTIVATION BOUNDARY -- Owner Ruling R2.
+ *
+ * Once the PostgreSQL Receiving authority is active there must NOT remain a separately callable path
+ * capable of moving a Reorder to RECEIVED without the receipt that moved the stock. A standalone
+ * closeout would let the order say the goods arrived while no inventory movement, no serialized
+ * custody and no acquisition-cost evidence exists anywhere -- the books would be closed on a receipt
+ * that never happened.
+ *
+ * This flag is the boundary, and it is a single constant rather than an environment variable on
+ * purpose: activation is a code decision that is reviewed, tested and deployed as one change, not a
+ * runtime setting whose value has to be discovered from a dashboard to know what the system does.
+ *
+ * FALSE today, because the PostgreSQL receipt is built but the cutover is not active, and the
+ * deployed operation must keep answering until it is. Flipping it to true retires `markReorderReceived`
+ * at exactly the same boundary, without removing the operation from the transport first -- so an
+ * external caller gets an explicit refusal that names the replacement, rather than a 404 it might
+ * read as a transient outage.
+ */
+export const RECEIVING_POSTGRES_ACTIVE = false;
+
+export interface ReorderCloseoutInput {
+  readonly tenantId: string;
+  /** The EOS Principal performing the ACTION. For a receipt this is the receiver, not the assignee. */
+  readonly actorPrincipalId: string;
+  readonly reorderRequestId: string;
+  /** The governed business event time. For a receipt, the receipt's own `received_at`. */
+  readonly receivedAt: Date;
+  readonly reason: string;
+}
+
+/**
+ * ORDERED -> RECEIVED, INSIDE THE CALLER'S TRANSACTION.
+ *
+ * Extracted from `markReorderReceived` so the receipt command can close the Reorder out in the SAME
+ * transaction that writes the receipt, the movements, the custody and the cost evidence. It opens no
+ * transaction of its own and takes no pool: the caller owns BEGIN and COMMIT, which is what makes
+ * "no Reorder RECEIVED without the receipt" structural rather than a convention.
+ *
+ * It performs NO capability check and NO assignee check. Those belong to the command that calls it,
+ * and they differ: a receipt is authorized by `inventory.stock.receive` held by whoever receives the
+ * goods, while the standalone operation below is the assignee's. Putting either check here would
+ * force one answer on both callers.
+ *
+ * The row must already be LOCKED by the caller. The status is re-asserted here anyway -- the caller
+ * may have read it before making other decisions, and the assertion is what guarantees the write
+ * moves a Reorder that is still ORDERED at the moment it happens.
+ */
+export async function closeOutReorderAsReceived(
+  client: PoolClient,
+  input: ReorderCloseoutInput,
+): Promise<ReorderTransitionResult> {
+  const { rowCount } = await client.query(
+    `UPDATE eos_ops.reorder_requests
+        SET status = 'RECEIVED', received_at = $3, received_by_principal_id = $4,
+            updated_by = $4, updated_at = $3
+      WHERE tenant_id = $1 AND id = $2 AND status = 'ORDERED'`,
+    [input.tenantId, input.reorderRequestId, input.receivedAt, input.actorPrincipalId],
+  );
+  if (rowCount !== 1) {
+    // `AND status = 'ORDERED'` re-asserts, at write time, the status the caller read. A concurrent
+    // closeout finds no row, throws, and rolls the whole receipt back with it.
+    refuse("STATUS_NOT_RECEIVABLE", "PRECONDITION_FAILED",
+      "the Reorder Request was no longer ORDERED when the closeout committed");
+  }
+  await audit(client, input.tenantId, "reorder.request.markReceived", input.actorPrincipalId,
+    input.reorderRequestId, { status: "RECEIVED" }, input.receivedAt, input.reason);
+  return { reorderRequestId: input.reorderRequestId, status: "RECEIVED" };
+}
+
+/**
+ * Close out as received. ASSIGNEE ONLY, and only from ORDERED.
+ *
+ * RETIRED AT THE RECEIVING ACTIVATION BOUNDARY (Ruling R2). While the PostgreSQL receipt is inert
+ * this remains the governed closeout. The moment receiving is active, closing a Reorder is the
+ * receipt's business and this operation refuses -- it is kept callable only so that the refusal
+ * itself is explicit.
+ */
 export async function markReorderReceived(
   deps: { readonly pool: Pool; readonly now?: () => Date },
   actor: ReorderActor,
   input: Record<string, unknown>,
 ): Promise<ReorderTransitionResult> {
+  if (RECEIVING_POSTGRES_ACTIVE) {
+    refuse("CLOSEOUT_REQUIRES_RECEIPT", "PRECONDITION_FAILED",
+      "a Reorder is closed out by receiving the stock: use the governed receipt, which records the inventory movement, the custody and the cost evidence in the same transaction");
+  }
   requireActor(actor, REORDER_MARK_RECEIVED);
   const i = acceptOnly(input, ["reorderRequestId"]);
   if (!ID_SHAPE(i.reorderRequestId)) refuse("REORDER_REQUEST_ID_REQUIRED", "INVALID_INPUT", "reorderRequestId is required");
@@ -417,17 +498,13 @@ export async function markReorderReceived(
     if (current.status !== "ORDERED") {
       refuse("STATUS_NOT_RECEIVABLE", "PRECONDITION_FAILED", `a Reorder Request in ${current.status} has not been ordered`);
     }
-    const at = deps.now?.() ?? new Date();
-    await client.query(
-      `UPDATE eos_ops.reorder_requests
-          SET status = 'RECEIVED', received_at = $3, received_by_principal_id = $4,
-              updated_by = $4, updated_at = $3
-        WHERE tenant_id = $1 AND id = $2`,
-      [actor.tenantId, current.id, at, actor.principalId],
-    );
-    await audit(client, actor.tenantId, "reorder.request.markReceived", actor.principalId, current.id,
-      { status: "RECEIVED" }, at, "receipt closed out by the assigned Employee");
-    return { reorderRequestId: current.id, status: "RECEIVED" };
+    return closeOutReorderAsReceived(client, {
+      tenantId: actor.tenantId,
+      actorPrincipalId: actor.principalId,
+      reorderRequestId: current.id,
+      receivedAt: deps.now?.() ?? new Date(),
+      reason: "receipt closed out by the assigned Employee",
+    });
   });
 }
 

@@ -127,8 +127,19 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1760097600000 (Operational Scope authority, step B): an EMPTY warehouse-scope history
 // plus one capability vocabulary row, granted to no Role. The table is not in SEEDED_RELATIONS and the Sample Company
 // seed writes no scope, so every row count asserted here is unchanged.
-const PINNED_LAST_MIGRATION = "1760572800000_reorder-actor-identity-normalization";
-const PINNED_MIGRATION_COUNT = 39;
+//
+// Moved deliberately again for 1760659200000 (Receiving business time, Receiving's own RO number
+// counter, and eos_finance.inventory_acquisition_costs). Every row count asserted here is unchanged,
+// and the two new tables stay EMPTY under this seed -- but not for the reason it would be easy to
+// assume. The seed DOES take a receipt (`RO-2026-000901`), so it does write `receiving_orders`; what
+// it does not do is take a GOVERNED receipt. It calls the repository writer directly, which supplies
+// its own reference number from the manifest rather than allocating one, and which produces no
+// acquisition-cost fact because producing cost evidence is the governed command's job.
+//
+// That receipt now carries `receivedAt` from the manifest, because `received_at` is NOT NULL and is
+// never defaulted from the write clock. The seeded row counts are unchanged.
+const PINNED_LAST_MIGRATION = "1760659200000_receiving-business-time-number-and-acquisition-cost";
+const PINNED_MIGRATION_COUNT = 40;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

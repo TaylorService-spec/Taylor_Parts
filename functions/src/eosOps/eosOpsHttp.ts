@@ -26,6 +26,7 @@ import {
   recordReorderPurchaseOrder, voidReorderPurchaseOrder, type ReorderActor,
 } from "./reorderLifecycleCommands.js";
 import { ReorderAssignmentError, assignReorderRequestToEmployee } from "./reorderAssignmentAuthority.js";
+import { ReceiveStockError, receiveReorderStock } from "./receiveReorderStockCommand.js";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { Pool } from "pg";
@@ -73,6 +74,12 @@ export const OPERATIONS_MUTATION_OPERATIONS = Object.freeze([
   "cancelReorderRequest",
   "recordReorderPurchaseOrder",
   "voidReorderPurchaseOrder",
+  // RECEIVING, dispatched EXPLICITLY BY SOURCE TYPE (Owner Ruling R1). This operation owns
+  // REORDER_PURCHASE_ORDER receipts and refuses every other source type outright. The canonical
+  // PURCHASE_ORDER continues to be received by its existing authority until its own cutover, and
+  // neither path ever falls back to the other: a receipt lands against the authority the caller
+  // named, or it is refused.
+  "receiveReorderStock",
 ] as const);
 export type OperationsMutationOperation = (typeof OPERATIONS_MUTATION_OPERATIONS)[number];
 
@@ -215,6 +222,13 @@ export async function executeOperation(
         const { actor, pool } = await reorderActor();
         return ok(await voidReorderPurchaseOrder({ pool }, actor, request.input ?? {}));
       }
+      case "receiveReorderStock": {
+        // The SAME resolved Principal context every other operation uses. The receipt's actor is an
+        // EOS Principal holding inventory.stock.receive -- never a Firebase uid, and never the
+        // Employee the purchasing work happens to be assigned to.
+        const { actor, pool } = await reorderActor();
+        return ok(await receiveReorderStock({ pool }, actor, request.input ?? {}));
+      }
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Operations operation" };
     }
@@ -224,7 +238,7 @@ export async function executeOperation(
     }
     // A governed refusal is the ANSWER, not a failure: the caller is told which rule refused them,
     // with the command's own category preserved rather than flattened to 500.
-    if (err instanceof ReorderLifecycleError || err instanceof ReorderAssignmentError) {
+    if (err instanceof ReorderLifecycleError || err instanceof ReorderAssignmentError || err instanceof ReceiveStockError) {
       const code: OperationsApiFailureCode = err.category === "FAILED" ? "INTERNAL" : err.category;
       return { ok: false, operation: request.operation, code, message: err.message };
     }

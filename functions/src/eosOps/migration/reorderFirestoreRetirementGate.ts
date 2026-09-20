@@ -102,8 +102,16 @@ export const LEGACY_TRANSITIONS: readonly LegacyTransition[] = Object.freeze([
     note: "recording the purchase order. Never a client write even in the legacy -- it was already a trusted callable.",
   }),
   t({
-    from: "ORDERED", to: "RECEIVED", governedBy: "markReorderReceived", assigneeOnly: true,
-    note: "closeout by the assignee.",
+    from: "ORDERED", to: "RECEIVED", governedBy: "receiveReorderStock", assigneeOnly: true,
+    note: "closeout. OWNER RULING R2 MOVED THIS: the transition is now a consequence of the governed "
+      + "receipt, which commits it in the same transaction as the Receiving Order, the RECEIVED "
+      + "inventory movement, the serialized custody and the acquisition-cost evidence. "
+      + "`markReorderReceived` still answers while receiving is inert and is retired at the same "
+      + "activation boundary (reorderLifecycleCommands.RECEIVING_POSTGRES_ACTIVE), so no separately "
+      + "callable path can report goods as arrived that nothing received. "
+      + "`assigneeOnly` remains TRUE because it records what the LEGACY Rules arm restricted, which "
+      + "is a historical fact about the source and not a claim about who may receive stock now: the "
+      + "receipt's actor is the Principal holding inventory.stock.receive.",
   }),
   t({
     from: "ORDERED", to: "VOIDED", governedBy: "voidReorderPurchaseOrder", assigneeOnly: true,

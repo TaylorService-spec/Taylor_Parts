@@ -27,7 +27,10 @@
 // reorder_purchase_orders (byte-identical), transitions only reorder_requests ORDERED->RECEIVED, and
 // stages exactly one RECEIVED ledger event + one immutable audit event.
 
-import { createHash } from "node:crypto";
+import {
+  receiptLineMovementIdempotencyKey,
+  receiptSerialMovementIdempotencyKey,
+} from "./receivingIdentity.js";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION, SERIALIZED_ASSETS_COLLECTION } from "../constants/collections.js";
@@ -162,18 +165,11 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 function str(v: unknown): string | null { return typeof v === "string" && v.trim() !== "" ? v : null; }
 
-// Collision-free deterministic per-line ledger idempotency key: sha256 over a JSON tuple of the fixed
-// receivingId + lineId (JSON quoting makes the components unambiguous, unlike raw delimiter concatenation).
-function ledgerLineIdempotencyKey(receivingId: string, lineId: string): string {
-  return "recvln_" + createHash("sha256").update(JSON.stringify([receivingId, lineId])).digest("hex").slice(0, 40);
-}
-
-// SERIAL receipts stage ONE ledger event PER UNIT (the ledger requires quantity === 1 and a serialNo for
-// SERIAL-tracked parts -- see inventoryLedger/operationalMovementValidation.ts). Each therefore needs its
-// own idempotency key, derived from the same fixed inputs so an exact retry reproduces it exactly.
-function ledgerSerialIdempotencyKey(receivingId: string, lineId: string, serialNo: string): string {
-  return "recvsn_" + createHash("sha256").update(JSON.stringify([receivingId, lineId, serialNo])).digest("hex").slice(0, 40);
-}
+// The per-movement replay keys are derived by `receivingIdentity.ts`, which the PostgreSQL
+// receiving authority shares. One derivation, so a movement staged by either authority is
+// recognized as the same movement by the other.
+const ledgerLineIdempotencyKey = receiptLineMovementIdempotencyKey;
+const ledgerSerialIdempotencyKey = receiptSerialMovementIdempotencyKey;
 
 // The trusted command. `request` is the UNTRUSTED receive payload ONLY (no actor). The server-derived
 // actor comes from deps.actor (trusted context).

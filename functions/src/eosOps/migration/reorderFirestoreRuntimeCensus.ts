@@ -96,6 +96,20 @@ export const REORDER_LEGACY_RUNTIME_CENSUS: readonly RuntimeCensusEntry[] = Obje
   e({ path: "firestore.rules", object: "PURCHASE_ORDER_VOID", classification: "RULES_AUTHORITY",
     consumer: "the reorder_purchase_order_voids match block", occurrences: 8 }),
 
+  // ══════════ WHERE THE REPLACEMENT IS, AND WHY IT IS NOT LISTED ══════════
+  //
+  // `functions/src/eosOps/receiveReorderStockCommand.ts` is the governed PostgreSQL receipt that
+  // answers the defect below. It appears in NO entry here, and that absence is the measurement: this
+  // census counts files naming an UNQUALIFIED Firestore collection, and every table the receipt
+  // touches is written `${SCHEMA}.`-qualified. A file that reaches only PostgreSQL is not a consumer
+  // of anything this census measures.
+  //
+  // That the replacement EXISTS is proved elsewhere, by the thing that asks that question:
+  // reorderFirestoreRetirementGate.ts's TRANSITION_COVERAGE, where ORDERED -> RECEIVED now names
+  // `receiveReorderStock`. Listing it here as well would make this census a mixed record of what
+  // still reaches Firestore and what replaced it, and the gate reads its length as a count of
+  // blockers.
+
   // ══════════ THE DEFECT THIS MODEL EXISTS TO CATCH ══════════
   e({
     path: "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts", object: "REORDER_REQUEST",

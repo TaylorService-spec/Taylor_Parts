@@ -483,9 +483,9 @@ test("the legacy receipt's identity equation is enforced by the schema in both d
       `INSERT INTO eos_ops.receiving_orders
          (id, tenant_id, operating_company_key, source_kind, source_purchase_order_id,
           source_reorder_request_id, receiving_location_type, receiving_location_id,
-          status, idempotency_key, created_by, updated_by)
+          status, idempotency_key, received_at, created_by, updated_by)
        VALUES ('r1', $1, $2, 'REORDER_PURCHASE_ORDER', 'po-1', 'rr-9', 'WAREHOUSE', 'wh-1',
-               'PUTAWAY_COMPLETE', 'i1', 'u', 'u')`,
+               'PUTAWAY_COMPLETE', 'i1', now(), 'u', 'u')`,
       [TENANT, CO_A],
     ),
     /receiving_order_source_identity/,
@@ -496,9 +496,9 @@ test("the legacy receipt's identity equation is enforced by the schema in both d
       `INSERT INTO eos_ops.receiving_orders
          (id, tenant_id, operating_company_key, source_kind, source_purchase_order_id,
           source_reorder_request_id, receiving_location_type, receiving_location_id,
-          status, idempotency_key, created_by, updated_by)
+          status, idempotency_key, received_at, created_by, updated_by)
        VALUES ('r2', $1, $2, 'PURCHASE_ORDER', 'po-1', 'po-1', 'WAREHOUSE', 'wh-1',
-               'PUTAWAY_COMPLETE', 'i2', 'u', 'u')`,
+               'PUTAWAY_COMPLETE', 'i2', now(), 'u', 'u')`,
       [TENANT, CO_A],
     ),
     /receiving_order_source_identity/,
@@ -517,6 +517,8 @@ test("received quantity is the SUM OF COMMITTED RECEIPTS, and cancelled receipts
       receivingLocation: { type: "WAREHOUSE", id: "wh-1" },
       status,
       idempotencyKey: idem,
+      // The goods arrived when they arrived. Required, never defaulted from the write clock.
+      receivedAt: new Date("2026-09-20T12:00:00.000Z"),
       lines: [{ lineId: "L1", partId: "PRT-000009", trackingMode: "NONE", expectedQuantity: 10, receivedQuantity: qty }],
     },
   );
@@ -544,6 +546,7 @@ test("a receiving order and its lines commit together, or not at all", { skip: S
       receivingLocation: { type: "WAREHOUSE", id: "wh-1" },
       status: "PUTAWAY_COMPLETE",
       idempotencyKey: "i-rollback",
+      receivedAt: new Date("2026-09-20T12:00:00.000Z"),
       // A NONE line carrying a serial: refused by receiving_line_serials_match_tracking, AFTER the
       // order row has already been inserted in this transaction.
       lines: [{
@@ -567,6 +570,7 @@ test("a retried receipt cannot post twice for one physical event", { skip: SKIP 
     receivingLocation: { type: "WAREHOUSE", id: "wh-1" },
     status: "PUTAWAY_COMPLETE",
     idempotencyKey: idem,
+    receivedAt: new Date("2026-09-20T12:00:00.000Z"),
     lines: [{ lineId: "L1", partId: "PRT-000015", trackingMode: "NONE", expectedQuantity: 2, receivedQuantity: 2 }],
   });
   await receipt("i-dup");

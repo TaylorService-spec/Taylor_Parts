@@ -258,7 +258,9 @@ export async function createMobileLocation(
 }
 
 export async function readMobileLocation(
-  pool: Pool,
+  // Pool OR an open transaction client, so a receipt can validate a MOBILE destination inside the
+  // transaction that writes it.
+  pool: Pool | PoolClient,
   tenantId: string,
   locationId: string,
 ): Promise<MobileLocationRecord | null> {

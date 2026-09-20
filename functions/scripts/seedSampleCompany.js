@@ -1187,6 +1187,11 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
             purchaseOrderId: requestId, reorderRequestId: requestId, sourceKind: p.receipt.sourceKind,
             receivingLocation: p.receipt.receivingLocation, status: p.receipt.status,
             receivingOrderNumber: p.receipt.receivingOrderNumber, idempotencyKey: p.receipt.idempotencyKey,
+            // WHEN THE GOODS ARRIVED, from the manifest -- never the seed's own clock. A fixture
+            // whose business time moved every time it was re-seeded would make the receipt, the
+            // purchase order it was ordered against and the expected arrival date disagree by
+            // however long ago the environment was built.
+            receivedAt: new Date(p.receipt.receivedAt),
             lines: p.receipt.lines,
           });
         }

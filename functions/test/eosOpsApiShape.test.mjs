@@ -25,10 +25,14 @@ test("both Operations lists are closed, and name exactly what the transport serv
   // The Reorder lifecycle. Composing a route activates nothing: each refuses unless the caller holds
   // the capability the Role catalog already governs, and the three assignee-scoped commands refuse
   // again unless the caller resolves to the assigned Employee.
+  //
+  // `receiveReorderStock` is the governed PostgreSQL receipt. It is dispatched EXPLICITLY by source
+  // type and owns REORDER_PURCHASE_ORDER alone: a canonical PURCHASE_ORDER receipt is refused here,
+  // never redirected, and continues to be served by its own authority until its own cutover.
   assert.deepEqual(OPERATIONS_MUTATION_OPERATIONS, [
     "createReorderRequest", "reviewReorderRequest", "assignReorderRequest",
     "startPurchasingOnReorder", "postPurchasingUpdate", "markReorderReceived", "cancelReorderRequest",
-    "recordReorderPurchaseOrder", "voidReorderPurchaseOrder",
+    "recordReorderPurchaseOrder", "voidReorderPurchaseOrder", "receiveReorderStock",
   ]);
   for (const name of [...OPERATIONS_READ_OPERATIONS, ...OPERATIONS_MUTATION_OPERATIONS]) {
     assert.equal(isOperationsOperation(name), true, name);

@@ -2469,6 +2469,7 @@
           "id": "SC-WH-MAIN"
         },
         "status": "PUTAWAY_COMPLETE",
+        "receivedAt": "2026-09-08T16:00:00.000Z",
         "receivedBy": "parts-associate",
         "lines": [
           {

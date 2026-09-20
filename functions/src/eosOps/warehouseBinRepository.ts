@@ -544,7 +544,10 @@ export async function resolveBinCode(
  * authority yet" rather than "there is no such truck".
  */
 export async function resolveOpsLocation(
-  pool: Pool,
+  // Pool OR an open transaction client. The governed receipt resolves its destination inside the
+  // transaction that writes the receipt, so the location it validated cannot be deactivated between
+  // the check and the commit. `readWarehouse` below already accepts both for the same reason.
+  pool: Pool | PoolClient,
   tenantId: string,
   ref: OpsLocationRef,
 ): Promise<ResolvedOpsLocation> {
