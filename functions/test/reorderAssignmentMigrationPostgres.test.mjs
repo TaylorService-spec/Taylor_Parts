@@ -79,6 +79,18 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
 
   const src = (reorderRequestId, assignedToUserId, assignedBy = "uid-manager") => ({ reorderRequestId, assignedToUserId, assignedBy });
 
+  // The governed assign command now targets a real Reorder row (the domain cutover moved the object
+  // into eos_ops), so the one subtest that assigns THROUGH the command needs its Reorder to exist.
+  // The COPY path deliberately still does not: it migrates assignments whose Reorder may not have
+  // been copied yet, and inventing a Reorder to satisfy an assignment would invert the dependency.
+  await q(`INSERT INTO eos_ops.warehouses (id, tenant_id, operating_company_key, name, site_label, status, provenance, created_by, updated_by)
+           VALUES ('wh-1', 't1', 'sample-co', 'WH', 'Sampleton', 'ACTIVE', 'NATIVE', 'fixture', 'fixture')`);
+  await q(`INSERT INTO eos_ops.reorder_requests
+             (id, tenant_id, operating_company_key, part_id, warehouse_id, status, requested_quantity,
+              requested_by, updated_by, provenance, recommendation_status, quantity_source)
+           VALUES ('rr-race', 't1', 'sample-co', 'PART-1', 'wh-1', 'READY_FOR_PARTS_MANAGER', 1,
+                   'fixture', 'fixture', 'NATIVE', 'BELOW_MIN', 'MANUAL')`);
+
   await t.test("DRY RUN classifies every source row and writes nothing", async () => {
     const before = (await q(`SELECT count(*)::int n FROM eos_ops.reorder_request_assignments`)).rows[0].n;
     const result = await copy.dryRunReorderAssignmentMigration(pool, {

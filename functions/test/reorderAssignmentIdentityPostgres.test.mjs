@@ -181,6 +181,12 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   });
 
   await t.test("reassignment ends the prior assignment; the same Employee is NO_CHANGE; history is kept", async () => {
+    // Assignment fires only from READY_FOR_PARTS_MANAGER (firestore.rules' Assign arm), and the
+    // first assignment moved this Reorder past it. The state this exercises -- a governed
+    // assignment already present while the Reorder still awaits assignment -- is exactly what a
+    // legacy assignment COPY produces, so it is reached here the same way: by putting the Reorder
+    // back in the status the copy would have left it in.
+    await q(`UPDATE eos_ops.reorder_requests SET status='READY_FOR_PARTS_MANAGER' WHERE id=$1`, [RR]);
     const again = await authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: RR, employeeId: "e-assignee" });
     assert.equal(again.outcome, "NO_CHANGE");
     const moved = await authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: RR, employeeId: "e-other" });
@@ -196,6 +202,7 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   });
 
   await t.test("(15) an audit failure rolls the assignment back atomically", async () => {
+    await q(`UPDATE eos_ops.reorder_requests SET status='READY_FOR_PARTS_MANAGER' WHERE id=$1`, [RR]);
     const before = (await q(`SELECT id, assigned_employee_id, effective_to FROM eos_ops.reorder_request_assignments ORDER BY id`)).rows;
     await q(`CREATE FUNCTION test_refuse_assign_audit() RETURNS trigger AS $$ BEGIN
                IF NEW.action = 'reorderRequest.assign' THEN RAISE EXCEPTION 'injected'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`);

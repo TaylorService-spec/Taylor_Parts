@@ -58,15 +58,18 @@ export const REORDER_ASSIGNMENT_QUALIFICATION = "WAREHOUSE_OPERATIONS";
 export const NATIVE_ASSIGNMENT_PROVENANCE = "NATIVE";
 
 /**
- * The statuses a Reorder Request may be assigned from.
+ * The statuses a Reorder Request may be assigned from. EXACTLY ONE, and that is the legacy's answer.
  *
- * READY_FOR_PARTS_MANAGER is the first assignment; ASSIGNED_TO_PARTS_ASSOCIATE is a reassignment,
- * which is a real business action and not an error. Anything later is deliberately excluded --
- * reassigning work that is already ordered or received does not move the work, it rewrites history.
+ * firestore.rules' Assign arm requires `resource.data.status == "READY_FOR_PARTS_MANAGER"` and
+ * writes ASSIGNED_TO_PARTS_ASSOCIATE. Reassigning work already assigned, or already in purchasing,
+ * is not a transition the legacy ever permitted.
+ *
+ * Allowing it here would WIDEN ACCESS on the way through a migration -- a mid-purchasing reassignment
+ * would become reachable for the first time, and the caller who gained it would have gained it from
+ * a database change rather than a decision. If the business wants reassignment, that is a new
+ * transition for the Owner to rule on, not a side effect of moving the object.
  */
-export const ASSIGNABLE_REORDER_STATUSES = Object.freeze([
-  "READY_FOR_PARTS_MANAGER", "ASSIGNED_TO_PARTS_ASSOCIATE",
-] as const);
+export const ASSIGNABLE_REORDER_STATUSES = Object.freeze(["READY_FOR_PARTS_MANAGER"] as const);
 
 export type ReorderAssignmentErrorCategory =
   | "INVALID_INPUT" | "NOT_FOUND" | "PRECONDITION_FAILED" | "CONFLICT" | "FORBIDDEN" | "FAILED";
