@@ -89,6 +89,12 @@ import {
   ImportedServiceHistoryReadError,
 } from "./importedServiceHistoryReadService.js";
 import { assertFirestoreCrmWriterOpen, FirestoreCrmWriterClosedError } from "../crm/crmWriterState.js";
+import {
+  assertFirestoreCatalogWriterOpen,
+  assertFirestoreCatalogReadCurrent,
+  FirestoreCatalogWriterClosedError,
+  FirestoreCatalogNotCurrentError,
+} from "../catalogMaster/catalogWriterState.js";
 import type { RowWriter } from "./importExecution.js";
 
 const REGION = { region: "us-central1" } as const;
@@ -223,6 +229,23 @@ function mapError(err: unknown): HttpsError {
   if (err instanceof IntakeError) return new HttpsError("invalid-argument", err.message, { code: err.code });
   if (err instanceof ImportJobError) return new HttpsError("failed-precondition", err.message, { code: err.code });
   if (err instanceof FirestoreCrmWriterClosedError) return new HttpsError("failed-precondition", err.message, { code: err.code });
+  // The administrator has to be able to tell these apart from a broken import, so both keep their own
+  // stable code and say WHICH import is unavailable and why -- never a generic internal error.
+  if (err instanceof FirestoreCatalogWriterClosedError) {
+    return new HttpsError(
+      "failed-precondition",
+      "Part Import is unavailable on this legacy import runtime: the catalog authority has moved to PostgreSQL.",
+      { code: err.code },
+    );
+  }
+  if (err instanceof FirestoreCatalogNotCurrentError) {
+    return new HttpsError(
+      "failed-precondition",
+      "Inventory Import is unavailable on this legacy import runtime: it resolves Part references against the "
+      + "Firestore catalog, which is no longer current truth.",
+      { code: err.code },
+    );
+  }
   if (err instanceof ImportTargetRefusedError) {
     return new HttpsError("failed-precondition", "Data Import is not available in this environment.");
   }
@@ -379,6 +402,28 @@ export const executeDataImportCallable = onCall(REGION, async (request) => {
     // CRM cutover writer freeze: a customer import honours the freeze as a WHOLE, before the job is claimed and before
     // any row is written; a frozen CRM refuses the job rather than failing row by row (crm/crmWriterState.ts).
     if (staged.entityType === "CUSTOMERS") assertFirestoreCrmWriterOpen("account.import");
+    // CATALOG CUTOVER, the same shape for the same reason (Owner ruling B, Lane 2).
+    //
+    // WHY TWO GUARDS AND NOT ONE. These two entity types depend on the Catalog in different directions and
+    // therefore stop being safe at different moments, and one guard covering both would be wrong for one
+    // of them whichever moment it picked:
+    //
+    //   PARTS      WRITES the catalog, through the governed createPart. It must stop the instant the
+    //              Firestore writers freeze -- during FROZEN/INACTIVE, which is the rollback window.
+    //   INVENTORY  READS the catalog, to resolve an opening-balance row's Part reference. A frozen
+    //              catalog is still CURRENT during the rollback window, so this read stays legal there and
+    //              stops only once PostgreSQL is ACTIVE and the Firestore copy has become a snapshot.
+    //
+    // NOTHING ELSE IS TOUCHED. CUSTOMERS has its own CRM guard above; EQUIPMENT and SERVICE_HISTORY reach
+    // no catalog object at all and keep their present behaviour exactly. Staging, preview and listing are
+    // untouched for every entity type, including these two -- an administrator can still load a file and
+    // see what it would do; what is refused is EXECUTION against an authority that has moved.
+    //
+    // This is NOT a bridge and deliberately not a repair. Part import through Render is a later
+    // Administration/Data Import migration (NONPROD_ADMIN_TOOLING_RETIREMENT_BLOCKER); until it exists the
+    // honest answer on this runtime is a refusal, not a fallback.
+    if (staged.entityType === "PARTS") assertFirestoreCatalogWriterOpen("part.import");
+    if (staged.entityType === "INVENTORY") assertFirestoreCatalogReadCurrent("dataImport.inventory.partReference");
     const claimed = beginExecution(staged, actorUid, new Date().toISOString());
     if (!(await store.claimForExecution(claimed))) {
       // Someone else claimed it between the read and the write. Refusing is correct:

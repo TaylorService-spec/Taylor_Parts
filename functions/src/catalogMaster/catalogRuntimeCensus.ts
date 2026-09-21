@@ -104,10 +104,19 @@ export const CATALOG_RUNTIME_CENSUS: readonly CatalogCensusEntry[] = Object.free
 
   // ══════════ SERVER: the Firestore Catalog authority ══════════
   //
-  // The server Part read funnels through ONE repository -- Receiving, inventory balance, the AI
-  // readiness context and the rest all call partMasterRepository.getById rather than naming the
-  // collection. That is why they are absent here and why this single entry carries them: moving this
-  // repository is what moves every server Part read at once.
+  // The server Part read funnels through ONE repository -- Receiving, Cycle Count, Transfer, inventory
+  // balance, the AI readiness context and the rest all call partMasterRepository.getById rather than
+  // naming the collection. That is why they are absent here and why this single entry carries them:
+  // moving this repository is what moves every server Part read at once.
+  //
+  // THIS CENSUS COUNTS FILES THAT TOUCH A COLLECTION; IT DOES NOT COUNT OPERATIONS, and the difference
+  // is not cosmetic. Lane 2 found four deployed operations -- Cycle Count, Transfer and the two Part
+  // Balance reads -- that reach the catalog only through this repository, so nothing here could ever
+  // have named them, and the activation ledger had inherited the same blind spot by treating the
+  // repository as covering its callers. An operation has a capability, users and a disposition; a
+  // repository has none of the three. catalogActivationLedger.ts is the per-OPERATION view, and its
+  // suite derives the repository's deployed callers from the import graph so neither list can drift
+  // from the code again.
   e({ path: "functions/src/partMaster/partMasterRepository.ts", object: "PART",
     classification: "FIRESTORE_RUNTIME_WRITE",
     consumer: "THE Firestore Part persistence boundary: getById for every server Part resolution, and the staged create/update" }),
