@@ -1,0 +1,72 @@
+{
+  "snapshotBodySha256": "3800975c2838f6c1610790c2eea153e7719b6d390c61b2f74319093650531b59",
+  "decisionId": "OWNER-WO-COMPANY-2026-09-22",
+  "decidedAt": "2026-09-22T00:00:00.000Z",
+  "records": [
+    {
+      "workOrderId": "GN2tk1DgoxdOX0jMU7IO",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "yqFPzsUCs8XSvRUdSjTy",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "0XgbOsl56EJKBu7QNe8k",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "NEz9qGYpNLtrbFHfisXE",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "DxeWmMoTAgS7uMbo9l4U",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "FkA7SbwObO2tkORMgpCl",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "ckY5gqO26LdKBMASmo5g",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "Hdsqhww2bosPHalW04C1",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "rRTHrgl8Z667xFmyKuQ1",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "v6EsG4QU477L64QQerWC",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "g0SNuHqL41o0eGEgbXJ5",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "dDas6xXNgcPi3WYPPCIL",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    },
+    {
+      "workOrderId": "zcyG6tdnsgzOnjpMMnpS",
+      "operatingCompanyId": "taylor",
+      "decisionReason": "Owner ruling: existing historical Work Orders in this migration population are Taylor Freezer of Arizona Work Orders."
+    }
+  ]
+}

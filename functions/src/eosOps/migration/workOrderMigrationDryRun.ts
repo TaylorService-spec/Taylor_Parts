@@ -803,14 +803,22 @@ export function runDryRun(input: {
     for (const id of family.memberIds) excludedById.set(id, family);
   }
 
+  // Owner rulings apply ONLY to the snapshot they were made about.
+  const ownerExclusions = ownerExclusionsForSnapshot(input.snapshot.bodySha256);
+
   const records = input.records.map((record) => {
     const family = excludedById.get(record.id);
-    return classifyRecord(
-      record,
-      family ? family.recordClass : "BUSINESS",
-      family ? `${family.key} -- ${family.reason} (authored by ${family.authoredBy})` : null,
-      input.evidence,
-    );
+    if (family) {
+      return classifyRecord(record, family.recordClass,
+        `${family.key} -- ${family.reason} (authored by ${family.authoredBy})`, input.evidence);
+    }
+    const ruled = ownerExclusions.get(record.id);
+    if (ruled) {
+      return classifyRecord(record, ruled.recordClass,
+        `${ruled.familyId} -- ${ruled.reason} [ruled ${ruled.ruledOn}; evidence: ${ruled.measuredEvidence.join("; ")}]`,
+        input.evidence);
+    }
+    return classifyRecord(record, "BUSINESS", null, input.evidence);
   });
 
   const blockersByKind = Object.fromEntries(BLOCKER_KINDS.map((k) => [k, 0])) as Record<BlockerKind, number>;
@@ -1168,4 +1176,74 @@ export function buildManifestScaffold(
     decidedAt: null,
     records: Object.freeze(rows),
   });
+}
+
+// ════════════════════ OWNER-CLASSIFIED EXCLUSIONS ════════════════════
+//
+// A SECOND KIND OF EVIDENCE, kept separate from FIXTURE_FAMILIES on purpose.
+//
+// A fixture family is proven by repository-authored code: the seeder, its markers, its id shape. An
+// Owner classification is proven by a RULING about specific measured facts, and the two must not be
+// confused -- one is reproducible from the tree, the other is a decision a person made and is only as
+// good as the record of why.
+//
+// SO IT IS BOUND TO A SNAPSHOT. The ruling was made about a record as it stood in one measured
+// population. If the source changes, the checksum changes and this exclusion STOPS APPLYING -- the tool
+// falls back to BUSINESS and the record blocks again. That is deliberate: a Work Order that was probe
+// residue in September must not be silently dropped in December because a constant still names its id.
+//
+// AND IT NAMES AN EXACT ID, NEVER A PATTERN. There is no "probe-" rule here and there must never be one.
+// A heuristic on the word "probe" would exclude a genuine Work Order the moment a customer id happened
+// to contain it, and the whole point of the forensic pass was that the word proves nothing.
+
+export interface OwnerClassifiedExclusion {
+  readonly familyId: string;
+  /** The EXACT source id. Never a pattern, never a prefix. */
+  readonly workOrderId: string;
+  /** The snapshot this ruling was made about. Outside it, the exclusion does not apply. */
+  readonly snapshotBodySha256: string;
+  readonly ruledOn: string;
+  readonly recordClass: RecordClass;
+  /** What was MEASURED, separate from what was ruled. */
+  readonly measuredEvidence: readonly string[];
+  readonly reason: string;
+}
+
+export const OWNER_CLASSIFIED_EXCLUSIONS: readonly OwnerClassifiedExclusion[] = Object.freeze([
+  Object.freeze({
+    familyId: "OWNER_CLASSIFIED_PROBE_RESIDUE_2026_09_22",
+    workOrderId: "p8nHWH7HywDUMiaS21YA",
+    snapshotBodySha256: "3800975c2838f6c1610790c2eea153e7719b6d390c61b2f74319093650531b59",
+    ruledOn: "2026-09-22",
+    recordClass: "OTHER_NONBUSINESS_EVIDENCE" as RecordClass,
+    measuredEvidence: Object.freeze([
+      "woNumber WO-2026-000034, status DISPATCHED, type SERVICE_CALL",
+      "customerId 'probe-c' resolves to no account (105 accounts read)",
+      "locationId 'probe-l' resolves to no location (185 locations read)",
+      "assignedTechId and scheduledTechId both 'probe-t-mtbxlplt', resolving to no technician (13 read)",
+      "the referenced records were never created, not deleted: no probe-* document exists in any collection",
+      "id suffix decodes as Date.now().toString(36) = 2026-08-27T19:44:26.081Z, 1.377s BEFORE the Work Order's createdAt",
+      "created 19:44:27.458 and DISPATCHED 19:44:28.418 -- 960ms apart, a machine cadence",
+      "the only probe-referencing document among 30 work orders, 105 accounts, 185 locations, 13 technicians, 290 equipment, 45 jobs, 26 sales orders",
+      "MEASUREMENT CORRECTION: the record carries NO salesOrderId field at all. An earlier report, and the "
+        + "ruling text, describe a dangling Sales Order; the unresolved references are customerId and locationId only.",
+      "NO repository code authors these ids: `git log --all -S` finds zero commits for 'probe-t-', \"'probe-c'\" or \"'probe-l'\"",
+    ]),
+    reason:
+      "OWNER RULING 2026-09-22: nonbusiness probe residue, excluded from the migration population. The "
+      + "forensic pass classified it BUSINESS_UNRESOLVED because no repository-authored tool could be tied "
+      + "to it -- the affirmative standard was not met. The Owner, who knows what was run by hand, ruled it "
+      + "residue. The source record is RETAINED in Firestore until legacy retirement; exclusion means no "
+      + "target row, not deletion.",
+  }),
+]);
+
+/** Owner exclusions that apply to THIS snapshot. A ruling about another population does not carry over. */
+export function ownerExclusionsForSnapshot(
+  snapshotBodySha256: string,
+  exclusions: readonly OwnerClassifiedExclusion[] = OWNER_CLASSIFIED_EXCLUSIONS,
+): ReadonlyMap<string, OwnerClassifiedExclusion> {
+  return new Map(exclusions
+    .filter((x) => x.snapshotBodySha256 === snapshotBodySha256)
+    .map((x) => [x.workOrderId, x]));
 }

@@ -784,3 +784,130 @@ test("the company ruling does NOT erase independent blockers", () => {
   assert.deepEqual(kinds, ["ACTIVE_ASSIGNMENT_REQUIRES_RESOLUTION", "REFERENCE_NOT_FOUND"]);
   assert.equal(kinds.includes("OPERATING_COMPANY_UNRESOLVED"), false);
 });
+
+// ════════════════════ THE OWNER-CLASSIFIED EXCLUSION ════════════════════
+
+const LIVE_SNAPSHOT = "3800975c2838f6c1610790c2eea153e7719b6d390c61b2f74319093650531b59";
+const PROBE_ID = "p8nHWH7HywDUMiaS21YA";
+
+test("the Owner exclusion names an EXACT id bound to an EXACT snapshot -- never a pattern", () => {
+  const ruled = core.OWNER_CLASSIFIED_EXCLUSIONS.find((x) => x.workOrderId === PROBE_ID);
+  assert.ok(ruled, "the ruling must be recorded");
+  assert.equal(ruled.familyId, "OWNER_CLASSIFIED_PROBE_RESIDUE_2026_09_22");
+  assert.equal(ruled.snapshotBodySha256, LIVE_SNAPSHOT);
+  assert.ok(ruled.measuredEvidence.length >= 5, "the measured facts must be recorded, not just the verdict");
+  // No exclusion may be expressed as a pattern.
+  for (const x of core.OWNER_CLASSIFIED_EXCLUSIONS) {
+    assert.equal(typeof x.workOrderId, "string");
+    assert.equal(/[*?\[\]]|RegExp/.test(x.workOrderId), false, "an exclusion is an id, never a pattern");
+  }
+});
+
+test("the exclusion is EVIDENCE-BASED, not a 'probe-' heuristic", () => {
+  // A DIFFERENT record carrying the same probe-shaped values is NOT excluded. This is the whole
+  // distinction: the word proves nothing, and only the ruled id is ruled.
+  const lookalike = wo("SomeOtherFirestoreId01", {
+    woNumber: "WO-2026-000099", status: "DISPATCHED", type: "SERVICE_CALL",
+    customerId: "probe-c", locationId: "probe-l", assignedTechId: "probe-t-mtbxlplt",
+  });
+  const records = [lookalike];
+  // Force the live snapshot binding so the ruling is in scope, then prove it still does not catch it.
+  const report = core.runDryRun({
+    snapshot: { ...snapOf(records), bodySha256: LIVE_SNAPSHOT },
+    records, evidence: fullEvidence(),
+  });
+  const r = report.records[0];
+  assert.equal(r.recordClass, "BUSINESS", "a lookalike must NOT be excluded by resemblance");
+  assert.equal(r.result, "BLOCKED");
+  assert.equal(core.OWNER_CLASSIFIED_EXCLUSIONS.some((x) => x.workOrderId === "SomeOtherFirestoreId01"), false);
+});
+
+test("an Owner ruling does NOT carry over to a different snapshot", () => {
+  const probe = wo(PROBE_ID, { woNumber: "WO-2026-000034", status: "DISPATCHED", type: "SERVICE_CALL" });
+  const inScope = core.ownerExclusionsForSnapshot(LIVE_SNAPSHOT);
+  assert.equal(inScope.has(PROBE_ID), true, "in scope for the snapshot it was ruled about");
+  const elsewhere = core.ownerExclusionsForSnapshot("f".repeat(64));
+  assert.equal(elsewhere.size, 0, "a ruling about one population must not silently drop a record in another");
+  // And end to end: under a different checksum the record is BUSINESS again and blocks.
+  const report = core.runDryRun({
+    snapshot: { ...snapOf([probe]), bodySha256: "f".repeat(64) }, records: [probe], evidence: fullEvidence(),
+  });
+  assert.equal(report.records[0].recordClass, "BUSINESS");
+  assert.equal(report.records[0].result, "BLOCKED");
+});
+
+test("the excluded probe record carries its Owner evidence and raises no blocker", () => {
+  const probe = wo(PROBE_ID, { woNumber: "WO-2026-000034", status: "DISPATCHED", type: "SERVICE_CALL" });
+  const report = core.runDryRun({
+    snapshot: { ...snapOf([probe]), bodySha256: LIVE_SNAPSHOT }, records: [probe], evidence: fullEvidence(),
+  });
+  const r = report.records[0];
+  assert.equal(r.result, "EXCLUDED_WITH_EVIDENCE");
+  assert.equal(r.recordClass, "OTHER_NONBUSINESS_EVIDENCE");
+  assert.match(r.exclusionEvidence, /OWNER_CLASSIFIED_PROBE_RESIDUE_2026_09_22/);
+  assert.match(r.exclusionEvidence, /RETAINED in Firestore/, "exclusion is not deletion");
+  assert.deepEqual(r.blockers, [], "an excluded record does not block; it simply does not migrate");
+});
+
+test("an excluded record can NEVER be named in the manifest as a migrated business Work Order", () => {
+  const probe = wo(PROBE_ID, { woNumber: "WO-2026-000034", status: "DISPATCHED", type: "SERVICE_CALL" });
+  const biz = wo("b1", BUSINESS().data);
+  const records = [probe, biz];
+  const snapshot = { ...snapOf(records), bodySha256: LIVE_SNAPSHOT };
+  const report = core.runDryRun({ snapshot, records, evidence: fullEvidence() });
+  const businessIds = new Set(report.records.filter((r) => r.recordClass === "BUSINESS").map((r) => r.workOrderId));
+  const fixtureIds = new Set(report.records.filter((r) => r.recordClass !== "BUSINESS").map((r) => r.workOrderId));
+  assert.equal(fixtureIds.has(PROBE_ID), true);
+
+  assert.throws(() => core.validateResolutionManifest({
+    snapshotBodySha256: LIVE_SNAPSHOT, decisionId: "d", decidedAt: "t",
+    records: [{ workOrderId: PROBE_ID, operatingCompanyId: "taylor", decisionReason: "x" }],
+  }, { snapshotBodySha256: LIVE_SNAPSHOT, businessIds, fixtureIds }),
+    (e) => { assert.equal(e.code, "MANIFEST_FIXTURE_NAMED"); return true; });
+
+  // The scaffold for the final population does not offer it either.
+  const scaffold = core.buildManifestScaffold(report, records);
+  assert.equal(scaffold.records.some((r) => r.workOrderId === PROBE_ID), false);
+  assert.deepEqual(scaffold.records.map((r) => r.workOrderId), ["b1"]);
+});
+
+test("the committed Owner manifest holds exactly the 13 genuine records, all Taylor", () => {
+  const manifest = JSON.parse(readFileSync(
+    resolve(FUNCTIONS_DIR, "..", "docs/assessments/work-order-migration-manifest-OWNER-WO-COMPANY-2026-09-22.json"), "utf8"));
+  assert.equal(manifest.decisionId, "OWNER-WO-COMPANY-2026-09-22");
+  assert.equal(manifest.snapshotBodySha256, LIVE_SNAPSHOT, "bound to the measured snapshot");
+  assert.equal(manifest.records.length, 13, "the final migration input is 13 records, not the superseded 14");
+  assert.equal(manifest.records.some((r) => r.workOrderId === PROBE_ID), false,
+    "the excluded record must not be represented as a migrated Taylor business Work Order");
+  assert.deepEqual([...new Set(manifest.records.map((r) => r.operatingCompanyId))], ["taylor"]);
+  for (const r of manifest.records) {
+    assert.match(r.decisionReason, /Owner ruling/);
+    assert.equal("assignmentEmployeeId" in r, false, "no Employee was invented for any record");
+  }
+});
+
+test("COPYABLE = 13 and BLOCKED = 0 with no target conflict, and a conflict still fails closed", () => {
+  const ids = Array.from({ length: 13 }, (_, i) => `b${i}`);
+  const records = ids.map((id) => wo(id, BUSINESS().data));
+  const snapshot = snapOf(records);
+  const manifest = core.validateResolutionManifest(
+    manifestBody(records, ids.map((id) => ({ workOrderId: id, operatingCompanyId: "taylor", decisionReason: "owner ruling" }))),
+    ctxFor(records));
+
+  const clean = core.runDryRun({
+    snapshot, records,
+    evidence: fullEvidence({ resolutionManifest: manifest, targetWorkOrderIds: new Set() }),
+  });
+  assert.equal(clean.summary.copyable, 13);
+  assert.equal(clean.summary.blocked, 0);
+  assert.equal(clean.targetCollisionStatusKnown, true);
+
+  // One id already in the target: that record alone fails closed, and it is never an upsert.
+  const conflicted = core.runDryRun({
+    snapshot, records,
+    evidence: fullEvidence({ resolutionManifest: manifest, targetWorkOrderIds: new Set(["b7"]) }),
+  });
+  assert.equal(conflicted.summary.copyable, 12);
+  assert.equal(conflicted.summary.blocked, 1);
+  assert.equal(conflicted.records.find((r) => r.workOrderId === "b7").targetCollision, "TARGET_CONFLICT");
+});

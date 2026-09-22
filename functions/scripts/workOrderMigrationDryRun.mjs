@@ -84,9 +84,30 @@ async function main() {
   const manifestPath = arg("manifest");
 
   // ── target collision check, READ ONLY and optional ──
+  //
+  // TWO CHANNELS, because the real nonprod target is not reachable by URL from a workstation: Render
+  // wires DATABASE_URL `fromDatabase`, which is the INTERNAL connection string. `--target-ids <file>`
+  // accepts the result of a bounded read-only query run through whatever channel does reach it (e.g.
+  // `render psql --command`), so the preflight stays reproducible without a URL ever being handled here.
+  //
+  // THE FILE MUST STATE WHETHER THE TABLE EXISTS. "No rows came back" and "the table is not there" are
+  // different facts, and only the first means ALREADY_PRESENT is impossible for a benign reason.
   let targetWorkOrderIds = null;
+  const targetIdsPath = arg("target-ids");
+  if (targetIdsPath) {
+    const stated = JSON.parse(readFileSync(targetIdsPath, "utf8"));
+    if (stated.tableExists === false) {
+      console.log("target: eos_ops.work_orders DOES NOT EXIST -- no row can collide, and the schema "
+        + "migration is itself an unmet COPY precondition");
+      targetWorkOrderIds = new Set();
+    } else if (Array.isArray(stated.ids)) {
+      targetWorkOrderIds = new Set(stated.ids.map(String));
+    } else {
+      throw new Error("REFUSING: --target-ids must state { tableExists: false } or { ids: [...] }");
+    }
+  }
   const targetUrl = process.env.WORK_ORDER_TARGET_DATABASE_URL ?? "";
-  if (targetUrl) {
+  if (!targetIdsPath && targetUrl) {
     const pg = require("pg");
     const client = new pg.Client({ connectionString: targetUrl });
     await client.connect();
