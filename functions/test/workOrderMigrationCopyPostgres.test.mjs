@@ -81,6 +81,12 @@ test("COPY ONCE and VERIFY", { skip: SKIP, concurrency: 1 }, async (t) => {
   const q = (text, values = []) => pool.query(text, values);
   await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1,$1,$1)`, [TENANT]);
 
+  const bindKey = (key = COMPANY_KEY) => q(
+    `INSERT INTO eos_policy.tenant_operating_company_keys
+       (tenant_id, operating_company_id, operating_company_key, status, provenance, source, established_by, updated_by)
+     VALUES ($1,$2,$3,'ACTIVE','MIGRATED','test','fixture','fixture')
+     ON CONFLICT (tenant_id, operating_company_id) DO UPDATE SET operating_company_key = EXCLUDED.operating_company_key, status='ACTIVE'`,
+    [TENANT, COMPANY_ID, key]);
   const bindCompany = (status = "ACTIVE") => q(
     `INSERT INTO eos_policy.tenant_operating_companies
        (tenant_id, operating_company_id, status, source, established_by, updated_by)
@@ -98,7 +104,7 @@ test("COPY ONCE and VERIFY", { skip: SKIP, concurrency: 1 }, async (t) => {
   });
 
   await t.test("an absent target schema refuses, and the tool creates none", () => {
-    const state = { migrationCount: 36, lastMigration: copy.REQUIRED_LAST_MIGRATION, relations: new Set(["work_orders"]), tenantExists: true };
+    const state = { migrationCount: 37, appliedMigrations: new Set(copy.REQUIRED_MIGRATIONS), relations: new Set(["work_orders"]), tenantExists: true };
     assert.throws(() => copy.assertTargetSchemaReady(state), (e) => {
       assert.equal(e.code, "TARGET_SCHEMA_NOT_READY");
       assert.match(e.message, /work_order_parts_plan/);
@@ -108,20 +114,29 @@ test("COPY ONCE and VERIFY", { skip: SKIP, concurrency: 1 }, async (t) => {
     assert.equal(/CREATE TABLE|CREATE SCHEMA|ALTER TABLE/i.test(src), false, "COPY must never create schema");
   });
 
-  await t.test("a wrong migration version refuses", () => {
+  await t.test("a missing REQUIRED migration refuses, by name and not by count or order", () => {
     const relations = new Set(copy.REQUIRED_TARGET_RELATIONS);
+    // The binding migration was applied OUT OF ORDER, so "last by insertion" and a count both lie about
+    // readiness. Each required migration is checked by name instead.
+    for (const omitted of copy.REQUIRED_MIGRATIONS) {
+      const applied = new Set(copy.REQUIRED_MIGRATIONS.filter((m) => m !== omitted));
+      assert.throws(() => copy.assertTargetSchemaReady({ migrationCount: 999, appliedMigrations: applied, relations, tenantExists: true }),
+        (e) => {
+          assert.equal(e.code, "TARGET_MIGRATIONS_NOT_APPLIED");
+          assert.match(e.message, new RegExp(omitted));
+          return true;
+        });
+    }
     assert.throws(() => copy.assertTargetSchemaReady(
-      { migrationCount: 34, lastMigration: "1760140800000_reorder-assignment-identity", relations, tenantExists: true }),
-      (e) => { assert.equal(e.code, "TARGET_MIGRATIONS_NOT_APPLIED"); return true; });
-    assert.throws(() => copy.assertTargetSchemaReady(
-      { migrationCount: 36, lastMigration: copy.REQUIRED_LAST_MIGRATION, relations, tenantExists: false }),
+      { migrationCount: 37, appliedMigrations: new Set(copy.REQUIRED_MIGRATIONS), relations, tenantExists: false }),
       (e) => { assert.equal(e.code, "TENANT_NOT_FOUND"); return true; });
   });
 
   await t.test("the REAL target passes the readiness check once migrated", async () => {
     const state = await copy.readTargetSchemaState(pool, TENANT);
-    assert.equal(state.migrationCount, copy.REQUIRED_MIGRATION_COUNT);
-    assert.equal(state.lastMigration, copy.REQUIRED_LAST_MIGRATION);
+    for (const required of copy.REQUIRED_MIGRATIONS) {
+      assert.equal(state.appliedMigrations.has(required), true, `${required} must be applied`);
+    }
     assert.doesNotThrow(() => copy.assertTargetSchemaReady(state));
   });
 
@@ -129,26 +144,28 @@ test("COPY ONCE and VERIFY", { skip: SKIP, concurrency: 1 }, async (t) => {
 
   await t.test("a MISSING governed binding refuses the whole COPY", async () => {
     await q(`DELETE FROM eos_policy.tenant_operating_companies WHERE tenant_id = $1`, [TENANT]);
-    await assert.rejects(() => copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID, KEY_AUTHORITY),
+    await assert.rejects(() => copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID),
       (e) => { assert.equal(e.code, "OPERATING_COMPANY_BINDING_MISSING"); return true; });
   });
 
   await t.test("an INACTIVE binding refuses", async () => {
     await bindCompany("INACTIVE");
-    await assert.rejects(() => copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID, KEY_AUTHORITY),
+    await assert.rejects(() => copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID),
       (e) => { assert.equal(e.code, "OPERATING_COMPANY_BINDING_INACTIVE"); return true; });
   });
 
   await t.test("operatingCompanyId is NOT assumed equal to operating_company_key", async () => {
     await bindCompany("ACTIVE");
-    // With an ACTIVE binding but NO key authority, it still refuses -- string equality is not a resolution.
-    await assert.rejects(() => copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID, new Map()),
+    // ACTIVE company, NO key binding: it still refuses. Authorizing a company and keying its partition
+    // are two decisions, and this is exactly Ventana's state in nonprod.
+    await assert.rejects(() => copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID),
       (e) => {
         assert.equal(e.code, "OPERATING_COMPANY_KEY_UNRESOLVED");
         assert.match(e.message, /String equality is refused/);
         return true;
       });
-    const bound = await copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID, KEY_AUTHORITY);
+    await bindKey();
+    const bound = await copy.resolveOperatingCompanyKey(pool, TENANT, COMPANY_ID);
     assert.equal(bound.operatingCompanyId, "taylor");
     assert.equal(bound.operatingCompanyKey, "sample-co-synthetic");
     assert.notEqual(bound.operatingCompanyId, bound.operatingCompanyKey, "the two vocabularies differ, by construction");

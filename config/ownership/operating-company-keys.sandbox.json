@@ -1,0 +1,37 @@
+{
+  "$comment": [
+    "EOS — the nonprod OPERATING COMPANY -> eos_ops PARTITION KEY bindings.",
+    "",
+    "THE KEY IS EVIDENCE, NOT AN OPERATOR GUESS. It is declared here and only here, so that no",
+    "reconciliation run can introduce a key from a command line, and no code can derive one. The CLI",
+    "that consumes this file accepts no key argument at all.",
+    "",
+    "WHY THIS FILE EXISTS. eos_policy.tenant_operating_companies says WHICH COMPANIES a tenant may",
+    "operate as. eos_ops.*.operating_company_key says WHICH PARTITION an operational row belongs to.",
+    "They were never the same thing, and nonprod proves it rather than merely asserting it: the Sample",
+    "Company fixture carries operatingCompanyId 'taylor' with operatingCompanyKey 'sample-co-synthetic',",
+    "deliberately, so its rows are confined to a partition nothing else uses. Copying one field into the",
+    "other would assert an equality this repository explicitly denies.",
+    "",
+    "TAYLOR'S KEY HAPPENS TO READ THE SAME AS ITS COMPANY ID, AND THAT IS A COINCIDENCE OF AUTHORING.",
+    "It is NOT an equality rule and must never be implemented as one. Code reads the binding row; a",
+    "resolver that returned the company id when no row existed would be inventing a partition.",
+    "",
+    "SAMPLE COMPANY IS NOT BOUND HERE. 'sample-co-synthetic' is fixture data and stays outside the",
+    "governed business partition. Genuine Work Orders are never migrated into it.",
+    "",
+    "VENTANA IS AUTHORIZED BUT UNKEYED, DELIBERATELY. The tenant may operate as Ventana, and a native",
+    "Ventana operational row must FAIL CLOSED until an explicit key binding is authored here. Supporting",
+    "a company conceptually and keying its partition are two separate decisions."
+  ],
+  "environment": "eos-platform-sandbox",
+  "status": "AUTHORED by Owner ruling 2026-09-22 — the Work Order migration operational key binding",
+  "bindings": [
+    {
+      "operatingCompanyId": "taylor",
+      "operatingCompanyKey": "taylor",
+      "provenance": "MIGRATED",
+      "reason": "Owner ruling 2026-09-22: the genuine Taylor nonprod business partition for the Work Order migration population."
+    }
+  ]
+}

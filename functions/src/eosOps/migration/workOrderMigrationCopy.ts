@@ -15,6 +15,9 @@
 // migration is worse than none, because the half that landed looks migrated.
 import type { Pool, PoolClient } from "pg";
 import type { DryRunReport, ValidatedManifest, SourceWorkOrder } from "./workOrderMigrationDryRun.js";
+// THE SHARED PLATFORM AUTHORITY for company -> eos_ops partition key. Work Order does not own this
+// question and must not answer it privately.
+import { resolveOperatingCompanyKeyForCompany } from "../operatingCompanyBinding.js";
 
 const SCHEMA = "eos_ops";
 
@@ -47,8 +50,20 @@ export const REQUIRED_TARGET_RELATIONS: readonly string[] = Object.freeze([
   "work_order_transitions", "work_order_sales_order_lines", "work_order_parts_plan",
 ]);
 
-export const REQUIRED_LAST_MIGRATION = "1761091200000_work-order-parts-plan-authority";
-export const REQUIRED_MIGRATION_COUNT = 36;
+/**
+ * THE MIGRATIONS THIS COPY REQUIRES, BY NAME.
+ *
+ * Deliberately NOT "the last migration is X" or "the count is N". Migration 1760486400000 was applied
+ * out of order -- it was authored for Reorder, carries an earlier timestamp, and landed in nonprod AFTER
+ * the Work Order migrations -- so "last by insertion" now names it and the count moved. Neither says
+ * anything about whether the tables this COPY writes exist. Presence does, and it stays true however
+ * history was assembled: what matters is that history contains each immutable migration exactly once.
+ */
+export const REQUIRED_MIGRATIONS: readonly string[] = Object.freeze([
+  "1761004800000_work-order-object-authority",
+  "1761091200000_work-order-parts-plan-authority",
+  "1760486400000_tenant-operating-company-key-binding",
+]);
 
 /**
  * SOURCE DRIFT GUARD. Recompute the snapshot and compare to what the decisions were made about.
@@ -67,7 +82,7 @@ export function assertNoSourceDrift(recomputedBodySha256: string, boundBodySha25
 
 export interface TargetSchemaState {
   readonly migrationCount: number;
-  readonly lastMigration: string | null;
+  readonly appliedMigrations: ReadonlySet<string>;
   readonly relations: ReadonlySet<string>;
   readonly tenantExists: boolean;
 }
@@ -77,15 +92,14 @@ export async function readTargetSchemaState(
   db: Pick<PoolClient, "query">,
   tenantId: string,
 ): Promise<TargetSchemaState> {
-  const { rows: migrations } = await db.query(
-    "SELECT count(*)::int AS n, (SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1) AS last FROM pgmigrations");
+  const { rows: migrations } = await db.query("SELECT name FROM pgmigrations");
   const { rows: rels } = await db.query(
     `SELECT table_name FROM information_schema.tables WHERE table_schema = $1`, [SCHEMA]);
   const { rows: tenants } = await db.query(
     "SELECT 1 FROM eos_policy.tenants WHERE id = $1", [tenantId]);
   return Object.freeze({
-    migrationCount: Number(migrations[0]?.n ?? 0),
-    lastMigration: (migrations[0]?.last as string | null) ?? null,
+    migrationCount: migrations.length,
+    appliedMigrations: new Set(migrations.map((r) => String(r.name))),
     relations: new Set(rels.map((r) => String(r.table_name))),
     tenantExists: tenants.length > 0,
   });
@@ -99,10 +113,11 @@ export function assertTargetSchemaReady(state: TargetSchemaState): void {
       `the target is missing required relation(s): ${missing.join(", ")}. Apply the Work Order migrations `
       + "first -- this tool creates no schema.");
   }
-  if (state.migrationCount !== REQUIRED_MIGRATION_COUNT || state.lastMigration !== REQUIRED_LAST_MIGRATION) {
+  const absent = REQUIRED_MIGRATIONS.filter((m) => !state.appliedMigrations.has(m));
+  if (absent.length > 0) {
     refuse("TARGET_MIGRATIONS_NOT_APPLIED",
-      `the target is at ${state.migrationCount} migration(s) ending '${String(state.lastMigration)}'; this `
-      + `COPY was built against ${REQUIRED_MIGRATION_COUNT} ending '${REQUIRED_LAST_MIGRATION}'.`);
+      `the target has not applied: ${absent.join(", ")}. This COPY writes tables and reads a binding those `
+      + "migrations establish.");
   }
   if (!state.tenantExists) refuse("TENANT_NOT_FOUND", "the target tenant does not exist");
 }
@@ -113,29 +128,29 @@ export interface OperatingCompanyBinding {
 }
 
 /**
- * Resolve the Owner's operatingCompanyId to the TARGET's operating_company_key, through the governed
- * binding.
+ * Resolve the Owner's operatingCompanyId to the TARGET's operating_company_key.
+ *
+ * DELEGATES TO THE SHARED AUTHORITY. eosOps/operatingCompanyBinding.ts owns this question for the whole
+ * platform -- Reorder will consume the same resolver when #1961 integrates -- and a private Work Order
+ * copy of it would be a second answer to "which partition does this company use". This function adds only
+ * the COPY-shaped refusal vocabulary on top; it derives nothing of its own.
  *
  * ════════ WHY THIS IS NOT A STRING EQUALITY ════════
  *
  * `operating_company_id` and `operating_company_key` are different vocabularies, and nonprod proves it
- * rather than merely asserting it: eos_workforce.employees carries operating_company_id 'taylor' while
- * eos_ops.warehouses and eos_ops.inventory_movements carry operating_company_key 'sample-co-synthetic'.
- * Writing 'taylor' into eos_ops.work_orders.operating_company_key because the strings look alike would
- * file every migrated Work Order under a company that owns no warehouse, no movement and no truck -- and
- * nothing would report it, because the column is opaque TEXT and accepts anything.
+ * rather than merely asserting it: the Sample Company fixture carries operatingCompanyId 'taylor' with
+ * operatingCompanyKey 'sample-co-synthetic', deliberately, so its eos_ops rows sit in a partition nothing
+ * else uses. Writing 'taylor' into eos_ops.work_orders.operating_company_key because the strings happen to
+ * match would be asserting an equality this repository explicitly denies -- and in nonprod today it does
+ * match, which is exactly why the shortcut would go unnoticed.
  *
- * eos_policy.tenant_operating_companies answers "is company X ACTIVE for tenant Y". It does NOT carry a
- * key, and no table in the target carries both columns. So there are two separate preconditions, and this
- * resolver refuses on either: an ACTIVE binding must exist, AND a governed id -> key authority must exist.
- * The second does not exist today; that is a finding, not something to paper over with a default.
+ * TWO GATES. The company must be ACTIVE for the tenant AND its key binding must be ACTIVE. Ventana is
+ * deliberately authorized-but-unkeyed, so a Ventana row fails closed until someone keys its partition.
  */
 export async function resolveOperatingCompanyKey(
   db: Pick<PoolClient, "query">,
   tenantId: string,
   operatingCompanyId: string,
-  /** Supplied only when a governed id -> key authority exists. Never defaulted, never inferred. */
-  keyAuthority?: ReadonlyMap<string, string>,
 ): Promise<OperatingCompanyBinding> {
   const { rows } = await db.query(
     `SELECT status FROM eos_policy.tenant_operating_companies
@@ -153,14 +168,18 @@ export async function resolveOperatingCompanyKey(
     refuse("OPERATING_COMPANY_BINDING_INACTIVE",
       `'${operatingCompanyId}' is bound to this tenant with status ${String(rows[0].status)}, not ACTIVE`);
   }
-  const key = keyAuthority?.get(operatingCompanyId);
-  if (!key) {
-    refuse("OPERATING_COMPANY_KEY_UNRESOLVED",
-      `'${operatingCompanyId}' is an ACTIVE governed company for this tenant, but nothing maps it to an `
-      + "eos_ops operating_company_key. No table carries both columns and no module derives one from the "
-      + "other, so the key cannot be established without an Owner decision. String equality is refused.");
+  try {
+    const key = await resolveOperatingCompanyKeyForCompany(db, tenantId, operatingCompanyId);
+    return Object.freeze({ operatingCompanyId, operatingCompanyKey: key });
+  } catch (err) {
+    const code = (err as { code?: string }).code ?? "";
+    if (code === "OPERATING_COMPANY_KEY_NOT_BOUND" || code === "OPERATING_COMPANY_KEY_AMBIGUOUS") {
+      refuse("OPERATING_COMPANY_KEY_UNRESOLVED",
+        `'${operatingCompanyId}' is an ACTIVE governed company for this tenant, but no ACTIVE key binding `
+        + "establishes its eos_ops partition. String equality is refused; a key is authored as evidence.");
+    }
+    throw err;
   }
-  return Object.freeze({ operatingCompanyId, operatingCompanyKey: key as string });
 }
 
 export type TargetCollisionResult = "TARGET_ABSENT" | "ALREADY_PRESENT_EQUIVALENT" | "TARGET_CONFLICT";
