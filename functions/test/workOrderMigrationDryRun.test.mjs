@@ -700,3 +700,87 @@ test("the blank scaffold covers every genuine record and is REFUSED until filled
     businessIds: new Set(["b1", "b2"]), fixtureIds: new Set(["wo-sbx-001"]),
   })), (e) => { assert.match(e.code, /MANIFEST_MALFORMED|MANIFEST_COMPANY_INVALID/); return true; });
 });
+
+// ════════════════════ THE FUTURE-STATE RULE ════════════════════
+
+test("NO Taylor default is encoded anywhere in the Work Order path -- schema, mapper or command", () => {
+  // The Owner ruled ALL EXISTING historical Work Orders to Taylor for THIS snapshot. That is a migration
+  // fact about one population. Ventana can own Work Orders, so the moment that ruling leaks into a
+  // default, a Ventana Work Order silently becomes a Taylor one -- and nothing would report it, because a
+  // default produces a value rather than an error.
+  const read = (p) => readFileSync(resolve(FUNCTIONS_DIR, p), "utf8");
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").split("\n")
+    .map((l) => l.replace(/\/\/.*$/, "").replace(/^\s*--.*$/, "")).join("\n");
+
+  // The SCHEMA states the company and never supplies one.
+  const sql = strip(read("migrations/1761004800000_work-order-object-authority.sql"));
+  assert.match(sql, /operating_company_key\s+TEXT\s+NOT NULL/, "the column must be mandatory");
+  assert.equal(/operating_company_key[^,]*DEFAULT/i.test(sql), false, "the column must carry no DEFAULT");
+  assert.match(sql, /work_orders_company_is_stated CHECK \(btrim\(operating_company_key\) <> ''\)/,
+    "a blank company must be refused structurally, not just by convention");
+
+  // No Work Order module may name a company as a value.
+  for (const path of [
+    "src/eosOps/migration/workOrderMigrationDryRun.ts",
+    "src/eosOps/migration/workOrderFieldParityMatrix.ts",
+    "src/eosOps/workOrderAssignmentAuthority.ts",
+    "src/eosOps/workOrderPartsPlanAuthority.ts",
+    "src/eosOps/serviceFromSalesOrderBoundary.ts",
+  ]) {
+    const src = strip(read(path));
+    assert.equal(/["'`]taylor["'`]|["'`]ventana["'`]/i.test(src), false,
+      `${path} names a specific operating company; a migration ruling must not become code`);
+    assert.equal(/default\w*OperatingCompany|DEFAULT_OPERATING_COMPANY|FALLBACK_COMPANY/i.test(src), false,
+      `${path} encodes a default operating company`);
+  }
+
+  // And the resolver offers exactly two outcomes -- evidence, or an explicit requirement. No third path.
+  const core2 = require("../lib/eosOps/migration/workOrderMigrationDryRun.js");
+  const noEvidence = core2.resolveOperatingCompany(
+    { id: "x", data: { woNumber: "WO-2026-000001" } },
+    { technicians: new Map(), employees: new Set(), salesOrders: new Map(), accounts: new Set(),
+      locations: new Set(), equipment: new Set(), resolutionManifest: null },
+  );
+  assert.equal(noEvidence.resolutionStatus, "EXPLICIT_RESOLUTION_REQUIRED");
+  assert.equal(noEvidence.resolvedOperatingCompanyKey, null, "absent evidence must never produce a company");
+});
+
+test("the manifest accepts ANY active governed company, not only the one this ruling used", () => {
+  // Ventana must be expressible today, or the model has quietly become single-company.
+  const records = [wo("b1", BUSINESS().data), wo("b2", BUSINESS().data)];
+  const snapshot = snapOf(records);
+  const mixed = core.validateResolutionManifest(
+    manifestBody(records, [
+      { workOrderId: "b1", operatingCompanyId: "taylor", decisionReason: "owner ruling" },
+      { workOrderId: "b2", operatingCompanyId: "ventana", decisionReason: "owner ruling" },
+    ]),
+    ctxFor(records));
+  const report = core.runDryRun({
+    snapshot, records,
+    evidence: fullEvidence({ resolutionManifest: mixed, targetWorkOrderIds: new Set() }),
+  });
+  assert.equal(report.summary.copyable, 2);
+  assert.deepEqual(
+    report.records.map((r) => r.operatingCompany.resolvedOperatingCompanyKey).sort(),
+    ["taylor", "ventana"]);
+});
+
+test("the company ruling does NOT erase independent blockers", () => {
+  // The exact shape of the live re-run: an ACTIVE record with an unresolvable technician and a dangling
+  // reference must stay BLOCKED even once its company is decided.
+  const record = wo("b1", BUSINESS({
+    status: "DISPATCHED", assignedTechId: "probe-t-x", customerId: "ghost-c",
+  }).data);
+  const snapshot = snapOf([record]);
+  const manifest = core.validateResolutionManifest(
+    manifestBody([record], [{ workOrderId: "b1", operatingCompanyId: "taylor", decisionReason: "owner ruling" }]),
+    ctxFor([record]));
+  const r = core.classifyRecord(record, "BUSINESS", null, evidence({
+    locations: new Set(["loc-1"]), resolutionManifest: manifest,
+  }));
+  assert.equal(r.operatingCompany.resolvedOperatingCompanyKey, "taylor");
+  assert.equal(r.result, "BLOCKED", "company resolved, but the record is not copyable");
+  const kinds = [...new Set(r.blockers.map((b) => b.kind))].sort();
+  assert.deepEqual(kinds, ["ACTIVE_ASSIGNMENT_REQUIRES_RESOLUTION", "REFERENCE_NOT_FOUND"]);
+  assert.equal(kinds.includes("OPERATING_COMPANY_UNRESOLVED"), false);
+});
