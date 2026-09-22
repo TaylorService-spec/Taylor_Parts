@@ -71,6 +71,23 @@ async function reset() {
       "INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING",
       [id],
     );
+    // THE COMMITTED PARTS MUST EXIST IN THE CATALOG, AND MUST BE QUANTITY-TRACKED.
+    //
+    // New fixture, and its absence used to be invisible: reserve/reconcileConsumption took the caller's
+    // partId on trust and never asked what it was. Lane 3 wired that question up, so these suites now
+    // commit against real Parts. STANDARD control type on purpose -- a quantity commitment cannot
+    // represent individually tracked units, and a SERIALIZED fixture here would be refused for the right
+    // reason in a suite that is not about that.
+    for (const partId of ["p1", "p2"]) {
+      await seed.query(
+        `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
+           control_type, stocking_class, expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+         VALUES ($2, $1, 'fixture', $3, 'proof part', 'ACTIVE', 'EACH', 'STANDARD', 'STOCKED',
+           false, false, false, false, 1, 'fixture')
+         ON CONFLICT DO NOTHING`,
+        [id, partId, `IPN-${id}-${partId}`],
+      );
+    }
   }
   await seed.end();
 }

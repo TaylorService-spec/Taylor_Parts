@@ -127,8 +127,8 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1760097600000 (Operational Scope authority, step B): an EMPTY warehouse-scope history
 // plus one capability vocabulary row, granted to no Role. The table is not in SEEDED_RELATIONS and the Sample Company
 // seed writes no scope, so every row count asserted here is unchanged.
-const PINNED_LAST_MIGRATION = "1761004800000_work-order-object-authority";
-const PINNED_MIGRATION_COUNT = 35;
+const PINNED_LAST_MIGRATION = "1761091200000_work-order-parts-plan-authority";
+const PINNED_MIGRATION_COUNT = 36;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

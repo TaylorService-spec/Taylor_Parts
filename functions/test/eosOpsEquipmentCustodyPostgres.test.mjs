@@ -62,8 +62,15 @@ function migrate(args) {
 
 const query = (text, values = []) => repoPool().query(text, values);
 
+/** The catalog fixture this file seeds, removed on its own -- migration 027 refuses to reverse while any
+ *  Part Master record exists, so the down-migration test has to drop it BEFORE it peels migrations. */
+const cleanParts = () =>
+  query("DELETE FROM eos_ops.parts WHERE tenant_id = ANY($1)", [[TENANT, OTHER_TENANT]]);
+
 /** Remove only what this file wrote. Custody first: it references equipment. */
 async function clean() {
+  // NOT the catalog fixture: clean() also runs after the down-migration test has peeled eos_ops.parts
+  // away, and deleting from a table that no longer exists would fail for a reason unrelated to the test.
   await query("DELETE FROM eos_ops.serialized_custody WHERE tenant_id = ANY($1)", [[TENANT, OTHER_TENANT]]);
   await query("DELETE FROM eos_ops.equipment WHERE tenant_id = ANY($1)", [[TENANT, OTHER_TENANT]]);
   await query("DELETE FROM eos_ops.equipment_models WHERE tenant_id = ANY($1)", [[TENANT, OTHER_TENANT]]);
@@ -75,6 +82,22 @@ async function setup() {
     await query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $1, $1) ON CONFLICT DO NOTHING", [id]);
   }
   await clean();
+  // THE INSTALLED PART MUST EXIST IN THE CATALOG, AND MUST BE A WHOLE UNIT.
+  //
+  // This fixture is new, and its absence used to be invisible: installSerializedUnitAsEquipment read the
+  // custody row and never asked the catalog what `part-ice-machine` actually was, so these tests installed
+  // a Part that existed nowhere. Lane 3 wired that question up, and the honest fixture is a real whole-unit
+  // Part -- an ice machine IS one. Note the database enforces the shape: `part_whole_unit_serialized`
+  // refuses a whole unit that is not SERIALIZED and not a SERVICE class, so this row could not be a
+  // service component pretending to be installable.
+  for (const id of [TENANT, OTHER_TENANT]) {
+    await query(
+      `INSERT INTO eos_ops.parts (id, tenant_id, created_by, internal_part_number, name, status, stocking_unit,
+         control_type, stocking_class, expiry_tracked, consumable, returnable_core, whole_unit, version, updated_by)
+       VALUES ('part-ice-machine', $1, 'fixture', 'IPN-ICE', 'Ice machine', 'ACTIVE', 'EACH',
+         'SERIALIZED', 'STOCKED', false, false, false, true, 1, 'fixture')
+       ON CONFLICT DO NOTHING`, [id]);
+  }
 }
 
 const insertCustody = (id, status, locationType, locationId, opts = {}) => query(
@@ -441,6 +464,9 @@ test("the down migration refuses while customer Equipment exists, and reverses w
   { skip: SKIP }, async () => {
     await setup();
     await insertEquipment("eq-blocks-down");
+    // Drop the catalog fixture first. It would block migration 027's reversal on its own, and this test is
+    // about EQUIPMENT blocking migration 008 -- a refusal for the wrong reason would pass and prove nothing.
+    await cleanParts();
     await peelMigrationsNewerThan("1758585600000_");
     assert.throws(() => migrate(["down", "1"]), (error) => {
       const text = `${error.stdout ?? ""}${error.stderr ?? ""}${error.message}`;
