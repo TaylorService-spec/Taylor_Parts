@@ -124,6 +124,12 @@ async function main() {
 
   print(report);
   printWorksheets(report, records);
+  if (process.argv.includes("--scaffold")) {
+    // Printed, never written to disk by this tool: the Owner saves it where they will edit it, and a
+    // file this tool wrote could be mistaken for a decision it made.
+    console.log("MANIFEST SCAFFOLD (blank -- every decision field is null, and it is REFUSED until filled)");
+    console.log(JSON.stringify(core.buildManifestScaffold(report, records), null, 2));
+  }
   return report;
 }
 

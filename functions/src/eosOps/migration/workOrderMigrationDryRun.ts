@@ -1113,3 +1113,59 @@ export function buildAssignmentWorksheet(
     })
     .sort((a, b) => String(a.woNumber).localeCompare(String(b.woNumber))));
 }
+
+// ════════════════════ THE BLANK MANIFEST SCAFFOLD ════════════════════
+
+export interface ManifestScaffoldRecord {
+  readonly workOrderId: string;
+  /** Present so a person can recognise the Work Order. NOT read back by the validator. */
+  readonly woNumber: string | null;
+  readonly operatingCompanyId: null;
+  readonly decisionReason: null;
+  /** Only for a record whose ACTIVE assignment must be decided before it can copy. */
+  readonly assignmentEmployeeId?: null;
+}
+
+export interface ManifestScaffold {
+  readonly snapshotBodySha256: string;
+  readonly decisionId: null;
+  readonly decidedAt: null;
+  readonly records: readonly ManifestScaffoldRecord[];
+}
+
+/**
+ * Emit a BLANK manifest for the final genuine business population.
+ *
+ * EVERY DECISION FIELD IS NULL, and the scaffold is therefore NOT a valid manifest: handed back
+ * unfilled it is refused, because `operatingCompanyId: null` is not a governed company id. That is the
+ * intended behaviour and it is tested. A scaffold that validated while empty would be a template with a
+ * default hiding in it.
+ *
+ * The company field is null for every record and there is no bulk shortcut in this shape -- a bulk
+ * decision is expressed by filling all of the rows, which keeps it a list rather than a rule.
+ */
+export function buildManifestScaffold(
+  report: DryRunReport,
+  records: readonly SourceWorkOrder[],
+): ManifestScaffold {
+  const byId = new Map(records.map((r) => [r.id, r]));
+  const rows = report.records
+    .filter((r) => r.recordClass === "BUSINESS")
+    .map((r) => {
+      const needsAssignment = r.assignment.outcome === "ACTIVE_ASSIGNMENT_REQUIRES_RESOLUTION";
+      return Object.freeze({
+        workOrderId: r.workOrderId,
+        woNumber: text(byId.get(r.workOrderId)?.data.woNumber),
+        operatingCompanyId: null,
+        decisionReason: null,
+        ...(needsAssignment ? { assignmentEmployeeId: null } : {}),
+      }) as ManifestScaffoldRecord;
+    })
+    .sort((a, b) => String(a.woNumber).localeCompare(String(b.woNumber)));
+  return Object.freeze({
+    snapshotBodySha256: report.snapshot.bodySha256,
+    decisionId: null,
+    decidedAt: null,
+    records: Object.freeze(rows),
+  });
+}

@@ -671,3 +671,32 @@ test("the assignment worksheet lists ONLY the active unresolved records, with a 
   assert.equal(rows[0].legacyAssignedTechId, "tech-x");
   assert.match(rows[0].exactResolutionResult, /assignedTechId=TECHNICIAN_DOC_MISSING/);
 });
+
+test("the blank scaffold covers every genuine record and is REFUSED until filled", () => {
+  const active = wo("b1", BUSINESS({ woNumber: "WO-2026-000002", status: "DISPATCHED", assignedTechId: "tech-x" }).data);
+  const plain = wo("b2", BUSINESS({ woNumber: "WO-2026-000001" }).data);
+  const fixture = wo("wo-sbx-001", { woNumber: "WO-2026-SBX001", scenarioId: "SBX-SCN-001", type: "SERVICE", status: "COMPLETED" });
+  const records = [active, plain, fixture];
+  const snapshot = snapOf(records);
+  const report = core.runDryRun({ snapshot, records, evidence: fullEvidence() });
+  const scaffold = core.buildManifestScaffold(report, records);
+
+  assert.equal(scaffold.snapshotBodySha256, snapshot.bodySha256, "bound to THIS snapshot");
+  assert.equal(scaffold.decisionId, null);
+  assert.deepEqual(scaffold.records.map((r) => r.workOrderId), ["b2", "b1"], "genuine only, sorted by woNumber");
+  for (const row of scaffold.records) {
+    assert.equal(row.operatingCompanyId, null, "no company may be pre-filled");
+    assert.equal(row.decisionReason, null);
+  }
+  // Only the ACTIVE unresolved record carries the assignment slot.
+  assert.equal("assignmentEmployeeId" in scaffold.records.find((r) => r.workOrderId === "b1"), true);
+  assert.equal("assignmentEmployeeId" in scaffold.records.find((r) => r.workOrderId === "b2"), false);
+  // No fixture appears.
+  assert.equal(scaffold.records.some((r) => r.workOrderId === "wo-sbx-001"), false);
+
+  // AND THE SCAFFOLD IS NOT A MANIFEST. Handed back unfilled it must be refused, or the blank template
+  // would itself be a decision.
+  assert.throws(() => core.validateResolutionManifest(scaffold, ctxFor(records, {
+    businessIds: new Set(["b1", "b2"]), fixtureIds: new Set(["wo-sbx-001"]),
+  })), (e) => { assert.match(e.code, /MANIFEST_MALFORMED|MANIFEST_COMPANY_INVALID/); return true; });
+});
