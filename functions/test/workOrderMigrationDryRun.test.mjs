@@ -35,6 +35,22 @@ const fullEvidence = (over = {}) => evidence({
   accounts: new Set(["acct-1"]), locations: new Set(["loc-1"]), ...over,
 });
 
+/** Build a manifest through the REAL validator, so a test can never inject a decision the tool would refuse. */
+const manifestFor = (records, snapshot, entries, ctxOver = {}) => core.validateResolutionManifest(
+  {
+    snapshotBodySha256: snapshot.bodySha256,
+    decisionId: "OWNER-2026-09-22-A",
+    decidedAt: "2026-09-22T00:00:00.000Z",
+    records: entries,
+  },
+  {
+    snapshotBodySha256: snapshot.bodySha256,
+    businessIds: new Set(records.map((r) => r.id)),
+    fixtureIds: new Set(),
+    ...ctxOver,
+  },
+);
+
 // ════════════════════ production refusal ════════════════════
 
 test("production is refused by name, and an unknown source fails closed", () => {
@@ -150,34 +166,81 @@ test("a governed upstream Sales Order company IS exact evidence", () => {
 });
 
 test("the tool CONSUMES an Owner manifest but never authors one", () => {
-  const withManifest = core.classifyRecord(BUSINESS(), "BUSINESS", null, fullEvidence({
-    operatingCompanyManifest: new Map([["biz-1", "ventana"]]),
-  }));
+  const records = [BUSINESS()];
+  const snapshot = core.buildSourceSnapshot("p", "c", records, sha256);
+  const resolutionManifest = manifestFor(records, snapshot, [
+    { workOrderId: "biz-1", operatingCompanyId: "ventana", decisionReason: "owner ruling" },
+  ]);
+  const withManifest = core.classifyRecord(BUSINESS(), "BUSINESS", null, fullEvidence({ resolutionManifest }));
   assert.equal(withManifest.operatingCompany.evidenceKind, "OWNER_AUTHORED_RESOLUTION_MANIFEST");
   assert.equal(withManifest.operatingCompany.resolvedOperatingCompanyKey, "ventana");
   // And with no manifest the same record blocks -- the tool did not invent the decision.
   assert.equal(core.classifyRecord(BUSINESS(), "BUSINESS", null, fullEvidence()).operatingCompany.resolvedOperatingCompanyKey, null);
 });
 
-// ════════════════════ type ════════════════════
-
-test("SERVICE is NOT silently mapped to SERVICE_CALL", () => {
-  const r = core.classifyRecord(BUSINESS({ type: "SERVICE" }), "BUSINESS", null, fullEvidence());
-  assert.equal(r.type.action, "BLOCKER");
-  assert.equal(r.type.targetValue, null, "no target value may be invented");
-  assert.equal(r.type.deterministic, false);
-  assert.match(r.type.reason, /NOT mapped|destroy/i);
-  assert.ok(r.blockers.some((b) => b.kind === "WORK_ORDER_TYPE_REQUIRES_RESOLUTION"));
-  // And the field-level disposition agrees with the record-level one.
-  assert.equal(r.fields.find((f) => f.field === "type").action, "BLOCKER");
+test("there is NO implicit default: no code path produces a company nobody named", () => {
+  const src = readFileSync(resolve(FUNCTIONS_DIR, "src/eosOps/migration/workOrderMigrationDryRun.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+  assert.equal(/defaultOperatingCompany|DEFAULT_OPERATING_COMPANY/.test(src), false,
+    "a default operating company must not exist, now or later");
+  // "taylor" must not appear as a value the core can produce.
+  assert.equal(/["']taylor["']/.test(src), false, "the core must never name a specific company");
+  // And an unknown manifest key is REFUSED rather than ignored -- which is what stops a future default.
+  assert.throws(() => core.validateResolutionManifest(
+    { snapshotBodySha256: "x", decisionId: "d", decidedAt: "t", records: [], defaultOperatingCompany: "taylor" },
+    { snapshotBodySha256: "x", businessIds: new Set(), fixtureIds: new Set() },
+  ), (e) => { assert.equal(e.code, "MANIFEST_UNKNOWN_FIELD"); return true; });
 });
 
-test("a missing type blocks, and an exact vocabulary match copies", () => {
-  assert.equal(core.classifyRecord(BUSINESS({ type: undefined }), "BUSINESS", null, fullEvidence()).type.action, "BLOCKER");
-  const ok = core.classifyRecord(BUSINESS({ type: "INSTALL" }), "BUSINESS", null, fullEvidence());
-  assert.equal(ok.type.action, "COPY");
-  assert.equal(ok.type.targetValue, "INSTALL");
-  assert.equal(ok.type.deterministic, true);
+// ════════════════════ type ════════════════════
+
+test("OWNER NORMALIZATION: SERVICE -> SERVICE_CALL exactly, with the raw value retained", () => {
+  const r = core.classifyRecord(BUSINESS({ type: "SERVICE" }), "BUSINESS", null, fullEvidence());
+  assert.equal(r.type.action, "COPY");
+  assert.equal(r.type.targetValue, "SERVICE_CALL");
+  assert.equal(r.type.sourceValue, "SERVICE", "the RAW source value must survive as evidence");
+  assert.equal(r.type.resolution, "OWNER_LEGACY_SERVICE_NORMALIZATION");
+  assert.equal(r.type.provenance, "MIGRATED");
+  assert.equal(r.type.factClass, "OWNER_MIGRATION_RESOLUTION");
+  assert.equal(r.blockers.some((b) => b.kind === "WORK_ORDER_TYPE_REQUIRES_RESOLUTION"), false);
+});
+
+test("OWNER LEGACY DEFAULT: a missing type -> SERVICE_CALL, and never claims the source said so", () => {
+  const r = core.classifyRecord(BUSINESS({ type: undefined }), "BUSINESS", null, fullEvidence());
+  assert.equal(r.type.targetValue, "SERVICE_CALL");
+  assert.equal(r.type.sourceValue, null, "the evidence must not claim the source contained SERVICE_CALL");
+  assert.equal(r.type.resolution, "OWNER_LEGACY_DEFAULT");
+  assert.equal(r.type.provenance, "MIGRATED");
+  assert.equal(r.type.factClass, "OWNER_MIGRATION_RESOLUTION");
+});
+
+test("a genuine SERVICE_CALL is a SOURCE fact, not a migration artefact", () => {
+  const r = core.classifyRecord(BUSINESS({ type: "SERVICE_CALL" }), "BUSINESS", null, fullEvidence());
+  assert.equal(r.type.resolution, "SOURCE_EXACT");
+  assert.equal(r.type.provenance, "SOURCE");
+  assert.equal(r.type.factClass, "SOURCE_FACT");
+  // THE POINT: after normalization these two look identical in the target and must not in the evidence.
+  const defaulted = core.classifyRecord(BUSINESS({ type: undefined }), "BUSINESS", null, fullEvidence());
+  assert.equal(defaulted.type.targetValue, r.type.targetValue);
+  assert.notEqual(defaulted.type.factClass, r.type.factClass);
+});
+
+test("an UNRECOGNIZED type still blocks -- the ruling covers SERVICE, absent and exact values only", () => {
+  const r = core.classifyRecord(BUSINESS({ type: "EMERGENCY" }), "BUSINESS", null, fullEvidence());
+  assert.equal(r.type.action, "BLOCKER");
+  assert.equal(r.type.targetValue, null);
+  assert.ok(r.blockers.some((b) => b.kind === "WORK_ORDER_TYPE_REQUIRES_RESOLUTION"));
+});
+
+test("the NATIVE vocabulary is unchanged -- normalization is migration-only", () => {
+  assert.deepEqual([...core.TARGET_WORK_ORDER_TYPES], ["SERVICE_CALL", "PM", "INSTALL", "WARRANTY", "INSPECTION"]);
+  for (const forbidden of ["LEGACY_SERVICE", "LEGACY_UNCLASSIFIED", "SERVICE"]) {
+    assert.equal(core.TARGET_WORK_ORDER_TYPES.includes(forbidden), false,
+      `${forbidden} must not enter the permanent vocabulary`);
+  }
+  const sql = readFileSync(resolve(FUNCTIONS_DIR, "migrations/1761004800000_work-order-object-authority.sql"), "utf8");
+  assert.match(sql, /CREATE TYPE ops_work_order_type AS ENUM \('SERVICE_CALL', 'PM', 'INSTALL', 'WARRANTY', 'INSPECTION'\)/,
+    "the database enum must not have been widened for migration convenience");
 });
 
 // ════════════════════ number ════════════════════
@@ -293,9 +356,11 @@ test("an ACTIVE Work Order with an unresolved technician BLOCKS", () => {
 test("a TERMINAL Work Order with an unresolved technician may migrate as historical-only", () => {
   for (const status of ["COMPLETED", "CLOSED", "CANCELLED"]) {
     const record = BUSINESS({ status, assignedTechId: "tech-x", type: "SERVICE_CALL" });
-    const r = core.classifyRecord(record, "BUSINESS", null, fullEvidence({
-      operatingCompanyManifest: new Map([["biz-1", "taylor"]]),
-    }));
+    const snapshot = core.buildSourceSnapshot("p", "c", [record], sha256);
+    const resolutionManifest = manifestFor([record], snapshot, [
+      { workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "owner ruling" },
+    ]);
+    const r = core.classifyRecord(record, "BUSINESS", null, fullEvidence({ resolutionManifest }));
     assert.equal(r.assignment.outcome, "TERMINAL_ASSIGNMENT_HISTORICAL_ONLY", status);
     assert.equal(r.fields.find((f) => f.field === "assignedTechId").action, "HISTORICAL_ONLY", status);
     assert.equal(r.result, "COPYABLE", `${status}: terminal history should not be held hostage to a dead assignment`);
@@ -308,9 +373,11 @@ test("a TERMINAL Work Order with an unresolved technician may migrate as histori
 // ════════════════════ target collisions ════════════════════
 
 test("a target that already holds the id is a hard blocker, never an upsert", () => {
-  const r = core.classifyRecord(BUSINESS({ type: "SERVICE_CALL" }), "BUSINESS", null, fullEvidence({
+  const rec = BUSINESS({ type: "SERVICE_CALL" });
+  const snap = core.buildSourceSnapshot("p", "c", [rec], sha256);
+  const r = core.classifyRecord(rec, "BUSINESS", null, fullEvidence({
     targetWorkOrderIds: new Set(["biz-1"]),
-    operatingCompanyManifest: new Map([["biz-1", "taylor"]]),
+    resolutionManifest: manifestFor([rec], snap, [{ workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "x" }]),
   }));
   assert.equal(r.targetCollision, "TARGET_CONFLICT");
   assert.ok(r.blockers.some((b) => b.kind === "TARGET_CONFLICT"));
@@ -331,8 +398,9 @@ test("an unreadable target is reported UNKNOWN, never assumed empty", () => {
 
 test("a dangling reference is a named blocker", () => {
   const record = BUSINESS({ type: "SERVICE_CALL", salesOrderId: "so-gone" });
+  const snap = core.buildSourceSnapshot("p", "c", [record], sha256);
   const r = core.classifyRecord(record, "BUSINESS", null, fullEvidence({
-    operatingCompanyManifest: new Map([["biz-1", "taylor"]]),
+    resolutionManifest: manifestFor([record], snap, [{ workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "x" }]),
   }));
   assert.ok(r.blockers.some((b) => b.kind === "REFERENCE_NOT_FOUND" && /salesOrderId/.test(b.detail)));
 });
@@ -341,8 +409,8 @@ test("a dangling reference is a named blocker", () => {
 
 test("blocker counts OVERLAP, and the report says so with intersections and a distinct count", () => {
   const records = [
-    BUSINESS({ id: "a" }),                                    // company + type? type is SERVICE_CALL -> only company
-    BUSINESS({ type: "SERVICE" }),                            // company + type
+    BUSINESS(),                                               // company only
+    BUSINESS({ type: "EMERGENCY" }),                          // company + unrecognized type
   ].map((r, i) => wo(`b${i}`, r.data));
   const report = core.runDryRun({
     snapshot: core.buildSourceSnapshot("p", "c", records, sha256), records, evidence: fullEvidence(),
@@ -368,7 +436,238 @@ test("NON-VACUITY: a deliberately seeded blocker is detected, and a clean record
   assert.equal(cleanResult.result, "COPYABLE", "a fully-evidenced record must be copyable, or the tool blocks everything");
   assert.deepEqual(cleanResult.blockers, []);
 
-  // Now break exactly one fact and watch it flip.
-  const broken = wo("clean-1", { ...clean.data, type: "SERVICE" });
+  // Now break exactly one fact and watch it flip. `SERVICE` no longer breaks it -- the Owner normalized
+  // that -- so the seeded defect is a type spelling the ruling does NOT cover.
+  const broken = wo("clean-1", { ...clean.data, type: "EMERGENCY" });
   assert.equal(core.classifyRecord(broken, "BUSINESS", null, ev).result, "BLOCKED");
+  // And the normalized value really is copyable, so this test is not passing for the wrong reason.
+  const normalized = wo("clean-1", { ...clean.data, type: "SERVICE" });
+  assert.equal(core.classifyRecord(normalized, "BUSINESS", null, ev).result, "COPYABLE");
+});
+
+// ════════════════════ the Owner resolution manifest ════════════════════
+
+const snapOf = (records) => core.buildSourceSnapshot("eos-platform-sandbox", "fieldops_wos", records, sha256);
+const ctxFor = (records, over = {}) => ({
+  snapshotBodySha256: snapOf(records).bodySha256,
+  businessIds: new Set(records.map((r) => r.id)),
+  fixtureIds: new Set(),
+  ...over,
+});
+const manifestBody = (records, entries, over = {}) => ({
+  snapshotBodySha256: snapOf(records).bodySha256,
+  decisionId: "OWNER-2026-09-22-A",
+  decidedAt: "2026-09-22T00:00:00.000Z",
+  records: entries,
+  ...over,
+});
+const refusal = (code) => (e) => { assert.equal(e.code, code, e.message); return true; };
+
+test("a manifest written against a DIFFERENT snapshot is refused", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "x" }],
+        { snapshotBodySha256: "0".repeat(64) }),
+      ctxFor(records)),
+    refusal("MANIFEST_SNAPSHOT_MISMATCH"));
+});
+
+test("a FIXTURE Work Order can never appear in the manifest", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "wo-sbx-001", operatingCompanyId: "taylor", decisionReason: "x" }]),
+      ctxFor(records, { fixtureIds: new Set(["wo-sbx-001"]) })),
+    refusal("MANIFEST_FIXTURE_NAMED"));
+});
+
+test("a Work Order outside the business population is refused, never silently ignored", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "not-in-snapshot", operatingCompanyId: "taylor", decisionReason: "x" }]),
+      ctxFor(records)),
+    refusal("MANIFEST_RECORD_NOT_IN_POPULATION"));
+});
+
+test("an UNKNOWN operating company is refused, and it is not collapsed into 'invalid'", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "biz-1", operatingCompanyId: "acme", decisionReason: "x" }]),
+      ctxFor(records)),
+    refusal("MANIFEST_COMPANY_UNKNOWN"));
+  // A malformed id is a DIFFERENT mistake and gets a different refusal.
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "biz-1", operatingCompanyId: "Taylor Freezer", decisionReason: "x" }]),
+      ctxFor(records)),
+    refusal("MANIFEST_COMPANY_INVALID"));
+});
+
+test("company validity is decided by the GOVERNED AUTHORITY, including the INACTIVE case", () => {
+  // Every company in the catalog is active today, so the INACTIVE refusal is not reachable from data.
+  // Rather than fake one, this asserts the two things that make it real when a company IS deactivated:
+  // the validator consults the governed resolver, and it has a distinct refusal for that state.
+  const authority = require("../lib/ownership/operatingCompanyAuthority.js");
+  assert.deepEqual(authority.resolveOperatingCompany("taylor").state, "RESOLVED");
+  assert.deepEqual(authority.resolveOperatingCompany("acme").state, "UNKNOWN");
+  assert.equal(authority.OPERATING_COMPANIES.every((c) => c.active), true,
+    "precondition: no inactive company exists, so the INACTIVE branch cannot be reached from data");
+  const src = readFileSync(resolve(FUNCTIONS_DIR, "src/eosOps/migration/workOrderMigrationDryRun.ts"), "utf8");
+  assert.match(src, /MANIFEST_COMPANY_INACTIVE/, "a distinct INACTIVE refusal must exist");
+  assert.match(src, /resolveGovernedCompanyId\(/, "the validator must consult the governed authority, not a string list");
+});
+
+test("resolving one Work Order TWICE is refused as a disagreement", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [
+        { workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "x" },
+        { workOrderId: "biz-1", operatingCompanyId: "ventana", decisionReason: "y" },
+      ]),
+      ctxFor(records)),
+    refusal("MANIFEST_DUPLICATE_RECORD"));
+});
+
+test("an unknown field on a record is refused too", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "x", priority: 1 }]),
+      ctxFor(records)),
+    refusal("MANIFEST_UNKNOWN_FIELD"));
+});
+
+test("a decision must state WHY", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{ workOrderId: "biz-1", operatingCompanyId: "taylor", decisionReason: "" }]),
+      ctxFor(records)),
+    refusal("MANIFEST_MALFORMED"));
+});
+
+test("a Firebase uid is never accepted as an Employee identity", () => {
+  const records = [BUSINESS({ status: "DISPATCHED", assignedTechId: "tech-x" })];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{
+        workOrderId: "biz-1", operatingCompanyId: "taylor",
+        assignmentEmployeeId: "aB3dEfGhIjKlMnOpQrStUvWxYz01", decisionReason: "x",
+      }]),
+      ctxFor(records)),
+    refusal("MANIFEST_EMPLOYEE_IS_UID"));
+});
+
+test("an Employee id that resolves to nobody is refused", () => {
+  const records = [BUSINESS()];
+  assert.throws(
+    () => core.validateResolutionManifest(
+      manifestBody(records, [{
+        workOrderId: "biz-1", operatingCompanyId: "taylor",
+        assignmentEmployeeId: "emp-ghost", decisionReason: "x",
+      }]),
+      ctxFor(records, { employeeIds: new Set(["emp-1"]) })),
+    refusal("MANIFEST_EMPLOYEE_NOT_FOUND"));
+});
+
+test("an EXPLICIT snapshot-scoped BULK decision is deterministic and clears exactly its records", () => {
+  const records = [wo("b1", BUSINESS().data), wo("b2", BUSINESS().data), wo("b3", BUSINESS().data)];
+  const snapshot = snapOf(records);
+  const entries = records.map((r) => ({
+    workOrderId: r.id, operatingCompanyId: "taylor", decisionReason: "bulk: all listed business WOs -> taylor",
+  }));
+  const a = core.validateResolutionManifest(manifestBody(records, entries), ctxFor(records));
+  const b = core.validateResolutionManifest(manifestBody(records, [...entries].reverse()), ctxFor(records));
+  assert.deepEqual([...a.byWorkOrderId.keys()].sort(), [...b.byWorkOrderId.keys()].sort(),
+    "order of entries must not change the outcome");
+
+  const report = core.runDryRun({
+    snapshot, records,
+    evidence: fullEvidence({ resolutionManifest: a, targetWorkOrderIds: new Set() }),
+  });
+  assert.equal(report.summary.copyable, 3, "each explicitly listed record resolves");
+  assert.equal(report.summary.blockersByKind.OPERATING_COMPANY_UNRESOLVED, 0);
+  for (const r of report.records) {
+    assert.equal(r.operatingCompany.evidenceKind, "OWNER_AUTHORED_RESOLUTION_MANIFEST");
+  }
+
+  // A FOURTH record that the manifest does NOT list stays blocked -- the bulk decision is a list, not a rule.
+  const plusOne = [...records, wo("b4", BUSINESS().data)];
+  const snapshot2 = snapOf(plusOne);
+  const manifest2 = core.validateResolutionManifest(
+    manifestBody(plusOne, entries), ctxFor(plusOne));
+  const report2 = core.runDryRun({
+    snapshot: snapshot2, records: plusOne,
+    evidence: fullEvidence({ resolutionManifest: manifest2, targetWorkOrderIds: new Set() }),
+  });
+  assert.equal(report2.records.find((r) => r.workOrderId === "b4").result, "BLOCKED");
+  assert.equal(report2.summary.blockersByKind.OPERATING_COMPANY_UNRESOLVED, 1);
+});
+
+test("an explicit Employee decision clears ONLY the active-assignment blocker", () => {
+  const record = wo("biz-1", BUSINESS({ status: "DISPATCHED", assignedTechId: "tech-x" }).data);
+  const snapshot = snapOf([record]);
+  // Company deliberately NOT decided: the company blocker must survive.
+  const manifest = core.validateResolutionManifest(
+    manifestBody([record], [{
+      workOrderId: "biz-1", operatingCompanyId: "taylor",
+      assignmentEmployeeId: "emp-7", decisionReason: "reassigned by dispatch",
+    }]),
+    ctxFor([record], { employeeIds: new Set(["emp-7"]) }));
+
+  const r = core.classifyRecord(record, "BUSINESS", null, fullEvidence({ resolutionManifest: manifest }));
+  assert.equal(r.assignment.outcome, "ASSIGNMENT_COPYABLE");
+  assert.equal(r.blockers.some((b) => b.kind === "ACTIVE_ASSIGNMENT_REQUIRES_RESOLUTION"), false);
+  // The legacy reference is RETAINED as evidence -- the decision did not rewrite history.
+  const ref = r.assignment.references.find((x) => x.field === "assignedTechId");
+  assert.equal(ref.technicianId, "tech-x");
+  assert.equal(ref.employeeId, null, "the legacy technician still does not resolve; a decision is not a discovery");
+  assert.equal(r.fields.find((f) => f.field === "assignedTechId").factClass, "OWNER_MIGRATION_RESOLUTION");
+});
+
+test("the three fact classes are carried on every field and never collapsed", () => {
+  const r = core.classifyRecord(BUSINESS({ type: undefined }), "BUSINESS", null, fullEvidence());
+  for (const f of r.fields) {
+    assert.ok(core.FACT_CLASSES.includes(f.factClass), `${f.field} -> ${f.factClass}`);
+  }
+  assert.equal(r.fields.find((f) => f.field === "type").factClass, "OWNER_MIGRATION_RESOLUTION");
+  assert.ok(r.fields.some((f) => f.factClass === "SOURCE_FACT"));
+});
+
+test("the worksheet NEVER fills or suggests a company", () => {
+  const records = [
+    wo("b1", BUSINESS({ woNumber: "WO-2026-000002", type: "SERVICE" }).data),
+    wo("b2", BUSINESS({ woNumber: "WO-2026-000001" }).data),
+  ];
+  const report = core.runDryRun({ snapshot: snapOf(records), records, evidence: fullEvidence() });
+  const rows = core.buildOwnerWorksheet(report, records);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((r) => r.woNumber), ["WO-2026-000001", "WO-2026-000002"], "sorted by woNumber");
+  for (const row of rows) {
+    assert.equal(row.operatingCompanyDecision, "", "the company column must be blank");
+    assert.equal(Object.values(row).includes("taylor"), false, "no company may be suggested");
+    assert.equal(Object.values(row).includes("ventana"), false);
+  }
+  // It still shows the Owner-normalized target type beside the raw source value.
+  const normalized = rows.find((r) => r.workOrderId === "b1");
+  assert.equal(normalized.sourceType, "SERVICE");
+  assert.equal(normalized.targetType, "SERVICE_CALL");
+  assert.equal(normalized.typeResolution, "OWNER_LEGACY_SERVICE_NORMALIZATION");
+});
+
+test("the assignment worksheet lists ONLY the active unresolved records, with a blank decision", () => {
+  const active = wo("b1", BUSINESS({ status: "DISPATCHED", assignedTechId: "tech-x" }).data);
+  const terminal = wo("b2", BUSINESS({ status: "COMPLETED", assignedTechId: "tech-y" }).data);
+  const clean = wo("b3", BUSINESS().data);
+  const records = [active, terminal, clean];
+  const report = core.runDryRun({ snapshot: snapOf(records), records, evidence: fullEvidence() });
+  const rows = core.buildAssignmentWorksheet(report, records);
+  assert.deepEqual(rows.map((r) => r.workOrderId), ["b1"], "only the ACTIVE unresolved record needs a decision");
+  assert.equal(rows[0].assignmentEmployeeDecision, "");
+  assert.equal(rows[0].legacyAssignedTechId, "tech-x");
+  assert.match(rows[0].exactResolutionResult, /assignedTechId=TECHNICIAN_DOC_MISSING/);
 });

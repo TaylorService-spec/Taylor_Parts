@@ -150,10 +150,12 @@ export interface SupportingEvidence {
   readonly locations: ReadonlySet<string>;
   readonly equipment: ReadonlySet<string>;
   /**
-   * Owner-authored resolutions, if any. The tool NEVER creates one: it may only consume a manifest a
-   * human wrote. An empty manifest is the normal state and produces blockers, which is the point.
+   * Owner-authored resolutions, VALIDATED. The tool never creates one: it may only consume a manifest a
+   * human wrote and this snapshot accepted. Absent is the normal state and produces blockers, which is
+   * the point. Deliberately the ONLY manifest channel -- a second, unvalidated one would be a way for a
+   * decision to arrive without passing the refusals.
    */
-  readonly operatingCompanyManifest?: ReadonlyMap<string, string>;
+  readonly resolutionManifest?: ValidatedManifest | null;
   /** Target ids already present, when the target was readable. `null` = target unreadable. */
   readonly targetWorkOrderIds?: ReadonlySet<string> | null;
 }
@@ -267,7 +269,7 @@ export function resolveOperatingCompany(
       });
     }
   }
-  const manifest = evidence.operatingCompanyManifest?.get(record.id) ?? null;
+  const manifest = evidence.resolutionManifest?.byWorkOrderId.get(record.id)?.operatingCompanyId ?? null;
   if (manifest) {
     return Object.freeze({
       workOrderId: record.id, resolutionStatus: "EXACT_SOURCE_EVIDENCE" as const,
@@ -285,47 +287,95 @@ export function resolveOperatingCompany(
 
 // ════════════════════ type ════════════════════
 
+/**
+ * WHERE A FACT CAME FROM. Three kinds, never shown as equivalent.
+ *
+ * The distinction matters most exactly where it is easiest to lose: after normalization, a Work Order
+ * whose type was NEVER RECORDED and one that genuinely said SERVICE_CALL look identical in the target.
+ * One is a source fact and the other is a decision somebody made during a migration, and a report that
+ * prints them the same way has quietly turned an assumption into history.
+ */
+export const FACT_CLASSES = Object.freeze([
+  "SOURCE_FACT", "OWNER_MIGRATION_RESOLUTION", "DERIVED_FACT",
+] as const);
+export type FactClass = (typeof FACT_CLASSES)[number];
+
+export const TYPE_RESOLUTIONS = Object.freeze([
+  "SOURCE_EXACT", "OWNER_LEGACY_SERVICE_NORMALIZATION", "OWNER_LEGACY_DEFAULT", "UNRESOLVED",
+] as const);
+export type TypeResolutionKind = (typeof TYPE_RESOLUTIONS)[number];
+
 export interface TypeResolution {
+  /** The RAW source value, retained exactly -- including null. Evidence, never overwritten. */
   readonly sourceValue: string | null;
   readonly action: "COPY" | "BLOCKER";
   readonly targetValue: string | null;
+  readonly resolution: TypeResolutionKind;
+  readonly factClass: FactClass;
+  /** MIGRATED for anything the Owner normalized; a source-exact value is not a migration artefact. */
+  readonly provenance: "SOURCE" | "MIGRATED";
   readonly deterministic: boolean;
   readonly reason: string;
 }
 
 /**
- * Classify the Work Order type.
+ * Classify the Work Order type, under the OWNER MIGRATION NORMALIZATION.
  *
- * SERVICE IS NOT SILENTLY MAPPED TO SERVICE_CALL, by ruling and on the evidence: BOTH values exist in the
- * same live population, so a rule that treats them as synonyms asserts that a distinction someone made is
- * meaningless. No deterministic business rule in the repository distinguishes them -- no command, no
- * lifecycle branch, no UI behaviour and no downstream effect reads `type` to decide anything -- so there
- * is nothing to derive an intent from, and a missing type has even less.
+ * SERVICE -> SERVICE_CALL and a missing type -> SERVICE_CALL are OWNER DECISIONS about historical data,
+ * not discoveries about it. Before the ruling this function blocked both, and it was right to: no rule in
+ * the repository distinguishes SERVICE from SERVICE_CALL, so nothing could derive the intent. What
+ * changed is not the evidence -- it is that someone with the authority to decide has decided.
+ *
+ * SO THE RAW VALUE IS KEPT AND THE RESOLUTION IS NAMED. A missing type resolves to SERVICE_CALL and
+ * records `sourceValue: null` with `OWNER_LEGACY_DEFAULT`; the migration must never be able to claim the
+ * source historically said SERVICE_CALL when it said nothing at all.
+ *
+ * THE NATIVE VOCABULARY IS UNTOUCHED. This is a migration normalization, not a vocabulary change: no
+ * LEGACY_SERVICE or LEGACY_UNCLASSIFIED member is added, and a natively created Work Order still must
+ * state one of the five governed types.
+ *
+ * AN UNRECOGNIZED VALUE STILL BLOCKS. The ruling covers SERVICE, absent, and exact target values. A
+ * fourth spelling nobody has seen is not covered by it, and defaulting that to SERVICE_CALL would be the
+ * tool deciding -- which is the thing it must never do.
  */
 export function resolveWorkOrderType(record: SourceWorkOrder): TypeResolution {
   const value = text(record.data.type) ?? text(record.data.workOrderType);
   if (value && TARGET_WORK_ORDER_TYPES.includes(value)) {
     return Object.freeze({
-      sourceValue: value, action: "COPY" as const, targetValue: value, deterministic: true,
-      reason: "exact match against the governed target vocabulary",
+      sourceValue: value, action: "COPY" as const, targetValue: value,
+      resolution: "SOURCE_EXACT" as const, factClass: "SOURCE_FACT" as const, provenance: "SOURCE" as const,
+      deterministic: true, reason: "exact match against the governed target vocabulary; copied unchanged",
     });
   }
-  if (!value) {
+  if (value === "SERVICE") {
     return Object.freeze({
-      sourceValue: null, action: "BLOCKER" as const, targetValue: null, deterministic: false,
+      sourceValue: "SERVICE", action: "COPY" as const, targetValue: "SERVICE_CALL",
+      resolution: "OWNER_LEGACY_SERVICE_NORMALIZATION" as const,
+      factClass: "OWNER_MIGRATION_RESOLUTION" as const, provenance: "MIGRATED" as const,
+      deterministic: true,
       reason:
-        "WORK_ORDER_TYPE_REQUIRES_RESOLUTION: no type is stored, and eos_ops.work_orders.work_order_type is "
-        + "NOT NULL. Nothing in the source determines what it should have been -- a record with no type "
-        + "cannot be given one by the migration.",
+        "OWNER MIGRATION NORMALIZATION: legacy SERVICE is recorded as SERVICE_CALL. The raw source value "
+        + "is retained as evidence; this is a decision about history, not a fact discovered in it.",
+    });
+  }
+  if (value === null) {
+    return Object.freeze({
+      sourceValue: null, action: "COPY" as const, targetValue: "SERVICE_CALL",
+      resolution: "OWNER_LEGACY_DEFAULT" as const,
+      factClass: "OWNER_MIGRATION_RESOLUTION" as const, provenance: "MIGRATED" as const,
+      deterministic: true,
+      reason:
+        "OWNER LEGACY DEFAULT: the source recorded NO type, and eos_ops.work_orders.work_order_type is NOT "
+        + "NULL. sourceValue stays null so the evidence never claims the source said SERVICE_CALL.",
     });
   }
   return Object.freeze({
-    sourceValue: value, action: "BLOCKER" as const, targetValue: null, deterministic: false,
+    sourceValue: value, action: "BLOCKER" as const, targetValue: null,
+    resolution: "UNRESOLVED" as const, factClass: "SOURCE_FACT" as const, provenance: "SOURCE" as const,
+    deterministic: false,
     reason:
-      `WORK_ORDER_TYPE_REQUIRES_RESOLUTION: '${value}' is outside the governed target vocabulary `
-      + `(${TARGET_WORK_ORDER_TYPES.join(", ")}). It is NOT mapped, because the same population also `
-      + "contains exact target values -- so the two were distinguishable to whoever wrote them, and "
-      + "collapsing them would destroy that distinction on no evidence.",
+      `WORK_ORDER_TYPE_REQUIRES_RESOLUTION: '${value}' is neither a governed target value nor a value the `
+      + "Owner normalization covers. Defaulting an unrecognized spelling would be this tool deciding.",
   });
 }
 
@@ -439,6 +489,7 @@ export function classifyAssignment(
   record: SourceWorkOrder,
   evidence: SupportingEvidence,
 ): AssignmentReport {
+  const decided = evidence.resolutionManifest?.byWorkOrderId.get(record.id)?.assignmentEmployeeId ?? null;
   const terminal = TERMINAL_STATUSES.includes(String(record.data.status ?? ""));
   const references = Object.freeze([
     resolveTechnician("assignedTechId", text(record.data.assignedTechId), evidence),
@@ -457,6 +508,17 @@ export function classifyAssignment(
     return Object.freeze({
       workOrderId: record.id, terminal, references, outcome: "ASSIGNMENT_COPYABLE" as const,
       reason: "every stated technician resolves to an exact governed Employee",
+    });
+  }
+  if (decided) {
+    // An EXPLICIT Owner decision, and it clears ONLY this blocker. It does not resolve the legacy
+    // technician reference -- that stays unresolved in the evidence, because what happened historically
+    // and who is accountable now are different facts.
+    return Object.freeze({
+      workOrderId: record.id, terminal, references, outcome: "ASSIGNMENT_COPYABLE" as const,
+      reason:
+        `OWNER_MIGRATION_RESOLUTION: the assignee is explicitly decided as Employee ${decided}. The `
+        + "unresolved legacy technician reference is retained as evidence and is NOT overwritten.",
     });
   }
   if (terminal) {
@@ -483,6 +545,8 @@ export type TargetCollision = "TARGET_ABSENT" | "ALREADY_PRESENT_EQUIVALENT" | "
 export interface FieldDisposition {
   readonly field: string;
   readonly action: FieldAction;
+  /** SOURCE_FACT / OWNER_MIGRATION_RESOLUTION / DERIVED_FACT -- never shown as equivalent. */
+  readonly factClass: FactClass;
   readonly reason: string;
 }
 
@@ -574,11 +638,15 @@ export function classifyRecord(
   // own evidence can only ever turn an action INTO a blocker, never out of one.
   const fields: FieldDisposition[] = matrix.map((entry) => {
     const base = ACTION_FOR_MODEL_DISPOSITION[entry.disposition] ?? "BLOCKER";
-    if (entry.legacyField === "type" && type.action === "BLOCKER") {
-      return { field: entry.legacyField, action: "BLOCKER" as FieldAction, reason: type.reason };
+    if (entry.legacyField === "type") {
+      return {
+        field: entry.legacyField,
+        action: type.action === "BLOCKER" ? ("BLOCKER" as FieldAction) : ("COPY" as FieldAction),
+        factClass: type.factClass, reason: type.reason,
+      };
     }
     if (entry.legacyField === "woNumber" && number.action === "MIGRATED_NUMBER_COMPATIBILITY_REQUIRED") {
-      return { field: entry.legacyField, action: "BLOCKER" as FieldAction, reason: number.reason };
+      return { field: entry.legacyField, action: "BLOCKER" as FieldAction, factClass: "SOURCE_FACT" as FactClass, reason: number.reason };
     }
     if (entry.legacyField === "severity") {
       // RULING: severity is HISTORICAL_ONLY and NEVER becomes priority. Priority is an independent
@@ -587,7 +655,7 @@ export function classifyRecord(
       const value = text(record.data.severity);
       const known = value !== null && TARGET_SEVERITIES.includes(value);
       return {
-        field: entry.legacyField, action: "HISTORICAL_ONLY" as FieldAction,
+        field: entry.legacyField, action: "HISTORICAL_ONLY" as FieldAction, factClass: "SOURCE_FACT" as FactClass,
         reason: known
           ? "carried as history; it does not and must not influence priority"
           : `'${String(value)}' is outside the governed severity vocabulary -- retained as migration history only, `
@@ -597,14 +665,21 @@ export function classifyRecord(
     if (entry.legacyField === "assignedTechId" || entry.legacyField === "scheduledTechId") {
       const ref = assignment.references.find((r) => r.field === entry.legacyField);
       if (ref && ref.technicianId !== null && ref.resolution !== "EXACT_EMPLOYEE") {
+        const decidedEmployee = evidence.resolutionManifest?.byWorkOrderId.get(record.id)?.assignmentEmployeeId ?? null;
+        if (decidedEmployee) {
+          return { field: entry.legacyField, action: "HISTORICAL_ONLY" as FieldAction,
+                   factClass: "OWNER_MIGRATION_RESOLUTION" as FactClass,
+                   reason: `${ref.resolution}; the legacy reference is retained as evidence and the assignee is an explicit Owner decision` };
+        }
         return assignment.terminal
-          ? { field: entry.legacyField, action: "HISTORICAL_ONLY" as FieldAction,
+          ? { field: entry.legacyField, action: "HISTORICAL_ONLY" as FieldAction, factClass: "SOURCE_FACT" as FactClass,
               reason: `${ref.resolution}; terminal record keeps the unresolved reference as evidence and authors no assignment row` }
-          : { field: entry.legacyField, action: "BLOCKER" as FieldAction,
+          : { field: entry.legacyField, action: "BLOCKER" as FieldAction, factClass: "SOURCE_FACT" as FactClass,
               reason: `${ref.resolution}; an ACTIVE Work Order cannot migrate with an unresolvable assignee` };
       }
     }
-    return { field: entry.legacyField, action: base, reason: entry.targetAuthority };
+    const factClass: FactClass = base === "DERIVE" ? "DERIVED_FACT" : "SOURCE_FACT";
+    return { field: entry.legacyField, action: base, factClass, reason: entry.targetAuthority };
   });
 
   const result: RecordResult =
@@ -770,4 +845,271 @@ export function runDryRun(input: {
     targetCollisionStatusKnown: input.evidence.targetWorkOrderIds !== null
       && input.evidence.targetWorkOrderIds !== undefined,
   });
+}
+
+// ════════════════════ THE OWNER RESOLUTION MANIFEST ════════════════════
+//
+// THE TOOL MAY CONSUME A DECISION. THE TOOL MAY NEVER AUTHOR ONE.
+//
+// Every refusal below exists because the opposite behaviour would let a decision arrive without anybody
+// making it:
+//
+//   checksum      a manifest written against a different source snapshot is a decision about DIFFERENT
+//                 records. Statuses move, assignments change; "wo-123 -> taylor" decided last week may be
+//                 about a Work Order that has since been cancelled and reassigned.
+//   population    naming a record that is not in the business population resolves nothing and hides a
+//                 typo as a no-op.
+//   fixture       naming a synthetic record means the author misread the census; silently ignoring it
+//                 would leave them believing they had decided something.
+//   duplicate     two entries for one Work Order is an unresolved disagreement, not a last-writer-wins.
+//   company       validated through the governed authority -- not a string. UNKNOWN and INACTIVE are
+//                 kept apart because they are different mistakes.
+//   unknown field this is what forbids a future `defaultOperatingCompany: "taylor"` from being honoured
+//                 by a tool that simply ignores what it does not recognise. A key nobody implemented is
+//                 a decision nobody applied.
+//
+// A BULK DECISION IS STILL EXPLICIT. "All 14 of these go to taylor" is supported by LISTING the fourteen
+// ids against this snapshot. There is no default, no wildcard and no rule -- which keeps it a migration
+// fact about one population rather than an inference that outlives it.
+// Aliased: this module already exports a resolveOperatingCompany for the WORK ORDER question ("which
+// company does this record belong to"). The imported one answers a different question ("is this id a
+// governed company"), and letting the two share a name is how a validity check gets mistaken for a
+// resolution.
+import { resolveOperatingCompany as resolveGovernedCompanyId } from "../../ownership/operatingCompanyAuthority.js";
+
+export interface ManifestRecord {
+  readonly workOrderId: string;
+  readonly operatingCompanyId: string;
+  /** Only for a Work Order whose ACTIVE assignment could not be resolved. A governed Employee id. */
+  readonly assignmentEmployeeId?: string;
+  readonly decisionReason: string;
+}
+
+export interface ResolutionManifest {
+  readonly snapshotBodySha256: string;
+  readonly decisionId: string;
+  readonly decidedAt: string;
+  readonly records: readonly ManifestRecord[];
+}
+
+const MANIFEST_KEYS = Object.freeze(["snapshotBodySha256", "decisionId", "decidedAt", "records"]);
+const RECORD_KEYS = Object.freeze(["workOrderId", "operatingCompanyId", "assignmentEmployeeId", "decisionReason"]);
+
+export class ManifestRefusedError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = "ManifestRefusedError";
+  }
+}
+const refuseManifest = (code: string, message: string): never => { throw new ManifestRefusedError(code, message); };
+
+export interface ValidatedManifest {
+  readonly decisionId: string;
+  readonly decidedAt: string;
+  readonly byWorkOrderId: ReadonlyMap<string, ManifestRecord>;
+}
+
+/**
+ * Validate a manifest against THIS snapshot and THIS classified population.
+ *
+ * `businessIds` and `fixtureIds` come from a DRY RUN that already ran without a manifest, so the manifest
+ * is always checked against a population someone could read first.
+ */
+export function validateResolutionManifest(
+  manifest: unknown,
+  context: {
+    readonly snapshotBodySha256: string;
+    readonly businessIds: ReadonlySet<string>;
+    readonly fixtureIds: ReadonlySet<string>;
+    readonly employeeIds?: ReadonlySet<string>;
+  },
+): ValidatedManifest {
+  if (manifest === null || typeof manifest !== "object" || Array.isArray(manifest)) {
+    refuseManifest("MANIFEST_MALFORMED", "the manifest must be an object");
+  }
+  const m = manifest as Record<string, unknown>;
+  const extra = Object.keys(m).filter((k) => !MANIFEST_KEYS.includes(k));
+  if (extra.length > 0) {
+    refuseManifest("MANIFEST_UNKNOWN_FIELD",
+      `the manifest carries field(s) this tool does not implement: ${extra.sort().join(", ")}. A key nobody `
+      + "implemented is a decision nobody applied -- including any form of implicit default.");
+  }
+  for (const key of ["snapshotBodySha256", "decisionId", "decidedAt"]) {
+    if (typeof m[key] !== "string" || (m[key] as string).trim() === "") {
+      refuseManifest("MANIFEST_MALFORMED", `${key} is required`);
+    }
+  }
+  if (m.snapshotBodySha256 !== context.snapshotBodySha256) {
+    refuseManifest("MANIFEST_SNAPSHOT_MISMATCH",
+      "this manifest was written against a different source snapshot. Its decisions are about records as "
+      + "they were then, which may no longer be these records.");
+  }
+  if (!Array.isArray(m.records)) refuseManifest("MANIFEST_MALFORMED", "records must be a list");
+
+  const byWorkOrderId = new Map<string, ManifestRecord>();
+  (m.records as unknown[]).forEach((raw, i) => {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+      refuseManifest("MANIFEST_MALFORMED", `records[${i}] must be an object`);
+    }
+    const r = raw as Record<string, unknown>;
+    const unknown = Object.keys(r).filter((k) => !RECORD_KEYS.includes(k));
+    if (unknown.length > 0) {
+      refuseManifest("MANIFEST_UNKNOWN_FIELD", `records[${i}] carries unknown field(s): ${unknown.sort().join(", ")}`);
+    }
+    const workOrderId = text(r.workOrderId);
+    if (!workOrderId) refuseManifest("MANIFEST_MALFORMED", `records[${i}].workOrderId is required`);
+    if (byWorkOrderId.has(workOrderId as string)) {
+      refuseManifest("MANIFEST_DUPLICATE_RECORD",
+        `${workOrderId} is resolved twice. Two entries for one Work Order is an unresolved disagreement, `
+        + "not a last-one-wins.");
+    }
+    if (context.fixtureIds.has(workOrderId as string)) {
+      refuseManifest("MANIFEST_FIXTURE_NAMED",
+        `${workOrderId} is a proven nonbusiness fixture and needs no target row. Naming it means the census `
+        + "was misread, and ignoring the entry would leave that belief in place.");
+    }
+    if (!context.businessIds.has(workOrderId as string)) {
+      refuseManifest("MANIFEST_RECORD_NOT_IN_POPULATION",
+        `${workOrderId} is not in the business population of this snapshot`);
+    }
+    const company = resolveGovernedCompanyId(r.operatingCompanyId);
+    if (company.state === "INVALID") {
+      refuseManifest("MANIFEST_COMPANY_INVALID", `records[${i}].operatingCompanyId is not a governed company id`);
+    }
+    if (company.state === "UNKNOWN") {
+      refuseManifest("MANIFEST_COMPANY_UNKNOWN",
+        `'${String(r.operatingCompanyId)}' is not a known operating company. A company id is validated `
+        + "through the governed authority, never accepted as a string.");
+    }
+    if (company.state === "INACTIVE") {
+      refuseManifest("MANIFEST_COMPANY_INACTIVE",
+        `'${String(r.operatingCompanyId)}' names an INACTIVE operating company`);
+    }
+    if (!text(r.decisionReason)) {
+      refuseManifest("MANIFEST_MALFORMED", `records[${i}].decisionReason is required -- a decision states why`);
+    }
+    const employeeId: string | undefined =
+      r.assignmentEmployeeId === undefined ? undefined : (text(r.assignmentEmployeeId) ?? undefined);
+    if (r.assignmentEmployeeId !== undefined) {
+      if (!employeeId) refuseManifest("MANIFEST_MALFORMED", `records[${i}].assignmentEmployeeId must be a stated id`);
+      // A Firebase uid is NOT an Employee identity, and the shapes are distinguishable: governed Employee
+      // ids are not 28-character Firebase auth uids.
+      if (/^[A-Za-z0-9]{28}$/.test(employeeId as string)) {
+        refuseManifest("MANIFEST_EMPLOYEE_IS_UID",
+          `records[${i}].assignmentEmployeeId looks like a Firebase uid. A uid is how a person logs in, `
+          + "not who they are as an Employee.");
+      }
+      if (context.employeeIds && !context.employeeIds.has(employeeId as string)) {
+        refuseManifest("MANIFEST_EMPLOYEE_NOT_FOUND",
+          `records[${i}].assignmentEmployeeId '${employeeId}' resolves to no governed Employee`);
+      }
+    }
+    byWorkOrderId.set(workOrderId as string, Object.freeze({
+      workOrderId: workOrderId as string,
+      operatingCompanyId: r.operatingCompanyId as string,
+      ...(employeeId === undefined ? {} : { assignmentEmployeeId: employeeId }),
+      decisionReason: r.decisionReason as string,
+    }));
+  });
+
+  return Object.freeze({
+    decisionId: m.decisionId as string,
+    decidedAt: m.decidedAt as string,
+    byWorkOrderId,
+  });
+}
+
+// ════════════════════ THE OWNER DECISION WORKSHEET ════════════════════
+
+export interface WorksheetRow {
+  readonly workOrderId: string;
+  readonly woNumber: string | null;
+  readonly status: string | null;
+  readonly sourceType: string | null;
+  readonly targetType: string | null;
+  readonly typeResolution: TypeResolutionKind;
+  readonly customerId: string | null;
+  readonly locationId: string | null;
+  readonly equipmentId: string | null;
+  readonly salesOrderId: string | null;
+  readonly assignedTechIdResolution: TechnicianResolution;
+  readonly scheduledTechIdResolution: TechnicianResolution;
+  /** ALWAYS empty. The tool does not suggest a company, because a suggestion is a decision with a hedge. */
+  readonly operatingCompanyDecision: "";
+}
+
+export interface AssignmentWorksheetRow {
+  readonly workOrderId: string;
+  readonly woNumber: string | null;
+  readonly status: string | null;
+  readonly legacyAssignedTechId: string | null;
+  readonly legacyScheduledTechId: string | null;
+  readonly exactResolutionResult: string;
+  /** ALWAYS empty. */
+  readonly assignmentEmployeeDecision: "";
+}
+
+/**
+ * The 14-row worksheet, sorted by woNumber.
+ *
+ * THE COMPANY COLUMN IS BLANK AND STAYS BLANK. The contextual columns are here to let a person recognise
+ * the Work Order -- which customer, which site, which job -- and NOT so the tool can hint. Printing a
+ * "likely" company beside them would be the inference the ruling forbids, wearing a suggestion's clothes:
+ * a reviewer confirming a pre-filled column is not deciding, they are agreeing.
+ */
+export function buildOwnerWorksheet(
+  report: DryRunReport,
+  records: readonly SourceWorkOrder[],
+): readonly WorksheetRow[] {
+  const byId = new Map(records.map((r) => [r.id, r]));
+  return Object.freeze(report.records
+    .filter((r) => r.recordClass === "BUSINESS")
+    .map((r) => {
+      const data = byId.get(r.workOrderId)?.data ?? {};
+      const ref = (field: AssignmentReference["field"]) =>
+        r.assignment.references.find((x) => x.field === field)?.resolution ?? "NOT_ASSIGNED";
+      return Object.freeze({
+        workOrderId: r.workOrderId,
+        woNumber: text(data.woNumber),
+        status: text(data.status),
+        sourceType: r.type.sourceValue,
+        targetType: r.type.targetValue,
+        typeResolution: r.type.resolution,
+        customerId: text(data.customerId),
+        locationId: text(data.locationId),
+        equipmentId: text(data.equipmentId),
+        salesOrderId: text(data.salesOrderId),
+        assignedTechIdResolution: ref("assignedTechId"),
+        scheduledTechIdResolution: ref("scheduledTechId"),
+        operatingCompanyDecision: "" as const,
+      });
+    })
+    .sort((a, b) => String(a.woNumber).localeCompare(String(b.woNumber))));
+}
+
+/** Only the business Work Orders whose ACTIVE assignment must be resolved before they can copy. */
+export function buildAssignmentWorksheet(
+  report: DryRunReport,
+  records: readonly SourceWorkOrder[],
+): readonly AssignmentWorksheetRow[] {
+  const byId = new Map(records.map((r) => [r.id, r]));
+  return Object.freeze(report.records
+    .filter((r) => r.recordClass === "BUSINESS" && r.assignment.outcome === "ACTIVE_ASSIGNMENT_REQUIRES_RESOLUTION")
+    .map((r) => {
+      const data = byId.get(r.workOrderId)?.data ?? {};
+      const ref = (field: AssignmentReference["field"]) =>
+        r.assignment.references.find((x) => x.field === field);
+      return Object.freeze({
+        workOrderId: r.workOrderId,
+        woNumber: text(data.woNumber),
+        status: text(data.status),
+        legacyAssignedTechId: ref("assignedTechId")?.technicianId ?? null,
+        legacyScheduledTechId: ref("scheduledTechId")?.technicianId ?? null,
+        exactResolutionResult: r.assignment.references
+          .filter((x) => x.technicianId !== null)
+          .map((x) => `${x.field}=${x.resolution}`).join(", "),
+        assignmentEmployeeDecision: "" as const,
+      });
+    })
+    .sort((a, b) => String(a.woNumber).localeCompare(String(b.woNumber))));
 }

@@ -82,9 +82,6 @@ async function main() {
 
   // ── the Owner's resolution manifest, if one was written. NEVER authored here. ──
   const manifestPath = arg("manifest");
-  const operatingCompanyManifest = new Map(
-    manifestPath ? Object.entries(JSON.parse(readFileSync(manifestPath, "utf8"))) : [],
-  );
 
   // ── target collision check, READ ONLY and optional ──
   let targetWorkOrderIds = null;
@@ -102,12 +99,31 @@ async function main() {
   }
 
   const snapshot = core.buildSourceSnapshot(project, "fieldops_wos", records, sha256);
-  const report = core.runDryRun({
-    snapshot, records,
-    evidence: { technicians, employees, salesOrders, accounts, locations, equipment, operatingCompanyManifest, targetWorkOrderIds },
-  });
+  const baseEvidence = { technicians, employees, salesOrders, accounts, locations, equipment, targetWorkOrderIds };
+
+  // TWO PASSES, DELIBERATELY. The manifest is validated against the CLASSIFIED population -- which records
+  // are business and which are fixtures -- and that classification is itself an output of the dry run. So
+  // the first pass runs with no manifest and establishes the population a human could read; the manifest
+  // is then checked against exactly that. Validating against the raw source instead would accept a
+  // decision about a fixture, which is the misreading the refusal exists to catch.
+  const firstPass = core.runDryRun({ snapshot, records, evidence: { ...baseEvidence, resolutionManifest: null } });
+  let resolutionManifest = null;
+  if (manifestPath) {
+    resolutionManifest = core.validateResolutionManifest(JSON.parse(readFileSync(manifestPath, "utf8")), {
+      snapshotBodySha256: snapshot.bodySha256,
+      businessIds: new Set(firstPass.records.filter((r) => r.recordClass === "BUSINESS").map((r) => r.workOrderId)),
+      fixtureIds: new Set(firstPass.records.filter((r) => r.recordClass !== "BUSINESS").map((r) => r.workOrderId)),
+      employeeIds: employees,
+    });
+    console.log(`manifest accepted: ${resolutionManifest.decisionId} (${resolutionManifest.byWorkOrderId.size} decision(s))`);
+  }
+
+  const report = manifestPath
+    ? core.runDryRun({ snapshot, records, evidence: { ...baseEvidence, resolutionManifest } })
+    : firstPass;
 
   print(report);
+  printWorksheets(report, records);
   return report;
 }
 
@@ -185,6 +201,36 @@ function print(report) {
     const tc = new Map();
     for (const r of report.records) tc.set(r.targetCollision, (tc.get(r.targetCollision) ?? 0) + 1);
     for (const [k, n] of tc) console.log(`  ${String(n).padStart(3)}  ${k}`);
+  }
+  console.log("");
+}
+
+function printWorksheets(report, records) {
+  const rows = core.buildOwnerWorksheet(report, records);
+  console.log(`OWNER DECISION WORKSHEET -- ${rows.length} genuine business Work Order(s), sorted by woNumber`);
+  console.log("  the OPERATING COMPANY column is intentionally blank and is never suggested\n");
+  const head = ["woNumber", "workOrderId", "status", "srcType", "tgtType", "typeResolution",
+                "customerId", "locationId", "equipmentId", "salesOrderId", "assignedTech", "scheduledTech", "COMPANY"];
+  const body = rows.map((r) => [
+    r.woNumber ?? "", r.workOrderId, r.status ?? "", String(r.sourceType), String(r.targetType), r.typeResolution,
+    r.customerId ?? "", r.locationId ?? "", r.equipmentId ?? "", r.salesOrderId ?? "",
+    r.assignedTechIdResolution, r.scheduledTechIdResolution, r.operatingCompanyDecision,
+  ]);
+  const widths = head.map((h, i) => Math.max(h.length, ...body.map((b) => String(b[i]).length)));
+  const line = (cells) => "  " + cells.map((c, i) => String(c).padEnd(widths[i])).join("  ");
+  console.log(line(head));
+  console.log("  " + widths.map((w) => "-".repeat(w)).join("  "));
+  for (const b of body) console.log(line(b));
+
+  const assign = core.buildAssignmentWorksheet(report, records);
+  console.log(`\nACTIVE ASSIGNMENT WORKSHEET -- ${assign.length} record(s) requiring an explicit Employee decision`);
+  if (assign.length === 0) console.log("  (none)");
+  for (const a of assign) {
+    console.log(`  ${a.woNumber}  ${a.workOrderId}  ${a.status}`);
+    console.log(`    legacy assignedTechId : ${a.legacyAssignedTechId ?? "(none)"}`);
+    console.log(`    legacy scheduledTechId: ${a.legacyScheduledTechId ?? "(none)"}`);
+    console.log(`    exact resolution      : ${a.exactResolutionResult}`);
+    console.log(`    ASSIGNMENT EMPLOYEE DECISION: ${a.assignmentEmployeeDecision || "(blank)"}`);
   }
   console.log("");
 }
