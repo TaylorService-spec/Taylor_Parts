@@ -149,13 +149,13 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
     "audit_events", "capabilities", "employee_principal_links", "object_fields", "objects",
-    "principal_access_versions", "principals",
+    "principal_access_versions", "principal_capabilities", "principals",
     "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
     "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies",
     "tenant_operating_company_keys", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-four tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+  ], "twenty-five tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
      "(operational capabilities), one from 008 (the Employee <-> Principal linkage), one from EMP-RT-W2 " +
      "(tenant <-> operating company authority) and one from migration 038 (the company -> eos_ops KEY " +
      "binding: which PARTITION an authorized company operates under, which the company row does not say). " +
@@ -224,7 +224,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 24, "and up restores all twenty-four");
+  assert.equal(back.rows[0].n, 25, "and up restores all twenty-five");
 });
 
 test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {

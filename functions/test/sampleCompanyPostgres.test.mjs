@@ -132,8 +132,13 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // `capabilities`, an explicit backfill of all 43 existing rows, and six workflowDefinition vocabulary rows granted to
 // no Role. No role_capabilities row is written, so every grant count asserted here is unchanged; the capability
 // vocabulary itself moves 43 -> 49 and is reconciled in the manifest below.
-const PINNED_LAST_MIGRATION = "1761350400000_canonical-capability-object-action-metadata";
-const PINNED_MIGRATION_COUNT = 40;
+//
+// Moved deliberately again for 1761436800000 (direct Principal capability grants): ONE new relation,
+// eos_policy.principal_capabilities, empty at seed. The Sample Company seed grants capabilities to
+// ROLES only and writes no direct grant, so every expectation below is unchanged -- and a direct
+// grant appearing here later would be a real finding rather than a pin to move.
+const PINNED_LAST_MIGRATION = "1761436800000_principal-capability-grants";
+const PINNED_MIGRATION_COUNT = 41;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

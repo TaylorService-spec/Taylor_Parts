@@ -174,12 +174,25 @@ test("every operation is either a read or a mutation, and none is both", () => {
   // The Owner's list, pinned. A read that quietly became a mutation, or an operation that appeared
   // without being asked for, fails here.
   assert.deepEqual([...reads].sort(), [
-    "listObjects", "listPrincipalRoleAssignments", "listRoles", "listTenantPrincipals", "listWorkflows",
+    // FOUR ADDED for Object-owned security (Owner ruling): the Object, Role and Principal views are
+    // THREE PROJECTIONS OF ONE AUTHORITY, so each needs a read and none of them may be answered
+    // from a static frontend catalog. getPrincipalEffectiveAccess is the PostgreSQL answer that
+    // Permission Preview will eventually read instead of Firebase.
+    "getObjectSecurityMatrix", "getPrincipalEffectiveAccess", "getRoleSecurity",
+    "listObjects", "listObjectsWithActions", "listPrincipalRoleAssignments", "listRoles",
+    "listTenantPrincipals", "listWorkflows",
     "readObjectWithFields", "readPolicyAuditHistory", "readRolePolicy", "readWorkflowVersion",
-  ], "the Owner's eight, plus listTenantPrincipals -- without which none of them yields a principal id");
+  ], "the Owner's eight, plus listTenantPrincipals and the four Object-owned security projections");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",
-    "publishWorkflowVersion", "removeFieldPermissionOverride", "revokeRole", "setFieldPermissionOverride",
+    // FOUR ADDED: Object-owned grants. The contract is (objectKey, actionKey, grantee), never a raw
+    // capability key -- an administrator grants "Work Order -> Dispatch" and the server resolves
+    // which capability that is. Both grantee kinds exist because an Object must be grantable to a
+    // Security Role AND to an individual Principal.
+    "grantObjectActionToPrincipal", "grantObjectActionToRole",
+    "publishWorkflowVersion", "removeFieldPermissionOverride",
+    "revokeObjectActionFromPrincipal", "revokeObjectActionFromRole",
+    "revokeRole", "setFieldPermissionOverride",
     "setObjectPermission", "setWorkflowRoleBinding", "updateCustomFieldMetadata",
     // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added because
     // "Object definition editing is Admin-only" was a contract with no operation behind it.

@@ -35,7 +35,9 @@ import { PolicyStoreError } from "./policyRepository";
 import type {
   NewAdminBootstrapInput,
   NewPrincipalInput,
+  NewPrincipalCapabilityInput,
   NewRecord,
+  NewRoleCapabilityInput,
   NewTenantInput,
   PolicyActor,
   PolicyRepository,
@@ -44,7 +46,10 @@ import type {
 import type {
   CredOverride,
   CredSet,
+  CapabilityRecord,
   ObjectFieldRecord,
+  PrincipalCapabilityRecord,
+  RoleCapabilityRecord,
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
@@ -185,6 +190,36 @@ const toRole = (r: Record<string, unknown>): PolicyRoleRecord => ({
   description: (r.description as string | null) ?? null,
   origin: r.origin as PolicyRoleRecord["origin"],
   protected: r.protected === true,
+  ...provenance(r),
+});
+
+const toCapability = (r: Record<string, unknown>): CapabilityRecord => ({
+  id: String(r.id),
+  key: String(r.key),
+  description: String(r.description),
+  objectKey: String(r.object_key),
+  actionKey: String(r.action_key),
+  actionKind: String(r.action_kind) as CapabilityRecord["actionKind"],
+  displayLabel: String(r.display_label),
+});
+
+const toRoleCapability = (r: Record<string, unknown>): RoleCapabilityRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  roleId: String(r.role_id),
+  capabilityId: String(r.capability_id),
+  grantedBy: String(r.granted_by),
+  grantedAt: new Date(String(r.granted_at)).toISOString(),
+  ...provenance(r),
+});
+
+const toPrincipalCapability = (r: Record<string, unknown>): PrincipalCapabilityRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  principalId: String(r.principal_id),
+  capabilityId: String(r.capability_id),
+  grantedBy: String(r.granted_by),
+  grantedAt: new Date(String(r.granted_at)).toISOString(),
   ...provenance(r),
 });
 
@@ -437,6 +472,32 @@ export class PostgresPolicyRepository implements PolicyRepository {
 
   getRoleByKey(tenantId: TenantId, key: string) {
     return this.one(`SELECT * FROM ${SCHEMA}.roles WHERE tenant_id = $1 AND key = $2`, [tenantId, key], toRole);
+  }
+
+  // THE CAPABILITY CATALOG IS GLOBAL -- no tenant predicate, because `capabilities` has no
+  // tenant_id: a capability means the same thing everywhere and only its GRANTS are per-tenant.
+  listCapabilities() {
+    return this.many(
+      `SELECT id, key, description, object_key, action_key, action_kind, display_label
+         FROM ${SCHEMA}.capabilities ORDER BY object_key, action_key`,
+      [], toCapability);
+  }
+
+  listRoleCapabilities(tenantId: TenantId, roleIds?: readonly string[]) {
+    if (roleIds && roleIds.length === 0) return Promise.resolve([]);
+    return roleIds
+      ? this.many(`SELECT * FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1 AND role_id = ANY($2)`,
+        [tenantId, [...roleIds]], toRoleCapability)
+      : this.many(`SELECT * FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1`,
+        [tenantId], toRoleCapability);
+  }
+
+  listPrincipalCapabilities(tenantId: TenantId, principalId?: string) {
+    return principalId
+      ? this.many(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2`,
+        [tenantId, principalId], toPrincipalCapability)
+      : this.many(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1`,
+        [tenantId], toPrincipalCapability);
   }
 
   listObjectPermissions(tenantId: TenantId, roleIds: readonly string[]) {
@@ -831,6 +892,63 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
                updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at`,
         [newId(), tenantId, roleId, fieldId, val("C"), val("R"), val("E"), val("D"), ...stamp()],
       );
+    },
+
+    // ── canonical Object-owned security grants ──
+    //
+    // IDEMPOTENT BY DESIGN. `ON CONFLICT DO NOTHING` plus a follow-up read returns the EXISTING row
+    // for a re-grant instead of raising, matching assignRole's no-op convention: granting something
+    // already granted is not an error an administrator can act on, and a duplicate row would make
+    // "revoke" ambiguous about which one it removed.
+    async grantRoleCapability(input: NewRoleCapabilityInput) {
+      await requireOwned("roles", input.roleId, "role");
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.role_capabilities
+           (id, tenant_id, role_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (tenant_id, role_id, capability_id) DO NOTHING
+         RETURNING *`,
+        [newId(), tenantId, input.roleId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()],
+      );
+      if (rows.length > 0) return toRoleCapability(rows[0]);
+      const existing = await q.query(
+        `SELECT * FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1 AND role_id = $2 AND capability_id = $3`,
+        [tenantId, input.roleId, input.capabilityId]);
+      return toRoleCapability(existing.rows[0]);
+    },
+
+    async revokeRoleCapability(roleId: string, capabilityId: string) {
+      const { rows } = await q.query(
+        `DELETE FROM ${SCHEMA}.role_capabilities
+          WHERE tenant_id = $1 AND role_id = $2 AND capability_id = $3 RETURNING *`,
+        [tenantId, roleId, capabilityId]);
+      // null, not a throw: "was never granted" is a legitimate answer to a revoke, and the command
+      // layer uses it to decide there is nothing to audit.
+      return rows.length > 0 ? toRoleCapability(rows[0]) : null;
+    },
+
+    async grantPrincipalCapability(input: NewPrincipalCapabilityInput) {
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.principal_capabilities
+           (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+         ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
+         RETURNING *`,
+        [newId(), tenantId, input.principalId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()],
+      );
+      if (rows.length > 0) return toPrincipalCapability(rows[0]);
+      const existing = await q.query(
+        `SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3`,
+        [tenantId, input.principalId, input.capabilityId]);
+      return toPrincipalCapability(existing.rows[0]);
+    },
+
+    async revokePrincipalCapability(principalId: string, capabilityId: string) {
+      const { rows } = await q.query(
+        `DELETE FROM ${SCHEMA}.principal_capabilities
+          WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3 RETURNING *`,
+        [tenantId, principalId, capabilityId]);
+      return rows.length > 0 ? toPrincipalCapability(rows[0]) : null;
     },
 
     async createAssignment(input: NewRecord<PolicyRoleAssignmentRecord>) {

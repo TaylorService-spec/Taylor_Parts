@@ -37,7 +37,10 @@
 import type {
   CredOverride,
   CredSet,
+  CapabilityRecord,
   ObjectFieldRecord,
+  PrincipalCapabilityRecord,
+  RoleCapabilityRecord,
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
@@ -66,6 +69,22 @@ export class PolicyStoreError extends Error {}
 
 /** Field values a caller may supply on create. The store owns id, tenant and provenance. */
 export type NewRecord<T> = Omit<T, "id" | "tenantId" | "createdBy" | "createdAt" | "updatedBy" | "updatedAt">;
+
+/** A Role's grant of one canonical capability. `grantedAt` is server-authored, never client-sent. */
+export interface NewRoleCapabilityInput {
+  readonly roleId: string;
+  readonly capabilityId: string;
+  readonly grantedBy: string;
+  readonly grantedAt: string;
+}
+
+/** A Principal's DIRECT grant of one canonical capability. The grantee is never an Employee. */
+export interface NewPrincipalCapabilityInput {
+  readonly principalId: string;
+  readonly capabilityId: string;
+  readonly grantedBy: string;
+  readonly grantedAt: string;
+}
 
 /** A new tenant. The store assigns the id; the caller owns the key. */
 export interface NewTenantInput {
@@ -151,6 +170,17 @@ export interface PolicyTransaction {
   setFieldOverride(roleId: string, fieldId: string, override: CredOverride): Promise<void>;
 
   // ── assignment ──
+  // ── canonical Object-owned security grants ──
+  //
+  // Grant is idempotent by (tenant, grantee, capability): re-granting returns the existing row
+  // rather than writing a duplicate, matching assignRole's established no-op convention. Revoke
+  // returns the row it removed, or null when there was nothing to remove -- so the command layer
+  // can tell "revoked" from "was never granted" and audit only the first.
+  grantRoleCapability(input: NewRoleCapabilityInput): Promise<RoleCapabilityRecord>;
+  revokeRoleCapability(roleId: string, capabilityId: string): Promise<RoleCapabilityRecord | null>;
+  grantPrincipalCapability(input: NewPrincipalCapabilityInput): Promise<PrincipalCapabilityRecord>;
+  revokePrincipalCapability(principalId: string, capabilityId: string): Promise<PrincipalCapabilityRecord | null>;
+
   createAssignment(input: NewRecord<PolicyRoleAssignmentRecord>): Promise<PolicyRoleAssignmentRecord>;
   setAssignmentStatus(assignmentId: string, status: PolicyAssignmentStatus): Promise<PolicyRoleAssignmentRecord>;
   /** Returns the NEW version. Called by every mutation that can change what a principal may do. */
@@ -219,6 +249,16 @@ export interface PolicyReader {
 
   listObjectPermissions(tenantId: TenantId, roleIds: readonly string[]): Promise<readonly RoleObjectPermissionRecord[]>;
   listFieldOverrides(tenantId: TenantId, roleIds: readonly string[]): Promise<readonly RoleFieldPermissionOverrideRecord[]>;
+
+  // ── canonical Object-owned security ──
+  //
+  // The capability catalog is GLOBAL (a capability means the same thing in every tenant); the two
+  // grant tables are tenant-scoped, because a grant is a fact about one tenant's Role or Principal.
+  listCapabilities(): Promise<readonly CapabilityRecord[]>;
+  /** Role -> capability grants. An empty roleIds list means EVERY Role in the tenant. */
+  listRoleCapabilities(tenantId: TenantId, roleIds?: readonly string[]): Promise<readonly RoleCapabilityRecord[]>;
+  /** Direct Principal grants. An absent principalId means EVERY principal in the tenant. */
+  listPrincipalCapabilities(tenantId: TenantId, principalId?: string): Promise<readonly PrincipalCapabilityRecord[]>;
 
   listAssignmentsForPrincipal(tenantId: TenantId, principalId: string): Promise<readonly PolicyRoleAssignmentRecord[]>;
   getAccessVersion(tenantId: TenantId, principalId: string): Promise<PrincipalAccessVersionRecord | null>;

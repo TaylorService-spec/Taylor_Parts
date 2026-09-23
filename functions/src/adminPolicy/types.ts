@@ -426,3 +426,41 @@ export interface PolicyAuditEventRecord extends TenantOwned {
   readonly occurredAt: string;
   readonly reason: string | null;
 }
+
+// ════════════════════ CANONICAL OBJECT-OWNED SECURITY ════════════════════
+//
+// Security is governed UNDER THE OBJECT. `capabilities` carries the Object and action each
+// capability governs (migration 1761350400000), so ONE set of grant rows projects three ways:
+// Object -> actions -> grantees, Role -> objects -> actions, Principal -> effective access.
+
+export type ActionKind = "CREATE" | "READ" | "EDIT" | "DELETE" | "BUSINESS_ACTION" | "ADMIN_ACTION";
+
+/** One capability, with the canonical metadata that makes it projectable under its Object. */
+export interface CapabilityRecord {
+  readonly id: string;
+  readonly key: string;
+  readonly description: string;
+  readonly objectKey: string;
+  readonly actionKey: string;
+  readonly actionKind: ActionKind;
+  readonly displayLabel: string;
+}
+
+/** One Role's grant of one capability, in one tenant. */
+export interface RoleCapabilityRecord extends TenantOwned, Provenance {
+  readonly roleId: string;
+  readonly capabilityId: string;
+  readonly grantedBy: string;
+  readonly grantedAt: string;
+}
+
+/**
+ * One PRINCIPAL's direct grant of one capability. The grantee is the authenticated actor, never an
+ * Employee: a workforce record must not decide a permission.
+ */
+export interface PrincipalCapabilityRecord extends TenantOwned, Provenance {
+  readonly principalId: string;
+  readonly capabilityId: string;
+  readonly grantedBy: string;
+  readonly grantedAt: string;
+}
