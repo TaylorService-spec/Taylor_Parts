@@ -39,7 +39,10 @@ const SEED_OBJECT_KEYS = new Set(SNAPSHOT.objects.map((o) => o.key));
  * CLEANUP -- not something an additive security activation may do, and NOT something the seed may
  * infer: a seed that deleted every Object missing from its snapshot would delete real configuration.
  */
-const TOLERATED_STALE_DATABASE_OBJECTS = Object.freeze(["stockLocation"]);
+// EMPTY as of migration 1761868800000, which retired the one entry. Kept as a named, empty list
+// rather than deleted: the next Object the Owner retires will sit here while its cleanup is
+// reviewed, and a database seeded before that retirement is not a defect.
+const TOLERATED_STALE_DATABASE_OBJECTS = Object.freeze([]);
 
 // ════════════════════ 1. SOURCE LEVEL ════════════════════
 
@@ -125,11 +128,15 @@ test("capability Object keys resolve through the real Administration repository"
     assert.deepEqual(extra, [], "a fresh seed produces no extras");
   });
 
-  await t.test("the tolerated stale Object is genuinely unused by the capability model", () => {
+  await t.test("any tolerated stale Object stays unused by the capability model", () => {
+    // Vacuous today, and deliberately kept: the tolerance is only ever legitimate for an Object the
+    // governed seed has dropped AND no capability names.
     for (const stale of TOLERATED_STALE_DATABASE_OBJECTS) {
       assert.equal(SEED_OBJECT_KEYS.has(stale), false, `${stale} must stay out of the governed seed`);
       assert.deepEqual(capabilities.filter((c) => c.objectKey === stale), [],
         `${stale} still carries a canonical capability and cannot be treated as retired metadata`);
     }
+    assert.equal(SEED_OBJECT_KEYS.has("stockLocation"), false,
+      "stockLocation is retired and must never return to the governed seed");
   });
 });

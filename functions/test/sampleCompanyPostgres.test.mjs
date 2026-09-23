@@ -160,8 +160,12 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1761782400000 (Manufacturer Catalog authority): one table in eos_ops,
 // one capability split out of inventory.catalog.read, and its nineteen grants. The Sample Company
 // seed writes no manufacturer, so only the vocabulary count moves, 73 -> 74.
-const PINNED_LAST_MIGRATION = "1761782400000_manufacturer-catalog-authority";
-const PINNED_MIGRATION_COUNT = 45;
+//
+// Moved deliberately again for 1761868800000 (stockLocation retirement): a policy-metadata cleanup
+// that is a NO-OP on a clean database -- the governed seed has not declared stockLocation since the
+// Owner retired it, so there is no row here to remove. Only the migration count moves.
+const PINNED_LAST_MIGRATION = "1761868800000_retire-stock-location-policy-object";
+const PINNED_MIGRATION_COUNT = 46;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
