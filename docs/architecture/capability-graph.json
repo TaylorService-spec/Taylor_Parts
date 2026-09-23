@@ -3782,6 +3782,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/migration/credEquivalence.ts",
           "functions/src/eosOps/migration/inventoryWriterCapabilityCensus.ts",
           "functions/src/inventoryReceiving/receiveInventoryStockCommand.ts",
           "functions/src/inventoryReceiving/receivingCallableWiring.ts",
@@ -3797,7 +3798,7 @@
           "field-ops-app-vite/src/domain/dashboardComposition.js",
           "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },

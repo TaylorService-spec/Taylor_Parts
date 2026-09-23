@@ -137,8 +137,16 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // eos_policy.principal_capabilities, empty at seed. The Sample Company seed grants capabilities to
 // ROLES only and writes no direct grant, so every expectation below is unchanged -- and a direct
 // grant appearing here later would be a real finding rather than a pin to move.
-const PINNED_LAST_MIGRATION = "1761436800000_principal-capability-grants";
-const PINNED_MIGRATION_COUNT = 41;
+//
+// Moved deliberately again for 1761523200000 (CRED vocabulary + deterministic grant preservation):
+// eight READ capabilities the CRUD matrix already named, plus a preservation step that carries the
+// role grants those stored CRED rows already convey. Here the preservation writes NOTHING: this
+// fixture migrates a clean database and seeds afterwards, so role_object_permissions is empty at
+// the moment the migration runs. Preservation matters for an EXISTING database (nonprod), and
+// credConvergencePostgres.test.mjs proves it there by seeding first and then applying the
+// migration. Only the vocabulary count moves here, 49 -> 57.
+const PINNED_LAST_MIGRATION = "1761523200000_cred-capability-vocabulary-and-grant-preservation";
+const PINNED_MIGRATION_COUNT = 42;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
