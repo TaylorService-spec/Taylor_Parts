@@ -114,9 +114,31 @@ export const WITHHELD_PENDING_ELIGIBILITY_EVIDENCE: Readonly<Record<string, stri
  * exist. These wait on the domain's own migration, not on a security ruling.
  */
 export const DATA_AUTHORITY_MIGRATION_BLOCKERS: Readonly<Record<string, string>> = Object.freeze({
-  "manufacturer.R": "no PostgreSQL table; today governed through the Part catalog read and the legacy client rules layer",
+  // manufacturer.R is GONE from this list: migration 1761782400000 built eos_ops.manufacturers and
+  // split inventory.manufacturer.read out of the Catalog read, so the model and the tooling exist.
+  // That is not a claim that Manufacturer is cut over -- the source collection holds ZERO documents
+  // in the environment this workstation may read, nothing has been copied, and the client still
+  // reads Firestore. See MANUFACTURER_REFERENCE_RECONCILIATION_REQUIRED.
   "notifications.R": "no PostgreSQL table; the CRUD matrix governs it with reorder.request.read.queue, which is not a notification authority at all",
   "dispatchSchedule.R": "no PostgreSQL table; governed by fulfillment.coordinatedVisit.read",
+});
+
+/**
+ * WORKFORCE ELIGIBILITY DATA MIGRATION BLOCKER -- the model is complete, the DATA is not.
+ *
+ * PARTS_OPERATIONS exists as governed Work Eligibility vocabulary, and the contextual evaluator can
+ * prove it. But the five legacy PARTS_ASSOCIATE holders are Firestore employees and
+ * eos_workforce.employees is a disjoint synthetic population, so there are ZERO target assignments.
+ *
+ * This is NOT a scope-model blocker. It is an Employee data-migration and identity-reconciliation
+ * dependency, and it is tracked separately so that closing the scope model is not mistaken for
+ * closing the workforce data gap. operationalRoleActive stays un-retired until assignments exist.
+ */
+export const WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER = Object.freeze({
+  qualification: "PARTS_OPERATIONS",
+  legacyHolders: 5,
+  targetAssignments: 0,
+  reason: "the legacy and PostgreSQL Employee populations have disjoint identities; no governed Employee can receive the eligibility yet",
 });
 
 /** Every cell that blocks cutover, whatever the reason. */

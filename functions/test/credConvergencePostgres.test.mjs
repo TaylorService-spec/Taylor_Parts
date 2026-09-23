@@ -22,12 +22,13 @@ const { bootstrapTenant } = require("../lib/adminPolicy/tenantBootstrap.js");
 const {
   measureCredEquivalence, CRED_POLICY_DECISION_CELLS, SEMANTIC_REPLACEMENTS, COMPARABLE_CRED_KINDS,
   SECURITY_POLICY_BLOCKERS, SCOPE_MODEL_BLOCKERS, DATA_AUTHORITY_MIGRATION_BLOCKERS,
-  WITHHELD_PENDING_ELIGIBILITY_EVIDENCE,
+  WITHHELD_PENDING_ELIGIBILITY_EVIDENCE, WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER,
 } = require("../lib/adminPolicy/migration/credEquivalence.js");
 
 const MIGRATION = "1761523200000_cred-capability-vocabulary-and-grant-preservation";
 const MIGRATION_2 = "1761609600000_finance-administration-reorder-vocabulary";
 const MIGRATION_3 = "1761696000000_parts-associate-eligibility-and-reorder-queue-scope.sql";
+const MIGRATION_4 = "1761782400000_manufacturer-catalog-authority.sql";
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
   const c = new pg.Client({ connectionString: url });
@@ -73,7 +74,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   // REVERSE the preservation migration, seed, then re-apply it. The seed is what writes the stored
   // CRED rows, and it runs after migrations in every real environment -- so applying the migration
   // to an empty table would prove nothing about preservation.
-  migrate(dbUrl, ["down", "3"]);
+  migrate(dbUrl, ["down", "4"]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);
   const { tenant } = await bootstrapTenant(repo, { key: "taylor-cred", name: "Taylor", actorUid: "operator" });
@@ -81,7 +82,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const before = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
   const credRows = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_object_permissions")).rows[0].n;
   assert.ok(credRows > 0, "the seed wrote stored CRED to preserve");
-  migrate(dbUrl, ["up", "3"]);
+  migrate(dbUrl, ["up", "4"]);
   const after = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
 
   await t.test("the vocabulary gains exactly the eight measured CRED reads", async () => {
@@ -98,7 +99,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 73, "49 + 8 + 13 + 3");
+    assert.equal(total, 74, "49 + 8 + 13 + 3 + 1");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {
@@ -266,8 +267,14 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.deepEqual(Object.keys(SCOPE_MODEL_BLOCKERS), [], "the scope model can represent both rulings");
     assert.deepEqual(Object.keys(WITHHELD_PENDING_ELIGIBILITY_EVIDENCE).sort(),
       ["purchaseOrder.C", "purchaseOrder.R"], "what remains is an evidence gap, not a model gap");
+    // manufacturer.R left this list when its target authority and tooling were built. The model is
+    // no longer the blocker; the DATA is, and that is reported separately rather than here.
     assert.deepEqual(Object.keys(DATA_AUTHORITY_MIGRATION_BLOCKERS).sort(),
-      ["dispatchSchedule.R", "manufacturer.R", "notifications.R"]);
+      ["dispatchSchedule.R", "notifications.R"]);
+    // The workforce gap is kept as its own named blocker, so closing the scope model is never
+    // mistaken for closing it.
+    assert.equal(WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER.legacyHolders, 5);
+    assert.equal(WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER.targetAssignments, 0);
     for (const [cell, why] of Object.entries(CRED_POLICY_DECISION_CELLS)) {
       assert.ok(why.length > 20, `${cell} needs a real reason, not a label`);
     }

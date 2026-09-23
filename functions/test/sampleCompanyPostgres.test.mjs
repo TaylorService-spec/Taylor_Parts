@@ -156,8 +156,12 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // three capability rows, the canonical unscoped Reorder read among them. It also widens two CHECK
 // constraints in eos_workforce and replaces an unconditional warehouse foreign key with a per-type
 // trigger -- none of which the Sample Company seed writes to, so every count below is unchanged.
-const PINNED_LAST_MIGRATION = "1761696000000_parts-associate-eligibility-and-reorder-queue-scope";
-const PINNED_MIGRATION_COUNT = 44;
+//
+// Moved deliberately again for 1761782400000 (Manufacturer Catalog authority): one table in eos_ops,
+// one capability split out of inventory.catalog.read, and its nineteen grants. The Sample Company
+// seed writes no manufacturer, so only the vocabulary count moves, 73 -> 74.
+const PINNED_LAST_MIGRATION = "1761782400000_manufacturer-catalog-authority";
+const PINNED_MIGRATION_COUNT = 45;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
