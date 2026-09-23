@@ -89,3 +89,70 @@ export function requireAdministrationAuthority(
 ): void {
   if (!hasAdministrationAuthority(heldRoleKeys, action)) throw new AdministrationDeniedError(action);
 }
+
+// ════════════════════ CAPABILITY-GOVERNED WORKFLOW ADMINISTRATION ════════════════════
+//
+// Owner ruling: Workflow Administration becomes capability-governed, and the invariant above stops
+// being the normal authorization decision. It does NOT stop existing -- it becomes an ANTI-LOCKOUT
+// SAFETY GUARD, which is a different job:
+//
+//     AUTHORIZATION     may this principal do this?          the canonical Object capability
+//     SAFETY INVARIANT  may this change leave the platform   refuses a mutation regardless of
+//                       unadministrable?                     how well authorized it was
+//
+// THE INVARIANT NEVER GRANTS. Holding `admin` is not a substitute for the capability, which is the
+// whole point of the ruling: if the Role key could still authorize, the capability model would be
+// decorative and the two authorities would drift exactly as objectPermissionMap.js drifted from
+// eos_policy.capabilities.
+//
+// ORDER IS DELIBERATE: capability first, safety second. An unauthorized caller learns only that it
+// is unauthorized -- telling it "that would remove the last administrator" reports the shape of the
+// tenant's access configuration to someone with no authority over it.
+//
+// NOT WIRED IN THIS SLICE. This is the metadata/vocabulary slice; `requireAdministrationAuthority`
+// above remains the live decision, so no runtime authorization changes here. The keys below are
+// registered in eos_policy.capabilities by migration 1761350400000 and are granted to NO Role yet.
+
+export type WorkflowAdministrationAction =
+  | "create" | "read" | "edit" | "version" | "publish" | "bindRole";
+
+/** The canonical capability for each workflow configuration action that EXISTS today. */
+export const WORKFLOW_DEFINITION_CAPABILITY_BY_ACTION:
+  Readonly<Record<WorkflowAdministrationAction, string>> = Object.freeze({
+    create: "workflowDefinition.create",
+    read: "workflowDefinition.read",
+    edit: "workflowDefinition.edit",
+    version: "workflowDefinition.version",
+    publish: "workflowDefinition.publish",
+    bindRole: "workflowDefinition.bindRole",
+  });
+
+export type WorkflowAdministrationDecision =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly refusal: "CAPABILITY_MISSING" }
+  | { readonly allowed: false; readonly refusal: "WOULD_REMOVE_LAST_ADMINISTRATION_PATH" };
+
+export interface WorkflowAdministrationAttempt {
+  /** Effective capability keys, resolved through role_capabilities. NEVER Role keys. */
+  readonly capabilities: ReadonlySet<string> | null | undefined;
+  readonly action: WorkflowAdministrationAction;
+  /**
+   * Server-derived: would applying this mutation leave no principal able to administer Workflow?
+   * A caller cannot supply it as a claim -- it is computed from the stored policy.
+   */
+  readonly wouldRemoveLastAdministrationPath: boolean;
+}
+
+export function decideWorkflowAdministration(
+  attempt: WorkflowAdministrationAttempt,
+): WorkflowAdministrationDecision {
+  const required = WORKFLOW_DEFINITION_CAPABILITY_BY_ACTION[attempt.action];
+  const held = attempt.capabilities;
+  if (!(held instanceof Set) || !held.has(required)) {
+    return Object.freeze({ allowed: false, refusal: "CAPABILITY_MISSING" as const });
+  }
+  if (attempt.wouldRemoveLastAdministrationPath) {
+    return Object.freeze({ allowed: false, refusal: "WOULD_REMOVE_LAST_ADMINISTRATION_PATH" as const });
+  }
+  return Object.freeze({ allowed: true as const });
+}

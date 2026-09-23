@@ -143,7 +143,11 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(first.seed.alreadySeeded, false, "and seeds it");
 
   // The measured model, arriving in a real database.
-  assert.equal(first.seed.created.objects, 36, "36 canonical objects");
+  // 36 -> 41 deliberately: the canonical Object <- action mapping (migration 1761350400000) required six
+  // Objects the catalog never registered -- principal, cycleCount, dataImport, workflowDefinition and
+  // workflowInstance -- because a capability may not point at an Object that does not
+  // exist. None carries a field, so the field counts below are unchanged.
+  assert.equal(first.seed.created.objects, 41, "41 canonical objects");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
@@ -166,7 +170,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(second.seed.created.fields, 0);
 
   const objects = await r.listObjects(first.tenant.id);
-  assert.equal(objects.length, 36, "still 36 after the rerun, not 72");
+  assert.equal(objects.length, 41, "still 41 after the rerun, not 82");
 });
 
 test("the seeded configuration version is recorded on the tenant", { skip: SKIP }, async () => {
@@ -1042,7 +1046,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
 
     // Configuration survives.
     const objects = await restarted.listObjects(tenant.id);
-    assert.equal(objects.length, 36);
+    assert.equal(objects.length, 41);
 
     const read = await executeAdminOperation({ repo: restarted }, asAdmin("readObjectWithFields", {
       objectKey: "account",

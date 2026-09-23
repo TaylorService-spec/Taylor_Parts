@@ -536,7 +536,8 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
-          "functions/src/access/parityFixtures.ts"
+          "functions/src/access/parityFixtures.ts",
+          "functions/src/eosOps/workOrderCreateCommand.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/App.jsx",
@@ -547,7 +548,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/modules/jobs/Jobs.jsx"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 7,
         "evidence": "SERVER_REFERENCED"
       },
@@ -569,7 +570,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
-          "functions/src/assistant/assistantStarters.ts"
+          "functions/src/assistant/assistantStarters.ts",
+          "functions/src/eosOps/workOrderLifecycle.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -578,7 +580,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/parityFixtures.ts"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },
@@ -675,6 +677,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/eosOps/workOrderPartsPlanAuthority.ts",
           "functions/src/workOrderPartsPlan/setWorkOrderPartsPlan.ts"
         ],
         "clientReferences": [
@@ -682,7 +685,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/workOrderPartsPlanCapabilityAccess.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
@@ -1048,6 +1051,7 @@
         ],
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
+          "functions/src/eosOps/serviceFromSalesOrderBoundary.ts",
           "functions/src/salesOrder/createServiceForSalesOrder.ts"
         ],
         "clientReferences": [
@@ -1055,7 +1059,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/salesOrderCapabilityAccess.js"
         ],
-        "serverReferenceCount": 2,
+        "serverReferenceCount": 3,
         "clientReferenceCount": 3,
         "evidence": "EXPORTED"
       },

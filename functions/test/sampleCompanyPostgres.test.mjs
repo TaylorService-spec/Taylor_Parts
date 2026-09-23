@@ -127,8 +127,13 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1760097600000 (Operational Scope authority, step B): an EMPTY warehouse-scope history
 // plus one capability vocabulary row, granted to no Role. The table is not in SEEDED_RELATIONS and the Sample Company
 // seed writes no scope, so every row count asserted here is unchanged.
-const PINNED_LAST_MIGRATION = "1761264000000_work-order-native-capability-vocabulary";
-const PINNED_MIGRATION_COUNT = 39;
+//
+// Moved deliberately again for 1761350400000 (canonical Object <- action capability metadata): four columns on
+// `capabilities`, an explicit backfill of all 43 existing rows, and six workflowDefinition vocabulary rows granted to
+// no Role. No role_capabilities row is written, so every grant count asserted here is unchanged; the capability
+// vocabulary itself moves 43 -> 49 and is reconciled in the manifest below.
+const PINNED_LAST_MIGRATION = "1761350400000_canonical-capability-object-action-metadata";
+const PINNED_MIGRATION_COUNT = 40;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

@@ -82,9 +82,20 @@ test("(45) no Commercial capability is activated", () => {
     assert.match(catalog.slice(at, catalog.indexOf("}", at)), /active:\s*false/, `${id} became active`);
   }
   // C4 registers the VOCABULARY (migration 023) and nothing else may name a Commercial capability in SQL; no migration grants one.
+  // REGISTERED OR GRANTED -- not merely NAMED. Migration 1761350400000's canonical Object <- action
+  // backfill names every capability by its own key, which is the opposite of prefix inference and
+  // must not read as a registration. The scan therefore looks only inside statements that INSERT a
+  // capability or touch a grant table.
+  const registersOrGrants = (sql) => sql
+    .replace(/^\s*--.*$/gm, "")
+    .split(";")
+    .filter((stmt) => /INSERT\s+INTO\s+capabilities|role_capabilities/i.test(stmt))
+    .some((stmt) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(stmt));
   const naming = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
-    .filter((f) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, "")));
+    .filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")));
   assert.deepEqual(naming, ["1759536000000_commercial-capability-vocabulary.sql"], "a Commercial capability was registered or granted outside migration 023");
+  assert.ok(registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", "1759536000000_commercial-capability-vocabulary.sql"), "utf8")),
+    "the scan stopped recognising migration 023 and would now pass for the wrong reason");
   assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "migrations", naming[0]), "utf8").split("-- Down Migration")[0].replace(/^\s*--.*$/gm, ""), /role_capabilities/, "migration 023 grants a Commercial capability");
 });
 

@@ -79,10 +79,17 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   assert.equal(ledger.excluded.fields, 0);
 
   // 36 objects = 28 entity-backed + 8 the CRUD matrix names with no EntityDefinition behind them.
-  assert.equal(ledger.seeded.objects, 36);
+  // 36 -> 41: five Objects registered because a PostgreSQL capability names them (principal,
+  // cycleCount, dataImport, workflowDefinition, workflowInstance). They are counted in their own
+  // bucket, not folded into the matrix-only one, so this identity still distinguishes three
+  // different reasons an Object exists. `stockLocation` is deliberately NOT among them -- the Owner
+  // retired stock_locations as an operational authority on 2026-09-12 and this slice does not
+  // resurrect it; the two capabilities that would have named it map to inventoryTransaction.
+  assert.equal(ledger.seeded.objects, 41);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 8);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 5);
   assert.equal(
-    ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity,
+    ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,
     "objects are entity-backed ones plus matrix-only ones, with no third category",
   );

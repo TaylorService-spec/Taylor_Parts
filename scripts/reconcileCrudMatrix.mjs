@@ -123,7 +123,7 @@ const OBJECTS = [
   { object: "Invoices / AR", domain: "Finance", C: ["finance.invoice.issue"], R: ["finance.read"], E: ["finance.adjustment.record"] },
   { object: "Payments", domain: "Finance", C: ["finance.payment.apply"], R: ["finance.read"], E: ["finance.refund.record"] },
   { object: "Notifications", domain: "Platform", missing: true },
-  { object: "Users", domain: "Administration", C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"] },
+  { object: "Employees", domain: "Administration", C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"] },
   { object: "Roles / Permissions", domain: "Administration", C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"] },
   { object: "Audit Log", domain: "Administration", C: [], R: ["audit.event.read"], E: [] },
 ];

@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 36,
+    "objects": 41,
     "objectsWithFields": 28,
     "fields": 389
   },
@@ -4060,7 +4060,7 @@
     },
     {
       "key": "employee",
-      "label": "Users",
+      "label": "Employees",
       "labelPlural": "Employees",
       "description": "The authoritative workforce identity — separate from users/{uid}'s application-access identity. Linked to a User by an Admin-SDK-only, two-way pointer pair.",
       "domain": "Administration",
@@ -6408,6 +6408,86 @@
           "referenceTo": null
         }
       ]
+    },
+    {
+      "key": "principal",
+      "label": "Principal",
+      "labelPlural": "Principals",
+      "description": "The security actor: the authenticated identity that holds Security Roles and, through them, capabilities. NEVER the Employee -- an Employee is a workforce record and may exist with no Principal at all. Linked by eos_policy.employee_principal_links.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "cycleCount",
+      "label": "Cycle Count",
+      "labelPlural": "Cycle Counts",
+      "description": "A counting sheet over stock at a location, from creation through submit, reconcile and close. Governed by eos_ops.cycle_count_sheets.",
+      "domain": "Inventory",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "dataImport",
+      "label": "Data Import",
+      "labelPlural": "Data Imports",
+      "description": "An administrative import batch that turns an approved preview into governed EOS records. NONPRODUCTION-ONLY tooling; its retirement is tracked separately and this registration does not endorse a production path.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "workflowDefinition",
+      "label": "Workflow",
+      "labelPlural": "Workflows",
+      "description": "A governed workflow and its versions, steps, actions and Role bindings. Steps, actions and bindings are version-scoped sub-entities, not Objects of their own.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "workflowInstance",
+      "label": "Workflow Instance",
+      "labelPlural": "Workflow Instances",
+      "description": "One running workflow over one business record, pinned to the version it began under. Registered as a governed Object; it has NO capability yet, because execution security must be designed together with target-Object enforcement rather than back-filled to populate a matrix.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
     }
   ]
 }

@@ -110,9 +110,10 @@ export const OBJECT_CAPABILITY_MAP = Object.freeze({
   "Notifications": { R: [], C: [], E: [], D: [] },
   // SECURITY ADMINISTRATION IS NOT DERIVED FROM THE MATRIX. Owner decision 2026-08-21: General
   // Manager is the highest BUSINESS role and is not security administration. The workbook grants GM
-  // CRED on Users and Roles/Permissions; that entry must not be interpreted literally, because doing
-  // so creates a non-privileged role able to grant itself anything. Owner/Admin retain it.
-  "Users": { R: [], C: [], E: [], D: [] },
+  // CRED on Employees and Roles/Permissions; that entry must not be interpreted literally, because
+  // doing so creates a non-privileged role able to grant itself anything. Owner/Admin retain it.
+  // Renamed from "Users": this row is the WORKFORCE record. The security actor is the Principal.
+  "Employees": { R: [], C: [], E: [], D: [] },
   "Roles / Permissions": { R: [], C: [], E: [], D: [] },
   "Audit Log": { R: ["audit.event.read"], C: [], E: [], D: [] },
 });

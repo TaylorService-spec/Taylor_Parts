@@ -56,7 +56,17 @@ const EXCLUSION_REASONS = Object.freeze([
   "NON_GOVERNABLE_SYSTEM_FIELD",
 ]);
 
-const objects = GOVERNABLE_OBJECTS.map((object) => ({
+// OBJECTS THE CAPABILITY AUTHORITY NAMES, declared in the backend rather than in the frontend
+// registry. eos_policy.capabilities.object_key is NOT NULL (migration 1761350400000), so every
+// capability must point at an Object the catalog defines -- and six of them pointed at Objects no
+// registry had: principal, cycleCount, stockLocation, dataImport, workflowDefinition,
+// workflowInstance. They are declared beside the seed, NOT in policyObjectRegistry.js, because a
+// frontend catalog may not author the canonical Object <- action mapping.
+const CAPABILITY_GOVERNED_OBJECTS = JSON.parse(
+  readFileSync(join(SEED_DIR, "capabilityGovernedObjects.json"), "utf8"),
+).objects;
+
+const objects = [...GOVERNABLE_OBJECTS, ...CAPABILITY_GOVERNED_OBJECTS].map((object) => ({
   key: object.key,
   label: object.label,
   labelPlural: object.labelPlural,
@@ -153,6 +163,11 @@ const ledger = {
     // EntityDefinition, so no field list. Counted separately so "objects" and "entities" are never
     // conflated.
     objectsWithoutAnEntity: objects.filter((o) => o.source === "MATRIX_ONLY").length,
+    // Objects that exist because a PostgreSQL capability NAMES them: eos_policy.capabilities.
+    // object_key is NOT NULL, so a capability cannot point at an Object the catalog does not
+    // define. A THIRD bucket rather than a bigger second one, so the reconciliation identity
+    // (entities + matrix-only + capability-governed = objects) still says something.
+    objectsFromCapabilityAuthority: objects.filter((o) => o.source === "CAPABILITY_AUTHORITY").length,
     entities: seededEntities.length,
     fields: allFields.filter((f) => f.status === "SEEDED").length,
   },

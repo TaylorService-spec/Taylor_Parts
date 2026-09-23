@@ -110,8 +110,22 @@ test("(F4) migration 024 registers exactly that vocabulary, grants nothing, and 
   assert.deepEqual([...up.matchAll(/'([a-z]+\.[a-z]+\.[a-z]+)'/gi)].map((m) => m[1]).sort(), CRM_CAPABILITY_IDS);
   assert.doesNotMatch(up, /role_capabilities|role_object_permissions|user_role_assignments/, "migration 024 grants a capability");
   assert.doesNotMatch(up, /opportunity|salesAgreement|salesOrder|eos_commercial|eos_crm/i, "migration 024 reaches beyond CRM vocabulary");
-  const naming = files.filter((f) => /'customer\.(record|governedField)\.[a-z]+'/.test(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, "")));
+  // REGISTERED OR GRANTED -- not merely NAMED. Migration 1761350400000 gives every capability its
+  // canonical object_key/action_key so Administration can project security under the Object, and it
+  // names `customer.record.*` in that UPDATE. That is neither a registration nor a grant, and a
+  // guard that fired on it would force the backfill to identify capabilities by something other
+  // than their own key, which is exactly the prefix-inference the Owner refused. So the scan looks
+  // only inside statements that INSERT a capability or touch a grant table.
+  const registersOrGrants = (sql) => sql
+    .replace(/^\s*--.*$/gm, "")
+    .split(";")
+    .filter((stmt) => /INSERT\s+INTO\s+capabilities|role_capabilities/i.test(stmt))
+    .some((stmt) => /'customer\.(record|governedField)\.[a-z]+'/i.test(stmt));
+  const naming = files.filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")));
   assert.deepEqual(naming, [MIGRATION_024], "a Customer capability was registered or granted outside migration 024");
+  // Non-vacuity: the scan must still find migration 024 by this stricter rule, or it proves nothing.
+  assert.ok(registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_024), "utf8")),
+    "the scan stopped recognising migration 024 and would now pass for the wrong reason");
 });
 
 test("(F5) no generic CRUD, no delete, no legacy or Job Role authority source", () => {

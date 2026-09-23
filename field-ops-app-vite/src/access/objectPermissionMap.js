@@ -96,7 +96,10 @@ export const OBJECT_PERMISSIONS = Object.freeze([
     C: ["finance.payment.apply"], R: ["finance.read"], E: ["finance.refund.record"], D: [] },
   { object: "Notifications", domain: "Platform",
     C: [], R: ["reorder.request.read.queue"], E: [], D: [] },
-  { object: "Users", domain: "Administration",
+  // "Employees", not "Users". This row governs the WORKFORCE record (entity key `employee`); the
+  // security actor is the Principal, which is its own Object. Calling the workforce record "Users"
+  // is the Principal/Employee conflation the platform removes everywhere else.
+  { object: "Employees", domain: "Administration",
     C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
   { object: "Roles / Permissions", domain: "Administration",
     C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"], D: [] },
