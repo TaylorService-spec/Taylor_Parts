@@ -107,16 +107,6 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     blockedReason: "the Kind is still carried by technician's seven Reorder grants; removing it first would fail them closed",
   }),
   entry({
-    path: "functions/src/adminPolicy/migration/credEquivalence.ts",
-    consumer: "names the Kind to explain why three Reorder keys cannot be registered as flat capabilities",
-    // MIGRATION_EVIDENCE, so nothing replaces it: this file does not CONSUME the Kind as authority,
-    // it names it to record why three Reorder keys are unregistrable. The entry retires when the
-    // Kind does.
-    terms: ["operationalRoleActive"], classification: "MIGRATION_EVIDENCE",
-    replacementAuthority: null, replacementPr: null, status: "BLOCKED",
-    blockedReason: "the CRED equivalence report must name the exact Kind that blocks reorder.purchaseOrder.read/.create and reorder.request.read.own; a vaguer word would hide which authority has to arrive first",
-  }),
-  entry({
     path: "field-ops-app-vite/src/types/access.ts", consumer: "the client mirror of the ConditionKind union",
     terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
     replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",
@@ -141,14 +131,19 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     // The target CODE is undetermined, so this no longer claims WAREHOUSE_OPERATIONS. Measured in
     // the contextual-authorization slice: the evaluator refuses PARTS_ASSOCIATE with
     // WORK_ELIGIBILITY_UNMAPPED rather than guessing, and that refusal is what blocks the Kind.
-    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY}`, replacementPr: null, status: "BLOCKED",
-    blockedReason: "operationalRoleActive here is a WORK ELIGIBILITY gate on the qualification PARTS_ASSOCIATE, which is NOT one of the two deterministic migration candidates the Owner ruled (TECHNICIAN -> SERVICE_TECHNICIAN, WAREHOUSE_ASSOCIATE -> WAREHOUSE_OPERATIONS). Mapping it onto WAREHOUSE_OPERATIONS would invent that ruling and hand technicians an eligibility nobody granted, so the target code is undetermined and the Kind cannot retire yet",
+    // TARGET NOW DETERMINED, by Owner ruling: PARTS_ASSOCIATE is its own governed Work Eligibility
+    // code, registered by migration 1761696000000. Still BLOCKED, and the reason has MOVED: the
+    // vocabulary exists, the ASSIGNMENTS do not. The five legacy holders live in the Firestore
+    // employees collection and none is a governed Employee, so there is nothing to migrate until
+    // the real employee migration lands.
+    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (PARTS_OPERATIONS)`, replacementPr: null, status: "BLOCKED",
+    blockedReason: "the PARTS_OPERATIONS Work Eligibility code now exists (not the legacy label: the vocabulary refuses to reproduce a legacy operationalRole value), but no governed Employee holds it: the five legacy holders (cw-emp-025..028, sbx-partsassoc) are Firestore employees and eos_workforce.employees is a disjoint synthetic population, so the eligibility assignments migrate with the real employee migration, not before",
   }),
   entry({
     path: "field-ops-app-vite/src/access/compatibilityRoles.ts", consumer: "the client mirror of those grants",
     terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY}`, replacementPr: null, status: "BLOCKED",
-    blockedReason: "mirrors functions/src/access/compatibilityRoles.ts and is blocked by the same undetermined qualification code",
+    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (PARTS_OPERATIONS)`, replacementPr: null, status: "BLOCKED",
+    blockedReason: "mirrors functions/src/access/compatibilityRoles.ts and is blocked by the same missing eligibility assignments",
   }),
   entry({
     path: "functions/src/access/operationalRoleContext.ts",

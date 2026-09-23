@@ -166,17 +166,17 @@ test("scope is not stored on either grant table -- structurally, not by conventi
     assert.equal(results[0].allowed, true);
   });
 
-  await t.test("an unmappable legacy qualification fails CLOSED and says which", async () => {
-    // PARTS_ASSOCIATE gates technician's seven Reorder grants and has no governed code. This must
-    // read as "the platform cannot decide", not as "you are not eligible".
+  await t.test("an unmappable qualification still fails CLOSED and says which", async () => {
+    // PARTS_ASSOCIATE used to be this case and is now governed vocabulary. The GUARD remains, for
+    // the next legacy operational role somebody tries to treat as an eligibility: an unknown code
+    // must read as "the platform cannot decide", never as "you are not eligible".
     const d = await ctx.authorizeObjectAction(reader, {
       actor: actor("prn-tech", "reorder.purchaseOrder.read"), capabilityKey: "reorder.purchaseOrder.read",
-      predicates: [{ kind: "WORK_ELIGIBILITY", qualificationCode: "PARTS_ASSOCIATE" }],
+      predicates: [{ kind: "WORK_ELIGIBILITY", qualificationCode: "SOME_UNMIGRATED_LEGACY_ROLE" }],
     });
     assert.equal(d.allowed, false);
     assert.equal(d.reason, "WORK_ELIGIBILITY_UNMAPPED");
-    assert.equal(d.detail, "PARTS_ASSOCIATE");
-    assert.equal(ctx.GOVERNED_QUALIFICATION_CODES.has("PARTS_ASSOCIATE"), false);
+    assert.equal(d.detail, "SOME_UNMIGRATED_LEGACY_ROLE");
   });
 
   await t.test("a governed qualification resolves through the workforce authority", async () => {
@@ -213,6 +213,109 @@ test("scope is not stored on either grant table -- structurally, not by conventi
     });
     assert.equal(theirs.reason, "NOT_ASSIGNED",
       "and still cannot see a colleague's request in the same warehouse");
+  });
+
+
+  await t.test("PARTS_ASSOCIATE is a governed qualification now, not UNMAPPED", async () => {
+    assert.equal(ctx.GOVERNED_QUALIFICATION_CODES.has("PARTS_OPERATIONS"), true);
+    const d = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      predicates: [{ kind: "WORK_ELIGIBILITY", qualificationCode: "PARTS_OPERATIONS" }],
+    });
+    assert.notEqual(d.reason, "WORK_ELIGIBILITY_UNMAPPED", "the vocabulary exists");
+    assert.equal(d.reason, "WORK_ELIGIBILITY_MISSING", "and this Employee simply does not hold it");
+    await q(`INSERT INTO eos_workforce.employee_work_eligibility
+               (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+             VALUES ('we-pa',$1,'emp-tech','PARTS_OPERATIONS',now(),'fixture')`, [T]);
+    const ok = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      predicates: [{ kind: "WORK_ELIGIBILITY", qualificationCode: "PARTS_OPERATIONS" }],
+    });
+    assert.equal(ok.allowed, true);
+  });
+
+  await t.test("REORDER_QUEUE scope is company-keyed, and the trigger refuses an unknown target", async () => {
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+             VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture') ON CONFLICT DO NOTHING`, [T]);
+    await q(`INSERT INTO eos_policy.tenant_operating_company_keys
+               (tenant_id,operating_company_id,operating_company_key,status,provenance,source,established_by,updated_by)
+             VALUES ($1,'taylor','taylor','ACTIVE','MIGRATED','fixture','fixture','fixture') ON CONFLICT DO NOTHING`, [T]);
+    // The unconditional warehouse foreign key is gone, but the guarantee is not: a scope row still
+    // cannot name a target that does not exist, now checked per type.
+    await assert.rejects(q(`INSERT INTO eos_workforce.employee_operational_scopes
+        (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by)
+      VALUES ('os-bad',$1,'emp-tech','REORDER_QUEUE','no-such-company',now(),'fixture')`, [T]),
+    /operating company key/);
+    await assert.rejects(q(`INSERT INTO eos_workforce.employee_operational_scopes
+        (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by)
+      VALUES ('os-bad2',$1,'emp-tech','WAREHOUSE','no-such-warehouse',now(),'fixture')`, [T]),
+    /warehouse/);
+  });
+
+  const OWN_PATH = [{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }];
+  const QUEUE_PATH = [{ kind: "OPERATIONAL_SCOPE", scopeType: "REORDER_QUEUE", scopeId: "taylor" }];
+
+  await t.test("capability WITHOUT queue scope cannot see the queue", async () => {
+    const d = await ctx.authorizeAnyPath(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      paths: [OWN_PATH, QUEUE_PATH], record: { recordKind: "reorderRequest", recordId: "ro-theirs" },
+    });
+    assert.equal(d.allowed, false);
+    assert.equal(d.reason, "NOT_ASSIGNED", "the narrowest path's reason, and it is the actionable one");
+  });
+
+  await t.test("queue scope WITHOUT the capability grants nothing", async () => {
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes
+               (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by)
+             VALUES ('os-q-other',$1,'emp-other','REORDER_QUEUE','taylor',now(),'fixture')`, [T]);
+    const d = await ctx.authorizeAnyPath(reader, {
+      actor: actor("prn-other"), capabilityKey: "reorder.request.read",
+      paths: [OWN_PATH, QUEUE_PATH], record: { recordKind: "reorderRequest", recordId: "ro-mine" },
+    });
+    assert.equal(d.reason, "CAPABILITY_MISSING", "both are required; neither implies the other");
+  });
+
+  await t.test("queue scope PLUS capability reaches a record the caller is not assigned to", async () => {
+    const d = await ctx.authorizeAnyPath(reader, {
+      actor: actor("prn-other", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      paths: [OWN_PATH, QUEUE_PATH], record: { recordKind: "reorderRequest", recordId: "ro-mine" },
+    });
+    assert.equal(d.allowed, true, "the QUEUE path does not need an assignment");
+  });
+
+  await t.test("TECHNICIAN: own records only, and no queue by any route", async () => {
+    // Assigned -> allowed.
+    const mine = await ctx.authorizeAnyPath(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      paths: [OWN_PATH, QUEUE_PATH], record: { recordKind: "reorderRequest", recordId: "ro-mine" },
+    });
+    assert.equal(mine.allowed, true);
+    // Not assigned -> refused, even though this Employee holds PARTS_ASSOCIATE eligibility AND an
+    // unrelated WAREHOUSE operational scope. Neither is queue scope.
+    const theirs = await ctx.authorizeAnyPath(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      paths: [OWN_PATH, QUEUE_PATH], record: { recordKind: "reorderRequest", recordId: "ro-theirs" },
+    });
+    assert.equal(theirs.allowed, false);
+    assert.equal(theirs.reason, "NOT_ASSIGNED");
+    const { rows } = await q(
+      `SELECT scope_type FROM eos_workforce.employee_operational_scopes
+        WHERE tenant_id=$1 AND employee_id='emp-tech' AND effective_to IS NULL`, [T]);
+    assert.deepEqual(rows.map((r) => r.scope_type), ["WAREHOUSE"], "technician has no REORDER_QUEUE scope");
+  });
+
+  await t.test("the two refusals stay distinct", async () => {
+    const notAssigned = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      predicates: OWN_PATH, record: { recordKind: "reorderRequest", recordId: "ro-theirs" },
+    });
+    const outsideScope = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-tech", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      predicates: QUEUE_PATH,
+    });
+    assert.equal(notAssigned.reason, "NOT_ASSIGNED");
+    assert.equal(outsideScope.reason, "OUTSIDE_OPERATIONAL_SCOPE");
+    assert.notEqual(notAssigned.reason, outsideScope.reason, "these must never be merged");
   });
 
   await t.test("WORK ORDER future compatibility: own-assignment is expressible, and distinct", async () => {

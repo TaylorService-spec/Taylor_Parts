@@ -151,8 +151,13 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // governed Role catalog. As with the previous one, the grant half writes NOTHING here -- this
 // fixture migrates a clean database and seeds afterwards, so no Role exists at migration time.
 // Only the vocabulary count moves, 57 -> 70.
-const PINNED_LAST_MIGRATION = "1761609600000_finance-administration-reorder-vocabulary";
-const PINNED_MIGRATION_COUNT = 43;
+//
+// Moved deliberately again for 1761696000000 (PARTS_ASSOCIATE eligibility + REORDER_QUEUE scope):
+// three capability rows, the canonical unscoped Reorder read among them. It also widens two CHECK
+// constraints in eos_workforce and replaces an unconditional warehouse foreign key with a per-type
+// trigger -- none of which the Sample Company seed writes to, so every count below is unchanged.
+const PINNED_LAST_MIGRATION = "1761696000000_parts-associate-eligibility-and-reorder-queue-scope";
+const PINNED_MIGRATION_COUNT = 44;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

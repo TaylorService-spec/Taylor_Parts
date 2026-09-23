@@ -89,10 +89,22 @@ export const SECURITY_POLICY_BLOCKERS: Readonly<Record<string, string>> = Object
  * REORDER_READ_SCOPE_MODEL_MISSING is exactly this: EOS cannot yet represent OWN vs QUEUE on a
  * capability grant.
  */
-export const SCOPE_MODEL_BLOCKERS: Readonly<Record<string, string>> = Object.freeze({
-  "purchaseOrder.R": "reorder.purchaseOrder.read is conditioned by operationalRoleActive -- registering it flat drops the eligibility gate",
-  "purchaseOrder.C": "reorder.purchaseOrder.create is conditioned by operationalRoleActive",
-  "reorderRequest.R": "technician holds ONLY reorder.request.read.own, which is conditioned; the queue read is registered, the own-scoped read cannot be",
+export const SCOPE_MODEL_BLOCKERS: Readonly<Record<string, string>> = Object.freeze({});
+
+/**
+ * Cells where the capability EXISTS and the scope model can now carry the gate, but the grant is
+ * deliberately withheld because the evidence that would justify it does not exist yet.
+ *
+ * technician's Purchase Order grants are conditioned on PARTS_ASSOCIATE. The qualification is now
+ * governed vocabulary, but NO governed Employee holds it -- the five legacy holders live in the
+ * Firestore employees collection and none of them is in eos_workforce.employees. Granting the plain
+ * capability would drop the gate; granting it with an action-level eligibility predicate would
+ * impose that gate on the eleven Roles that hold PO read UNCONDITIONED. Withholding reproduces
+ * today's effective access exactly, and the grant follows the real employee migration.
+ */
+export const WITHHELD_PENDING_ELIGIBILITY_EVIDENCE: Readonly<Record<string, string>> = Object.freeze({
+  "purchaseOrder.R": "technician's grant is conditioned on PARTS_OPERATIONS eligibility (the governed code for that legacy gate); no governed Employee holds it yet",
+  "purchaseOrder.C": "technician's grant is conditioned on PARTS_OPERATIONS eligibility (the governed code for that legacy gate); no governed Employee holds it yet",
 });
 
 /**
@@ -110,6 +122,7 @@ export const DATA_AUTHORITY_MIGRATION_BLOCKERS: Readonly<Record<string, string>>
 /** Every cell that blocks cutover, whatever the reason. */
 export const CRED_POLICY_DECISION_CELLS: Readonly<Record<string, string>> = Object.freeze({
   ...SECURITY_POLICY_BLOCKERS, ...SCOPE_MODEL_BLOCKERS, ...DATA_AUTHORITY_MIGRATION_BLOCKERS,
+  ...WITHHELD_PENDING_ELIGIBILITY_EVIDENCE,
 });
 
 export type EquivalenceVerdict =

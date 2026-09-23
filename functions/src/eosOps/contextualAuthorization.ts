@@ -44,7 +44,7 @@ export type ContextPredicateKind = (typeof CONTEXT_PREDICATE_KINDS)[number];
 
 export type ContextPredicate =
   | { readonly kind: "WORK_ELIGIBILITY"; readonly qualificationCode: string }
-  | { readonly kind: "OPERATIONAL_SCOPE"; readonly scopeType: string }
+  | { readonly kind: "OPERATIONAL_SCOPE"; readonly scopeType: string; readonly scopeId?: string }
   | { readonly kind: "RECORD_ASSIGNMENT"; readonly relation: "ASSIGNED_EMPLOYEE" };
 
 export type AuthorizationReason =
@@ -77,13 +77,12 @@ const deny = (reason: AuthorizationReason, predicate?: ContextPredicateKind, det
  * The governed Work Eligibility vocabulary, mirrored so an unmappable legacy qualification is
  * REFUSED rather than silently treated as satisfied.
  *
- * `PARTS_ASSOCIATE` is deliberately absent. It is the qualification technician's seven Reorder
- * grants are gated on, and the Owner ruled exactly two legacy operational roles deterministic
- * migration candidates -- TECHNICIAN and WAREHOUSE_ASSOCIATE. Mapping PARTS_ASSOCIATE onto either
- * would invent an Owner decision and hand technicians an eligibility they were never granted.
+ * `PARTS_ASSOCIATE` is now here, registered in its own right by migration 1761696000000 rather than
+ * mapped onto WAREHOUSE_OPERATIONS. Until that ruling it was refused as WORK_ELIGIBILITY_UNMAPPED,
+ * which was the correct answer while the platform genuinely could not decide.
  */
 export const GOVERNED_QUALIFICATION_CODES: ReadonlySet<string> =
-  Object.freeze(new Set(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]));
+  Object.freeze(new Set(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"]));
 
 export interface RecordContext {
   /** Which governed relation table answers "is this mine". */
@@ -106,7 +105,8 @@ export interface ContextualReader {
    */
   linkedEmployeeId(tenantId: string, principalId: string): Promise<string | null>;
   hasWorkEligibility(tenantId: string, employeeId: string, qualificationCode: string): Promise<boolean>;
-  hasOperationalScope(tenantId: string, employeeId: string, scopeType: string): Promise<boolean>;
+  /** `scopeId` narrows to one target (a warehouse, an operating company key); omitted means any. */
+  hasOperationalScope(tenantId: string, employeeId: string, scopeType: string, scopeId?: string): Promise<boolean>;
   isAssignedEmployee(tenantId: string, recordKind: RecordContext["recordKind"], recordId: string, employeeId: string): Promise<boolean>;
 }
 
@@ -162,8 +162,9 @@ export async function authorizeObjectAction(
       case "OPERATIONAL_SCOPE": {
         const id = await requireEmployee();
         if (!id) return deny("EMPLOYEE_LINK_REQUIRED", "OPERATIONAL_SCOPE");
-        if (!(await reader.hasOperationalScope(actor.tenantId, id, predicate.scopeType))) {
-          return deny("OUTSIDE_OPERATIONAL_SCOPE", "OPERATIONAL_SCOPE", predicate.scopeType);
+        if (!(await reader.hasOperationalScope(actor.tenantId, id, predicate.scopeType, predicate.scopeId))) {
+          return deny("OUTSIDE_OPERATIONAL_SCOPE", "OPERATIONAL_SCOPE",
+            predicate.scopeId ? `${predicate.scopeType}:${predicate.scopeId}` : predicate.scopeType);
         }
         break;
       }
@@ -183,6 +184,37 @@ export async function authorizeObjectAction(
     }
   }
   return ALLOW;
+}
+
+/**
+ * ALTERNATIVE CONTEXTUAL PATHS. One action, several legitimate ways to reach a record.
+ *
+ * Reorder Request Read is the case that required this: the SAME capability reaches OWN records
+ * through an active assignment, and the shared QUEUE through an Operational Scope. They are not one
+ * ambiguous scope and neither implies the other -- a technician with an assignment gets their own
+ * work and no queue, and an Employee with queue scope does not need an assignment.
+ *
+ * The capability is still checked FIRST and exactly once; only the context paths are alternatives.
+ * The returned refusal is the FIRST path's, because that path is the narrowest and its reason is
+ * the one a caller can act on: "you are not assigned to this" is useful, "you lack queue scope" is
+ * usually not what a technician wanted to hear.
+ */
+export async function authorizeAnyPath(
+  reader: ContextualReader,
+  input: Omit<AuthorizeInput, "predicates"> & { readonly paths: readonly (readonly ContextPredicate[])[] },
+): Promise<AuthorizationDecision> {
+  const { paths, ...rest } = input;
+  if (paths.length === 0) return authorizeObjectAction(reader, rest);
+  let first: AuthorizationDecision | undefined;
+  for (const predicates of paths) {
+    const decision = await authorizeObjectAction(reader, { ...rest, predicates });
+    if (decision.allowed) return decision;
+    // A missing capability is the same answer on every path and is returned immediately: trying the
+    // others would only ask the database questions on behalf of a caller with no authority at all.
+    if (decision.reason === "CAPABILITY_MISSING") return decision;
+    first ??= decision;
+  }
+  return first as AuthorizationDecision;
 }
 
 // ════════════════════ LIST ENFORCEMENT ════════════════════
@@ -235,11 +267,12 @@ export function postgresContextualReader(db: Pick<PoolClient, "query">): Context
         [tenantId, employeeId, qualificationCode]);
       return rows.length > 0;
     },
-    async hasOperationalScope(tenantId, employeeId, scopeType) {
+    async hasOperationalScope(tenantId, employeeId, scopeType, scopeId) {
       const { rows } = await db.query(
         `SELECT 1 FROM eos_workforce.employee_operational_scopes
-          WHERE tenant_id = $1 AND employee_id = $2 AND scope_type = $3 AND effective_to IS NULL`,
-        [tenantId, employeeId, scopeType]);
+          WHERE tenant_id = $1 AND employee_id = $2 AND scope_type = $3 AND effective_to IS NULL
+            AND ($4::text IS NULL OR scope_id = $4)`,
+        [tenantId, employeeId, scopeType, scopeId ?? null]);
       return rows.length > 0;
     },
     async isAssignedEmployee(tenantId, recordKind, recordId, employeeId) {

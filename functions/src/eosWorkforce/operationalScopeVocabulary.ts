@@ -33,7 +33,12 @@
  * Operating Company is NOT a scope type here: it already has its own governed Employee authority
  * (eos_workforce.employees.operating_company_id), and is not duplicated to make the abstraction look complete.
  */
-export const OPERATIONAL_SCOPE_TYPES = Object.freeze(["WAREHOUSE"] as const);
+// REORDER_QUEUE added by migration 1761696000000, by Owner ruling: whole-queue visibility is
+// WHERE an Employee may work, not what kind of work they may do and not a relationship to one
+// record. Its scope_id is the governed operating company KEY -- a Reorder Request carries
+// operating_company_key, so a queue is always some company's queue. Migration 1760097600000
+// constrained this to WAREHOUSE alone "before a live consumer requires them"; this is that consumer.
+export const OPERATIONAL_SCOPE_TYPES = Object.freeze(["WAREHOUSE", "REORDER_QUEUE"] as const);
 
 export type OperationalScopeType = (typeof OPERATIONAL_SCOPE_TYPES)[number];
 
@@ -51,6 +56,7 @@ export const OPERATIONAL_SCOPE_END_ACTION = "employee.operationalScope.end";
 /** Administration display text. Presentation only -- never a persona or authorization mapping. */
 export const OPERATIONAL_SCOPE_TYPE_LABEL: Readonly<Record<OperationalScopeType, string>> = Object.freeze({
   WAREHOUSE: "Warehouse",
+  REORDER_QUEUE: "Reorder Queue",
 });
 
 export function isOperationalScopeType(value: unknown): value is OperationalScopeType {

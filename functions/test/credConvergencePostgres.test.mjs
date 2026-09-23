@@ -22,10 +22,12 @@ const { bootstrapTenant } = require("../lib/adminPolicy/tenantBootstrap.js");
 const {
   measureCredEquivalence, CRED_POLICY_DECISION_CELLS, SEMANTIC_REPLACEMENTS, COMPARABLE_CRED_KINDS,
   SECURITY_POLICY_BLOCKERS, SCOPE_MODEL_BLOCKERS, DATA_AUTHORITY_MIGRATION_BLOCKERS,
+  WITHHELD_PENDING_ELIGIBILITY_EVIDENCE,
 } = require("../lib/adminPolicy/migration/credEquivalence.js");
 
 const MIGRATION = "1761523200000_cred-capability-vocabulary-and-grant-preservation";
 const MIGRATION_2 = "1761609600000_finance-administration-reorder-vocabulary";
+const MIGRATION_3 = "1761696000000_parts-associate-eligibility-and-reorder-queue-scope.sql";
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
   const c = new pg.Client({ connectionString: url });
@@ -71,7 +73,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   // REVERSE the preservation migration, seed, then re-apply it. The seed is what writes the stored
   // CRED rows, and it runs after migrations in every real environment -- so applying the migration
   // to an empty table would prove nothing about preservation.
-  migrate(dbUrl, ["down", "2"]);
+  migrate(dbUrl, ["down", "3"]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);
   const { tenant } = await bootstrapTenant(repo, { key: "taylor-cred", name: "Taylor", actorUid: "operator" });
@@ -79,7 +81,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const before = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
   const credRows = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_object_permissions")).rows[0].n;
   assert.ok(credRows > 0, "the seed wrote stored CRED to preserve");
-  migrate(dbUrl, ["up", "2"]);
+  migrate(dbUrl, ["up", "3"]);
   const after = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
 
   await t.test("the vocabulary gains exactly the eight measured CRED reads", async () => {
@@ -96,7 +98,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 70, "49 + 8 + 13");
+    assert.equal(total, 73, "49 + 8 + 13 + 3");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {
@@ -180,18 +182,44 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(counts.rows[0].n, counts.rows[1].n, "the split is symmetric");
   });
 
-  await t.test("Reorder: only the unconditioned keys are registered", async () => {
+  await t.test("the superseded scoped key is ungranted and mechanically blocked", async () => {
+    const { rows } = await pool.query(
+      `SELECT c.description, count(rc.role_id)::int AS grants
+         FROM eos_policy.capabilities c
+         LEFT JOIN eos_policy.role_capabilities rc ON rc.capability_id = c.id
+        WHERE c.key = 'reorder.request.read.queue' GROUP BY c.description`);
+    assert.equal(rows.length, 1, "the capability ROW survives as migration evidence");
+    assert.equal(rows[0].grants, 0, "and carries no grant");
+    assert.match(rows[0].description, /SUPERSEDED/);
+    // No later migration may grant it again.
+    const fs = require("node:fs");
+    const dir = resolve(FUNCTIONS_DIR, "migrations");
+    const offenders = fs.readdirSync(dir).filter((f) => f.endsWith(".sql") && f > MIGRATION_3)
+      .filter((f) => {
+        const up = fs.readFileSync(resolve(dir, f), "utf8").split("-- Down Migration")[0].replace(/^\s*--.*$/gm, "");
+        return up.split(";").filter((st) => /INSERT\s+INTO\s+role_capabilities/i.test(st))
+          .some((st) => st.includes("reorder.request.read.queue"));
+      });
+    assert.deepEqual(offenders, [], "the superseded scoped key must never be granted again");
+  });
+
+  await t.test("Reorder: scope left the capability key", async () => {
     const { rows } = await pool.query(
       "SELECT key FROM eos_policy.capabilities WHERE key LIKE 'reorder.%' ORDER BY key");
     const keys = rows.map((r) => r.key);
-    assert.deepEqual(keys, ["reorder.request.assign", "reorder.request.create.manual",
-      "reorder.request.create.system", "reorder.request.read.queue"]);
-    // The conditioned ones are ABSENT on purpose: operationalRoleActive is business eligibility,
-    // never a security condition, and role_capabilities has no scope column to carry it.
-    for (const conditioned of ["reorder.purchaseOrder.read", "reorder.purchaseOrder.create", "reorder.request.read.own"]) {
-      assert.equal(keys.includes(conditioned), false, `${conditioned} would drop its eligibility gate`);
-    }
-    assert.ok(SCOPE_MODEL_BLOCKERS["reorderRequest.R"], "the gap is reported, not silently closed");
+    assert.deepEqual(keys, [
+      "reorder.purchaseOrder.create", "reorder.purchaseOrder.read", "reorder.request.assign",
+      "reorder.request.create.manual", "reorder.request.create.system",
+      "reorder.request.read", "reorder.request.read.queue",
+    ]);
+    // `reorder.request.read.own` is NOT a capability and never becomes one: OWN is a record
+    // relationship, answered by an assignment, not by a second key meaning "the same read, smaller".
+    assert.equal(keys.includes("reorder.request.read.own"), false,
+      "OWN is context, not a capability");
+    // And the canonical read carries no scope in its own metadata.
+    const canonical = await pool.query(
+      `SELECT object_key, action_key, action_kind FROM eos_policy.capabilities WHERE key = 'reorder.request.read'`);
+    assert.deepEqual(canonical.rows[0], { object_key: "reorderRequest", action_key: "read", action_kind: "READ" });
   });
 
   await t.test("Administration trusted writers are named acts, not a giant Edit", async () => {
@@ -233,8 +261,11 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
 
   await t.test("the three blocker categories are separate and named", () => {
     assert.deepEqual(Object.keys(SECURITY_POLICY_BLOCKERS), [], "Finance was ruled; none remain");
-    assert.deepEqual(Object.keys(SCOPE_MODEL_BLOCKERS).sort(),
-      ["purchaseOrder.C", "purchaseOrder.R", "reorderRequest.R"]);
+    // CLOSED by migration 1761696000000: whole-queue visibility became an Operational Scope and
+    // PARTS_ASSOCIATE became a Work Eligibility, so scope stopped needing to live in a capability.
+    assert.deepEqual(Object.keys(SCOPE_MODEL_BLOCKERS), [], "the scope model can represent both rulings");
+    assert.deepEqual(Object.keys(WITHHELD_PENDING_ELIGIBILITY_EVIDENCE).sort(),
+      ["purchaseOrder.C", "purchaseOrder.R"], "what remains is an evidence gap, not a model gap");
     assert.deepEqual(Object.keys(DATA_AUTHORITY_MIGRATION_BLOCKERS).sort(),
       ["dispatchSchedule.R", "manufacturer.R", "notifications.R"]);
     for (const [cell, why] of Object.entries(CRED_POLICY_DECISION_CELLS)) {
