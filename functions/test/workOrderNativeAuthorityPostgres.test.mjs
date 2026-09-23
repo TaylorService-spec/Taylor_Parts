@@ -293,13 +293,89 @@ test("native Work Order authority", { skip: SKIP, concurrency: 1 }, async (t) =>
 
   await t.test("cancellation fails closed because the RELEASE effect is not composed", async () => {
     const wo = await make();
-    await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_CANCEL]) }), {
+    await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_LIFECYCLE_CANCEL]) }), {
       workOrderId: wo.workOrderId, expectedStatus: "CREATED", toStatus: "CANCELLED",
     }), (e) => {
       assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE");
       assert.match(e.message, /releaseParts|strands the stock/);
       return true;
     });
+  });
+
+  // ════════════════════ CAPABILITY VOCABULARY AND THE EFFECT BOUNDARY ════════════════════
+
+  await t.test("the engine asks for the POSTGRESQL vocabulary, and workOrder.cancel is gone", async () => {
+    const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+    for (const rel of ["src/eosOps/workOrderLifecycle.ts", "src/eosOps/workOrderCreateCommand.ts"]) {
+      const src = strip(readFileSync(resolve(FUNCTIONS_DIR, rel), "utf8"));
+      assert.equal(/["'`]workOrder\.cancel["'`]/.test(src), false,
+        `${rel} still references workOrder.cancel, which exists only in the Firestore catalog`);
+    }
+    // The keys the engine actually uses, all of which must exist in eos_policy.capabilities.
+    const used = new Set(lifecycle.TRANSITION_MATRIX.map((r) => r.capability));
+    used.add(create.WORK_ORDER_CREATE);
+    const { rows } = await q(`SELECT key FROM eos_policy.capabilities WHERE key = ANY($1::text[])`, [[...used]]);
+    assert.deepEqual([...rows.map((r) => r.key)].sort(), [...used].sort(),
+      "every capability this engine asks for must exist in the PostgreSQL vocabulary");
+    // And the one the ruling refused must NOT have been added.
+    const absent = await q(`SELECT count(*)::int AS n FROM eos_policy.capabilities WHERE key = 'workOrder.cancel'`);
+    assert.equal(absent.rows[0].n, 0, "workOrder.cancel would duplicate workOrder.lifecycle.cancel");
+  });
+
+  await t.test("each EFFECT-BEARING edge carries its own capability -- the general key is not a superset", () => {
+    const expected = { DISPATCHED: "workOrder.lifecycle.dispatch", COMPLETED: "workOrder.lifecycle.complete", CANCELLED: "workOrder.lifecycle.cancel" };
+    for (const [to, capability] of Object.entries(expected)) {
+      const edges = lifecycle.TRANSITION_MATRIX.filter((r) => r.to === to);
+      assert.ok(edges.length > 0, to);
+      for (const e of edges) {
+        assert.equal(e.capability, capability, `${e.from}->${to} must require ${capability}`);
+        assert.notEqual(e.capability, lifecycle.WORK_ORDER_TRANSITION,
+          `${e.from}->${to} writes an inventory commitment; the general capability must not stand in for it`);
+      }
+    }
+    // Conversely the non-effect edges use the general key and nothing more specific.
+    for (const e of lifecycle.TRANSITION_MATRIX.filter((r) => !lifecycle.EFFECT_BEARING_TARGET_STATUSES.includes(r.to))) {
+      assert.equal(e.capability, lifecycle.WORK_ORDER_TRANSITION, `${e.from}->${e.to}`);
+    }
+  });
+
+  await t.test("workOrder.transition alone cannot authorize dispatch, cancel or complete", async () => {
+    const general = actor({ capabilities: new Set([create.WORK_ORDER_CREATE, lifecycle.WORK_ORDER_TRANSITION]) });
+    for (const [expectedStatus, toStatus] of [["SCHEDULED", "DISPATCHED"], ["WORK_IN_PROGRESS", "COMPLETED"], ["CREATED", "CANCELLED"]]) {
+      const wo = await make();
+      await q(`UPDATE eos_ops.work_orders SET status=$2::eos_ops.ops_work_order_status WHERE id=$1`, [wo.workOrderId, expectedStatus]);
+      await assert.rejects(() => lifecycle.transitionWorkOrder(deps, general, { workOrderId: wo.workOrderId, expectedStatus, toStatus }),
+        (e) => {
+          // FORBIDDEN, not "unavailable": an unauthorized caller is told it is unauthorized and nothing more.
+          assert.equal(e.code, "CAPABILITY_MISSING", `${expectedStatus}->${toStatus}`);
+          assert.match(e.message, /workOrder\.lifecycle\./);
+          return true;
+        }, `${expectedStatus}->${toStatus}`);
+    }
+  });
+
+  await t.test("holding the SPECIFIC capability gets past authorization and then fails closed on the effect", async () => {
+    const wo = await make();
+    await q(`UPDATE eos_ops.work_orders SET status='SCHEDULED' WHERE id=$1`, [wo.workOrderId]);
+    await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([lifecycle.WORK_ORDER_LIFECYCLE_DISPATCH]) }), {
+      workOrderId: wo.workOrderId, expectedStatus: "SCHEDULED", toStatus: "DISPATCHED",
+    }), (e) => {
+      assert.equal(e.code, "TRANSITION_AUTHORITY_UNAVAILABLE", "authorized, but the reserve effect is not composed");
+      return true;
+    });
+  });
+
+  await t.test("create requires workOrder.create -- no lifecycle key substitutes for it", async () => {
+    for (const caps of [[lifecycle.WORK_ORDER_TRANSITION], [lifecycle.WORK_ORDER_LIFECYCLE_DISPATCH], [lifecycle.WORK_ORDER_LIFECYCLE_CANCEL], []]) {
+      await assert.rejects(() => make({ capabilities: new Set(caps) }), (e) => {
+        assert.equal(e.code, "CAPABILITY_MISSING"); return true;
+      }, JSON.stringify(caps));
+    }
+    // And workOrder.create does not authorize a transition.
+    const wo = await make();
+    await assert.rejects(() => lifecycle.transitionWorkOrder(deps, actor({ capabilities: new Set([create.WORK_ORDER_CREATE]) }), {
+      workOrderId: wo.workOrderId, expectedStatus: "CREATED", toStatus: "READY_TO_DISPATCH",
+    }), (e) => { assert.equal(e.code, "CAPABILITY_MISSING"); return true; });
   });
 
   await t.test("a transition the business does not perform is REFUSED", async () => {

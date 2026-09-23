@@ -34,9 +34,32 @@ export type WorkOrderStatus = (typeof WORK_ORDER_STATUSES)[number];
 
 export const TERMINAL_STATUSES: readonly WorkOrderStatus[] = Object.freeze(["COMPLETED", "CLOSED", "CANCELLED"]);
 
-/** Already in the catalog; this authority invents no capability. */
+/**
+ * ════════════════════ THE CAPABILITY VOCABULARY IS POSTGRESQL'S, NOT FIRESTORE'S ════════════════════
+ *
+ * These keys must exist in `eos_policy.capabilities`, because that -- through capabilitiesForRoleKeys --
+ * is what actually authorizes a Render request. The Firestore permissionCatalog is a different
+ * authority and its ids are NOT interchangeable with these: an earlier version of this file asked for
+ * `workOrder.cancel`, which exists only in Firestore, so no principal could ever have held it and every
+ * cancel would have been FORBIDDEN by construction.
+ *
+ * THE THREE EFFECT-BEARING EDGES REUSE THE KEYS THAT ALREADY EXIST. Migration 1757894400000 catalogued
+ * dispatch / cancel / complete precisely because each drives triggerInventoryEffects -- the
+ * RESERVED / RELEASED / CONSUMED commitment writes. Those are the same three edges this engine defers,
+ * and they keep their own capability rather than falling through the general one.
+ *
+ * THE GENERAL KEY IS NOT A SUPERSET. A caller holding only `workOrder.transition` must not be able to
+ * reserve, release or consume stock; if it could, the three specific keys would be decorative. A test
+ * asserts `workOrder.transition` appears on none of the three effect edges.
+ */
 export const WORK_ORDER_TRANSITION = "workOrder.transition";
-export const WORK_ORDER_CANCEL = "workOrder.cancel";
+export const WORK_ORDER_LIFECYCLE_DISPATCH = "workOrder.lifecycle.dispatch";
+export const WORK_ORDER_LIFECYCLE_CANCEL = "workOrder.lifecycle.cancel";
+export const WORK_ORDER_LIFECYCLE_COMPLETE = "workOrder.lifecycle.complete";
+
+/** Exactly the edges that fire an inventory effect (inventoryService.ts STATE_TRIGGERS). */
+export const EFFECT_BEARING_TARGET_STATUSES: readonly WorkOrderStatus[] =
+  Object.freeze(["DISPATCHED", "COMPLETED", "CANCELLED"]);
 
 export type TransitionDisposition = "ALLOWED" | "NOT_YET_IMPLEMENTED" | "REFUSED";
 
@@ -69,11 +92,11 @@ export const TRANSITION_MATRIX: readonly TransitionRule[] = Object.freeze([
     "the scheduling authority: a SCHEDULED Work Order asserts a time and an assignee, and neither is established here"),
 
   // ── inventory effects (inventoryService.ts STATE_TRIGGERS) ──
-  rule("SCHEDULED", "DISPATCHED", "dispatch", "NOT_YET_IMPLEMENTED", WORK_ORDER_TRANSITION,
+  rule("SCHEDULED", "DISPATCHED", "dispatch", "NOT_YET_IMPLEMENTED", WORK_ORDER_LIFECYCLE_DISPATCH,
     "reserveParts: DISPATCHED reserves the planned parts. The PostgreSQL equivalent exists "
     + "(inventoryCommitmentRepository.reserve) but is not composed into this transition, and dispatching "
     + "without reserving promises stock nobody set aside"),
-  rule("WORK_IN_PROGRESS", "COMPLETED", "complete", "NOT_YET_IMPLEMENTED", WORK_ORDER_TRANSITION,
+  rule("WORK_IN_PROGRESS", "COMPLETED", "complete", "NOT_YET_IMPLEMENTED", WORK_ORDER_LIFECYCLE_COMPLETE,
     "consumeParts + finalizeInventoryTransaction: COMPLETED consumes what was used and closes the "
     + "inventory record. Changing the status alone would report work finished with the parts still promised"),
 
@@ -86,7 +109,7 @@ export const TRANSITION_MATRIX: readonly TransitionRule[] = Object.freeze([
 
   // ── cancellation, from every non-terminal state ──
   ...(["CREATED", "READY_TO_DISPATCH", "SCHEDULED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] as WorkOrderStatus[])
-    .map((from) => rule(from, "CANCELLED", "cancel", "NOT_YET_IMPLEMENTED", WORK_ORDER_CANCEL,
+    .map((from) => rule(from, "CANCELLED", "cancel", "NOT_YET_IMPLEMENTED", WORK_ORDER_LIFECYCLE_CANCEL,
       "releaseParts: CANCELLED releases everything the Work Order still holds. The PostgreSQL equivalent "
       + "exists (inventoryCommitmentRepository.releaseOutstanding) but is not composed here, and cancelling "
       + "without releasing strands the stock permanently")),
@@ -165,13 +188,17 @@ export async function transitionWorkOrder(
     refuse("TRANSITION_NOT_ALLOWED", "PRECONDITION_FAILED",
       `${input.expectedStatus} -> ${input.toStatus} is not a transition this business performs`);
   }
+  // CAPABILITY BEFORE AVAILABILITY, deliberately. An unauthorized caller learns it is unauthorized and
+  // nothing else: telling them a feature is "not yet implemented" discloses the platform's roadmap to
+  // someone with no authority over it. It also keeps the specific effect-boundary capabilities testable
+  // at runtime rather than only as table data.
+  if (!(actor.capabilities instanceof Set) || !actor.capabilities.has(ruleForEdge.capability)) {
+    refuse("CAPABILITY_MISSING", "FORBIDDEN", `this transition requires ${ruleForEdge.capability}`);
+  }
   if (ruleForEdge.disposition === "NOT_YET_IMPLEMENTED") {
     refuse("TRANSITION_AUTHORITY_UNAVAILABLE", "UNAVAILABLE",
       `${input.expectedStatus} -> ${input.toStatus} depends on ${ruleForEdge.dependsOn}. It is refused rather `
       + "than performed, because the status alone would misreport what happened.");
-  }
-  if (!(actor.capabilities instanceof Set) || !actor.capabilities.has(ruleForEdge.capability)) {
-    refuse("CAPABILITY_MISSING", "FORBIDDEN", `this transition requires ${ruleForEdge.capability}`);
   }
 
   const now = (deps.now ?? (() => new Date()))();
