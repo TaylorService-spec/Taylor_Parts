@@ -107,6 +107,16 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     blockedReason: "the Kind is still carried by technician's seven Reorder grants; removing it first would fail them closed",
   }),
   entry({
+    path: "functions/src/adminPolicy/migration/credEquivalence.ts",
+    consumer: "names the Kind to explain why three Reorder keys cannot be registered as flat capabilities",
+    // MIGRATION_EVIDENCE, so nothing replaces it: this file does not CONSUME the Kind as authority,
+    // it names it to record why three Reorder keys are unregistrable. The entry retires when the
+    // Kind does.
+    terms: ["operationalRoleActive"], classification: "MIGRATION_EVIDENCE",
+    replacementAuthority: null, replacementPr: null, status: "BLOCKED",
+    blockedReason: "the CRED equivalence report must name the exact Kind that blocks reorder.purchaseOrder.read/.create and reorder.request.read.own; a vaguer word would hide which authority has to arrive first",
+  }),
+  entry({
     path: "field-ops-app-vite/src/types/access.ts", consumer: "the client mirror of the ConditionKind union",
     terms: ["operationalRoleActive"], classification: "SECURITY_AUTHORIZATION",
     replacementAuthority: `${ELIGIBILITY} + ${SCOPE}`, replacementPr: null, status: "BLOCKED",

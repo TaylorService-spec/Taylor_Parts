@@ -1115,6 +1115,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/migration/credEquivalence.ts",
           "functions/src/finance/paymentCallables.ts"
         ],
         "clientReferences": [
@@ -1123,7 +1124,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/metadata/administration/profiles/payment.js"
         ],
-        "serverReferenceCount": 3,
+        "serverReferenceCount": 4,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },

@@ -145,8 +145,14 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // the moment the migration runs. Preservation matters for an EXISTING database (nonprod), and
 // credConvergencePostgres.test.mjs proves it there by seeding first and then applying the
 // migration. Only the vocabulary count moves here, 49 -> 57.
-const PINNED_LAST_MIGRATION = "1761523200000_cred-capability-vocabulary-and-grant-preservation";
-const PINNED_MIGRATION_COUNT = 42;
+//
+// Moved deliberately again for 1761609600000 (Finance / Administration / unconditioned Reorder
+// vocabulary): thirteen capability rows and 122 exact (Role, capability) grants read from the
+// governed Role catalog. As with the previous one, the grant half writes NOTHING here -- this
+// fixture migrates a clean database and seeds afterwards, so no Role exists at migration time.
+// Only the vocabulary count moves, 57 -> 70.
+const PINNED_LAST_MIGRATION = "1761609600000_finance-administration-reorder-vocabulary";
+const PINNED_MIGRATION_COUNT = 43;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

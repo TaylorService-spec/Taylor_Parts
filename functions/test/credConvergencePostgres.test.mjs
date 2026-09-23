@@ -21,9 +21,11 @@ const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyR
 const { bootstrapTenant } = require("../lib/adminPolicy/tenantBootstrap.js");
 const {
   measureCredEquivalence, CRED_POLICY_DECISION_CELLS, SEMANTIC_REPLACEMENTS, COMPARABLE_CRED_KINDS,
+  SECURITY_POLICY_BLOCKERS, SCOPE_MODEL_BLOCKERS, DATA_AUTHORITY_MIGRATION_BLOCKERS,
 } = require("../lib/adminPolicy/migration/credEquivalence.js");
 
 const MIGRATION = "1761523200000_cred-capability-vocabulary-and-grant-preservation";
+const MIGRATION_2 = "1761609600000_finance-administration-reorder-vocabulary";
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
   const c = new pg.Client({ connectionString: url });
@@ -69,7 +71,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   // REVERSE the preservation migration, seed, then re-apply it. The seed is what writes the stored
   // CRED rows, and it runs after migrations in every real environment -- so applying the migration
   // to an empty table would prove nothing about preservation.
-  migrate(dbUrl, ["down", "1"]);
+  migrate(dbUrl, ["down", "2"]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);
   const { tenant } = await bootstrapTenant(repo, { key: "taylor-cred", name: "Taylor", actorUid: "operator" });
@@ -77,7 +79,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const before = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
   const credRows = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_object_permissions")).rows[0].n;
   assert.ok(credRows > 0, "the seed wrote stored CRED to preserve");
-  migrate(dbUrl, ["up", "1"]);
+  migrate(dbUrl, ["up", "2"]);
   const after = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
 
   await t.test("the vocabulary gains exactly the eight measured CRED reads", async () => {
@@ -94,7 +96,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 57, "49 + 8");
+    assert.equal(total, 70, "49 + 8 + 13");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {
@@ -150,6 +152,94 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.equal(rows[0].n, 2, "both CRED tables survive -- role_object_permissions stays ACTIVE");
     const src = require("node:fs").readFileSync(resolve(FUNCTIONS_DIR, "src/adminPolicy/effectiveObjectAccess.ts"), "utf8");
     assert.ok(/A field grant NEVER opens an object the Role cannot read/i.test(src));
+  });
+
+
+  await t.test("Finance: one capability names one Object, and named acts stay named", async () => {
+    const { rows } = await pool.query(
+      `SELECT key, object_key, action_key, action_kind FROM eos_policy.capabilities
+        WHERE key LIKE 'finance.%' ORDER BY key`);
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    assert.equal(byKey.get("finance.invoice.read").object_key, "invoice");
+    assert.equal(byKey.get("finance.payment.read").object_key, "payment");
+    assert.equal(byKey.has("finance.read"), false, "the two-Object key is not registered");
+    // The four named acts are BUSINESS ACTIONS. An Invoice is issued and adjusted, never
+    // "created" and "edited" -- minting CRUD for them would give one act two names.
+    for (const k of ["finance.invoice.issue", "finance.adjustment.record", "finance.payment.apply", "finance.refund.record"]) {
+      assert.equal(byKey.get(k).action_kind, "BUSINESS_ACTION", `${k} must not be generic CRUD`);
+    }
+    for (const forbidden of ["invoice.create", "invoice.edit", "payment.create", "payment.edit"]) {
+      assert.equal(rows.some((r) => `${r.object_key}.${r.action_key}` === forbidden), false);
+    }
+    // Both split reads go to exactly the Roles that held finance.read -- nobody gains or loses.
+    const counts = await pool.query(
+      `SELECT c.key, count(*)::int n FROM eos_policy.role_capabilities rc
+         JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+        WHERE c.key IN ('finance.invoice.read','finance.payment.read') GROUP BY c.key`);
+    assert.equal(counts.rows.length, 2);
+    assert.equal(counts.rows[0].n, counts.rows[1].n, "the split is symmetric");
+  });
+
+  await t.test("Reorder: only the unconditioned keys are registered", async () => {
+    const { rows } = await pool.query(
+      "SELECT key FROM eos_policy.capabilities WHERE key LIKE 'reorder.%' ORDER BY key");
+    const keys = rows.map((r) => r.key);
+    assert.deepEqual(keys, ["reorder.request.assign", "reorder.request.create.manual",
+      "reorder.request.create.system", "reorder.request.read.queue"]);
+    // The conditioned ones are ABSENT on purpose: operationalRoleActive is business eligibility,
+    // never a security condition, and role_capabilities has no scope column to carry it.
+    for (const conditioned of ["reorder.purchaseOrder.read", "reorder.purchaseOrder.create", "reorder.request.read.own"]) {
+      assert.equal(keys.includes(conditioned), false, `${conditioned} would drop its eligibility gate`);
+    }
+    assert.ok(SCOPE_MODEL_BLOCKERS["reorderRequest.R"], "the gap is reported, not silently closed");
+  });
+
+  await t.test("Administration trusted writers are named acts, not a giant Edit", async () => {
+    const { rows } = await pool.query(
+      `SELECT key, object_key, action_key, action_kind FROM eos_policy.capabilities
+        WHERE key IN ('admin.userStatus.write','admin.credentialReset.initiate','admin.roleAssignment.write','admin.accessRequest.decide')
+        ORDER BY key`);
+    assert.equal(rows.length, 4);
+    for (const r of rows) assert.equal(r.action_kind, "ADMIN_ACTION", `${r.key} is an administration act`);
+    assert.deepEqual(rows.filter((r) => r.object_key === "employee").map((r) => r.action_key).sort(),
+      ["resetCredential", "setStatus"]);
+    assert.deepEqual(rows.filter((r) => r.object_key === "rolesPermissions").map((r) => r.action_key).sort(),
+      ["assignRole", "decideAccessRequest"]);
+    const generic = await pool.query(
+      `SELECT key FROM eos_policy.capabilities
+        WHERE object_key IN ('employee','rolesPermissions') AND action_key = 'edit' AND action_kind = 'EDIT'`);
+    assert.equal(generic.rows.filter((r) => r.key !== "admin.employeeProfile.write").length, 0,
+      "no new generic Edit was introduced where commands already exist");
+  });
+
+  await t.test("every exact grant matches the governed Role catalog, not a boolean", async () => {
+    const { deriveLegacyRoleGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
+    const { rows } = await pool.query(`
+      SELECT c.key AS capability_key, r.key AS role_key
+        FROM eos_policy.role_capabilities rc
+        JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+        JOIN eos_policy.roles r ON r.id = rc.role_id
+       WHERE rc.granted_by = 'migration:1761609600000'`);
+    // The five conflict capabilities are declared in the catalog under their own keys; the thirteen
+    // new ones were derived from the legacy key they replace. Check the five that are directly
+    // checkable -- a mismatch means the migration invented a grant.
+    for (const key of ["customer.record.update", "inventory.catalog.manage", "salesOrder.write",
+      "salesAgreement.updateDraft", "inventory.transaction.read"]) {
+      const fromCatalog = deriveLegacyRoleGrants([key]).map((g) => g.roleKey).sort();
+      const written = rows.filter((r) => r.capability_key === key).map((r) => r.role_key).sort();
+      assert.deepEqual(written, fromCatalog, `${key} must match the Role catalog exactly`);
+    }
+  });
+
+  await t.test("the three blocker categories are separate and named", () => {
+    assert.deepEqual(Object.keys(SECURITY_POLICY_BLOCKERS), [], "Finance was ruled; none remain");
+    assert.deepEqual(Object.keys(SCOPE_MODEL_BLOCKERS).sort(),
+      ["purchaseOrder.C", "purchaseOrder.R", "reorderRequest.R"]);
+    assert.deepEqual(Object.keys(DATA_AUTHORITY_MIGRATION_BLOCKERS).sort(),
+      ["dispatchSchedule.R", "manufacturer.R", "notifications.R"]);
+    for (const [cell, why] of Object.entries(CRED_POLICY_DECISION_CELLS)) {
+      assert.ok(why.length > 20, `${cell} needs a real reason, not a label`);
+    }
   });
 
   await t.test("equivalence is re-measured with CRED-only semantics", async () => {

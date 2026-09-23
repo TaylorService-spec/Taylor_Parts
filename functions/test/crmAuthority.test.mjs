@@ -116,15 +116,21 @@ test("(F4) migration 024 registers exactly that vocabulary, grants nothing, and 
   // guard that fired on it would force the backfill to identify capabilities by something other
   // than their own key, which is exactly the prefix-inference the Owner refused. So the scan looks
   // only inside statements that INSERT a capability or touch a grant table.
-  const registersOrGrants = (sql) => sql
+  // REGISTRATION and GRANTING are scanned separately. Registering a Customer capability outside
+  // migration 024 is still forbidden; GRANTING one is expected from migration 1761609600000, which
+  // preserves existing decisions read from the governed Role catalog and registers nothing.
+  const touches = (sql, table) => sql
     .replace(/^\s*--.*$/gm, "")
     .split(";")
-    .filter((stmt) => /INSERT\s+INTO\s+capabilities|role_capabilities/i.test(stmt))
+    .filter((stmt) => new RegExp(`INSERT\\s+INTO\\s+${table}`, "i").test(stmt))
     .some((stmt) => /'customer\.(record|governedField)\.[a-z]+'/i.test(stmt));
-  const naming = files.filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")));
-  assert.deepEqual(naming, [MIGRATION_024], "a Customer capability was registered or granted outside migration 024");
+  const naming = files.filter((f) => touches(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"), "capabilities"));
+  assert.deepEqual(naming, [MIGRATION_024], "a Customer capability was REGISTERED outside migration 024");
+  const granting = files.filter((f) => touches(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"), "role_capabilities"));
+  assert.deepEqual(granting, ["1761609600000_finance-administration-reorder-vocabulary.sql"],
+    "a Customer capability was GRANTED outside the named preservation migration");
   // Non-vacuity: the scan must still find migration 024 by this stricter rule, or it proves nothing.
-  assert.ok(registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_024), "utf8")),
+  assert.ok(touches(readFileSync(join(FUNCTIONS_DIR, "migrations", MIGRATION_024), "utf8"), "capabilities"),
     "the scan stopped recognising migration 024 and would now pass for the wrong reason");
 });
 

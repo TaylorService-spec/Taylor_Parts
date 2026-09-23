@@ -53,54 +53,63 @@ export const SEMANTIC_REPLACEMENTS: Readonly<Record<string, string>> = Object.fr
   "inventoryTransaction.E": "inventory.stock.receive -- the stock ledger is append-only",
   "receivingOrder.E": "inventory.stock.receive",
   "transferOrder.E": "inventory.transfer.dispatch / .receive / .cancel",
+  // Registered as named acts by migration 1761609600000 rather than minted as generic CRUD.
+  "invoice.C": "finance.invoice.issue -- an Invoice is ISSUED, not created",
+  "invoice.E": "finance.adjustment.record -- an issued Invoice is immutable; adjustments are their own records",
+  "payment.C": "finance.payment.apply",
+  "payment.E": "finance.refund.record -- a Payment is immutable; refunds are their own records",
+  "employee.E": "admin.userStatus.write / admin.credentialReset.initiate -- named administration acts, not a generic edit",
+  // CROSS-OBJECT. The CRUD matrix governs "create an Inventory Adjustment" with
+  // inventory.cycleCount.create, whose canonical Object is cycleCount -- an adjustment is raised BY
+  // counting, not created on its own. The act is governed; it simply belongs to another Object.
+  "inventoryAction.C": "inventory.cycleCount.create, whose Object is cycleCount -- an adjustment is raised by a count",
+  "rolesPermissions.E": "admin.roleAssignment.write / admin.accessRequest.decide, plus the anti-lockout invariant",
 });
 
 /**
- * CELLS ONLY AN OWNER RULING CAN SETTLE. Each is a real, currently-granted CRED cell that this tool
- * deliberately refuses to resolve, with the exact reason. Guessing any of them would either invent
- * vocabulary the domain does not use or widen access past what is enforced today.
+ * SECURITY POLICY BLOCKERS -- an Owner ruling about what the model should say.
+ *
+ * Empty today. Finance was the whole of this category and the Owner ruled it: a capability names
+ * ONE Object, so `finance.read` split into `finance.invoice.read` and `finance.payment.read`, and
+ * the four named Finance acts were registered as BUSINESS ACTIONS rather than minted as generic
+ * create/edit. Kept as a named, empty category so the next one has somewhere to go.
  */
+export const SECURITY_POLICY_BLOCKERS: Readonly<Record<string, string>> = Object.freeze({});
+
+/**
+ * SCOPE MODEL BLOCKERS -- the capability could be registered, but its GATE cannot be.
+ *
+ * These keys carry an `operationalRoleActive` condition in the governed Role catalog. Under the
+ * accepted ConditionKind dispositions that Kind is BUSINESS_ELIGIBILITY_SCOPE -- answered by Work
+ * Eligibility and Operational Scope, and explicitly never a security condition. `role_capabilities`
+ * has no scope column and `capabilitiesForRoleKeys` returns a flat Set, so registering these flat
+ * would silently drop the gate that limits them today. Registering them is a WIDENING, and the
+ * Owner's instruction is not to flatten or broaden.
+ *
+ * REORDER_READ_SCOPE_MODEL_MISSING is exactly this: EOS cannot yet represent OWN vs QUEUE on a
+ * capability grant.
+ */
+export const SCOPE_MODEL_BLOCKERS: Readonly<Record<string, string>> = Object.freeze({
+  "purchaseOrder.R": "reorder.purchaseOrder.read is conditioned by operationalRoleActive -- registering it flat drops the eligibility gate",
+  "purchaseOrder.C": "reorder.purchaseOrder.create is conditioned by operationalRoleActive",
+  "reorderRequest.R": "technician holds ONLY reorder.request.read.own, which is conditioned; the queue read is registered, the own-scoped read cannot be",
+});
+
+/**
+ * DATA AUTHORITY MIGRATION BLOCKERS -- there is no PostgreSQL authority to govern.
+ *
+ * Registering a capability over an Object with no table would claim an enforcement that does not
+ * exist. These wait on the domain's own migration, not on a security ruling.
+ */
+export const DATA_AUTHORITY_MIGRATION_BLOCKERS: Readonly<Record<string, string>> = Object.freeze({
+  "manufacturer.R": "no PostgreSQL table; today governed through the Part catalog read and the legacy client rules layer",
+  "notifications.R": "no PostgreSQL table; the CRUD matrix governs it with reorder.request.read.queue, which is not a notification authority at all",
+  "dispatchSchedule.R": "no PostgreSQL table; governed by fulfillment.coordinatedVisit.read",
+});
+
+/** Every cell that blocks cutover, whatever the reason. */
 export const CRED_POLICY_DECISION_CELLS: Readonly<Record<string, string>> = Object.freeze({
-  // ── ONE KEY, TWO OBJECTS ──
-  // `finance.read` governs BOTH Invoices and Payments. A canonical capability names exactly one
-  // Object, so this cannot be registered without either splitting the key (finance.invoice.read +
-  // finance.payment.read, two new names the domain has never used) or accepting a capability that
-  // governs a domain rather than an Object. That is a modelling ruling, not a migration.
-  "invoice.R": "finance.read governs both Invoices and Payments -- split the key, or accept a domain-scoped capability",
-  "payment.R": "finance.read governs both Invoices and Payments -- split the key, or accept a domain-scoped capability",
-  // ── THE GOVERNED NAME IS NOT A CRED VERB ──
-  // Finance creates and edits through named acts: finance.invoice.issue, finance.adjustment.record,
-  // finance.payment.apply, finance.refund.record. None exists in eos_policy.capabilities. Minting
-  // `invoice.create` instead would give one business act two names, which is the duplication the
-  // Owner refused for workOrder.cancel.
-  "invoice.C": "governed by finance.invoice.issue, which has no PostgreSQL capability -- register the named act, or mint a CRED create",
-  "invoice.E": "governed by finance.adjustment.record -- an Invoice is immutable; adjustments are their own records",
-  "payment.C": "governed by finance.payment.apply, which has no PostgreSQL capability",
-  "payment.E": "governed by finance.refund.record -- a Payment is immutable; refunds are their own records",
-  // ── A CONDITIONED READ CANNOT BE FLATTENED ──
-  // `reorder.request.read.queue` and `reorder.request.read.own` are TWO reads, and the second
-  // carries an isOwnAssignment condition. Registering a single flat `read` would hand every holder
-  // the queue -- a widening, and exactly the caller-controlled-bypass defect this programme has
-  // already had to fix once.
-  "reorderRequest.R": "two conditioned reads (queue vs own) -- flattening to one CRED read would widen access",
-  "reorderRequest.C": "governed by reorder.request.create.manual / .system, neither in PostgreSQL",
-  "purchaseOrder.R": "governed by reorder.purchaseOrder.read, which has no PostgreSQL capability",
-  "purchaseOrder.C": "governed by reorder.purchaseOrder.create, which has no PostgreSQL capability",
-  // ── ADMINISTRATION TRUSTED WRITERS ──
-  // Governed by named admin acts (admin.userStatus.write, admin.credentialReset.initiate,
-  // admin.roleAssignment.write, admin.accessRequest.decide), none registered in PostgreSQL. These
-  // are ADMIN_ACTIONs, not a generic Edit on a record.
-  "employee.E": "governed by admin.userStatus.write / admin.credentialReset.initiate -- ADMIN acts, not generic edit",
-  "rolesPermissions.E": "governed by admin.roleAssignment.write / admin.accessRequest.decide, and by the anti-lockout invariant",
-  // ── NO POSTGRESQL AUTHORITY AT ALL ──
-  // These Objects have no PostgreSQL table. Registering a capability would claim an enforcement
-  // that does not exist. Reported as rules-only rather than migrated.
-  // Worded without naming the legacy rules file on purpose: the no-Firebase guard over this
-  // module is an ABSOLUTE string check, and it is more valuable kept absolute than relaxed to
-  // permit a mention. The mechanism is the client-side rules layer.
-  "manufacturer.R": "no PostgreSQL authority; today governed through the Part catalog read and the legacy client rules layer",
-  "notifications.R": "no PostgreSQL authority",
-  "dispatchSchedule.R": "no PostgreSQL authority; governed by fulfillment.coordinatedVisit.read",
+  ...SECURITY_POLICY_BLOCKERS, ...SCOPE_MODEL_BLOCKERS, ...DATA_AUTHORITY_MIGRATION_BLOCKERS,
 });
 
 export type EquivalenceVerdict =
