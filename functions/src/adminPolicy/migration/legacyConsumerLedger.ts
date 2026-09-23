@@ -138,14 +138,17 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     path: "functions/src/access/compatibilityRoles.ts",
     consumer: "attaches operationalRoleActive(PARTS_ASSOCIATE) to technician's seven Reorder grants",
     terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (WAREHOUSE_OPERATIONS)`, replacementPr: null, status: "NOT_STARTED",
-    blockedReason: null,
+    // The target CODE is undetermined, so this no longer claims WAREHOUSE_OPERATIONS. Measured in
+    // the contextual-authorization slice: the evaluator refuses PARTS_ASSOCIATE with
+    // WORK_ELIGIBILITY_UNMAPPED rather than guessing, and that refusal is what blocks the Kind.
+    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY}`, replacementPr: null, status: "BLOCKED",
+    blockedReason: "operationalRoleActive here is a WORK ELIGIBILITY gate on the qualification PARTS_ASSOCIATE, which is NOT one of the two deterministic migration candidates the Owner ruled (TECHNICIAN -> SERVICE_TECHNICIAN, WAREHOUSE_ASSOCIATE -> WAREHOUSE_OPERATIONS). Mapping it onto WAREHOUSE_OPERATIONS would invent that ruling and hand technicians an eligibility nobody granted, so the target code is undetermined and the Kind cannot retire yet",
   }),
   entry({
     path: "field-ops-app-vite/src/access/compatibilityRoles.ts", consumer: "the client mirror of those grants",
     terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (WAREHOUSE_OPERATIONS)`, replacementPr: null, status: "NOT_STARTED",
-    blockedReason: null,
+    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY}`, replacementPr: null, status: "BLOCKED",
+    blockedReason: "mirrors functions/src/access/compatibilityRoles.ts and is blocked by the same undetermined qualification code",
   }),
   entry({
     path: "functions/src/access/operationalRoleContext.ts",
