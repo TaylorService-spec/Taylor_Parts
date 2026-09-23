@@ -85,8 +85,17 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // different reasons an Object exists. `stockLocation` is deliberately NOT among them -- the Owner
   // retired stock_locations as an operational authority on 2026-09-12 and this slice does not
   // resurrect it; the two capabilities that would have named it map to inventoryTransaction.
-  assert.equal(ledger.seeded.objects, 41);
-  assert.equal(ledger.seeded.objectsWithoutAnEntity, 8);
+  //
+  // 41 -> 39, and 8 -> 6 matrix-only: OWNER RULING, 2026-09-23. `dispatchSchedule` and
+  // `notifications` were retired. Both were MATRIX_ONLY rows over a record that does not exist --
+  // no table, no collection, no document, no field -- so their CRED cells invited an administrator
+  // to configure access to nothing, which is the same reason stockLocation's six field rows went.
+  // The entity and field counts are UNCHANGED at 28/389 precisely because neither had an entity
+  // behind it. The one capability that governed something real,
+  // `fulfillment.coordinatedVisit.read`, was re-homed onto salesOrder as a BUSINESS_ACTION rather
+  // than retired with the Object it was filed under (migration 1761955200000).
+  assert.equal(ledger.seeded.objects, 39);
+  assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
   assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 5);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,

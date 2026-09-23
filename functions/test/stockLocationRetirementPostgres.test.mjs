@@ -19,7 +19,12 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const MIGRATION = "1761868800000_retire-stock-location-policy-object";
-const ALL = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).length;
+// COUNTED TO THE MIGRATION UNDER TEST, never "all but one". This file stopped one short of the end
+// while the retirement happened to be the newest migration; the next migration to land made
+// "ALL - 1" mean a different file, and the suite proved something else without saying so.
+const MIGRATIONS = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
+const UNDER_TEST = "1761868800000_retire-stock-location-policy-object.sql";
+const BEFORE_UNDER_TEST = MIGRATIONS.indexOf(UNDER_TEST);
 
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
@@ -60,7 +65,8 @@ test("stockLocation retirement, in PostgreSQL", { skip: SKIP, concurrency: 1 }, 
   });
   const dbUrl = dbUrlFor(name);
   // Stop one short, then reconstruct the exact shape nonprod carried, then apply the retirement.
-  migrate(dbUrl, ["up", String(ALL - 1)]);
+  assert.ok(BEFORE_UNDER_TEST > 0, `${UNDER_TEST} must exist to be proved`);
+  migrate(dbUrl, ["up", String(BEFORE_UNDER_TEST)]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 4 });
   const q = (sql, v = []) => pool.query(sql, v);
 

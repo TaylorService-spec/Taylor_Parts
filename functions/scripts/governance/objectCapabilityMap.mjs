@@ -28,8 +28,11 @@ export const GOVERNANCE_TYPE = Object.freeze({
 });
 
 // Objects whose authority lives in firestore.rules rather than a capability abstraction.
+// "Notifications" REMOVED (Owner ruling 2026-09-23): the Object was retired, not reclassified. It
+// had no firestore.rules block to be governed by in the first place -- the entry was the governance
+// side's guess at an authority that does not exist.
 export const RULE_GOVERNED_OBJECTS = Object.freeze([
-  "Contacts", "Customer Locations", "Equipment / Installed Base", "Notifications",
+  "Contacts", "Customer Locations", "Equipment / Installed Base",
   "Technician Time / Non-work",
 ]);
 
@@ -57,7 +60,11 @@ export const OBJECT_CAPABILITY_MAP = Object.freeze({
   "Sales Orders": { R: ["salesOrder.read"], C: ["salesOrder.write"], E: ["salesOrder.write"], D: [] },
   "Commissions": { R: [], C: [], E: [], D: [] },
   "Work Orders": { R: [], C: ["workOrder.create"], E: ["workOrder.transition"], D: ["workOrder.cancel"] },
-  "Dispatch Schedule": { R: [], C: [], E: ["workOrder.transition"], D: [] },
+  // "Dispatch Schedule" REMOVED (Owner ruling 2026-09-23). The Object was retired: there is no
+  // Dispatch/Visit/WorkOrderGroup record, and the E it advertised was `workOrder.transition` --
+  // which is the WORK ORDER's own act, already carried by the Work Orders row above. Its one real
+  // capability, `fulfillment.coordinatedVisit.read`, is governed under Sales Orders as the
+  // BUSINESS_ACTION `readCoordinatedVisits`, which this CRED-only map has no verb for.
   "Technician Time / Non-work": { R: [], C: [], E: [], D: [] },
   "Parts Catalog": { R: ["inventory.catalog.read"], C: ["inventory.catalog.manage"], E: ["inventory.catalog.manage"], D: [] },
   "Inventory Stock": { R: ["inventory.balance.read", "inventory.transaction.read"], C: [], E: [], D: [] },
@@ -107,7 +114,8 @@ export const OBJECT_CAPABILITY_MAP = Object.freeze({
   "Equipment / Installed Base": { R: [], C: [], E: [], D: [] },
   "Invoices / AR": { R: ["finance.read"], C: ["finance.invoice.issue"], E: ["finance.adjustment.record"], D: [] },
   "Payments": { R: ["finance.read"], C: ["finance.payment.apply"], E: ["finance.refund.record"], D: [] },
-  "Notifications": { R: [], C: [], E: [], D: [] },
+  // "Notifications" REMOVED (Owner ruling 2026-09-23) -- retired with no successor capability.
+  // Who may see a notification is a property of the underlying record, never a Security Role.
   // SECURITY ADMINISTRATION IS NOT DERIVED FROM THE MATRIX. Owner decision 2026-08-21: General
   // Manager is the highest BUSINESS role and is not security administration. The workbook grants GM
   // CRED on Employees and Roles/Permissions; that entry must not be interpreted literally, because

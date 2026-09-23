@@ -147,7 +147,13 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   // Objects the catalog never registered -- principal, cycleCount, dataImport, workflowDefinition and
   // workflowInstance -- because a capability may not point at an Object that does not
   // exist. None carries a field, so the field counts below are unchanged.
-  assert.equal(first.seed.created.objects, 41, "41 canonical objects");
+  //
+  // 41 -> 39: OWNER RULING, 2026-09-23. `dispatchSchedule` and `notifications` were retired. Neither
+  // had a table, a collection, a document or a field, so each gave every new tenant a CRED row over
+  // a record that does not exist. Field counts are unchanged for that same reason. The one
+  // capability that governed something real, `fulfillment.coordinatedVisit.read`, is registered by
+  // migration 1761955200000 under salesOrder as a BUSINESS_ACTION rather than retired with it.
+  assert.equal(first.seed.created.objects, 39, "39 canonical objects");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.

@@ -29,6 +29,12 @@ const MIGRATION = "1761523200000_cred-capability-vocabulary-and-grant-preservati
 const MIGRATION_2 = "1761609600000_finance-administration-reorder-vocabulary";
 const MIGRATION_3 = "1761696000000_parts-associate-eligibility-and-reorder-queue-scope.sql";
 const MIGRATION_4 = "1761782400000_manufacturer-catalog-authority.sql";
+// HOW FAR DOWN, COUNTED FROM THE MIGRATION UNDER TEST rather than pinned to a number. A literal
+// step count silently means a different set of migrations the moment a new one lands.
+const MIGRATIONS = require("node:fs")
+  .readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
+const STEPS_TO_MIGRATION = MIGRATIONS.length - MIGRATIONS.findIndex((f) => f.startsWith(MIGRATION));
+
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
   const c = new pg.Client({ connectionString: url });
@@ -74,7 +80,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   // REVERSE the preservation migration, seed, then re-apply it. The seed is what writes the stored
   // CRED rows, and it runs after migrations in every real environment -- so applying the migration
   // to an empty table would prove nothing about preservation.
-  migrate(dbUrl, ["down", "4"]);
+  migrate(dbUrl, ["down", String(STEPS_TO_MIGRATION)]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);
   const { tenant } = await bootstrapTenant(repo, { key: "taylor-cred", name: "Taylor", actorUid: "operator" });
@@ -82,7 +88,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
   const before = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
   const credRows = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_object_permissions")).rows[0].n;
   assert.ok(credRows > 0, "the seed wrote stored CRED to preserve");
-  migrate(dbUrl, ["up", "4"]);
+  migrate(dbUrl, ["up", String(STEPS_TO_MIGRATION)]);
   const after = (await pool.query("SELECT count(*)::int n FROM eos_policy.role_capabilities")).rows[0].n;
 
   await t.test("the vocabulary gains exactly the eight measured CRED reads", async () => {
@@ -99,7 +105,7 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 74, "49 + 8 + 13 + 3 + 1");
+    assert.equal(total, 75, "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read)");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {
@@ -269,8 +275,11 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       ["purchaseOrder.C", "purchaseOrder.R"], "what remains is an evidence gap, not a model gap");
     // manufacturer.R left this list when its target authority and tooling were built. The model is
     // no longer the blocker; the DATA is, and that is reported separately rather than here.
-    assert.deepEqual(Object.keys(DATA_AUTHORITY_MIGRATION_BLOCKERS).sort(),
-      ["dispatchSchedule.R", "notifications.R"]);
+    // EMPTY, and not because tables appeared. dispatchSchedule and notifications were RETIRED
+    // (migration 1761955200000): each governed a record that does not exist, so the cells stopped
+    // being cells. The one capability that governed something real was re-homed onto the Sales
+    // Order as a BUSINESS_ACTION, which is deliberately NOT a CRED verb.
+    assert.deepEqual(Object.keys(DATA_AUTHORITY_MIGRATION_BLOCKERS).sort(), []);
     // The workforce gap is kept as its own named blocker, so closing the scope model is never
     // mistaken for closing it.
     assert.equal(WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER.legacyHolders, 5);

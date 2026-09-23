@@ -106,7 +106,8 @@ const OBJECTS = [
   { object: "Sales Orders", domain: "Sales", C: ["opportunity.createSalesOrder"], R: ["salesOrder.read"], E: ["salesOrder.write", "salesOrder.fulfill", "salesOrder.service"] },
   { object: "Commissions", domain: "Sales / Finance", missing: true },
   { object: "Work Orders", domain: "Service", C: ["workOrder.create"], R: [], E: ["workOrder.transition", "workOrder.cancel", "workOrder.parts.plan"] },
-  { object: "Dispatch Schedule", domain: "Service", C: [], R: ["fulfillment.coordinatedVisit.read"], E: [] },
+  // "Dispatch Schedule" REMOVED (Owner ruling 2026-09-23): Object retired; its coordinated-visit
+  // read is now a Sales Order BUSINESS_ACTION, which this CRED matrix does not express.
   { object: "Technician Time / Non-work", domain: "Service", missing: true },
   { object: "Parts Catalog", domain: "Inventory", C: [], R: ["inventory.catalog.read"], E: ["inventory.catalog.manage", "inventory.catalog.activate"] },
   { object: "Inventory Stock", domain: "Inventory", C: [], R: ["inventory.transaction.read", "inventory.analytics.read"], E: ["inventory.stock.receive"] },
@@ -122,7 +123,7 @@ const OBJECTS = [
   { object: "Equipment / Installed Base", domain: "Service", rulesOnly: "firestore.rules /equipment/{equipmentId}" },
   { object: "Invoices / AR", domain: "Finance", C: ["finance.invoice.issue"], R: ["finance.read"], E: ["finance.adjustment.record"] },
   { object: "Payments", domain: "Finance", C: ["finance.payment.apply"], R: ["finance.read"], E: ["finance.refund.record"] },
-  { object: "Notifications", domain: "Platform", missing: true },
+  // "Notifications" REMOVED (Owner ruling 2026-09-23): Object retired, no successor capability.
   { object: "Employees", domain: "Administration", C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"] },
   { object: "Roles / Permissions", domain: "Administration", C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"] },
   { object: "Audit Log", domain: "Administration", C: [], R: ["audit.event.read"], E: [] },

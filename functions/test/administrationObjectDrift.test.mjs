@@ -252,21 +252,24 @@ test("every rules-governed object is recorded as RULE_GOVERNED on the governance
   assert.deepEqual(missing, []);
 });
 
-test("the governance side calls two further objects RULE_GOVERNED that Administration does not", () => {
+test("the governance side calls ONE further object RULE_GOVERNED that Administration does not", () => {
   // PINNED DISAGREEMENT, not an accepted one.
   //
-  //   Notifications           objectPermissionMap advertises R: ["reorder.request.read.queue"], so
-  //                           Administration says it is CAPABILITY-governed. objectCapabilityMap
-  //                           maps it to nothing and lists it as RULE_GOVERNED. Both are shipped.
   //   Technician Time /       Neither table names a capability. It is an object the platform does
   //   Non-work                not model at all, which is UNMODELLED, not Rules-governed — no
   //                           firestore.rules collection corresponds to it.
   //
   // Recorded in docs/handoff/w1-c18-registrations.md. Resolving it means deciding which of the two
   // is right, which is an access-model decision with an owner.
+  //
+  // "Notifications" LEFT THIS PIN on 2026-09-23, and NOT because the disagreement was resolved in
+  // either table's favour — the Object was RETIRED by Owner ruling. There was no notifications
+  // table, no collection, no document and no firestore.rules block, so neither "CAPABILITY-governed"
+  // nor "RULE_GOVERNED" was ever true. Both tables now say nothing about it, which is the only
+  // accurate thing either could say.
   const clientRulesOnly = new Set(OBJECT_PERMISSIONS.filter((e) => e.rulesOnly).map((e) => e.object));
   const serverOnly = RULE_GOVERNED_OBJECTS.filter((o) => !clientRulesOnly.has(o));
-  assert.deepEqual(serverOnly, ["Notifications", "Technician Time / Non-work"]);
+  assert.deepEqual(serverOnly, ["Technician Time / Non-work"]);
 });
 
 test("an object with no capability on any verb is rules-governed, unmodelled, or named as neither", () => {

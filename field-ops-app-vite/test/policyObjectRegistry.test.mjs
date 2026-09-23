@@ -35,7 +35,7 @@ test("the union covers every matrix row AND every registry entity", () => {
   }
 });
 
-test("the counts reconcile: 25 matrix rows + 28 entities, overlapping on 17, is 36 objects", () => {
+test("the counts reconcile: 23 matrix rows + 28 entities, overlapping on 17, is 34 objects", () => {
   // 24 rows and 16 overlaps before the Owner ruling gave Reorder Request its own row; the total was
   // unchanged at 37 then, because that object simply moved from registry-only to being in both
   // lists, which is what "it now has data authority of its own" looks like in these counts.
@@ -45,10 +45,18 @@ test("the counts reconcile: 25 matrix rows + 28 entities, overlapping on 17, is 
   // ENTITY_REGISTRY (29 -> 28) and with it the registry-only governable object it produced
   // (12 -> 11 registry-only). Nothing else moved: it was in no matrix row, so `matrixOnly` and
   // `fromMatrixAndRegistry` are untouched.
+  //
+  // 36 -> 34, and 8 -> 6 matrix-only. OWNER RULING, 2026-09-23: "Dispatch Schedule" and
+  // "Notifications" were RETIRED. Both were matrix rows with no EntityDefinition behind them --
+  // no table, no collection, no document, no field -- so each advertised CRED on a record that does
+  // not exist. The entity count is UNCHANGED at 28 for exactly that reason, and the overlap is
+  // untouched: neither row was ever in both lists. The one capability that governed something real,
+  // `fulfillment.coordinatedVisit.read`, is now a Sales Order BUSINESS_ACTION, which this CRED
+  // matrix has no verb for and therefore does not carry.
   const counts = governableObjectCounts();
-  assert.equal(counts.objects, 36);
+  assert.equal(counts.objects, 34);
   assert.equal(counts.fromMatrixAndRegistry, 17, "in both lists");
-  assert.equal(counts.matrixOnly, 8, "a matrix row with no EntityDefinition");
+  assert.equal(counts.matrixOnly, 6, "a matrix row with no EntityDefinition");
   assert.equal(counts.registryOnly, 11, "an entity the matrix never had a row for");
   assert.equal(counts.fromMatrixAndRegistry + counts.matrixOnly, OBJECT_PERMISSIONS.length);
   assert.equal(counts.fromMatrixAndRegistry + counts.registryOnly, ENTITY_REGISTRY.length);

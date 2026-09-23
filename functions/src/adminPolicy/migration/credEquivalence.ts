@@ -119,8 +119,18 @@ export const DATA_AUTHORITY_MIGRATION_BLOCKERS: Readonly<Record<string, string>>
   // That is not a claim that Manufacturer is cut over -- the source collection holds ZERO documents
   // in the environment this workstation may read, nothing has been copied, and the client still
   // reads Firestore. See MANUFACTURER_REFERENCE_RECONCILIATION_REQUIRED.
-  "notifications.R": "no PostgreSQL table; the CRUD matrix governs it with reorder.request.read.queue, which is not a notification authority at all",
-  "dispatchSchedule.R": "no PostgreSQL table; governed by fulfillment.coordinatedVisit.read",
+  //
+  // notifications.R and dispatchSchedule.R are GONE from this list, and NOT because a table was
+  // built for them (Owner ruling 2026-09-23, migration 1761955200000). Both Objects were retired:
+  // each described a data authority that does not exist -- no table, no collection, no document, no
+  // field -- so the honest resolution was to stop governing a record that is not there, not to
+  // manufacture one. Their CRED cells are not "resolved", they are no longer cells.
+  //
+  // What survived is the one capability that governs something real:
+  // `fulfillment.coordinatedVisit.read`, re-homed onto the Sales Order as the BUSINESS_ACTION
+  // `readCoordinatedVisits`. Notification recipient visibility got NO successor capability -- it is
+  // a property of the underlying record, never a Security Role -- and `reorder.request.read.queue`
+  // stays exactly where it was, in its SUPERSEDED posture on the Reorder Request.
 });
 
 /**
@@ -139,6 +149,30 @@ export const WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER = Object.freeze({
   legacyHolders: 5,
   targetAssignments: 0,
   reason: "the legacy and PostgreSQL Employee populations have disjoint identities; no governed Employee can receive the eligibility yet",
+});
+
+/**
+ * COORDINATED VISIT RUNTIME CUTOVER BLOCKER -- the AUTHORITY moved, the READ did not.
+ *
+ * `fulfillment.coordinatedVisit.read` is now governed under salesOrder as the BUSINESS_ACTION
+ * `readCoordinatedVisits` (migration 1761955200000). What it governs has NOT moved:
+ * `listCoordinatedOperations` still reads the legacy `fieldops_wos` collection through
+ * `coordinatedVisitReadService.ts`, and the projection is assembled there.
+ *
+ * Tracked as its own named blocker rather than folded into a CRED cell, because it is not one: the
+ * capability is a business act, BUSINESS_ACTION is excluded from COMPARABLE_CRED_KINDS, and no CRED
+ * cell is waiting on it. Governing an act in PostgreSQL while the read it governs still reaches the
+ * old backend is a real gap, and this is where it is written down instead of implied by silence.
+ */
+export const COORDINATED_VISIT_RUNTIME_CUTOVER_BLOCKER = Object.freeze({
+  capability: "fulfillment.coordinatedVisit.read",
+  objectKey: "salesOrder",
+  actionKey: "readCoordinatedVisits",
+  readService: "functions/src/fulfillment/coordinatedVisitReadService.ts",
+  sourceCollection: "fieldops_wos",
+  // NAMES THE COLLECTION, NOT THE VENDOR -- and not only to satisfy the no-Firebase guard on this
+  // module. `fieldops_wos` is the thing a reader has to go and look at; "the old backend" is not.
+  reason: "the capability is governed in PostgreSQL, but listCoordinatedOperations still reads the legacy fieldops_wos collection; moving that read is a separately authorized slice",
 });
 
 /** Every cell that blocks cutover, whatever the reason. */

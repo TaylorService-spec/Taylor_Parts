@@ -4286,17 +4286,17 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/migration/credEquivalence.ts",
           "functions/src/fulfillment/coordinatedVisitReadService.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 3,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 4,
+        "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
       "environmentActivation": {

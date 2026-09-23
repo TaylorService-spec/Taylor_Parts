@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 41,
+    "objects": 39,
     "objectsWithFields": 28,
     "fields": 389
   },
@@ -1207,24 +1207,6 @@
           "referenceTo": "employee"
         }
       ]
-    },
-    {
-      "key": "dispatchSchedule",
-      "label": "Dispatch Schedule",
-      "labelPlural": null,
-      "description": null,
-      "domain": "Service",
-      "source": "MATRIX_ONLY",
-      "supportsDelete": false,
-      "capabilitiesByVerb": {
-        "C": [],
-        "R": [
-          "fulfillment.coordinatedVisit.read"
-        ],
-        "E": [],
-        "D": []
-      },
-      "fields": []
     },
     {
       "key": "technicianTimeNonWork",
@@ -4039,24 +4021,6 @@
           "referenceTo": null
         }
       ]
-    },
-    {
-      "key": "notifications",
-      "label": "Notifications",
-      "labelPlural": null,
-      "description": null,
-      "domain": "Platform",
-      "source": "MATRIX_ONLY",
-      "supportsDelete": false,
-      "capabilitiesByVerb": {
-        "C": [],
-        "R": [
-          "reorder.request.read.queue"
-        ],
-        "E": [],
-        "D": []
-      },
-      "fields": []
     },
     {
       "key": "employee",

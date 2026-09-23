@@ -164,8 +164,15 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1761868800000 (stockLocation retirement): a policy-metadata cleanup
 // that is a NO-OP on a clean database -- the governed seed has not declared stockLocation since the
 // Owner retired it, so there is no row here to remove. Only the migration count moves.
-const PINNED_LAST_MIGRATION = "1761868800000_retire-stock-location-policy-object";
-const PINNED_MIGRATION_COUNT = 46;
+//
+// Moved deliberately again for 1761955200000 (dispatchSchedule + notifications retirement, and the
+// coordinated-visit read re-homed onto salesOrder): both retirements are a NO-OP on a clean
+// database, because the governed seed no longer declares either Object -- there is no row here to
+// remove. The re-home DOES register one capability, 74 -> 75, and its five Role grants write
+// NOTHING here for the same reason the two migrations before it wrote nothing: this fixture
+// migrates a clean database and seeds afterwards, so no Role exists at migration time.
+const PINNED_LAST_MIGRATION = "1761955200000_retire-dispatch-notification-objects-rehome-coordinated-visit";
+const PINNED_MIGRATION_COUNT = 47;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
