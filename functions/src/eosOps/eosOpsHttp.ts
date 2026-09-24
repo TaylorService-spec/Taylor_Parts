@@ -18,6 +18,7 @@
 // There is deliberately no `POST /sql`, no `mutate(table, id, patch)`, no Firestore proxy, and no
 // route that takes a table name.
 import { resolveOperationalContext } from "./capabilityAuthority";
+import { resolveExperienceContext } from "./experienceAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import type { Pool } from "pg";
@@ -34,8 +35,29 @@ export type TokenVerifier = (bearerToken: string) => Promise<VerifiedIdentity>;
 // HTTP -> identity verification -> EOS principal/tenant resolution -> Postgres capability
 // authorization -- without wiring a mutating Cycle Count command end to end, which the Owner ruling
 // explicitly does not require of this PR.
-export const OPERATIONS_READ_OPERATIONS = Object.freeze(["resolveMyCapabilities"] as const);
+//
+// A SECOND, still non-mutating read joins it: `resolveMyExperienceContext`, the canonical principal
+// context the client navigates by (experienceAuthority.ts). It is served on its OWN route rather
+// than added to /operations/inventory, because that path names the inventory domain and navigation
+// is not an inventory act -- the same reason this transport exists separately from /admin/policy.
+// One transport, one verifier, two honestly-named routes.
+export const OPERATIONS_READ_OPERATIONS = Object.freeze([
+  "resolveMyCapabilities",
+  "resolveMyExperienceContext",
+] as const);
 export type OperationsReadOperation = (typeof OPERATIONS_READ_OPERATIONS)[number];
+
+/**
+ * Which route serves which operation. A closed map, not a prefix match: asking for the experience
+ * context at the inventory path is a 404, so neither route can quietly grow the other's surface.
+ */
+export const OPERATIONS_ROUTE_BY_OPERATION: Readonly<Record<OperationsReadOperation, string>> = Object.freeze({
+  resolveMyCapabilities: "/operations/inventory",
+  resolveMyExperienceContext: "/operations/experience",
+});
+
+export const OPERATIONS_ROUTES: readonly string[] =
+  Object.freeze([...new Set(Object.values(OPERATIONS_ROUTE_BY_OPERATION))].sort());
 
 const READS = new Set<string>(OPERATIONS_READ_OPERATIONS);
 export const isOperationsOperation = (name: unknown): name is OperationsReadOperation =>
@@ -90,6 +112,17 @@ export async function executeOperation(
             capabilities: [...ctx.capabilities].sort(),
           },
         };
+      }
+      case "resolveMyExperienceContext": {
+        // Same resolution, same refusals. It returns the caller's OWN context and accepts no
+        // selector, so it cannot describe anybody else, and it grants nothing: every surface it
+        // names is re-authorized by the read or command behind it.
+        const context = await resolveExperienceContext(deps.reader, deps.pool, {
+          identityProvider: request.caller.identityProvider,
+          externalSubject: request.caller.externalSubject,
+          requestedTenantId: request.caller.requestedTenantId,
+        });
+        return { ok: true, operation: "resolveMyExperienceContext", result: context };
       }
       default:
         return { ok: false, operation: request.operation, code: "UNKNOWN_OPERATION", message: "no such Operations operation" };
@@ -146,11 +179,15 @@ const json = (status: number, body: unknown, origin: string | null): HttpRespons
 /**
  * Handle one request.
  *
- *   POST /operations/inventory   one named operation from the closed list above. Authenticated.
- *   OPTIONS *                    CORS preflight.
+ *   POST /operations/inventory    resolveMyCapabilities. Authenticated.
+ *   POST /operations/experience   resolveMyExperienceContext. Authenticated.
+ *   OPTIONS *                     CORS preflight.
+ *
+ * The operation must match the route it was posted to (OPERATIONS_ROUTE_BY_OPERATION); a mismatch is
+ * a 404, not a redirect, so a route never answers for a neighbour.
  *
  * There is no `/health` here -- `/health` is process-wide and already served by adminPolicyHttp's
- * handler in server.ts; this transport answers only its own route.
+ * handler in server.ts; this transport answers only its own routes.
  */
 export async function handleOperationsRequest(
   options: OperationsHttpOptions,
@@ -173,7 +210,7 @@ export async function handleOperationsRequest(
     };
   }
 
-  if (path !== "/operations/inventory") return json(404, notFound(path), origin);
+  if (!OPERATIONS_ROUTES.includes(path)) return json(404, notFound(path), origin);
   if (method !== "POST") return json(405, { ok: false, code: "UNKNOWN_OPERATION", message: "use POST" }, origin);
 
   let payload: Record<string, unknown>;
@@ -185,6 +222,9 @@ export async function handleOperationsRequest(
 
   const operation = payload.operation;
   if (!isOperationsOperation(operation)) return json(404, notFound(String(operation ?? "")), origin);
+  // The operation must belong to the route it arrived on. Without this, /operations/inventory would
+  // answer for /operations/experience and the route names would stop describing anything.
+  if (OPERATIONS_ROUTE_BY_OPERATION[operation] !== path) return json(404, notFound(operation), origin);
 
   const bearer = bearerToken(header(request, "authorization"));
   if (!bearer) {

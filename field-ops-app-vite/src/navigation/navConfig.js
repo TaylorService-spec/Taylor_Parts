@@ -1,4 +1,5 @@
 import { ROLES, EMPLOYMENT_STATUS, OPERATIONAL_ROLE } from "../domain/constants.js";
+import { isNavigationAuthority } from "../access/experienceContext.js";
 import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITIES } from "../access/reportAccess.js";
 import {
   TRANSFER_SURFACE_CAPABILITIES,
@@ -617,6 +618,172 @@ export const NAV_DOMAINS = [
   // mechanism in place for any future top-level placeholder.
 ];
 
+// ════════════════════ WHICH DESTINATION IS WHICH GOVERNED SURFACE ════════════════════
+//
+// The EOS navigation authority answers in SURFACE KEYS, not in destinations: the server
+// (functions/src/eosOps/experienceAuthority.ts) resolves a Principal to the set of surfaces it may
+// be offered, from eos_policy.role_capabilities plus eos_workforce.employee_work_eligibility and
+// employee_operational_scopes. This table is the only thing the client adds: WHICH of its doors each
+// surface is. It is metadata, not authorization -- nothing here grants anything, and changing a line
+// cannot widen anyone's access, only point a door at a different (already-earned) surface.
+//
+// ONE TABLE, ON PURPOSE. The per-item alternative would scatter thirty declarations through a file
+// whose entries already carry long histories; the navigation-to-surface map is exactly the thing a
+// reviewer needs to read whole, because an omission here is a destination that nobody can reach.
+//
+// KEY FORMAT: "<domainKey>/<itemKey>" -- item keys repeat across domains (`customers`, `warehouse`,
+// `inventory`, `service`, `employees` all appear twice), so the domain is part of the identity.
+//
+// ANY-OF, like `capabilityAccess`: a destination is offered when the principal holds ANY one of the
+// surfaces listed for it. Cycle Counts is the shape that needs it -- a counter and a reconciler are
+// separate governed authorities reaching one screen.
+//
+// A DESTINATION ABSENT FROM THIS TABLE IS INVISIBLE UNDER THE EOS AUTHORITY. That is deliberate and
+// it is the honest answer, not an oversight to be papered over with a default: a door with no
+// governed surface behind it is a door nobody has been granted. The absent ones are listed in the
+// gap register below rather than left to be discovered.
+export const NAV_SURFACE_ACCESS = Object.freeze({
+  // Dashboard
+  "dashboard/operationsDashboard": ["inventory.balances", "inventory.catalog"],
+  // CRM/Sales
+  "customers/customers": ["crm.accounts"],
+  "customers/opportunities": ["commercial.opportunities"],
+  "customers/salesOrders": ["commercial.salesOrders"],
+  // Service Operations + Service
+  "serviceOperations/serviceOperations": ["service.workOrders"],
+  "service/workOrders": ["service.workOrders"],
+  "service/jobAssignments": ["service.workOrders"],
+  "service/dispatch": ["service.dispatch"],
+  "service/dispatcherBoard": ["service.dispatch"],
+  "service/coordinatedVisits": ["service.coordinatedVisits"],
+  // The technician's own work. `field.myWorkOrders` is earned by workOrder.transition AND the
+  // SERVICE_TECHNICIAN Work Eligibility -- which is why a dispatcher holding the same capability
+  // does not get the technician's workspace, and a technician on leave loses it without anyone
+  // editing a role.
+  "service/technicianWorkspace": ["field.myWorkOrders"],
+  "service/coordinatedMission": ["field.myWorkOrders"],
+  // The shared scanner serves warehouse, Parts and technician personas -- three surfaces, one door.
+  "service/scan": ["receiving.checkIn", "warehouse.picking", "field.myWorkOrders"],
+  // Equipment
+  "equipment/equipment": ["equipment.register"],
+  // Inventory
+  "inventory/parts": ["inventory.catalog"],
+  "inventory/partMaster": ["inventory.catalogAdmin"],
+  "inventory/warehouseWorkspace": ["warehouse.picking"],
+  "inventory/warehouses": ["warehouse.management"],
+  "inventory/truckInventory": ["inventory.balances"],
+  "inventory/transfers": ["inventory.transfers"],
+  "inventory/receiving": ["receiving.checkIn"],
+  "inventory/cycleCounts": ["inventory.cycleCount.count", "inventory.cycleCount.review"],
+  // Purchasing
+  "purchasing/purchaseOrders": ["purchasing.purchaseOrders"],
+  "purchasing/receipts": ["receiving.checkIn"],
+  // Financials
+  "financials/invoices": ["financials.invoices"],
+  "financials/payments": ["financials.payments"],
+  // Administration
+  "administration/users": ["administration.users"],
+  "administration/dataImport": ["administration.dataImport"],
+  "administration/auditLogs": ["administration.auditLogs"],
+});
+
+/**
+ * Destinations that CANNOT be offered by the EOS authority, and why. Declared, never discovered.
+ *
+ * Each line is a real blocker for a full navigation cutover, not a to-do: the reason is a property of
+ * the governed vocabulary, and the fix is a capability or an authority that does not exist yet. The
+ * `reorderQueue` entry is the one exception in spirit -- the surface IS governed, but no destination
+ * in this file is the Reorder queue, so there is nothing to point at.
+ */
+export const NAV_SURFACE_GAPS = Object.freeze({
+  "service/inboundWork": "service.inboundWork.read is a Firebase-activated capability id; eos_policy.capabilities does not declare it.",
+  "service/scheduling": "dispatchSchedule was retired as a policy Object; no governed surface is distinct from service.dispatch.",
+  "service/dispatchScheduling": "Same as scheduling -- a retired duplicate of the Dispatcher Board.",
+  "service/warranty": "No warranty domain, no capability, no backend.",
+  "inventory/manufacturers": "The manufacturers read is Rules-closed for every persona; inventory.manufacturer.read is registered but the screen cannot be used by anyone.",
+  "inventory/backOrders": "Route stub with no backend capability of any kind.",
+  "inventoryRole/manager": "THIS DOMAIN IS THE LEGACY CONSTRUCT ITSELF. `operationalRoleAccess` reads employees/{id}.operationalRoles, the exact Firebase business authority the Work Eligibility / Operational Scope decomposition replaces. It is deliberately NOT given a governed surface: reproducing it would reproduce the thing being retired.",
+  "inventoryRole/warehouse": "See inventoryRole/manager.",
+  "inventoryRole/mine": "See inventoryRole/manager.",
+  "purchasing/suppliers": "No supplier.* capability is registered; supplier master is Firestore-authoritative.",
+  "purchasing/quotes": "No quote domain exists.",
+  "purchasing/demandPlanning": "No demand-planning domain exists.",
+  "administration/rolesPermissions": "No READ capability governs the policy model. admin.roleAssignment.write is a write, and gating a read surface with it would make a reader indistinguishable from a writer.",
+  "administration/objects": "Same gap as rolesPermissions.",
+  "administration/workflows": "Same gap as rolesPermissions.",
+  "administration/permissionPreview": "Same gap as rolesPermissions.",
+  "administration/overview": "Administration's index has no governed surface of its own; it is a menu over the ones above.",
+  "administration/integrations": "No integrations domain exists.",
+  "administration/duplicateRules": "No capability governs duplicate-rule administration.",
+  "administration/warehouseRacking": "Gated today by the Firebase capability feed; inventory.location.bin.* is not in eos_policy.capabilities.",
+  "administration/financialPolicy": "Gated today by the Firebase capability feed; no registered financial-policy capability.",
+  "administration/emailCommunications": "administration.emailIntake.read is a Firebase-activated id, not a registered EOS capability.",
+  "administration/vehicles": "Hidden placeholder, no backend.",
+  "administration/regions": "Hidden placeholder, no backend.",
+  "administration/companySettings": "Hidden placeholder, no backend.",
+  "customers/contacts": "Contact read has no capability distinct from customer.record.read, and there is no Contacts destination today.",
+  "dashboard/notifications": "Hidden placeholder; the bell is the live surface.",
+  "reporting/builder": "Report Builder is already governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
+  "reporting/savedReports": "See reporting/builder.",
+  "financials/*": "Every Financials destination OTHER than Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
+  "reporting/*": "The eight domain report destinations are navHidden placeholders, and Report Builder / Saved Reports are governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
+  "inventory.reorderQueue": "THE SURFACE IS GOVERNED AND NO DOOR EXISTS. reorder.request.read.queue and the REORDER_QUEUE Operational Scope both resolve, but no nav destination in this file is the Reorder queue -- it is reached today only through the notification bell and Part Detail. A parts-manager persona therefore earns a surface the navigation cannot offer.",
+});
+
+// Attach the surface mapping to the item objects the visibility functions actually receive.
+//
+// It is applied here rather than written into each literal so the table above stays readable whole;
+// the effect is identical to `surfaceAccess:` on the item. Unknown keys are NOT silently ignored --
+// navigationSurfaceMapViolations() below reports them, and a test fails on a non-empty result.
+for (const domain of NAV_DOMAINS) {
+  for (const item of domain.subnav ?? []) {
+    const surfaces = NAV_SURFACE_ACCESS[`${domain.key}/${item.key}`];
+    if (surfaces) item.surfaceAccess = Object.freeze([...surfaces]);
+  }
+}
+
+/**
+ * Every way the surface map can be wrong, as a list of sentences. Pure; a test asserts it is empty.
+ *
+ * `knownSurfaceKeys` is injected rather than imported so this module keeps no dependency on the
+ * access layer's vocabulary mirror -- the parity proof owns that join.
+ */
+export function navigationSurfaceMapViolations(knownSurfaceKeys = null) {
+  const problems = [];
+  const destinations = new Set();
+  for (const domain of NAV_DOMAINS) {
+    for (const item of domain.subnav ?? []) destinations.add(`${domain.key}/${item.key}`);
+  }
+  for (const [destination, surfaces] of Object.entries(NAV_SURFACE_ACCESS)) {
+    if (!destinations.has(destination)) problems.push(`NAV_SURFACE_ACCESS names "${destination}", which is not a nav destination`);
+    if (!Array.isArray(surfaces) || surfaces.length === 0) problems.push(`${destination} maps to no surface`);
+    if (knownSurfaceKeys) {
+      for (const key of surfaces ?? []) {
+        if (!knownSurfaceKeys.includes(key)) problems.push(`${destination} names unknown surface "${key}"`);
+      }
+    }
+  }
+  // Every destination is either mapped, explicitly declared a gap, covered by a domain-wide gap, or
+  // `alwaysVisible`. None of those is optional: a destination that is simply unmentioned is the
+  // silent hole this register exists to prevent.
+  //
+  // A DOMAIN-WIDE gap ("financials/*") is a statement about the destinations that are NOT mapped in
+  // that domain; an explicitly mapped sibling is not a contradiction of it. An EXACT gap entry for a
+  // destination that is also mapped IS a contradiction, and is reported.
+  for (const domain of NAV_DOMAINS) {
+    for (const item of domain.subnav ?? []) {
+      const destination = `${domain.key}/${item.key}`;
+      const mapped = Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, destination);
+      const exactGap = Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, destination);
+      const domainGap = Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, `${domain.key}/*`);
+      if (mapped && exactGap) problems.push(`${destination} is BOTH mapped and declared a gap`);
+      if (mapped || exactGap || domainGap || item.alwaysVisible === true) continue;
+      problems.push(`${destination} is neither mapped to a surface nor declared a gap`);
+    }
+  }
+  return problems;
+}
+
 // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
 // PR 0) -- capability-scoped nav access for an ACTIVE, eligible
 // operationalRoles Employee whose security role is technician. Mirrors
@@ -657,8 +824,34 @@ function holdsDeclaredCapability(item, operationalContext) {
     && item.capabilityAccess.some((cap) => hasCapability(cap) === true);
 }
 
+/**
+ * The EOS branch: does the governed experience context grant a surface this destination is?
+ *
+ * TOTAL, NOT PREFERRED. When an EOS navigation authority is present, this answer is the WHOLE answer
+ * -- nothing below it runs. There is no "EOS first, legacy second", because a fallback is exactly the
+ * defect: a governed persona whose EOS read failed would be handed whatever `users/{uid}.role`
+ * happened to say, and a legacy user whose EOS read said nothing would keep working, so nobody would
+ * ever discover that the governed path was broken. Failure has to be visible.
+ *
+ * `grants()` is itself fail-closed (access/experienceContext.js): it returns true only for a current,
+ * READY, server-issued grant. Loading, refused, unreachable, malformed and unknown-key all yield
+ * false here without a branch of their own.
+ */
+function eosGrantsSurface(item, authority) {
+  if (!Array.isArray(item.surfaceAccess) || item.surfaceAccess.length === 0) return false;
+  return item.surfaceAccess.some((surfaceKey) => authority.grants(surfaceKey) === true);
+}
+
 export function isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) {
+  // `alwaysVisible` survives both sources deliberately, and it is used for exactly one item: the
+  // "My Dashboard" index. It is not an access decision -- the screen behind it composes itself from
+  // whatever the person actually holds, and hiding it would leave /dashboard with no matching route
+  // at all (see the NAV_DOMAINS comment above, and the blank-page defect that found it).
   if (item.alwaysVisible) return true;
+
+  // ════════════════════ THE EOS SOURCE, WHEN IT IS THE SOURCE ════════════════════
+  const eosAuthority = operationalContext?.eosNavigationAuthority;
+  if (isNavigationAuthority(eosAuthority)) return eosGrantsSurface(item, eosAuthority);
 
   // GOVERNED CAPABILITY IS THE FINAL ACCESS AUTHORITY FOR GOVERNED SURFACES (Owner decision
   // 2026-08-16, closing #1065). A positive governed decision grants visibility OUTRIGHT and is never
@@ -704,6 +897,11 @@ export function deniedDomainIndexItem(domain, role, allowedLegacyKeys, operation
 
 export function isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) {
   if (domain.future) {
+    // A future (empty) top-level area has no subnav to earn, so under the EOS authority there is
+    // nothing for anyone to hold and it is refused. Falling through to the legacy role list here
+    // would be the fallback this file just removed, reappearing one function down. No future domain
+    // exists today; the branch is written so that the next one cannot reopen the hole.
+    if (isNavigationAuthority(operationalContext?.eosNavigationAuthority)) return false;
     return PLACEHOLDER_DEFAULT_ROLES.includes(role);
   }
   return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));

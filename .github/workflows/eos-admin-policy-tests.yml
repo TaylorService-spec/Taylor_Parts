@@ -277,6 +277,27 @@ on:
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "field-ops-app-vite/test/entityRegistry.test.mjs"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
+      # WAVE 6 / LANE V (required registration): the EOS PRINCIPAL EXPERIENCE CONTEXT -- the governed
+      # read that replaces ROLE_NAV_ACCESS[users/{uid}.role] as the source of client navigation.
+      # Named individually for the reason every entry above was: a suite that runs in a registered
+      # job but matches no path filter goes stale in silence.
+      #
+      # The server half (surface catalog + projection + transport route) runs in test:adminPolicy /
+      # test:adminPolicyPostgres. The client half is the pure projection suite in the node manifest
+      # plus the vitest transport suite named in this job.
+      - "functions/src/eosOps/experienceAuthority.ts"
+      - "functions/src/eosOps/contextualAuthorization.ts"
+      - "functions/test/experienceAuthority.test.mjs"
+      - "functions/test/experienceAuthorityPostgres.test.mjs"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "field-ops-app-vite/src/access/experienceContext.js"
+      - "field-ops-app-vite/src/services/operationsApiClient.js"
+      - "field-ops-app-vite/src/hooks/useExperienceContext.js"
+      - "field-ops-app-vite/src/config/navigationAuthorityReadiness.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
+      - "field-ops-app-vite/test/navigationExperienceProjection.test.mjs"
+      - "field-ops-app-vite/test/operationsExperienceTransport.test.jsx"
       - ".github/workflows/eos-admin-policy-tests.yml"
   push:
     branches: [main]
@@ -591,4 +612,18 @@ jobs:
       # tranche switched no source of truth: no Administration screen imports any of it.
       - name: Canonical security read model and friendly labels (vitest + jsdom)
         run: npx vitest run test/adminSecurityReadModel.test.jsx
+        working-directory: field-ops-app-vite
+
+      # WAVE 6 / LANE V -- THE BROWSER'S ROUTE TO THE EOS PRINCIPAL EXPERIENCE CONTEXT, and the hook
+      # that owns its lifecycle. It runs under vitest rather than the node manifest because
+      # services/operationsApiClient.js reaches firebase/firebase.js for the ID token, which
+      # initializes Firebase at import time.
+      #
+      # What it pins: the client states an operation NAME and nothing else (no tenant, principal,
+      # role or capability), an unknown name never leaves the browser, and -- the property this
+      # whole lane exists for -- a refused, unreachable or malformed read grants NOTHING and never
+      # degrades to users/{uid}.role. The pure projection half runs in the node manifest as
+      # test/navigationExperienceProjection.test.mjs.
+      - name: EOS navigation source -- transport and experience hook (vitest + jsdom)
+        run: npx vitest run test/operationsExperienceTransport.test.jsx
         working-directory: field-ops-app-vite

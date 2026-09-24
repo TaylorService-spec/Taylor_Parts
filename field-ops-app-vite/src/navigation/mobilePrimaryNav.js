@@ -49,15 +49,35 @@ export const MOBILE_NAV_SHELL = Object.freeze({
 /**
  * Which shell a person gets.
  *
- * The technician shell is keyed on the legacy `technician` role because the technician journey's own
- * server-side rule is role-based -- mirroring it here is honest, and inventing a capability the
- * catalog does not define would be a client-side authority the backend never agreed to.
+ * ════════════════════ UNDER THE EOS SOURCE, NO ROLE STRING IS CONSULTED ════════════════════
  *
- * The warehouse shell is keyed on holding ANY scanner capability, because that is what makes the
- * Scan workspace their workplace rather than an occasional tool. Someone with none of them gets NO
- * phone shell: a bar whose every destination is a refusal is worse than the drawer they already had.
+ * When an EOS navigation authority is supplied, the shell is derived from the SAME governed surfaces
+ * that decide every other destination: the field workspace shell is the one for a person who holds
+ * `field.myWorkOrders` (capability plus the SERVICE_TECHNICIAN Work Eligibility), and the warehouse
+ * shell is for a person who holds a warehouse or receiving surface. This is the third place
+ * `role === "technician"` was written independently -- App.jsx's dashboard branch and navConfig's
+ * operational-role check were the other two -- and it is the one that was choosing a whole phone
+ * experience from a Firestore string.
+ *
+ * ════════════════════ THE LEGACY PATH, UNCHANGED ════════════════════
+ *
+ * Without an EOS authority the answer is exactly what it was. The technician shell is keyed on the
+ * legacy `technician` role because that journey's own server-side rule is role-based; the warehouse
+ * shell is keyed on holding ANY scanner capability, because that is what makes the Scan workspace
+ * their workplace rather than an occasional tool. Someone with neither gets NO phone shell: a bar
+ * whose every destination is a refusal is worse than the drawer they already had.
  */
-export function resolveMobileShell({ role, hasCapability } = {}) {
+export function resolveMobileShell({ role, hasCapability, eosNavigationAuthority } = {}) {
+  if (eosNavigationAuthority && typeof eosNavigationAuthority.grants === "function") {
+    const grants = (key) => eosNavigationAuthority.grants(key) === true;
+    if (grants("field.myWorkOrders")) return MOBILE_NAV_SHELL.TECHNICIAN;
+    if (grants("warehouse.picking") || grants("receiving.checkIn") || grants("inventory.cycleCount.count")) {
+      return MOBILE_NAV_SHELL.WAREHOUSE;
+    }
+    // Fail closed, and no fall-through to the role: an EOS answer that grants neither shell means
+    // this person has no phone shell, not that the legacy rule should be asked instead.
+    return MOBILE_NAV_SHELL.NONE;
+  }
   if (role === "technician") return MOBILE_NAV_SHELL.TECHNICIAN;
   const holds = (id) => typeof hasCapability === "function" && hasCapability(id) === true;
   const scannerish = [
@@ -120,8 +140,8 @@ export function activeDestination(destinations, pathname) {
  * @param isVisible (to) => boolean -- delegated to the caller, which wires it to the EXISTING
  *                  isNavItemVisible. A destination the rail would hide is dropped here too.
  */
-export function buildMobileNav({ role, hasCapability, isVisible } = {}) {
-  const shell = resolveMobileShell({ role, hasCapability });
+export function buildMobileNav({ role, hasCapability, isVisible, eosNavigationAuthority } = {}) {
+  const shell = resolveMobileShell({ role, hasCapability, eosNavigationAuthority });
   const candidates = SHELL_DESTINATIONS[shell] ?? [];
   const destinations = candidates.filter((d) => d.drawer || (typeof isVisible === "function" ? isVisible(d.to) : true));
 
