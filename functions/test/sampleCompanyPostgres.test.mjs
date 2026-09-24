@@ -171,8 +171,16 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // remove. The re-home DOES register one capability, 74 -> 75, and its five Role grants write
 // NOTHING here for the same reason the two migrations before it wrote nothing: this fixture
 // migrates a clean database and seeds afterwards, so no Role exists at migration time.
-const PINNED_LAST_MIGRATION = "1761955200000_retire-dispatch-notification-objects-rehome-coordinated-visit";
-const PINNED_MIGRATION_COUNT = 47;
+//
+// Moved deliberately again for 1762041600000 (the Administration read authority): Administration >
+// Objects, Roles & Permissions, Workflows, Permission Preview and Overview had NO registered READ
+// capability, and `rolesPermissions` carried two ADMIN_ACTION writes and nothing meaning "may read
+// the policy model" -- so a navigation cutover could only have gated a read surface on a write. It
+// registers ONE capability, 75 -> 76, granted to admin and owner. Those two grants write NOTHING
+// here, for the same reason every grant before them wrote nothing: this fixture migrates a clean
+// database and seeds afterwards, so no Role exists at migration time.
+const PINNED_LAST_MIGRATION = "1762041600000_administration-security-policy-read-authority";
+const PINNED_MIGRATION_COUNT = 48;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

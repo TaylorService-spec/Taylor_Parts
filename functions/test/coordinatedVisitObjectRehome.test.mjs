@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import pg from "pg";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
@@ -44,6 +44,19 @@ async function withClient(url, fn) {
 const migrate = (dbUrl, args) => execFileSync(process.execPath,
   ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations", "--no-check-order"],
   { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
+
+/**
+ * How many steps reach back to THIS migration -- itself plus everything that sorts after it.
+ *
+ * This file used to say `["down", "1"]`, which quietly meant "this migration is the newest one on
+ * disk". That was true the day it was written and stopped being true the moment another migration
+ * landed: `down 1` then reversed somebody else's work and every assertion below measured the wrong
+ * thing. Counted rather than pinned, so the next migration added to the chain costs nothing here.
+ */
+const STEPS_TO_THIS_MIGRATION = String(
+  readdirSync(resolve(FUNCTIONS_DIR, "migrations"))
+    .filter((f) => f.endsWith(".sql") && f >= MIGRATION).length,
+);
 
 // ════════════════════ SOURCE-LEVEL ════════════════════
 
@@ -135,11 +148,11 @@ test("retirement and re-home, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
   // every real environment, so applying the grant insert to an empty roles table would prove
   // nothing about preservation. The retirement half does NOT come back on the way down, which is
   // itself the point: the seed no longer declares either Object.
-  migrate(dbUrl, ["down", "1"]);
+  migrate(dbUrl, ["down", STEPS_TO_THIS_MIGRATION]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);
   const { tenant } = await bootstrapTenant(repo, { key: "taylor-cv", name: "Taylor", actorUid: "operator" });
-  migrate(dbUrl, ["up", "1"]);
+  migrate(dbUrl, ["up", STEPS_TO_THIS_MIGRATION]);
 
   await t.test("both Objects are gone, and so is every subordinate policy row they carried", async () => {
     const { rows } = await pool.query(
@@ -205,7 +218,7 @@ test("retirement and re-home, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
   });
 
   await t.test("the re-home reverses exactly, and the retirement is a documented no-op", async () => {
-    migrate(dbUrl, ["down", "1"]);
+    migrate(dbUrl, ["down", STEPS_TO_THIS_MIGRATION]);
     const caps = await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = $1", [CAP]);
     assert.equal(caps.rows[0].n, 0, "the additive half reverses");
     const grants = await pool.query(
@@ -214,7 +227,7 @@ test("retirement and re-home, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
     // The retirement does NOT come back -- reversing a retirement is a forward decision.
     const objects = await pool.query("SELECT count(*)::int n FROM eos_policy.objects WHERE key = ANY($1)", [RETIRED]);
     assert.equal(objects.rows[0].n, 0, "FORWARD_CORRECTION_REQUIRED, not a silent resurrection");
-    migrate(dbUrl, ["up", "1"]);
+    migrate(dbUrl, ["up", STEPS_TO_THIS_MIGRATION]);
     const back = await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = $1", [CAP]);
     assert.equal(back.rows[0].n, 1, "and up restores it");
   });
