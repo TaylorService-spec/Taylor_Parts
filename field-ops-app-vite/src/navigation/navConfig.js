@@ -853,7 +853,7 @@ export const NAV_CONTAINERS = Object.freeze({
 // not, and a destination added tomorrow with no authority at all would open the same way without
 // anyone deciding to open it.
 //
-// The role answer for the 63 destinations below is UNCHANGED -- this lane narrows nobody's access to
+// The role answer for the 62 destinations below is UNCHANGED -- this lane narrows nobody's access to
 // any of them. What changes is that it is now WRITTEN DOWN. A destination absent from this register
 // and from every other authority path is INVISIBLE, not admin/dispatcher-visible.
 //
@@ -910,14 +910,36 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "reporting/employees",
   "reporting/customers",
   "reporting/financial",
-  // WAVE 10 / LANE AR. Lane AM did not need a row here because on its branch Administration's
-  // index was a client-side CONTAINER, and a container answers from its children under BOTH
-  // sources. The integration kept Lane AH's SERVER-SIDE `containerOf` as the single derived-child
-  // mechanism instead, which only the EOS source reads -- so without this row the legacy source
-  // would refuse a destination it opens for admin/dispatcher in every deployed environment
-  // TODAY. That is exactly the change Lane AH's section 2 exists to prevent, and its readiness
-  // suite caught it. This restores the pre-existing answer byte-for-byte; it widens nothing.
-  "administration/overview",
+  // WAVE 11 / LANE AS -- THE LANE AR ROW IS REMOVED, AND ITS CONSEQUENCE IS NAMED HERE.
+  //
+  // Lane AR grew this register 62 -> 63 by adding `"administration/overview"`. Under the Owner's
+  // ruling this register is SHRINK-ONLY and that row is refused, so it is gone and the register is
+  // back at 62. `NAV_LEGACY_PLACEHOLDER_CEILING` below now makes the growth a reported violation
+  // rather than a thing a reviewer has to notice.
+  //
+  // WHY AR ADDED IT. Administration > Overview is a MENU over the other Administration
+  // destinations, and Lane AH's `containerOf` (functions/src/eosOps/experienceAuthority.ts) derives
+  // it SERVER-SIDE: the server grants `administration.overview` exactly when it granted one of that
+  // container's children, and the client reads it through the ordinary NAV_SURFACE_ACCESS row like
+  // any other surface. That derivation is read on the EOS branch ONLY. Under the legacy source the
+  // destination declares no capability, no operationalRoleAccess and no legacyKey, so with no row
+  // here `isNavItemVisible()` returns false for EVERY role, admin and dispatcher included.
+  //
+  // THE CONSEQUENCE IS ACCEPTED, NOT PAPERED OVER. In the environment this wave activates the EOS
+  // source IS authoritative (platform-sandbox: `eosApi` configured and EOS_NAVIGATION_AUTHORITY_READY
+  // true), so the container answers and no placeholder is needed. In every environment still on the
+  // legacy source -- production taylor-parts, platform-certification, platform-integration,
+  // local-emulator, and the vitest test environment -- the Administration > Overview TAB is no
+  // longer offered to admin/dispatcher, and `/administration/overview` renders App.jsx's explicit
+  // "isn't available to your role" refusal rather than a blank page or a record-id 404. The other
+  // thirteen Administration destinations are untouched and the Administration domain stays visible,
+  // because each of them still holds its own row below.
+  //
+  // THE TWO ALTERNATIVES WERE BOTH REFUSED. Re-adding the client-side `NAV_CONTAINERS` row is
+  // refused outright by the check below -- a destination may not be BOTH a container and mapped to
+  // a surface -- and by the ruling that there is ONE derived-child mechanism and it is AH's.
+  // Reinstating `alwaysVisible` or an unconditional `hasAnyAccess` doorway is blocker #7 returning
+  // as a feature. A named consequence beats a silent ungoverned door.
   "administration/users",
   "administration/rolesPermissions",
   "administration/objects",
@@ -934,6 +956,81 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
 ]);
 
 const LEGACY_PLACEHOLDER_SET = new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS);
+
+// ══════════ WAVE 11 / LANE AS: THE SHRINK-ONLY RULE, ENFORCED INSTEAD OF WRITTEN DOWN ══════════
+//
+// "THIS REGISTER MAY ONLY SHRINK" was a sentence in a comment, and Lane AR grew the register past it
+// anyway -- in good faith, to close a real regression, with a paragraph of justification attached.
+// A rule that only a reviewer enforces is a rule that gets argued with at the moment it matters
+// most. These two checks are that sentence made mechanical, and both are reported by
+// `navigationSurfaceMapViolations()`, which two suites already assert is empty.
+//
+//   1. THE CEILING. The register may hold at most `NAV_LEGACY_PLACEHOLDER_CEILING` rows. The number
+//      is the current size, and the only governed edit to it is DOWNWARD, in the same commit that
+//      removes the rows -- the retirement mechanism this register exists to be emptied by. Raising
+//      it is the thing that needs an Owner ruling, and raising it is now a visible one-line diff on
+//      a constant named for what it is, not a row lost in a 62-line list.
+//
+//   2. A DERIVED SURFACE MAY NOT ALSO BE ASSERTED. A destination mapped to a CONTAINER surface --
+//      one the server earns by reaching a child and by no grant path of its own -- must not carry a
+//      placeholder row, because a placeholder ASSERTS the door for a Firebase-era role literal and a
+//      container's whole contract is that it asserts nothing. This is the structural form of the
+//      Owner's ruling: it is not "62 vs 63", it is that `administration/overview` is the ONE kind of
+//      destination a placeholder row can never be right for, and it stays refused no matter what the
+//      count is or who argues for it next.
+//
+// Rule 2 is what makes this a guard rather than a number. A count alone permits a swap; rule 2
+// refuses the specific defect by its shape.
+export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
+
+/**
+ * Client mirror of the server catalog's CONTAINER surfaces -- the keys declared with `containerOf`
+ * in functions/src/eosOps/experienceAuthority.ts.
+ *
+ * It carries no authority and decides nothing at runtime; it exists so the rule above can be
+ * expressed against the surface's KIND rather than against its name. Parity with the server catalog
+ * is asserted by functions/test/administrationNavigationReadiness.test.mjs, in the same file that
+ * asserts `containerOf` itself, so the mirror cannot drift unnoticed.
+ */
+export const NAV_DERIVED_SURFACE_KEYS = Object.freeze([
+  "administration.overview",
+]);
+
+/**
+ * The shrink-only rules, as a pure function over injected data so a test can prove they BITE.
+ *
+ * `navigationSurfaceMapViolations()` calls it with the real registers; a test calls it with a
+ * synthetic register that breaks each rule, which is the only way to know a guard guards.
+ */
+export function legacyPlaceholderRegisterViolations({
+  register = NAV_LEGACY_PLACEHOLDER_DESTINATIONS,
+  surfaceAccess = NAV_SURFACE_ACCESS,
+  derivedSurfaceKeys = NAV_DERIVED_SURFACE_KEYS,
+  ceiling = NAV_LEGACY_PLACEHOLDER_CEILING,
+} = {}) {
+  const problems = [];
+  if (register.length > ceiling) {
+    problems.push(
+      `NAV_LEGACY_PLACEHOLDER_DESTINATIONS holds ${register.length} rows, above the shrink-only `
+      + `ceiling of ${ceiling} -- every row is an ungoverned door, so this register may only get `
+      + `smaller. Retire a destination instead, or take an Owner ruling to move the ceiling.`,
+    );
+  }
+  const derived = new Set(derivedSurfaceKeys);
+  for (const destination of register) {
+    const surfaces = surfaceAccess[destination] ?? [];
+    for (const key of surfaces) {
+      if (!derived.has(key)) continue;
+      problems.push(
+        `${destination} carries a NAV_LEGACY_PLACEHOLDER_DESTINATIONS row while mapped to the `
+        + `DERIVED surface "${key}" -- a container is earned from its children and asserts nothing, `
+        + `so it must never also be handed to a Firebase-era role literal. If the legacy source has `
+        + `to answer this destination, that is a cutover decision, not a placeholder.`,
+      );
+    }
+  }
+  return problems;
+}
 
 // Attach the surface mapping, the container scope and the placeholder declaration to the item
 // objects the visibility functions actually receive.
@@ -990,6 +1087,9 @@ export function navigationSurfaceMapViolations(knownSurfaceKeys = null) {
       }
     }
   }
+  // ── Lane AS: the register may only shrink, and a derived surface may not also be asserted ──
+  problems.push(...legacyPlaceholderRegisterViolations());
+
   // ── Lane AM: the container and placeholder registers must name real destinations too ──
   for (const destination of Object.keys(NAV_CONTAINERS)) {
     if (!destinations.has(destination)) problems.push(`NAV_CONTAINERS names "${destination}", which is not a nav destination`);
@@ -1165,7 +1265,7 @@ export function isNavItemVisible(item, role, allowedLegacyKeys, operationalConte
   if (item.capabilityAccess) return false;
 
   // THE PLACEHOLDER, DECLARED. Only a destination named in NAV_LEGACY_PLACEHOLDER_DESTINATIONS
-  // reaches the Firebase-era role literal, and the answer for those 63 is byte-for-byte what it was.
+  // reaches the Firebase-era role literal, and the answer for those 62 is byte-for-byte what it was.
   // What is gone is the FALL-THROUGH: a destination that declares no authority at all is now
   // invisible instead of admin/dispatcher-visible, so a new door cannot open by omission.
   if (item.legacyPlaceholder) return PLACEHOLDER_DEFAULT_ROLES.includes(role);

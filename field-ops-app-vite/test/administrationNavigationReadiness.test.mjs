@@ -24,8 +24,12 @@
 //                                                                     gate declaration rather than
 //                                                                     kept equal by remembering.
 //
-// EOS_NAVIGATION_AUTHORITY_READY IS STILL FALSE IN EVERY ENVIRONMENT, production included. Section 1
-// is reachable only under the EOS source, which nothing turns on yet.
+// WHEN THIS FILE WAS WRITTEN, EOS_NAVIGATION_AUTHORITY_READY WAS FALSE EVERYWHERE and Section 1 was
+// reachable only under a source nothing turned on. Wave 11 / Lane AS turned it on in
+// platform-sandbox -- and ONLY there; production stays false and declares no EOS API. So Section 1
+// now describes what non-production actually does, and Section 2 describes what every other
+// environment still does. Section 2 also carries the one answer the activation deliberately changed:
+// Administration > Overview is a container and no longer has a legacy answer at all.
 //
 // NAVIGATION IS NOT THE SECURITY AUTHORITY, and none of this makes it one. A surface decides whether
 // a destination is OFFERED; every read and command behind it re-authorizes server-side on the same
@@ -39,12 +43,16 @@ import {
   buildNavigationAuthority,
 } from "../src/access/experienceContext.js";
 import {
+  NAV_DERIVED_SURFACE_KEYS,
   NAV_DOMAINS,
+  NAV_LEGACY_PLACEHOLDER_CEILING,
+  NAV_LEGACY_PLACEHOLDER_DESTINATIONS,
   NAV_SURFACE_ACCESS,
   NAV_SURFACE_GAPS,
   PLACEHOLDER_DEFAULT_ROLES,
   isDomainVisible,
   isNavItemVisible,
+  legacyPlaceholderRegisterViolations,
 } from "../src/navigation/navConfig.js";
 import {
   ADMINISTRATION_POLICY_SURFACE_CAPABILITIES,
@@ -158,13 +166,18 @@ test("the Administration index is NOT an unconditional door -- it follows its ch
 
 // ════════════════════ 2. THE LEGACY SOURCE IS WHAT STILL ANSWERS THEM ════════════════════
 
-test("today, dispatcher reaches all five through a Firebase role literal and no grant at all", () => {
+/** The four that are genuine SURFACES of their own. Overview is the container, and is separate. */
+const POLICY_SURFACE_DESTINATIONS = Object.freeze([
+  "rolesPermissions", "objects", "workflows", "permissionPreview",
+]);
+
+test("today, dispatcher reaches the four policy SURFACES through a Firebase role literal and no grant", () => {
   // No EOS authority in context -> the legacy branch. `dispatcher` holds ZERO capabilities on the
   // rolesPermissions, principal, workflowDefinition and auditLog Objects in nonprod (measured
   // read-only 2026-09-24), and reaches every one of these screens anyway.
   const legacy = { operationalRoles: [], employmentStatus: "ACTIVE" };
   assert.deepEqual(PLACEHOLDER_DEFAULT_ROLES, ["admin", "dispatcher"]);
-  for (const key of POLICY_DESTINATIONS) {
+  for (const key of POLICY_SURFACE_DESTINATIONS) {
     const item = itemFor(key);
     assert.equal(item.capabilityAccess, undefined,
       `${key} now declares capabilityAccess -- step 1 of the wiring has been done`);
@@ -172,6 +185,81 @@ test("today, dispatcher reaches all five through a Firebase role literal and no 
     assert.equal(isNavItemVisible(item, "dispatcher", [], legacy), true,
       `${key} no longer falls to PLACEHOLDER_DEFAULT_ROLES -- re-run the readiness matrix`);
   }
+});
+
+// ═════ WAVE 11 / LANE AS: THE ONE LEGACY-SOURCE ANSWER THAT DELIBERATELY CHANGED ═════
+//
+// This test used to assert Overview alongside the other four, off the
+// NAV_LEGACY_PLACEHOLDER_DESTINATIONS row Lane AR added. The Owner refused that row: the register is
+// SHRINK-ONLY, and Overview is the ONE destination a placeholder can never be right for, because it
+// is a CONTAINER -- derived server-side by `containerOf` and asserting nothing of its own.
+//
+// So this is not a guard being weakened. It is the same question asked of a register that now has 62
+// rows instead of 63, and the answer is written down instead of being restored by a row nobody
+// ruled on. The regression Lane AR was closing is REAL and is accepted with its name on it:
+// wherever the EOS source is not authoritative, admin and dispatcher no longer get the
+// Administration > Overview tab. platform-sandbox -- the environment this wave activates -- is on
+// the EOS source, so there the container answers and nothing is lost.
+test("under the LEGACY source the Administration index is now refused -- the named cost of the shrink", () => {
+  const legacy = { operationalRoles: [], employmentStatus: "ACTIVE" };
+  const overview = itemFor("overview");
+
+  // It declares no legacy authority of ANY kind. That is the whole reason the row mattered.
+  assert.equal(overview.capabilityAccess, undefined);
+  assert.equal(overview.legacyKey, undefined);
+  assert.equal(overview.operationalRoleAccess, undefined);
+  assert.equal(overview.containerScope, undefined,
+    "a client-side container row is back -- the ruling kept ONE derived-child mechanism, AH's");
+  assert.equal(overview.legacyPlaceholder, undefined,
+    "administration/overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- the register may only shrink");
+
+  // ...so under the legacy source it is refused, for BOTH placeholder roles and for everyone else.
+  for (const role of ["admin", "dispatcher", "technician", "owner"]) {
+    assert.equal(isNavItemVisible(overview, role, ["inventory"], legacy), false,
+      `${role} still reaches the Administration index under the legacy source`);
+  }
+
+  // AND THE BLAST RADIUS IS EXACTLY ONE TAB. The other thirteen Administration destinations keep
+  // their own rows, so the domain itself is still offered and nobody loses Administration.
+  assert.equal(isDomainVisible(administration(), "admin", [], legacy), true,
+    "removing one placeholder row took the whole Administration domain with it");
+  assert.equal(isDomainVisible(administration(), "dispatcher", [], legacy), true);
+  for (const key of POLICY_SURFACE_DESTINATIONS.concat(["users", "auditLogs"])) {
+    assert.equal(isNavItemVisible(itemFor(key), "dispatcher", [], legacy), true,
+      `${key} lost its legacy answer too -- the shrink was supposed to be one row`);
+  }
+});
+
+// ═════ WAVE 11 / LANE AS: THE REGISTER MAY ONLY SHRINK, AND THE GUARD IS PROVED TO BITE ═════
+test("the placeholder register is at its ceiling and the shrink-only rules refuse Lane AR's edit", () => {
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62,
+    "the shrink-only register changed size -- if it GREW, that needs an Owner ruling, not a ceiling edit");
+  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
+  assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length <= NAV_LEGACY_PLACEHOLDER_CEILING);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false);
+  assert.equal(new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS).size, 62, "the register holds a duplicate");
+
+  // The real registers are clean.
+  assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
+
+  // A GUARD NOBODY HAS SEEN FAIL IS NOT A GUARD. Lane AR's exact edit, replayed:
+  const asAr = ["administration/overview", ...NAV_LEGACY_PLACEHOLDER_DESTINATIONS];
+  const arProblems = legacyPlaceholderRegisterViolations({ register: asAr });
+  assert.equal(arProblems.length, 2, "Lane AR's register no longer trips both rules");
+  assert.ok(arProblems.some((p) => p.includes("above the shrink-only ceiling")));
+  assert.ok(arProblems.some((p) => p.includes("DERIVED surface")));
+
+  // ...and the swap that keeps the COUNT at 62 is still refused, which is why rule 2 exists. A
+  // ceiling alone would have let this through.
+  const swapped = [...NAV_LEGACY_PLACEHOLDER_DESTINATIONS.slice(1), "administration/overview"];
+  const swapProblems = legacyPlaceholderRegisterViolations({ register: swapped });
+  assert.equal(swapProblems.length, 1);
+  assert.ok(swapProblems[0].includes("DERIVED surface"));
+
+  // The derived mirror names the container and nothing else; parity with the server catalog's
+  // `containerOf` is asserted in functions/test/administrationNavigationReadiness.test.mjs.
+  assert.deepEqual([...NAV_DERIVED_SURFACE_KEYS], ["administration.overview"]);
+  assert.deepEqual(NAV_SURFACE_ACCESS["administration/overview"], ["administration.overview"]);
 });
 
 test("the negative FALLS THROUGH only when a compatibility path is also declared -- measured, not assumed", () => {

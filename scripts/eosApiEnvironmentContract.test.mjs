@@ -20,9 +20,10 @@
 // become a transport would be a second source for the one value the frontend must have exactly one
 // source for.
 //
-// It enables nothing. `EOS_NAVIGATION_AUTHORITY_READY` is false in every environment, production
-// included, and knowing where the API is has no bearing on that. Asserted below, because the two are
-// easy to conflate and only one of them is safe to move.
+// It enables nothing. Declaring `eosApi` never moves `EOS_NAVIGATION_AUTHORITY_READY`; the flag is
+// moved only by an Owner ruling, and as of Wave 11 / Lane AS exactly one has been moved --
+// platform-sandbox. The two are easy to conflate and only one of them is ever safe to move, so what
+// is asserted below is the PAIR's invariants: no seam without an API, and never in production.
 //
 // Hermetic: reads the registry and render.yaml. No network, no build, no credentials — the live
 // `/health` probe belongs in a report, not in CI, where it would make this suite fail on an outage
@@ -169,16 +170,66 @@ test('CONTRACT: the API verifies tokens from the SAME Firebase project the front
 
 // ---------------------------------------------- declaring an address enables nothing
 
-test('CONTRACT: EOS_NAVIGATION_AUTHORITY_READY is FALSE in every environment, production included', () => {
-  // Knowing where the API is and switching navigation authority to it are two decisions. This file
-  // makes the first one; the second is the Owner's, and it is not made here.
+// ════════════════════ WAVE 11 / LANE AS: THE SECOND DECISION HAS NOW BEEN MADE, ONCE ═════════════
+//
+// This test used to assert the flag was false in EVERY environment. That was a statement of FACT
+// about a pre-activation world, not a safety property, and repeating it would now be false. The
+// Owner activated the seam in non-production, in exactly one environment.
+//
+// What replaces it is the two invariants the old assertion was standing in for, each of which is a
+// real safety property and neither of which this activation touches:
+//
+//   1. NO SEAM WITHOUT AN API. An environment that enables the flag with `eosApi: null` has no
+//      governed source to ask, so every persona's navigation resolves NOT_CONFIGURED -> UNAVAILABLE
+//      and nobody can navigate at all. That is the exact failure this file's header names, and it is
+//      now REFUSED rather than merely described.
+//   2. PRODUCTION NEVER. A production-role environment may not enable it, full stop -- and because
+//      production declares `eosApi: null`, rule 1 already forbids it a second time, independently.
+//
+// The activation is therefore pinned by its PROPERTIES, not by a hard-coded id list: the one
+// environment that may be on is the one that has an API and is not production.
+
+test('CONTRACT: no environment enables the EOS navigation seam without an eosApi to ask', () => {
+  // Rule 1. The flag and the address are separate decisions, but the flag is meaningless -- worse
+  // than meaningless -- without the address, so this direction of the pair IS enforced.
   for (const e of registry.environments) {
+    if (e.readiness.EOS_NAVIGATION_AUTHORITY_READY !== true) continue;
+    assert.notEqual(
+      e.eosApi,
+      null,
+      `environment '${e.id}' enabled the EOS navigation authority seam with no eosApi configured — `
+        + 'every persona there would resolve NOT_CONFIGURED -> UNAVAILABLE and lose navigation',
+    );
+  }
+});
+
+test('CONTRACT: EOS_NAVIGATION_AUTHORITY_READY is FALSE in every production-role environment', () => {
+  // Rule 2, and it is absolute. Nothing about a non-production activation may reach production.
+  for (const e of registry.environments) {
+    if (e.role !== 'production') continue;
     assert.equal(
       e.readiness.EOS_NAVIGATION_AUTHORITY_READY,
       false,
-      `environment '${e.id}' enabled the EOS navigation authority seam`,
+      `production-role environment '${e.id}' enabled the EOS navigation authority seam`,
     );
+    assert.equal(e.eosApi, null, `production-role environment '${e.id}' declares an EOS API`);
   }
+});
+
+test('CONTRACT: exactly one environment has the seam enabled, and it is platform-sandbox', () => {
+  // The activation is ONE environment wide. A second one appearing here is a change nobody ruled on,
+  // whether it arrives by edit or by copy-paste from the entry above it.
+  const enabled = registry.environments
+    .filter((e) => e.readiness.EOS_NAVIGATION_AUTHORITY_READY === true)
+    .map((e) => e.id);
+  assert.deepEqual(enabled, ['platform-sandbox'],
+    `the EOS navigation authority seam is enabled in ${enabled.length} environments: ${enabled.join(', ')}`);
+
+  // platform-certification is frozen by standing ruling; naming it keeps the freeze checkable here
+  // rather than only in a memory of the ruling.
+  const certification = registry.environments.find((e) => e.id === 'platform-certification');
+  assert.equal(certification.readiness.EOS_NAVIGATION_AUTHORITY_READY, false,
+    'platform-certification is frozen by standing ruling and must not be activated');
 });
 
 test('CONTRACT: eosApi is NOT projected into the resolved environment — nothing can build a transport from it', () => {
