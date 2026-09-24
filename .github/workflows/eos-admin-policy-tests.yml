@@ -356,6 +356,17 @@ on:
       - "functions/test/contextualActionAuthorityPostgres.test.mjs"
       - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      # WAVE 14 / LANE BA: the persona AUTHORITY manifest suite and the persona E2E HARNESS
+      # suite were named by ZERO npm scripts -- personaAuthorityDimensions.v1.json was already a
+      # path filter above, but the filter triggered no job that ran either test, so the manifest's
+      # own governance proof had been failing unseen on a stale expectation. Both are pure
+      # (no database, no Firebase, no network) and are now registered in test:adminPolicy, the
+      # offline job. Named here for the reason every entry above is -- a suite nothing runs goes
+      # stale in silence.
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/personaSuiteRegistration.test.mjs"
+      - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "field-ops-app-vite/src/access/experienceContext.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"
       - "field-ops-app-vite/src/hooks/useExperienceContext.js"
@@ -566,6 +577,14 @@ on:
       # drives the real truck resolver, so a change to ANY of those three must trigger it --
       # otherwise the suite that documents the defect goes stale in exactly the silence the
       # defect lives in.
+      # WAVE 14 / LANE BA: same registration on the PUSH block as on the pull_request block --
+      # adding it to pull_request alone would let a direct push to main leave these two suites
+      # untriggered. Both run in test:adminPolicy (offline).
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/personaSuiteRegistration.test.mjs"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"
       - "functions/src/workOrderConsumption/consumptionSourceService.ts"
       - "functions/src/cycleCount/cycleCountSheetCallables.ts"
