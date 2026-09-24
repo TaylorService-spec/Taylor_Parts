@@ -414,19 +414,80 @@ test("every persona in the governed manifest gets a destination set earned entir
   // refused Roles & Permissions and Objects, which expose the policy CONFIGURATION. This persona is
   // the one place in the offline suite where the separation is observable on a manifest persona
   // rather than on a constructed capability set.
+  // WAVE 12 / LANE AV: `administration/overview` LEAVES THIS LIST, and its absence is the container
+  // rule working rather than an access change. The helper above skips every `containerScope`
+  // destination, because a container is DERIVED from the list being built and is not an access
+  // decision of its own -- `dashboard/my` has never appeared here for the same reason. The Owner's
+  // Wave 12 ruling made Administration > Overview a container on the client too (one rule, both
+  // sources), so it is now skipped by that same line. The persona's SURFACES are unchanged: the
+  // server still derives `administration.overview` for them, and the assertion below measures the
+  // destination directly instead of reading it out of a list the helper deliberately excludes.
   assert.deepEqual(observed["owner-executive"].destinations, [
     "administration/auditLogs",
     "administration/dataImport",
-    // The container's destination. It is here BECAUSE the others are; the persona earns no
-    // capability for it and none exists to earn.
-    "administration/overview",
     "administration/permissionPreview",
     "administration/users",
   ]);
+  assert.equal(observed["owner-executive"].surfaces.includes("administration.overview"), true,
+    "the server stopped deriving the container for a persona that holds three of its children");
   // ...and the configuration surfaces stay shut, which is what makes the line above a separation
   // rather than a widening.
   assert.equal(observed["owner-executive"].destinations.includes("administration/rolesPermissions"), false);
   assert.equal(observed["owner-executive"].destinations.includes("administration/objects"), false);
+});
+
+// ═════ WAVE 12 / LANE AV: THE CONTAINER, MEASURED DIRECTLY, THROUGH THE CLIENT'S REAL PREDICATE ═════
+//
+// The helper above deliberately excludes containers from a persona's destination set, so the one
+// question it cannot answer is whether the Administration index actually opens. That question is the
+// Owner's Wave 12 ruling, and it is asked here against the same real projection: the persona's
+// governed surfaces go in, `isNavItemVisible` answers, and no role literal is consulted anywhere.
+test("the Administration index opens for the personas that earn a governed child, and for no others", async () => {
+  const perPersona = {};
+  for (const personaKey of Object.keys(MANIFEST.personas)) {
+    perPersona[personaKey] = await grantedSurfaceKeys(
+      actorWith(PERSONA_CAPABILITIES[personaKey] ?? []),
+      dimensionsOf(personaKey),
+    );
+  }
+  const administration = NAV_DOMAINS.find((d) => d.key === "administration");
+  const overview = administration.subnav.find((i) => i.key === "overview");
+  const overviewOpensFor = (surfaces, role) => {
+    const authority = buildNavigationAuthority({
+      state: surfaces.length > 0 ? EXPERIENCE_STATE.READY : EXPERIENCE_STATE.REFUSED,
+      context: { surfaces },
+    });
+    return isNavItemVisible(overview, role, [], {
+      operationalRoles: [], employmentStatus: null, eosNavigationAuthority: authority,
+    });
+  };
+
+  // THE OWNER EXECUTIVE earns three of the six children, so the menu has three things on it.
+  const ownerSurfaces = perPersona["owner-executive"];
+  assert.equal(overviewOpensFor(ownerSurfaces, "owner"), true,
+    "owner-executive holds administration.users/auditLogs/permissionPreview and gets no menu over them");
+
+  // THE DISPATCHER earns NONE of them -- measured, not assumed -- so it gets no Administration index,
+  // and passing the widest legacy role literal alongside cannot change that under the EOS source.
+  const dispatcherSurfaces = perPersona.dispatcher;
+  for (const childKey of ["administration.rolesPermissions", "administration.objects",
+    "administration.workflows", "administration.permissionPreview", "administration.users",
+    "administration.auditLogs"]) {
+    assert.equal(dispatcherSurfaces.includes(childKey), false,
+      `dispatcher has acquired ${childKey}, which changes what this test is measuring`);
+  }
+  assert.equal(overviewOpensFor(dispatcherSurfaces, "dispatcher"), false,
+    "dispatcher reached the Administration index with no governed child behind it");
+  assert.equal(overviewOpensFor(dispatcherSurfaces, "admin"), false,
+    "a Firebase-era role literal reopened the Administration index under the EOS source");
+
+  // AND EVERY OTHER PERSONA: the index opens exactly when a governed child did, never otherwise.
+  const childSurfaces = EXPERIENCE_SURFACES.find((s) => s.key === "administration.overview").containerOf;
+  for (const [personaKey, surfaces] of Object.entries(perPersona)) {
+    const earnsAChild = childSurfaces.some((key) => surfaces.includes(key));
+    assert.equal(overviewOpensFor(surfaces, "technician"), earnsAChild,
+      `${personaKey}: the Administration index and its children disagree`);
+  }
 });
 
 test("TWO PERSONAS, ONE SECURITY ROLE, DIFFERENT DOORS -- the difference is a governed workforce row", async () => {

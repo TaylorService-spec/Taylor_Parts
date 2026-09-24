@@ -288,31 +288,60 @@ test("administration.overview is a CONTAINER -- derived from its children, earna
   assert.equal(surfaceCatalogCapabilityKeys().includes("administration.overview"), false);
 });
 
-// ═════ WAVE 11 / LANE AS: THE CLIENT'S DERIVED-SURFACE MIRROR IS PINNED TO THIS CATALOG ═════
+// ═════ THE CLIENT'S DERIVED-SURFACE MIRROR IS PINNED TO THIS CATALOG -- KEYS AND CHILDREN ═════
 //
-// navConfig.js carries `NAV_DERIVED_SURFACE_KEYS` so it can refuse a placeholder row on a CONTAINER
-// destination -- the rule that keeps `administration/overview` out of the shrink-only legacy
-// register for a reason about the surface's KIND rather than about its name.
+// Wave 11 / Lane AS added this pin for `NAV_DERIVED_SURFACE_KEYS`, which lets navConfig.js refuse a
+// placeholder row on a CONTAINER destination -- the rule that keeps `administration/overview` out of
+// the shrink-only legacy register for a reason about the surface's KIND rather than its name.
 //
-// That mirror decides nothing at runtime, but a mirror that drifts stops refusing. The catalog HERE
-// is the authority for which surfaces are containers, so the parity belongs in this file, beside the
-// `containerOf` assertion it mirrors: add a container above without adding it below, and the client
-// guard silently stops covering it.
-test("the client's derived-surface mirror names exactly this catalog's containers", async () => {
+// WAVE 12 / LANE AV WIDENED WHAT THE MIRROR CARRIES, so this pin widens with it. The client now
+// answers the container under BOTH authority sources, from `NAV_DERIVED_SURFACE_CHILDREN` -- the
+// same disjunction, over the same children, joined through NAV_SURFACE_ACCESS into the destinations
+// its predicate can ask about. That is what makes the two ends agree BY CONSTRUCTION instead of by
+// two people maintaining two lists: there is one list, it lives HERE, and the client mirrors it.
+//
+// SO THIS TEST IS THE WHOLE JOIN. Add a container above without adding it below, move a child, or
+// -- the one that matters most -- add `administration.dataImport` to `containerOf` on either side,
+// and this fails rather than letting a data-import grant quietly open the policy menu in one of the
+// two places. It sits beside the `containerOf` assertion it mirrors, in the file that owns the
+// answer.
+test("the client's derived-surface mirror names exactly this catalog's containers AND their children", async () => {
   const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
   const here = dirname(fileURLToPath(import.meta.url));
   const navConfigUrl = pathToFileURL(
     join(here, "..", "..", "field-ops-app-vite", "src", "navigation", "navConfig.js"),
   ).href;
-  const { NAV_DERIVED_SURFACE_KEYS, NAV_LEGACY_PLACEHOLDER_DESTINATIONS, legacyPlaceholderRegisterViolations } =
-    await import(navConfigUrl);
+  const {
+    NAV_CONTAINERS, NAV_DERIVED_SURFACE_CHILDREN, NAV_DERIVED_SURFACE_KEYS, NAV_SURFACE_ACCESS,
+    NAV_LEGACY_PLACEHOLDER_DESTINATIONS, containerRegisterViolations,
+    legacyPlaceholderRegisterViolations, navigationSurfaceMapViolations,
+  } = await import(navConfigUrl);
 
   const catalogContainers = EXPERIENCE_SURFACES.filter((s) => s.containerOf).map((s) => s.key).sort();
   assert.deepEqual([...NAV_DERIVED_SURFACE_KEYS].sort(), catalogContainers,
     "navConfig.js's NAV_DERIVED_SURFACE_KEYS has drifted from the surface catalog's containers");
 
-  // And the rule it exists for still holds against the real registers.
+  // THE CHILDREN, PER CONTAINER. This is the list the client's container rule actually walks.
+  for (const entry of EXPERIENCE_SURFACES.filter((s) => s.containerOf)) {
+    assert.deepEqual([...(NAV_DERIVED_SURFACE_CHILDREN[entry.key] ?? [])].sort(), [...entry.containerOf].sort(),
+      `navConfig.js's mirror of ${entry.key}'s children has drifted from containerOf`);
+  }
+
+  // AND THE CLIENT'S CONTAINER SCOPE IS THOSE CHILDREN, joined through the surface map. Computed on
+  // the client, re-derived independently here: two routes to the same six destinations.
+  const expectedScope = EXPERIENCE_SURFACES.find((s) => s.key === "administration.overview").containerOf
+    .map((childKey) => Object.entries(NAV_SURFACE_ACCESS).find(([, keys]) => keys.includes(childKey))?.[0]);
+  assert.equal(expectedScope.includes(undefined), false,
+    "a containerOf child surface is mapped to no nav destination -- the client menu could never open on it");
+  assert.deepEqual([...NAV_CONTAINERS["administration/overview"]].sort(), [...expectedScope].sort());
+  assert.equal(NAV_CONTAINERS["administration/overview"].includes("administration/dataImport"), false,
+    "the client container would open the policy menu on a data-import grant; the server's does not");
+
+  // Both client guards are clean against the real registers, and the shrink-only register is still
+  // 62 with the container out of it -- the container answer made the row unnecessary, not allowed.
+  assert.deepEqual(containerRegisterViolations(), []);
   assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
+  assert.deepEqual(navigationSurfaceMapViolations(), []);
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false,
     "the Administration container is back in the shrink-only legacy placeholder register");
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
