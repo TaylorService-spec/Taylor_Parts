@@ -15,7 +15,7 @@ vi.mock("../src/modules/administration/usePolicyStore.js", () => ({
             status: "active",
           },
           {
-            id: "principal-no-name-87654321",
+            id: "87654321-no-name-principal",
             displayName: null,
             externalSubject: "another-subject-must-not-render",
             identityProvider: "firebase",
@@ -73,7 +73,7 @@ describe("Administration Permission Preview", () => {
   it("never falls back to displaying the external authentication subject", () => {
     render(<AdminPermissionPreview />);
 
-    expect(screen.getByRole("button", { name: "Principal principal" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Principal 87654321" })).toBeTruthy();
     expect(screen.queryByText("firebase-subject-must-not-render")).toBeNull();
     expect(screen.queryByText("another-subject-must-not-render")).toBeNull();
   });
