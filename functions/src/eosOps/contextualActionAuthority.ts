@@ -48,7 +48,6 @@ import type { Pool, PoolClient } from "pg";
 import {
   authorizeAnyPath,
   postgresContextualReader,
-  type AuthorizationReason,
   type ContextPredicate,
   type ContextPredicateKind,
   type ContextualActor,
@@ -56,6 +55,14 @@ import {
   type RecordContext,
 } from "./contextualAuthorization";
 import type { ResolvedOperationalContext } from "./capabilityAuthority";
+// The withheld-cell ruling and the outcome vocabulary are CANONICAL in grantConditionPolicy.ts and
+// re-exported here, so this module's public surface is unchanged while the GRANT-level model
+// (conditionalEntitlement.ts) no longer has to import this 271-line ACTION-level design to reach
+// them. See that file's header for the lane this import cost.
+import { isWithheldConditionedCell, type ContextualActionOutcome } from "./grantConditionPolicy";
+
+export { WITHHELD_CONDITIONED_CELLS, isWithheldConditionedCell } from "./grantConditionPolicy";
+export type { ContextualActionOutcome } from "./grantConditionPolicy";
 
 /**
  * The context policy for ONE action.
@@ -84,54 +91,53 @@ export type ActionContextRegistry = ReadonlyMap<string, ActionContextPolicy>;
  */
 export const ACTION_CONTEXT_POLICIES: ActionContextRegistry = Object.freeze(new Map<string, ActionContextPolicy>());
 
-/**
- * (Role, capability) cells that MUST NOT be expressed as an action-level policy — Owner ruling.
- *
- * `reorder.purchaseOrder.read` is granted UNCONDITIONED to eleven Roles and conditioned only on
- * `technician`; `.create` to five unconditioned Roles and conditioned only on `technician`
- * (functions/migrations/1761696000000, grant block). Registering a WORK_ELIGIBILITY(PARTS_OPERATIONS)
- * policy for either ACTION would impose the technician's condition on all eleven and all five —
- * a narrowing of other Roles' grants, which is the opposite of preserving them. The two conditioned
- * cells stay WITHHELD until a grant-level model exists; see CONDITIONAL_ENTITLEMENT_MODEL.
- */
-export const WITHHELD_CONDITIONED_CELLS: readonly string[] = Object.freeze([
-  "reorder.purchaseOrder.read",
-  "reorder.purchaseOrder.create",
-]);
+// `WITHHELD_CONDITIONED_CELLS` is declared in grantConditionPolicy.ts and re-exported above. It is
+// the Owner's ruling, not this module's: an action-level predicate on either Purchase Order cell
+// would impose the technician's condition on all eleven read holders and all five create holders.
+// `actionContextRegistry` below enforces it for EVERY registry, test registries included.
 
 /**
- * WHY A ROLE-SELECTIVE CONDITION CANNOT BE EXPRESSED TODAY. Recorded in code because the reason is
- * structural and a future reader will otherwise rediscover it by trying.
+ * WHY A ROLE-SELECTIVE CONDITION COULD NOT BE EXPRESSED, AND WHAT CLOSED IT.
  *
- * The three inputs a grant-level condition needs, and where each one is:
+ * Recorded in code because the reason was structural and a future reader would otherwise rediscover
+ * it by trying. The three inputs a grant-level condition needs, and where each one now is:
  *
- *   the condition itself        ONLY in the TypeScript catalog, as Role.conditionsByPermission.
- *                               eos_policy.role_capabilities is (tenant_id, role_id, capability_id)
- *                               with no condition column, and by Owner ruling a grant carries no
- *                               scope. There is no governed PostgreSQL row to read it from.
- *   which Role granted the key  DISCARDED. capabilitiesForRoleKeys selects DISTINCT c.key and
- *                               returns Set<string>; ContextualActor.capabilities is a flat set by
- *                               design, so provenance cannot be recovered downstream.
- *   a per-grant evaluation slot ABSENT. The evaluator attaches predicates to the ACTION, and
- *                               authorizeAnyPath is a UNION across paths for ONE actor: adding an
- *                               unconditioned path alongside a conditioned one allows EVERY holder,
- *                               so the two cannot coexist meaningfully at action level.
+ *   the condition itself        WAS: only in the TypeScript catalog, as Role.conditionsByPermission.
+ *                               NOW: eos_policy.capability_grant_conditions, created by migration
+ *                               1762214400000 and LIVE in nonprod. `role_capabilities` is still
+ *                               (tenant_id, role_id, capability_id) with no condition column — the
+ *                               condition lives in its own relation, never on the grant row.
+ *   which Role granted the key  WAS: discarded by SELECT DISTINCT c.key.
+ *                               NOW: capabilityAuthority.roleCapabilityGrants keeps the Role KEY, and
+ *                               resolveOperationalContext carries the resulting entitlements onto
+ *                               ResolvedOperationalContext beside the unchanged flat set.
+ *   a per-grant evaluation slot WAS: absent — predicates attached to the ACTION, and authorizeAnyPath
+ *                               unions paths for ONE actor, so an unconditioned path beside a
+ *                               conditioned one allows every holder.
+ *                               NOW: conditionalEntitlement.authorizeEntitledAction evaluates each
+ *                               ENTITLEMENT separately, so Role A unconditional and Role B
+ *                               conditional on the same key coexist.
  *
- * Closing it is a schema change plus a resolver change, which is a migration — out of scope here,
- * and not something to approximate.
+ * THE ACTION-LEVEL GAP IS NOT CLOSED, and is not meant to be: an action-level predicate still
+ * constrains every holder of the key, which is why the two Purchase Order cells stay withheld from
+ * THIS registry for good. `status` below describes the GRANT-level model, which is where the sentence
+ * became sayable.
  */
 export const CONDITIONAL_ENTITLEMENT_MODEL = Object.freeze({
-  status: "GAP" as const,
+  status: "CLOSED_AT_GRANT_LEVEL" as const,
   code: "CONDITIONAL_ENTITLEMENT_MODEL_GAP" as const,
-  missing: Object.freeze([
-    "eos_policy.role_capabilities has no condition column",
-    "capabilitiesForRoleKeys returns SELECT DISTINCT c.key, discarding the granting Role",
+  /** What each of the three missing inputs was replaced by. Empty `missing` is the point. */
+  missing: Object.freeze([] as readonly string[]),
+  closedBy: Object.freeze([
+    "eos_policy.capability_grant_conditions (migration 1762214400000, applied 2026-09-24, 0 rows)",
+    "capabilityAuthority.roleCapabilityGrants keeps the granting Role key",
+    "conditionalEntitlement.authorizeEntitledAction evaluates one condition per ENTITLEMENT",
+  ]),
+  /** Still true, and deliberately so. */
+  stillTrueOfActionLevelPolicies: Object.freeze([
     "predicates attach to the action; authorizeAnyPath unions paths for one actor",
   ]),
 });
-
-/** The seam's outcomes: the evaluator's vocabulary, plus ONE for "the authority could not answer". */
-export type ContextualActionOutcome = AuthorizationReason | "CONTEXT_AUTHORITY_UNAVAILABLE";
 
 export interface ContextualActionDecision {
   readonly allowed: boolean;
@@ -260,7 +266,7 @@ export async function authorizeResolvedAction(
 export function actionContextRegistry(policies: readonly ActionContextPolicy[]): ActionContextRegistry {
   const map = new Map<string, ActionContextPolicy>();
   for (const policy of policies) {
-    if (WITHHELD_CONDITIONED_CELLS.includes(policy.capabilityKey)) {
+    if (isWithheldConditionedCell(policy.capabilityKey)) {
       // Not advice. A cell the Owner withheld cannot be registered by anybody, including a test that
       // thought it was only proving a shape.
       throw new Error(`${policy.capabilityKey} is a WITHHELD conditioned cell and may not carry an action-level policy`);

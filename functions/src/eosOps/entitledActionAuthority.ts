@@ -23,9 +23,13 @@ import type { Pool, PoolClient } from "pg";
 import {
   grantConditionRows,
   principalCapabilityGrants,
+  resolveOperationalContext,
   roleCapabilityGrants,
   type ResolvedOperationalContext,
 } from "./capabilityAuthority";
+import { resolvePrincipalContext } from "../adminPolicy/principalContext";
+import type { ResolveContextInput } from "../adminPolicy/principalContext";
+import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { postgresContextualReader, type ContextualReader } from "./contextualAuthorization";
 import {
   assertNoWithheldGrantConditions,
@@ -84,10 +88,13 @@ export async function resolveDirectEntitlements(
 /**
  * The per-grant conditions this tenant holds in PostgreSQL.
  *
- * INERT: no migration creates `eos_policy.capability_grant_conditions` this Wave, so this throws
- * against a currently-migrated database and every caller must treat that as a refusal, never as
- * "no conditions exist". It is exercised against a database created from
- * PROPOSED_GRANT_CONDITION_SCHEMA so the reader and the schema are proved together.
+ * THE RELATION IS LIVE (migration 1762214400000, applied to nonprod 2026-09-24) and holds ZERO rows,
+ * so this returns an EMPTY catalog for every tenant today -- provably the same catalog as
+ * SHIPPED_GRANT_CONDITIONS, which is the whole of the zero-condition parity claim.
+ *
+ * A database that does NOT carry the relation makes this throw, and every caller must treat that as
+ * a refusal, never as "no conditions exist": reading a missing condition store as "unconditioned"
+ * would turn every conditioned grant into an unconditional one in one step.
  */
 export async function postgresGrantConditions(pool: Pool, tenantId: string): Promise<GrantConditionCatalog> {
   return grantConditionCatalogFromRows(await grantConditionRows(pool, tenantId));
@@ -140,3 +147,94 @@ export async function authorizeEntitledResolvedAction(
 
 /** The derived flat set, for a caller that wants to compare the two resolvers itself. */
 export { capabilityKeysOf };
+
+// ==================== THE RUNTIME SEAM ====================
+//
+// `resolveOperationalContext` already resolved this actor's entitlements -- provenance and all -- on
+// the request path, for all five EOS transports. A gate site holding that context therefore needs no
+// second resolution and no pool of its own to reach a CONDITIONAL decision: it needs this function.
+//
+// WHY THIS IS NOT `authorizeEntitledResolvedAction`. That function re-resolves entitlements from the
+// pool with SHIPPED_GRANT_CONDITIONS, which is right for a caller that has only a principal context
+// and wrong for a caller inside a request that already paid for the read. Both apply the SAME
+// catalog; neither takes one from its caller, so neither can be handed a weaker policy.
+
+/** The actor shape every one of the thirteen gate sites already has, plus the resolved entitlements. */
+export interface OperationalActor {
+  readonly tenantId: string;
+  readonly principalId: string;
+  readonly capabilities: ReadonlySet<string>;
+  readonly entitlements: EntitlementSet;
+}
+
+/** Re-exported from the pure model, which is where a gate site should import it from. */
+export { hasResolvedEntitlements } from "./conditionalEntitlement";
+
+/**
+ * Decide one action for an actor the transport already resolved.
+ *
+ * The flat capability Set is still the FIRST boundary, inside `authorizeEntitledAction`, unchanged:
+ * a caller without the key is refused CAPABILITY_MISSING having read nothing. With no condition on
+ * any of this actor's entitlements -- the deployed state, `capability_grant_conditions` holding zero
+ * rows -- the decision is ALLOWED via the unconditional entitlement with `contextEvaluated === false`
+ * and ZERO context reads, which is byte-identical to `capabilities.has(key)`.
+ *
+ * `reader` exists so a test can count the context reads. In production it is the PostgreSQL reader
+ * over the same pool the request is already using.
+ */
+export function authorizeOperationalAction(
+  reader: ContextualReader,
+  actor: OperationalActor,
+  request: { readonly capabilityKey: string; readonly recordId?: string },
+): Promise<EntitledActionDecision> {
+  return authorizeEntitledAction(reader, {
+    actor: {
+      tenantId: actor.tenantId,
+      principalId: actor.principalId,
+      capabilities: actor.capabilities,
+      entitlements: actor.entitlements,
+    },
+    capabilityKey: request.capabilityKey,
+    recordId: request.recordId,
+  });
+}
+
+/** The same decision for a caller holding the whole resolved context rather than a domain actor. */
+export function authorizeResolvedOperationalAction(
+  reader: ContextualReader,
+  resolved: ResolvedOperationalContext,
+  request: { readonly capabilityKey: string; readonly recordId?: string },
+): Promise<EntitledActionDecision> {
+  return authorizeOperationalAction(reader, {
+    tenantId: resolved.principalContext.tenantId,
+    principalId: resolved.principalContext.uid,
+    capabilities: resolved.capabilities,
+    entitlements: resolved.entitlements,
+  }, request);
+}
+
+/**
+ * Resolve a context whose conditions come from the LIVE relation rather than the shipped catalog.
+ *
+ * THE DIFFERENCE IS ZERO TODAY and that is the point: `capability_grant_conditions` holds no rows,
+ * so this produces exactly the entitlements `resolveOperationalContext` produces on its own. It is
+ * here so that activating a condition is a governed INSERT plus a reviewed switch of the deployed
+ * composition to this function -- not a schema change, not a redesign, and not something a caller
+ * can do by passing an argument.
+ *
+ * IT FAILS CLOSED. A database without the relation throws out of `postgresGrantConditions`; this
+ * function does not catch it, because "the condition store could not be read" must never resolve to
+ * "there are no conditions".
+ */
+export async function resolveEntitledOperationalContext(
+  reader: PolicyReader,
+  pool: Pool,
+  input: ResolveContextInput,
+): Promise<ResolvedOperationalContext> {
+  const principalContext = await resolvePrincipalContext(reader, input);
+  const conditions = await postgresGrantConditions(pool, principalContext.tenantId);
+  // The Owner's withheld cells can never be activated through a deployed composition, wherever the
+  // rows came from -- the shipped catalog or the relation.
+  assertNoWithheldGrantConditions(conditions);
+  return resolveOperationalContext(reader, pool, input, conditions);
+}

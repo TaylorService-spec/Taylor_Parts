@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -270,11 +270,11 @@ test("the conditional entitlement MODEL, pure", async (t) => {
       assert.doesNotMatch(src, /ALTER TABLE[\s\S]{0,80}(role_capabilities|principal_capabilities)/i, file);
       assert.doesNotMatch(src, /INSERT INTO[\s\S]{0,40}(role_capabilities|principal_capabilities)/i, file);
     }
-    // The proposed relation is a SEPARATE table keyed by (grantor, capability) -- never a column.
-    assert.match(model.PROPOSED_GRANT_CONDITION_SCHEMA, /CREATE TABLE eos_policy\.capability_grant_conditions/);
-    assert.match(model.PROPOSED_GRANT_CONDITION_SCHEMA,
+    // The relation is a SEPARATE table keyed by (grantor, capability) -- never a column.
+    assert.match(model.GRANT_CONDITION_RELATION_SCHEMA, /CREATE TABLE eos_policy\.capability_grant_conditions/);
+    assert.match(model.GRANT_CONDITION_RELATION_SCHEMA,
       /UNIQUE \(tenant_id, grant_scope, grantor_key, capability_key\)/);
-    assert.doesNotMatch(model.PROPOSED_GRANT_CONDITION_SCHEMA, /role_capabilities|principal_capabilities/);
+    assert.doesNotMatch(model.GRANT_CONDITION_RELATION_SCHEMA, /role_capabilities|principal_capabilities/);
   });
 });
 
@@ -648,10 +648,14 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
 
   // ════════════════════ PERSISTENCE -- designed, read, and NOT migrated ════════════════════
 
-  await t.test("the condition relation does NOT exist: this lane added no migration", async () => {
+  await t.test("no migration on THIS lineage creates the relation -- the deployed one is 1762214400000", async () => {
+    // The relation is LIVE in nonprod (migration 1762214400000, applied 2026-09-24). It is absent
+    // HERE because that migration is not on this lineage and this lane adds none: `migrations/` is
+    // untouched, so a database migrated from it carries no condition store at all.
     const { rows } = await q(
       `SELECT to_regclass('eos_policy.capability_grant_conditions') IS NOT NULL AS present`);
-    assert.equal(rows[0].present, false, "a migration appeared where Lane AA owns the slot");
+    assert.equal(rows[0].present, false, "this lane added a migration");
+    assert.equal(model.GRANT_CONDITION_SCHEMA_MIGRATION, "1762214400000");
     await assert.rejects(() => composition.postgresGrantConditions(pool, T), /does not exist/,
       "a missing condition store must throw, never read as 'no conditions'");
     // AB2: the two grant tables still answer WHAT, never WHICH.
@@ -665,9 +669,9 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
       "role_capabilities grew or lost a column");
   });
 
-  await t.test("the PROPOSED relation, created from its own DDL, round-trips a real condition", async () => {
-    // Applied HERE ONLY, in a throwaway database, from the exact text the migration would carry.
-    await q(model.PROPOSED_GRANT_CONDITION_SCHEMA);
+  await t.test("the relation, created from its own DDL, round-trips a real condition", async () => {
+    // Applied HERE ONLY, in a throwaway database, from the exact text migration 1762214400000 carries.
+    await q(model.GRANT_CONDITION_RELATION_SCHEMA);
     await q(`INSERT INTO eos_policy.capability_grant_conditions
                (id,tenant_id,grant_scope,grantor_key,capability_key,condition,established_by,updated_by)
              VALUES ('cgc-1',$1,'ROLE','technician',$2,$3::jsonb,'lane-ab','lane-ab')`,
@@ -750,5 +754,481 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     assert.equal(await reader.isAssignedEmployee(T, "workOrder", "wo-ab", emp("tech-eligible")), true);
     assert.equal(await reader.isAssignedEmployee(T, "workOrder", "wo-ab", emp("tech-plain")), false);
     assert.equal([...evaluator.CONTEXT_PREDICATE_KINDS].length, 3, "the predicate vocabulary is unchanged");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// LANE AJ — THE DIFFERENCE BETWEEN "THE SCHEMA EXISTS" AND "THE RUNTIME WORKS".
+//
+// Migration 1762214400000 created `eos_policy.capability_grant_conditions` and applied it to nonprod
+// on 2026-09-24, where it holds ZERO rows. That migration is NOT on this lineage and this lane adds
+// none: the relation below is created from `GRANT_CONDITION_RELATION_SCHEMA`, the repository's own
+// DDL, which is the text the migration was written from character for character.
+//
+// NOTHING IS ACTIVATED ANYWHERE THAT PERSISTS. Every condition row in this file lives in a throwaway
+// database that is dropped when the test ends; `SHIPPED_GRANT_CONDITIONS` stays empty and frozen; the
+// two Purchase Order cells stay withheld and the production entry point still refuses them.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
+const policy = require("../lib/eosOps/grantConditionPolicy.js");
+const workforceHttp = require("../lib/eosWorkforce/workforceHttp.js");
+
+const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
+
+/**
+ * NONPROD, READ ONLY, 2026-09-24 — `render psql dpg-dah48qht0dsc73egnml0-a --command "SELECT ..."`.
+ * Pinned verbatim so the repository's declared shape is checked against what is DEPLOYED and not
+ * only against what this test can create for itself.
+ */
+const NONPROD_COLUMNS = Object.freeze([
+  ["id", "text", "NO", null],
+  ["tenant_id", "text", "NO", null],
+  ["grant_scope", "text", "NO", null],
+  ["grantor_key", "text", "NO", null],
+  ["capability_key", "text", "NO", null],
+  ["condition", "jsonb", "NO", null],
+  ["status", "text", "NO", "'ACTIVE'::text"],
+  ["established_by", "text", "NO", null],
+  ["established_at", "timestamp with time zone", "NO", "now()"],
+  ["updated_by", "text", "NO", null],
+  ["updated_at", "timestamp with time zone", "NO", "now()"],
+]);
+const NONPROD_CONSTRAINTS = Object.freeze([
+  "CHECK ((grant_scope = ANY (ARRAY['ROLE'::text, 'PRINCIPAL'::text])))",
+  "CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'RETIRED'::text])))",
+  "FOREIGN KEY (capability_key) REFERENCES eos_policy.capabilities(key)",
+  "FOREIGN KEY (tenant_id) REFERENCES eos_policy.tenants(id)",
+  "PRIMARY KEY (id)",
+  "UNIQUE (tenant_id, grant_scope, grantor_key, capability_key)",
+]);
+const NONPROD_INDEXES = Object.freeze([
+  "capability_grant_conditions_by_capability",
+  "capability_grant_conditions_pkey",
+  "capability_grant_conditions_tenant_id_grant_scope_grantor_k_key",
+]);
+/** Measured in nonprod the same day, from eos_policy.role_capabilities. */
+const NONPROD_PO_READ_HOLDERS = Object.freeze(["accountingManager", "admin", "controller", "dispatcher",
+  "financeManager", "generalManager", "operationsManager", "owner", "purchasingManager",
+  "warehouseAssociate", "warehouseManager"]);
+const NONPROD_PO_CREATE_HOLDERS = Object.freeze(["admin", "dispatcher", "generalManager", "owner", "purchasingManager"]);
+/** `SELECT count(*) FROM eos_policy.capability_grant_conditions` in nonprod, 2026-09-24. */
+const NONPROD_CONDITION_ROWS = 0;
+
+test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that consumes it", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const name = `laneaj_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  let pool;
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  t.after(async () => {
+    await pool?.end();
+    await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
+  });
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
+    "--migrations-dir", "migrations", "--no-check-order"],
+  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
+  const q = (sql, v = []) => pool.query(sql, v);
+  const repo = new PostgresPolicyRepository(pool);
+
+  const TENANT = "t-lane-aj";
+  const COMPANY = "sample-co-synthetic";
+  await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [TENANT]);
+  await q(`INSERT INTO eos_policy.tenant_operating_companies
+             (tenant_id,operating_company_id,status,source,established_by,updated_by)
+           VALUES ($1,$2,'ACTIVE','lane-aj','fixture','fixture')`, [TENANT, COMPANY]);
+
+  // ---- the relation, from the repository's own DDL (migration 1762214400000 is not on this lineage)
+  const relationAbsent = await capabilityAuthority.describeGrantConditionRelation(pool);
+  await q(model.GRANT_CONDITION_RELATION_SCHEMA);
+
+  // ---- Roles, grants and Principals, through the real policy repository
+  const fixture = { tenantId: TENANT, uid: "uid-lane-aj" };
+  const ROLE_KEYS = [...new Set([...MIGRATION_GRANTS.map((g) => g.roleKey), "technician", "partsManager", "admin"])].sort();
+  const roleIds = {};
+  for (const key of ROLE_KEYS) {
+    roleIds[key] = (await repo.transact(fixture, (tx) =>
+      tx.createRole({ key, name: key, description: null, origin: "CUSTOM", protected: false }))).id;
+  }
+  const grant = async (roleKey, capabilityKey) => {
+    const r = await q(
+      `INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+       SELECT $1,$2,$3,c.id,'fixture','fixture','fixture' FROM eos_policy.capabilities c WHERE c.key = $4
+       ON CONFLICT DO NOTHING`,
+      [`rc-${roleKey}-${capabilityKey}`.slice(0, 60), TENANT, roleIds[roleKey], capabilityKey]);
+    assert.equal(r.rowCount, 1, `${capabilityKey} is not in the capability vocabulary`);
+  };
+  // The migration's OWN grant rows, spelled as its VALUES list spells them.
+  for (const g of MIGRATION_GRANTS) await grant(g.roleKey, g.capabilityKey);
+  // Two TEST GRANTS, in this throwaway database only: technician -> the two Purchase Order cells.
+  // Migration 1761696000000 withholds them from PostgreSQL because a flat grant cannot carry a
+  // condition; they exist here so the model has the cell it is meant to express.
+  await grant("technician", PO_READ);
+  await grant("technician", PO_CREATE);
+  await grant("admin", PRINCIPAL_ACCESS_READ);
+  await grant("warehouseAssociate", PRINCIPAL_ACCESS_READ);
+
+  const TOKENS = new Map();
+  const makePrincipal = async (subject, roleKeys) => {
+    const principalId = await repo.transact(fixture, async (tx) => {
+      const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+      await tx.createTenantMembership(p.id);
+      return p.id;
+    });
+    for (const roleKey of roleKeys) {
+      await repo.transact(fixture, async (tx) => {
+        const accessVersion = await tx.bumpAccessVersion(principalId);
+        return tx.createAssignment({ principalId, roleId: roleIds[roleKey], scopeType: "global", scopeValue: null,
+          status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+      });
+    }
+    TOKENS.set(`tok-${subject}`, subject);
+    return { principalId, subject, token: `tok-${subject}`, roleKeys };
+  };
+  const linkEmployee = async (key, principalId, eligibility = []) => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number)
+             VALUES ($1,$2,'ACTIVE',$3,$4)`, [`emp-${key}`, TENANT, COMPANY, `AJ-${key}`.slice(0, 32)]);
+    await q(`INSERT INTO eos_policy.employee_principal_links
+               (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ($1,$2,$3,$4,$5,'OPERATOR_ASSERTED','active','fixture','lane aj fixture')`,
+    [`lnk-${key}`.slice(0, 60), TENANT, principalId, `emp-${key}`, COMPANY]);
+    for (const code of eligibility) {
+      await q(`INSERT INTO eos_workforce.employee_work_eligibility
+                 (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+               VALUES ($1,$2,$3,$4,now(),'fixture')`, [`we-${key}-${code}`.slice(0, 60), TENANT, `emp-${key}`, code]);
+    }
+    return `emp-${key}`;
+  };
+
+  const techEligible = await makePrincipal("uid-aj-tech-eligible", ["technician"]);
+  const techPlain = await makePrincipal("uid-aj-tech-plain", ["technician"]);
+  const bothRoles = await makePrincipal("uid-aj-both", ["technician", "purchasingManager"]);
+  const adminUser = await makePrincipal("uid-aj-admin", ["admin"]);
+  await linkEmployee("tech-eligible", techEligible.principalId, ["PARTS_OPERATIONS", "SERVICE_TECHNICIAN"]);
+  await linkEmployee("tech-plain", techPlain.principalId, ["SERVICE_TECHNICIAN"]);
+  await linkEmployee("both", bothRoles.principalId, ["SERVICE_TECHNICIAN"]);
+  await linkEmployee("admin", adminUser.principalId, []);
+
+  const resolveFor = (actor, conditions) => capabilityAuthority.resolveOperationalContext(
+    repo, pool, { identityProvider: "firebase", externalSubject: actor.subject, requestedTenantId: null }, conditions);
+  const pgReader = evaluator.postgresContextualReader(pool);
+  const countingOver = (inner) => {
+    const state = { reads: 0 };
+    return [state, {
+      linkedEmployeeId: async (...a) => { state.reads += 1; return inner.linkedEmployeeId(...a); },
+      hasWorkEligibility: async (...a) => { state.reads += 1; return inner.hasWorkEligibility(...a); },
+      hasOperationalScope: async (...a) => { state.reads += 1; return inner.hasOperationalScope(...a); },
+      isAssignedEmployee: async (...a) => { state.reads += 1; return inner.isAssignedEmployee(...a); },
+    }];
+  };
+  const storeCondition = (id, scope, grantorKey, capabilityKey, condition, status = "ACTIVE") =>
+    q(`INSERT INTO eos_policy.capability_grant_conditions
+         (id,tenant_id,grant_scope,grantor_key,capability_key,condition,status,established_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,'lane-aj','lane-aj')`,
+    [id, TENANT, scope, grantorKey, capabilityKey, JSON.stringify(condition), status]);
+  const clearConditions = () => q(`DELETE FROM eos_policy.capability_grant_conditions`);
+  const conditionRowCount = async () =>
+    (await q(`SELECT count(*)::int n FROM eos_policy.capability_grant_conditions`)).rows[0].n;
+
+  // ════════════════════ AJ2 — THE LIVE SCHEMA ════════════════════
+
+  await t.test("AJ2: the repository's declared shape IS the shape deployed in nonprod", () => {
+    // The declaration is checked against the nonprod readout FIRST -- otherwise this file would only
+    // prove that a table matches the DDL that created it, which is circular.
+    assert.deepEqual(
+      policy.GRANT_CONDITION_RELATION_SHAPE.columns.map((c) =>
+        [c.name, c.dataType, c.nullable ? "YES" : "NO", c.columnDefault]),
+      NONPROD_COLUMNS.map((c) => [...c]),
+      "the declared columns differ from information_schema in nonprod");
+    assert.deepEqual([...policy.GRANT_CONDITION_RELATION_SHAPE.constraints].sort(), [...NONPROD_CONSTRAINTS],
+      "the declared constraints differ from pg_constraint in nonprod");
+    assert.equal(policy.GRANT_CONDITION_RELATION_SHAPE.namedIndex.name, NONPROD_INDEXES[0]);
+    assert.deepEqual([...policy.GRANT_CONDITION_RELATION_SHAPE.namedIndex.columns], ["tenant_id", "capability_key"]);
+    assert.equal(policy.GRANT_CONDITION_RELATION_MIGRATION, "1762214400000");
+    assert.equal(policy.GRANT_CONDITION_RELATION_NAME, "eos_policy.capability_grant_conditions");
+    assert.equal(capabilityAuthority.GRANT_CONDITION_RELATION, policy.GRANT_CONDITION_RELATION_NAME);
+    // AJ2 adds no migration: nothing on this lineage creates the relation.
+    const migrationsDir = resolve(FUNCTIONS_DIR, "migrations");
+    const naming = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"))
+      .filter((f) => readFileSync(resolve(migrationsDir, f), "utf8").includes("capability_grant_conditions"));
+    assert.deepEqual(naming, [], `a migration on this lineage names the relation: ${naming}`);
+    assert.equal(relationAbsent.present, false, "the relation existed before this test created it");
+    assert.deepEqual(capabilityAuthority.grantConditionRelationDrift(relationAbsent),
+      ["eos_policy.capability_grant_conditions is absent"]);
+  });
+
+  await t.test("AJ2: a database created from that DDL has ZERO drift from the declaration", async () => {
+    const facts = await capabilityAuthority.describeGrantConditionRelation(pool);
+    assert.equal(facts.present, true);
+    assert.deepEqual(capabilityAuthority.grantConditionRelationDrift(facts), []);
+    assert.deepEqual(facts.columns.map((c) => [c.name, c.dataType, c.nullable ? "YES" : "NO", c.columnDefault]),
+      NONPROD_COLUMNS.map((c) => [...c]));
+    assert.deepEqual([...facts.constraints], [...NONPROD_CONSTRAINTS]);
+    assert.deepEqual([...facts.indexes], [...NONPROD_INDEXES]);
+    assert.deepEqual([...facts.namedIndexColumns], ["tenant_id", "capability_key"]);
+  });
+
+  await t.test("AJ2: the parity check is load-bearing -- each kind of drift is DETECTED", async () => {
+    const drifts = [
+      ["ALTER TABLE eos_policy.capability_grant_conditions ADD COLUMN scope_type TEXT",
+        "ALTER TABLE eos_policy.capability_grant_conditions DROP COLUMN scope_type", /column scope_type is undeclared/],
+      ["ALTER TABLE eos_policy.capability_grant_conditions ALTER COLUMN updated_by DROP NOT NULL",
+        "ALTER TABLE eos_policy.capability_grant_conditions ALTER COLUMN updated_by SET NOT NULL", /column updated_by nullability/],
+      ["DROP INDEX eos_policy.capability_grant_conditions_by_capability",
+        "CREATE INDEX capability_grant_conditions_by_capability ON eos_policy.capability_grant_conditions (tenant_id, capability_key)",
+        /index missing: capability_grant_conditions_by_capability/],
+      [`ALTER TABLE eos_policy.capability_grant_conditions DROP CONSTRAINT capability_grant_conditions_status_check`,
+        `ALTER TABLE eos_policy.capability_grant_conditions ADD CONSTRAINT capability_grant_conditions_status_check CHECK (status IN ('ACTIVE','RETIRED'))`,
+        /constraint missing: CHECK \(\(status = ANY/],
+    ];
+    for (const [break_, restore, expected] of drifts) {
+      await q(break_);
+      const found = capabilityAuthority.grantConditionRelationDrift(
+        await capabilityAuthority.describeGrantConditionRelation(pool));
+      assert.ok(found.some((d) => expected.test(d)), `${break_} produced ${JSON.stringify(found)}`);
+      await q(restore);
+    }
+    assert.deepEqual(capabilityAuthority.grantConditionRelationDrift(
+      await capabilityAuthority.describeGrantConditionRelation(pool)), [], "the relation was left drifted");
+  });
+
+  // ════════════════════ AJ3 — ZERO ACTIVE CONDITIONS ════════════════════
+
+  await t.test("AJ3: with zero rows the STORED catalog is the SHIPPED catalog, exactly", async () => {
+    assert.equal(await conditionRowCount(), 0);
+    assert.equal(NONPROD_CONDITION_ROWS, 0, "nonprod carries no condition row either");
+    const stored = await composition.postgresGrantConditions(pool, TENANT);
+    assert.equal(stored.size, 0);
+    assert.deepEqual([...stored.keys()], [...model.SHIPPED_GRANT_CONDITIONS.keys()]);
+    // A RETIRED row is not a condition: the count moves, the catalog does not.
+    await storeCondition("aj-retired", "ROLE", "technician", REQUEST_READ,
+      { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] }, "RETIRED");
+    assert.equal(await conditionRowCount(), 1);
+    assert.equal((await composition.postgresGrantConditions(pool, TENANT)).size, 0);
+    await clearConditions();
+  });
+
+  await t.test("AJ3: zero conditions -> every held capability allows with ZERO context reads", async () => {
+    for (const actor of [techEligible, techPlain, bothRoles, adminUser]) {
+      const ctx = await resolveFor(actor);
+      // The runtime authority and the provenance resolver agree, key for key.
+      assert.deepEqual([...model.capabilityKeysOf(ctx.entitlements)].sort(), [...ctx.capabilities].sort(), actor.subject);
+      assert.ok(ctx.capabilities.size > 0, `${actor.subject} holds nothing -- the proof would be vacuous`);
+      const [state, counting] = countingOver(pgReader);
+      for (const capabilityKey of [...ctx.capabilities].sort()) {
+        const d = await composition.authorizeResolvedOperationalAction(counting, ctx, { capabilityKey });
+        assert.equal(d.allowed, true, `${actor.subject} lost ${capabilityKey}`);
+        assert.equal(d.contextEvaluated, false, `${actor.subject} acquired a context requirement on ${capabilityKey}`);
+        assert.equal(d.viaCondition, false);
+        assert.equal(d.viaGrantor.kind, "ROLE");
+        assert.ok(actor.roleKeys.includes(d.viaGrantor.roleKey), `${capabilityKey} allowed via an unheld Role`);
+      }
+      assert.equal(state.reads, 0, `${actor.subject} caused ${state.reads} context reads with zero conditions`);
+    }
+  });
+
+  await t.test("AJ3: reading conditions from PostgreSQL and from the shipped catalog decide identically", async () => {
+    const viaShipped = await resolveFor(adminUser);
+    const viaStored = await composition.resolveEntitledOperationalContext(
+      repo, pool, { identityProvider: "firebase", externalSubject: adminUser.subject, requestedTenantId: null });
+    assert.deepEqual(viaStored.entitlements, viaShipped.entitlements);
+    assert.deepEqual([...viaStored.capabilities].sort(), [...viaShipped.capabilities].sort());
+    // And a database that cannot ANSWER refuses rather than reading as "unconditioned".
+    const broken = { query: async () => { throw new Error("relation does not exist"); },
+      connect: async () => { throw new Error("relation does not exist"); } };
+    await assert.rejects(() => composition.resolveEntitledOperationalContext(
+      repo, broken, { identityProvider: "firebase", externalSubject: adminUser.subject, requestedTenantId: null }));
+  });
+
+  // ════════════════════ AJ4 — MULTIPLE ENTITLEMENT PATHS ════════════════════
+
+  await t.test("AJ4: an unconditional path is never denied because another Role's condition FAILED", async () => {
+    // reorder.request.read is granted to technician AND purchasingManager by migration 1761696000000.
+    assert.ok(holdersOf(REQUEST_READ).includes("technician") && holdersOf(REQUEST_READ).includes("purchasingManager"),
+      "the fixture would prove nothing if one Role did not hold the key");
+    // `bothRoles` is NOT PARTS_OPERATIONS eligible, so technician's condition CANNOT be satisfied.
+    for (const [conditioned, allowingRole] of [["technician", "purchasingManager"], ["purchasingManager", "technician"]]) {
+      await clearConditions();
+      await storeCondition(`aj-multi-${conditioned}`, "ROLE", conditioned, REQUEST_READ,
+        { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+      const catalog = await composition.postgresGrantConditions(pool, TENANT);
+      assert.equal(catalog.size, 1);
+      const ctx = await resolveFor(bothRoles, catalog);
+      const reaching = model.entitlementsFor(ctx.entitlements, REQUEST_READ);
+      assert.equal(reaching.length, 2, "both Roles reach the SAME capability key");
+      assert.equal(reaching.filter((e) => e.condition !== null).length, 1, "exactly one path is conditioned");
+      const [state, counting] = countingOver(pgReader);
+      const d = await composition.authorizeResolvedOperationalAction(counting, ctx, { capabilityKey: REQUEST_READ });
+      assert.equal(d.allowed, true, `the ${allowingRole} path was denied by ${conditioned}'s failed condition`);
+      assert.deepEqual(d.viaGrantor, ROLE(allowingRole));
+      assert.equal(d.viaCondition, false);
+      assert.equal(state.reads, 0, "an unconditional path must cost nothing, whatever else failed");
+      // The SAME caller holding ONLY the conditioned Role is refused, so the condition really binds.
+      const onlyConditioned = { tenantId: TENANT, principalId: bothRoles.principalId, capabilities: ctx.capabilities,
+        entitlements: reaching.filter((e) => e.grantor.roleKey === conditioned) };
+      const refused = await composition.authorizeOperationalAction(pgReader, onlyConditioned, { capabilityKey: REQUEST_READ });
+      assert.equal(refused.allowed, false);
+      assert.equal(refused.outcome, "WORK_ELIGIBILITY_MISSING");
+    }
+    await clearConditions();
+  });
+
+  await t.test("AJ4: two conditions, one satisfiable -- the UNION allows, and the refusals are kept", async () => {
+    await storeCondition("aj-u-tech", "ROLE", "technician", REQUEST_READ, { paths: [[ELIGIBILITY("SERVICE_TECHNICIAN")]] });
+    await storeCondition("aj-u-pm", "ROLE", "purchasingManager", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const catalog = await composition.postgresGrantConditions(pool, TENANT);
+    const ctx = await resolveFor(bothRoles, catalog);
+    assert.equal(model.hasUnconditionalEntitlement(ctx.entitlements, REQUEST_READ), false, "both paths must be conditioned");
+    const d = await composition.authorizeResolvedOperationalAction(pgReader, ctx, { capabilityKey: REQUEST_READ });
+    assert.equal(d.allowed, true);
+    assert.deepEqual(d.viaGrantor, ROLE("technician"), "the satisfiable path carried it");
+    assert.equal(d.viaCondition, true);
+    assert.deepEqual(d.denials.map((x) => [x.grantor.roleKey, x.outcome]), [["purchasingManager", "WORK_ELIGIBILITY_MISSING"]]);
+    await clearConditions();
+  });
+
+  // ════════════════════ AJ5 — THE TECHNICIAN PURCHASE ORDER DRY PROOF ════════════════════
+
+  await t.test("AJ5: technician -> purchaseOrder.read/.create -> WORK_ELIGIBILITY(PARTS_OPERATIONS), expressed", async () => {
+    // Measured in nonprod on 2026-09-24: 11 unconditional read holders, 5 create holders, technician
+    // in neither. The same numbers the migration's VALUES list writes.
+    assert.deepEqual(holdersOf(PO_READ), [...NONPROD_PO_READ_HOLDERS]);
+    assert.deepEqual(holdersOf(PO_CREATE), [...NONPROD_PO_CREATE_HOLDERS]);
+    assert.equal(holdersOf(PO_READ).includes("technician"), false);
+    assert.equal(holdersOf(PO_CREATE).includes("technician"), false);
+
+    await storeCondition("aj-po-read", "ROLE", "technician", PO_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    await storeCondition("aj-po-create", "ROLE", "technician", PO_CREATE, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const catalog = await composition.postgresGrantConditions(pool, TENANT);
+    assert.equal(catalog.size, 2);
+    assert.deepEqual(catalog.get(`ROLE:technician|${PO_READ}`).paths, [[ELIGIBILITY("PARTS_OPERATIONS")]]);
+
+    // The eligible technician reaches both cells THROUGH the condition; the plain one does not.
+    const eligible = await resolveFor(techEligible, catalog);
+    const plain = await resolveFor(techPlain, catalog);
+    for (const capabilityKey of [PO_READ, PO_CREATE]) {
+      const yes = await composition.authorizeResolvedOperationalAction(pgReader, eligible, { capabilityKey });
+      assert.equal(yes.allowed, true, capabilityKey);
+      assert.equal(yes.viaCondition, true, "allowed THROUGH the condition, not around it");
+      assert.deepEqual(yes.viaGrantor, ROLE("technician"));
+      const no = await composition.authorizeResolvedOperationalAction(pgReader, plain, { capabilityKey });
+      assert.equal(no.allowed, false, capabilityKey);
+      assert.equal(no.outcome, "WORK_ELIGIBILITY_MISSING");
+      assert.equal(no.predicate, "WORK_ELIGIBILITY");
+    }
+
+    // EVERY unconditional holder is untouched, and costs ZERO context reads.
+    let checked = 0;
+    for (const [capabilityKey, holders] of [[PO_READ, holdersOf(PO_READ)], [PO_CREATE, holdersOf(PO_CREATE)]]) {
+      for (const roleKey of holders) {
+        const entitlements = await composition.resolveRoleEntitlements(pool, TENANT, [roleKey], catalog);
+        const actor = { tenantId: TENANT, principalId: techPlain.principalId,
+          capabilities: model.capabilityKeysOf(entitlements), entitlements };
+        const [state, counting] = countingOver(pgReader);
+        const d = await composition.authorizeOperationalAction(counting, actor, { capabilityKey });
+        assert.equal(d.allowed, true, `${roleKey} lost ${capabilityKey}`);
+        assert.equal(d.contextEvaluated, false, `${roleKey} acquired a context requirement on ${capabilityKey}`);
+        assert.equal(state.reads, 0, `${roleKey} caused a context read for ${capabilityKey}`);
+        checked += 1;
+      }
+    }
+    assert.equal(checked, 16, "eleven read holders plus five create holders");
+
+    // AND IT IS STILL WITHHELD. A stored catalog naming either cell cannot reach a deployed decision.
+    assert.throws(() => model.assertNoWithheldGrantConditions(catalog), /WITHHELD conditioned cell/);
+    await assert.rejects(() => composition.resolveEntitledOperationalContext(
+      repo, pool, { identityProvider: "firebase", externalSubject: techEligible.subject, requestedTenantId: null }),
+    /WITHHELD conditioned cell/, "the production resolver accepted a withheld cell");
+    assert.equal(model.SHIPPED_GRANT_CONDITIONS.size, 0, "the shipped catalog grew a condition");
+
+    await clearConditions();
+    assert.equal(await conditionRowCount(), 0, "the dry proof left a row behind");
+  });
+
+  // ════════════════════ AJ6 — THE RUNTIME SEAM ════════════════════
+
+  await t.test("AJ6: the transport carries the entitlement metadata onto the actor the kernels gate on", async () => {
+    const ctx = await resolveFor(adminUser);
+    assert.ok(Array.isArray(ctx.entitlements) && ctx.entitlements.length > 0);
+    assert.ok(model.hasResolvedEntitlements(ctx));
+    assert.equal(model.hasResolvedEntitlements({ capabilities: ctx.capabilities }), false);
+    // Source-level, because this is the property that makes the seam real rather than available:
+    // the transport puts the resolved entitlements on the actor it hands every runner.
+    const src = readFileSync(resolve(FUNCTIONS_DIR, "src/eosWorkforce/workforceHttp.ts"), "utf8");
+    assert.match(src, /entitlements: ctx\.entitlements/);
+    for (const file of ["src/eosWorkforce/reads/employeeReadKernel.ts", "src/eosWorkforce/commands/employeeCommandKernel.ts"]) {
+      const kernel = readFileSync(resolve(FUNCTIONS_DIR, file), "utf8");
+      assert.match(kernel, /hasResolvedEntitlements\(actor\)/, `${file} does not require resolved entitlements`);
+      assert.match(kernel, /authorizeEntitledAction\(/, `${file} does not reach the conditional decision`);
+      // The flat check is still there, still first, and still unchanged.
+      assert.match(kernel, /actor\.capabilities\.has\(/, `${file} replaced the flat gate instead of layering on it`);
+    }
+  });
+
+  await t.test("AJ6: a REQUEST reaches a conditional decision -- refused, then allowed, over one stored row", async () => {
+    const deps = { reader: repo, pool, allowedOrigins: [],
+      verifyToken: async (token) => {
+        const subject = TOKENS.get(token);
+        if (!subject) throw new Error("invalid token");
+        return { externalSubject: subject, identityProvider: "firebase" };
+      } };
+    const call = async (actor, extraDeps = {}) => {
+      const res = await workforceHttp.handleWorkforceRequest({ ...deps, ...extraDeps }, {
+        method: "POST", url: "/workforce/employees", headers: { authorization: `Bearer ${actor.token}` },
+        body: JSON.stringify({ operation: "readEmployeePrincipalLink", input: { employeeId: "emp-admin" } }),
+      });
+      return { status: res.status, body: JSON.parse(res.body) };
+    };
+
+    // 1. The deployed composition: the SHIPPED (empty) catalog. Allowed.
+    const shipped = await call(adminUser);
+    assert.equal(shipped.status, 200, JSON.stringify(shipped.body));
+
+    // 2. The SAME request, reading conditions from PostgreSQL with ZERO rows. Byte-identical.
+    assert.equal(await conditionRowCount(), 0);
+    const storedEmpty = await call(adminUser, { grantConditionSource: "POSTGRES" });
+    assert.deepEqual([storedEmpty.status, storedEmpty.body], [shipped.status, shipped.body],
+      "switching the condition source changed a decision while the relation was empty");
+
+    // 3. ONE row: admin's grant of admin.principalAccess.read, narrowed by WORK_ELIGIBILITY. The
+    //    admin Principal's Employee holds no qualification, so the SAME request is now REFUSED --
+    //    by the governed eos_workforce authority, reached from an HTTP request.
+    await storeCondition("aj-seam", "ROLE", "admin", PRINCIPAL_ACCESS_READ,
+      { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const refused = await call(adminUser, { grantConditionSource: "POSTGRES" });
+    assert.equal(refused.status, 403, JSON.stringify(refused.body));
+    assert.equal(refused.body.code, "CAPABILITY_CONDITION_UNSATISFIED");
+    assert.match(refused.body.message, new RegExp(`${PRINCIPAL_ACCESS_READ}: WORK_ELIGIBILITY_MISSING`));
+    // The SHIPPED composition is untouched by the row: activation is a code change, not a row.
+    assert.equal((await call(adminUser)).status, 200, "the stored row bound a composition that did not ask for it");
+
+    // 4. Grant the governed fact the condition names. The SAME request now succeeds.
+    await q(`INSERT INTO eos_workforce.employee_work_eligibility
+               (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+             VALUES ('we-aj-seam',$1,'emp-admin','PARTS_OPERATIONS',now(),'fixture')`, [TENANT]);
+    const allowed = await call(adminUser, { grantConditionSource: "POSTGRES" });
+    assert.deepEqual([allowed.status, allowed.body], [shipped.status, shipped.body],
+      "the condition was satisfied and the read still did not answer");
+
+    // 5. RETIRE the row rather than deleting it: a retired condition is not a condition.
+    await q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='aj-seam'`);
+    // The eligibility authority keeps history: a qualification is ENDED, never deleted.
+    await q(`UPDATE eos_workforce.employee_work_eligibility
+                SET effective_to = now(), ended_by = 'fixture', ended_at = now() WHERE id='we-aj-seam'`);
+    assert.equal((await call(adminUser, { grantConditionSource: "POSTGRES" })).status, 200);
+    await clearConditions();
+    assert.equal(await conditionRowCount(), 0, "the seam proof left a row behind");
+  });
+
+  await t.test("AJ6: an actor without entitlements is REFUSED, never decided on the flat set alone", async () => {
+    const ctx = await resolveFor(adminUser);
+    const read = require("../lib/eosWorkforce/reads/employeePrincipalLinkRead.js");
+    const stripped = { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid,
+      capabilities: ctx.capabilities };
+    await assert.rejects(() => read.readEmployeePrincipalLink({ pool }, stripped, { employeeId: "emp-admin" }),
+      (e) => e.code === "ACTOR_CONTEXT_REQUIRED");
+    // The same actor WITH its entitlements is allowed, so the refusal is about the metadata and
+    // nothing else.
+    const whole = { ...stripped, entitlements: ctx.entitlements };
+    assert.ok(await read.readEmployeePrincipalLink({ pool }, whole, { employeeId: "emp-admin" }));
   });
 });

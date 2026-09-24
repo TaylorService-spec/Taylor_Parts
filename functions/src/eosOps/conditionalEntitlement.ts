@@ -59,7 +59,18 @@ import {
   type ContextualReader,
   type RecordContext,
 } from "./contextualAuthorization";
-import { WITHHELD_CONDITIONED_CELLS, type ContextualActionOutcome } from "./contextualActionAuthority";
+// THE ONLY OTHER MODULE THIS FILE TOUCHES. `grantConditionPolicy` is a leaf: the withheld-cell
+// ruling, the outcome vocabulary and the deployed relation's identity, depending on nothing but the
+// evaluator's reason type. It exists because these three facts used to live inside the ACTION-level
+// seam, and importing a 271-line authorization design to reach a two-element array is what made this
+// model impossible to cherry-pick onto the migration lineage. See grantConditionPolicy.ts.
+import {
+  GRANT_CONDITION_RECORD_KINDS,
+  GRANT_CONDITION_RELATION_DDL,
+  GRANT_CONDITION_RELATION_MIGRATION,
+  isWithheldConditionedCell,
+  type ContextualActionOutcome,
+} from "./grantConditionPolicy";
 
 // ════════════════════ THE GRANTOR ════════════════════
 
@@ -117,7 +128,7 @@ export interface GrantConditionRow {
 /** (grantor, capability) -> condition. Built only through `grantConditionCatalog`. */
 export type GrantConditionCatalog = ReadonlyMap<string, GrantCondition>;
 
-const RECORD_KINDS: readonly RecordContext["recordKind"][] = Object.freeze(["reorderRequest", "workOrder"]);
+const RECORD_KINDS = GRANT_CONDITION_RECORD_KINDS;
 
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 
@@ -203,7 +214,7 @@ export const SHIPPED_GRANT_CONDITIONS: GrantConditionCatalog = grantConditionCat
 export function assertNoWithheldGrantConditions(conditions: GrantConditionCatalog): void {
   for (const key of conditions.keys()) {
     const capabilityKey = key.slice(key.indexOf("|") + 1);
-    if (WITHHELD_CONDITIONED_CELLS.includes(capabilityKey)) {
+    if (isWithheldConditionedCell(capabilityKey)) {
       throw new Error(`${capabilityKey} is a WITHHELD conditioned cell and may not be activated as a grant condition`);
     }
   }
@@ -416,6 +427,24 @@ export async function authorizeEntitledAction(
     contextEvaluated, viaGrantor: null, viaCondition: false, denials });
 }
 
+/**
+ * Is this actor carrying the conditional-entitlement metadata at all?
+ *
+ * A gate site must REFUSE an actor without it rather than fall back to the flat capability set.
+ * Falling back would mean any caller that omitted the field escaped every condition -- the
+ * caller-controlled bypass shape this repository has already paid for once. Absent metadata is an
+ * unresolved actor, and an unresolved actor is refused.
+ *
+ * It lives HERE, in the pure model, rather than beside the PostgreSQL composition, so that a domain
+ * kernel adopting the seam imports no SQL, no connection pool factory and no `pg` -- which is a
+ * boundary several Workforce and Commercial guards already pin.
+ */
+export function hasResolvedEntitlements(
+  actor: { readonly entitlements?: EntitlementSet } | null | undefined,
+): boolean {
+  return Array.isArray(actor?.entitlements);
+}
+
 /** Every reason this module can report. The evaluator's vocabulary, plus the seam's outage outcome. */
 export const ENTITLED_ACTION_OUTCOMES: readonly ContextualActionOutcome[] = Object.freeze([
   "ALLOWED", "CAPABILITY_MISSING", "EMPLOYEE_LINK_REQUIRED", "WORK_ELIGIBILITY_MISSING",
@@ -425,44 +454,22 @@ export const ENTITLED_ACTION_OUTCOMES: readonly ContextualActionOutcome[] = Obje
 // ════════════════════ PERSISTENCE — DESIGNED, NOT MIGRATED ════════════════════
 
 /**
- * The relation a conditioned grant needs, and the exact schema for it.
+ * The relation a conditioned grant needs — MIGRATED, NOT PROPOSED.
  *
- * NOT APPLIED. Lane AA owns the migration slot this Wave, so this ships as a design artifact plus a
- * reader (`capabilityAuthority.grantConditionRows`) that is exercised against a throwaway test
- * database created from this very DDL. When the slot is free, this text becomes the migration
- * body unchanged.
+ * This constant was `PROPOSED_GRANT_CONDITION_SCHEMA` while Lane AA owned the migration slot. The
+ * slot is spent: migration 1762214400000 was written from this DDL character for character and
+ * applied to nonprod on 2026-09-24, where the relation is LIVE and holds ZERO rows. THIS LANE ADDS
+ * NO MIGRATION; it makes the repository understand the one that shipped.
  *
- * WHY A SEPARATE RELATION AND NOT A COLUMN (AB2, Owner ruling). `role_capabilities` and
- * `principal_capabilities` answer "may this Principal perform this TYPE of action" and nothing
- * else. A `condition` column on either would make one row answer two questions, and every
- * Administration screen would have to render a compound. Keyed by (grantor, capability) instead,
- * the condition is a second, separately administered fact that a grant row need never know about;
- * deleting the grant makes the condition inert without deleting it, and listing conditions is a
- * governed report of its own.
- *
- * WHY grant_scope + grantor_key AND NOT TWO TABLES. One relation covers ROLE and PRINCIPAL grantors
- * (AB3) so a future conditioned direct grant needs no new table, no new reader and no new code
- * path — only a row. `grantor_key` is the ROLE KEY or the PRINCIPAL ID, matching how
- * `capabilitiesForRoleKeys` already resolves by key rather than by id.
+ * The text itself, the deployed shape it must match, and the reasoning for a separate relation now
+ * live in `grantConditionPolicy.ts`; the name is kept here because the model's own tests and the
+ * schema-parity harness both read it, and because a reader arriving at the model should not have to
+ * go looking for what it persists to.
  */
-export const PROPOSED_GRANT_CONDITION_SCHEMA = `
-CREATE TABLE eos_policy.capability_grant_conditions (
-    id              TEXT PRIMARY KEY,
-    tenant_id       TEXT NOT NULL REFERENCES eos_policy.tenants(id),
-    grant_scope     TEXT NOT NULL CHECK (grant_scope IN ('ROLE','PRINCIPAL')),
-    grantor_key     TEXT NOT NULL,
-    capability_key  TEXT NOT NULL REFERENCES eos_policy.capabilities(key),
-    condition       JSONB NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','RETIRED')),
-    established_by  TEXT NOT NULL,
-    established_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_by      TEXT NOT NULL,
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (tenant_id, grant_scope, grantor_key, capability_key)
-);
-CREATE INDEX capability_grant_conditions_by_capability
-    ON eos_policy.capability_grant_conditions (tenant_id, capability_key);
-`.trim();
+export const GRANT_CONDITION_RELATION_SCHEMA = GRANT_CONDITION_RELATION_DDL;
+
+/** The applied migration that created it. Stated so a parity failure names the migration to look at. */
+export const GRANT_CONDITION_SCHEMA_MIGRATION = GRANT_CONDITION_RELATION_MIGRATION;
 
 /** The stored shape one row of that relation holds, before it becomes a `GrantConditionRow`. */
 export interface StoredGrantConditionRow {

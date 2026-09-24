@@ -1009,8 +1009,13 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       const pool2 = new pg.Pool({ connectionString: dbUrl(), max: 2 });
       try {
         const { establishReportingRelationship } = require("../lib/eosWorkforce/commands/reportingRelationshipCommands.js");
+        // The governed command gates on the conditional ENTITLEMENT, so the proof actor carries the
+        // provenance the runtime resolves -- one unconditional Role grant, the shipped catalog being
+        // empty.
+        const { entitlementsFrom } = require("../lib/eosOps/conditionalEntitlement.js");
         await establishReportingRelationship({ pool: pool2 },
-          { tenantId, principalId: adminPrincipalId, capabilities: new Set(["admin.employeeProfile.write"]) },
+          { tenantId, principalId: adminPrincipalId, capabilities: new Set(["admin.employeeProfile.write"]),
+            entitlements: entitlementsFrom([{ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey: "admin.employeeProfile.write" }]) },
           { employeeId, managerEmployeeId, reason: "SAMPLE COMPANY V2 verifier proof" });
       } finally {
         await pool2.end();
