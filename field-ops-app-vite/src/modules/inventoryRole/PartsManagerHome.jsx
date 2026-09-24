@@ -51,7 +51,10 @@ const HISTORY_STATUS_LABEL = {
 
 const OVERSIGHT_STATUSES = [REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE, REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS];
 
-export default function PartsManagerHome({ accessVersion } = {}) {
+// `title` defaults to the unchanged "Parts Manager" so /inventory-role/manager renders byte-for-byte
+// as before. The governed Inventory > Reorder Queue destination passes "Reorder Queue" instead: that
+// door is earned by the queue's Operational Scope, not by a persona, and its heading must not name one.
+export default function PartsManagerHome({ accessVersion, title = "Parts Manager" } = {}) {
   const { user } = useAuth();
   // OD-3: canonical part-name resolution (fail-closed; degrades to raw partId, never
   // the static-catalog name). Does not gate any operational table below. `accessVersion`
@@ -89,7 +92,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
   );
 
   return (
-    <WorkspaceShell title="Parts Manager" context={context}>
+    <WorkspaceShell title={title} context={context}>
       {namesUnavailable && (
         <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
       )}

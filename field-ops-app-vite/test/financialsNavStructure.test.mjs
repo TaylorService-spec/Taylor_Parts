@@ -189,7 +189,12 @@ test("no existing domain's routes changed — every non-financials domain path s
   ]);
   assert.deepEqual(byKey.inventory, [
     "/inventory", "/inventory/part-master", "/inventory/manufacturers", "/inventory/warehouse-workspace",
-    "/inventory/warehouses", "/inventory/truck-inventory", "/inventory/transfers", "/inventory/receiving",
+    // /inventory/reorder-queue joined 2026-09-24: `inventory.reorderQueue` was an EARNABLE EOS surface
+    // that no destination in navConfig offered (navigation blocker #4). It is fail-closed under the
+    // legacy source -- capabilityAccess with no legacyKey -- so this route is an addition to the
+    // inventory, not a change to anyone's access.
+    "/inventory/warehouses", "/inventory/truck-inventory", "/inventory/transfers",
+    "/inventory/reorder-queue", "/inventory/receiving",
     "/inventory/cycle-counts", "/inventory/back-orders",
   ]);
   assert.deepEqual(byKey.inventoryRole, ["/inventory-role/manager", "/inventory-role/warehouse", "/inventory-role/mine"]);

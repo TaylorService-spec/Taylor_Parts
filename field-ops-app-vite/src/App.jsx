@@ -589,6 +589,21 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "inventory" && item.key === "truckInventory") {
     return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} role={role} />;
   }
+  // THE REORDER QUEUE'S OWN DESTINATION (navigation blocker #4). navConfig.js's
+  // `inventory.reorderQueue` surface was earnable and had no door: the queue was reachable only as a
+  // rail inside Parts Catalog, from Part Detail, and from the notification bell. This is the door,
+  // and under the EOS source it is earned by `reorder.request.read` plus the governed REORDER_QUEUE
+  // Operational Scope -- never by a role string and never by operationalRoles.
+  //
+  // THE SAME COMPONENT, NOT A NEW SCREEN. PartsManagerHome IS the Reorder queue workspace (its own
+  // header says so: the queue panel and the assigned-work oversight table are the shared
+  // shared/reorder components). Re-rendering it here changes no read, no command and no authority --
+  // every subscription behind it re-authorizes server-side exactly as it does at
+  // /inventory-role/manager, which is left working, unchanged, under the legacy source. Only the
+  // workspace TITLE differs, because this destination is the queue rather than a persona.
+  if (domain.key === "inventory" && item.key === "reorderQueue") {
+    return <PartsManagerHome title="Reorder Queue" accessVersion={operationalContext?.accessVersion} />;
+  }
   // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
   // case below.
