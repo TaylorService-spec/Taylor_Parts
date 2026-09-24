@@ -179,7 +179,16 @@ test("a Principal with NO linked Employee keeps unpredicated surfaces and loses 
   // working: it is a DISJUNCTION OVER CHILDREN, so it needs no capability, no predicate and -- as
   // this very case shows -- no linked Employee. It also cannot appear alone; the "container of
   // nothing reachable" case is asserted directly below.
-  assert.deepEqual(surfaces, ["administration.overview", "administration.users", "service.workOrders"]);
+  //
+  // `administration.permissionPreview` rides in on the SAME `admin.principalAccess.read`, under the
+  // Wave 10 Owner ruling: Permission Preview reads and evaluates a PRINCIPAL'S EFFECTIVE ACCESS, so
+  // it is earned by the `principal` Object's own read exactly as Users & Employees is. It is listed
+  // here rather than filtered out, because an administrative Principal reaching it with no linked
+  // Employee is precisely the shape this test exists to hold still.
+  assert.deepEqual(surfaces, [
+    "administration.overview", "administration.permissionPreview", "administration.users",
+    "service.workOrders",
+  ]);
 });
 
 // ════════════════════ the container surface ════════════════════
@@ -210,14 +219,22 @@ test("administration.overview is NOT an unconditional door -- no reachable child
 
 test("EACH governed Administration child on its own is enough, and each earns only itself + the menu", async () => {
   const none = { employeeId: null, workEligibility: [], operationalScopes: [] };
+  // THE SPLIT THE WAVE 10 OWNER RULING DREW, and this table is where it is visible as a whole: the
+  // security-policy CONFIGURATION read opens the configuration surfaces and stops there, and the
+  // PRINCIPAL read opens the two surfaces that disclose a named Principal's effective access --
+  // Users & Employees and Permission Preview. Permission Preview moved off
+  // `admin.securityPolicy.read` because it reads and evaluates a principal's access, not the
+  // Role x Object x action matrix; that the two keys are held by the same Roles today is a
+  // coincidence of the current population and is deliberately not what this table is derived from.
   const expected = {
     "admin.securityPolicy.read": [
-      "administration.objects", "administration.overview",
-      "administration.permissionPreview", "administration.rolesPermissions",
+      "administration.objects", "administration.overview", "administration.rolesPermissions",
     ],
     "workflowDefinition.read": ["administration.overview", "administration.workflows"],
     "audit.event.read": ["administration.auditLogs", "administration.overview"],
-    "admin.principalAccess.read": ["administration.overview", "administration.users"],
+    "admin.principalAccess.read": [
+      "administration.overview", "administration.permissionPreview", "administration.users",
+    ],
   };
   for (const [capabilityKey, surfaces] of Object.entries(expected)) {
     assert.deepEqual(await grantedSurfaceKeys(actorWith([capabilityKey]), none), surfaces,
@@ -369,14 +386,25 @@ test("every persona in the governed manifest gets a destination set earned entir
     "service.dispatch",
     "service.workOrders",
   ]);
+  // THE OWNER EXECUTIVE HOLDS `admin.principalAccess.read` AND NOT `admin.securityPolicy.read`, and
+  // under the Wave 10 Owner ruling that is exactly the crossed shape the ruling is about: it opens
+  // Permission Preview -- a read and evaluation of a PRINCIPAL'S EFFECTIVE ACCESS -- and it is still
+  // refused Roles & Permissions and Objects, which expose the policy CONFIGURATION. This persona is
+  // the one place in the offline suite where the separation is observable on a manifest persona
+  // rather than on a constructed capability set.
   assert.deepEqual(observed["owner-executive"].destinations, [
     "administration/auditLogs",
     "administration/dataImport",
-    // The container's destination. It is here BECAUSE the three above are; the persona earns no
+    // The container's destination. It is here BECAUSE the others are; the persona earns no
     // capability for it and none exists to earn.
     "administration/overview",
+    "administration/permissionPreview",
     "administration/users",
   ]);
+  // ...and the configuration surfaces stay shut, which is what makes the line above a separation
+  // rather than a widening.
+  assert.equal(observed["owner-executive"].destinations.includes("administration/rolesPermissions"), false);
+  assert.equal(observed["owner-executive"].destinations.includes("administration/objects"), false);
 });
 
 test("TWO PERSONAS, ONE SECURITY ROLE, DIFFERENT DOORS -- the difference is a governed workforce row", async () => {

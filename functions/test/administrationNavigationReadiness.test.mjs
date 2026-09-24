@@ -67,6 +67,23 @@ const NONPROD_HOLDERS = Object.freeze({
   ]),
 });
 
+// THE PROVENANCE OF THE TWO KEYS THE WAVE 10 RULING SEPARATES, recorded because identical holder
+// sets are exactly what made them look like one authority. They are not: the rows were written by
+// two different mechanisms, and neither one ever writes the other's key.
+//
+//   admin.securityPolicy.read   granted_by migration:1762041600000
+//                               -> functions/migrations/1762041600000_administration-security-policy-
+//                                  read-authority.sql, whose INSERT names ('admin'|'owner',
+//                                  'admin.securityPolicy.read') and nothing else.
+//   admin.principalAccess.read  granted_by employee-capability-grants:<operator>
+//                               -> EMPLOYEE_CAPABILITY_GRANT_KEYS, reconciled from the Role catalog
+//                                  by scripts/employeeCapabilityGrantMigrationCli.js. The derivation
+//                                  yields admin and owner, and it is derived rather than written.
+//
+// Neither key is mutated by this lane, here or anywhere.
+const SECURITY_POLICY_READ_GRANTED_BY = "migration:1762041600000";
+const PRINCIPAL_ACCESS_READ_GRANTED_BY = "employee-capability-grants";
+
 // THE LINEAGE DELTA, recorded rather than smoothed over. `workflowDefinition.read` is granted in
 // nonprod by migration 1762128000000_workflow-definition-read-authority, which is NOT on this
 // branch (nonprod has 50 migrations applied; this tree carries 48 files). On this lineage the key is
@@ -199,7 +216,10 @@ test("the five Administration surfaces are now projected, each on its own Object
   assert.deepEqual(grantKeys("administration.rolesPermissions"), ["admin.securityPolicy.read"]);
   assert.deepEqual(grantKeys("administration.objects"), ["admin.securityPolicy.read"]);
   assert.deepEqual(grantKeys("administration.workflows"), ["workflowDefinition.read"]);
-  assert.deepEqual(grantKeys("administration.permissionPreview"), ["admin.securityPolicy.read"]);
+  // PERMISSION PREVIEW READS A PRINCIPAL'S EFFECTIVE ACCESS, so it is earned by the `principal`
+  // Object's own read and NOT by the policy-configuration read (Owner ruling, Wave 10 -- this
+  // supersedes Wave 9, which had it on `admin.securityPolicy.read`).
+  assert.deepEqual(grantKeys("administration.permissionPreview"), ["admin.principalAccess.read"]);
 
   // NO ADMINISTRATION WRITE EARNS ANY OF THE GOVERNED-CONFIGURATION SURFACES. The old gap reason said
   // gating a read surface on `admin.roleAssignment.write` "would make a reader indistinguishable from
@@ -263,18 +283,28 @@ test("administration.overview is a CONTAINER -- derived from its children, earna
   assert.equal(surfaceCatalogCapabilityKeys().includes("administration.overview"), false);
 });
 
-test("the two authority modules agree on three surfaces and DIVERGE on permissionPreview -- pinned", () => {
-  // adminPolicy/administrationSurfaceAuthority.ts (Lane AA) and eosOps/experienceAuthority.ts (this
-  // lane) both say which capability reaches an Administration surface. They agree everywhere except
-  // Permission Preview, and that divergence is a live reconciliation item rather than a bug in
-  // either file -- so it is written down here instead of being silently resolved by one lane.
+test("the two authority modules AGREE on every Administration surface -- pinned from both sides", () => {
+  // THIS ASSERTION USED TO PIN A DIVERGENCE, and it is the same assertion, flipped by an Owner
+  // ruling rather than deleted. The record of what it said matters as much as what it says now:
   //
-  //   Lane AA       permissionPreview -> admin.principalAccess.read  ("the same effective-access read")
-  //   Owner ruling  permissionPreview -> admin.securityPolicy.read   (Wave 9, this lane)
+  //   Lane AA (adminPolicy/administrationSurfaceAuthority.ts)
+  //                 permissionPreview -> admin.principalAccess.read   ("the same effective-access read")
+  //   Wave 9 ruling permissionPreview -> admin.securityPolicy.read    (set in EXPERIENCE_SURFACES by Lane AH)
+  //   Wave 10 ruling (SUPERSEDES Wave 9, and the one in force)
+  //                 permissionPreview -> admin.principalAccess.read   -- Lane AA was right
   //
-  // NOTHING OBSERVABLE TURNS ON IT TODAY: in nonprod both capabilities are granted to exactly
-  // {admin, owner}, so every principal resolves the same answer either way. It matters the day one is
-  // granted without the other, which is precisely why it must not be left as two quiet opinions.
+  // WHY, IN THE OWNER'S OWN TERMS: Permission Preview READS AND EVALUATES A PRINCIPAL'S EFFECTIVE
+  // ACCESS. That is the `principal` Object, and `admin.principalAccess.read` is its read. The
+  // security-policy CONFIGURATION surfaces -- rolesPermissions and objects -- expose the
+  // Role x Object x action matrix, which is nobody's effective access, and they keep
+  // `admin.securityPolicy.read`. "Current grant populations being coincidentally identical does not
+  // justify conflating the authorities."
+  //
+  // TWO FILES, ONE AUTHORITY, AND NO ROOM TO DRIFT AGAIN. The projection below is asserted to equal
+  // administrationSurfaceAuthority.ts's own table ENTRY BY ENTRY and by construction rather than by
+  // four hand-written strings, so neither file can move without the other or without this failing --
+  // which is the property the pinned divergence existed to buy and the reason it was flipped instead
+  // of removed.
   const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
   const projection = new Map(EXPERIENCE_SURFACES.map((s) => [s.key, s.grants.map((g) => g.capabilityKey)]));
 
@@ -284,16 +314,118 @@ test("the two authority modules agree on three surfaces and DIVERGE on permissio
     [ADMINISTRATION_SURFACE_READ_CAPABILITY.objects]);
   assert.deepEqual(projection.get("administration.workflows"),
     [ADMINISTRATION_SURFACE_READ_CAPABILITY.workflows]);
+  // Users carries a SECOND path (`employee.record.read`) that the read-authority table does not
+  // model, so it is asserted as a superset rather than an equality -- the table's key must be among
+  // the surface's grant paths, and it is the first of them.
   assert.deepEqual(projection.get("administration.users"),
     ["admin.principalAccess.read", "employee.record.read"]);
+  assert.equal(projection.get("administration.users")[0],
+    ADMINISTRATION_SURFACE_READ_CAPABILITY.users);
 
-  // THE DIVERGENCE, asserted from both sides so neither can move without this failing.
+  // THE AGREEMENT, asserted from both sides so neither can move without this failing.
   assert.equal(ADMINISTRATION_SURFACE_READ_CAPABILITY.permissionPreview, "admin.principalAccess.read");
-  assert.deepEqual(projection.get("administration.permissionPreview"), ["admin.securityPolicy.read"]);
-  assert.notEqual(ADMINISTRATION_SURFACE_READ_CAPABILITY.permissionPreview,
+  assert.deepEqual(projection.get("administration.permissionPreview"), ["admin.principalAccess.read"]);
+  assert.equal(ADMINISTRATION_SURFACE_READ_CAPABILITY.permissionPreview,
     projection.get("administration.permissionPreview")[0]);
-  // Both holders are identical in nonprod, which is why nobody can currently observe the difference.
+
+  // AND THE SEPARATION THE RULING IS ABOUT, in the form that makes it real rather than asserted: the
+  // configuration surfaces and Permission Preview are earned by DIFFERENT keys, in BOTH files.
+  for (const configurationSurface of ["rolesPermissions", "objects"]) {
+    assert.equal(ADMINISTRATION_SURFACE_READ_CAPABILITY[configurationSurface], "admin.securityPolicy.read");
+    assert.notEqual(ADMINISTRATION_SURFACE_READ_CAPABILITY[configurationSurface],
+      ADMINISTRATION_SURFACE_READ_CAPABILITY.permissionPreview,
+      `${configurationSurface} and permissionPreview have been conflated onto one key again`);
+    assert.notDeepEqual(projection.get(`administration.${configurationSurface}`),
+      projection.get("administration.permissionPreview"));
+  }
+
+  // EVERY surface both files name is checked, not the four somebody remembered. A surface added to
+  // administrationSurfaceAuthority.ts with a projection counterpart must agree too, or this fails.
+  for (const s of ADMINISTRATION_SURFACES) {
+    const required = ADMINISTRATION_SURFACE_READ_CAPABILITY[s];
+    const paths = projection.get(`administration.${s}`);
+    if (required === null || paths === undefined) continue;
+    assert.equal(paths.includes(required), true,
+      `administrationSurfaceAuthority says ${s} needs ${required}; EXPERIENCE_SURFACES does not offer it`);
+  }
+
+  // THE COINCIDENCE, RECORDED AND EXPLICITLY NOT RELIED ON. The two keys are held by exactly the same
+  // two Roles today -- which is why no principal can presently observe the ruling at all, and why it
+  // had to be decided from what the surface DOES rather than from who holds what.
   assert.deepEqual(NONPROD_HOLDERS["admin.principalAccess.read"], NONPROD_HOLDERS["admin.securityPolicy.read"]);
+  // ...and they are nonetheless different rows with different PROVENANCE, which is the evidence that
+  // identical populations are a coincidence rather than one authority under two names.
+  assert.notEqual(SECURITY_POLICY_READ_GRANTED_BY, PRINCIPAL_ACCESS_READ_GRANTED_BY);
 
   assert.equal(typeof WORKFLOW_READ_GRANTED_BY_MIGRATION_NOT_ON_THIS_BRANCH, "string");
+});
+
+// ════════════════════ 5. CHANGING securityPolicy.read ALONE MOVES NOTHING ON PERMISSION PREVIEW ════════════════════
+//
+// AP5, and the decisive proof of the Wave 10 ruling. An authority separation that is only asserted is
+// indistinguishable from a comment; what makes it real is that a CROSSED PAIR of principals gets
+// crossed answers. Both halves are driven through the real `mayReadAdministrationSurface` and the
+// real EXPERIENCE_SURFACES grant paths -- no capability set is described, every one is evaluated.
+
+test("securityPolicy.read WITHOUT principalAccess.read: configuration yes, Permission Preview NO", () => {
+  const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
+  const held = new Set(["admin.securityPolicy.read"]);
+
+  assert.equal(mayReadAdministrationSurface(held, "rolesPermissions"), true);
+  assert.equal(mayReadAdministrationSurface(held, "objects"), true);
+  assert.equal(mayReadAdministrationSurface(held, "permissionPreview"), false,
+    "securityPolicy.read alone still opens Permission Preview -- the authorities are still conflated");
+  assert.equal(mayReadAdministrationSurface(held, "users"), false);
+  // The Overview still opens, because the two configuration surfaces are reachable -- the container
+  // is a disjunction and this principal genuinely has somewhere to go.
+  assert.equal(mayReachAdministration(held), true);
+  assert.deepEqual([...administrationSurfacesReadableBy(held)], ["overview", "objects", "rolesPermissions"]);
+
+  // The SAME split in the projection catalog, which is the file this lane changed.
+  const earns = (key) => EXPERIENCE_SURFACES.find((s) => s.key === key)
+    .grants.some((g) => held.has(g.capabilityKey));
+  assert.equal(earns("administration.rolesPermissions"), true);
+  assert.equal(earns("administration.objects"), true);
+  assert.equal(earns("administration.permissionPreview"), false);
+});
+
+test("principalAccess.read WITHOUT securityPolicy.read: Permission Preview yes, configuration NO", () => {
+  const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
+  const held = new Set(["admin.principalAccess.read"]);
+
+  assert.equal(mayReadAdministrationSurface(held, "permissionPreview"), true);
+  assert.equal(mayReadAdministrationSurface(held, "users"), true);
+  assert.equal(mayReadAdministrationSurface(held, "rolesPermissions"), false,
+    "principalAccess.read reached the security-policy configuration -- the separation runs one way only");
+  assert.equal(mayReadAdministrationSurface(held, "objects"), false);
+  assert.equal(mayReachAdministration(held), true);
+  assert.deepEqual([...administrationSurfacesReadableBy(held)], ["overview", "users", "permissionPreview"]);
+
+  const earns = (key) => EXPERIENCE_SURFACES.find((s) => s.key === key)
+    .grants.some((g) => held.has(g.capabilityKey));
+  assert.equal(earns("administration.permissionPreview"), true);
+  assert.equal(earns("administration.rolesPermissions"), false);
+  assert.equal(earns("administration.objects"), false);
+});
+
+test("mutating admin.securityPolicy.read ALONE cannot change Permission Preview's answer", () => {
+  // The claim stated as an experiment rather than as a property: hold principalAccess.read fixed,
+  // swing securityPolicy.read through both of its values, and Permission Preview never moves. Then
+  // do it the other way -- and the configuration surfaces never move either.
+  const answer = (keys, surface) => mayReadAdministrationSurface(new Set(keys), surface);
+
+  for (const withConfiguration of [[], ["admin.securityPolicy.read"]]) {
+    assert.equal(answer(["admin.principalAccess.read", ...withConfiguration], "permissionPreview"), true);
+    assert.equal(answer([...withConfiguration], "permissionPreview"), false);
+  }
+  for (const withPrincipal of [[], ["admin.principalAccess.read"]]) {
+    assert.equal(answer(["admin.securityPolicy.read", ...withPrincipal], "rolesPermissions"), true);
+    assert.equal(answer([...withPrincipal], "rolesPermissions"), false);
+  }
+  // Holding BOTH is the population every real Role has today, and it reaches everything -- which is
+  // exactly why the crossed pairs above, and not this row, are what prove the separation.
+  const both = ["admin.principalAccess.read", "admin.securityPolicy.read"];
+  for (const surface of ["rolesPermissions", "objects", "permissionPreview", "users", "overview"]) {
+    assert.equal(answer(both, surface), true);
+  }
 });
