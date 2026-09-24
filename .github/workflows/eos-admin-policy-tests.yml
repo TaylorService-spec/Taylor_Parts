@@ -263,6 +263,14 @@ on:
       - "field-ops-app-vite/test/adminPolicySecurityReads.test.jsx"
       - "field-ops-app-vite/test/useObjectSecurity.test.jsx"
       - "field-ops-app-vite/src/modules/administration/useObjectSecurity.js"
+      # The canonical read model the later Object security screen assembles from, and the proof
+      # that an administrator reads "Read Coordinated Visits" rather than
+      # `fulfillment.coordinatedVisit.read`. Two of the server's three projections send action keys
+      # with no labels, so the join to the Object/action inventory lives here -- and a change to
+      # either side of that join must run this suite.
+      - "field-ops-app-vite/src/modules/administration/objectSecurityReadModel.js"
+      - "field-ops-app-vite/src/modules/administration/ObjectSecurityActionList.jsx"
+      - "field-ops-app-vite/test/adminSecurityReadModel.test.jsx"
       - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
@@ -573,4 +581,14 @@ jobs:
       # empty security grid -- which on this screen would read as "nobody holds anything".
       - name: Object security read client and hooks (vitest + jsdom)
         run: npx vitest run test/adminPolicySecurityReads.test.jsx test/useObjectSecurity.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE READ MODEL THE LATER SCREEN IS ASSEMBLED FROM. The server's Role and Principal
+      # projections send action KEYS and no labels; joining the Object/action inventory onto them
+      # is the one place that is allowed to happen, and these assertions pin what it may not do --
+      # invent a label, drop a grant the catalog cannot explain, re-sort the authority's answer, or
+      # turn a refused read into an empty security grid. The last describe is the guard that this
+      # tranche switched no source of truth: no Administration screen imports any of it.
+      - name: Canonical security read model and friendly labels (vitest + jsdom)
+        run: npx vitest run test/adminSecurityReadModel.test.jsx
         working-directory: field-ops-app-vite
