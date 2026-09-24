@@ -255,6 +255,14 @@ on:
       - "field-ops-app-vite/test/reorderAuthoritySeparation.test.mjs"
       - "field-ops-app-vite/test/adminPolicyApiClient.test.mjs"
       - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
+      # The Object-owned security READ MODEL, from the browser. The four operations
+      # (listObjectsWithActions, getObjectSecurityMatrix, getRoleSecurity,
+      # getPrincipalEffectiveAccess) were served and proven against PostgreSQL while the client
+      # could not name one of them. Named here individually for the reason every entry above was:
+      # a suite that runs in a registered job but matches no path filter goes stale in silence.
+      - "field-ops-app-vite/test/adminPolicySecurityReads.test.jsx"
+      - "field-ops-app-vite/test/useObjectSecurity.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/useObjectSecurity.js"
       - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
@@ -555,4 +563,14 @@ jobs:
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)
         run: npx vitest run test/adminRolesPermissions.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected
+      # transport -- no network, no database. The authority itself is proved against real
+      # PostgreSQL in the objectSecurityAuthorityPostgres job; what these two suites prove is that
+      # the client names the server's operations, sends the input key its dispatcher requires,
+      # returns the projection untouched, and reports a refusal AS a refusal rather than as an
+      # empty security grid -- which on this screen would read as "nobody holds anything".
+      - name: Object security read client and hooks (vitest + jsdom)
+        run: npx vitest run test/adminPolicySecurityReads.test.jsx test/useObjectSecurity.test.jsx
         working-directory: field-ops-app-vite
