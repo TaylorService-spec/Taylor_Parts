@@ -1,5 +1,24 @@
 # F-RULES-1 Gate D2 — Hardened Rules Deployment Handoff (Cloud Shell)
 
+> ## ⛔ CLOSED — HISTORICAL RECORD. DO NOT EXECUTE.
+>
+> This runbook was **executed once, on 2026-07-23**, against the production project `taylor-parts`,
+> from base commit `75289cc`. It was closed by `655dc150` (evidence import) and the workstream by
+> `49ba3363`. Its outcome is recorded in [`../audits/f-rules-1/d2-rules-deployment/`](../audits/f-rules-1/d2-rules-deployment/).
+>
+> **The hash below is a historical deployment identity, not a pin on current `main`.** It is the
+> sha256 of the `firestore.rules` blob **at `75289cc`**, which is what was deployed and what the
+> archived `post-deploy-production.rules` hashes to. It is deliberately NOT the hash of the rules
+> file on current `main`, and it must never be "refreshed" to match one — doing so would falsify a
+> production deployment record.
+>
+> **Standing Owner ruling (2026-09-16), production Firebase Rules fence:** `firestore.rules` from
+> `main` is **never** deployed to the production project `taylor-parts`. `main` now carries the
+> #1929 CRM write-grant retirement, which is authorized for **nonprod only**. Step 3 and the
+> ROLLBACK block below therefore describe a past action under a past authorization; re-running
+> either against `taylor-parts` would breach the fence. Any future Rules deploy requires a new,
+> separately Owner-authorized handoff naming its own project explicitly.
+
 **Gate:** D2 — deploy the current governed `firestore.rules`, verify the technician self-write closure in production, preserve rollback. **Operator-executed**; prepared by the Customer session per the Owner's D2 authorization. Governing: Decision #39 · PR-C validation · D1 activation report (`../audits/f-rules-1/d1-activation/`).
 
 **Combined-content acknowledgement (Owner-confirmed):** this deploy ships the ENTIRE current Rules file — the F-RULES-1 technician hardening (start-only direct transition, status-only, completion/self-availability denied, audit client-deny) **plus** Inventory's client-closed blocks (`parts`, `manufacturers`, `part_aliases`, `part_supplier_items`). Pre-verified at `75289cc`: byte-identical mirror, full regression **498/0 (15 suites)** incl. strict 43/43, partMaster 16/16, partAlias 8/8, partSupplierItem 8/8. Governed Rules **git-blob** sha256 (derive, never hand-copy: `git show HEAD:firestore.rules | sha256sum`): `b37c666fff0018375df11afa5078f8499e10fea9df7a862d5c373e112f5903fd`. (Correction note: an earlier handoff revision recorded a Windows-worktree CRLF hash; every check below now derives from the git blob, which is byte-identical to a Linux/Cloud Shell working tree and to what `firebase deploy` uploads.)
