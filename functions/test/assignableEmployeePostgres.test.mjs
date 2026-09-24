@@ -66,7 +66,7 @@ test("assignable Employees: qualification, lifecycle and account, each independe
       return tx.createAssignment({ principalId, roleId: roleIds[tenantId], scopeType: "global", scopeValue: null, status: "active", grantedBy: "f", grantedAt: new Date().toISOString(), accessVersionAtGrant: v });
     });
     const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: subject, requestedTenantId: null });
-    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities };
+    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
   };
   const employee = (id, tenant = "t1", status = "ACTIVE") => q(
     `INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at, display_name)

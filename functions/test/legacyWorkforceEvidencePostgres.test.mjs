@@ -70,7 +70,7 @@ test("the legacy evidence census over the real governed authorities: true resolu
     });
   });
   const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: "firebase-uid-admin", requestedTenantId: null });
-  const adminActor = { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities };
+  const adminActor = { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
 
   const employee = (id, tenant = "t1") => q(
     `INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at)

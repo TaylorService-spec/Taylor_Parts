@@ -75,7 +75,7 @@ test("changeEmploymentStatus / changeOperatingCompany over the real Workforce an
   };
   const resolveActor = async (principal) => {
     const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: principal.subject, requestedTenantId: null });
-    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities };
+    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
   };
   const employee = (id, tenant = "t1", extra = {}) => {
     const cols = Object.keys(extra);

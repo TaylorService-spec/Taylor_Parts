@@ -34,6 +34,17 @@ import { getPolicyDatabasePool } from "../adminPolicy/policyDatabase";
 import { resolvePrincipalContext } from "../adminPolicy/principalContext";
 import type { PrincipalContext, ResolveContextInput } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
+import {
+  entitlementsFrom,
+  SHIPPED_GRANT_CONDITIONS,
+  type CapabilityGrant,
+  type EntitlementSet,
+  type GrantConditionCatalog,
+} from "./conditionalEntitlement";
+import {
+  GRANT_CONDITION_RELATION_NAME,
+  GRANT_CONDITION_RELATION_SHAPE,
+} from "./grantConditionPolicy";
 
 const SCHEMA = "eos_policy";
 
@@ -46,8 +57,22 @@ export type OperationalCapabilityKey =
 
 export interface ResolvedOperationalContext {
   readonly principalContext: PrincipalContext;
-  /** Capability KEYS held via active Role assignments, in the resolved tenant only. */
+  /** Capability KEYS held via active Role assignments, in the resolved tenant only. UNCHANGED. */
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- the conditional-entitlement metadata,
+   * carried on the real request path.
+   *
+   * Every one of the five EOS transports composes `resolveOperationalContext`, so this is the single
+   * place provenance can enter the runtime without thirteen separate changes. `capabilityKeysOf` of
+   * this list EQUALS `capabilities` above; a gate site may keep reading the flat Set and lose
+   * nothing, or ask `entitledActionAuthority.authorizeOperationalAction` and reach a CONDITIONAL
+   * decision with no further resolution.
+   *
+   * It is a field, not an optional one: a caller that could omit it could omit every condition with
+   * it, which is precisely the caller-controlled-bypass shape this repository has already paid for.
+   */
+  readonly entitlements: EntitlementSet;
 }
 
 /**
@@ -63,10 +88,22 @@ export async function resolveOperationalContext(
   reader: PolicyReader,
   pool: Pool,
   input: ResolveContextInput,
+  conditions: GrantConditionCatalog = SHIPPED_GRANT_CONDITIONS,
 ): Promise<ResolvedOperationalContext> {
   const principalContext = await resolvePrincipalContext(reader, input);
-  const capabilities = await capabilitiesForRoleKeys(pool, principalContext.tenantId, principalContext.heldRoleKeys);
-  return Object.freeze({ principalContext, capabilities });
+  // TWO RESOLVERS, DELIBERATELY. `capabilitiesForRoleKeys` is untouched and stays the authority for
+  // "what may this Principal do"; `roleCapabilityGrants` answers "and WHO granted it" over the same
+  // rows. They are proved equal by test rather than derived from one another, because a single
+  // resolver silently changing shape is how a policy answer drifts without anyone noticing. The cost
+  // is one extra indexed read of role_capabilities per request.
+  const [capabilities, grantRows] = await Promise.all([
+    capabilitiesForRoleKeys(pool, principalContext.tenantId, principalContext.heldRoleKeys),
+    roleCapabilityGrants(pool, principalContext.tenantId, principalContext.heldRoleKeys),
+  ]);
+  const grants: CapabilityGrant[] = grantRows.map((r) => ({
+    grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey,
+  }));
+  return Object.freeze({ principalContext, capabilities, entitlements: entitlementsFrom(grants, conditions) });
 }
 
 /**
@@ -182,8 +219,12 @@ export async function principalCapabilityGrants(
   return Object.freeze(rows.map((r) => Object.freeze({ principalId: r.principal_id, capabilityKey: r.capability_key })));
 }
 
-/** The relation that holds per-grant conditions. NOT YET MIGRATED -- see PROPOSED_GRANT_CONDITION_SCHEMA. */
-export const GRANT_CONDITION_RELATION = `${SCHEMA}.capability_grant_conditions`;
+/**
+ * The relation that holds per-grant conditions. LIVE: migration 1762214400000, applied 2026-09-24.
+ * The name is declared once, in grantConditionPolicy.ts, and re-stated here only so the SQL below
+ * reads as SQL.
+ */
+export const GRANT_CONDITION_RELATION = GRANT_CONDITION_RELATION_NAME;
 
 /** One stored per-grant condition row, as the relation holds it. */
 export interface GrantConditionRelationRow {
@@ -196,11 +237,15 @@ export interface GrantConditionRelationRow {
 /**
  * Read the ACTIVE per-grant conditions for one tenant.
  *
- * INERT UNTIL THE RELATION EXISTS. No migration creates it this Wave (Lane AA owns the slot), so
- * against a currently-migrated database this throws `relation does not exist` -- which the entitled
- * decision path turns into CONTEXT_AUTHORITY_UNAVAILABLE, never into "then there are no
+ * THE RELATION IS LIVE and holds zero rows, so today this returns an EMPTY list for every tenant --
+ * which is not the same fact as the relation being absent, and the difference is load-bearing. A
+ * database that does not carry the relation makes this throw `relation does not exist`, which the
+ * entitled decision path turns into CONTEXT_AUTHORITY_UNAVAILABLE, never into "then there are no
  * conditions". Reading a missing condition store as "unconditioned" would convert every conditioned
  * grant into an unconditional one, so it fails closed instead.
+ *
+ * RETIRED rows are not conditions and are not loaded; retiring a condition is how a condition is
+ * lifted, and it leaves the row readable as history.
  */
 export async function grantConditionRows(
   pool: Pool,
@@ -216,4 +261,110 @@ export async function grantConditionRows(
   return Object.freeze(rows.map((r) => Object.freeze({
     grantScope: r.grant_scope, grantorKey: r.grantor_key, capabilityKey: r.capability_key, condition: r.condition,
   })));
+}
+
+// ==================== THE CONDITION RELATION, AS DEPLOYED ====================
+
+/** One column of the live relation, as `information_schema.columns` reports it. */
+export interface RelationColumnFact {
+  readonly name: string;
+  readonly dataType: string;
+  readonly nullable: boolean;
+  readonly columnDefault: string | null;
+}
+
+/** What a database actually carries for `eos_policy.capability_grant_conditions`. */
+export interface GrantConditionRelationFacts {
+  readonly present: boolean;
+  readonly columns: readonly RelationColumnFact[];
+  /** `pg_get_constraintdef`, verbatim, sorted. */
+  readonly constraints: readonly string[];
+  /** Index names, sorted. */
+  readonly indexes: readonly string[];
+  /** The columns of `capability_grant_conditions_by_capability`, in index order. */
+  readonly namedIndexColumns: readonly string[];
+}
+
+/**
+ * Read the live shape of the condition relation. READ ONLY: three catalog queries and nothing else.
+ *
+ * This is the half of "the repository understands the deployed schema" that a CREATE TABLE string
+ * can never be. `GRANT_CONDITION_RELATION_SHAPE` declares what is expected;
+ * `grantConditionRelationDrift` compares the two and names every difference, so drift in EITHER
+ * direction -- a column added in the database, a column removed from the declaration -- is a
+ * failure rather than a surprise.
+ */
+export async function describeGrantConditionRelation(
+  pool: Pick<Pool, "query">,
+  schema: string = GRANT_CONDITION_RELATION_SHAPE.schema,
+  table: string = GRANT_CONDITION_RELATION_SHAPE.table,
+): Promise<GrantConditionRelationFacts> {
+  const columns = await pool.query<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
+    `SELECT column_name, data_type, is_nullable, column_default
+       FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = $2
+      ORDER BY ordinal_position`, [schema, table]);
+  if (columns.rows.length === 0) {
+    return Object.freeze({ present: false, columns: Object.freeze([]), constraints: Object.freeze([]),
+      indexes: Object.freeze([]), namedIndexColumns: Object.freeze([]) });
+  }
+  const constraints = await pool.query<{ def: string }>(
+    `SELECT pg_get_constraintdef(con.oid) AS def
+       FROM pg_constraint con
+       JOIN pg_class rel ON rel.oid = con.conrelid
+       JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+      WHERE ns.nspname = $1 AND rel.relname = $2`, [schema, table]);
+  const indexes = await pool.query<{ indexname: string; indexdef: string }>(
+    `SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 ORDER BY indexname`,
+    [schema, table]);
+  const named = indexes.rows.find((r) => r.indexname === GRANT_CONDITION_RELATION_SHAPE.namedIndex.name);
+  const namedColumns = named
+    ? (named.indexdef.match(/\(([^)]*)\)\s*$/)?.[1] ?? "").split(",").map((c) => c.trim()).filter(Boolean)
+    : [];
+  return Object.freeze({
+    present: true,
+    columns: Object.freeze(columns.rows.map((r) => Object.freeze({
+      name: r.column_name, dataType: r.data_type,
+      nullable: r.is_nullable === "YES", columnDefault: r.column_default,
+    }))),
+    constraints: Object.freeze(constraints.rows.map((r) => r.def).sort()),
+    indexes: Object.freeze(indexes.rows.map((r) => r.indexname)),
+    namedIndexColumns: Object.freeze(namedColumns),
+  });
+}
+
+/**
+ * Every way the live relation differs from the declared shape. EMPTY means parity.
+ *
+ * Both directions are reported. A database carrying an undeclared column is drift the repository
+ * must learn about; a declaration naming a column the database does not have is drift that would
+ * make a reader write to nothing.
+ */
+export function grantConditionRelationDrift(facts: GrantConditionRelationFacts): readonly string[] {
+  if (!facts.present) return Object.freeze([`${GRANT_CONDITION_RELATION} is absent`]);
+  const drift: string[] = [];
+  const expected = GRANT_CONDITION_RELATION_SHAPE;
+  const actualByName = new Map(facts.columns.map((c) => [c.name, c]));
+  for (const want of expected.columns) {
+    const got = actualByName.get(want.name);
+    if (!got) { drift.push(`column ${want.name} is missing`); continue; }
+    if (got.dataType !== want.dataType) drift.push(`column ${want.name} is ${got.dataType}, expected ${want.dataType}`);
+    if (got.nullable !== want.nullable) drift.push(`column ${want.name} nullability is ${got.nullable}, expected ${want.nullable}`);
+    if ((got.columnDefault ?? null) !== want.columnDefault) {
+      drift.push(`column ${want.name} default is ${String(got.columnDefault)}, expected ${String(want.columnDefault)}`);
+    }
+  }
+  const declared = new Set(expected.columns.map((c) => c.name));
+  for (const got of facts.columns) if (!declared.has(got.name)) drift.push(`column ${got.name} is undeclared`);
+  for (const want of expected.constraints) {
+    if (!facts.constraints.includes(want)) drift.push(`constraint missing: ${want}`);
+  }
+  for (const got of facts.constraints) {
+    if (!(expected.constraints as readonly string[]).includes(got)) drift.push(`constraint undeclared: ${got}`);
+  }
+  if (!facts.indexes.includes(expected.namedIndex.name)) drift.push(`index missing: ${expected.namedIndex.name}`);
+  else if (facts.namedIndexColumns.join(",") !== expected.namedIndex.columns.join(",")) {
+    drift.push(`index ${expected.namedIndex.name} covers (${facts.namedIndexColumns.join(", ")}), expected (${expected.namedIndex.columns.join(", ")})`);
+  }
+  return Object.freeze(drift);
 }

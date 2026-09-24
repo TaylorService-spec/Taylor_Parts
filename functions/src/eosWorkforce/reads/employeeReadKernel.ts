@@ -18,6 +18,10 @@
 // Employee can be matched by one. JOB ROLE has no PostgreSQL authority (EMP-RT-08, not implemented) and no read here
 // produces, infers or names one.
 import type { Pool, PoolClient } from "pg";
+// The PURE decision, deliberately: `conditionalEntitlement` carries no SQL, no pool factory and no
+// runtime `pg`, so adopting the conditional seam does not widen this kernel's module boundary.
+import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementSet } from "../../eosOps/conditionalEntitlement";
+import { postgresContextualReader } from "../../eosOps/contextualAuthorization";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -44,6 +48,12 @@ export interface EmployeeReadActor {
   readonly tenantId: string;
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * The SAME grants with the granting Role and its condition kept, from
+   * `capabilityAuthority.resolveOperationalContext`. Required, never optional -- see the seam note
+   * below `runEmployeeRead`.
+   */
+  readonly entitlements: EntitlementSet;
 }
 
 export interface EmployeeReadDeps {
@@ -55,12 +65,14 @@ function requireActorContext(actor: EmployeeReadActor): void {
     refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
   }
   if (!(actor.capabilities instanceof Set)) refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved capability set is required");
+  if (!hasResolvedEntitlements(actor)) refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved entitlement set is required");
 }
 
 /**
  * Run ONE governed Employee read in ONE read-only snapshot.
  *
- * Order: actor context -> caller input validation (`prepare`) -> the capabilities that input requires -> connect ->
+ * Order: actor context -> caller input validation (`prepare`) -> the capabilities that input requires ->
+ * the CONDITION on each of those capabilities, per granting Role -> connect ->
  * BEGIN READ ONLY -> active principal + active membership -> body -> COMMIT. Refusals before `connect` touch no database.
  */
 export async function runEmployeeRead<P, R>(
@@ -74,8 +86,19 @@ export async function runEmployeeRead<P, R>(
   try {
     requireActorContext(actor);
     const prepared = prepare();
-    const missing = requiredCapabilities(prepared).filter((c) => !actor.capabilities.has(c));
+    const required = requiredCapabilities(prepared);
+    const missing = required.filter((c) => !actor.capabilities.has(c));
     if (missing.length > 0) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this read requires ${missing.join(", ")}`);
+    // THE CONDITIONAL DECISION. With no condition on any entitlement this allows every required key
+    // through the unconditional path, consults no context authority and reads nothing.
+    const reader = postgresContextualReader(deps.pool);
+    for (const capabilityKey of required) {
+      const decision = await authorizeEntitledAction(reader, { actor, capabilityKey });
+      if (!decision.allowed) {
+        refuse("CAPABILITY_CONDITION_UNSATISFIED", "FORBIDDEN",
+          `this read requires ${capabilityKey}: ${decision.outcome}`);
+      }
+    }
     client = await deps.pool.connect();
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     const member = await client.query(
@@ -98,6 +121,22 @@ export async function runEmployeeRead<P, R>(
 // ════════════════════ caller input ════════════════════
 
 type Input = Record<string, unknown> | undefined;
+
+// ==================== THE CONDITIONAL ENTITLEMENT SEAM ====================
+//
+// `capabilities.has(key)` answers "is this key in the set" and can answer nothing else -- which is
+// why a per-GRANT condition was unreachable from any of the thirteen kernel gate sites. The actor
+// now also carries `entitlements`, resolved by `capabilityAuthority.resolveOperationalContext` on
+// the request path, so a gate site can ask the question that needs the grantor.
+//
+// THE EXISTING CHECK IS NOT REPLACED. The flat-set check below runs first and is byte-identical to
+// what it always was; the entitled decision runs AFTER it and can only ever refuse further. That
+// ordering is the guarantee that wiring this in front of a governed read narrows nothing while
+// `eos_policy.capability_grant_conditions` holds zero rows -- and it means a bug in the new path can
+// only be a false refusal, never a false allow.
+//
+// AN ACTOR WITHOUT ENTITLEMENTS IS REFUSED, not waved through. A fall-back to the flat set would
+// mean any caller that omitted the field escaped every condition.
 
 /** A read accepts exactly its named fields. An unnamed field is refused, never ignored. */
 export function acceptOnly(input: Input, allowed: readonly string[]): void {

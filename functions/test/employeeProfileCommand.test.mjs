@@ -15,11 +15,18 @@ const require = createRequire(import.meta.url);
 const command = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
 const vocabulary = require("../lib/eosWorkforce/employeeProfileVocabulary.js");
 const snapshotLib = require("../lib/eosWorkforce/migration/employeeProfileSnapshot.js");
+const entitlement = require("../lib/eosOps/conditionalEntitlement.js");
 
 const untouchablePool = { connect: () => { throw new Error("the command touched the database before refusing"); } };
 const deps = { pool: untouchablePool };
 const WRITE = "admin.employeeProfile.write";
-const actor = (caps = [WRITE], extra = {}) => ({ tenantId: "t1", principalId: "p-admin", capabilities: new Set(caps), ...extra });
+// A RESOLVED actor carries the conditional-entitlement metadata resolveOperationalContext produces,
+// not only the flat set. Built through the real composer with the SHIPPED (empty) catalog, so every
+// entitlement here is unconditional -- exactly what the deployed resolver produces today.
+const entitlementsOf = (caps) => entitlement.entitlementsFrom(
+  caps.map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey })));
+const actor = (caps = [WRITE], extra = {}) => ({
+  tenantId: "t1", principalId: "p-admin", capabilities: new Set(caps), entitlements: entitlementsOf(caps), ...extra });
 const refusedWith = (code) => (e) => { assert.equal(e.code, code, `${e.code}: ${e.message}`); return true; };
 const run = (input, a = actor()) => command.updateEmployeeProfile(deps, a, input);
 const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
@@ -44,6 +51,13 @@ test("actor: resolved context and admin.employeeProfile.write are required befor
   await assert.rejects(run({ employeeId: "e1", changes: { jobTitle: "Lead" } }, actor(["employee.record.read"])), refusedWith("CAPABILITY_REQUIRED"));
   // Authority submitted as INPUT is not authority: a caller cannot supply its own capability, tenant or actor.
   await assert.rejects(run({ employeeId: "e1", changes: { jobTitle: "Lead" }, capabilities: [WRITE] }, actor([])), refusedWith("CAPABILITY_REQUIRED"));
+  // The entitlement metadata is part of a RESOLVED actor, not an optional extra. An actor without it
+  // is REFUSED rather than decided on the flat set alone -- falling back would let any caller that
+  // omitted the field escape every per-grant condition.
+  await assert.rejects(
+    run({ employeeId: "e1", changes: { jobTitle: "Lead" } }, { tenantId: "t1", principalId: "p1", capabilities: new Set([WRITE]) }),
+    refusedWith("ACTOR_CONTEXT_REQUIRED"), "an actor with no entitlements must refuse");
+  // ...and it still refuses BEFORE a connection: the pool above throws if touched.
 });
 
 test("input: closed top-level key set; tenant, actor and principal keys are refused, never honored", async () => {
@@ -95,7 +109,16 @@ test("boundary: no Firebase, no Rules; the Workforce transport (W1B) is the only
     const src = strip(readFileSync(join(SRC, file), "utf8"));
     assert.doesNotMatch(src, /firebase|firestore|from "\.\.\/migration\//i, file);
     const imports = [...src.matchAll(/from "([^"]+)"/g)].map((m) => m[1]);
-    assert.ok(imports.every((i) => ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel"].includes(i)), `${file}: ${imports}`);
+    // PER-FILE, so admitting the command kernel's authorization seam does not widen what the command
+    // body or the vocabulary may reach. The kernel -- and ONLY the kernel -- may import the
+    // conditional-entitlement decision, because that is where the capability gate lives.
+    const allowed = {
+      "commands/employeeProfileCommand.ts": ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel"],
+      "commands/employeeCommandKernel.ts": ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel",
+        "../../eosOps/conditionalEntitlement", "../../eosOps/contextualAuthorization"],
+      "employeeProfileVocabulary.ts": ["pg", "node:crypto", "./employeeCommandKernel", "../employeeProfileVocabulary", "../reads/employeeReadKernel"],
+    }[file];
+    assert.ok(imports.every((i) => allowed.includes(i)), `${file}: ${imports}`);
   }
   assert.match(strip(readFileSync(join(SRC, "workforceHttp.ts"), "utf8")), /updateEmployeeProfile: command\(updateEmployeeProfile\)/);
   assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "..", "firestore.rules"), "utf8"), /employeeProfileCommand|workforce\/employees/);

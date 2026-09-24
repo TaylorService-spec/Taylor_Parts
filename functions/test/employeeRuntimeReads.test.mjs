@@ -210,7 +210,15 @@ test("no Firebase or Firestore in the Workforce layer, statically and transitive
 test("the transport carries no SQL and resolves context only through resolveOperationalContext", () => {
   const src = code(HTTP_SOURCE);
   assert.doesNotMatch(src, /\bSELECT\b|\bFROM\s+eos_|\bINSERT\b|\bUPDATE\s|\bDELETE\b|eos_workforce|eos_policy\.|eos_commercial/);
-  assert.match(src, /resolveOperationalContext\(deps\.reader, deps\.pool/);
+  // The transport resolves context through the capability authority and NOTHING else. Two spellings
+  // are permitted and they are the SAME resolver: `resolveOperationalContext`, and the
+  // `resolveEntitledOperationalContext` wrapper that reads per-grant conditions from PostgreSQL first
+  // and then delegates to it. Which one is used is server composition (deps.grantConditionSource),
+  // never a request field -- asserted here so a caller-chosen resolver would fail this test.
+  assert.match(src, /resolveEntitledOperationalContext : resolveOperationalContext/);
+  assert.match(src, /const ctx = await resolve\(deps\.reader, deps\.pool/);
+  assert.match(src, /deps\.grantConditionSource === "POSTGRES"/);
+  assert.doesNotMatch(src, /request\.[A-Za-z.]*grantConditionSource|caller\.[A-Za-z.]*grantCondition/);
   assert.doesNotMatch(src, /resolvePrincipalContext|getPrincipalBySubject/);
 });
 
