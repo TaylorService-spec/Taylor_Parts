@@ -28,6 +28,7 @@ import {
   InvalidStatusTransitionError,
 } from "./partMasterCommands.js";
 import { MalformedStoredRecordError } from "./partMasterRepository.js";
+import { FirestoreCatalogWriterClosedError } from "../catalogMaster/catalogWriterState.js";
 
 // Sanitized error -> HttpsError. Each error TYPE surfaces a GENERIC message so no internal state
 // (existence, current version) leaks past the trust boundary; the stable `code` is what a client acts on.
@@ -41,6 +42,12 @@ export function mapError(err: unknown): HttpsError {
   if (err instanceof IdempotencyConflictError) return new HttpsError("aborted", "That idempotency key was already used for a different request.");
   if (err instanceof InvalidStatusTransitionError) return new HttpsError("failed-precondition", "That status change is not allowed.");
   if (err instanceof MalformedStoredRecordError) return new HttpsError("internal", "The request could not be completed.");
+  // Catalog cutover: FROZEN (the controlled freeze window) and RETIRED are governed refusals, not faults --
+  // the same mapping partMasterCallables.ts gives the Part writers. Without this a frozen Manufacturer write
+  // would surface as "internal", reporting a governed refusal as a server fault.
+  if (err instanceof FirestoreCatalogWriterClosedError) {
+    return new HttpsError("failed-precondition", err.state === "FROZEN" ? "Manufacturer records are frozen for the catalog cutover." : "Manufacturer records are no longer written here.");
+  }
   return new HttpsError("internal", "The request could not be completed.");
 }
 

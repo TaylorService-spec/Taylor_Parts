@@ -5,9 +5,10 @@
 // docs/architecture/catalog-cutover-plan.md §5. There are two writer sets and NEVER two authoritative ones:
 //
 //   Firestore (legacy)  OPEN     the legacy commands write, as today
-//                       FROZEN   the legacy commands REFUSE (no Part create/update/status, no Equipment Model
-//                                create/update, no catalog import write). Reversible -- but only while PostgreSQL
-//                                is still INACTIVE: that is the rollback path if copy / verify / reconcile fails.
+//                       FROZEN   the legacy commands REFUSE (no Part create/update/status, no Manufacturer
+//                                create/update/status, no Equipment Model create/update, no catalog import
+//                                write). Reversible -- but only while PostgreSQL is still INACTIVE: that is
+//                                the rollback path if copy / verify / reconcile fails.
 //                       RETIRED  the legacy commands refuse for good; their removal follows. Not reversible.
 //   PostgreSQL (target) INACTIVE nothing composes the catalogMaster writers into the Render API
 //                       ACTIVE   the governed PostgreSQL writers accept authoritative writes
@@ -105,6 +106,36 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     reachedFrom: Object.freeze([
       "callable changePartStatus (partMasterCallables.ts changePartStatusCallable)",
       "client field-ops-app-vite/src/services/partMasterCommandClient.js (changeStatus)",
+    ]),
+  }),
+  // Manufacturer is a catalog MASTER object of the same catalog authority as Part (catalogMasterKernel.ts
+  // CATALOG_CAPABILITIES: create/update = inventory.catalog.manage, status = inventory.catalog.activate), so the
+  // freeze must close it in the SAME window. Registering these three is a CUTOVER SAFETY FENCE around the legacy
+  // Firestore writer -- it is NOT an endorsement of Manufacturer-in-Firestore as target architecture; the target is
+  // the governed PostgreSQL Manufacturer runtime (catalogMaster/postgresManufacturerWriter.ts), still INACTIVE.
+  "manufacturer.create": Object.freeze({
+    module: "functions/src/partMaster/partMasterCommands.ts",
+    entry: "createManufacturer",
+    reachedFrom: Object.freeze([
+      "callable createManufacturer (functions/src/index.ts -> partMaster/manufacturerCallables.ts createManufacturerCallable)",
+      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (createManufacturer) <- hooks/useManufacturerWrite.js <- modules/inventory/Manufacturers.jsx",
+      "no Data Import adapter and no functions/scripts caller reaches it (unlike part.create)",
+    ]),
+  }),
+  "manufacturer.update": Object.freeze({
+    module: "functions/src/partMaster/partMasterCommands.ts",
+    entry: "updateManufacturer",
+    reachedFrom: Object.freeze([
+      "callable updateManufacturer (functions/src/index.ts -> partMaster/manufacturerCallables.ts updateManufacturerCallable)",
+      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (updateManufacturer) <- hooks/useManufacturerWrite.js <- modules/inventory/Manufacturers.jsx",
+    ]),
+  }),
+  "manufacturer.changeStatus": Object.freeze({
+    module: "functions/src/partMaster/partMasterCommands.ts",
+    entry: "changeManufacturerStatus",
+    reachedFrom: Object.freeze([
+      "callable changeManufacturerStatus (functions/src/index.ts -> partMaster/manufacturerCallables.ts changeManufacturerStatusCallable)",
+      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (changeManufacturerStatus) <- hooks/useManufacturerWrite.js <- modules/inventory/Manufacturers.jsx",
     ]),
   }),
   "equipmentModel.import": Object.freeze({
