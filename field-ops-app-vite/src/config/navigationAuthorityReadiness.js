@@ -11,10 +11,16 @@
 //        quiet degrade to `users/{uid}.role`. That degrade is the defect this seam exists to remove,
 //        and reintroducing it as a safety net would reintroduce the defect as a feature.
 //
-// FALSE IN EVERY ENVIRONMENT TODAY, production included and production fenced. Flipping it is not
-// activation on its own: VITE_EOS_API_BASE_URL must also be configured for the environment, the
-// personas must hold governed Security Roles, and the surfaces they need must be earnable from the
-// catalog. Those preconditions are stated in the Lane V report, not assumed here.
+// TRUE IN EXACTLY ONE ENVIRONMENT (Wave 11 / Lane AS, 2026-09-24): platform-sandbox, the only
+// environment that declares an EOS API. FALSE in the other four, and false in taylor-parts-production
+// absolutely -- production declares `eosApi: null`, so flipping it there would hand every persona
+// NOT_CONFIGURED -> UNAVAILABLE and no navigation at all. That is why the registry contract test
+// refuses an enabled seam without a configured API, in either direction.
+//
+// FLIPPING IT IS NOT ACTIVATION ON ITS OWN: VITE_EOS_API_BASE_URL must also be configured for the
+// environment, the personas must hold governed Security Roles, and the surfaces they need must be
+// earnable from the catalog. Those preconditions are stated in the Lane V report, not assumed here;
+// Lane AS verified the first of them and reported on the third.
 //
 // THE FIRST OF THOSE PRECONDITIONS IS MET IN NON-PRODUCTION, and was already met before it was
 // listed (Wave 7 / Lane AD). VITE_EOS_API_BASE_URL is set in the Vercel non-production project and

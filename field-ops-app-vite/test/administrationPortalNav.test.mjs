@@ -25,11 +25,33 @@ ok("Overview subnav item exists at a named path (not the index)", () => {
   assert.equal(overview.path, "overview");
   assert.equal(overview.legacyKey, undefined);
 });
-ok("Overview is admin/dispatcher visible, technician fail-closed", () => {
+// WAVE 11 / LANE AS -- THIS ASSERTION IS INVERTED, DELIBERATELY, AND HERE IS WHY.
+//
+// Issue #226 gave Overview no authority of its own, so it inherited the admin/dispatcher answer from
+// navConfig's Firebase-era placeholder path. Wave 9 / Lane AH then made Overview a CONTAINER, derived
+// SERVER-SIDE (`containerOf` in functions/src/eosOps/experienceAuthority.ts) and read through the
+// governed surface `administration.overview` -- a menu is as reachable as what it is a menu over, and
+// nothing more. Wave 10 / Lane AR kept the legacy answer alive by adding a row to
+// NAV_LEGACY_PLACEHOLDER_DESTINATIONS; the Owner refused that row, because that register is
+// SHRINK-ONLY and a container is the one thing a placeholder can never be right for.
+//
+// So Overview now has NO legacy authority at all, and this file records that instead of the old
+// answer. The cost is named where it happens: wherever the EOS source is not authoritative, admin and
+// dispatcher no longer see the Administration > Overview tab and /administration/overview renders
+// App.jsx's explicit "isn't available to your role" refusal. The blast radius is exactly this one tab
+// -- the domain and the other fifteen items are asserted unchanged further down this same file.
+ok("Overview asserts NO legacy authority -- it is the governed container, refused under the legacy source", () => {
   const overview = byKey("overview");
-  assert.equal(isNavItemVisible(overview, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
-  assert.equal(isNavItemVisible(overview, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
-  assert.equal(isNavItemVisible(overview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+  assert.equal(overview.legacyPlaceholder, undefined,
+    "Overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- that register may only shrink");
+  assert.equal(overview.containerScope, undefined,
+    "a client-side container row is back -- there is ONE derived-child mechanism and it is the server's");
+  assert.deepEqual(overview.surfaceAccess, ["administration.overview"],
+    "Overview lost its governed surface -- it would then be invisible under BOTH sources");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
+    assert.equal(isNavItemVisible(overview, role, allowed(role)), false,
+      `${role} still reaches Administration > Overview through a Firebase-era role literal`);
+  }
 });
 
 // ----- Permission Preview: net-new, reachable, admin/dispatcher-only -----

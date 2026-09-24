@@ -10,9 +10,11 @@
 //
 // domain/dashboardComposition.js now takes its facts from the EOS Principal experience context
 // (POST /operations/experience -> functions/src/eosOps/experienceAuthority.ts) whenever one is
-// present, and from the legacy inputs when it is not. EOS_NAVIGATION_AUTHORITY_READY is false in
-// every environment, so the legacy branch is what actually runs today and the suites that pin it
-// (dashboardComposition / dashboardRoleMatrix / dashboardDesignConformance) are unchanged.
+// present, and from the legacy inputs when it is not. EOS_NAVIGATION_AUTHORITY_READY is true in
+// platform-sandbox only (Wave 11 / Lane AS) and false everywhere else, production included -- so the
+// EOS branch is what runs in non-production and the legacy branch is what still runs everywhere
+// else. The suites that pin the legacy branch (dashboardComposition / dashboardRoleMatrix /
+// dashboardDesignConformance) are unchanged, because the branch they pin is unchanged.
 //
 // THE PROOF THAT MATTERS is the one below headed FIREBASE INDEPENDENCE: with the EOS projection
 // active, swinging `role` through every legacy value including junk, filling `operationalRoles`

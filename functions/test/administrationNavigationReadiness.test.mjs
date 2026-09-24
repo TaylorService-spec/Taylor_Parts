@@ -24,7 +24,9 @@
 // Authority.ts says so in its own header; this file only asks it questions.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+import { createRequire, } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
 const {
@@ -196,8 +198,11 @@ test("a Role key is not a capability, in any shape a caller might pass one", () 
 //
 // WHAT DID NOT CHANGE, and the readiness claim depends on all three:
 //   * No capability was minted, no Role widened, no Principal granted anything directly.
-//   * EOS_NAVIGATION_AUTHORITY_READY is still FALSE in every environment, production included, so
-//     none of this is reachable by anybody today. Section 4 is a readiness proof, not a cutover.
+//   * EOS_NAVIGATION_AUTHORITY_READY was FALSE in every environment when this was written, so none
+//     of it was reachable by anybody; Section 4 was a readiness proof, not a cutover. Wave 11 /
+//     Lane AS performed the cutover in ONE non-production environment (platform-sandbox), and
+//     production remains false and fenced. Nothing in THIS file changed to make that true -- which
+//     is the point: the readiness proof was the whole of the code change.
 //   * The projection is NOT the security boundary. Every read and command behind these surfaces
 //     re-authorizes server-side on the same capability, exactly as before.
 
@@ -281,6 +286,36 @@ test("administration.overview is a CONTAINER -- derived from its children, earna
   // The container contributes NO capability key to the catalog's "these all exist" proof, because it
   // names none. If it ever does, that proof and this line both fail.
   assert.equal(surfaceCatalogCapabilityKeys().includes("administration.overview"), false);
+});
+
+// ═════ WAVE 11 / LANE AS: THE CLIENT'S DERIVED-SURFACE MIRROR IS PINNED TO THIS CATALOG ═════
+//
+// navConfig.js carries `NAV_DERIVED_SURFACE_KEYS` so it can refuse a placeholder row on a CONTAINER
+// destination -- the rule that keeps `administration/overview` out of the shrink-only legacy
+// register for a reason about the surface's KIND rather than about its name.
+//
+// That mirror decides nothing at runtime, but a mirror that drifts stops refusing. The catalog HERE
+// is the authority for which surfaces are containers, so the parity belongs in this file, beside the
+// `containerOf` assertion it mirrors: add a container above without adding it below, and the client
+// guard silently stops covering it.
+test("the client's derived-surface mirror names exactly this catalog's containers", async () => {
+  const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
+  const here = dirname(fileURLToPath(import.meta.url));
+  const navConfigUrl = pathToFileURL(
+    join(here, "..", "..", "field-ops-app-vite", "src", "navigation", "navConfig.js"),
+  ).href;
+  const { NAV_DERIVED_SURFACE_KEYS, NAV_LEGACY_PLACEHOLDER_DESTINATIONS, legacyPlaceholderRegisterViolations } =
+    await import(navConfigUrl);
+
+  const catalogContainers = EXPERIENCE_SURFACES.filter((s) => s.containerOf).map((s) => s.key).sort();
+  assert.deepEqual([...NAV_DERIVED_SURFACE_KEYS].sort(), catalogContainers,
+    "navConfig.js's NAV_DERIVED_SURFACE_KEYS has drifted from the surface catalog's containers");
+
+  // And the rule it exists for still holds against the real registers.
+  assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false,
+    "the Administration container is back in the shrink-only legacy placeholder register");
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
 });
 
 test("the two authority modules AGREE on every Administration surface -- pinned from both sides", () => {

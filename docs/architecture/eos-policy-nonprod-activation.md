@@ -288,8 +288,14 @@ Render's deploy lifecycle, not the build:
 > **Section 5 below is a plan, written before any of it existed.** Everything in it was carried out
 > on 2026-09-10; the current state lives in `eos-real-nonprod-activation.md` §0, and the
 > repository-side contract is pinned by `scripts/eosApiEnvironmentContract.test.mjs`. Configuring the
-> API base URL is NOT the same as enabling the seam: `EOS_NAVIGATION_AUTHORITY_READY` is `false` in
-> every environment, production included, and stays that way.
+> API base URL is NOT the same as enabling the seam. They remained two switches for four waves, and
+> as of Wave 11 / Lane AS (2026-09-24) the Owner has thrown the second one in **exactly one**
+> environment: `platform-sandbox`, the only environment that declares an `eosApi` at all.
+> `EOS_NAVIGATION_AUTHORITY_READY` stays `false` in the other four, and in
+> `taylor-parts-production` absolutely -- production declares `eosApi: null`, so the fence holds
+> twice over. `scripts/eosApiEnvironmentContract.test.mjs` now pins the two invariants instead of
+> the old count: no environment may enable the seam without an API, and no production-role
+> environment may enable it at all.
 
 ### Actions that require the Owner
 

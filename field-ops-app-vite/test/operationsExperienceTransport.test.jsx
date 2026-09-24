@@ -212,9 +212,25 @@ describe("the EOS API address and the navigation seam are two different switches
     const registry = JSON.parse(readFileSync("../config/environments.json", "utf8"));
     const sandbox = registry.environments.find((e) => e.id === "platform-sandbox");
     expect(sandbox.eosApi.baseUrl).toBe(NONPROD_BASE);
-    // And the registry has not quietly enabled the seam while declaring the address.
-    for (const env of registry.environments) {
+
+    // WAVE 11 / LANE AS. This used to assert the seam was false in EVERY environment, which was a
+    // statement about a pre-activation world rather than about the pair. The Owner has since enabled
+    // it in non-production, so what is asserted now is the relationship the group is named for --
+    // the address and the seam remain two switches, and the second one may be thrown ONLY where the
+    // first already is.
+    const enabled = registry.environments
+      .filter((e) => e.readiness.EOS_NAVIGATION_AUTHORITY_READY === true);
+    expect(enabled.map((e) => e.id)).toEqual(["platform-sandbox"]);
+    for (const env of enabled) {
+      // An enabled seam with no address is the NOT_CONFIGURED -> UNAVAILABLE outage this whole group
+      // exists to describe, applied to every persona at once.
+      expect(env.eosApi).not.toBeNull();
+      expect(env.role).not.toBe("production");
+    }
+    // Production declares no address AND does not enable the seam -- two independent fences.
+    for (const env of registry.environments.filter((e) => e.role === "production")) {
       expect(env.readiness.EOS_NAVIGATION_AUTHORITY_READY).toBe(false);
+      expect(env.eosApi).toBeNull();
     }
   });
 
