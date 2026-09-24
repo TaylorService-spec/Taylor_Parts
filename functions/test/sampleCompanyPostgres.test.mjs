@@ -179,8 +179,20 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // registers ONE capability, 75 -> 76, granted to admin and owner. Those two grants write NOTHING
 // here, for the same reason every grant before them wrote nothing: this fixture migrates a clean
 // database and seeds afterwards, so no Role exists at migration time.
-const PINNED_LAST_MIGRATION = "1762041600000_administration-security-policy-read-authority";
-const PINNED_MIGRATION_COUNT = 48;
+// Moved deliberately again for 1762128000000 (the Workflow Definition READ activation): the Owner
+// released ONE of the six held `workflowDefinition.*` keys -- `read`, to admin and owner, and to no
+// other Role -- so this migration REGISTERS NOTHING and the vocabulary count does not move, 76 ->
+// 76. Its two grants write NOTHING here, for the same reason every grant before them wrote nothing:
+// this fixture migrates a clean database and seeds afterwards, so no Role exists at migration time.
+// Only the migration count moves.
+//
+// Moved deliberately again for 1762214400000 (the conditional entitlement relation): STRUCTURE
+// ONLY. It creates `eos_policy.capability_grant_conditions` -- the separate relation that lets ONE
+// grant carry a predicate without putting a condition column on role_capabilities -- and inserts
+// ZERO rows by Owner ruling. It registers no capability and writes no grant, so every count below
+// is unchanged and only the migration count moves.
+const PINNED_LAST_MIGRATION = "1762214400000_capability-grant-conditions";
+const PINNED_MIGRATION_COUNT = 50;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

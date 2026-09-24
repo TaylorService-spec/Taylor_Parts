@@ -68,20 +68,79 @@ test("the supersession DELETE runs AFTER the grant it supersedes, in the same ch
     "and must mark the capability superseded rather than deleting the evidence");
 });
 
+/** Every migration file's UP, split into the statements that write a Role grant. */
+const grantStatementsInChain = () =>
+  readdirSync(DIR).filter((x) => x.endsWith(".sql")).flatMap((f) =>
+    stripComments(up(f)).split(";")
+      .filter((s) => /INSERT\s+INTO\s+role_capabilities/i.test(s))
+      .map((stmt) => [f, stmt]));
+
+/**
+ * THE WORKFLOW DEFINITION HOLD, AS THE OWNER NOW STATES IT.
+ *
+ * The hold used to be total -- no migration could name ANY `workflowDefinition.` key in a grant --
+ * because "the Work Order lifecycle and Workflow Definition decisions are the Owner's, not a
+ * migration's". The Owner has since made exactly ONE of those decisions:
+ *
+ *     workflowDefinition.read -> admin, owner.  No other Role.  Every other workflowDefinition.* at 0.
+ *
+ * So the guard is rewritten to express that ruling rather than deleted to let a migration past it.
+ * Disabling a guard to admit the change it was built to catch leaves nothing behind to catch the
+ * NEXT one. What it must still refuse, and does:
+ *
+ *   * a grant of workflowDefinition.publish (or create/edit/version/bindRole) -- named below;
+ *   * a grant of some FUTURE workflowDefinition.* key nobody has ruled on -- caught by the
+ *     enumeration check, which treats any action other than `read` as held;
+ *   * a grant of workflowDefinition.read to a THIRD Role -- caught by the exact-population test;
+ *   * a grant written in a shape this file cannot parse -- caught by the non-vacuity assertion,
+ *     which refuses to report an exact population it did not actually read.
+ */
+const WORKFLOW_READ_GRANTEES = Object.freeze(["admin", "owner"]);
+const HELD_CAPABILITIES = Object.freeze([
+  "workOrder.lifecycle.dispatch",
+  "workOrder.lifecycle.cancel",
+  "workOrder.lifecycle.complete",
+  "workflowDefinition.create",
+  "workflowDefinition.edit",
+  "workflowDefinition.version",
+  "workflowDefinition.publish",
+  "workflowDefinition.bindRole",
+]);
+
 test("no migration in the chain grants a held capability", () => {
-  // The Work Order lifecycle and Workflow Definition decisions are the Owner's, not a migration's.
   // Verified against the simulated post-chain state as zero; asserted here so a future edit cannot
   // quietly change it.
-  for (const f of readdirSync(DIR).filter((x) => x.endsWith(".sql"))) {
-    const sql = stripComments(up(f));
-    const grantStatements = sql.split(";").filter((s) => /INSERT\s+INTO\s+role_capabilities/i.test(s));
-    for (const stmt of grantStatements) {
-      for (const held of ["workOrder.lifecycle.dispatch", "workOrder.lifecycle.cancel",
-        "workOrder.lifecycle.complete", "workflowDefinition."]) {
-        assert.equal(stmt.includes(held), false, `${f} grants a held capability (${held})`);
-      }
+  for (const [f, stmt] of grantStatementsInChain()) {
+    for (const held of HELD_CAPABILITIES) {
+      assert.equal(stmt.includes(held), false, `${f} grants a held capability (${held})`);
+    }
+    // ENUMERATION, not a blocklist: a workflowDefinition action nobody has released is held, so a
+    // seventh key minted tomorrow is refused by this guard on the day it is first granted.
+    for (const [, action] of stmt.matchAll(/'workflowDefinition\.([A-Za-z0-9_.]+)'/g)) {
+      assert.equal(action, "read",
+        `${f} grants workflowDefinition.${action}; no Owner ruling has released it from the hold`);
     }
   }
+});
+
+test("workflowDefinition.read is granted to exactly admin and owner, and to nobody else", () => {
+  // The ONE released key, and the exact population the ruling names. A third Role here fails.
+  const grantees = [];
+  for (const [f, stmt] of grantStatementsInChain()) {
+    const mentions = [...stmt.matchAll(/'workflowDefinition\.read'/g)].length;
+    const pairs = [...stmt.matchAll(/\(\s*'([A-Za-z0-9_]+)'\s*,\s*'workflowDefinition\.read'\s*\)/g)];
+    // NON-VACUITY. If a grant statement names the key in a shape this parser does not recognise,
+    // the population below was read from less than the whole chain -- so refuse rather than report
+    // an "exact" answer derived from a partial read.
+    assert.equal(pairs.length, mentions,
+      `${f}: workflowDefinition.read is granted in a shape this guard cannot read ` +
+      `(${mentions} mention(s), ${pairs.length} recognised (role_key, capability_key) pair(s)) -- ` +
+      "review it by hand rather than letting the population go unmeasured");
+    for (const m of pairs) grantees.push(m[1]);
+  }
+  assert.deepEqual([...grantees].sort(), [...WORKFLOW_READ_GRANTEES].sort(),
+    "the chain must grant workflowDefinition.read to exactly admin and owner");
+  assert.equal(grantees.length, 2, "exactly two grants, so no Role is granted it twice");
 });
 
 test("no migration manufactures a direct Principal grant", () => {
