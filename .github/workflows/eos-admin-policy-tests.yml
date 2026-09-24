@@ -310,6 +310,16 @@ on:
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/src/access/shellCapabilityGates.js"
       - "field-ops-app-vite/test/administrationNavigationReadiness.test.mjs"
+      # WAVE 12 / LANE AW: the Owner persona's AUTHENTICATION BINDING. The identity model is one
+      # external identity per Principal, so making the persona browser-testable is a governed
+      # re-bind of the canonical Principal -- `rebindPrincipalIdentity` plus the operator script
+      # that drives it. Named individually for the reason every entry above was.
+      - "functions/src/adminPolicy/policyCommands.ts"
+      - "functions/src/adminPolicy/policyRepository.ts"
+      - "functions/src/adminPolicy/postgresPolicyRepository.ts"
+      - "functions/src/adminPolicy/inMemoryPolicyRepository.ts"
+      - "functions/scripts/bindOwnerPersonaIdentity.js"
+      - "functions/test/ownerIdentityBindingPostgres.test.mjs"
       # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
       # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
       # named here for the same reason every entry above is -- a suite in a registered job that no

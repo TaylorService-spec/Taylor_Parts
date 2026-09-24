@@ -102,6 +102,25 @@ export interface NewPrincipalInput {
   readonly status?: PrincipalStatus;
 }
 
+/**
+ * A Principal's EXTERNAL AUTHENTICATION BINDING, and nothing else.
+ *
+ * The model is ONE external identity per Principal: `principals` carries `(identity_provider,
+ * external_subject)` under a UNIQUE constraint and there is no separate identity-binding table. So
+ * changing which token resolves to a Principal is an UPDATE of those two columns -- not an insert,
+ * and deliberately not a field of `NewPrincipalInput`, which would let a create silently re-point an
+ * existing row.
+ *
+ * `displayName` is carried here because the display name states what the binding IS -- "cannot sign
+ * in" is a lie the moment a real subject is attached -- and leaving it behind would make the row
+ * describe itself wrongly.
+ */
+export interface PrincipalIdentityBindingInput {
+  readonly identityProvider: string;
+  readonly externalSubject: string;
+  readonly displayName?: string | null;
+}
+
 export interface NewAdminBootstrapInput {
   readonly principalId: string;
   readonly performedBy: string;
@@ -132,6 +151,20 @@ export interface PolicyTransaction {
   createTenant(input: NewTenantInput): Promise<TenantRecord>;
   setTenantConfigurationVersion(tenantId: TenantId, version: number): Promise<TenantRecord>;
   createPrincipal(input: NewPrincipalInput): Promise<PrincipalRecord>;
+  /**
+   * Re-point ONE Principal at a different external authentication binding.
+   *
+   * IT CHANGES THE LOGIN AND NOTHING ELSE. The Principal id is untouched, and the id is what every
+   * assignment, membership, employee link, direct grant and audit row references -- so this cannot
+   * move, create or destroy authority. It writes `identity_provider`, `external_subject` and
+   * `display_name`; there is no parameter for a status, a Role or a capability, so widening is not
+   * expressible here rather than merely refused.
+   *
+   * TENANT-SCOPED IN THE STORE, like every other write on this port: an adapter must refuse a
+   * Principal that is not a member of the transaction's tenant, so a tenant cannot re-point
+   * somebody else's Principal at a subject it controls.
+   */
+  setPrincipalIdentity(principalId: string, input: PrincipalIdentityBindingInput): Promise<PrincipalRecord>;
   createTenantMembership(principalId: string, status?: PrincipalStatus): Promise<TenantMembershipRecord>;
   setTenantMembershipStatus(membershipId: string, status: PrincipalStatus): Promise<TenantMembershipRecord>;
   /**

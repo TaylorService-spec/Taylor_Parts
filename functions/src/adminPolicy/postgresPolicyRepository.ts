@@ -42,6 +42,7 @@ import type {
   PolicyActor,
   PolicyRepository,
   PolicyTransaction,
+  PrincipalIdentityBindingInput,
 } from "./policyRepository";
 import type {
   CredOverride,
@@ -678,6 +679,34 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
         // One subject per provider is one principal. A second would split one human's Roles in half.
         return asDuplicate(err, "principal already exists for that subject");
       }
+    },
+
+    async setPrincipalIdentity(principalId: string, input: PrincipalIdentityBindingInput) {
+      // TENANT-SCOPED IN SQL, not in JavaScript afterwards. The EXISTS clause is the whole guard:
+      // `principals` is a global table, so without it this statement would re-point ANY Principal in
+      // the installation, which is exactly the cross-tenant write every other method on this adapter
+      // makes unexpressible.
+      let rows;
+      try {
+        ({ rows } = await q.query(
+          `UPDATE ${SCHEMA}.principals p
+              SET identity_provider = $1, external_subject = $2, display_name = $3, updated_at = now()
+            WHERE p.id = $4
+              AND EXISTS (SELECT 1 FROM ${SCHEMA}.tenant_memberships m
+                           WHERE m.principal_id = p.id AND m.tenant_id = $5)
+            RETURNING *`,
+          [input.identityProvider, input.externalSubject, input.displayName ?? null, principalId, tenantId],
+        ));
+      } catch (err) {
+        // One subject per provider is one principal, on UPDATE exactly as on INSERT. Re-pointing a
+        // Principal at a subject another one already holds would split one human's Roles in half --
+        // the same failure createPrincipal names, reached from the other direction.
+        return asDuplicate(err, "another principal already holds that identity");
+      }
+      if (rows.length === 0) {
+        throw new PolicyStoreError("principal not found in this tenant");
+      }
+      return toPrincipal(rows[0]);
     },
 
     async createTenantMembership(principalId: string, status?: PrincipalStatus) {
