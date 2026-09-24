@@ -2413,6 +2413,27 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-role-caps code { font-size: 12px; }
 .fo-role-domain h4 { margin: 10px 0 2px; font-size: 13px; text-transform: capitalize; }
 
+/* Object-owned security actions (ObjectSecurityActionList.jsx). THE TYPOGRAPHY IS THE CONTRACT:
+   the action's governed label is the row -- 14px, normal foreground, first -- and the capability
+   key trails it at 12px in the muted colour, because the key is an audit detail and an
+   administrator approving access should not be reading the identifier that implements it.
+   Inverting these two sizes would undo in CSS what the read model was built to do.
+
+   An action nobody holds is DIMMED, never hidden: "nobody holds Dispatch" is the row an
+   administrator came to find, and the accompanying `.fo-warning` count states it in words for
+   anyone who cannot see the dimming. */
+.fo-security-actions { list-style: none; margin: 4px 0 12px; padding: 0; display: grid; gap: 4px; }
+.fo-security-actions__empty { margin: 4px 0 12px; }
+.fo-security-action {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  font-size: 14px; line-height: 1.45;
+}
+.fo-security-action--ungranted { opacity: 0.72; }
+.fo-security-action__name { font-weight: 600; }
+.fo-security-action__source { font-size: 13px; }
+.fo-security-action__grantees { font-size: 13px; color: var(--color-text-secondary); }
+.fo-security-action__key { font-size: 12px; margin-left: auto; }
+
 /* Object inspector detail row (Administration > Objects, by-object view). Four verbs side by
    side at width, stacked on narrow -- the comparison across verbs IS the information, so they
    stay adjacent for as long as they fit. */
