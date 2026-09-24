@@ -457,7 +457,12 @@ function capabilityIdsUsedByComposition() {
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
   const ids = new Set();
-  for (const m of src.matchAll(/has\(ctx,\s*"([^"]+)"\)/g)) ids.add(m[1]);
+  // WAVE 9 / LANE AL: capability gates now read `reaches(ctx, "...")`, which answers from the EOS
+  // surface projection when that source is present and falls through to `has(ctx, "...")` -- the
+  // legacy feed -- when it is not. BOTH shapes must be extracted: the legacy branch is what runs in
+  // every environment today, so an id it gates on still has to be in the feed's request set, and a
+  // guard that stopped seeing the renamed call sites would have silently found nothing to check.
+  for (const m of src.matchAll(/(?:has|reaches)\(ctx,\s*"([^"]+)"\)/g)) ids.add(m[1]);
   // FINANCE_REACH_SCOPES is a list, not a has(ctx, "...") call site.
   for (const m of src.matchAll(/"(finance\.visibility\.[a-zA-Z]+)"/g)) ids.add(m[1]);
   return [...ids].sort();

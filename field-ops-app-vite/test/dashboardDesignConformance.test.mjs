@@ -25,7 +25,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { DASHBOARD_MODULES, composeDashboard } from "../src/domain/dashboardComposition.js";
+import {
+  DASHBOARD_MODULES,
+  DASHBOARD_SURFACE,
+  composeDashboard,
+  dashboardSurfaceFor,
+} from "../src/domain/dashboardComposition.js";
 import { workOrderStatusLabel } from "../src/domain/workOrderStatus.js";
 import { UNKNOWN_STATUS_LABEL } from "../src/domain/dashboardTeamProjections.js";
 
@@ -311,7 +316,23 @@ const APP = code(read("../src/App.jsx"));
 test("a technician is routed to the technician surface, never to MyDashboard", () => {
   // The branch is the whole reason this file must read two component trees. If it goes, a technician
   // silently inherits a composition built for someone with an operations or commercial scope.
-  assert.match(APP, /role === "technician"\s*\)\s*return\s*<TechnicianDashboard/);
+  //
+  // WAVE 9 / LANE AL. This used to match the literal `role === "technician") return
+  // <TechnicianDashboard` in App.jsx. The rule now lives in domain/dashboardComposition.js
+  // (`dashboardSurfaceFor`) so it can answer from the EOS experience context as well as the legacy
+  // role, so the guard is now BEHAVIOURAL -- it calls the rule instead of reading a regex out of a
+  // component file, which is strictly stronger: a regex could pass on dead code.
+  assert.equal(dashboardSurfaceFor({ role: "technician" }), DASHBOARD_SURFACE.FIELD_WORK);
+  for (const role of ["admin", "dispatcher", null, undefined, "", "TECHNICIAN"]) {
+    assert.equal(
+      dashboardSurfaceFor({ role }),
+      DASHBOARD_SURFACE.COMPOSED,
+      `role ${JSON.stringify(role)} must compose, not inherit the technician surface`,
+    );
+  }
+  // ...and App.jsx must actually ASK it, and still hold both screens.
+  assert.match(APP, /dashboardSurfaceFor\(\{\s*role,\s*operationalContext\s*\}\)\s*===\s*DASHBOARD_SURFACE\.FIELD_WORK/);
+  assert.match(APP, /return <TechnicianDashboard \/>;/);
   assert.match(APP, /<MyDashboard/, "the non-technician branch must still exist");
 });
 

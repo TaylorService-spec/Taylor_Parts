@@ -163,6 +163,8 @@ const previewHasPermission = createPermissionPreviewer(
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import MyDashboard from "./modules/dashboard/MyDashboard.jsx";
+// WAVE 9 / LANE AL -- the dashboard-surface rule, stated beside the composition it pairs with.
+import { DASHBOARD_SURFACE, dashboardSurfaceFor } from "./domain/dashboardComposition.js";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
 import {
   EXPERIENCE_STATE,
@@ -228,8 +230,16 @@ const LEGACY_COMPONENTS = {
 // performance section rather than being replaced by a generic composition. Composition resolves from
 // governed context, not from this branch -- the branch chooses which SURFACE renders, and neither
 // surface decides what anyone may see.
+//
+// WAVE 9 / LANE AL. The branch itself no longer holds the rule. `dashboardSurfaceFor` (domain/
+// dashboardComposition.js) answers it from the EOS experience context when that source is present --
+// field work eligibility AND no operations surface, which is the sentence that file has always
+// opened with -- and reproduces `role === "technician"` byte-for-byte when it is not. Moving it
+// there keeps the one rule beside the composition it pairs with, and makes it testable without React.
 function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
-  if (role === "technician") return <TechnicianDashboard />;
+  if (dashboardSurfaceFor({ role, operationalContext }) === DASHBOARD_SURFACE.FIELD_WORK) {
+    return <TechnicianDashboard />;
+  }
   return (
     <MyDashboard
       role={role}
