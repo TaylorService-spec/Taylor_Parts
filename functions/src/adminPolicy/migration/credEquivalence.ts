@@ -163,6 +163,12 @@ export const WORKFORCE_ELIGIBILITY_DATA_MIGRATION_BLOCKER = Object.freeze({
  * capability is a business act, BUSINESS_ACTION is excluded from COMPARABLE_CRED_KINDS, and no CRED
  * cell is waiting on it. Governing an act in PostgreSQL while the read it governs still reaches the
  * old backend is a real gap, and this is where it is written down instead of implied by silence.
+ *
+ * THE TARGET-SIDE READ NOW EXISTS AND IS PROVEN AT PARITY (`postgresSeam` below,
+ * test/coordinatedVisitPostgresParity.test.mjs). That does NOT close this blocker: the seam is
+ * reached by no callable, transport or client, so the capability still governs a read that reaches
+ * `fieldops_wos`. `remaining` is what is actually left, stated so nobody reads "a seam exists" as
+ * "the read moved".
  */
 export const COORDINATED_VISIT_RUNTIME_CUTOVER_BLOCKER = Object.freeze({
   capability: "fulfillment.coordinatedVisit.read",
@@ -173,6 +179,11 @@ export const COORDINATED_VISIT_RUNTIME_CUTOVER_BLOCKER = Object.freeze({
   // NAMES THE COLLECTION, NOT THE VENDOR -- and not only to satisfy the no-Firebase guard on this
   // module. `fieldops_wos` is the thing a reader has to go and look at; "the old backend" is not.
   reason: "the capability is governed in PostgreSQL, but listCoordinatedOperations still reads the legacy fieldops_wos collection; moving that read is a separately authorized slice",
+  /** The governed PostgreSQL read that reproduces the projection. Built and parity-proven; wired to nothing. */
+  postgresSeam: "functions/src/eosOps/coordinatedVisitPostgresRead.ts",
+  parityProof: "functions/test/coordinatedVisitPostgresParity.test.mjs",
+  // NAMES THE MECHANISM, NOT THE VENDOR, for the same reason `sourceCollection` does.
+  remaining: "switch listCoordinatedOperations (and the surfaces it feeds) to the seam, which needs a governed transport for it, an EOS Principal for the caller instead of the callable's external subject id, and eos_ops.work_orders carrying the estate those surfaces read today",
 });
 
 /** Every cell that blocks cutover, whatever the reason. */
