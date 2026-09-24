@@ -42,6 +42,19 @@ const POLICY_DESTINATIONS = Object.freeze([
   "overview", "rolesPermissions", "objects", "workflows", "permissionPreview",
 ]);
 
+/**
+ * The four that are still a SURFACE with no governed authority behind it.
+ *
+ * `overview` left this list in Wave 9 / Lane AM and did not get a capability to do it. It is not a
+ * surface at all -- it is Administration's menu, and the gap register said so in its own words
+ * ("a menu over the ones above"). It is now a CONTAINER: visible exactly when this principal can
+ * reach something in Administration, refused when they cannot. It still grants nothing, and the
+ * other four are refused under the EOS source exactly as AG recorded them.
+ */
+const UNGOVERNED_POLICY_SURFACES = Object.freeze([
+  "rolesPermissions", "objects", "workflows", "permissionPreview",
+]);
+
 const administration = () => NAV_DOMAINS.find((d) => d.key === "administration");
 const itemFor = (itemKey) => {
   // The Administration index ("overview") is the domain's own path-"" destination.
@@ -70,17 +83,53 @@ const eosContext = (authority = OMNIPOTENT, extra = {}) => ({
 
 // ════════════════════ 1. THE PROJECTION OFFERS NONE OF THE FIVE ════════════════════
 
-test("under the EOS source the five policy destinations are invisible to EVERYONE", () => {
-  for (const key of POLICY_DESTINATIONS) {
+test("under the EOS source the four ungoverned policy surfaces are invisible to EVERYONE", () => {
+  for (const key of UNGOVERNED_POLICY_SURFACES) {
     const item = itemFor(key);
     assert.ok(item, `Administration has no destination "${key}"`);
     // No surfaceAccess was attached, because NAV_SURFACE_ACCESS names no surface for it.
     assert.equal(item.surfaceAccess, undefined,
       `${key} now has a surface -- the readiness matrix must be re-run`);
+    assert.equal(item.containerScope, undefined,
+      `${key} became a container -- it is a surface, not a menu; re-run the readiness matrix`);
     assert.equal(isNavItemVisible(item, "admin", ["inventory"], eosContext()), false,
       `${key} became visible to admin -- re-run the readiness matrix`);
     assert.equal(isNavItemVisible(item, "owner", [], eosContext()), false);
   }
+});
+
+test("Administration > Overview is a CONTAINER: derived from its governed children, granting nothing", () => {
+  // Wave 9 / Lane AM (AM3). Lane AH is implementing the same derived-child rule for this destination
+  // concurrently; when the two meet, ONE of them survives -- the mechanism, not two ideas.
+  const overview = itemFor("overview");
+  assert.equal(overview.surfaceAccess, undefined, "a menu must not also claim to be a surface");
+  assert.equal(overview.capabilityAccess, undefined, "no capability was minted for a layout container");
+  assert.deepEqual(overview.containerScope, ["administration"]);
+
+  // The omnipotent authority reaches administration.users / .dataImport / .auditLogs, so the menu
+  // has something on it and opens.
+  assert.equal(isNavItemVisible(overview, "admin", [], eosContext()), true);
+
+  // A READY authority that grants nothing refuses it -- and refuses the domain with it.
+  const refusedAuthority = buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: [] },
+  });
+  assert.equal(isNavItemVisible(overview, "admin", [], eosContext(refusedAuthority)), false);
+  assert.equal(isDomainVisible(administration(), "admin", [], eosContext(refusedAuthority)), false);
+
+  // A principal granted ONLY a non-Administration surface does not get the Administration menu:
+  // the container's scope is Administration, not "any permission at all".
+  const elsewhere = buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: ["crm.accounts"] },
+  });
+  assert.equal(isNavItemVisible(overview, "admin", [], eosContext(elsewhere)), false);
+
+  // ...and it cannot open a single child. Audit Logs stays exactly as refused as it was.
+  assert.equal(isNavItemVisible(itemFor("auditLogs"), "admin", [], eosContext(elsewhere)), false);
 });
 
 test("the surface map still has no row for them, and the gap register still names them", () => {
@@ -188,11 +237,17 @@ test("inventory.reorderQueue is still an earnable surface with no door", () => {
   assert.match(NAV_SURFACE_GAPS["inventory.reorderQueue"], /NO DOOR EXISTS/);
 });
 
-test("hasAnyAccess is still true for a principal the EOS source refuses entirely", () => {
-  // App.jsx:1200 computes hasAnyAccess as NAV_DOMAINS.some(isDomainVisible). The Dashboard index is
-  // `alwaysVisible`, and `alwaysVisible` is checked BEFORE the EOS branch -- so a principal granted
-  // nothing at all still makes the Dashboard domain visible, and lands on an empty dashboard rather
-  // than on a refusal. Pre-existing on both sources; unchanged by this lane.
+test("BLOCKER #7 CLOSED: hasAnyAccess is false for a principal the EOS source refuses entirely", () => {
+  // WHAT THIS TEST USED TO RECORD (Lane AG, 2026-09-24): App.jsx:1200 computes hasAnyAccess as
+  // NAV_DOMAINS.some(isDomainVisible); the Dashboard index was `alwaysVisible`; `alwaysVisible` was
+  // checked BEFORE the EOS branch -- so a principal granted nothing at all still made the Dashboard
+  // domain visible and landed on an empty dashboard rather than on a refusal.
+  //
+  // WHAT IT RECORDS NOW (Wave 9 / Lane AM): `alwaysVisible` is gone from this file. The dashboard
+  // index is a CONTAINER whose visibility is derived from the destinations this principal can
+  // actually reach, so a principal who can reach nothing is told so. The refusal is App.jsx's
+  // existing "No access" panel -- no new UI, and the panel's own copy ("your account isn't assigned
+  // a role with access yet") is finally true when it shows.
   const refused = eosContext(buildNavigationAuthority({
     state: EXPERIENCE_STATE.READY,
     context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
@@ -200,12 +255,23 @@ test("hasAnyAccess is still true for a principal the EOS source refuses entirely
   }));
   const dashboard = NAV_DOMAINS.find((d) => d.key === "dashboard");
   const index = dashboard.subnav.find((i) => i.path === "");
-  assert.equal(index.alwaysVisible, true);
-  assert.equal(isNavItemVisible(index, "technician", [], refused), true);
-  assert.equal(isDomainVisible(dashboard, "technician", [], refused), true);
+  assert.equal(index.alwaysVisible, undefined, "the blanket grant must not come back");
+  assert.equal(index.containerScope, "*");
+  assert.equal(isNavItemVisible(index, "technician", [], refused), false);
+  assert.equal(isDomainVisible(dashboard, "technician", [], refused), false);
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", [], refused));
-  assert.equal(hasAnyAccess, true, "a refused principal now gets a refusal -- blocker 7 has moved");
-  // Administration itself is correctly dark for that principal, which is the contrast: the domain
-  // refuses, and the shell still reports access because of one unrelated index item.
+  assert.equal(hasAnyAccess, false, "blocker #7 has reopened -- an unrelated index item lit the shell");
   assert.equal(isDomainVisible(administration(), "technician", [], refused), false);
+
+  // THE SAME HOLE ON THE LEGACY SOURCE, also closed. An authenticated account with no role at all
+  // ("", null, or a role nobody defined) got the empty dashboard for exactly the same reason.
+  for (const role of [null, undefined, "", "some-role-nobody-defined"]) {
+    assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, role, [], { operationalRoles: [] })), false,
+      `role ${JSON.stringify(role)} still lights the shell`);
+  }
+  // ...and a principal who DOES hold something still passes, on both sources. This closes a door;
+  // it must not close the product.
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "admin", [], { operationalRoles: [] })), true);
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", ["fieldMode", "jobs", "technicianDashboard"], { operationalRoles: [] })), true);
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", [], eosContext())), true);
 });
