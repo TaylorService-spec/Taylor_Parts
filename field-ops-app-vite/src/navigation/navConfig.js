@@ -38,15 +38,18 @@ import {
 //   permission plumbing. This default is a judgment call, not a
 //   product decision from the brief; revisit when Roles &
 //   Permissions (Administration) is actually built.
-// - `alwaysVisible: true` items are visible (and thus routable) to
-//   every authenticated role regardless of the two rules above --
-//   used only for "My Dashboard", whose content itself (App.jsx's
-//   DashboardIndex) already branches per role. Gating the item's
-//   *visibility* by `technicianDashboard`'s legacyKey as well would
-//   hide the index route entirely for admin/dispatcher, leaving
-//   "/dashboard" with no matching route at all -- caught via manual
-//   browser testing (blank page for the dispatcher role) before this
-//   shipped.
+// - `alwaysVisible: true` IS GONE (Wave 9 / Lane AM, navigation blocker #7). It was a blanket grant
+//   checked BEFORE every authority in this file, including the EOS source, and it was carried by
+//   exactly one destination: the "My Dashboard" index. Its consequence was measurable and wrong -- a
+//   principal a READY EOS authority granted `surfaces: []` still made the Dashboard domain visible,
+//   so App.jsx's `hasAnyAccess` was true and they landed on an empty dashboard instead of the "No
+//   access" refusal that describes their situation exactly. The same hole existed on the legacy
+//   source for an account with no role at all.
+//   The original reason for the flag -- "hiding the index leaves /dashboard with no matching route,
+//   so the user gets a blank page" -- no longer holds: App.jsx now emits a DENIED route for every
+//   invisible subnav item, index included, which states the refusal instead of rendering nothing.
+//   My Dashboard is now a CONTAINER (see NAV_CONTAINERS): it composes itself from the destinations
+//   this principal can actually reach, so it is visible exactly when at least one of them is.
 export const PLACEHOLDER_DEFAULT_ROLES = ["admin", "dispatcher"];
 
 export const NAV_DOMAINS = [
@@ -55,7 +58,8 @@ export const NAV_DOMAINS = [
     label: "Dashboard",
     path: "dashboard",
     subnav: [
-      { key: "my", label: "My Dashboard", path: "", alwaysVisible: true },
+      // A CONTAINER, not a grant -- NAV_CONTAINERS["dashboard/my"]. See the header note.
+      { key: "my", label: "My Dashboard", path: "" },
       // Platform Task 3 -- relabeled "Operations Dashboard" -> "Inventory & Supply
       // Overview" to prevent confusion with the new top-level Service Operations
       // area. Path/legacyKey UNCHANGED (still /dashboard/operations, legacyKey
@@ -791,15 +795,156 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "reporting/*": "The eight domain report destinations are navHidden placeholders, and Report Builder / Saved Reports are governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
 });
 
-// Attach the surface mapping to the item objects the visibility functions actually receive.
+// ════════════════════ CONTAINERS: A MENU IS AS REACHABLE AS WHAT IT IS A MENU OVER ═══════════════
 //
-// It is applied here rather than written into each literal so the table above stays readable whole;
+// Wave 9 / Lane AM, navigation blocker #7. Some destinations are not a surface of their own: they
+// are an index over other destinations. My Dashboard composes itself from whatever modules this
+// principal's governed context supplies a scope for (modules/dashboard/MyDashboard.jsx says so in
+// its own header: "Nothing, about authority"), and Administration > Overview is, in the gap
+// register's own words below, "a menu over the ones above".
+//
+// A container has no authority to assert, so it must not assert one. Before this table there were
+// exactly two ways such a destination could behave, and both were the defect: `alwaysVisible`, which
+// granted it to EVERYONE ahead of every authority including the EOS source, and the
+// PLACEHOLDER_DEFAULT_ROLES fall-through, which granted it to a Firebase-era role literal. Neither
+// asked the only question that means anything about a menu: is there anything on it?
+//
+// THE RULE, AND ITS LIMITS. A container is visible when at least one destination IN ITS DECLARED
+// SCOPE is visible to this principal under the ordinary authority rules. It therefore GRANTS
+// NOTHING -- it cannot make any child reachable, and it answers false the moment the children do.
+// It is not "has any permission at all": the scope is the set of destinations the container is
+// actually an index over, and a container is never a child of another container (so the rule
+// terminates, and a menu can never be justified by another empty menu).
+//
+// `navHidden` children do not count. A hidden destination is not on the menu, so an index whose only
+// reachable children are hidden is an empty page, which is the state this rule exists to prevent.
+//
+// SCOPE: an array of domain keys, or NAV_CONTAINER_SCOPE_ALL for a container over the whole product.
+export const NAV_CONTAINER_SCOPE_ALL = "*";
+
+export const NAV_CONTAINERS = Object.freeze({
+  // The dashboard index composes the whole reachable product, so its scope is the whole product.
+  // This is the destination that used to carry `alwaysVisible`.
+  "dashboard/my": NAV_CONTAINER_SCOPE_ALL,
+  // WAVE 10 / LANE AR -- RECONCILED. Lane AM carried a second row here,
+  //     "administration/overview": ["administration"],
+  // implementing the same derived-child rule that Lane AH implements SERVER-SIDE as
+  // `containerOf` in functions/src/eosOps/experienceAuthority.ts. AM's own note said the
+  // reconciliation is deleting one of two entries rather than merging two designs, and that if
+  // AH's rule landed first this row should go. It did, so it has.
+  //
+  // AH's mechanism is kept because the derivation then happens in the same authority that
+  // answers every other surface: the server grants `administration.overview` exactly when it
+  // granted one of that container's children, and the client reads it through the ordinary
+  // NAV_SURFACE_ACCESS row like any other surface -- it neither re-derives the disjunction nor
+  // second-guesses it. Keeping both rows is also refused outright by the check below: a
+  // destination may not be BOTH a container and mapped to a surface.
+  //
+  // This register is NOT removed with the row. `dashboard/my` has no server-side container and
+  // no surface key, so the client mechanism is the only thing that answers it.
+});
+
+// ════════════════════ THE PLACEHOLDER IS A DECLARATION NOW, NOT A DEFAULT ════════════════════
+//
+// Wave 9 / Lane AM. `PLACEHOLDER_DEFAULT_ROLES` used to be the FALL-THROUGH of isNavItemVisible():
+// a destination that declared no capability, no operational role, no legacyKey and no surface was
+// handed to admin/dispatcher automatically, by reaching the end of the function. That is a generic
+// doorway in the precise sense of blocker #7 -- the door opened because nothing had said it should
+// not, and a destination added tomorrow with no authority at all would open the same way without
+// anyone deciding to open it.
+//
+// The role answer for the 62 destinations below is UNCHANGED -- this lane narrows nobody's access to
+// any of them. What changes is that it is now WRITTEN DOWN. A destination absent from this register
+// and from every other authority path is INVISIBLE, not admin/dispatcher-visible.
+//
+// THIS REGISTER MAY ONLY SHRINK. Every entry is a door with no governed authority behind it; each
+// one leaves when its destination earns a capability or a surface. Adding a row is adding an
+// ungoverned door, and needs the same deliberation as writing one into firestore.rules.
+export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
+  "dashboard/notifications",
+  "customers/customers",
+  "customers/opportunities",
+  "customers/salesOrders",
+  "equipment/equipment",
+  "service/workOrders",
+  "service/coordinatedVisits",
+  "service/scheduling",
+  "service/dispatchScheduling",
+  "service/warranty",
+  "inventory/partMaster",
+  "inventory/manufacturers",
+  "inventory/warehouses",
+  "inventory/truckInventory",
+  "inventory/receiving",
+  "inventory/backOrders",
+  "purchasing/purchaseOrders",
+  "purchasing/suppliers",
+  "purchasing/quotes",
+  "purchasing/receipts",
+  "purchasing/demandPlanning",
+  "financials/overview",
+  "financials/billingQueue",
+  "financials/invoices",
+  "financials/accountsReceivable",
+  "financials/payments",
+  "financials/creditsAdjustments",
+  "financials/customerFinancials",
+  "financials/salesToGoal",
+  "financials/costToBudget",
+  "financials/forecasting",
+  "financials/profitability",
+  "financials/budgets",
+  "financials/goals",
+  "financials/companyPerformance",
+  "financials/employeePerformance",
+  "financials/reconciliation",
+  "financials/intercompany",
+  "financials/audit",
+  "financials/reports",
+  "financials/governance",
+  "reporting/executive",
+  "reporting/service",
+  "reporting/inventory",
+  "reporting/purchasing",
+  "reporting/warehouse",
+  "reporting/employees",
+  "reporting/customers",
+  "reporting/financial",
+  "administration/users",
+  "administration/rolesPermissions",
+  "administration/objects",
+  "administration/workflows",
+  "administration/permissionPreview",
+  "administration/vehicles",
+  "administration/regions",
+  "administration/companySettings",
+  "administration/duplicateRules",
+  "administration/warehouseRacking",
+  "administration/financialPolicy",
+  "administration/integrations",
+  "administration/auditLogs",
+]);
+
+const LEGACY_PLACEHOLDER_SET = new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS);
+
+// Attach the surface mapping, the container scope and the placeholder declaration to the item
+// objects the visibility functions actually receive.
+//
+// It is applied here rather than written into each literal so the tables above stay readable whole;
 // the effect is identical to `surfaceAccess:` on the item. Unknown keys are NOT silently ignored --
 // navigationSurfaceMapViolations() below reports them, and a test fails on a non-empty result.
 for (const domain of NAV_DOMAINS) {
   for (const item of domain.subnav ?? []) {
-    const surfaces = NAV_SURFACE_ACCESS[`${domain.key}/${item.key}`];
+    const destination = `${domain.key}/${item.key}`;
+    const surfaces = NAV_SURFACE_ACCESS[destination];
     if (surfaces) item.surfaceAccess = Object.freeze([...surfaces]);
+    const container = NAV_CONTAINERS[destination];
+    if (container) {
+      item.containerScope = container === NAV_CONTAINER_SCOPE_ALL
+        ? NAV_CONTAINER_SCOPE_ALL
+        : Object.freeze([...container]);
+    }
+    if (LEGACY_PLACEHOLDER_SET.has(destination)) item.legacyPlaceholder = true;
   }
 }
 
@@ -837,8 +982,27 @@ export function navigationSurfaceMapViolations(knownSurfaceKeys = null) {
       }
     }
   }
+  // ── Lane AM: the container and placeholder registers must name real destinations too ──
+  for (const destination of Object.keys(NAV_CONTAINERS)) {
+    if (!destinations.has(destination)) problems.push(`NAV_CONTAINERS names "${destination}", which is not a nav destination`);
+    if (Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, destination)) {
+      problems.push(`${destination} is BOTH a container and mapped to a surface -- a menu must not also claim to be a surface`);
+    }
+    const scope = NAV_CONTAINERS[destination];
+    if (scope === NAV_CONTAINER_SCOPE_ALL) continue;
+    for (const domainKey of scope) {
+      if (!NAV_DOMAINS.some((d) => d.key === domainKey)) problems.push(`${destination} is a container over unknown domain "${domainKey}"`);
+    }
+  }
+  for (const destination of NAV_LEGACY_PLACEHOLDER_DESTINATIONS) {
+    if (!destinations.has(destination)) problems.push(`NAV_LEGACY_PLACEHOLDER_DESTINATIONS names "${destination}", which is not a nav destination`);
+    if (Object.prototype.hasOwnProperty.call(NAV_CONTAINERS, destination)) {
+      problems.push(`${destination} is BOTH a container and a legacy placeholder -- it can only be one`);
+    }
+  }
+
   // Every destination is either mapped, explicitly declared a gap, covered by a domain-wide gap, or
-  // `alwaysVisible`. None of those is optional: a destination that is simply unmentioned is the
+  // a container. None of those is optional: a destination that is simply unmentioned is the
   // silent hole this register exists to prevent.
   //
   // A DOMAIN-WIDE gap ("financials/*") is a statement about the destinations that are NOT mapped in
@@ -851,7 +1015,24 @@ export function navigationSurfaceMapViolations(knownSurfaceKeys = null) {
       const exactGap = Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, destination);
       const domainGap = Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, `${domain.key}/*`);
       if (mapped && exactGap) problems.push(`${destination} is BOTH mapped and declared a gap`);
-      if (mapped || exactGap || domainGap || item.alwaysVisible === true) continue;
+
+      // ── Lane AM, blocker #7: NO DESTINATION MAY BE VISIBLE BY OMISSION ──
+      //
+      // Every door has to say what opens it. `alwaysVisible` was the one blanket answer in this
+      // file and it is gone; re-adding it would bypass the EOS source exactly as before, so its
+      // reappearance is reported here rather than discovered in a persona sweep.
+      if (item.alwaysVisible !== undefined) {
+        problems.push(`${destination} declares alwaysVisible -- a blanket grant that outranks the EOS source; make it a container or give it an authority`);
+      }
+      const declaresAuthority = Boolean(
+        item.surfaceAccess || item.capabilityAccess || item.operationalRoleAccess
+        || item.legacyKey || item.legacyPlaceholder || item.containerScope,
+      );
+      if (!declaresAuthority) {
+        problems.push(`${destination} declares no authority of any kind (surface, capability, operational role, legacyKey, container, or a NAV_LEGACY_PLACEHOLDER_DESTINATIONS row) -- it is invisible to everyone`);
+      }
+
+      if (mapped || exactGap || domainGap || item.containerScope) continue;
       problems.push(`${destination} is neither mapped to a surface nor declared a gap`);
     }
   }
@@ -916,12 +1097,38 @@ function eosGrantsSurface(item, authority) {
   return item.surfaceAccess.some((surfaceKey) => authority.grants(surfaceKey) === true);
 }
 
+/**
+ * A CONTAINER'S ANSWER: is anything on the menu?
+ *
+ * Walks the destinations in the container's declared scope and asks the ORDINARY predicate about
+ * each. It therefore inherits whichever source is answering -- under the EOS authority the children
+ * are the governed surfaces this principal holds, and under the legacy source they are what the
+ * legacy rules say. A container can only ever be as open as its children already are.
+ *
+ * Containers are skipped as children, so recursion is one level deep by construction and no menu can
+ * justify itself with another menu. `navHidden` children are skipped: they are not on the menu.
+ */
+function containerHasReachableChild(item, role, allowedLegacyKeys, operationalContext) {
+  const scope = item.containerScope;
+  const domains = scope === NAV_CONTAINER_SCOPE_ALL
+    ? NAV_DOMAINS
+    : NAV_DOMAINS.filter((domain) => scope.includes(domain.key));
+  for (const domain of domains) {
+    for (const child of domain.subnav ?? []) {
+      if (child === item || child.containerScope || child.navHidden) continue;
+      if (isNavItemVisible(child, role, allowedLegacyKeys, operationalContext)) return true;
+    }
+  }
+  return false;
+}
+
 export function isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) {
-  // `alwaysVisible` survives both sources deliberately, and it is used for exactly one item: the
-  // "My Dashboard" index. It is not an access decision -- the screen behind it composes itself from
-  // whatever the person actually holds, and hiding it would leave /dashboard with no matching route
-  // at all (see the NAV_DOMAINS comment above, and the blank-page defect that found it).
-  if (item.alwaysVisible) return true;
+  // ════════════════════ A CONTAINER IS DERIVED, NEVER ASSERTED ════════════════════
+  //
+  // First, and under BOTH sources, because a menu has no authority of its own to consult. This is
+  // the branch that replaced `alwaysVisible`, whose defect was that it stood here and answered
+  // `true` unconditionally -- ahead of the EOS source, which is the whole answer when it is on.
+  if (item.containerScope) return containerHasReachableChild(item, role, allowedLegacyKeys, operationalContext);
 
   // ════════════════════ THE EOS SOURCE, WHEN IT IS THE SOURCE ════════════════════
   const eosAuthority = operationalContext?.eosNavigationAuthority;
@@ -949,7 +1156,13 @@ export function isNavItemVisible(item, role, allowedLegacyKeys, operationalConte
   // (Report Builder / Saved Reports rely on exactly this -- byte-for-byte their previous behaviour.)
   if (item.capabilityAccess) return false;
 
-  return PLACEHOLDER_DEFAULT_ROLES.includes(role);
+  // THE PLACEHOLDER, DECLARED. Only a destination named in NAV_LEGACY_PLACEHOLDER_DESTINATIONS
+  // reaches the Firebase-era role literal, and the answer for those 62 is byte-for-byte what it was.
+  // What is gone is the FALL-THROUGH: a destination that declares no authority at all is now
+  // invisible instead of admin/dispatcher-visible, so a new door cannot open by omission.
+  if (item.legacyPlaceholder) return PLACEHOLDER_DEFAULT_ROLES.includes(role);
+
+  return false;
 }
 
 /**
@@ -971,12 +1184,14 @@ export function deniedDomainIndexItem(domain, role, allowedLegacyKeys, operation
 
 export function isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) {
   if (domain.future) {
-    // A future (empty) top-level area has no subnav to earn, so under the EOS authority there is
-    // nothing for anyone to hold and it is refused. Falling through to the legacy role list here
-    // would be the fallback this file just removed, reappearing one function down. No future domain
-    // exists today; the branch is written so that the next one cannot reopen the hole.
-    if (isNavigationAuthority(operationalContext?.eosNavigationAuthority)) return false;
-    return PLACEHOLDER_DEFAULT_ROLES.includes(role);
+    // A future (empty) top-level area has no subnav to earn, so there is nothing for anyone to hold
+    // and it is refused -- under BOTH sources, as of Wave 9 / Lane AM. The EOS half of this was
+    // already closed; the legacy half still handed an empty top-level area to admin/dispatcher off
+    // the same Firebase-era role literal, which is the generic doorway of blocker #7 with no
+    // destination behind it at all. NO FUTURE DOMAIN EXISTS TODAY (NAV_DOMAINS has none and App.jsx's
+    // `filter(d => d.future)` route loop emits nothing), so this narrows nobody; the branch is
+    // written so that the next one cannot reopen the hole.
+    return false;
   }
   return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));
 }

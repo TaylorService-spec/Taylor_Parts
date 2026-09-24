@@ -140,6 +140,20 @@ test("the Administration index is NOT an unconditional door -- it follows its ch
   }));
   assert.equal(isNavItemVisible(itemFor("overview"), "technician", [], withOverviewOnly), true);
   assert.equal(isNavItemVisible(itemFor("rolesPermissions"), "technician", [], withOverviewOnly), false);
+
+  // WAVE 10 / LANE AR, ported from Lane AM's client-side container test when Lane AH's
+  // server-side `containerOf` was kept as the single mechanism: a principal granted ONLY a
+  // non-Administration surface does not get the Administration menu. The container's scope is
+  // Administration, not "any permission at all", and that scope now lives in the server
+  // catalog rather than in NAV_CONTAINERS.
+  const elsewhere = eosContext(buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: ["crm.accounts"] },
+  }));
+  assert.equal(isNavItemVisible(itemFor("overview"), "admin", [], elsewhere), false);
+  assert.equal(isDomainVisible(administration(), "admin", [], elsewhere), false);
+  assert.equal(isNavItemVisible(itemFor("auditLogs"), "admin", [], elsewhere), false);
 });
 
 // ════════════════════ 2. THE LEGACY SOURCE IS WHAT STILL ANSWERS THEM ════════════════════
@@ -288,11 +302,17 @@ test("inventory.reorderQueue now HAS a door -- blocker #4 is closed, and the Adm
   assert.equal(Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, "inventory/reorderQueue"), false);
 });
 
-test("hasAnyAccess is still true for a principal the EOS source refuses entirely", () => {
-  // App.jsx:1200 computes hasAnyAccess as NAV_DOMAINS.some(isDomainVisible). The Dashboard index is
-  // `alwaysVisible`, and `alwaysVisible` is checked BEFORE the EOS branch -- so a principal granted
-  // nothing at all still makes the Dashboard domain visible, and lands on an empty dashboard rather
-  // than on a refusal. Pre-existing on both sources; unchanged by this lane.
+test("BLOCKER #7 CLOSED: hasAnyAccess is false for a principal the EOS source refuses entirely", () => {
+  // WHAT THIS TEST USED TO RECORD (Lane AG, 2026-09-24): App.jsx:1200 computes hasAnyAccess as
+  // NAV_DOMAINS.some(isDomainVisible); the Dashboard index was `alwaysVisible`; `alwaysVisible` was
+  // checked BEFORE the EOS branch -- so a principal granted nothing at all still made the Dashboard
+  // domain visible and landed on an empty dashboard rather than on a refusal.
+  //
+  // WHAT IT RECORDS NOW (Wave 9 / Lane AM): `alwaysVisible` is gone from this file. The dashboard
+  // index is a CONTAINER whose visibility is derived from the destinations this principal can
+  // actually reach, so a principal who can reach nothing is told so. The refusal is App.jsx's
+  // existing "No access" panel -- no new UI, and the panel's own copy ("your account isn't assigned
+  // a role with access yet") is finally true when it shows.
   const refused = eosContext(buildNavigationAuthority({
     state: EXPERIENCE_STATE.READY,
     context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
@@ -300,12 +320,23 @@ test("hasAnyAccess is still true for a principal the EOS source refuses entirely
   }));
   const dashboard = NAV_DOMAINS.find((d) => d.key === "dashboard");
   const index = dashboard.subnav.find((i) => i.path === "");
-  assert.equal(index.alwaysVisible, true);
-  assert.equal(isNavItemVisible(index, "technician", [], refused), true);
-  assert.equal(isDomainVisible(dashboard, "technician", [], refused), true);
+  assert.equal(index.alwaysVisible, undefined, "the blanket grant must not come back");
+  assert.equal(index.containerScope, "*");
+  assert.equal(isNavItemVisible(index, "technician", [], refused), false);
+  assert.equal(isDomainVisible(dashboard, "technician", [], refused), false);
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", [], refused));
-  assert.equal(hasAnyAccess, true, "a refused principal now gets a refusal -- blocker 7 has moved");
-  // Administration itself is correctly dark for that principal, which is the contrast: the domain
-  // refuses, and the shell still reports access because of one unrelated index item.
+  assert.equal(hasAnyAccess, false, "blocker #7 has reopened -- an unrelated index item lit the shell");
   assert.equal(isDomainVisible(administration(), "technician", [], refused), false);
+
+  // THE SAME HOLE ON THE LEGACY SOURCE, also closed. An authenticated account with no role at all
+  // ("", null, or a role nobody defined) got the empty dashboard for exactly the same reason.
+  for (const role of [null, undefined, "", "some-role-nobody-defined"]) {
+    assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, role, [], { operationalRoles: [] })), false,
+      `role ${JSON.stringify(role)} still lights the shell`);
+  }
+  // ...and a principal who DOES hold something still passes, on both sources. This closes a door;
+  // it must not close the product.
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "admin", [], { operationalRoles: [] })), true);
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", ["fieldMode", "jobs", "technicianDashboard"], { operationalRoles: [] })), true);
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", [], eosContext())), true);
 });

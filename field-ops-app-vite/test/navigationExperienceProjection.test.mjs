@@ -140,7 +140,9 @@ test("under the EOS source, the widest legacy role opens nothing it was not gran
   const visible = [];
   for (const domain of NAV_DOMAINS) {
     for (const item of domain.subnav ?? []) {
-      if (item.alwaysVisible) continue;
+      // Containers are excluded here because they are DERIVED, not granted: they answer from the
+      // list being built. They get their own test below.
+      if (item.containerScope) continue;
       if (isNavItemVisible(item, "admin", ADMIN_KEYS, context)) visible.push(`${domain.key}/${item.key}`);
     }
   }
@@ -161,11 +163,40 @@ test("the legacy inventoryRole domain is invisible under the EOS source, by desi
   }
 });
 
-test("My Dashboard survives both sources -- it is the index route, not an access decision", () => {
+test("My Dashboard is a CONTAINER under both sources -- it opens only onto somewhere", () => {
+  // REPLACES "My Dashboard survives both sources". It used to carry `alwaysVisible: true`, which was
+  // checked BEFORE the EOS branch, so a principal a READY authority granted `surfaces: []` still made
+  // the Dashboard domain visible, App.jsx's hasAnyAccess was true, and they landed on an empty
+  // dashboard instead of the refusal that describes them (Wave 9 / Lane AM, navigation blocker #7).
   const my = itemAt("dashboard", "my");
-  assert.equal(my.alwaysVisible, true);
-  assert.equal(isNavItemVisible(my, null, [], contextWith(authorityFor([]), {})), true);
-  assert.equal(isNavItemVisible(my, null, [], { operationalRoles: [] }), true);
+  assert.equal(my.alwaysVisible, undefined, "the blanket grant is gone and must not come back");
+  assert.equal(my.containerScope, "*", "the dashboard index composes the whole reachable product");
+
+  // GRANTED NOTHING -> the menu is empty, and an empty menu is not a destination. Both sources.
+  assert.equal(isNavItemVisible(my, null, [], contextWith(authorityFor([]), {})), false);
+  assert.equal(isNavItemVisible(my, null, [], { operationalRoles: [] }), false);
+
+  // GRANTED ONE THING -> the menu has something on it, so the index opens. It still grants nothing:
+  // the only destination reachable underneath is the one that was earned.
+  const oneSurface = contextWith(authorityFor(["crm.accounts"]), {});
+  assert.equal(isNavItemVisible(my, null, [], oneSurface), true);
+  assert.equal(isDomainVisible(NAV_DOMAINS.find((d) => d.key === "dashboard"), null, [], oneSurface), true);
+  assert.equal(isNavItemVisible(itemAt("dashboard", "operationsDashboard"), null, [], oneSurface), false);
+
+  // ...and the legacy source answers the same way from legacy authority alone.
+  assert.equal(isNavItemVisible(my, "admin", [], { operationalRoles: [] }), true);
+  assert.equal(isNavItemVisible(my, "technician", ["fieldMode", "jobs", "technicianDashboard"], { operationalRoles: [] }), true);
+});
+
+test("hasAnyAccess is FALSE for a principal the EOS source refuses entirely", () => {
+  // The blocker itself, stated as the shell states it: App.jsx computes
+  // `NAV_DOMAINS.some(isDomainVisible)` and renders "No access" when it is false. Before Lane AM one
+  // unrelated index item made this true for everyone, so the refusal could never be shown.
+  const refused = contextWith(authorityFor([]), {});
+  for (const domain of NAV_DOMAINS) {
+    assert.equal(isDomainVisible(domain, "technician", [], refused), false, `${domain.key} is still lit`);
+  }
+  assert.equal(NAV_DOMAINS.some((d) => isDomainVisible(d, "technician", [], refused)), false);
 });
 
 // ════════════════════ 3. EVERY CONSUMER INHERITS THE ANSWER ════════════════════
@@ -180,9 +211,10 @@ test("the rail's domain filter and the phone tab bar both follow the EOS answer"
   const context = contextWith(authority);
 
   // AppRail filters domains with isDomainVisible. Only the two Service areas are EARNED; Dashboard
-  // survives because of the alwaysVisible index item, which is the route-shape rule above, not a
-  // grant. `role` is null on purpose -- there is no legacy role to lean on and the answer is
-  // complete without one.
+  // survives because its index is a CONTAINER and those earned Service destinations are on its menu
+  // -- derived from the grant, not a grant of its own (a principal granted nothing loses it; see the
+  // container test above). `role` is null on purpose -- there is no legacy role to lean on and the
+  // answer is complete without one.
   const domains = NAV_DOMAINS.filter((d) => isDomainVisible(d, null, [], context)).map((d) => d.key);
   assert.deepEqual(domains, ["dashboard", "serviceOperations", "service"]);
 
