@@ -62,7 +62,6 @@ const EquipmentDetail = lazy(() => import("./modules/equipment/EquipmentDetail")
 const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
 const AdministrationOverview = lazy(() => import("./modules/administration/AdministrationOverview"));
-const AdministrationUnavailable = lazy(() => import("./modules/administration/AdministrationUnavailable"));
 const AdminPermissionPreview = lazy(() => import("./modules/administration/AdminPermissionPreview.jsx"));
 const AdminAuditLogs = lazy(() => import("./modules/administration/AdminAuditLogs.jsx"));
 const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
