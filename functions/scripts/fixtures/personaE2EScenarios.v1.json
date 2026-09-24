@@ -617,10 +617,10 @@
     "reorderRequestReadWasNotGranted": "Lane Q did NOT grant reorder.request.read to partsAssociate. The separate ruling permits it only where repository or governed Role-catalog evidence already establishes the relationship; the compiled catalog declares reorder.request.read on NO Role at all, so no such evidence exists."
   },
   "assignedUnassignedFixture": {
-    "$comment": "Q5. ONE governed assignment fixture was authorized. Neither governed path can be written today, for two DIFFERENT reasons, and neither may be removed by this lane.",
-    "goal": "The SAME Technician allowed on an assigned record and denied on an unassigned one, with the assignment row as the only difference.",
+    "$comment": "Q5. ONE governed assignment fixture was authorized. The Work Order path is blocked by a Role declaration gap. The Reorder path was re-ruled by the Owner (REORDER_ASSIGNMENT_QUALIFICATION = PARTS_OPERATIONS) and its business-rule conflict is GONE; one ordinary grant gap remains, and this lane reconciles no grant.",
+    "goal": "The SAME persona allowed on an assigned record and denied on an unassigned one, with the assignment row as the only difference. The Reorder assignee is a PARTS persona -- Parts Associate for execution, Parts Manager for oversight -- and never a Service Technician, who is the negative eligibility case.",
     "status": "NOT_SEEDED",
-    "whatThisLaneDidUnblock": "Both governed assignment writers require the assignee to hold a Work Eligibility. That precondition was 0 rows before this lane and is now satisfied for the Work Order path: synthetic-np-emp-service-technician-a and -b both hold a CURRENT SERVICE_TECHNICIAN qualification.",
+    "whatThisLaneDidUnblock": "Both governed assignment writers require the assignee to hold a Work Eligibility. That precondition was 0 rows before the persona authority-dimension lane and is now satisfied for BOTH paths: synthetic-np-emp-service-technician-a and -b hold a CURRENT SERVICE_TECHNICIAN qualification, and synthetic-np-emp-parts-associate and synthetic-np-emp-parts-manager hold a CURRENT PARTS_OPERATIONS one -- which is what the re-ruled Reorder writer requires.",
     "candidatePaths": [
       {
         "recordKind": "workOrder",
@@ -640,21 +640,27 @@
         "record": "rr_f7090a49-f1b1-40cf-8bde-c7d9a69574af (reorder_request_number RR-2026-000901, status ORDERED, operating company key sample-co-synthetic)",
         "governedWriter": "functions/src/eosOps/reorderAssignmentAuthority.ts assignReorderRequestToEmployee",
         "requiredCapability": "reorder.request.assign",
-        "assigneeQualification": "WAREHOUSE_OPERATIONS",
-        "assigneeQualificationSatisfied": false,
+        "assigneeQualification": "PARTS_OPERATIONS",
+        "assigneeQualificationSatisfied": true,
         "status": "BLOCKED",
-        "blockedBy": "REORDER_ASSIGNMENT_QUALIFICATION_CONFLICT",
-        "detail": "TWO blockers, and the second is the interesting one. (1) reorder.request.assign is declared by admin, dispatcher, owner and partsManager in the compiled catalog but holds 0 role_capabilities rows in nonprod -- an ordinary grant gap. (2) reorderAssignmentAuthority.ts fixes REORDER_ASSIGNMENT_QUALIFICATION = 'WAREHOUSE_OPERATIONS' and refuses EMPLOYEE_NOT_ASSIGNABLE unless the assignee currently holds it. A Service Technician must not hold WAREHOUSE_OPERATIONS. So the step Lane M proposed -- seed RR-2026-000901 -> synthetic-np-emp-service-technician-a through this writer -- is refused by the writer's own business rule, not by a missing grant.",
-        "correctsLaneM": "Lane M recorded this as 'no new authority needed'. It is not a new-authority problem: the governed command's fixed qualification and the persona's qualification disagree, and making them agree means either giving a technician warehouse eligibility (a fabricated workforce fact) or changing the command's constant (weakening a guard). Both were refused.",
-        "furtherFinding": "No persona can satisfy both halves of the reorder proof anyway. reorder.request.read resolves in nonprod for admin, dispatcher, operationsManager, owner, partsManager, purchasingManager and technician. WAREHOUSE_OPERATIONS is held by warehouse-associate and warehouse-manager, neither of whom holds reorder.request.read. The intersection is empty, so even a granted reorder.request.assign would produce an assignment whose assignee cannot read the record."
+        "blockedBy": "REORDER_REQUEST_ASSIGN_GRANTED_TO_NO_ROLE",
+        "detail": "ONE blocker remains, and it is an ordinary grant gap. reorder.request.assign IS registered in eos_policy.capabilities and is declared by FOUR Roles in the compiled catalog (admin and dispatcher in COMPATIBILITY_ROLES, owner and partsManager in GOVERNED_BUSINESS_ROLES), yet it holds 0 rows in nonprod eos_policy.role_capabilities. No Principal in any tenant can therefore invoke assignReorderRequestToEmployee. Reconciling that row is a governed grant reconciliation owned by another tool; this lane reports it as POLICY_RECONCILIATION_REQUIRED and grants nothing.",
+        "proposedAssignee": "synthetic-np-emp-parts-associate (Parts Associate). Owner ruling: the positive Reorder assignment personas are Parts Associate and Parts Manager. synthetic-np-emp-service-technician-a is the NEGATIVE eligibility case and is never mutated to become positive.",
+        "recordStatusSatisfied": true,
+        "supersedesEarlierFinding": "The earlier record of this path named TWO blockers and called the second the interesting one: that reorderAssignmentAuthority.ts fixed REORDER_ASSIGNMENT_QUALIFICATION = 'WAREHOUSE_OPERATIONS', which no Service Technician may hold. The Owner has since ruled the constant to PARTS_OPERATIONS -- Reorder assignment is Parts work -- so that conflict no longer exists. It was never resolved by widening a persona: the assignee is now a Parts persona who already holds the qualification.",
+        "intersectionNoLongerEmpty": "The earlier finding that no persona could satisfy both halves is superseded by the ruling. MEASURED in nonprod: reorder.request.read resolves for admin, dispatcher, operationsManager, owner, partsManager, purchasingManager and technician; PARTS_OPERATIONS is held by synthetic-np-emp-parts-associate and synthetic-np-emp-parts-manager. synthetic-np-emp-parts-manager holds partsManager AND purchasingManager, so it satisfies BOTH halves -- the intersection is non-empty. synthetic-np-emp-parts-associate holds inventoryReceivingClerk and partsAssociate, neither of which carries any reorder.* capability, so it is qualified to RECEIVE the assignment while not yet able to READ the queue.",
+        "queueScopeIsNotRequiredHere": "Assignment is CASE A: reorderAssignmentAuthority.ts requires the qualification and NO Operational Scope. REORDER_QUEUE answers 'which queue may they see', which is a different authority. So the Parts Associate needs no REORDER_QUEUE row to be assignable, and not holding one is not a defect.",
+        "queueScopeMismatchMeasured": "Separately measured, and NOT fixed here: every CURRENT REORDER_QUEUE row in nonprod names scope_id 'taylor' (synthetic-np-emp-dispatcher, -owner-executive, -parts-manager), while BOTH eos_ops.reorder_requests rows carry operating_company_key 'sample-co-synthetic'. Only 'taylor' has an ACTIVE row in eos_policy.tenant_operating_company_keys, so a REORDER_QUEUE:sample-co-synthetic scope is refused by the eos_workforce.operational_scope_target_exists trigger. #1961 is HELD; the binding was not created.",
+        "whyNotForced": "Granting reorder.request.assign to a Role so a test could pass would turn a test-persona requirement into a business permission. Assigning synthetic-np-emp-service-technician-a instead, or giving that technician PARTS_OPERATIONS, is refused by Owner ruling: the technician is the negative case and must stay negative."
       }
     ],
     "refusedAlternatives": [
       "Inserting an assignment row by raw SQL. Both tables have governed writers; a raw insert would make this lane a second assignment authority.",
-      "Granting workOrder.lifecycle.dispatch or reorder.request.assign to a Role. The first is a Role widening; the second is a grant this lane was not authorized to reconcile and which would not make the proof work anyway.",
-      "Giving service-technician-a a WAREHOUSE_OPERATIONS qualification to satisfy the reorder writer."
+      "Granting workOrder.lifecycle.dispatch or reorder.request.assign to a Role. The first is a Role widening; the second is a grant reconciliation this lane was not authorized to perform.",
+      "Assigning the Reorder Request to synthetic-np-emp-service-technician-a, or giving any technician persona PARTS_OPERATIONS to make one assignable. The technician is the negative eligibility case.",
+      "Creating a tenant_operating_company_keys binding for sample-co-synthetic so a REORDER_QUEUE scope would match the existing requests. #1961 is HELD."
     ],
-    "becomesSeedableWhen": "EITHER workOrder.lifecycle.dispatch is declared by a Role in the compiled catalog and reconciled into role_capabilities -- after which the Work Order path needs NOTHING else, because the record, the status, the Employee, the link and the SERVICE_TECHNICIAN qualification are all already live -- OR the Reorder assignment qualification is re-ruled.",
+    "becomesSeedableWhen": "EITHER workOrder.lifecycle.dispatch is declared by a Role in the compiled catalog and reconciled into role_capabilities -- after which the Work Order path needs NOTHING else -- OR reorder.request.assign is reconciled into role_capabilities for a Role it is ALREADY declared by (admin, dispatcher, owner, partsManager), after which the Reorder path needs nothing else either: the record, its ORDERED status, synthetic-np-emp-parts-associate, its active Principal link and its CURRENT PARTS_OPERATIONS qualification are all already live.",
     "declaredExpectationsItWouldSatisfy": [
       "CX-05",
       "CX-06",
@@ -1125,12 +1131,14 @@
       "resolution": "A Role-catalog change by whoever owns the Work Order cutover, then the existing grant reconciliation. Nothing else is needed."
     },
     {
-      "code": "REORDER_ASSIGNMENT_QUALIFICATION_CONFLICT",
+      "code": "REORDER_REQUEST_ASSIGN_GRANTED_TO_NO_ROLE",
+      "supersedes": "REORDER_ASSIGNMENT_QUALIFICATION_CONFLICT",
       "severity": "BLOCKS_CX_05_CX_06_CX_07",
-      "finding": "reorderAssignmentAuthority.ts fixes REORDER_ASSIGNMENT_QUALIFICATION = 'WAREHOUSE_OPERATIONS'. The personas who hold reorder.request.read (technician, partsManager, dispatcher, admin, owner, operationsManager, purchasingManager) and the personas who hold WAREHOUSE_OPERATIONS (warehouse-associate, warehouse-manager) do not intersect.",
-      "consequence": "Lane M's proposed next step -- seed RR-2026-000901 -> synthetic-np-emp-service-technician-a through this writer -- is refused by the writer's own business rule, and no substitute assignee makes the read half work either.",
-      "refusedAlternative": "Giving a Service Technician a WAREHOUSE_OPERATIONS qualification, or changing the command's constant.",
-      "resolution": "An Owner ruling on which qualification Reorder assignment requires, or the Work Order path above."
+      "finding": "reorder.request.assign is declared by FOUR Roles in the compiled catalog -- admin and dispatcher in COMPATIBILITY_ROLES, owner and partsManager in GOVERNED_BUSINESS_ROLES -- and holds 0 rows in nonprod eos_policy.role_capabilities. No Principal can invoke assignReorderRequestToEmployee. reorder.request.read.queue is the same shape: declared by six Roles (admin, dispatcher, operationsManager, owner, partsManager, purchasingManager), 0 rows.",
+      "supersededFinding": "The earlier blocker was a business-rule conflict: reorderAssignmentAuthority.ts fixed REORDER_ASSIGNMENT_QUALIFICATION = 'WAREHOUSE_OPERATIONS', which no Service Technician may hold, and the WAREHOUSE_OPERATIONS holders did not intersect the reorder.request.read holders. The Owner has ruled the constant to PARTS_OPERATIONS. synthetic-np-emp-parts-manager now holds PARTS_OPERATIONS AND, through partsManager + purchasingManager, reorder.request.read -- so the intersection is non-empty and the conflict is gone. What is left is an ordinary grant gap, not a model disagreement.",
+      "consequence": "The Reorder assignment fixture stays NOT_SEEDED, but for a reason that another governed tool removes by inserting a DECLARED grant row -- no Role widening and no new capability. Every other precondition is already live: RR-2026-000901 is ORDERED, synthetic-np-emp-parts-associate is ACTIVE with an active Principal link and a CURRENT PARTS_OPERATIONS qualification.",
+      "refusedAlternative": "Granting reorder.request.assign here, assigning synthetic-np-emp-service-technician-a instead, or giving a technician PARTS_OPERATIONS. The first is a grant this lane may not make; the last two are refused by Owner ruling, which names the technician the negative eligibility case.",
+      "resolution": "POLICY_RECONCILIATION_REQUIRED: insert the missing eos_policy.role_capabilities rows for the exact keys reorder.request.assign and reorder.request.read.queue, on Roles that already DECLARE them, through the governed grant reconciliation tool."
     },
     {
       "code": "OPERATING_COMPANY_KEY_NOT_ACTIVE",
@@ -1163,6 +1171,15 @@
       "consequence": "controller, financeManager, accountingManager, reportViewer, reportFinanceViewer and reportAuthor are real Roles that NO persona exercises.",
       "refusedAlternative": "Adding a second Employee writer in this lane.",
       "resolution": "A Sample Company v3 change, which also needs the twelve-key Job Role vocabulary extended for FINANCE_MANAGER."
+    },
+    {
+      "code": "REORDER_QUEUE_SCOPE_HAS_NO_GOVERNED_WRITER",
+      "severity": "BLOCKS_ANY_GOVERNED_REORDER_QUEUE_PROVISIONING",
+      "finding": "assignEmployeeOperationalScope refuses every scope type except WAREHOUSE. Its target resolver (functions/src/eosWorkforce/commands/employeeOperationalScopeCommands.ts requireActiveScopeTarget) raises OPERATIONAL_SCOPE_TYPE_INVALID for REORDER_QUEUE before the database is consulted, even though REORDER_QUEUE is in OPERATIONAL_SCOPE_TYPES and the eos_workforce.operational_scope_target_exists trigger added by migration 1761696000000 knows how to validate it against eos_policy.tenant_operating_company_keys.",
+      "consequence": "The three REORDER_QUEUE steps this manifest plans can NEVER succeed through the governed writer, whatever the operating company key binding says. personaE2EHarness.preflightAuthorityPlan reports them as OPERATING_COMPANY_KEY_NOT_ACTIVE, which is true and is the FIRST blocker, but it is not the only one: making sample-co-synthetic ACTIVE would move the refusal from the preflight to the command, not remove it. The three REORDER_QUEUE rows that DO exist in nonprod were written by migration 1761696000000, not by a command.",
+      "refusedAlternative": "Extending requireActiveScopeTarget to resolve REORDER_QUEUE, or inserting the scope row directly in nonprod. The writer belongs to the workforce authority and a second writer beside it would be a second authority.",
+      "resolution": "The workforce authority adds a REORDER_QUEUE resolver to assignEmployeeOperationalScope, reading eos_policy.tenant_operating_company_keys exactly as the trigger already does. Until then a REORDER_QUEUE scope is provisioned by migration only, and the preflight's OPERATING_COMPANY_KEY_NOT_ACTIVE block is the first of two, not the last.",
+      "measuredBy": "functions/test/reorderPersonaAcceptancePostgres.test.mjs \"MEASURED GAP: no governed command can write a REORDER_QUEUE scope\""
     }
   ],
   "provisioningContract": {
