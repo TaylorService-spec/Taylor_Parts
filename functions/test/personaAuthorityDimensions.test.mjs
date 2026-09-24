@@ -59,14 +59,108 @@ test("this manifest layers onto SAMPLE_COMPANY_V2 and refuses anything else", ()
   assert.equal(refusal(MANIFEST, { ...SAMPLE_COMPANY, sampleCompanyVersion: 3 }), "MANIFEST_INVALID");
 });
 
-test("the gap this manifest exists to close is real, and stated as a measurement", () => {
-  // If either upstream fixture ever grows these sections, this manifest's reason for existing has
-  // changed and the two must be reconciled rather than silently both writing the same authority.
-  for (const fixture of [SAMPLE_COMPANY, V1]) {
-    const text = JSON.stringify(fixture);
-    for (const token of ["\"workEligibility\"", "\"operationalScopes\"", "PARTS_OPERATIONS", "REORDER_QUEUE"]) {
-      assert.ok(!text.includes(token), `${token} now appears upstream; reconcile the two manifests`);
+// ── The gap this manifest exists to close, measured STRUCTURALLY rather than by substring. ──
+// This was a substring scan over JSON.stringify(fixture) for four tokens. It began failing at
+// bd1d60a1, on SYNTHETIC_NONPROD_WORKFORCE_V1 principals[].roleReasons.technician -- a free-text
+// Owner-ruling sentence reading "technician is the standing negative eligibility case and must
+// never be given PARTS_OPERATIONS merely to satisfy a test (Owner ruling 2026-09-23)". That is
+// prose AFFIRMING the separation, not an upstream authority row. The scan had two defects:
+//   (a) it could not tell a governed VALUE from a sentence about one; and
+//   (b) it named 2 of the 5 governed terms, so it could never have seen SERVICE_TECHNICIAN --
+//       simultaneously a Job Role key and a Work Eligibility code -- sitting upstream already.
+// PARTS_OPERATIONS is governed and stays upstream. What is pinned below is the exact structural
+// footprint of EVERY governed term in both fixtures, so the manifest remains the sole authority.
+
+const UPSTREAM_FIXTURES = { SAMPLE_COMPANY_V2: SAMPLE_COMPANY, SYNTHETIC_NONPROD_WORKFORCE_V1: V1 };
+const GOVERNED_TERMS = new Set([...WORK_ELIGIBILITY_CODES, ...OPERATIONAL_SCOPE_TYPES]);
+const AUTHORITY_SECTION_KEYS = ["workEligibility", "operationalScopes"];
+
+// Every path at which a governed term may appear upstream as an EXACT value, and the dimension
+// that path actually belongs to. JOB_ROLE and LOCATION_TYPE are OTHER dimensions that happen to
+// share a spelling; neither grants anyone a Work Eligibility or an Operational Scope.
+const DECLARED_UPSTREAM_TERM_PATHS = {
+  SAMPLE_COMPANY_V2: {
+    "$.jobRoles[].key = SERVICE_TECHNICIAN": "JOB_ROLE",
+    "$.employees[].jobRole = SERVICE_TECHNICIAN": "JOB_ROLE",
+    "$.purchasing[].receipt.receivingLocation.type = WAREHOUSE": "LOCATION_TYPE",
+    "$.cycleCounts[].location.type = WAREHOUSE": "LOCATION_TYPE",
+  },
+  SYNTHETIC_NONPROD_WORKFORCE_V1: {
+    "$.jobRoles[].key = SERVICE_TECHNICIAN": "JOB_ROLE",
+    "$.employees[].jobRole = SERVICE_TECHNICIAN": "JOB_ROLE",
+  },
+};
+// A path may never be legalised by DECLARING it to be the dimension this manifest owns.
+const NON_AUTHORITY_DIMENSIONS = new Set(["JOB_ROLE", "LOCATION_TYPE"]);
+
+const scanUpstream = (fixture) => {
+  const sections = new Set();
+  const values = new Set();
+  (function walk(node, path) {
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child, `${path}[]`);
+      return;
     }
+    if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node)) {
+        if (AUTHORITY_SECTION_KEYS.includes(k)) sections.add(`${path}.${k}`);
+        walk(v, `${path}.${k}`);
+      }
+      return;
+    }
+    if (typeof node === "string" && GOVERNED_TERMS.has(node)) values.add(`${path} = ${node}`);
+  })(fixture, "$");
+  return { sections: [...sections].sort(), values: [...values].sort() };
+};
+
+test("the gap this manifest exists to close is real: no upstream fixture holds a Work Eligibility or Operational Scope SECTION", () => {
+  for (const [name, fixture] of Object.entries(UPSTREAM_FIXTURES)) {
+    assert.deepEqual(scanUpstream(fixture).sections, [],
+      `${name} grew an authority section this manifest already owns; reconcile the two manifests`);
+  }
+});
+
+test("every upstream appearance of a governed term is pinned to a path, and to a DIFFERENT dimension", () => {
+  for (const [name, fixture] of Object.entries(UPSTREAM_FIXTURES)) {
+    const declared = DECLARED_UPSTREAM_TERM_PATHS[name];
+    assert.deepEqual(scanUpstream(fixture).values, Object.keys(declared).sort(),
+      `${name}: a governed term appeared, moved or vanished upstream; reconcile the two manifests`);
+    for (const [path, dimension] of Object.entries(declared)) {
+      assert.ok(NON_AUTHORITY_DIMENSIONS.has(dimension),
+        `${name} ${path} is declared ${dimension}; an upstream path may never be declared a Work Eligibility or an Operational Scope`);
+    }
+  }
+});
+
+test("no upstream Employee record carries a Work Eligibility or a scope -- only a Job Role, which implies neither", () => {
+  for (const [name, fixture] of Object.entries(UPSTREAM_FIXTURES)) {
+    for (const employee of fixture.employees) {
+      for (const [field, value] of Object.entries(employee)) {
+        if (field === "jobRole") continue; // a different dimension, proved non-implying by (3)
+        for (const v of Array.isArray(value) ? value : [value]) {
+          assert.ok(!GOVERNED_TERMS.has(v),
+            `${name} ${employee.key}.${field} = ${v}: an upstream Employee silently gained a governed eligibility or scope it was never granted through this manifest`);
+        }
+      }
+    }
+  }
+});
+
+test("the Owner ruling that keeps technician the standing negative eligibility case is still recorded upstream", () => {
+  // This sentence is what the old substring scan tripped over. It is governed evidence (bd1d60a1),
+  // so it is now asserted PRESENT: deleting it would quietly erase Owner ruling 2026-09-23.
+  const technician = V1.principals.find((p) => p.employee === "service-technician-a");
+  assert.match(technician.roleReasons.technician, /must never be given PARTS_OPERATIONS/);
+  assert.match(technician.roleReasons.technician, /Owner ruling 2026-09-23/);
+  // ...and it is prose ONLY: no technician persona holds PARTS_OPERATIONS in this manifest, while
+  // the parts personas -- which is where PARTS_OPERATIONS is governed -- do.
+  const partsOperations = MANIFEST.workEligibility
+    .filter((r) => r.qualificationCode === "PARTS_OPERATIONS")
+    .map((r) => r.employee)
+    .sort();
+  assert.deepEqual(partsOperations, ["parts-associate", "parts-manager"]);
+  for (const e of SAMPLE_COMPANY.employees.filter((x) => x.jobRole === "SERVICE_TECHNICIAN")) {
+    assert.ok(!partsOperations.includes(e.key), `${e.key} is a technician and must not hold PARTS_OPERATIONS`);
   }
 });
 
