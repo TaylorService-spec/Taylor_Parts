@@ -41,10 +41,25 @@ const dispositionsFor = (census, employeeId, legacyValue) =>
   [...census.qualificationFindings, ...census.scopeFindings]
     .filter((f) => f.employeeId === employeeId && f.legacyValue === legacyValue).map((f) => f.disposition);
 
-test("the legacy vocabulary is carried verbatim, and exactly two values are ruled deterministic", () => {
+test("the legacy vocabulary is carried verbatim, and only RULED values are deterministic", () => {
   assert.deepEqual([...evidence.LEGACY_OPERATIONAL_ROLE_VALUES].sort(), [...OPERATIONAL_ROLE_VALUES].sort());
-  assert.deepEqual(Object.keys(LEGACY_QUALIFICATION_CANDIDATES).sort(), ["TECHNICIAN", "WAREHOUSE_ASSOCIATE"]);
-  assert.deepEqual(Object.values(LEGACY_QUALIFICATION_CANDIDATES).sort(), ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
+  // THREE, not two. PARTS_ASSOCIATE -> PARTS_OPERATIONS joined the map when the ruling that created
+  // PARTS_OPERATIONS was carried into it (migration 1761696000000 registered the code precisely as the
+  // successor to the operationalRoleActive(PARTS_ASSOCIATE) gate). The count is not the invariant --
+  // the invariant is that every entry traces to a ruling, and that the OTHER FIVE legacy values still
+  // have none, which the remediation test below proves per value.
+  assert.deepEqual(Object.keys(LEGACY_QUALIFICATION_CANDIDATES).sort(),
+    ["PARTS_ASSOCIATE", "TECHNICIAN", "WAREHOUSE_ASSOCIATE"]);
+  assert.deepEqual(Object.values(LEGACY_QUALIFICATION_CANDIDATES).sort(),
+    ["PARTS_OPERATIONS", "SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
+  // No entry may reproduce its own legacy label as the target code.
+  for (const [legacy, code] of Object.entries(LEGACY_QUALIFICATION_CANDIDATES)) {
+    assert.notEqual(legacy, code, `${legacy} was mirrored rather than mapped`);
+  }
+  // The five values with no ruling are still unmapped, and that is the property worth guarding.
+  for (const unruled of ["PARTS_MANAGER", "WAREHOUSE_MANAGER", "SERVICE_MANAGER", "SALES_MANAGER", "SALES_ASSOCIATE"]) {
+    assert.equal(LEGACY_QUALIFICATION_CANDIDATES[unruled], undefined, `${unruled} gained a mapping with no ruling`);
+  }
 });
 
 test("qualifications: the two ruled values are candidates; every other legacy value is remediation, not a guess", () => {

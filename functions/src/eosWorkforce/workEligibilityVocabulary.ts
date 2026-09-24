@@ -69,10 +69,25 @@ export function isWorkEligibilityCode(value: unknown): value is WorkEligibilityC
 }
 
 /**
- * The ONLY two legacy `operationalRoles` values the Owner ruled deterministic migration CANDIDATES. This is a
- * candidate map for the dry-run/census tooling (steps D/E) -- NOT an applied mapping, and NOT a fallback any runtime
- * path may consult. Every other legacy value requires a proven exact current consumer mapping or Administration
- * remediation; leaving an ambiguous legacy value unmigrated needs no further Owner ruling.
+ * The legacy `operationalRoles` values whose target code the Owner has RULED. This is a candidate map for the
+ * dry-run/census tooling (steps D/E) -- NOT an applied mapping, and NOT a fallback any runtime path may consult.
+ * Every other legacy value requires a proven exact current consumer mapping or Administration remediation; leaving
+ * an ambiguous legacy value unmigrated needs no further Owner ruling.
+ *
+ * PARTS_ASSOCIATE -> PARTS_OPERATIONS is the THIRD entry, and it is a correction rather than a new ruling. The map
+ * was written when two values were ruled and was not revisited when the third was: migration 1761696000000
+ * registered PARTS_OPERATIONS precisely as the governed successor to the `operationalRoleActive(PARTS_ASSOCIATE)`
+ * gate on technician's Reorder and Purchase Order grants -- which is exactly the "proven exact current consumer
+ * mapping" this comment already required. The same ruling is recorded three other places in this repository
+ * (WORK_ELIGIBILITY_CODES above, GOVERNED_QUALIFICATION_CODES in eosOps/contextualAuthorization.ts, and the
+ * PARTS_ASSOCIATE entry of the legacy consumer ledger), so leaving it out here made the census report a SETTLED
+ * target code as AMBIGUOUS_REMEDIATION -- a vocabulary gap that does not exist.
+ *
+ * ADDING IT GRANTS NOTHING AND PROPOSES NOTHING TODAY. A ruled value still requires the Employee to resolve in the
+ * governed tenant before it becomes a candidate, and partsOperationsIdentityReconciliation.ts measures that NOT ONE
+ * of the six known legacy PARTS_ASSOCIATE holders resolves to a governed Employee -- five are non-business fixtures
+ * and the sixth is an unmappable production test persona. The census now says "the target code is settled; no holder
+ * resolves", which is the true finding, instead of "no mapping exists".
  *
  * Warehouse SCOPE is never derived from a legacy role string: WAREHOUSE_OPERATIONS qualification and warehouse scope
  * are separate authorities, and `assignedWarehouseIds` is the only scope migration evidence (step B).
@@ -80,4 +95,5 @@ export function isWorkEligibilityCode(value: unknown): value is WorkEligibilityC
 export const LEGACY_QUALIFICATION_CANDIDATES: Readonly<Record<string, WorkEligibilityCode>> = Object.freeze({
   TECHNICIAN: "SERVICE_TECHNICIAN",
   WAREHOUSE_ASSOCIATE: "WAREHOUSE_OPERATIONS",
+  PARTS_ASSOCIATE: "PARTS_OPERATIONS",
 });

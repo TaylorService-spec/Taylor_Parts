@@ -116,8 +116,17 @@ test("the schema keeps history and cannot express access", () => {
   }
 });
 
-test("the legacy candidate map is exactly the two the Owner allowed, and is not a runtime fallback", () => {
-  assert.deepEqual(vocab.LEGACY_QUALIFICATION_CANDIDATES, { TECHNICIAN: "SERVICE_TECHNICIAN", WAREHOUSE_ASSOCIATE: "WAREHOUSE_OPERATIONS" });
+test("the legacy candidate map is exactly what the Owner ruled, and is not a runtime fallback", () => {
+  // PARTS_ASSOCIATE -> PARTS_OPERATIONS is the third and newest entry. It is not a new ruling: migration
+  // 1761696000000 registered PARTS_OPERATIONS as the governed successor to the operationalRoleActive(PARTS_ASSOCIATE)
+  // gate, and this map was simply not updated at the time. It proposes nothing today -- every legacy holder of that
+  // value is measured NONBUSINESS_FIXTURE and resolves to no governed Employee
+  // (test/partsOperationsIdentityReconciliation.test.mjs).
+  assert.deepEqual(vocab.LEGACY_QUALIFICATION_CANDIDATES, {
+    TECHNICIAN: "SERVICE_TECHNICIAN",
+    WAREHOUSE_ASSOCIATE: "WAREHOUSE_OPERATIONS",
+    PARTS_ASSOCIATE: "PARTS_OPERATIONS",
+  });
   // Every candidate target must be a real code.
   for (const target of Object.values(vocab.LEGACY_QUALIFICATION_CANDIDATES)) assert.ok(vocab.isWorkEligibilityCode(target));
   // No other legacy value is mapped: the rest need a proven consumer mapping or Administration remediation.
