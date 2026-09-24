@@ -554,6 +554,10 @@
       "runner": "node"
     },
     {
+      "file": "test/navigationExperienceProjection.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/navPermissionPreviewParity.test.mjs",
       "runner": "node"
     },

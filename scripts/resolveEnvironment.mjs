@@ -44,6 +44,12 @@ export const READINESS_KEYS = Object.freeze([
   'WORK_ORDER_READINESS_CONTEXT_READY',
   'TRUCK_MANAGEMENT_WRITE_READY',
   'TRUSTED_COMPLETION_ENABLED',
+  // WAVE 6 / LANE V. Which source decides client navigation: false = the legacy
+  // ROLE_NAV_ACCESS/operationalRoles/accessVersion path, true = the EOS principal experience context
+  // over POST /operations/experience, with NO fallback of any kind. Registered here so an
+  // environment that omits it is a build error rather than a silent default-to-enabled; it is false
+  // in every environment today. See field-ops-app-vite/src/config/navigationAuthorityReadiness.js.
+  'EOS_NAVIGATION_AUTHORITY_READY',
 ]);
 
 // Per-environment capability activation (per-environment-capability-activation-

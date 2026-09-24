@@ -37,6 +37,11 @@ export default defineConfig({
       PART_MASTER_WRITE_READY: false,
       MANUFACTURER_WRITE_READY: false,
       TRUSTED_COMPLETION_ENABLED: true,
+      // Wave 6 / Lane V. False here for the same reason every other flag defaults false: a component
+      // test must exercise the branch the shipped bundle takes, and no environment ships this true.
+      // A suite that needs the EOS branch injects an experience authority through operationalContext
+      // rather than flipping this -- there is no production-importable override.
+      EOS_NAVIGATION_AUTHORITY_READY: false,
     }),
     // Per-environment capability activation (spec 2026-08-14). Test-only default:
     // empty (spine stays preview-hidden) so no component test depends on the
