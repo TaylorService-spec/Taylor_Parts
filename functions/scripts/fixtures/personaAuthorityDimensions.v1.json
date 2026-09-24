@@ -655,7 +655,8 @@
       "severity": "BLOCKS_CX_05_CX_06_CX_07",
       "finding": "eos_ops.reorder_request_assignments exists and is the table contextualAuthorization.ts reads, but sampleCompany.v2's `responsibility` ruling states assignment is never written by that seed.",
       "consequence": "The assigned-vs-unassigned technician proof cannot run against a database until one assignment row exists for RR-2026-000901 -> synthetic-np-emp-service-technician-a.",
-      "resolution": "Seed it through functions/src/eosOps/reorderAssignmentAuthority.ts, the governed assignment writer, in a Sample Company v3 execution step. No new authority is needed."
+      "resolution": "Seed it through functions/src/eosOps/reorderAssignmentAuthority.ts, the governed assignment writer, in a Sample Company v3 execution step. No new authority is needed.",
+      "qualificationPrecondition": "THE ASSIGNEE MUST HOLD PARTS_OPERATIONS. REORDER_ASSIGNMENT_QUALIFICATION is PARTS_OPERATIONS by Owner ruling -- Reorder assignment is Parts/Reorder operational work, and the constant no longer reads WAREHOUSE_OPERATIONS. service-technician-a holds SERVICE_TECHNICIAN and nothing else (see workEligibility), so the governed writer refuses EMPLOYEE_NOT_ASSIGNABLE for RR-2026-000901 as this manifest stands. Seeding it therefore requires EITHER granting PARTS_OPERATIONS to service-technician-a through the governed writer -- which would change what CX-05/CX-06 prove, since A and B would then differ by a qualification as well as an assignment -- OR assigning a persona that already holds it (parts-associate or parts-manager). That is a Sample Company v3 decision, recorded here rather than pre-empted. Note the precondition was unsatisfiable BEFORE this change too: no persona held WAREHOUSE_OPERATIONS and reorder.request.read at once."
     },
     {
       "code": "NO_RUNTIME_CONSUMES_CONTEXTUAL_AUTHORIZATION",
