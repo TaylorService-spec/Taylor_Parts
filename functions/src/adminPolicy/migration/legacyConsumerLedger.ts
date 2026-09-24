@@ -128,14 +128,22 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     path: "functions/src/access/compatibilityRoles.ts",
     consumer: "attaches operationalRoleActive(PARTS_ASSOCIATE) to technician's seven Reorder grants",
     terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (WAREHOUSE_OPERATIONS)`, replacementPr: null, status: "NOT_STARTED",
-    blockedReason: null,
+    // The target CODE is undetermined, so this no longer claims WAREHOUSE_OPERATIONS. Measured in
+    // the contextual-authorization slice: the evaluator refuses PARTS_ASSOCIATE with
+    // WORK_ELIGIBILITY_UNMAPPED rather than guessing, and that refusal is what blocks the Kind.
+    // TARGET NOW DETERMINED, by Owner ruling: PARTS_ASSOCIATE is its own governed Work Eligibility
+    // code, registered by migration 1761696000000. Still BLOCKED, and the reason has MOVED: the
+    // vocabulary exists, the ASSIGNMENTS do not. The five legacy holders live in the Firestore
+    // employees collection and none is a governed Employee, so there is nothing to migrate until
+    // the real employee migration lands.
+    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (PARTS_OPERATIONS)`, replacementPr: null, status: "BLOCKED",
+    blockedReason: "the PARTS_OPERATIONS Work Eligibility code now exists (not the legacy label: the vocabulary refuses to reproduce a legacy operationalRole value), but no governed Employee holds it: the five legacy holders (cw-emp-025..028, sbx-partsassoc) are Firestore employees and eos_workforce.employees is a disjoint synthetic population, so the eligibility assignments migrate with the real employee migration, not before",
   }),
   entry({
     path: "field-ops-app-vite/src/access/compatibilityRoles.ts", consumer: "the client mirror of those grants",
     terms: ["operationalRoleActive"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (WAREHOUSE_OPERATIONS)`, replacementPr: null, status: "NOT_STARTED",
-    blockedReason: null,
+    replacementAuthority: `${CAPABILITY} + ${ELIGIBILITY} (PARTS_OPERATIONS)`, replacementPr: null, status: "BLOCKED",
+    blockedReason: "mirrors functions/src/access/compatibilityRoles.ts and is blocked by the same missing eligibility assignments",
   }),
   entry({
     path: "functions/src/access/operationalRoleContext.ts",
@@ -287,25 +295,33 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     replacementAuthority: `${ELIGIBILITY} + eligible employment status, read from PostgreSQL`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
+  // THE NEXT THREE ENTRIES ARE ONE FILTER, AND THEIR TARGET CODE IS PARTS_OPERATIONS.
+  //
+  // All three pass the legacy operationalRole PARTS_ASSOCIATE to the assignable-Employee picker. They previously
+  // named WAREHOUSE_OPERATIONS as the replacement authority, which contradicted the compatibilityRoles.ts entry
+  // above -- the same legacy label, resolved to PARTS_OPERATIONS by the Owner ruling behind migration
+  // 1761696000000, which says in its own words "NOT WAREHOUSE_OPERATIONS". Reorder assignment is Parts/Reorder
+  // operational work; a Warehouse employee performs it only when independently assigned PARTS_OPERATIONS. The two
+  // codes stay distinct and neither is inferred from the other.
   entry({
     path: "field-ops-app-vite/src/shared/reorder/ManagerQueuePanel.jsx",
     consumer: "asks the picker for PARTS_ASSOCIATE candidates to assign a reorder request",
     terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (WAREHOUSE_OPERATIONS) + eligible employment status`,
+    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
   entry({
     path: "field-ops-app-vite/src/modules/inventoryRole/PartsManagerHome.jsx",
     consumer: "asks the assignable-Employee hook for PARTS_ASSOCIATE candidates",
     terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (WAREHOUSE_OPERATIONS) + eligible employment status`,
+    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
   entry({
     path: "field-ops-app-vite/src/modules/inventory/PartDetail.jsx",
     consumer: "passes PARTS_ASSOCIATE to the assignment picker on the Part record",
     terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (WAREHOUSE_OPERATIONS) + eligible employment status`,
+    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
 

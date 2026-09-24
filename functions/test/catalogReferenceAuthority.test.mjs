@@ -56,18 +56,61 @@ test("the verdict rules on a fake database: own kind first, then the other kind,
 // environment, so a composed PostgreSQL catalog would answer NOT_FOUND for every real product -- a false answer.
 // CATALOG_AUTHORITY_UNAVAILABLE is the truthful deployed behaviour until population and reconciliation are PROVEN by
 // the governed catalog cutover. Only that cutover may compose this adapter and relax this ratchet.
-test("ratchet: nothing composes the catalog authority -- server.ts supplies no catalog, and no runtime module imports catalogAuthority/**", () => {
+test("the catalog authority is composed ONLY by the Work Order/ops commands that were ruled to use it", () => {
+  // ════════ THIS RATCHET WAS RELEASED DELIBERATELY, AND ONLY HALF OF IT ════════
+  //
+  // It used to assert that NOTHING composes the catalog authority, because composition was
+  // CATALOG_CUTOVER_TAIL: an empty eos_ops.parts answers NOT_FOUND for every real product, so wiring it
+  // early would look like "the part does not exist" rather than "the catalog has not been copied yet".
+  //
+  // THAT REASON HAS NOT EXPIRED. eos_ops.parts is still empty in nonprod. What changed is an Owner ruling
+  // (Lane 3) that the Work Order commands must resolve Part facts from the catalog rather than from the
+  // caller -- because the alternative is worse: an install that trusts a caller's `wholeUnit`, or a
+  // commitment that trusts a caller's tracking mode, is wrong SILENTLY, while an unresolvable Part is
+  // wrong loudly. So the importer list is now an enumerated set rather than empty, and the ordering
+  // constraint it used to enforce is enforced below instead.
   const SRC = join(FUNCTIONS_DIR, "src");
-  const server = strip(readFileSync(join(SRC, "eosApi/server.ts"), "utf8"));
-  assert.doesNotMatch(server, /catalogAuthority|CatalogReferenceAuthority|createPostgresCatalog/, "server.ts composes the catalog authority");
-  const handlerCall = server.match(/createCommercialHttpHandler\(\{([\s\S]*?)\}\)/);
-  assert.ok(handlerCall, "server.ts no longer composes the Commercial handler where this ratchet expects it");
-  assert.doesNotMatch(handlerCall[1], /\bcatalog\b/, "server.ts hands the Commercial handler a catalog");
   const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
   const importers = walk(SRC)
     .filter((f) => /\.(ts|js|mjs|cjs)$/.test(f) && !f.startsWith(join(SRC, "catalogAuthority")))
-    .filter((f) => /catalogAuthority\b|postgresCatalogReferenceAuthority/.test(strip(readFileSync(f, "utf8"))));
-  assert.deepEqual(importers, [], "a runtime module imports the catalog authority");
+    .filter((f) => /catalogAuthority\b|postgresCatalogReferenceAuthority|postgresPartPolicyAuthority/.test(strip(readFileSync(f, "utf8"))))
+    .map((f) => f.slice(SRC.length + 1).split("\\").join("/"))
+    .sort();
+  assert.deepEqual(importers, [
+    "eosOps/equipmentCustody.ts",
+    "eosOps/inventoryCommitmentRepository.ts",
+    "eosOps/serviceFromSalesOrderBoundary.ts",
+    "eosOps/workOrderPartsPlanAuthority.ts",
+  ], "a NEW module composes the catalog authority -- name it here and say why it may");
+});
+
+test("every composer uses it as a REPOSITORY, on its own client, never over HTTP", () => {
+  // The forbidden shape is a Render handler calling another Render handler: the Part would be verified in
+  // one transaction and acted on in another, with nothing making the two agree.
+  const SRC = join(FUNCTIONS_DIR, "src");
+  for (const rel of ["eosOps/equipmentCustody.ts", "eosOps/inventoryCommitmentRepository.ts",
+                     "eosOps/serviceFromSalesOrderBoundary.ts", "eosOps/workOrderPartsPlanAuthority.ts"]) {
+    const src = strip(readFileSync(join(SRC, rel), "utf8"));
+    assert.doesNotMatch(src, /fetch\(/, `${rel} calls out over HTTP`);
+    assert.doesNotMatch(src, /\/operations\//, `${rel} names a Render route`);
+    assert.doesNotMatch(src, /firebase-admin|firebase-functions/, `${rel} reaches Firebase`);
+    // It must ask the catalog rather than restate it: no second SELECT against the Part table.
+    assert.doesNotMatch(src, /FROM\s+(eos_ops\.|\$\{SCHEMA\}\.)parts\b/,
+      `${rel} queries eos_ops.parts directly instead of asking the catalog authority`);
+  }
+});
+
+test("ORDERING CONSTRAINT: while eos_ops.parts is empty, these commands are wired but NOT activatable", () => {
+  // The half of the old ratchet that still holds, kept executable rather than as a comment. The catalog
+  // COPY is the gate: until it runs, a composed authority answers NOT_FOUND for every real product, so
+  // Install and Consumption would refuse every genuine Part. The Owner's coordinated activation window
+  // puts the Catalog COPY/VERIFY before any dependent runtime activation, and this asserts the repository
+  // still reflects that -- the Firestore catalog writer is OPEN and PostgreSQL is INACTIVE.
+  const state = readFileSync(join(FUNCTIONS_DIR, "src/catalogMaster/catalogWriterState.ts"), "utf8");
+  const committed = /CATALOG_WRITER_AUTHORITY[^=]*=\s*Object\.freeze\(\{\s*firestore:\s*"(\w+)",\s*postgres:\s*"(\w+)"/.exec(state);
+  assert.ok(committed, "the committed catalog writer state must remain readable");
+  assert.deepEqual([committed[1], committed[2]], ["OPEN", "INACTIVE"],
+    "PostgreSQL catalog was activated without this constraint being re-reasoned");
 });
 
 test("migration 026 is additive, standalone and carries no data, writer or cross-schema dependency beyond tenants", () => {

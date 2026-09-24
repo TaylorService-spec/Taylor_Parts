@@ -4,8 +4,11 @@
   "classification": "SYNTHETIC NONPROD FIXTURE DATA. Not historical truth, not migrated Taylor production data, and not real people.",
   "rulings": {
     "jobRole": "Job Role authority is NOT YET IMPLEMENTED in PostgreSQL. Synthetic Job Role values are seed-manifest metadata only and are not authoritative runtime data.",
+    "perStepReasons": "Every persona mutation this manifest declares carries its OWN reason -- a `linkReason` per Principal entry and a `roleReasons` entry per Security Role. A single broad run-level sentence is refused by scripts/seedSyntheticNonprodWorkforce.js (RUN_LEVEL_REASON_REFUSED), and so is a missing or too-short one. Owner ruling: 'Every governed persona provisioning mutation must carry a specific per-step reason. Do not use one broad reason for the entire provisioning run.'",
+    "ownerPersona": "OWNER PERSONA -- NOT SEEDED BY THIS MANIFEST (Owner ruling, Wave 9). nonprod had ZERO `owner` role assignments, so no persona could exercise -- or be refused -- owner authority. The persona is provisioned by scripts/provisionOwnerPersona.js instead of being added here, for a reason that is a property of the data model rather than a preference: `eos_policy.employee_principal_links` admits ONE ACTIVE link per Employee, `synthetic-np-emp-owner-executive` already holds the administrator Principal's link (2026-09-14 ruling, which this manifest still honours), and every entry in `principals` below MUST name an Employee. Adding an Employee purely to satisfy that shape would also have to be carried into sampleCompany.v2.json, whose SUPERSET invariant this manifest is held to. The Owner persona needs no Employee at all: the Administration surfaces it exists to exercise carry no Work Eligibility and no Operational Scope predicate, and `assignRole` requires only an ACTIVE tenant membership. The administrator Principal is NOT reused to populate owner and keeps exactly its own `admin` assignment.",
     "principals": "eos-synthetic-nonprod Principals are non-authenticating fixture Principals. No authentication verifier recognizes this identity provider. They exist only to exercise governed Principal, Employee-link, membership, and Security Role relationships in the synthetic nonprod acceptance world.",
-    "accountability": "GOVERNED/SEED: accountable_employee_id is persisted only from the value the governed establishment + mint produced. This is not live write activation and does not close activation blocker #2."
+    "accountability": "GOVERNED/SEED: accountable_employee_id is persisted only from the value the governed establishment + mint produced. This is not live write activation and does not close activation blocker #2.",
+    "commercialPendingC5": "BLOCKED_PENDING_C5 (Owner ruling 2026-09-23). The eight records `commercial` declares below are eight of the twelve declared-synthetic Commercial rows that were removed from nonprod by the authorized governed cleanup (functions/scripts/commercialSyntheticCleanup.js, commit 106e4292) BECAUSE they blocked Commercial C5: scripts/commercialC5.js refuses every option that would tolerate target rows the snapshot does not hold, so a non-empty target stops the copy outright. This v1 seed wrote them unconditionally and would therefore re-arm exactly the blocker the cleanup cleared. It no longer writes any of them. What is missing is not authority -- eos_commercial, createCommercialRecord, establishCreationAccountablePerson and the mint are all correct and ready -- it is the DATA, which Commercial C5 owns."
   },
   "eligibilityPolicy": {
     "policyId": "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1",
@@ -46,14 +49,30 @@
     { "key": "technician-on-leave", "id": "synthetic-np-emp-technician-on-leave", "fixtureLabel": "Synthetic Technician On Leave", "jobRole": "SERVICE_TECHNICIAN", "employmentStatus": "ON_LEAVE" }
   ],
   "principals": [
-    { "employee": "owner-executive", "existingAdministrator": true, "securityRoles": ["admin"] },
-    { "employee": "general-manager", "externalSubject": "synthetic-np-principal-general-manager", "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)", "securityRoles": ["generalManager"] },
-    { "employee": "dispatcher", "externalSubject": "synthetic-np-principal-dispatcher", "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)", "securityRoles": ["dispatcher"] },
-    { "employee": "retail-sales-a", "externalSubject": "synthetic-np-principal-retail-sales", "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
-    { "employee": "national-accounts-sales", "externalSubject": "synthetic-np-principal-national-accounts-sales", "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"] },
-    { "employee": "service-technician-a", "externalSubject": "synthetic-np-principal-service-technician", "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)", "securityRoles": ["technician"] },
-    { "employee": "parts-manager", "externalSubject": "synthetic-np-principal-parts-manager", "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)", "securityRoles": ["partsManager"] },
-    { "employee": "warehouse-manager", "externalSubject": "synthetic-np-principal-warehouse-manager", "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)", "securityRoles": ["warehouseManager"] }
+    { "employee": "owner-executive", "existingAdministrator": true, "securityRoles": ["admin"],
+      "linkReason": "the one real administrator Principal is the Owner/Executive fixture Employee's person of record; this link is reused, never recreated (Owner ruling 2026-09-14 §3)",
+      "roleReasons": { "admin": "the existing administrator Principal administers this tenant and its Security Role is recorded explicitly rather than inferred from the OWNER_EXECUTIVE Job Role" } },
+    { "employee": "general-manager", "externalSubject": "synthetic-np-principal-general-manager", "displayName": "SYNTHETIC NONPROD General Manager (fixture, cannot sign in)", "securityRoles": ["generalManager"],
+      "linkReason": "the General Manager fixture Employee is given a non-authenticating Principal so the generalManager Role has a holder to resolve through",
+      "roleReasons": { "generalManager": "generalManager is one of the three Roles that may assign Roles, and the acceptance world needs a holder of it that is not the administrator" } },
+    { "employee": "dispatcher", "externalSubject": "synthetic-np-principal-dispatcher", "displayName": "SYNTHETIC NONPROD Dispatcher (fixture, cannot sign in)", "securityRoles": ["dispatcher"],
+      "linkReason": "the Dispatcher fixture Employee is given a non-authenticating Principal so dispatch surfaces have a governed holder in the acceptance world",
+      "roleReasons": { "dispatcher": "dispatcher is the negative case for every Administration surface proof: it holds 29 capabilities and none of them is an Administration read" } },
+    { "employee": "retail-sales-a", "externalSubject": "synthetic-np-principal-retail-sales", "displayName": "SYNTHETIC NONPROD Retail Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"],
+      "linkReason": "Retail Sales A is the Account owner for synthetic-np-acct-retail and needs a Principal for the ownership projection to resolve",
+      "roleReasons": { "salesperson": "Retail Sales is a distinct Job Role from National Accounts Sales and both hold salesperson; the Role is recorded explicitly so the two are never collapsed" } },
+    { "employee": "national-accounts-sales", "externalSubject": "synthetic-np-principal-national-accounts-sales", "displayName": "SYNTHETIC NONPROD National Accounts Sales (fixture, cannot sign in)", "securityRoles": ["salesperson"],
+      "linkReason": "National Accounts Sales is the Account owner for synthetic-np-acct-national and needs a Principal for the ownership projection to resolve",
+      "roleReasons": { "salesperson": "National Accounts Sales holds the same Security Role as Retail Sales and a DIFFERENT Job Role, which is the distinction this fixture exists to keep visible" } },
+    { "employee": "service-technician-a", "externalSubject": "synthetic-np-principal-service-technician", "displayName": "SYNTHETIC NONPROD Service Technician (fixture, cannot sign in)", "securityRoles": ["technician"],
+      "linkReason": "Technician A carries the SERVICE_TECHNICIAN Work Eligibility that the field surfaces are predicated on, so it needs a Principal to be predicated against",
+      "roleReasons": { "technician": "technician is the standing negative eligibility case and must never be given PARTS_OPERATIONS merely to satisfy a test (Owner ruling 2026-09-23)" } },
+    { "employee": "parts-manager", "externalSubject": "synthetic-np-principal-parts-manager", "displayName": "SYNTHETIC NONPROD Parts Manager (fixture, cannot sign in)", "securityRoles": ["partsManager"],
+      "linkReason": "the Parts Manager fixture Employee is a preferred positive persona for Reorder assignment and needs a Principal to be assigned as",
+      "roleReasons": { "partsManager": "partsManager is a preferred POSITIVE persona for Reorder assignment testing (Owner ruling 2026-09-23), so its Role is recorded rather than implied" } },
+    { "employee": "warehouse-manager", "externalSubject": "synthetic-np-principal-warehouse-manager", "displayName": "SYNTHETIC NONPROD Warehouse Manager (fixture, cannot sign in)", "securityRoles": ["warehouseManager"],
+      "linkReason": "the Warehouse Manager fixture Employee carries the WAREHOUSE Operational Scope the cycle-count surfaces are predicated on and needs a Principal",
+      "roleReasons": { "warehouseManager": "warehouseManager holds the cycle-count reconcile half of the segregation-of-duties split and is recorded explicitly so the split stays legible" } }
   ],
   "accounts": [
     { "id": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Customer (fixture)", "status": "ACTIVE", "owner": "retail-sales-a" },
@@ -67,6 +86,13 @@
     { "id": "synthetic-np-loc-retail", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Site (fixture)" },
     { "id": "synthetic-np-loc-national", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Site (fixture)" }
   ],
+  "commercialSeedState": {
+    "status": "BLOCKED",
+    "blockedBy": "COMMERCIAL_RECORDS_PENDING_C5",
+    "$comment": "THE GATE, read before any Commercial write. Same vocabulary and the same blocker code that scripts/fixtures/sampleCompany.v2.json already uses; no second mechanism was invented. The eight records in `commercial` below stay DECLARED and are NOT removed from this manifest: scripts/commercialC5.js reads BOTH manifests to classify a target row as DECLARED_SYNTHETIC rather than UNKNOWN, and sampleCompany.v2.json's SUPERSET proof needs these eight v1 numbers carried forward byte-identically. What changed is that this seed WRITES none of them. Unlike sampleCompany.v2.json, BLOCKED is the ONLY status this v1 manifest may carry: v1 has no unblocked branch at all, so no caller-supplied manifest can reopen the write path.",
+    "unblockedBy": "SAMPLE_COMPANY_V3 -- and never this v1 seed. See `sampleCompanyV3` in scripts/fixtures/sampleCompany.v2.json. Not before Commercial C5 copy + verify has completed for this tenant.",
+    "seededBy": "SAMPLE_COMPANY_V3"
+  },
   "commercial": [
     { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0001", "account": "synthetic-np-acct-retail", "owner": "retail-sales-a", "accountable": "DERIVE_FROM_OWNER" },
     { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0002", "account": "synthetic-np-acct-retail", "owner": "retail-sales-b", "accountable": "general-manager" },

@@ -39,6 +39,9 @@
 // docs/handoff/w1-c7-registrations.md rather than closed by guessing which of the two the ledger
 // actually wants. This module moves CUSTODY and nothing else.
 import type { Pool, PoolClient } from "pg";
+// THE CATALOG ANSWERS WHAT A PART IS. Composed as a repository in this same Render runtime and run on
+// this command's own client, so the Part facts belong to the same transaction as the install.
+import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
 import {
   type OperatingCompanyKey,
   type OpsCustodyLocationType,
@@ -152,7 +155,11 @@ export type EquipmentCustodyFailureCode =
   | "OPERATING_COMPANY_MISMATCH"
   | "EQUIPMENT_ALREADY_HAS_UNIT"
   | "EQUIPMENT_EXISTS"
-  | "MODEL_NOT_FOUND";
+  | "MODEL_NOT_FOUND"
+  // The Part is not in this tenant's governed PostgreSQL catalog at all.
+  | "PART_NOT_FOUND"
+  // It exists, and it is not a whole unit -- a service component does not become customer Equipment.
+  | "PART_NOT_WHOLE_UNIT";
 
 export class EquipmentCustodyError extends Error {
   constructor(readonly code: EquipmentCustodyFailureCode, message: string) {
@@ -354,6 +361,34 @@ export async function installSerializedUnitAsEquipment(
       throw new EquipmentCustodyError(
         "OPERATING_COMPANY_MISMATCH",
         `unit is held by operating company ${String(held.operating_company_key)}, not ${companyKey}`,
+      );
+    }
+
+    // ════════ WHOLE-UNIT IS A CATALOG FACT, NOT A CLAIM ════════
+    //
+    // WHY IT IS ASKED AT ALL. A serialized custody row proves a unit of this Part is held here. It says
+    // nothing about whether this Part is the kind of thing that becomes customer Equipment: a serialized
+    // service component -- a tracked compressor motor, say -- has custody rows exactly like a whole unit's,
+    // and installing one as Equipment would mint a customer asset for a part inside a machine.
+    //
+    // WHY IT IS NOT AN INPUT. `wholeUnit` is deliberately absent from InstallRequest and must stay absent.
+    // A caller that states it can state it wrongly, and this is precisely the field that decides whether a
+    // customer ends up with an Equipment record that should never have existed.
+    //
+    // WHY HERE AND NOT EARLIER. After the custody refusals, so UNIT_NOT_FOUND / ALREADY_INSTALLED /
+    // STATUS_NOT_INSTALLABLE keep the precedence they have today, and before the first write, so no
+    // Equipment row is ever created for a Part that fails this test.
+    const [partPolicy] = await createPostgresPartPolicyAuthority().readPartPolicies(client, tenantId, [partId]);
+    if (!partPolicy.found) {
+      throw new EquipmentCustodyError(
+        "PART_NOT_FOUND",
+        `part ${partId} is not a Part of this tenant's catalog; an install cannot resolve what it is installing`,
+      );
+    }
+    if (partPolicy.wholeUnit !== true) {
+      throw new EquipmentCustodyError(
+        "PART_NOT_WHOLE_UNIT",
+        `part ${partId} is not a whole unit (control type ${String(partPolicy.controlType)}); only a whole unit becomes customer Equipment`,
       );
     }
 

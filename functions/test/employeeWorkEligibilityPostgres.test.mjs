@@ -88,11 +88,16 @@ test("Employee Work Eligibility authority: closed platform vocabulary, no access
       WHERE employee_id = $1 AND effective_to IS NULL ORDER BY qualification_code`, [employeeId],
   )).rows.map((r) => r.qualification_code);
 
-  await t.test("the platform vocabulary is closed: the two ruled codes are accepted", async () => {
-    assert.deepEqual([...vocab.WORK_ELIGIBILITY_CODES], ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
+  await t.test("the platform vocabulary is closed: the ruled codes are accepted", async () => {
+    // TWO -> THREE (migration 1761696000000, Owner ruling): the legacy operationalRoleActive gate on
+    // technician's Reorder and Purchase Order grants is BUSINESS WORK ELIGIBILITY and needed a code.
+    // It is PARTS_OPERATIONS, NOT the legacy label -- the very next test proves PARTS_ASSOCIATE is
+    // still refused by the database, which is exactly why the code had to take this format.
+    assert.deepEqual([...vocab.WORK_ELIGIBILITY_CODES],
+      ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"]);
     for (const code of vocab.WORK_ELIGIBILITY_CODES) await grant("e-1", code);
     // An Employee may hold MULTIPLE different qualifications simultaneously (Owner ruling).
-    assert.deepEqual(await current("e-1"), ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
+    assert.deepEqual(await current("e-1"), ["PARTS_OPERATIONS", "SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
   });
 
   await t.test("the eight LEGACY operationalRole values are refused by the database, not merely unused", async () => {
@@ -136,9 +141,10 @@ test("Employee Work Eligibility authority: closed platform vocabulary, no access
     await q(`UPDATE eos_workforce.employee_work_eligibility SET effective_to = $1, ended_by = 'prn_fixture', ended_at = $1
               WHERE employee_id = 'e-1' AND qualification_code = 'SERVICE_TECHNICIAN' AND effective_to IS NULL`,
       ["2026-09-18T00:00:00Z"]);
-    assert.deepEqual(await current("e-1"), ["WAREHOUSE_OPERATIONS"]);
+    // PARTS_OPERATIONS is also current on e-1, granted by the vocabulary test above.
+    assert.deepEqual(await current("e-1"), ["PARTS_OPERATIONS", "WAREHOUSE_OPERATIONS"]);
     await grant("e-1", "SERVICE_TECHNICIAN", "t1", "2026-09-19T00:00:00Z");
-    assert.deepEqual(await current("e-1"), ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
+    assert.deepEqual(await current("e-1"), ["PARTS_OPERATIONS", "SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
     const rows = (await q(`SELECT count(*)::int n FROM eos_workforce.employee_work_eligibility WHERE employee_id = 'e-1' AND qualification_code = 'SERVICE_TECHNICIAN'`)).rows[0].n;
     assert.equal(rows, 2, "the ended row is kept: qualification history is append-only");
   });

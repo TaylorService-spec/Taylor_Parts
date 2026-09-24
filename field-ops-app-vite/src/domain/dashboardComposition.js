@@ -21,6 +21,34 @@
 // resolver can only ever remove a module a viewer could not use -- it can never add reach.
 //
 // PURE. No fetch, no clock, no React.
+//
+// ════════════════ WAVE 9 / LANE AL -- WHERE THE GOVERNED FACTS COME FROM ════════════════
+//
+// Every predicate below used to read one of three Firebase-era inputs: `users/{uid}.role`
+// (admin|dispatcher|technician), `employees/{id}.operationalRoles`, or the `resolveEffectiveAccess`
+// capability feed. The first two are business-role METADATA -- the exact authority the EOS cutover
+// exists to retire -- and the file's own opening claim ("nothing here reads a persona name") was
+// true of the module table and false of the predicates underneath it: `role === "admin"` IS a
+// persona name.
+//
+// So there are now TWO sources, and exactly one of them answers at a time:
+//
+//   EOS PRESENT   `ctx.eosNavigationAuthority` is a real navigation authority (access/
+//                 experienceContext.js). It is then the WHOLE answer -- effective capabilities
+//                 (projected as granted SURFACES), the linked Employee, Work Eligibility and
+//                 Operational Scope. `role`, `operationalRoles`, `technicianId`, `warehouseIds` and
+//                 `hasCapability` are NOT consulted, at all, by any predicate. No fallback: if the
+//                 EOS read failed, `grants()` returns false for everything and the dashboard is
+//                 empty rather than quietly legacy-composed. Failure has to be visible.
+//
+//   EOS ABSENT    byte-for-byte the legacy predicates, unchanged. EOS_NAVIGATION_AUTHORITY_READY is
+//                 false in every environment, so this is what actually runs today.
+//
+// WHAT THE CLIENT IS GIVEN, AND WHAT IT IS NOT. `resolveExperienceContext` returns SURFACES, not
+// capabilities. A capability with no surface of its own cannot be projected here at all, and the
+// honest answer is an absent module with a NAMED reason -- never a new permission invented to
+// reproduce the old visibility. Those are declared in EOS_DASHBOARD_PROJECTION_GAPS below.
+import { isNavigationAuthority } from "../access/experienceContext.js";
 
 export const SECTION = Object.freeze({
   CURRENT_WORK: "CURRENT_WORK",
@@ -83,8 +111,106 @@ export const MODULE_STATE = Object.freeze({
 const has = (ctx, capability) =>
   typeof ctx?.hasCapability === "function" && ctx.hasCapability(capability) === true;
 
+// ════════════════════════════ THE EOS SOURCE, WHEN IT IS THE SOURCE ════════════════════════════
+
+/** The authority, or null. Junk, a plain object and a half-built value all yield null -- fail closed. */
+const eosAuthorityOf = (ctx) => {
+  const authority = ctx?.eosNavigationAuthority;
+  return isNavigationAuthority(authority) ? authority : null;
+};
+
+const grantsAny = (authority, surfaceKeys) => surfaceKeys.some((key) => authority.grants(key) === true);
+
+/**
+ * The surface that means "this person directs OTHER PEOPLE'S work".
+ *
+ * This is the EOS replacement for `role === "admin" || role === "dispatcher"`, and choosing it took
+ * measuring, because the obvious candidate is wrong:
+ *
+ *   `service.workOrders` IS NOT IT. The catalog earns it from workOrder.create OR
+ *   workOrder.transition, and `partsAssociate` holds BOTH (functions/src/access/
+ *   governedBusinessRoles.ts:871-872) -- as do officeManager, shopAssociate and fieldManager.
+ *   Gating "Service attention", "Work orders by status", "By technician" and "Technician
+ *   availability" on it would put a team-wide view of everyone's work in front of a parts associate,
+ *   who has never had it. Being able to raise or advance a work order is not authority over a team's.
+ *
+ *   `service.dispatch` IS. It is earned by workOrder.lifecycle.dispatch alone -- "Transition a Work
+ *   Order to DISPATCHED" (migration 1761350400000:135), the capability
+ *   eosOps/workOrderAssignmentAuthority.ts checks to decide who may put work on someone else.
+ *
+ * MEASURED CONSEQUENCE, STATED RATHER THAN PAPERED OVER: `workOrder.lifecycle.dispatch` is granted
+ * to NO role today. It is absent from every role in functions/src/access/ and migration
+ * 1761609600000:43 says so in as many words -- "workOrder.lifecycle.dispatch / .cancel / .complete
+ * and every workflowDefinition.* stay at ZERO". So under the EOS source these four modules currently
+ * reach nobody, including the dispatcher.
+ *
+ * That is a GRANT decision for whoever owns Service authority -- either dispatch is granted to the
+ * roles that direct work, or a read capability meaning "may see the team's work orders" is defined.
+ * It is deliberately NOT fixed here by widening onto `service.workOrders`, which would hand the
+ * team view to personas who never had it in order to make a dashboard look populated.
+ */
+const OPERATIONS_SURFACES = Object.freeze(["service.dispatch"]);
+
+/**
+ * The surfaces that mean "this person submits work from a handheld".
+ *
+ * The EOS replacement for the four `operationalRoles` literals on `unverifiedSubmissions`. The tile
+ * is about a DEVICE-LOCAL queue, so the question is whether this principal does scanned/handheld
+ * work at all -- which is exactly what these three surfaces are earned by (inventory.placement.record
+ * / inventory.stock.relocate under a WAREHOUSE scope, inventory.stock.receive, and
+ * inventory.cycleCount.create under WAREHOUSE_OPERATIONS + WAREHOUSE scope).
+ */
+const HANDHELD_SUBMIT_SURFACES = Object.freeze([
+  "warehouse.picking",
+  "receiving.checkIn",
+  "inventory.cycleCount.count",
+]);
+
+/** The technician's own field work, gated in the EOS catalog on WORK_ELIGIBILITY(SERVICE_TECHNICIAN). */
+const FIELD_WORK_SURFACE = "field.myWorkOrders";
+
+/**
+ * Capability -> the ONE surface whose ONLY grant path is that capability.
+ *
+ * STRICTLY 1:1, AND THAT IS THE WHOLE SAFETY ARGUMENT. Each surface here is declared in
+ * functions/src/eosOps/experienceAuthority.ts with a single grant path, carrying this capability and
+ * no predicates -- so "was granted this surface" and "holds this capability" are the same statement,
+ * and the projection cannot widen. A capability with no such surface is deliberately ABSENT from this
+ * map: it resolves false under EOS and its modules are listed in EOS_DASHBOARD_PROJECTION_GAPS.
+ * Pointing one at a surface earned by some OTHER capability would be the widening this map exists to
+ * prevent (the same rule EXPERIENCE_SURFACE_GAPS states for navigation).
+ */
+export const EOS_CAPABILITY_SURFACE = Object.freeze({
+  "customer.record.read": "crm.accounts",
+  "opportunity.read": "commercial.opportunities",
+  "salesOrder.read": "commercial.salesOrders",
+  "fulfillment.coordinatedVisit.read": "service.coordinatedVisits",
+  "inventory.stock.receive": "receiving.checkIn",
+});
+
+/**
+ * Does this principal reach what `capability` governs?
+ *
+ * Under EOS: only through the 1:1 surface above. An unmapped capability is FALSE -- never a fall
+ * through to `hasCapability`, which is the Firebase-era `resolveEffectiveAccess` feed. Mixing the
+ * two sources is precisely the silent-fallback defect: a principal whose EOS read failed would keep
+ * composing tiles from the legacy feed and nobody would ever learn the governed path was broken.
+ */
+const reaches = (ctx, capability) => {
+  const eos = eosAuthorityOf(ctx);
+  if (eos) {
+    const surfaceKey = EOS_CAPABILITY_SURFACE[capability];
+    return typeof surfaceKey === "string" && eos.grants(surfaceKey) === true;
+  }
+  return has(ctx, capability);
+};
+
 /** The legacy admin/dispatcher surface several Work Order reads are still governed by in Rules. */
-const isOperationsViewer = (ctx) => ctx?.role === "admin" || ctx?.role === "dispatcher";
+const isOperationsViewer = (ctx) => {
+  const eos = eosAuthorityOf(ctx);
+  if (eos) return grantsAny(eos, OPERATIONS_SURFACES);
+  return ctx?.role === "admin" || ctx?.role === "dispatcher";
+};
 
 /**
  * FIN-004: MONEY NEEDS BOTH HALVES OF ITS AUTHORITY.
@@ -104,17 +230,171 @@ const FINANCE_REACH_SCOPES = Object.freeze([
   "finance.visibility.company",
   "finance.visibility.consolidated",
 ]);
-const hasFinancialReach = (ctx) =>
-  has(ctx, "finance.read") && FINANCE_REACH_SCOPES.some((id) => has(ctx, id));
+/**
+ * ...and under EOS, NEITHER HALF IS PROJECTABLE. `finance.read` and every `finance.visibility.*`
+ * scope earn no surface: `financials.invoices` and `financials.payments` are earned by
+ * finance.invoice.read and finance.payment.read, which are different capabilities governing
+ * different reads. Mapping financial reach onto an Invoices grant would hand the firm's Billed and
+ * Collected figures to anyone who may open an invoice -- the exact widening EOS_CAPABILITY_SURFACE
+ * refuses. So this is false under EOS and the three money modules are absent, declared below.
+ */
+const hasFinancialReach = (ctx) => {
+  if (eosAuthorityOf(ctx)) return false;
+  return has(ctx, "finance.read") && FINANCE_REACH_SCOPES.some((id) => has(ctx, id));
+};
 
-const hasTechnicianBinding = (ctx) => typeof ctx?.technicianId === "string" && ctx.technicianId.length > 0;
+/**
+ * Does this viewer's own field work belong on the dashboard being composed?
+ *
+ * Under EOS the fact is the granted `field.myWorkOrders` surface -- which the catalog earns from
+ * workOrder.transition NARROWED BY WORK_ELIGIBILITY("SERVICE_TECHNICIAN"), so the qualification is
+ * carried, not assumed from a role name.
+ *
+ * `fieldWorkRenderedElsewhere` is a NARROWING-ONLY caller flag and can never widen: it may remove
+ * these modules, never add them. MyDashboard sets it for the reason it always passed
+ * `technicianId: null` -- the technician surface owns that read and this one must not duplicate it.
+ */
+const hasTechnicianBinding = (ctx) => {
+  if (ctx?.fieldWorkRenderedElsewhere === true) return false;
+  const eos = eosAuthorityOf(ctx);
+  if (eos) return eos.grants(FIELD_WORK_SURFACE) === true;
+  return typeof ctx?.technicianId === "string" && ctx.technicianId.length > 0;
+};
 
-const hasLocationScope = (ctx) => Array.isArray(ctx?.warehouseIds) && ctx.warehouseIds.length > 0;
+/**
+ * The locations this viewer holds authority at.
+ *
+ * Under EOS these are the governed WAREHOUSE Operational Scopes from
+ * `eos_workforce.employee_operational_scopes` -- the same authority the surface catalog's
+ * OPERATIONAL_SCOPE("WAREHOUSE") predicate evaluates. The legacy list came from
+ * `fetchReorderWarehouseOptions`, a Firebase-transported governed callable, and is not consulted
+ * under EOS.
+ */
+const locationScopeIds = (ctx) => {
+  const eos = eosAuthorityOf(ctx);
+  // PRESENCE OF THE AUTHORITY DECIDES THE SOURCE, not presence of its context. `context` is null in
+  // LOADING, REFUSED and UNAVAILABLE, and branching on IT would mean a failed EOS read silently
+  // resumed reading the legacy warehouse list -- the exact fallback this lane exists to remove.
+  if (eos) {
+    const eosContext = eos.context;
+    if (!eosContext) return [];
+    return eosContext.operationalScopes
+      .filter((scope) => scope.scopeType === "WAREHOUSE")
+      .map((scope) => scope.scopeId);
+  }
+  return Array.isArray(ctx?.warehouseIds) ? ctx.warehouseIds : [];
+};
+
+const hasLocationScope = (ctx) => locationScopeIds(ctx).length > 0;
+
+/** The governed Employee this principal is linked to. Under EOS, from the experience context itself. */
+const employeeIdOf = (ctx) => {
+  const eos = eosAuthorityOf(ctx);
+  // Same rule as locationScopeIds: the AUTHORITY decides the source. A failed EOS read yields no
+  // employee identity rather than the Firestore one -- fail closed, out loud.
+  const id = eos ? eos.context?.employeeId : ctx?.employeeId;
+  return typeof id === "string" && id.length > 0 ? id : null;
+};
 
 const hasOperationalRole = (ctx, ...roles) => {
   const held = Array.isArray(ctx?.operationalRoles) ? ctx.operationalRoles : [];
   return roles.some((r) => held.includes(r));
 };
+
+/**
+ * Does this principal reach the reorder queue?
+ *
+ * The legacy disjunct (`hasLocationScope || isOperationsViewer`) was a PROXY: neither fact is the
+ * reorder authority, they were just the two things the client happened to know. EOS has the real
+ * one -- `inventory.reorderQueue`, earned by reorder.request.read.queue outright, or by
+ * reorder.request.read with the governed REORDER_QUEUE Operational Scope (migration 1761696000000
+ * ruling 2). Using it is a translation onto the RIGHT authority, not a widening: it is narrower than
+ * the proxy for a warehouse-scoped principal who holds no reorder read at all.
+ */
+const reachesReorderQueue = (ctx) => {
+  const eos = eosAuthorityOf(ctx);
+  if (eos) return eos.grants("inventory.reorderQueue") === true;
+  return hasLocationScope(ctx) || isOperationsViewer(ctx);
+};
+
+/** Does this principal submit work from a handheld? See HANDHELD_SUBMIT_SURFACES for the translation. */
+const submitsFromHandheld = (ctx) => {
+  const eos = eosAuthorityOf(ctx);
+  if (eos) return grantsAny(eos, HANDHELD_SUBMIT_SURFACES);
+  return hasOperationalRole(ctx, "PARTS_ASSOCIATE", "WAREHOUSE_ASSOCIATE", "PARTS_MANAGER", "WAREHOUSE_MANAGER");
+};
+
+/**
+ * WHICH DASHBOARD SURFACE A PRINCIPAL IS OFFERED -- the decision App.jsx's DashboardIndex makes.
+ *
+ * It lives here, not in App.jsx, so the one rule that chooses between the two existing dashboards is
+ * stated beside the composition it pairs with, and so it is testable without React.
+ *
+ * Under EOS the rule is the sentence this file has always opened with: "a person with a technician
+ * binding AND NO MANAGEMENT SCOPE". `field.myWorkOrders` carries the binding (via
+ * WORK_ELIGIBILITY(SERVICE_TECHNICIAN)); an operations surface is the management scope. Holding both
+ * composes, because the technician surface deliberately shows only one person's own work and would
+ * hide the team's. NEITHER surface decides what anyone may see -- both compose from governed context.
+ */
+export const DASHBOARD_SURFACE = Object.freeze({
+  /** TechnicianDashboard: one person's own field work, against their own technician identity. */
+  FIELD_WORK: "FIELD_WORK",
+  /** MyDashboard: composeDashboard() over whatever this principal actually holds. */
+  COMPOSED: "COMPOSED",
+});
+
+export function dashboardSurfaceFor({ role = null, operationalContext = null } = {}) {
+  const eos = eosAuthorityOf({ eosNavigationAuthority: operationalContext?.eosNavigationAuthority });
+  if (eos) {
+    const fieldWork = eos.grants(FIELD_WORK_SURFACE) === true;
+    return fieldWork && !grantsAny(eos, OPERATIONS_SURFACES)
+      ? DASHBOARD_SURFACE.FIELD_WORK
+      : DASHBOARD_SURFACE.COMPOSED;
+  }
+  // The legacy branch, byte-for-byte: App.jsx's `role === "technician"`.
+  return role === "technician" ? DASHBOARD_SURFACE.FIELD_WORK : DASHBOARD_SURFACE.COMPOSED;
+}
+
+/**
+ * WHAT THE EOS PROJECTION CANNOT EXPRESS -- declared, never silently dropped.
+ *
+ * Each entry is a module whose legacy visibility has NO governed equivalent, with the exact reason.
+ * A module listed here is ABSENT for every principal under the EOS source. That is the honest
+ * answer and it is also the blocker list for the cutover: closing one means a capability or surface
+ * being defined by whoever owns that domain, NOT this file pointing a tile at a near-enough grant.
+ *
+ * Mirrors functions/src/eosOps/experienceAuthority.ts EXPERIENCE_SURFACE_GAPS, which already names
+ * `dashboards.salesperson` as composed client-side "from role literals and hasCapability". This is
+ * the same finding, itemised.
+ */
+export const EOS_DASHBOARD_PROJECTION_GAPS = Object.freeze([
+  Object.freeze({
+    key: "adminDecisions",
+    reason:
+      "Deciding a role request is governed by admin.roleAssignment.write, a WRITE that earns no surface -- and the experience context discloses surfaces, not capabilities. administration.users is not the equivalent: it is also earned by employee.record.read, so projecting onto it would put the decision queue in front of anyone who may read an employee record.",
+  }),
+  Object.freeze({
+    key: "governedStockPosition",
+    reason:
+      "inventory.balance.read earns no surface. inventory.balances is earned by inventory.transaction.read / inventory.action.read, which govern a different read. The module is GATED for its own reasons regardless, so nothing readable is being withheld.",
+  }),
+  Object.freeze({
+    key: "firmBilled",
+    reason:
+      "No finance.visibility.* scope earns a surface, and financials.invoices is earned by finance.invoice.read -- permission to open an invoice, not firm-level financial reach.",
+  }),
+  Object.freeze({
+    key: "firmCollected",
+    reason: "Same as firmBilled: financial reach has no governed surface projection.",
+  }),
+  Object.freeze({
+    key: "firmBooked",
+    reason:
+      "Same as firmBilled, and independently UNAVAILABLE: booked has no governed read at all, at any period.",
+  }),
+]);
+
+const EOS_UNPROJECTABLE = new Set(EOS_DASHBOARD_PROJECTION_GAPS.map((gap) => gap.key));
 
 /**
  * THE MODULE TABLE.
@@ -151,7 +431,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     census: "T-9",
     // Every persona that submits from a handheld, not only technicians. UNVERIFIED is a first-class
     // state and never a spinner, so it belongs where a person will act on it.
-    needs: (ctx) => hasTechnicianBinding(ctx) || hasOperationalRole(ctx, "PARTS_ASSOCIATE", "WAREHOUSE_ASSOCIATE", "PARTS_MANAGER", "WAREHOUSE_MANAGER"),
+    needs: (ctx) => hasTechnicianBinding(ctx) || submitsFromHandheld(ctx),
     // DEVICE-LOCAL, and therefore genuinely COMPLETE (#172 s9): the whole truth about this queue
     // lives on this device, so no server count is needed and none is invented for it.
     state: () => MODULE_STATE.READY,
@@ -172,7 +452,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.CURRENT_WORK,
     label: "Reorder requests",
     census: "W-6 / P-5",
-    needs: (ctx) => hasLocationScope(ctx) || isOperationsViewer(ctx),
+    needs: reachesReorderQueue,
     // BOUNDED ACTIONABLE PREVIEW (#172). Rows of pending-review requests in the domain's own
     // order, with no count -- the tile shows work, and "View all" leads to the Parts workspace.
     state: () => MODULE_STATE.READY,
@@ -187,7 +467,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     // dispatcher composed the tile, the callable refused them, and the tile said the queue could
     // not be read -- on every load, forever. The legacy disjunct is right for the Work Order reads
     // Rules still govern by role; it is wrong for a capability-governed callable.
-    needs: (ctx) => has(ctx, "inventory.stock.receive"),
+    needs: (ctx) => reaches(ctx, "inventory.stock.receive"),
     // BOUNDED ACTIONABLE PREVIEW (#172) over the EXISTING governed callable seam
     // (fetchReceivablePurchaseOrders). No new receiving authority, no client-direct collection read.
     state: () => MODULE_STATE.READY,
@@ -208,7 +488,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.CURRENT_WORK,
     label: "My opportunities",
     census: "S-1 / S-2 / S-3",
-    needs: (ctx) => has(ctx, "opportunity.read"),
+    needs: (ctx) => reaches(ctx, "opportunity.read"),
     // BOUNDED ACTIONABLE PREVIEW (#172), read through the GOVERNED source -- never the synthetic
     // fixture source, which is what an unqualified useOpportunities() would have supplied.
     state: () => MODULE_STATE.READY,
@@ -220,7 +500,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     census: "S-18 / SV-15",
     // Composed only where the capability actually resolved. Not listed as GATED for everyone else:
     // a person with no sales or fulfillment function should not be told a sales surface is locked.
-    needs: (ctx) => has(ctx, "fulfillment.coordinatedVisit.read"),
+    needs: (ctx) => reaches(ctx, "fulfillment.coordinatedVisit.read"),
     // BOUNDED ACTIONABLE PREVIEW (#172): coordinated visits whose readiness is ATTENTION, in the
     // attention-first order the domain already sorts them into.
     state: () => MODULE_STATE.READY,
@@ -235,7 +515,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     // Everyone with an employee identity has a place for a target, whether or not one is set. The
     // module's own NO_GOAL state is what says "nobody has set one" -- and that absence is worth
     // showing, because it is a management gap rather than a system limitation.
-    needs: (ctx) => typeof ctx?.employeeId === "string" && ctx.employeeId.length > 0,
+    needs: (ctx) => employeeIdOf(ctx) !== null,
     state: () => MODULE_STATE.READY,
   },
   {
@@ -268,7 +548,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.PERFORMANCE,
     label: "My booked",
     census: "S-9",
-    needs: (ctx) => has(ctx, "opportunity.read") || has(ctx, "salesOrder.read"),
+    needs: (ctx) => reaches(ctx, "opportunity.read") || reaches(ctx, "salesOrder.read"),
     // UNAVAILABLE, not GATED. Nobody can activate their way to this: there is no read to switch on.
     state: () => MODULE_STATE.UNAVAILABLE,
     // CORRECTED. This said "no reporting period to total them over", which stopped being true when
@@ -346,7 +626,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     section: SECTION.DRIVERS,
     label: "On hand, reserved and available",
     census: "I-1 / I-2 / I-3 / I-4",
-    needs: (ctx) => has(ctx, "inventory.balance.read"),
+    needs: (ctx) => reaches(ctx, "inventory.balance.read"),
     state: () => MODULE_STATE.GATED,
     // CORRECTED, AND STILL BLOCKED -- for two reasons, neither of which is the one this used to give.
     //
@@ -387,7 +667,7 @@ export const DASHBOARD_MODULES = Object.freeze([
     // nothing else. See the receiving module above: the same client-only widening, the same
     // permanent denial. Admin and dispatcher keep this module wherever they genuinely hold the
     // capability, which is where the server was going to answer them anyway.
-    needs: (ctx) => has(ctx, "customer.record.read"),
+    needs: (ctx) => reaches(ctx, "customer.record.read"),
     state: () => MODULE_STATE.READY,
   },
   // THREE FACTS, THREE MODULES -- split from one "Booked, billed and collected" tile.
@@ -459,15 +739,23 @@ export const DASHBOARD_MODULES = Object.freeze([
  * Resolve one principal's dashboard.
  *
  * @param ctx {
- *   role, employeeId, technicianId, operationalRoles, warehouseIds, hasCapability
+ *   eosNavigationAuthority,                                           <- the EOS source, when present
+ *   role, employeeId, technicianId, operationalRoles, warehouseIds, hasCapability,   <- legacy source
+ *   fieldWorkRenderedElsewhere                                        <- narrowing-only caller flag
  * } -- every field a governed fact the client already holds. There is no persona input and there
- *   must never be one.
+ *   must never be one. When `eosNavigationAuthority` is a real authority it is the WHOLE source and
+ *   the legacy fields on the second line are not read by any predicate.
  *
  * @returns ordered sections, each with its resolved modules. A section with no modules is OMITTED:
  *   an empty "Team performance" heading on a technician's screen would imply a team they do not have.
  */
 export function composeDashboard(ctx) {
+  const underEos = eosAuthorityOf(ctx) !== null;
   const resolved = DASHBOARD_MODULES.filter((m) => {
+    // ENFORCED IN ONE PLACE, so a future `needs` predicate cannot reopen a declared gap by accident.
+    // A module whose legacy visibility has no governed equivalent is ABSENT under the EOS source --
+    // never approximated onto a near-enough grant. EOS_DASHBOARD_PROJECTION_GAPS says why, per module.
+    if (underEos && EOS_UNPROJECTABLE.has(m.key)) return false;
     try {
       return m.needs(ctx) === true;
     } catch {
@@ -512,7 +800,12 @@ export function resolvedModuleKeys(ctx) {
  */
 export function goalTargetsFor(ctx) {
   const targets = [];
-  const employeeId = typeof ctx?.employeeId === "string" && ctx.employeeId.length > 0 ? ctx.employeeId : null;
+  // Under EOS this is the LINKED EMPLOYEE from the experience context, and the location ids below are
+  // the governed WAREHOUSE Operational Scopes. Those scope ids come from eos_workforce, so they may
+  // not be the same identifiers the Firestore-era goal read knows -- which costs nothing and hides
+  // nothing, because every target is authorized (and resolved) SERVER-SIDE per target: an id the goal
+  // authority does not recognise comes back as a denial, never as a wrong number.
+  const employeeId = employeeIdOf(ctx);
 
   if (employeeId && hasTechnicianBinding(ctx)) {
     targets.push({ metricId: "technician.workOrder.completed.cumulative.count", targetScopeType: "EMPLOYEE", targetScopeId: employeeId });
@@ -532,7 +825,7 @@ export function goalTargetsFor(ctx) {
     }
   }
 
-  for (const warehouseId of Array.isArray(ctx?.warehouseIds) ? ctx.warehouseIds : []) {
+  for (const warehouseId of locationScopeIds(ctx)) {
     targets.push({ metricId: "parts.reorderRequest.open.count", targetScopeType: "LOCATION", targetScopeId: warehouseId });
     targets.push({ metricId: "receiving.purchaseOrder.receivable.count", targetScopeType: "LOCATION", targetScopeId: warehouseId });
   }

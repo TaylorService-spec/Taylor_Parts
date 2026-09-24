@@ -18,7 +18,7 @@
 //                            manifest entry; never inferred from the Job Role.
 //   Employee <-> Principal   establishLink, OPERATOR_ASSERTED, with author and reason.
 //   Account/Contact/Location customerRepository create* (governed CRM writers; Contact/Location inherit owner).
-//   Commercial record        createCommercialRecord (governed commercial writer).
+//   Commercial record        BLOCKED_PENDING_C5. Owner ruling 2026-09-23: this seed WRITES NONE. See below.
 //   Accountable Person       GOVERNED/SEED: establishCreationAccountablePerson against the PostgreSQL Employee
 //                            authority under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1, then the mint, then
 //                            accountablePersonFields. accountable_employee_id is written ONLY from that value,
@@ -30,6 +30,40 @@
 //                            overwrite a row that differs, and never updates one.
 //
 // Job Role is manifest metadata ONLY: "Job Role authority is NOT YET IMPLEMENTED in PostgreSQL."
+//
+// ============================ BLOCKED_PENDING_C5 -- THE COMMERCIAL HALF ============================
+//
+// Owner ruling 2026-09-23: "The current v1 seeder MUST NOT recreate the twelve intentionally removed Commercial
+// C5 blockers. Current Commercial acceptance state: BLOCKED_PENDING_C5. Commercial acceptance data must be
+// rebuilt only after the canonical Commercial migration/authority exists."
+//
+// The eight records this manifest declares -- SYN-NP-OPP-0001..0004, SYN-NP-SA-0001/0002, SYN-NP-SO-0001/0002 --
+// are eight of the twelve rows the authorized governed cleanup removed from nonprod (commit 106e4292) BECAUSE
+// they blocked Commercial C5. This seeder used to iterate `manifest.commercial` and write every one of them
+// unconditionally, so a single re-run would have re-armed the blocker the cleanup cleared.
+//
+// THREE RINGS, all fail-closed, gating the WRITE and never the DECLARATION:
+//
+//   1. MANIFEST.  `commercialSeedState.status` must be exactly BLOCKED and `blockedBy` exactly
+//      COMMERCIAL_RECORDS_PENDING_C5 -- the same gate shape and the same blocker code that
+//      scripts/fixtures/sampleCompany.v2.json + scripts/seedSampleCompany.js already use. Unlike v2, BLOCKED is
+//      the ONLY status v1 admits: there is no SEEDED branch, so a caller-supplied manifest cannot reopen the
+//      write path. Anything else is MANIFEST_INVALID, before any connection exists.
+//   2. LOOP.      Each declared record is accounted BLOCKED with its governed reason and the loop continues.
+//      No client is opened, no accountable person is established, nothing is written, and the run still
+//      completes so that every NON-Commercial fixture seeds exactly as before.
+//   3. WRITER.    assertCommercialWriteAllowed() sits immediately above the governed writer and refuses
+//      COMMERCIAL_SEED_BLOCKED_PENDING_C5 unconditionally. If ring 1 or 2 is ever edited away, the write itself
+//      still refuses, inside the record's own transaction, so nothing commits.
+//
+// The declarations stay and stay fully validated: scripts/commercialC5.js reads `manifest.commercial` from BOTH
+// manifests to classify a target row DECLARED_SYNTHETIC rather than UNKNOWN, and sampleCompany.v2.json's SUPERSET
+// proof needs these eight numbers carried forward byte-identically. Blocked is not removed.
+//
+// ACTIVATION DEPENDENCY (not implemented here, and never by v1): Commercial C5 copy AND verify must complete for
+// this tenant first. Post-C5 Commercial fixtures are then designed and sealed as SAMPLE COMPANY V3
+// (`sampleCompanyV3` in scripts/fixtures/sampleCompany.v2.json), which supersedes this v1 manifest. This v1
+// seeder gets no unblocked branch at any point.
 //
 // ============================ THE FENCE ============================
 //
@@ -54,8 +88,47 @@ const MANIFEST = require("./fixtures/syntheticNonprodWorkforceSeed.v1.json");
 const EMPLOYMENT_STATUS_VALUES = Object.freeze(["ACTIVE", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]);
 const SYNTHETIC_IDENTITY_PROVIDER = "eos-synthetic-nonprod";
 const DERIVE_FROM_OWNER = "DERIVE_FROM_OWNER";
-const LINK_REASON = "SYNTHETIC NONPROD SEED v1: fixture link between a fixture Employee and a Principal; not a real person";
-const ROLE_REASON = "SYNTHETIC NONPROD SEED v1: explicit fixture Security Role assignment; not inferred from Job Role";
+
+// ============================ PER-STEP AUDIT REASONS ============================
+//
+// Owner ruling: "Every governed persona provisioning mutation must carry a specific per-step reason.
+// Do not use one broad reason for the entire provisioning run."
+//
+// This file used to hold exactly what that forbids -- two module constants, LINK_REASON and
+// ROLE_REASON, reused verbatim for every persona. The audit trail that came out of it said the same
+// sentence nine times and therefore said nothing: it recorded THAT a link was asserted, never WHY
+// this Employee was bound to this Principal.
+//
+// They are gone, and there is nowhere left to put a broad reason: the reason is read per manifest
+// entry, composed per step with the persona and target it belongs to, and `assertPerStepReasons`
+// refuses the three ways a run-level reason could come back --
+//
+//   REASON_MISSING          an entry with no reason, or one shorter than the minimum
+//   RUN_LEVEL_REASON_REFUSED  two steps sharing one rationale, which is a run-level reason wearing
+//                             a per-step shape
+//   REASON_TOO_LONG         over the 500 characters the audit column and optionalReason() admit
+//
+// The shape mirrors sampleCompany/personaAuthorityDimensions.js, which the same ruling produced for
+// the Work Eligibility and Operational Scope half. One vocabulary for one ruling.
+const REASON_PREFIX = "SYNTHETIC NONPROD SEED v1";
+const RATIONALE_MIN_LENGTH = 24;
+const RECORDED_REASON_MAX_LENGTH = 500;
+const DIMENSION_LINK = "EMPLOYEE_PRINCIPAL_LINK";
+const DIMENSION_ROLE = "SECURITY_ROLE";
+
+/** `SYNTHETIC NONPROD SEED v1: <employee> (<principal subject>) <DIMENSION> <target> -- <rationale>` */
+function composeStepReason(personaKey, subject, dimension, target, rationale) {
+  return `${REASON_PREFIX}: ${personaKey} (${subject}) ${dimension} ${target} -- ${rationale}`;
+}
+
+/** The blocker this seed's Commercial half is gated on. Declared by scripts/fixtures/sampleCompany.v2.json too. */
+const COMMERCIAL_BLOCKER_CODE = "COMMERCIAL_RECORDS_PENDING_C5";
+/** The governed refusal this seed returns rather than recreating a removed Commercial C5 blocker. */
+const COMMERCIAL_SEED_BLOCKED = "COMMERCIAL_SEED_BLOCKED_PENDING_C5";
+const COMMERCIAL_SEED_BLOCKED_MESSAGE =
+  "BLOCKED_PENDING_C5: the declared-synthetic Commercial records were removed from nonprod because they blocked " +
+  "Commercial C5, and this v1 seed may never put them back. Commercial acceptance data is rebuilt only after the " +
+  "canonical Commercial migration/authority exists (C5 copy + verify), by SAMPLE COMPANY V3.";
 
 const COMMERCIAL = Object.freeze({
   OPPORTUNITY: Object.freeze({ family: "opportunity", table: "opportunities", number: "opportunity_number" }),
@@ -73,6 +146,51 @@ class SyntheticSeedError extends Error {
 const refuse = (code, message) => {
   throw new SyntheticSeedError(code, message);
 };
+
+/**
+ * EVERY persona mutation carries its OWN reason, and no two carry the same one.
+ *
+ * Checked BEFORE any connection, like every other manifest invariant, so a run that could not
+ * explain itself never opens a client -- rather than discovering it halfway through, with some
+ * personas already written and some not.
+ *
+ * SHARED RATIONALE IS THE INTERESTING CASE, and it is why this is a set rather than a loop of
+ * length checks. A caller complying with the letter of the ruling by pasting one good sentence into
+ * all nine entries has written a run-level reason with extra steps, and the audit trail is exactly
+ * as uninformative as the two constants this replaced. Duplication is therefore refused under its
+ * OWN code, so the failure says what was wrong instead of "invalid manifest".
+ */
+function assertPerStepReasons(principals) {
+  const seen = new Map();
+  for (const p of principals) {
+    const subject = p.existingAdministrator ? "existing administrator" : p.externalSubject;
+    const rationales = [[DIMENSION_LINK, "link", p.linkReason]];
+    for (const roleKey of p.securityRoles) {
+      rationales.push([DIMENSION_ROLE, roleKey, (p.roleReasons || {})[roleKey]]);
+    }
+    for (const [dimension, target, rationale] of rationales) {
+      const where = `${p.employee} ${dimension} ${target}`;
+      if (typeof rationale !== "string" || rationale.trim().length < RATIONALE_MIN_LENGTH) {
+        refuse("REASON_MISSING",
+          `${where}: a specific per-step reason of at least ${RATIONALE_MIN_LENGTH} characters is required; `
+          + "this seed has no run-level reason to fall back on");
+      }
+      const normalized = rationale.trim().toLowerCase();
+      if (seen.has(normalized)) {
+        refuse("RUN_LEVEL_REASON_REFUSED",
+          `${where} reuses the reason already given for ${seen.get(normalized)}; one sentence repeated `
+          + "across steps is a run-level reason, which the Owner ruling forbids");
+      }
+      seen.set(normalized, where);
+      const composed = composeStepReason(p.employee, subject, dimension, target, rationale.trim());
+      if (composed.length > RECORDED_REASON_MAX_LENGTH) {
+        refuse("REASON_TOO_LONG",
+          `${where}: the composed reason is ${composed.length} characters and the audit column admits `
+          + `${RECORDED_REASON_MAX_LENGTH}`);
+      }
+    }
+  }
+}
 
 /** The manifest's invariants, checked before any connection. Returns lookup maps. */
 function validateManifest(m) {
@@ -123,10 +241,23 @@ function validateManifest(m) {
     else if (!/^synthetic-np-principal-[a-z0-9-]+$/.test(p.externalSubject || "")) refuse("MANIFEST_INVALID", `${p.employee}: synthetic subjects must be synthetic-np-principal-*`);
   }
   if (administrators !== 1) refuse("MANIFEST_INVALID", "exactly one existing administrator Principal is reused");
+  assertPerStepReasons(m.principals);
 
   const accounts = new Map(m.accounts.map((a) => [a.id, a]));
   for (const a of m.accounts) eligible(a.owner, `Account ${a.id}`);
   for (const c of [...m.contacts, ...m.locations]) if (!accounts.has(c.account)) refuse("MANIFEST_INVALID", `${c.id} names unknown Account ${c.account}`);
+
+  // ---- RING 1. The Commercial gate, read before anything connects.
+  //
+  // The eight declarations below stay DECLARED and stay FULLY VALIDATED whether or not they are ever written:
+  // a declaration nobody checks rots, scripts/commercialC5.js classifies target rows from exactly these numbers,
+  // and Sample Company v3 seeds from them. What this gate decides is whether they are WRITTEN, not whether they
+  // are CORRECT. BLOCKED is the only status v1 admits -- there is deliberately no SEEDED branch to flip.
+  const state = m.commercialSeedState;
+  if (!state || state.status !== "BLOCKED" || state.blockedBy !== COMMERCIAL_BLOCKER_CODE) {
+    refuse("MANIFEST_INVALID",
+      `commercialSeedState.status must be exactly "BLOCKED" naming ${COMMERCIAL_BLOCKER_CODE}; the v1 seed has no unblocked state`);
+  }
 
   const numbers = new Map();
   let same = 0;
@@ -147,6 +278,15 @@ function validateManifest(m) {
   }
   if (same === 0 || different === 0) refuse("MANIFEST_INVALID", "the commercial seed must prove both owner == accountable and owner != accountable");
   return { employees, policy };
+}
+
+/**
+ * RING 3. The last gate before the governed Commercial writer, and the one that holds even if rings 1 and 2 are
+ * edited away. It takes no argument it could be talked out of: v1 has no state in which a Commercial write is
+ * allowed, so this refuses unconditionally, with the governed reason, inside the record's own transaction.
+ */
+function assertCommercialWriteAllowed(recordNumber) {
+  refuse(COMMERCIAL_SEED_BLOCKED, `${recordNumber}: ${COMMERCIAL_SEED_BLOCKED_MESSAGE}`);
 }
 
 function assertSeedArguments(args) {
@@ -175,7 +315,8 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
 
   const summary = { employees: { created: 0, existing: 0 }, principals: { created: 0, existing: 0 }, links: { created: 0, existing: 0 },
     roleAssignments: { created: 0, existing: 0 }, accounts: { created: 0, existing: 0 }, contacts: { created: 0, existing: 0 },
-    locations: { created: 0, existing: 0 }, commercial: { created: 0, existing: 0 }, accountablePersons: { persisted: 0, existing: 0 } };
+    locations: { created: 0, existing: 0 }, commercial: { created: 0, existing: 0, blocked: 0 },
+    accountablePersons: { persisted: 0, existing: 0, blocked: 0 } };
   const count = (bucket, created) => (created ? (summary[bucket].created += 1) : (summary[bucket].existing += 1));
   const repo = new PostgresPolicyRepository(pool);
   const employeeId = (key) => employees.get(key).id;
@@ -219,18 +360,30 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
 
   // ---- Principals, links, Security Roles
   for (const p of manifest.principals) {
+    // The reason is composed HERE, per step, from the persona and the target it is about -- never
+    // read from a module constant. assertPerStepReasons() has already refused a missing one, a
+    // too-short one, an over-long one and one shared with another step.
+    const subject = p.existingAdministrator ? "existing administrator" : p.externalSubject;
+    const stepReason = (dimension, target, rationale) =>
+      composeStepReason(p.employee, subject, dimension, target, rationale.trim());
+
     let principal = admin;
     if (!p.existingAdministrator) {
       const before = await repo.getPrincipalBySubject(SYNTHETIC_IDENTITY_PROVIDER, p.externalSubject);
       principal = await ensureTenantPrincipal(repo, { tenantId, externalSubject: p.externalSubject, identityProvider: SYNTHETIC_IDENTITY_PROVIDER,
-        displayName: p.displayName, actorUid: options.performedBy, actorRoleKeys: heldRoleKeys });
+        displayName: p.displayName, actorUid: options.performedBy, actorRoleKeys: heldRoleKeys,
+        // Admitting a Principal to a tenant used to be the one persona mutation that could not
+        // explain itself: the audit row was written with reason null. It carries the link rationale
+        // because that is what this step is for -- this Employee is getting a Principal of its own.
+        reason: stepReason(DIMENSION_LINK, "tenant membership", p.linkReason) });
       count("principals", before === null);
     }
     const linkedBefore = await pool.query(
       `SELECT 1 FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND employee_id = $2 AND principal_id = $3 AND status = 'active'`,
       [tenantId, employeeId(p.employee), principal.id]);
     await establishLink(pool, { tenantId, principalId: principal.id, employeeId: employeeId(p.employee), operatingCompanyId: manifest.operatingCompanyId,
-      linkSource: "OPERATOR_ASSERTED", assertedBy: options.performedBy, assertionReason: LINK_REASON });
+      linkSource: "OPERATOR_ASSERTED", assertedBy: options.performedBy,
+      assertionReason: stepReason(DIMENSION_LINK, employeeId(p.employee), p.linkReason) });
     count("links", linkedBefore.rows.length === 0);
 
     const held = await repo.listAssignmentsForPrincipal(tenantId, principal.id);
@@ -238,7 +391,10 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
       const role = roleByKey.get(key);
       if (!role) refuse("ROLE_NOT_DEFINED", `Security Role ${key} is not defined in this tenant; the seed never creates Roles`);
       const already = held.some((a) => a.status === "active" && a.roleId === role.id && (a.scopeType ?? "global") === "global");
-      await assignRole(repo, actor, { principalId: principal.id, roleId: role.id, reason: ROLE_REASON });
+      await assignRole(repo, actor, {
+        principalId: principal.id, roleId: role.id,
+        reason: stepReason(DIMENSION_ROLE, key, p.roleReasons[key]),
+      });
       count("roleAssignments", !already);
     }
   }
@@ -262,8 +418,22 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
   }
 
   // ---- Commercial records and GOVERNED/SEED accountable persons, one transaction per record
+  //
+  // RING 2. BLOCKED_PENDING_C5. Every declared record is ACCOUNTED, by number, with its governed reason -- this
+  // is a stated refusal, not a silent skip -- and nothing is written. The loop continues so that the
+  // non-Commercial half above (Employees, Principals, links, Security Roles, Accounts, Contacts, Locations)
+  // still seeds and still reports exactly as it did before this gate existed.
+  const blockedCommercial = [];
   const idByNumber = new Map();
+  // validateManifest has already refused any status other than BLOCKED, so for v1 this is always true.
+  const commercialBlocked = manifest.commercialSeedState.status === "BLOCKED";
   for (const r of manifest.commercial) {
+    if (commercialBlocked) {
+      blockedCommercial.push(r.number);
+      summary.commercial.blocked += 1;
+      summary.accountablePersons.blocked += 1;
+      continue;
+    }
     const shape = COMMERCIAL[r.kind];
     const client = await pool.connect();
     try {
@@ -293,6 +463,8 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
         if (found.rows[0].owner_employee_id !== employeeId(r.owner)) refuse("FIXTURE_DRIFT", `${r.number} exists with a different owner`);
         if (current !== null && current !== governedAccountable) refuse("FIXTURE_DRIFT", `${r.number} exists with a different accountable person`);
       } else {
+        // RING 3, immediately above the governed writer: this always throws. See assertCommercialWriteAllowed.
+        assertCommercialWriteAllowed(r.number);
         const record = await createCommercialRecord(client, tenantId, options.performedBy, {
           kind: r.kind, recordNumber: r.number, accountId: r.account, ownerEmployeeId: employeeId(r.owner),
           operatingCompanyId: manifest.operatingCompanyId, createdBy: options.performedBy,
@@ -329,6 +501,16 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
     eligibilityPolicyId: policy.policyId,
     syntheticIdentityProvider: SYNTHETIC_IDENTITY_PROVIDER,
     jobRoleAuthority: manifest.rulings.jobRole,
+    // Stated, never silent: the run names its own refusal, the blocker it is gated on, and every record number
+    // it declined to write, so an operator reading the summary cannot mistake zero Commercial rows for success.
+    commercialSeedState: {
+      status: manifest.commercialSeedState.status,
+      blockedBy: manifest.commercialSeedState.blockedBy,
+      reason: COMMERCIAL_SEED_BLOCKED,
+      message: COMMERCIAL_SEED_BLOCKED_MESSAGE,
+      unblockedBy: manifest.commercialSeedState.unblockedBy,
+      blockedRecords: blockedCommercial,
+    },
     summary,
   };
 }
@@ -365,7 +547,10 @@ module.exports = {
   seedSyntheticNonprodWorkforce,
   validateManifest,
   assertSeedArguments,
+  assertCommercialWriteAllowed,
   EMPLOYMENT_STATUS_VALUES,
   SYNTHETIC_IDENTITY_PROVIDER,
+  COMMERCIAL_BLOCKER_CODE,
+  COMMERCIAL_SEED_BLOCKED,
   MANIFEST,
 };

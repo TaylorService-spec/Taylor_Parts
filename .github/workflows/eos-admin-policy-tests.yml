@@ -87,6 +87,11 @@ on:
       - "functions/test/support/roleAssignmentCensusFixture.mjs"
       - "functions/test/policyRoleCatalogReconcile.test.mjs"
       - "functions/test/policyRoleCatalogReconcilePostgres.test.mjs"
+      # WAVE 10 / LANE AN: the governed Role -> Capability AUTHORITY BASELINE -- the manifest, its
+      # generated artifact, and the deterministic rebuild guard (test:adminPolicyPostgres).
+      - "functions/src/adminPolicy/roleCapabilityAuthorityBaseline.ts"
+      - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
+      - "functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
@@ -202,12 +207,31 @@ on:
       - "functions/test/catalogReferenceAuthority.test.mjs"
       - "functions/test/catalogReferenceAuthorityPostgres.test.mjs"
       # CATALOG CUTOVER (required registration): the unwired PostgreSQL catalog writers, the fenced copy/verify tool and
-      # its snapshot export, and their two suites run in test:adminPolicy / test:adminPolicyPostgres.
+      # its snapshot export, and the suites that run in test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/catalogMaster/**"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
+      # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
+      # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
+      - "functions/test/catalogFreezeParity.test.mjs"
+      - "functions/test/support/legacyCatalogMasterCommands.mjs"
+      # The supplier and work-order halves of the catalog authority, same lane, previously unfiltered.
+      - "functions/test/supplierCatalogAuthority.test.mjs"
+      - "functions/test/supplierCatalogPostgres.test.mjs"
+      - "functions/test/workOrderCatalogAuthorityPostgres.test.mjs"
+      # The eos_ops PART-ID CONTRACT gate and the Part Master repository suite. Both were named by NO npm script and
+      # NO workflow: neither green nor red, simply unexercised. Now in test:adminPolicy.
+      - "functions/test/eosOpsPartIdContract.test.mjs"
+      - "functions/test/partMasterRepository.test.mjs"
+      # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
+      # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
+      - "functions/test/administrationReadAuthority.test.mjs"
+      # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
+      # legacyInventoryMovementMapping all import it, so a change to it must run them.
+      - "functions/test/support/firestoreCollectionFence.mjs"
       # COMMERCIAL C5 (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
       # their modules and suites (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/commercialMigration/**"
@@ -255,12 +279,102 @@ on:
       - "field-ops-app-vite/test/reorderAuthoritySeparation.test.mjs"
       - "field-ops-app-vite/test/adminPolicyApiClient.test.mjs"
       - "field-ops-app-vite/src/services/adminPolicyApiClient.js"
+      # The Object-owned security READ MODEL, from the browser. The four operations
+      # (listObjectsWithActions, getObjectSecurityMatrix, getRoleSecurity,
+      # getPrincipalEffectiveAccess) were served and proven against PostgreSQL while the client
+      # could not name one of them. Named here individually for the reason every entry above was:
+      # a suite that runs in a registered job but matches no path filter goes stale in silence.
+      - "field-ops-app-vite/test/adminPolicySecurityReads.test.jsx"
+      - "field-ops-app-vite/test/useObjectSecurity.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/useObjectSecurity.js"
+      # The canonical read model the later Object security screen assembles from, and the proof
+      # that an administrator reads "Read Coordinated Visits" rather than
+      # `fulfillment.coordinatedVisit.read`. Two of the server's three projections send action keys
+      # with no labels, so the join to the Object/action inventory lives here -- and a change to
+      # either side of that join must run this suite.
+      - "field-ops-app-vite/src/modules/administration/objectSecurityReadModel.js"
+      - "field-ops-app-vite/src/modules/administration/ObjectSecurityActionList.jsx"
+      - "field-ops-app-vite/test/adminSecurityReadModel.test.jsx"
       - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"
       - "field-ops-app-vite/test/entityRegistry.test.mjs"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
+      # WAVE 6 / LANE V (required registration): the EOS PRINCIPAL EXPERIENCE CONTEXT -- the governed
+      # read that replaces ROLE_NAV_ACCESS[users/{uid}.role] as the source of client navigation.
+      # Named individually for the reason every entry above was: a suite that runs in a registered
+      # job but matches no path filter goes stale in silence.
+      #
+      # The server half (surface catalog + projection + transport route) runs in test:adminPolicy /
+      # test:adminPolicyPostgres. The client half is the pure projection suite in the node manifest
+      # plus the vitest transport suite named in this job.
+      - "functions/src/eosOps/experienceAuthority.ts"
+      - "functions/src/eosOps/contextualAuthorization.ts"
+      - "functions/test/experienceAuthority.test.mjs"
+      - "functions/test/experienceAuthorityPostgres.test.mjs"
+      # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
+      # individually for the reason every entry above was -- a suite that runs in a registered job
+      # but matches no path filter goes stale in silence. The two readiness suites were merged by
+      # Lane AG naming no filter at all; they are named here rather than left that way.
+      - "functions/src/adminPolicy/administrationSurfaceAuthority.ts"
+      - "functions/src/adminPolicy/tenantBootstrap.ts"
+      - "functions/scripts/provisionOwnerPersona.js"
+      - "functions/scripts/seedSyntheticNonprodWorkforce.js"
+      - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
+      - "functions/test/administrationNavigationReadiness.test.mjs"
+      - "functions/test/ownerPersonaProvisioningPostgres.test.mjs"
+      - "functions/test/syntheticNonprodWorkforceSeed.test.mjs"
+      - "functions/test/operatorScriptEnvironmentFence.test.mjs"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/src/access/shellCapabilityGates.js"
+      - "field-ops-app-vite/test/administrationNavigationReadiness.test.mjs"
+      # WAVE 12 / LANE AW: the Owner persona's AUTHENTICATION BINDING. The identity model is one
+      # external identity per Principal, so making the persona browser-testable is a governed
+      # re-bind of the canonical Principal -- `rebindPrincipalIdentity` plus the operator script
+      # that drives it. Named individually for the reason every entry above was.
+      - "functions/src/adminPolicy/policyCommands.ts"
+      - "functions/src/adminPolicy/policyRepository.ts"
+      - "functions/src/adminPolicy/postgresPolicyRepository.ts"
+      - "functions/src/adminPolicy/inMemoryPolicyRepository.ts"
+      - "functions/scripts/bindOwnerPersonaIdentity.js"
+      - "functions/test/ownerIdentityBindingPostgres.test.mjs"
+      # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
+      # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
+      # named here for the same reason every entry above is -- a suite in a registered job that no
+      # path filter names goes stale in silence.
+      - "functions/test/reorderQueueNavigation.test.mjs"
+      # WAVE 10 / LANE AR: three suites arrived from lanes AJ/AQ (conditional entitlement) and
+      # AH (the Reorder persona acceptance proof) registered in NO job and named by NO path
+      # filter. They are registered in test:adminPolicyPostgres and named here for the reason
+      # every entry above is -- a suite nothing runs goes stale in silence.
+      - "functions/src/eosOps/conditionalEntitlement.ts"
+      - "functions/src/eosOps/entitledActionAuthority.ts"
+      - "functions/src/eosOps/grantConditionPolicy.ts"
+      - "functions/migrations/1762214400000_capability-grant-conditions.sql"
+      - "functions/test/conditionalEntitlementPostgres.test.mjs"
+      - "functions/test/contextualActionAuthorityPostgres.test.mjs"
+      - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      # WAVE 14 / LANE BA: the persona AUTHORITY manifest suite and the persona E2E HARNESS
+      # suite were named by ZERO npm scripts -- personaAuthorityDimensions.v1.json was already a
+      # path filter above, but the filter triggered no job that ran either test, so the manifest's
+      # own governance proof had been failing unseen on a stale expectation. Both are pure
+      # (no database, no Firebase, no network) and are now registered in test:adminPolicy, the
+      # offline job. Named here for the reason every entry above is -- a suite nothing runs goes
+      # stale in silence.
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/personaSuiteRegistration.test.mjs"
+      - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
+      - "field-ops-app-vite/src/access/experienceContext.js"
+      - "field-ops-app-vite/src/services/operationsApiClient.js"
+      - "field-ops-app-vite/src/hooks/useExperienceContext.js"
+      - "field-ops-app-vite/src/config/navigationAuthorityReadiness.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
+      - "field-ops-app-vite/test/navigationExperienceProjection.test.mjs"
+      - "field-ops-app-vite/test/operationsExperienceTransport.test.jsx"
       - ".github/workflows/eos-admin-policy-tests.yml"
   push:
     branches: [main]
@@ -293,6 +407,11 @@ on:
       - "functions/test/support/roleAssignmentCensusFixture.mjs"
       - "functions/test/policyRoleCatalogReconcile.test.mjs"
       - "functions/test/policyRoleCatalogReconcilePostgres.test.mjs"
+      # WAVE 10 / LANE AN: the governed Role -> Capability AUTHORITY BASELINE -- the manifest, its
+      # generated artifact, and the deterministic rebuild guard (test:adminPolicyPostgres).
+      - "functions/src/adminPolicy/roleCapabilityAuthorityBaseline.ts"
+      - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
+      - "functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
@@ -408,12 +527,31 @@ on:
       - "functions/test/catalogReferenceAuthority.test.mjs"
       - "functions/test/catalogReferenceAuthorityPostgres.test.mjs"
       # CATALOG CUTOVER (required registration): the unwired PostgreSQL catalog writers, the fenced copy/verify tool and
-      # its snapshot export, and their two suites run in test:adminPolicy / test:adminPolicyPostgres.
+      # its snapshot export, and the suites that run in test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/catalogMaster/**"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
+      # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
+      # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
+      - "functions/test/catalogFreezeParity.test.mjs"
+      - "functions/test/support/legacyCatalogMasterCommands.mjs"
+      # The supplier and work-order halves of the catalog authority, same lane, previously unfiltered.
+      - "functions/test/supplierCatalogAuthority.test.mjs"
+      - "functions/test/supplierCatalogPostgres.test.mjs"
+      - "functions/test/workOrderCatalogAuthorityPostgres.test.mjs"
+      # The eos_ops PART-ID CONTRACT gate and the Part Master repository suite. Both were named by NO npm script and
+      # NO workflow: neither green nor red, simply unexercised. Now in test:adminPolicy.
+      - "functions/test/eosOpsPartIdContract.test.mjs"
+      - "functions/test/partMasterRepository.test.mjs"
+      # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
+      # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
+      - "functions/test/administrationReadAuthority.test.mjs"
+      # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
+      # legacyInventoryMovementMapping all import it, so a change to it must run them.
+      - "functions/test/support/firestoreCollectionFence.mjs"
       # COMMERCIAL C5 (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
       # their modules and suites (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/commercialMigration/**"
@@ -439,6 +577,14 @@ on:
       # drives the real truck resolver, so a change to ANY of those three must trigger it --
       # otherwise the suite that documents the defect goes stale in exactly the silence the
       # defect lives in.
+      # WAVE 14 / LANE BA: same registration on the PUSH block as on the pull_request block --
+      # adding it to pull_request alone would let a direct push to main leave these two suites
+      # untriggered. Both run in test:adminPolicy (offline).
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/personaSuiteRegistration.test.mjs"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"
       - "functions/src/workOrderConsumption/consumptionSourceService.ts"
       - "functions/src/cycleCount/cycleCountSheetCallables.ts"
@@ -555,4 +701,38 @@ jobs:
 
       - name: Rendered Roles & Permissions grid (vitest + jsdom)
         run: npx vitest run test/adminRolesPermissions.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE BROWSER'S ROUTE TO THE OBJECT-OWNED SECURITY READ MODEL. Proved through an injected
+      # transport -- no network, no database. The authority itself is proved against real
+      # PostgreSQL in the objectSecurityAuthorityPostgres job; what these two suites prove is that
+      # the client names the server's operations, sends the input key its dispatcher requires,
+      # returns the projection untouched, and reports a refusal AS a refusal rather than as an
+      # empty security grid -- which on this screen would read as "nobody holds anything".
+      - name: Object security read client and hooks (vitest + jsdom)
+        run: npx vitest run test/adminPolicySecurityReads.test.jsx test/useObjectSecurity.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE READ MODEL THE LATER SCREEN IS ASSEMBLED FROM. The server's Role and Principal
+      # projections send action KEYS and no labels; joining the Object/action inventory onto them
+      # is the one place that is allowed to happen, and these assertions pin what it may not do --
+      # invent a label, drop a grant the catalog cannot explain, re-sort the authority's answer, or
+      # turn a refused read into an empty security grid. The last describe is the guard that this
+      # tranche switched no source of truth: no Administration screen imports any of it.
+      - name: Canonical security read model and friendly labels (vitest + jsdom)
+        run: npx vitest run test/adminSecurityReadModel.test.jsx
+        working-directory: field-ops-app-vite
+
+      # WAVE 6 / LANE V -- THE BROWSER'S ROUTE TO THE EOS PRINCIPAL EXPERIENCE CONTEXT, and the hook
+      # that owns its lifecycle. It runs under vitest rather than the node manifest because
+      # services/operationsApiClient.js reaches firebase/firebase.js for the ID token, which
+      # initializes Firebase at import time.
+      #
+      # What it pins: the client states an operation NAME and nothing else (no tenant, principal,
+      # role or capability), an unknown name never leaves the browser, and -- the property this
+      # whole lane exists for -- a refused, unreachable or malformed read grants NOTHING and never
+      # degrades to users/{uid}.role. The pure projection half runs in the node manifest as
+      # test/navigationExperienceProjection.test.mjs.
+      - name: EOS navigation source -- transport and experience hook (vitest + jsdom)
+        run: npx vitest run test/operationsExperienceTransport.test.jsx
         working-directory: field-ops-app-vite

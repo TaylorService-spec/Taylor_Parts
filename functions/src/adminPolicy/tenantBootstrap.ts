@@ -255,6 +255,21 @@ export async function ensureTenantPrincipal(
     readonly displayName?: string | null;
     readonly actorUid: string;
     readonly actorRoleKeys: readonly string[];
+    /**
+     * The per-step audit reason for admitting THIS Principal to THIS tenant.
+     *
+     * Optional, because every existing caller predates it and a required parameter would break
+     * them. It exists because the Owner ruling on governed persona provisioning is that every
+     * persona mutation carries a SPECIFIC reason and not one broad run-level sentence -- and until
+     * now this step could not express one at all: the audit row was written with `reason: null`,
+     * so the one act that admits a Principal to a tenant was the one act nobody had to explain.
+     *
+     * Enforcement of "a reason is mandatory" belongs to the OPERATOR SCRIPT that carries the
+     * ruling -- it refuses a manifest entry with no reason, and refuses two entries that share one.
+     * This parameter only makes it POSSIBLE to comply; it deliberately requires nothing itself, and
+     * this file names no operator script, because runtime source may not reach for one.
+     */
+    readonly reason?: string | null;
   },
 ): Promise<PrincipalRecord> {
   const tenantId = requireText(input.tenantId, "tenant id");
@@ -288,7 +303,7 @@ export async function ensureTenantPrincipal(
       before: membership ? { status: membership.status } : null,
       after: { status: "active", identityProvider, externalSubject: subject },
       occurredAt: new Date().toISOString(),
-      reason: null,
+      reason: input.reason ?? null,
     });
 
     return principal;

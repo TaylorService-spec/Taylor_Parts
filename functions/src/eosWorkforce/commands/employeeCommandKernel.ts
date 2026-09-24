@@ -8,6 +8,10 @@
 // ONE transaction per command, READ COMMITTED with row locks; any failure rolls back every effect, including the audit row.
 // Every change appends eos_policy.audit_events rows naming the EOS Principal -- never a Firebase uid.
 import type { Pool, PoolClient } from "pg";
+// The PURE decision, deliberately: `conditionalEntitlement` carries no SQL, no pool factory and no
+// runtime `pg`, so adopting the conditional seam does not widen this kernel's module boundary.
+import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementResolver } from "../../eosOps/conditionalEntitlement";
+import { postgresContextualReader } from "../../eosOps/contextualAuthorization";
 import { randomUUID } from "node:crypto";
 import type { EmployeeReadErrorCategory } from "../reads/employeeReadKernel";
 
@@ -27,6 +31,13 @@ export interface EmployeeCommandActor {
   readonly tenantId: string;
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * The SAME grants with the granting Role and its condition kept, from
+   * `capabilityAuthority.resolveOperationalContext`, behind its REQUIRED request-scoped resolver.
+   * Required, never optional, and never a plain value: an actor that could omit it could omit every
+   * condition with it, and an actor that could SUPPLY it as a value could supply an empty one.
+   */
+  readonly entitlements: EntitlementResolver;
 }
 
 export interface EmployeeCommandDeps {
@@ -74,7 +85,19 @@ export async function runEmployeeCommand<P, R>(
     if (!actor || !ID_SHAPE(actor.tenantId) || !ID_SHAPE(actor.principalId) || !(actor.capabilities instanceof Set)) {
       refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant, principal and capability set are required");
     }
+    if (!hasResolvedEntitlements(actor)) {
+      refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved entitlement provider is required");
+    }
     if (!actor.capabilities.has(requiredCapability)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${requiredCapability}`);
+    // The flat check above is unchanged and decided first; this can only refuse further. With
+    // eos_policy.capability_grant_conditions holding zero rows it allows unconditionally, reads
+    // nothing, and leaves every command exactly as it was.
+    const conditioned = await authorizeEntitledAction(
+      postgresContextualReader(deps.pool), { actor, capabilityKey: requiredCapability });
+    if (!conditioned.allowed) {
+      refuse("CAPABILITY_CONDITION_UNSATISFIED", "FORBIDDEN",
+        `this command requires ${requiredCapability}: ${conditioned.outcome}`);
+    }
     const prepared = prepare();
     client = await deps.pool.connect();
     await client.query("BEGIN");

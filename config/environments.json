@@ -25,6 +25,54 @@
     "description contradicting the classification beside it, and has been corrected. Production is false in",
     "the data AND hard-blocked by role in the resolver, so neither one alone has to be trusted.",
     "",
+    "EOS TRUSTED API: `eosApi` records WHERE an environment's EOS trusted API is, or `null` when it has",
+    "none. It exists because that address previously lived in exactly two places -- a Vercel project",
+    "variable nobody here can read, and one paragraph of prose -- so the repository could not say what",
+    "the frontend talks to, and a stale doc could (and did) report the API as unconfigured everywhere.",
+    "",
+    "RECORDS, NEVER SUPPLIES. It is validated by scripts/resolveEnvironment.mjs and deliberately NOT",
+    "returned by it, exactly like privateAiSyntheticOperationalInterpretation: nothing projects it into",
+    "the browser bundle, so declaring it changes no runtime behaviour. The frontend still reads its base",
+    "URL only from VITE_EOS_API_BASE_URL, inlined by Vite at build time. An entry here is evidence and a",
+    "test anchor, not a switch.",
+    "",
+    "IT IS NOT A READINESS FLAG EITHER. Knowing where the API is says nothing about whether any capability",
+    "may use it, and the two decisions were deliberately kept apart until the Owner made the second one.",
+    "",
+    "EOS_NAVIGATION_AUTHORITY_READY, AS OF WAVE 11 / LANE AS. It is true in EXACTLY ONE environment --",
+    "platform-sandbox, the only environment that has an eosApi at all -- under an Owner ruling activating",
+    "the governed navigation authority in non-production. It is FALSE in the other four, and false in",
+    "taylor-parts-production absolutely: production declares eosApi null, so a production frontend has no",
+    "EOS API to reach and a true flag there would turn every persona's navigation into NOT_CONFIGURED ->",
+    "UNAVAILABLE. platform-certification is frozen by standing ruling and stays false.",
+    "",
+    "scripts/eosApiEnvironmentContract.test.mjs now asserts the two invariants that matter instead of the",
+    "pre-activation fact that it was false everywhere: NO environment may enable the seam without an",
+    "eosApi configured, and NO production-role environment may enable it at all.",
+    "",
+    "EXACTLY ONE environment declares one: platform-sandbox. `null` on a production-role environment is",
+    "the fence -- a production frontend has no EOS API to reach and must report NOT CONFIGURED.",
+    "",
+    "SURFACES, AND WHICH ONE IS THE APPLICATION. `surfaces[]` records WHERE an environment is served.",
+    "An environment may be served from more than one place, and those places are not interchangeable, so",
+    "`eosApplication` marks the ONE surface that is the EOS application -- the frontend that reaches",
+    "`eosApi` and whose origin that API accepts. It is absent (meaning false) on every surface that is not.",
+    "",
+    "WAVE 14 / LANE AZ CORRECTION. platform-sandbox declared exactly one surface, the Firebase Hosting",
+    "review site, and nothing said it was not the EOS application. It is not: its origin is not the one",
+    "render.yaml admits, so an EOS read from it is refused by CORS. The Vercel surface the EOS frontend is",
+    "actually served from was recorded nowhere, so D2 measured drift against a surface no EOS persona uses.",
+    "Both are now declared and classified. The Firebase surface was RECLASSIFIED, never deleted: it is still",
+    "deployed and still the target of scripts/_sandboxRefresh.run.sh and the browser certification gates.",
+    "",
+    "AN ADDRESS IS NOT A BRAND DECLARATION. Recording the application surface puts a hostname the Owner",
+    "named after the company into this file. deploymentDrift.test.mjs still forbids company or legal",
+    "identity everywhere in this registry EXCEPT a deployed address field, and forbids legal-entity markers",
+    "even there. The narrow door is deliberate: an address is measured infrastructure, prose is a claim.",
+    "The staleness objection that kept the origin out of this file (eosApiEnvironmentContract.test.mjs) is",
+    "answered the only way it can be -- the application surface url and EOS_ALLOWED_ORIGINS are now pinned",
+    "EQUAL by that same suite, so the two copies cannot disagree rather than being trusted not to.",
+    "",
     "SECRETS: `firebase` holds PUBLIC Firebase Web client configuration only. A Firebase Web apiKey",
     "is a public project identifier, not a credential — access is enforced by Firestore Rules and",
     "Auth, not by hiding it. No service-account key, token, or private credential belongs in this",
@@ -43,6 +91,7 @@
       "purpose": "Local developer/agent execution against the Firebase Emulator Suite. Synthetic data only; never production credentials.",
       "privateAiSyntheticOperationalInterpretation": false,
       "firebase": null,
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -53,7 +102,8 @@
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
-        "TRUSTED_COMPLETION_ENABLED": true
+        "TRUSTED_COMPLETION_ENABLED": true,
+        "EOS_NAVIGATION_AUTHORITY_READY": false
       },
       "surfaces": [],
       "notes": "Firebase identity is null by design: the emulator path is opt-in via ?emulator=1 and DEV-gated, and must never carry a real project identity."
@@ -74,6 +124,15 @@
         "appId": "1:33669510651:web:6dcd02971b78e4f101075e",
         "functionsRegion": "us-central1"
       },
+      "eosApi": {
+        "baseUrl": "https://eos-api-nonprod.onrender.com",
+        "service": "eos-api-nonprod",
+        "healthPath": "/health",
+        "allowedBrowserOriginAuthority": "render.yaml EOS_ALLOWED_ORIGINS",
+        "frontendEnvironmentVariable": "VITE_EOS_API_BASE_URL",
+        "configuredIn": "vercel-project-environment",
+        "notes": "The one deployed EOS trusted API. Declared by render.yaml (service eos-api-nonprod, healthCheckPath /health) and measured live at this URL. The browser origin it accepts is NOT repeated here -- it is a hostname carrying brand identity, which this registry is guarded against declaring (scripts/deploymentDrift.test.mjs), and it already has exactly one home in render.yaml's EOS_ALLOWED_ORIGINS. That is one stable origin; a per-deployment Vercel preview URL is a DIFFERENT origin and is refused, so a preview build reaches this API only to be turned away by CORS. The frontend receives the base URL through VITE_EOS_API_BASE_URL, set in the Vercel project and inlined by Vite at build time; this entry RECORDS that value, it does not supply it."
+      },
       "readiness": {
         "RECEIVING_TRANSPORT_READY": true,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -84,7 +143,8 @@
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": true,
         "MANUFACTURER_WRITE_READY": false,
-        "TRUSTED_COMPLETION_ENABLED": true
+        "TRUSTED_COMPLETION_ENABLED": true,
+        "EOS_NAVIGATION_AUTHORITY_READY": true
       },
       "capabilityActivationOverrides": [
         "opportunity.write",
@@ -183,12 +243,22 @@
       "$capabilityActivationOverrides_comment": "Per-environment activation of the sales/fulfillment/finance spine (all catalog active:false) -- lifts the blanket active:false DENY in THIS sandbox only so the Opportunity->SO->Fulfillment->Billing flow is testable. Activation != authorization: a persona still needs a qualifying Role grant. NO role:production environment may carry this key (environmentCapabilityOverrides.ts is additionally role-keyed, and environmentArchitecture.test.mjs asserts absence). See docs/design/per-environment-capability-activation-spec.md.",
       "surfaces": [
         {
+          "id": "eos-app",
+          "kind": "vercel",
+          "url": "https://verenwardeos.vercel.app",
+          "versionPath": "/version.json",
+          "governed": false,
+          "eosApplication": true,
+          "notes": "THE EOS application surface for this environment -- the frontend that reaches eosApi, and the only browser origin that API accepts. Its /version.json reports environmentId platform-sandbox, so the running site agrees with this entry rather than merely being pointed at by it (measured 2026-09-10, docs/architecture/eos-real-nonprod-activation.md section 2). A per-deployment preview URL is a DIFFERENT origin and is refused by CORS, so only this stable domain is a usable surface. governed:false is the conservative reading and is a claim about PUBLICATION, not about quality: this surface follows main automatically (same section, revision rule), which is the exact property `governed` was introduced to distinguish; nothing here evidences an Owner-authorized promotion lifecycle, so this does not assert one. This url and render.yaml EOS_ALLOWED_ORIGINS are pinned EQUAL by scripts/eosApiEnvironmentContract.test.mjs -- the second copy cannot go stale, which is the condition that makes recording an address twice safe at all."
+        },
+        {
           "id": "hosting",
           "kind": "firebase-hosting",
           "url": "https://eos-platform-sandbox.web.app",
           "versionPath": "/version.json",
           "governed": true,
-          "notes": "Stable Owner review URL. Rebuilt freely; no delete protection, PITR or backups by design."
+          "eosApplication": false,
+          "notes": "Firebase Hosting review surface. STILL DEPLOYED and still the target of scripts/_sandboxRefresh.run.sh and the browser certification gates under field-ops-app-vite/.claude/skills/, which is why it is RECORDED rather than removed -- deleting the entry would hide infrastructure that exists. It is NOT the EOS application target: its origin is not in render.yaml EOS_ALLOWED_ORIGINS, so an EOS read attempted from this surface is refused by CORS. It was the sole surface declared here until Wave 14 / Lane AZ, which is how this registry came to name a non-EOS surface as the environment's only frontend. Stable Owner review URL; rebuilt freely; no delete protection, PITR or backups by design."
         }
       ],
       "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes."
@@ -209,6 +279,7 @@
         "appId": "1:179665574030:web:81bfe294a71af4848f91df",
         "functionsRegion": "us-central1"
       },
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -219,7 +290,8 @@
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
-        "TRUSTED_COMPLETION_ENABLED": false
+        "TRUSTED_COMPLETION_ENABLED": false,
+        "EOS_NAVIGATION_AUTHORITY_READY": false
       },
       "capabilityActivationOverrides": [
         "inventory.cycleCount.create",
@@ -238,6 +310,7 @@
       "purpose": "Exact integrated Release Candidate on a stable Owner-review URL with a known SHA.",
       "privateAiSyntheticOperationalInterpretation": false,
       "firebase": null,
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -248,7 +321,8 @@
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
-        "TRUSTED_COMPLETION_ENABLED": true
+        "TRUSTED_COMPLETION_ENABLED": true,
+        "EOS_NAVIGATION_AUTHORITY_READY": false
       },
       "surfaces": [],
       "notes": "NOT PROVISIONED. Initially expected to share infrastructure with platform-sandbox as a distinct logical role; the forcing condition for a physical split is concurrency (an RC under review while sandbox rebuilds)."
@@ -270,6 +344,7 @@
         "measurementId": "G-58GLNRJ5C8",
         "functionsRegion": "us-central1"
       },
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -280,7 +355,8 @@
         "TRUCK_DELETE_READY": false,
         "PART_MASTER_WRITE_READY": false,
         "MANUFACTURER_WRITE_READY": false,
-        "TRUSTED_COMPLETION_ENABLED": true
+        "TRUSTED_COMPLETION_ENABLED": true,
+        "EOS_NAVIGATION_AUTHORITY_READY": false
       },
       "surfaces": [
         {
@@ -297,7 +373,7 @@
           "url": "https://taylorservice-spec.github.io/Taylor_Parts/field-ops",
           "versionPath": "/version.json",
           "governed": false,
-          "notes": "Auto-publishes on merge to main, outside the promotion lifecycle. Recorded as an open governance gap (R-2); this registry observes it and does not change it."
+          "notes": "MANUAL PUBLISH ONLY since the Owner ruling of 2026-09-24 (Option A, docs/deployment/github-pages-promotion-governance-decision.md): .github/workflows/deploy-field-ops.yml is workflow_dispatch-only and requires a typed confirmation, so a merge to main no longer publishes here. It was previously auto-published on every merge to main touching index.html or field-ops-app-vite/** -- the open governance gap recorded as R-2, now closed. Still governed:false: the R-2 gap was automatic publication, and removing it makes this surface deliberate, not governed -- it is outside the promotion lifecycle either way, and the governed delivery path remains the firebase-hosting surface above. Enforced by scripts/productionPublishTriggerFence.mjs, which fails CI if any workflow publishes to GitHub Pages on an automatic trigger. This registry records that state; it does not create it."
         }
       ],
       "productionCapabilityActivations": [

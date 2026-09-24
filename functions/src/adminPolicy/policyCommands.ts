@@ -30,15 +30,19 @@ import type {
   FieldDataType,
   FieldSensitivity,
   ObjectFieldRecord,
+  PrincipalCapabilityRecord,
+  RoleCapabilityRecord,
   ObjectRecord,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
+  PrincipalRecord,
   RoleObjectPermissionRecord,
   TenantId,
   WorkflowVersionRecord,
 } from "./types";
 import type { PolicyRepository, PolicyTransaction } from "./policyRepository";
 import { loadWorkflowVersionDefinition, validateWorkflowVersion } from "./workflowEngine";
+import { resolveObjectAction } from "./objectSecurityAuthority";
 
 export class PolicyValidationError extends Error {}
 
@@ -508,6 +512,121 @@ export async function setFieldPermissionOverride(
   });
 }
 
+// ════════════════════ PRINCIPAL IDENTITY BINDING — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
+
+export interface RebindPrincipalIdentityInput {
+  readonly principalId: string;
+  readonly identityProvider: string;
+  readonly externalSubject: string;
+  readonly displayName?: string | null;
+  readonly reason?: string | null;
+}
+
+/**
+ * Change WHICH EXTERNAL IDENTITY authenticates as an existing Principal. Nothing else.
+ *
+ * ════════════════════ WHY THIS COMMAND HAS TO EXIST ════════════════════
+ *
+ * The identity model is ONE external identity per Principal: `eos_policy.principals` carries
+ * `(identity_provider, external_subject)` under a UNIQUE constraint and there is no separate
+ * identity-binding table. A Principal provisioned against a provider no verifier recognizes is
+ * therefore a Principal that can never authenticate, and there is no way to ADD a second binding to
+ * it -- so the only governed route from "authority fixture" to "account" is to move the binding it
+ * already has.
+ *
+ * Before this command the only route was an UPDATE typed into a database client. That is the act the
+ * governance rules forbid, and forbidding it while providing no alternative is what left the
+ * substitution happening by hand. This is the alternative: the same two columns, reached through the
+ * authority gate, the transaction, the version bump and the audit event that every other policy
+ * mutation goes through.
+ *
+ * ════════════════════ WHAT IT CANNOT DO ════════════════════
+ *
+ *   NOT AN AUTHORITY CHANGE   The Principal id does not move, and the id is what every assignment,
+ *                             membership, employee link, direct grant and audit row references. The
+ *                             set of Roles and capabilities before and after is the SAME SET, by
+ *                             construction rather than by a check.
+ *   NOT A CREATE              A Principal that does not exist, or is not an ACTIVE member of the
+ *                             actor's tenant, is refused. This never mints a Principal, so it can
+ *                             never be used to introduce an authority holder.
+ *   NOT A MERGE               If another Principal already holds the target identity, the store
+ *                             refuses. Two Principals for one subject would split one human's Roles;
+ *                             silently folding them together would be worse.
+ *   NOT A STATUS CHANGE       There is no status parameter. A disabled Principal stays disabled.
+ *
+ * ════════════════════ THE VERSION BUMP ════════════════════
+ *
+ * The capability set is unchanged, so the bump is not required for correctness -- it is the
+ * conservative direction. Any access context cached against this Principal was resolved for a
+ * different login, and the resolver's qualification rule only ever EXCLUDES grants stamped ABOVE the
+ * current version, so raising the current version can invalidate a cache but can never invalidate an
+ * existing grant.
+ *
+ * NO-OP IS SILENT. Re-stating the binding a Principal already has writes no row and NO AUDIT EVENT:
+ * an audit trail in which half the entries record that nothing happened is an audit trail nobody
+ * reads.
+ */
+export async function rebindPrincipalIdentity(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: RebindPrincipalIdentityInput,
+): Promise<PrincipalRecord> {
+  // Naming who a Principal IS is assignment-shaped authority -- the same gate that admits a
+  // Principal to the tenant in the first place. It is deliberately not a weaker one.
+  requireAdministrationAuthority(actor.heldRoleKeys, "assignRole");
+  const principalId = nonEmpty(input.principalId, "principalId");
+  const identityProvider = nonEmpty(input.identityProvider, "identityProvider");
+  const externalSubject = nonEmpty(input.externalSubject, "externalSubject");
+
+  const principal = await repo.getPrincipal(principalId);
+  if (!principal) throw new PolicyValidationError("principal not found");
+
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+
+  const displayName = input.displayName === undefined ? principal.displayName : input.displayName;
+  if (
+    principal.identityProvider === identityProvider
+    && principal.externalSubject === externalSubject
+    && principal.displayName === displayName
+  ) {
+    return principal;
+  }
+
+  const clash = await repo.getPrincipalBySubject(identityProvider, externalSubject);
+  if (clash && clash.id !== principalId) {
+    throw new PolicyValidationError("another principal already holds that identity");
+  }
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const updated = await tx.setPrincipalIdentity(principalId, {
+      identityProvider,
+      externalSubject,
+      displayName,
+    });
+    await tx.bumpAccessVersion(principalId);
+    await tx.appendAudit({
+      ...auditBase(actor, "rebindPrincipalIdentity", "principal", principalId, input.reason ?? null),
+      // BOTH BINDINGS, named. "who could log in as this authority before, and who can now" is the
+      // only question this event will ever be asked, and an event recording only the new value
+      // cannot answer it.
+      before: {
+        identityProvider: principal.identityProvider,
+        externalSubject: principal.externalSubject,
+        displayName: principal.displayName,
+      },
+      after: {
+        identityProvider: updated.identityProvider,
+        externalSubject: updated.externalSubject,
+        displayName: updated.displayName,
+      },
+    });
+    return updated;
+  });
+}
+
 // ════════════════════ ROLE ASSIGNMENT — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
 
 export interface AssignRoleInput {
@@ -763,3 +882,168 @@ async function countActiveAdministeringAssignments(
 
 export { AdministrationDeniedError };
 export type { PolicyTransaction };
+
+// ════════════════════ OBJECT-OWNED SECURITY GRANTS ════════════════════
+//
+// The administrative contract is (objectKey, actionKey, grantee) -- NEVER a raw capability key.
+// An administrator grants "Work Order -> Dispatch"; the server resolves that to
+// `workOrder.lifecycle.dispatch` through the canonical metadata. Exposing the key as the primary
+// contract would put an implementation identifier in the administrative interface and would let a
+// caller name a capability governing something other than the Object they were looking at.
+//
+// AUTHORITY. Both grantee kinds require the ADMIN-ONLY authority, not the wider role-ASSIGNMENT
+// authority. Owner ruling: "what a Role may do" is admin-only while "who holds a Role" is not, and
+// a direct Principal grant MINTS authority for a person rather than staffing them into an existing
+// bundle -- so it belongs on the definition side of that line, not the staffing side.
+//
+// ACCESS VERSION IS NOT BUMPED. `principal_access_versions` exists to stale ROLE ASSIGNMENTS; a
+// capability grant does not invalidate an assignment, and bumping here would silently exclude every
+// assignment the principal holds. Capability grants are read live.
+
+export interface ObjectActionRoleGrantInput {
+  readonly objectKey: string;
+  readonly actionKey: string;
+  readonly roleKey: string;
+  readonly reason?: string | null;
+}
+
+export interface ObjectActionPrincipalGrantInput {
+  readonly objectKey: string;
+  readonly actionKey: string;
+  readonly principalId: string;
+  readonly reason?: string | null;
+}
+
+/** Resolve (objectKey, actionKey) against the canonical catalog, and prove the Object is governed. */
+async function resolveGrantTarget(repo: PolicyRepository, tenantId: string, objectKey: string, actionKey: string) {
+  const capabilities = await repo.listCapabilities();
+  let capability;
+  try {
+    capability = resolveObjectAction(capabilities, objectKey, actionKey);
+  } catch (err) {
+    throw new PolicyValidationError((err as Error).message);
+  }
+  // THE OBJECT MUST EXIST IN THIS TENANT'S CATALOG, not only in the capability metadata. The
+  // metadata is global; a tenant that has not registered the Object cannot administer it, and
+  // granting against it would create a grant no Administration screen could ever show.
+  const object = await repo.getObjectByKey(tenantId, capability.objectKey);
+  if (!object) throw new PolicyValidationError(`this tenant has no governed Object "${capability.objectKey}"`);
+  return capability;
+}
+
+export async function grantObjectActionToRole(
+  repo: PolicyRepository, actor: AdminActor, input: ObjectActionRoleGrantInput,
+): Promise<RoleCapabilityRecord> {
+  requireAdministrationAuthority(actor.heldRoleKeys, "editRoleDefinition");
+  const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+  const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
+  if (!role) throw new PolicyValidationError("role not found");
+
+  const existing = (await repo.listRoleCapabilities(actor.tenantId, [role.id]))
+    .find((g) => g.capabilityId === capability.id);
+  if (existing) return existing; // no-op writes no mutation event, as every command here behaves
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const grant = await tx.grantRoleCapability({
+      roleId: role.id,
+      capabilityId: capability.id,
+      grantedBy: actor.uid,
+      grantedAt: new Date().toISOString(),
+    });
+    await tx.appendAudit({
+      ...auditBase(actor, "grantObjectActionToRole", "roleCapability", grant.id, input.reason ?? null),
+      before: null,
+      // The audit answers "who granted what, on which Object, to whom" without a join: an auditor
+      // reading this row a year from now should not need the capability catalog to interpret it.
+      after: {
+        objectKey: capability.objectKey, actionKey: capability.actionKey,
+        capabilityKey: capability.key, granteeType: "ROLE", granteeKey: role.key, grant,
+      },
+    });
+    return grant;
+  });
+}
+
+export async function revokeObjectActionFromRole(
+  repo: PolicyRepository, actor: AdminActor, input: ObjectActionRoleGrantInput,
+): Promise<RoleCapabilityRecord | null> {
+  requireAdministrationAuthority(actor.heldRoleKeys, "editRoleDefinition");
+  const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+  const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
+  if (!role) throw new PolicyValidationError("role not found");
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const removed = await tx.revokeRoleCapability(role.id, capability.id);
+    if (!removed) return null; // nothing was granted; nothing happened; nothing to audit
+    await tx.appendAudit({
+      ...auditBase(actor, "revokeObjectActionFromRole", "roleCapability", removed.id, input.reason ?? null),
+      before: {
+        objectKey: capability.objectKey, actionKey: capability.actionKey,
+        capabilityKey: capability.key, granteeType: "ROLE", granteeKey: role.key, grant: removed,
+      },
+      after: null,
+    });
+    return removed;
+  });
+}
+
+export async function grantObjectActionToPrincipal(
+  repo: PolicyRepository, actor: AdminActor, input: ObjectActionPrincipalGrantInput,
+): Promise<PrincipalCapabilityRecord> {
+  requireAdministrationAuthority(actor.heldRoleKeys, "editRoleDefinition");
+  const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+  const principalId = nonEmpty(input.principalId, "principalId");
+
+  // A PRINCIPAL, NEVER AN EMPLOYEE. An Employee id does not resolve here and must not: an Employee
+  // is a workforce record that may exist with no login at all, and letting one receive a capability
+  // would make a business record decide a permission. The membership check is what enforces tenant
+  // consistency -- principals are global, membership is what binds one to this tenant.
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+
+  const existing = (await repo.listPrincipalCapabilities(actor.tenantId, principalId))
+    .find((g) => g.capabilityId === capability.id);
+  if (existing) return existing;
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const grant = await tx.grantPrincipalCapability({
+      principalId,
+      capabilityId: capability.id,
+      grantedBy: actor.uid,
+      grantedAt: new Date().toISOString(),
+    });
+    await tx.appendAudit({
+      ...auditBase(actor, "grantObjectActionToPrincipal", "principalCapability", grant.id, input.reason ?? null),
+      before: null,
+      after: {
+        objectKey: capability.objectKey, actionKey: capability.actionKey,
+        capabilityKey: capability.key, granteeType: "PRINCIPAL", granteeKey: principalId, grant,
+      },
+    });
+    return grant;
+  });
+}
+
+export async function revokeObjectActionFromPrincipal(
+  repo: PolicyRepository, actor: AdminActor, input: ObjectActionPrincipalGrantInput,
+): Promise<PrincipalCapabilityRecord | null> {
+  requireAdministrationAuthority(actor.heldRoleKeys, "editRoleDefinition");
+  const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+  const principalId = nonEmpty(input.principalId, "principalId");
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const removed = await tx.revokePrincipalCapability(principalId, capability.id);
+    if (!removed) return null;
+    await tx.appendAudit({
+      ...auditBase(actor, "revokeObjectActionFromPrincipal", "principalCapability", removed.id, input.reason ?? null),
+      before: {
+        objectKey: capability.objectKey, actionKey: capability.actionKey,
+        capabilityKey: capability.key, granteeType: "PRINCIPAL", granteeKey: principalId, grant: removed,
+      },
+      after: null,
+    });
+    return removed;
+  });
+}

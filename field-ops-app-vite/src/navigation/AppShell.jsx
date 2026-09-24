@@ -62,6 +62,9 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
   const mobileNav = buildMobileNav({
     role,
     hasCapability: (id) => operationalContext?.hasCapability?.(id) === true,
+    // When the EOS source is on, this decides the shell from governed surfaces and the `role` above
+    // is ignored entirely -- see resolveMobileShell.
+    eosNavigationAuthority: operationalContext?.eosNavigationAuthority,
     isVisible: (to) => {
       const [, domainPath, itemPath = ""] = to.split("/");
       const domain = NAV_DOMAINS.find((d) => d.path === domainPath);

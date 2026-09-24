@@ -26,14 +26,25 @@ const COLUMNS = [...SQL.split("CREATE TABLE employee_work_eligibility (")[1].spl
 const LEGACY_OPERATIONAL_ROLES = Object.freeze(["PARTS_MANAGER", "PARTS_ASSOCIATE", "TECHNICIAN", "WAREHOUSE_MANAGER",
   "WAREHOUSE_ASSOCIATE", "SERVICE_MANAGER", "SALES_MANAGER", "SALES_ASSOCIATE"]);
 
-test("the platform qualification vocabulary is exactly the two ruled codes, and is immutable", () => {
-  assert.deepEqual([...vocab.WORK_ELIGIBILITY_CODES], ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"]);
+test("the platform qualification vocabulary is exactly the ruled codes, and is immutable", () => {
+  // TWO -> THREE deliberately. Owner ruling (scope-policy slice): the legacy operationalRoleActive
+  // gate on technician's Reorder and Purchase Order grants is BUSINESS WORK ELIGIBILITY, so it
+  // needed a code of its own. It is PARTS_OPERATIONS, not the legacy label -- the guard below
+  // forbids reproducing a legacy operationalRole value, and the ruling deferred to exactly that
+  // ("unless an existing governed Work Eligibility vocabulary requires another exact format").
+  assert.deepEqual([...vocab.WORK_ELIGIBILITY_CODES], ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"]);
   assert.ok(Object.isFrozen(vocab.WORK_ELIGIBILITY_CODES));
   assert.ok(Object.isFrozen(vocab.WORK_ELIGIBILITY_LABEL));
   assert.ok(Object.isFrozen(vocab.LEGACY_QUALIFICATION_CANDIDATES));
-  // Adding a code is a deliberate migration, so the vocabulary and the database CHECK must be changed together.
-  for (const code of vocab.WORK_ELIGIBILITY_CODES) assert.ok(MIGRATION.includes(`'${code}'`), `${code} missing from the CHECK`);
-  const checked = MIGRATION.match(/work_eligibility_code_known CHECK \(qualification_code IN \(([^)]*)\)\)/);
+  // Adding a code is a deliberate migration, so the vocabulary and the database CHECK must be
+  // changed together. The CHECK is read from the LATEST migration that defines it -- 1761696000000
+  // replaced the original constraint, and pinning to the first file would assert a statement the
+  // database no longer has.
+  const codeSql = readFileSync(join(FUNCTIONS_DIR, "migrations",
+    "1761696000000_parts-associate-eligibility-and-reorder-queue-scope.sql"), "utf8")
+    .split("-- Down Migration")[0];
+  for (const code of vocab.WORK_ELIGIBILITY_CODES) assert.ok(codeSql.includes(`'${code}'`), `${code} missing from the CHECK`);
+  const checked = codeSql.match(/work_eligibility_code_known\s+CHECK \(qualification_code IN \(([^)]*)\)\)/);
   assert.ok(checked, "the closed-vocabulary CHECK must exist");
   assert.deepEqual(
     checked[1].split(",").map((s) => s.trim().replace(/'/g, "")),
@@ -124,7 +135,7 @@ test("a qualification is not a Job Role: the two vocabularies are independent au
   // Role in wording while remaining a separate authority -- an Employee may hold either without the other.
   const jobRoleIds = jobRoleSeed.LAUNCH_JOB_ROLES.map((r) => r.jobRoleId);
   assert.equal(jobRoleIds.length, 10);
-  assert.equal(vocab.WORK_ELIGIBILITY_CODES.length, 2);
+  assert.equal(vocab.WORK_ELIGIBILITY_CODES.length, 3);
   // No qualification code is a Job Role id, and no Job Role id is a qualification code.
   for (const code of vocab.WORK_ELIGIBILITY_CODES) assert.ok(!jobRoleIds.includes(code));
   for (const id of jobRoleIds) assert.ok(!vocab.isWorkEligibilityCode(id));

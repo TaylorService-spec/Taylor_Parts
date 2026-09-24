@@ -79,10 +79,26 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   assert.equal(ledger.excluded.fields, 0);
 
   // 36 objects = 28 entity-backed + 8 the CRUD matrix names with no EntityDefinition behind them.
-  assert.equal(ledger.seeded.objects, 36);
-  assert.equal(ledger.seeded.objectsWithoutAnEntity, 8);
+  // 36 -> 41: five Objects registered because a PostgreSQL capability names them (principal,
+  // cycleCount, dataImport, workflowDefinition, workflowInstance). They are counted in their own
+  // bucket, not folded into the matrix-only one, so this identity still distinguishes three
+  // different reasons an Object exists. `stockLocation` is deliberately NOT among them -- the Owner
+  // retired stock_locations as an operational authority on 2026-09-12 and this slice does not
+  // resurrect it; the two capabilities that would have named it map to inventoryTransaction.
+  //
+  // 41 -> 39, and 8 -> 6 matrix-only: OWNER RULING, 2026-09-23. `dispatchSchedule` and
+  // `notifications` were retired. Both were MATRIX_ONLY rows over a record that does not exist --
+  // no table, no collection, no document, no field -- so their CRED cells invited an administrator
+  // to configure access to nothing, which is the same reason stockLocation's six field rows went.
+  // The entity and field counts are UNCHANGED at 28/389 precisely because neither had an entity
+  // behind it. The one capability that governed something real,
+  // `fulfillment.coordinatedVisit.read`, was re-homed onto salesOrder as a BUSINESS_ACTION rather
+  // than retired with the Object it was filed under (migration 1761955200000).
+  assert.equal(ledger.seeded.objects, 39);
+  assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 5);
   assert.equal(
-    ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity,
+    ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,
     "objects are entity-backed ones plus matrix-only ones, with no third category",
   );

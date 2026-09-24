@@ -158,12 +158,13 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
    "unmodelledObjects": [
     "Marketing Initiatives",
     "Commissions",
+    "Dispatch Schedule",
+    "Notifications",
     "Users",
     "Roles / Permissions"
    ]
@@ -208,12 +209,13 @@
    "ruleGovernedObjects": [
     "Contacts",
     "Customer Locations",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
    "unmodelledObjects": [
     "Marketing Initiatives",
-    "Commissions"
+    "Commissions",
+    "Dispatch Schedule",
+    "Notifications"
    ]
   },
   "salesperson": {
@@ -254,12 +256,12 @@
    "ruleGovernedObjects": [
     "Contacts",
     "Customer Locations",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
    "unmodelledObjects": [
     "Marketing Initiatives",
-    "Commissions"
+    "Commissions",
+    "Notifications"
    ]
   },
   "marketingManager": {
@@ -281,11 +283,11 @@
    ],
    "ruleGovernedObjects": [
     "Contacts",
-    "Customer Locations",
-    "Notifications"
+    "Customer Locations"
    ],
    "unmodelledObjects": [
-    "Marketing Initiatives"
+    "Marketing Initiatives",
+    "Notifications"
    ]
   },
   "fieldManager": {
@@ -319,10 +321,12 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "dispatcher": {
    "label": "Dispatcher",
@@ -355,10 +359,12 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "technician": {
    "label": "Technician",
@@ -380,10 +386,12 @@
    "ruleGovernedObjects": [
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "warehouseManager": {
    "label": "Warehouse Manager",
@@ -422,10 +430,12 @@
    ],
    "ruleGovernedObjects": [
     "Customer Locations",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "warehouseAssociate": {
    "label": "Warehouse Associate",
@@ -461,10 +471,11 @@
    ],
    "ruleGovernedObjects": [
     "Customer Locations",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Notifications"
+   ]
   },
   "purchasingManager": {
    "label": "Purchasing Manager",
@@ -494,10 +505,11 @@
     "warehouse.transferOrder.read"
    ],
    "ruleGovernedObjects": [
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Notifications"
+   ]
   },
   "controller": {
    "label": "Controller",
@@ -541,11 +553,11 @@
    "ruleGovernedObjects": [
     "Contacts",
     "Customer Locations",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
    "unmodelledObjects": [
-    "Commissions"
+    "Commissions",
+    "Notifications"
    ]
   },
   "accountingManager": {
@@ -590,11 +602,11 @@
    "ruleGovernedObjects": [
     "Contacts",
     "Customer Locations",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
    "unmodelledObjects": [
-    "Commissions"
+    "Commissions",
+    "Notifications"
    ]
   },
   "supportStaff": {
@@ -607,10 +619,11 @@
     "customer.record.read"
    ],
    "ruleGovernedObjects": [
-    "Contacts",
-    "Notifications"
+    "Contacts"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Notifications"
+   ]
   },
   "partsAssociate": {
    "label": "Parts Associate",
@@ -650,10 +663,12 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "partsManager": {
    "label": "Parts Manager",
@@ -696,10 +711,12 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "shopManager": {
    "label": "Shop Manager",
@@ -732,10 +749,12 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   },
   "shopAssociate": {
    "label": "Shop Associate",
@@ -768,10 +787,12 @@
     "Contacts",
     "Customer Locations",
     "Technician Time / Non-work",
-    "Equipment / Installed Base",
-    "Notifications"
+    "Equipment / Installed Base"
    ],
-   "unmodelledObjects": []
+   "unmodelledObjects": [
+    "Dispatch Schedule",
+    "Notifications"
+   ]
   }
  },
  "rows": [
@@ -900,10 +921,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1084,7 +1103,7 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1255,10 +1274,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1439,7 +1456,7 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1608,7 +1625,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Team / Enterprise reporting",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1771,7 +1788,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Team / Enterprise reporting",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -1940,7 +1957,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Own records / assigned territory",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2103,7 +2120,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Own records / assigned territory",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2265,7 +2282,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise marketing",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2421,7 +2438,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise marketing",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2583,10 +2600,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2751,7 +2766,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -2915,10 +2930,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Assigned service region",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3085,7 +3098,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Assigned service region",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3243,7 +3256,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Assigned work only",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3406,7 +3419,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Assigned work only",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3566,7 +3579,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Warehouse / enterprise inventory",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3738,7 +3751,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Warehouse / enterprise inventory",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -3898,7 +3911,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Assigned warehouse",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4069,7 +4082,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Assigned warehouse",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4227,7 +4240,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise procurement",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4399,7 +4412,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise procurement",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4561,7 +4574,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise finance",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4738,7 +4751,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise finance",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -4902,7 +4915,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise finance",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5079,7 +5092,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise finance",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5243,10 +5256,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5411,7 +5422,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5575,10 +5586,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5743,7 +5752,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -5914,10 +5923,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6098,7 +6105,7 @@
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Enterprise",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6262,10 +6269,8 @@
    "accessCode": "CRE",
    "accessCodeInWorkbook": "CRE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6430,7 +6435,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6590,7 +6595,7 @@
    "accessCodeInWorkbook": "",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6746,7 +6751,7 @@
    "accessCodeInWorkbook": "R",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -6908,10 +6913,8 @@
    "accessCode": "RE",
    "accessCodeInWorkbook": "RE",
    "accessCodeAgrees": true,
-   "capabilityIds": [
-    "workOrder.transition"
-   ],
-   "governanceType": "CAPABILITY_GOVERNED",
+   "capabilityIds": [],
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []
@@ -7079,7 +7082,7 @@
    "accessCodeInWorkbook": "CR",
    "accessCodeAgrees": true,
    "capabilityIds": [],
-   "governanceType": "RULE_GOVERNED",
+   "governanceType": "UNMODELLED",
    "scope": "Service organization",
    "designStatus": "Proposed",
    "unknownCapability": []

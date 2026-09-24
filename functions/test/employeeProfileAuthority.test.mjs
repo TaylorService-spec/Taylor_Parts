@@ -141,11 +141,21 @@ test("display name is derived deterministically from governed name facts", () =>
 test("reporting writer: capability, input and self-management refusals touch no database", async () => {
   let connects = 0;
   const pool = { connect: async () => { connects++; throw new Error("no database"); } };
-  const actor = (caps) => ({ tenantId: "t1", principalId: "p1", capabilities: new Set(caps) });
+  // A RESOLVED actor carries its entitlement RESOLVER -- the required provider the deployed
+  // composer builds, never a value. Composed over the SHIPPED (empty) catalog, so every entitlement
+  // is unconditional, which is what the deployed resolver produces.
+  const entitlement = require("../lib/eosOps/conditionalEntitlement.js");
+  const actor = (caps) => ({ tenantId: "t1", principalId: "p1", capabilities: new Set(caps),
+    entitlements: async () => entitlement.entitlementsFrom(caps.map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey }))) });
   await assert.rejects(commands.establishReportingRelationship({ pool }, actor(["employee.record.read"]), { employeeId: "e1", managerEmployeeId: "e2" }), (e) => e.code === "CAPABILITY_REQUIRED");
   await assert.rejects(commands.establishReportingRelationship({ pool }, actor(["admin.employeeProfile.write"]), { employeeId: "e1", managerEmployeeId: "e1" }), (e) => e.code === "REPORTING_SELF_MANAGER");
   await assert.rejects(commands.establishReportingRelationship({ pool }, actor(["admin.employeeProfile.write"]), { employeeId: "e1", managerEmployeeId: "e2", tenantId: "t2" }), (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED");
   await assert.rejects(commands.endReportingRelationship({ pool }, actor(["admin.employeeProfile.write"]), { employeeId: "e/1" }), (e) => e.code === "EMPLOYEE_ID_REQUIRED");
+  // An actor with no entitlements is REFUSED, not decided on the flat set alone -- and still before
+  // any connection is taken.
+  await assert.rejects(commands.establishReportingRelationship({ pool },
+    { tenantId: "t1", principalId: "p1", capabilities: new Set(["admin.employeeProfile.write"]) },
+    { employeeId: "e1", managerEmployeeId: "e2" }), (e) => e.code === "ACTOR_CONTEXT_REQUIRED");
   assert.equal(connects, 0);
   await assert.rejects(commands.endReportingRelationship({ pool }, actor(["admin.employeeProfile.write"]), { employeeId: "e1" }), (e) => e.code === "COMMAND_FAILED" && !/no database/.test(e.message));
   const src = strip(readFileSync(join(WORKFORCE, "commands", "reportingRelationshipCommands.ts"), "utf8"));

@@ -44,8 +44,14 @@ export const OBJECT_PERMISSIONS = Object.freeze([
   { object: "Commissions", domain: "Sales / Finance", C: [], R: [], E: [], D: [] },
   { object: "Work Orders", domain: "Service",
     C: ["workOrder.create"], R: [], E: ["workOrder.transition", "workOrder.cancel", "workOrder.parts.plan"], D: [] },
-  { object: "Dispatch Schedule", domain: "Service",
-    C: [], R: ["fulfillment.coordinatedVisit.read"], E: [], D: [] },
+  // "Dispatch Schedule" REMOVED (Owner ruling 2026-09-23). It was a MATRIX_ONLY row describing a
+  // data authority that does not exist: no table, no collection, no document, no field. There is no
+  // Dispatch/Visit/WorkOrderGroup record in this platform -- THE SALES ORDER IS THE COORDINATOR --
+  // so a CRED row for it advertised Read on a record nobody can read. Its one capability,
+  // `fulfillment.coordinatedVisit.read`, survives and is governed under the Sales Order as the
+  // BUSINESS_ACTION `readCoordinatedVisits` (migration 1761955200000). It is deliberately NOT added
+  // to the Sales Orders R cell below: a named business act must not collapse into the Object's
+  // generic Read verb, and this matrix has no verb for one.
   { object: "Technician Time / Non-work", domain: "Service", C: [], R: [], E: [], D: [] },
   { object: "Parts Catalog", domain: "Inventory",
     C: [], R: ["inventory.catalog.read"], E: ["inventory.catalog.manage", "inventory.catalog.activate"], D: [] },
@@ -94,9 +100,16 @@ export const OBJECT_PERMISSIONS = Object.freeze([
     C: ["finance.invoice.issue"], R: ["finance.read"], E: ["finance.adjustment.record"], D: [] },
   { object: "Payments", domain: "Finance",
     C: ["finance.payment.apply"], R: ["finance.read"], E: ["finance.refund.record"], D: [] },
-  { object: "Notifications", domain: "Platform",
-    C: [], R: ["reorder.request.read.queue"], E: [], D: [] },
-  { object: "Users", domain: "Administration",
+  // "Notifications" REMOVED (Owner ruling 2026-09-23). Also MATRIX_ONLY, also describing nothing:
+  // no table, no collection, no document, no Rules block, and a nav entry that still says "not
+  // built yet". It gets NO successor capability, by ruling. The bell surfaces Reorder Request
+  // queues, and that visibility is already governed where it belongs -- `reorder.request.read.queue`
+  // on the Reorder Request itself, untouched in its SUPERSEDED posture. Who may see a notification
+  // is a property of the underlying record, never a Security Role.
+  // "Employees", not "Users". This row governs the WORKFORCE record (entity key `employee`); the
+  // security actor is the Principal, which is its own Object. Calling the workforce record "Users"
+  // is the Principal/Employee conflation the platform removes everywhere else.
+  { object: "Employees", domain: "Administration",
     C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
   { object: "Roles / Permissions", domain: "Administration",
     C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"], D: [] },

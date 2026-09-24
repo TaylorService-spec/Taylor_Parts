@@ -25,11 +25,57 @@ ok("Overview subnav item exists at a named path (not the index)", () => {
   assert.equal(overview.path, "overview");
   assert.equal(overview.legacyKey, undefined);
 });
-ok("Overview is admin/dispatcher visible, technician fail-closed", () => {
+// WAVE 12 / LANE AV -- THIS ASSERTION IS INVERTED BACK, AND BOTH INVERSIONS ARE WORTH KEEPING.
+//
+// Issue #226 gave Overview no authority of its own, so it inherited the admin/dispatcher answer from
+// navConfig's Firebase-era placeholder path. Wave 9 / Lane AH made Overview a CONTAINER, derived
+// SERVER-SIDE (`containerOf` in functions/src/eosOps/experienceAuthority.ts) and read through the
+// governed surface `administration.overview`. Wave 10 / Lane AR kept the legacy answer alive with a
+// row in NAV_LEGACY_PLACEHOLDER_DESTINATIONS; the Owner refused that row, because that register is
+// SHRINK-ONLY and a container is the one thing a placeholder can never be right for. Wave 11 / Lane
+// AS removed it and this test recorded the consequence: Overview had no legacy authority at all, so
+// `isNavItemVisible()` answered FALSE for every role, admin and dispatcher included, and
+// /administration/overview rendered App.jsx's "isn't available to your role" empty state everywhere
+// the EOS source was off.
+//
+// THE OWNER REFUSED THAT REGRESSION TOO, and refused restoring the placeholder row to close it.
+// Overview is a PURE CONTAINER under BOTH sources: visible iff at least one of its children is. So
+// the assertion is inverted back -- not by giving Overview an authority, but by letting the one
+// container mechanism (Lane AM's NAV_CONTAINERS, which has always answered under both sources)
+// answer for it, over the children the server's `containerOf` names.
+//
+// WHAT MUST REMAIN TRUE is asserted first and is unchanged from Lane AS: no legacyKey, no
+// capabilityAccess, no operationalRoleAccess, no placeholder row, no alwaysVisible. The visibility
+// below is DERIVED, and the blast radius is still exactly this one tab.
+ok("Overview asserts NO authority of its own, and is visible as a CONTAINER over its children", () => {
   const overview = byKey("overview");
-  assert.equal(isNavItemVisible(overview, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
-  assert.equal(isNavItemVisible(overview, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
-  assert.equal(isNavItemVisible(overview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+  assert.equal(overview.legacyPlaceholder, undefined,
+    "Overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- that register may only shrink");
+  assert.equal(overview.legacyKey, undefined, "Overview acquired a legacy nav key");
+  assert.equal(overview.capabilityAccess, undefined, "Overview acquired a capability of its own");
+  assert.equal(overview.operationalRoleAccess, undefined, "Overview acquired an operational-role path");
+  assert.equal(overview.alwaysVisible, undefined, "the blanket grant is back");
+  assert.deepEqual(overview.surfaceAccess, ["administration.overview"],
+    "Overview lost its governed surface -- the derived-surface guard would stop covering it");
+  assert.deepEqual([...overview.containerScope], [
+    "administration/rolesPermissions", "administration/objects", "administration/workflows",
+    "administration/permissionPreview", "administration/users", "administration/auditLogs",
+  ], "the container's scope has drifted from the server catalog's containerOf children");
+
+  // ADMIN AND DISPATCHER see it because they can open its children; TECHNICIAN can open none of
+  // them and so gets no menu. Nobody was granted a child in order to light the container.
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER]) {
+    const openChildren = overview.containerScope
+      .filter((d) => isNavItemVisible(byKey(d.split("/")[1]), role, allowed(role)));
+    assert.equal(openChildren.length, 6, `${role} opens ${openChildren.length} of the six children`);
+    assert.equal(isNavItemVisible(overview, role, allowed(role)), true,
+      `${role} cannot reach an Administration index with six open children under it`);
+  }
+  const techChildren = overview.containerScope
+    .filter((d) => isNavItemVisible(byKey(d.split("/")[1]), ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)));
+  assert.deepEqual(techChildren, [], "technician unexpectedly opens an Administration child");
+  assert.equal(isNavItemVisible(overview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false,
+    "technician reached an Administration index with nothing on it");
 });
 
 // ----- Permission Preview: net-new, reachable, admin/dispatcher-only -----

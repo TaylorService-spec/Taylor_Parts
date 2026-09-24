@@ -37,6 +37,19 @@ export default defineConfig({
       PART_MASTER_WRITE_READY: false,
       MANUFACTURER_WRITE_READY: false,
       TRUSTED_COMPLETION_ENABLED: true,
+      // Wave 6 / Lane V, and STILL FALSE after Wave 11 / Lane AS activated platform-sandbox.
+      //
+      // The old reason for the false was "no environment ships this true". One now does, so the
+      // reason is restated rather than the value flipped: this value is not a copy of any
+      // environment's, it is the TEST environment's own, and the test environment has no EOS API,
+      // no signed-in principal and no transport -- so a true here would resolve every component
+      // test to UNAVAILABLE and assert the outage branch everywhere.
+      //
+      // A suite that needs the EOS branch injects an experience authority through operationalContext
+      // rather than flipping this -- there is no production-importable override. The suites that
+      // prove the activated branch (administrationNavigationReadiness, navigationExperienceProjection,
+      // dashboardEosProjection) all do exactly that, which is why none of them needed this moved.
+      EOS_NAVIGATION_AUTHORITY_READY: false,
     }),
     // Per-environment capability activation (spec 2026-08-14). Test-only default:
     // empty (spine stays preview-hidden) so no component test depends on the

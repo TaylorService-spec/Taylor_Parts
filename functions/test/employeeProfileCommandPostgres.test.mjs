@@ -75,7 +75,7 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
   };
   const resolveActor = async (principal) => {
     const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: principal.subject, requestedTenantId: null });
-    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities };
+    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
   };
   const employee = (id, tenant = "t1", extra = {}) => {
     const cols = Object.keys(extra);
@@ -319,10 +319,18 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
     const LIB = join(FUNCTIONS_DIR, "lib", "eosWorkforce");
     const kernelSrc = readFileSync(join(LIB, "commands", "employeeCommandKernel.js"), "utf8");
     const mutant = (label, from, to) => {
-      assert.ok(kernelSrc.includes(from), `${label}: mutation anchor not found -- the kernel changed, update the control`);
       const dir = mkdtempSync(join(tmpdir(), `emp-profile-mutant-${label}-`));
       cpSync(LIB, join(dir, "eosWorkforce"), { recursive: true });
-      writeFileSync(join(dir, "eosWorkforce", "commands", "employeeCommandKernel.js"), kernelSrc.replace(from, to));
+      // The kernel's capability gate now also asks the conditional-entitlement decision, which lives
+      // in eosOps. Copy it too, unmutated: the mutant must differ from the real kernel in exactly the
+      // one guard under test and in nothing else.
+      cpSync(join(FUNCTIONS_DIR, "lib", "eosOps"), join(dir, "eosOps"), { recursive: true });
+      let mutated = kernelSrc;
+      for (const [f, t] of Array.isArray(from) ? from.map((x, i) => [x, to[i]]) : [[from, to]]) {
+        assert.ok(mutated.includes(f), `${label}: mutation anchor not found -- the kernel changed, update the control`);
+        mutated = mutated.replace(f, t);
+      }
+      writeFileSync(join(dir, "eosWorkforce", "commands", "employeeCommandKernel.js"), mutated);
       return require(join(dir, "eosWorkforce", "commands", "employeeProfileCommand.js"));
     };
     const LOCK = "WHERE tenant_id = $1 AND id = $2 FOR UPDATE";
@@ -331,10 +339,21 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
     const leaked = await noTenant.updateEmployeeProfile(deps, adminActor, { employeeId: "e-t2", changes: { jobTitle: "mutant" } }).then(() => "accepted", (e) => e.code);
     assert.notEqual(leaked, "EMPLOYEE_NOT_FOUND", "without the tenant predicate the foreign Employee was still refused: the isolation test is vacuous");
 
-    const noCapability = mutant("capability", "if (!actor.capabilities.has(requiredCapability))", "if (false)");
+    // TWO capability gates now, and the control proves BOTH are load-bearing rather than assuming it.
+    const FLAT = "if (!actor.capabilities.has(requiredCapability))";
+    const CONDITIONED = "if (!conditioned.allowed)";
     const gmActor = await resolveActor(gm);
-    const escalated = await noCapability.updateEmployeeProfile(deps, gmActor, { employeeId: "e-other", changes: { jobTitle: "mutant gm" } }).then((r) => r.outcome, (e) => e.code);
-    assert.equal(escalated, "UPDATED", "without the capability check the General Manager was still refused: the capability test is vacuous");
+    const runGm = (m) => m.updateEmployeeProfile(deps, gmActor, { employeeId: "e-other", changes: { jobTitle: "mutant gm" } })
+      .then((r) => r.outcome, (e) => e.code);
+    // Weakening EITHER one alone still refuses: defence in depth, measured.
+    assert.equal(await runGm(mutant("capability-flat-only", FLAT, "if (false)")), "CAPABILITY_CONDITION_UNSATISFIED",
+      "the conditional gate did not catch what the flat gate stopped catching");
+    assert.equal(await runGm(mutant("capability-conditioned-only", CONDITIONED, "if (false)")), "CAPABILITY_REQUIRED",
+      "the flat gate did not catch what the conditional gate stopped catching");
+    // Weakening BOTH lets the General Manager through, which is what makes the capability test real.
+    const noCapability = mutant("capability", [FLAT, CONDITIONED], ["if (false)", "if (false)"]);
+    const escalated = await runGm(noCapability);
+    assert.equal(escalated, "UPDATED", "without the capability checks the General Manager was still refused: the capability test is vacuous");
 
     const principalLookup = mutant("identity", LOCK,
       "WHERE tenant_id = $1 AND (id = $2 OR id = (SELECT employee_id FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND principal_id = $2 LIMIT 1)) FOR UPDATE");

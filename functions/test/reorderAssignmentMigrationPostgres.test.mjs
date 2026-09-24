@@ -71,9 +71,12 @@ test("legacy Reorder assignment copy: exact Employee or refuse, truthful provena
 
   // The governed command requires the qualification, so any Employee this suite assigns THROUGH it must hold one.
   // The COPY path deliberately does not re-check qualification: it migrates an assignment that already exists.
+  // Written against the CONSTANT, not a literal: the qualification is PARTS_OPERATIONS by Owner ruling, and a
+  // fixture that hard-coded a code could drift from the command it is meant to satisfy.
   const qualify = (employeeId) => q(
     `INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
-     VALUES ($1, 't1', $2, 'WAREHOUSE_OPERATIONS', now(), 'fixture')`, [`ewe-${employeeId}`, employeeId]);
+     VALUES ($1, 't1', $2, $3, now(), 'fixture')`,
+    [`ewe-${employeeId}`, employeeId, authority.REORDER_ASSIGNMENT_QUALIFICATION]);
   await qualify("e-alice");
   await qualify("e-bob");
 

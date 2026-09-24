@@ -163,7 +163,14 @@ const previewHasPermission = createPermissionPreviewer(
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import MyDashboard from "./modules/dashboard/MyDashboard.jsx";
+// WAVE 9 / LANE AL -- the dashboard-surface rule, stated beside the composition it pairs with.
+import { DASHBOARD_SURFACE, dashboardSurfaceFor } from "./domain/dashboardComposition.js";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
+import {
+  EXPERIENCE_STATE,
+  EXPERIENCE_UNAVAILABLE_REASON,
+  useExperienceContext,
+} from "./hooks/useExperienceContext.js";
 import EmptyState from "./shared/ui/EmptyState.jsx";
 import { Button } from "./shared/ui/primitives";
 
@@ -223,8 +230,16 @@ const LEGACY_COMPONENTS = {
 // performance section rather than being replaced by a generic composition. Composition resolves from
 // governed context, not from this branch -- the branch chooses which SURFACE renders, and neither
 // surface decides what anyone may see.
+//
+// WAVE 9 / LANE AL. The branch itself no longer holds the rule. `dashboardSurfaceFor` (domain/
+// dashboardComposition.js) answers it from the EOS experience context when that source is present --
+// field work eligibility AND no operations surface, which is the sentence that file has always
+// opened with -- and reproduces `role === "technician"` byte-for-byte when it is not. Moving it
+// there keeps the one rule beside the composition it pairs with, and makes it testable without React.
 function DashboardIndex({ role, allowedLegacyKeys, operationalContext }) {
-  if (role === "technician") return <TechnicianDashboard />;
+  if (dashboardSurfaceFor({ role, operationalContext }) === DASHBOARD_SURFACE.FIELD_WORK) {
+    return <TechnicianDashboard />;
+  }
   return (
     <MyDashboard
       role={role}
@@ -583,6 +598,21 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   // empty/not-connected; a denied/failed read -> the workspace's denied/error surface.
   if (domain.key === "inventory" && item.key === "truckInventory") {
     return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} role={role} />;
+  }
+  // THE REORDER QUEUE'S OWN DESTINATION (navigation blocker #4). navConfig.js's
+  // `inventory.reorderQueue` surface was earnable and had no door: the queue was reachable only as a
+  // rail inside Parts Catalog, from Part Detail, and from the notification bell. This is the door,
+  // and under the EOS source it is earned by `reorder.request.read` plus the governed REORDER_QUEUE
+  // Operational Scope -- never by a role string and never by operationalRoles.
+  //
+  // THE SAME COMPONENT, NOT A NEW SCREEN. PartsManagerHome IS the Reorder queue workspace (its own
+  // header says so: the queue panel and the assigned-work oversight table are the shared
+  // shared/reorder components). Re-rendering it here changes no read, no command and no authority --
+  // every subscription behind it re-authorizes server-side exactly as it does at
+  // /inventory-role/manager, which is left working, unchanged, under the legacy source. Only the
+  // workspace TITLE differs, because this destination is the queue rather than a persona.
+  if (domain.key === "inventory" && item.key === "reorderQueue") {
+    return <PartsManagerHome title="Reorder Queue" accessVersion={operationalContext?.accessVersion} />;
   }
   // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
@@ -1166,7 +1196,32 @@ export default function App() {
   // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
   // PLACEHOLDER_DEFAULT_ROLES/operationalRoleAccess) are unchanged. `accessVersion` is threaded to
   // Saved Reports so it re-lists from the server on every access change (freshness).
-  const operationalContext = { operationalRoles, employmentStatus, hasCapability, accessVersion };
+  // ════════════════════ WAVE 6 / LANE V -- THE EOS NAVIGATION SOURCE ════════════════════
+  //
+  // The governed principal experience context (POST /operations/experience): EOS Principal ->
+  // Security Roles -> eos_policy.role_capabilities -> linked Employee -> Work Eligibility ->
+  // Operational Scope -> the set of SURFACES this person may be offered. When
+  // EOS_NAVIGATION_AUTHORITY_READY is false -- which is every environment today -- this hook makes
+  // no request and `experienceAuthority` is null, so `operationalContext` is byte-for-byte what it
+  // was and every legacy path below is unchanged.
+  //
+  // When it is true, `eosNavigationAuthority` is present and navConfig's EOS branch becomes the
+  // WHOLE answer: no ROLE_NAV_ACCESS, no operationalRoles, no fallback when the read fails. That
+  // absence is deliberate and is the point of the lane.
+  const { authority: experienceAuthority, state: experienceState, reload: reloadExperience } =
+    useExperienceContext({ principalKey: user?.uid ?? null });
+  // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
+  // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
+  // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
+  // PLACEHOLDER_DEFAULT_ROLES/operationalRoleAccess) are unchanged. `accessVersion` is threaded to
+  // Saved Reports so it re-lists from the server on every access change (freshness).
+  const operationalContext = {
+    operationalRoles,
+    employmentStatus,
+    hasCapability,
+    accessVersion,
+    ...(experienceAuthority ? { eosNavigationAuthority: experienceAuthority } : {}),
+  };
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;
@@ -1196,6 +1251,29 @@ export default function App() {
   // arrives. Waiting grants nothing (hasCapability still denies until a positive decision lands);
   // it only stops the shell from acting on an absence as though it were a refusal.
   if (accessResolving) return <div className="fo-panel">Loading...</div>;
+
+  // The same rule, for the EOS source. Both branches only ever run when that source is ON.
+  //
+  // LOADING: the governed answer has not arrived. Rendering the route table now would emit the route
+  // set of a principal with no surfaces and destroy a deep link before the answer landed.
+  if (experienceAuthority && experienceState === EXPERIENCE_STATE.LOADING) {
+    return <div className="fo-panel">Loading...</div>;
+  }
+  // UNAVAILABLE: the governed source could not answer. This is a READ FAILURE, and it is rendered as
+  // one -- retryable, and visibly distinct from the "No access" refusal below. It must never fall
+  // through to that refusal (which blames the person's roles for a broken transport) and it must
+  // never fall back to `users/{uid}.role` (which would hide the breakage entirely). Fail closed,
+  // out loud.
+  if (experienceAuthority && experienceState === EXPERIENCE_STATE.UNAVAILABLE) {
+    return (
+      <div className="fo-panel">
+        <FailureState
+          message={EXPERIENCE_UNAVAILABLE_REASON}
+          action={<Button type="button" variant="primary" onClick={reloadExperience}>Retry</Button>}
+        />
+      </div>
+    );
+  }
 
   if (!hasAnyAccess) {
     return (

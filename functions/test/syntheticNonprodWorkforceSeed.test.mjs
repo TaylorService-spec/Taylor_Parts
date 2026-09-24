@@ -184,7 +184,19 @@ test("synthetic Principals cannot authenticate: the verifier's provider is fireb
   assert.equal(SYNTHETIC_IDENTITY_PROVIDER, "eos-synthetic-nonprod");
   assert.equal(FIREBASE_IDENTITY_PROVIDER, "firebase");
   assert.notEqual(SYNTHETIC_IDENTITY_PROVIDER, FIREBASE_IDENTITY_PROVIDER);
-  assert.equal(MANIFEST.principals.filter((p) => !p.existingAdministrator).length, 7);
+  // SEVEN. The Owner persona is deliberately NOT one of them: it is provisioned by its own governed
+  // path because every entry here must name an Employee and the Owner/Executive Employee already
+  // holds the administrator Principal's one permitted active link. The manifest says so in
+  // `rulings.ownerPersona`, and the administrator still declares exactly ["admin"] -- which is the
+  // ruling's sharp edge, so it is asserted rather than assumed.
+  const nonLogin = MANIFEST.principals.filter((p) => !p.existingAdministrator);
+  assert.equal(nonLogin.length, 7);
+  const administrator = MANIFEST.principals.filter((p) => p.existingAdministrator);
+  assert.equal(administrator.length, 1);
+  assert.deepEqual(administrator[0].securityRoles, ["admin"]);
+  assert.equal(MANIFEST.principals.filter((p) => p.securityRoles.includes("owner")).length, 0,
+    "owner is provisioned by its own governed path, not by this seed");
+  assert.match(MANIFEST.rulings.ownerPersona, /NOT SEEDED BY THIS MANIFEST/);
   assert.match(MANIFEST.rulings.principals, /No authentication verifier recognizes this identity provider/);
 });
 
@@ -207,4 +219,143 @@ test("(16) no deferred foreign key, no schema change, and no direct Principal, m
   assert.deepEqual(inserts, ["INSERT INTO eos_workforce.employees"], "only Employees, which have no governed writer, are inserted directly");
   const updates = (src.match(/UPDATE [a-z_.$`{}]+/g) ?? []);
   assert.equal(updates.length, 1, "the only direct UPDATE is the GOVERNED/SEED accountable person");
+});
+
+// ════════ BLOCKED_PENDING_C5: THE LEGACY v1 SEEDER CANNOT RE-ARM THE COMMERCIAL C5 BLOCKER ════════
+//
+// Owner ruling 2026-09-23: "The current v1 seeder MUST NOT recreate the twelve intentionally removed
+// Commercial C5 blockers. Current Commercial acceptance state: BLOCKED_PENDING_C5."
+//
+// THE MEASURED HAZARD. This seeder iterated `manifest.commercial` and wrote every record through the governed
+// Commercial writer UNCONDITIONALLY, with no gate of any kind. The manifest declares eight of the twelve rows
+// the authorized governed cleanup removed from nonprod (commit 106e4292) BECAUSE they blocked Commercial C5,
+// so a single re-run put eight of them back. Three independent rings now stop that, each proved on its own.
+
+const cleanup = require(join(FUNCTIONS_DIR, "scripts/commercialSyntheticCleanup.js"));
+const c5 = require(join(FUNCTIONS_DIR, "scripts/commercialC5.js"));
+const { assertCommercialWriteAllowed, COMMERCIAL_BLOCKER_CODE, COMMERCIAL_SEED_BLOCKED } = require(SCRIPT_PATH);
+
+/** The eight v1 numbers named as literals, so a manifest edit cannot silently change what is being proved. */
+const V1_COMMERCIAL_NUMBERS = [
+  "SYN-NP-OPP-0001", "SYN-NP-OPP-0002", "SYN-NP-OPP-0003", "SYN-NP-OPP-0004",
+  "SYN-NP-SA-0001", "SYN-NP-SA-0002", "SYN-NP-SO-0001", "SYN-NP-SO-0002",
+];
+
+test("RE-ARM PROOF: the eight v1 declarations ARE removed Commercial C5 blockers, and are still declared", () => {
+  // Gate the WRITE, not the DECLARATION. The declarations must survive: scripts/commercialC5.js reads them from
+  // BOTH manifests to classify a target row DECLARED_SYNTHETIC rather than UNKNOWN, and sampleCompany.v2.json's
+  // SUPERSET proof needs these eight numbers carried forward byte-identically.
+  assert.deepEqual(MANIFEST.commercial.map((r) => r.number), V1_COMMERCIAL_NUMBERS);
+  assert.equal(cleanup.AUTHORIZED_POPULATION.total, 12);
+  const removed = cleanup.DELETE_SET.map((r) => r.number);
+  for (const number of V1_COMMERCIAL_NUMBERS) {
+    assert.ok(removed.includes(number), `${number} is not one of the twelve removed rows -- the gate is aimed at the wrong set`);
+  }
+  // commercialC5.js still sees all eight, still attributed to this v1 manifest.
+  const provenance = new Map(c5.declaredSyntheticSeedProvenance().map((p) => [p.number, p]));
+  assert.equal(c5.declaredSyntheticSeedNumbers().length, 12);
+  for (const number of V1_COMMERCIAL_NUMBERS) {
+    assert.ok(provenance.get(number)?.declaredBy.includes("SYNTHETIC_NONPROD_WORKFORCE_SEED"),
+      `${number} is no longer declared by the v1 manifest; C5 would classify the row UNKNOWN`);
+  }
+});
+
+test("RE-ARM PROOF ring 1: the v1 manifest has NO unblocked Commercial state, and a tampered one is refused", () => {
+  assert.equal(MANIFEST.commercialSeedState.status, "BLOCKED");
+  assert.equal(MANIFEST.commercialSeedState.blockedBy, COMMERCIAL_BLOCKER_CODE);
+  assert.equal(COMMERCIAL_BLOCKER_CODE, "COMMERCIAL_RECORDS_PENDING_C5", "the blocker code must stay the one sampleCompany.v2.json declares");
+  assert.doesNotThrow(() => validateManifest(MANIFEST));
+  // Every way a caller could try to reopen the write path, including the status v2 legitimately allows.
+  for (const mutate of [
+    (m) => { delete m.commercialSeedState; },
+    (m) => { m.commercialSeedState.status = "SEEDED"; },
+    (m) => { m.commercialSeedState.status = "UNBLOCKED"; },
+    (m) => { m.commercialSeedState.blockedBy = "SOMETHING_ELSE"; },
+  ]) {
+    const m = clone();
+    mutate(m);
+    assert.throws(() => validateManifest(m), /MANIFEST_INVALID.*commercialSeedState/s, "a tampered gate was accepted");
+  }
+  // And the declarations are still FULLY validated while blocked -- a declaration nobody checks rots.
+  const ineligible = clone();
+  ineligible.commercial[1].accountable = "technician-on-leave";
+  assert.throws(() => validateManifest(ineligible), /not eligible under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1/);
+});
+
+test("RE-ARM PROOF ring 2: the seed accounts every declared record BLOCKED and opens no client for it", () => {
+  const runtime = code().slice(code().indexOf("async function seedSyntheticNonprodWorkforce"));
+  const loop = runtime.slice(runtime.indexOf("for (const r of manifest.commercial)"));
+  const blocked = loop.indexOf("summary.commercial.blocked += 1");
+  const skip = loop.indexOf("continue;");
+  const connect = loop.indexOf("pool.connect()");
+  assert.ok(blocked >= 0 && skip > blocked, "the blocked record is not accounted before the loop continues");
+  assert.ok(connect > skip, "the seed reaches a client before the Commercial gate decides");
+  assert.match(loop, /summary\.accountablePersons\.blocked \+= 1/, "the accountable person half is not accounted blocked");
+  // NOT SILENT: the run states its refusal, the blocker and every number it declined to write.
+  assert.match(runtime, /reason: COMMERCIAL_SEED_BLOCKED/);
+  assert.match(runtime, /blockedRecords: blockedCommercial/);
+});
+
+test("RE-ARM PROOF ring 3: the governed Commercial writer is guarded, and the guard always refuses", () => {
+  assert.equal(COMMERCIAL_SEED_BLOCKED, "COMMERCIAL_SEED_BLOCKED_PENDING_C5");
+  for (const number of V1_COMMERCIAL_NUMBERS) {
+    assert.throws(() => assertCommercialWriteAllowed(number), (err) => {
+      assert.equal(err.name, "SyntheticSeedError");
+      assert.equal(err.code, COMMERCIAL_SEED_BLOCKED);
+      assert.match(err.message, new RegExp(`^${COMMERCIAL_SEED_BLOCKED}: ${number}: BLOCKED_PENDING_C5`));
+      return true;
+    }, `${number} was allowed through the last gate`);
+  }
+  // The guard sits between the establishment and the writer, so even a re-armed loop refuses before it writes.
+  const src = code();
+  assert.ok(src.indexOf("assertCommercialWriteAllowed(r.number)") > src.indexOf("establishCreationAccountablePerson("));
+  assert.ok(src.indexOf("assertCommercialWriteAllowed(r.number)") < src.indexOf("createCommercialRecord(client"));
+});
+
+test("RE-ARM PROOF: the activation dependency is stated, and v1 is never the thing that lifts it", () => {
+  // W5. Not implemented here: post-C5 Commercial fixtures are designed and sealed as SAMPLE COMPANY V3, and
+  // only after Commercial C5 copy AND verify have completed for this tenant.
+  assert.match(MANIFEST.commercialSeedState.unblockedBy, /SAMPLE_COMPANY_V3/);
+  assert.match(MANIFEST.commercialSeedState.unblockedBy, /never this v1 seed/);
+  assert.match(MANIFEST.commercialSeedState.unblockedBy, /Commercial C5 copy \+ verify/);
+  assert.equal(MANIFEST.commercialSeedState.seededBy, "SAMPLE_COMPANY_V3");
+  assert.match(MANIFEST.rulings.commercialPendingC5, /BLOCKED_PENDING_C5/);
+  assert.match(MANIFEST.rulings.commercialPendingC5, /commercialSyntheticCleanup\.js/);
+});
+
+// ════════════════════ PER-STEP AUDIT REASONS (Owner ruling) ════════════════════
+
+test("every persona mutation declares its OWN reason, and no two share one", () => {
+  const rationales = new Map();
+  for (const p of MANIFEST.principals) {
+    const entries = [[`${p.employee} link`, p.linkReason]];
+    for (const roleKey of p.securityRoles) {
+      entries.push([`${p.employee} role ${roleKey}`, (p.roleReasons || {})[roleKey]]);
+    }
+    for (const [where, rationale] of entries) {
+      assert.equal(typeof rationale, "string", `${where} has no reason`);
+      assert.ok(rationale.trim().length >= 24, `${where}: the reason is too short to be specific`);
+      const normalized = rationale.trim().toLowerCase();
+      assert.equal(rationales.has(normalized), false,
+        `${where} reuses the reason given for ${rationales.get(normalized)} -- that is a run-level reason`);
+      rationales.set(normalized, where);
+    }
+  }
+  // 8 principals: 8 link reasons + 8 role reasons (each declares exactly one Security Role).
+  assert.equal(rationales.size, 16);
+});
+
+test("the two run-level reason CONSTANTS are gone, and there is nowhere left to put one", () => {
+  const src = code();
+  // The exact constants this file used to reuse verbatim for every persona.
+  assert.equal(/const LINK_REASON\s*=/.test(src), false, "LINK_REASON is back");
+  assert.equal(/const ROLE_REASON\s*=/.test(src), false, "ROLE_REASON is back");
+  // Every reason reaching a governed command is COMPOSED per step, from the persona and the target.
+  assert.match(src, /assertionReason: stepReason\(DIMENSION_LINK, employeeId\(p\.employee\), p\.linkReason\)/);
+  assert.match(src, /reason: stepReason\(DIMENSION_ROLE, key, p\.roleReasons\[key\]\)/);
+  assert.match(src, /reason: stepReason\(DIMENSION_LINK, "tenant membership", p\.linkReason\)/);
+  // And the three ways a run-level reason could come back are each refused BY NAME.
+  for (const code_ of ["REASON_MISSING", "RUN_LEVEL_REASON_REFUSED", "REASON_TOO_LONG"]) {
+    assert.match(src, new RegExp(`refuse\\("${code_}"`), `${code_} is not refused by name`);
+  }
 });

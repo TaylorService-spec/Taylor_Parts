@@ -81,7 +81,18 @@ test("(17) the numbering module has no Firestore counter dependency and allocate
 
 test("(18) no runtime module imports the C1 numbering module yet", () => {
   // Only the unwired C2 command layer allocates numbers; commercialCommandLayer.test.mjs proves no runtime entry point reaches it.
-  const reaching = walk(SRC, ".ts").filter((f) => f !== NUMBERING_SOURCE && /commercialNumbering/.test(readFileSync(f, "utf8"))).map((f) => relative(FUNCTIONS_DIR, f));
+  // MEASURE IMPORTS, NOT MENTIONS. A bare /commercialNumbering/ search matched a COMMENT -- the Work
+  // Order allocator's header says it "Mirrors eosCommercial/commercialNumbering.ts exactly", which is a
+  // citation, not a call. This ratchet exists to catch a module that ALLOCATES commercial numbers, and a
+  // probe that fires on prose gets relaxed by whoever trips it next.
+  const IMPORTS_NUMBERING = /(?:from|import|require)\s*\(?\s*["'][^"']*commercialNumbering(?:\.js)?["']/;
+  const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").map((l) => l.replace(/\/\/.*$/, "")).join("\n");
+  const reaching = walk(SRC, ".ts")
+    .filter((f) => f !== NUMBERING_SOURCE && IMPORTS_NUMBERING.test(strip(readFileSync(f, "utf8"))))
+    .map((f) => relative(FUNCTIONS_DIR, f));
+  // NON-VACUITY: the probe must still detect a real import, and must ignore a mention.
+  assert.equal(IMPORTS_NUMBERING.test('import { allocateCommercialNumber } from "../commercialNumbering.js";'), true);
+  assert.equal(IMPORTS_NUMBERING.test("// mirrors eosCommercial/commercialNumbering.ts exactly"), false);
   // Commercial C5 verify is the one sanctioned outside reader: a PROBE allocation inside a transaction that is always rolled
   // back, in an operator-only module no runtime entry point reaches (commercialC5Migration.test.mjs STRUCTURAL).
   const C5_VERIFY_PROBE = "src/commercialMigration/commercialC5Target.ts";

@@ -53,7 +53,24 @@ const { assertNonprodRuntime } = require("./measureWorkforceActivation.js");
 
 const MODES = Object.freeze(["census", "copy", "verify"]);
 const FROZEN_ENVIRONMENTS = Object.freeze(["platform-certification"]);
-const SYNTHETIC_SEED_MANIFEST = path.resolve(__dirname, "fixtures/syntheticNonprodWorkforceSeed.v1.json");
+// EVERY governed synthetic nonprod fixture manifest that declares Commercial records, not just the first one.
+//
+// WHY THIS IS A LIST. It used to be the single v1 workforce-seed path, and that was a census DEFECT rather than a
+// scoping choice: `sampleCompany.v2.json` declares itself a SUPERSET of v1 (its `supersedes` block: "Every v1
+// Employee, Principal, Account, Contact, Location and Commercial record id/number is carried forward
+// BYTE-IDENTICAL"), and it adds four further Commercial numbers of its own (SAMPLE-CO-OPP-0005/0006,
+// SAMPLE-CO-SA-0003, SAMPLE-CO-SO-0003). Reading v1 alone meant those four seeded rows were reported as
+// TARGET_HAS_UNKNOWN_RECORDS -- "we do not know what this is" -- when the repository in fact declares exactly what
+// they are. They blocked the copy either way; what was wrong was the PROVENANCE the census stated about them.
+//
+// WHAT THIS IS NOT. It is not a widening of what counts as synthetic. The classification remains DECLARATION-BASED:
+// a number is declared-synthetic if and only if a manifest in this list names it in `commercial[].number`. There is
+// no prefix match, no "SYN-"/"SAMPLE-" heuristic and no shape test -- an undeclared row stays UNKNOWN, which is the
+// stricter answer and the one that keeps a real record from ever being labelled disposable.
+const SYNTHETIC_SEED_MANIFESTS = Object.freeze([
+  Object.freeze({ manifest: "SYNTHETIC_NONPROD_WORKFORCE_SEED", version: 1, path: path.resolve(__dirname, "fixtures/syntheticNonprodWorkforceSeed.v1.json") }),
+  Object.freeze({ manifest: "SAMPLE_COMPANY_V2", version: 2, path: path.resolve(__dirname, "fixtures/sampleCompany.v2.json") }),
+]);
 
 /** Every refusal that can be decided from argv and the process environment alone. No client, no lib/. */
 function assertC5Invocation(args, env) {
@@ -128,10 +145,43 @@ function assertSnapshotSource(snapshot, environmentId) {
   }
 }
 
-/** The commercial numbers the governed synthetic nonprod seed declares -- used only to LABEL such target rows in the census; they still block. */
+/**
+ * The commercial numbers the governed synthetic nonprod seed manifests declare -- the UNION over
+ * SYNTHETIC_SEED_MANIFESTS, deduplicated, in declaration order. Used only to LABEL such target rows in the census;
+ * they still block the copy exactly as before (TARGET_HAS_SYNTHETIC_SEED_ROWS is a blocker, and their removal is a
+ * separately authorized governed nonprod cleanup, never part of C5).
+ *
+ * A manifest that declares no `commercial` array contributes nothing rather than failing: the union is over what the
+ * repository declares, and a workforce-only manifest declaring no Commercial records is a legitimate state.
+ */
 function declaredSyntheticSeedNumbers() {
-  const manifest = JSON.parse(fs.readFileSync(SYNTHETIC_SEED_MANIFEST, "utf8"));
-  return (manifest.commercial || []).map((r) => r.number);
+  return declaredSyntheticSeedProvenance().map((r) => r.number);
+}
+
+/**
+ * The same union, carrying WHICH manifest declared each number -- so a census reader can see that a row labelled
+ * declared-synthetic is declared by a named, versioned, in-repository manifest rather than by a guess.
+ *
+ * A number declared by more than one manifest (v2 supersedes v1 byte-identically, so eight of the twelve are) is
+ * reported once, against the FIRST manifest that declares it, with every declaring manifest listed.
+ */
+function declaredSyntheticSeedProvenance() {
+  // A plain object rather than a Map: functions/test/commercialC5Migration.test.mjs proves this CLI holds no
+  // Firestore write verb anywhere in its source, and `.set(` is one of the verbs it looks for.
+  const byNumber = Object.create(null);
+  const order = [];
+  for (const source of SYNTHETIC_SEED_MANIFESTS) {
+    const manifest = JSON.parse(fs.readFileSync(source.path, "utf8"));
+    for (const record of manifest.commercial || []) {
+      if (byNumber[record.number] === undefined) {
+        byNumber[record.number] = { number: record.number, kind: record.kind, declaredBy: [source.manifest] };
+        order.push(record.number);
+      } else {
+        byNumber[record.number].declaredBy.push(source.manifest);
+      }
+    }
+  }
+  return order.map((number) => byNumber[number]);
 }
 
 function exitCodeForCensus(final, disposition) {
@@ -153,8 +203,14 @@ async function main() {
   assertSnapshotSource(snapshot, options.environmentId);
   const { census, canonical, legacyActorProvenance } = censusCommercialSnapshot(snapshot);
   const declaredSyntheticNumbers = declaredSyntheticSeedNumbers();
-  // Migration evidence only: checksum, Certification exclusions, legacy uids (never a column).
-  const evidence = { snapshotSha256: sha256, certificationExcluded: census.certificationExcluded, legacyActorProvenance };
+  const declaredSyntheticProvenance = declaredSyntheticSeedProvenance();
+  // Migration evidence only: checksum, Certification exclusions, legacy uids (never a column), and the declaration
+  // provenance behind every declared-synthetic label the census applies.
+  const evidence = {
+    snapshotSha256: sha256, certificationExcluded: census.certificationExcluded, legacyActorProvenance,
+    syntheticSeedManifests: SYNTHETIC_SEED_MANIFESTS.map((m) => ({ manifest: m.manifest, version: m.version })),
+    declaredSyntheticProvenance,
+  };
 
   if (options.mode === "copy" && options.confirmMigrationRequired !== sha256) {
     console.log(JSON.stringify({ mode: "copy", outcome: "REFUSED", reason: "MIGRATION_CONFIRMATION_DOES_NOT_NAME_THIS_SNAPSHOT", evidence }, null, 2));
@@ -206,7 +262,11 @@ async function main() {
   }
 }
 
-module.exports = { assertC5Invocation, assertSnapshotSource, verifySnapshotChecksum, exitCodeForCensus, MODES, FROZEN_ENVIRONMENTS };
+module.exports = {
+  assertC5Invocation, assertSnapshotSource, verifySnapshotChecksum, exitCodeForCensus,
+  declaredSyntheticSeedNumbers, declaredSyntheticSeedProvenance,
+  MODES, FROZEN_ENVIRONMENTS, SYNTHETIC_SEED_MANIFESTS,
+};
 
 if (require.main === module) {
   main().catch((err) => {

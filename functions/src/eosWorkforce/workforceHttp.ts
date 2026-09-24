@@ -55,6 +55,7 @@
 // An unserved name is an ordinary unknown operation (404); nothing is stubbed.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
+import { resolveEntitledOperationalContext } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { EmployeeReadError, type EmployeeReadActor, type EmployeeReadErrorCategory } from "./reads/employeeReadKernel";
@@ -88,6 +89,20 @@ export const WORKFORCE_ROUTE = "/workforce/employees";
 export interface WorkforceApiDeps {
   readonly reader: PolicyReader;
   readonly pool: Pool;
+  /**
+   * WHERE PER-GRANT CONDITIONS COME FROM. Server composition, never a request field.
+   *
+   *   "SHIPPED"  (default) the in-code catalog, which is EMPTY and frozen. Every entitlement this
+   *              transport resolves is unconditional, and the kernels behave exactly as they always
+   *              did -- the deployed state.
+   *   "POSTGRES" eos_policy.capability_grant_conditions, ACTIVE rows only. The relation is live
+   *              (migration 1762214400000) and holds ZERO rows, so today the two sources produce the
+   *              same catalog; switching is how an ESTABLISHED condition would start binding, and it
+   *              is a reviewed change to whoever builds these deps, not something a caller can ask
+   *              for. A database that cannot answer refuses the request; it never degrades to
+   *              "unconditioned".
+   */
+  readonly grantConditionSource?: "SHIPPED" | "POSTGRES";
 }
 
 type Input = Record<string, unknown>;
@@ -185,7 +200,9 @@ export async function executeWorkforceOperation(
 ): Promise<WorkforceApiResult> {
   const { operation } = request;
   try {
-    const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
+    const resolve = deps.grantConditionSource === "POSTGRES"
+      ? resolveEntitledOperationalContext : resolveOperationalContext;
+    const ctx = await resolve(deps.reader, deps.pool, {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
       requestedTenantId: request.caller.requestedTenantId,
@@ -194,6 +211,12 @@ export async function executeWorkforceOperation(
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
       capabilities: ctx.capabilities,
+      // The conditional-entitlement obligation, as the REQUIRED request-scoped resolver
+      // resolveOperationalContext built for this request. The same actor serves the read kernel and
+      // the command kernel, and the resolver memoizes, so both gate sites -- and a read requiring
+      // several capabilities -- reach a per-GRANT decision on ONE resolution of the stores. A
+      // request whose gate sites never ask resolves nothing at all.
+      entitlements: ctx.entitlements,
     });
     return { ok: true, operation, result: await RUNNERS[operation](deps, actor, request.input) };
   } catch (err) {

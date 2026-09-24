@@ -210,7 +210,7 @@ test("employee.record.read, admin.principalAccess.read and the reporting writer 
   const commandActor = async (actor) => {
     const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
     const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: actor.subject, requestedTenantId: null });
-    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities };
+    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
   };
 
   await t.test("EMP-RT-01 readEmployee: every lifecycle status, typed profile facts, derived display name, userAccess only", async () => {

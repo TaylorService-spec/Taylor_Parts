@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { cleanSnapshot, modelDoc, partDoc, snapshotOf, ts, wholeUnitPartDoc } from "./support/catalogSnapshotFixture.mjs";
+import { LEGACY_CATALOG_MASTER_COMMANDS, firstBodyLine } from "./support/legacyCatalogMasterCommands.mjs";
 import { migrationFiles } from "./support/migrationSchema.mjs";
 
 const require = createRequire(import.meta.url);
@@ -197,24 +198,117 @@ test("FROZEN and RETIRED both refuse every legacy writer, with distinct governed
   assert.match(readFileSync("src/dataImport/firestoreDataImportAdapters.ts", "utf8"), /await createPart\(/);
 });
 
-test("every legacy writer calls the guard with its own id, before anything else it does", () => {
-  const pm = readFileSync("src/partMaster/partMasterCommands.ts", "utf8");
-  for (const [id, fn] of [["part.create", "createPart"], ["part.update", "updatePart"], ["part.changeStatus", "changePartStatus"]]) {
-    const body = new RegExp(`export async function ${fn}\\([^)]*\\)[^{]*\\{\\n([^\\n]*)`).exec(pm);
-    assert.ok(body, `${fn} not found`);
-    assert.equal(body[1].trim(), `assertFirestoreCatalogWriterOpen("${id}");`, `${fn} must call the guard as its first statement`);
+test("the legacy command list and the writer registry are the SAME closed set -- no writer without an entry, no entry without a writer", () => {
+  const listed = LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds);
+  assert.deepEqual([...listed].sort(), [...new Set(listed)].sort(), "a writer id is listed twice");
+  assert.deepEqual(listed.slice().sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
+  // Every registry entry's module/entry agrees with where the list says the body is.
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS) {
+    for (const id of c.writerIds) {
+      const reg = writerState.FIRESTORE_CATALOG_WRITERS[id];
+      assert.equal(reg.module, `functions/${c.module}`, `${id} module`);
+      assert.match(reg.entry, new RegExp(`^${c.fn === "acceptForExecution" ? "runEquipmentCompatibilityCommand" : c.fn}\\b`), `${id} entry`);
+    }
   }
+});
+
+test("every legacy writer calls the guard with its own id, before anything else it does", () => {
+  const seen = [];
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS.filter((x) => x.form === "FUNCTION_BODY")) {
+    const line = firstBodyLine(readFileSync(c.module, "utf8"), c.fn);
+    assert.ok(line !== null, `${c.fn} not found in ${c.module}`);
+    assert.equal(line, c.firstStatement, `${c.module} ${c.fn} must call the guard as its first statement`);
+    for (const id of c.writerIds) assert.ok(c.firstStatement.includes(`"${id}"`), `${c.fn}'s guard must name ${id}`);
+    seen.push(c.fn);
+  }
+  assert.equal(seen.length, 15, "15 catalog master command bodies open with the guard");
+
+  // The Equipment Model family is one command with an action discriminator: the gates sit in the accept
+  // step, together, before capability resolution and before anything is staged.
   const eq = readFileSync("src/equipmentCompatibility/commands.ts", "utf8");
   const accept = eq.slice(eq.indexOf("async function acceptForExecution"), eq.indexOf("return { prepared, expectedVersion, actorUid };"));
-  assert.match(accept, /if \(action === "importEquipmentModel"\) assertFirestoreCatalogWriterOpen\("equipmentModel\.import"\);/);
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS.filter((x) => x.form === "ACTION_GATE")) {
+    assert.ok(accept.includes(c.gateLine), `acceptForExecution must carry: ${c.gateLine}`);
+  }
   assert.ok(accept.indexOf("assertFirestoreCatalogWriterOpen") < accept.indexOf("resolvePermission"), "the guard precedes capability resolution");
+  // EVERY action of this orchestrator is gated. The compatibility actions are IN this freeze by Owner
+  // ruling: `equipment_part_compatibility` is persisted, versioned, company-neutral reference data keyed
+  // on two catalog identities, and `importCompatibilitySource` can itself stage an update to the
+  // relationship (verificationStatus -> CONFLICT). The set is compared against the command's OWN action
+  // allowlist, so adding a seventh action without a gate goes red rather than silently escaping.
+  const gated = [...accept.matchAll(/if \(action === "(\w+)"\) assertFirestoreCatalogWriterOpen/g)].map((m) => m[1]);
+  assert.deepEqual(gated.slice().sort(), [
+    "correctCompatibility", "importCompatibility", "importCompatibilitySource",
+    "importEquipmentModel", "importEquipmentModelAlias", "verifyCompatibility",
+  ]);
+  const { OPERATION_ACTIONS } = require("../lib/equipmentCompatibility/operations.js");
+  assert.deepEqual(gated.slice().sort(), [...OPERATION_ACTIONS].sort(), "every governed equipment command action must carry a freeze gate");
 });
+
+/** The three PostgreSQL catalog modules nothing outside src/catalogMaster may reach, while postgres is INACTIVE. */
+const CATALOG_WRITER_MODULES = /postgresPartMasterWriter|postgresEquipmentModelWriter|catalogMasterKernel/;
+
+/**
+ * Does this file reach a PostgreSQL catalog writer?
+ *
+ * The census is over CODE, exactly as every other source census in this file already is (see the copy
+ * tool and snapshot-export checks above, which have always used `stripComments`). This one scanned RAW
+ * text, and a comment is not a module edge.
+ *
+ * The regression: src/eosOps/contextualActionAuthority.ts -- the ACTION-level contextual authorization
+ * seam -- names `catalogMasterKernel` in its header, in prose, listing the seven kernels that share the
+ * `{ tenantId, principalId, capabilities }` actor shape the seam accepts. It imports ./capabilityAuthority,
+ * ./contextualAuthorization and ./grantConditionPolicy and nothing else; the compiled
+ * lib/eosOps/contextualActionAuthority.js contains ZERO occurrences of "catalogMaster". Appeasing the raw
+ * scan would have meant deleting an accurate architectural note to satisfy a probe.
+ *
+ * Everything OUTSIDE a comment still counts -- a static specifier, a require, a dynamic import, a
+ * re-export, a bare identifier, a computed path. This narrows what the census READS, never what it
+ * refuses, and the controls below hold that.
+ */
+const reachesCatalogWriter = (source) => CATALOG_WRITER_MODULES.test(stripComments(source));
 
 test("while PostgreSQL is INACTIVE, nothing outside catalogMaster imports the PostgreSQL catalog writers", () => {
   assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
   const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : /\.(ts|js|mjs)$/.test(f) ? [join(dir, f)] : []));
-  const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && /postgresPartMasterWriter|postgresEquipmentModelWriter|catalogMasterKernel/.test(readFileSync(f, "utf8")));
+  const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && reachesCatalogWriter(readFileSync(f, "utf8")));
   assert.deepEqual(importers, [], "activating PostgreSQL catalog writers is step 7 and must change CATALOG_WRITER_AUTHORITY in the same change");
+});
+
+test("the catalog-writer census would actually catch a forbidden importer", () => {
+  // POSITIVE CONTROL. A census that refuses nothing is worse than no census, and this one was just
+  // narrowed -- so every route by which a module outside src/catalogMaster could reach a PostgreSQL
+  // catalog writer is restated here and must still be refused.
+  const FORBIDDEN_ROUTES = [
+    ['import { insertPart } from "../catalogMaster/postgresPartMasterWriter";', "a static import"],
+    ["import { insertPart } from '../catalogMaster/postgresPartMasterWriter';", "a single-quoted static import"],
+    ['import type { PartRow } from "../catalogMaster/postgresPartMasterWriter";', "a type-only import"],
+    ['const w = require("../catalogMaster/postgresEquipmentModelWriter");', "a require"],
+    ['const k = await import("../catalogMaster/catalogMasterKernel");', "a dynamic import"],
+    ['export * from "../catalogMaster/postgresPartMasterWriter";', "a re-export"],
+    ['export { CATALOG_CAPABILITIES } from "../catalogMaster/catalogMasterKernel";', "a named re-export"],
+    ["const p = `../catalogMaster/${\"catalogMasterKernel\"}`;", "a computed specifier"],
+    ["const writer = catalogMasterKernel.partWriter;", "a bare identifier reference"],
+    ['import { insertPart } from "../catalogMaster/postgresPartMasterWriter"; // activating step 7', "a trailing comment on a real import"],
+  ];
+  for (const [source, what] of FORBIDDEN_ROUTES) {
+    assert.equal(reachesCatalogWriter(source), true, `the census must still refuse ${what} -- ${JSON.stringify(source)}`);
+  }
+
+  // NEGATIVE CONTROL. Prose naming the module is documentation, not a dependency.
+  const PROSE = [
+    ["// crmAuthorityKernel, employeeCommandKernel, catalogMasterKernel, workOrderLifecycle,", "a line comment naming the kernel"],
+    ["/**\n * The copy is staged by postgresPartMasterWriter at step 7.\n */", "a block comment naming a writer"],
+  ];
+  for (const [source, what] of PROSE) {
+    assert.equal(reachesCatalogWriter(source), false, `a comment is not an import -- ${what}`);
+  }
+
+  // And the real file the raw scan tripped on, verbatim from disk: prose only, no edge.
+  const seam = readFileSync("src/eosOps/contextualActionAuthority.ts", "utf8");
+  assert.match(seam, CATALOG_WRITER_MODULES, "the seam still names the kernel in its header (nothing was renamed)");
+  assert.equal(reachesCatalogWriter(seam), false, "...but only in prose, so it is not an importer");
+  assert.doesNotMatch(readFileSync("lib/eosOps/contextualActionAuthority.js", "utf8"), /catalogMaster/, "and the compiled seam carries no such reference at all");
 });
 
 test("the Part callables map FROZEN and RETIRED to failed-precondition, not internal", () => {

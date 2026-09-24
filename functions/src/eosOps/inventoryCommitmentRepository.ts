@@ -46,6 +46,9 @@
 // lock or an advisory lock taken inside the same transaction as the insert — not a second table.
 
 import type { Pool, PoolClient } from "pg";
+// THE CATALOG ANSWERS WHAT A PART IS. Composed as a repository in this same Render runtime and run on
+// this command's own client, so the Part facts belong to the same transaction as the commitment rows.
+import { createPostgresPartPolicyAuthority } from "../catalogAuthority/postgresPartPolicyAuthority.js";
 import { randomUUID } from "node:crypto";
 import { type OperatingCompanyKey, requireOperatingCompanyKey } from "./operatingCompanyCustody.js";
 
@@ -189,6 +192,50 @@ export interface WorkOrderCommitmentContext {
 }
 
 /**
+ * THE PART IS RESOLVED FROM THE CATALOG, IN THE CALLER'S TRANSACTION, BEFORE ANY ROW IS WRITTEN.
+ *
+ * A commitment line carries a partId and a quantity and nothing else -- no tracking mode, deliberately.
+ * The Firestore path took trackingMode from the Part authority rather than the caller, and this path must
+ * not be the one place that stopped being true: a caller that states tracking mode states whether its own
+ * quantity is countable stock or individually tracked units, which is the decision this repository exists
+ * to make on evidence.
+ *
+ * WHY IT REFUSES A SERIAL PART RATHER THAN COUNTING ONE. `inventory_commitments` promises a QUANTITY of a
+ * Part. A serial-tracked Part's commitment is a promise about NAMED units, and a row saying "3 of PRT-2001"
+ * cannot say which three. The existing validators refuse an unsupported tracking mode rather than
+ * approximating it; this is that same refusal, not a new policy.
+ *
+ * WHEREVER A PROMISE IS MADE. Both `reserve` and `reconcileConsumption` call it, because both author a
+ * commitment. `releaseOutstanding` deliberately does NOT -- see its own note.
+ *
+ * ALL PARTS IN ONE ROUND TRIP, before any write, so a plan whose fourth line names an unknown Part does not
+ * write the first three.
+ */
+async function requireCommittablePartsThroughClient(
+  client: PoolClient,
+  tenantId: string,
+  partIds: readonly string[],
+): Promise<void> {
+  if (partIds.length === 0) return;
+  const policies = await createPostgresPartPolicyAuthority().readPartPolicies(client, tenantId, partIds);
+  for (const policy of policies) {
+    if (!policy.found) {
+      throw new InventoryCommitmentError(
+        "PART_NOT_FOUND",
+        `part ${policy.partId} is not a Part of this tenant's catalog; a commitment cannot promise an unknown Part`,
+      );
+    }
+    if (policy.trackingMode !== "NONE") {
+      throw new InventoryCommitmentError(
+        "TRACKING_MODE_NOT_SUPPORTED",
+        `part ${policy.partId} is ${String(policy.trackingMode)}-tracked (control type ${String(policy.controlType)}); `
+        + "a quantity commitment cannot represent individually tracked units",
+      );
+    }
+  }
+}
+
+/**
  * DISPATCHED. Reserve the requested quantity per Part, ALL-OR-NOTHING in one database transaction.
  *
  * Duplicate lines for the same Part are summed FIRST, exactly as `reserveParts()` does
@@ -210,6 +257,7 @@ export async function reserve(
   if (byPart.size === 0) return [];
 
   return inTransaction(pool, async (client) => {
+    await requireCommittablePartsThroughClient(client, ctx.tenantId, [...byPart.keys()]);
     const written: CommitmentWriteResult[] = [];
     for (const [partId, quantity] of sorted(byPart)) {
       written.push(await recordCommitmentEvent(client, {
@@ -234,6 +282,11 @@ export async function releaseOutstanding(
   ctx: WorkOrderCommitmentContext,
 ): Promise<readonly CommitmentWriteResult[]> {
   return inTransaction(pool, async (client) => {
+    // NO CATALOG CHECK HERE, DELIBERATELY. Release is derived from the COMMITMENT LEDGER, not from the
+    // plan, for the orphan reason above -- and that is exactly why it must not ask the catalog whether the
+    // Part is still resolvable. A Part that was deactivated, or whose requirement was deleted, still has
+    // reservation rows this Work Order is holding; refusing to release them because the catalog no longer
+    // likes the Part would strand the stock forever. Validation belongs where a promise is MADE.
     const outstanding = await outstandingByPart(client, ctx.tenantId, ctx.workOrderId);
     const written: CommitmentWriteResult[] = [];
     for (const [partId, quantity] of sorted(outstanding)) {
@@ -298,6 +351,8 @@ export async function reconcileConsumption(
   if (planned.size === 0) return [];
 
   return inTransaction(pool, async (client) => {
+    await requireCommittablePartsThroughClient(client, ctx.tenantId, [...planned.keys()]);
+
     const outstanding = await outstandingByPart(client, ctx.tenantId, ctx.workOrderId);
     const written: CommitmentWriteResult[] = [];
     for (const [partId, { qtyPlanned, qtyUsed }] of sorted(planned)) {

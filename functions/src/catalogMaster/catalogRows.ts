@@ -50,6 +50,27 @@ export interface CanonicalEquipmentModel {
   readonly updatedAt: string;
 }
 
+/**
+ * A Manufacturer as eos_ops.manufacturers records it.
+ *
+ * NO `version`. Migration 1761782400000 gives this table no version column -- unlike `parts` and
+ * `equipment_models`, both of which have one -- so `updatedAt` IS this record's optimistic-concurrency
+ * token. It is microsecond-precise, server-authored and, by the writer's own UPDATE, strictly increasing,
+ * which is everything a version integer was being used for.
+ *
+ * `normalizedName` is DERIVED, never accepted: manufacturerMigration.ts#normalizeName is the one statement
+ * of that derivation and this record reuses it.
+ */
+export interface CanonicalManufacturer {
+  readonly id: string;
+  readonly name: string;
+  readonly normalizedName: string;
+  readonly status: string;
+  readonly provenance: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export const PART_FIELDS = Object.freeze([
   "id", "internalPartNumber", "name", "description", "category", "status", "stockingUnit", "controlType", "stockingClass",
   "expiryTracked", "consumable", "returnableCore", "primaryManufacturerId", "primaryManufacturerPartNumber", "oemStatus",
@@ -59,6 +80,10 @@ export const PART_FIELDS = Object.freeze([
 export const EQUIPMENT_MODEL_FIELDS = Object.freeze([
   "id", "manufacturerId", "manufacturerName", "modelNumber", "displayName", "family", "subtype", "revision", "status",
   "sourceAuthority", "version", "createdAt", "updatedAt",
+] as const);
+
+export const MANUFACTURER_FIELDS = Object.freeze([
+  "id", "name", "normalizedName", "status", "provenance", "createdAt", "updatedAt",
 ] as const);
 
 /** A JS Date (millisecond) as the canonical microsecond ISO string. */
@@ -81,6 +106,11 @@ SELECT id, manufacturer_id, manufacturer_name, model_number, display_name, famil
        source_authority, version, ${TS("created_at")} AS created_at, ${TS("updated_at")} AS updated_at
   FROM eos_ops.equipment_models`;
 
+export const MANUFACTURER_SELECT = `
+SELECT id, name, normalized_name, status, provenance,
+       ${TS("created_at")} AS created_at, ${TS("updated_at")} AS updated_at
+  FROM eos_ops.manufacturers`;
+
 type Row = Record<string, unknown>;
 const text = (v: unknown): string | null => (v === null || v === undefined ? null : String(v));
 
@@ -102,6 +132,14 @@ export function equipmentModelFromRow(r: Row): CanonicalEquipmentModel {
     modelNumber: String(r.model_number), displayName: String(r.display_name), family: text(r.family), subtype: text(r.subtype),
     revision: text(r.revision), status: String(r.status), sourceAuthority: String(r.source_authority),
     version: Number(r.version), createdAt: String(r.created_at), updatedAt: String(r.updated_at),
+  };
+}
+
+export function manufacturerFromRow(r: Row): CanonicalManufacturer {
+  return {
+    id: String(r.id), name: String(r.name), normalizedName: String(r.normalized_name),
+    status: String(r.status), provenance: String(r.provenance),
+    createdAt: String(r.created_at), updatedAt: String(r.updated_at),
   };
 }
 
@@ -142,6 +180,9 @@ export function differingFields<T extends object>(fields: readonly (keyof T & st
 /** Master-data fields only (no version, no timestamps): does a stored record already say exactly this? */
 export const PART_MASTER_FIELDS = PART_FIELDS.filter((f) => f !== "version" && f !== "createdAt" && f !== "updatedAt");
 export const EQUIPMENT_MODEL_MASTER_FIELDS = EQUIPMENT_MODEL_FIELDS.filter((f) => f !== "version" && f !== "createdAt" && f !== "updatedAt");
+// Master data only. `provenance` is IN the set: NATIVE and MIGRATED are not the same record, and a
+// create that would silently reclassify a migrated row is a conflict, not a replay.
+export const MANUFACTURER_MASTER_FIELDS = MANUFACTURER_FIELDS.filter((f) => f !== "createdAt" && f !== "updatedAt");
 
 export const INSERT_PART_SQL = `
 INSERT INTO eos_ops.parts
@@ -165,4 +206,13 @@ VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`;
 export function insertEquipmentModelValues(tenantId: string, m: CanonicalEquipmentModel, createdBy: string, updatedBy: string): unknown[] {
   return [tenantId, m.id, m.manufacturerId, m.manufacturerName, m.modelNumber, m.displayName, m.family, m.subtype, m.revision,
     m.status, m.sourceAuthority, m.version, createdBy, m.createdAt, updatedBy, m.updatedAt];
+}
+
+export const INSERT_MANUFACTURER_SQL = `
+INSERT INTO eos_ops.manufacturers
+  (tenant_id, id, name, normalized_name, status, provenance, created_by, created_at, updated_by, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`;
+
+export function insertManufacturerValues(tenantId: string, m: CanonicalManufacturer, createdBy: string, updatedBy: string): unknown[] {
+  return [tenantId, m.id, m.name, m.normalizedName, m.status, m.provenance, createdBy, m.createdAt, updatedBy, m.updatedAt];
 }

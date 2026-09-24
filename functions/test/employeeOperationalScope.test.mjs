@@ -22,12 +22,23 @@ const SQL = MIGRATION.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
 const COLUMNS = [...SQL.split("CREATE TABLE employee_operational_scopes (")[1].split(/\n\s*CONSTRAINT/)[0]
   .matchAll(/^\s+([a-z_]+)\s+(?:TEXT|TIMESTAMPTZ)/gm)].map((m) => m[1]);
 
-test("WAREHOUSE is the only scope type, and the vocabulary is immutable", () => {
-  assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE"]);
+test("the scope-type vocabulary is exactly the ruled types, and is immutable", () => {
+  // WAREHOUSE alone -> WAREHOUSE + REORDER_QUEUE. This migration's own header said the single type
+  // held only "before a live consumer requires them", and the Owner ruled whole-queue Reorder
+  // visibility an Operational Scope -- that consumer. REORDER_QUEUE's scope_id is the governed
+  // operating company KEY, and a trigger added by migration 1761696000000 validates it, so the
+  // guarantee the dropped warehouse foreign key carried is preserved per type rather than lost.
+  assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE", "REORDER_QUEUE"]);
   assert.ok(Object.isFrozen(vocab.OPERATIONAL_SCOPE_TYPES));
   assert.ok(Object.isFrozen(vocab.OPERATIONAL_SCOPE_TYPE_LABEL));
   // The module vocabulary and the database CHECK must be changed together.
-  const checked = SQL.match(/operational_scope_type_known CHECK \(scope_type IN \(([^)]*)\)\)/);
+  // The CHECK is read from the LATEST migration that defines it, not the first: 1761696000000
+  // replaced the constraint, and comparing against the original would pin the vocabulary to a
+  // statement the database no longer has.
+  const scopeSql = readFileSync(join(FUNCTIONS_DIR, "migrations",
+    "1761696000000_parts-associate-eligibility-and-reorder-queue-scope.sql"), "utf8")
+    .split("-- Down Migration")[0].split("\n").map((l) => l.replace(/--.*$/, "")).join("\n");
+  const checked = scopeSql.match(/operational_scope_type_known\s+CHECK \(scope_type IN \(([^)]*)\)\)/);
   assert.ok(checked, "the closed scope-type CHECK must exist");
   assert.deepEqual(checked[1].split(",").map((s) => s.trim().replace(/'/g, "")), [...vocab.OPERATIONAL_SCOPE_TYPES]);
 });

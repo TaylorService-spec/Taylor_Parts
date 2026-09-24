@@ -10,15 +10,44 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   OPERATIONS_READ_OPERATIONS,
+  OPERATIONS_ROUTES,
+  OPERATIONS_ROUTE_BY_OPERATION,
   isOperationsOperation,
   handleOperationsRequest,
 } from "../lib/eosOps/eosOpsHttp.js";
 
-test("the Operations read list is closed and names exactly one P0 operation", () => {
-  assert.deepEqual(OPERATIONS_READ_OPERATIONS, ["resolveMyCapabilities"]);
+// The list is CLOSED, not frozen at one. `resolveMyExperienceContext` joined it when the client
+// gained an EOS source for navigation; both entries are non-mutating reads of the CALLER's own
+// context, which is the property this assertion is really protecting. A mutation named here, or a
+// third read added without a route, still fails.
+test("the Operations read list is closed and every entry is a named, routed, non-mutating read", () => {
+  assert.deepEqual(OPERATIONS_READ_OPERATIONS, ["resolveMyCapabilities", "resolveMyExperienceContext"]);
   assert.equal(isOperationsOperation("resolveMyCapabilities"), true);
+  assert.equal(isOperationsOperation("resolveMyExperienceContext"), true);
   assert.equal(isOperationsOperation("mutateAnything"), false);
   assert.equal(isOperationsOperation("runSQL"), false);
+  // Every operation has exactly one route, and every route is named by an operation.
+  assert.deepEqual(Object.keys(OPERATIONS_ROUTE_BY_OPERATION).sort(), [...OPERATIONS_READ_OPERATIONS].sort());
+  assert.deepEqual(OPERATIONS_ROUTES, ["/operations/experience", "/operations/inventory"]);
+});
+
+test("an operation posted to the WRONG Operations route is 404 -- routes do not answer for each other", async () => {
+  const deps = {
+    reader: /** @type {any} */ ({}),
+    pool: /** @type {any} */ ({}),
+    verifyToken: async () => ({ externalSubject: "x", identityProvider: "firebase" }),
+  };
+  for (const [operation, route] of Object.entries(OPERATIONS_ROUTE_BY_OPERATION)) {
+    const wrong = OPERATIONS_ROUTES.find((r) => r !== route);
+    const res = await handleOperationsRequest(deps, {
+      method: "POST",
+      url: wrong,
+      headers: { authorization: "Bearer t" },
+      body: JSON.stringify({ operation }),
+    });
+    assert.equal(res.status, 404, `${operation} must not be served at ${wrong}`);
+    assert.match(res.body, /UNKNOWN_OPERATION/);
+  }
 });
 
 test("an operation not on the list is UNKNOWN_OPERATION, unauthenticated or not", async () => {

@@ -42,6 +42,10 @@ import {
   updateFieldDefinition,
   assignRole,
   revokeRole,
+  grantObjectActionToRole,
+  revokeObjectActionFromRole,
+  grantObjectActionToPrincipal,
+  revokeObjectActionFromPrincipal,
   publishWorkflowVersion,
   PolicyValidationError,
 } from "./policyCommands";
@@ -53,6 +57,13 @@ import {
 } from "./workflowCommands";
 import { AdministrationDeniedError, requireAdministrationAuthority } from "./administrationAuthority";
 import { loadWorkflowVersionDefinition } from "./workflowEngine";
+import {
+  actionsForObject,
+  effectiveCapabilities,
+  objectActionsForPrincipal,
+  objectSecurityMatrix,
+  roleSecurityView,
+} from "./objectSecurityAuthority";
 import { PrincipalContextError, resolvePrincipalContext } from "./principalContext";
 import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
@@ -81,6 +92,13 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listRoles",
   "readRolePolicy",
   "listPrincipalRoleAssignments",
+  // ── canonical Object-owned security reads ──
+  // Three projections of ONE authority: Object -> actions -> grantees, Role -> objects -> actions,
+  // Principal -> roles + direct grants -> effective access. No separate permission catalog.
+  "listObjectsWithActions",
+  "getObjectSecurityMatrix",
+  "getRoleSecurity",
+  "getPrincipalEffectiveAccess",
   "listWorkflows",
   "readWorkflowVersion",
   "readPolicyAuditHistory",
@@ -100,6 +118,11 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "removeFieldPermissionOverride",
   "assignRole",
   "revokeRole",
+  // Object-owned grants. The contract is (objectKey, actionKey, grantee) -- never a capability key.
+  "grantObjectActionToRole",
+  "revokeObjectActionFromRole",
+  "grantObjectActionToPrincipal",
+  "revokeObjectActionFromPrincipal",
   "createWorkflowDraft",
   "createWorkflowVersion",
   "updateWorkflowDefinition",
@@ -276,6 +299,85 @@ async function dispatch(
     case "listRoles":
       return repo.listRoles(actor.tenantId);
 
+    // ════════ the three projections of one authority ════════
+    case "listObjectsWithActions": {
+      const [objects, capabilities] = await Promise.all([
+        repo.listObjects(actor.tenantId), repo.listCapabilities(),
+      ]);
+      // Only Objects THIS TENANT registered, each with the actions the canonical metadata says it
+      // governs. An Object with no capability still appears, with an empty action list: "nothing
+      // governs this yet" is a fact an administrator needs, not a row to hide.
+      return objects.map((o) => ({
+        key: o.key, label: o.label, supportsDelete: o.supportsDelete,
+        actions: actionsForObject(capabilities, o.key).map((c) => ({
+          actionKey: c.actionKey, actionKind: c.actionKind, displayLabel: c.displayLabel, capabilityKey: c.key,
+        })),
+      }));
+    }
+
+    case "getObjectSecurityMatrix": {
+      const objectKey = requireString(input.objectKey, "objectKey");
+      const object = await repo.getObjectByKey(actor.tenantId, objectKey);
+      if (!object) throw new NotFound("object not found");
+      const [capabilities, roles, roleGrants, principalGrants] = await Promise.all([
+        repo.listCapabilities(), repo.listRoles(actor.tenantId),
+        repo.listRoleCapabilities(actor.tenantId), repo.listPrincipalCapabilities(actor.tenantId),
+      ]);
+      const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+      return {
+        objectKey: object.key, label: object.label, supportsDelete: object.supportsDelete,
+        actions: objectSecurityMatrix(
+          capabilities, object.key,
+          roleGrants.map((g) => ({ capabilityId: g.capabilityId, roleKey: roleKeyById.get(g.roleId) ?? g.roleId })),
+          principalGrants.map((g) => ({ capabilityId: g.capabilityId, principalId: g.principalId })),
+        ),
+      };
+    }
+
+    case "getRoleSecurity": {
+      const roleKey = requireString(input.roleKey, "roleKey");
+      const role = await repo.getRoleByKey(actor.tenantId, roleKey);
+      if (!role) throw new NotFound("role not found");
+      const [capabilities, grants] = await Promise.all([
+        repo.listCapabilities(), repo.listRoleCapabilities(actor.tenantId, [role.id]),
+      ]);
+      return {
+        roleKey: role.key, name: role.name,
+        objects: roleSecurityView(capabilities, grants.map((g) => g.capabilityId)),
+      };
+    }
+
+    case "getPrincipalEffectiveAccess": {
+      const principalId = requireString(input.principalId, "principalId");
+      const membership = await repo.getMembership(actor.tenantId, principalId);
+      if (!membership) throw new NotFound("principal not found in this tenant");
+      const [capabilities, roles, assignments, directGrants] = await Promise.all([
+        repo.listCapabilities(), repo.listRoles(actor.tenantId),
+        repo.listAssignmentsForPrincipal(actor.tenantId, principalId),
+        repo.listPrincipalCapabilities(actor.tenantId, principalId),
+      ]);
+      const activeRoleIds = assignments.filter((a) => a.status === "active").map((a) => a.roleId);
+      const roleGrants = await repo.listRoleCapabilities(actor.tenantId, activeRoleIds);
+      const effective = effectiveCapabilities({
+        tenantId: actor.tenantId, principalId,
+        roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),
+        directCapabilityIds: directGrants.map((g) => g.capabilityId),
+        capabilities,
+      });
+      const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+      // Work Eligibility, Operational Scope, the linked Employee and record-level authority are
+      // DELIBERATELY ABSENT from this payload. They are subordinate constraints on a capability the
+      // principal already holds, answered by eos_workforce and the domain kernels, and folding them
+      // in here would let a business fact read as a security grant.
+      return {
+        principalId,
+        roles: activeRoleIds.map((id) => roleKeyById.get(id) ?? id).sort(),
+        directGrants: directGrants.map((g) => g.capabilityId),
+        effective,
+        objects: objectActionsForPrincipal(effective),
+      };
+    }
+
     case "readRolePolicy": {
       const roleId = requireString(input.roleId, "roleId");
       const role = (await repo.listRoles(actor.tenantId)).find((r) => r.id === roleId);
@@ -438,6 +540,38 @@ async function dispatch(
         fieldId: requireString(input.fieldId, "fieldId"),
         override: {},
         reason,
+      });
+
+    case "grantObjectActionToRole":
+      return grantObjectActionToRole(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        reason: optionalString(input.reason),
+      });
+
+    case "revokeObjectActionFromRole":
+      return revokeObjectActionFromRole(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        reason: optionalString(input.reason),
+      });
+
+    case "grantObjectActionToPrincipal":
+      return grantObjectActionToPrincipal(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        principalId: requireString(input.principalId, "principalId"),
+        reason: optionalString(input.reason),
+      });
+
+    case "revokeObjectActionFromPrincipal":
+      return revokeObjectActionFromPrincipal(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        principalId: requireString(input.principalId, "principalId"),
+        reason: optionalString(input.reason),
       });
 
     case "assignRole":

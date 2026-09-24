@@ -30,7 +30,10 @@ import type {
 import type {
   CredOverride,
   CredSet,
+  CapabilityRecord,
   ObjectFieldRecord,
+  PrincipalCapabilityRecord,
+  RoleCapabilityRecord,
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
@@ -63,6 +66,9 @@ interface Tables {
   fields: ObjectFieldRecord[];
   roles: PolicyRoleRecord[];
   objectPermissions: RoleObjectPermissionRecord[];
+  capabilities: CapabilityRecord[];
+  roleCapabilities: RoleCapabilityRecord[];
+  principalCapabilities: PrincipalCapabilityRecord[];
   fieldOverrides: RoleFieldPermissionOverrideRecord[];
   assignments: PolicyRoleAssignmentRecord[];
   accessVersions: PrincipalAccessVersionRecord[];
@@ -85,6 +91,9 @@ const emptyTables = (): Tables => ({
   fields: [],
   roles: [],
   objectPermissions: [],
+  capabilities: [],
+  roleCapabilities: [],
+  principalCapabilities: [],
   fieldOverrides: [],
   assignments: [],
   accessVersions: [],
@@ -201,6 +210,29 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         };
         t.principals.push(row);
         return row;
+      },
+
+      setPrincipalIdentity: async (principalId, input) => {
+        // TENANT-SCOPED, stated here in the same place the real adapter states it, so the two
+        // adapters refuse the same call rather than one of them being the only real fence.
+        const member = t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId);
+        const found = t.principals.find((x) => x.id === principalId);
+        if (!found || !member) throw new PolicyStoreError("principal not found in this tenant");
+        const clash = t.principals.find(
+          (x) => x.id !== principalId
+            && x.identityProvider === input.identityProvider
+            && x.externalSubject === input.externalSubject,
+        );
+        if (clash) throw new PolicyStoreError("another principal already holds that identity");
+        const updated: PrincipalRecord = {
+          ...found,
+          identityProvider: input.identityProvider,
+          externalSubject: input.externalSubject,
+          displayName: input.displayName ?? null,
+          updatedAt: this.now(),
+        };
+        t.principals[t.principals.indexOf(found)] = updated;
+        return updated;
       },
 
       createTenantMembership: async (principalId, status) => {
@@ -327,6 +359,42 @@ export class InMemoryPolicyRepository implements PolicyRepository {
           return;
         }
         t.fieldOverrides.push({ id: this.nextId(), tenantId, roleId, fieldId, override, ...this.stamp(actor) });
+      },
+
+      // ── canonical Object-owned security grants ──
+      // Idempotent by (tenant, grantee, capability), mirroring the postgres ON CONFLICT DO NOTHING
+      // so the two adapters cannot disagree about what a re-grant means.
+      grantRoleCapability: async (input) => {
+        const found = t.roleCapabilities.find(
+          (g) => g.tenantId === tenantId && g.roleId === input.roleId && g.capabilityId === input.capabilityId);
+        if (found) return found;
+        const row = {
+          id: this.nextId(), tenantId, roleId: input.roleId, capabilityId: input.capabilityId,
+          grantedBy: input.grantedBy, grantedAt: input.grantedAt, ...this.stamp(actor),
+        };
+        t.roleCapabilities.push(row);
+        return row;
+      },
+      revokeRoleCapability: async (roleId, capabilityId) => {
+        const i = t.roleCapabilities.findIndex(
+          (g) => g.tenantId === tenantId && g.roleId === roleId && g.capabilityId === capabilityId);
+        return i === -1 ? null : t.roleCapabilities.splice(i, 1)[0];
+      },
+      grantPrincipalCapability: async (input) => {
+        const found = t.principalCapabilities.find(
+          (g) => g.tenantId === tenantId && g.principalId === input.principalId && g.capabilityId === input.capabilityId);
+        if (found) return found;
+        const row = {
+          id: this.nextId(), tenantId, principalId: input.principalId, capabilityId: input.capabilityId,
+          grantedBy: input.grantedBy, grantedAt: input.grantedAt, ...this.stamp(actor),
+        };
+        t.principalCapabilities.push(row);
+        return row;
+      },
+      revokePrincipalCapability: async (principalId, capabilityId) => {
+        const i = t.principalCapabilities.findIndex(
+          (g) => g.tenantId === tenantId && g.principalId === principalId && g.capabilityId === capabilityId);
+        return i === -1 ? null : t.principalCapabilities.splice(i, 1)[0];
       },
 
       createAssignment: async (input) => {
@@ -489,6 +557,17 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   async listRoles(tenantId: TenantId) { return this.mine(this.tables.roles, tenantId); }
   async getRoleByKey(tenantId: TenantId, key: string) {
     return this.mine(this.tables.roles, tenantId).find((r) => r.key === key) ?? null;
+  }
+  // The capability catalog is GLOBAL -- not tenant-filtered -- exactly as in the postgres adapter,
+  // so a test that passes here cannot pass for a reason the real store would not reproduce.
+  async listCapabilities() { return [...this.tables.capabilities]; }
+  async listRoleCapabilities(tenantId: TenantId, roleIds?: readonly string[]) {
+    const mine = this.mine(this.tables.roleCapabilities, tenantId);
+    return roleIds ? mine.filter((g) => roleIds.includes(g.roleId)) : mine;
+  }
+  async listPrincipalCapabilities(tenantId: TenantId, principalId?: string) {
+    const mine = this.mine(this.tables.principalCapabilities, tenantId);
+    return principalId ? mine.filter((g) => g.principalId === principalId) : mine;
   }
   async listObjectPermissions(tenantId: TenantId, roleIds: readonly string[]) {
     return this.mine(this.tables.objectPermissions, tenantId).filter((p) => roleIds.includes(p.roleId));

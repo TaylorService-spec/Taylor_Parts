@@ -54,7 +54,7 @@ export const ENTITY_BY_MATRIX_OBJECT = Object.freeze({
   "Equipment / Installed Base": "equipment",
   "Invoices / AR": "invoice",
   Payments: "payment",
-  Users: "employee",
+  Employees: "employee",
 });
 
 const VERBS = Object.freeze(["C", "R", "E", "D"]);

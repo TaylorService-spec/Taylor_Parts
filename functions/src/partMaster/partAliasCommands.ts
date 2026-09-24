@@ -23,6 +23,7 @@ import { stageAuditEventWithId, recordStandaloneAuditEvent } from "../access/aud
 import { ALIAS_TYPES } from "./types";
 import type { AliasType, ManufacturerId, PartAliasId, PartId } from "./types";
 import { parseManufacturerId, parsePartId } from "./validation";
+import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState";
 import { buildFirestorePartRepository } from "./partMasterRepository";
 import {
   buildFirestorePartAliasRepository,
@@ -73,6 +74,7 @@ export interface CreatePartAliasInput {
 }
 
 export async function createPartAlias(input: CreatePartAliasInput, deps?: PartMasterDeps): Promise<MutationOutcome & { aliasId: PartAliasId }> {
+  assertFirestoreCatalogWriterOpen("partAlias.create");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);
@@ -175,6 +177,7 @@ async function changeAliasStatus(
   action: "deactivatePartAlias" | "reactivatePartAlias",
   deps?: PartMasterDeps
 ): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen(action === "deactivatePartAlias" ? "partAlias.deactivate" : "partAlias.reactivate");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);

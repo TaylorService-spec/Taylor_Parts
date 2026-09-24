@@ -127,8 +127,72 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Moved deliberately again for 1760097600000 (Operational Scope authority, step B): an EMPTY warehouse-scope history
 // plus one capability vocabulary row, granted to no Role. The table is not in SEEDED_RELATIONS and the Sample Company
 // seed writes no scope, so every row count asserted here is unchanged.
-const PINNED_LAST_MIGRATION = "1760140800000_reorder-assignment-identity";
-const PINNED_MIGRATION_COUNT = 34;
+//
+// Moved deliberately again for 1761350400000 (canonical Object <- action capability metadata): four columns on
+// `capabilities`, an explicit backfill of all 43 existing rows, and six workflowDefinition vocabulary rows granted to
+// no Role. No role_capabilities row is written, so every grant count asserted here is unchanged; the capability
+// vocabulary itself moves 43 -> 49 and is reconciled in the manifest below.
+//
+// Moved deliberately again for 1761436800000 (direct Principal capability grants): ONE new relation,
+// eos_policy.principal_capabilities, empty at seed. The Sample Company seed grants capabilities to
+// ROLES only and writes no direct grant, so every expectation below is unchanged -- and a direct
+// grant appearing here later would be a real finding rather than a pin to move.
+//
+// Moved deliberately again for 1761523200000 (CRED vocabulary + deterministic grant preservation):
+// eight READ capabilities the CRUD matrix already named, plus a preservation step that carries the
+// role grants those stored CRED rows already convey. Here the preservation writes NOTHING: this
+// fixture migrates a clean database and seeds afterwards, so role_object_permissions is empty at
+// the moment the migration runs. Preservation matters for an EXISTING database (nonprod), and
+// credConvergencePostgres.test.mjs proves it there by seeding first and then applying the
+// migration. Only the vocabulary count moves here, 49 -> 57.
+//
+// Moved deliberately again for 1761609600000 (Finance / Administration / unconditioned Reorder
+// vocabulary): thirteen capability rows and 122 exact (Role, capability) grants read from the
+// governed Role catalog. As with the previous one, the grant half writes NOTHING here -- this
+// fixture migrates a clean database and seeds afterwards, so no Role exists at migration time.
+// Only the vocabulary count moves, 57 -> 70.
+//
+// Moved deliberately again for 1761696000000 (PARTS_ASSOCIATE eligibility + REORDER_QUEUE scope):
+// three capability rows, the canonical unscoped Reorder read among them. It also widens two CHECK
+// constraints in eos_workforce and replaces an unconditional warehouse foreign key with a per-type
+// trigger -- none of which the Sample Company seed writes to, so every count below is unchanged.
+//
+// Moved deliberately again for 1761782400000 (Manufacturer Catalog authority): one table in eos_ops,
+// one capability split out of inventory.catalog.read, and its nineteen grants. The Sample Company
+// seed writes no manufacturer, so only the vocabulary count moves, 73 -> 74.
+//
+// Moved deliberately again for 1761868800000 (stockLocation retirement): a policy-metadata cleanup
+// that is a NO-OP on a clean database -- the governed seed has not declared stockLocation since the
+// Owner retired it, so there is no row here to remove. Only the migration count moves.
+//
+// Moved deliberately again for 1761955200000 (dispatchSchedule + notifications retirement, and the
+// coordinated-visit read re-homed onto salesOrder): both retirements are a NO-OP on a clean
+// database, because the governed seed no longer declares either Object -- there is no row here to
+// remove. The re-home DOES register one capability, 74 -> 75, and its five Role grants write
+// NOTHING here for the same reason the two migrations before it wrote nothing: this fixture
+// migrates a clean database and seeds afterwards, so no Role exists at migration time.
+//
+// Moved deliberately again for 1762041600000 (the Administration read authority): Administration >
+// Objects, Roles & Permissions, Workflows, Permission Preview and Overview had NO registered READ
+// capability, and `rolesPermissions` carried two ADMIN_ACTION writes and nothing meaning "may read
+// the policy model" -- so a navigation cutover could only have gated a read surface on a write. It
+// registers ONE capability, 75 -> 76, granted to admin and owner. Those two grants write NOTHING
+// here, for the same reason every grant before them wrote nothing: this fixture migrates a clean
+// database and seeds afterwards, so no Role exists at migration time.
+// Moved deliberately again for 1762128000000 (the Workflow Definition READ activation): the Owner
+// released ONE of the six held `workflowDefinition.*` keys -- `read`, to admin and owner, and to no
+// other Role -- so this migration REGISTERS NOTHING and the vocabulary count does not move, 76 ->
+// 76. Its two grants write NOTHING here, for the same reason every grant before them wrote nothing:
+// this fixture migrates a clean database and seeds afterwards, so no Role exists at migration time.
+// Only the migration count moves.
+//
+// Moved deliberately again for 1762214400000 (the conditional entitlement relation): STRUCTURE
+// ONLY. It creates `eos_policy.capability_grant_conditions` -- the separate relation that lets ONE
+// grant carry a predicate without putting a condition column on role_capabilities -- and inserts
+// ZERO rows by Owner ruling. It registers no capability and writes no grant, so every count below
+// is unchanged and only the migration count moves.
+const PINNED_LAST_MIGRATION = "1762214400000_capability-grant-conditions";
+const PINNED_MIGRATION_COUNT = 50;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
@@ -294,9 +358,16 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(counts["eos_crm.accounts"], MANIFEST.accounts.length);
     assert.equal(counts["eos_crm.contacts"], MANIFEST.contacts.length);
     assert.equal(counts["eos_crm.account_locations"], MANIFEST.locations.length);
-    assert.equal(counts["eos_commercial.opportunities"], MANIFEST.commercial.filter((c) => c.kind === "OPPORTUNITY").length);
-    assert.equal(counts["eos_commercial.sales_agreements"], MANIFEST.commercial.filter((c) => c.kind === "SALES_AGREEMENT").length);
-    assert.equal(counts["eos_commercial.sales_orders"], MANIFEST.commercial.filter((c) => c.kind === "SALES_ORDER").length);
+    // COMMERCIAL IS BLOCKED_PENDING_C5 AND MUST STAY EMPTY. The twelve declared records were removed from
+    // nonprod because they blocked Commercial C5, and an apply that wrote them back would re-arm exactly
+    // that blocker. Zero here is the RULING being obeyed, not a seeding failure.
+    assert.equal(MANIFEST.commercialSeedState.status, "BLOCKED");
+    assert.equal(counts["eos_commercial.opportunities"], 0);
+    assert.equal(counts["eos_commercial.sales_agreements"], 0);
+    assert.equal(counts["eos_commercial.sales_orders"], 0);
+    assert.equal(applied.domains.commercial.BLOCKED, MANIFEST.commercial.length, "all twelve must be COUNTED as blocked, not omitted");
+    assert.equal(applied.domains.commercial.CREATE, 0);
+    assert.equal(applied.domains.accountablePersons.BLOCKED, MANIFEST.commercial.length);
     assert.equal(counts["eos_ops.equipment_models"], MANIFEST.equipmentModels.length);
     assert.equal(counts["eos_ops.parts"], 0, "eos_ops.parts is BLOCKED -- its governed writer is INACTIVE");
     assert.equal(counts["eos_ops.warehouses"], MANIFEST.warehouses.length);
@@ -414,22 +485,26 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(audits, MANIFEST.reportingRelationships.edges.length);
   });
 
-  await t.test("owner, accountable person and assignee stay three separate facts", async () => {
+  await t.test("owner, accountable person and assignee stay three separate facts, and no Commercial row exists to carry them yet", async () => {
+    // The owner/accountable ROWS cannot be read: Commercial is BLOCKED_PENDING_C5 and the seed writes none.
+    // What is still provable against this database -- and is what the ruling's hazard actually turns on --
+    // is that the declared records are ABSENT, that the SCHEMA never grew an assignment column, and that the
+    // manifest still declares both responsibility shapes so Sample Company v3 seeds them unchanged.
     for (const kind of [["OPPORTUNITY", "opportunities", "opportunity_number"], ["SALES_AGREEMENT", "sales_agreements", "sales_agreement_number"], ["SALES_ORDER", "sales_orders", "sales_order_number"]]) {
       const [k, table, numberColumn] = kind;
-      for (const r of MANIFEST.commercial.filter((c) => c.kind === k)) {
-        const row = (await q(`SELECT owner_employee_id, accountable_employee_id FROM eos_commercial.${table} WHERE ${numberColumn} = $1`, [r.number])).rows[0];
-        const ownerId = MANIFEST.employees.find((e) => e.key === r.owner).id;
-        assert.equal(row.owner_employee_id, ownerId, `${r.number} owner`);
-        const expectedAccountable = r.accountable === "DERIVE_FROM_OWNER" ? ownerId : MANIFEST.employees.find((e) => e.key === r.accountable).id;
-        assert.equal(row.accountable_employee_id, expectedAccountable, `${r.number} accountable person`);
-      }
+      const numbers = MANIFEST.commercial.filter((c) => c.kind === k).map((c) => c.number);
+      const present = (await q(
+        `SELECT ${numberColumn} AS number FROM eos_commercial.${table} WHERE ${numberColumn} = ANY($1::text[])`, [numbers])).rows;
+      assert.deepEqual(present, [], `${table} holds a declared-synthetic record; the C5 blocker is re-armed`);
       // No assignment column was invented on any commercial table.
       const columns = (await q(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'eos_commercial' AND table_name = $1`, [table])).rows.map((r) => r.column_name);
       assert.deepEqual(columns.filter((c) => /assign/.test(c)), [], `${table} grew an assignment column`);
+      // The columns the three facts WOULD land in still exist, so v3 needs no schema work.
+      assert.ok(columns.includes("owner_employee_id") && columns.includes("accountable_employee_id"), `${table} lost a responsibility column`);
     }
+    const same = MANIFEST.commercial.filter((r) => r.accountable === "DERIVE_FROM_OWNER" || r.accountable === r.owner);
     const split = MANIFEST.commercial.filter((r) => r.accountable !== "DERIVE_FROM_OWNER" && r.accountable !== r.owner);
-    assert.ok(split.length > 0);
+    assert.ok(same.length > 0 && split.length > 0, "both responsibility shapes must stay declared for v3");
   });
 
   // ════════════════ drift is refused, never overwritten ════════════════
@@ -715,8 +790,14 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(report.loginReadiness.authProbe, "PERFORMED");
     assert.equal(report.loginReadiness.loginReady, report.loginReadiness.interactivePersonas);
     assert.equal(report.personas.length, MANIFEST.employees.length);
-    assert.equal(report.relationships.verified, MANIFEST.relationshipAssertions.length,
-      JSON.stringify(report.relationships.assertions.filter((a) => a.status !== "VERIFIED")));
+    // `declared` never moves; `expected` is what is not prerequisite-blocked, and every one of those is
+    // still VERIFIED. A blocked assertion is counted separately and never inflates either number.
+    assert.equal(report.relationships.declared, MANIFEST.relationshipAssertions.length);
+    assert.equal(report.relationships.expected, MANIFEST.relationshipAssertions.filter((a) => !a.blockedBy).length);
+    assert.equal(report.relationships.verified, report.relationships.expected,
+      JSON.stringify(report.relationships.assertions.filter((a) => !a.blockedBy && a.status !== "VERIFIED")));
+    assert.equal(report.relationships.blockedAssertions, MANIFEST.relationshipAssertions.filter((a) => a.blockedBy).length);
+    assert.equal(report.relationships.verified + report.relationships.blockedAssertions, report.relationships.declared);
   });
 
   await t.test("every persona result carries the full contract shape, and no report echoes a subject", async () => {
@@ -928,8 +1009,13 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       const pool2 = new pg.Pool({ connectionString: dbUrl(), max: 2 });
       try {
         const { establishReportingRelationship } = require("../lib/eosWorkforce/commands/reportingRelationshipCommands.js");
+        // The governed command gates on the conditional ENTITLEMENT, so the proof actor carries the
+        // provenance the runtime resolves -- one unconditional Role grant, the shipped catalog being
+        // empty.
+        const { entitlementsFrom } = require("../lib/eosOps/conditionalEntitlement.js");
         await establishReportingRelationship({ pool: pool2 },
-          { tenantId, principalId: adminPrincipalId, capabilities: new Set(["admin.employeeProfile.write"]) },
+          { tenantId, principalId: adminPrincipalId, capabilities: new Set(["admin.employeeProfile.write"]),
+            entitlements: async () => entitlementsFrom([{ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey: "admin.employeeProfile.write" }]) },
           { employeeId, managerEmployeeId, reason: "SAMPLE COMPANY V2 verifier proof" });
       } finally {
         await pool2.end();
@@ -985,9 +1071,101 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       "INVENTORY_RECEIPT_MOVEMENT_BLOCKED", "PARTS_POSTGRES_WRITER_INACTIVE", "FINANCIAL_SAMPLE_COVERAGE"]) {
       assert.ok(report.blockers.some((b) => b.code === code), `${code} must be reported`);
     }
+    assert.ok(report.blockers.some((b) => b.code === "COMMERCIAL_RECORDS_PENDING_C5"), "the C5 prerequisite must be reported");
     assert.equal(report.scenarios.find((s) => s.id === "D").verified, "BLOCKED");
-    assert.equal(report.scenarios.find((s) => s.id === "A").verified, "VERIFIED");
+    // Scenario A is PREREQUISITE-BLOCKED, not FAILED: its Commercial half cannot exist before C5 and its
+    // CRM half is verified. FAILED is reserved for a scenario whose objects are actually drifting.
+    assert.equal(report.scenarios.find((s) => s.id === "A").verified, "PARTIAL");
+    assert.deepEqual(report.scenarios.find((s) => s.id === "A").blockedBy, ["COMMERCIAL_RECORDS_PENDING_C5"]);
+    assert.equal(report.scenarios.find((s) => s.id === "B").verified, "PARTIAL");
     assert.equal(report.scenarios.find((s) => s.id === "H").verified, "VERIFIED");
+    assert.equal(report.scenarios.find((s) => s.id === "G").verified, "VERIFIED");
+    assert.equal(report.scenarios.find((s) => s.id === "F").verified, "VERIFIED");
+  });
+
+  await t.test("BLOCKED_PENDING_C5: absent Commercial data is reported as BLOCKED, never as drift, and never as a pass", async () => {
+    // R1/R2. The Commercial fixture rows were removed intentionally and C5 has not run. The verifier must
+    // say so in the manifest's own vocabulary and must NOT report it as unexplained drift.
+    for (const table of ["opportunities", "sales_agreements", "sales_orders"]) {
+      const d = report.domains[`commercial.${table}`];
+      assert.equal(d.status, "BLOCKED", `commercial.${table} is ${d.status}`);
+      assert.deepEqual(d.blockedBy, ["COMMERCIAL_RECORDS_PENDING_C5"]);
+      assert.equal(d.found, 0);
+      assert.ok(d.declared > 0, "the declaration must survive being blocked");
+    }
+    const blocked = report.relationships.assertions.filter((a) => a.status === "BLOCKED");
+    assert.equal(blocked.length, 9);
+    for (const a of blocked) assert.equal(a.blockedBy, "COMMERCIAL_RECORDS_PENDING_C5");
+    // NOT DRIFT. Nothing commercial appears in drift, and the report as a whole still passes.
+    assert.deepEqual(report.drift, []);
+    assert.equal(report.pass, true);
+    // NOT A PASS EITHER. No blocked assertion was counted as VERIFIED.
+    assert.ok(!report.relationships.assertions.some((a) => a.blockedBy && a.status === "VERIFIED"));
+  });
+
+  await t.test("the non-Commercial half of scenario A is still PROVED, assertion by assertion", async () => {
+    // R3. Scenario A combines CRM and Commercial. These are the assertions that survive, named exactly,
+    // and each one is resolved against its real foreign key in the run above.
+    const SURVIVING = [
+      "employee:retail-sales-a OWNS account:synthetic-np-acct-retail",
+      "employee:retail-sales-b OWNS account:sample-co-acct-retail-b",
+      "account:synthetic-np-acct-retail HAS_CONTACT contact:synthetic-np-contact-retail",
+      "account:synthetic-np-acct-retail HAS_CONTACT contact:sample-co-contact-retail-secondary",
+      "account:sample-co-acct-retail-b HAS_CONTACT contact:sample-co-contact-retail-b",
+      "account:synthetic-np-acct-retail HAS_LOCATION location:synthetic-np-loc-retail",
+      "account:sample-co-acct-retail-b HAS_LOCATION location:sample-co-loc-retail-b",
+      "contact:synthetic-np-contact-retail INHERITS_OWNER_FROM account:synthetic-np-acct-retail",
+    ];
+    const byId = new Map(report.relationships.assertions.map((a) => [`${a.subject} ${a.predicate} ${a.object}`, a]));
+    for (const id of SURVIVING) {
+      assert.equal(byId.get(id)?.status, "VERIFIED", `${id} must still be independently verified`);
+    }
+  });
+
+  await t.test("FAIL CLOSED: a Commercial record that exists before C5 is drift, not a quiet pass", async () => {
+    // The hazard this whole lane exists to prevent is a seed, fixture or script putting the twelve records
+    // back and re-arming the C5 blocker. The acceptance suite must NOTICE. One row, through the governed
+    // writer, in this throwaway database only -- removed again in the finally.
+    const { createCommercialRecord } = require("../lib/eosCommercial/commercialOwnershipRepository.js");
+    const victim = MANIFEST.commercial.find((r) => r.number === "SYN-NP-OPP-0001");
+    const ownerId = MANIFEST.employees.find((e) => e.key === victim.owner).id;
+    // ONE transaction, deliberately ROLLED BACK. The row is never committed, so this proof leaves the
+    // database exactly as it found it and the append-only ownership history is never deleted from.
+    const client = new pg.Client({ connectionString: dbUrl() });
+    await client.connect();
+    let armed;
+    try {
+      await client.query("BEGIN");
+      await createCommercialRecord(client, tenantId, "lane-r-fail-closed-probe", {
+        kind: victim.kind, recordNumber: victim.number, accountId: victim.account, ownerEmployeeId: ownerId,
+        operatingCompanyId: MANIFEST.company.operatingCompanyId, createdBy: "lane-r-fail-closed-probe",
+        opportunityId: null, salesAgreementId: null,
+      });
+      armed = await verifySampleCompany(
+        client,
+        { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId },
+        MANIFEST,
+        (email) => authDirectory.findByEmail(email),
+        (uid) => authDirectory.findByUid(uid),
+      );
+    } finally {
+      await client.query("ROLLBACK").catch(() => undefined);
+      await client.end();
+    }
+    assert.equal(armed.pass, false, "a Commercial record present before C5 must not pass");
+    assert.equal(armed.domains["commercial.opportunities"].status, "UNEXPECTEDLY_PRESENT");
+    assert.equal(armed.domains["commercial.opportunities"].found, 1);
+    assert.ok(armed.drift.some((d) => /re-arms the C5 blocker/.test(d.detail)),
+      `the drift must name the C5 blocker: ${JSON.stringify(armed.drift)}`);
+    const probed = armed.relationships.assertions.filter((a) => a.blockedBy && a.status !== "BLOCKED");
+    assert.ok(probed.length >= 3, "a blocked assertion whose row now exists must be reported by name");
+    for (const a of probed) assert.equal(a.status, "UNEXPECTEDLY_PRESENT", "never silently upgraded to VERIFIED");
+
+    // And the committed world is untouched: still empty, still BLOCKED, still passing.
+    assert.equal((await q(`SELECT count(*)::int AS n FROM eos_commercial.opportunities`)).rows[0].n, 0);
+    const restored = await verifyWith((e) => authDirectory.findByEmail(e));
+    assert.equal(restored.pass, true);
+    assert.equal(restored.domains["commercial.opportunities"].status, "BLOCKED");
   });
 
   await t.test("the verifier is READ ONLY -- it changed nothing", async () => {

@@ -98,15 +98,18 @@ test("Employee Operational Scope authority: one scope type, real warehouse, no a
   )).rows.map((r) => r.scope_id);
 
   await t.test("an Employee may currently cover MULTIPLE warehouses", async () => {
-    assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE"]);
+    // WAREHOUSE alone -> WAREHOUSE + REORDER_QUEUE (migration 1761696000000, Owner ruling). This
+    // suite is about the WAREHOUSE scope and stays that way; the queue scope has its own proofs.
+    assert.deepEqual([...vocab.OPERATIONAL_SCOPE_TYPES], ["WAREHOUSE", "REORDER_QUEUE"]);
     await scope("e-1", "wh-main");
     await scope("e-1", "wh-north");
     assert.deepEqual(await current("e-1"), ["wh-main", "wh-north"]);
     assert.deepEqual(await current("e-2"), [], "and an Employee may hold none");
   });
 
-  await t.test("WAREHOUSE is the only scope type: anything else is refused by the database", async () => {
-    for (const type of ["OPERATING_COMPANY", "REGION", "BRANCH", "warehouse", "WAREHOUSE ", "", "ALL"]) {
+  await t.test("an unruled scope type is still refused by the database", async () => {
+    // REORDER_QUEUE joined the vocabulary; nothing else did, and the CHECK still owns the question.
+    for (const type of ["OPERATING_COMPANY", "REGION", "BRANCH", "warehouse", "WAREHOUSE ", "", "ALL", "QUEUE"]) {
       assert.match(await refusal(() => scope("e-2", "wh-main", "t1", type)) ?? "", /operational_scope_type_known/,
         `scope_type ${JSON.stringify(type)} must be refused`);
     }
@@ -115,10 +118,13 @@ test("Employee Operational Scope authority: one scope type, real warehouse, no a
   });
 
   await t.test("the warehouse must resolve exactly, in the SAME tenant: no fabricated scope", async () => {
-    assert.match(await refusal(() => scope("e-1", "no-such-warehouse")) ?? "", /operational_scope_warehouse_fk/);
+    // The unconditional warehouse FOREIGN KEY became a per-type trigger in migration 1761696000000,
+    // because a second scope type cannot point at eos_ops.warehouses. The GUARANTEE is identical --
+    // same three cases, same refusals -- only the mechanism that enforces it changed.
+    assert.match(await refusal(() => scope("e-1", "no-such-warehouse")) ?? "", /operational_scope_target_exists/);
     // t1's Employee cannot be scoped to t2's warehouse, nor the reverse.
-    assert.match(await refusal(() => scope("e-1", "wh-t2", "t1")) ?? "", /operational_scope_warehouse_fk/);
-    assert.match(await refusal(() => scope("e-t2", "wh-main", "t2")) ?? "", /operational_scope_warehouse_fk/);
+    assert.match(await refusal(() => scope("e-1", "wh-t2", "t1")) ?? "", /operational_scope_target_exists/);
+    assert.match(await refusal(() => scope("e-t2", "wh-main", "t2")) ?? "", /operational_scope_target_exists/);
     // A foreign-tenant EMPLOYEE is refused by the composite employee FK.
     assert.match(await refusal(() => scope("e-t2", "wh-main", "t1")) ?? "", /operational_scope_employee_fk/);
     assert.match(await refusal(() => scope("no-such-employee", "wh-main")) ?? "", /operational_scope_employee_fk/);

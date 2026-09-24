@@ -15,6 +15,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+// The three-clause collection fence this suite introduced, now shared so that eos_ops and the legacy
+// inventory mapper are judged by the SAME rule. The reasoning for each clause lives in that module.
+import { namesFirestoreCollection, opaqueFirestoreAccess, stripComments } from "./support/firestoreCollectionFence.mjs";
 
 const POLICY_DIR = "src/adminPolicy";
 
@@ -31,21 +34,6 @@ const TRANSITIONAL_ADAPTERS = Object.freeze({});
 const isTransitional = (file) =>
   Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file) ||
   Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file.replace(/\//g, "\\"));
-
-/**
- * Source with comments removed.
- *
- * Every check here is about CODE. A header explaining why a layer must never touch Firestore is
- * exactly the comment that should survive -- banning the word outright would delete the reasoning
- * along with the coupling, which is how a boundary loses the note saying why it exists.
- */
-function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("//"))
-    .join("\n");
-}
 
 function sourceFiles(dir) {
   const out = [];
@@ -99,31 +87,53 @@ test("no Admin policy module writes a Firestore document", () => {
   assert.deepEqual(offences, [], "no new Firestore business writes");
 });
 
+// ════════════════════ the collection-name probe ════════════════════
+//
+// A collection NAME is only evidence of Firestore persistence when something HANDS IT TO a
+// Firestore accessor. The bare-substring form of this check -- `code.includes('"users"')` over a
+// literal list -- was a false-positive generator: it failed on `"users"` in ADMINISTRATION_SURFACES,
+// a UI surface key with no Firestore receiver anywhere near it, and the only way to appease it was
+// to rename a legitimate EOS concept. That is a guard training people to damage the code.
+//
+// So this check is ANCHORED TO A FIRESTORE-SHAPED RECEIVER, exactly as the sibling check
+// "no Admin policy module writes a Firestore document" above anchors its write verbs, and as
+// "the transitional harness is READ ONLY against Firestore" below says a bare verb list is too
+// broad. The same reasoning applies to a bare NAME list.
+//
+// This is strictly STRONGER than what it replaces, not weaker: the old probe missed `'users'` in
+// single quotes, missed a backtick path, and missed a name held in a variable. All three are
+// refused now, and the proof is in "the guard would actually catch an offence" below.
+
+// `namesFirestoreCollection` (direct + bound) and `opaqueFirestoreAccess` now live in
+// test/support/firestoreCollectionFence.mjs, imported at the top of this file. They moved UNCHANGED;
+// the controls in "the guard would actually catch an offence" below still prove all three clauses,
+// and now prove them for every suite that shares the fence.
+
+/**
+ * The collections this subsystem REPLACES, as BARE names. Naming one in code would mean the policy
+ * model had quietly gone back to living in Firestore under a different function name.
+ *
+ * `accessVersion` is deliberately NOT in this list, and the distinction matters: it is this
+ * subsystem's own field name (`principal_access_versions.access_version`, and
+ * `accessVersionAtGrant` on an assignment). What is banned is the Firestore LOCATION --
+ * `users/{uid}.accessVersion` -- not the concept, which EOS now owns. `users` is here as a
+ * COLLECTION, which is why it is only an offence when a Firestore accessor is holding it.
+ */
+const COLLECTIONS = ["roleAssignments", "users"];
+
 test("the policy modules name no Firestore collection as their persistence", () => {
-  // The collections this subsystem REPLACES. Naming one in code would mean the policy model had
-  // quietly gone back to living in Firestore under a different function name.
-  //
-  // `accessVersion` is deliberately NOT in this list, and the distinction matters: it is this
-  // subsystem's own field name (`principal_access_versions.access_version`, and
-  // `accessVersionAtGrant` on an assignment). What is banned is the Firestore LOCATION --
-  // `users/{uid}.accessVersion` -- not the concept, which EOS now owns.
-  const COLLECTIONS = ["roleAssignments", "users/", '"users"'];
   const offences = [];
   for (const file of sourceFiles(POLICY_DIR)) {
     // The parity harness NAMES these collections on purpose -- reading them is its entire job, and
     // it is the one file allowed to. Its allowlist entry carries the reason and the condition under
     // which it gets deleted.
     if (isTransitional(file)) continue;
-    const source = readFileSync(file, "utf8");
     // Comments are where these SHOULD appear -- explaining what was replaced and why. Strip them and
     // check the code, so the reasoning stays and the coupling cannot come back.
-    const code = source
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("//"))
-      .join("\n");
+    const code = stripComments(readFileSync(file, "utf8"));
+    if (opaqueFirestoreAccess(code)) offences.push(`${file}: a Firestore collection/document accessor`);
     for (const name of COLLECTIONS) {
-      if (code.includes(name)) offences.push(`${file}: references "${name}" outside a comment`);
+      if (namesFirestoreCollection(code, name)) offences.push(`${file}: hands "${name}" to a Firestore accessor`);
     }
   }
   assert.deepEqual(offences, [], "the access version and role assignments live in EOS storage, not Firestore");
@@ -220,6 +230,118 @@ test("the guard would actually catch an offence", () => {
   assert.ok(hits.includes('import from "firebase-admin/firestore"'), "catches the import");
   assert.ok(hits.includes("a getFirestore() call"), "catches the call");
   assert.ok(hits.includes("a Firestore collection() call"), "catches the collection access");
+
+  // The whole fence as the guards above apply it: the import/call patterns, plus the anchored
+  // collection probe. `refused` is the single predicate the controls below are stated against, so a
+  // shape cannot pass by slipping between two tests.
+  const refused = (source) => {
+    const code = stripComments(source);
+    return (
+      FORBIDDEN.some(({ pattern }) => pattern.test(code)) ||
+      opaqueFirestoreAccess(code) ||
+      COLLECTIONS.some((name) => namesFirestoreCollection(code, name))
+    );
+  };
+
+  // ════════ POSITIVE CONTROL: the shapes this fence exists to catch ════════
+  //
+  // Every line is a REAL prohibited Firestore access and must be refused. Both SDK spellings, both
+  // quote styles, the path form, the admin SDK, and -- the ones the old bare-substring probe could
+  // never see -- a template literal and a collection name held in a variable.
+  const PROHIBITED = [
+    ["const db = getFirestore();", "a getFirestore() handle"],
+    ['import { getFirestore } from "firebase-admin/firestore";', "the modular admin import"],
+    ['import admin from "firebase-admin";', "the admin SDK root import"],
+    ['import { getFirestore } from "firebase/firestore";', "the web SDK import"],
+    ["await ref.set({ role }, { merge: true, updatedAt: FieldValue.serverTimestamp() });", "a FieldValue"],
+    ['const ref = db.collection("users");', "db.collection(literal)"],
+    ["const ref = db.collection('users');", "db.collection(single-quoted literal)"],
+    ['const ref = db.collection("roleAssignments").doc(id);', "db.collection() on the replaced collection"],
+    ['const snap = await firestore().collection("users").get();', "firestore().collection()"],
+    ['const snap = await admin.firestore().collection("users").get();', "admin.firestore().collection()"],
+    ['const snap = await getFirestore().collection("roleAssignments").get();', "getFirestore().collection()"],
+    ['const ref = doc(db, "users", uid);', "the modular doc(db, name, id)"],
+    ['const col = collection(db, "users");', "the modular collection(db, name)"],
+    ['const col = collectionGroup(db, "roleAssignments");', "a collection group"],
+    ["const ref = db.doc(`users/${uid}`);", "a template-literal document path"],
+    ['const ref = db.doc("users/" + uid);', "a concatenated document path"],
+    ['const ref = db.doc("tenants/t1/users/u1");', "a nested path segment"],
+    ['await writeBatch(db).set(doc(db, "roleAssignments", id), row);', "a batched modular write"],
+    ['const COLLECTION = "users";\nconst ref = store.collection(COLLECTION);', "a collection name held in a constant"],
+    ["const path = `users/${uid}`;\nconst ref = store.doc(path);", "a collection name held in a template literal"],
+    // A receiver NOT named `db`/`firestore`, so nothing but the name-in-accessor clause can see it.
+    // The first of these is a hole in the OLD probe: single quotes, so `includes('"users"')` missed it.
+    ["const ref = store.collection('users');", "an accessor on a differently-named handle"],
+    ["const ref = client.collectionGroup('roleAssignments');", "a collection group on a differently-named handle"],
+    // No literal ANYWHERE and no `db.` receiver, so only the handle-shape clause can see these. The
+    // old probe was blind to both: there is no substring of a collection name to find.
+    ["const col = collection(db, tableName);", "the modular SDK with the name in a variable"],
+    ["const ref = doc(db, tableName, id);", "a modular document handle with the name in a variable"],
+    ["const snap = await firestore().collection(tableName).get();", "a namespaced handle with the name in a variable"],
+  ];
+  for (const [source, what] of PROHIBITED) {
+    assert.ok(refused(source), `the fence must refuse ${what} -- ${JSON.stringify(source)}`);
+  }
+
+  // ════════ REGRESSION: every true positive the OLD bare-substring probe caught ════════
+  //
+  // The old probe was `code.includes(name)` over ["roleAssignments", "users/", '"users"']. It is
+  // being REPLACED, not relaxed. Each real Firestore access it would have caught -- one entry per
+  // old list member, in the spellings that made it match -- is still refused here. Trading a false
+  // positive for a false negative would be worse than the bug being fixed.
+  const OLD_PROBE_TRUE_POSITIVES = [
+    // ... caught by the old "roleAssignments" entry
+    'const x = db.collection("roleAssignments");',
+    'await getFirestore().collection("roleAssignments").doc(id).set(row);',
+    'const col = collection(db, "roleAssignments");',
+    'const ref = doc(db, "roleAssignments", id);',
+    // ... caught by the old "users/" entry
+    'const ref = db.doc("users/" + uid);',
+    "const ref = db.doc(`users/${uid}`);",
+    'const ref = db.collection("users/" + uid + "/tokens");',
+    'const ref = db.doc("tenants/t1/users/u1");',
+    // ... caught by the old '"users"' entry
+    'const ref = db.collection("users");',
+    'const ref = doc(db, "users", uid);',
+    'const ref = admin.firestore().collection("users");',
+    'const COLLECTION = "users";\nconst ref = db.collection(COLLECTION);',
+  ];
+  for (const source of OLD_PROBE_TRUE_POSITIVES) {
+    assert.ok(refused(source), `the old probe caught this and the new one must too -- ${JSON.stringify(source)}`);
+  }
+
+  // ════════ NEGATIVE CONTROL: legitimate EOS code that must PASS ════════
+  //
+  // A surface key, a Set, and the policy port's own vocabulary. None of these is a Firestore access
+  // and none of them may be made to look like one by a probe.
+  const LEGITIMATE = [
+    [
+      'export const ADMINISTRATION_SURFACES = Object.freeze([\n  "overview",\n  "objects",\n' +
+        '  "rolesPermissions",\n  "users",\n  "workflows",\n  "permissionPreview",\n  "auditLogs",\n] as const);',
+      "the Administration surface keys",
+    ],
+    ['const surface: AdministrationSurface = "users";', "a surface-typed constant"],
+    ['if (surface === "users") return "admin.users.read";', "a surface comparison"],
+    ["const principals = new Set<string>();\nprincipals.add(uid);", "a JavaScript Set"],
+    ["await tx.setRoleAssignment(row);", "the policy port's own vocabulary"],
+    ["const roleAssignmentsForPrincipal = await repository.listRoleAssignments(principalId);", "the EOS repository read"],
+  ];
+  for (const [source, what] of LEGITIMATE) {
+    assert.equal(refused(source), false, `the fence must not fire on ${what} -- ${JSON.stringify(source)}`);
+  }
+
+  // And the real file the bare-substring probe tripped on, verbatim from disk. This is the
+  // regression itself: `"users"` is the 4th ADMINISTRATION_SURFACES element, a UI surface key.
+  const surfaceAuthority = stripComments(readFileSync("src/adminPolicy/administrationSurfaceAuthority.ts", "utf8"));
+  assert.ok(surfaceAuthority.includes('"users"'), "the surface key is still there -- no production code was renamed");
+  assert.equal(opaqueFirestoreAccess(surfaceAuthority), false, "and it holds no Firestore accessor");
+  for (const name of COLLECTIONS) {
+    assert.equal(
+      namesFirestoreCollection(surfaceAuthority, name),
+      false,
+      `administrationSurfaceAuthority.ts hands "${name}" to nothing`,
+    );
+  }
 });
 
 // ════════════════════ the transitional allowlist ════════════════════

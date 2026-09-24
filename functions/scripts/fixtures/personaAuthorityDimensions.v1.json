@@ -1,0 +1,686 @@
+{
+  "manifest": "PERSONA_AUTHORITY_DIMENSIONS",
+  "version": 1,
+  "classification": "SYNTHETIC NONPROD FIXTURE DATA. The governed Work Eligibility, Operational Scope and contextual-authorization layer of the Sample Company persona catalog. Not historical truth, not migrated Taylor production data, and not real people.",
+
+  "basis": {
+    "manifest": "SAMPLE_COMPANY_V2",
+    "file": "functions/scripts/fixtures/sampleCompany.v2.json",
+    "relationship": "ADDITIVE_LAYER",
+    "$comment": "Every employee key, warehouse id and operating company key named here is DECLARED THERE. This manifest creates no Employee, no Principal, no Security Role assignment and no CRM or commercial record; it declares only the two authorities sampleCompany.v2 has none of -- eos_workforce.employee_work_eligibility and eos_workforce.employee_operational_scopes -- plus the contextual decisions those authorities are supposed to produce."
+  },
+
+  "whyThisExists": {
+    "measured": "sampleCompany.v2.json and syntheticNonprodWorkforceSeed.v1.json contain ZERO occurrences of workEligibility, operationalScope, PARTS_OPERATIONS, REORDER_QUEUE, WORK_ELIGIBILITY or OPERATIONAL_SCOPE. eos_workforce.employee_work_eligibility therefore holds 0 rows in nonprod.",
+    "consequence": "functions/src/eosOps/contextualAuthorization.ts is imported by NO file under functions/src -- only by functions/test/contextualAuthorizationPostgres.test.mjs. The predicate evaluator that replaced the legacy operationalRoles gate is BUILT and INERT, and no persona in the acceptance world can exercise it.",
+    "ownerRuling": "emp-rudy-parts-associate CLASSIFICATION: TEST_PERSONA -- not a real Employee identity migration target. EOS MUST retain governed test personas for end-to-end persona/business-process testing."
+  },
+
+  "rulings": {
+    "dimensionIndependence": "Authentication identity, Principal, Employee link, Job Role, Security Role, Work Eligibility, Operational Scope, Operating Company, Warehouse, ownership, accountability and assignment are TWELVE separate facts. No dimension in this manifest is derived from another, and the validator refuses any entry that would derive one.",
+    "eligibilityGrantsNothing": "A Work Eligibility code confers no Security Role, no capability, no permission, no Job Role, no ownership, no assignment and no operating-company authority. It is only ever a SECONDARY business restriction on top of a capability that was checked first.",
+    "scopeIsNotAssignment": "OPERATIONAL_SCOPE answers 'where may this Employee work'. RECORD_ASSIGNMENT answers 'is this record theirs'. They are unrelated facts and neither implies the other.",
+    "noLegacyLabels": "No legacy operationalRoles value (PARTS_ASSOCIATE, WAREHOUSE_ASSOCIATE, TECHNICIAN, PARTS_MANAGER, WAREHOUSE_MANAGER) appears as a qualification code. The governed vocabulary names a KIND OF WORK, never a role bundle. The validator refuses the legacy strings by name.",
+    "capabilityFirst": "Every expectation in contextualExpectations is evaluated capability-first. A persona lacking the capability is expected to be refused CAPABILITY_MISSING and nothing about the record is expected to be revealed.",
+    "noAuthenticationInvented": "This manifest invents no authentication. Interactive login for every persona named here is the Sample Company v2 Firebase sandbox path, unchanged. A fixture Principal under `eos-synthetic-nonprod` still cannot sign in."
+  },
+
+  "identityArchitecture": {
+    "measuredOn": "2026-09-23, from code and config at b41674e2",
+    "chain": "Firebase Auth email/password (eos-platform-sandbox) -> Firebase ID token -> Authorization: Bearer -> Render service eos-api-nonprod -> firebase-admin verifyIdToken -> decoded.uid ONLY -> eos_policy.principals lookup by (identity_provider='firebase', external_subject=uid) -> active tenant_memberships -> user_role_assignments -> role_capabilities -> eos_policy.employee_principal_links -> eos_workforce Employee",
+    "evidence": [
+      "field-ops-app-vite/src/auth/AuthContext.jsx:129 login = signInWithEmailAndPassword(auth, email, password) -- the only sign-in call in the app",
+      "field-ops-app-vite/src/services/adminPolicyApiClient.js:130 authorization: `Bearer ${token}`; :176 currentIdToken() = auth.currentUser.getIdToken()",
+      "field-ops-app-vite/src/services/workforceApiClient.js:40 imports currentIdToken/policyApiBaseUrl from the admin client -- ONE auth scheme, reused",
+      "functions/src/eosApi/server.ts:103 identityProvider = (env.EOS_IDENTITY_PROVIDER ?? 'firebase').trim(); render.yaml sets no EOS_IDENTITY_PROVIDER",
+      "functions/src/eosApi/server.ts:113-128 createFirebaseTokenVerifier returns { externalSubject: decoded.uid, identityProvider } and reads no custom claim",
+      "functions/src/adminPolicy/principalContext.ts:38 FIREBASE_IDENTITY_PROVIDER = 'firebase'; :100 getPrincipalBySubject(identityProvider, subject)",
+      "functions/migrations/1757548800000_tenant-and-identity.sql:77-95 principals(id, external_subject, identity_provider, display_name, status) -- no principal_type column, no credential column, identity_provider is unconstrained TEXT"
+    ],
+    "nonFirebaseLoginPath": "NONE EXISTS. No password store, no session issuance route, no invite/registration operation. functions/migrations/*.sql contains no password_hash, credentials or sessions table. ADMIN_MUTATION_OPERATIONS (functions/src/adminPolicy/adminPolicyApi.ts:107-130) contains no principal or membership creation. Principals are created only by operator scripts through ensureTenantPrincipal.",
+    "theSeamThatExists": "TokenVerifier is injected into all five EOS transports (functions/src/adminPolicy/adminPolicyHttp.ts:27-32), EOS_IDENTITY_PROVIDER already parameterizes the provider string, and principals.identity_provider is free text. Replacing the provider is a new verifier plus a data change, not a schema change.",
+    "observedIdentityProviders": {
+      "firebase": "The ONLY provider any verifier produces. Interactive personas resolve here.",
+      "eos-synthetic-nonprod": "Recognized by NO verifier. Fixture Principals only; they can never sign in."
+    }
+  },
+
+  "operatingCompanyKey": "sample-co-synthetic",
+  "tenantKey": "taylor-nonprod",
+  "environment": "platform-sandbox",
+
+  "prerequisites": [
+    {
+      "code": "OPERATING_COMPANY_KEY_BINDING_REQUIRED",
+      "for": "every REORDER_QUEUE operational scope",
+      "requirement": "eos_policy.tenant_operating_company_keys must hold an ACTIVE row for (taylor-nonprod, sample-co-synthetic). The BEFORE trigger eos_workforce.operational_scope_target_exists (migration 1761696000000:55-64) raises otherwise.",
+      "governedTool": "functions/scripts/tenantOperatingCompanyKeyReconcileCli.js (dry run by default; --apply adds ACTIVE bindings)",
+      "seededBySampleCompany": false
+    },
+    {
+      "code": "WAREHOUSE_ROWS_REQUIRED",
+      "for": "every WAREHOUSE operational scope",
+      "requirement": "eos_ops.warehouses must hold SC-WH-MAIN and SC-WH-SERVICE. The composite foreign key on employee_operational_scopes (migration 1760097600000) refuses otherwise.",
+      "governedTool": "functions/scripts/seedSampleCompany.js --mode apply (execution order step 17)",
+      "seededBySampleCompany": true
+    },
+    {
+      "code": "ADMINISTERING_CAPABILITIES_REQUIRED",
+      "for": "writing either authority",
+      "requirement": "The administering Principal must hold admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write. Both keys are registered in eos_policy.capabilities (migrations 1760054400000:54 and 1760097600000:65) and both appear in sampleCompany.v2 expectedAccess.postgresCapabilityVocabulary.",
+      "measured": "BOTH keys are declared by exactly two Roles -- `admin` and `owner` -- resolved from the COMPILED role catalog, not from a grep. A grep over functions/src/access finds only permissionCatalog.ts:1045 and :1058, because ADMIN_ROLE composes its permission list programmatically and OWNER_ROLE spreads ADMIN_ROLE.permissions. The owner-executive persona holds `admin` and can therefore administer both authorities.",
+      "remainingRisk": "SEED_GRANT_GAP, not an authority gap: the (Role, capability) pair must also exist as a row in eos_policy.role_capabilities for this tenant. That is the gap sampleCompany.v2 expectedAccess.seedGrantGap already reconciles through the existing governed mechanism (eosOps/migration/inventoryCapabilityGrantMigration.ts, dry run first, insert-missing-only).",
+      "seededBySampleCompany": "RECONCILED_BY_STEP_3",
+      "blocks": "NOTHING"
+    },
+    {
+      "code": "REORDER_REQUEST_READ_IS_GRANTED_BUT_NOT_DECLARED",
+      "for": "every expectation naming reorder.request.read",
+      "requirement": "The capability must resolve for the seven Roles migration 1761696000000 granted it to.",
+      "measured": "DIVERGENCE. `reorder.request.read` is declared by NO Role in functions/src/access/compatibilityRoles.ts or governedBusinessRoles.ts -- the compiled catalog returns an empty holder list. The grants exist only as role_capabilities rows the migration INSERTed directly, keyed by role KEY (admin, dispatcher, operationsManager, owner, partsManager, purchasingManager, technician). The TS catalog still declares the two SUPERSEDED keys reorder.request.read.own and reorder.request.read.queue.",
+      "consequence": "A verifier that derives the effective set from the TS catalog and a verifier that reads role_capabilities give DIFFERENT answers for this key. Every expectation here is written against the DATABASE grants, because that is what functions/src/eosOps/capabilityAuthority.ts resolves at request time.",
+      "seededBySampleCompany": false,
+      "blocks": "NOTHING",
+      "reportedAs": "A Role-catalog reconciliation item for whoever owns the Reorder cutover. Not fixed here: widening the catalog is a Role change, and this lane widens no Role."
+    }
+  ],
+
+  "dimensions": [
+    { "dimension": "authenticationIdentity", "authority": "Firebase Auth account in eos-platform-sandbox (email @sandbox.invalid)", "impliesNothingAbout": ["principal", "employee", "securityRoles", "workEligibility", "operationalScope"] },
+    { "dimension": "principal", "authority": "eos_policy.principals (identity_provider, external_subject)", "impliesNothingAbout": ["employee", "jobRole", "workEligibility", "operationalScope"] },
+    { "dimension": "employeeLink", "authority": "eos_policy.employee_principal_links (status='active')", "impliesNothingAbout": ["securityRoles", "workEligibility", "operationalScope"] },
+    { "dimension": "employee", "authority": "eos_workforce.employees", "impliesNothingAbout": ["principal", "securityRoles"] },
+    { "dimension": "jobRole", "authority": "NONE IN POSTGRESQL (EMP-RT-08). Manifest metadata only.", "impliesNothingAbout": ["securityRoles", "workEligibility", "operationalScope"] },
+    { "dimension": "securityRoles", "authority": "eos_policy.user_role_assignments -> roles -> role_capabilities", "impliesNothingAbout": ["workEligibility", "operationalScope", "recordAssignment", "jobRole"] },
+    { "dimension": "workEligibility", "authority": "eos_workforce.employee_work_eligibility", "impliesNothingAbout": ["securityRoles", "capabilities", "operationalScope", "recordAssignment"] },
+    { "dimension": "operationalScope", "authority": "eos_workforce.employee_operational_scopes", "impliesNothingAbout": ["securityRoles", "capabilities", "workEligibility", "recordAssignment"] },
+    { "dimension": "operatingCompany", "authority": "eos_workforce.employees.operating_company_id (an ID) bound to eos_policy.tenant_operating_company_keys.operating_company_key (a KEY). THE TWO ARE NOT THE SAME VALUE.", "impliesNothingAbout": ["operationalScope"] },
+    { "dimension": "warehouse", "authority": "eos_ops.warehouses, reached ONLY through an OPERATIONAL_SCOPE row of type WAREHOUSE", "impliesNothingAbout": ["workEligibility"] },
+    { "dimension": "ownership", "authority": "owner_employee_id on the governed record", "impliesNothingAbout": ["accountability", "assignment"] },
+    { "dimension": "accountability", "authority": "accountable_employee_id, written only from the governed establishment + mint under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1", "impliesNothingAbout": ["ownership", "assignment"] },
+    { "dimension": "assignment", "authority": "eos_ops.reorder_request_assignments.assigned_employee_id / eos_ops.work_order_assignments.assignee_employee_id, open interval only", "impliesNothingAbout": ["ownership", "accountability", "operationalScope"] }
+  ],
+
+  "workEligibility": [
+    { "employee": "service-technician-a", "qualificationCode": "SERVICE_TECHNICIAN", "reason": "PERSONA FIXTURE: field service work eligibility for the ASSIGNED technician scenario." },
+    { "employee": "service-technician-b", "qualificationCode": "SERVICE_TECHNICIAN", "reason": "PERSONA FIXTURE: identically qualified to technician A, so that every difference between them is a RECORD relationship and never a qualification." },
+    { "employee": "contract-technician", "qualificationCode": "SERVICE_TECHNICIAN", "reason": "PERSONA FIXTURE: proves employment status CONTRACTOR neither confers nor withholds work eligibility." },
+    { "employee": "parts-associate", "qualificationCode": "PARTS_OPERATIONS", "reason": "PERSONA FIXTURE: the governed replacement for legacy operationalRoles = PARTS_ASSOCIATE. Registered by migration 1761696000000 in its own right, deliberately NOT mapped onto WAREHOUSE_OPERATIONS." },
+    { "employee": "parts-manager", "qualificationCode": "PARTS_OPERATIONS", "reason": "PERSONA FIXTURE: parts work eligibility for the purchasing scenario. Held independently of the partsManager and purchasingManager Security Roles." },
+    { "employee": "warehouse-associate", "qualificationCode": "WAREHOUSE_OPERATIONS", "reason": "PERSONA FIXTURE: warehouse work eligibility for the cycle-count counting scenario." },
+    { "employee": "warehouse-manager", "qualificationCode": "WAREHOUSE_OPERATIONS", "reason": "PERSONA FIXTURE: warehouse work eligibility for the cycle-count reconciliation scenario." }
+  ],
+
+  "workEligibilityWithheld": [
+    { "employee": "technician-on-leave", "wouldBe": "SERVICE_TECHNICIAN", "reason": "ON_LEAVE. The Employee, the profile and the reporting line remain; the person is not currently eligible to be given field work. Withholding it here rather than ending it later is what keeps the fixture honest: an ON_LEAVE Employee who still holds a current qualification would assert the platform cannot tell the two states apart." },
+    { "employee": "owner-executive", "wouldBe": "none", "reason": "THE ADMINISTRATIVE PRINCIPAL PROOF. An Employee may hold the broadest Security Role in the tenant and no operational work eligibility at all. Any expectation that admin implies eligibility is refused by this row." },
+    { "employee": "dispatcher", "wouldBe": "none", "reason": "THE CAPABILITY-WITHOUT-ELIGIBILITY PROOF. The dispatcher persona holds reorder.request.read AND a REORDER_QUEUE scope, and still has no PARTS_OPERATIONS qualification. An action that declares a WORK_ELIGIBILITY predicate must refuse them." },
+    { "employee": "records-clerk", "wouldBe": "none", "reason": "No Principal, no access, no operational work. Employee != User Access, restated in this layer." }
+  ],
+
+  "operationalScopes": [
+    { "employee": "warehouse-associate", "scopeType": "WAREHOUSE", "scopeId": "SC-WH-MAIN", "reason": "PERSONA FIXTURE: the IN-SCOPE warehouse. SC-WH-SERVICE is deliberately withheld so one persona proves both the positive and the negative without a second login." },
+    { "employee": "warehouse-manager", "scopeType": "WAREHOUSE", "scopeId": "SC-WH-MAIN", "reason": "PERSONA FIXTURE: the reconciling manager covers both sites." },
+    { "employee": "warehouse-manager", "scopeType": "WAREHOUSE", "scopeId": "SC-WH-SERVICE", "reason": "PERSONA FIXTURE: a second CURRENT scope row for the same Employee, proving multiple warehouses may be held at once." },
+    { "employee": "parts-associate", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic", "reason": "PERSONA FIXTURE: whole-queue visibility for the parts persona. scope_id is the governed operating company KEY, never the operating company ID." },
+    { "employee": "parts-manager", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic", "reason": "PERSONA FIXTURE: whole-queue visibility for the purchasing persona." },
+    { "employee": "dispatcher", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic", "reason": "PERSONA FIXTURE: the dispatcher Role is one of the six Roles migration 1761696000000 granted reorder.request.read; the queue it may read is this company's." }
+  ],
+
+  "operationalScopesWithheld": [
+    { "employee": "warehouse-associate", "wouldBe": "WAREHOUSE:SC-WH-SERVICE", "reason": "THE OUT-OF-SCOPE PROOF. Same persona, same capability, same qualification, different warehouse -> OUTSIDE_OPERATIONAL_SCOPE." },
+    { "employee": "service-technician-a", "wouldBe": "REORDER_QUEUE:sample-co-synthetic", "reason": "THE ASSIGNMENT-IS-NOT-SCOPE PROOF. Technician A reaches their OWN reorder request through an active assignment and must still be refused the shared queue." },
+    { "employee": "service-technician-b", "wouldBe": "REORDER_QUEUE:sample-co-synthetic", "reason": "Same withholding as technician A, so that the only difference between A and B is the assignment row." }
+  ],
+
+  "recordRelationships": [
+    {
+      "recordKind": "reorderRequest",
+      "recordId": "RR-2026-000901",
+      "declaredIn": "sampleCompany.v2.json scenarios[E]",
+      "assignedEmployee": "service-technician-a",
+      "status": "DECLARED_NOT_SEEDED",
+      "blockedBy": "REORDER_ASSIGNMENT_NOT_SEEDED",
+      "$comment": "sampleCompany.v2 ruling `responsibility`: assignment has no PostgreSQL authority in any domain that manifest touches and is therefore never written. eos_ops.reorder_request_assignments DOES exist (contextualAuthorization.ts ASSIGNMENT_RELATIONS), so this is a seed gap rather than an authority gap -- see blockers."
+    }
+  ],
+
+  "legacyPersonaScenarios": {
+    "$contract": "HISTORICAL EVIDENCE ONLY. For each legacy persona this records WHAT SCENARIO IT WAS INTENDED TO EXERCISE and nothing else. No Firebase uid, no legacy operationalRoles value and no legacy securityRole coupling is preserved as authority anywhere in this manifest, and the validator refuses any entry that names one outside this section. Nothing here is deleted, provisioned or altered by this lane.",
+
+    "emp-rudy-*": {
+      "world": "PRODUCTION taylor-parts (AUTH-PR-4)",
+      "definedIn": ["functions/authpr4/production-authorization.json:6-12", "functions/scripts/authPr4RecoveryEmailMigration.js:86-98", "functions/scripts/authPr4InitProgression.js:55-61"],
+      "doNotTouch": "These are production identities. This lane provisions nothing, deletes nothing and alters no production permission.",
+      "scenarios": [
+        { "legacyId": "emp-rudy-driver", "intendedScenario": "Lowest-blast-radius identity-mutation canary: the first account whose recovery email is migrated, and the negative control that has NO Inventory navigation access.", "replacedBy": "service-technician-a / service-technician-b (a Security Role with no parts capability and no PARTS_OPERATIONS qualification)" },
+        { "legacyId": "emp-rudy-parts-associate", "intendedScenario": "Exercise the parts / reorder-queue eligibility branch of the legacy isActiveOperationalRole() gate.", "ownerClassification": "TEST_PERSONA", "replacedBy": "parts-associate (Security Roles partsAssociate + inventoryReceivingClerk, Work Eligibility PARTS_OPERATIONS, Operational Scope REORDER_QUEUE:sample-co-synthetic)" },
+        { "legacyId": "emp-rudy-warehouse-manager", "intendedScenario": "The only identity satisfying the warehouse-manager positive branch of the broadened parts read predicate, used for deploy verification without creating an identity.", "replacedBy": "warehouse-manager (WAREHOUSE_OPERATIONS eligibility plus TWO explicit WAREHOUSE scopes)" },
+        { "legacyId": "emp-rudy-parts-manager", "intendedScenario": "The parts-manager positive branch of the same predicate.", "replacedBy": "parts-manager" },
+        { "legacyId": "emp-rudy-owner", "intendedScenario": "Prove the migration sequence can reach the highest-privilege account last, behind a break-glass gate, without locking the Owner out.", "replacedBy": "owner-executive (the ONE reused real administrator Principal)" },
+        { "legacyId": "emp-rudy-sales-manager", "intendedScenario": "The Employee != user access proof: an ACTIVE Employee with no Auth account and therefore nothing to migrate.", "replacedBy": "records-clerk and technician-on-leave, which prove the same thing for an ACTIVE and a non-ACTIVE lifecycle status respectively" },
+        { "legacyId": "break-glass / break-glass-admin", "intendedScenario": "The untouched recovery path that must stay valid while every other identity is mutated.", "replacedBy": "NOTHING. Out of scope for a nonprod persona catalog by construction." }
+      ]
+    },
+
+    "sbx-*": {
+      "world": "eos-platform-sandbox",
+      "definedIn": ["scripts/sandboxCredentials.mjs:32-54", "docs/specifications/sandbox-persona-authorization-matrix.md", "docs/audits/sandbox-a7-personas-20260806/README.md"],
+      "scenarios": [
+        { "legacyId": "sbx-owner", "intendedScenario": "Owner/top-of-house read breadth; carrier of finding F-5 (an Owner persona is indistinguishable from admin by security role alone).", "replacedBy": "owner-executive" },
+        { "legacyId": "sbx-admin", "intendedScenario": "Platform Administrator and bootstrap actor that assigns every other sandbox Role.", "replacedBy": "owner-executive (the administering Principal the seed reads authority FROM, never asserts)" },
+        { "legacyId": "sbx-dispatcher", "intendedScenario": "Carrier of finding P-1: dispatcher reads identically to admin, the legacy breadth that must be reproduced before narrowing.", "replacedBy": "dispatcher" },
+        { "legacyId": "sbx-tech", "intendedScenario": "Field technician floor: denied everything except field lookup.", "replacedBy": "service-technician-a" },
+        { "legacyId": "sbx-partsmgr", "intendedScenario": "Parts-room manager; carrier of finding P-2 (the parts manager could not read the reorder queue the role is named for).", "replacedBy": "parts-manager, whose queue access is now an explicit REORDER_QUEUE scope rather than an inference from a role name" },
+        { "legacyId": "sbx-partsassoc", "intendedScenario": "The parts-room floor job -- look up, stow, pick, count; carrier of findings P-3/P-4 (measurably different from partsmgr and tech despite an identical securityRole).", "replacedBy": "parts-associate" },
+        { "legacyId": "sbx-whmgr", "intendedScenario": "The record-level warehouse-scope proof (W-1): reads its assigned warehouse and is denied another. Also the separation-of-duties proof -- reconciler WITHOUT counter.", "replacedBy": "warehouse-manager plus warehouse-associate; the scope half is now employee_operational_scopes rather than assignedWarehouseIds" },
+        { "legacyId": "sbx-restricted", "intendedScenario": "Pure deny-side control: a well-formed signed-in identity refused every collection, so no persona is allow-path only.", "replacedBy": "NOT COVERED. See catalogGaps -- the proposed report-viewer persona is the governed equivalent." },
+        { "legacyId": "sbx-whassoc", "intendedScenario": "RECORDED ABSENCE in the legacy world: no such persona existed, so Warehouse Associate could not be exercised.", "replacedBy": "warehouse-associate. The absence is closed." }
+      ]
+    },
+
+    "cw-emp-NNN": {
+      "world": "platform-certification (FROZEN)",
+      "definedIn": ["functions/scripts/certificationWorld/data/workforce.mjs:62-125"],
+      "disposition": "OUT OF SCOPE. The Certification world is frozen and is refused by name by every operator script fence. Its 47 synthetic employees are recorded here only so the catalog above is not mistaken for a replacement for them.",
+      "scenariosWorthInheriting": [
+        "Buyer != receiver (a buyer who also accepts the goods they ordered closes the loop on their own purchase with nobody else in it).",
+        "Acquirer != installer (one person able to declare a machine into existence and then place it at a customer would be the whole chain resting on one person's word).",
+        "Bin administrator without put-away (they cannot PLACE what they accept).",
+        "A second transfer operator so no scenario depends on ONE person.",
+        "An employee with a Role and zero workstream assignments."
+      ],
+      "notInheritedHere": "None of the five is expressible against the current Sample Company catalog: purchasing, receiving, transfers and serialized acquisition are all UNAVAILABLE or PARTIAL in the e2eMatrix. Recorded as future catalog work rather than asserted as covered."
+    },
+
+    "issue100-verify-*": {
+      "world": "PRODUCTION taylor-parts verification fixtures",
+      "definedIn": ["functions/scripts/bootstrapIssue100VerificationFixtures.js:181-220"],
+      "scenariosWorthInheriting": [
+        "A second genuine identity holding the same eligibility, so cross-user denial is proved against a real linked Employee rather than a synthetic id string. -> service-technician-b serves this role here.",
+        "Right eligibility, wrong employment status (TERMINATED) -> denied. -> technician-on-leave is the nonprod equivalent, at ON_LEAVE.",
+        "Linked and ACTIVE with zero eligibility -> denied. -> dispatcher (CX-13).",
+        "Broken Employee<->Principal link -> fail closed. -> NOT COVERED; see CX-16."
+      ]
+    },
+
+    "driver-*@example.test": {
+      "world": "field-ops-app-vite Firebase emulator",
+      "definedIn": ["field-ops-app-vite/.claude/skills/run-field-ops-app-vite/seed.mjs:43+"],
+      "disposition": "SEPARATE CONCERN, DELIBERATELY. These are Firestore/Rules browser fixtures for the legacy app surface, keyed by Firebase uid and users/{uid}.role. They are NOT EOS Principals, they exercise no eos_policy authority, and nothing in this manifest replaces or depends on them.",
+      "scenariosWorthInheriting": [
+        "An active role ASSIGNMENT grants where a raw role string does not.",
+        "A disabled assignment does not grant.",
+        "Self-scope denies by ABSENCE OF ASSIGNMENT, not by a broken link or a wrong role. -> service-technician-b (CX-06) is the governed equivalent."
+      ]
+    }
+  },
+
+  "personas": {
+    "owner-executive": {
+      "requestedRole": "Owner / Executive",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "mergedFrom": ["Administrator"],
+      "mergeReason": "The `admin` compatibility Role IS the Administrator authority, and it is held by exactly one Principal -- the ONE reused real sandbox administrator. A second Principal holding the same Role would prove nothing new about AUTHORITY; the only difference would be org-chart position, which is a Job Role and a reporting edge, not a permission. Separating them is therefore declared as a catalog option, not built.",
+      "employee": "synthetic-np-emp-owner-executive",
+      "jobRole": "OWNER_EXECUTIVE",
+      "securityRoles": ["admin"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "administration.users, administration.rolesPermissions, employees.directory",
+      "provesGate": ["ADMIN_AUTHORITY_VS_ORDINARY_MANAGER", "ADMIN_IMPLIES_NO_WORK_ELIGIBILITY"]
+    },
+    "general-manager": {
+      "requestedRole": "General Manager",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-general-manager",
+      "jobRole": "GENERAL_MANAGER",
+      "securityRoles": ["generalManager"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "commercial.opportunities, commercial.salesOrders, employees.directory",
+      "provesGate": ["ADMIN_AUTHORITY_VS_ORDINARY_MANAGER", "CAPABILITY_ABSENT"]
+    },
+    "office-manager": {
+      "requestedRole": "(beyond the requested set; retained from Sample Company v2)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-office-manager",
+      "jobRole": "OFFICE_MANAGER",
+      "securityRoles": ["officeManager"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "crm.accounts, crm.contacts",
+      "provesGate": ["CAPABILITY_ABSENT"]
+    },
+    "service-manager": {
+      "requestedRole": "(beyond the requested set; retained from Sample Company v2)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-service-manager",
+      "jobRole": "SERVICE_MANAGER",
+      "securityRoles": ["fieldManager"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "service.workOrders, service.dispatch",
+      "provesGate": ["MANAGER_HOLDS_NO_FIELD_ELIGIBILITY"]
+    },
+    "dispatcher": {
+      "requestedRole": "Dispatcher",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-dispatcher",
+      "jobRole": "DISPATCHER",
+      "securityRoles": ["dispatcher"],
+      "workEligibility": [],
+      "operationalScopes": ["REORDER_QUEUE:sample-co-synthetic"],
+      "northStar": "service.dispatch, inventory.reorderQueue",
+      "provesGate": ["REORDER_QUEUE_SCOPE_PRESENT", "WORK_ELIGIBILITY_ABSENT"]
+    },
+    "service-technician-a": {
+      "requestedRole": "Service Technician (assigned)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-service-technician-a",
+      "jobRole": "SERVICE_TECHNICIAN",
+      "securityRoles": ["technician"],
+      "workEligibility": ["SERVICE_TECHNICIAN"],
+      "operationalScopes": [],
+      "northStar": "field.myWorkOrders",
+      "provesGate": ["ASSIGNED_TECHNICIAN", "REORDER_QUEUE_SCOPE_ABSENT"]
+    },
+    "service-technician-b": {
+      "requestedRole": "Service Technician (unassigned)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-service-technician-b",
+      "jobRole": "SERVICE_TECHNICIAN",
+      "securityRoles": ["technician"],
+      "workEligibility": ["SERVICE_TECHNICIAN"],
+      "operationalScopes": [],
+      "northStar": "field.myWorkOrders",
+      "provesGate": ["UNASSIGNED_TECHNICIAN"]
+    },
+    "contract-technician": {
+      "requestedRole": "Service Technician (contractor)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-contract-technician",
+      "jobRole": "SERVICE_TECHNICIAN",
+      "securityRoles": ["technician"],
+      "workEligibility": ["SERVICE_TECHNICIAN"],
+      "operationalScopes": [],
+      "northStar": "field.myWorkOrders",
+      "provesGate": ["EMPLOYMENT_STATUS_DOES_NOT_DECIDE_ELIGIBILITY"]
+    },
+    "technician-on-leave": {
+      "requestedRole": "Service Technician (no access)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-technician-on-leave",
+      "jobRole": "SERVICE_TECHNICIAN",
+      "securityRoles": [],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "NONE",
+      "provesGate": ["EMPLOYEE_IS_NOT_USER_ACCESS", "ON_LEAVE_HOLDS_NO_CURRENT_QUALIFICATION"]
+    },
+    "retail-sales-a": {
+      "requestedRole": "Retail Sales (owner)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-retail-sales-a",
+      "jobRole": "RETAIL_SALES",
+      "securityRoles": ["salesperson"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "dashboard.myPipeline, commercial.opportunities",
+      "provesGate": ["RECORD_OWNER"]
+    },
+    "retail-sales-b": {
+      "requestedRole": "Retail Sales (non-owner)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-retail-sales-b",
+      "jobRole": "RETAIL_SALES",
+      "securityRoles": ["salesperson"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "dashboard.myPipeline, commercial.opportunities",
+      "provesGate": ["RECORD_NON_OWNER", "OWNER_IS_NOT_ACCOUNTABLE"]
+    },
+    "national-accounts-sales": {
+      "requestedRole": "National Accounts Sales",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "keptSeparateReason": "Identical Security Role to Retail Sales by design (their application permissions genuinely do not differ). Kept as its own persona because the Job Role, the Account segment, the record set and the reporting line all differ -- that is where the business distinction is real.",
+      "employee": "synthetic-np-emp-national-accounts-sales",
+      "jobRole": "NATIONAL_ACCOUNTS_SALES",
+      "securityRoles": ["salesperson"],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "dashboard.myPipeline, commercial.agreements",
+      "provesGate": ["SAME_SECURITY_ROLE_DIFFERENT_JOB_ROLE"]
+    },
+    "parts-manager": {
+      "requestedRole": "Parts Manager",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "mergedFrom": ["Purchasing"],
+      "mergeReason": "The Parts Manager persona already holds BOTH partsManager and purchasingManager. In this business the parts manager IS the purchasing authority, and the positive/negative purchasing proofs are made by the REORDER_QUEUE scope and the Work Eligibility predicate, not by a second login holding the same two Roles.",
+      "employee": "synthetic-np-emp-parts-manager",
+      "jobRole": "PARTS_MANAGER",
+      "securityRoles": ["partsManager", "purchasingManager"],
+      "workEligibility": ["PARTS_OPERATIONS"],
+      "operationalScopes": ["REORDER_QUEUE:sample-co-synthetic"],
+      "northStar": "inventory.reorderQueue, purchasing.purchaseOrders",
+      "provesGate": ["PARTS_OPERATIONS_PRESENT", "REORDER_QUEUE_SCOPE_PRESENT", "PURCHASE_ORDER_CREATE_POSITIVE"]
+    },
+    "parts-associate": {
+      "requestedRole": "Parts Associate",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "replaces": "emp-rudy-parts-associate (TEST_PERSONA)",
+      "employee": "synthetic-np-emp-parts-associate",
+      "jobRole": "PARTS_ASSOCIATE",
+      "securityRoles": ["partsAssociate", "inventoryReceivingClerk"],
+      "workEligibility": ["PARTS_OPERATIONS"],
+      "operationalScopes": ["REORDER_QUEUE:sample-co-synthetic"],
+      "northStar": "inventory.balances, receiving.checkIn",
+      "provesGate": ["PARTS_OPERATIONS_PRESENT", "REORDER_QUEUE_SCOPE_PRESENT", "PARTS_ASSOCIATE_REORDER_GRANT_ABSENT"],
+      "$comment": "legacy operationalRoles = PARTS_ASSOCIATE is NOT reproduced anywhere on this persona. The legacy bundle is decomposed into: Security Roles partsAssociate + inventoryReceivingClerk, Work Eligibility PARTS_OPERATIONS, Operational Scope REORDER_QUEUE:sample-co-synthetic, and no assignment."
+    },
+    "warehouse-manager": {
+      "requestedRole": "Warehouse Manager",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-warehouse-manager",
+      "jobRole": "WAREHOUSE_MANAGER",
+      "securityRoles": ["warehouseManager", "inventoryCycleCountReconciler", "inventoryBinAdministrator"],
+      "workEligibility": ["WAREHOUSE_OPERATIONS"],
+      "operationalScopes": ["WAREHOUSE:SC-WH-MAIN", "WAREHOUSE:SC-WH-SERVICE"],
+      "northStar": "warehouse.management, inventory.cycleCount.review",
+      "provesGate": ["MULTI_WAREHOUSE_SCOPE", "SEPARATION_OF_DUTIES_RECONCILER"]
+    },
+    "warehouse-associate": {
+      "requestedRole": "Warehouse Associate",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-warehouse-associate",
+      "jobRole": "WAREHOUSE_ASSOCIATE",
+      "securityRoles": ["warehouseAssociate", "inventoryCycleCountCounter"],
+      "workEligibility": ["WAREHOUSE_OPERATIONS"],
+      "operationalScopes": ["WAREHOUSE:SC-WH-MAIN"],
+      "northStar": "warehouse.picking, inventory.cycleCount.count",
+      "provesGate": ["WAREHOUSE_SCOPE_IN", "WAREHOUSE_SCOPE_OUT", "SEPARATION_OF_DUTIES_COUNTER"]
+    },
+    "records-clerk": {
+      "requestedRole": "(beyond the requested set; retained from Sample Company v2)",
+      "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
+      "employee": "synthetic-np-emp-records-clerk",
+      "jobRole": "OFFICE_MANAGER",
+      "securityRoles": [],
+      "workEligibility": [],
+      "operationalScopes": [],
+      "northStar": "NONE",
+      "provesGate": ["EMPLOYEE_IS_NOT_USER_ACCESS"]
+    }
+  },
+
+  "catalogGaps": [
+    {
+      "requestedRole": "Finance / Accounting",
+      "disposition": "MISSING_FROM_SAMPLE_COMPANY_V2",
+      "genuinelyDifferent": true,
+      "whyItEarnsAPersona": "finance.invoice.issue, finance.invoice.read, finance.payment.apply, finance.payment.read, finance.adjustment.record and finance.refund.record are all REGISTERED in eos_policy.capabilities and are held by NO persona in the current catalog. A financial-execution authority nobody exercises is an untested authority.",
+      "proposedEmployeeKey": "finance-controller",
+      "proposedJobRole": "FINANCE_MANAGER (new Job Role key; the twelve-key Job Role vocabulary is pinned by a test and would need extending)",
+      "proposedSecurityRoles": ["controller"],
+      "proposedWorkEligibility": [],
+      "proposedOperationalScopes": [],
+      "proposedNegatives": ["admin.principalAccess.read", "customer.governedField.write", "inventory.cycleCount.reconcile"],
+      "seededHere": false,
+      "seededHereReason": "Creating an Employee requires the ONE documented direct insert in functions/scripts/seedSampleCompany.js. Adding a second Employee writer in this manifest would create a second Employee authority, which the direct-insert policy forbids. This belongs in a Sample Company v3 change."
+    },
+    {
+      "requestedRole": "Reporting / Read-Only",
+      "disposition": "MISSING_FROM_SAMPLE_COMPANY_V2",
+      "genuinelyDifferent": true,
+      "whyItEarnsAPersona": "A persona whose EVERY write is denied is the cheapest and strongest negative-control in the matrix, and reportViewer / reportFinanceViewer / reportAuthor are three real Roles no persona holds. Without it no test distinguishes 'denied because unauthorized' from 'denied because the surface is broken'.",
+      "proposedEmployeeKey": "report-viewer",
+      "proposedJobRole": "OFFICE_MANAGER (reused; a reporting analyst is not a separate business function in this fixture company)",
+      "proposedSecurityRoles": ["reportViewer"],
+      "proposedWorkEligibility": [],
+      "proposedOperationalScopes": [],
+      "proposedNegatives": ["customer.record.create", "customer.record.update", "opportunity.write", "salesOrder.write", "inventory.cycleCount.create", "admin.principalAccess.read"],
+      "seededHere": false,
+      "seededHereReason": "Same as Finance / Accounting."
+    },
+    {
+      "requestedRole": "Administrator (separate from Owner)",
+      "disposition": "MERGED_INTO_OWNER_EXECUTIVE",
+      "genuinelyDifferent": false,
+      "reason": "See personas['owner-executive'].mergeReason. Recorded as a catalog OPTION rather than a gap: if the Owner later wants an administrator whose sandbox credential the fixture may freely reset (the reused real administrator's may not be), that is a credential-hygiene requirement, not an authority requirement, and it would add a second `admin`-Role Principal in nonprod -- an authority increase that needs an explicit ruling."
+    }
+  ],
+
+  "contextualExpectations": [
+    {
+      "id": "CX-01-CAPABILITY-ABSENT-GENERAL-MANAGER",
+      "persona": "general-manager",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [],
+      "expect": { "allowed": false, "reason": "CAPABILITY_MISSING" },
+      "gate": "capability present/absent",
+      "why": "generalManager is not among the seven Roles migration 1761696000000 granted reorder.request.read. The refusal must name the capability and reveal nothing about any record."
+    },
+    {
+      "id": "CX-02-CAPABILITY-ABSENT-PARTS-ASSOCIATE",
+      "persona": "parts-associate",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }],
+      "expect": { "allowed": false, "reason": "CAPABILITY_MISSING" },
+      "gate": "capability present/absent",
+      "why": "THE M6 BLOCKER, ASSERTED RATHER THAN HIDDEN. The parts persona holds the PARTS_OPERATIONS qualification and the REORDER_QUEUE scope and is STILL refused, because neither partsAssociate nor inventoryReceivingClerk declares reorder.request.read. Capability is the first boundary and eligibility cannot substitute for it.",
+      "becomesAllowedWhen": "reorder.request.read is granted to the partsAssociate Role through the existing governed grant mechanism."
+    },
+    {
+      "id": "CX-03-QUEUE-SCOPE-PRESENT",
+      "persona": "parts-manager",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }],
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "REORDER_QUEUE scope present/absent"
+    },
+    {
+      "id": "CX-04-QUEUE-SCOPE-ABSENT",
+      "persona": "service-technician-a",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }],
+      "expect": { "allowed": false, "reason": "OUTSIDE_OPERATIONAL_SCOPE", "predicate": "OPERATIONAL_SCOPE" },
+      "gate": "REORDER_QUEUE scope present/absent",
+      "why": "The technician HOLDS reorder.request.read (migration 1761696000000 granted it to the technician Role so read.own survived). The queue is refused by the scope predicate alone -- which is exactly what stops the unscoped capability from becoming queue visibility."
+    },
+    {
+      "id": "CX-05-ASSIGNED-TECHNICIAN",
+      "persona": "service-technician-a",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "RECORD_ASSIGNMENT", "relation": "ASSIGNED_EMPLOYEE" }],
+      "record": { "recordKind": "reorderRequest", "recordId": "RR-2026-000901" },
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "assigned vs unassigned Technician",
+      "requires": "REORDER_ASSIGNMENT_NOT_SEEDED"
+    },
+    {
+      "id": "CX-06-UNASSIGNED-TECHNICIAN",
+      "persona": "service-technician-b",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "RECORD_ASSIGNMENT", "relation": "ASSIGNED_EMPLOYEE" }],
+      "record": { "recordKind": "reorderRequest", "recordId": "RR-2026-000901" },
+      "expect": { "allowed": false, "reason": "NOT_ASSIGNED", "predicate": "RECORD_ASSIGNMENT" },
+      "gate": "assigned vs unassigned Technician",
+      "why": "Technician B is identical to A in Security Role, Job Role and Work Eligibility. The ONLY difference is the assignment row, which is the point."
+    },
+    {
+      "id": "CX-07-ALTERNATIVE-PATH-VIA-ASSIGNMENT",
+      "persona": "service-technician-a",
+      "capabilityKey": "reorder.request.read",
+      "paths": [
+        [{ "kind": "RECORD_ASSIGNMENT", "relation": "ASSIGNED_EMPLOYEE" }],
+        [{ "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }]
+      ],
+      "record": { "recordKind": "reorderRequest", "recordId": "RR-2026-000901" },
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "alternative contextual paths",
+      "requires": "REORDER_ASSIGNMENT_NOT_SEEDED"
+    },
+    {
+      "id": "CX-08-ALTERNATIVE-PATH-VIA-QUEUE",
+      "persona": "parts-manager",
+      "capabilityKey": "reorder.request.read",
+      "paths": [
+        [{ "kind": "RECORD_ASSIGNMENT", "relation": "ASSIGNED_EMPLOYEE" }],
+        [{ "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }]
+      ],
+      "record": { "recordKind": "reorderRequest", "recordId": "RR-2026-000901" },
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "alternative contextual paths",
+      "why": "The same capability reaches the shared queue with NO assignment. Proves neither path implies the other."
+    },
+    {
+      "id": "CX-09-PURCHASE-ORDER-CREATE-POSITIVE",
+      "persona": "parts-manager",
+      "capabilityKey": "reorder.purchaseOrder.create",
+      "predicates": [{ "kind": "WORK_ELIGIBILITY", "qualificationCode": "PARTS_OPERATIONS" }],
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "PARTS_OPERATIONS present/absent",
+      "why": "The purchasingManager Role carries reorder.purchaseOrder.create unconditionally (migration 1761696000000 grant block). Adding the WORK_ELIGIBILITY predicate to the ACTION narrows it without touching the grant."
+    },
+    {
+      "id": "CX-10-PURCHASE-ORDER-CREATE-WITHHELD-FROM-TECHNICIAN",
+      "persona": "service-technician-b",
+      "capabilityKey": "reorder.purchaseOrder.create",
+      "predicates": [{ "kind": "WORK_ELIGIBILITY", "qualificationCode": "PARTS_OPERATIONS" }],
+      "expect": { "allowed": false, "reason": "CAPABILITY_MISSING" },
+      "gate": "PARTS_OPERATIONS present/absent",
+      "why": "THE WITHHELD CRED CELL, ASSERTED. Migration 1761696000000 deliberately excluded `technician` from both purchaseOrder.read (11 Roles granted, technician withheld) and purchaseOrder.create (5 Roles granted, technician withheld), because the legacy grants were conditioned on operationalRoleActive(PARTS_ASSOCIATE) and granting the plain capability would drop the gate. The migration's own words: 'No governed Employee holds PARTS_ASSOCIATE eligibility today, so withholding reproduces today's effective access exactly'. THIS MANIFEST IS THE FIRST THING THAT MAKES THAT SENTENCE FALSE.",
+      "becomesAllowedWhen": "reorder.purchaseOrder.read and .create are granted to the technician Role AND every action that resolves them declares the WORK_ELIGIBILITY(PARTS_OPERATIONS) predicate. Technician B has no PARTS_OPERATIONS qualification, so the expected answer then becomes WORK_ELIGIBILITY_MISSING, never ALLOWED."
+    },
+    {
+      "id": "CX-11-WAREHOUSE-SCOPE-IN",
+      "persona": "warehouse-associate",
+      "capabilityKey": "inventory.cycleCount.create",
+      "predicates": [
+        { "kind": "WORK_ELIGIBILITY", "qualificationCode": "WAREHOUSE_OPERATIONS" },
+        { "kind": "OPERATIONAL_SCOPE", "scopeType": "WAREHOUSE", "scopeId": "SC-WH-MAIN" }
+      ],
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "company/warehouse in scope vs outside"
+    },
+    {
+      "id": "CX-12-WAREHOUSE-SCOPE-OUT",
+      "persona": "warehouse-associate",
+      "capabilityKey": "inventory.cycleCount.create",
+      "predicates": [
+        { "kind": "WORK_ELIGIBILITY", "qualificationCode": "WAREHOUSE_OPERATIONS" },
+        { "kind": "OPERATIONAL_SCOPE", "scopeType": "WAREHOUSE", "scopeId": "SC-WH-SERVICE" }
+      ],
+      "expect": { "allowed": false, "reason": "OUTSIDE_OPERATIONAL_SCOPE", "predicate": "OPERATIONAL_SCOPE" },
+      "gate": "company/warehouse in scope vs outside",
+      "why": "ONE PERSONA, BOTH ANSWERS. No second login: the record setup (which warehouse the action names) carries the whole difference."
+    },
+    {
+      "id": "CX-13-ELIGIBILITY-ABSENT-DISPATCHER",
+      "persona": "dispatcher",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [
+        { "kind": "WORK_ELIGIBILITY", "qualificationCode": "PARTS_OPERATIONS" },
+        { "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }
+      ],
+      "expect": { "allowed": false, "reason": "WORK_ELIGIBILITY_MISSING", "predicate": "WORK_ELIGIBILITY" },
+      "gate": "PARTS_OPERATIONS present/absent",
+      "why": "The dispatcher has the capability AND the queue scope AND is refused, on the qualification alone. Order matters: eligibility is checked before scope, so the refusal never reveals whether the scope would have passed."
+    },
+    {
+      "id": "CX-14-LEGACY-LABEL-IS-REFUSED",
+      "persona": "parts-associate",
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "WORK_ELIGIBILITY", "qualificationCode": "PARTS_ASSOCIATE" }],
+      "expect": { "allowed": false, "reason": "WORK_ELIGIBILITY_UNMAPPED", "predicate": "WORK_ELIGIBILITY" },
+      "gate": "legacy vocabulary",
+      "why": "A policy naming the LEGACY operationalRoles value must fail closed with a DISTINCT reason -- 'this platform cannot decide whether you are eligible', not 'you are not eligible'. This expectation is what stops the legacy label creeping back in as a qualification code.",
+      "declaredOnly": true,
+      "$comment": "declaredOnly: this predicate is never written to any table. It is an ACTION-side assertion evaluated against GOVERNED_QUALIFICATION_CODES, which is why a persona holding PARTS_OPERATIONS still fails it."
+    },
+    {
+      "id": "CX-15-OWNER-VS-NON-OWNER",
+      "persona": "retail-sales-b",
+      "capabilityKey": "opportunity.read",
+      "predicates": [],
+      "record": { "recordKind": "opportunity", "recordId": "SYN-NP-OPP-0001" },
+      "expect": { "allowed": true, "reason": "ALLOWED" },
+      "gate": "owner vs non-owner",
+      "declaredOnly": true,
+      "notCoveredBy": "contextualAuthorization.ts",
+      "why": "HONEST GAP. RecordContext accepts exactly two recordKinds -- reorderRequest and workOrder -- and ASSIGNMENT_RELATIONS has no opportunity entry. There is no RECORD_OWNERSHIP predicate kind at all: CONTEXT_PREDICATE_KINDS is exactly WORK_ELIGIBILITY, OPERATIONAL_SCOPE, RECORD_ASSIGNMENT. Owner-vs-non-owner on a commercial record is proved today only by sampleCompany.v2's ownerEqualsAccountable / ownerDiffersFromAccountable record sets, not by this evaluator."
+    },
+    {
+      "id": "CX-16-EMPLOYEE-LINK-REQUIRED",
+      "persona": null,
+      "capabilityKey": "reorder.request.read",
+      "predicates": [{ "kind": "OPERATIONAL_SCOPE", "scopeType": "REORDER_QUEUE", "scopeId": "sample-co-synthetic" }],
+      "expect": { "allowed": false, "reason": "EMPLOYEE_LINK_REQUIRED", "predicate": "OPERATIONAL_SCOPE" },
+      "gate": "Principal without an Employee",
+      "declaredOnly": true,
+      "notCoveredBy": "the persona catalog",
+      "why": "HONEST GAP. EVERY login persona in Sample Company v2 has an active employee_principal_link, so no persona can produce this refusal. Proving it needs a Principal with a tenant membership, a Security Role and NO Employee link -- a legitimate administrative/service Principal shape the catalog does not contain. Declared rather than faked."
+    }
+  ],
+
+  "e2eMatrix": [
+    { "domain": "Work Orders", "availability": "UNAVAILABLE", "authority": "Firestore", "evidence": "No work order table exists in functions/migrations/*.sql (sampleCompany.v2 blockedRelationships WORK_ORDER_POSTGRES_AUTHORITY_ABSENT). The registered workOrder.lifecycle.dispatch/.complete/.cancel ids are declared by NO Role.", "personasAffected": ["dispatcher", "service-manager", "office-manager", "service-technician-a", "service-technician-b", "contract-technician"], "testableToday": "Denials only." },
+    { "domain": "Dispatch", "availability": "UNAVAILABLE", "authority": "Firestore", "evidence": "Same as Work Orders. dispatchSchedule was retired as a policy Object at b41674e2.", "personasAffected": ["dispatcher", "service-manager"], "testableToday": "Denials only." },
+    { "domain": "Technician field work", "availability": "UNAVAILABLE", "authority": "Firestore", "evidence": "The technician Role's eight ids resolve to an EMPTY PostgreSQL capability set except reorder.request.read, which migration 1761696000000 added.", "personasAffected": ["service-technician-a", "service-technician-b", "contract-technician"], "testableToday": "reorder.request.read contextual decisions (CX-04..CX-07); everything else is denial-only." },
+    { "domain": "Reorder", "availability": "PARTIAL", "authority": "eos_ops (records) / Firestore (runtime)", "evidence": "eos_ops.reorder_requests and reorder_request_assignments exist and are written by the governed repository, and reorder.request.read / .read.queue / .create.manual / .create.system / .assign are registered. But functions/src/eosOps/eosOpsHttp.ts:37 serves ONE read operation, resolveMyCapabilities, so no PostgreSQL runtime resolves a reorder capability at request time.", "personasAffected": ["parts-manager", "parts-associate", "dispatcher", "service-technician-a"], "testableToday": "Contextual authorization decisions against the governed tables, directly. NOT through an HTTP route." },
+    { "domain": "Purchasing", "availability": "PARTIAL", "authority": "eos_ops (records) / Firestore (runtime)", "evidence": "purchase orders are written by the governed purchasing repository; reorder.purchaseOrder.read/.create are registered and granted to 11 and 5 Roles; technician withheld in both.", "personasAffected": ["parts-manager", "parts-associate"], "testableToday": "CX-09, CX-10." },
+    { "domain": "Receiving", "availability": "PARTIAL", "authority": "eos_ops", "evidence": "createReceivingOrder writes receiving_orders + lines ONLY. INVENTORY_RECEIPT_MOVEMENT_BLOCKED: the sole governed writer of eos_ops.inventory_movements is cycleCountRepository.reconcileLine.", "personasAffected": ["parts-associate", "warehouse-associate"], "testableToday": "Receipt records; NOT the on-hand consequence." },
+    { "domain": "Cycle Count", "availability": "AVAILABLE", "authority": "eos_ops", "evidence": "Governed PostgreSQL writer, registered capabilities (inventory.cycleCount.create/.submit/.cancel/.reconcile), and the only governed inventory movement path. Separation of duties between counter and reconciler is real.", "personasAffected": ["warehouse-associate", "warehouse-manager"], "testableToday": "CX-11, CX-12, and the full count->discrepancy->reconcile chain." },
+    { "domain": "Transfers", "availability": "DECLARED_NOT_SEEDED", "authority": "eos_ops", "evidence": "createTransferOrder exists and is governed, but a transfer with no balance effect would misrepresent the scenario (TRANSFER_ORDER_SEED_NOT_ATTEMPTED).", "personasAffected": ["warehouse-manager"], "testableToday": "Nothing." },
+    { "domain": "Catalog", "availability": "BLOCKED", "authority": "Firestore", "evidence": "catalogWriterState.ts CATALOG_WRITER_AUTHORITY = { firestore: OPEN, postgres: INACTIVE }. eos_ops.parts holds 0 rows.", "personasAffected": ["parts-manager", "parts-associate", "warehouse-manager"], "testableToday": "Capability denials only." },
+    { "domain": "Sales", "availability": "PARTIAL", "authority": "eos_commercial", "evidence": "Opportunity / Sales Agreement / Sales Order HEADERS are seeded through the governed writer with owner and accountable person. LINES are refused CATALOG_AUTHORITY_UNAVAILABLE.", "personasAffected": ["retail-sales-a", "retail-sales-b", "national-accounts-sales", "general-manager"], "testableToday": "Ownership, accountability, and the full capability contract. Not pricing." },
+    { "domain": "Financials", "availability": "BLOCKED", "authority": "eos_commercial", "evidence": "FINANCIAL_SAMPLE_COVERAGE: an invoice without priced lines would be a manufactured number. The invoice and cash-application writers exist and are ready.", "personasAffected": ["finance-controller (PROPOSED)"], "testableToday": "Nothing. No persona holds the finance capabilities either." },
+    { "domain": "Reporting", "availability": "BLOCKED", "authority": "Firestore", "evidence": "REPORTING_SAMPLE_COVERAGE: saved report definitions are Firestore-authoritative and the equipment/workOrder report objects have no seedable rows.", "personasAffected": ["report-viewer (PROPOSED)"], "testableToday": "Nothing. No persona holds reportViewer." },
+    { "domain": "Administration", "availability": "AVAILABLE", "authority": "eos_policy", "evidence": "ADMIN_READ_OPERATIONS (14) and ADMIN_MUTATION_OPERATIONS (19) are served over /admin/policy with the Firebase-verified bearer token.", "personasAffected": ["owner-executive", "general-manager"], "testableToday": "The whole administration contract, positive and negative." },
+    { "domain": "Workflow administration", "availability": "AVAILABLE", "authority": "eos_policy", "evidence": "createWorkflowDraft, createWorkflowVersion, updateWorkflowDefinition, setWorkflowRoleBinding, publishWorkflowVersion are in ADMIN_MUTATION_OPERATIONS; workflowDefinition.* capabilities are registered.", "personasAffected": ["owner-executive"], "testableToday": "Positive and negative." },
+    { "domain": "Work Eligibility / Operational Scope administration", "availability": "AVAILABLE", "authority": "eos_workforce", "evidence": "The tables, the governed commands (assignEmployeeWorkEligibility / assignEmployeeOperationalScope, plus their end counterparts) and the capability registrations all exist, and admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write are each declared by the `admin` and `owner` Roles. The only precondition is the tenant's role_capabilities grant rows.", "personasAffected": ["owner-executive"], "testableToday": "The full assign / no-change / end / history cycle for both authorities, once this manifest's rows are seeded." }
+  ],
+
+  "blockers": [
+    {
+      "code": "WORKFORCE_ADMIN_GRANT_ROWS_UNVERIFIED",
+      "severity": "VERIFY_BEFORE_APPLY",
+      "finding": "admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write ARE declared by the `admin` and `owner` Roles in the compiled catalog. A first pass that grepped functions/src/access for the literal strings concluded the opposite, because ADMIN_ROLE composes its permission list programmatically -- the correction is recorded here rather than quietly applied.",
+      "consequence": "The owner-executive persona can administer both authorities. What is NOT verified from code is whether the tenant holds the matching eos_policy.role_capabilities rows; that is sampleCompany.v2's own SEED_GRANT_GAP.",
+      "refusedAlternative": "Inserting the eligibility and scope rows directly. The direct-insert policy permits a raw insert only where NO governed writer exists; here both writers exist and are correct. Bypassing them would make this manifest a second workforce authority.",
+      "resolution": "Run seedSampleCompany.js step 3 (the existing governed capability/grant reconciliation, dry run first) before applying this phase. No Role change and no new capability."
+    },
+    {
+      "code": "REORDER_ASSIGNMENT_NOT_SEEDED",
+      "severity": "BLOCKS_CX_05_CX_06_CX_07",
+      "finding": "eos_ops.reorder_request_assignments exists and is the table contextualAuthorization.ts reads, but sampleCompany.v2's `responsibility` ruling states assignment is never written by that seed.",
+      "consequence": "The assigned-vs-unassigned technician proof cannot run against a database until one assignment row exists for RR-2026-000901 -> synthetic-np-emp-service-technician-a.",
+      "resolution": "Seed it through functions/src/eosOps/reorderAssignmentAuthority.ts, the governed assignment writer, in a Sample Company v3 execution step. No new authority is needed.",
+      "qualificationPrecondition": "THE ASSIGNEE MUST HOLD PARTS_OPERATIONS. REORDER_ASSIGNMENT_QUALIFICATION is PARTS_OPERATIONS by Owner ruling -- Reorder assignment is Parts/Reorder operational work, and the constant no longer reads WAREHOUSE_OPERATIONS. service-technician-a holds SERVICE_TECHNICIAN and nothing else (see workEligibility), so the governed writer refuses EMPLOYEE_NOT_ASSIGNABLE for RR-2026-000901 as this manifest stands. Seeding it therefore requires EITHER granting PARTS_OPERATIONS to service-technician-a through the governed writer -- which would change what CX-05/CX-06 prove, since A and B would then differ by a qualification as well as an assignment -- OR assigning a persona that already holds it (parts-associate or parts-manager). That is a Sample Company v3 decision, recorded here rather than pre-empted. Note the precondition was unsatisfiable BEFORE this change too: no persona held WAREHOUSE_OPERATIONS and reorder.request.read at once."
+    },
+    {
+      "code": "NO_RUNTIME_CONSUMES_CONTEXTUAL_AUTHORIZATION",
+      "severity": "SCOPE_OF_PROOF",
+      "finding": "functions/src/eosOps/contextualAuthorization.ts is imported by nothing under functions/src. Its only importer is functions/test/contextualAuthorizationPostgres.test.mjs.",
+      "consequence": "Every contextual expectation in this manifest is provable against the GOVERNED TABLES, and none of them is provable through an HTTP route, because no route evaluates a predicate.",
+      "resolution": "Out of this lane. Recorded so the matrix is not read as claiming end-to-end HTTP coverage."
+    },
+    {
+      "code": "NO_NON_FIREBASE_LOGIN",
+      "severity": "ARCHITECTURAL",
+      "finding": "See identityArchitecture.nonFirebaseLoginPath.",
+      "consequence": "A fully non-Firebase test account cannot sign in today. This manifest therefore designs the PROVISIONING CONTRACT and invents no second authentication system.",
+      "resolution": "Out of this lane. The seam (injected TokenVerifier + EOS_IDENTITY_PROVIDER + free-text identity_provider) already exists."
+    }
+  ],
+
+  "provisioningContract": {
+    "nonprodOnly": "The seed refuses before any pg client is resolved unless the registry --environment is non-production by ROLE and by PROJECT ID, EOS_ENVIRONMENT reads exactly `nonprod`, and the environment is exactly `platform-sandbox`. The Certification world is refused by name.",
+    "obviouslySynthetic": "Every Employee id matches ^synthetic-np-emp-[a-z0-9-]+$, every fixture Principal subject matches ^synthetic-np-principal-[a-z0-9-]+$, every credential email ends @sandbox.invalid, and every fixture label begins `Synthetic `.",
+    "repeatable": "Both authorities are written by idempotent governed commands: assignEmployeeWorkEligibility and assignEmployeeOperationalScope return NO_CHANGE when the CURRENT row already exists, and never reopen an ended one.",
+    "safeReset": "endEmployeeWorkEligibility / endEmployeeOperationalScope close the open interval and NEVER delete. History keeps both periods. A reset is an END followed by an ASSIGN, which appends rather than rewrites.",
+    "credentialsOutsideSourceControl": "No credential is declared here at all. Interactive login remains the Sample Company v2 path: passwordless sandbox Auth accounts, passwords activated only through activateMissingSandboxPasswords into sandbox-credentials.local.json (gitignored), --rotate unreachable.",
+    "noProductionLeakage": "No Employee, Principal, Role assignment or credential is created by this manifest. The two authorities it writes are workforce facts about Employees that already exist only in the nonprod tenant.",
+    "noFirebaseBusinessAuthority": "Neither authority has any Firebase representation. Nothing here reads or writes Firestore, and no Firebase claim is consulted."
+  }
+}

@@ -28,7 +28,17 @@
  * existing code can truthfully express the required operational eligibility. The eight legacy operationalRole values
  * are NOT reproduced here, and these codes never mirror a Security Role or a Job Role.
  */
-export const WORK_ELIGIBILITY_CODES = Object.freeze(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS"] as const);
+// PARTS_OPERATIONS added by migration 1761696000000, by Owner ruling: the legacy
+// `operationalRoleActive` gate gating technician's Reorder and Purchase Order grants is BUSINESS
+// WORK ELIGIBILITY. It is deliberately NOT mapped onto WAREHOUSE_OPERATIONS -- that is a different
+// kind of work, and the ruling forbids the substitution.
+//
+// THE CODE IS NOT THE LEGACY LABEL. The Owner's preferred code was the legacy operationalRole value
+// itself, "unless an existing governed Work Eligibility vocabulary requires another exact format".
+// It does: this vocabulary refuses to reproduce ANY legacy operationalRole value, because a legacy
+// role was a bundle and these codes name a KIND OF WORK -- the same reason WAREHOUSE_ASSOCIATE
+// became WAREHOUSE_OPERATIONS plus an explicit warehouse scope. PARTS_OPERATIONS is that format.
+export const WORK_ELIGIBILITY_CODES = Object.freeze(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"] as const);
 
 export type WorkEligibilityCode = (typeof WORK_ELIGIBILITY_CODES)[number];
 
@@ -51,6 +61,7 @@ export const WORK_ELIGIBILITY_END_ACTION = "employee.workEligibility.end";
 export const WORK_ELIGIBILITY_LABEL: Readonly<Record<WorkEligibilityCode, string>> = Object.freeze({
   SERVICE_TECHNICIAN: "Service Technician (work eligibility)",
   WAREHOUSE_OPERATIONS: "Warehouse Operations (work eligibility)",
+  PARTS_OPERATIONS: "Parts Operations (work eligibility)",
 });
 
 export function isWorkEligibilityCode(value: unknown): value is WorkEligibilityCode {

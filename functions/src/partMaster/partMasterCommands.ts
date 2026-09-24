@@ -493,6 +493,7 @@ export interface CreateManufacturerInput {
 }
 
 export async function createManufacturer(input: CreateManufacturerInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("manufacturer.create");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
@@ -544,6 +545,7 @@ export interface UpdateManufacturerInput {
 }
 
 export async function updateManufacturer(input: UpdateManufacturerInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("manufacturer.update");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
@@ -597,6 +599,7 @@ export interface ChangeManufacturerStatusInput {
 }
 
 export async function changeManufacturerStatus(input: ChangeManufacturerStatusInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("manufacturer.changeStatus");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);

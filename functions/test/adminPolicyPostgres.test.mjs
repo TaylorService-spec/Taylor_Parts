@@ -148,15 +148,22 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_policy' ORDER BY 1",
   );
   assert.deepEqual(tables.rows.map((r) => r.table_name), [
-    "audit_events", "capabilities", "employee_principal_links", "object_fields", "objects",
-    "principal_access_versions", "principals",
+    "audit_events", "capabilities", "capability_grant_conditions", "employee_principal_links",
+    "object_fields", "objects",
+    "principal_access_versions", "principal_capabilities", "principals",
     "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
-    "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies", "tenants",
+    "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies",
+    "tenant_operating_company_keys", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-three tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+  ], "twenty-six tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
      "(operational capabilities), one from 008 (the Employee <-> Principal linkage), one from EMP-RT-W2 " +
-     "(tenant <-> operating company authority). Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
+     "(tenant <-> operating company authority), one from migration 038 (the company -> eos_ops KEY " +
+     "binding: which PARTITION an authorized company operates under, which the company row does not say), " +
+     "and one from migration 1762214400000 (capability_grant_conditions: the condition that narrows ONE " +
+     "grant, kept in its OWN relation so role_capabilities and principal_capabilities keep answering " +
+     "WHAT and never WHICH -- created EMPTY, activating zero conditional entitlements). " +
+     "Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(
     `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -221,7 +228,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 23, "and up restores all twenty-three");
+  assert.equal(back.rows[0].n, 26, "and up restores all twenty-six");
 });
 
 test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {

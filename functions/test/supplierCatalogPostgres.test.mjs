@@ -396,8 +396,32 @@ test("the columns, constraints and indexes exist as declared", { skip: SKIP }, a
   );
   assert.equal(unique.rows[0].indisunique, false, "dedup DETECTION -- a unique index would auto-refuse instead");
 
+  // MIGRATION 008 DECLINED A manufacturers TABLE for three reasons, and migration 1761782400000
+  // creates one. The objection was revisited rather than ignored, and only ONE of the three has
+  // actually changed:
+  //
+  //   1. RESOLVED. "Its ONLY relationship is parts.manufacturerId, and there is no parts table in
+  //      this schema to hold the other end." eos_ops.parts now exists and carries
+  //      primary_manufacturer_id, so the relationship has both ends.
+  //   2. STILL TRUE. It holds no rows -- the source collection measures ZERO documents.
+  //   3. STILL TRUE in part. There is still no PostgreSQL WRITER: the new authority is read-only.
+  //
+  // No foreign key is added from parts.primary_manufacturer_id, deliberately: it would couple the
+  // Catalog COPY order to the Manufacturer copy, which is the same ordering hazard the Work Order
+  // Parts Plan avoided by taking no FK into eos_ops.parts.
+  //
+  // So this table is BUILT AND INERT by an explicit Owner commission, and that status is reported
+  // rather than implied. This assertion now pins the SHAPE of that decision: the table exists, and
+  // it is still not a supplier concern.
   const tables = await poolOf().query(
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'eos_ops' AND table_name = 'manufacturers'",
   );
-  assert.equal(tables.rows.length, 0, "Manufacturer is not modelled here -- see migration 008's header");
+  assert.equal(tables.rows.length, 1, "the Manufacturer authority exists as of migration 1761782400000");
+  const supplierLink = await poolOf().query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = 'eos_ops' AND table_name = 'supplier_catalog_items'
+        AND column_name ILIKE '%manufacturer%'`,
+  );
+  assert.deepEqual(supplierLink.rows, [],
+    "nothing still joins a manufacturer to a supplier -- migration 008's actual subject is unchanged");
 });

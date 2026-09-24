@@ -38,6 +38,10 @@
       "runner": "node"
     },
     {
+      "file": "test/administrationNavigationReadiness.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/administrationPortalNav.test.mjs",
       "runner": "node"
     },
@@ -175,6 +179,10 @@
     },
     {
       "file": "test/dashboardDesignConformance.test.mjs",
+      "runner": "node --test"
+    },
+    {
+      "file": "test/dashboardEosProjection.test.mjs",
       "runner": "node --test"
     },
     {
@@ -551,6 +559,10 @@
     },
     {
       "file": "test/navConfigOperationalRoleAccess.test.mjs",
+      "runner": "node"
+    },
+    {
+      "file": "test/navigationExperienceProjection.test.mjs",
       "runner": "node"
     },
     {

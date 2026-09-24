@@ -85,7 +85,7 @@ test("Work Eligibility and Operational Scope Administration commands over the re
   };
   const resolveActor = async (principal) => {
     const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: principal.subject, requestedTenantId: null });
-    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities };
+    return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
   };
   const employee = (id, tenant = "t1") => q(
     `INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id, updated_at)

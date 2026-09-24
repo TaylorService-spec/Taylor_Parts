@@ -33,7 +33,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -326,6 +326,113 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ PERSONA AUTHORITY DIMENSIONS ============================
+//
+// scripts/seedPersonaAuthorityDimensionsCli.js writes eos_workforce.employee_work_eligibility and
+// employee_operational_scopes through their governed commands (--apply). It administers as a NAMED Principal and must
+// refuse before `pg` or lib/ is resolved. It has no production mode and never creates a tenant, Employee or Principal.
+const PERSONA_DIMENSIONS = "scripts/seedPersonaAuthorityDimensionsCli.js";
+const PERSONA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1", "--apply"];
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1"], EMP_ENV, /--environment is required/],
+  ["production environment", swapEnv(PERSONA_ARGS, "taylor-parts-production"), EMP_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", PERSONA_ARGS, { ...EMP_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(PERSONA_ARGS, "platform-certification"), EMP_ENV, /Certification world, which is frozen/],
+  ["no tenant key", PERSONA_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), EMP_ENV, /--tenantKey is required/],
+  ["no performedBy", PERSONA_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), EMP_ENV, /--performedBy <operator> is required/],
+  ["no administering Principal", PERSONA_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), EMP_ENV, /--adminPrincipalId is required/],
+]) {
+  test(`persona authority dimensions: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(PERSONA_DIMENSIONS, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `persona authority dimensions, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// ============================ THE GOVERNED NONPROD OWNER PERSONA ============================
+//
+// scripts/provisionOwnerPersona.js admits ONE non-authenticating Principal and assigns it exactly the
+// `owner` Security Role (--apply), through ensureTenantPrincipal and assignRole. It administers as a
+// NAMED Principal, has no production mode, creates no tenant, no Employee, no Role and no capability
+// grant, and must refuse before `pg` or lib/ is resolved.
+const OWNER_PERSONA = "scripts/provisionOwnerPersona.js";
+const OWNER_PERSONA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1", "--apply"];
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1"], EMP_ENV, /--environment is required/],
+  ["production environment", swapEnv(OWNER_PERSONA_ARGS, "taylor-parts-production"), EMP_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", OWNER_PERSONA_ARGS, { ...EMP_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(OWNER_PERSONA_ARGS, "platform-certification"), EMP_ENV, /Certification world, which is frozen/],
+  ["no databaseUrlEnv", OWNER_PERSONA_ARGS.filter((a) => a !== "--databaseUrlEnv" && a !== "EMP_FENCE_DB"), EMP_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["no tenant key", OWNER_PERSONA_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), EMP_ENV, /--tenantKey is required/],
+  ["no performedBy", OWNER_PERSONA_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), EMP_ENV, /--performedBy is required/],
+  ["no administering Principal", OWNER_PERSONA_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), EMP_ENV, /--adminPrincipalId is required/],
+]) {
+  test(`owner persona provisioning: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(OWNER_PERSONA, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `owner persona provisioning, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// ============================ THE OWNER PERSONA'S AUTHENTICATION BINDING ============================
+//
+// scripts/bindOwnerPersonaIdentity.js provisions a nonprod authentication identity and re-points the
+// canonical Owner Principal's external binding at it (--apply), through rebindPrincipalIdentity. It
+// administers as a NAMED Principal, has no production mode, creates no tenant, Employee, Principal,
+// Role or capability grant, and must refuse before `pg` or lib/ is resolved.
+//
+// IT MUST ALSO REFUSE BEFORE IT COULD CONTACT AN IDENTITY PROVIDER. The Firebase project is named on
+// the command line and checked against the registry rather than derived from it, the password comes
+// only from a named environment variable, and the account must be a `@sandbox.invalid` fixture --
+// each of those is a refusal reached before the first network call, which is why they are proved
+// here beside the database fence rather than in the PostgreSQL suite.
+const OWNER_BINDING = "scripts/bindOwnerPersonaIdentity.js";
+const BINDING_ENV = { ...EMP_ENV, OWNER_BIND_PW: "a-sufficiently-long-fixture-password" };
+const OWNER_BINDING_ARGS = [
+  "--environment", "platform-sandbox", "--projectId", "eos-platform-sandbox",
+  "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op",
+  "--adminPrincipalId", "p-1", "--authIdentityEmail", "eos-owner@sandbox.invalid",
+  "--authPasswordEnv", "OWNER_BIND_PW", "--apply",
+];
+const swapArg = (args, from, to) => args.map((a) => (a === from ? to : a));
+for (const [label, args, env, pattern] of [
+  ["no environment", OWNER_BINDING_ARGS.filter((a) => a !== "--environment" && a !== "platform-sandbox"), BINDING_ENV, /--environment is required/],
+  ["production environment", swapEnv(OWNER_BINDING_ARGS, "taylor-parts-production"), BINDING_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", OWNER_BINDING_ARGS, { ...BINDING_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(OWNER_BINDING_ARGS, "platform-certification"), BINDING_ENV, /Certification world, which is frozen/],
+  ["no databaseUrlEnv", OWNER_BINDING_ARGS.filter((a) => a !== "--databaseUrlEnv" && a !== "EMP_FENCE_DB"), BINDING_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["no tenant key", OWNER_BINDING_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), BINDING_ENV, /--tenantKey is required/],
+  ["no performedBy", OWNER_BINDING_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), BINDING_ENV, /--performedBy is required/],
+  ["no administering Principal", OWNER_BINDING_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), BINDING_ENV, /--adminPrincipalId is required/],
+  // THE IDENTITY-SIDE FENCE.
+  ["no Firebase project named", OWNER_BINDING_ARGS.filter((a) => a !== "--projectId" && a !== "eos-platform-sandbox"), BINDING_ENV, /--projectId <id> is required and is never inferred/],
+  ["a project the named environment does not declare", swapArg(OWNER_BINDING_ARGS, "eos-platform-sandbox", "eos-platform-certification"), BINDING_ENV, /is not the project environment/],
+  ["the customer production project", swapArg(OWNER_BINDING_ARGS, "eos-platform-sandbox", "taylor-parts"), BINDING_ENV, /is not the project environment/],
+  ["a deliverable email address", swapArg(OWNER_BINDING_ARGS, "eos-owner@sandbox.invalid", "owner@taylorparts.com"), BINDING_ENV, /must end '@sandbox.invalid'/],
+  ["no password environment variable", OWNER_BINDING_ARGS.filter((a) => a !== "--authPasswordEnv" && a !== "OWNER_BIND_PW"), BINDING_ENV, /--authPasswordEnv is required/],
+  ["a password variable that is unset", OWNER_BINDING_ARGS, { ...BINDING_ENV, OWNER_BIND_PW: "" }, /empty or unset/],
+  ["a password too short to be one", OWNER_BINDING_ARGS, { ...BINDING_ENV, OWNER_BIND_PW: "short" }, /shorter than 16 characters/],
+]) {
+  test(`owner persona identity binding: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(OWNER_BINDING, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `owner persona identity binding, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// THE PASSWORD IS NEVER AN ARGUMENT, and this is the check that keeps it that way: a `--password`
+// flag would be the one change that put a credential into ps output, shell history and CI logs, and
+// it would pass every other test in this file.
+test("owner persona identity binding: accepts no credential-bearing flag at all", () => {
+  const source = readFileSync(resolve(FUNCTIONS_DIR, OWNER_BINDING), "utf8");
+  // `args.authPasswordEnv` is the NAME of a variable and is fine; `args.authPassword` would be the
+  // value itself, so the boundary is what the assertion is actually about.
+  for (const forbidden of [/args\.password\b/, /args\.authPassword\b(?!Env)/, /"--password"/, /--password </]) {
+    assert.equal(forbidden.test(source), false, `${OWNER_BINDING} reads a credential from argv via ${forbidden}`);
+  }
+  assert.match(source, /env\[args\.authPasswordEnv\]/, "the password is not read from the named environment variable");
+});
+
 // ============================ SECURITY ROLE AUTHORITY CONVERGENCE ============================
 //
 // scripts/roleAssignmentCensusCli.js is a FIREBASE_EXIT_MIGRATION_ONLY read of the legacy Security Role assignment
@@ -581,6 +688,62 @@ for (const [label, args, env, pattern] of [
   test(`sample company v2 verifier: refuses (${label}) before any client library loads`, () => {
     const res = runCli(SAMPLE_VERIFY, args, env);
     const out = assertRefusedBeforeAnySdk(res, `sample company v2 verifier, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// ============================ THE COMMERCIAL SYNTHETIC CLEANUP ============================
+//
+// scripts/commercialSyntheticCleanup.js is the ONE tool in the estate carrying an Owner authorization to MUTATE
+// NONPROD DATA, so its fence is the one that matters most. It must refuse before `pg` is even resolved, it has no
+// production mode, it refuses the Certification world BY NAME, and -- uniquely -- it refuses every option that
+// would let an operator choose WHAT is deleted. The delete set is a reviewed constant; a predicate is not an
+// option, which is exactly what the Owner ruling forbids.
+const CLEANUP = "scripts/commercialSyntheticCleanup.js";
+const CLEANUP_ENV = { EOS_ENVIRONMENT: "nonprod", CLEANUP_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const CLEANUP_ARGS = [
+  "--environment", "platform-sandbox", "--databaseUrlEnv", "CLEANUP_FENCE_DB",
+  "--tenantKey", "taylor-nonprod", "--nonprodDataMutationAuthorized", "--performedBy", "op",
+];
+const cleanupEnvSwap = (args, environment) => args.map((a) => (a === "platform-sandbox" ? environment : a));
+
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--nonprodDataMutationAuthorized"], CLEANUP_ENV, /--environment is required/],
+  ["production environment", [...cleanupEnvSwap(CLEANUP_ARGS, "taylor-parts-production"), "--mode", "apply", "--apply"], CLEANUP_ENV, /production/],
+  ["any production confirmation", [...CLEANUP_ARGS, "--confirmProduction", "taylor-parts"], CLEANUP_ENV, /has no production mode/],
+  ["a named Firebase project", [...CLEANUP_ARGS, "--firebaseProjectId", "eos-platform-sandbox"], CLEANUP_ENV, /no Firebase target at all/],
+  ["frozen Certification world", cleanupEnvSwap(CLEANUP_ARGS, "platform-certification"), CLEANUP_ENV, /Certification world, which is frozen/],
+  ["any other non-production environment", cleanupEnvSwap(CLEANUP_ARGS, "platform-integration"), CLEANUP_ENV, /authorized only in 'platform-sandbox'/],
+  ["EOS_ENVIRONMENT not nonprod", [...CLEANUP_ARGS, "--mode", "apply", "--apply"], { ...CLEANUP_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", CLEANUP_ARGS, { CLEANUP_FENCE_DB: CLEANUP_ENV.CLEANUP_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no databaseUrlEnv", ["--environment", "platform-sandbox", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--nonprodDataMutationAuthorized"], CLEANUP_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["the wrong tenant", CLEANUP_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a)), CLEANUP_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no explicit nonprod data authorization", CLEANUP_ARGS.filter((a) => a !== "--nonprodDataMutationAuthorized"), CLEANUP_ENV, /--nonprodDataMutationAuthorized is required/],
+  ["no performedBy", CLEANUP_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), CLEANUP_ENV, /--performedBy <operator> is required/],
+  ["an unknown mode", [...CLEANUP_ARGS, "--mode", "destroy"], CLEANUP_ENV, /--mode must be one of plan \| apply/],
+  ["apply mode without the explicit --apply", [...CLEANUP_ARGS, "--mode", "apply"], CLEANUP_ENV, /--mode apply additionally requires the explicit --apply/],
+  ["--apply without apply mode", [...CLEANUP_ARGS, "--apply"], CLEANUP_ENV, /--apply was given without --mode apply/],
+  ["apply without the reviewed identity set restated", [...CLEANUP_ARGS, "--mode", "apply", "--apply"], CLEANUP_ENV, /--confirmExactIds <deleteSetSha256> is required/],
+  ["apply restating the wrong identity set", [...CLEANUP_ARGS, "--mode", "apply", "--apply", "--confirmExactIds", "b".repeat(64)], CLEANUP_ENV, /byte-identical to the fingerprint of the reviewed identity set/],
+  // NO DISCOVER-AND-DELETE. Every one of these is refused by NAME.
+  ["a number prefix", [...CLEANUP_ARGS, "--prefix", "SYN-NP"], CLEANUP_ENV, /the delete set is the reviewed constant DELETE_SET \(12 exact ids\)/],
+  ["a LIKE pattern", [...CLEANUP_ARGS, "--like", "SYN-%"], CLEANUP_ENV, /Selecting rows by predicate is precisely what the Owner ruling forbids/],
+  ["a WHERE clause", [...CLEANUP_ARGS, "--where", "1=1"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["an ad-hoc id list", [...CLEANUP_ARGS, "--ids", "opp_x"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["a single extra id", [...CLEANUP_ARGS, "--id", "opp_x"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--all", [...CLEANUP_ARGS, "--all"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--discover", [...CLEANUP_ARGS, "--discover"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--truncate", [...CLEANUP_ARGS, "--truncate"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--cascade", [...CLEANUP_ARGS, "--cascade"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  // A GUARD THAT CAN BE SKIPPED IS NOT A GUARD.
+  ["--force", [...CLEANUP_ARGS, "--force"], CLEANUP_ENV, /a guard this tool can be told to skip is not a guard/],
+  ["--skipPreflight", [...CLEANUP_ARGS, "--skipPreflight"], CLEANUP_ENV, /not a guard/],
+  ["--ignoreDependents", [...CLEANUP_ARGS, "--ignoreDependents"], CLEANUP_ENV, /not a guard/],
+  ["--allowDrift", [...CLEANUP_ARGS, "--allowDrift"], CLEANUP_ENV, /not a guard/],
+]) {
+  test(`commercial synthetic cleanup: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(CLEANUP, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `commercial synthetic cleanup, ${label}`);
     assert.match(out, pattern);
   });
 }

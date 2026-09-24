@@ -75,9 +75,34 @@ test("(3) no Commercial capability is activated, and no read capability id is in
   const used = new Set(readSources().flatMap((f) => [...strip(readFileSync(f, "utf8")).matchAll(/"((?:opportunity|salesAgreement|salesOrder|account|customer)\.[A-Za-z.]+)"/g)].map((m) => m[1])));
   assert.deepEqual([...used].sort(), ["opportunity.read", "salesAgreement.read", "salesOrder.read"]);
   // C4 registers the VOCABULARY (migration 023) and nothing else may name a Commercial capability in SQL; no migration grants one.
+  // REGISTERED OR GRANTED -- not merely NAMED. Migration 1761350400000's canonical Object <- action
+  // backfill names every capability by its own key, which is the opposite of prefix inference and
+  // must not read as a registration. The scan therefore looks only inside statements that INSERT a
+  // capability or touch a grant table.
+  // GRANTS ARE NOW EXPECTED, FROM NAMED MIGRATIONS ONLY. Migrations 1761523200000 and 1761609600000
+  // PRESERVE existing authorization decisions into role_capabilities -- the first from stored CRED
+  // where the mapping is exact, the second from the governed Role catalog. They register no
+  // Commercial capability; they grant ones migration 023 already registered. Registration and
+  // granting are therefore scanned separately: registration outside 023 is still forbidden, while
+  // granting is allowed only from this explicit list.
+  // ONE file, not two. Migration 1761523200000 also preserves Commercial grants, but it derives
+  // them by JOINING role_object_permissions to capabilities on object_key -- it never spells a
+  // capability key, so a text scan cannot see it and should not pretend to. 1761609600000 lists
+  // (Role, capability) pairs literally, which is exactly what this scan is for.
+  const PRESERVATION_MIGRATIONS = ["1761609600000_finance-administration-reorder-vocabulary.sql"];
+  const registersOrGrants = (sql, table) => sql
+    .replace(/^\s*--.*$/gm, "")
+    .split(";")
+    .filter((stmt) => new RegExp(`INSERT\\s+INTO\\s+${table}`, "i").test(stmt))
+    .some((stmt) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(stmt));
   const naming = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
-    .filter((f) => /'(opportunity|salesAgreement|salesOrder)\.[A-Za-z]+'/.test(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8").replace(/^\s*--.*$/gm, "")));
+    .filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"), "capabilities"));
   assert.deepEqual(naming, ["1759536000000_commercial-capability-vocabulary.sql"], "a Commercial capability was registered or granted outside migration 023");
+  const granting = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
+    .filter((f) => registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8"), "role_capabilities"));
+  assert.deepEqual(granting, PRESERVATION_MIGRATIONS, "a Commercial capability was granted outside the named preservation migrations");
+  assert.ok(registersOrGrants(readFileSync(join(FUNCTIONS_DIR, "migrations", "1759536000000_commercial-capability-vocabulary.sql"), "utf8"), "capabilities"),
+    "the scan stopped recognising migration 023 and would now pass for the wrong reason");
   assert.doesNotMatch(readFileSync(join(FUNCTIONS_DIR, "migrations", naming[0]), "utf8").split("-- Down Migration")[0].replace(/^\s*--.*$/gm, ""), /role_capabilities/, "migration 023 grants a Commercial capability");
 });
 

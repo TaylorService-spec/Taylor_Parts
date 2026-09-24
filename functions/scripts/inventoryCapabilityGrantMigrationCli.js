@@ -10,6 +10,7 @@
 // Usage:
 //   node scripts/inventoryCapabilityGrantMigrationCli.js --tenant <id> --actor <uid> [--apply]
 //   node scripts/inventoryCapabilityGrantMigrationCli.js --tenant <id> --actor <uid> --evidence-dir <dir>
+//   node scripts/inventoryCapabilityGrantMigrationCli.js --tenant <id> --actor <uid> --capabilities workOrder.create,workOrder.transition
 //
 // Requires `npm run build` first (reads compiled lib/) and a PostgreSQL connection through the
 // standard policyDatabase config (POLICY_DATABASE_URL / equivalent). No Firestore involved.
@@ -24,7 +25,16 @@ function parseArgs(argv) {
     else if (a === "--tenant") args.tenantId = argv[++i];
     else if (a === "--actor") args.actor = argv[++i];
     else if (a === "--evidence-dir") args.evidenceDir = argv[++i];
+    // THE KEY SET IS AN ARGUMENT BECAUSE THE TOOL WAS ALREADY GENERIC. reconcileInventoryCapabilityGrants
+    // has always taken `capabilityKeys`; only this CLI hard-coded the inventory default. Work Order needed
+    // the same reconciliation from the same Role catalog, and a second grant tool would have been a second
+    // answer to "which Roles hold what" -- exactly the duplication the capability model exists to prevent.
+    // Omitted, the default is unchanged, so every existing invocation behaves identically.
+    else if (a === "--capabilities") args.capabilityKeys = String(argv[++i]).split(",").map((k) => k.trim()).filter(Boolean);
     else throw new Error(`unknown argument: ${a}`);
+  }
+  if (args.capabilityKeys && args.capabilityKeys.length === 0) {
+    throw new Error("--capabilities <a,b> must name at least one capability key");
   }
   if (!args.tenantId) throw new Error("--tenant <id> is required");
   if (!args.actor) throw new Error("--actor <uid> is required (recorded as granted_by/created_by/updated_by)");
@@ -41,6 +51,7 @@ async function main() {
     tenantId: args.tenantId,
     apply: args.apply,
     actor: args.actor,
+    ...(args.capabilityKeys ? { capabilityKeys: args.capabilityKeys } : {}),
   });
 
   // eslint-disable-next-line no-console
@@ -48,7 +59,8 @@ async function main() {
 
   if (args.evidenceDir) {
     mkdirSync(args.evidenceDir, { recursive: true });
-    const path = join(args.evidenceDir, `inventory-capability-grants-${args.tenantId}-${args.apply ? "apply" : "dryrun"}.json`);
+    const scope = args.capabilityKeys ? "selected" : "inventory";
+    const path = join(args.evidenceDir, `${scope}-capability-grants-${args.tenantId}-${args.apply ? "apply" : "dryrun"}.json`);
     writeFileSync(path, JSON.stringify(report, null, 2) + "\n", "utf8");
     // eslint-disable-next-line no-console
     console.log(`evidence written: ${path}`);
