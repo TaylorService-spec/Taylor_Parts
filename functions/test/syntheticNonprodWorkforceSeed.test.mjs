@@ -184,7 +184,19 @@ test("synthetic Principals cannot authenticate: the verifier's provider is fireb
   assert.equal(SYNTHETIC_IDENTITY_PROVIDER, "eos-synthetic-nonprod");
   assert.equal(FIREBASE_IDENTITY_PROVIDER, "firebase");
   assert.notEqual(SYNTHETIC_IDENTITY_PROVIDER, FIREBASE_IDENTITY_PROVIDER);
-  assert.equal(MANIFEST.principals.filter((p) => !p.existingAdministrator).length, 7);
+  // SEVEN. The Owner persona is deliberately NOT one of them: it is provisioned by its own governed
+  // path because every entry here must name an Employee and the Owner/Executive Employee already
+  // holds the administrator Principal's one permitted active link. The manifest says so in
+  // `rulings.ownerPersona`, and the administrator still declares exactly ["admin"] -- which is the
+  // ruling's sharp edge, so it is asserted rather than assumed.
+  const nonLogin = MANIFEST.principals.filter((p) => !p.existingAdministrator);
+  assert.equal(nonLogin.length, 7);
+  const administrator = MANIFEST.principals.filter((p) => p.existingAdministrator);
+  assert.equal(administrator.length, 1);
+  assert.deepEqual(administrator[0].securityRoles, ["admin"]);
+  assert.equal(MANIFEST.principals.filter((p) => p.securityRoles.includes("owner")).length, 0,
+    "owner is provisioned by its own governed path, not by this seed");
+  assert.match(MANIFEST.rulings.ownerPersona, /NOT SEEDED BY THIS MANIFEST/);
   assert.match(MANIFEST.rulings.principals, /No authentication verifier recognizes this identity provider/);
 });
 
@@ -309,4 +321,41 @@ test("RE-ARM PROOF: the activation dependency is stated, and v1 is never the thi
   assert.equal(MANIFEST.commercialSeedState.seededBy, "SAMPLE_COMPANY_V3");
   assert.match(MANIFEST.rulings.commercialPendingC5, /BLOCKED_PENDING_C5/);
   assert.match(MANIFEST.rulings.commercialPendingC5, /commercialSyntheticCleanup\.js/);
+});
+
+// ════════════════════ PER-STEP AUDIT REASONS (Owner ruling) ════════════════════
+
+test("every persona mutation declares its OWN reason, and no two share one", () => {
+  const rationales = new Map();
+  for (const p of MANIFEST.principals) {
+    const entries = [[`${p.employee} link`, p.linkReason]];
+    for (const roleKey of p.securityRoles) {
+      entries.push([`${p.employee} role ${roleKey}`, (p.roleReasons || {})[roleKey]]);
+    }
+    for (const [where, rationale] of entries) {
+      assert.equal(typeof rationale, "string", `${where} has no reason`);
+      assert.ok(rationale.trim().length >= 24, `${where}: the reason is too short to be specific`);
+      const normalized = rationale.trim().toLowerCase();
+      assert.equal(rationales.has(normalized), false,
+        `${where} reuses the reason given for ${rationales.get(normalized)} -- that is a run-level reason`);
+      rationales.set(normalized, where);
+    }
+  }
+  // 8 principals: 8 link reasons + 8 role reasons (each declares exactly one Security Role).
+  assert.equal(rationales.size, 16);
+});
+
+test("the two run-level reason CONSTANTS are gone, and there is nowhere left to put one", () => {
+  const src = code();
+  // The exact constants this file used to reuse verbatim for every persona.
+  assert.equal(/const LINK_REASON\s*=/.test(src), false, "LINK_REASON is back");
+  assert.equal(/const ROLE_REASON\s*=/.test(src), false, "ROLE_REASON is back");
+  // Every reason reaching a governed command is COMPOSED per step, from the persona and the target.
+  assert.match(src, /assertionReason: stepReason\(DIMENSION_LINK, employeeId\(p\.employee\), p\.linkReason\)/);
+  assert.match(src, /reason: stepReason\(DIMENSION_ROLE, key, p\.roleReasons\[key\]\)/);
+  assert.match(src, /reason: stepReason\(DIMENSION_LINK, "tenant membership", p\.linkReason\)/);
+  // And the three ways a run-level reason could come back are each refused BY NAME.
+  for (const code_ of ["REASON_MISSING", "RUN_LEVEL_REASON_REFUSED", "REASON_TOO_LONG"]) {
+    assert.match(src, new RegExp(`refuse\\("${code_}"`), `${code_} is not refused by name`);
+  }
 });

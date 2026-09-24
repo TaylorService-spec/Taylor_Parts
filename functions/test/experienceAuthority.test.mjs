@@ -175,7 +175,62 @@ test("a Principal with NO linked Employee keeps unpredicated surfaces and loses 
     actorWith(["admin.principalAccess.read", "workOrder.transition", "warehouse.record.read"]),
     { employeeId: null, workEligibility: [], operationalScopes: [] },
   );
-  assert.deepEqual(surfaces, ["administration.users", "service.workOrders"]);
+  // `administration.overview` rides in because `administration.users` did, and that is the container
+  // working: it is a DISJUNCTION OVER CHILDREN, so it needs no capability, no predicate and -- as
+  // this very case shows -- no linked Employee. It also cannot appear alone; the "container of
+  // nothing reachable" case is asserted directly below.
+  assert.deepEqual(surfaces, ["administration.overview", "administration.users", "service.workOrders"]);
+});
+
+// ════════════════════ the container surface ════════════════════
+
+test("administration.overview is NOT an unconditional door -- no reachable child, no Overview", async () => {
+  const none = { employeeId: null, workEligibility: [], operationalScopes: [] };
+
+  // Holds nothing at all.
+  assert.deepEqual(await grantedSurfaceKeys(actorWith([]), none), []);
+
+  // Holds real authority, but NONE of it is Administration. This is the case an `alwaysVisible`
+  // index or a blanket `administration.read` would get wrong, and it is the whole reason the
+  // Overview is derived: a dispatcher-shaped principal must not be seated on the policy menu.
+  const dispatcherShaped = await grantedSurfaceKeys(
+    actorWith(["workOrder.lifecycle.dispatch", "fulfillment.coordinatedVisit.read"]), none);
+  assert.equal(dispatcherShaped.includes("administration.overview"), false);
+
+  // Administration WRITE authority is not a read and does not open the menu either.
+  const writerOnly = await grantedSurfaceKeys(
+    actorWith(["admin.roleAssignment.write", "admin.userStatus.write", "workflowDefinition.publish"]), none);
+  assert.deepEqual(writerOnly, []);
+
+  // Data Import authority is Administration authority and still does not open it -- the Overview is
+  // the menu over the ACCESS MODEL, and dataImport is deliberately not one of its children.
+  const importer = await grantedSurfaceKeys(actorWith(["admin.dataImport.execute"]), none);
+  assert.deepEqual(importer, ["administration.dataImport"]);
+});
+
+test("EACH governed Administration child on its own is enough, and each earns only itself + the menu", async () => {
+  const none = { employeeId: null, workEligibility: [], operationalScopes: [] };
+  const expected = {
+    "admin.securityPolicy.read": [
+      "administration.objects", "administration.overview",
+      "administration.permissionPreview", "administration.rolesPermissions",
+    ],
+    "workflowDefinition.read": ["administration.overview", "administration.workflows"],
+    "audit.event.read": ["administration.auditLogs", "administration.overview"],
+    "admin.principalAccess.read": ["administration.overview", "administration.users"],
+  };
+  for (const [capabilityKey, surfaces] of Object.entries(expected)) {
+    assert.deepEqual(await grantedSurfaceKeys(actorWith([capabilityKey]), none), surfaces,
+      `${capabilityKey} opens something other than the surfaces it governs`);
+  }
+});
+
+test("a Role KEY is not a capability, so no Role string can earn the Administration menu", async () => {
+  const none = { employeeId: null, workEligibility: [], operationalScopes: [] };
+  for (const shape of [["admin"], ["owner"], ["admin", "owner", "dispatcher"]]) {
+    assert.deepEqual(await grantedSurfaceKeys(actorWith(shape), none), [],
+      "a Role key earned a surface");
+  }
 });
 
 test("the snapshot reader REFUSES a record question rather than guessing", async () => {
@@ -317,6 +372,9 @@ test("every persona in the governed manifest gets a destination set earned entir
   assert.deepEqual(observed["owner-executive"].destinations, [
     "administration/auditLogs",
     "administration/dataImport",
+    // The container's destination. It is here BECAUSE the three above are; the persona earns no
+    // capability for it and none exists to earn.
+    "administration/overview",
     "administration/users",
   ]);
 });

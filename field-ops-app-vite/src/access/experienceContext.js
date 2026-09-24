@@ -30,7 +30,16 @@
 export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "administration.auditLogs",
   "administration.dataImport",
+  // The governed-configuration half of Administration. `administration.overview` is the CONTAINER
+  // over the others (server-side it declares no grant path of its own and is derived from them), and
+  // it is mirrored here like any other key: the client still only ever projects what the server
+  // listed, so nothing about how it was earned is re-decided on this side.
+  "administration.objects",
+  "administration.overview",
+  "administration.permissionPreview",
+  "administration.rolesPermissions",
   "administration.users",
+  "administration.workflows",
   "commercial.opportunities",
   "commercial.salesOrders",
   "crm.accounts",

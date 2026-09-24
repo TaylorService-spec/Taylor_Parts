@@ -289,6 +289,22 @@ on:
       - "functions/src/eosOps/contextualAuthorization.ts"
       - "functions/test/experienceAuthority.test.mjs"
       - "functions/test/experienceAuthorityPostgres.test.mjs"
+      # WAVE 9 / LANE AH: the Administration surface + Owner persona readiness record. Registered
+      # individually for the reason every entry above was -- a suite that runs in a registered job
+      # but matches no path filter goes stale in silence. The two readiness suites were merged by
+      # Lane AG naming no filter at all; they are named here rather than left that way.
+      - "functions/src/adminPolicy/administrationSurfaceAuthority.ts"
+      - "functions/src/adminPolicy/tenantBootstrap.ts"
+      - "functions/scripts/provisionOwnerPersona.js"
+      - "functions/scripts/seedSyntheticNonprodWorkforce.js"
+      - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
+      - "functions/test/administrationNavigationReadiness.test.mjs"
+      - "functions/test/ownerPersonaProvisioningPostgres.test.mjs"
+      - "functions/test/syntheticNonprodWorkforceSeed.test.mjs"
+      - "functions/test/operatorScriptEnvironmentFence.test.mjs"
+      - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
+      - "field-ops-app-vite/src/access/shellCapabilityGates.js"
+      - "field-ops-app-vite/test/administrationNavigationReadiness.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "field-ops-app-vite/src/access/experienceContext.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"
