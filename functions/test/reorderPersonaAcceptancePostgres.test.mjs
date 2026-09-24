@@ -85,7 +85,25 @@ const RR_OTHER = "rr_ab54d29e-ab43-4792-9e7f-4c8b9fc771ae";
 const REORDER_READ = "reorder.request.read";
 const WORKFORCE_ADMIN_CAPS = new Set(["admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"]);
 const caps = (...k) => new Set(k);
-const actorWith = (principalId, capabilities) => ({ tenantId: T, principalId, capabilities });
+// WAVE 10 / LANE AR. Lane AJ made `entitlements` a REQUIRED field on the governed command actor and
+// Lane AQ narrowed it to a required RESOLVER -- a pre-computed value, even a correct one, is refused
+// with ACTOR_CONTEXT_REQUIRED because it is not a resolution against the live grant and condition
+// stores. This suite was written on a branch that had neither, so its actor carried no entitlements
+// at all. The resolver below is the shape AQ's own caller migration uses
+// (test/employeeProfileCommand.test.mjs): the actor's capabilities, declared as the unconditioned
+// ROLE grants they are here. It adds no authority -- `capabilities` is still what the flat gate
+// reads first, and every negative case in this file is refused by that gate exactly as before.
+const entitlement = require("../lib/eosOps/conditionalEntitlement.js");
+const actorWith = (principalId, capabilities) => ({
+  tenantId: T,
+  principalId,
+  capabilities,
+  entitlements: async () => entitlement.entitlementsFrom(
+    [...capabilities].map((capabilityKey) => ({
+      grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey,
+    })),
+  ),
+});
 
 /** The predicate an action declares when it asks "may this Employee be given Parts work?". */
 const QUALIFIED = [{ kind: "WORK_ELIGIBILITY", qualificationCode: reorderAssignment.REORDER_ASSIGNMENT_QUALIFICATION }];

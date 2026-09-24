@@ -315,6 +315,17 @@ on:
       # named here for the same reason every entry above is -- a suite in a registered job that no
       # path filter names goes stale in silence.
       - "functions/test/reorderQueueNavigation.test.mjs"
+      # WAVE 10 / LANE AR: three suites arrived from lanes AJ/AQ (conditional entitlement) and
+      # AH (the Reorder persona acceptance proof) registered in NO job and named by NO path
+      # filter. They are registered in test:adminPolicyPostgres and named here for the reason
+      # every entry above is -- a suite nothing runs goes stale in silence.
+      - "functions/src/eosOps/conditionalEntitlement.ts"
+      - "functions/src/eosOps/entitledActionAuthority.ts"
+      - "functions/src/eosOps/grantConditionPolicy.ts"
+      - "functions/migrations/1762214400000_capability-grant-conditions.sql"
+      - "functions/test/conditionalEntitlementPostgres.test.mjs"
+      - "functions/test/contextualActionAuthorityPostgres.test.mjs"
+      - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "field-ops-app-vite/src/access/experienceContext.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"

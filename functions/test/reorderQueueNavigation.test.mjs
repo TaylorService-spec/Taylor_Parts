@@ -97,7 +97,14 @@ function destinationsFor(surfaces, { role = null, operationalRoles = [], employm
   for (const domain of NAV_DOMAINS) {
     if (!isDomainVisible(domain, role, [], operationalContext)) continue;
     for (const item of domain.subnav ?? []) {
-      if (item.alwaysVisible) continue;
+      // WAVE 10 / LANE AR. Was `if (item.alwaysVisible) continue;`. Lane AM deleted
+      // `alwaysVisible` outright and re-expressed the dashboard index as a CONTAINER, so that
+      // filter silently stopped matching anything and the derived index started appearing in
+      // every earned destination set. The intent is unchanged and is AM's own: a container is
+      // DERIVED from the list being built, not granted, so it is not an access decision of its
+      // own. field-ops-app-vite/test/navigationExperienceProjection.test.mjs:145 is the same
+      // line in AM's copy of this helper.
+      if (item.containerScope) continue;
       if (isNavItemVisible(item, role, [], operationalContext)) out.push(`${domain.key}/${item.key}`);
     }
   }

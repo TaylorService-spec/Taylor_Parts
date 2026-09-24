@@ -853,7 +853,7 @@ export const NAV_CONTAINERS = Object.freeze({
 // not, and a destination added tomorrow with no authority at all would open the same way without
 // anyone deciding to open it.
 //
-// The role answer for the 62 destinations below is UNCHANGED -- this lane narrows nobody's access to
+// The role answer for the 63 destinations below is UNCHANGED -- this lane narrows nobody's access to
 // any of them. What changes is that it is now WRITTEN DOWN. A destination absent from this register
 // and from every other authority path is INVISIBLE, not admin/dispatcher-visible.
 //
@@ -910,6 +910,14 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "reporting/employees",
   "reporting/customers",
   "reporting/financial",
+  // WAVE 10 / LANE AR. Lane AM did not need a row here because on its branch Administration's
+  // index was a client-side CONTAINER, and a container answers from its children under BOTH
+  // sources. The integration kept Lane AH's SERVER-SIDE `containerOf` as the single derived-child
+  // mechanism instead, which only the EOS source reads -- so without this row the legacy source
+  // would refuse a destination it opens for admin/dispatcher in every deployed environment
+  // TODAY. That is exactly the change Lane AH's section 2 exists to prevent, and its readiness
+  // suite caught it. This restores the pre-existing answer byte-for-byte; it widens nothing.
+  "administration/overview",
   "administration/users",
   "administration/rolesPermissions",
   "administration/objects",
@@ -1157,7 +1165,7 @@ export function isNavItemVisible(item, role, allowedLegacyKeys, operationalConte
   if (item.capabilityAccess) return false;
 
   // THE PLACEHOLDER, DECLARED. Only a destination named in NAV_LEGACY_PLACEHOLDER_DESTINATIONS
-  // reaches the Firebase-era role literal, and the answer for those 62 is byte-for-byte what it was.
+  // reaches the Firebase-era role literal, and the answer for those 63 is byte-for-byte what it was.
   // What is gone is the FALL-THROUGH: a destination that declares no authority at all is now
   // invisible instead of admin/dispatcher-visible, so a new door cannot open by omission.
   if (item.legacyPlaceholder) return PLACEHOLDER_DEFAULT_ROLES.includes(role);

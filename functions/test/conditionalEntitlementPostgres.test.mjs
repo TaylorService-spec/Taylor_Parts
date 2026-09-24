@@ -649,16 +649,23 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     assert.equal(d.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE");
   });
 
-  // ════════════════════ PERSISTENCE -- designed, read, and NOT migrated ════════════════════
+  // ════════════════ PERSISTENCE -- designed, read, and migrated by 1762214400000 ════════════════
 
-  await t.test("no migration on THIS lineage creates the relation -- the deployed one is 1762214400000", async () => {
-    // The relation is LIVE in nonprod (migration 1762214400000, applied 2026-09-24). It is absent
-    // HERE because that migration is not on this lineage and this lane adds none: `migrations/` is
-    // untouched, so a database migrated from it carries no condition store at all.
+  await t.test("migration 1762214400000 creates the relation on THIS lineage now -- and an absent store still throws", async () => {
+    // WAVE 10 / LANE AR. This subtest recorded the OPPOSITE on Lane AB's branch: the relation was
+    // absent because migration 1762214400000 was not on that lineage. It is on v7 -- integration v6
+    // (42191317) deployed it -- so a database migrated from `migrations/` now carries the condition
+    // store, and the premise "this lane adds none" is about the LANE, not about the lineage.
     const { rows } = await q(
       `SELECT to_regclass('eos_policy.capability_grant_conditions') IS NOT NULL AS present`);
-    assert.equal(rows[0].present, false, "this lane added a migration");
+    assert.equal(rows[0].present, true, "migration 1762214400000 did not create the relation");
     assert.equal(model.GRANT_CONDITION_SCHEMA_MIGRATION, "1762214400000");
+
+    // THE FAIL-CLOSED GUARD IS NOT WEAKENED, only produced deliberately instead of for free. It used
+    // to be demonstrable because the lineage had no migration; the store is dropped here so that "a
+    // missing condition store throws" is still measured rather than assumed. The next subtest
+    // re-creates it from GRANT_CONDITION_RELATION_SCHEMA exactly as it always did.
+    await q(`DROP TABLE eos_policy.capability_grant_conditions`);
     await assert.rejects(() => composition.postgresGrantConditions(pool, T), /does not exist/,
       "a missing condition store must throw, never read as 'no conditions'");
     // AB2: the two grant tables still answer WHAT, never WHICH.
@@ -764,9 +771,10 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
 // LANE AJ — THE DIFFERENCE BETWEEN "THE SCHEMA EXISTS" AND "THE RUNTIME WORKS".
 //
 // Migration 1762214400000 created `eos_policy.capability_grant_conditions` and applied it to nonprod
-// on 2026-09-24, where it holds ZERO rows. That migration is NOT on this lineage and this lane adds
-// none: the relation below is created from `GRANT_CONDITION_RELATION_SCHEMA`, the repository's own
-// DDL, which is the text the migration was written from character for character.
+// on 2026-09-24, where it holds ZERO rows. WAVE 10 / LANE AR: that migration IS on this lineage now
+// -- integration v6 carried it -- so the migration chain creates the relation and this lane still
+// adds none. `GRANT_CONDITION_RELATION_SCHEMA`, the repository's own DDL, is the text the migration
+// was written from character for character, and the two are now measured against each other.
 //
 // NOTHING IS ACTIVATED ANYWHERE THAT PERSISTS. Every condition row in this file lives in a throwaway
 // database that is dropped when the test ends; `SHIPPED_GRANT_CONDITIONS` stays empty and frozen; the
@@ -840,7 +848,12 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
              (tenant_id,operating_company_id,status,source,established_by,updated_by)
            VALUES ($1,$2,'ACTIVE','lane-aj','fixture','fixture')`, [TENANT, COMPANY]);
 
-  // ---- the relation, from the repository's own DDL (migration 1762214400000 is not on this lineage)
+  // ---- the relation. WAVE 10 / LANE AR: migration 1762214400000 IS on this lineage as of v7, so
+  // the chain above already created it. It is measured as deployed, then dropped so the ABSENT case
+  // stays provable, then restored from the repository's own DDL -- which is also the evidence that
+  // the migration's text and `GRANT_CONDITION_RELATION_SCHEMA` describe one relation, not two.
+  const relationDeployed = await capabilityAuthority.describeGrantConditionRelation(pool);
+  await q(`DROP TABLE eos_policy.capability_grant_conditions`);
   const relationAbsent = await capabilityAuthority.describeGrantConditionRelation(pool);
   await q(model.GRANT_CONDITION_RELATION_SCHEMA);
 
@@ -951,12 +964,19 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     assert.equal(policy.GRANT_CONDITION_RELATION_MIGRATION, "1762214400000");
     assert.equal(policy.GRANT_CONDITION_RELATION_NAME, "eos_policy.capability_grant_conditions");
     assert.equal(capabilityAuthority.GRANT_CONDITION_RELATION, policy.GRANT_CONDITION_RELATION_NAME);
-    // AJ2 adds no migration: nothing on this lineage creates the relation.
+    // WAVE 10 / LANE AR: AJ2 still adds no migration, but the lineage now HAS one -- v6 brought
+    // 1762214400000. Exactly one migration may name the relation; a second would mean two DDLs.
     const migrationsDir = resolve(FUNCTIONS_DIR, "migrations");
     const naming = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"))
       .filter((f) => readFileSync(resolve(migrationsDir, f), "utf8").includes("capability_grant_conditions"));
-    assert.deepEqual(naming, [], `a migration on this lineage names the relation: ${naming}`);
-    assert.equal(relationAbsent.present, false, "the relation existed before this test created it");
+    assert.deepEqual(naming, ["1762214400000_capability-grant-conditions.sql"],
+      `the relation is named by ${naming.length} migrations on this lineage: ${naming}`);
+    // AND THE DEPLOYED RELATION IS THE DECLARED ONE. This could not be measured on AJ's branch,
+    // because there the only relation that existed was the one this test had just created.
+    assert.equal(relationDeployed.present, true, "the migration chain did not create the relation");
+    assert.deepEqual(capabilityAuthority.grantConditionRelationDrift(relationDeployed), [],
+      "the relation migration 1762214400000 deploys drifts from GRANT_CONDITION_RELATION_SCHEMA");
+    assert.equal(relationAbsent.present, false, "the relation survived the deliberate drop");
     assert.deepEqual(capabilityAuthority.grantConditionRelationDrift(relationAbsent),
       ["eos_policy.capability_grant_conditions is absent"]);
   });
@@ -1295,7 +1315,9 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
   await q(`INSERT INTO eos_policy.tenant_operating_companies
              (tenant_id,operating_company_id,status,source,established_by,updated_by)
            VALUES ($1,$2,'ACTIVE','lane-aq','fixture','fixture')`, [TENANT, COMPANY]);
-  await q(model.GRANT_CONDITION_RELATION_SCHEMA);
+  // WAVE 10 / LANE AR: migration 1762214400000 is on this lineage as of v7 and the chain above
+  // already created this relation, so the lane's own CREATE would now fail as a duplicate. The
+  // relation it produces is proved identical to the declaration in the AJ2 block above.
 
   const fixture = { tenantId: TENANT, uid: "uid-lane-aq" };
   const ROLE_KEYS = [...new Set([...MIGRATION_GRANTS.map((g) => g.roleKey), "technician", "purchasingManager", "admin"])].sort();
