@@ -286,3 +286,82 @@ export function postgresContextualReader(db: Pick<PoolClient, "query">): Context
     },
   };
 }
+
+// ════════════════════ READING THE DIMENSIONS, NOT ONLY TESTING THEM ════════════════════
+//
+// `ContextualReader` answers yes/no about ONE named predicate, which is the right shape for
+// authorizing ONE action. A principal-context read asks a different question -- "which qualifications
+// and scopes does this Employee currently hold" -- and answering it by probing `hasWorkEligibility`
+// once per known code would turn the governed vocabulary into a client-visible guessing game.
+//
+// So the LIST reader lives here too, beside the predicate reader, because this file is the one place
+// allowed to know the shape of `eos_workforce.employee_work_eligibility` and
+// `eos_workforce.employee_operational_scopes`. A second module writing that SQL is how two answers to
+// the same question begin to disagree.
+//
+// CURRENT ONLY (`effective_to IS NULL`). A history row is not an authority.
+
+export interface CurrentOperationalScope {
+  readonly scopeType: string;
+  readonly scopeId: string;
+}
+
+/** The CURRENT authority dimensions of one governed Employee. Never a Firebase uid, never a role string. */
+export interface PrincipalDimensionReader {
+  linkedEmployeeId(tenantId: string, principalId: string): Promise<string | null>;
+  listWorkEligibility(tenantId: string, employeeId: string): Promise<readonly string[]>;
+  listOperationalScopes(tenantId: string, employeeId: string): Promise<readonly CurrentOperationalScope[]>;
+}
+
+/** The PostgreSQL dimension reader. Same tables, same open-interval rule, as the predicate reader above. */
+export function postgresPrincipalDimensionReader(db: Pick<PoolClient, "query">): PrincipalDimensionReader {
+  const predicates = postgresContextualReader(db);
+  return {
+    linkedEmployeeId: (tenantId, principalId) => predicates.linkedEmployeeId(tenantId, principalId),
+    async listWorkEligibility(tenantId, employeeId) {
+      const { rows } = await db.query(
+        `SELECT qualification_code FROM eos_workforce.employee_work_eligibility
+          WHERE tenant_id = $1 AND employee_id = $2 AND effective_to IS NULL
+          ORDER BY qualification_code`,
+        [tenantId, employeeId]);
+      return rows.map((r) => String(r.qualification_code));
+    },
+    async listOperationalScopes(tenantId, employeeId) {
+      const { rows } = await db.query(
+        `SELECT scope_type, scope_id FROM eos_workforce.employee_operational_scopes
+          WHERE tenant_id = $1 AND employee_id = $2 AND effective_to IS NULL
+          ORDER BY scope_type, scope_id`,
+        [tenantId, employeeId]);
+      return rows.map((r) => Object.freeze({ scopeType: String(r.scope_type), scopeId: String(r.scope_id) }));
+    },
+  };
+}
+
+/**
+ * A `ContextualReader` backed by an ALREADY-READ snapshot of the dimensions.
+ *
+ * A surface projection asks the same two questions about twenty-odd surfaces. Re-querying per surface
+ * would turn one page load into dozens of round trips and -- worse -- could answer two surfaces from
+ * two different reads of the same table. One read, one snapshot, one answer.
+ *
+ * `isAssignedEmployee` THROWS rather than guessing: a projection has no record, and a reader that
+ * quietly returned false would make "no record supplied" indistinguishable from "not yours".
+ */
+export function snapshotContextualReader(snapshot: {
+  readonly employeeId: string | null;
+  readonly workEligibility: readonly string[];
+  readonly operationalScopes: readonly CurrentOperationalScope[];
+}): ContextualReader {
+  const eligibility = new Set(snapshot.workEligibility);
+  return {
+    async linkedEmployeeId() { return snapshot.employeeId; },
+    async hasWorkEligibility(_tenantId, _employeeId, qualificationCode) { return eligibility.has(qualificationCode); },
+    async hasOperationalScope(_tenantId, _employeeId, scopeType, scopeId) {
+      return snapshot.operationalScopes.some(
+        (s) => s.scopeType === scopeType && (scopeId === undefined || s.scopeId === scopeId));
+    },
+    async isAssignedEmployee() {
+      throw new Error("snapshotContextualReader: RECORD_ASSIGNMENT has no meaning without a record");
+    },
+  };
+}
