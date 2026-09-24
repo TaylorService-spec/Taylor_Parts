@@ -295,25 +295,33 @@ export const LEGACY_CONSUMER_LEDGER: readonly LedgerEntry[] = Object.freeze([
     replacementAuthority: `${ELIGIBILITY} + eligible employment status, read from PostgreSQL`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
+  // THE NEXT THREE ENTRIES ARE ONE FILTER, AND THEIR TARGET CODE IS PARTS_OPERATIONS.
+  //
+  // All three pass the legacy operationalRole PARTS_ASSOCIATE to the assignable-Employee picker. They previously
+  // named WAREHOUSE_OPERATIONS as the replacement authority, which contradicted the compatibilityRoles.ts entry
+  // above -- the same legacy label, resolved to PARTS_OPERATIONS by the Owner ruling behind migration
+  // 1761696000000, which says in its own words "NOT WAREHOUSE_OPERATIONS". Reorder assignment is Parts/Reorder
+  // operational work; a Warehouse employee performs it only when independently assigned PARTS_OPERATIONS. The two
+  // codes stay distinct and neither is inferred from the other.
   entry({
     path: "field-ops-app-vite/src/shared/reorder/ManagerQueuePanel.jsx",
     consumer: "asks the picker for PARTS_ASSOCIATE candidates to assign a reorder request",
     terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (WAREHOUSE_OPERATIONS) + eligible employment status`,
+    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
   entry({
     path: "field-ops-app-vite/src/modules/inventoryRole/PartsManagerHome.jsx",
     consumer: "asks the assignable-Employee hook for PARTS_ASSOCIATE candidates",
     terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (WAREHOUSE_OPERATIONS) + eligible employment status`,
+    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
   entry({
     path: "field-ops-app-vite/src/modules/inventory/PartDetail.jsx",
     consumer: "passes PARTS_ASSOCIATE to the assignment picker on the Part record",
     terms: ["OPERATIONAL_ROLE"], classification: "WORK_ELIGIBILITY",
-    replacementAuthority: `${ELIGIBILITY} (WAREHOUSE_OPERATIONS) + eligible employment status`,
+    replacementAuthority: `${ELIGIBILITY} (PARTS_OPERATIONS) + eligible employment status`,
     replacementPr: null, status: "NOT_STARTED", blockedReason: null,
   }),
 

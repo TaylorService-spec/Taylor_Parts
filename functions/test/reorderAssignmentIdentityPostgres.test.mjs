@@ -70,9 +70,12 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
   await employee("e-t2", "t2");  await link("e-t2", t2Principal, "t2");
 
   // Every Employee the existing proofs assign must now hold the qualification the OPERATION requires.
-  const qualify = (employeeId, tenant = "t1") => q(
+  // That qualification is PARTS_OPERATIONS by Owner ruling -- Reorder assignment is Parts work -- so the fixtures
+  // are written against the CONSTANT rather than a literal, and a future change to it cannot leave them stale.
+  let ewe = 0;
+  const qualify = (employeeId, tenant = "t1", code = authority.REORDER_ASSIGNMENT_QUALIFICATION) => q(
     `INSERT INTO eos_workforce.employee_work_eligibility (id, tenant_id, employee_id, qualification_code, effective_from, assigned_by)
-     VALUES ($1, $2, $3, 'WAREHOUSE_OPERATIONS', now(), 'fixture')`, [`ewe-${employeeId}`, tenant, employeeId]);
+     VALUES ($1, $2, $3, $4, now(), 'fixture')`, [`ewe-${employeeId}-${++ewe}`, tenant, employeeId, code]);
   for (const id of ["e-assignee", "e-other", "e-unlinked", "e-onleave"]) await qualify(id);
   await qualify("e-t2", "t2");
 
@@ -203,10 +206,10 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
     await employee("e-unqualified");
     const unqualifiedPrincipal = await principal("t1", "uid-unqualified");
     await link("e-unqualified", unqualifiedPrincipal);
-    // ACTIVE + active governed link + NO WAREHOUSE_OPERATIONS -> refused, invoking the command directly.
+    // ACTIVE + active governed link + NO PARTS_OPERATIONS -> refused, invoking the command directly.
     await assert.rejects(
       authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-unqualified" }),
-      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE" && /WAREHOUSE_OPERATIONS/.test(e.message));
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE" && /PARTS_OPERATIONS/.test(e.message));
     assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.reorder_request_assignments WHERE reorder_request_id = 'rr-q'`)).rows[0].n, 0);
 
     // Job Role alone does not qualify.
@@ -236,6 +239,59 @@ test("Reorder assignment names an EMPLOYEE, never a Principal and never a Fireba
         authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-q", employeeId: "e-assignee", [field]: "x" }),
         (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED", `${field} was accepted`);
     }
+  });
+
+  await t.test("THE CANONICAL QUALIFICATION IS PARTS_OPERATIONS, and WAREHOUSE_OPERATIONS is not an alias for it", async () => {
+    // OWNER RULING: Reorder assignment is Parts/Reorder operational work. The constant used to name
+    // WAREHOUSE_OPERATIONS, which made this command unsatisfiable in practice -- the Roles that resolve
+    // reorder.request.read and the Employees holding WAREHOUSE_OPERATIONS were disjoint sets, so a successful
+    // assignment produced an assignee who could not read the record they had just been given.
+    assert.equal(authority.REORDER_ASSIGNMENT_QUALIFICATION, "PARTS_OPERATIONS",
+      "the Reorder assignment qualification is Parts, not Warehouse");
+
+    // A WAREHOUSE_OPERATIONS-ONLY Employee: ACTIVE, linked, currently qualified for warehouse work and nothing
+    // else. Assignment must refuse, and the refusal must name the qualification the OPERATION requires.
+    await employee("e-warehouse-only");
+    const warehousePrincipal = await principal("t1", "uid-warehouse-only");
+    await link("e-warehouse-only", warehousePrincipal);
+    await qualify("e-warehouse-only", "t1", "WAREHOUSE_OPERATIONS");
+    assert.deepEqual(
+      (await q(`SELECT qualification_code FROM eos_workforce.employee_work_eligibility
+                 WHERE employee_id = 'e-warehouse-only' AND effective_to IS NULL`)).rows.map((r) => r.qualification_code),
+      ["WAREHOUSE_OPERATIONS"], "the fixture holds warehouse eligibility and only that");
+    await assert.rejects(
+      authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-wh", employeeId: "e-warehouse-only" }),
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE" && /PARTS_OPERATIONS/.test(e.message)
+             && !/WAREHOUSE_OPERATIONS/.test(e.message),
+      "a warehouse qualification was accepted for Parts work, or the refusal named the wrong code");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_ops.reorder_request_assignments WHERE reorder_request_id = 'rr-wh'`)).rows[0].n, 0);
+
+    // The SAME Employee becomes assignable only by being INDEPENDENTLY granted PARTS_OPERATIONS. Nothing is
+    // inferred: the warehouse row is still open, and it was never what made the difference.
+    await qualify("e-warehouse-only", "t1", "PARTS_OPERATIONS");
+    assert.equal(
+      (await authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-wh", employeeId: "e-warehouse-only" })).outcome,
+      "ASSIGNED", "an independently granted PARTS_OPERATIONS did not make the Employee assignable");
+    assert.deepEqual(
+      (await q(`SELECT qualification_code FROM eos_workforce.employee_work_eligibility
+                 WHERE employee_id = 'e-warehouse-only' AND effective_to IS NULL ORDER BY qualification_code`)).rows.map((r) => r.qualification_code),
+      ["PARTS_OPERATIONS", "WAREHOUSE_OPERATIONS"], "the two codes coexist as distinct current eligibilities");
+
+    // AND THE INVERSE: ending PARTS_OPERATIONS while WAREHOUSE_OPERATIONS stays open makes them unassignable
+    // again. If warehouse eligibility were silently aliased or inferred, this would still pass assignment.
+    await q(`UPDATE eos_workforce.employee_work_eligibility SET effective_to = now(), ended_by = 'f', ended_at = now()
+              WHERE employee_id = 'e-warehouse-only' AND qualification_code = 'PARTS_OPERATIONS' AND effective_to IS NULL`);
+    await assert.rejects(
+      authority.assignReorderRequestToEmployee(deps, actor, { reorderRequestId: "rr-wh2", employeeId: "e-warehouse-only" }),
+      (e) => e.code === "EMPLOYEE_NOT_ASSIGNABLE",
+      "WAREHOUSE_OPERATIONS alone made the Employee assignable -- the codes have been aliased");
+
+    // THE QUALIFICATION IS NOT THE QUEUE SCOPE. REORDER_QUEUE answers "which queue may they see"; this answers
+    // "may they be given this kind of work". The command never reads employee_operational_scopes at all.
+    const src = readFileSync(join(FUNCTIONS_DIR, "src/eosOps/reorderAssignmentAuthority.ts"), "utf8");
+    assert.equal(/employee_operational_scopes/.test(src), false, "the assignment command consulted an Operational Scope");
+    assert.equal(/REORDER_QUEUE/.test(src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "")), false,
+      "the queue scope leaked into the qualification authority");
   });
 
   await t.test("PROVENANCE: a native row must name its actor; only a MIGRATED row may record an unknown one", async () => {

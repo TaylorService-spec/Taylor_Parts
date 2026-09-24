@@ -16,6 +16,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const ctx = require("../lib/eosOps/contextualAuthorization.js");
+const reorderAssignment = require("../lib/eosOps/reorderAssignmentAuthority.js");
 
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
@@ -316,6 +317,116 @@ test("scope is not stored on either grant table -- structurally, not by conventi
     assert.equal(notAssigned.reason, "NOT_ASSIGNED");
     assert.equal(outsideScope.reason, "OUTSIDE_OPERATIONAL_SCOPE");
     assert.notEqual(notAssigned.reason, outsideScope.reason, "these must never be merged");
+  });
+
+  // ════════════════ THE CANONICAL PARTS PERSONA ════════════════
+  //
+  // One Security Role's worth of capability, held identically by two Employees, so that every difference
+  // between the two answers below is a WORK ELIGIBILITY fact and nothing else. The qualification is taken from
+  // reorderAssignmentAuthority.REORDER_ASSIGNMENT_QUALIFICATION, so the read/persona path and the assignment
+  // command cannot drift apart: one constant, two consumers.
+  const PARTS_QUALIFICATION = reorderAssignment.REORDER_ASSIGNMENT_QUALIFICATION;
+  const PARTS_ELIGIBILITY = [{ kind: "WORK_ELIGIBILITY", qualificationCode: PARTS_QUALIFICATION }];
+
+  await t.test("PERSONA POSITIVE/NEGATIVE: the same Security Role differs only by PARTS_OPERATIONS", async () => {
+    assert.equal(PARTS_QUALIFICATION, "PARTS_OPERATIONS", "the Reorder qualification is the Parts one");
+    assert.equal(ctx.GOVERNED_QUALIFICATION_CODES.has(PARTS_QUALIFICATION), true, "and it is governed vocabulary");
+
+    for (const [pid, eid, sub, num] of [
+      ["prn-parts", "emp-parts", "uid-parts", "E3"],
+      ["prn-parts-noqual", "emp-parts-noqual", "uid-parts-noqual", "E4"],
+    ]) {
+      await q(`INSERT INTO eos_policy.principals (id,external_subject,identity_provider,status)
+               VALUES ($1,$2,'firebase','active')`, [pid, sub]);
+      await q(`INSERT INTO eos_policy.tenant_memberships (id,tenant_id,principal_id,status)
+               VALUES ($1,$2,$3,'active')`, [`mem-${pid}`, T, pid]);
+      await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number)
+               VALUES ($1,$2,'ACTIVE','taylor',$3)`, [eid, T, num]);
+      await q(`INSERT INTO eos_policy.employee_principal_links
+                 (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+               VALUES ($1,$2,$3,$4,'taylor','OPERATOR_ASSERTED','active','fixture','test fixture')`,
+      [`lnk-${eid}`, T, pid, eid]);
+    }
+    // ONE authority dimension separates them: emp-parts holds the qualification, emp-parts-noqual does not.
+    await q(`INSERT INTO eos_workforce.employee_work_eligibility
+               (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+             VALUES ('we-parts',$1,'emp-parts',$2,now(),'fixture')`, [T, PARTS_QUALIFICATION]);
+
+    // POSITIVE -- capability present AND PARTS_OPERATIONS present.
+    for (const key of ["reorder.request.read", "reorder.request.assign"]) {
+      const ok = await ctx.authorizeObjectAction(reader, {
+        actor: actor("prn-parts", key), capabilityKey: key, predicates: PARTS_ELIGIBILITY,
+      });
+      assert.deepEqual([ok.allowed, ok.reason], [true, "ALLOWED"], `${key} refused the qualified Parts persona`);
+    }
+
+    // NEGATIVE -- the SAME capability set, the same employment status, the same active link, no qualification.
+    for (const key of ["reorder.request.read", "reorder.request.assign"]) {
+      const no = await ctx.authorizeObjectAction(reader, {
+        actor: actor("prn-parts-noqual", key), capabilityKey: key, predicates: PARTS_ELIGIBILITY,
+      });
+      assert.equal(no.allowed, false);
+      assert.equal(no.reason, "WORK_ELIGIBILITY_MISSING", `${key} allowed an unqualified holder of the same Role`);
+      assert.equal(no.predicate, "WORK_ELIGIBILITY", "the refusal must name the authority that refused");
+    }
+
+    // AND WAREHOUSE_OPERATIONS IS NOT A SUBSTITUTE. Granting the warehouse code to the unqualified persona
+    // changes nothing: the two codes are distinct eligibilities and neither is inferred from the other.
+    await q(`INSERT INTO eos_workforce.employee_work_eligibility
+               (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+             VALUES ('we-parts-wh',$1,'emp-parts-noqual','WAREHOUSE_OPERATIONS',now(),'fixture')`, [T]);
+    const stillNo = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-parts-noqual", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      predicates: PARTS_ELIGIBILITY,
+    });
+    assert.equal(stillNo.reason, "WORK_ELIGIBILITY_MISSING",
+      "WAREHOUSE_OPERATIONS satisfied a PARTS_OPERATIONS predicate -- the codes have been aliased");
+  });
+
+  await t.test("QUEUE SCOPE SEPARATION: the qualification and REORDER_QUEUE fail DIFFERENTLY", async () => {
+    // REORDER_QUEUE stays the Operational Scope for shared queue visibility. It answers WHICH RECORDS; the
+    // qualification answers WHAT KIND OF WORK. Collapsing them would make one refusal for two questions.
+    //
+    //   emp-parts        PARTS_OPERATIONS, NO REORDER_QUEUE scope
+    //   emp-parts-noqual REORDER_QUEUE scope, NO PARTS_OPERATIONS
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes
+               (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by)
+             VALUES ('os-q-parts-noqual',$1,'emp-parts-noqual','REORDER_QUEUE','taylor',now(),'fixture')`, [T]);
+    const BOTH = [...PARTS_ELIGIBILITY,
+      { kind: "OPERATIONAL_SCOPE", scopeType: "REORDER_QUEUE", scopeId: "taylor" }];
+
+    const qualifiedNoScope = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-parts", "reorder.request.read"), capabilityKey: "reorder.request.read", predicates: BOTH,
+    });
+    const scopedNoQualification = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-parts-noqual", "reorder.request.read"), capabilityKey: "reorder.request.read", predicates: BOTH,
+    });
+
+    assert.deepEqual([qualifiedNoScope.reason, qualifiedNoScope.predicate],
+      ["OUTSIDE_OPERATIONAL_SCOPE", "OPERATIONAL_SCOPE"],
+      "the qualified persona must be refused by the SCOPE, naming the scope");
+    assert.deepEqual([scopedNoQualification.reason, scopedNoQualification.predicate],
+      ["WORK_ELIGIBILITY_MISSING", "WORK_ELIGIBILITY"],
+      "the scoped persona must be refused by the QUALIFICATION, naming the qualification");
+    assert.notEqual(qualifiedNoScope.reason, scopedNoQualification.reason,
+      "the two authorities have been collapsed into one refusal");
+
+    // Holding BOTH is what reaches the queue -- proving neither refusal above was the capability's.
+    await q(`INSERT INTO eos_workforce.employee_operational_scopes
+               (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by)
+             VALUES ('os-q-parts',$1,'emp-parts','REORDER_QUEUE','taylor',now(),'fixture')`, [T]);
+    const both = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-parts", "reorder.request.read"), capabilityKey: "reorder.request.read", predicates: BOTH,
+    });
+    assert.equal(both.allowed, true, "qualification plus scope must reach the shared queue");
+
+    // AND THE SCOPE IS STILL NOT THE QUALIFICATION: the queue scope alone, with no eligibility predicate
+    // declared, reaches the queue -- which is exactly why the two may never be merged into one key.
+    const scopeOnly = await ctx.authorizeObjectAction(reader, {
+      actor: actor("prn-parts-noqual", "reorder.request.read"), capabilityKey: "reorder.request.read",
+      predicates: [{ kind: "OPERATIONAL_SCOPE", scopeType: "REORDER_QUEUE", scopeId: "taylor" }],
+    });
+    assert.equal(scopeOnly.allowed, true, "queue visibility is decided by the scope the ACTION declares");
   });
 
   await t.test("WORK ORDER future compatibility: own-assignment is expressible, and distinct", async () => {
