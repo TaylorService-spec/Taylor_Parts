@@ -245,11 +245,70 @@ test("every legacy writer calls the guard with its own id, before anything else 
   assert.deepEqual(gated.slice().sort(), [...OPERATION_ACTIONS].sort(), "every governed equipment command action must carry a freeze gate");
 });
 
+/** The three PostgreSQL catalog modules nothing outside src/catalogMaster may reach, while postgres is INACTIVE. */
+const CATALOG_WRITER_MODULES = /postgresPartMasterWriter|postgresEquipmentModelWriter|catalogMasterKernel/;
+
+/**
+ * Does this file reach a PostgreSQL catalog writer?
+ *
+ * The census is over CODE, exactly as every other source census in this file already is (see the copy
+ * tool and snapshot-export checks above, which have always used `stripComments`). This one scanned RAW
+ * text, and a comment is not a module edge.
+ *
+ * The regression: src/eosOps/contextualActionAuthority.ts -- the ACTION-level contextual authorization
+ * seam -- names `catalogMasterKernel` in its header, in prose, listing the seven kernels that share the
+ * `{ tenantId, principalId, capabilities }` actor shape the seam accepts. It imports ./capabilityAuthority,
+ * ./contextualAuthorization and ./grantConditionPolicy and nothing else; the compiled
+ * lib/eosOps/contextualActionAuthority.js contains ZERO occurrences of "catalogMaster". Appeasing the raw
+ * scan would have meant deleting an accurate architectural note to satisfy a probe.
+ *
+ * Everything OUTSIDE a comment still counts -- a static specifier, a require, a dynamic import, a
+ * re-export, a bare identifier, a computed path. This narrows what the census READS, never what it
+ * refuses, and the controls below hold that.
+ */
+const reachesCatalogWriter = (source) => CATALOG_WRITER_MODULES.test(stripComments(source));
+
 test("while PostgreSQL is INACTIVE, nothing outside catalogMaster imports the PostgreSQL catalog writers", () => {
   assert.equal(writerState.CATALOG_WRITER_AUTHORITY.postgres, "INACTIVE");
   const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : /\.(ts|js|mjs)$/.test(f) ? [join(dir, f)] : []));
-  const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && /postgresPartMasterWriter|postgresEquipmentModelWriter|catalogMasterKernel/.test(readFileSync(f, "utf8")));
+  const importers = walk("src").filter((f) => !f.startsWith(CATALOG_DIR) && reachesCatalogWriter(readFileSync(f, "utf8")));
   assert.deepEqual(importers, [], "activating PostgreSQL catalog writers is step 7 and must change CATALOG_WRITER_AUTHORITY in the same change");
+});
+
+test("the catalog-writer census would actually catch a forbidden importer", () => {
+  // POSITIVE CONTROL. A census that refuses nothing is worse than no census, and this one was just
+  // narrowed -- so every route by which a module outside src/catalogMaster could reach a PostgreSQL
+  // catalog writer is restated here and must still be refused.
+  const FORBIDDEN_ROUTES = [
+    ['import { insertPart } from "../catalogMaster/postgresPartMasterWriter";', "a static import"],
+    ["import { insertPart } from '../catalogMaster/postgresPartMasterWriter';", "a single-quoted static import"],
+    ['import type { PartRow } from "../catalogMaster/postgresPartMasterWriter";', "a type-only import"],
+    ['const w = require("../catalogMaster/postgresEquipmentModelWriter");', "a require"],
+    ['const k = await import("../catalogMaster/catalogMasterKernel");', "a dynamic import"],
+    ['export * from "../catalogMaster/postgresPartMasterWriter";', "a re-export"],
+    ['export { CATALOG_CAPABILITIES } from "../catalogMaster/catalogMasterKernel";', "a named re-export"],
+    ["const p = `../catalogMaster/${\"catalogMasterKernel\"}`;", "a computed specifier"],
+    ["const writer = catalogMasterKernel.partWriter;", "a bare identifier reference"],
+    ['import { insertPart } from "../catalogMaster/postgresPartMasterWriter"; // activating step 7', "a trailing comment on a real import"],
+  ];
+  for (const [source, what] of FORBIDDEN_ROUTES) {
+    assert.equal(reachesCatalogWriter(source), true, `the census must still refuse ${what} -- ${JSON.stringify(source)}`);
+  }
+
+  // NEGATIVE CONTROL. Prose naming the module is documentation, not a dependency.
+  const PROSE = [
+    ["// crmAuthorityKernel, employeeCommandKernel, catalogMasterKernel, workOrderLifecycle,", "a line comment naming the kernel"],
+    ["/**\n * The copy is staged by postgresPartMasterWriter at step 7.\n */", "a block comment naming a writer"],
+  ];
+  for (const [source, what] of PROSE) {
+    assert.equal(reachesCatalogWriter(source), false, `a comment is not an import -- ${what}`);
+  }
+
+  // And the real file the raw scan tripped on, verbatim from disk: prose only, no edge.
+  const seam = readFileSync("src/eosOps/contextualActionAuthority.ts", "utf8");
+  assert.match(seam, CATALOG_WRITER_MODULES, "the seam still names the kernel in its header (nothing was renamed)");
+  assert.equal(reachesCatalogWriter(seam), false, "...but only in prose, so it is not an importer");
+  assert.doesNotMatch(readFileSync("lib/eosOps/contextualActionAuthority.js", "utf8"), /catalogMaster/, "and the compiled seam carries no such reference at all");
 });
 
 test("the Part callables map FROZEN and RETIRED to failed-precondition, not internal", () => {

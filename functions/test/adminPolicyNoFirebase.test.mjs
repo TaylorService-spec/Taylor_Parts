@@ -15,6 +15,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+// The three-clause collection fence this suite introduced, now shared so that eos_ops and the legacy
+// inventory mapper are judged by the SAME rule. The reasoning for each clause lives in that module.
+import { namesFirestoreCollection, opaqueFirestoreAccess, stripComments } from "./support/firestoreCollectionFence.mjs";
 
 const POLICY_DIR = "src/adminPolicy";
 
@@ -31,21 +34,6 @@ const TRANSITIONAL_ADAPTERS = Object.freeze({});
 const isTransitional = (file) =>
   Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file) ||
   Object.prototype.hasOwnProperty.call(TRANSITIONAL_ADAPTERS, file.replace(/\//g, "\\"));
-
-/**
- * Source with comments removed.
- *
- * Every check here is about CODE. A header explaining why a layer must never touch Firestore is
- * exactly the comment that should survive -- banning the word outright would delete the reasoning
- * along with the coupling, which is how a boundary loses the note saying why it exists.
- */
-function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trim().startsWith("//"))
-    .join("\n");
-}
 
 function sourceFiles(dir) {
   const out = [];
@@ -116,49 +104,10 @@ test("no Admin policy module writes a Firestore document", () => {
 // single quotes, missed a backtick path, and missed a name held in a variable. All three are
 // refused now, and the proof is in "the guard would actually catch an offence" below.
 
-/** The Firestore accessors that take a collection or a document path, in both SDK spellings. */
-const FIRESTORE_ACCESSOR = "(?:collection|collectionGroup|doc|docRef)";
-
-/** Receivers and handles that only a Firestore caller holds. */
-const FIRESTORE_HANDLE =
-  "(?:db|firestore|firestoreDb|docRef|batch|bulkWriter|getFirestore\\s*\\(\\s*\\)|(?:admin\\s*\\.\\s*)?firestore\\s*\\(\\s*\\))";
-
-/**
- * A Firestore accessor reached from a Firestore handle, WHATEVER it was handed.
- *
- * `db.collection(SOME_CONST)` and `collection(db, name)` are the shapes that hide the collection
- * name behind a variable or a computed string. There is no legitimate reason for this subsystem to
- * hold one at all, so the shape alone is the offence and the argument does not have to be readable.
- */
-function opaqueFirestoreAccess(code) {
-  return (
-    new RegExp(`\\b${FIRESTORE_HANDLE}\\s*\\.\\s*${FIRESTORE_ACCESSOR}\\s*\\(`).test(code) ||
-    new RegExp(`\\b${FIRESTORE_ACCESSOR}\\s*\\(\\s*${FIRESTORE_HANDLE}\\b`).test(code)
-  );
-}
-
-/**
- * A banned collection name REACHING a Firestore accessor. Two routes, because a name can arrive
- * directly or through one hop:
- *
- *   direct   db.collection("users") / collection(db, "users") / doc(db, "users", uid) /
- *            db.doc(`users/${uid}`) / .doc("tenants/t1/users/u1") / db.collection('users')
- *   bound    const COLLECTION = "users";  ...  store.collection(COLLECTION)
- *
- * The quote style and the `users/` path form are the anchor's job now, which is why the old
- * '"users"' and "users/" list entries are gone: they were spellings of one name, and spelling them
- * out is exactly what made the probe match a plain string.
- */
-function namesFirestoreCollection(code, name) {
-  if (new RegExp(`\\b${FIRESTORE_ACCESSOR}\\s*\\(\\s*[^)]*?['"\`][^'"\`]*\\b${name}\\b`).test(code)) return true;
-  const bindings = code.matchAll(
-    new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)[^=\\n]*=\\s*['"\`][^'"\`]*\\b${name}\\b`, "g"),
-  );
-  for (const [, bound] of bindings) {
-    if (new RegExp(`\\b${FIRESTORE_ACCESSOR}\\s*\\([^)]*\\b${bound}\\b`).test(code)) return true;
-  }
-  return false;
-}
+// `namesFirestoreCollection` (direct + bound) and `opaqueFirestoreAccess` now live in
+// test/support/firestoreCollectionFence.mjs, imported at the top of this file. They moved UNCHANGED;
+// the controls in "the guard would actually catch an offence" below still prove all three clauses,
+// and now prove them for every suite that shares the fence.
 
 /**
  * The collections this subsystem REPLACES, as BARE names. Naming one in code would mean the policy

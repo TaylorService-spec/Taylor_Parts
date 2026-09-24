@@ -207,12 +207,31 @@ on:
       - "functions/test/catalogReferenceAuthority.test.mjs"
       - "functions/test/catalogReferenceAuthorityPostgres.test.mjs"
       # CATALOG CUTOVER (required registration): the unwired PostgreSQL catalog writers, the fenced copy/verify tool and
-      # its snapshot export, and their two suites run in test:adminPolicy / test:adminPolicyPostgres.
+      # its snapshot export, and the suites that run in test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/catalogMaster/**"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
+      # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
+      # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
+      - "functions/test/catalogFreezeParity.test.mjs"
+      - "functions/test/support/legacyCatalogMasterCommands.mjs"
+      # The supplier and work-order halves of the catalog authority, same lane, previously unfiltered.
+      - "functions/test/supplierCatalogAuthority.test.mjs"
+      - "functions/test/supplierCatalogPostgres.test.mjs"
+      - "functions/test/workOrderCatalogAuthorityPostgres.test.mjs"
+      # The eos_ops PART-ID CONTRACT gate and the Part Master repository suite. Both were named by NO npm script and
+      # NO workflow: neither green nor red, simply unexercised. Now in test:adminPolicy.
+      - "functions/test/eosOpsPartIdContract.test.mjs"
+      - "functions/test/partMasterRepository.test.mjs"
+      # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
+      # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
+      - "functions/test/administrationReadAuthority.test.mjs"
+      # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
+      # legacyInventoryMovementMapping all import it, so a change to it must run them.
+      - "functions/test/support/firestoreCollectionFence.mjs"
       # COMMERCIAL C5 (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
       # their modules and suites (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/commercialMigration/**"
@@ -497,12 +516,31 @@ on:
       - "functions/test/catalogReferenceAuthority.test.mjs"
       - "functions/test/catalogReferenceAuthorityPostgres.test.mjs"
       # CATALOG CUTOVER (required registration): the unwired PostgreSQL catalog writers, the fenced copy/verify tool and
-      # its snapshot export, and their two suites run in test:adminPolicy / test:adminPolicyPostgres.
+      # its snapshot export, and the suites that run in test:adminPolicy / test:adminPolicyPostgres.
       - "functions/src/catalogMaster/**"
       - "functions/scripts/catalogCutover.js"
       - "functions/scripts/exportCatalogSnapshot.js"
       - "functions/test/catalogMaster.test.mjs"
       - "functions/test/catalogCutoverPostgres.test.mjs"
+      # The BEHAVIOURAL half of the freeze proof, and the command fixture it reads. Both already ran inside
+      # test:adminPolicy while being named by NO path filter, so a PR touching only them triggered nothing. The
+      # comment above used to say "their two suites"; catalogFreezeParity was the third and went unlisted.
+      - "functions/test/catalogFreezeParity.test.mjs"
+      - "functions/test/support/legacyCatalogMasterCommands.mjs"
+      # The supplier and work-order halves of the catalog authority, same lane, previously unfiltered.
+      - "functions/test/supplierCatalogAuthority.test.mjs"
+      - "functions/test/supplierCatalogPostgres.test.mjs"
+      - "functions/test/workOrderCatalogAuthorityPostgres.test.mjs"
+      # The eos_ops PART-ID CONTRACT gate and the Part Master repository suite. Both were named by NO npm script and
+      # NO workflow: neither green nor red, simply unexercised. Now in test:adminPolicy.
+      - "functions/test/eosOpsPartIdContract.test.mjs"
+      - "functions/test/partMasterRepository.test.mjs"
+      # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
+      # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
+      - "functions/test/administrationReadAuthority.test.mjs"
+      # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
+      # legacyInventoryMovementMapping all import it, so a change to it must run them.
+      - "functions/test/support/firestoreCollectionFence.mjs"
       # COMMERCIAL C5 (required registration): the MIGRATION-ONLY snapshot export, the fenced census/copy/verify tool,
       # their modules and suites (test:adminPolicy / test:adminPolicyPostgres).
       - "functions/src/commercialMigration/**"
