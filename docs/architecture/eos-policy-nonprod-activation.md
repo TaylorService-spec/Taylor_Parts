@@ -272,15 +272,37 @@ Render's deploy lifecycle, not the build:
 
 | variable | value |
 |---|---|
-| `VITE_EOS_API_BASE_URL` | the EOS API origin. Absent means the panels report NOT CONFIGURED, which is the current state everywhere. |
+| `VITE_EOS_API_BASE_URL` | the EOS API origin. Absent means the panels report NOT CONFIGURED. |
+
+> **CORRECTION (2026-09-23, Wave 7 / Lane AD).** This row used to end "…which is the current state
+> everywhere", and **that sentence has been false since 2026-09-10**. It was read as a live blocker
+> for the EOS navigation authority seam long after the Owner had cleared it.
+>
+> What is actually true: the non-production Vercel project **has** `VITE_EOS_API_BASE_URL` set, and
+> Vite inlined `https://eos-api-nonprod.onrender.com` into the shipped bundle — measured in the
+> served asset, not read from a dashboard (`eos-real-nonprod-activation.md` §2). It **is** absent for
+> a local build and for a production build, and that is deliberate: `config/environments.json`
+> declares `eosApi: null` for every environment except `platform-sandbox`, so production has no EOS
+> API to reach and NOT CONFIGURED is the correct answer there.
+>
+> **Section 5 below is a plan, written before any of it existed.** Everything in it was carried out
+> on 2026-09-10; the current state lives in `eos-real-nonprod-activation.md` §0, and the
+> repository-side contract is pinned by `scripts/eosApiEnvironmentContract.test.mjs`. Configuring the
+> API base URL is NOT the same as enabling the seam: `EOS_NAVIGATION_AUTHORITY_READY` is `false` in
+> every environment, production included, and stays that way.
 
 ### Actions that require the Owner
+
+**DONE 2026-09-10 — kept as the record of what was asked for, not as outstanding work.**
 
 1. Create the Render PostgreSQL instance and supply `DATABASE_URL` to the service. **No credential
    is guessed, none is committed, and no developer's existing database is used.**
 2. Create the Render Web Service and set the variables above.
-3. Provide service-account credentials for token verification.
-4. Set `VITE_EOS_API_BASE_URL` in the Vercel environment.
+3. Provide service-account credentials for token verification. *(Not needed after all — verifying an
+   ID token requires `GOOGLE_CLOUD_PROJECT` and Google's public certificates, no credential. See
+   `render.yaml`'s identity block and `functions/test/eosApiBlueprint.test.mjs`.)*
+4. Set `VITE_EOS_API_BASE_URL` in the Vercel environment. *(Done — proved by the literal in the
+   served bundle.)*
 5. Run the bootstrap, naming the first administrator's subject:
    ```
    node functions/scripts/bootstrapEosTenant.mjs \

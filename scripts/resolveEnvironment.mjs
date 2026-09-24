@@ -31,6 +31,33 @@ export const REQUIRED_FIREBASE_KEYS = Object.freeze([
   'functionsRegion',
 ]);
 
+/**
+ * Every field an environment that HAS an EOS trusted API must state.
+ *
+ * `baseUrl` is the origin the browser would be pointed at. `service` and `healthPath` are what
+ * render.yaml declares, so the registry and the Blueprint can be compared rather than assumed to
+ * agree. `frontendEnvironmentVariable` names the ONE variable that actually configures the client,
+ * so nobody reads this block as the thing that does.
+ *
+ * THE ALLOWED BROWSER ORIGIN IS DELIBERATELY NOT A FIELD. It is the other half of the connectivity
+ * contract and it matters just as much -- a value that has drifted from the frontend's real hostname
+ * does not degrade, it refuses every call the application makes -- but it is a branded hostname, and
+ * this registry is guarded against carrying brand identity (scripts/deploymentDrift.test.mjs). It has
+ * one home, render.yaml's EOS_ALLOWED_ORIGINS, which is the value the API actually compares against;
+ * `allowedBrowserOriginAuthority` points at it rather than copying it, because two copies of an
+ * origin is how one of them goes stale.
+ *
+ * None of these is a secret. A service URL is an address; an API key would be a credential, and no
+ * credential belongs in this registry (a test asserts it).
+ */
+export const REQUIRED_EOS_API_KEYS = Object.freeze([
+  'baseUrl',
+  'service',
+  'healthPath',
+  'allowedBrowserOriginAuthority',
+  'frontendEnvironmentVariable',
+]);
+
 export const READINESS_KEYS = Object.freeze([
   'RECEIVING_TRANSPORT_READY',
   // Scanner Program Phase A. Registered here so an environment that FORGETS it is a build
@@ -288,6 +315,51 @@ export function resolveEnvironment(registry, id, { requireFirebaseIdentity = tru
         'INCOMPLETE_READINESS',
         `Environment '${requested}' is missing boolean readiness flag '${key}'. ` +
           'Readiness must be explicit per environment — an absent flag must never default to enabled.',
+      );
+    }
+  }
+
+  // EOS trusted API address. Held to the same EXPLICIT-OR-ERROR rule as readiness: an environment
+  // that simply forgets the key is a build error, never a silent "there isn't one" -- because the
+  // silent version is the state this program was already in, where the only record of the deployed
+  // non-production API lived in a Vercel dashboard and a paragraph of prose that had gone stale.
+  //
+  // `null` is a real, sayable answer: this environment has no EOS API. Production says null, and that
+  // is the fence -- a production frontend has nowhere to send a policy or experience read.
+  //
+  // VALIDATED HERE, DELIBERATELY NOT RETURNED BELOW, for the same reason as the private-AI
+  // classification: projecting it would put an API address into the browser bundle from a second
+  // source, and the frontend must keep reading exactly one -- VITE_EOS_API_BASE_URL, inlined by Vite.
+  // A registry that could also configure the transport would be a second mechanism for the one thing
+  // this registry exists to stop having two of.
+  if (!('eosApi' in env)) {
+    throw new EnvironmentResolutionError(
+      'INCOMPLETE_EOS_API',
+      `Environment '${requested}' does not declare 'eosApi'. Declare the EOS trusted API address, ` +
+        'or null if it has none — an absent key must never be read as "there is no API".',
+    );
+  }
+  if (env.eosApi !== null) {
+    if (typeof env.eosApi !== 'object' || Array.isArray(env.eosApi)) {
+      throw new EnvironmentResolutionError(
+        'INVALID_EOS_API',
+        `Environment '${requested}' declares a malformed 'eosApi' (expected an object or null).`,
+      );
+    }
+    for (const key of REQUIRED_EOS_API_KEYS) {
+      const value = env.eosApi[key];
+      if (typeof value !== 'string' || value.length === 0) {
+        throw new EnvironmentResolutionError(
+          'INCOMPLETE_EOS_API',
+          `Environment '${requested}' is missing EOS API '${key}'.`,
+        );
+      }
+    }
+    if (!env.eosApi.baseUrl.startsWith('https://')) {
+      throw new EnvironmentResolutionError(
+        'INSECURE_EOS_API',
+        `Environment '${requested}' declares a non-HTTPS EOS API base URL. A browser sends a ` +
+          'bearer ID token on every call; plaintext is not a configuration choice.',
       );
     }
   }
