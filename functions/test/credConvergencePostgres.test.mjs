@@ -140,7 +140,25 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     assert.deepEqual(rows, [], "CRED evidence may only produce CRED grants");
   });
 
-  await t.test("the deferred decisions stay deferred", async () => {
+  await t.test("the deferred decisions stay deferred, and the one released key is pinned exactly", async () => {
+    // THE HOLD MOVED BY EXACTLY ONE KEY, AND THIS ASSERTION MOVED WITH IT -- it was not loosened.
+    //
+    // This test used to say "all nine are ungranted", which was the whole truth until migration
+    // 1762128000000 applied the Owner's ruling releasing `workflowDefinition.read` to admin and
+    // owner and NOTHING else. Rewriting it as "at most one of them may have holders" would be a
+    // weakening: the next key released by accident would pass. So the expectation is restated as
+    // TWO exact facts instead of one, and the eight that are still held are held exactly as
+    // strictly as before:
+    //
+    //   * the EIGHT still-deferred keys (three workOrder.lifecycle.* plus the five
+    //     workflowDefinition mutations) must have ZERO grants -- unchanged;
+    //   * `workflowDefinition.read` must have EXACTLY the two grants the ruling names, admin and
+    //     owner, named by Role key rather than counted. A third holder fails here, and so does a
+    //     silent re-grant to a role the ruling did not name.
+    //
+    // migrationChainSafety.test.mjs proves the same population from the migration SOURCE; this
+    // proves it from the migrated DATABASE.
+    const RELEASED = "workflowDefinition.read";
     const { rows } = await pool.query(`
       SELECT c.key, count(rc.role_id)::int AS grants
         FROM eos_policy.capabilities c
@@ -148,7 +166,27 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
        WHERE c.key LIKE 'workOrder.lifecycle.%' OR c.key LIKE 'workflowDefinition.%'
        GROUP BY c.key ORDER BY c.key`);
     assert.equal(rows.length, 9, "three lifecycle + six workflow");
-    for (const r of rows) assert.equal(r.grants, 0, `${r.key} must remain ungranted`);
+    for (const r of rows) {
+      if (r.key === RELEASED) continue;
+      assert.equal(r.grants, 0, `${r.key} must remain ungranted -- no Owner ruling has released it`);
+    }
+    assert.ok(rows.some((r) => r.key === RELEASED),
+      `${RELEASED} must still be a registered capability -- the released key cannot go missing`);
+
+    const holders = await pool.query(
+      `SELECT r.key FROM eos_policy.role_capabilities rc
+         JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+         JOIN eos_policy.roles r        ON r.id = rc.role_id
+        WHERE c.key = $1 ORDER BY r.key`, [RELEASED]);
+    assert.deepEqual(holders.rows.map((r) => r.key), ["admin", "owner"],
+      `${RELEASED} is released to exactly admin and owner by migration 1762128000000, and to nobody else`);
+
+    // And no direct Principal grant was minted alongside it: the released key is a ROLE grant only.
+    const direct = await pool.query(
+      `SELECT count(*)::int n FROM eos_policy.principal_capabilities pc
+         JOIN eos_policy.capabilities c ON c.id = pc.capability_id
+        WHERE c.object_key = 'workflowDefinition'`);
+    assert.equal(direct.rows[0].n, 0, "no direct Principal grant exists on any workflowDefinition capability");
   });
 
   await t.test("no direct Principal grant was manufactured", async () => {
