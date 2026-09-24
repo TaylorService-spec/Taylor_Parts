@@ -343,6 +343,12 @@ on:
       - "functions/src/adminPolicy/inMemoryPolicyRepository.ts"
       - "functions/scripts/bindOwnerPersonaIdentity.js"
       - "functions/test/ownerIdentityBindingPostgres.test.mjs"
+      # LANE BG: the GENERIC governed identity re-bind operator. rebindPrincipalIdentity is absent from
+      # ADMIN_MUTATION_OPERATIONS, so an operator script is its only entry point -- and the only
+      # committed one was Owner-only. This is the general one, with its fences and its preservation
+      # measurements. It runs in test:adminPolicyPostgres.
+      - "functions/scripts/rebindPrincipalIdentity.js"
+      - "functions/test/principalIdentityRebindPostgres.test.mjs"
       # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
       # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
       # named here for the same reason every entry above is -- a suite in a registered job that no
@@ -617,6 +623,12 @@ on:
       # is enumerated exhaustively, an unknown or duplicated applied name fails, and a pending
       # migration back-dated into applied history fails. It runs in test:adminPolicyPostgres.
       - "functions/test/migrationLedgerOrderGuard.test.mjs"
+      # LANE BG: the GENERIC governed identity re-bind operator. rebindPrincipalIdentity is absent from
+      # ADMIN_MUTATION_OPERATIONS, so an operator script is its only entry point -- and the only
+      # committed one was Owner-only. This is the general one, with its fences and its preservation
+      # measurements. It runs in test:adminPolicyPostgres.
+      - "functions/scripts/rebindPrincipalIdentity.js"
+      - "functions/test/principalIdentityRebindPostgres.test.mjs"
       # functions/package.json was named by the pull_request filter and NOT by this one, so an edit
       # to the deploy command itself could reach main without ever triggering the suite that proves
       # it. Named here too.
