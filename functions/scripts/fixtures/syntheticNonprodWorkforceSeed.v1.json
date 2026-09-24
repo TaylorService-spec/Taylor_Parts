@@ -5,7 +5,8 @@
   "rulings": {
     "jobRole": "Job Role authority is NOT YET IMPLEMENTED in PostgreSQL. Synthetic Job Role values are seed-manifest metadata only and are not authoritative runtime data.",
     "principals": "eos-synthetic-nonprod Principals are non-authenticating fixture Principals. No authentication verifier recognizes this identity provider. They exist only to exercise governed Principal, Employee-link, membership, and Security Role relationships in the synthetic nonprod acceptance world.",
-    "accountability": "GOVERNED/SEED: accountable_employee_id is persisted only from the value the governed establishment + mint produced. This is not live write activation and does not close activation blocker #2."
+    "accountability": "GOVERNED/SEED: accountable_employee_id is persisted only from the value the governed establishment + mint produced. This is not live write activation and does not close activation blocker #2.",
+    "commercialPendingC5": "BLOCKED_PENDING_C5 (Owner ruling 2026-09-23). The eight records `commercial` declares below are eight of the twelve declared-synthetic Commercial rows that were removed from nonprod by the authorized governed cleanup (functions/scripts/commercialSyntheticCleanup.js, commit 106e4292) BECAUSE they blocked Commercial C5: scripts/commercialC5.js refuses every option that would tolerate target rows the snapshot does not hold, so a non-empty target stops the copy outright. This v1 seed wrote them unconditionally and would therefore re-arm exactly the blocker the cleanup cleared. It no longer writes any of them. What is missing is not authority -- eos_commercial, createCommercialRecord, establishCreationAccountablePerson and the mint are all correct and ready -- it is the DATA, which Commercial C5 owns."
   },
   "eligibilityPolicy": {
     "policyId": "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1",
@@ -67,6 +68,13 @@
     { "id": "synthetic-np-loc-retail", "account": "synthetic-np-acct-retail", "name": "SYNTHETIC NONPROD Retail Site (fixture)" },
     { "id": "synthetic-np-loc-national", "account": "synthetic-np-acct-national", "name": "SYNTHETIC NONPROD National Account Site (fixture)" }
   ],
+  "commercialSeedState": {
+    "status": "BLOCKED",
+    "blockedBy": "COMMERCIAL_RECORDS_PENDING_C5",
+    "$comment": "THE GATE, read before any Commercial write. Same vocabulary and the same blocker code that scripts/fixtures/sampleCompany.v2.json already uses; no second mechanism was invented. The eight records in `commercial` below stay DECLARED and are NOT removed from this manifest: scripts/commercialC5.js reads BOTH manifests to classify a target row as DECLARED_SYNTHETIC rather than UNKNOWN, and sampleCompany.v2.json's SUPERSET proof needs these eight v1 numbers carried forward byte-identically. What changed is that this seed WRITES none of them. Unlike sampleCompany.v2.json, BLOCKED is the ONLY status this v1 manifest may carry: v1 has no unblocked branch at all, so no caller-supplied manifest can reopen the write path.",
+    "unblockedBy": "SAMPLE_COMPANY_V3 -- and never this v1 seed. See `sampleCompanyV3` in scripts/fixtures/sampleCompany.v2.json. Not before Commercial C5 copy + verify has completed for this tenant.",
+    "seededBy": "SAMPLE_COMPANY_V3"
+  },
   "commercial": [
     { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0001", "account": "synthetic-np-acct-retail", "owner": "retail-sales-a", "accountable": "DERIVE_FROM_OWNER" },
     { "kind": "OPPORTUNITY", "number": "SYN-NP-OPP-0002", "account": "synthetic-np-acct-retail", "owner": "retail-sales-b", "accountable": "general-manager" },

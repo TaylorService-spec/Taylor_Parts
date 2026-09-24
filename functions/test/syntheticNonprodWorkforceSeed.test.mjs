@@ -208,3 +208,105 @@ test("(16) no deferred foreign key, no schema change, and no direct Principal, m
   const updates = (src.match(/UPDATE [a-z_.$`{}]+/g) ?? []);
   assert.equal(updates.length, 1, "the only direct UPDATE is the GOVERNED/SEED accountable person");
 });
+
+// ════════ BLOCKED_PENDING_C5: THE LEGACY v1 SEEDER CANNOT RE-ARM THE COMMERCIAL C5 BLOCKER ════════
+//
+// Owner ruling 2026-09-23: "The current v1 seeder MUST NOT recreate the twelve intentionally removed
+// Commercial C5 blockers. Current Commercial acceptance state: BLOCKED_PENDING_C5."
+//
+// THE MEASURED HAZARD. This seeder iterated `manifest.commercial` and wrote every record through the governed
+// Commercial writer UNCONDITIONALLY, with no gate of any kind. The manifest declares eight of the twelve rows
+// the authorized governed cleanup removed from nonprod (commit 106e4292) BECAUSE they blocked Commercial C5,
+// so a single re-run put eight of them back. Three independent rings now stop that, each proved on its own.
+
+const cleanup = require(join(FUNCTIONS_DIR, "scripts/commercialSyntheticCleanup.js"));
+const c5 = require(join(FUNCTIONS_DIR, "scripts/commercialC5.js"));
+const { assertCommercialWriteAllowed, COMMERCIAL_BLOCKER_CODE, COMMERCIAL_SEED_BLOCKED } = require(SCRIPT_PATH);
+
+/** The eight v1 numbers named as literals, so a manifest edit cannot silently change what is being proved. */
+const V1_COMMERCIAL_NUMBERS = [
+  "SYN-NP-OPP-0001", "SYN-NP-OPP-0002", "SYN-NP-OPP-0003", "SYN-NP-OPP-0004",
+  "SYN-NP-SA-0001", "SYN-NP-SA-0002", "SYN-NP-SO-0001", "SYN-NP-SO-0002",
+];
+
+test("RE-ARM PROOF: the eight v1 declarations ARE removed Commercial C5 blockers, and are still declared", () => {
+  // Gate the WRITE, not the DECLARATION. The declarations must survive: scripts/commercialC5.js reads them from
+  // BOTH manifests to classify a target row DECLARED_SYNTHETIC rather than UNKNOWN, and sampleCompany.v2.json's
+  // SUPERSET proof needs these eight numbers carried forward byte-identically.
+  assert.deepEqual(MANIFEST.commercial.map((r) => r.number), V1_COMMERCIAL_NUMBERS);
+  assert.equal(cleanup.AUTHORIZED_POPULATION.total, 12);
+  const removed = cleanup.DELETE_SET.map((r) => r.number);
+  for (const number of V1_COMMERCIAL_NUMBERS) {
+    assert.ok(removed.includes(number), `${number} is not one of the twelve removed rows -- the gate is aimed at the wrong set`);
+  }
+  // commercialC5.js still sees all eight, still attributed to this v1 manifest.
+  const provenance = new Map(c5.declaredSyntheticSeedProvenance().map((p) => [p.number, p]));
+  assert.equal(c5.declaredSyntheticSeedNumbers().length, 12);
+  for (const number of V1_COMMERCIAL_NUMBERS) {
+    assert.ok(provenance.get(number)?.declaredBy.includes("SYNTHETIC_NONPROD_WORKFORCE_SEED"),
+      `${number} is no longer declared by the v1 manifest; C5 would classify the row UNKNOWN`);
+  }
+});
+
+test("RE-ARM PROOF ring 1: the v1 manifest has NO unblocked Commercial state, and a tampered one is refused", () => {
+  assert.equal(MANIFEST.commercialSeedState.status, "BLOCKED");
+  assert.equal(MANIFEST.commercialSeedState.blockedBy, COMMERCIAL_BLOCKER_CODE);
+  assert.equal(COMMERCIAL_BLOCKER_CODE, "COMMERCIAL_RECORDS_PENDING_C5", "the blocker code must stay the one sampleCompany.v2.json declares");
+  assert.doesNotThrow(() => validateManifest(MANIFEST));
+  // Every way a caller could try to reopen the write path, including the status v2 legitimately allows.
+  for (const mutate of [
+    (m) => { delete m.commercialSeedState; },
+    (m) => { m.commercialSeedState.status = "SEEDED"; },
+    (m) => { m.commercialSeedState.status = "UNBLOCKED"; },
+    (m) => { m.commercialSeedState.blockedBy = "SOMETHING_ELSE"; },
+  ]) {
+    const m = clone();
+    mutate(m);
+    assert.throws(() => validateManifest(m), /MANIFEST_INVALID.*commercialSeedState/s, "a tampered gate was accepted");
+  }
+  // And the declarations are still FULLY validated while blocked -- a declaration nobody checks rots.
+  const ineligible = clone();
+  ineligible.commercial[1].accountable = "technician-on-leave";
+  assert.throws(() => validateManifest(ineligible), /not eligible under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1/);
+});
+
+test("RE-ARM PROOF ring 2: the seed accounts every declared record BLOCKED and opens no client for it", () => {
+  const runtime = code().slice(code().indexOf("async function seedSyntheticNonprodWorkforce"));
+  const loop = runtime.slice(runtime.indexOf("for (const r of manifest.commercial)"));
+  const blocked = loop.indexOf("summary.commercial.blocked += 1");
+  const skip = loop.indexOf("continue;");
+  const connect = loop.indexOf("pool.connect()");
+  assert.ok(blocked >= 0 && skip > blocked, "the blocked record is not accounted before the loop continues");
+  assert.ok(connect > skip, "the seed reaches a client before the Commercial gate decides");
+  assert.match(loop, /summary\.accountablePersons\.blocked \+= 1/, "the accountable person half is not accounted blocked");
+  // NOT SILENT: the run states its refusal, the blocker and every number it declined to write.
+  assert.match(runtime, /reason: COMMERCIAL_SEED_BLOCKED/);
+  assert.match(runtime, /blockedRecords: blockedCommercial/);
+});
+
+test("RE-ARM PROOF ring 3: the governed Commercial writer is guarded, and the guard always refuses", () => {
+  assert.equal(COMMERCIAL_SEED_BLOCKED, "COMMERCIAL_SEED_BLOCKED_PENDING_C5");
+  for (const number of V1_COMMERCIAL_NUMBERS) {
+    assert.throws(() => assertCommercialWriteAllowed(number), (err) => {
+      assert.equal(err.name, "SyntheticSeedError");
+      assert.equal(err.code, COMMERCIAL_SEED_BLOCKED);
+      assert.match(err.message, new RegExp(`^${COMMERCIAL_SEED_BLOCKED}: ${number}: BLOCKED_PENDING_C5`));
+      return true;
+    }, `${number} was allowed through the last gate`);
+  }
+  // The guard sits between the establishment and the writer, so even a re-armed loop refuses before it writes.
+  const src = code();
+  assert.ok(src.indexOf("assertCommercialWriteAllowed(r.number)") > src.indexOf("establishCreationAccountablePerson("));
+  assert.ok(src.indexOf("assertCommercialWriteAllowed(r.number)") < src.indexOf("createCommercialRecord(client"));
+});
+
+test("RE-ARM PROOF: the activation dependency is stated, and v1 is never the thing that lifts it", () => {
+  // W5. Not implemented here: post-C5 Commercial fixtures are designed and sealed as SAMPLE COMPANY V3, and
+  // only after Commercial C5 copy AND verify have completed for this tenant.
+  assert.match(MANIFEST.commercialSeedState.unblockedBy, /SAMPLE_COMPANY_V3/);
+  assert.match(MANIFEST.commercialSeedState.unblockedBy, /never this v1 seed/);
+  assert.match(MANIFEST.commercialSeedState.unblockedBy, /Commercial C5 copy \+ verify/);
+  assert.equal(MANIFEST.commercialSeedState.seededBy, "SAMPLE_COMPANY_V3");
+  assert.match(MANIFEST.rulings.commercialPendingC5, /BLOCKED_PENDING_C5/);
+  assert.match(MANIFEST.rulings.commercialPendingC5, /commercialSyntheticCleanup\.js/);
+});
