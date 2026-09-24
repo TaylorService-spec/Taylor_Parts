@@ -212,6 +212,29 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return row;
       },
 
+      setPrincipalIdentity: async (principalId, input) => {
+        // TENANT-SCOPED, stated here in the same place the real adapter states it, so the two
+        // adapters refuse the same call rather than one of them being the only real fence.
+        const member = t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId);
+        const found = t.principals.find((x) => x.id === principalId);
+        if (!found || !member) throw new PolicyStoreError("principal not found in this tenant");
+        const clash = t.principals.find(
+          (x) => x.id !== principalId
+            && x.identityProvider === input.identityProvider
+            && x.externalSubject === input.externalSubject,
+        );
+        if (clash) throw new PolicyStoreError("another principal already holds that identity");
+        const updated: PrincipalRecord = {
+          ...found,
+          identityProvider: input.identityProvider,
+          externalSubject: input.externalSubject,
+          displayName: input.displayName ?? null,
+          updatedAt: this.now(),
+        };
+        t.principals[t.principals.indexOf(found)] = updated;
+        return updated;
+      },
+
       createTenantMembership: async (principalId, status) => {
         if (t.memberships.some((m) => m.tenantId === tenantId && m.principalId === principalId)) {
           throw new PolicyStoreError("membership already exists");

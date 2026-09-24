@@ -35,6 +35,7 @@ import type {
   ObjectRecord,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
+  PrincipalRecord,
   RoleObjectPermissionRecord,
   TenantId,
   WorkflowVersionRecord,
@@ -508,6 +509,121 @@ export async function setFieldPermissionOverride(
       before,
       after: Object.keys(override).length === 0 ? null : { roleId, fieldId, override },
     });
+  });
+}
+
+// ════════════════════ PRINCIPAL IDENTITY BINDING — OWNER, GENERAL MANAGER OR ADMIN ════════════════════
+
+export interface RebindPrincipalIdentityInput {
+  readonly principalId: string;
+  readonly identityProvider: string;
+  readonly externalSubject: string;
+  readonly displayName?: string | null;
+  readonly reason?: string | null;
+}
+
+/**
+ * Change WHICH EXTERNAL IDENTITY authenticates as an existing Principal. Nothing else.
+ *
+ * ════════════════════ WHY THIS COMMAND HAS TO EXIST ════════════════════
+ *
+ * The identity model is ONE external identity per Principal: `eos_policy.principals` carries
+ * `(identity_provider, external_subject)` under a UNIQUE constraint and there is no separate
+ * identity-binding table. A Principal provisioned against a provider no verifier recognizes is
+ * therefore a Principal that can never authenticate, and there is no way to ADD a second binding to
+ * it -- so the only governed route from "authority fixture" to "account" is to move the binding it
+ * already has.
+ *
+ * Before this command the only route was an UPDATE typed into a database client. That is the act the
+ * governance rules forbid, and forbidding it while providing no alternative is what left the
+ * substitution happening by hand. This is the alternative: the same two columns, reached through the
+ * authority gate, the transaction, the version bump and the audit event that every other policy
+ * mutation goes through.
+ *
+ * ════════════════════ WHAT IT CANNOT DO ════════════════════
+ *
+ *   NOT AN AUTHORITY CHANGE   The Principal id does not move, and the id is what every assignment,
+ *                             membership, employee link, direct grant and audit row references. The
+ *                             set of Roles and capabilities before and after is the SAME SET, by
+ *                             construction rather than by a check.
+ *   NOT A CREATE              A Principal that does not exist, or is not an ACTIVE member of the
+ *                             actor's tenant, is refused. This never mints a Principal, so it can
+ *                             never be used to introduce an authority holder.
+ *   NOT A MERGE               If another Principal already holds the target identity, the store
+ *                             refuses. Two Principals for one subject would split one human's Roles;
+ *                             silently folding them together would be worse.
+ *   NOT A STATUS CHANGE       There is no status parameter. A disabled Principal stays disabled.
+ *
+ * ════════════════════ THE VERSION BUMP ════════════════════
+ *
+ * The capability set is unchanged, so the bump is not required for correctness -- it is the
+ * conservative direction. Any access context cached against this Principal was resolved for a
+ * different login, and the resolver's qualification rule only ever EXCLUDES grants stamped ABOVE the
+ * current version, so raising the current version can invalidate a cache but can never invalidate an
+ * existing grant.
+ *
+ * NO-OP IS SILENT. Re-stating the binding a Principal already has writes no row and NO AUDIT EVENT:
+ * an audit trail in which half the entries record that nothing happened is an audit trail nobody
+ * reads.
+ */
+export async function rebindPrincipalIdentity(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  input: RebindPrincipalIdentityInput,
+): Promise<PrincipalRecord> {
+  // Naming who a Principal IS is assignment-shaped authority -- the same gate that admits a
+  // Principal to the tenant in the first place. It is deliberately not a weaker one.
+  requireAdministrationAuthority(actor.heldRoleKeys, "assignRole");
+  const principalId = nonEmpty(input.principalId, "principalId");
+  const identityProvider = nonEmpty(input.identityProvider, "identityProvider");
+  const externalSubject = nonEmpty(input.externalSubject, "externalSubject");
+
+  const principal = await repo.getPrincipal(principalId);
+  if (!principal) throw new PolicyValidationError("principal not found");
+
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+
+  const displayName = input.displayName === undefined ? principal.displayName : input.displayName;
+  if (
+    principal.identityProvider === identityProvider
+    && principal.externalSubject === externalSubject
+    && principal.displayName === displayName
+  ) {
+    return principal;
+  }
+
+  const clash = await repo.getPrincipalBySubject(identityProvider, externalSubject);
+  if (clash && clash.id !== principalId) {
+    throw new PolicyValidationError("another principal already holds that identity");
+  }
+
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    const updated = await tx.setPrincipalIdentity(principalId, {
+      identityProvider,
+      externalSubject,
+      displayName,
+    });
+    await tx.bumpAccessVersion(principalId);
+    await tx.appendAudit({
+      ...auditBase(actor, "rebindPrincipalIdentity", "principal", principalId, input.reason ?? null),
+      // BOTH BINDINGS, named. "who could log in as this authority before, and who can now" is the
+      // only question this event will ever be asked, and an event recording only the new value
+      // cannot answer it.
+      before: {
+        identityProvider: principal.identityProvider,
+        externalSubject: principal.externalSubject,
+        displayName: principal.displayName,
+      },
+      after: {
+        identityProvider: updated.identityProvider,
+        externalSubject: updated.externalSubject,
+        displayName: updated.displayName,
+      },
+    });
+    return updated;
   });
 }
 

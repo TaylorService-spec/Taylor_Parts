@@ -33,7 +33,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -373,6 +373,65 @@ for (const [label, args, env, pattern] of [
     assert.match(out, pattern);
   });
 }
+
+// ============================ THE OWNER PERSONA'S AUTHENTICATION BINDING ============================
+//
+// scripts/bindOwnerPersonaIdentity.js provisions a nonprod authentication identity and re-points the
+// canonical Owner Principal's external binding at it (--apply), through rebindPrincipalIdentity. It
+// administers as a NAMED Principal, has no production mode, creates no tenant, Employee, Principal,
+// Role or capability grant, and must refuse before `pg` or lib/ is resolved.
+//
+// IT MUST ALSO REFUSE BEFORE IT COULD CONTACT AN IDENTITY PROVIDER. The Firebase project is named on
+// the command line and checked against the registry rather than derived from it, the password comes
+// only from a named environment variable, and the account must be a `@sandbox.invalid` fixture --
+// each of those is a refusal reached before the first network call, which is why they are proved
+// here beside the database fence rather than in the PostgreSQL suite.
+const OWNER_BINDING = "scripts/bindOwnerPersonaIdentity.js";
+const BINDING_ENV = { ...EMP_ENV, OWNER_BIND_PW: "a-sufficiently-long-fixture-password" };
+const OWNER_BINDING_ARGS = [
+  "--environment", "platform-sandbox", "--projectId", "eos-platform-sandbox",
+  "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op",
+  "--adminPrincipalId", "p-1", "--authIdentityEmail", "eos-owner@sandbox.invalid",
+  "--authPasswordEnv", "OWNER_BIND_PW", "--apply",
+];
+const swapArg = (args, from, to) => args.map((a) => (a === from ? to : a));
+for (const [label, args, env, pattern] of [
+  ["no environment", OWNER_BINDING_ARGS.filter((a) => a !== "--environment" && a !== "platform-sandbox"), BINDING_ENV, /--environment is required/],
+  ["production environment", swapEnv(OWNER_BINDING_ARGS, "taylor-parts-production"), BINDING_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", OWNER_BINDING_ARGS, { ...BINDING_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(OWNER_BINDING_ARGS, "platform-certification"), BINDING_ENV, /Certification world, which is frozen/],
+  ["no databaseUrlEnv", OWNER_BINDING_ARGS.filter((a) => a !== "--databaseUrlEnv" && a !== "EMP_FENCE_DB"), BINDING_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["no tenant key", OWNER_BINDING_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), BINDING_ENV, /--tenantKey is required/],
+  ["no performedBy", OWNER_BINDING_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), BINDING_ENV, /--performedBy is required/],
+  ["no administering Principal", OWNER_BINDING_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), BINDING_ENV, /--adminPrincipalId is required/],
+  // THE IDENTITY-SIDE FENCE.
+  ["no Firebase project named", OWNER_BINDING_ARGS.filter((a) => a !== "--projectId" && a !== "eos-platform-sandbox"), BINDING_ENV, /--projectId <id> is required and is never inferred/],
+  ["a project the named environment does not declare", swapArg(OWNER_BINDING_ARGS, "eos-platform-sandbox", "eos-platform-certification"), BINDING_ENV, /is not the project environment/],
+  ["the customer production project", swapArg(OWNER_BINDING_ARGS, "eos-platform-sandbox", "taylor-parts"), BINDING_ENV, /is not the project environment/],
+  ["a deliverable email address", swapArg(OWNER_BINDING_ARGS, "eos-owner@sandbox.invalid", "owner@taylorparts.com"), BINDING_ENV, /must end '@sandbox.invalid'/],
+  ["no password environment variable", OWNER_BINDING_ARGS.filter((a) => a !== "--authPasswordEnv" && a !== "OWNER_BIND_PW"), BINDING_ENV, /--authPasswordEnv is required/],
+  ["a password variable that is unset", OWNER_BINDING_ARGS, { ...BINDING_ENV, OWNER_BIND_PW: "" }, /empty or unset/],
+  ["a password too short to be one", OWNER_BINDING_ARGS, { ...BINDING_ENV, OWNER_BIND_PW: "short" }, /shorter than 16 characters/],
+]) {
+  test(`owner persona identity binding: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(OWNER_BINDING, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `owner persona identity binding, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
+// THE PASSWORD IS NEVER AN ARGUMENT, and this is the check that keeps it that way: a `--password`
+// flag would be the one change that put a credential into ps output, shell history and CI logs, and
+// it would pass every other test in this file.
+test("owner persona identity binding: accepts no credential-bearing flag at all", () => {
+  const source = readFileSync(resolve(FUNCTIONS_DIR, OWNER_BINDING), "utf8");
+  // `args.authPasswordEnv` is the NAME of a variable and is fine; `args.authPassword` would be the
+  // value itself, so the boundary is what the assertion is actually about.
+  for (const forbidden of [/args\.password\b/, /args\.authPassword\b(?!Env)/, /"--password"/, /--password </]) {
+    assert.equal(forbidden.test(source), false, `${OWNER_BINDING} reads a credential from argv via ${forbidden}`);
+  }
+  assert.match(source, /env\[args\.authPasswordEnv\]/, "the password is not read from the named environment variable");
+});
 
 // ============================ SECURITY ROLE AUTHORITY CONVERGENCE ============================
 //
