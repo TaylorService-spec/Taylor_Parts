@@ -393,6 +393,14 @@ function validateManifest(m) {
   }
 
   // ---- Commercial. Owner, accountable person and assignment stay three separate facts.
+  //
+  // The twelve records stay DECLARED and stay fully validated even while `commercialSeedState` is BLOCKED.
+  // A declaration nobody checks rots, and Sample Company v3 seeds from exactly these rows, so the eligibility,
+  // upstream-ordering and both-responsibility-shapes proofs below must keep running whether or not anything
+  // is written. What the state gate decides is whether they are WRITTEN, not whether they are CORRECT.
+  if (!["BLOCKED", "SEEDED"].includes(m.commercialSeedState?.status)) {
+    refuse("MANIFEST_INVALID", "commercialSeedState.status must be BLOCKED (pending Commercial C5) or SEEDED");
+  }
   const numbers = new Map();
   let sameResponsibility = 0;
   let splitResponsibility = 0;
@@ -946,8 +954,22 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   for (const e of manifest.equipment.desired) ledger.record("equipment", "BLOCKED", e.id);
 
   // ---- 14. Commercial records + the governed accountable person, one transaction per record.
+  //
+  // BLOCKED_PENDING_C5 while `commercialSeedState.status` is BLOCKED. This is NOT a missing authority:
+  // eos_commercial, createCommercialRecord, establishCreationAccountablePerson and the mint are all correct
+  // and ready. What is unavailable is the DATA, and Commercial C5 owns it. The twelve declared-synthetic
+  // records this manifest carries were removed from nonprod by the authorized governed cleanup precisely
+  // BECAUSE they blocked C5 -- a copy refuses a target holding rows the snapshot does not -- so writing them
+  // back here would re-arm the blocker that cleanup cleared. Declared, counted, written NOWHERE, until v3.
+  // Owner ruling 2026-09-23; see manifest.rulings.commercialPendingC5 and manifest.sampleCompanyV3.
   const idByNumber = new Map();
+  const commercialBlocked = manifest.commercialSeedState.status === "BLOCKED";
   for (const r of manifest.commercial) {
+    if (commercialBlocked) {
+      ledger.record("commercial", "BLOCKED", r.number);
+      ledger.record("accountablePersons", "BLOCKED", r.number);
+      continue;
+    }
     const shape = COMMERCIAL[r.kind];
     const found = await pool.query(
       `SELECT id, owner_employee_id, accountable_employee_id FROM eos_commercial.${shape.table}

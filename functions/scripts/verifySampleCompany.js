@@ -16,7 +16,10 @@
 //   reference fails rather than reading as absent.
 //
 //   BLOCKED relationships are reported as BLOCKED with their missing authority. A blocker is not a failure;
-//   silently counting one as verified would be.
+//   silently counting one as verified would be. A blocked assertion is still RESOLVED every run, because the
+//   failure worth catching is the opposite one: the row PRESENT while the prerequisite that governs it has
+//   not run. That is reported as drift by name, never as a pass -- which is how the Commercial half of this
+//   fixture stays BLOCKED_PENDING_C5 without the acceptance suite either crying wolf or going quiet.
 //
 // READ ONLY BY CONSTRUCTION. Every statement is a SELECT, and the connection runs in a read-only
 // transaction, so the DATABASE refuses a write even if a future edit to this file attempted one.
@@ -178,11 +181,33 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
   await count("crm.locations", `SELECT count(*)::int AS n FROM eos_crm.account_locations WHERE tenant_id = $1 AND id = ANY($2::text[])`,
     [tenantId, manifest.locations.map((l) => l.id)], manifest.locations.length);
 
+  // COMMERCIAL: BLOCKED_PENDING_C5, and MEASURED AS ABSENT rather than counted as present.
+  //
+  // The twelve declared-synthetic Commercial records were removed from nonprod by the authorized governed
+  // cleanup BECAUSE they blocked Commercial C5, and none may be written back before C5 has copied and
+  // verified. So the expectation is INVERTED while `commercialSeedState` is BLOCKED: the declared numbers
+  // must be ABSENT. Their absence is the explained current truth and is reported BLOCKED, not as drift.
+  // Finding one is drift -- the C5 blocker re-armed -- which the old row count would have read as success.
+  // When Sample Company v3 flips the state to SEEDED the ordinary count returns, with no other change here.
+  const commercialBlockedBy = manifest.commercialSeedState.status === "BLOCKED" ? manifest.commercialSeedState.blockedBy : null;
   for (const [kind, table] of Object.entries(COMMERCIAL_TABLE)) {
     const numbers = manifest.commercial.filter((r) => r.kind === kind).map((r) => r.number);
-    await count(`commercial.${table}`,
-      `SELECT count(*)::int AS n FROM eos_commercial.${table} WHERE tenant_id = $1 AND ${COMMERCIAL_NUMBER[kind]} = ANY($2::text[])`,
-      [tenantId, numbers], numbers.length);
+    const sql = `SELECT count(*)::int AS n FROM eos_commercial.${table} WHERE tenant_id = $1 AND ${COMMERCIAL_NUMBER[kind]} = ANY($2::text[])`;
+    if (commercialBlockedBy === null) {
+      await count(`commercial.${table}`, sql, [tenantId, numbers], numbers.length);
+      continue;
+    }
+    const { rows } = await client.query(sql, [tenantId, numbers]);
+    const found = Number(rows[0].n);
+    domains[`commercial.${table}`] = {
+      declared: numbers.length, expected: 0, found,
+      status: found === 0 ? "BLOCKED" : "UNEXPECTEDLY_PRESENT",
+      blockedBy: [commercialBlockedBy],
+    };
+    if (found !== 0) {
+      fail(`commercial.${table}`, `commercial.${table}`,
+        `${found} of the ${numbers.length} declared-synthetic Commercial records are present; they must be ABSENT until Commercial C5 has copied and verified, and their presence re-arms the C5 blocker the authorized cleanup cleared`);
+    }
   }
 
   await count("equipment.models", `SELECT count(*)::int AS n FROM eos_ops.equipment_models WHERE tenant_id = $1 AND id = ANY($2::text[])`,
@@ -703,11 +728,29 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
   };
 
   const relationshipResults = [];
+  const declaredBlockerCodes = new Set(manifest.blockedRelationships.map((b) => b.code));
   for (const a of manifest.relationshipAssertions) {
     const resolver = relationshipResolvers[a.predicate];
-    const status = resolver ? await resolver(a.subject, a.object) : "UNRESOLVABLE";
-    relationshipResults.push({ ...a, status });
-    if (status !== "VERIFIED") fail("relationships", `${a.subject} ${a.predicate} ${a.object}`, `assertion status ${status}`);
+    const probe = resolver ? await resolver(a.subject, a.object) : "UNRESOLVABLE";
+    const id = `${a.subject} ${a.predicate} ${a.object}`;
+    // AN ASSERTION DECLARED BLOCKED IS NEITHER A PASS NOR A FAILURE. Its prerequisite has not been
+    // satisfied, so the row it follows must be ABSENT and that absence is the explained, expected answer.
+    // It is still RESOLVED, against the real foreign key, every run -- because the interesting failure is
+    // the other direction: data that exists while the prerequisite that governs it has not run. That is
+    // reported as drift, by name, rather than being silently upgraded to a pass.
+    if (a.blockedBy) {
+      if (!declaredBlockerCodes.has(a.blockedBy)) {
+        fail("relationships", id, `declared blockedBy ${a.blockedBy}, which blockedRelationships does not declare`);
+      }
+      const status = probe === "DANGLING" ? "BLOCKED" : "UNEXPECTEDLY_PRESENT";
+      if (status !== "BLOCKED") {
+        fail("relationships", id, `declared BLOCKED by ${a.blockedBy} but resolved ${probe}: the blocked prerequisite's data is present`);
+      }
+      relationshipResults.push({ ...a, status });
+      continue;
+    }
+    relationshipResults.push({ ...a, status: probe });
+    if (probe !== "VERIFIED") fail("relationships", id, `assertion status ${probe}`);
   }
 
   // ════════════════ scenarios ════════════════
@@ -731,8 +774,12 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
     personas,
     scenarios,
     relationships: {
-      expected: manifest.relationshipAssertions.length,
+      // `declared` never moves when an assertion becomes blocked, so a shrinking `expected` is always
+      // visible next to the number it was carved out of, and coverage can never quietly disappear.
+      declared: manifest.relationshipAssertions.length,
+      expected: manifest.relationshipAssertions.filter((a) => !a.blockedBy).length,
       verified: verifiedRelationships,
+      blockedAssertions: relationshipResults.filter((r) => r.status === "BLOCKED").length,
       blocked: manifest.blockedRelationships.length,
       assertions: relationshipResults,
     },

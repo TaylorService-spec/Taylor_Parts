@@ -102,12 +102,23 @@ All 14 measured inbound reference counts were 0. After: 0 / 0 / 0, all inbound c
 
 ## 6. What the cleanup deliberately does NOT do
 
-It does not reseed. `scripts/seedSampleCompany.js --mode apply --apply` keys on the record NUMBER, and when a
-number is absent it mints a FRESH id — so a reseed recreates all twelve and re-arms the C5 blocker the Owner
-authorized removing. A post-cleanup `--mode plan` proves this: `commercial CREATE 12`, `accountablePersons
-CREATE 12`, `ALREADY_PRESENT 143` everywhere else. **The correct reconciliation after this cleanup is
-`--mode plan` only.** Nothing outside the twelve Commercial records needs reseeding.
+It does not reseed. `scripts/seedSampleCompany.js --mode apply --apply` keyed on the record NUMBER, and when a
+number was absent it minted a FRESH id — so a reseed would have recreated all twelve and re-armed the C5
+blocker the Owner authorized removing. A post-cleanup `--mode plan` proved exactly that: `commercial CREATE 12`,
+`accountablePersons CREATE 12`, `ALREADY_PRESENT 143` everywhere else.
 
-The consequence is recorded rather than hidden: `scripts/verifySampleCompany.js` loses 9 Commercial relationship
-assertions (VERIFIED -> DANGLING), the three `commercial.*` domain counts go COMPLETE -> ABSENT, and scenario A
-goes VERIFIED -> FAILED. Scenarios B and H remain VERIFIED.
+**That hazard is now closed in the fixture itself, not left to operator discipline.** Owner ruling 2026-09-23:
+the twelve records must NOT be recreated before Commercial C5, and acceptance must state the current truth
+rather than recreate target Commercial truth. `sampleCompany.v2.json` therefore declares
+`commercialSeedState: { status: "BLOCKED", blockedBy: "COMMERCIAL_RECORDS_PENDING_C5" }`, and the seed reads
+that gate before it writes anything commercial. An apply now reports `commercial BLOCKED 12` /
+`accountablePersons BLOCKED 12` and `commercial CREATE 0`, and leaves the three `eos_commercial` tables empty —
+so a full reconciling apply is safe again, and no longer re-arms the blocker.
+
+The consequence is recorded rather than hidden, in the manifest's own blocked vocabulary:
+`scripts/verifySampleCompany.js` reports the 9 Commercial relationship assertions as **BLOCKED** (not DANGLING,
+not VERIFIED), the three `commercial.*` domains as **BLOCKED** with `expected: 0` — their presence, not their
+absence, is now the drift — and scenarios A and B as **PARTIAL**, with their CRM halves still verified.
+Scenarios G, H and F remain VERIFIED. `relationships` reports `declared 40 / expected 31 / verified 31 /
+blockedAssertions 9`. The Commercial half returns in Sample Company v3, after C5; see
+`sampleCompany.v2.json → sampleCompanyV3`.

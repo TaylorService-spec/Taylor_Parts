@@ -461,11 +461,162 @@ test("every BLOCKED section names a declared blocker with a real missing authori
   }
   for (const code of ["WORK_ORDER_POSTGRES_AUTHORITY_ABSENT", "EMPLOYEE_ASSIGNEE_PROJECTION", "INBOUND_WORK_POSTGRES_AUTHORITY_ABSENT",
     "EQUIPMENT_SERIALIZED_CUSTODY_ORIGIN_ABSENT", "PARTS_POSTGRES_WRITER_INACTIVE", "EMPLOYEE_TECHNICIAN_LINK_BLOCKED",
-    "FINANCIAL_SAMPLE_COVERAGE", "REPORTING_SAMPLE_COVERAGE", "TECHNICIAN_AUTHORITY_STILL_LEGACY"]) {
+    "FINANCIAL_SAMPLE_COVERAGE", "REPORTING_SAMPLE_COVERAGE", "TECHNICIAN_AUTHORITY_STILL_LEGACY",
+    "COMMERCIAL_RECORDS_PENDING_C5"]) {
     assert.ok(codes.has(code), `${code} must be declared`);
   }
   refusal((m) => { m.service.status = "BLOCKED"; m.service.blockedBy = "A_CODE_NOBODY_DECLARED"; },
     /is BLOCKED by A_CODE_NOBODY_DECLARED, which is not declared/);
+});
+
+// ════════════════════ the Commercial half is BLOCKED_PENDING_C5 ════════════════════
+//
+// Owner ruling 2026-09-23: the twelve declared-synthetic Commercial records were proven Commercial C5
+// blockers and were removed from nonprod by an authorized governed cleanup. They must NOT be recreated
+// before C5. Acceptance therefore states the CURRENT truth -- BLOCKED -- instead of recreating target
+// Commercial truth. These tests pin the exact blocked set, so nothing else can drift into it, and pin the
+// non-Commercial coverage, so nothing can quietly leave with it.
+
+const C5_CODE = "COMMERCIAL_RECORDS_PENDING_C5";
+const assertionId = (a) => `${a.subject} ${a.predicate} ${a.object}`;
+// The nine triples that a Commercial ROW would have to exist to answer. Frozen, exactly.
+const BLOCKED_PENDING_C5 = [
+  "opportunity:SYN-NP-OPP-0001 FOR_ACCOUNT account:synthetic-np-acct-retail",
+  "employee:retail-sales-a OWNS opportunity:SYN-NP-OPP-0001",
+  "employee:retail-sales-a ACCOUNTABLE_FOR opportunity:SYN-NP-OPP-0001",
+  "employee:general-manager ACCOUNTABLE_FOR opportunity:SYN-NP-OPP-0002",
+  "employee:retail-sales-b OWNS opportunity:SYN-NP-OPP-0002",
+  "employee:office-manager ACCOUNTABLE_FOR salesOrder:SYN-NP-SO-0001",
+  "employee:general-manager ACCOUNTABLE_FOR salesOrder:SAMPLE-CO-SO-0003",
+  "salesAgreement:SYN-NP-SA-0001 FROM_OPPORTUNITY opportunity:SYN-NP-OPP-0001",
+  "salesOrder:SYN-NP-SO-0001 FROM_AGREEMENT salesAgreement:SYN-NP-SA-0001",
+];
+
+test("Commercial acceptance is BLOCKED_PENDING_C5 in the manifest's OWN vocabulary, not a parallel one", () => {
+  // The state is the established one: status BLOCKED naming a declared blockedRelationships code. No new
+  // status word was invented, and the generic validator walk above already enforces the code is declared.
+  assert.equal(MANIFEST.commercialSeedState.status, "BLOCKED");
+  assert.equal(MANIFEST.commercialSeedState.blockedBy, C5_CODE);
+  assert.equal(MANIFEST.commercialSeedState.seededBy, "SAMPLE_COMPANY_V3");
+  const blocker = MANIFEST.blockedRelationships.find((b) => b.code === C5_CODE);
+  assert.deepEqual(blocker.domains, ["commercial"]);
+  assert.match(blocker.missingAuthority, /C5/);
+  assert.match(blocker.missingAuthority, /written NOWHERE/);
+  // The DECLARATION is untouched: blocked is not deleted. The C5 census reads these twelve numbers to
+  // classify a target row as DECLARED_SYNTHETIC rather than UNKNOWN, and v3 seeds from them.
+  assert.equal(MANIFEST.commercial.length, 12);
+  assert.equal(MANIFEST.commercial.filter((r) => r.kind === "OPPORTUNITY").length, 6);
+  assert.equal(MANIFEST.commercial.filter((r) => r.kind === "SALES_AGREEMENT").length, 3);
+  assert.equal(MANIFEST.commercial.filter((r) => r.kind === "SALES_ORDER").length, 3);
+  refusal((m) => { m.commercialSeedState.status = "PENDING"; }, /commercialSeedState.status must be BLOCKED/);
+});
+
+test("the BLOCKED_PENDING_C5 set is EXACTLY the nine Commercial triples -- nothing else got carried out with them", () => {
+  const blocked = MANIFEST.relationshipAssertions.filter((a) => a.blockedBy);
+  assert.deepEqual(blocked.map(assertionId).sort(), [...BLOCKED_PENDING_C5].sort());
+  for (const a of blocked) assert.equal(a.blockedBy, C5_CODE, `${assertionId(a)} names a different blocker`);
+  // Every blocked triple genuinely needs a Commercial ROW to answer; none is blocked for convenience.
+  const commercialSide = /^(opportunity|salesAgreement|salesOrder):/;
+  for (const a of blocked) {
+    assert.ok(commercialSide.test(a.subject) || commercialSide.test(a.object),
+      `${assertionId(a)} is blocked but names no Commercial record`);
+  }
+  // And the converse: every triple that names a Commercial record IS blocked. No half-measure.
+  for (const a of MANIFEST.relationshipAssertions) {
+    if (commercialSide.test(a.subject) || commercialSide.test(a.object)) {
+      assert.equal(a.blockedBy, C5_CODE, `${assertionId(a)} names a Commercial record but is not blocked`);
+    }
+  }
+});
+
+test("NON-COMMERCIAL acceptance coverage did not shrink: 31 assertions, still unblocked, still asserting an authority", () => {
+  const unblocked = MANIFEST.relationshipAssertions.filter((a) => !a.blockedBy);
+  assert.equal(MANIFEST.relationshipAssertions.length, 40, "the declared assertion count must never fall");
+  assert.equal(unblocked.length, 31);
+  for (const a of unblocked) {
+    assert.ok(!/^(opportunity|salesAgreement|salesOrder):/.test(a.subject) && !/^(opportunity|salesAgreement|salesOrder):/.test(a.object));
+    assert.ok(a.authority && a.authority.length > 0, `${assertionId(a)} asserts no authority`);
+  }
+  // The non-Commercial DOMAIN expectations are untouched by this ruling, stated as exact numbers so a
+  // later edit that trimmed one to make a suite green would fail here first.
+  assert.equal(MANIFEST.employees.length, 17);
+  assert.equal(MANIFEST.accounts.length, 3);
+  assert.equal(MANIFEST.contacts.length, 6);
+  assert.equal(MANIFEST.locations.length, 5);
+  assert.equal(MANIFEST.equipmentModels.length, 4);
+  assert.equal(MANIFEST.warehouses.length, 2);
+  assert.equal(MANIFEST.purchasing.length, 2);
+  assert.equal(MANIFEST.cycleCounts.length, 3);
+  assert.equal(MANIFEST.reportingRelationships.edges.length, 16);
+});
+
+test("scenario A is PREREQUISITE-BLOCKED, not failed, and keeps every independently testable part", () => {
+  const a = MANIFEST.scenarios.find((s) => s.id === "A");
+  // PARTIAL is the manifest's OWN word for "some of this is real and some of it is blocked" -- scenarios
+  // C and E already use it. FAILED is what the verifier says about a scenario whose objects are DRIFTING,
+  // and absent-by-ruling is not drifting.
+  assert.equal(a.status, "PARTIAL");
+  assert.deepEqual(a.blockedBy, [C5_CODE]);
+  // Scenario A combines CRM and Commercial. The CRM half survives whole.
+  assert.ok(a.covered.includes("Account") && a.covered.includes("Contact") && a.covered.includes("Location"));
+  assert.ok(a.blocked.some((x) => /Opportunity/.test(x)) && a.blocked.some((x) => /Sales Agreement/.test(x))
+    && a.blocked.some((x) => /Sales Order/.test(x)));
+  // Scenario B is the same shape and must not have been left claiming COVERED while its records are gone.
+  const b = MANIFEST.scenarios.find((s) => s.id === "B");
+  assert.equal(b.status, "PARTIAL");
+  assert.deepEqual(b.blockedBy, [C5_CODE]);
+  // The scenarios this ruling does not touch are untouched.
+  assert.equal(MANIFEST.scenarios.find((s) => s.id === "H").status, "COVERED");
+  assert.equal(MANIFEST.scenarios.find((s) => s.id === "G").status, "COVERED");
+  assert.equal(MANIFEST.scenarios.find((s) => s.id === "F").status, "COVERED");
+  assert.equal(MANIFEST.scenarios.find((s) => s.id === "D").status, "BLOCKED");
+});
+
+test("the four commercial dashboard questions surface as prerequisite-unavailable, never as a synthetic answer", () => {
+  const UNANSWERABLE = [
+    ["owner-executive", "What is the whole commercial pipeline and who is accountable for each record?"],
+    ["general-manager", "Which commercial records am I accountable for but do not own?"],
+    ["retail-sales-a", "What is in my pipeline and at what stage?"],
+    ["retail-sales-a", "Which of my records is somebody else accountable for?"],
+  ];
+  for (const [persona, question] of UNANSWERABLE) {
+    const d = MANIFEST.dashboardCoverage.find((x) => x.persona === persona);
+    assert.ok(!d.testableQuestions.includes(question), `${persona} still claims to answer: ${question}`);
+    assert.ok(d.notTestable.includes(`${question} (${C5_CODE})`),
+      `${persona} does not state WHY it cannot answer: ${question}`);
+  }
+  // No remaining testable question anywhere depends on a Commercial record.
+  for (const d of MANIFEST.dashboardCoverage) {
+    for (const q of d.testableQuestions) {
+      assert.ok(!/pipeline|commercial record/i.test(q), `${d.persona} still claims a commercial question: ${q}`);
+    }
+  }
+  // The same move, for the reporting object that was backed by the same rows.
+  assert.ok(!MANIFEST.reportingFixtures.testableFromSeededRecords.some((x) => x.object === "opportunity"));
+  assert.ok(MANIFEST.reportingFixtures.notTestable.some((x) => x.object === "opportunity" && x.reason.includes(C5_CODE)));
+  // The NON-commercial coverage of the same lists is unchanged, counted exactly.
+  assert.deepEqual(MANIFEST.reportingFixtures.testableFromSeededRecords.map((x) => x.object),
+    ["customer", "contact", "location", "employee"]);
+  assert.equal(MANIFEST.dashboardCoverage.reduce((n, d) => n + d.testableQuestions.length, 0), 18);
+});
+
+test("the seed WRITES no Commercial record while the state is BLOCKED, and v3 says what must be true first", () => {
+  const source = readFileSync(resolve(FUNCTIONS_DIR, "scripts/seedSampleCompany.js"), "utf8");
+  // The write path is not deleted -- v3 needs it -- but it is gated on the manifest state, and the gate is
+  // read before anything commercial is written.
+  assert.match(source, /const commercialBlocked = manifest\.commercialSeedState\.status === "BLOCKED"/);
+  assert.match(source, /if \(commercialBlocked\) \{\s*\n\s*ledger\.record\("commercial", "BLOCKED", r\.number\);/);
+  assert.ok(!/INSERT INTO\s+eos_commercial/.test(source), "the seed must never insert a Commercial row directly");
+
+  const v3 = MANIFEST.sampleCompanyV3;
+  assert.equal(v3.status, "PLANNED_NOT_IMPLEMENTED");
+  for (const field of ["dependsOn", "wouldSeed", "avoidsReArmingTheC5Blocker"]) {
+    assert.ok(Array.isArray(v3[field]) && v3[field].length > 0, `sampleCompanyV3 does not state ${field}`);
+  }
+  assert.ok(v3.dependsOn.some((d) => /COMMERCIAL_C5_COMPLETE/.test(d)), "v3 must depend on C5 completing first");
+  assert.ok(v3.avoidsReArmingTheC5Blocker.some((x) => /commercial-c5\|/.test(x)),
+    "v3 must state how it cannot interleave with the C5 copy");
+  assert.match(MANIFEST.rulings.commercialPendingC5, /must NOT be recreated before C5/);
 });
 
 test("the committed catalog writer state is respected, not overridden", () => {
