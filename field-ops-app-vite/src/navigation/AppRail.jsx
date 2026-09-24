@@ -378,12 +378,9 @@ export function RailBrand() {
     <div className="fo-rail__brand">
       <VerenwardMark variant="horizontal" tone="onDark" size={30} />
       <span className="fo-implementation">
-        <span className="fo-implementation__name">Taylor Parts</span>
-        {/* Company context, per the ruled brand hierarchy (Parent brand =
-            Verenward, Platform = Enterprise Operations OS, Workspace = Taylor
-            Parts, Company context = Taylor Freezer of Arizona). This used to
-            read "Arizona Operations" -- a name that appears nowhere else in
-            the ruled hierarchy or the wider docs corpus. */}
+        {/* Customer/workspace identity. Keep the canonical company name only:
+            the extra "Taylor Parts" workspace label duplicated and contradicted
+            the customer identity during live acceptance. */}
         <span className="fo-implementation__context">Taylor Freezer of Arizona</span>
       </span>
     </div>
