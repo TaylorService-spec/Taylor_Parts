@@ -406,9 +406,9 @@ describe("the composed hooks ask the same server, and assemble what comes back",
   });
 });
 
-// ════════════════════ STILL WIRED TO NOTHING ════════════════════
+// ════════════════════ LIVE ADMIN READS, WITHOUT REPLACING RUNTIME AUTHORITY ════════════════════
 
-describe("this tranche changes no source of truth", () => {
+describe("Administration reads use the governed policy API without becoming a second authority", () => {
   it("no Administration screen imports the read model, the hooks or the list component", () => {
     for (const screenFile of [
       "AdminObjects.jsx", "AdminRolesPermissions.jsx", "AdminPolicySurfaces.jsx", "UserDetail.jsx",
@@ -422,18 +422,30 @@ describe("this tranche changes no source of truth", () => {
     }
   });
 
-  it("Permission Preview is on the path it was on, and the effectiveAccessFeed is untouched", () => {
-    // Permission Preview renders AdministrationUnavailable today (App.jsx, Issue #226 Row 11). This
-    // tranche does NOT give it the new Principal read: that switch is a source-of-truth change and
-    // is not in this lane.
+  it("Permission Preview and Audit Logs use their deployed governed reads, while the runtime capability feed stays untouched", () => {
+    // Live acceptance proved these two policy-store reads are deployed. The screen switch is now
+    // intentional and explicit: Permission Preview reads Principal effective access and Audit Logs
+    // reads persisted policy audit history. Neither is the runtime navigation/command authority.
     const app = readFileSync("src/App.jsx", "utf8");
     expect(app.includes('item.key === "permissionPreview"')).toBe(true);
-    expect(app.includes("AdministrationUnavailable")).toBe(true);
+    expect(app.includes("<AdminPermissionPreview />")).toBe(true);
+    expect(app.includes('item.key === "auditLogs"')).toBe(true);
+    expect(app.includes("<AdminAuditLogs />")).toBe(true);
+    expect(app.includes("AdministrationUnavailable")).toBe(false);
+
+    const preview = readFileSync("src/modules/administration/AdminPermissionPreview.jsx", "utf8");
+    expect(preview.includes('"listTenantPrincipals"')).toBe(true);
+    expect(preview.includes('"getPrincipalEffectiveAccess"')).toBe(true);
+
+    const audit = readFileSync("src/modules/administration/AdminAuditLogs.jsx", "utf8");
+    expect(audit.includes('"readPolicyAuditHistory"')).toBe(true);
+
     for (const banned of ["usePrincipalAccessReadModel", "useObjectSecurity", "objectSecurityReadModel"]) {
       expect(app.includes(banned), banned).toBe(false);
     }
-    // The Firebase capability feed is still the client's runtime access answer, and nothing here
-    // replaces or reads around it.
+
+    // The capability feed remains the client's runtime access answer. Reading policy projections
+    // on Administration screens does not replace or route around that authority.
     const feed = readFileSync("src/access/reportCapabilityAccess.js", "utf8");
     expect(feed.includes("resolveEffectiveAccess")).toBe(true);
     expect(feed.includes("getPrincipalEffectiveAccess")).toBe(false);
