@@ -43,6 +43,8 @@ import {
   buildNavigationAuthority,
 } from "../src/access/experienceContext.js";
 import {
+  NAV_CONTAINERS,
+  NAV_DERIVED_SURFACE_CHILDREN,
   NAV_DERIVED_SURFACE_KEYS,
   NAV_DOMAINS,
   NAV_LEGACY_PLACEHOLDER_CEILING,
@@ -50,9 +52,11 @@ import {
   NAV_SURFACE_ACCESS,
   NAV_SURFACE_GAPS,
   PLACEHOLDER_DEFAULT_ROLES,
+  containerRegisterViolations,
   isDomainVisible,
   isNavItemVisible,
   legacyPlaceholderRegisterViolations,
+  navigationSurfaceMapViolations,
 } from "../src/navigation/navConfig.js";
 import {
   ADMINISTRATION_POLICY_SURFACE_CAPABILITIES,
@@ -139,15 +143,54 @@ test("the Administration index is NOT an unconditional door -- it follows its ch
     "the Administration index opened for a principal granted nothing");
   assert.equal(isDomainVisible(administration(), "admin", [], withNothing), false);
 
-  // And a principal the SERVER granted the container to reaches it -- the client neither re-derives
-  // the disjunction nor second-guesses it.
+  // WAVE 12 / LANE AV -- THIS PAIR IS INVERTED, AND THE INVERSION IS A NARROWING.
+  //
+  // It used to assert that a principal the SERVER granted the bare container surface to reached the
+  // menu, "the client neither re-derives the disjunction nor second-guesses it". Under the Owner's
+  // Wave 12 ruling the container rule is ONE rule answering under BOTH sources, so the client DOES
+  // ask the same question -- of the same six children, mirrored from `containerOf` -- and a menu
+  // with nothing on it does not open, whoever says otherwise.
+  //
+  // NOTHING REACHABLE IS LOST, because this state is one the server cannot produce:
+  // experienceAuthority.ts adds `administration.overview` to `granted` only after a child is already
+  // in it (the `containerOf.some(childKey => granted.has(childKey))` line, pinned in
+  // functions/test/administrationNavigationReadiness.test.mjs). So the two ends agree on every state
+  // that exists, and on the one that does not they now agree that it is empty.
   const withOverviewOnly = eosContext(buildNavigationAuthority({
     state: EXPERIENCE_STATE.READY,
     context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
       workEligibility: [], operationalScopes: [], surfaces: ["administration.overview"] },
   }));
-  assert.equal(isNavItemVisible(itemFor("overview"), "technician", [], withOverviewOnly), true);
+  assert.equal(isNavItemVisible(itemFor("overview"), "technician", [], withOverviewOnly), false,
+    "a container opened on a principal who can open none of its children");
   assert.equal(isNavItemVisible(itemFor("rolesPermissions"), "technician", [], withOverviewOnly), false);
+
+  // ...and ONE governed child is enough, with or without the server's own container grant. That is
+  // the disjunction, measured from every one of its six sides.
+  for (const childSurface of ["administration.auditLogs", "administration.users",
+    "administration.rolesPermissions", "administration.objects", "administration.workflows",
+    "administration.permissionPreview"]) {
+    const withOneChild = eosContext(buildNavigationAuthority({
+      state: EXPERIENCE_STATE.READY,
+      context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+        workEligibility: [], operationalScopes: [], surfaces: [childSurface] },
+    }));
+    assert.equal(isNavItemVisible(itemFor("overview"), "technician", [], withOneChild), true,
+      `${childSurface} is a governed Administration child and did not open the menu`);
+  }
+
+  // DATA IMPORT IS NOT A CHILD, on this side either. The server excludes it deliberately -- import
+  // authority must not open the policy menu -- and the client's scope IS that list, joined through
+  // NAV_SURFACE_ACCESS, so it cannot widen it. The Data Import TAB is unaffected.
+  const importOnly = eosContext(buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: ["administration.dataImport"] },
+  }));
+  assert.equal(isNavItemVisible(itemFor("overview"), "admin", [], importOnly), false,
+    "a data-import grant opened the policy-administration index");
+  assert.equal(isNavItemVisible(itemFor("dataImport"), "admin", [], importOnly), true,
+    "the Data Import destination itself lost its own governed answer");
 
   // WAVE 10 / LANE AR, ported from Lane AM's client-side container test when Lane AH's
   // server-side `containerOf` was kept as the single mechanism: a principal granted ONLY a
@@ -187,46 +230,73 @@ test("today, dispatcher reaches the four policy SURFACES through a Firebase role
   }
 });
 
-// ═════ WAVE 11 / LANE AS: THE ONE LEGACY-SOURCE ANSWER THAT DELIBERATELY CHANGED ═════
+// ═════ WAVE 12 / LANE AV: THE LEGACY-SOURCE ANSWER IS RESTORED, AS A CONTAINER ═════
 //
-// This test used to assert Overview alongside the other four, off the
-// NAV_LEGACY_PLACEHOLDER_DESTINATIONS row Lane AR added. The Owner refused that row: the register is
-// SHRINK-ONLY, and Overview is the ONE destination a placeholder can never be right for, because it
-// is a CONTAINER -- derived server-side by `containerOf` and asserting nothing of its own.
+// THIS TEST IS INVERTED BACK, and the history is the point rather than an embarrassment. Lane AS
+// asserted here that "under the LEGACY source the Administration index is now refused -- the named
+// cost of the shrink": Overview had no legacyKey, no capabilityAccess, no operationalRoleAccess and
+// no placeholder row, so `isNavItemVisible()` answered FALSE for every role, admin and dispatcher
+// included, and /administration/overview rendered App.jsx's "isn't available to your role" empty
+// state everywhere the EOS source is off -- production included.
 //
-// So this is not a guard being weakened. It is the same question asked of a register that now has 62
-// rows instead of 63, and the answer is written down instead of being restored by a row nobody
-// ruled on. The regression Lane AR was closing is REAL and is accepted with its name on it:
-// wherever the EOS source is not authoritative, admin and dispatcher no longer get the
-// Administration > Overview tab. platform-sandbox -- the environment this wave activates -- is on
-// the EOS source, so there the container answers and nothing is lost.
-test("under the LEGACY source the Administration index is now refused -- the named cost of the shrink", () => {
+// The Owner refused that regression AND refused the placeholder row that would have papered over it.
+// Both refusals stand together because the destination is a PURE CONTAINER, and a container needs no
+// authority of its own: it is visible iff at least one of its children is. That rule already existed
+// (Lane AM's NAV_CONTAINERS) and already answered under BOTH sources, because
+// `containerHasReachableChild` asks the ORDINARY predicate about each child. Wave 12 simply points
+// it at the children the server's `containerOf` names, computed rather than typed.
+//
+// SO NOTHING WAS ASSERTED TO RESTORE THIS. The register is still 62, `alwaysVisible` is still at
+// zero declarations, no legacy key was invented, and admin/dispatcher reach the menu for the only
+// legitimate reason: the six destinations it is a menu over are ones they can already open.
+test("under the LEGACY source the Administration index follows its children -- restored, and asserted nothing", () => {
   const legacy = { operationalRoles: [], employmentStatus: "ACTIVE" };
   const overview = itemFor("overview");
 
-  // It declares no legacy authority of ANY kind. That is the whole reason the row mattered.
+  // IT ASSERTS NO AUTHORITY OF ANY KIND. This is the half of Lane AS that survives untouched, and it
+  // is what makes the visibility below derived rather than granted.
   assert.equal(overview.capabilityAccess, undefined);
   assert.equal(overview.legacyKey, undefined);
   assert.equal(overview.operationalRoleAccess, undefined);
-  assert.equal(overview.containerScope, undefined,
-    "a client-side container row is back -- the ruling kept ONE derived-child mechanism, AH's");
+  assert.equal(overview.alwaysVisible, undefined, "the blanket grant must never come back");
   assert.equal(overview.legacyPlaceholder, undefined,
     "administration/overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- the register may only shrink");
+  assert.deepEqual([...overview.containerScope], [
+    "administration/rolesPermissions", "administration/objects", "administration/workflows",
+    "administration/permissionPreview", "administration/users", "administration/auditLogs",
+  ], "the container's client scope has drifted from the server catalog's containerOf children");
+  assert.equal(overview.containerScope.includes("administration/dataImport"), false,
+    "import authority must not open the policy menu, on either side");
 
-  // ...so under the legacy source it is refused, for BOTH placeholder roles and for everyone else.
-  for (const role of ["admin", "dispatcher", "technician", "owner"]) {
-    assert.equal(isNavItemVisible(overview, role, ["inventory"], legacy), false,
-      `${role} still reaches the Administration index under the legacy source`);
+  // ADMIN AND DISPATCHER: visible, and visible BECAUSE the children are. PLACEHOLDER_DEFAULT_ROLES
+  // reaches all six of them, so the menu has six things on it.
+  assert.deepEqual(PLACEHOLDER_DEFAULT_ROLES, ["admin", "dispatcher"]);
+  for (const role of ["admin", "dispatcher"]) {
+    const reachable = overview.containerScope
+      .filter((d) => isNavItemVisible(itemFor(d.split("/")[1]), role, [], legacy));
+    assert.equal(reachable.length, 6, `${role} reaches ${reachable.length} of the six, not six`);
+    assert.equal(isNavItemVisible(overview, role, ["inventory"], legacy), true,
+      `${role} cannot reach the Administration index it has six open children under`);
   }
 
-  // AND THE BLAST RADIUS IS EXACTLY ONE TAB. The other thirteen Administration destinations keep
-  // their own rows, so the domain itself is still offered and nobody loses Administration.
-  assert.equal(isDomainVisible(administration(), "admin", [], legacy), true,
-    "removing one placeholder row took the whole Administration domain with it");
+  // AN ORDINARY PERSONA WITH NO ADMINISTRATION CHILDREN GETS NO MENU. Nobody was granted a child to
+  // make the container appear -- technician and owner hold no legacy Administration answer, so they
+  // hold no Administration index either, under this source exactly as under the governed one.
+  for (const role of ["technician", "owner", "", null]) {
+    const reachable = overview.containerScope
+      .filter((d) => isNavItemVisible(itemFor(d.split("/")[1]), role, [], legacy));
+    assert.deepEqual(reachable, [], `${role} unexpectedly reaches an Administration child`);
+    assert.equal(isNavItemVisible(overview, role, ["inventory"], legacy), false,
+      `${role} reached an Administration index with nothing on it`);
+  }
+
+  // AND THE BLAST RADIUS IS STILL EXACTLY ONE TAB, measured the other way now: the other thirteen
+  // Administration destinations keep their own rows and their own answers, unchanged by any of this.
+  assert.equal(isDomainVisible(administration(), "admin", [], legacy), true);
   assert.equal(isDomainVisible(administration(), "dispatcher", [], legacy), true);
   for (const key of POLICY_SURFACE_DESTINATIONS.concat(["users", "auditLogs"])) {
     assert.equal(isNavItemVisible(itemFor(key), "dispatcher", [], legacy), true,
-      `${key} lost its legacy answer too -- the shrink was supposed to be one row`);
+      `${key} lost its legacy answer -- the container was supposed to change one destination`);
   }
 });
 
@@ -260,6 +330,74 @@ test("the placeholder register is at its ceiling and the shrink-only rules refus
   // `containerOf` is asserted in functions/test/administrationNavigationReadiness.test.mjs.
   assert.deepEqual([...NAV_DERIVED_SURFACE_KEYS], ["administration.overview"]);
   assert.deepEqual(NAV_SURFACE_ACCESS["administration/overview"], ["administration.overview"]);
+
+  // WAVE 12 / LANE AV: THE CONTAINER ANSWER DID NOT MAKE THE PLACEHOLDER ROW ACCEPTABLE. Rule 2 is
+  // asserted above against exactly the two registers it was written for -- Lane AR's 63 rows and the
+  // count-preserving swap -- and both are still refused now that the destination is a container
+  // again. The container row makes the placeholder row UNNECESSARY, never permissible.
+  assert.ok(NAV_CONTAINERS["administration/overview"], "the Administration container row is missing");
+  assert.equal(
+    legacyPlaceholderRegisterViolations({ register: ["administration/overview"] })
+      .some((p) => p.includes("DERIVED surface")),
+    true,
+    "rule 2 stopped refusing a placeholder row on the container once the container came back",
+  );
+});
+
+// ═════ WAVE 12 / LANE AV: THE RECONCILED CONTAINER CHECK REFUSES WHAT IT WAS WRITTEN TO REFUSE ═════
+//
+// Lane AM wrote "a destination may not be BOTH a container and mapped to a surface", and Lane AR
+// relied on it to rule out a client-side Administration container row. That sentence pre-dates the
+// DERIVED surface, so it refused the legitimate case along with the defect. It is re-stated, not
+// relaxed -- and the difference is measured here by driving BOTH sides through the real predicate.
+test("a container may be mapped to its DERIVED surface and to no grant surface -- proved both ways", () => {
+  // The real registers are clean, and the whole surface map is clean with them.
+  assert.deepEqual(containerRegisterViolations(), []);
+  assert.deepEqual(navigationSurfaceMapViolations(), []);
+
+  // THE THING IT ALWAYS REFUSED, still refused: a menu that is ALSO a door somebody can hold. Such a
+  // destination would open while every child stayed shut -- "holds the Overview and can open
+  // nothing", the exact state the server catalog calls unrepresentable.
+  const alsoAGrant = containerRegisterViolations({
+    surfaceAccess: { ...NAV_SURFACE_ACCESS, "administration/overview": ["administration.overview", "administration.users"] },
+  });
+  assert.equal(alsoAGrant.length, 1);
+  assert.ok(alsoAGrant[0].includes('mapped to the GRANT surface "administration.users"'));
+
+  // A container mapped to a grant surface ONLY -- Lane AM's original case, with no derived surface in
+  // sight -- is refused exactly as it always was.
+  const grantOnly = containerRegisterViolations({
+    containers: { "administration/users": ["administration/objects"] },
+  });
+  assert.ok(grantOnly.some((p) => p.includes('mapped to the GRANT surface "administration.users"')));
+
+  // CONTAINERS MUST NOT NEST, MUST NOT NAME THEMSELVES, AND MUST NAME REAL DESTINATIONS.
+  assert.ok(containerRegisterViolations({
+    containers: { "administration/overview": ["administration/overview"] },
+  }).some((p) => p.includes("is a container over itself")));
+  assert.ok(containerRegisterViolations({
+    containers: { "dashboard/my": ["administration/overview"], "administration/overview": [] },
+  }).some((p) => p.includes("containers must not nest")));
+  assert.ok(containerRegisterViolations({
+    containers: { "administration/overview": ["administration/nope"] },
+  }).some((p) => p.includes('unknown destination "administration/nope"')));
+  assert.ok(containerRegisterViolations({
+    containers: { "administration/overview": ["nosuchdomain"] },
+  }).some((p) => p.includes('unknown domain "nosuchdomain"')));
+
+  // AND A MIRROR THAT DRIFTS IS REPORTED RATHER THAN SILENTLY DARKENING THE MENU: a child surface no
+  // destination is mapped to could never open the container.
+  assert.ok(containerRegisterViolations({
+    derivedSurfaceChildren: { "administration.overview": ["administration.ghost"] },
+  }).some((p) => p.includes('child surface "administration.ghost"')));
+
+  // THE SCOPE IS COMPUTED FROM THE MIRROR, not typed beside it. This is what "agree by construction"
+  // buys: there is no second list to keep equal.
+  assert.deepEqual([...NAV_CONTAINERS["administration/overview"]],
+    NAV_DERIVED_SURFACE_CHILDREN["administration.overview"]
+      .map((surfaceKey) => Object.entries(NAV_SURFACE_ACCESS)
+        .find(([, keys]) => keys.includes(surfaceKey))[0]));
+  assert.equal(NAV_CONTAINERS["dashboard/my"], "*", "the whole-product container is unchanged");
 });
 
 test("the negative FALLS THROUGH only when a compatibility path is also declared -- measured, not assumed", () => {
