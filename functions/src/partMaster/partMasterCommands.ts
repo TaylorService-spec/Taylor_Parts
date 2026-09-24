@@ -484,6 +484,18 @@ export async function changePartStatus(input: ChangePartStatusInput, deps?: Part
 
 // ---------------------------------------------------------------------------
 // Manufacturer commands (same contract; independent status model)
+//
+// CATALOG CUTOVER SAFETY FENCE. Manufacturer is a catalog MASTER object of the same catalog authority as
+// Part (create/update = inventory.catalog.manage, status = inventory.catalog.activate), so all three
+// commands call assertFirestoreCatalogWriterOpen as their FIRST statement, exactly as createPart /
+// updatePart / changePartStatus do. Without it a Catalog FREEZE would close Part writes while leaving
+// Manufacturer writes open -- a window in which two writer sets could both accept catalog master data.
+// This guard is a fence around the LEGACY Firestore writer until the PostgreSQL runtime cutover. It is
+// NOT an endorsement of Manufacturer-in-Firestore as target architecture: the target authority is the
+// governed PostgreSQL Manufacturer runtime under src/catalogMaster, which stays INACTIVE until that
+// cutover. (That module is deliberately not named here: manufacturerRuntimeAuthorityPostgres.test.mjs
+// fences it so that NO module outside src/catalogMaster mentions it while PostgreSQL is INACTIVE.)
+// Registering a writer here adds NO capability and changes NOTHING while the committed state is OPEN.
 // ---------------------------------------------------------------------------
 export interface CreateManufacturerInput {
   actorUid: string;
@@ -493,6 +505,7 @@ export interface CreateManufacturerInput {
 }
 
 export async function createManufacturer(input: CreateManufacturerInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("manufacturer.create");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
@@ -544,6 +557,7 @@ export interface UpdateManufacturerInput {
 }
 
 export async function updateManufacturer(input: UpdateManufacturerInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("manufacturer.update");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
@@ -597,6 +611,7 @@ export interface ChangeManufacturerStatusInput {
 }
 
 export async function changeManufacturerStatus(input: ChangeManufacturerStatusInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("manufacturer.changeStatus");
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);

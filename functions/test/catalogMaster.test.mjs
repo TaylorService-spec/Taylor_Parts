@@ -197,9 +197,88 @@ test("FROZEN and RETIRED both refuse every legacy writer, with distinct governed
   assert.match(readFileSync("src/dataImport/firestoreDataImportAdapters.ts", "utf8"), /await createPart\(/);
 });
 
+// THE CATALOG MASTER OBJECTS THE FREEZE MUST CLOSE. Part and Manufacturer are both catalog MASTER objects of
+// the same catalog authority (catalogMasterKernel.ts CATALOG_CAPABILITIES), so a freeze that closed one and left
+// the other open would be a window with two writer sets accepting catalog master data. Stated as data so a new
+// legacy catalog master writer cannot be added without appearing here.
+const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
+  ["part.create", "createPart"],
+  ["part.update", "updatePart"],
+  ["part.changeStatus", "changePartStatus"],
+  ["manufacturer.create", "createManufacturer"],
+  ["manufacturer.update", "updateManufacturer"],
+  ["manufacturer.changeStatus", "changeManufacturerStatus"],
+]);
+
+test("the writer registry covers Manufacturer as well as Part: a freeze closes both families, not one", () => {
+  const registered = Object.keys(writerState.FIRESTORE_CATALOG_WRITERS);
+  for (const [id, fn] of LEGACY_CATALOG_MASTER_COMMANDS) {
+    assert.ok(registered.includes(id), `${id} must be a registered Firestore catalog writer`);
+    const w = writerState.FIRESTORE_CATALOG_WRITERS[id];
+    assert.equal(w.module, "functions/src/partMaster/partMasterCommands.ts");
+    assert.equal(w.entry, fn);
+    assert.ok(w.reachedFrom.length > 0, `${id} must state where it is reached from`);
+  }
+  assert.equal(registered.length, LEGACY_CATALOG_MASTER_COMMANDS.length + 1, "plus equipmentModel.import");
+  // The Manufacturer reachedFrom is the REAL call graph, not a guess: the three deployed callables and the client.
+  for (const [id, fn] of LEGACY_CATALOG_MASTER_COMMANDS.slice(3)) {
+    const reached = writerState.FIRESTORE_CATALOG_WRITERS[id].reachedFrom.join(" | ");
+    assert.match(reached, new RegExp(`callable ${fn} `), `${id} must name its callable`);
+    assert.match(reached, /manufacturerCallables\.ts/);
+    assert.match(reached, /manufacturerCommandClient\.js/);
+  }
+  const idx = readFileSync("src/index.ts", "utf8");
+  const cal = readFileSync("src/partMaster/manufacturerCallables.ts", "utf8");
+  for (const fn of ["createManufacturer", "updateManufacturer", "changeManufacturerStatus"]) {
+    assert.match(idx, new RegExp(`${fn}Callable as ${fn},`), `index.ts must still export the ${fn} callable`);
+    assert.match(cal, new RegExp(`export const ${fn}Callable = onCall\\(`));
+    assert.match(cal, new RegExp(`await ${fn}\\(\\{ actorUid`), `${fn}Callable must reach the guarded command`);
+  }
+  // A frozen refusal is a governed refusal at the trust boundary too, not a server fault.
+  assert.match(cal, /err instanceof FirestoreCatalogWriterClosedError/);
+  assert.match(cal, /"failed-precondition", err\.state === "FROZEN"/);
+});
+
+// FREEZE PARITY, behaviourally. The committed constant is exactly what a FREEZE commit changes, so setting it
+// is the freeze. No database and no Firebase: the guard must refuse before resolveDeps() would touch Firestore.
+test("under a Catalog freeze BOTH families refuse; while OPEN both keep their existing behaviour", async () => {
+  const pm = require("../lib/partMaster/partMasterCommands.js");
+  const inputs = {
+    createPart: { actorUid: "", idempotencyKey: "", part: {} },
+    updatePart: { actorUid: "", idempotencyKey: "", partId: "", expectedVersion: 1, changes: { name: "x" } },
+    changePartStatus: { actorUid: "", idempotencyKey: "", partId: "", expectedVersion: 1, newStatus: "ACTIVE" },
+    createManufacturer: { actorUid: "", idempotencyKey: "", manufacturerId: "", name: "x" },
+    updateManufacturer: { actorUid: "", idempotencyKey: "", manufacturerId: "", expectedVersion: 1, name: "x" },
+    changeManufacturerStatus: { actorUid: "", idempotencyKey: "", manufacturerId: "", expectedVersion: 1, newStatus: "ACTIVE" },
+  };
+  // Inert stand-ins (non-nullish, so resolveDeps never falls back to getFirestore()/allRoles()): any Firestore
+  // read or write would throw, so a command that got past the guard could not silently touch the database.
+  const deps = { db: {}, roles: {}, now: () => { throw new Error("now() must not be reached"); } };
+  const committed = writerState.CATALOG_WRITER_AUTHORITY;
+  try {
+    for (const frozen of [st("FROZEN", "INACTIVE"), st("FROZEN", "ACTIVE"), st("RETIRED", "ACTIVE")]) {
+      writerState.CATALOG_WRITER_AUTHORITY = frozen;
+      for (const [id, fn] of LEGACY_CATALOG_MASTER_COMMANDS) {
+        await assert.rejects(() => pm[fn](inputs[fn], deps), (e) =>
+          e instanceof writerState.FirestoreCatalogWriterClosedError && e.writer === id && e.state === frozen.firestore,
+          `${fn} must refuse while the Firestore catalog writers are ${frozen.firestore}`);
+      }
+    }
+  } finally {
+    writerState.CATALOG_WRITER_AUTHORITY = committed;
+  }
+  assert.deepEqual({ ...writerState.CATALOG_WRITER_AUTHORITY }, st("OPEN", "INACTIVE"));
+  // OPEN: the guard is a no-op and each command proceeds into its own validation exactly as before.
+  for (const [, fn] of LEGACY_CATALOG_MASTER_COMMANDS) {
+    await assert.rejects(() => pm[fn](inputs[fn], deps), (e) =>
+      e instanceof pm.InvalidInputError && !(e instanceof writerState.FirestoreCatalogWriterClosedError),
+      `${fn} must behave normally while the Firestore catalog writers are OPEN`);
+  }
+});
+
 test("every legacy writer calls the guard with its own id, before anything else it does", () => {
   const pm = readFileSync("src/partMaster/partMasterCommands.ts", "utf8");
-  for (const [id, fn] of [["part.create", "createPart"], ["part.update", "updatePart"], ["part.changeStatus", "changePartStatus"]]) {
+  for (const [id, fn] of LEGACY_CATALOG_MASTER_COMMANDS) {
     const body = new RegExp(`export async function ${fn}\\([^)]*\\)[^{]*\\{\\n([^\\n]*)`).exec(pm);
     assert.ok(body, `${fn} not found`);
     assert.equal(body[1].trim(), `assertFirestoreCatalogWriterOpen("${id}");`, `${fn} must call the guard as its first statement`);
