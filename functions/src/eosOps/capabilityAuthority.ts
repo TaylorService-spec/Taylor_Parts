@@ -109,3 +109,111 @@ export async function listCapabilityKeys(pool: Pool): Promise<ReadonlySet<string
   const { rows } = await pool.query<{ key: string }>(`SELECT key FROM ${SCHEMA}.capabilities`);
   return new Set(rows.map((r) => r.key));
 }
+
+// ════════════════════ PROVENANCE-PRESERVING RESOLUTION ════════════════════
+//
+// `capabilitiesForRoleKeys` returns `SELECT DISTINCT c.key` as a flat `Set<string>`, which is the
+// right answer to "what may this Principal do" and structurally unable to answer "and WHO granted
+// it". That second fact is what a per-GRANT condition needs: a condition that cannot name its
+// grantor is a condition on every holder of the key. See eosOps/conditionalEntitlement.ts.
+//
+// These readers are ADDITIVE. `capabilitiesForRoleKeys` is untouched, still the authority every
+// existing caller uses, and `capabilityKeysOf(roleCapabilityGrants(...))` is EQUAL to it for the
+// same Roles -- proved by test, because a second resolver that disagreed with the first would be a
+// second policy.
+
+/** One (Role -> capability) grant row, with the granting Role KEY kept. */
+export interface RoleCapabilityGrantRow {
+  readonly roleKey: string;
+  readonly capabilityKey: string;
+}
+
+/**
+ * The same join `capabilitiesForRoleKeys` performs, WITHOUT the DISTINCT-on-key that discards the
+ * Role. Same table, same tenant guard, same resolution by Role key; only the projection differs.
+ */
+export async function roleCapabilityGrants(
+  pool: Pool,
+  tenantId: string,
+  roleKeys: readonly string[],
+): Promise<readonly RoleCapabilityGrantRow[]> {
+  if (roleKeys.length === 0) return Object.freeze([]);
+  const { rows } = await pool.query<{ role_key: string; capability_key: string }>(
+    `SELECT DISTINCT r.key AS role_key, c.key AS capability_key
+       FROM ${SCHEMA}.role_capabilities rc
+       JOIN ${SCHEMA}.capabilities c ON c.id = rc.capability_id
+       JOIN ${SCHEMA}.roles r        ON r.id = rc.role_id
+      WHERE rc.tenant_id = $1
+        AND r.tenant_id  = $1
+        AND r.key = ANY($2::text[])
+      ORDER BY r.key, c.key`,
+    [tenantId, roleKeys],
+  );
+  return Object.freeze(rows.map((r) => Object.freeze({ roleKey: r.role_key, capabilityKey: r.capability_key })));
+}
+
+/** One (Principal -> capability) DIRECT grant row. */
+export interface PrincipalCapabilityGrantRow {
+  readonly principalId: string;
+  readonly capabilityKey: string;
+}
+
+/**
+ * Direct grants for one Principal (AB3).
+ *
+ * DELIBERATELY SEPARATE from `roleCapabilityGrants`, and NOT folded into
+ * `resolveOperationalContext`: the operational runtime resolves capabilities from Roles ONLY today,
+ * and quietly adding direct grants to that set here would WIDEN effective access under the cover of
+ * a refactor. A caller that wants direct grants asks for them explicitly.
+ */
+export async function principalCapabilityGrants(
+  pool: Pool,
+  tenantId: string,
+  principalId: string,
+): Promise<readonly PrincipalCapabilityGrantRow[]> {
+  const { rows } = await pool.query<{ principal_id: string; capability_key: string }>(
+    `SELECT DISTINCT pc.principal_id AS principal_id, c.key AS capability_key
+       FROM ${SCHEMA}.principal_capabilities pc
+       JOIN ${SCHEMA}.capabilities c ON c.id = pc.capability_id
+      WHERE pc.tenant_id = $1 AND pc.principal_id = $2
+      ORDER BY c.key`,
+    [tenantId, principalId],
+  );
+  return Object.freeze(rows.map((r) => Object.freeze({ principalId: r.principal_id, capabilityKey: r.capability_key })));
+}
+
+/** The relation that holds per-grant conditions. NOT YET MIGRATED -- see PROPOSED_GRANT_CONDITION_SCHEMA. */
+export const GRANT_CONDITION_RELATION = `${SCHEMA}.capability_grant_conditions`;
+
+/** One stored per-grant condition row, as the relation holds it. */
+export interface GrantConditionRelationRow {
+  readonly grantScope: "ROLE" | "PRINCIPAL";
+  readonly grantorKey: string;
+  readonly capabilityKey: string;
+  readonly condition: unknown;
+}
+
+/**
+ * Read the ACTIVE per-grant conditions for one tenant.
+ *
+ * INERT UNTIL THE RELATION EXISTS. No migration creates it this Wave (Lane AA owns the slot), so
+ * against a currently-migrated database this throws `relation does not exist` -- which the entitled
+ * decision path turns into CONTEXT_AUTHORITY_UNAVAILABLE, never into "then there are no
+ * conditions". Reading a missing condition store as "unconditioned" would convert every conditioned
+ * grant into an unconditional one, so it fails closed instead.
+ */
+export async function grantConditionRows(
+  pool: Pool,
+  tenantId: string,
+): Promise<readonly GrantConditionRelationRow[]> {
+  const { rows } = await pool.query<{ grant_scope: "ROLE" | "PRINCIPAL"; grantor_key: string; capability_key: string; condition: unknown }>(
+    `SELECT grant_scope, grantor_key, capability_key, condition
+       FROM ${GRANT_CONDITION_RELATION}
+      WHERE tenant_id = $1 AND status = 'ACTIVE'
+      ORDER BY grant_scope, grantor_key, capability_key`,
+    [tenantId],
+  );
+  return Object.freeze(rows.map((r) => Object.freeze({
+    grantScope: r.grant_scope, grantorKey: r.grantor_key, capabilityKey: r.capability_key, condition: r.condition,
+  })));
+}
