@@ -48,11 +48,26 @@ export const REORDER_REQUEST_ASSIGN = "reorder.request.assign";
 /**
  * The Work Eligibility this business operation requires, fixed by the operation.
  *
+ * PARTS_OPERATIONS, BY OWNER RULING. Reorder assignment is Parts/Reorder operational work, so the qualification that
+ * governs it is the Parts one. The constant previously read WAREHOUSE_OPERATIONS, which was wrong in the one way a
+ * qualification can be wrong: it named a DIFFERENT kind of work. The legacy picker this command replaces
+ * (field-ops-app-vite/src/shared/reorder/ManagerQueuePanel.jsx:70) filters on the legacy operationalRole
+ * PARTS_ASSOCIATE, whose governed replacement is PARTS_OPERATIONS -- registered in its own right by migration
+ * 1761696000000 and, in that migration's own words, "NOT WAREHOUSE_OPERATIONS".
+ *
+ * NO ALIAS AND NO INFERENCE. WAREHOUSE_OPERATIONS and PARTS_OPERATIONS remain distinct codes in
+ * eosWorkforce/workEligibilityVocabulary.ts, neither is derived from the other, and a warehouse Employee becomes
+ * assignable Reorder work only by being independently granted PARTS_OPERATIONS through the governed writer.
+ *
+ * NOT THE QUEUE SCOPE EITHER. REORDER_QUEUE is an Operational Scope answering "which queue may they see"; this
+ * answers "may they be given this category of work". The two are separate authorities and are never collapsed --
+ * see the OPERATIONAL_SCOPE predicate in eosOps/contextualAuthorization.ts.
+ *
  * Not a caller input and not configurable: a client that could choose the qualification could choose one nobody
- * needs. Parts/Warehouse assignment is CASE A, so no Operational Scope is required -- the proven workflow is not
+ * needs. Assignment is CASE A, so no Operational Scope is required HERE -- the proven workflow is not
  * warehouse-specific, and the authority supporting scope is not a reason to demand it.
  */
-export const REORDER_ASSIGNMENT_QUALIFICATION = "WAREHOUSE_OPERATIONS";
+export const REORDER_ASSIGNMENT_QUALIFICATION = "PARTS_OPERATIONS";
 
 /** Provenance of an assignment row, matching the eos_ops convention. A live command only ever writes NATIVE. */
 export const NATIVE_ASSIGNMENT_PROVENANCE = "NATIVE";
@@ -159,8 +174,10 @@ export async function assignReorderRequestToEmployee(
     }
     // QUALIFICATION. Fixed by the business operation, never selected by the caller: there is deliberately no
     // qualificationCode input, because "which qualification does Reorder assignment require" is not a client's
-    // question. Parts/Warehouse assignment is CASE A, so warehouse scope is NOT required -- the currently proven
-    // workflow is not warehouse-specific, and requiring scope here would narrow it.
+    // question. It is PARTS_OPERATIONS -- Reorder assignment is Parts work, and holding WAREHOUSE_OPERATIONS
+    // confers nothing here. No Operational Scope is required at this boundary (CASE A): the currently proven
+    // workflow is not warehouse-specific, and REORDER_QUEUE visibility is a different authority answering a
+    // different question.
     const qualified = await client.query(
       `SELECT 1 FROM eos_workforce.employee_work_eligibility
         WHERE tenant_id = $1 AND employee_id = $2 AND qualification_code = $3 AND effective_to IS NULL`,
