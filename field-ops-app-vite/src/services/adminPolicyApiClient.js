@@ -36,6 +36,14 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listRoles",
   "readRolePolicy",
   "listPrincipalRoleAssignments",
+  // Object-owned security reads. Three projections of ONE server authority --
+  // Object -> actions -> grantees, Role -> objects -> actions, Principal -> roles and direct
+  // grants -> effective access -- plus the Object/action inventory the first two are read against.
+  // Mirrored from the server, which resolves them in PostgreSQL. Nothing here derives access.
+  "listObjectsWithActions",
+  "getObjectSecurityMatrix",
+  "getRoleSecurity",
+  "getPrincipalEffectiveAccess",
   "listWorkflows",
   "readWorkflowVersion",
   "readPolicyAuditHistory",
@@ -52,6 +60,13 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "removeFieldPermissionOverride",
   "assignRole",
   "revokeRole",
+  // Object-owned grants. The contract is objectKey + actionKey + grantee, never a capability key.
+  // NAMED SO THE CLOSED LIST KEEPS MIRRORING THE SERVER, and called by nothing: this tranche wires
+  // the READS only. A name in this list confers no authority -- the server checks every one.
+  "grantObjectActionToRole",
+  "revokeObjectActionFromRole",
+  "grantObjectActionToPrincipal",
+  "revokeObjectActionFromPrincipal",
   "createWorkflowDraft",
   "createWorkflowVersion",
   "updateWorkflowDefinition",
@@ -125,9 +140,14 @@ export async function callPolicyApi(operation, input = {}, options = {}) {
   }
   if (!token) return failure("NOT_SIGNED_IN", "sign in to reach the Administration API");
 
+  // The transport is injectable for the same reason the token and base URL are: the envelope has to
+  // be provable without a network. Production passes nothing and gets the global fetch.
+  const doFetch = options.fetchImpl ?? (typeof fetch === "function" ? fetch : null);
+  if (!doFetch) return failure("UNREACHABLE", "no network transport is available");
+
   let response;
   try {
-    response = await fetch(`${base}/admin/policy`, {
+    response = await doFetch(`${base}/admin/policy`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -178,6 +198,70 @@ export async function currentIdToken() {
   if (!user) return null;
   return user.getIdToken();
 }
+
+// ════════════════════ THE OBJECT-OWNED SECURITY READS ════════════════════
+//
+// Four named wrappers over the SAME `POST /admin/policy` envelope -- no second endpoint, no second
+// auth scheme, no reshaping. Each sends the operation name and the input the server's dispatcher
+// requires, and returns the server's own `data` untouched inside this client's result envelope.
+//
+// They exist so a screen names what it wants rather than a string literal, and so a wrong input key
+// is a diff in ONE file instead of an INVALID_INPUT at run time on four screens.
+//
+// WHAT THEY DELIBERATELY DO NOT DO
+//
+//   they do not validate the key locally -- a missing objectKey is the SERVER's INVALID_INPUT, and a
+//     client that answered first would be deciding something
+//   they do not default a refusal to an empty list -- NOT_CONFIGURED, FORBIDDEN and NOT_FOUND all
+//     reach the caller as themselves, because a screen that renders "nobody holds this action" for a
+//     read it was refused is lying about the tenant's security
+//   they do not merge, cache or cross-reference the four answers -- that would be a fifth projection
+//     the server never computed
+
+/**
+ * Every Object this tenant registered, each with the actions the canonical metadata says it governs.
+ *
+ * Takes no input. An Object with no capability still comes back, with an empty `actions` array:
+ * "nothing governs this yet" is a fact an administrator needs, not a row to hide.
+ */
+export function listObjectsWithActions(options = {}) {
+  return callPolicyApi("listObjectsWithActions", {}, options);
+}
+
+/**
+ * OBJECT VIEW. One Object, every action it governs, and who holds each -- Roles AND Principals.
+ *
+ * `{ objectKey, label, supportsDelete, actions }`, where each action carries `roleKeys` and
+ * `principalIds`. An action nobody holds is an empty row rather than an absent one.
+ */
+export function getObjectSecurityMatrix(objectKey, options = {}) {
+  return callPolicyApi("getObjectSecurityMatrix", { objectKey }, options);
+}
+
+/** ROLE VIEW. `{ roleKey, name, objects }` -- the same grants, grouped Role -> Object -> actions. */
+export function getRoleSecurity(roleKey, options = {}) {
+  return callPolicyApi("getRoleSecurity", { roleKey }, options);
+}
+
+/**
+ * PRINCIPAL VIEW. `{ principalId, roles, directGrants, effective, objects }`.
+ *
+ * `effective` keeps provenance per capability (ROLE, DIRECT or ROLE_AND_DIRECT) because revoking a
+ * Role and revoking a direct grant are different acts. Work Eligibility, Operational Scope and the
+ * linked Employee are absent from this payload BY THE SERVER'S DESIGN -- they are subordinate
+ * constraints answered elsewhere, and this client must not fold a business fact in beside a grant.
+ */
+export function getPrincipalEffectiveAccess(principalId, options = {}) {
+  return callPolicyApi("getPrincipalEffectiveAccess", { principalId }, options);
+}
+
+/** The injectable seam a hook or screen takes, so a test can stand in for the whole read model. */
+export const adminSecurityReads = Object.freeze({
+  listObjectsWithActions,
+  getObjectSecurityMatrix,
+  getRoleSecurity,
+  getPrincipalEffectiveAccess,
+});
 
 /** A failure a person can read, without repeating what the screen already says. */
 export function describePolicyFailure(result) {
