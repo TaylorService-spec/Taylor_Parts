@@ -1,9 +1,16 @@
 // P1A-3 — the operator-run capability GRANT migration tool.
 //
-// Reconciles the LEGACY role -> capability grant fact (a Role's own declared `permissions` array,
-// in compatibilityRoles.ts / governedBusinessRoles.ts -- code, not Firestore data) into
+// Reconciles the DECLARED role -> capability grant fact -- code, not Firestore data -- into
 // `eos_policy.role_capabilities`, for the 8 inventory-authority writers' new capability keys
-// migration 006 catalogs.
+// migration 006 catalogs and for any other governed key set a caller names.
+//
+// TWO DECLARATION SOURCES, READ SEPARATELY (see `deriveGovernedRoleGrants`):
+//   LEGACY     a Role's own `permissions` array (compatibilityRoles.ts / governedBusinessRoles.ts),
+//              which holds Firebase permission ids and carries admin -> owner inheritance.
+//   CANONICAL  adminPolicy/canonicalRoleCapabilityCatalog.ts, which declares holders for eos_policy
+//              capability keys that have no Firebase permission id, flat and without inheritance.
+// A missing declared grant is reconciled. An UNDECLARED live grant is REPORTED (`extraGrants`),
+// never revoked.
 //
 // NONPROD ONLY. DEFAULT = DRY RUN: nothing under `apply: false` (the default) writes anything --
 // it only computes and reports what an apply run would do. `apply: true` is the only path that
@@ -17,6 +24,12 @@
 import type { Pool } from "pg";
 import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "../../access/governedBusinessRoles";
+import {
+  assertCanonicalKeysAreNotLegacyPermissionIds,
+  assertNoCanonicalKeyInLegacyGrants,
+  deriveCanonicalCapabilityGrants,
+  isCanonicalCapabilityKey,
+} from "../../adminPolicy/canonicalRoleCapabilityCatalog";
 import type { Role } from "../../types/access";
 import { newCapabilityKeys } from "./inventoryWriterCapabilityCensus";
 
@@ -69,7 +82,54 @@ export function deriveLegacyRoleGrants(
   return Object.freeze(grants);
 }
 
-export type ReconcileRowStatus = "PROPOSED" | "APPLIED" | "ALREADY_GRANTED" | "UNRESOLVED_ROLE" | "UNKNOWN_CAPABILITY";
+/**
+ * THE TWO DECLARATION SOURCES, KEPT APART ON PURPOSE.
+ *
+ * A capability key is governed by EXACTLY ONE of them:
+ *
+ *   LEGACY  a Firebase permission id registered in access/permissionCatalog.ts. Its holders are
+ *           whichever Roles list it in their own `permissions` array -- which, for `admin`, is the
+ *           whole catalog, and therefore also `owner`, which spreads admin
+ *           (governedBusinessRoles.ts:83). That inheritance is correct for Firebase permission ids
+ *           and is left exactly as it is.
+ *
+ *   CANONICAL  an eos_policy capability key with no Firebase equivalent. Its holders are declared
+ *           explicitly in adminPolicy/canonicalRoleCapabilityCatalog.ts, flat, with NO inheritance:
+ *           `owner` holds such a key only where `owner` is written out.
+ *
+ * FAIL CLOSED ON EVERY WAY THE TWO COULD BLUR:
+ *   - a canonical key that is ALSO a registered Firebase permission id -> refused, because the
+ *     Role catalog would then declare holders for it too and the two sources would disagree.
+ *   - a canonical key found inside ANY Role's legacy `permissions` array -> refused, because that
+ *     is precisely how admin's whole-catalog composition would manufacture an `owner` grant the
+ *     canonical declaration never made. This is the check that keeps a five-row ruling five rows.
+ *
+ * A requested key that neither source governs derives nothing. It is not an error -- it is how an
+ * undeclared live grant surfaces, as an EXTRA_GRANT row below, rather than being silently blessed.
+ */
+export function deriveGovernedRoleGrants(
+  capabilityKeys: readonly string[] = newCapabilityKeys(),
+  roleKeys?: readonly string[],
+): readonly LegacyRoleGrant[] {
+  assertCanonicalKeysAreNotLegacyPermissionIds();
+
+  const canonicalRequested = capabilityKeys.filter(isCanonicalCapabilityKey);
+  assertNoCanonicalKeyInLegacyGrants(deriveLegacyRoleGrants(canonicalRequested, roleKeys));
+
+  const legacy = deriveLegacyRoleGrants(capabilityKeys.filter((k) => !isCanonicalCapabilityKey(k)), roleKeys);
+  const canonical = deriveCanonicalCapabilityGrants(canonicalRequested, roleKeys);
+  const grants = [...legacy, ...canonical];
+  grants.sort((a, b) => (a.roleKey === b.roleKey ? a.capabilityKey.localeCompare(b.capabilityKey) : a.roleKey.localeCompare(b.roleKey)));
+  return Object.freeze(grants);
+}
+
+export type ReconcileRowStatus =
+  | "PROPOSED"
+  | "APPLIED"
+  | "ALREADY_GRANTED"
+  | "UNRESOLVED_ROLE"
+  | "UNKNOWN_CAPABILITY"
+  | "EXTRA_GRANT";
 
 export interface ReconcileRow {
   readonly roleKey: string;
@@ -88,6 +148,16 @@ export interface ReconcileReport {
   readonly rows: readonly ReconcileRow[];
   /** UNRESOLVED_ROLE + UNKNOWN_CAPABILITY rows -- an apply run never fails on these, it reports them. */
   readonly unresolved: readonly ReconcileRow[];
+  /**
+   * EXTRA_GRANT rows: a (Role, capability) pair that EXISTS in eos_policy.role_capabilities, within
+   * the capability keys (and Roles) this run asked about, which NEITHER declaration source declares.
+   *
+   * REPORTED, NEVER REVOKED. An apply run does not delete these and does not fail on them. The tool
+   * is additive by design -- deciding that a live grant is wrong is an Owner decision, not a
+   * reconcile side effect. Deliberately kept OUT of `rows`, which remains exactly what it was: the
+   * per-declaration outcome of this run.
+   */
+  readonly extraGrants: readonly ReconcileRow[];
 }
 
 export interface ReconcileOptions {
@@ -129,16 +199,19 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
   const tenantRow = await pool.query<{ id: string }>(`SELECT id FROM ${SCHEMA}.tenants WHERE id = $1`, [tenantId]);
   if (tenantRow.rowCount === 0) throw new UnknownTenantError(tenantId);
 
-  const legacyGrants = deriveLegacyRoleGrants(options.capabilityKeys ?? newCapabilityKeys(), options.roleKeys);
+  const requestedKeys = options.capabilityKeys ?? newCapabilityKeys();
+  const legacyGrants = deriveGovernedRoleGrants(requestedKeys, options.roleKeys);
 
   const capRows = await pool.query<{ id: string; key: string }>(`SELECT id, key FROM ${SCHEMA}.capabilities`);
   const capabilityIdByKey = new Map(capRows.rows.map((r) => [r.key, r.id]));
+  const capabilityKeyById = new Map(capRows.rows.map((r) => [r.id, r.key]));
 
   const roleRows = await pool.query<{ id: string; key: string }>(
     `SELECT id, key FROM ${SCHEMA}.roles WHERE tenant_id = $1`,
     [tenantId],
   );
   const roleIdByKey = new Map(roleRows.rows.map((r) => [r.key, r.id]));
+  const roleKeyById = new Map(roleRows.rows.map((r) => [r.id, r.key]));
 
   const existingRows = await pool.query<{ role_id: string; capability_id: string }>(
     `SELECT role_id, capability_id FROM ${SCHEMA}.role_capabilities WHERE tenant_id = $1`,
@@ -146,6 +219,23 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
   );
   const existingPairs = new Set(existingRows.rows.map((r) => `${r.role_id}|${r.capability_id}`));
   const beforeCount = existingPairs.size;
+
+  // EXTRA sweep -- computed from the state BEFORE this run, over exactly the keys (and Roles) asked
+  // about, so an apply run's own insertions can never show up as unexplained.
+  const declaredPairs = new Set(legacyGrants.map((g) => `${g.roleKey}|${g.capabilityKey}`));
+  const inScopeKeys = new Set(requestedKeys);
+  const inScopeRoles = options.roleKeys === undefined ? undefined : new Set(options.roleKeys);
+  const extraGrants: ReconcileRow[] = [];
+  for (const row of existingRows.rows) {
+    const capabilityKey = capabilityKeyById.get(row.capability_id);
+    const roleKey = roleKeyById.get(row.role_id);
+    if (capabilityKey === undefined || roleKey === undefined) continue;
+    if (!inScopeKeys.has(capabilityKey)) continue;
+    if (inScopeRoles !== undefined && !inScopeRoles.has(roleKey)) continue;
+    if (declaredPairs.has(`${roleKey}|${capabilityKey}`)) continue;
+    extraGrants.push({ roleKey, capabilityKey, status: "EXTRA_GRANT" });
+  }
+  extraGrants.sort((a, b) => (a.roleKey === b.roleKey ? a.capabilityKey.localeCompare(b.capabilityKey) : a.roleKey.localeCompare(b.roleKey)));
 
   const rows: ReconcileRow[] = [];
   let proposedAdditions = 0;
@@ -201,6 +291,7 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
     appliedAdditions,
     rows: Object.freeze(rows),
     unresolved: Object.freeze(rows.filter((r) => r.status === "UNRESOLVED_ROLE" || r.status === "UNKNOWN_CAPABILITY")),
+    extraGrants: Object.freeze(extraGrants),
   });
 }
 
@@ -214,5 +305,7 @@ export function describeReconcileReport(report: ReconcileReport): string {
     `  applied additions       ${report.appliedAdditions}`,
     `  unresolved mismatches   ${report.unresolved.length}`,
     ...report.unresolved.map((r) => `    - ${r.status}: role=${r.roleKey} capability=${r.capabilityKey}`),
+    `  extra grants (reported) ${report.extraGrants.length}`,
+    ...report.extraGrants.map((r) => `    - ${r.status}: role=${r.roleKey} capability=${r.capabilityKey} -- live, declared by no source; never revoked here`),
   ].join("\n");
 }
