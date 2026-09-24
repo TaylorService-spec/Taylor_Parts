@@ -141,13 +141,29 @@ test('CONTRACT: the declared service and health path are the ones render.yaml ac
   assert.equal(blueprintScalar('healthCheckPath'), api.healthPath);
 });
 
-test('CONTRACT: the browser origin has exactly ONE home, and the registry points at it rather than copying it', () => {
+test('CONTRACT: the browser origin has exactly ONE AUTHORITY, and every other copy of it is pinned equal', () => {
   // The API compares a browser's Origin header against EOS_ALLOWED_ORIGINS, so a value that has
   // drifted from the frontend's real hostname does not degrade -- it refuses every call the
-  // application makes, with a CORS error naming neither side. The temptation is to mirror it into
-  // the registry for cross-checking; that was tried and it is wrong twice over. The hostname carries
-  // brand identity, which deploymentDrift.test.mjs guards this registry against, and a second copy
-  // of an origin is how one of them goes stale -- the exact failure mode being defended against.
+  // application makes, with a CORS error naming neither side. render.yaml is that value's one
+  // AUTHORITY and still is; nothing below moves it.
+  //
+  // WAVE 14 / LANE AZ -- WHAT CHANGED AND WHY. This test used to say the origin had exactly one
+  // HOME, and gave two reasons for refusing to record it anywhere else: brand identity, which
+  // deploymentDrift.test.mjs guarded the registry against, and staleness, because a second copy is
+  // how one of them goes wrong. The first was a rule about the registry, and it has been moved
+  // there: an address field is now the one narrow place a brand token may appear.
+  //
+  // The second is a real and permanent hazard, and it is answered rather than avoided. The cost of
+  // the avoidance was concrete: config/environments.json, whose declared job is to record where each
+  // environment is served, named the Firebase Hosting review site as platform-sandbox's only
+  // surface. That is not the EOS application and its origin is not admitted by this API, so D2
+  // measured drift against a surface no EOS persona uses, and nothing in the repository said where
+  // the EOS frontend actually was.
+  //
+  // So the application surface is now declared, and the copy is made incapable of drifting instead
+  // of being trusted not to: the assertion below fails the moment the registry's application-surface
+  // url and EOS_ALLOWED_ORIGINS stop being byte-identical, in EITHER direction. That is strictly
+  // more than the old arrangement checked, which was nothing.
   const api = environmentsWithApi[0].eosApi;
   assert.equal(api.allowedBrowserOriginAuthority, 'render.yaml EOS_ALLOWED_ORIGINS');
   const allowed = blueprintEnvValue('EOS_ALLOWED_ORIGINS');
@@ -157,6 +173,50 @@ test('CONTRACT: the browser origin has exactly ONE home, and the registry points
   // And it is not the production application. The API is non-production and must never name the
   // customer's live frontend as a caller it trusts.
   assert.doesNotMatch(allowed, /taylor-parts/, 'the non-production API must not trust a production origin');
+
+  // THE PIN. Exactly one surface of the environment that has an API is the EOS application, and its
+  // recorded address IS the origin that API admits. Property-based, not id-based: no environment id
+  // and no hostname is written here, so this keeps holding when either moves.
+  const env = environmentsWithApi[0];
+  const appSurfaces = (env.surfaces ?? []).filter((s) => s.eosApplication === true);
+  assert.equal(appSurfaces.length, 1,
+    `environment '${env.id}' declares an EOS API but ${appSurfaces.length} application surfaces -- ` +
+    'the frontend that reaches it must be identifiable, and identifiable as one thing');
+  assert.equal(appSurfaces[0].url, allowed,
+    "the registry's EOS application surface and render.yaml EOS_ALLOWED_ORIGINS have drifted apart; " +
+    'a browser served from the recorded surface would be refused by CORS on every EOS call');
+  assert.equal(appSurfaces[0].versionPath, '/version.json',
+    'the application surface must be able to identify itself to D2');
+});
+
+test('CONTRACT: an environment with no EOS API declares no EOS application surface', () => {
+  // The other direction of the same pair, and the production fence restated as a surface property:
+  // an environment with nowhere to send an EOS call has no EOS application, so a surface claiming to
+  // be one would be a frontend pointed at an API that does not exist for it. Production declares
+  // `eosApi: null`, so this forbids marking either of its surfaces as the EOS application.
+  for (const e of registry.environments) {
+    if (e.eosApi !== null) continue;
+    const claimed = (e.surfaces ?? []).filter((s) => s.eosApplication === true).map((s) => s.id);
+    assert.deepEqual(claimed, [],
+      `environment '${e.id}' declares no eosApi but marks ${claimed.join(', ')} as the EOS application`);
+  }
+});
+
+test('CONTRACT: the EOS application surface is not the legacy Firebase Hosting review site', () => {
+  // WAVE 14 / LANE AZ, the defect this lane corrected, pinned so it cannot come back by a later edit
+  // that reduces platform-sandbox to one surface again. Stated as a property of the surface KIND
+  // rather than as a hostname, because the hostname belongs to render.yaml and is pinned to it above.
+  const env = environmentsWithApi[0];
+  const app = (env.surfaces ?? []).find((s) => s.eosApplication === true);
+  assert.notEqual(app.kind, 'firebase-hosting',
+    'the Firebase Hosting review surface is not the EOS application -- its origin is not admitted by ' +
+    'EOS_ALLOWED_ORIGINS, so every EOS call from it is refused by CORS');
+  // And the review surface is still RECORDED. Reclassified, never deleted: it is still deployed and
+  // still the target of scripts/_sandboxRefresh.run.sh, and a registry that forgot it would hide
+  // infrastructure that exists.
+  const review = (env.surfaces ?? []).filter((s) => s.kind === 'firebase-hosting');
+  assert.equal(review.length, 1, 'the Firebase Hosting surface must remain declared, not erased');
+  assert.notEqual(review[0].eosApplication, true);
 });
 
 test('CONTRACT: the API verifies tokens from the SAME Firebase project the frontend signs into', () => {

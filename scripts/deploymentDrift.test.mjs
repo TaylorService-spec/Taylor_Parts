@@ -212,14 +212,82 @@ test('D2 registry: role is INDEPENDENT of deployment — production is not synon
   }
 });
 
-test('D2 registry: declares no company or brand identity', () => {
+const BRAND_TOKENS = Object.freeze(['verenward']);
+const LEGAL_TOKENS = Object.freeze(['llc', 'inc.', 'trademark', '™', '®']);
+
+test('D2 registry: declares no company or brand identity outside a deployed address', () => {
   // Brand foundation is a separate workstream; this registry must not duplicate
   // or pre-empt it. `operator` is a neutral architectural placeholder.
+  //
+  // WAVE 14 / LANE AZ. This test used to scan the whole serialized registry for
+  // brand tokens, and that blanket form was doing two jobs at once. The property
+  // worth keeping is that the registry must not DECLARE a company identity as
+  // architecture -- in `operator`, in ids, in purposes, in notes. A deployed
+  // surface's hostname is not that: it is a measured address of a thing that
+  // exists, and recording where each environment is served is this registry's
+  // entire reason for existing. The blanket scan made the two indistinguishable,
+  // so platform-sandbox's real EOS frontend could not be named here at all and
+  // D2 measured drift against a surface no EOS persona uses.
+  //
+  // So the scan now runs over the registry with the ADDRESS fields lifted out,
+  // which is a narrower door, not an open one: a brand token may enter through a
+  // surface `url` or an `eosApi.baseUrl` and through nothing else. Everywhere
+  // else it is refused exactly as before. Legal-entity markers are refused
+  // EVERYWHERE, addresses included -- a hostname is an address, and 'LLC' in one
+  // is a brand declaration wearing an address's clothes.
   assert.equal(registry.operator, 'platform-operator');
-  const serialized = JSON.stringify(registry).toLowerCase();
-  for (const forbidden of ['verenward', 'llc', 'inc.', 'trademark', '™', '®']) {
+
+  const stripped = JSON.parse(JSON.stringify(registry));
+  const addresses = [];
+  for (const e of stripped.environments) {
+    for (const s of e.surfaces ?? []) {
+      if (typeof s.url === 'string') addresses.push(s.url);
+      delete s.url;
+    }
+    if (e.eosApi && typeof e.eosApi.baseUrl === 'string') {
+      addresses.push(e.eosApi.baseUrl);
+      delete e.eosApi.baseUrl;
+    }
+  }
+
+  const serialized = JSON.stringify(stripped).toLowerCase();
+  for (const forbidden of [...BRAND_TOKENS, ...LEGAL_TOKENS]) {
     assert.ok(!serialized.includes(forbidden), `registry leaked brand/legal identity: ${forbidden}`);
   }
+  for (const url of addresses) {
+    for (const forbidden of LEGAL_TOKENS) {
+      assert.ok(!url.toLowerCase().includes(forbidden),
+        `deployment address leaked legal identity: ${url}`);
+    }
+  }
+});
+
+test('D2 registry: the address exemption is exactly one field per surface, and it is load-bearing', () => {
+  // Guards the guard above. If a later edit widens the exemption -- lifting out
+  // `notes`, or skipping the scan when an address is present -- the narrow door
+  // becomes a hole and nothing would say so. Two fixtures prove the boundary is
+  // where it is claimed to be.
+  const leaked = JSON.parse(JSON.stringify(registry));
+  leaked.environments[0].notes = `${leaked.environments[0].notes ?? ''} Verenward`;
+  assert.ok(
+    BRAND_TOKENS.some((t) => JSON.stringify(leaked).toLowerCase().includes(t)),
+    'the fixture must actually contain the token it is testing for',
+  );
+  const strippedLeak = JSON.parse(JSON.stringify(leaked));
+  for (const e of strippedLeak.environments) {
+    for (const s of e.surfaces ?? []) delete s.url;
+    if (e.eosApi) delete e.eosApi.baseUrl;
+  }
+  assert.ok(
+    BRAND_TOKENS.some((t) => JSON.stringify(strippedLeak).toLowerCase().includes(t)),
+    'a brand token in `notes` must still be visible after addresses are lifted out',
+  );
+
+  // And a legal marker inside an address is still caught, which is what stops the
+  // exemption from being a general-purpose bypass.
+  const badAddress = 'https://acme-llc.example.com';
+  assert.ok(LEGAL_TOKENS.some((t) => badAddress.toLowerCase().includes(t)),
+    'a legal-entity marker in a hostname must be detectable');
 });
 
 test('D2 registry: unobservable environments are enumerable', () => {

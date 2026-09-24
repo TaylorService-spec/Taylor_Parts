@@ -53,6 +53,26 @@
     "EXACTLY ONE environment declares one: platform-sandbox. `null` on a production-role environment is",
     "the fence -- a production frontend has no EOS API to reach and must report NOT CONFIGURED.",
     "",
+    "SURFACES, AND WHICH ONE IS THE APPLICATION. `surfaces[]` records WHERE an environment is served.",
+    "An environment may be served from more than one place, and those places are not interchangeable, so",
+    "`eosApplication` marks the ONE surface that is the EOS application -- the frontend that reaches",
+    "`eosApi` and whose origin that API accepts. It is absent (meaning false) on every surface that is not.",
+    "",
+    "WAVE 14 / LANE AZ CORRECTION. platform-sandbox declared exactly one surface, the Firebase Hosting",
+    "review site, and nothing said it was not the EOS application. It is not: its origin is not the one",
+    "render.yaml admits, so an EOS read from it is refused by CORS. The Vercel surface the EOS frontend is",
+    "actually served from was recorded nowhere, so D2 measured drift against a surface no EOS persona uses.",
+    "Both are now declared and classified. The Firebase surface was RECLASSIFIED, never deleted: it is still",
+    "deployed and still the target of scripts/_sandboxRefresh.run.sh and the browser certification gates.",
+    "",
+    "AN ADDRESS IS NOT A BRAND DECLARATION. Recording the application surface puts a hostname the Owner",
+    "named after the company into this file. deploymentDrift.test.mjs still forbids company or legal",
+    "identity everywhere in this registry EXCEPT a deployed address field, and forbids legal-entity markers",
+    "even there. The narrow door is deliberate: an address is measured infrastructure, prose is a claim.",
+    "The staleness objection that kept the origin out of this file (eosApiEnvironmentContract.test.mjs) is",
+    "answered the only way it can be -- the application surface url and EOS_ALLOWED_ORIGINS are now pinned",
+    "EQUAL by that same suite, so the two copies cannot disagree rather than being trusted not to.",
+    "",
     "SECRETS: `firebase` holds PUBLIC Firebase Web client configuration only. A Firebase Web apiKey",
     "is a public project identifier, not a credential — access is enforced by Firestore Rules and",
     "Auth, not by hiding it. No service-account key, token, or private credential belongs in this",
@@ -223,12 +243,22 @@
       "$capabilityActivationOverrides_comment": "Per-environment activation of the sales/fulfillment/finance spine (all catalog active:false) -- lifts the blanket active:false DENY in THIS sandbox only so the Opportunity->SO->Fulfillment->Billing flow is testable. Activation != authorization: a persona still needs a qualifying Role grant. NO role:production environment may carry this key (environmentCapabilityOverrides.ts is additionally role-keyed, and environmentArchitecture.test.mjs asserts absence). See docs/design/per-environment-capability-activation-spec.md.",
       "surfaces": [
         {
+          "id": "eos-app",
+          "kind": "vercel",
+          "url": "https://verenwardeos.vercel.app",
+          "versionPath": "/version.json",
+          "governed": false,
+          "eosApplication": true,
+          "notes": "THE EOS application surface for this environment -- the frontend that reaches eosApi, and the only browser origin that API accepts. Its /version.json reports environmentId platform-sandbox, so the running site agrees with this entry rather than merely being pointed at by it (measured 2026-09-10, docs/architecture/eos-real-nonprod-activation.md section 2). A per-deployment preview URL is a DIFFERENT origin and is refused by CORS, so only this stable domain is a usable surface. governed:false is the conservative reading and is a claim about PUBLICATION, not about quality: this surface follows main automatically (same section, revision rule), which is the exact property `governed` was introduced to distinguish; nothing here evidences an Owner-authorized promotion lifecycle, so this does not assert one. This url and render.yaml EOS_ALLOWED_ORIGINS are pinned EQUAL by scripts/eosApiEnvironmentContract.test.mjs -- the second copy cannot go stale, which is the condition that makes recording an address twice safe at all."
+        },
+        {
           "id": "hosting",
           "kind": "firebase-hosting",
           "url": "https://eos-platform-sandbox.web.app",
           "versionPath": "/version.json",
           "governed": true,
-          "notes": "Stable Owner review URL. Rebuilt freely; no delete protection, PITR or backups by design."
+          "eosApplication": false,
+          "notes": "Firebase Hosting review surface. STILL DEPLOYED and still the target of scripts/_sandboxRefresh.run.sh and the browser certification gates under field-ops-app-vite/.claude/skills/, which is why it is RECORDED rather than removed -- deleting the entry would hide infrastructure that exists. It is NOT the EOS application target: its origin is not in render.yaml EOS_ALLOWED_ORIGINS, so an EOS read attempted from this surface is refused by CORS. It was the sole surface declared here until Wave 14 / Lane AZ, which is how this registry came to name a non-EOS surface as the environment's only frontend. Stable Owner review URL; rebuilt freely; no delete protection, PITR or backups by design."
         }
       ],
       "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes."
