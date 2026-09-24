@@ -584,3 +584,59 @@ for (const [label, args, env, pattern] of [
     assert.match(out, pattern);
   });
 }
+
+// ============================ THE COMMERCIAL SYNTHETIC CLEANUP ============================
+//
+// scripts/commercialSyntheticCleanup.js is the ONE tool in the estate carrying an Owner authorization to MUTATE
+// NONPROD DATA, so its fence is the one that matters most. It must refuse before `pg` is even resolved, it has no
+// production mode, it refuses the Certification world BY NAME, and -- uniquely -- it refuses every option that
+// would let an operator choose WHAT is deleted. The delete set is a reviewed constant; a predicate is not an
+// option, which is exactly what the Owner ruling forbids.
+const CLEANUP = "scripts/commercialSyntheticCleanup.js";
+const CLEANUP_ENV = { EOS_ENVIRONMENT: "nonprod", CLEANUP_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
+const CLEANUP_ARGS = [
+  "--environment", "platform-sandbox", "--databaseUrlEnv", "CLEANUP_FENCE_DB",
+  "--tenantKey", "taylor-nonprod", "--nonprodDataMutationAuthorized", "--performedBy", "op",
+];
+const cleanupEnvSwap = (args, environment) => args.map((a) => (a === "platform-sandbox" ? environment : a));
+
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--nonprodDataMutationAuthorized"], CLEANUP_ENV, /--environment is required/],
+  ["production environment", [...cleanupEnvSwap(CLEANUP_ARGS, "taylor-parts-production"), "--mode", "apply", "--apply"], CLEANUP_ENV, /production/],
+  ["any production confirmation", [...CLEANUP_ARGS, "--confirmProduction", "taylor-parts"], CLEANUP_ENV, /has no production mode/],
+  ["a named Firebase project", [...CLEANUP_ARGS, "--firebaseProjectId", "eos-platform-sandbox"], CLEANUP_ENV, /no Firebase target at all/],
+  ["frozen Certification world", cleanupEnvSwap(CLEANUP_ARGS, "platform-certification"), CLEANUP_ENV, /Certification world, which is frozen/],
+  ["any other non-production environment", cleanupEnvSwap(CLEANUP_ARGS, "platform-integration"), CLEANUP_ENV, /authorized only in 'platform-sandbox'/],
+  ["EOS_ENVIRONMENT not nonprod", [...CLEANUP_ARGS, "--mode", "apply", "--apply"], { ...CLEANUP_ENV, EOS_ENVIRONMENT: "production" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["EOS_ENVIRONMENT absent", CLEANUP_ARGS, { CLEANUP_FENCE_DB: CLEANUP_ENV.CLEANUP_FENCE_DB, EOS_ENVIRONMENT: "" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["no databaseUrlEnv", ["--environment", "platform-sandbox", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--nonprodDataMutationAuthorized"], CLEANUP_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["the wrong tenant", CLEANUP_ARGS.map((a) => (a === "taylor-nonprod" ? "some-other-tenant" : a)), CLEANUP_ENV, /--tenantKey taylor-nonprod is required/],
+  ["no explicit nonprod data authorization", CLEANUP_ARGS.filter((a) => a !== "--nonprodDataMutationAuthorized"), CLEANUP_ENV, /--nonprodDataMutationAuthorized is required/],
+  ["no performedBy", CLEANUP_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), CLEANUP_ENV, /--performedBy <operator> is required/],
+  ["an unknown mode", [...CLEANUP_ARGS, "--mode", "destroy"], CLEANUP_ENV, /--mode must be one of plan \| apply/],
+  ["apply mode without the explicit --apply", [...CLEANUP_ARGS, "--mode", "apply"], CLEANUP_ENV, /--mode apply additionally requires the explicit --apply/],
+  ["--apply without apply mode", [...CLEANUP_ARGS, "--apply"], CLEANUP_ENV, /--apply was given without --mode apply/],
+  ["apply without the reviewed identity set restated", [...CLEANUP_ARGS, "--mode", "apply", "--apply"], CLEANUP_ENV, /--confirmExactIds <deleteSetSha256> is required/],
+  ["apply restating the wrong identity set", [...CLEANUP_ARGS, "--mode", "apply", "--apply", "--confirmExactIds", "b".repeat(64)], CLEANUP_ENV, /byte-identical to the fingerprint of the reviewed identity set/],
+  // NO DISCOVER-AND-DELETE. Every one of these is refused by NAME.
+  ["a number prefix", [...CLEANUP_ARGS, "--prefix", "SYN-NP"], CLEANUP_ENV, /the delete set is the reviewed constant DELETE_SET \(12 exact ids\)/],
+  ["a LIKE pattern", [...CLEANUP_ARGS, "--like", "SYN-%"], CLEANUP_ENV, /Selecting rows by predicate is precisely what the Owner ruling forbids/],
+  ["a WHERE clause", [...CLEANUP_ARGS, "--where", "1=1"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["an ad-hoc id list", [...CLEANUP_ARGS, "--ids", "opp_x"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["a single extra id", [...CLEANUP_ARGS, "--id", "opp_x"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--all", [...CLEANUP_ARGS, "--all"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--discover", [...CLEANUP_ARGS, "--discover"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--truncate", [...CLEANUP_ARGS, "--truncate"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  ["--cascade", [...CLEANUP_ARGS, "--cascade"], CLEANUP_ENV, /reviewed constant DELETE_SET/],
+  // A GUARD THAT CAN BE SKIPPED IS NOT A GUARD.
+  ["--force", [...CLEANUP_ARGS, "--force"], CLEANUP_ENV, /a guard this tool can be told to skip is not a guard/],
+  ["--skipPreflight", [...CLEANUP_ARGS, "--skipPreflight"], CLEANUP_ENV, /not a guard/],
+  ["--ignoreDependents", [...CLEANUP_ARGS, "--ignoreDependents"], CLEANUP_ENV, /not a guard/],
+  ["--allowDrift", [...CLEANUP_ARGS, "--allowDrift"], CLEANUP_ENV, /not a guard/],
+]) {
+  test(`commercial synthetic cleanup: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(CLEANUP, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `commercial synthetic cleanup, ${label}`);
+    assert.match(out, pattern);
+  });
+}
