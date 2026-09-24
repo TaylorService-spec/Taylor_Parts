@@ -26,7 +26,7 @@ name: Governance Guard Enforcement
 #
 # The filtering did not disappear, it MOVED INSIDE THE JOB, where it is computed from the real
 # base..head diff rather than from GitHub's event matcher -- a more reliable filter, not a weaker
-# one. The unconditional cost is a checkout, a Node setup and two instant static fences: well
+# one. The unconditional cost is a checkout, a Node setup and the always-on static fences: well
 # under a minute on ubuntu-latest, no emulator, no Java, no npm install. Everything that costs
 # real time is gated on the diff, and the only step that installs dependencies runs solely when
 # the legacy authorization surface itself changed.
@@ -35,6 +35,12 @@ name: Governance Guard Enforcement
 #
 #   * the workflow self-push fence (always) -- refuses a new workflow that authors commits the
 #     way the #1929 one did. See scripts/workflowSelfPushFence.mjs.
+#
+#   * the production publish trigger fence (always) -- refuses any workflow that publishes the
+#     production-identified GitHub Pages site on an automatic trigger. The Owner ruled (Option A,
+#     docs/deployment/github-pages-promotion-governance-decision.md) that a merge to main must NOT
+#     publish production; that ruling is a one-line revert away from being undone, so it is
+#     executed rather than only written down. See scripts/productionPublishTriggerFence.mjs.
 #
 #   * functions/test/d2HandoffStatic.test.js -- the F-RULES-1 D2 production-deploy runbook guard
 #     (docs/operations/f-rules-1-d2-deployment-handoff.md, whose Step 3 deploys firestore:rules to
@@ -96,17 +102,27 @@ jobs:
           cache: npm
           cache-dependency-path: functions/package-lock.json
 
-      # =================== THE TWO ALWAYS-ON STATIC FENCES ===================
+      # =================== THE ALWAYS-ON STATIC FENCES ===================
       #
       # These are the ones that must never be diff-gated: the self-push fence is the only thing
       # standing between this repository and another commit that no workflow can observe, and a
-      # diff gate on it would be gated by the very mechanism it fences.
+      # diff gate on it would be gated by the very mechanism it fences. The publish fence is
+      # ungated for the same reason in a different shape -- it exists to catch a NEW workflow
+      # publishing production under a name nobody listed, and a diff gate keyed to the file it
+      # knows about could not see one arriving beside it. Both are pure node:test/node, no
+      # dependencies, no install, instant.
 
       - name: Workflow self-push fence contract tests
         run: node --test scripts/workflowSelfPushFence.test.mjs
 
       - name: Workflow self-push fence
         run: node scripts/workflowSelfPushFence.mjs
+
+      - name: Production publish trigger fence contract tests
+        run: node --test scripts/productionPublishTriggerFence.test.mjs
+
+      - name: Production publish trigger fence
+        run: node scripts/productionPublishTriggerFence.mjs
 
       # =================== THE DIFF, COMPUTED FAIL-CLOSED ===================
       #
@@ -178,7 +194,7 @@ jobs:
 
           # A change to this workflow, or to the fence it runs, opens every gate: the wiring itself
           # is under guard, and a wiring change that ran none of the guards proves nothing.
-          SELF='^\.github/workflows/governance-guard-enforcement\.yml$|^scripts/workflowSelfPushFence(\.test)?\.mjs$'
+          SELF='^\.github/workflows/governance-guard-enforcement\.yml$|^scripts/workflowSelfPushFence(\.test)?\.mjs$|^scripts/productionPublishTriggerFence(\.test)?\.mjs$'
 
           # The recorded legacy authorization corpus and the Rules it is parsed from.
           LEGACY='^firestore\.rules$|^field-ops-app-vite/firestore\.rules$|^functions/src/access/legacyAuthorizationSurface\.ts$|^field-ops-app-vite/src/access/legacyAuthorizationSurface\.ts$|^functions/test/legacyAuthorizationSurface\.test\.mjs$'
