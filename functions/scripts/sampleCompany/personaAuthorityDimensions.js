@@ -74,6 +74,52 @@ const RECORD_KINDS = Object.freeze(["reorderRequest", "workOrder"]);
 
 const ASSIGN_REASON_PREFIX = "PERSONA FIXTURE";
 
+// ════════════════════ PER-STEP AUDIT REASONS (Owner ruling) ════════════════════
+//
+// "Every governed persona provisioning mutation must carry a SPECIFIC PER-STEP reason. Do not use
+// one broad reason for the entire provisioning run."
+//
+// That ruling is enforced HERE, in the provisioning path, not in the operator's invocation -- an
+// invocation-level convention is a convention, and the next caller is free to ignore it. Three
+// mechanics together make a run-level reason unreachable:
+//
+//   1  THE CALLER CANNOT SUPPLY ONE. `seedPersonaAuthorityDimensions` takes no reason parameter and
+//      `planPersonaAuthorityDimensions` accepts none. There is nowhere to put a broad reason.
+//   2  THE RECORDED REASON IS COMPOSED PER STEP, from the persona key, the DIMENSION and the exact
+//      target (qualification code, or scope type and scope id) -- so the row in
+//      employee_work_eligibility.reason and the eos_policy.audit_events.reason beside it identify
+//      WHICH persona and WHICH authority dimension the mutation was for, without the manifest.
+//   3  TWO STEPS MAY NOT SHARE A RATIONALE. One broad sentence repeated across the run is exactly
+//      what the ruling forbids, so the manifest is REFUSED rather than seeded -- which is why the
+//      check is a refusal and not a warning.
+//
+// A rationale is the manifest's own per-row sentence. It is never the whole reason: the composed
+// reason is what reaches the governed command.
+const RATIONALE_MIN_LENGTH = 24;
+/** employeeCommandKernel.optionalReason refuses more than this. Caught at PLAN time, not by the command. */
+const RECORDED_REASON_MAX_LENGTH = 500;
+const DIMENSION_WORK_ELIGIBILITY = "WORK_ELIGIBILITY";
+const DIMENSION_OPERATIONAL_SCOPE = "OPERATIONAL_SCOPE";
+
+/** The manifest's per-row sentence, with the fixture prefix stripped so it is not written twice. */
+function rationaleOf(reason) {
+  return String(reason).slice(ASSIGN_REASON_PREFIX.length).replace(/^\s*[:-]\s*/, "").trim();
+}
+
+/**
+ * The reason ACTUALLY RECORDED by the governed command for one step.
+ *
+ * Shape: `PERSONA FIXTURE: <persona> (<employeeId>) <DIMENSION> <target> -- <rationale>`. Persona,
+ * Employee id and dimension are structural, so no rationale -- however broad -- can produce two
+ * identical recorded reasons for two different steps, and no recorded reason can fail to say what it
+ * was for. THE EMPLOYEE ID IS IN THE REASON because the reason is read beside a row keyed by that id
+ * and beside an audit event whose target is that id: a reason that named only the manifest's persona
+ * key would need the manifest present to be understood, which is exactly when it is not.
+ */
+function composeStepReason(personaKey, employeeId, dimension, target, rationale) {
+  return `${ASSIGN_REASON_PREFIX}: ${personaKey} (${employeeId}) ${dimension} ${target} -- ${rationale}`;
+}
+
 class PersonaDimensionsError extends Error {
   constructor(code, message) {
     super(`${code}: ${message}`);
@@ -191,6 +237,47 @@ function validateManifest(manifest = MANIFEST, sampleCompany = SAMPLE_COMPANY, v
       "no Employee holds a Work Eligibility without an Operational Scope, so the manifest cannot prove qualification and scope are independent");
   }
 
+  // ---- PER-STEP AUDIT REASONS. Checked AFTER the separation invariants on purpose: a manifest that
+  // has re-fused two authorities is wrong about the model, and that is the more fundamental refusal.
+  // A manifest may be structurally sound and still fail here, which is the ruling this enforces.
+  const stepReasons = new Map();
+  const rationaleOwners = new Map();
+  const reasonRows = [
+    ...manifest.workEligibility.map((row) => ({ row, dimension: DIMENSION_WORK_ELIGIBILITY, target: row.qualificationCode })),
+    ...manifest.operationalScopes.map((row) => ({ row, dimension: DIMENSION_OPERATIONAL_SCOPE, target: `${row.scopeType}:${row.scopeId}` })),
+  ];
+  for (const { row, dimension, target } of reasonRows) {
+    const handle = `${row.employee}|${dimension}|${target}`;
+    const rationale = rationaleOf(row.reason);
+    if (rationale.length < RATIONALE_MIN_LENGTH) {
+      refuse("REASON_NOT_SPECIFIC",
+        `${row.employee} ${dimension} ${target}: "${rationale}" says nothing specific about this step; a per-step reason states why THIS persona holds THIS dimension`);
+    }
+    // ONE BROAD REASON FOR THE RUN IS THE THING THE RULING FORBIDS. Two steps sharing a rationale is
+    // how that arrives in practice -- an operator writes the sentence once and pastes it down the file.
+    const owner = rationaleOwners.get(rationale);
+    if (owner) {
+      refuse("RUN_LEVEL_REASON_REFUSED",
+        `${handle} reuses the reason already given for ${owner}; every governed persona provisioning mutation carries its OWN per-step reason, never one broad reason for the run`);
+    }
+    rationaleOwners.set(rationale, handle);
+    const employeeId = employees.get(row.employee).id;
+    const recorded = composeStepReason(row.employee, employeeId, dimension, target, rationale);
+    if (recorded.length > RECORDED_REASON_MAX_LENGTH) {
+      refuse("REASON_TOO_LONG",
+        `${handle}: the recorded reason would be ${recorded.length} characters and the governed command accepts at most ${RECORDED_REASON_MAX_LENGTH}`);
+    }
+    // The composed reason must NAME the persona and the dimension. Asserted rather than assumed: this
+    // is the property the Owner ruling is about, so a change to composeStepReason that dropped either
+    // one must fail here and not silently seed anonymous audit rows.
+    if (!recorded.includes(row.employee) || !recorded.includes(employeeId)
+      || !recorded.includes(dimension) || !recorded.includes(target)) {
+      refuse("REASON_NOT_SPECIFIC",
+        `${handle}: the recorded reason must name the persona, its Employee id, the dimension and the target`);
+    }
+    stepReasons.set(handle, recorded);
+  }
+
   // ---- withheld rows are DECLARED, not merely absent. An absent row proves nothing about intent.
   for (const row of [...manifest.workEligibilityWithheld, ...manifest.operationalScopesWithheld]) {
     employee(row.employee, "a withheld row");
@@ -289,7 +376,7 @@ function validateManifest(manifest = MANIFEST, sampleCompany = SAMPLE_COMPANY, v
     }
   }
 
-  return { employees, eligibilityByEmployee, scopesByEmployee, warehouses, personaKeys };
+  return { employees, eligibilityByEmployee, scopesByEmployee, warehouses, personaKeys, stepReasons };
 }
 
 /**
@@ -300,21 +387,35 @@ function validateManifest(manifest = MANIFEST, sampleCompany = SAMPLE_COMPANY, v
  * seedSampleCompany.js takes with `--mode plan`.
  */
 function planPersonaAuthorityDimensions(manifest = MANIFEST, sampleCompany = SAMPLE_COMPANY) {
-  const { employees } = validateManifest(manifest, sampleCompany);
+  const { employees, stepReasons } = validateManifest(manifest, sampleCompany);
   const id = (key) => employees.get(key).id;
+  // THE REASON IS COMPOSED, NEVER PASSED THROUGH. The manifest supplies a rationale; the recorded
+  // reason is built per step from the persona, the dimension and the target, so the audit row can be
+  // read on its own. No caller can substitute one broad reason for the run: there is no parameter.
+  const reasonFor = (personaKey, dimension, target) => {
+    const recorded = stepReasons.get(`${personaKey}|${dimension}|${target}`);
+    if (!recorded) refuse("REASON_REQUIRED", `${personaKey} ${dimension} ${target} has no per-step reason`);
+    return recorded;
+  };
   const plan = [];
   for (const row of manifest.workEligibility) {
     plan.push({
       command: "assignEmployeeWorkEligibility",
       requiresCapability: "admin.employeeWorkEligibility.write",
-      input: { employeeId: id(row.employee), qualificationCode: row.qualificationCode, reason: row.reason },
+      input: {
+        employeeId: id(row.employee), qualificationCode: row.qualificationCode,
+        reason: reasonFor(row.employee, DIMENSION_WORK_ELIGIBILITY, row.qualificationCode),
+      },
     });
   }
   for (const row of manifest.operationalScopes) {
     plan.push({
       command: "assignEmployeeOperationalScope",
       requiresCapability: "admin.employeeOperationalScope.write",
-      input: { employeeId: id(row.employee), scopeType: row.scopeType, scopeId: row.scopeId, reason: row.reason },
+      input: {
+        employeeId: id(row.employee), scopeType: row.scopeType, scopeId: row.scopeId,
+        reason: reasonFor(row.employee, DIMENSION_OPERATIONAL_SCOPE, `${row.scopeType}:${row.scopeId}`),
+      },
     });
   }
   return Object.freeze(plan);
@@ -353,7 +454,13 @@ module.exports = {
   CONTEXT_PREDICATE_KINDS,
   AUTHORIZATION_REASONS,
   RECORD_KINDS,
+  ASSIGN_REASON_PREFIX,
+  DIMENSION_WORK_ELIGIBILITY,
+  DIMENSION_OPERATIONAL_SCOPE,
+  RECORDED_REASON_MAX_LENGTH,
   PersonaDimensionsError,
+  composeStepReason,
+  rationaleOf,
   validateManifest,
   planPersonaAuthorityDimensions,
   seedPersonaAuthorityDimensions,
