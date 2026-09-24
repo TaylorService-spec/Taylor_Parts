@@ -33,6 +33,7 @@ import {
   InvalidStatusTransitionError,
 } from "./partMasterCommands.js";
 import { MalformedStoredRecordError } from "./partMasterRepository.js";
+import { FirestoreCatalogWriterClosedError } from "../catalogMaster/catalogWriterState.js";
 
 // Recognized procurement-term fields -- imported from the command (single source of truth; no drift).
 // Forwarded as-is; the command owns validation. Cost is among these -- WRITE authority is
@@ -51,6 +52,11 @@ export function mapError(err: unknown): HttpsError {
   if (err instanceof VersionConflictError) return new HttpsError("aborted", "The record changed since you loaded it. Reload and retry.");
   if (err instanceof IdempotencyConflictError) return new HttpsError("aborted", "That idempotency key was already used for a different request.");
   if (err instanceof InvalidStatusTransitionError) return new HttpsError("failed-precondition", "That change isn't allowed for this item's current state.");
+  // Catalog cutover: FROZEN (the controlled freeze window) and RETIRED are governed refusals, not faults --
+  // the same failed-precondition outcome partMasterCallables.ts maps them to. Never "internal".
+  if (err instanceof FirestoreCatalogWriterClosedError) {
+    return new HttpsError("failed-precondition", err.state === "FROZEN" ? "Part-supplier terms are frozen for the catalog cutover." : "Part-supplier terms are no longer written here.");
+  }
   if (err instanceof MalformedStoredRecordError) return new HttpsError("internal", "The request could not be completed.");
   return new HttpsError("internal", "The request could not be completed.");
 }

@@ -22,6 +22,7 @@ import { stageAuditEventWithId } from "../access/auditEventWriter";
 import type { ManufacturerId, PartId, Result, SupplierItemId, UnitCode, ValidationIssue, ConversionFactor } from "./types";
 import { parsePartId } from "./validation";
 import { isUnitCode, parseQuantity, validateConversionFactor } from "./units";
+import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState";
 import { INITIAL_VERSION, MalformedStoredRecordError, buildFirestorePartRepository, type StoredMeta } from "./partMasterRepository";
 import {
   AlreadyExistsError,
@@ -287,6 +288,7 @@ export interface CreatePartSupplierItemInput extends SupplierItemTermsInput {
 }
 
 export async function createPartSupplierItem(input: CreatePartSupplierItemInput, deps?: PartMasterDeps): Promise<MutationOutcome & { itemId: SupplierItemId }> {
+  assertFirestoreCatalogWriterOpen("partSupplierItem.create");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);
@@ -368,6 +370,7 @@ export interface UpdatePartSupplierItemInput {
 }
 
 export async function updatePartSupplierItem(input: UpdatePartSupplierItemInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("partSupplierItem.update");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);
@@ -423,6 +426,7 @@ export interface ChangeSupplierItemStatusInput {
 }
 
 export async function changePartSupplierItemStatus(input: ChangeSupplierItemStatusInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("partSupplierItem.changeStatus");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);
@@ -475,6 +479,7 @@ export interface SetPreferredSupplierInput {
  * clears any currently-preferred item (equality-only query -- no composite
  * index) and sets the target, both in one transaction under one audit. */
 export async function setPreferredSupplier(input: SetPreferredSupplierInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("partSupplierItem.setPreferred");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);

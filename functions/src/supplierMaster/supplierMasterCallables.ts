@@ -31,6 +31,7 @@ import {
   InvalidStatusTransitionError,
 } from "../partMaster/partMasterCommands.js";
 import { MalformedStoredRecordError } from "../partMaster/partMasterRepository.js";
+import { FirestoreCatalogWriterClosedError } from "../catalogMaster/catalogWriterState.js";
 import { SUPPLIER_OPTIONAL_STRING_FIELDS } from "./supplierMasterTypes.js";
 
 // Sanitized error -> HttpsError. The service's messages may embed internal ids/versions; each error
@@ -47,6 +48,11 @@ export function mapError(err: unknown): HttpsError {
   if (err instanceof InvalidStatusTransitionError) return new HttpsError("failed-precondition", "That status change is not allowed.");
   // Named explicitly for readers tracing a malformed stored record, though it maps to the same
   // generic "internal" response as the catch-all below (a stored-shape problem is never surfaced).
+  // Catalog cutover: FROZEN (the controlled freeze window) and RETIRED are governed refusals, not faults --
+  // the same failed-precondition outcome partMasterCallables.ts maps them to. Never "internal".
+  if (err instanceof FirestoreCatalogWriterClosedError) {
+    return new HttpsError("failed-precondition", err.state === "FROZEN" ? "Supplier records are frozen for the catalog cutover." : "Supplier records are no longer written here.");
+  }
   if (err instanceof MalformedStoredRecordError) return new HttpsError("internal", "The request could not be completed.");
   return new HttpsError("internal", "The request could not be completed.");
 }

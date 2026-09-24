@@ -5,9 +5,12 @@
 // docs/architecture/catalog-cutover-plan.md §5. There are two writer sets and NEVER two authoritative ones:
 //
 //   Firestore (legacy)  OPEN     the legacy commands write, as today
-//                       FROZEN   the legacy commands REFUSE (no Part create/update/status, no Equipment Model
-//                                create/update, no catalog import write). Reversible -- but only while PostgreSQL
-//                                is still INACTIVE: that is the rollback path if copy / verify / reconcile fails.
+//                       FROZEN   the legacy commands REFUSE -- every writer in FIRESTORE_CATALOG_WRITERS below:
+//                                no Part create/update/status, no Equipment Model create/update, no catalog import
+//                                write, and none of the rest of the catalog master surface either (Manufacturer,
+//                                Supplier, Part Alias, Part-Supplier Item, Equipment Model Alias). Reversible -- but
+//                                only while PostgreSQL is still INACTIVE: that is the rollback path if copy / verify
+//                                / reconcile fails.
 //                       RETIRED  the legacy commands refuse for good; their removal follows. Not reversible.
 //   PostgreSQL (target) INACTIVE nothing composes the catalogMaster writers into the Render API
 //                       ACTIVE   the governed PostgreSQL writers accept authoritative writes
@@ -110,6 +113,141 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
   "equipmentModel.import": Object.freeze({
     module: "functions/src/equipmentCompatibility/commands.ts",
     entry: "runEquipmentCompatibilityCommand (action importEquipmentModel)",
+    reachedFrom: Object.freeze([
+      "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
+    ]),
+  }),
+
+  // ──────────────── the rest of the catalog master surface (freeze-completeness census) ────────────────
+  //
+  // The four writers above were the copy scope (the migration-only snapshot export allowlists exactly the
+  // `parts` and `equipment_models` collections). They are NOT the whole legacy catalog master surface, and a
+  // freeze that covers only
+  // the copied collections is not a freeze of catalog master data: §2 gap 3 of docs/architecture/
+  // catalog-cutover-plan.md says the dependent Firestore authorities `part_aliases`, `part_supplier_items`
+  // and `equipment_model_aliases` "must move or stay frozen with the catalog until their own cutover", and
+  // §8 repeats it as an unresolved fact. Manufacturer and Supplier are catalog master data by this
+  // repository's own definition: both are written through the Part Master command machinery, both gate on
+  // inventory.catalog.manage / inventory.catalog.activate (supplierMasterCommands.ts states it outright --
+  // "Supplier is a catalog-governed object ... the SAME capabilities parts/manufacturers/part_supplier_items
+  // use"), and ownership/ownershipMatrix.ts classes parts, part_aliases, part_supplier_items, manufacturers,
+  // equipment_models and suppliers alike as company-neutral REFERENCE "shared catalog/reference data".
+  //
+  // Registering them here is what puts them inside the ONE freeze switch. It changes nothing while the
+  // committed state is OPEN/INACTIVE; it is what makes FREEZE mean "no catalog master write", not "no write
+  // to the two collections the snapshot happens to carry".
+
+  "manufacturer.create": Object.freeze({
+    module: "functions/src/partMaster/partMasterCommands.ts",
+    entry: "createManufacturer",
+    reachedFrom: Object.freeze([
+      "callable createManufacturer (functions/src/index.ts -> manufacturerCallables.ts createManufacturerCallable)",
+      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (create)",
+    ]),
+  }),
+  "manufacturer.update": Object.freeze({
+    module: "functions/src/partMaster/partMasterCommands.ts",
+    entry: "updateManufacturer",
+    reachedFrom: Object.freeze([
+      "callable updateManufacturer (manufacturerCallables.ts updateManufacturerCallable)",
+      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (update)",
+    ]),
+  }),
+  "manufacturer.changeStatus": Object.freeze({
+    module: "functions/src/partMaster/partMasterCommands.ts",
+    entry: "changeManufacturerStatus",
+    reachedFrom: Object.freeze([
+      "callable changeManufacturerStatus (manufacturerCallables.ts changeManufacturerStatusCallable)",
+      "client field-ops-app-vite/src/services/manufacturerCommandClient.js (changeStatus)",
+    ]),
+  }),
+
+  "supplier.create": Object.freeze({
+    module: "functions/src/supplierMaster/supplierMasterCommands.ts",
+    entry: "createSupplier",
+    reachedFrom: Object.freeze([
+      "callable createSupplier (functions/src/index.ts -> supplierMasterCallables.ts createSupplierCallable)",
+      "functions/scripts/seedSupplierSandbox.mjs (operator seed, via the command)",
+    ]),
+  }),
+  "supplier.update": Object.freeze({
+    module: "functions/src/supplierMaster/supplierMasterCommands.ts",
+    entry: "updateSupplier",
+    reachedFrom: Object.freeze([
+      "callable updateSupplier (supplierMasterCallables.ts updateSupplierCallable)",
+    ]),
+  }),
+  "supplier.activate": Object.freeze({
+    module: "functions/src/supplierMaster/supplierMasterCommands.ts",
+    entry: "changeSupplierStatus (action activateSupplier)",
+    reachedFrom: Object.freeze([
+      "callable activateSupplier (supplierMasterCallables.ts activateSupplierCallable) -> activateSupplier",
+    ]),
+  }),
+  "supplier.deactivate": Object.freeze({
+    module: "functions/src/supplierMaster/supplierMasterCommands.ts",
+    entry: "changeSupplierStatus (action deactivateSupplier)",
+    reachedFrom: Object.freeze([
+      "callable deactivateSupplier (supplierMasterCallables.ts deactivateSupplierCallable) -> deactivateSupplier",
+    ]),
+  }),
+
+  "partAlias.create": Object.freeze({
+    module: "functions/src/partMaster/partAliasCommands.ts",
+    entry: "createPartAlias",
+    reachedFrom: Object.freeze([
+      "callable createPartAlias (functions/src/index.ts -> partAliasCallables.ts createPartAliasCallable)",
+      "client field-ops-app-vite/src/services/partAliasCallableClient.js",
+      "NOT the updatePart INTERNAL_PN alias backfill: that stages its alias write inside updatePart, which the part.update guard already covers",
+    ]),
+  }),
+  "partAlias.deactivate": Object.freeze({
+    module: "functions/src/partMaster/partAliasCommands.ts",
+    entry: "changeAliasStatus (action deactivatePartAlias)",
+    reachedFrom: Object.freeze([
+      "callable deactivatePartAlias (partAliasCallables.ts deactivatePartAliasCallable) -> deactivatePartAlias",
+    ]),
+  }),
+  "partAlias.reactivate": Object.freeze({
+    module: "functions/src/partMaster/partAliasCommands.ts",
+    entry: "changeAliasStatus (action reactivatePartAlias)",
+    reachedFrom: Object.freeze([
+      "callable reactivatePartAlias (partAliasCallables.ts reactivatePartAliasCallable) -> reactivatePartAlias",
+    ]),
+  }),
+
+  "partSupplierItem.create": Object.freeze({
+    module: "functions/src/partMaster/partSupplierItems.ts",
+    entry: "createPartSupplierItem",
+    reachedFrom: Object.freeze([
+      "callable createPartSupplierItem (functions/src/index.ts -> partSupplierItemCallables.ts createPartSupplierItemCallable)",
+    ]),
+  }),
+  "partSupplierItem.update": Object.freeze({
+    module: "functions/src/partMaster/partSupplierItems.ts",
+    entry: "updatePartSupplierItem",
+    reachedFrom: Object.freeze([
+      "callable updatePartSupplierItem (partSupplierItemCallables.ts updatePartSupplierItemCallable)",
+    ]),
+  }),
+  "partSupplierItem.changeStatus": Object.freeze({
+    module: "functions/src/partMaster/partSupplierItems.ts",
+    entry: "changePartSupplierItemStatus",
+    reachedFrom: Object.freeze([
+      "callable changePartSupplierItemStatus (partSupplierItemCallables.ts changePartSupplierItemStatusCallable)",
+    ]),
+  }),
+  "partSupplierItem.setPreferred": Object.freeze({
+    module: "functions/src/partMaster/partSupplierItems.ts",
+    entry: "setPreferredSupplier",
+    reachedFrom: Object.freeze([
+      "callable setPreferredSupplier (partSupplierItemCallables.ts setPreferredSupplierCallable)",
+    ]),
+  }),
+
+  "equipmentModelAlias.import": Object.freeze({
+    module: "functions/src/equipmentCompatibility/commands.ts",
+    entry: "runEquipmentCompatibilityCommand (action importEquipmentModelAlias)",
     reachedFrom: Object.freeze([
       "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
     ]),

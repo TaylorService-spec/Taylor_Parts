@@ -57,6 +57,7 @@ import {
   CAP_CATALOG_MANAGE,
 } from "./partMasterCommands.js";
 import { MalformedStoredRecordError } from "./partMasterRepository.js";
+import { FirestoreCatalogWriterClosedError } from "../catalogMaster/catalogWriterState.js";
 import { listPartAliases } from "./partAliasReadService.js";
 import { resolveScannedPartIdentifier } from "./partAliasScanResolver.js";
 import { lookupScannedPart, validateScannerPartLookup, ScannerPartLookupInvalidError } from "./scannerPartLookup.js";
@@ -100,6 +101,11 @@ export function mapError(err: unknown): HttpsError {
   }
   if (err instanceof IdempotencyConflictError) {
     return new HttpsError("aborted", "That idempotency key was already used for a different request.", "IDEMPOTENCY_CONFLICT");
+  }
+  // Catalog cutover: FROZEN (the controlled freeze window) and RETIRED are governed refusals, not faults --
+  // the same failed-precondition outcome partMasterCallables.ts maps them to. Never "internal".
+  if (err instanceof FirestoreCatalogWriterClosedError) {
+    return new HttpsError("failed-precondition", err.state === "FROZEN" ? "Part identifiers are frozen for the catalog cutover." : "Part identifiers are no longer written here.", err.code);
   }
   if (err instanceof MalformedStoredRecordError) {
     return new HttpsError("internal", "The request could not be completed.", "INTERNAL");
