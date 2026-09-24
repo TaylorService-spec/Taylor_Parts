@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
+import { namesFirestoreCollection, opaqueFirestoreAccess, stripComments } from "./support/firestoreCollectionFence.mjs";
 
 import {
   mapLegacyInventoryMovement,
@@ -581,13 +582,62 @@ test("the mapper's whole import graph is pure: node builtins only, and this lane
   assert.deepEqual(externals, [], `unexpected external dependency: ${externals.join(", ")}`);
 });
 
+// The legacy relations this mapper must never name as a persistence target, as BARE names.
+//
+// The old form was `code.includes('"parts"')` over pre-quoted names, and `"parts"` in a mapper is the
+// clearest latent false positive in this file: a refusal code, a discriminator or a union member
+// spelling it would have gone red on a module that -- as the two tests above prove -- imports NOTHING
+// and so cannot reach any store at all. The fence is now anchored to a receiver, and shared with
+// test/eosOpsNoFirebase.test.mjs, whose sweep over src/eosOps already covers this very file. Two
+// probes over one file answering to two different rules is how the rules drift apart.
+const LEGACY_RELATIONS = ["inventory_transactions", "parts", "partsCatalog", "serialized_assets", "warehouses", "bins"];
+
+const reachesLegacyRelation = (code) =>
+  opaqueFirestoreAccess(code) || LEGACY_RELATIONS.some((name) => namesFirestoreCollection(code, name));
+
 test("the source file imports no Firebase and names no Firestore collection", () => {
   const source = readFileSync("src/eosOps/migration/legacyInventoryMovementMapping.ts", "utf8");
   for (const pattern of [/from\s+["']firebase/, /from\s+["']firebase-admin/, /from\s+["']firebase-functions/, /from\s+["']pg["']/]) {
     assert.ok(!pattern.test(source), `forbidden import matching ${pattern}`);
   }
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
-  for (const collection of ['"inventory_transactions"', '"parts"', '"partsCatalog"', '"serialized_assets"', '"warehouses"', '"bins"']) {
-    assert.ok(!code.includes(collection), `names the collection ${collection}`);
+  const code = stripComments(source);
+  assert.ok(!opaqueFirestoreAccess(code), "the mapper holds no Firestore accessor");
+  for (const name of LEGACY_RELATIONS) {
+    assert.ok(!namesFirestoreCollection(code, name), `hands "${name}" to a Firestore accessor`);
+  }
+});
+
+test("the legacy-relation fence refuses every route, and passes the mapper's own vocabulary", () => {
+  // POSITIVE CONTROL -- real prohibited access, including the two spellings the old probe was blind to.
+  const PROHIBITED = [
+    ['const ref = db.collection("inventory_transactions");', "db.collection(literal)"],
+    ["const ref = db.collection('parts');", "the single-quoted spelling the old probe missed"],
+    ['const ref = doc(db, "partsCatalog", id);', "the modular doc(db, name, id)"],
+    ['const col = collection(db, "serialized_assets");', "the modular collection(db, name)"],
+    ["const ref = db.doc(`warehouses/${id}`);", "a template-literal path the old probe missed"],
+    ['const C = "bins";\nconst ref = store.collection(C);', "a name held in a constant, which the old probe missed"],
+    ['const snap = await admin.firestore().collection("parts").get();', "admin.firestore().collection()"],
+    ["const col = collection(db, table);", "a Firestore handle with the name in a variable"],
+  ];
+  for (const [source, what] of PROHIBITED) {
+    assert.equal(reachesLegacyRelation(stripComments(source)), true, `the fence must refuse ${what} -- ${JSON.stringify(source)}`);
+  }
+
+  // REGRESSION -- every true positive the old `includes('"name"')` probe caught, one per list member.
+  for (const name of LEGACY_RELATIONS) {
+    const source = `const ref = db.collection("${name}");`;
+    assert.equal(reachesLegacyRelation(stripComments(source)), true, `the old probe caught this and the new one must too -- ${source}`);
+  }
+
+  // NEGATIVE CONTROL -- this mapper's own vocabulary. A pure function's string data is not persistence.
+  const LEGITIMATE = [
+    ['export const MAPPING_REFUSAL_CODES = Object.freeze(["parts", "UNKNOWN_PART"]);', "a refusal-code list spelling parts"],
+    ['type Relation = "parts" | "partsCatalog";', "a union type spelling both part names"],
+    ['const parts = source.split("/");', "a local variable named parts"],
+    ['if (row.kind === "bins") return null;', "a discriminator comparison"],
+    ["const warehouses = rows.length;", "a count named warehouses"],
+  ];
+  for (const [source, what] of LEGITIMATE) {
+    assert.equal(reachesLegacyRelation(stripComments(source)), false, `the fence must not fire on ${what} -- ${JSON.stringify(source)}`);
   }
 });

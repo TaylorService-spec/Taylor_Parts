@@ -44,6 +44,12 @@ on:
       - "functions/src/data/partsCatalog.ts"
       - "functions/test/partMasterCommands.test.mjs"
       - "functions/test/partReferenceCompatibility.test.mjs"
+      # REGISTRATION: four suites whose npm scripts no workflow invoked, now run by this workflow's
+      # Part Master emulator job. Without these filters a PR touching only them would trigger nothing.
+      - "functions/test/partMasterCallables.test.mjs"
+      - "functions/test/partMasterCallablesExport.test.mjs"
+      - "functions/test/partMasterCreateImporter.test.mjs"
+      - "functions/test/partMasterUnits.test.mjs"
       - "functions/src/index.ts"
       - "functions/package.json"
       - "field-ops-app-vite/src/domain/partIdentifiers.js"
@@ -73,6 +79,12 @@ on:
       - "functions/src/data/partsCatalog.ts"
       - "functions/test/partMasterCommands.test.mjs"
       - "functions/test/partReferenceCompatibility.test.mjs"
+      # REGISTRATION: four suites whose npm scripts no workflow invoked, now run by this workflow's
+      # Part Master emulator job. Without these filters a PR touching only them would trigger nothing.
+      - "functions/test/partMasterCallables.test.mjs"
+      - "functions/test/partMasterCallablesExport.test.mjs"
+      - "functions/test/partMasterCreateImporter.test.mjs"
+      - "functions/test/partMasterUnits.test.mjs"
       - "field-ops-app-vite/src/shared/partMaster/PartIdentifiersSection.jsx"
       - "field-ops-app-vite/src/domain/partIdentifiers.js"
       - ".github/workflows/part-identifier-administration-tests.yml"
@@ -185,8 +197,22 @@ jobs:
       # Serialization round trip, the capability boundary (granted / ungranted / revoked), version
       # conflicts, idempotency replay, the PART_STATUS transition table, controlType, and the
       # domain-boundary refusal of tenant + foreign-authority fields.
-      - name: Part Master command + repository tests (build + run)
+      # The step title used to say "command + repository". test:partMasterCommands runs ONLY
+      # partMasterCommands.test.mjs -- partMasterRepository.test.mjs was named by no script and no
+      # workflow, so the title claimed coverage that did not exist. That suite is offline and is now
+      # registered in test:adminPolicy; the title here states what this step actually runs.
+      - name: Part Master command tests (build + run)
         run: npm run test:partMasterCommands
+        working-directory: functions
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
+
+      # REGISTRATION: these four suites had npm scripts that NO workflow invoked -- the same
+      # "named or never run" trap this file's header documents for test:partMasterCommands and
+      # test:partReferenceCompatibility. partMasterCallables and partMasterCreateImporter bind the
+      # emulator, so all four run in this job, which already has one.
+      - name: Part Master callables, create importer and units (build + run)
+        run: npm run test:partMasterCallables && npm run test:partMasterCreateImporter && npm run test:partMasterUnits
         working-directory: functions
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8080
