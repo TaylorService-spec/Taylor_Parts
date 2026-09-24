@@ -685,12 +685,19 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "administration/users": ["administration.users"],
   "administration/dataImport": ["administration.dataImport"],
   "administration/auditLogs": ["administration.auditLogs"],
-  // The governed-configuration half, mapped once `admin.securityPolicy.read` and
-  // `workflowDefinition.read` made them earnable (Owner ruling, Wave 9 / Lane AH). These rows are
-  // read ONLY on the EOS branch of `isNavItemVisible`, so while EOS_NAVIGATION_AUTHORITY_READY is
-  // false -- which is every deployed environment -- they change nothing anybody sees. Deliberately
-  // NO `capabilityAccess` was added to these five nav items: that WOULD change the legacy branch
-  // today, and this lane proves readiness rather than performing the cutover.
+  // The governed-configuration half, mapped once the reads that govern them made them earnable
+  // (Owner ruling, Wave 9 / Lane AH). These rows are read ONLY on the EOS branch of
+  // `isNavItemVisible`, so while EOS_NAVIGATION_AUTHORITY_READY is false -- which is every deployed
+  // environment -- they change nothing anybody sees. Deliberately NO `capabilityAccess` was added to
+  // these five nav items: that WOULD change the legacy branch today, and this lane proves readiness
+  // rather than performing the cutover.
+  //
+  // THE ROWS NAME SURFACES, NEVER CAPABILITIES, and that is why the Wave 10 ruling moved Permission
+  // Preview's authority (`admin.securityPolicy.read` -> `admin.principalAccess.read`) without
+  // touching a character below. The key -> capability question is answered in ONE place,
+  // functions/src/eosOps/experienceAuthority.ts, and this table only says which door shows which
+  // surface. A destination mapped to a capability id instead would have had to be edited here too,
+  // and the two would then be free to disagree.
   "administration/rolesPermissions": ["administration.rolesPermissions"],
   "administration/objects": ["administration.objects"],
   "administration/workflows": ["administration.workflows"],

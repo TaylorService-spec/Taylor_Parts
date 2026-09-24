@@ -239,12 +239,36 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   // keeps it fail-closed HONESTLY: if the grant is ever withdrawn the door closes on the evidence,
   // rather than the surface being pointed at a key somebody happens to hold.
   surface("administration.workflows", "Workflows", [{ capabilityKey: "workflowDefinition.read" }]),
-  // PERMISSION PREVIEW answers "what would this principal be able to do", which is a read OF THE
-  // POLICY MODEL, so it takes the policy model's read. The screen is unbuilt today and this line
-  // switches no data source: it records which authority the built surface will need, so that when it
-  // is built it is not gated on a write.
+  // PERMISSION PREVIEW -- `admin.principalAccess.read`, AND THAT IS NOT THE SAME AUTHORITY AS THE
+  // TWO SURFACES ABOVE (Owner ruling, Wave 10; this SUPERSEDES the Wave 9 line that read
+  // `admin.securityPolicy.read` here).
+  //
+  // WHAT THE SURFACE ACTUALLY DOES is what decides its key. Permission Preview READS AND EVALUATES A
+  // PRINCIPAL'S EFFECTIVE ACCESS -- it answers "what would THIS PERSON be able to do" -- so its
+  // subject is the `principal` Object, and the Object's own read is `admin.principalAccess.read`.
+  // That is the identical read `administration.users` is earned by, and that is correct: both
+  // surfaces disclose one named Principal's effective access, seen from two sides. Roles &
+  // Permissions and Objects are the other authority -- they read and edit the policy CONFIGURATION,
+  // the Role x Object x action matrix, which is nobody's effective access -- and they keep
+  // `admin.securityPolicy.read`.
+  //
+  // CURRENT GRANT POPULATIONS BEING COINCIDENTALLY IDENTICAL DOES NOT JUSTIFY CONFLATING THE
+  // AUTHORITIES. Both keys stand at exactly {admin, owner} today, so no principal can presently
+  // observe the difference -- and that is precisely the argument for getting the key right now
+  // rather than the day one is granted without the other. The two keys also have DIFFERENT
+  // PROVENANCE, which is the evidence that they are not one authority wearing two names:
+  // `admin.securityPolicy.read` is granted by migration 1762041600000; `admin.principalAccess.read`
+  // is reconciled from the Role catalog by the employee-capability-grants tool.
+  //
+  // adminPolicy/administrationSurfaceAuthority.ts reached this conclusion first and independently
+  // ("permissionPreview: the same effective-access read"). Two files describing one authority must
+  // not be able to hold two opinions, and administrationNavigationReadiness.test.mjs now pins their
+  // AGREEMENT from both sides -- where it used to pin the divergence.
+  //
+  // THE DATA SOURCE IS UNTOUCHED AND SEPARATELY HELD. This line is about which authority reaches the
+  // door, never about what is read behind it; the screen is unbuilt and no read moved here.
   surface("administration.permissionPreview", "Permission Preview", [
-    { capabilityKey: "admin.securityPolicy.read" },
+    { capabilityKey: "admin.principalAccess.read" },
   ]),
   // ── THE CONTAINER, AND WHY IT IS NOT A DOOR
   //

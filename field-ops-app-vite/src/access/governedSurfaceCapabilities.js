@@ -279,7 +279,16 @@ export const INBOUND_WORK_SURFACE_CAPABILITIES = Object.freeze([
 ]);
 
 /**
- * ADMINISTRATION > ROLES & PERMISSIONS / OBJECTS / WORKFLOWS / PERMISSION PREVIEW.
+ * ADMINISTRATION > ROLES & PERMISSIONS / OBJECTS / WORKFLOWS.
+ *
+ * PERMISSION PREVIEW IS DELIBERATELY NOT SERVED BY THIS LIST, and its absence is the point rather
+ * than an omission. Under the Wave 10 Owner ruling that surface answers to
+ * `admin.principalAccess.read` -- it reads and evaluates a PRINCIPAL'S EFFECTIVE ACCESS, which is
+ * not the policy CONFIGURATION the two surfaces below expose -- and that id is already requested,
+ * through ADMINISTRATION_USERS_SURFACE_CAPABILITIES, in the SAME single call and against the SAME
+ * accessVersion. Restating it here would put one id in this array twice for no second decision.
+ * `administrationNavigationReadiness.test.mjs` asserts that the shell asks for it either way, so the
+ * property that matters is proved rather than inferred from where the string is written.
  *
  * THE UNASKED QUESTION, FOR THE FOURTH TIME, and named as such because the two notes above already
  * diagnosed it exactly: `buildHasCapability` answers from `feed.decisions[id]`, the feed decides only
@@ -302,7 +311,7 @@ export const INBOUND_WORK_SURFACE_CAPABILITIES = Object.freeze([
  *
  * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION, AND NO NEW DOOR. Requesting a decision does not make a
  * destination visible: navigation visibility under the EOS source is decided by `surfaceAccess`, and
- * under the legacy source these four destinations are untouched by this list.
+ * under the legacy source these three destinations are untouched by this list.
  */
 export const ADMINISTRATION_POLICY_SURFACE_CAPABILITIES = Object.freeze([
   "admin.securityPolicy.read",

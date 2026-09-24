@@ -212,6 +212,18 @@ test("and the shell now DOES ask for both ids -- step 3 of the wiring, closed", 
   assert.equal(requested.has("admin.principalAccess.read"), true);
   assert.equal(requested.has("audit.event.read"), true);
 
+  // PERMISSION PREVIEW'S AUTHORITY IS ALREADY IN THE REQUEST SET, which is the whole of what the
+  // Wave 10 Owner ruling needed from this file. The surface moved from `admin.securityPolicy.read`
+  // to `admin.principalAccess.read` -- it reads and evaluates a PRINCIPAL'S EFFECTIVE ACCESS, not
+  // the policy configuration -- and that id was already asked for on Administration > Users's
+  // behalf, in the same single call and against the same accessVersion. So the ruling adds NO id and
+  // widens NO request: it points an existing surface at an id the shell already resolves. This
+  // assertion is what says so, and is the reason ADMINISTRATION_POLICY_SURFACE_CAPABILITIES below is
+  // still exactly the two ids Lane AH contributed rather than three.
+  assert.equal(requested.has("admin.principalAccess.read"), true,
+    "Permission Preview's authority is not in the shell's request set -- it would resolve false for "
+    + "every principal, including one who holds it");
+
   // THE REQUEST IS DERIVED, NOT A SECOND LIST. `SHELL_GATED_CAPABILITY_IDS` is the union of
   // SHELL_CAPABILITY_GATES, which takes `governedSurfaces: GOVERNED_SURFACE_CAPABILITY_IDS`
   // wholesale -- so asking is a property of the declaration rather than of somebody remembering.

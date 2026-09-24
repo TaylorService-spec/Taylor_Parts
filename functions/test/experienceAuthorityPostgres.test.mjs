@@ -640,3 +640,196 @@ test("NO Firebase role and NO operationalRoles value changes ANY of those answer
     }
   }
 });
+
+// ════════════════════ 6. PERMISSION PREVIEW IS A PRINCIPAL READ, NOT A POLICY-CONFIGURATION READ ════════════════════
+//
+// Owner ruling, Wave 10 (SUPERSEDES the Wave 9 ruling section 5 was written under). The surface
+// `administration.permissionPreview` answers to `admin.principalAccess.read`, because it READS AND
+// EVALUATES A PRINCIPAL'S EFFECTIVE ACCESS. `administration.rolesPermissions` and
+// `administration.objects` expose the policy CONFIGURATION -- the Role x Object x action matrix --
+// and keep `admin.securityPolicy.read`.
+//
+// WHY THIS SECTION EXISTS AT ALL, when section 5 already proves admin/owner/dispatcher. Because in
+// every population that exists today the two capabilities are held by exactly the same two Roles, so
+// section 5 passes IDENTICALLY under either ruling and can therefore prove nothing about which one
+// is in force. "Current grant populations being coincidentally identical does not justify conflating
+// the authorities" -- and the only way to tell two conflated authorities from two separate ones is to
+// build the principals the real population does not contain and watch the answers cross.
+//
+// THE CROSSED PAIR, resolved through the real path and nothing simulated:
+//
+//   holds securityPolicy.read, NOT principalAccess.read   -> Roles & Permissions and Objects OPEN,
+//                                                            Permission Preview REFUSED
+//   holds principalAccess.read, NOT securityPolicy.read   -> Permission Preview OPEN,
+//                                                            Roles & Permissions and Objects REFUSED
+//
+// Each one is refused something and granted something, so neither negative is the trivial "holds
+// nothing, sees nothing". NO GRANT POPULATION IS MUTATED ANYWHERE REAL: these Roles exist only in
+// this file's from-clean database, exactly as every other persona in it does.
+
+const SECURITY_POLICY_READ = "admin.securityPolicy.read";
+const PRINCIPAL_ACCESS_READ = "admin.principalAccess.read";
+
+/** Did this resolved context earn the surface? Read off the REAL projection, never re-derived. */
+const earned = (context, surfaceKey) => new Set(context.surfaces).has(surfaceKey);
+
+/** Is this destination offered, through the REAL client predicate on the REAL nav tree? */
+const offered = (context, destinationKey, role = "technician") => {
+  const session = eosSession(navigationAuthorityFor(context), { role });
+  return isNavItemVisible(administrationItem(destinationKey), session.role, [], session.context);
+};
+
+test("AP5: securityPolicy.read WITHOUT principalAccess.read reaches the CONFIGURATION surfaces and is REFUSED Permission Preview", { skip: SKIP }, async () => {
+  await reset();
+  await makePersona({ subject: "ap-configuration-only", capabilities: [SECURITY_POLICY_READ] });
+  const context = await contextFor("ap-configuration-only");
+
+  // The two configuration surfaces are earned -- so this principal is NOT refused for lack of
+  // authority in general, which is what makes the Permission Preview refusal mean something.
+  assert.equal(earned(context, "administration.rolesPermissions"), true);
+  assert.equal(earned(context, "administration.objects"), true);
+  assert.equal(earned(context, "administration.permissionPreview"), false,
+    "securityPolicy.read alone still earns Permission Preview -- the two authorities are conflated");
+  assert.equal(earned(context, "administration.users"), false);
+  // The container follows its children honestly: there IS somewhere to go, so the index opens.
+  assert.equal(earned(context, "administration.overview"), true);
+
+  // ...and the same split at the DESTINATION level, through the real client predicate.
+  assert.equal(offered(context, "rolesPermissions"), true);
+  assert.equal(offered(context, "objects"), true);
+  assert.equal(offered(context, "permissionPreview"), false,
+    "Permission Preview was offered to a principal holding only the policy-configuration read");
+  assert.equal(offered(context, "overview"), true);
+  const session = eosSession(navigationAuthorityFor(context), { role: "technician" });
+  assert.equal(isDomainVisible(administrationDomain(), session.role, [], session.context), true);
+});
+
+test("AP5: principalAccess.read WITHOUT securityPolicy.read reaches Permission Preview and is REFUSED the configuration surfaces", { skip: SKIP }, async () => {
+  await reset();
+  await makePersona({ subject: "ap-principal-only", capabilities: [PRINCIPAL_ACCESS_READ] });
+  const context = await contextFor("ap-principal-only");
+
+  assert.equal(earned(context, "administration.permissionPreview"), true,
+    "principalAccess.read no longer earns Permission Preview -- the Wave 10 ruling has been reverted");
+  assert.equal(earned(context, "administration.users"), true);
+  assert.equal(earned(context, "administration.rolesPermissions"), false,
+    "the principal read reached the security-policy configuration -- the separation runs one way only");
+  assert.equal(earned(context, "administration.objects"), false);
+  assert.equal(earned(context, "administration.overview"), true);
+
+  assert.equal(offered(context, "permissionPreview"), true);
+  assert.equal(offered(context, "users"), true);
+  assert.equal(offered(context, "rolesPermissions"), false);
+  assert.equal(offered(context, "objects"), false);
+});
+
+test("AP5: changing admin.securityPolicy.read ALONE does not change Permission Preview availability", { skip: SKIP }, async () => {
+  // The claim as an EXPERIMENT over four real personas rather than as a property of a table: vary
+  // exactly one of the two capabilities at a time and read which answers move. Permission Preview
+  // tracks principalAccess.read in all four cells and securityPolicy.read in none of them.
+  await reset();
+  const CELLS = [
+    { subject: "ap-cell-neither", capabilities: [] },
+    { subject: "ap-cell-config", capabilities: [SECURITY_POLICY_READ] },
+    { subject: "ap-cell-principal", capabilities: [PRINCIPAL_ACCESS_READ] },
+    { subject: "ap-cell-both", capabilities: [SECURITY_POLICY_READ, PRINCIPAL_ACCESS_READ] },
+  ];
+  for (const cell of CELLS) await makePersona(cell);
+
+  const observed = {};
+  for (const cell of CELLS) {
+    const context = await contextFor(cell.subject);
+    observed[cell.subject] = {
+      permissionPreview: earned(context, "administration.permissionPreview"),
+      rolesPermissions: earned(context, "administration.rolesPermissions"),
+      objects: earned(context, "administration.objects"),
+    };
+  }
+
+  // Permission Preview is a function of principalAccess.read and of NOTHING else on this axis.
+  assert.equal(observed["ap-cell-neither"].permissionPreview, false);
+  assert.equal(observed["ap-cell-config"].permissionPreview, false);
+  assert.equal(observed["ap-cell-principal"].permissionPreview, true);
+  assert.equal(observed["ap-cell-both"].permissionPreview, true);
+  // Adding securityPolicy.read to a principal who holds principalAccess.read changes it not at all,
+  // and removing it changes it not at all -- which is the AP5 claim in its exact words.
+  assert.equal(observed["ap-cell-principal"].permissionPreview, observed["ap-cell-both"].permissionPreview);
+  assert.equal(observed["ap-cell-neither"].permissionPreview, observed["ap-cell-config"].permissionPreview);
+
+  // ...and the mirror image: the configuration surfaces are a function of securityPolicy.read alone.
+  for (const surface of ["rolesPermissions", "objects"]) {
+    assert.equal(observed["ap-cell-neither"][surface], false);
+    assert.equal(observed["ap-cell-principal"][surface], false);
+    assert.equal(observed["ap-cell-config"][surface], true);
+    assert.equal(observed["ap-cell-both"][surface], true);
+    assert.equal(observed["ap-cell-config"][surface], observed["ap-cell-both"][surface]);
+  }
+});
+
+test("AP4: dispatcher is REFUSED Permission Preview, and reaches it the moment it is INDEPENDENTLY granted", { skip: SKIP }, async () => {
+  // The dispatcher half of AP4, and the half section 5 cannot state: the refusal must be caused by
+  // the MISSING CAPABILITY and by nothing else. Two dispatchers, the full measured 29-capability set
+  // each, one capability apart.
+  await reset();
+  const dispatcherCapabilities = MEASURED_NONPROD_ROLE_CAPABILITIES.dispatcher;
+  assert.equal(dispatcherCapabilities.length, MEASURED_COUNTS.dispatcher);
+  assert.equal(dispatcherCapabilities.includes(PRINCIPAL_ACCESS_READ), false,
+    "the measured dispatcher set now contains the principal read -- re-measure before trusting this");
+  assert.equal(dispatcherCapabilities.includes(SECURITY_POLICY_READ), false);
+
+  await makePersona({ subject: "ap-dispatcher", capabilities: dispatcherCapabilities });
+  await makePersona({
+    subject: "ap-dispatcher-granted",
+    capabilities: [...dispatcherCapabilities, PRINCIPAL_ACCESS_READ],
+  });
+
+  const plain = await contextFor("ap-dispatcher");
+  const granted = await contextFor("ap-dispatcher-granted");
+
+  // NOT VACUOUS: the plain dispatcher earns a great deal and none of it is this.
+  assert.ok(plain.surfaces.length > 0);
+  assert.equal(earned(plain, "administration.permissionPreview"), false);
+  assert.equal(offered(plain, "permissionPreview", "dispatcher"), false,
+    "dispatcher was offered Permission Preview");
+  assert.equal(offered(plain, "overview", "dispatcher"), false);
+
+  // ONE capability apart, and the door opens -- by the grant, never by the Role key "dispatcher".
+  assert.equal(earned(granted, "administration.permissionPreview"), true);
+  assert.equal(offered(granted, "permissionPreview", "dispatcher"), true);
+  // And it opened ONLY that, plus the other surface the same principal read governs. The
+  // configuration surfaces stay shut, which is the separation seen from the dispatcher's side.
+  assert.equal(earned(granted, "administration.rolesPermissions"), false);
+  assert.equal(earned(granted, "administration.objects"), false);
+  assert.equal(earned(granted, "administration.users"), true);
+  assert.equal(earned(granted, "administration.workflows"), false);
+
+  // The delta between the two contexts is EXACTLY the surfaces that one read confers.
+  const delta = granted.surfaces.filter((k) => !new Set(plain.surfaces).has(k)).sort();
+  assert.deepEqual(delta,
+    ["administration.overview", "administration.permissionPreview", "administration.users"]);
+});
+
+test("AP4: admin and owner reach Permission Preview through the PRINCIPAL read, with the configuration read removed", { skip: SKIP }, async () => {
+  // The positive half of AP4 restated so it is not satisfied by the coincidence. admin and owner each
+  // hold their full measured set MINUS `admin.securityPolicy.read` -- so if Permission Preview were
+  // still gated on the configuration read, both would lose it here.
+  await reset();
+  for (const roleKey of ["admin", "owner"]) {
+    const full = MEASURED_NONPROD_ROLE_CAPABILITIES[roleKey];
+    assert.equal(full.includes(SECURITY_POLICY_READ), true);
+    assert.equal(full.includes(PRINCIPAL_ACCESS_READ), true);
+    await makePersona({
+      subject: `ap-${roleKey}-no-config`,
+      capabilities: full.filter((k) => k !== SECURITY_POLICY_READ),
+    });
+    const context = await contextFor(`ap-${roleKey}-no-config`);
+    assert.equal(earned(context, "administration.permissionPreview"), true,
+      `${roleKey} lost Permission Preview when only the CONFIGURATION read was removed`);
+    assert.equal(offered(context, "permissionPreview", roleKey === "admin" ? "admin" : "technician"), true);
+    // ...and it did lose the configuration surfaces, which is what says the removal took effect.
+    assert.equal(earned(context, "administration.rolesPermissions"), false);
+    assert.equal(earned(context, "administration.objects"), false);
+    // No Employee is linked, exactly as section 5's personas are not.
+    assert.equal(context.employeeId, null);
+  }
+});
