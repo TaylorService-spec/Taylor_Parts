@@ -37,6 +37,22 @@ import {
 } from "../lib/eosOps/experienceAuthority.js";
 import { postgresPrincipalDimensionReader } from "../lib/eosOps/contextualAuthorization.js";
 import { handleOperationsRequest } from "../lib/eosOps/eosOpsHttp.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import path from "node:path";
+
+// The CLIENT's real navigation module and real projection, imported across the package boundary the
+// same way experienceAuthority.test.mjs does it: there is no shared package, and a hand-mirrored copy
+// of the nav tree would be a second nav tree. Section 5 needs the real predicate, not a description.
+//
+// `pathToFileURL` rather than `new URL(...)` on purpose: this module binds a const named `URL` below
+// (the database connection string), which shadows the global for the whole module scope.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const clientModule = (...segments) =>
+  pathToFileURL(path.join(here, "..", "..", "field-ops-app-vite", "src", ...segments)).href;
+const { NAV_DOMAINS, isDomainVisible, isNavItemVisible } =
+  await import(clientModule("navigation", "navConfig.js"));
+const { buildNavigationAuthority, EXPERIENCE_STATE } =
+  await import(clientModule("access", "experienceContext.js"));
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -364,3 +380,263 @@ test("no bearer token reaches no database at all", { skip: SKIP }, async () => {
 });
 
 test.after(async () => { if (pool) await pool.end(); });
+
+// ════════════════════ 5. THE ADMINISTRATION PERSONA PROOFS (Owner ruling, Wave 9 / Lane AH) ════════════════════
+//
+// WHAT THIS SECTION PROVES, and it is the question a navigation cutover actually turns on:
+//
+//   admin           -> the Administration security surfaces are VISIBLE
+//   owner           -> VISIBLE
+//   dispatcher      -> ABSENT
+//   technician      -> ABSENT
+//   partsAssociate  -> ABSENT
+//
+// ...decided end to end, through the real path and nothing simulated:
+//
+//   role_capabilities (REAL rows, REAL migrated schema)
+//        -> resolveExperienceContext        (the real resolver, real Principal, real membership)
+//        -> buildNavigationAuthority        (the real client projection)
+//        -> isNavItemVisible                (the real client predicate, on the real NAV_DOMAINS)
+//
+// THE NEGATIVES ARE NOT VACUOUS, which is the whole reason the capability sets below are the FULL
+// measured ones rather than a convenient handful. `dispatcher` resolves 29 real capabilities and is
+// still refused every Administration security destination -- so ABSENT means "holds a great deal of
+// governed authority and none of it is this", not "holds nothing and therefore sees nothing". The
+// four Administration reads are the only difference between the positives and the negatives.
+//
+// NO EMPLOYEE IS LINKED TO ANY OF THE FIVE, deliberately. The Administration surfaces carry no
+// WORK_ELIGIBILITY and no OPERATIONAL_SCOPE predicate, so they must resolve for a Principal that is
+// not an Employee at all -- which is exactly the shape a governed Owner persona has.
+
+/**
+ * eos-policy-nonprod (dpg-dah48qht0dsc73egnml0-a), read-only, 2026-09-24:
+ *
+ *   SELECT r.key, c.key FROM eos_policy.roles r
+ *     JOIN eos_policy.role_capabilities rc ON rc.role_id = r.id
+ *     JOIN eos_policy.capabilities c       ON c.id = rc.capability_id
+ *    WHERE r.key IN ('admin','owner','dispatcher','technician','partsAssociate');
+ *
+ * Counts: admin 66, owner 47, dispatcher 29, partsAssociate 10, technician 3 -- asserted below, so a
+ * transcription that dropped a row cannot pass unnoticed.
+ *
+ * WHY A PINNED FIXTURE AND NOT THE LOCAL DATABASE'S OWN GRANTS. This file migrates from clean, and
+ * the grant migrations run BEFORE any tenant Role exists, so a locally-migrated database has these
+ * four Administration reads registered and held by NOBODY (measured: 0 roles each). The population a
+ * principal actually meets is nonprod's, and pinning it is what makes the proof about the real world
+ * instead of about an empty one. The GRANTS are then made directly against role_capabilities, which
+ * is this file's established pattern and stated posture: what it varies is the capability set, and
+ * what it proves is the projection.
+ */
+const MEASURED_NONPROD_ROLE_CAPABILITIES = Object.freeze({
+  admin: Object.freeze([
+    "admin.accessRequest.decide", "admin.credentialReset.initiate", "admin.dataImport.execute",
+    "admin.employeeJobRole.write", "admin.employeeOperationalScope.write", "admin.employeeProfile.write",
+    "admin.employeeWorkEligibility.write", "admin.principalAccess.read", "admin.roleAssignment.write",
+    "admin.securityPolicy.read", "admin.userStatus.write", "audit.event.read",
+    "customer.governedField.write", "customer.record.create", "customer.record.read",
+    "customer.record.update", "employee.record.read", "equipment.compatibility.view",
+    "equipment.install", "equipment.model.manage", "finance.adjustment.record", "finance.invoice.issue",
+    "finance.invoice.read", "finance.payment.apply", "finance.payment.read", "finance.refund.record",
+    "fulfillment.coordinatedVisit.read", "inventory.action.read", "inventory.catalog.activate",
+    "inventory.catalog.manage", "inventory.catalog.read", "inventory.cycleCount.cancel",
+    "inventory.cycleCount.create", "inventory.cycleCount.reconcile", "inventory.cycleCount.submit",
+    "inventory.manufacturer.read", "inventory.placement.record", "inventory.serializedAsset.read",
+    "inventory.stock.receive", "inventory.stock.relocate", "inventory.transaction.read",
+    "inventory.transfer.cancel", "inventory.transfer.create", "inventory.transfer.dispatch",
+    "inventory.transfer.receive", "opportunity.createSalesOrder", "opportunity.read",
+    "opportunity.write", "reorder.purchaseOrder.create", "reorder.purchaseOrder.read",
+    "reorder.request.create.manual", "reorder.request.create.system", "reorder.request.read",
+    "salesAgreement.accept", "salesAgreement.create", "salesAgreement.read",
+    "salesAgreement.updateDraft", "salesOrder.read", "salesOrder.write", "warehouse.record.read",
+    "warehouse.transferOrder.read", "workOrder.create", "workOrder.lifecycle.cancel",
+    "workOrder.lifecycle.dispatch", "workOrder.transition", "workflowDefinition.read",
+  ]),
+  owner: Object.freeze([
+    "admin.accessRequest.decide", "admin.credentialReset.initiate", "admin.employeeJobRole.write",
+    "admin.employeeOperationalScope.write", "admin.employeeProfile.write",
+    "admin.employeeWorkEligibility.write", "admin.principalAccess.read", "admin.roleAssignment.write",
+    "admin.securityPolicy.read", "admin.userStatus.write", "audit.event.read",
+    "customer.record.create", "customer.record.read", "customer.record.update", "employee.record.read",
+    "equipment.compatibility.view", "finance.adjustment.record", "finance.invoice.issue",
+    "finance.invoice.read", "finance.payment.apply", "finance.payment.read", "finance.refund.record",
+    "fulfillment.coordinatedVisit.read", "inventory.action.read", "inventory.catalog.manage",
+    "inventory.catalog.read", "inventory.manufacturer.read", "inventory.serializedAsset.read",
+    "inventory.transaction.read", "inventory.transfer.create", "opportunity.read", "opportunity.write",
+    "reorder.purchaseOrder.create", "reorder.purchaseOrder.read", "reorder.request.create.manual",
+    "reorder.request.create.system", "reorder.request.read", "salesAgreement.create",
+    "salesAgreement.read", "salesAgreement.updateDraft", "salesOrder.read", "salesOrder.write",
+    "warehouse.record.read", "warehouse.transferOrder.read", "workOrder.create", "workOrder.transition",
+    "workflowDefinition.read",
+  ]),
+  dispatcher: Object.freeze([
+    "customer.record.create", "customer.record.read", "customer.record.update",
+    "fulfillment.coordinatedVisit.read", "inventory.action.read", "inventory.catalog.read",
+    "inventory.manufacturer.read", "inventory.stock.receive", "inventory.transaction.read",
+    "opportunity.createSalesOrder", "opportunity.read", "opportunity.write",
+    "reorder.purchaseOrder.create", "reorder.purchaseOrder.read", "reorder.request.create.manual",
+    "reorder.request.create.system", "reorder.request.read", "salesAgreement.accept",
+    "salesAgreement.create", "salesAgreement.read", "salesAgreement.updateDraft", "salesOrder.read",
+    "salesOrder.write", "warehouse.record.read", "warehouse.transferOrder.read", "workOrder.create",
+    "workOrder.lifecycle.cancel", "workOrder.lifecycle.dispatch", "workOrder.transition",
+  ]),
+  technician: Object.freeze([
+    "reorder.request.read", "workOrder.lifecycle.complete", "workOrder.transition",
+  ]),
+  partsAssociate: Object.freeze([
+    "customer.record.read", "finance.invoice.read", "finance.payment.read", "inventory.catalog.read",
+    "inventory.manufacturer.read", "inventory.serializedAsset.read", "inventory.transaction.read",
+    "salesOrder.read", "workOrder.create", "workOrder.transition",
+  ]),
+});
+
+const MEASURED_COUNTS = Object.freeze({
+  admin: 66, owner: 47, dispatcher: 29, partsAssociate: 10, technician: 3,
+});
+
+/** The five governed-configuration Administration destinations, keyed as navConfig keys them. */
+const ADMINISTRATION_SECURITY_DESTINATIONS = Object.freeze([
+  "overview", "rolesPermissions", "objects", "workflows", "permissionPreview",
+]);
+
+const administrationDomain = () => NAV_DOMAINS.find((d) => d.key === "administration");
+const administrationItem = (key) => administrationDomain().subnav.find((i) => i.key === key);
+
+/** The real client projection, built from a real resolved context. Nothing is hand-assembled. */
+const navigationAuthorityFor = (context) =>
+  buildNavigationAuthority({ state: EXPERIENCE_STATE.READY, context });
+
+/** The EOS source, as the shell supplies it. `role` and `operationalRoles` are the legacy inputs. */
+const eosSession = (authority, { role = "admin", operationalRoles = [], employmentStatus = "ACTIVE" } = {}) => ({
+  role,
+  context: { operationalRoles, employmentStatus, eosNavigationAuthority: authority },
+});
+
+async function resolveFivePersonas() {
+  await reset();
+  const resolved = {};
+  for (const [roleKey, capabilities] of Object.entries(MEASURED_NONPROD_ROLE_CAPABILITIES)) {
+    assert.equal(capabilities.length, MEASURED_COUNTS[roleKey],
+      `the pinned ${roleKey} capability set no longer matches its measured count`);
+    await makePersona({ subject: `ah-persona-${roleKey}`, capabilities });
+    resolved[roleKey] = await contextFor(`ah-persona-${roleKey}`);
+  }
+  return resolved;
+}
+
+test("ADMIN and OWNER reach every Administration security surface; the other three reach none", { skip: SKIP }, async () => {
+  const resolved = await resolveFivePersonas();
+
+  const ADMINISTRATION_SECURITY_SURFACES = [
+    "administration.overview", "administration.rolesPermissions", "administration.objects",
+    "administration.workflows", "administration.permissionPreview",
+  ];
+
+  for (const roleKey of ["admin", "owner"]) {
+    const surfaces = new Set(resolved[roleKey].surfaces);
+    for (const key of ADMINISTRATION_SECURITY_SURFACES) {
+      assert.equal(surfaces.has(key), true, `${roleKey} did not earn ${key}`);
+    }
+    // Neither persona is an Employee, and the surfaces resolved anyway -- the Administration reads
+    // carry no workforce predicate, which is what makes a non-Employee Owner persona coherent.
+    assert.equal(resolved[roleKey].employeeId, null);
+  }
+
+  for (const roleKey of ["dispatcher", "technician", "partsAssociate"]) {
+    const surfaces = new Set(resolved[roleKey].surfaces);
+    for (const key of ADMINISTRATION_SECURITY_SURFACES) {
+      assert.equal(surfaces.has(key), false, `${roleKey} was offered ${key}`);
+    }
+    // NOT VACUOUS: each of the three earns real destinations from its real capabilities. A negative
+    // that holds nothing proves nothing.
+    assert.ok(surfaces.size > 0, `${roleKey} earned no surfaces at all -- the negative is vacuous`);
+  }
+
+  // The sharpest form of the contrast: the ONLY reason admin and owner differ from the three is the
+  // Administration read set. dispatcher holds 29 capabilities and not one of them is one of these.
+  const ADMINISTRATION_READS = [
+    "admin.securityPolicy.read", "workflowDefinition.read", "admin.principalAccess.read",
+    "audit.event.read",
+  ];
+  for (const roleKey of ["dispatcher", "technician", "partsAssociate"]) {
+    for (const capabilityKey of ADMINISTRATION_READS) {
+      assert.equal(MEASURED_NONPROD_ROLE_CAPABILITIES[roleKey].includes(capabilityKey), false);
+    }
+  }
+});
+
+test("projected onto the REAL client navigation, the five destinations follow exactly that split", { skip: SKIP }, async () => {
+  const resolved = await resolveFivePersonas();
+
+  for (const roleKey of ["admin", "owner"]) {
+    const session = eosSession(navigationAuthorityFor(resolved[roleKey]));
+    for (const key of ADMINISTRATION_SECURITY_DESTINATIONS) {
+      const item = administrationItem(key);
+      assert.ok(item, `Administration has no destination "${key}"`);
+      assert.equal(isNavItemVisible(item, session.role, [], session.context), true,
+        `${roleKey} cannot open Administration > ${key}`);
+    }
+    assert.equal(isDomainVisible(administrationDomain(), session.role, [], session.context), true);
+  }
+
+  for (const roleKey of ["dispatcher", "technician", "partsAssociate"]) {
+    const session = eosSession(navigationAuthorityFor(resolved[roleKey]), { role: roleKey });
+    for (const key of ADMINISTRATION_SECURITY_DESTINATIONS) {
+      assert.equal(isNavItemVisible(administrationItem(key), session.role, [], session.context), false,
+        `${roleKey} was offered Administration > ${key}`);
+    }
+  }
+
+  // THE OVERVIEW IS NOT A DOOR OF ITS OWN, proved at the destination level: a principal holding only
+  // Data Import authority reaches Data Import and is still refused the Administration index. This is
+  // the case an `alwaysVisible` index would get wrong.
+  await makePersona({ subject: "ah-persona-importer", capabilities: ["admin.dataImport.execute"] });
+  const importer = eosSession(navigationAuthorityFor(await contextFor("ah-persona-importer")), { role: "technician" });
+  assert.equal(isNavItemVisible(administrationItem("dataImport"), importer.role, [], importer.context), true);
+  assert.equal(isNavItemVisible(administrationItem("overview"), importer.role, [], importer.context), false);
+});
+
+test("NO Firebase role and NO operationalRoles value changes ANY of those answers", { skip: SKIP }, async () => {
+  const resolved = await resolveFivePersonas();
+
+  // Every legacy input the old model decided from, swung through its whole range -- including the
+  // two values that used to open these five destinations outright (PLACEHOLDER_DEFAULT_ROLES is
+  // ["admin","dispatcher"]), a null, and a string nobody defined.
+  const LEGACY_ROLES = ["admin", "dispatcher", "technician", null, "not-a-real-role-\u0000junk"];
+  const LEGACY_OPERATIONAL_ROLES = [
+    [],
+    ["dispatcher", "technician", "admin"],
+    ["warehouseManager", "partsManager", "salesperson", "generalManager", "owner"],
+  ];
+  const LEGACY_LEGACY_KEYS = [[], ["inventory", "technicians", "dispatch"]];
+
+  for (const [roleKey, context] of Object.entries(resolved)) {
+    const authority = navigationAuthorityFor(context);
+    const expected = Object.fromEntries(ADMINISTRATION_SECURITY_DESTINATIONS.map((key) => [
+      key,
+      isNavItemVisible(administrationItem(key), "admin", [], eosSession(authority).context),
+    ]));
+    // The baseline itself must be the governed answer, not an accident: admin/owner true, rest false.
+    const positive = roleKey === "admin" || roleKey === "owner";
+    for (const key of ADMINISTRATION_SECURITY_DESTINATIONS) {
+      assert.equal(expected[key], positive, `baseline wrong for ${roleKey} > ${key}`);
+    }
+
+    for (const role of LEGACY_ROLES) {
+      for (const operationalRoles of LEGACY_OPERATIONAL_ROLES) {
+        for (const allowedLegacyKeys of LEGACY_LEGACY_KEYS) {
+          for (const employmentStatus of ["ACTIVE", "TERMINATED", "ON_LEAVE"]) {
+            const session = eosSession(authority, { role, operationalRoles, employmentStatus });
+            for (const key of ADMINISTRATION_SECURITY_DESTINATIONS) {
+              assert.equal(
+                isNavItemVisible(administrationItem(key), role, allowedLegacyKeys, session.context),
+                expected[key],
+                `${roleKey} > ${key} moved when users/{uid}.role became ${JSON.stringify(role)} `
+                + `and operationalRoles became ${JSON.stringify(operationalRoles)}`,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+});

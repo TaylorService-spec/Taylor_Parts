@@ -169,45 +169,131 @@ test("a Role key is not a capability, in any shape a caller might pass one", () 
   assert.equal(mayReachAdministration(["admin.roleAssignment.write", "admin.accessRequest.decide"]), false);
 });
 
-// ════════════════════ 4. WHAT IS *NOT* CLOSED: THE PROJECTION ════════════════════
+// ════════════════════ 4. THE PROJECTION -- CLOSED (Owner ruling, Wave 9 / Lane AH) ════════════════════
+//
+// This section used to pin the OPPOSITE: "the EOS navigation projection declares NO surface for five
+// of the seven", and "the capability exists, the surface does not, and that is the whole remaining
+// distance". That distance has now been travelled, under an explicit Owner ruling, and the two stale
+// gap entries were REMOVED rather than reworded -- a gap whose stated reason ("no READ capability
+// governs it") is false is not a gap.
+//
+// WHAT DID NOT CHANGE, and the readiness claim depends on all three:
+//   * No capability was minted, no Role widened, no Principal granted anything directly.
+//   * EOS_NAVIGATION_AUTHORITY_READY is still FALSE in every environment, production included, so
+//     none of this is reachable by anybody today. Section 4 is a readiness proof, not a cutover.
+//   * The projection is NOT the security boundary. Every read and command behind these surfaces
+//     re-authorizes server-side on the same capability, exactly as before.
 
-test("the EOS navigation projection declares NO surface for five of the seven", () => {
+test("the five Administration surfaces are now projected, each on its own Object read", () => {
   const { EXPERIENCE_SURFACES, EXPERIENCE_SURFACE_GAPS } = require("../lib/eosOps/experienceAuthority.js");
-  const projected = new Set(EXPERIENCE_SURFACES.map((s) => s.key));
+  const byKey = new Map(EXPERIENCE_SURFACES.map((s) => [s.key, s]));
 
-  // Two of the seven ARE projected, and they are the two that were already governed before Lane AA.
-  assert.equal(projected.has("administration.users"), true);
-  assert.equal(projected.has("administration.auditLogs"), true);
+  // The two that were already governed before Lane AA, unchanged.
+  assert.ok(byKey.has("administration.users"));
+  assert.ok(byKey.has("administration.auditLogs"));
 
-  // The other five are not. `grantedSurfaceKeys` iterates EXPERIENCE_SURFACES and nothing else, so a
-  // capability with no surface earns no door -- holding `admin.securityPolicy.read` cannot make
-  // Roles & Permissions appear, because there is no surface for the projection to return.
-  for (const key of ["administration.rolesPermissions", "administration.objectsAndWorkflows",
-    "administration.workflows", "administration.permissionPreview", "administration.overview"]) {
-    assert.equal(projected.has(key), false, `${key} is projected -- update this readiness record`);
+  // THE FOUR CAPABILITY-EARNED ONES, and the exact key each is earned by. Asserting the key and not
+  // merely the presence is the point: a surface pointed at a convenient capability rather than at its
+  // own Object read is the failure mode the old gap text warned about.
+  const grantKeys = (key) => byKey.get(key).grants.map((g) => g.capabilityKey);
+  assert.deepEqual(grantKeys("administration.rolesPermissions"), ["admin.securityPolicy.read"]);
+  assert.deepEqual(grantKeys("administration.objects"), ["admin.securityPolicy.read"]);
+  assert.deepEqual(grantKeys("administration.workflows"), ["workflowDefinition.read"]);
+  assert.deepEqual(grantKeys("administration.permissionPreview"), ["admin.securityPolicy.read"]);
+
+  // NO ADMINISTRATION WRITE EARNS ANY OF THE GOVERNED-CONFIGURATION SURFACES. The old gap reason said
+  // gating a read surface on `admin.roleAssignment.write` "would make a reader indistinguishable from
+  // a writer"; this asserts that nothing did.
+  const {
+    ADMINISTRATION_WRITE_CAPABILITY_KEYS,
+  } = require("../lib/adminPolicy/administrationSurfaceAuthority.js");
+  const writes = new Set(ADMINISTRATION_WRITE_CAPABILITY_KEYS);
+  const GOVERNED_CONFIGURATION_SURFACES = [
+    "administration.rolesPermissions", "administration.objects", "administration.workflows",
+    "administration.permissionPreview", "administration.overview", "administration.users",
+    "administration.auditLogs",
+  ];
+  for (const key of GOVERNED_CONFIGURATION_SURFACES) {
+    for (const capabilityKey of grantKeys(key)) {
+      assert.equal(writes.has(capabilityKey), false, `${key} is earned by the WRITE ${capabilityKey}`);
+    }
   }
 
-  // Still declared gaps, with reasons that Lane AA's migration has now made STALE: the reason given
-  // is "no READ capability governs it", and one now does. The gap survives for a different reason --
-  // no surface, no NAV_SURFACE_ACCESS row -- and rewriting the reason is a deliberate act, not this
-  // file's. Pinned so the staleness is visible rather than believed.
+  // THE ONE ADMINISTRATION SURFACE THAT *IS* EARNED BY A WRITE, named rather than excluded by a
+  // filter nobody reads. `administration.dataImport` has been gated on `admin.dataImport.execute`
+  // since it was declared, and this lane did not touch it. It is a coherent exception -- Data Import
+  // is a DOING surface with no read half, so the authority to import IS the reason to be there --
+  // and it is precisely why that surface is NOT a child of the Administration container above.
+  // Recorded here so it stays a decision; if a `admin.dataImport.read` is ever registered, this line
+  // is what says the surface should move to it.
+  assert.deepEqual(grantKeys("administration.dataImport"), ["admin.dataImport.execute"]);
+  assert.equal(writes.has("admin.dataImport.execute"), true);
+
+  // THE COMBINED KEY IS GONE, NOT RENAMED. `administration.objectsAndWorkflows` was one gap key over
+  // two different authorities; it survives neither as a surface nor as a gap.
   const gapKeys = EXPERIENCE_SURFACE_GAPS.map((g) => g.key);
-  assert.ok(gapKeys.includes("administration.rolesPermissions"));
-  assert.ok(gapKeys.includes("administration.objectsAndWorkflows"));
-  const rolesGap = EXPERIENCE_SURFACE_GAPS.find((g) => g.key === "administration.rolesPermissions");
-  assert.match(rolesGap.reason, /No READ capability governs/,
-    "the gap reason changed -- re-run the readiness matrix");
+  assert.equal(byKey.has("administration.objectsAndWorkflows"), false);
+  assert.equal(gapKeys.includes("administration.objectsAndWorkflows"), false);
+  assert.equal(gapKeys.includes("administration.rolesPermissions"), false,
+    "rolesPermissions is declared BOTH projected and a gap");
 });
 
-test("the capability exists, the surface does not, and that is the whole remaining distance", () => {
-  // Said as one assertion because it is the finding: AG2's question is answered YES at the authority
-  // layer and NO at the projection layer, and a readiness flag must be decided on the second.
-  const admin = administrationReadsHeldBy("admin");
-  const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
-  const projected = new Set(EXPERIENCE_SURFACES.map((s) => s.key));
+test("administration.overview is a CONTAINER -- derived from its children, earnable by no capability", () => {
+  const {
+    EXPERIENCE_SURFACES, surfaceCatalogViolations, surfaceCatalogCapabilityKeys,
+  } = require("../lib/eosOps/experienceAuthority.js");
+  const overview = EXPERIENCE_SURFACES.find((s) => s.key === "administration.overview");
 
-  assert.equal(mayReadAdministrationSurface(admin, "rolesPermissions"), true, "authority layer: YES");
-  assert.equal(projected.has("administration.rolesPermissions"), false, "projection layer: NO");
+  // No grant path at all. There is no capability that opens it directly, so there is no id anybody
+  // could be granted -- or could mint -- that would make it an unconditional door.
+  assert.deepEqual(overview.grants, []);
+  assert.deepEqual([...overview.containerOf].sort(), [
+    "administration.auditLogs", "administration.objects", "administration.permissionPreview",
+    "administration.rolesPermissions", "administration.users", "administration.workflows",
+  ]);
+
+  // Data Import is deliberately NOT a child: import authority must not open the policy menu.
+  assert.equal(overview.containerOf.includes("administration.dataImport"), false);
+
+  // Every child is a real, capability-earned surface -- the catalog invariants refuse an unknown
+  // child, a self-reference and a nested container, and the whole catalog satisfies them.
+  assert.deepEqual([...surfaceCatalogViolations()], []);
+  // The container contributes NO capability key to the catalog's "these all exist" proof, because it
+  // names none. If it ever does, that proof and this line both fail.
+  assert.equal(surfaceCatalogCapabilityKeys().includes("administration.overview"), false);
+});
+
+test("the two authority modules agree on three surfaces and DIVERGE on permissionPreview -- pinned", () => {
+  // adminPolicy/administrationSurfaceAuthority.ts (Lane AA) and eosOps/experienceAuthority.ts (this
+  // lane) both say which capability reaches an Administration surface. They agree everywhere except
+  // Permission Preview, and that divergence is a live reconciliation item rather than a bug in
+  // either file -- so it is written down here instead of being silently resolved by one lane.
+  //
+  //   Lane AA       permissionPreview -> admin.principalAccess.read  ("the same effective-access read")
+  //   Owner ruling  permissionPreview -> admin.securityPolicy.read   (Wave 9, this lane)
+  //
+  // NOTHING OBSERVABLE TURNS ON IT TODAY: in nonprod both capabilities are granted to exactly
+  // {admin, owner}, so every principal resolves the same answer either way. It matters the day one is
+  // granted without the other, which is precisely why it must not be left as two quiet opinions.
+  const { EXPERIENCE_SURFACES } = require("../lib/eosOps/experienceAuthority.js");
+  const projection = new Map(EXPERIENCE_SURFACES.map((s) => [s.key, s.grants.map((g) => g.capabilityKey)]));
+
+  assert.deepEqual(projection.get("administration.rolesPermissions"),
+    [ADMINISTRATION_SURFACE_READ_CAPABILITY.rolesPermissions]);
+  assert.deepEqual(projection.get("administration.objects"),
+    [ADMINISTRATION_SURFACE_READ_CAPABILITY.objects]);
+  assert.deepEqual(projection.get("administration.workflows"),
+    [ADMINISTRATION_SURFACE_READ_CAPABILITY.workflows]);
+  assert.deepEqual(projection.get("administration.users"),
+    ["admin.principalAccess.read", "employee.record.read"]);
+
+  // THE DIVERGENCE, asserted from both sides so neither can move without this failing.
+  assert.equal(ADMINISTRATION_SURFACE_READ_CAPABILITY.permissionPreview, "admin.principalAccess.read");
+  assert.deepEqual(projection.get("administration.permissionPreview"), ["admin.securityPolicy.read"]);
+  assert.notEqual(ADMINISTRATION_SURFACE_READ_CAPABILITY.permissionPreview,
+    projection.get("administration.permissionPreview")[0]);
+  // Both holders are identical in nonprod, which is why nobody can currently observe the difference.
+  assert.deepEqual(NONPROD_HOLDERS["admin.principalAccess.read"], NONPROD_HOLDERS["admin.securityPolicy.read"]);
 
   assert.equal(typeof WORKFLOW_READ_GRANTED_BY_MIGRATION_NOT_ON_THIS_BRANCH, "string");
 });

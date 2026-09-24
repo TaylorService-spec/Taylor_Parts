@@ -685,6 +685,21 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "administration/users": ["administration.users"],
   "administration/dataImport": ["administration.dataImport"],
   "administration/auditLogs": ["administration.auditLogs"],
+  // The governed-configuration half, mapped once `admin.securityPolicy.read` and
+  // `workflowDefinition.read` made them earnable (Owner ruling, Wave 9 / Lane AH). These rows are
+  // read ONLY on the EOS branch of `isNavItemVisible`, so while EOS_NAVIGATION_AUTHORITY_READY is
+  // false -- which is every deployed environment -- they change nothing anybody sees. Deliberately
+  // NO `capabilityAccess` was added to these five nav items: that WOULD change the legacy branch
+  // today, and this lane proves readiness rather than performing the cutover.
+  "administration/rolesPermissions": ["administration.rolesPermissions"],
+  "administration/objects": ["administration.objects"],
+  "administration/workflows": ["administration.workflows"],
+  "administration/permissionPreview": ["administration.permissionPreview"],
+  // The index is the CONTAINER surface, and it is not a door of its own: the server grants
+  // `administration.overview` only to a principal who may already reach one of the governed
+  // Administration children. Pointing it at that one key keeps the derivation server-side, where the
+  // decision is, instead of re-deriving "can they see any of the others" in the client.
+  "administration/overview": ["administration.overview"],
 });
 
 /**
@@ -708,11 +723,6 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "purchasing/suppliers": "No supplier.* capability is registered; supplier master is Firestore-authoritative.",
   "purchasing/quotes": "No quote domain exists.",
   "purchasing/demandPlanning": "No demand-planning domain exists.",
-  "administration/rolesPermissions": "No READ capability governs the policy model. admin.roleAssignment.write is a write, and gating a read surface with it would make a reader indistinguishable from a writer.",
-  "administration/objects": "Same gap as rolesPermissions.",
-  "administration/workflows": "Same gap as rolesPermissions.",
-  "administration/permissionPreview": "Same gap as rolesPermissions.",
-  "administration/overview": "Administration's index has no governed surface of its own; it is a menu over the ones above.",
   "administration/integrations": "No integrations domain exists.",
   "administration/duplicateRules": "No capability governs duplicate-rule administration.",
   "administration/warehouseRacking": "Gated today by the Firebase capability feed; inventory.location.bin.* is not in eos_policy.capabilities.",

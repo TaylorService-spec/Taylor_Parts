@@ -278,6 +278,37 @@ export const INBOUND_WORK_SURFACE_CAPABILITIES = Object.freeze([
   "administration.emailIntake.read",
 ]);
 
+/**
+ * ADMINISTRATION > ROLES & PERMISSIONS / OBJECTS / WORKFLOWS / PERMISSION PREVIEW.
+ *
+ * THE UNASKED QUESTION, FOR THE FOURTH TIME, and named as such because the two notes above already
+ * diagnosed it exactly: `buildHasCapability` answers from `feed.decisions[id]`, the feed decides only
+ * the ids it is ASKED for, and an id nobody asks about is indistinguishable from a denied one. These
+ * two were the ids the Administration navigation readiness record pinned as step 3 of the wiring --
+ * "the shell would never ask for the two new ids anyway" -- and this closes exactly that step.
+ *
+ * WHY THESE TWO AND NOT THE ADMINISTRATION WRITES. Both are READS of the policy model, and both are
+ * the canonical read `adminPolicy/administrationSurfaceAuthority.ts` already names for these
+ * surfaces. The Administration WRITE ids (`admin.roleAssignment.write`, the four
+ * `workflowDefinition.*` mutations, ...) are deliberately NOT added: gating a read surface on a write
+ * would make a reader indistinguishable from a writer, which is the defect that module was written
+ * to end and which the old surface-gap text warned about in its own words.
+ *
+ * ASKING IS NOT GRANTING. Both ids are already registered in eos_policy.capabilities and granted to
+ * exactly `admin` and `owner` (measured read-only in nonprod 2026-09-24: 2 roles each, and every
+ * OTHER `workflowDefinition.*` at zero). A principal without the grant gets `false` from the server,
+ * on the evidence, rather than from an absent answer -- dispatcher, technician and partsAssociate
+ * hold neither and are refused by the decision itself.
+ *
+ * NO NEW CAPABILITY, NO GRANT, NO ACTIVATION, AND NO NEW DOOR. Requesting a decision does not make a
+ * destination visible: navigation visibility under the EOS source is decided by `surfaceAccess`, and
+ * under the legacy source these four destinations are untouched by this list.
+ */
+export const ADMINISTRATION_POLICY_SURFACE_CAPABILITIES = Object.freeze([
+  "admin.securityPolicy.read",
+  "workflowDefinition.read",
+]);
+
 export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   ...TRANSFER_SURFACE_CAPABILITIES,
   ...CYCLE_COUNT_SURFACE_CAPABILITIES,
@@ -296,4 +327,7 @@ export const GOVERNED_SURFACE_CAPABILITY_IDS = Object.freeze([
   // Service -> Inbound Work and Administration -> Email & Communications, in the SAME single call
   // and against the SAME accessVersion as everything else here.
   ...INBOUND_WORK_SURFACE_CAPABILITIES,
+  // Administration's governed-configuration reads -- in the SAME single call, for the same
+  // one-accessVersion reason every entry above gives.
+  ...ADMINISTRATION_POLICY_SURFACE_CAPABILITIES,
 ]);

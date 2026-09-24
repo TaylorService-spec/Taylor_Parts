@@ -88,8 +88,38 @@ const MANIFEST = require("./fixtures/syntheticNonprodWorkforceSeed.v1.json");
 const EMPLOYMENT_STATUS_VALUES = Object.freeze(["ACTIVE", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]);
 const SYNTHETIC_IDENTITY_PROVIDER = "eos-synthetic-nonprod";
 const DERIVE_FROM_OWNER = "DERIVE_FROM_OWNER";
-const LINK_REASON = "SYNTHETIC NONPROD SEED v1: fixture link between a fixture Employee and a Principal; not a real person";
-const ROLE_REASON = "SYNTHETIC NONPROD SEED v1: explicit fixture Security Role assignment; not inferred from Job Role";
+
+// ============================ PER-STEP AUDIT REASONS ============================
+//
+// Owner ruling: "Every governed persona provisioning mutation must carry a specific per-step reason.
+// Do not use one broad reason for the entire provisioning run."
+//
+// This file used to hold exactly what that forbids -- two module constants, LINK_REASON and
+// ROLE_REASON, reused verbatim for every persona. The audit trail that came out of it said the same
+// sentence nine times and therefore said nothing: it recorded THAT a link was asserted, never WHY
+// this Employee was bound to this Principal.
+//
+// They are gone, and there is nowhere left to put a broad reason: the reason is read per manifest
+// entry, composed per step with the persona and target it belongs to, and `assertPerStepReasons`
+// refuses the three ways a run-level reason could come back --
+//
+//   REASON_MISSING          an entry with no reason, or one shorter than the minimum
+//   RUN_LEVEL_REASON_REFUSED  two steps sharing one rationale, which is a run-level reason wearing
+//                             a per-step shape
+//   REASON_TOO_LONG         over the 500 characters the audit column and optionalReason() admit
+//
+// The shape mirrors sampleCompany/personaAuthorityDimensions.js, which the same ruling produced for
+// the Work Eligibility and Operational Scope half. One vocabulary for one ruling.
+const REASON_PREFIX = "SYNTHETIC NONPROD SEED v1";
+const RATIONALE_MIN_LENGTH = 24;
+const RECORDED_REASON_MAX_LENGTH = 500;
+const DIMENSION_LINK = "EMPLOYEE_PRINCIPAL_LINK";
+const DIMENSION_ROLE = "SECURITY_ROLE";
+
+/** `SYNTHETIC NONPROD SEED v1: <employee> (<principal subject>) <DIMENSION> <target> -- <rationale>` */
+function composeStepReason(personaKey, subject, dimension, target, rationale) {
+  return `${REASON_PREFIX}: ${personaKey} (${subject}) ${dimension} ${target} -- ${rationale}`;
+}
 
 /** The blocker this seed's Commercial half is gated on. Declared by scripts/fixtures/sampleCompany.v2.json too. */
 const COMMERCIAL_BLOCKER_CODE = "COMMERCIAL_RECORDS_PENDING_C5";
@@ -116,6 +146,51 @@ class SyntheticSeedError extends Error {
 const refuse = (code, message) => {
   throw new SyntheticSeedError(code, message);
 };
+
+/**
+ * EVERY persona mutation carries its OWN reason, and no two carry the same one.
+ *
+ * Checked BEFORE any connection, like every other manifest invariant, so a run that could not
+ * explain itself never opens a client -- rather than discovering it halfway through, with some
+ * personas already written and some not.
+ *
+ * SHARED RATIONALE IS THE INTERESTING CASE, and it is why this is a set rather than a loop of
+ * length checks. A caller complying with the letter of the ruling by pasting one good sentence into
+ * all nine entries has written a run-level reason with extra steps, and the audit trail is exactly
+ * as uninformative as the two constants this replaced. Duplication is therefore refused under its
+ * OWN code, so the failure says what was wrong instead of "invalid manifest".
+ */
+function assertPerStepReasons(principals) {
+  const seen = new Map();
+  for (const p of principals) {
+    const subject = p.existingAdministrator ? "existing administrator" : p.externalSubject;
+    const rationales = [[DIMENSION_LINK, "link", p.linkReason]];
+    for (const roleKey of p.securityRoles) {
+      rationales.push([DIMENSION_ROLE, roleKey, (p.roleReasons || {})[roleKey]]);
+    }
+    for (const [dimension, target, rationale] of rationales) {
+      const where = `${p.employee} ${dimension} ${target}`;
+      if (typeof rationale !== "string" || rationale.trim().length < RATIONALE_MIN_LENGTH) {
+        refuse("REASON_MISSING",
+          `${where}: a specific per-step reason of at least ${RATIONALE_MIN_LENGTH} characters is required; `
+          + "this seed has no run-level reason to fall back on");
+      }
+      const normalized = rationale.trim().toLowerCase();
+      if (seen.has(normalized)) {
+        refuse("RUN_LEVEL_REASON_REFUSED",
+          `${where} reuses the reason already given for ${seen.get(normalized)}; one sentence repeated `
+          + "across steps is a run-level reason, which the Owner ruling forbids");
+      }
+      seen.set(normalized, where);
+      const composed = composeStepReason(p.employee, subject, dimension, target, rationale.trim());
+      if (composed.length > RECORDED_REASON_MAX_LENGTH) {
+        refuse("REASON_TOO_LONG",
+          `${where}: the composed reason is ${composed.length} characters and the audit column admits `
+          + `${RECORDED_REASON_MAX_LENGTH}`);
+      }
+    }
+  }
+}
 
 /** The manifest's invariants, checked before any connection. Returns lookup maps. */
 function validateManifest(m) {
@@ -166,6 +241,7 @@ function validateManifest(m) {
     else if (!/^synthetic-np-principal-[a-z0-9-]+$/.test(p.externalSubject || "")) refuse("MANIFEST_INVALID", `${p.employee}: synthetic subjects must be synthetic-np-principal-*`);
   }
   if (administrators !== 1) refuse("MANIFEST_INVALID", "exactly one existing administrator Principal is reused");
+  assertPerStepReasons(m.principals);
 
   const accounts = new Map(m.accounts.map((a) => [a.id, a]));
   for (const a of m.accounts) eligible(a.owner, `Account ${a.id}`);
@@ -284,18 +360,30 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
 
   // ---- Principals, links, Security Roles
   for (const p of manifest.principals) {
+    // The reason is composed HERE, per step, from the persona and the target it is about -- never
+    // read from a module constant. assertPerStepReasons() has already refused a missing one, a
+    // too-short one, an over-long one and one shared with another step.
+    const subject = p.existingAdministrator ? "existing administrator" : p.externalSubject;
+    const stepReason = (dimension, target, rationale) =>
+      composeStepReason(p.employee, subject, dimension, target, rationale.trim());
+
     let principal = admin;
     if (!p.existingAdministrator) {
       const before = await repo.getPrincipalBySubject(SYNTHETIC_IDENTITY_PROVIDER, p.externalSubject);
       principal = await ensureTenantPrincipal(repo, { tenantId, externalSubject: p.externalSubject, identityProvider: SYNTHETIC_IDENTITY_PROVIDER,
-        displayName: p.displayName, actorUid: options.performedBy, actorRoleKeys: heldRoleKeys });
+        displayName: p.displayName, actorUid: options.performedBy, actorRoleKeys: heldRoleKeys,
+        // Admitting a Principal to a tenant used to be the one persona mutation that could not
+        // explain itself: the audit row was written with reason null. It carries the link rationale
+        // because that is what this step is for -- this Employee is getting a Principal of its own.
+        reason: stepReason(DIMENSION_LINK, "tenant membership", p.linkReason) });
       count("principals", before === null);
     }
     const linkedBefore = await pool.query(
       `SELECT 1 FROM eos_policy.employee_principal_links WHERE tenant_id = $1 AND employee_id = $2 AND principal_id = $3 AND status = 'active'`,
       [tenantId, employeeId(p.employee), principal.id]);
     await establishLink(pool, { tenantId, principalId: principal.id, employeeId: employeeId(p.employee), operatingCompanyId: manifest.operatingCompanyId,
-      linkSource: "OPERATOR_ASSERTED", assertedBy: options.performedBy, assertionReason: LINK_REASON });
+      linkSource: "OPERATOR_ASSERTED", assertedBy: options.performedBy,
+      assertionReason: stepReason(DIMENSION_LINK, employeeId(p.employee), p.linkReason) });
     count("links", linkedBefore.rows.length === 0);
 
     const held = await repo.listAssignmentsForPrincipal(tenantId, principal.id);
@@ -303,7 +391,10 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
       const role = roleByKey.get(key);
       if (!role) refuse("ROLE_NOT_DEFINED", `Security Role ${key} is not defined in this tenant; the seed never creates Roles`);
       const already = held.some((a) => a.status === "active" && a.roleId === role.id && (a.scopeType ?? "global") === "global");
-      await assignRole(repo, actor, { principalId: principal.id, roleId: role.id, reason: ROLE_REASON });
+      await assignRole(repo, actor, {
+        principalId: principal.id, roleId: role.id,
+        reason: stepReason(DIMENSION_ROLE, key, p.roleReasons[key]),
+      });
       count("roleAssignments", !already);
     }
   }

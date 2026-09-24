@@ -349,6 +349,31 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ THE GOVERNED NONPROD OWNER PERSONA ============================
+//
+// scripts/provisionOwnerPersona.js admits ONE non-authenticating Principal and assigns it exactly the
+// `owner` Security Role (--apply), through ensureTenantPrincipal and assignRole. It administers as a
+// NAMED Principal, has no production mode, creates no tenant, no Employee, no Role and no capability
+// grant, and must refuse before `pg` or lib/ is resolved.
+const OWNER_PERSONA = "scripts/provisionOwnerPersona.js";
+const OWNER_PERSONA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1", "--apply"];
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1"], EMP_ENV, /--environment is required/],
+  ["production environment", swapEnv(OWNER_PERSONA_ARGS, "taylor-parts-production"), EMP_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", OWNER_PERSONA_ARGS, { ...EMP_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(OWNER_PERSONA_ARGS, "platform-certification"), EMP_ENV, /Certification world, which is frozen/],
+  ["no databaseUrlEnv", OWNER_PERSONA_ARGS.filter((a) => a !== "--databaseUrlEnv" && a !== "EMP_FENCE_DB"), EMP_ENV, /--databaseUrlEnv <VAR> is required/],
+  ["no tenant key", OWNER_PERSONA_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), EMP_ENV, /--tenantKey is required/],
+  ["no performedBy", OWNER_PERSONA_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), EMP_ENV, /--performedBy is required/],
+  ["no administering Principal", OWNER_PERSONA_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), EMP_ENV, /--adminPrincipalId is required/],
+]) {
+  test(`owner persona provisioning: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(OWNER_PERSONA, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `owner persona provisioning, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ SECURITY ROLE AUTHORITY CONVERGENCE ============================
 //
 // scripts/roleAssignmentCensusCli.js is a FIREBASE_EXIT_MIGRATION_ONLY read of the legacy Security Role assignment

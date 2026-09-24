@@ -1,24 +1,35 @@
-// WHY ADMINISTRATION STILL CANNOT BE NAVIGATED TO -- the client half of the readiness record.
+// HOW ADMINISTRATION BECOMES NAVIGABLE -- the client half of the readiness record.
 //
 // Pure: no DOM, no network, no Firebase. Run: node --test test/administrationNavigationReadiness.test.mjs
 //
-// ════════════════════ THE THING THIS FILE EXISTS TO STOP ════════════════════
+// ════════════════════ WHAT THIS FILE RECORDS ════════════════════
 //
-// Lane AA registered `admin.securityPolicy.read` and granted it to admin and owner. That closes the
-// reason Administration > Roles & Permissions and > Objects were declared gaps -- there IS a read
-// capability now -- and it closes NOTHING about whether the navigation offers them. Between the
-// capability and the door there are three separate mechanisms, and none of the three has been moved:
+// Lane AA registered `admin.securityPolicy.read` and granted it to admin and owner. That closed the
+// reason Roles & Permissions and Objects were declared gaps -- there IS a read capability -- and it
+// closed NOTHING about whether the navigation offers them. Between the capability and the door there
+// were three separate mechanisms. Under an explicit Owner ruling (Wave 9 / Lane AH) two of the three
+// have now been moved, and the third deliberately has not:
 //
-//   1. NAV_SURFACE_ACCESS has no row for these destinations, so `eosGrantsSurface` finds no
-//      surfaceAccess and returns false for every principal, however much authority they hold.
-//   2. The destinations declare no `capabilityAccess`, so the LEGACY source still answers them from
-//      PLACEHOLDER_DEFAULT_ROLES -- a Firebase-era role literal, `["admin", "dispatcher"]`.
-//   3. Even if (2) were declared, GOVERNED_SURFACE_CAPABILITY_IDS does not list the ids, so the
-//      shell never asks for a decision on them -- and an id nobody asks for is indistinguishable
-//      from a denied one (governedSurfaceCapabilities.js says so in its own words, twice).
+//   1. NAV_SURFACE_ACCESS had no row for these destinations.          MOVED. All five are mapped,
+//                                                                     each to its own surface key.
+//   2. The destinations declare no `capabilityAccess`, so the LEGACY  NOT MOVED, ON PURPOSE. Adding
+//      source answers them from PLACEHOLDER_DEFAULT_ROLES -- a        it would change what deployed
+//      Firebase-era role literal, `["admin", "dispatcher"]`.          environments show TODAY, and
+//                                                                     this lane proves readiness
+//                                                                     rather than performing the
+//                                                                     cutover. Section 2 pins the
+//                                                                     legacy behaviour UNCHANGED.
+//   3. GOVERNED_SURFACE_CAPABILITY_IDS did not list the ids, so the   MOVED. Both are requested, and
+//      shell never asked for a decision on them.                      the request is DERIVED from the
+//                                                                     gate declaration rather than
+//                                                                     kept equal by remembering.
 //
-// Each is pinned below. A readiness flag flipped while any of them stands makes Administration
-// unreachable for everyone, which is the exact blocker the Lane V navigation report raised.
+// EOS_NAVIGATION_AUTHORITY_READY IS STILL FALSE IN EVERY ENVIRONMENT, production included. Section 1
+// is reachable only under the EOS source, which nothing turns on yet.
+//
+// NAVIGATION IS NOT THE SECURITY AUTHORITY, and none of this makes it one. A surface decides whether
+// a destination is OFFERED; every read and command behind it re-authorizes server-side on the same
+// capability. Section 1's proofs are about doors, not about permission.
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -35,7 +46,11 @@ import {
   isDomainVisible,
   isNavItemVisible,
 } from "../src/navigation/navConfig.js";
-import { GOVERNED_SURFACE_CAPABILITY_IDS } from "../src/access/governedSurfaceCapabilities.js";
+import {
+  ADMINISTRATION_POLICY_SURFACE_CAPABILITIES,
+  GOVERNED_SURFACE_CAPABILITY_IDS,
+} from "../src/access/governedSurfaceCapabilities.js";
+import { SHELL_GATED_CAPABILITY_IDS } from "../src/access/shellCapabilityGates.js";
 
 /** The five AG2 asks about. `users` and `auditLogs` are deliberately NOT here -- they are mapped. */
 const POLICY_DESTINATIONS = Object.freeze([
@@ -68,41 +83,63 @@ const eosContext = (authority = OMNIPOTENT, extra = {}) => ({
   operationalRoles: [], employmentStatus: "ACTIVE", eosNavigationAuthority: authority, ...extra,
 });
 
-// ════════════════════ 1. THE PROJECTION OFFERS NONE OF THE FIVE ════════════════════
+// ════════════════════ 1. THE PROJECTION NOW OFFERS ALL FIVE ════════════════════
 
-test("under the EOS source the five policy destinations are invisible to EVERYONE", () => {
+test("under the EOS source the five policy destinations are offered to a principal that earns them", () => {
   for (const key of POLICY_DESTINATIONS) {
     const item = itemFor(key);
     assert.ok(item, `Administration has no destination "${key}"`);
-    // No surfaceAccess was attached, because NAV_SURFACE_ACCESS names no surface for it.
-    assert.equal(item.surfaceAccess, undefined,
-      `${key} now has a surface -- the readiness matrix must be re-run`);
-    assert.equal(isNavItemVisible(item, "admin", ["inventory"], eosContext()), false,
-      `${key} became visible to admin -- re-run the readiness matrix`);
-    assert.equal(isNavItemVisible(item, "owner", [], eosContext()), false);
+    // Step 1 of the wiring: NAV_SURFACE_ACCESS now names a surface for each, and the attachment loop
+    // in navConfig.js puts it on the item the predicate actually receives.
+    assert.deepEqual(item.surfaceAccess, [`administration.${key}`],
+      `${key} is mapped to something other than its own surface`);
+    assert.equal(isNavItemVisible(item, "admin", ["inventory"], eosContext()), true);
+    assert.equal(isNavItemVisible(item, "owner", [], eosContext()), true);
   }
 });
 
-test("the surface map still has no row for them, and the gap register still names them", () => {
+test("the surface map names all five and the gap register names none of them", () => {
   for (const key of POLICY_DESTINATIONS) {
-    assert.equal(Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, `administration/${key}`), false);
-    assert.ok(Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, `administration/${key}`),
-      `administration/${key} is neither mapped nor declared a gap`);
+    assert.deepEqual(NAV_SURFACE_ACCESS[`administration/${key}`], [`administration.${key}`]);
+    assert.equal(Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, `administration/${key}`), false,
+      `administration/${key} is declared BOTH mapped and a gap`);
   }
-  // THE GAP REASONS ARE NOW STALE, and the staleness is the finding. Three of them say a READ
-  // capability does not exist; `admin.securityPolicy.read` exists and is granted to admin and owner
-  // in nonprod (migration 1762041600000). Rewriting them is a deliberate act with an Owner ruling
-  // behind it, not a side effect of this lane -- so the old text is pinned, not edited.
-  assert.match(NAV_SURFACE_GAPS["administration/rolesPermissions"], /No READ capability governs/);
-  assert.match(NAV_SURFACE_GAPS["administration/objects"], /Same gap as rolesPermissions/);
-  assert.match(NAV_SURFACE_GAPS["administration/workflows"], /Same gap as rolesPermissions/);
-  assert.match(NAV_SURFACE_GAPS["administration/permissionPreview"], /Same gap as rolesPermissions/);
-
-  // The two that ARE mapped, so the contrast is explicit rather than inferred.
+  // The two that were already mapped before this lane, unchanged.
   assert.deepEqual(NAV_SURFACE_ACCESS["administration/users"], ["administration.users"]);
   assert.deepEqual(NAV_SURFACE_ACCESS["administration/auditLogs"], ["administration.auditLogs"]);
   assert.equal(isNavItemVisible(itemFor("users"), "admin", [], eosContext()), true);
   assert.equal(isNavItemVisible(itemFor("auditLogs"), "admin", [], eosContext()), true);
+
+  // Every surface named is one this bundle knows. A destination pointed at a key the client does not
+  // recognise would be silently invisible forever, which is a worse failure than a declared gap.
+  for (const key of POLICY_DESTINATIONS) {
+    assert.ok(EXPERIENCE_SURFACE_KEYS.includes(`administration.${key}`),
+      `administration.${key} is mapped but is not a known surface`);
+  }
+});
+
+test("the Administration index is NOT an unconditional door -- it follows its children", () => {
+  // The whole point of `administration.overview` being a CONTAINER server-side: a principal the EOS
+  // source grants nothing must not land on the Administration menu. Here the surface set is the
+  // independent variable, because the client projects what the server listed and decides nothing.
+  const withNothing = eosContext(buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: [] },
+  }));
+  assert.equal(isNavItemVisible(itemFor("overview"), "admin", [], withNothing), false,
+    "the Administration index opened for a principal granted nothing");
+  assert.equal(isDomainVisible(administration(), "admin", [], withNothing), false);
+
+  // And a principal the SERVER granted the container to reaches it -- the client neither re-derives
+  // the disjunction nor second-guesses it.
+  const withOverviewOnly = eosContext(buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: ["administration.overview"] },
+  }));
+  assert.equal(isNavItemVisible(itemFor("overview"), "technician", [], withOverviewOnly), true);
+  assert.equal(isNavItemVisible(itemFor("rolesPermissions"), "technician", [], withOverviewOnly), false);
 });
 
 // ════════════════════ 2. THE LEGACY SOURCE IS WHAT STILL ANSWERS THEM ════════════════════
@@ -165,17 +202,54 @@ test("the negative FALLS THROUGH only when a compatibility path is also declared
   assert.ok(Array.isArray(parts.capabilityAccess));
 });
 
-test("and the shell would never ask for the two new ids anyway", () => {
+test("and the shell now DOES ask for both ids -- step 3 of the wiring, closed", () => {
   // Step 3. `holdsDeclaredCapability` answers from the feed, and the feed only decides the ids it is
   // ASKED for; an unrequested id resolves false for every principal, including one who holds it.
   const requested = new Set(GOVERNED_SURFACE_CAPABILITY_IDS);
-  assert.equal(requested.has("admin.securityPolicy.read"), false,
-    "the id is now requested -- step 3 of the wiring has been done");
-  assert.equal(requested.has("workflowDefinition.read"), false,
-    "the id is now requested -- step 3 of the wiring has been done");
-  // The two Administration reads that ARE requested, so the omission is visibly an omission.
+  assert.equal(requested.has("admin.securityPolicy.read"), true);
+  assert.equal(requested.has("workflowDefinition.read"), true);
+  // The two Administration reads that were already requested, unchanged.
   assert.equal(requested.has("admin.principalAccess.read"), true);
   assert.equal(requested.has("audit.event.read"), true);
+
+  // THE REQUEST IS DERIVED, NOT A SECOND LIST. `SHELL_GATED_CAPABILITY_IDS` is the union of
+  // SHELL_CAPABILITY_GATES, which takes `governedSurfaces: GOVERNED_SURFACE_CAPABILITY_IDS`
+  // wholesale -- so asking is a property of the declaration rather than of somebody remembering.
+  // This is what makes "the principal-context request actually asks for them" true by construction.
+  const shellAsks = new Set(SHELL_GATED_CAPABILITY_IDS);
+  assert.equal(shellAsks.has("admin.securityPolicy.read"), true);
+  assert.equal(shellAsks.has("workflowDefinition.read"), true);
+  for (const id of GOVERNED_SURFACE_CAPABILITY_IDS) {
+    assert.equal(shellAsks.has(id), true, `${id} is a governed surface id the shell never asks about`);
+  }
+
+  // ASKING IS NOT GRANTING, and this is the line that says so. Both ids are now in the request set
+  // and a principal holding neither still resolves false -- from a decision, not from an absence.
+  const holdsNothing = { operationalRoles: [], employmentStatus: "ACTIVE", hasCapability: () => false };
+  const asItWouldBe = { key: "rolesPermissions", label: "Roles & Permissions",
+    path: "roles-permissions", capabilityAccess: ["admin.securityPolicy.read"] };
+  assert.equal(isNavItemVisible(asItWouldBe, "dispatcher", [], holdsNothing), false);
+
+  // AND NO WRITE WAS ADDED BY THIS LANE. Requesting a decision on a read must not smuggle in the
+  // write beside it, so the set this lane contributed is asserted to be exactly the two reads.
+  assert.deepEqual([...ADMINISTRATION_POLICY_SURFACE_CAPABILITIES],
+    ["admin.securityPolicy.read", "workflowDefinition.read"]);
+
+  // NOT ONE `workflowDefinition` MUTATION IS REQUESTED. Every one of them stands at zero grants by
+  // standing decision -- the Workflow Definition decisions are the Owner's -- and asking about one
+  // would be the first step toward a screen that offers it.
+  for (const write of ["workflowDefinition.publish", "workflowDefinition.create",
+    "workflowDefinition.edit", "workflowDefinition.version", "workflowDefinition.bindRole"]) {
+    assert.equal(requested.has(write), false, `${write} is a WRITE and the shell now asks for it`);
+  }
+
+  // THE ONE ADMINISTRATION WRITE THAT *IS* REQUESTED, named rather than hidden behind a narrower
+  // loop. `admin.roleAssignment.write` has been in ADMINISTRATION_USERS_SURFACE_CAPABILITIES since
+  // decisions #173/#174 and this lane did not add it. It is an ACTION gate on the Users screen's Add
+  // Role control, not a surface-read gate, and no surface in the catalog is earned by it -- the
+  // server-side readiness record asserts that half directly.
+  assert.equal(requested.has("admin.roleAssignment.write"), true);
+  assert.equal(ADMINISTRATION_POLICY_SURFACE_CAPABILITIES.includes("admin.roleAssignment.write"), false);
 });
 
 // ════════════════════ 3. THE TWO BLOCKERS THIS LANE DID NOT TOUCH ════════════════════

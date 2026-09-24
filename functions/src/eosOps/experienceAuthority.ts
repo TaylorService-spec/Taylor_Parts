@@ -67,10 +67,33 @@ export interface ExperienceSurface {
   /** What a person would call it. For refusal copy and Administration screens, never for matching. */
   readonly label: string;
   readonly grants: readonly SurfaceGrantPath[];
+  /**
+   * CONTAINER SURFACES ONLY -- the child surface keys this one is the menu over.
+   *
+   * A container is earned by REACHING AT LEAST ONE CHILD and by nothing else. It declares NO grant
+   * path of its own, so there is no capability that opens it directly and no way to hold it while
+   * holding nothing behind it. That is the opposite of an `alwaysVisible` door and the opposite of a
+   * blanket `administration.read`: both of those can seat a principal on a page where every link
+   * refuses them, which is how a navigation model starts lying about access.
+   *
+   * DERIVED, NEVER ASSERTED. The children are evaluated first, through the SAME
+   * `authorizeObjectAction` every other surface uses, and the container is then read off that
+   * result. It adds no authority of its own -- it can only ever be a disjunction of decisions
+   * already made, which is why it cannot widen anything.
+   *
+   * Nesting is REFUSED by `surfaceCatalogViolations`: a child may not itself be a container. One
+   * level means the evaluation is a single ordered pass with no cycle to detect and no dependence on
+   * declaration order, and a container of containers is a hierarchy nobody asked this model to have.
+   */
+  readonly containerOf?: readonly string[];
 }
 
 const surface = (key: string, label: string, grants: readonly SurfaceGrantPath[]): ExperienceSurface =>
   Object.freeze({ key, label, grants: Object.freeze(grants.map((g) => Object.freeze(g))) });
+
+/** A surface earned ONLY by reaching one of `children`. No grant path, so nothing opens it directly. */
+const container = (key: string, label: string, children: readonly string[]): ExperienceSurface =>
+  Object.freeze({ key, label, grants: Object.freeze([]), containerOf: Object.freeze([...children]) });
 
 const WORK_ELIGIBILITY = (qualificationCode: string): ContextPredicate =>
   Object.freeze({ kind: "WORK_ELIGIBILITY", qualificationCode });
@@ -179,6 +202,75 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   ]),
   surface("administration.dataImport", "Data Import", [{ capabilityKey: "admin.dataImport.execute" }]),
   surface("administration.auditLogs", "Audit Logs", [{ capabilityKey: "audit.event.read" }]),
+
+  // ── Administration: the governed-configuration half (Owner ruling, Wave 9 / Lane AH)
+  //
+  // THESE WERE DECLARED GAPS AND ARE NOT ANY MORE, and exactly one thing changed: the READ
+  // capability the gap text said did not exist now does. `admin.securityPolicy.read` and
+  // `workflowDefinition.read` are registered in eos_policy.capabilities and granted to `admin` and
+  // `owner` (measured read-only in nonprod 2026-09-24, 2 roles each). The gap entries below were
+  // removed rather than rewritten, because a gap whose stated reason is false is not a gap.
+  //
+  // THE AUTHORITY IS THE OBJECT'S OWN READ, NEVER A WRITE AND NEVER A ROLE. The old gap text warned
+  // that gating `administration.rolesPermissions` on `admin.roleAssignment.write` "would mean a
+  // reader could not read and a writer could not be told apart from a reader"; nothing here does
+  // that. `admin.roleAssignment.write` and the other Administration writes appear nowhere in this
+  // catalog, and `users/{uid}.role` is not an input to any of it.
+  //
+  // `administration.objectsAndWorkflows` IS GONE, SPLIT, NOT RENAMED. It was one gap key over two
+  // authorities -- the Object editors answer to `admin.securityPolicy.read` and the Workflow editors
+  // to `workflowDefinition.read` -- so it could never have been earned as one surface without
+  // conflating them. There is deliberately no surviving combined key: two names for one authority is
+  // the drift this catalog's own invariants exist to refuse.
+  surface("administration.rolesPermissions", "Roles & Permissions", [
+    { capabilityKey: "admin.securityPolicy.read" },
+  ]),
+  surface("administration.objects", "Objects", [{ capabilityKey: "admin.securityPolicy.read" }]),
+  // ONE KEY FOR BOTH OF THE ABOVE, and that is correct rather than a duplicate authority: Roles &
+  // Permissions and Objects are the SAME Role x Object x action projection read from two sides, and
+  // adminPolicy/administrationSurfaceAuthority.ts reaches the identical conclusion in its own words
+  // ("ONE KEY FOR BOTH, because they are one authority seen from two sides"). Two surface KEYS over
+  // one capability is two destinations; two capability keys over one authority would be the defect.
+  //
+  // WORKFLOWS IS READABLE BY NOBODY TODAY, AND IS STILL DECLARED. `workflowDefinition.read` is
+  // granted to admin and owner in role_capabilities, so this surface is earnable -- but every other
+  // `workflowDefinition.*` stands at zero grants by standing decision, and migrationChainSafety
+  // refuses any migration that would grant one. Declaring the surface on its own true read is what
+  // keeps it fail-closed HONESTLY: if the grant is ever withdrawn the door closes on the evidence,
+  // rather than the surface being pointed at a key somebody happens to hold.
+  surface("administration.workflows", "Workflows", [{ capabilityKey: "workflowDefinition.read" }]),
+  // PERMISSION PREVIEW answers "what would this principal be able to do", which is a read OF THE
+  // POLICY MODEL, so it takes the policy model's read. The screen is unbuilt today and this line
+  // switches no data source: it records which authority the built surface will need, so that when it
+  // is built it is not gated on a write.
+  surface("administration.permissionPreview", "Permission Preview", [
+    { capabilityKey: "admin.securityPolicy.read" },
+  ]),
+  // ── THE CONTAINER, AND WHY IT IS NOT A DOOR
+  //
+  // Administration's index reads no governed data of its own -- it lists the destinations above. So
+  // there is nothing on it to protect and nothing to name a capability after, and the two obvious
+  // answers are both wrong: `alwaysVisible` would seat every principal on a page whose every link
+  // refuses them, and a blanket `administration.read` would be a super-capability naming no Object.
+  //
+  // It is DERIVED instead. A principal who may read at least one governed Administration child may
+  // see the menu over them; a principal who may read none has no reason to be there and does not get
+  // it. That makes "holds the Overview and can open nothing" unrepresentable rather than merely
+  // unlikely. adminPolicy/administrationSurfaceAuthority.ts already decided exactly this for the
+  // same surface ("THE OVERVIEW IS A DISJUNCTION, NOT A GRANT"); this is that rule in the projection
+  // model, not a second opinion about it.
+  //
+  // THE CHILD LIST IS THE GOVERNED-CONFIGURATION SET, deliberately. `administration.dataImport` is
+  // absent: import authority says somebody may load a spreadsheet, and the Overview is the menu over
+  // the ACCESS MODEL. Adding it would make a data-import grant open the policy-administration index.
+  container("administration.overview", "Administration", [
+    "administration.rolesPermissions",
+    "administration.objects",
+    "administration.workflows",
+    "administration.permissionPreview",
+    "administration.users",
+    "administration.auditLogs",
+  ]),
 ]);
 
 /**
@@ -193,14 +285,6 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
  * told apart from a reader; that is how a navigation model stops meaning anything.
  */
 export const EXPERIENCE_SURFACE_GAPS: readonly { readonly key: string; readonly reason: string }[] = Object.freeze([
-  Object.freeze({
-    key: "administration.rolesPermissions",
-    reason: "No READ capability governs the Roles & Permissions surface. eos_policy.capabilities declares admin.roleAssignment.write (a write) and nothing that means 'may read the policy model'.",
-  }),
-  Object.freeze({
-    key: "administration.objectsAndWorkflows",
-    reason: "Same gap as rolesPermissions: the Administration Object and Workflow editors are served by /admin/policy operations whose authority is the Administration capability set, none of which is a registered READ id.",
-  }),
   Object.freeze({
     key: "crm.contacts",
     reason: "Contact read has no capability of its own -- crm.createContact is a write, and customer.record.read governs the Account. A separate Contacts destination cannot be earned distinctly today.",
@@ -245,8 +329,16 @@ export async function grantedSurfaceKeys(
   catalog: readonly ExperienceSurface[] = EXPERIENCE_SURFACES,
 ): Promise<readonly string[]> {
   const reader = snapshotContextualReader(dimensions);
-  const granted: string[] = [];
+  const granted = new Set<string>();
+
+  // PASS 1 -- the surfaces a capability can earn. Containers are skipped here and CANNOT be reached
+  // by this loop at all: they declare no grant path, so there is nothing for it to evaluate.
+  const containers: ExperienceSurface[] = [];
   for (const entry of catalog) {
+    if (entry.containerOf) {
+      containers.push(entry);
+      continue;
+    }
     for (const path of entry.grants) {
       const decision = await authorizeObjectAction(reader, {
         actor,
@@ -254,12 +346,24 @@ export async function grantedSurfaceKeys(
         predicates: path.predicates,
       });
       if (decision.allowed) {
-        granted.push(entry.key);
+        granted.add(entry.key);
         break;
       }
     }
   }
-  return Object.freeze(granted.sort());
+
+  // PASS 2 -- the containers, read off pass 1 and nothing else.
+  //
+  // No capability is consulted here and none could be: this pass sees only the set of surfaces the
+  // governed evaluator already allowed. A container therefore cannot grant what its children did not,
+  // and an empty child result is an empty container. `surfaceCatalogViolations` refuses a container
+  // with no children and a child that is itself a container, so this single pass is complete --
+  // there is no second order to resolve and no cycle to detect.
+  for (const entry of containers) {
+    if ((entry.containerOf ?? []).some((childKey) => granted.has(childKey))) granted.add(entry.key);
+  }
+
+  return Object.freeze([...granted].sort());
 }
 
 /** Exactly what the transport returns. No SQL shapes, no row ids, no Firebase subject. */
@@ -332,11 +436,31 @@ export function surfaceCatalogViolations(
   const problems: string[] = [];
   const seen = new Set<string>();
   const gapKeys = new Set(EXPERIENCE_SURFACE_GAPS.map((g) => g.key));
+  const containerKeys = new Set(catalog.filter((e) => e.containerOf).map((e) => e.key));
+  const allKeys = new Set(catalog.map((e) => e.key));
   for (const entry of catalog) {
     if (seen.has(entry.key)) problems.push(`duplicate surface key: ${entry.key}`);
     seen.add(entry.key);
     if (gapKeys.has(entry.key)) problems.push(`${entry.key} is declared BOTH granted and a gap`);
-    if (entry.grants.length === 0) problems.push(`${entry.key} declares no grant path, so nothing can ever earn it`);
+    if (entry.containerOf) {
+      // A CONTAINER IS A DISJUNCTION OF ITS CHILDREN AND NOTHING ELSE. Each rule below removes one
+      // way it could stop being that, and every one of them fails the catalog rather than degrading.
+      if (entry.grants.length > 0) {
+        problems.push(`${entry.key} is a container AND declares grant paths -- a container is earned only through its children`);
+      }
+      if (entry.containerOf.length === 0) {
+        problems.push(`${entry.key} is a container of nothing, so nothing can ever earn it`);
+      }
+      for (const childKey of entry.containerOf) {
+        if (childKey === entry.key) problems.push(`${entry.key} contains itself`);
+        else if (!allKeys.has(childKey)) problems.push(`${entry.key} contains unknown surface ${childKey}`);
+        else if (containerKeys.has(childKey)) {
+          problems.push(`${entry.key} contains container ${childKey} -- containers may not nest`);
+        }
+      }
+    } else if (entry.grants.length === 0) {
+      problems.push(`${entry.key} declares no grant path, so nothing can ever earn it`);
+    }
     for (const path of entry.grants) {
       if (!path.capabilityKey.includes(".")) problems.push(`${entry.key}: "${path.capabilityKey}" is not a capability key`);
       for (const predicate of path.predicates ?? []) {
