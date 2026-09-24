@@ -343,7 +343,7 @@
           "url": "https://taylorservice-spec.github.io/Taylor_Parts/field-ops",
           "versionPath": "/version.json",
           "governed": false,
-          "notes": "Auto-publishes on merge to main, outside the promotion lifecycle. Recorded as an open governance gap (R-2); this registry observes it and does not change it."
+          "notes": "MANUAL PUBLISH ONLY since the Owner ruling of 2026-09-24 (Option A, docs/deployment/github-pages-promotion-governance-decision.md): .github/workflows/deploy-field-ops.yml is workflow_dispatch-only and requires a typed confirmation, so a merge to main no longer publishes here. It was previously auto-published on every merge to main touching index.html or field-ops-app-vite/** -- the open governance gap recorded as R-2, now closed. Still governed:false: the R-2 gap was automatic publication, and removing it makes this surface deliberate, not governed -- it is outside the promotion lifecycle either way, and the governed delivery path remains the firebase-hosting surface above. Enforced by scripts/productionPublishTriggerFence.mjs, which fails CI if any workflow publishes to GitHub Pages on an automatic trigger. This registry records that state; it does not create it."
         }
       ],
       "productionCapabilityActivations": [
