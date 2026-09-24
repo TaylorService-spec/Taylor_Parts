@@ -49,6 +49,7 @@ on:
       - "field-ops-app-vite/src/access/governedBusinessRoles.ts"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/test/adminPermissionPreview.test.jsx"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
       - "field-ops-app-vite/test/rackingLayoutGenerator.test.jsx"
       - "field-ops-app-vite/test/binLabel.test.jsx"
@@ -88,6 +89,7 @@ on:
       - "field-ops-app-vite/src/access/governedBusinessRoles.ts"
       - "field-ops-app-vite/test/adminRolesPermissions.test.jsx"
       - "field-ops-app-vite/test/adminRolesPermissionsDeclined.test.jsx"
+      - "field-ops-app-vite/test/adminPermissionPreview.test.jsx"
       - "field-ops-app-vite/test/adminWarehouseRacking.test.jsx"
       - "field-ops-app-vite/test/rackingLayoutGenerator.test.jsx"
       - "field-ops-app-vite/test/binLabel.test.jsx"
@@ -150,6 +152,7 @@ jobs:
           test/adminRolesPermissions.test.jsx
           test/dataImportSurfaceAccess.test.jsx
           test/adminRolesPermissionsDeclined.test.jsx
+          test/adminPermissionPreview.test.jsx
           test/adminWarehouseRacking.test.jsx
           test/rackingLayoutGenerator.test.jsx
           test/binLabel.test.jsx
