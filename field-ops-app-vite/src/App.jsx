@@ -63,6 +63,7 @@ const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
 const AdministrationOverview = lazy(() => import("./modules/administration/AdministrationOverview"));
 const AdministrationUnavailable = lazy(() => import("./modules/administration/AdministrationUnavailable"));
+const AdminPermissionPreview = lazy(() => import("./modules/administration/AdminPermissionPreview.jsx"));
 const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
 const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminRolesPermissions"));
 const AdminDuplicateRules = lazy(() => import("./modules/administration/AdminDuplicateRules"));
@@ -713,14 +714,15 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "reporting" && item.key === "savedReports") {
     return <SavedReports hasCapability={operationalContext?.hasCapability} accessVersion={operationalContext?.accessVersion} />;
   }
-  // Issue #226 Row 11 -- Read-only Admin MVP (Task 16). These two MVP
-  // surfaces have no live data source yet and no MVP mutation of their own:
-  // firestore.rules deny all client-direct access to the governed
-  // collections (Row 3/PR #276), and no Cloud Function read path is
-  // deployed (blocked on Issue #15, Spec sec17). Real content replaces this
-  // once that backend ships and is verified -- see AdministrationUnavailable
-  // .jsx's own doc comment.
-  if (domain.key === "administration" && (item.key === "permissionPreview" || item.key === "auditLogs")) {
+  // Permission Preview now reads the canonical Principal effective-access projection from the
+  // deployed EOS Administration API. It is read-only and the server re-authorizes the caller;
+  // the client never derives access from Firebase claims or a frontend role map.
+  if (domain.key === "administration" && item.key === "permissionPreview") {
+    return <AdminPermissionPreview />;
+  }
+  // Audit Logs still has no wired client surface in this tranche. Keep its honest unavailable
+  // state separate from Permission Preview so one completed read path does not mask the other.
+  if (domain.key === "administration" && item.key === "auditLogs") {
     return <AdministrationUnavailable title={item.label} />;
   }
   // Purchasing > Purchase Orders (item C) -- the real cross-request Reorder
