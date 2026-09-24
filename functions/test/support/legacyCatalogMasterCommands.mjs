@@ -13,8 +13,8 @@
 // registered writer with no entry here fails, and an entry naming an unregistered writer fails. So a new
 // legacy catalog writer cannot be added without a guard, and a guard cannot be deleted without a red test.
 //
-// Two forms, because two commands are reached through a shared body with an action discriminator rather
-// than through one exported function per writer:
+// Two forms, because the six Equipment / compatibility writers are reached through ONE shared body with
+// an action discriminator rather than through one exported function per writer:
 //   FUNCTION_BODY  the guard is the literal first statement of `fn`'s body.
 //   ACTION_GATE    the guard is an `if (action === "...")` line inside the command's accept step, which
 //                  must still precede capability resolution (asserted separately).
@@ -116,9 +116,44 @@ export const LEGACY_CATALOG_MASTER_COMMANDS = Object.freeze([
     writerIds: Object.freeze(["equipmentModelAlias.import"]),
     gateLine: 'if (action === "importEquipmentModelAlias") assertFirestoreCatalogWriterOpen("equipmentModelAlias.import");',
   }),
+
+  // ── Part <-> Equipment compatibility (Owner ruling): same command, same accept step, one gate each ──
+  //
+  // `equipment_part_compatibility` is the persisted, versioned relationship between two catalog
+  // identities; `equipment_compatibility_sources` is its evidence, and the evidence writer can itself
+  // update the relationship (verificationStatus -> CONFLICT) via planMutation's stageUpdate. All four
+  // therefore change catalog/reference data and all four freeze with it.
+  Object.freeze({
+    family: "equipmentPartCompatibility", form: "ACTION_GATE", module: "src/equipmentCompatibility/commands.ts", fn: "acceptForExecution",
+    writerIds: Object.freeze(["equipmentPartCompatibility.import"]),
+    gateLine: 'if (action === "importCompatibility") assertFirestoreCatalogWriterOpen("equipmentPartCompatibility.import");',
+  }),
+  Object.freeze({
+    family: "equipmentPartCompatibility", form: "ACTION_GATE", module: "src/equipmentCompatibility/commands.ts", fn: "acceptForExecution",
+    writerIds: Object.freeze(["equipmentPartCompatibility.verify"]),
+    gateLine: 'if (action === "verifyCompatibility") assertFirestoreCatalogWriterOpen("equipmentPartCompatibility.verify");',
+  }),
+  Object.freeze({
+    family: "equipmentPartCompatibility", form: "ACTION_GATE", module: "src/equipmentCompatibility/commands.ts", fn: "acceptForExecution",
+    writerIds: Object.freeze(["equipmentPartCompatibility.correct"]),
+    gateLine: 'if (action === "correctCompatibility") assertFirestoreCatalogWriterOpen("equipmentPartCompatibility.correct");',
+  }),
+  Object.freeze({
+    family: "equipmentCompatibilitySource", form: "ACTION_GATE", module: "src/equipmentCompatibility/commands.ts", fn: "acceptForExecution",
+    writerIds: Object.freeze(["equipmentCompatibilitySource.import"]),
+    gateLine: 'if (action === "importCompatibilitySource") assertFirestoreCatalogWriterOpen("equipmentCompatibilitySource.import");',
+  }),
 ]);
 
-/** The exported `mapError` of every deployed callable module that fronts a command in the list above. */
+/**
+ * The exported `mapError` of every deployed callable module that fronts a command in the list above.
+ *
+ * The Equipment Model / Equipment Model Alias / Part<->Equipment compatibility families have NO entry
+ * here ON PURPOSE: functions/src/index.ts exports no callable for runEquipmentCompatibilityCommand, so
+ * there is no deployed API boundary to map. Error mapping for those six writers is N/A, not missing --
+ * inventing a callable to carry a mapper would be inventing a deployed surface. If one is ever exported
+ * it must appear here, and the length assertion in catalogFreezeParity.test.mjs goes red until it does.
+ */
 export const LEGACY_CATALOG_CALLABLE_ERROR_MAPPERS = Object.freeze([
   Object.freeze({ family: "part", lib: "../lib/partMaster/partMasterCallables.js", writerId: "part.create" }),
   Object.freeze({ family: "manufacturer", lib: "../lib/partMaster/manufacturerCallables.js", writerId: "manufacturer.create" }),

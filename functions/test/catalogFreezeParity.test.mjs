@@ -3,7 +3,8 @@
 // throws, so a command that reaches its deps at all is visible as such.
 //
 // What this proves, for every family in LEGACY_CATALOG_MASTER_COMMANDS (Part, Manufacturer, Supplier,
-// Part Alias, Part-Supplier Item, Equipment Model, Equipment Model Alias):
+// Part Alias, Part-Supplier Item, Equipment Model, Equipment Model Alias, Part<->Equipment
+// Compatibility, Compatibility Source):
 //
 //   FROZEN   the command refuses with FirestoreCatalogWriterClosedError carrying ITS OWN writer id and
 //            FIRESTORE_CATALOG_WRITER_FROZEN, WITHOUT touching deps -- so no Firestore handle, no id
@@ -83,6 +84,16 @@ const INVOCATIONS = Object.freeze([
   // past the gate while OPEN is the NEXT thing that step does: read the payload's governed identity.
   { writerId: "equipmentModel.import", openMarker: /payload is missing its equipmentModelId identity/, call: () => eq.runEquipmentCompatibilityCommand(equipmentInput("importEquipmentModel"), equipmentDeps()) },
   { writerId: "equipmentModelAlias.import", openMarker: /payload is missing its aliasKey identity/, call: () => eq.runEquipmentCompatibilityCommand(equipmentInput("importEquipmentModelAlias"), equipmentDeps()) },
+
+  // Part <-> Equipment compatibility: same command, same accept step, same tripwire. The relationship's
+  // identity field is compatibilityId for all three relationship actions; evidence is filed under its
+  // own sourceId. A freeze that stopped the Model import but let `verifyCompatibility` or a conflicting
+  // `importCompatibilitySource` through would let a frozen relationship change, which is what the
+  // Owner ruling forbids.
+  { writerId: "equipmentPartCompatibility.import", openMarker: /payload is missing its compatibilityId identity/, call: () => eq.runEquipmentCompatibilityCommand(equipmentInput("importCompatibility"), equipmentDeps()) },
+  { writerId: "equipmentPartCompatibility.verify", openMarker: /payload is missing its compatibilityId identity/, call: () => eq.runEquipmentCompatibilityCommand(equipmentInput("verifyCompatibility"), equipmentDeps()) },
+  { writerId: "equipmentPartCompatibility.correct", openMarker: /payload is missing its compatibilityId identity/, call: () => eq.runEquipmentCompatibilityCommand(equipmentInput("correctCompatibility"), equipmentDeps()) },
+  { writerId: "equipmentCompatibilitySource.import", openMarker: /payload is missing its sourceId identity/, call: () => eq.runEquipmentCompatibilityCommand(equipmentInput("importCompatibilitySource"), equipmentDeps()) },
 ]);
 
 // ── the census closes: every registered writer is exercised here, and only registered ones ──────────
@@ -91,7 +102,7 @@ test("the freeze parity suite exercises EXACTLY the registered catalog writer se
   const exercised = INVOCATIONS.map((i) => i.writerId);
   assert.deepEqual(exercised.slice().sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
   assert.deepEqual(exercised.slice().sort(), LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds).sort());
-  assert.equal(exercised.length, 19);
+  assert.equal(exercised.length, 23);
 });
 
 // ── FROZEN / RETIRED: every family refuses, with its own id, before it does anything ────────────────
