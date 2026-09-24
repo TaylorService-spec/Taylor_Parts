@@ -23,9 +23,18 @@
 //
 // ════════════════════ NOT CONFIGURED IS A REAL STATE ════════════════════
 //
-// `VITE_EOS_API_BASE_URL` is absent in every environment today, because no EOS API is deployed.
-// That is reported as NOT CONFIGURED -- distinct from an error, and distinct from an empty result.
-// A screen that showed "no objects" when it simply had nowhere to ask would be lying quietly.
+// `VITE_EOS_API_BASE_URL` may be absent, and when it is the answer is NOT CONFIGURED -- distinct
+// from an error, and distinct from an empty result. A screen that showed "no objects" when it simply
+// had nowhere to ask would be lying quietly.
+//
+// CORRECTED (Wave 7 / Lane AD). This comment used to say the variable was "absent in every
+// environment today, because no EOS API is deployed". Both halves are false and had been since
+// 2026-09-10: the EOS API is deployed at `https://eos-api-nonprod.onrender.com`, and the variable is
+// set in the Vercel non-production project and inlined into that bundle. The address is now recorded
+// in config/environments.json (`eosApi`, which records and never supplies) so the repository can
+// state it instead of a comment going stale again. It is still absent for a local or production
+// build, so NOT CONFIGURED remains a state this client must report honestly -- which is the part of
+// the original paragraph that was always the point.
 import { auth } from "../firebase/firebase.js";
 
 /** The operations the server accepts. Mirrored so a typo fails here rather than as a 404. */

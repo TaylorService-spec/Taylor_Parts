@@ -25,6 +25,24 @@
     "description contradicting the classification beside it, and has been corrected. Production is false in",
     "the data AND hard-blocked by role in the resolver, so neither one alone has to be trusted.",
     "",
+    "EOS TRUSTED API: `eosApi` records WHERE an environment's EOS trusted API is, or `null` when it has",
+    "none. It exists because that address previously lived in exactly two places -- a Vercel project",
+    "variable nobody here can read, and one paragraph of prose -- so the repository could not say what",
+    "the frontend talks to, and a stale doc could (and did) report the API as unconfigured everywhere.",
+    "",
+    "RECORDS, NEVER SUPPLIES. It is validated by scripts/resolveEnvironment.mjs and deliberately NOT",
+    "returned by it, exactly like privateAiSyntheticOperationalInterpretation: nothing projects it into",
+    "the browser bundle, so declaring it changes no runtime behaviour. The frontend still reads its base",
+    "URL only from VITE_EOS_API_BASE_URL, inlined by Vite at build time. An entry here is evidence and a",
+    "test anchor, not a switch.",
+    "",
+    "IT IS NOT A READINESS FLAG EITHER. Knowing where the API is says nothing about whether any capability",
+    "may use it. EOS_NAVIGATION_AUTHORITY_READY is false in every environment, production included, and a",
+    "contract test asserts that declaring eosApi did not move it.",
+    "",
+    "EXACTLY ONE environment declares one: platform-sandbox. `null` on a production-role environment is",
+    "the fence -- a production frontend has no EOS API to reach and must report NOT CONFIGURED.",
+    "",
     "SECRETS: `firebase` holds PUBLIC Firebase Web client configuration only. A Firebase Web apiKey",
     "is a public project identifier, not a credential — access is enforced by Firestore Rules and",
     "Auth, not by hiding it. No service-account key, token, or private credential belongs in this",
@@ -43,6 +61,7 @@
       "purpose": "Local developer/agent execution against the Firebase Emulator Suite. Synthetic data only; never production credentials.",
       "privateAiSyntheticOperationalInterpretation": false,
       "firebase": null,
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -74,6 +93,15 @@
         "messagingSenderId": "33669510651",
         "appId": "1:33669510651:web:6dcd02971b78e4f101075e",
         "functionsRegion": "us-central1"
+      },
+      "eosApi": {
+        "baseUrl": "https://eos-api-nonprod.onrender.com",
+        "service": "eos-api-nonprod",
+        "healthPath": "/health",
+        "allowedBrowserOriginAuthority": "render.yaml EOS_ALLOWED_ORIGINS",
+        "frontendEnvironmentVariable": "VITE_EOS_API_BASE_URL",
+        "configuredIn": "vercel-project-environment",
+        "notes": "The one deployed EOS trusted API. Declared by render.yaml (service eos-api-nonprod, healthCheckPath /health) and measured live at this URL. The browser origin it accepts is NOT repeated here -- it is a hostname carrying brand identity, which this registry is guarded against declaring (scripts/deploymentDrift.test.mjs), and it already has exactly one home in render.yaml's EOS_ALLOWED_ORIGINS. That is one stable origin; a per-deployment Vercel preview URL is a DIFFERENT origin and is refused, so a preview build reaches this API only to be turned away by CORS. The frontend receives the base URL through VITE_EOS_API_BASE_URL, set in the Vercel project and inlined by Vite at build time; this entry RECORDS that value, it does not supply it."
       },
       "readiness": {
         "RECEIVING_TRANSPORT_READY": true,
@@ -211,6 +239,7 @@
         "appId": "1:179665574030:web:81bfe294a71af4848f91df",
         "functionsRegion": "us-central1"
       },
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -241,6 +270,7 @@
       "purpose": "Exact integrated Release Candidate on a stable Owner-review URL with a known SHA.",
       "privateAiSyntheticOperationalInterpretation": false,
       "firebase": null,
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
@@ -274,6 +304,7 @@
         "measurementId": "G-58GLNRJ5C8",
         "functionsRegion": "us-central1"
       },
+      "eosApi": null,
       "readiness": {
         "RECEIVING_TRANSPORT_READY": false,
         "PART_IDENTIFIER_TRANSPORT_READY": false,
