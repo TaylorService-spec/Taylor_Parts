@@ -38,6 +38,10 @@
       "runner": "node"
     },
     {
+      "file": "test/administrationNavigationReadiness.test.mjs",
+      "runner": "node"
+    },
+    {
       "file": "test/administrationPortalNav.test.mjs",
       "runner": "node"
     },
