@@ -182,6 +182,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/dashboardEosProjection.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/dashboardGoalActuals.test.mjs",
       "runner": "node --test"
     },

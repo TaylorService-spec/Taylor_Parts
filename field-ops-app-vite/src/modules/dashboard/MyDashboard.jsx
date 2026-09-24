@@ -338,11 +338,20 @@ export default function MyDashboard({ role, allowedLegacyKeys = [], operationalC
 
   const ctx = useMemo(
     () => ({
+      // WAVE 9 / LANE AL. When this is a real navigation authority, composeDashboard reads NOTHING
+      // below it -- not role, not operationalRoles, not warehouseIds, not hasCapability. Passing it
+      // is the whole of the cutover on this surface; there is no second switch and no fallback.
+      eosNavigationAuthority: operationalContext?.eosNavigationAuthority ?? null,
       role,
       employeeId: employeeId ?? null,
       // A technician reaching THIS surface is already out of the technician branch in App.jsx, so
-      // the binding is deliberately absent here rather than re-resolved.
+      // the binding is deliberately absent here rather than re-resolved. Under the EOS source the
+      // same statement has to be made explicitly, because there the binding is a granted surface
+      // rather than a field this component chooses to leave null: a principal who holds BOTH field
+      // work and an operations surface is routed here, and its own work must still not be
+      // duplicated off the technician screen's read. NARROWING ONLY -- it can never add a module.
       technicianId: null,
+      fieldWorkRenderedElsewhere: true,
       operationalRoles: operationalRoles ?? [],
       warehouseIds,
       hasCapability: operationalContext?.hasCapability,
