@@ -40,6 +40,16 @@ export const CATALOG_CAPABILITIES = Object.freeze({
   PART_ACTIVATE: "inventory.catalog.activate",
   /** equipmentCompatibility/commands.ts COMMAND_CAPABILITIES.importEquipmentModel. */
   EQUIPMENT_MODEL_MANAGE: "equipment.model.manage",
+  // MANUFACTURER REUSES THE PART CATALOG KEYS, because that is what the legacy commands actually check --
+  // partMasterCommands.ts createManufacturer and updateManufacturer call requireCapabilityOrAudit with
+  // CAP_CATALOG_MANAGE, and changeManufacturerStatus with CAP_CATALOG_ACTIVATE. Two names for two of the same
+  // ids, so the writer can say which authority it means without inventing a fourth capability: migration
+  // 1761782400000 registered `inventory.manufacturer.read` and deliberately registered NO manufacturer write
+  // capability, on the measured ground that the CRED evidence for Manufacturer is READ only.
+  /** partMasterCommands.ts CAP_CATALOG_MANAGE: createManufacturer / updateManufacturer. */
+  MANUFACTURER_MANAGE: "inventory.catalog.manage",
+  /** partMasterCommands.ts CAP_CATALOG_ACTIVATE: changeManufacturerStatus. */
+  MANUFACTURER_ACTIVATE: "inventory.catalog.activate",
 } as const);
 
 export interface CatalogActorContext {
@@ -71,6 +81,7 @@ export interface CatalogCommandDeps {
 const CONSTRAINT_CODES: Readonly<Record<string, [string, CatalogErrorCategory]>> = Object.freeze({
   parts_pkey: ["PART_ALREADY_EXISTS", "CONFLICT"],
   equipment_models_pkey: ["EQUIPMENT_MODEL_ALREADY_EXISTS", "CONFLICT"],
+  manufacturers_pkey: ["MANUFACTURER_ALREADY_EXISTS", "CONFLICT"],
   part_equipment_model_same_tenant: ["EQUIPMENT_MODEL_NOT_FOUND", "NOT_FOUND"],
 });
 
@@ -91,7 +102,7 @@ export function translateCatalogError(err: unknown): CatalogMasterError {
 
 export interface CatalogAuditEntry {
   readonly action: string;
-  readonly targetKind: "part" | "equipment_model";
+  readonly targetKind: "part" | "equipment_model" | "manufacturer";
   readonly targetId: string;
   readonly before: unknown;
   readonly after: unknown;

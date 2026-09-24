@@ -12,18 +12,32 @@
 // holding the capability reaches every manufacturer in the tenant, because that is what the record
 // actually says. A scope check invented here would refuse reads the source permits.
 //
-// ════════════════════ ONLY THE READS THAT EXIST ════════════════════
+// ════════════════════ THE READS ════════════════════
 //
-// The live surface is manufacturerReadService.ts's `getManufacturerCatalog`, which reads the whole
-// collection for the Part and Equipment forms. So: LIST, and GET BY ID for a form resolving one
-// reference. No search endpoint is built, because no caller has one -- the client filters a list it
-// already holds.
+// The live legacy surface is manufacturerReadService.ts's `getManufacturerCatalog`, which reads the
+// whole collection for the Part and Equipment forms. So: LIST, and GET BY ID for a form resolving one
+// reference.
+//
+// SEARCH is the third, and it is the same read narrowed in the database rather than in the browser. The
+// legacy client filters a list it already holds; that is only tenable while the whole catalog is small
+// enough to ship on every form load, and it is the CLIENT -- not the authority -- deciding what matching
+// means. SEARCH states the match once, on the server, over the SAME normalized_name the list is ordered
+// by, under the SAME capability. It adds no reach: every row it can return, LIST already returns.
+//
+// ALL THREE ARE THE SAME AUTHORIZATION. There is no read here a caller without
+// `inventory.manufacturer.read` can perform, and no fallback to Firestore when the table is empty -- an
+// empty governed table is an honest empty answer, not a reason to go looking somewhere else.
 import type { Pool, PoolClient } from "pg";
 
 export const MANUFACTURER_READ = "inventory.manufacturer.read";
 
 export const MANUFACTURER_STATUSES = Object.freeze(["ACTIVE", "INACTIVE"] as const);
 export type ManufacturerStatus = (typeof MANUFACTURER_STATUSES)[number];
+
+/** Bounds on the search input and its page. Stated here so no caller can choose an unbounded read. */
+export const MANUFACTURER_SEARCH_TERM_MAX = 200;
+export const MANUFACTURER_SEARCH_DEFAULT_LIMIT = 50;
+export const MANUFACTURER_SEARCH_MAX_LIMIT = 200;
 
 export interface ManufacturerRecord {
   readonly id: string;
@@ -96,4 +110,46 @@ export async function getManufacturer(
       WHERE tenant_id = $1 AND id = $2`,
     [reader.tenantId, id]);
   return rows.length === 1 ? toRecord(rows[0]) : null;
+}
+
+/**
+ * The manufacturers whose name CONTAINS `term`, case- and whitespace-insensitively.
+ *
+ * MATCHING IS THE NORMALIZED NAME -- the column the table already indexes and orders by
+ * (manufacturers_by_name), whose derivation is stated once in manufacturerMigration.ts#normalizeName:
+ * trim, collapse internal whitespace, uppercase. So "taylor  company" and "Taylor Company" find the same
+ * row, and the rule a caller experiences is the rule the column actually holds.
+ *
+ * CONTAINS, not prefix: the word a user remembers is frequently not the first one ("Soft Serve" for
+ * "Taylor Soft Serve"). The term is a BOUND PARAMETER and its LIKE metacharacters are escaped, so a
+ * caller cannot smuggle in a pattern that widens the match.
+ *
+ * INACTIVE rows are included, for the same reason LIST includes them. An empty term is INVALID_INPUT
+ * rather than "everything": a caller that wants everything has LIST, and silently promoting a blank box
+ * to a whole-table read is how a search endpoint becomes an accidental export.
+ */
+export async function searchManufacturers(
+  db: Pick<Pool | PoolClient, "query">,
+  reader: ManufacturerReader,
+  term: string,
+  options?: { readonly limit?: number },
+): Promise<readonly ManufacturerRecord[]> {
+  assertMayRead(reader);
+  const raw = typeof term === "string" ? term.trim().replace(/\s+/g, " ") : "";
+  if (!raw) refuse("SEARCH_TERM_REQUIRED", "INVALID_INPUT", "a non-empty search term is required");
+  if (raw.length > MANUFACTURER_SEARCH_TERM_MAX) {
+    refuse("SEARCH_TERM_TOO_LONG", "INVALID_INPUT", `a search term is at most ${MANUFACTURER_SEARCH_TERM_MAX} characters`);
+  }
+  const limit = options?.limit ?? MANUFACTURER_SEARCH_DEFAULT_LIMIT;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MANUFACTURER_SEARCH_MAX_LIMIT) {
+    refuse("SEARCH_LIMIT_INVALID", "INVALID_INPUT", `limit must be an integer between 1 and ${MANUFACTURER_SEARCH_MAX_LIMIT}`);
+  }
+  // The caller's text is DATA. Backslash, % and _ are escaped so the term can only ever match itself.
+  const pattern = `%${raw.toUpperCase().replace(/([\\%_])/g, "\\$1")}%`;
+  const { rows } = await db.query(
+    `SELECT id, name, status, provenance FROM eos_ops.manufacturers
+      WHERE tenant_id = $1 AND normalized_name LIKE $2 ESCAPE '\\'
+      ORDER BY normalized_name, id LIMIT $3`,
+    [reader.tenantId, pattern, limit]);
+  return Object.freeze(rows.map(toRecord));
 }
