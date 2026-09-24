@@ -231,10 +231,18 @@ test("every legacy writer calls the guard with its own id, before anything else 
     assert.ok(accept.includes(c.gateLine), `acceptForExecution must carry: ${c.gateLine}`);
   }
   assert.ok(accept.indexOf("assertFirestoreCatalogWriterOpen") < accept.indexOf("resolvePermission"), "the guard precedes capability resolution");
-  // Every action that writes a catalog master authority is gated; the compatibility actions are NOT in
-  // this freeze (they write relationship/evidence records, not master data) -- see catalogFreezeParity.
+  // EVERY action of this orchestrator is gated. The compatibility actions are IN this freeze by Owner
+  // ruling: `equipment_part_compatibility` is persisted, versioned, company-neutral reference data keyed
+  // on two catalog identities, and `importCompatibilitySource` can itself stage an update to the
+  // relationship (verificationStatus -> CONFLICT). The set is compared against the command's OWN action
+  // allowlist, so adding a seventh action without a gate goes red rather than silently escaping.
   const gated = [...accept.matchAll(/if \(action === "(\w+)"\) assertFirestoreCatalogWriterOpen/g)].map((m) => m[1]);
-  assert.deepEqual(gated.sort(), ["importEquipmentModel", "importEquipmentModelAlias"]);
+  assert.deepEqual(gated.slice().sort(), [
+    "correctCompatibility", "importCompatibility", "importCompatibilitySource",
+    "importEquipmentModel", "importEquipmentModelAlias", "verifyCompatibility",
+  ]);
+  const { OPERATION_ACTIONS } = require("../lib/equipmentCompatibility/operations.js");
+  assert.deepEqual(gated.slice().sort(), [...OPERATION_ACTIONS].sort(), "every governed equipment command action must carry a freeze gate");
 });
 
 test("while PostgreSQL is INACTIVE, nothing outside catalogMaster imports the PostgreSQL catalog writers", () => {

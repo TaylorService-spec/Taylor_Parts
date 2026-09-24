@@ -274,9 +274,17 @@ async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentComm
   if (typeof action !== "string" || !Object.prototype.hasOwnProperty.call(COMMAND_CAPABILITIES, action)) {
     throw new InvalidInputError("unknown command action");
   }
-  // Catalog cutover: refused while the catalog writer state is FROZEN or RETIRED (OPEN today).
+  // Catalog cutover: refused while the catalog writer state is FROZEN or RETIRED (OPEN today). EVERY
+  // action of this orchestrator writes a persisted catalog/reference authority -- the Equipment Model
+  // and its alias, and (Owner ruling) the Part <-> Equipment compatibility relationship and the evidence
+  // that can flip it to CONFLICT -- so all six are inside the one freeze switch. The gate sits here,
+  // before capability resolution and before any operation record, read, write or audit event exists.
   if (action === "importEquipmentModel") assertFirestoreCatalogWriterOpen("equipmentModel.import");
   if (action === "importEquipmentModelAlias") assertFirestoreCatalogWriterOpen("equipmentModelAlias.import");
+  if (action === "importCompatibility") assertFirestoreCatalogWriterOpen("equipmentPartCompatibility.import");
+  if (action === "verifyCompatibility") assertFirestoreCatalogWriterOpen("equipmentPartCompatibility.verify");
+  if (action === "correctCompatibility") assertFirestoreCatalogWriterOpen("equipmentPartCompatibility.correct");
+  if (action === "importCompatibilitySource") assertFirestoreCatalogWriterOpen("equipmentCompatibilitySource.import");
   if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_-]{8,200}$/.test(idempotencyKey)) {
     throw new InvalidInputError("idempotencyKey is malformed");
   }

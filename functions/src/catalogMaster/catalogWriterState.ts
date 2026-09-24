@@ -8,7 +8,8 @@
 //                       FROZEN   the legacy commands REFUSE -- every writer in FIRESTORE_CATALOG_WRITERS below:
 //                                no Part create/update/status, no Equipment Model create/update, no catalog import
 //                                write, and none of the rest of the catalog master surface either (Manufacturer,
-//                                Supplier, Part Alias, Part-Supplier Item, Equipment Model Alias). Reversible -- but
+//                                Supplier, Part Alias, Part-Supplier Item, Equipment Model Alias, and the
+//                                Part <-> Equipment compatibility relationship and its evidence). Reversible -- but
 //                                only while PostgreSQL is still INACTIVE: that is the rollback path if copy / verify
 //                                / reconcile fails.
 //                       RETIRED  the legacy commands refuse for good; their removal follows. Not reversible.
@@ -250,6 +251,56 @@ export const FIRESTORE_CATALOG_WRITERS = Object.freeze({
     entry: "runEquipmentCompatibilityCommand (action importEquipmentModelAlias)",
     reachedFrom: Object.freeze([
       "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
+    ]),
+  }),
+
+  // ──────────────── Part <-> Equipment COMPATIBILITY (Owner ruling, 2026-09-23) ────────────────
+  //
+  // "PART <-> EQUIPMENT COMPATIBILITY WRITERS -- these are persisted Catalog/reference authority.
+  // INCLUDE them in CATALOG_WRITER_AUTHORITY and the same Firestore Catalog freeze boundary. A Catalog
+  // freeze must prevent compatibility relationships from changing while Catalog master data is frozen."
+  //
+  // An earlier completeness pass called these borderline and left them out on the theory that a
+  // relationship record is not master data. The ruling settles it, and the code agrees: the
+  // compatibility record is persisted, versioned, company-neutral reference configuration keyed on two
+  // catalog identities (equipmentModelId + partId), it is written by the same command orchestrator and
+  // the same two-transaction machinery as equipmentModel.import, and `importCompatibilitySource` does
+  // not merely append evidence -- planMutation's importCompatibilitySource branch stages
+  // `compatibility.stageUpdate(...)` on the relationship itself (verificationStatus -> CONFLICT,
+  // version + 1) when the governed analyzer finds contradicting evidence. So evidence is a compatibility
+  // WRITER too, and leaving it open would leave a path that changes a frozen relationship.
+  //
+  // `equipment_compatibility_operations` (the idempotency/state ledger) is NOT a writer here: it is the
+  // command's own bookkeeping, never catalog data, and it is written only as part of an action that is
+  // already gated above.
+
+  "equipmentPartCompatibility.import": Object.freeze({
+    module: "functions/src/equipmentCompatibility/commands.ts",
+    entry: "runEquipmentCompatibilityCommand (action importCompatibility)",
+    reachedFrom: Object.freeze([
+      "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
+    ]),
+  }),
+  "equipmentPartCompatibility.verify": Object.freeze({
+    module: "functions/src/equipmentCompatibility/commands.ts",
+    entry: "runEquipmentCompatibilityCommand (action verifyCompatibility)",
+    reachedFrom: Object.freeze([
+      "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
+    ]),
+  }),
+  "equipmentPartCompatibility.correct": Object.freeze({
+    module: "functions/src/equipmentCompatibility/commands.ts",
+    entry: "runEquipmentCompatibilityCommand (action correctCompatibility)",
+    reachedFrom: Object.freeze([
+      "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
+    ]),
+  }),
+  "equipmentCompatibilitySource.import": Object.freeze({
+    module: "functions/src/equipmentCompatibility/commands.ts",
+    entry: "runEquipmentCompatibilityCommand (action importCompatibilitySource)",
+    reachedFrom: Object.freeze([
+      "no deployed callable exports it (functions/src/index.ts); reached only by tests and operator code",
+      "writes `equipment_compatibility_sources` AND, on a governed conflict, updates the cited `equipment_part_compatibility` record",
     ]),
   }),
 });
