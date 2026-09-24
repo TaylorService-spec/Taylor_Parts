@@ -326,6 +326,29 @@ for (const [label, args, env, pattern] of [
   });
 }
 
+// ============================ PERSONA AUTHORITY DIMENSIONS ============================
+//
+// scripts/seedPersonaAuthorityDimensionsCli.js writes eos_workforce.employee_work_eligibility and
+// employee_operational_scopes through their governed commands (--apply). It administers as a NAMED Principal and must
+// refuse before `pg` or lib/ is resolved. It has no production mode and never creates a tenant, Employee or Principal.
+const PERSONA_DIMENSIONS = "scripts/seedPersonaAuthorityDimensionsCli.js";
+const PERSONA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1", "--apply"];
+for (const [label, args, env, pattern] of [
+  ["no environment", ["--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1"], EMP_ENV, /--environment is required/],
+  ["production environment", swapEnv(PERSONA_ARGS, "taylor-parts-production"), EMP_ENV, /production/],
+  ["EOS_ENVIRONMENT not nonprod", PERSONA_ARGS, { ...EMP_ENV, EOS_ENVIRONMENT: "local" }, /EOS_ENVIRONMENT must read exactly 'nonprod'/],
+  ["frozen Certification world", swapEnv(PERSONA_ARGS, "platform-certification"), EMP_ENV, /Certification world, which is frozen/],
+  ["no tenant key", PERSONA_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), EMP_ENV, /--tenantKey is required/],
+  ["no performedBy", PERSONA_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), EMP_ENV, /--performedBy <operator> is required/],
+  ["no administering Principal", PERSONA_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), EMP_ENV, /--adminPrincipalId is required/],
+]) {
+  test(`persona authority dimensions: refuses (${label}) before any client library loads`, () => {
+    const res = runCli(PERSONA_DIMENSIONS, args, env);
+    const out = assertRefusedBeforeAnySdk(res, `persona authority dimensions, ${label}`);
+    assert.match(out, pattern);
+  });
+}
+
 // ============================ SECURITY ROLE AUTHORITY CONVERGENCE ============================
 //
 // scripts/roleAssignmentCensusCli.js is a FIREBASE_EXIT_MIGRATION_ONLY read of the legacy Security Role assignment
