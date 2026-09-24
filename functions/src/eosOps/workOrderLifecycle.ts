@@ -23,6 +23,13 @@
 // free of the Firestore engine, and a test asserts the two sets are identical.
 import type { Pool, PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
+import {
+  authorizeObjectAction,
+  postgresContextualReader,
+  type AuthorizationDecision,
+  type ContextPredicate,
+  type ContextualReader,
+} from "./contextualAuthorization";
 
 const SCHEMA = "eos_ops";
 
@@ -153,6 +160,83 @@ const ID_SHAPE = (v: unknown): v is string =>
   typeof v === "string" && v !== "" && v.trim() === v && v.length <= 200 && !v.includes("/");
 
 /**
+ * ════════════════════ THE RECORD CONTEXT EACH LIFECYCLE CAPABILITY REQUIRES ════════════════════
+ *
+ * Owner ruling B (NONPROD activation, 2026-09-23): "Completion requires RECORD_ASSIGNMENT / OWN
+ * ASSIGNMENT." A Technician holding `workOrder.lifecycle.complete` may complete THE WORK ORDER THEY
+ * ARE ASSIGNED TO, and no other. The relation is proved server-side, EMPLOYEE AGAINST EMPLOYEE,
+ * through the ACTIVE `employee_principal_links` row and the OPEN `work_order_assignments` interval --
+ * contextualAuthorization.ts's RECORD_ASSIGNMENT predicate, which is this platform's one authority
+ * for "is this mine". Nothing here is caller-supplied but the record id.
+ *
+ * THE OTHER RELATIONS ARE NOT SUBSTITUTES, and none of them appears here. Record owner, requester,
+ * Security Role and Operational Scope each answer a different question: "may work in this warehouse"
+ * is not "is assigned this job", and a model that accepted either would hand every technician in the
+ * territory everyone else's work to close.
+ *
+ * DISPATCH AND CANCEL DECLARE NO CONTEXT PREDICATE, deliberately -- they are ABSENT from this map
+ * rather than present with an empty list, so adding one is a visible edit against the ruling. A
+ * dispatcher dispatches work they are not assigned to; that IS dispatching. Their existing domain
+ * preconditions (the transition matrix edge, the expected-status CONFLICT check, the named lifecycle
+ * dependency) are untouched: a context predicate narrows WHICH records an already-held capability
+ * reaches, and it neither adds nor removes a lifecycle rule.
+ *
+ * SCOPE STILL DOES NOT LIVE ON THE GRANT. The activated `role_capabilities` rows carry no ownOnly and
+ * no assignmentRequired column; this map is policy about the ACTION, kept in code beside the
+ * transition it guards, exactly as contextualAuthorization.ts's header requires.
+ */
+const NO_CONTEXT_PREDICATES: readonly ContextPredicate[] = Object.freeze([]);
+
+export const LIFECYCLE_CONTEXT_PREDICATES: Readonly<Record<string, readonly ContextPredicate[]>> = Object.freeze({
+  [WORK_ORDER_LIFECYCLE_COMPLETE]: Object.freeze([
+    Object.freeze({ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" } as const),
+  ]) as readonly ContextPredicate[],
+});
+
+/** The context predicates one lifecycle capability declares. Unlisted means NONE, never "unknown". */
+export function lifecycleContextPredicates(capability: string): readonly ContextPredicate[] {
+  return Object.prototype.hasOwnProperty.call(LIFECYCLE_CONTEXT_PREDICATES, capability)
+    ? LIFECYCLE_CONTEXT_PREDICATES[capability]
+    : NO_CONTEXT_PREDICATES;
+}
+
+/**
+ * Authorize one lifecycle edge: the CAPABILITY first, then only the predicates that edge declares.
+ *
+ * ORDER IS THE POINT, and it is not this function's own convention -- `authorizeObjectAction`
+ * returns CAPABILITY_MISSING before it asks the reader anything at all, so an unauthorized caller
+ * causes ZERO record reads and learns nothing about whether the Work Order exists, who it belongs to,
+ * or whether they guessed a real id. A counting reader proves it rather than a comment asserting it.
+ *
+ * Exported separately from `transitionWorkOrder` so the DECISION is provable on its own, without
+ * needing an edge that is deliberately NOT_YET_IMPLEMENTED to succeed first. The command below calls
+ * exactly this function: there is no second authorization path to drift from this one.
+ */
+export async function authorizeLifecycleEdge(
+  reader: ContextualReader,
+  actor: LifecycleActor,
+  input: {
+    readonly workOrderId: string;
+    readonly expectedStatus: WorkOrderStatus;
+    readonly toStatus: WorkOrderStatus;
+  },
+): Promise<AuthorizationDecision> {
+  const edge = transitionRuleFor(input.expectedStatus, input.toStatus);
+  return authorizeObjectAction(reader, {
+    actor: {
+      tenantId: actor.tenantId,
+      principalId: actor.principalId,
+      capabilities: actor.capabilities,
+    },
+    capabilityKey: edge.capability,
+    predicates: lifecycleContextPredicates(edge.capability),
+    // The record is supplied for EVERY edge, so a predicate added later cannot silently degrade to
+    // the evaluator's "no record supplied" refusal. Supplying it costs nothing when nothing reads it.
+    record: { recordKind: "workOrder", recordId: input.workOrderId },
+  });
+}
+
+/**
  * Perform one governed lifecycle transition.
  *
  * THE EXPECTED CURRENT STATE IS REQUIRED. A caller states what it believes the Work Order is, and a
@@ -165,7 +249,15 @@ const ID_SHAPE = (v: unknown): v is string =>
  * transition really is happening now, whatever the record's own origin was.
  */
 export async function transitionWorkOrder(
-  deps: { readonly pool: Pool; readonly now?: () => Date },
+  deps: {
+    readonly pool: Pool;
+    readonly now?: () => Date;
+    /**
+     * The contextual reader. Defaults to the governed PostgreSQL one over this same pool; injectable
+     * ONLY so a test can count its reads. It is never a way for a caller to supply the relation.
+     */
+    readonly contextualReader?: ContextualReader;
+  },
   actor: LifecycleActor,
   input: {
     readonly workOrderId: string;
@@ -192,8 +284,24 @@ export async function transitionWorkOrder(
   // nothing else: telling them a feature is "not yet implemented" discloses the platform's roadmap to
   // someone with no authority over it. It also keeps the specific effect-boundary capabilities testable
   // at runtime rather than only as table data.
-  if (!(actor.capabilities instanceof Set) || !actor.capabilities.has(ruleForEdge.capability)) {
-    refuse("CAPABILITY_MISSING", "FORBIDDEN", `this transition requires ${ruleForEdge.capability}`);
+  //
+  // AND CAPABILITY BEFORE RECORD CONTEXT, which `authorizeLifecycleEdge` owns: the capability refusal
+  // happens before any relation table is read, so "that Work Order is not yours" is never the answer
+  // given to somebody who had no authority over Work Orders in the first place. The REASON is the
+  // refusal CODE -- CAPABILITY_MISSING, NOT_ASSIGNED, EMPLOYEE_LINK_REQUIRED -- because collapsing
+  // them into one generic FORBIDDEN would hide which authority actually refused, from the caller and
+  // from the audit alike.
+  const decision = await authorizeLifecycleEdge(
+    deps.contextualReader ?? postgresContextualReader(deps.pool),
+    actor,
+    { workOrderId: input.workOrderId, expectedStatus: input.expectedStatus, toStatus: input.toStatus },
+  );
+  if (!decision.allowed) {
+    refuse(decision.reason, "FORBIDDEN",
+      decision.reason === "CAPABILITY_MISSING"
+        ? `this transition requires ${ruleForEdge.capability}`
+        : `${ruleForEdge.action} requires ${decision.predicate ?? "a governed record relation"}`
+          + " on this Work Order, and this caller does not hold it");
   }
   if (ruleForEdge.disposition === "NOT_YET_IMPLEMENTED") {
     refuse("TRANSITION_AUTHORITY_UNAVAILABLE", "UNAVAILABLE",
