@@ -10,7 +10,7 @@
 import type { Pool, PoolClient } from "pg";
 // The PURE decision, deliberately: `conditionalEntitlement` carries no SQL, no pool factory and no
 // runtime `pg`, so adopting the conditional seam does not widen this kernel's module boundary.
-import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementSet } from "../../eosOps/conditionalEntitlement";
+import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementResolver } from "../../eosOps/conditionalEntitlement";
 import { postgresContextualReader } from "../../eosOps/contextualAuthorization";
 import { randomUUID } from "node:crypto";
 import type { EmployeeReadErrorCategory } from "../reads/employeeReadKernel";
@@ -33,10 +33,11 @@ export interface EmployeeCommandActor {
   readonly capabilities: ReadonlySet<string>;
   /**
    * The SAME grants with the granting Role and its condition kept, from
-   * `capabilityAuthority.resolveOperationalContext`. Required, never optional: an actor that could
-   * omit it could omit every condition with it.
+   * `capabilityAuthority.resolveOperationalContext`, behind its REQUIRED request-scoped resolver.
+   * Required, never optional, and never a plain value: an actor that could omit it could omit every
+   * condition with it, and an actor that could SUPPLY it as a value could supply an empty one.
    */
-  readonly entitlements: EntitlementSet;
+  readonly entitlements: EntitlementResolver;
 }
 
 export interface EmployeeCommandDeps {
@@ -85,7 +86,7 @@ export async function runEmployeeCommand<P, R>(
       refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant, principal and capability set are required");
     }
     if (!hasResolvedEntitlements(actor)) {
-      refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved entitlement set is required");
+      refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved entitlement provider is required");
     }
     if (!actor.capabilities.has(requiredCapability)) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this command requires ${requiredCapability}`);
     // The flat check above is unchanged and decided first; this can only refuse further. With
