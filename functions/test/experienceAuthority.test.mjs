@@ -269,8 +269,14 @@ test("every surface the server can grant is reachable from SOME destination, or 
   const mapped = new Set(Object.values(NAV_SURFACE_ACCESS).flat());
   const unreachable = EXPERIENCE_SURFACE_KEYS.filter((key) => !mapped.has(key));
   // A surface a principal can earn and no door can offer is the defect this lane exists to remove,
-  // pointed the other way. Exactly one remains, and it is declared rather than discovered.
-  assert.deepEqual(unreachable, ["inventory.reorderQueue"]);
+  // pointed the other way. NONE remains. `inventory.reorderQueue` was the last one: it is now mapped
+  // to Inventory > Reorder Queue, the destination navigation blocker #4 said did not exist.
+  //
+  // THIS LIST MUST STAY EMPTY. Adding a surface to EXPERIENCE_SURFACES without a door for it
+  // re-creates the exact defect -- a persona that earns something the product cannot offer -- and
+  // "declare it a gap instead" is not an alternative here: a gap register that can absorb any new
+  // surface stops being a blocker list.
+  assert.deepEqual(unreachable, []);
 });
 
 // ════════════════════ THE PERSONA PROOF ════════════════════
@@ -366,12 +372,21 @@ test("every persona in the governed manifest gets a destination set earned entir
     ],
   });
 
-  // THE SURFACE WITH NO DOOR, ASSERTED RATHER THAN HIDDEN. The parts manager earns
-  // `inventory.reorderQueue` -- reorder.request.read plus the governed REORDER_QUEUE scope -- and
-  // navigation still cannot offer it, because no destination in navConfig IS the Reorder queue. That
-  // is a real remaining gap in the cutover and it is declared in NAV_SURFACE_GAPS.
-  assert.equal(observed["parts-manager"].surfaces.includes("inventory.reorderQueue"), true);
-  assert.equal(observed["parts-manager"].destinations.some((d) => /reorder/i.test(d)), false);
+  // THE SURFACE THAT HAD NO DOOR, NOW ASSERTED AS A DOOR. The parts manager earns
+  // `inventory.reorderQueue` -- reorder.request.read plus the governed REORDER_QUEUE Operational
+  // Scope, with no dedicated queue capability anywhere in its set -- and navigation now offers it at
+  // Inventory > Reorder Queue. The whole persona is written out, because the point is that the queue
+  // arrived WITHOUT anything else arriving with it: no inventoryRole destination, no receiving, no
+  // warehouse. A scope opened one door.
+  assert.deepEqual(observed["parts-manager"], {
+    surfaces: ["inventory.catalog", "inventory.reorderQueue", "purchasing.purchaseOrders"],
+    destinations: [
+      "dashboard/operationsDashboard",
+      "inventory/parts",
+      "inventory/reorderQueue",
+      "purchasing/purchaseOrders",
+    ],
+  });
 
   // THE WAREHOUSE ASSOCIATE: the count surface needs the capability AND WAREHOUSE_OPERATIONS AND a
   // warehouse scope. All three come from governed tables; none from a role string.

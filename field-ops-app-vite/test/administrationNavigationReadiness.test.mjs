@@ -265,13 +265,27 @@ test("and the shell now DOES ask for both ids -- step 3 of the wiring, closed", 
 });
 
 // ════════════════════ 3. THE TWO BLOCKERS THIS LANE DID NOT TOUCH ════════════════════
+//
+// One of the two has since been closed by its own lane (the Reorder queue door). The record of what
+// this lane did and did not do is kept exact rather than rewritten: the first test below now states
+// the closure, and the second still states the blocker it found.
 
-test("inventory.reorderQueue is still an earnable surface with no door", () => {
+test("inventory.reorderQueue now HAS a door -- blocker #4 is closed, and the Administration ones are not", () => {
+  // This assertion used to read "still an earnable surface with no door", and it carried the
+  // instruction "a Reorder queue destination exists now -- re-run the readiness matrix". One does:
+  // Inventory > Reorder Queue, earned by reorder.request.read plus the governed REORDER_QUEUE
+  // Operational Scope. The readiness record is updated rather than deleted, because the contrast is
+  // the point -- the Administration blockers in this file are NOT closed by that, and a reader
+  // arriving at this file must not infer one from the other.
   assert.ok(EXPERIENCE_SURFACE_KEYS.includes("inventory.reorderQueue"));
   const doors = Object.entries(NAV_SURFACE_ACCESS)
     .filter(([, surfaces]) => surfaces.includes("inventory.reorderQueue"));
-  assert.deepEqual(doors, [], "a Reorder queue destination exists now -- re-run the readiness matrix");
-  assert.match(NAV_SURFACE_GAPS["inventory.reorderQueue"], /NO DOOR EXISTS/);
+  assert.deepEqual(doors, [["inventory/reorderQueue", ["inventory.reorderQueue"]]]);
+  // Declared as a gap by SURFACE key -- the shape that made the blocker invisible to every check in
+  // navConfig.js, since the gap register is keyed by DESTINATION everywhere else. Gone, and
+  // navigationSurfaceMapViolations() now refuses a gap key that is not a destination.
+  assert.equal(Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, "inventory.reorderQueue"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(NAV_SURFACE_GAPS, "inventory/reorderQueue"), false);
 });
 
 test("hasAnyAccess is still true for a principal the EOS source refuses entirely", () => {

@@ -357,6 +357,32 @@ export const NAV_DOMAINS = [
       // "inventory" is the SAME admin/dispatcher set this item already had via PLACEHOLDER_DEFAULT_ROLES,
       // stated explicitly so the capability check has something to fall through to without widening access.
       { key: "transfers", label: "Transfers", path: "transfers", legacyKey: "inventory", capabilityAccess: TRANSFER_SURFACE_CAPABILITIES },
+      // ════════ THE REORDER QUEUE GETS A DOOR (navigation blocker #4) ════════
+      //
+      // `inventory.reorderQueue` has been EARNABLE and UNREACHABLE since the navigation seam landed:
+      // the EOS surface catalog grants it (reorder.request.read plus the governed REORDER_QUEUE
+      // Operational Scope), and NO destination in this file was the Reorder queue -- so a parts-manager
+      // persona earned a surface navigation could not offer. The queue itself was reachable only as a
+      // disclosure rail inside Parts Catalog (gated by the CATALOG capabilities, which are a different
+      // authority answering a different question), from Part Detail, and from the notification bell.
+      // None of those is a destination, and none of them is governed by the queue's own authority.
+      //
+      // DELIBERATELY NOT `inventoryRole/manager`. That domain reads employees/{id}.operationalRoles and
+      // IS the Firebase business authority the Work Eligibility / Operational Scope decomposition
+      // retires; navigationExperienceProjection.test.mjs pins it invisible under the EOS source, by
+      // design. Pointing the governed surface at it would re-home the queue onto the construct being
+      // removed. A first-class Inventory destination is the opposite move: this door is earned by the
+      // queue's own governed authority and by nothing else, and it outlives that domain's retirement.
+      //
+      // `capabilityAccess` WITH NO `legacyKey` IS THE FAIL-CLOSED SHAPE (see isNavItemVisible below).
+      // The Firebase effective-access feed is never asked about `reorder.request.read` -- the id is not
+      // in access/governedSurfaceCapabilities.js and is deliberately NOT added there, because wiring the
+      // feed is a separate, authorized act -- so the decision comes back ABSENT, holdsDeclaredCapability
+      // is false, and this item lands on `if (item.capabilityAccess) return false` rather than falling
+      // through to PLACEHOLDER_DEFAULT_ROLES. The destination is therefore invisible to EVERY role under
+      // the legacy source, in every environment, today. It adds navigation to nobody until
+      // EOS_NAVIGATION_AUTHORITY_READY makes the governed projection the source.
+      { key: "reorderQueue", label: "Reorder Queue", path: "reorder-queue", capabilityAccess: ["reorder.request.read"] },
       { key: "receiving", label: "Receiving", path: "receiving" },
       // Wave 6 Owner decision (2026-08-15): hidden from normal navigation while these
       // remain pure route stubs with no backend capability behind them (confirmed by
@@ -674,6 +700,15 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "inventory/truckInventory": ["inventory.balances"],
   "inventory/transfers": ["inventory.transfers"],
   "inventory/receiving": ["receiving.checkIn"],
+  // THE QUEUE IS A SCOPE QUESTION, NOT A ROLE ONE. `inventory.reorderQueue` is earned by
+  // `reorder.request.read.queue` outright, or by `reorder.request.read` PLUS the governed
+  // REORDER_QUEUE Operational Scope -- migration 1761696000000, ruling 2, projected and not
+  // re-decided. The PARTS_OPERATIONS Work Eligibility is deliberately NOT part of it: that
+  // qualification answers "may this Employee be ASSIGNED reorder work"
+  // (functions/src/eosOps/reorderAssignmentAuthority.ts, which says so about itself), and that is a
+  // different authority from "which operational queue is visible". Requiring it here would fold a
+  // qualification into a scope and make the two refusals indistinguishable.
+  "inventory/reorderQueue": ["inventory.reorderQueue"],
   "inventory/cycleCounts": ["inventory.cycleCount.count", "inventory.cycleCount.review"],
   // Purchasing
   "purchasing/purchaseOrders": ["purchasing.purchaseOrders"],
@@ -713,9 +748,15 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
  * Destinations that CANNOT be offered by the EOS authority, and why. Declared, never discovered.
  *
  * Each line is a real blocker for a full navigation cutover, not a to-do: the reason is a property of
- * the governed vocabulary, and the fix is a capability or an authority that does not exist yet. The
- * `reorderQueue` entry is the one exception in spirit -- the surface IS governed, but no destination
- * in this file is the Reorder queue, so there is nothing to point at.
+ * the governed vocabulary, and the fix is a capability or an authority that does not exist yet.
+ *
+ * KEYED BY DESTINATION, ALWAYS. "<domainKey>/<itemKey>", or "<domainKey>/*" for a whole domain --
+ * never by a SURFACE key. This register used to carry one entry keyed `inventory.reorderQueue`, and
+ * because navigationSurfaceMapViolations() only ever validated the keys of NAV_SURFACE_ACCESS, that
+ * entry was unreachable by every check in this file: it named nothing, contradicted nothing, and
+ * satisfied nothing, while reading like a closed question. The destination it stood for did not
+ * exist, so the surface stayed earnable and unreachable and no guard could say so. The gap is closed
+ * (Inventory > Reorder Queue), and the key shape is now checked below so it cannot recur.
  */
 export const NAV_SURFACE_GAPS = Object.freeze({
   "service/inboundWork": "service.inboundWork.read is a Firebase-activated capability id; eos_policy.capabilities does not declare it.",
@@ -738,13 +779,16 @@ export const NAV_SURFACE_GAPS = Object.freeze({
   "administration/vehicles": "Hidden placeholder, no backend.",
   "administration/regions": "Hidden placeholder, no backend.",
   "administration/companySettings": "Hidden placeholder, no backend.",
-  "customers/contacts": "Contact read has no capability distinct from customer.record.read, and there is no Contacts destination today.",
+  // `customers/contacts` was here and named NOTHING: the Contacts subnav item was retired (its path
+  // redirects to /customers), so the key matched no destination and the new key check above found
+  // it on its first run. The vocabulary gap it described is real and is still declared, server-side
+  // and by surface key, as EXPERIENCE_SURFACE_GAPS["crm.contacts"] -- which is where a gap with no
+  // destination belongs.
   "dashboard/notifications": "Hidden placeholder; the bell is the live surface.",
   "reporting/builder": "Report Builder is already governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
   "reporting/savedReports": "See reporting/builder.",
   "financials/*": "Every Financials destination OTHER than Invoices and Payments is Frame-0 information architecture with no authority behind it; FIN-001/FIN-004 own the capability model.",
   "reporting/*": "The eight domain report destinations are navHidden placeholders, and Report Builder / Saved Reports are governed by the Firebase capability feed over report-definition ids that eos_policy.capabilities does not declare.",
-  "inventory.reorderQueue": "THE SURFACE IS GOVERNED AND NO DOOR EXISTS. reorder.request.read.queue and the REORDER_QUEUE Operational Scope both resolve, but no nav destination in this file is the Reorder queue -- it is reached today only through the notification bell and Part Detail. A parts-manager persona therefore earns a surface the navigation cannot offer.",
 });
 
 // Attach the surface mapping to the item objects the visibility functions actually receive.
@@ -770,6 +814,19 @@ export function navigationSurfaceMapViolations(knownSurfaceKeys = null) {
   const destinations = new Set();
   for (const domain of NAV_DOMAINS) {
     for (const item of domain.subnav ?? []) destinations.add(`${domain.key}/${item.key}`);
+  }
+  // EVERY GAP KEY MUST NAME SOMETHING. A gap register is only honest if its keys are checkable; an
+  // entry naming a destination that does not exist -- or, worse, naming a SURFACE -- excuses nothing
+  // and hides the thing it appears to declare. Both shapes are reported.
+  for (const gapKey of Object.keys(NAV_SURFACE_GAPS)) {
+    if (gapKey.endsWith("/*")) {
+      const domainKey = gapKey.slice(0, -2);
+      if (!NAV_DOMAINS.some((d) => d.key === domainKey)) {
+        problems.push(`NAV_SURFACE_GAPS names "${gapKey}", which is not a nav domain`);
+      }
+      continue;
+    }
+    if (!destinations.has(gapKey)) problems.push(`NAV_SURFACE_GAPS names "${gapKey}", which is not a nav destination`);
   }
   for (const [destination, surfaces] of Object.entries(NAV_SURFACE_ACCESS)) {
     if (!destinations.has(destination)) problems.push(`NAV_SURFACE_ACCESS names "${destination}", which is not a nav destination`);

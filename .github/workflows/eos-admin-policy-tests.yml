@@ -305,6 +305,11 @@ on:
       - "field-ops-app-vite/src/access/governedSurfaceCapabilities.js"
       - "field-ops-app-vite/src/access/shellCapabilityGates.js"
       - "field-ops-app-vite/test/administrationNavigationReadiness.test.mjs"
+      # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
+      # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
+      # named here for the same reason every entry above is -- a suite in a registered job that no
+      # path filter names goes stale in silence.
+      - "functions/test/reorderQueueNavigation.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "field-ops-app-vite/src/access/experienceContext.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"
