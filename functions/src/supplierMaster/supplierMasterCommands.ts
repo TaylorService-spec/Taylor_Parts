@@ -28,6 +28,7 @@ import {
   __pm_internal_auditDocId,
   __pm_internal_checkIdempotency,
 } from "../partMaster/partMasterCommands.js";
+import { assertFirestoreCatalogWriterOpen } from "../catalogMaster/catalogWriterState.js";
 import { buildFirestoreSupplierRepository } from "./supplierMasterRepository.js";
 import { normalizeSupplierName } from "./supplierMasterValidation.js";
 import {
@@ -79,6 +80,7 @@ export interface CreateSupplierOutcome extends MutationOutcome {
 }
 
 export async function createSupplier(input: CreateSupplierInput, deps?: SupplierMasterDeps): Promise<CreateSupplierOutcome> {
+  assertFirestoreCatalogWriterOpen("supplier.create");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);
@@ -147,6 +149,7 @@ export interface UpdateSupplierInput {
 }
 
 export async function updateSupplier(input: UpdateSupplierInput, deps?: SupplierMasterDeps): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen("supplier.update");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);
@@ -223,6 +226,7 @@ async function changeSupplierStatus(
   action: "activateSupplier" | "deactivateSupplier",
   deps?: SupplierMasterDeps,
 ): Promise<MutationOutcome> {
+  assertFirestoreCatalogWriterOpen(action === "activateSupplier" ? "supplier.activate" : "supplier.deactivate");
   const { db, roles, now, failAfterStage } = __pm_internal_resolveDeps(deps);
   __pm_internal_assertActorUid(input.actorUid);
   __pm_internal_assertIdempotencyKey(input.idempotencyKey);

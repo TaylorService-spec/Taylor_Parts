@@ -298,6 +298,28 @@ The freeze covers, via the guard: callables `createPart`, `updatePart`, `changeP
 paths `partMasterCommandClient.js` and `dataImportClient.js`. Not covered (raw Admin SDK writers, forbidden during the
 freeze by procedure): `seedSandboxBaseline.js`; Certification scripts (frozen regardless).
 
+**Freeze-completeness census (2026-09-23).** The four writers above were the *copy* scope, not the whole legacy
+catalog master surface, so the freeze covered less than "catalog master data". The remaining fifteen writers are now
+registered in `FIRESTORE_CATALOG_WRITERS` and guarded identically — `manufacturer.create/update/changeStatus`
+(`manufacturers`), `supplier.create/update/activate/deactivate` (`suppliers`), `partAlias.create/deactivate/reactivate`
+(`part_aliases`), `partSupplierItem.create/update/changeStatus/setPreferred` (`part_supplier_items`) and
+`equipmentModelAlias.import` (`equipment_model_aliases`). Authority for including them: §2 gap 3 and §8 above, which
+require the dependent `part_aliases` / `part_supplier_items` / `equipment_model_aliases` authorities to "move or stay
+frozen with the catalog"; and, for Manufacturer and Supplier, that both are written through the Part Master command
+machinery against `inventory.catalog.manage` / `inventory.catalog.activate`
+(`supplierMasterCommands.ts`: "Supplier is a catalog-governed object … the SAME capabilities parts/manufacturers/
+part_supplier_items use") and are classed with `parts` as company-neutral REFERENCE catalog data in
+`ownership/ownershipMatrix.ts`. Each of the five deployed callable families maps the refusal to `failed-precondition`.
+The committed state is unchanged (`OPEN/INACTIVE`): this widens what a future FREEZE stops, and stops nothing today.
+
+**Deliberately NOT frozen (borderline, Owner decision outstanding).** The Part↔Equipment Model *compatibility*
+commands — `importCompatibility`, `importCompatibilitySource`, `verifyCompatibility`, `correctCompatibility` over
+`equipment_part_compatibility` / `equipment_compatibility_sources`. §2 gap 3 names `equipment_part_compatibility` as a
+dependent authority, but these write relationship and evidence records rather than master data, gate on the separate
+`equipment.compatibility.*` capabilities, and are absent from the REFERENCE catalog block of the ownership matrix.
+Adding them is one gate line each in `acceptForExecution` if the Owner rules them in scope. `supplier_catalog` is
+declared in `constants/collections.ts` but has **no writer anywhere in `functions/src`**, so there is nothing to guard.
+
 ### 5.2 Rollback
 
 - **Before PostgreSQL writes begin** (any failure in steps 3–6, or before step 7 completes): keep the PostgreSQL target

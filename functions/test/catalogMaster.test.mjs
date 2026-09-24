@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { cleanSnapshot, modelDoc, partDoc, snapshotOf, ts, wholeUnitPartDoc } from "./support/catalogSnapshotFixture.mjs";
+import { LEGACY_CATALOG_MASTER_COMMANDS, firstBodyLine } from "./support/legacyCatalogMasterCommands.mjs";
 import { migrationFiles } from "./support/migrationSchema.mjs";
 
 const require = createRequire(import.meta.url);
@@ -197,17 +198,43 @@ test("FROZEN and RETIRED both refuse every legacy writer, with distinct governed
   assert.match(readFileSync("src/dataImport/firestoreDataImportAdapters.ts", "utf8"), /await createPart\(/);
 });
 
-test("every legacy writer calls the guard with its own id, before anything else it does", () => {
-  const pm = readFileSync("src/partMaster/partMasterCommands.ts", "utf8");
-  for (const [id, fn] of [["part.create", "createPart"], ["part.update", "updatePart"], ["part.changeStatus", "changePartStatus"]]) {
-    const body = new RegExp(`export async function ${fn}\\([^)]*\\)[^{]*\\{\\n([^\\n]*)`).exec(pm);
-    assert.ok(body, `${fn} not found`);
-    assert.equal(body[1].trim(), `assertFirestoreCatalogWriterOpen("${id}");`, `${fn} must call the guard as its first statement`);
+test("the legacy command list and the writer registry are the SAME closed set -- no writer without an entry, no entry without a writer", () => {
+  const listed = LEGACY_CATALOG_MASTER_COMMANDS.flatMap((c) => c.writerIds);
+  assert.deepEqual([...listed].sort(), [...new Set(listed)].sort(), "a writer id is listed twice");
+  assert.deepEqual(listed.slice().sort(), Object.keys(writerState.FIRESTORE_CATALOG_WRITERS).sort());
+  // Every registry entry's module/entry agrees with where the list says the body is.
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS) {
+    for (const id of c.writerIds) {
+      const reg = writerState.FIRESTORE_CATALOG_WRITERS[id];
+      assert.equal(reg.module, `functions/${c.module}`, `${id} module`);
+      assert.match(reg.entry, new RegExp(`^${c.fn === "acceptForExecution" ? "runEquipmentCompatibilityCommand" : c.fn}\\b`), `${id} entry`);
+    }
   }
+});
+
+test("every legacy writer calls the guard with its own id, before anything else it does", () => {
+  const seen = [];
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS.filter((x) => x.form === "FUNCTION_BODY")) {
+    const line = firstBodyLine(readFileSync(c.module, "utf8"), c.fn);
+    assert.ok(line !== null, `${c.fn} not found in ${c.module}`);
+    assert.equal(line, c.firstStatement, `${c.module} ${c.fn} must call the guard as its first statement`);
+    for (const id of c.writerIds) assert.ok(c.firstStatement.includes(`"${id}"`), `${c.fn}'s guard must name ${id}`);
+    seen.push(c.fn);
+  }
+  assert.equal(seen.length, 15, "15 catalog master command bodies open with the guard");
+
+  // The Equipment Model family is one command with an action discriminator: the gates sit in the accept
+  // step, together, before capability resolution and before anything is staged.
   const eq = readFileSync("src/equipmentCompatibility/commands.ts", "utf8");
   const accept = eq.slice(eq.indexOf("async function acceptForExecution"), eq.indexOf("return { prepared, expectedVersion, actorUid };"));
-  assert.match(accept, /if \(action === "importEquipmentModel"\) assertFirestoreCatalogWriterOpen\("equipmentModel\.import"\);/);
+  for (const c of LEGACY_CATALOG_MASTER_COMMANDS.filter((x) => x.form === "ACTION_GATE")) {
+    assert.ok(accept.includes(c.gateLine), `acceptForExecution must carry: ${c.gateLine}`);
+  }
   assert.ok(accept.indexOf("assertFirestoreCatalogWriterOpen") < accept.indexOf("resolvePermission"), "the guard precedes capability resolution");
+  // Every action that writes a catalog master authority is gated; the compatibility actions are NOT in
+  // this freeze (they write relationship/evidence records, not master data) -- see catalogFreezeParity.
+  const gated = [...accept.matchAll(/if \(action === "(\w+)"\) assertFirestoreCatalogWriterOpen/g)].map((m) => m[1]);
+  assert.deepEqual(gated.sort(), ["importEquipmentModel", "importEquipmentModelAlias"]);
 });
 
 test("while PostgreSQL is INACTIVE, nothing outside catalogMaster imports the PostgreSQL catalog writers", () => {

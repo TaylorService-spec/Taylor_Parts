@@ -276,6 +276,7 @@ async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentComm
   }
   // Catalog cutover: refused while the catalog writer state is FROZEN or RETIRED (OPEN today).
   if (action === "importEquipmentModel") assertFirestoreCatalogWriterOpen("equipmentModel.import");
+  if (action === "importEquipmentModelAlias") assertFirestoreCatalogWriterOpen("equipmentModelAlias.import");
   if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_-]{8,200}$/.test(idempotencyKey)) {
     throw new InvalidInputError("idempotencyKey is malformed");
   }
