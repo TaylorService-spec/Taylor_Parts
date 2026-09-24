@@ -3,6 +3,12 @@
 // measurement CLIs the nonprod operator runs. The acceptance characteristics asserted here are the Owner's.
 //
 // Its OWN database (the measurements count globally), migrated by the normal runner and dropped afterwards.
+//
+// BLOCKED_PENDING_C5 (Owner ruling 2026-09-23). The Commercial half of this seed no longer writes anything: the
+// eight records it declares are eight of the twelve declared-synthetic rows the governed cleanup removed from
+// nonprod BECAUSE they blocked Commercial C5, and re-seeding them would re-arm that blocker. Every Commercial
+// assertion below is therefore INVERTED -- the rows must be ABSENT -- and the non-Commercial assertions are
+// untouched, which is the proof that gating the Commercial write shrank nothing else.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -136,9 +142,15 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
       accounts: { created: 2, existing: 0 },
       contacts: { created: 2, existing: 0 },
       locations: { created: 2, existing: 0 },
-      commercial: { created: 8, existing: 0 },
-      accountablePersons: { persisted: 8, existing: 0 },
+      // BLOCKED_PENDING_C5. The eight declared records are ACCOUNTED, by number, and WRITTEN NOWHERE.
+      commercial: { created: 0, existing: 0, blocked: 8 },
+      accountablePersons: { persisted: 0, existing: 0, blocked: 8 },
     });
+    // Stated, never silent: the run names its refusal, the blocker, and every number it declined to write.
+    assert.equal(first.commercialSeedState.status, "BLOCKED");
+    assert.equal(first.commercialSeedState.blockedBy, "COMMERCIAL_RECORDS_PENDING_C5");
+    assert.equal(first.commercialSeedState.reason, "COMMERCIAL_SEED_BLOCKED_PENDING_C5");
+    assert.deepEqual(first.commercialSeedState.blockedRecords, MANIFEST.commercial.map((r) => r.number));
     assert.equal(first.eligibilityPolicyId, "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1");
     assert.match(first.jobRoleAuthority, /Job Role authority is NOT YET IMPLEMENTED in PostgreSQL/);
     assert.ok(!r.stdout.includes(dbUrl()), "the connection string was printed");
@@ -153,6 +165,9 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
       const created = counts.created ?? counts.persisted;
       assert.equal(created, 0, `${bucket} created ${created} on a rerun`);
     }
+    // The refusal is idempotent too: a rerun blocks the same eight and still writes none of them.
+    assert.equal(again.summary.commercial.blocked, MANIFEST.commercial.length);
+    assert.equal(again.summary.accountablePersons.blocked, MANIFEST.commercial.length);
     assert.deepEqual(await rowCounts(), before);
   });
 
@@ -194,13 +209,20 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
     assert.equal(d.principals.total, 8);
     for (const [k, v] of Object.entries(d.anomalies)) assert.equal(v, 0, `(9) link anomaly ${k}`);
 
+    // G IS PREREQUISITE-BLOCKED, NOT VACUOUS BY ACCIDENT. Commercial is BLOCKED_PENDING_C5 and this seed writes
+    // no record, so the owner-vs-accountable census has nothing to count -- and zero here is the RULING being
+    // obeyed. What is still proved: the census reports ZERO rather than a partial or anomalous population, no
+    // anomaly bucket is non-zero, the schema never grew an assignment column, and the manifest still declares
+    // BOTH responsibility shapes so Sample Company v3 seeds them unchanged after C5.
     const g = sections.ownerVersusAccountable;
     const total = (key) => g.families.reduce((a, f) => a + f.counts[key], 0);
-    assert.equal(g.families.reduce((a, f) => a + f.total, 0), 8);
-    assert.ok(total("samePerson") > 0, "(13)");
-    assert.ok(total("differentPerson") > 0, "(14)");
+    assert.equal(g.families.reduce((a, f) => a + f.total, 0), 0, "a Commercial record exists before C5; the blocker is re-armed");
+    assert.equal(total("samePerson") + total("differentPerson"), 0);
     assert.equal(total("ownerPresentAccountableMissing") + total("bothAbsent") + total("accountablePresentOwnerMissing"), 0);
     for (const f of g.families) assert.deepEqual(f.assigneeColumns, [], "assignment is outside the commercial persistence proof");
+    const same = MANIFEST.commercial.filter((r) => r.accountable === "DERIVE_FROM_OWNER" || r.accountable === r.owner);
+    const split = MANIFEST.commercial.filter((r) => r.accountable !== "DERIVE_FROM_OWNER" && r.accountable !== r.owner);
+    assert.ok(same.length > 0 && split.length > 0, "(13) (14) both responsibility shapes must stay DECLARED for v3");
 
     const h = sections.securityRoleOccupancy;
     assert.equal(h.employees.uniqueWithActiveSecurityRole, 8);
@@ -220,25 +242,52 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
     assert.deepEqual([report.totals.unresolved, report.totals.crossTenant, report.totals.malformed], [0, 0, 0]);
   });
 
-  await t.test("F (10, 11, 12): commercial accountability is clean and non-vacuous under V1", async () => {
+  await t.test("F (10, 11, 12): the accountability census reports an EMPTY commercial world, with no anomaly", async () => {
+    // The V1 policy is still the one measured, and the measurement still runs and still exits clean -- what it
+    // now scans is the CURRENT truth: no Commercial record exists before C5. Every anomaly bucket must be zero,
+    // so an accidentally re-armed row could not hide inside a bucket nobody asserts on.
     const r = cli("measureCommercialAccountability.js", ["--policyId", "COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1", "--eligibleStatus", "ACTIVE,CONTRACTOR"]);
     assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
     const total = r.stdout.slice(r.stdout.indexOf("TOTAL scanned"));
     const bucket = (name) => Number(total.match(new RegExp(`${name}\\s+(\\d+)`))[1]);
-    assert.match(total, /^TOTAL scanned 8/);
-    assert.equal(bucket("presentValidEligible"), 8);
-    for (const name of ["presentValidNotEligible", "presentInvalid", "presentCrossTenant", "missingOwnerDerivable", "missingOwnerInvalid", "missingOwnerNotEligible"]) {
+    assert.match(total, /^TOTAL scanned 0/);
+    for (const name of ["presentValidEligible", "presentValidNotEligible", "presentInvalid", "presentCrossTenant",
+      "missingOwnerDerivable", "missingOwnerInvalid", "missingOwnerNotEligible"]) {
       assert.equal(bucket(name), 0, name);
     }
   });
 
-  await t.test("GOVERNED/SEED: every persisted accountable person equals what the governed rule establishes", async () => {
+  await t.test("RE-ARM PROOF: the legacy v1 seeder recreated NONE of the removed Commercial C5 blockers", async () => {
+    // THE HAZARD THIS LANE EXISTS TO CLOSE. Before the gate, this seeder iterated `manifest.commercial` and
+    // wrote every record through createCommercialRecord unconditionally, so one re-run put eight of the twelve
+    // removed rows back and re-armed the blocker the governed cleanup cleared. Two full applies have now run
+    // against this database. Every one of the three eos_commercial tables must still be EMPTY, and not one of
+    // the eight declared numbers may be present under any id.
+    for (const table of ["opportunities", "sales_agreements", "sales_orders"]) {
+      assert.equal((await q(`SELECT count(*)::int AS n FROM eos_commercial.${table}`)).rows[0].n, 0,
+        `eos_commercial.${table} holds a row; the v1 seeder re-armed the Commercial C5 blocker`);
+    }
+    for (const [kind, table, numberColumn] of [["OPPORTUNITY", "opportunities", "opportunity_number"],
+      ["SALES_AGREEMENT", "sales_agreements", "sales_agreement_number"], ["SALES_ORDER", "sales_orders", "sales_order_number"]]) {
+      const numbers = MANIFEST.commercial.filter((c) => c.kind === kind).map((c) => c.number);
+      assert.ok(numbers.length > 0, `${kind} lost its declarations; the gate must cover the WRITE, not the declaration`);
+      const present = (await q(
+        `SELECT ${numberColumn} AS number FROM eos_commercial.${table} WHERE ${numberColumn} = ANY($1::text[])`, [numbers])).rows;
+      assert.deepEqual(present, [], `${table} holds a declared-synthetic record: ${JSON.stringify(present)}`);
+    }
+    // The accountable-person column the seed used to fill is still there and still empty, so v3 needs no schema
+    // work and nothing was quietly written down a different column instead.
+    for (const table of ["opportunities", "sales_agreements", "sales_orders"]) {
+      const columns = (await q(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema = 'eos_commercial' AND table_name = $1`, [table]))
+        .rows.map((row) => row.column_name);
+      assert.ok(columns.includes("owner_employee_id") && columns.includes("accountable_employee_id"), `${table} lost a responsibility column`);
+    }
+    // The governed rule that WOULD establish each value after C5 is still fully declared and still validated.
     const byKey = new Map(MANIFEST.employees.map((e) => [e.key, e.id]));
     for (const r of MANIFEST.commercial) {
-      const table = { OPPORTUNITY: ["opportunities", "opportunity_number"], SALES_AGREEMENT: ["sales_agreements", "sales_agreement_number"], SALES_ORDER: ["sales_orders", "sales_order_number"] }[r.kind];
-      const row = (await q(`SELECT owner_employee_id, accountable_employee_id FROM eos_commercial.${table[0]} WHERE ${table[1]} = $1`, [r.number])).rows[0];
-      assert.equal(row.owner_employee_id, byKey.get(r.owner));
-      assert.equal(row.accountable_employee_id, r.accountable === "DERIVE_FROM_OWNER" ? byKey.get(r.owner) : byKey.get(r.accountable), r.number);
+      assert.ok(byKey.has(r.owner), `${r.number} lost its declared owner`);
+      assert.ok(r.accountable === "DERIVE_FROM_OWNER" || byKey.has(r.accountable), `${r.number} lost its declared accountable person`);
     }
   });
 

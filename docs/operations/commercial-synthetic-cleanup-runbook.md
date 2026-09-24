@@ -115,6 +115,21 @@ that gate before it writes anything commercial. An apply now reports `commercial
 `accountablePersons BLOCKED 12` and `commercial CREATE 0`, and leaves the three `eos_commercial` tables empty —
 so a full reconciling apply is safe again, and no longer re-arms the blocker.
 
+**The legacy v1 seeder was the other way back in, and it is now gated the same way.**
+`scripts/seedSyntheticNonprodWorkforce.js` iterated `manifest.commercial` and wrote every record through
+`createCommercialRecord` **unconditionally**, with no gate at all, and
+`scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json` declares eight of the twelve
+(`SYN-NP-OPP-0001..0004`, `SYN-NP-SA-0001/0002`, `SYN-NP-SO-0001/0002`) — so one run of the v1 seed re-armed
+eight twelfths of the blocker regardless of what v2 did. That fixture now carries the same
+`commercialSeedState: { status: "BLOCKED", blockedBy: "COMMERCIAL_RECORDS_PENDING_C5" }` gate, and BLOCKED is
+the **only** status v1 admits — it has no `SEEDED` branch, so no caller-supplied manifest can reopen the write
+path. A run reports `commercial { created: 0, existing: 0, blocked: 8 }`, `accountablePersons { persisted: 0,
+existing: 0, blocked: 8 }` and a `commercialSeedState` block naming reason `COMMERCIAL_SEED_BLOCKED_PENDING_C5`
+and all eight declined numbers. Every non-Commercial fixture (16 Employees, 7 synthetic Principals, 8 links, 8
+Role assignments, 2 Accounts, 2 Contacts, 2 Locations) seeds exactly as before. The eight declarations are kept,
+not removed: `scripts/commercialC5.js` reads `commercial[].number` from BOTH manifests to classify a target row
+`DECLARED_SYNTHETIC` rather than `UNKNOWN`. Only Sample Company v3 seeds Commercial data again, after C5.
+
 The consequence is recorded rather than hidden, in the manifest's own blocked vocabulary:
 `scripts/verifySampleCompany.js` reports the 9 Commercial relationship assertions as **BLOCKED** (not DANGLING,
 not VERIFIED), the three `commercial.*` domains as **BLOCKED** with `expected: 0` — their presence, not their

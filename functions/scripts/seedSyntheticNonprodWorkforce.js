@@ -18,7 +18,7 @@
 //                            manifest entry; never inferred from the Job Role.
 //   Employee <-> Principal   establishLink, OPERATOR_ASSERTED, with author and reason.
 //   Account/Contact/Location customerRepository create* (governed CRM writers; Contact/Location inherit owner).
-//   Commercial record        createCommercialRecord (governed commercial writer).
+//   Commercial record        BLOCKED_PENDING_C5. Owner ruling 2026-09-23: this seed WRITES NONE. See below.
 //   Accountable Person       GOVERNED/SEED: establishCreationAccountablePerson against the PostgreSQL Employee
 //                            authority under COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1, then the mint, then
 //                            accountablePersonFields. accountable_employee_id is written ONLY from that value,
@@ -30,6 +30,40 @@
 //                            overwrite a row that differs, and never updates one.
 //
 // Job Role is manifest metadata ONLY: "Job Role authority is NOT YET IMPLEMENTED in PostgreSQL."
+//
+// ============================ BLOCKED_PENDING_C5 -- THE COMMERCIAL HALF ============================
+//
+// Owner ruling 2026-09-23: "The current v1 seeder MUST NOT recreate the twelve intentionally removed Commercial
+// C5 blockers. Current Commercial acceptance state: BLOCKED_PENDING_C5. Commercial acceptance data must be
+// rebuilt only after the canonical Commercial migration/authority exists."
+//
+// The eight records this manifest declares -- SYN-NP-OPP-0001..0004, SYN-NP-SA-0001/0002, SYN-NP-SO-0001/0002 --
+// are eight of the twelve rows the authorized governed cleanup removed from nonprod (commit 106e4292) BECAUSE
+// they blocked Commercial C5. This seeder used to iterate `manifest.commercial` and write every one of them
+// unconditionally, so a single re-run would have re-armed the blocker the cleanup cleared.
+//
+// THREE RINGS, all fail-closed, gating the WRITE and never the DECLARATION:
+//
+//   1. MANIFEST.  `commercialSeedState.status` must be exactly BLOCKED and `blockedBy` exactly
+//      COMMERCIAL_RECORDS_PENDING_C5 -- the same gate shape and the same blocker code that
+//      scripts/fixtures/sampleCompany.v2.json + scripts/seedSampleCompany.js already use. Unlike v2, BLOCKED is
+//      the ONLY status v1 admits: there is no SEEDED branch, so a caller-supplied manifest cannot reopen the
+//      write path. Anything else is MANIFEST_INVALID, before any connection exists.
+//   2. LOOP.      Each declared record is accounted BLOCKED with its governed reason and the loop continues.
+//      No client is opened, no accountable person is established, nothing is written, and the run still
+//      completes so that every NON-Commercial fixture seeds exactly as before.
+//   3. WRITER.    assertCommercialWriteAllowed() sits immediately above the governed writer and refuses
+//      COMMERCIAL_SEED_BLOCKED_PENDING_C5 unconditionally. If ring 1 or 2 is ever edited away, the write itself
+//      still refuses, inside the record's own transaction, so nothing commits.
+//
+// The declarations stay and stay fully validated: scripts/commercialC5.js reads `manifest.commercial` from BOTH
+// manifests to classify a target row DECLARED_SYNTHETIC rather than UNKNOWN, and sampleCompany.v2.json's SUPERSET
+// proof needs these eight numbers carried forward byte-identically. Blocked is not removed.
+//
+// ACTIVATION DEPENDENCY (not implemented here, and never by v1): Commercial C5 copy AND verify must complete for
+// this tenant first. Post-C5 Commercial fixtures are then designed and sealed as SAMPLE COMPANY V3
+// (`sampleCompanyV3` in scripts/fixtures/sampleCompany.v2.json), which supersedes this v1 manifest. This v1
+// seeder gets no unblocked branch at any point.
 //
 // ============================ THE FENCE ============================
 //
@@ -56,6 +90,15 @@ const SYNTHETIC_IDENTITY_PROVIDER = "eos-synthetic-nonprod";
 const DERIVE_FROM_OWNER = "DERIVE_FROM_OWNER";
 const LINK_REASON = "SYNTHETIC NONPROD SEED v1: fixture link between a fixture Employee and a Principal; not a real person";
 const ROLE_REASON = "SYNTHETIC NONPROD SEED v1: explicit fixture Security Role assignment; not inferred from Job Role";
+
+/** The blocker this seed's Commercial half is gated on. Declared by scripts/fixtures/sampleCompany.v2.json too. */
+const COMMERCIAL_BLOCKER_CODE = "COMMERCIAL_RECORDS_PENDING_C5";
+/** The governed refusal this seed returns rather than recreating a removed Commercial C5 blocker. */
+const COMMERCIAL_SEED_BLOCKED = "COMMERCIAL_SEED_BLOCKED_PENDING_C5";
+const COMMERCIAL_SEED_BLOCKED_MESSAGE =
+  "BLOCKED_PENDING_C5: the declared-synthetic Commercial records were removed from nonprod because they blocked " +
+  "Commercial C5, and this v1 seed may never put them back. Commercial acceptance data is rebuilt only after the " +
+  "canonical Commercial migration/authority exists (C5 copy + verify), by SAMPLE COMPANY V3.";
 
 const COMMERCIAL = Object.freeze({
   OPPORTUNITY: Object.freeze({ family: "opportunity", table: "opportunities", number: "opportunity_number" }),
@@ -128,6 +171,18 @@ function validateManifest(m) {
   for (const a of m.accounts) eligible(a.owner, `Account ${a.id}`);
   for (const c of [...m.contacts, ...m.locations]) if (!accounts.has(c.account)) refuse("MANIFEST_INVALID", `${c.id} names unknown Account ${c.account}`);
 
+  // ---- RING 1. The Commercial gate, read before anything connects.
+  //
+  // The eight declarations below stay DECLARED and stay FULLY VALIDATED whether or not they are ever written:
+  // a declaration nobody checks rots, scripts/commercialC5.js classifies target rows from exactly these numbers,
+  // and Sample Company v3 seeds from them. What this gate decides is whether they are WRITTEN, not whether they
+  // are CORRECT. BLOCKED is the only status v1 admits -- there is deliberately no SEEDED branch to flip.
+  const state = m.commercialSeedState;
+  if (!state || state.status !== "BLOCKED" || state.blockedBy !== COMMERCIAL_BLOCKER_CODE) {
+    refuse("MANIFEST_INVALID",
+      `commercialSeedState.status must be exactly "BLOCKED" naming ${COMMERCIAL_BLOCKER_CODE}; the v1 seed has no unblocked state`);
+  }
+
   const numbers = new Map();
   let same = 0;
   let different = 0;
@@ -147,6 +202,15 @@ function validateManifest(m) {
   }
   if (same === 0 || different === 0) refuse("MANIFEST_INVALID", "the commercial seed must prove both owner == accountable and owner != accountable");
   return { employees, policy };
+}
+
+/**
+ * RING 3. The last gate before the governed Commercial writer, and the one that holds even if rings 1 and 2 are
+ * edited away. It takes no argument it could be talked out of: v1 has no state in which a Commercial write is
+ * allowed, so this refuses unconditionally, with the governed reason, inside the record's own transaction.
+ */
+function assertCommercialWriteAllowed(recordNumber) {
+  refuse(COMMERCIAL_SEED_BLOCKED, `${recordNumber}: ${COMMERCIAL_SEED_BLOCKED_MESSAGE}`);
 }
 
 function assertSeedArguments(args) {
@@ -175,7 +239,8 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
 
   const summary = { employees: { created: 0, existing: 0 }, principals: { created: 0, existing: 0 }, links: { created: 0, existing: 0 },
     roleAssignments: { created: 0, existing: 0 }, accounts: { created: 0, existing: 0 }, contacts: { created: 0, existing: 0 },
-    locations: { created: 0, existing: 0 }, commercial: { created: 0, existing: 0 }, accountablePersons: { persisted: 0, existing: 0 } };
+    locations: { created: 0, existing: 0 }, commercial: { created: 0, existing: 0, blocked: 0 },
+    accountablePersons: { persisted: 0, existing: 0, blocked: 0 } };
   const count = (bucket, created) => (created ? (summary[bucket].created += 1) : (summary[bucket].existing += 1));
   const repo = new PostgresPolicyRepository(pool);
   const employeeId = (key) => employees.get(key).id;
@@ -262,8 +327,22 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
   }
 
   // ---- Commercial records and GOVERNED/SEED accountable persons, one transaction per record
+  //
+  // RING 2. BLOCKED_PENDING_C5. Every declared record is ACCOUNTED, by number, with its governed reason -- this
+  // is a stated refusal, not a silent skip -- and nothing is written. The loop continues so that the
+  // non-Commercial half above (Employees, Principals, links, Security Roles, Accounts, Contacts, Locations)
+  // still seeds and still reports exactly as it did before this gate existed.
+  const blockedCommercial = [];
   const idByNumber = new Map();
+  // validateManifest has already refused any status other than BLOCKED, so for v1 this is always true.
+  const commercialBlocked = manifest.commercialSeedState.status === "BLOCKED";
   for (const r of manifest.commercial) {
+    if (commercialBlocked) {
+      blockedCommercial.push(r.number);
+      summary.commercial.blocked += 1;
+      summary.accountablePersons.blocked += 1;
+      continue;
+    }
     const shape = COMMERCIAL[r.kind];
     const client = await pool.connect();
     try {
@@ -293,6 +372,8 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
         if (found.rows[0].owner_employee_id !== employeeId(r.owner)) refuse("FIXTURE_DRIFT", `${r.number} exists with a different owner`);
         if (current !== null && current !== governedAccountable) refuse("FIXTURE_DRIFT", `${r.number} exists with a different accountable person`);
       } else {
+        // RING 3, immediately above the governed writer: this always throws. See assertCommercialWriteAllowed.
+        assertCommercialWriteAllowed(r.number);
         const record = await createCommercialRecord(client, tenantId, options.performedBy, {
           kind: r.kind, recordNumber: r.number, accountId: r.account, ownerEmployeeId: employeeId(r.owner),
           operatingCompanyId: manifest.operatingCompanyId, createdBy: options.performedBy,
@@ -329,6 +410,16 @@ async function seedSyntheticNonprodWorkforce(pool, options, manifest = MANIFEST)
     eligibilityPolicyId: policy.policyId,
     syntheticIdentityProvider: SYNTHETIC_IDENTITY_PROVIDER,
     jobRoleAuthority: manifest.rulings.jobRole,
+    // Stated, never silent: the run names its own refusal, the blocker it is gated on, and every record number
+    // it declined to write, so an operator reading the summary cannot mistake zero Commercial rows for success.
+    commercialSeedState: {
+      status: manifest.commercialSeedState.status,
+      blockedBy: manifest.commercialSeedState.blockedBy,
+      reason: COMMERCIAL_SEED_BLOCKED,
+      message: COMMERCIAL_SEED_BLOCKED_MESSAGE,
+      unblockedBy: manifest.commercialSeedState.unblockedBy,
+      blockedRecords: blockedCommercial,
+    },
     summary,
   };
 }
@@ -365,7 +456,10 @@ module.exports = {
   seedSyntheticNonprodWorkforce,
   validateManifest,
   assertSeedArguments,
+  assertCommercialWriteAllowed,
   EMPLOYMENT_STATUS_VALUES,
   SYNTHETIC_IDENTITY_PROVIDER,
+  COMMERCIAL_BLOCKER_CODE,
+  COMMERCIAL_SEED_BLOCKED,
   MANIFEST,
 };
