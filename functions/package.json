@@ -174,7 +174,12 @@
     "test:administrationUsers": "npm run build && node --test test/employeeProfileCommands.test.mjs test/recordChangeHistoryRead.test.mjs test/recordChangeHistoryDefaultRoleCatalog.test.mjs",
     "test:inboundWork": "npm run build && node --test test/inboundWorkDomain.test.mjs",
     "test:inboundWorkEmulator": "npm run build && node --test test/inboundWorkEmulator.test.mjs",
-    "seed:sandboxInboundWork": "npm run build && node scripts/seedSandboxInboundWork.mjs"
+    "seed:sandboxInboundWork": "npm run build && node scripts/seedSandboxInboundWork.mjs",
+    "test:workflowSelfPushFence": "node --test ../scripts/workflowSelfPushFence.test.mjs && node ../scripts/workflowSelfPushFence.mjs",
+    "test:d2Handoff": "node --test test/d2HandoffStatic.test.js",
+    "test:capabilityGraphDrift": "node --test test/capabilityGraphDrift.test.mjs",
+    "test:legacyAuthorizationSurface": "npm run build && node --test test/legacyAuthorizationSurface.test.mjs",
+    "test:governanceGuards": "npm run test:workflowSelfPushFence && npm run test:d2Handoff && npm run test:capabilityGraphDrift && npm run test:legacyAuthorizationSurface"
   },
   "dependencies": {
     "@google-cloud/secret-manager": "^7.0.0",
