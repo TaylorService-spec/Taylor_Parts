@@ -72,12 +72,36 @@ export interface LegacySurfaceEntry {
  * helper in Rules to a capability check inside the trusted callables. That is exactly the
  * convergence this gate was built to track, so the number moves in the same change that moved
  * the authority, and nothing was waived to make a lane green.
+ *
+ * ============================ 43 -> 37 (CRM cutover #1929, 2026-09-16) ============================
+ *
+ * A SHRINK, again in the direction this corpus exists to evidence. `c9399b52`
+ * ("fix(crm): retire legacy Firestore CRM write grants") replaced the client write arms on the
+ * three Row 23 CRM collections with `allow create, update, delete: if false;`, and deleted the
+ * Account governed-field helpers that only those arms called:
+ *
+ *   accounts     5 -> 1   `allow create` + `allow update` (isAdminOrDispatcher x2, isAdmin x2) gone
+ *   locations    2 -> 1   `allow create, update: if isAdminOrDispatcher()` gone
+ *   contacts     2 -> 1   `allow create, update: if isAdminOrDispatcher()` gone
+ *
+ * The one remaining site per collection is the `allow read: if isAdminOrDispatcher()` arm, kept
+ * for the bounded migration snapshot window. Nothing was granted: every delta removes a legacy
+ * call site, and the growth guard (test D2) was passing before and after. The write authority
+ * did not move into Rules -- it moves to PostgreSQL behind the CRM activation gate, which is why
+ * these collections keep a `permissions` list while the sites drop to read-only.
+ *
+ * WHY THIS LANDED LATE. `c9399b52` was pushed to main by a workflow bot rather than through a
+ * pull request, so legacy-authorization-surface-gate.yml -- whose `firestore.rules` path filter
+ * would otherwise have caught it -- never ran on the change. The corpus is corrected here rather
+ * than at the Rules commit for that reason, and for no other.
  */
 const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
     // ── Row 23 · Customer / Account ──────────────────────────────────────
     {
+      // 5 -> 1 (#1929): the create/update arms and the Account governed-field helpers they
+      // called are gone; `allow create, update, delete: if false`. Only the read arm remains.
       collection: "accounts",
-      sites: { isAdminOrDispatcher: 3, isAdmin: 2 },
+      sites: { isAdminOrDispatcher: 1 },
       row: "row23",
       permissions: [
         "customer.record.read",
@@ -87,14 +111,16 @@ const SURFACE_ENTRIES: LegacySurfaceEntry[] = [
       ],
     },
     {
+      // 2 -> 1 (#1929): `allow create, update: if isAdminOrDispatcher()` is now deny. Read only.
       collection: "locations",
-      sites: { isAdminOrDispatcher: 2 },
+      sites: { isAdminOrDispatcher: 1 },
       row: "row23",
       permissions: [],
     },
     {
+      // 2 -> 1 (#1929): `allow create, update: if isAdminOrDispatcher()` is now deny. Read only.
       collection: "contacts",
-      sites: { isAdminOrDispatcher: 2 },
+      sites: { isAdminOrDispatcher: 1 },
       row: "row23",
       permissions: [],
     },
