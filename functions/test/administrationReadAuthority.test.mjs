@@ -141,6 +141,26 @@ const migrate = (dbUrl, args) => execFileSync(process.execPath,
   ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", ...args, "--migrations-dir", "migrations", "--no-check-order"],
   { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrl }, stdio: "pipe" });
 
+const THIS_MIGRATION = "1762041600000_administration-security-policy-read-authority.sql";
+
+/**
+ * How many steps reach back to THIS migration -- itself plus everything that sorts after it.
+ *
+ * The FIRST reversal below used to say `["down", "1"]`, which quietly meant "1762041600000 is the
+ * newest migration on disk". That was true the day this file was written and stopped being true the
+ * moment another migration landed: `down 1` would then reverse somebody else's work, leave this
+ * migration applied, and every assertion after it would measure the wrong thing. Counted rather
+ * than pinned, so the next migration added to the chain costs nothing here.
+ *
+ * Only the FIRST reversal is counted. After it, the re-apply below is a deliberate `up 1` that
+ * brings back exactly this migration and nothing after it, so from that point on this migration IS
+ * the last-run one and the later `down 1` / `up 1` pairs mean precisely what they say.
+ */
+const STEPS_TO_THIS_MIGRATION = String(
+  readdirSync(resolve(FUNCTIONS_DIR, "migrations"))
+    .filter((f) => f.endsWith(".sql") && f >= THIS_MIGRATION).length,
+);
+
 test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t) => {
   const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
   const { bootstrapTenant, bootstrapAdministrator } = require("../lib/adminPolicy/tenantBootstrap.js");
@@ -166,7 +186,7 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
   // migrations everywhere real), and re-apply: applying the grant INSERT to an empty `roles` table
   // would prove nothing about who ends up holding it.
   migrate(dbUrl, ["up"]);
-  migrate(dbUrl, ["down", "1"]);
+  migrate(dbUrl, ["down", STEPS_TO_THIS_MIGRATION]);
   pool = new pg.Pool({ connectionString: dbUrl, max: 6 });
   const repo = new PostgresPolicyRepository(pool);
   const { tenant } = await bootstrapTenant(repo, { key: "taylor-adminread", name: "Taylor", actorUid: "operator" });
