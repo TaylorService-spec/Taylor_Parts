@@ -23,7 +23,7 @@ const WRITE = "admin.employeeProfile.write";
 // A RESOLVED actor carries the conditional-entitlement metadata resolveOperationalContext produces,
 // not only the flat set. Built through the real composer with the SHIPPED (empty) catalog, so every
 // entitlement here is unconditional -- exactly what the deployed resolver produces today.
-const entitlementsOf = (caps) => entitlement.entitlementsFrom(
+const entitlementsOf = (caps) => async () => entitlement.entitlementsFrom(
   caps.map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey })));
 const actor = (caps = [WRITE], extra = {}) => ({
   tenantId: "t1", principalId: "p-admin", capabilities: new Set(caps), entitlements: entitlementsOf(caps), ...extra });
@@ -57,6 +57,18 @@ test("actor: resolved context and admin.employeeProfile.write are required befor
   await assert.rejects(
     run({ employeeId: "e1", changes: { jobTitle: "Lead" } }, { tenantId: "t1", principalId: "p1", capabilities: new Set([WRITE]) }),
     refusedWith("ACTOR_CONTEXT_REQUIRED"), "an actor with no entitlements must refuse");
+  // ...and so must an actor that supplies them as a VALUE. Deferring the WORK behind a required
+  // resolver never made the OBLIGATION optional: a pre-computed, stale or hand-built list -- even a
+  // correct one -- is not a resolution against the live grant and condition stores.
+  await assert.rejects(
+    run({ employeeId: "e1", changes: { jobTitle: "Lead" } },
+      { tenantId: "t1", principalId: "p1", capabilities: new Set([WRITE]),
+        entitlements: entitlement.entitlementsFrom([{ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey: WRITE }]) }),
+    refusedWith("ACTOR_CONTEXT_REQUIRED"), "a bare entitlement VALUE must not discharge the obligation");
+  await assert.rejects(
+    run({ employeeId: "e1", changes: { jobTitle: "Lead" } },
+      { tenantId: "t1", principalId: "p1", capabilities: new Set([WRITE]), entitlements: [] }),
+    refusedWith("ACTOR_CONTEXT_REQUIRED"), "an empty entitlement array must not discharge the obligation");
   // ...and it still refuses BEFORE a connection: the pool above throws if touched.
 });
 

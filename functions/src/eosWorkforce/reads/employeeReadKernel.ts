@@ -20,7 +20,7 @@
 import type { Pool, PoolClient } from "pg";
 // The PURE decision, deliberately: `conditionalEntitlement` carries no SQL, no pool factory and no
 // runtime `pg`, so adopting the conditional seam does not widen this kernel's module boundary.
-import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementSet } from "../../eosOps/conditionalEntitlement";
+import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementResolver } from "../../eosOps/conditionalEntitlement";
 import { postgresContextualReader } from "../../eosOps/contextualAuthorization";
 
 export type Queryable = Pick<PoolClient, "query">;
@@ -50,10 +50,10 @@ export interface EmployeeReadActor {
   readonly capabilities: ReadonlySet<string>;
   /**
    * The SAME grants with the granting Role and its condition kept, from
-   * `capabilityAuthority.resolveOperationalContext`. Required, never optional -- see the seam note
-   * below `runEmployeeRead`.
+   * `capabilityAuthority.resolveOperationalContext`, behind its REQUIRED request-scoped resolver.
+   * Required, never optional, and never a plain value -- see the seam note below `runEmployeeRead`.
    */
-  readonly entitlements: EntitlementSet;
+  readonly entitlements: EntitlementResolver;
 }
 
 export interface EmployeeReadDeps {
@@ -65,7 +65,7 @@ function requireActorContext(actor: EmployeeReadActor): void {
     refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
   }
   if (!(actor.capabilities instanceof Set)) refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved capability set is required");
-  if (!hasResolvedEntitlements(actor)) refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved entitlement set is required");
+  if (!hasResolvedEntitlements(actor)) refuse("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved entitlement provider is required");
 }
 
 /**
@@ -89,8 +89,10 @@ export async function runEmployeeRead<P, R>(
     const required = requiredCapabilities(prepared);
     const missing = required.filter((c) => !actor.capabilities.has(c));
     if (missing.length > 0) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this read requires ${missing.join(", ")}`);
-    // THE CONDITIONAL DECISION. With no condition on any entitlement this allows every required key
-    // through the unconditional path, consults no context authority and reads nothing.
+    // THE CONDITIONAL DECISION. LAZY, and MEMOIZED FOR THIS READ: the loop below may require several
+    // capabilities, and the actor's resolver answers all of them from ONE resolution of the grant and
+    // condition stores. With no condition on any entitlement this allows every required key through
+    // the unconditional path, consults no context authority and performs no context read.
     const reader = postgresContextualReader(deps.pool);
     for (const capabilityKey of required) {
       const decision = await authorizeEntitledAction(reader, { actor, capabilityKey });

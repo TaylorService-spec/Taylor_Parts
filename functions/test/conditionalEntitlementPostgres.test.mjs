@@ -137,10 +137,13 @@ test("the conditional entitlement MODEL, pure", async (t) => {
       isAssignedEmployee: async () => { state.reads += 1; return answers.assigned ?? false; },
     }];
   };
+  // The actor carries a REQUIRED RESOLVER. A test that wants a fixed entitlement list says so by
+  // wrapping it, which is exactly the shape the composition produces -- and exactly the shape a
+  // caller can no longer fake with a bare array.
   const actorOf = (entitlements, capabilities) => Object.freeze({
     tenantId: "t", principalId: "p",
     capabilities: capabilities ?? model.capabilityKeysOf(entitlements),
-    entitlements,
+    entitlements: async () => entitlements,
   });
 
   await t.test("CAPABILITY FIRST: no key, no reads, and no entitlement is even looked at", async () => {
@@ -399,7 +402,7 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     tenantId: T,
     principalId: prn(personKey),
     capabilities: await capabilityAuthority.capabilitiesForRoleKeys(pool, T, roles),
-    entitlements: await composition.resolveRoleEntitlements(pool, T, roles, conditions),
+    entitlements: await (async () => { const e = await composition.resolveRoleEntitlements(pool, T, roles, conditions); return () => e; })(),
   });
 
   // ════════════════════ AB1 -- the sentence, said ════════════════════
@@ -487,7 +490,7 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     assert.equal(d.allowed, true);
     assert.deepEqual(d.viaGrantor, ROLE("purchasingManager"));
     assert.equal(state.reads, 0);
-    assert.equal(model.entitlementsFor(actor.entitlements, PO_READ).length, 2, "both entitlements are present");
+    assert.equal(model.entitlementsFor(await actor.entitlements(), PO_READ).length, 2, "both entitlements are present");
   });
 
   await t.test("AB5: a Role holding NEITHER cell is refused before anything is read", async () => {
@@ -527,7 +530,7 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     assert.equal(plainDirect[0].condition, null);
     const [state, countingReader] = counting();
     const open = await model.authorizeEntitledAction(countingReader, {
-      actor: { tenantId: T, principalId: prn("tech-plain"), capabilities: model.capabilityKeysOf(plainDirect), entitlements: plainDirect },
+      actor: { tenantId: T, principalId: prn("tech-plain"), capabilities: model.capabilityKeysOf(plainDirect), entitlements: async () => plainDirect },
       capabilityKey: PO_READ,
     });
     assert.equal(open.allowed, true);
@@ -540,7 +543,7 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     const conditioned = await composition.resolveDirectEntitlements(pool, T, prn("tech-plain"), directConditions);
     assert.notEqual(conditioned[0].condition, null, "a direct grant is conditionable today, not someday");
     const gated = await model.authorizeEntitledAction(reader, {
-      actor: { tenantId: T, principalId: prn("tech-plain"), capabilities: model.capabilityKeysOf(conditioned), entitlements: conditioned },
+      actor: { tenantId: T, principalId: prn("tech-plain"), capabilities: model.capabilityKeysOf(conditioned), entitlements: async () => conditioned },
       capabilityKey: PO_READ,
     });
     assert.equal(gated.allowed, false);
@@ -695,7 +698,7 @@ test("conditional entitlement against PostgreSQL", { skip: SKIP, concurrency: 1 
     const stored = await composition.resolveRoleEntitlements(pool, T, ["technician", "purchasingManager"], catalog);
     const eligible = { tenantId: T, principalId: prn("tech-eligible"),
       capabilities: await capabilityAuthority.capabilitiesForRoleKeys(pool, T, ["technician"]),
-      entitlements: model.entitlementsFor(stored, PO_READ).filter((e) => e.grantor.roleKey === "technician") };
+      entitlements: async () => model.entitlementsFor(stored, PO_READ).filter((e) => e.grantor.roleKey === "technician") };
     const d = await model.authorizeEntitledAction(reader, { actor: eligible, capabilityKey: PO_READ });
     assert.equal(d.allowed, true);
     assert.equal(d.viaCondition, true);
@@ -908,8 +911,10 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
   await linkEmployee("both", bothRoles.principalId, ["SERVICE_TECHNICIAN"]);
   await linkEmployee("admin", adminUser.principalId, []);
 
+  // The fourth argument is a condition PROVIDER now, resolved lazily and only if a gate site asks.
   const resolveFor = (actor, conditions) => capabilityAuthority.resolveOperationalContext(
-    repo, pool, { identityProvider: "firebase", externalSubject: actor.subject, requestedTenantId: null }, conditions);
+    repo, pool, { identityProvider: "firebase", externalSubject: actor.subject, requestedTenantId: null },
+    conditions ? () => conditions : undefined);
   const pgReader = evaluator.postgresContextualReader(pool);
   const countingOver = (inner) => {
     const state = { reads: 0 };
@@ -1011,7 +1016,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     for (const actor of [techEligible, techPlain, bothRoles, adminUser]) {
       const ctx = await resolveFor(actor);
       // The runtime authority and the provenance resolver agree, key for key.
-      assert.deepEqual([...model.capabilityKeysOf(ctx.entitlements)].sort(), [...ctx.capabilities].sort(), actor.subject);
+      assert.deepEqual([...model.capabilityKeysOf(await ctx.entitlements())].sort(), [...ctx.capabilities].sort(), actor.subject);
       assert.ok(ctx.capabilities.size > 0, `${actor.subject} holds nothing -- the proof would be vacuous`);
       const [state, counting] = countingOver(pgReader);
       for (const capabilityKey of [...ctx.capabilities].sort()) {
@@ -1030,7 +1035,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     const viaShipped = await resolveFor(adminUser);
     const viaStored = await composition.resolveEntitledOperationalContext(
       repo, pool, { identityProvider: "firebase", externalSubject: adminUser.subject, requestedTenantId: null });
-    assert.deepEqual(viaStored.entitlements, viaShipped.entitlements);
+    assert.deepEqual(await viaStored.entitlements(), await viaShipped.entitlements());
     assert.deepEqual([...viaStored.capabilities].sort(), [...viaShipped.capabilities].sort());
     // And a database that cannot ANSWER refuses rather than reading as "unconditioned".
     const broken = { query: async () => { throw new Error("relation does not exist"); },
@@ -1053,7 +1058,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
       const catalog = await composition.postgresGrantConditions(pool, TENANT);
       assert.equal(catalog.size, 1);
       const ctx = await resolveFor(bothRoles, catalog);
-      const reaching = model.entitlementsFor(ctx.entitlements, REQUEST_READ);
+      const reaching = model.entitlementsFor(await ctx.entitlements(), REQUEST_READ);
       assert.equal(reaching.length, 2, "both Roles reach the SAME capability key");
       assert.equal(reaching.filter((e) => e.condition !== null).length, 1, "exactly one path is conditioned");
       const [state, counting] = countingOver(pgReader);
@@ -1064,7 +1069,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
       assert.equal(state.reads, 0, "an unconditional path must cost nothing, whatever else failed");
       // The SAME caller holding ONLY the conditioned Role is refused, so the condition really binds.
       const onlyConditioned = { tenantId: TENANT, principalId: bothRoles.principalId, capabilities: ctx.capabilities,
-        entitlements: reaching.filter((e) => e.grantor.roleKey === conditioned) };
+        entitlements: async () => reaching.filter((e) => e.grantor.roleKey === conditioned) };
       const refused = await composition.authorizeOperationalAction(pgReader, onlyConditioned, { capabilityKey: REQUEST_READ });
       assert.equal(refused.allowed, false);
       assert.equal(refused.outcome, "WORK_ELIGIBILITY_MISSING");
@@ -1077,7 +1082,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     await storeCondition("aj-u-pm", "ROLE", "purchasingManager", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
     const catalog = await composition.postgresGrantConditions(pool, TENANT);
     const ctx = await resolveFor(bothRoles, catalog);
-    assert.equal(model.hasUnconditionalEntitlement(ctx.entitlements, REQUEST_READ), false, "both paths must be conditioned");
+    assert.equal(model.hasUnconditionalEntitlement(await ctx.entitlements(), REQUEST_READ), false, "both paths must be conditioned");
     const d = await composition.authorizeResolvedOperationalAction(pgReader, ctx, { capabilityKey: REQUEST_READ });
     assert.equal(d.allowed, true);
     assert.deepEqual(d.viaGrantor, ROLE("technician"), "the satisfiable path carried it");
@@ -1122,7 +1127,7 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
       for (const roleKey of holders) {
         const entitlements = await composition.resolveRoleEntitlements(pool, TENANT, [roleKey], catalog);
         const actor = { tenantId: TENANT, principalId: techPlain.principalId,
-          capabilities: model.capabilityKeysOf(entitlements), entitlements };
+          capabilities: model.capabilityKeysOf(entitlements), entitlements: async () => entitlements };
         const [state, counting] = countingOver(pgReader);
         const d = await composition.authorizeOperationalAction(counting, actor, { capabilityKey });
         assert.equal(d.allowed, true, `${roleKey} lost ${capabilityKey}`);
@@ -1148,9 +1153,16 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
 
   await t.test("AJ6: the transport carries the entitlement metadata onto the actor the kernels gate on", async () => {
     const ctx = await resolveFor(adminUser);
-    assert.ok(Array.isArray(ctx.entitlements) && ctx.entitlements.length > 0);
+    // A REQUIRED RESOLVER, not a value -- and it still resolves to the same entitlements.
+    assert.equal(typeof ctx.entitlements, "function");
+    const resolved = await ctx.entitlements();
+    assert.ok(Array.isArray(resolved) && resolved.length > 0);
     assert.ok(model.hasResolvedEntitlements(ctx));
     assert.equal(model.hasResolvedEntitlements({ capabilities: ctx.capabilities }), false);
+    // STRICTER THAN AJ: a bare array no longer discharges the obligation. Under the previous check
+    // `entitlements: []` passed this gate; it is now refused, and so is a hand-built list.
+    assert.equal(model.hasResolvedEntitlements({ capabilities: ctx.capabilities, entitlements: [] }), false);
+    assert.equal(model.hasResolvedEntitlements({ capabilities: ctx.capabilities, entitlements: resolved }), false);
     // Source-level, because this is the property that makes the seam real rather than available:
     // the transport puts the resolved entitlements on the actor it hands every runner.
     const src = readFileSync(resolve(FUNCTIONS_DIR, "src/eosWorkforce/workforceHttp.ts"), "utf8");
@@ -1230,5 +1242,506 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     // nothing else.
     const whole = { ...stripped, entitlements: ctx.entitlements };
     assert.ok(await read.readEmployeePrincipalLink({ pool }, whole, { employeeId: "emp-admin" }));
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// AQ — LAZY CONDITIONAL ENTITLEMENT. The Owner's evaluation order, proved with DETERMINISTIC
+// COUNTERS rather than wall-clock: integers counted off the pool and off the request's own context,
+// on a real PostgreSQL, with no timing anywhere.
+//
+// WHAT CHANGED, AND WHAT DID NOT. Lane AJ put the conditional-entitlement metadata on the request
+// path for the EOS transports, and made it a REQUIRED field because "an optional field is a
+// caller-controlled bypass". That reasoning is kept in full. What moved is the WORK, not the DUTY:
+// `entitlements` is now a required RESOLVER rather than a required VALUE, so a request that never
+// asks the question never pays for its answer -- and a caller still cannot omit the obligation,
+// still cannot satisfy it with a stale array, and still cannot make an unreadable store read as
+// "unconditioned".
+//
+// THE MEASURED BEFORE, from the same probe that produced the AFTER numbers pinned below:
+//
+//   scenario                                     capSet  provenance  condition  principal  queries
+//   seam, SHIPPED, gate site never asks             1        1           0          1         12
+//   seam, SHIPPED, gate site asks                   1        1           0          1         12
+//   seam, POSTGRES, gate site never asks            1        1           1          2         23
+//   seam, POSTGRES, gate site asks                  1        1           1          2         23
+//   whole workforce HTTP request, SHIPPED           1        1           0          1         17
+//   whole workforce HTTP request, POSTGRES          1        1           1          2         28
+//
+// Eleven of the thirteen gate sites read `capabilities.has(key)` and nothing else, so that
+// `provenance` column was a per-request indexed read of `role_capabilities` bought for nobody; and
+// the POSTGRES composition resolved the principal TWICE, once only to learn the tenant its
+// condition catalog needed.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+
+test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const name = `laneaq_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  let pool;
+  await withClient(URL_BASE, (c) => c.query(`CREATE DATABASE ${name}`));
+  t.after(async () => {
+    await pool?.end();
+    await withClient(URL_BASE, (c) => c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`));
+  });
+  execFileSync(process.execPath, ["node_modules/node-pg-migrate/bin/node-pg-migrate.js", "up",
+    "--migrations-dir", "migrations", "--no-check-order"],
+  { cwd: FUNCTIONS_DIR, env: { ...process.env, DATABASE_URL: dbUrlFor(name) }, stdio: "pipe" });
+  pool = new pg.Pool({ connectionString: dbUrlFor(name), max: 8 });
+  const q = (sql, v = []) => pool.query(sql, v);
+  const repo = new PostgresPolicyRepository(pool);
+
+  const TENANT = "t-lane-aq";
+  const COMPANY = "sample-co-synthetic";
+  await q(`INSERT INTO eos_policy.tenants (id,key,name) VALUES ($1,$1,$1)`, [TENANT]);
+  await q(`INSERT INTO eos_policy.tenant_operating_companies
+             (tenant_id,operating_company_id,status,source,established_by,updated_by)
+           VALUES ($1,$2,'ACTIVE','lane-aq','fixture','fixture')`, [TENANT, COMPANY]);
+  await q(model.GRANT_CONDITION_RELATION_SCHEMA);
+
+  const fixture = { tenantId: TENANT, uid: "uid-lane-aq" };
+  const ROLE_KEYS = [...new Set([...MIGRATION_GRANTS.map((g) => g.roleKey), "technician", "purchasingManager", "admin"])].sort();
+  const roleIds = {};
+  for (const key of ROLE_KEYS) {
+    roleIds[key] = (await repo.transact(fixture, (tx) =>
+      tx.createRole({ key, name: key, description: null, origin: "CUSTOM", protected: false }))).id;
+  }
+  const grantId = (roleKey, capabilityKey) => `rc-${roleKey}-${capabilityKey}`.slice(0, 60);
+  const grant = async (roleKey, capabilityKey) => {
+    const r = await q(
+      `INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+       SELECT $1,$2,$3,c.id,'fixture','fixture','fixture' FROM eos_policy.capabilities c WHERE c.key = $4
+       ON CONFLICT DO NOTHING`,
+      [grantId(roleKey, capabilityKey), TENANT, roleIds[roleKey], capabilityKey]);
+    assert.equal(r.rowCount, 1, `${capabilityKey} is not in the capability vocabulary`);
+  };
+  for (const g of MIGRATION_GRANTS) await grant(g.roleKey, g.capabilityKey);
+  await grant("technician", PO_READ);
+  await grant("technician", PO_CREATE);
+  await grant("admin", PRINCIPAL_ACCESS_READ);
+
+  const makePrincipal = async (subject, roleKeys) => {
+    const principalId = await repo.transact(fixture, async (tx) => {
+      const p = await tx.createPrincipal({ externalSubject: subject, identityProvider: "firebase" });
+      await tx.createTenantMembership(p.id);
+      return p.id;
+    });
+    for (const roleKey of roleKeys) {
+      await repo.transact(fixture, async (tx) => {
+        const accessVersion = await tx.bumpAccessVersion(principalId);
+        return tx.createAssignment({ principalId, roleId: roleIds[roleKey], scopeType: "global", scopeValue: null,
+          status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+      });
+    }
+    return { principalId, subject, roleKeys };
+  };
+  const linkEmployee = async (key, principalId, eligibility = []) => {
+    await q(`INSERT INTO eos_workforce.employees (id,tenant_id,employment_status,operating_company_id,employee_number)
+             VALUES ($1,$2,'ACTIVE',$3,$4)`, [`emp-${key}`, TENANT, COMPANY, `AQ-${key}`.slice(0, 32)]);
+    await q(`INSERT INTO eos_policy.employee_principal_links
+               (id,tenant_id,principal_id,employee_id,operating_company_id,link_source,status,asserted_by,assertion_reason)
+             VALUES ($1,$2,$3,$4,$5,'OPERATOR_ASSERTED','active','fixture','lane aq fixture')`,
+    [`lnk-${key}`.slice(0, 60), TENANT, principalId, `emp-${key}`, COMPANY]);
+    for (const code of eligibility) {
+      await q(`INSERT INTO eos_workforce.employee_work_eligibility
+                 (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
+               VALUES ($1,$2,$3,$4,now(),'fixture')`, [`we-${key}-${code}`.slice(0, 60), TENANT, `emp-${key}`, code]);
+    }
+  };
+  const adminUser = await makePrincipal("uid-aq-admin", ["admin"]);
+  const bothRoles = await makePrincipal("uid-aq-both", ["technician", "purchasingManager"]);
+  await linkEmployee("admin", adminUser.principalId, []);
+  await linkEmployee("both", bothRoles.principalId, ["SERVICE_TECHNICIAN"]);
+
+  const storeCondition = (id, scope, grantorKey, capabilityKey, condition, status = "ACTIVE") =>
+    q(`INSERT INTO eos_policy.capability_grant_conditions
+         (id,tenant_id,grant_scope,grantor_key,capability_key,condition,status,established_by,updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,'lane-aq','lane-aq')`,
+    [id, TENANT, scope, grantorKey, capabilityKey, JSON.stringify(condition), status]);
+  const clearConditions = () => q(`DELETE FROM eos_policy.capability_grant_conditions`);
+  const conditionRowCount = async () =>
+    (await q(`SELECT count(*)::int n FROM eos_policy.capability_grant_conditions`)).rows[0].n;
+
+  // ════════════════════ THE INSTRUMENT ════════════════════
+  //
+  // Every query one request issues, bucketed by the relation its SQL names. Integers only: no
+  // clock, no wall time, nothing that varies between runs or between machines. `grantProvenance`
+  // is the second `role_capabilities` read AJ added; `capabilitySet` is the one that was always
+  // there; `conditionCatalog` is the read of the condition relation itself.
+  const countingPool = (inner) => {
+    const counts = { capabilitySet: 0, grantProvenance: 0, conditionCatalog: 0, principalContext: 0, total: 0 };
+    const reset = () => { for (const k of Object.keys(counts)) counts[k] = 0; };
+    const note = (sql) => {
+      const s = String(sql ?? "");
+      counts.total += 1;
+      if (/role_capabilities/.test(s) && /SELECT DISTINCT c\.key/.test(s)) counts.capabilitySet += 1;
+      else if (/role_capabilities/.test(s) && /r\.key AS role_key/.test(s)) counts.grantProvenance += 1;
+      else if (/capability_grant_conditions/.test(s) && /^\s*SELECT/.test(s)) counts.conditionCatalog += 1;
+      else if (/FROM eos_policy\.principals|principal_role_assignments/.test(s)) counts.principalContext += 1;
+    };
+    const wrap = (target, withConnect) => new Proxy(target, {
+      get(tgt, prop, recv) {
+        if (prop === "query") return (...a) => { note(typeof a[0] === "string" ? a[0] : a[0]?.text); return tgt.query(...a); };
+        if (withConnect && prop === "connect") return async () => wrap(await tgt.connect(), false);
+        const v = Reflect.get(tgt, prop, recv);
+        return typeof v === "function" ? v.bind(tgt) : v;
+      },
+    });
+    return { db: wrap(inner, true), counts, reset, snap: () => ({ ...counts }) };
+  };
+  const countingReader = (inner) => {
+    const state = { reads: 0 };
+    return [state, {
+      linkedEmployeeId: async (...a) => { state.reads += 1; return inner.linkedEmployeeId(...a); },
+      hasWorkEligibility: async (...a) => { state.reads += 1; return inner.hasWorkEligibility(...a); },
+      hasOperationalScope: async (...a) => { state.reads += 1; return inner.hasOperationalScope(...a); },
+      isAssignedEmployee: async (...a) => { state.reads += 1; return inner.isAssignedEmployee(...a); },
+    }];
+  };
+  const pgReader = evaluator.postgresContextualReader(pool);
+  const inputFor = (a) => ({ identityProvider: "firebase", externalSubject: a.subject, requestedTenantId: null });
+  /** One instrumented REQUEST: its own counting pool, its own context, its own counters. */
+  const request = async (actor, { source = "SHIPPED" } = {}) => {
+    const m = countingPool(pool);
+    const resolver = source === "POSTGRES"
+      ? composition.resolveEntitledOperationalContext : capabilityAuthority.resolveOperationalContext;
+    const ctx = await resolver(new PostgresPolicyRepository(m.db), m.db, inputFor(actor));
+    return { ctx, m, resolved: m.snap() };
+  };
+
+  // ════════════════════ AQ2 — THE OWNER'S EVALUATION ORDER ════════════════════
+
+  await t.test("AQ2 step 1: a capability the actor does NOT hold reads NOTHING -- no context, no condition, no grant", async () => {
+    const { ctx, m } = await request(adminUser);
+    m.reset();
+    const [state, reader] = countingReader(pgReader);
+    const d = await composition.authorizeResolvedOperationalAction(reader, ctx, { capabilityKey: "inventory.cycleCount.create" });
+    assert.equal(d.allowed, false);
+    assert.equal(d.outcome, "CAPABILITY_MISSING", "the refusal changed shape");
+    assert.equal(d.contextEvaluated, false);
+    // THE LAZINESS, MECHANICALLY: the resolver was never even ASKED, so no store was touched.
+    assert.equal(ctx.lookups.requests, 0, "a missing capability asked for entitlements it could not use");
+    assert.equal(ctx.lookups.resolutions, 0);
+    assert.deepEqual(m.snap(), { capabilitySet: 0, grantProvenance: 0, conditionCatalog: 0, principalContext: 0, total: 0 });
+    assert.equal(state.reads, 0);
+  });
+
+  await t.test("AQ2 steps 2 and 3: a valid UNCONDITIONAL path allows with NO condition lookup and NO context read", async () => {
+    assert.equal(await conditionRowCount(), 0);
+    const { ctx, m } = await request(adminUser);
+    m.reset();
+    const [state, reader] = countingReader(pgReader);
+    const d = await composition.authorizeResolvedOperationalAction(reader, ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
+    assert.equal(d.allowed, true);
+    assert.equal(d.viaCondition, false, "allowed AROUND the conditional machinery, not through it");
+    assert.equal(d.contextEvaluated, false, "an unconditional path consulted a context authority");
+    assert.deepEqual(d.viaGrantor, ROLE("admin"));
+    const after = m.snap();
+    // The obligation IS discharged -- one provenance read, because the decision must know WHO
+    // granted the key before it may call that grant unconditional.
+    assert.equal(ctx.lookups.resolutions, 1);
+    assert.equal(after.grantProvenance, 1);
+    // ...and NOTHING conditional was looked up: zero condition rows read, zero context reads.
+    assert.equal(after.conditionCatalog, 0, "the deployed path read the condition relation");
+    assert.equal(state.reads, 0, "an unconditional allow cost a context read");
+  });
+
+  // ════════════════════ AQ4 — THE ZERO-ROW FAST PATH ════════════════════
+
+  await t.test("AQ4: with ZERO condition rows the ordinary path costs ONE provenance read and nothing else", async () => {
+    assert.equal(await conditionRowCount(), 0);
+    for (const actor of [adminUser, bothRoles]) {
+      const { ctx, m } = await request(actor);
+      assert.ok(ctx.capabilities.size > 0, "the proof would be vacuous");
+      m.reset();
+      const [state, reader] = countingReader(pgReader);
+      for (const capabilityKey of [...ctx.capabilities].sort()) {
+        const d = await composition.authorizeResolvedOperationalAction(reader, ctx, { capabilityKey });
+        assert.equal(d.allowed, true, `${actor.subject} lost ${capabilityKey}`);
+        assert.equal(d.contextEvaluated, false, `${actor.subject} acquired a context requirement on ${capabilityKey}`);
+        assert.equal(d.viaCondition, false);
+      }
+      const after = m.snap();
+      // EVERY held capability, decided, for ONE read of the grant store and ZERO of anything else.
+      assert.equal(after.grantProvenance, 1, `${actor.subject}: ${ctx.capabilities.size} checks cost ${after.grantProvenance} provenance reads`);
+      assert.equal(after.conditionCatalog, 0, `${actor.subject}: the zero-row relation was read anyway`);
+      assert.equal(after.total, 1, `${actor.subject}: conditional entitlement cost ${after.total} queries with no conditions in force`);
+      assert.equal(state.reads, 0, `${actor.subject}: ${state.reads} context reads with zero conditions`);
+      // And the two resolvers still agree, key for key, which is the adoption contract.
+      assert.deepEqual([...model.capabilityKeysOf(await ctx.entitlements())].sort(), [...ctx.capabilities].sort());
+    }
+  });
+
+  await t.test("AQ4: a transport whose gate sites only read the flat Set resolves NO entitlements at all", async () => {
+    // This is the shape eleven of the thirteen gate sites run -- catalogMasterKernel,
+    // commercialCommandKernel, commercialReadKernel, accountAuthority, crmAuthorityKernel,
+    // employeeChangeHistoryRead, reorderAssignmentAuthority, workOrderAssignmentAuthority,
+    // workOrderLifecycle, workOrderCreateCommand, workOrderPartsPlanAuthority -- and every one of
+    // the non-Workforce transports. BEFORE: one provenance read per request, for nobody.
+    const { ctx, resolved } = await request(bothRoles);
+    assert.equal(ctx.capabilities.has(REQUEST_READ), true, "the flat gate still answers");
+    assert.equal(resolved.capabilitySet, 1, "the flat capability set is still resolved eagerly, as every gate site needs it");
+    assert.equal(resolved.grantProvenance, 0, "a request nobody asked still paid for the provenance read");
+    assert.equal(resolved.conditionCatalog, 0);
+    assert.equal(resolved.principalContext, 1, "the principal was resolved more than once");
+    assert.equal(ctx.lookups.requests, 0);
+    assert.equal(ctx.lookups.resolutions, 0);
+  });
+
+  // ════════════════════ AQ3 — REQUEST-SCOPED MEMOIZATION, AND NOTHING LONGER ════════════════════
+
+  await t.test("AQ3: N asks in ONE request cost ONE resolution", async () => {
+    const { ctx, m } = await request(adminUser);
+    m.reset();
+    const keys = [...ctx.capabilities].sort();
+    assert.ok(keys.length >= 2, "the proof needs more than one capability");
+    // Ask for the SAME capability repeatedly, then for DIFFERENT ones, then the resolver directly.
+    for (let i = 0; i < 3; i += 1) await composition.authorizeResolvedOperationalAction(pgReader, ctx, { capabilityKey: keys[0] });
+    for (const capabilityKey of keys) await composition.authorizeResolvedOperationalAction(pgReader, ctx, { capabilityKey });
+    await ctx.entitlements();
+    await ctx.entitlements();
+    const asks = 3 + keys.length + 2;
+    assert.equal(ctx.lookups.requests, asks, "the counter did not see every ask");
+    assert.equal(ctx.lookups.resolutions, 1, `${asks} asks caused ${ctx.lookups.resolutions} resolutions`);
+    assert.equal(m.snap().grantProvenance, 1);
+    assert.equal(m.snap().conditionCatalog, 0);
+    // The memoized value is the SAME object, not an equal copy: nothing re-derives per ask.
+    assert.equal(await ctx.entitlements(), await ctx.entitlements());
+  });
+
+  await t.test("AQ3: NOTHING is memoized across requests -- no TTL, no global cache, no invalidation", async () => {
+    // Two requests for the SAME principal each resolve for themselves.
+    const first = await request(adminUser);
+    await first.ctx.entitlements();
+    const second = await request(adminUser);
+    await second.ctx.entitlements();
+    assert.equal(first.ctx.lookups.resolutions, 1);
+    assert.equal(second.ctx.lookups.resolutions, 1, "the second request reused the first request's answer");
+    assert.notEqual(first.ctx.entitlements, second.ctx.entitlements, "two requests shared one resolver");
+    assert.equal(second.m.snap().grantProvenance, 1, "the second request read the grant store zero times: it was cached");
+
+    // A grant CHANGED between two requests is visible to the next one IMMEDIATELY. A cache with a
+    // TTL could not pass this; a cache needing invalidation would have to be told.
+    const UNHELD = "inventory.cycleCount.create";
+    const before = await request(adminUser);
+    assert.equal(model.hasUnconditionalEntitlement(await before.ctx.entitlements(), UNHELD), false,
+      "the fixture already granted the key -- the proof would be vacuous");
+    await grant("admin", UNHELD);
+    const after = await request(adminUser);
+    assert.equal(model.hasUnconditionalEntitlement(await after.ctx.entitlements(), UNHELD), true,
+      "a grant ADDED between two requests was not seen: something is cached across requests");
+    assert.equal(after.ctx.capabilities.has(UNHELD), true, "the flat set is resolved per request too");
+    await q(`DELETE FROM eos_policy.role_capabilities WHERE id = $1`, [grantId("admin", UNHELD)]);
+    const restored = await request(adminUser);
+    assert.equal(model.hasUnconditionalEntitlement(await restored.ctx.entitlements(), UNHELD), false,
+      "a grant REMOVED between two requests was not seen: a stale cache would be a widening");
+    assert.equal(restored.ctx.capabilities.has(UNHELD), false);
+  });
+
+  // ════════════════════ AQ6 — THE PERFORMANCE PROOF ════════════════════
+
+  await t.test("AQ6: the four scenarios, before and after, as exact query counts", async () => {
+    // The BEFORE numbers are the measured ones in this block's header; AFTER is asserted here.
+    // 1. AN ORDINARY REQUEST whose gate sites never reach the entitled decision. 2 -> 1.
+    const ordinary = (await request(bothRoles)).resolved;
+    assert.equal(ordinary.capabilitySet + ordinary.grantProvenance, 1, "BEFORE 2 role_capabilities reads, AFTER 1");
+    assert.equal(ordinary.total, 11, "BEFORE 12 queries, AFTER 11");
+
+    // 2. AN UNCONDITIONAL CAPABILITY, decided. The provenance read MOVED to the ask; it did not
+    //    multiply. A request that does ask still costs exactly what it cost before.
+    const u = await request(adminUser);
+    await composition.authorizeResolvedOperationalAction(pgReader, u.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
+    assert.equal(u.m.snap().total, 12, "BEFORE 12 queries, AFTER 12 -- the work moved, it did not grow");
+    assert.equal(u.m.snap().grantProvenance, 1);
+    assert.equal(u.m.snap().conditionCatalog, 0);
+
+    // 3. A CONDITIONAL CAPABILITY, over the POSTGRES condition source. The duplicate principal
+    //    resolution is gone: 23 -> 13.
+    await clearConditions();
+    await storeCondition("aq-perf", "ROLE", "admin", PRINCIPAL_ACCESS_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const c = await request(adminUser, { source: "POSTGRES" });
+    assert.equal(c.resolved.principalContext, 1, "BEFORE 2 principal resolutions, AFTER 1");
+    assert.equal(c.resolved.conditionCatalog, 1, "the withheld-cell guard must still read the relation here");
+    assert.equal(c.resolved.total, 13, "BEFORE 23 queries, AFTER 13");
+    c.m.reset();
+    const [state, reader] = countingReader(pgReader);
+    const d = await composition.authorizeResolvedOperationalAction(reader, c.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
+    assert.equal(d.allowed, false);
+    assert.equal(d.outcome, "WORK_ELIGIBILITY_MISSING", "the condition stopped binding");
+    assert.equal(d.contextEvaluated, true);
+    assert.equal(c.m.snap().total, 0, "deciding a conditional capability re-read the policy stores");
+    assert.ok(state.reads > 0, "a conditional decision must consult the governed authority");
+
+    // 4. THE SAME CAPABILITY CHECKED REPEATEDLY IN ONE REQUEST. Still one resolution, still zero
+    //    further policy reads.
+    c.m.reset();
+    for (let i = 0; i < 4; i += 1) await composition.authorizeResolvedOperationalAction(pgReader, c.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
+    assert.equal(c.m.snap().total, 0, "a repeated check re-read the policy stores");
+    assert.equal(c.ctx.lookups.resolutions, 1);
+    await clearConditions();
+  });
+
+  // ════════════════════ AQ5 — MULTI-PATH CORRECTNESS, ORDER-INDEPENDENT ════════════════════
+
+  await t.test("AQ5: an UNCONDITIONAL path allows even when another path's condition fails -- both ways round", async () => {
+    assert.ok(holdersOf(REQUEST_READ).includes("technician") && holdersOf(REQUEST_READ).includes("purchasingManager"));
+    for (const [conditioned, allowingRole] of [["technician", "purchasingManager"], ["purchasingManager", "technician"]]) {
+      await clearConditions();
+      await storeCondition(`aq-multi-${conditioned}`, "ROLE", conditioned, REQUEST_READ,
+        { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+      // `bothRoles` holds no PARTS_OPERATIONS eligibility, so the conditioned path CANNOT succeed.
+      const { ctx, m } = await request(bothRoles, { source: "POSTGRES" });
+      const reaching = model.entitlementsFor(await ctx.entitlements(), REQUEST_READ);
+      assert.equal(reaching.length, 2, "both Roles reach the SAME capability key");
+      assert.equal(reaching.filter((e) => e.condition !== null).length, 1, "exactly one path is conditioned");
+      m.reset();
+      const [state, reader] = countingReader(pgReader);
+      const d = await composition.authorizeResolvedOperationalAction(reader, ctx, { capabilityKey: REQUEST_READ });
+      assert.equal(d.allowed, true, `the ${allowingRole} path was denied by ${conditioned}'s failed condition`);
+      assert.deepEqual(d.viaGrantor, ROLE(allowingRole));
+      assert.equal(d.viaCondition, false);
+      assert.equal(state.reads, 0, "an unconditional path must cost nothing, whatever else failed");
+      assert.equal(m.snap().total, 0, "the decision re-read a store the request had already resolved");
+      // And the SAME caller holding ONLY the conditioned path is refused, so the condition binds.
+      const onlyConditioned = { tenantId: TENANT, principalId: bothRoles.principalId, capabilities: ctx.capabilities,
+        entitlements: async () => reaching.filter((e) => e.grantor.roleKey === conditioned) };
+      const refused = await composition.authorizeOperationalAction(pgReader, onlyConditioned, { capabilityKey: REQUEST_READ });
+      assert.equal(refused.allowed, false);
+      assert.equal(refused.outcome, "WORK_ELIGIBILITY_MISSING");
+    }
+    await clearConditions();
+  });
+
+  await t.test("AQ5: a CONDITIONAL-ONLY path evaluates context, and no valid path fails closed", async () => {
+    await clearConditions();
+    // Both Roles conditioned: there is no unconditional path, so the context MUST be consulted.
+    await storeCondition("aq-only-t", "ROLE", "technician", REQUEST_READ, { paths: [[ELIGIBILITY("SERVICE_TECHNICIAN")]] });
+    await storeCondition("aq-only-p", "ROLE", "purchasingManager", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const { ctx } = await request(bothRoles, { source: "POSTGRES" });
+    assert.equal(model.hasUnconditionalEntitlement(await ctx.entitlements(), REQUEST_READ), false);
+    const [state, reader] = countingReader(pgReader);
+    const d = await composition.authorizeResolvedOperationalAction(reader, ctx, { capabilityKey: REQUEST_READ });
+    assert.equal(d.allowed, true, "the satisfiable path did not carry it");
+    assert.equal(d.viaCondition, true);
+    assert.deepEqual(d.viaGrantor, ROLE("technician"));
+    assert.ok(state.reads > 0, "a conditional-only path decided without consulting the context authority");
+    assert.deepEqual(d.denials.map((x) => [x.grantor.roleKey, x.outcome]), [["purchasingManager", "WORK_ELIGIBILITY_MISSING"]],
+      "the other path's refusal was lost");
+
+    // NO VALID PATH -> fails closed, and never back onto the flat set.
+    await clearConditions();
+    // GOVERNED codes this actor does not hold: `bothRoles` carries SERVICE_TECHNICIAN and nothing
+    // else. An UNGOVERNED code would report WORK_ELIGIBILITY_UNMAPPED, which is the platform
+    // admitting it cannot decide rather than a statement about the caller.
+    await storeCondition("aq-none-t", "ROLE", "technician", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    await storeCondition("aq-none-p", "ROLE", "purchasingManager", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const closed = await request(bothRoles, { source: "POSTGRES" });
+    assert.equal(closed.ctx.capabilities.has(REQUEST_READ), true, "the FLAT set still says held -- which is the whole point");
+    const refused = await composition.authorizeResolvedOperationalAction(pgReader, closed.ctx, { capabilityKey: REQUEST_READ });
+    assert.equal(refused.allowed, false, "no path was valid and the caller was still admitted");
+    assert.equal(refused.outcome, "WORK_ELIGIBILITY_MISSING");
+    assert.equal(refused.denials.length, 2);
+    await clearConditions();
+  });
+
+  // ════════════════════ AQ — THE BYPASS THAT MUST NOT COME BACK ════════════════════
+
+  await t.test("AQ: laziness did NOT reintroduce the caller-controlled bypass", async () => {
+    const { ctx } = await request(adminUser);
+    const base = { tenantId: TENANT, principalId: adminUser.principalId, capabilities: ctx.capabilities };
+    const held = PRINCIPAL_ACCESS_READ;
+    assert.equal(ctx.capabilities.has(held), true, "the flat set says HELD for every case below");
+
+    // 1. THE OBLIGATION IS NOT OPTIONAL. An actor that simply omits it is refused, not decided on
+    //    the flat set -- exactly as AJ left it.
+    assert.equal(model.hasResolvedEntitlements(base), false);
+    const omitted = await composition.authorizeOperationalAction(pgReader, base, { capabilityKey: held });
+    assert.equal(omitted.allowed, false, "an actor with no entitlement obligation was ALLOWED");
+    assert.equal(omitted.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE");
+
+    // 2. AND IT IS NOW STRICTER: a VALUE no longer discharges it. Under AJ's check any array passed,
+    //    including an empty one and including a hand-built one that says "unconditioned".
+    const real = await ctx.entitlements();
+    for (const [label, value] of [["empty array", []], ["the REAL entitlements, as a value", real],
+      ["a fabricated unconditional grant", [{ capabilityKey: held, grantor: ROLE("admin"), condition: null }]]]) {
+      assert.equal(model.hasResolvedEntitlements({ ...base, entitlements: value }), false, label);
+      const d = await composition.authorizeOperationalAction(pgReader, { ...base, entitlements: value }, { capabilityKey: held });
+      assert.equal(d.allowed, false, `${label} was ALLOWED`);
+      assert.equal(d.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE", label);
+    }
+
+    // 3. A RESOLVER THAT CANNOT ANSWER FAILS CLOSED. "The store could not be read" is never "then
+    //    there are no conditions" -- the parity defect this repository has already paid for once.
+    const broken = await composition.authorizeOperationalAction(pgReader,
+      { ...base, entitlements: async () => { throw new Error("relation does not exist"); } }, { capabilityKey: held });
+    assert.equal(broken.allowed, false, "an unreadable condition store read as UNCONDITIONED");
+    assert.equal(broken.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE");
+    assert.equal(broken.contextEvaluated, false);
+
+    // 4. A RESOLVER THAT ANSWERS "NOTHING" IS A DISAGREEMENT, AND THE STRICTER ANSWER WINS.
+    const empty = await composition.authorizeOperationalAction(pgReader,
+      { ...base, entitlements: async () => [] }, { capabilityKey: held });
+    assert.equal(empty.allowed, false, "the flat set said held, the provenance resolver said nobody granted it, and it ALLOWED");
+    assert.equal(empty.outcome, "CAPABILITY_MISSING");
+
+    // 5. A RESOLVER THAT ANSWERS RUBBISH IS AN OUTAGE, NOT A PASS.
+    for (const junk of [null, undefined, "unconditioned", {}, 7]) {
+      const d = await composition.authorizeOperationalAction(pgReader,
+        { ...base, entitlements: async () => junk }, { capabilityKey: held });
+      assert.equal(d.allowed, false, `a resolver returning ${JSON.stringify(junk) ?? "undefined"} was ALLOWED`);
+      assert.equal(d.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE");
+    }
+
+    // 6. THE WHOLE CONTEXT FAILS CLOSED when the stores are unreadable, on both compositions.
+    const dead = { query: async () => { throw new Error("connection terminated unexpectedly"); },
+      connect: async () => { throw new Error("connection terminated unexpectedly"); } };
+    await assert.rejects(() => capabilityAuthority.resolveOperationalContext(repo, dead, inputFor(adminUser)));
+    await assert.rejects(() => composition.resolveEntitledOperationalContext(repo, dead, inputFor(adminUser)));
+    // A pool that answers the flat set but NOT the condition relation must still refuse: the lazy
+    // resolver propagates the failure rather than resolving to "unconditioned".
+    const noRelation = await capabilityAuthority.resolveOperationalContext(repo, pool, inputFor(adminUser),
+      async () => { throw new Error("relation eos_policy.capability_grant_conditions does not exist"); });
+    await assert.rejects(() => noRelation.entitlements(), /does not exist/);
+    const stillRefused = await composition.authorizeResolvedOperationalAction(pgReader, noRelation, { capabilityKey: held });
+    assert.equal(stillRefused.allowed, false, "an unreadable condition source allowed a request");
+    assert.equal(stillRefused.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE");
+
+    // 7. A MISCOMPOSED SERVER -- the old catalog argument -- refuses at COMPOSITION, not one request later.
+    await assert.rejects(() => capabilityAuthority.resolveOperationalContext(repo, pool, inputFor(adminUser),
+      model.SHIPPED_GRANT_CONDITIONS), /GrantConditionProvider/);
+  });
+
+  await t.test("AQ: the flat gate still runs FIRST and both refusal codes are still distinct", async () => {
+    for (const file of ["src/eosWorkforce/reads/employeeReadKernel.ts", "src/eosWorkforce/commands/employeeCommandKernel.ts"]) {
+      const kernel = readFileSync(resolve(FUNCTIONS_DIR, file), "utf8");
+      assert.match(kernel, /hasResolvedEntitlements\(actor\)/, `${file} dropped the obligation check`);
+      assert.match(kernel, /actor\.capabilities\.has\(/, `${file} replaced the flat gate instead of layering on it`);
+      assert.match(kernel, /authorizeEntitledAction\(/, `${file} does not reach the conditional decision`);
+      // The flat refusal must still be REACHED first: order is the guarantee that the new path can
+      // only ever refuse further.
+      assert.ok(kernel.indexOf(`refuse("CAPABILITY_REQUIRED"`) < kernel.indexOf(`refuse("CAPABILITY_CONDITION_UNSATISFIED"`),
+        `${file}: the conditional refusal now precedes the flat one`);
+    }
+    // The resolver choice is still SERVER composition, never a request field.
+    const http = readFileSync(resolve(FUNCTIONS_DIR, "src/eosWorkforce/workforceHttp.ts"), "utf8");
+    assert.match(http, /deps\.grantConditionSource === "POSTGRES"/);
+    assert.doesNotMatch(http, /request\.[A-Za-z.]*grantConditionSource|caller\.[A-Za-z.]*grantCondition/);
+    assert.match(http, /entitlements: ctx\.entitlements/);
+  });
+
+  await t.test("AQ: the two Purchase Order cells are STILL withheld, lazily resolved or not", async () => {
+    await clearConditions();
+    await storeCondition("aq-po-read", "ROLE", "technician", PO_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
+    const catalog = await composition.postgresGrantConditions(pool, TENANT);
+    assert.equal(catalog.size, 1);
+    assert.throws(() => model.assertNoWithheldGrantConditions(catalog), /WITHHELD conditioned cell/);
+    // THE PRODUCTION RESOLVER STILL REJECTS. Laziness did not push this guard out to whichever gate
+    // site happens to ask: resolveEntitledOperationalContext discharges the obligation itself, so a
+    // withheld cell is seen HERE, on every request, whether any gate site goes on to ask or not.
+    await assert.rejects(() => composition.resolveEntitledOperationalContext(repo, pool, inputFor(adminUser)),
+      /WITHHELD conditioned cell/, "the production resolver accepted a withheld cell");
+    // ...and the provider itself refuses, which is where the rows are actually read.
+    await assert.rejects(() => composition.postgresGrantConditionProvider(pool)(TENANT), /WITHHELD conditioned cell/);
+    assert.equal(model.SHIPPED_GRANT_CONDITIONS.size, 0, "the shipped catalog grew a condition");
+    await clearConditions();
+    assert.equal(await conditionRowCount(), 0, "the withholding proof left a row behind");
   });
 });

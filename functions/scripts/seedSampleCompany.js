@@ -861,14 +861,16 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   // "deployed code is not a live grant" rule applied to this script's own actor.
   const adminCapabilities = await capabilitiesForRoleKeys(pool, tenantId, adminRoleKeys);
   // The governed command gates on the conditional ENTITLEMENT (grantor + condition), not only on the
-  // flat key set, and refuses an actor that carries no entitlements rather than falling back to the
-  // set -- so this script resolves the same provenance the EOS transports resolve, from the same
-  // grant rows. The shipped condition catalog is empty, so every entitlement here is unconditional
-  // and the command behaves exactly as it did.
+  // flat key set, and refuses an actor that carries no entitlement RESOLVER rather than falling back
+  // to the set -- so this script resolves the same provenance the EOS transports resolve, from the
+  // same grant rows, and hands it over the same way: as a required provider, memoized for this run,
+  // never as a pre-computed value. The shipped condition catalog is empty, so every entitlement here
+  // is unconditional and the command behaves exactly as it did.
   const { resolveRoleEntitlements } = require("../lib/eosOps/entitledActionAuthority.js");
+  let reportingEntitlements;
   const reportingActor = {
     tenantId, principalId: admin.id, capabilities: new Set(adminCapabilities),
-    entitlements: await resolveRoleEntitlements(pool, tenantId, adminRoleKeys),
+    entitlements: () => (reportingEntitlements ??= resolveRoleEntitlements(pool, tenantId, adminRoleKeys)),
   };
   for (const edge of manifest.reportingRelationships.edges) {
     const { rows } = await pool.query(

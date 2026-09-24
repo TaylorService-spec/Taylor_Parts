@@ -25,9 +25,13 @@ import {
   principalCapabilityGrants,
   resolveOperationalContext,
   roleCapabilityGrants,
+  type GrantConditionProvider,
   type ResolvedOperationalContext,
 } from "./capabilityAuthority";
-import { resolvePrincipalContext } from "../adminPolicy/principalContext";
+// No `resolvePrincipalContext` import any more: this module used to resolve the principal itself,
+// only to learn the tenant its condition catalog needed, and then hand the same input to
+// `resolveOperationalContext`, which resolved it a second time. The condition PROVIDER takes the
+// resolved tenant as an argument instead, so there is exactly one principal resolution per request.
 import type { ResolveContextInput } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { postgresContextualReader, type ContextualReader } from "./contextualAuthorization";
@@ -41,6 +45,7 @@ import {
   type CapabilityGrant,
   type EntitledActionDecision,
   type EntitledActor,
+  type EntitlementResolver,
   type EntitlementSet,
   type GrantConditionCatalog,
 } from "./conditionalEntitlement";
@@ -121,17 +126,14 @@ export async function authorizeEntitledResolvedAction(
   assertNoWithheldGrantConditions(SHIPPED_GRANT_CONDITIONS);
 
   const tenantId = resolved.principalContext.tenantId;
-  let entitlements: EntitlementSet;
-  try {
-    entitlements = await resolveRoleEntitlements(
-      pool, tenantId, resolved.principalContext.heldRoleKeys, SHIPPED_GRANT_CONDITIONS);
-  } catch {
-    return Object.freeze({
-      allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE" as const,
-      detail: "entitlements could not be resolved", contextEvaluated: false,
-      viaGrantor: null, viaCondition: false, denials: Object.freeze([]),
-    });
-  }
+  // LAZY AND MEMOIZED, here too. This entry point serves a caller holding only a principal context,
+  // so it must re-resolve from the pool -- but it need not do so BEFORE the flat capability check
+  // has admitted the caller, and it need not do so twice. `authorizeEntitledAction` invokes this at
+  // most once, and only after step 1 of the Owner's order has passed. A failure to read propagates
+  // into the decision as CONTEXT_AUTHORITY_UNAVAILABLE, exactly as it did when it was caught here.
+  let pending: Promise<EntitlementSet> | undefined;
+  const entitlements: EntitlementResolver = () => (pending ??= resolveRoleEntitlements(
+    pool, tenantId, resolved.principalContext.heldRoleKeys, SHIPPED_GRANT_CONDITIONS));
   const actor: EntitledActor = Object.freeze({
     tenantId,
     principalId: resolved.principalContext.uid,
@@ -164,7 +166,8 @@ export interface OperationalActor {
   readonly tenantId: string;
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
-  readonly entitlements: EntitlementSet;
+  /** The REQUIRED, request-scoped entitlement provider. Never an optional field, never a value. */
+  readonly entitlements: EntitlementResolver;
 }
 
 /** Re-exported from the pure model, which is where a gate site should import it from. */
@@ -222,19 +225,54 @@ export function authorizeResolvedOperationalAction(
  * composition to this function -- not a schema change, not a redesign, and not something a caller
  * can do by passing an argument.
  *
- * IT FAILS CLOSED. A database without the relation throws out of `postgresGrantConditions`; this
- * function does not catch it, because "the condition store could not be read" must never resolve to
- * "there are no conditions".
+ * IT FAILS CLOSED. A database without the relation throws out of `postgresGrantConditions`; neither
+ * the provider nor this function catches it, because "the condition store could not be read" must
+ * never resolve to "there are no conditions". The throw surfaces wherever the obligation is
+ * discharged: out of this function when a gate site awaits the resolver, and as
+ * CONTEXT_AUTHORITY_UNAVAILABLE when the decision path awaits it.
  */
 export async function resolveEntitledOperationalContext(
   reader: PolicyReader,
   pool: Pool,
   input: ResolveContextInput,
 ): Promise<ResolvedOperationalContext> {
-  const principalContext = await resolvePrincipalContext(reader, input);
-  const conditions = await postgresGrantConditions(pool, principalContext.tenantId);
-  // The Owner's withheld cells can never be activated through a deployed composition, wherever the
-  // rows came from -- the shipped catalog or the relation.
-  assertNoWithheldGrantConditions(conditions);
-  return resolveOperationalContext(reader, pool, input, conditions);
+  // ONE principal resolution, not two. This used to resolve the principal itself -- only to learn
+  // the tenant the condition catalog needed -- and then hand the same input to
+  // `resolveOperationalContext`, which resolved it all over again. The provider takes the tenant as
+  // an argument instead, so the duplicate resolution is gone.
+  const context = await resolveOperationalContext(reader, pool, input, postgresGrantConditionProvider(pool));
+  // AND THIS COMPOSITION DISCHARGES THE OBLIGATION EAGERLY, ON PURPOSE.
+  //
+  // Laziness is a performance property and the withheld-cell ruling is a safety property; where they
+  // meet, the ruling wins. `postgresGrantConditionProvider` is the only code that can SEE a stored
+  // row naming `reorder.purchaseOrder.read` or `.create`, and the Owner's guard says THIS FUNCTION
+  // must reject such a store -- not some later gate site, and not only the gate sites that happen to
+  // ask. So the resolver is awaited once, here, which is what makes `assertNoWithheldGrantConditions`
+  // still throw out of the production resolver exactly as it did before.
+  //
+  // It costs nothing twice: the resolution is memoized on the context, so every gate site that goes
+  // on to ask reads the stores ZERO further times. And it costs the DEPLOYED composition nothing at
+  // all -- no composition sets `grantConditionSource` to POSTGRES, so the deployed path is
+  // `resolveOperationalContext` with the SHIPPED provider, which stays fully lazy.
+  await context.entitlements();
+  return context;
+}
+
+/**
+ * The PostgreSQL condition source, as a provider.
+ *
+ * Server composition, never a request field: `workforceHttp` selects it from
+ * `deps.grantConditionSource`, which no deployed composition sets to POSTGRES.
+ *
+ * It asserts the Owner's withheld cells on every load, so a row naming
+ * `reorder.purchaseOrder.read` or `.create` can never reach a deployed decision however it got into
+ * the relation -- and it asserts them where the rows are READ, which is the only place that can see
+ * them. It does not catch: an unreadable store fails closed.
+ */
+export function postgresGrantConditionProvider(pool: Pool): GrantConditionProvider {
+  return async (tenantId: string) => {
+    const conditions = await postgresGrantConditions(pool, tenantId);
+    assertNoWithheldGrantConditions(conditions);
+    return conditions;
+  };
 }

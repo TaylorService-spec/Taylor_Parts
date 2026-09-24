@@ -1015,7 +1015,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
         const { entitlementsFrom } = require("../lib/eosOps/conditionalEntitlement.js");
         await establishReportingRelationship({ pool: pool2 },
           { tenantId, principalId: adminPrincipalId, capabilities: new Set(["admin.employeeProfile.write"]),
-            entitlements: entitlementsFrom([{ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey: "admin.employeeProfile.write" }]) },
+            entitlements: async () => entitlementsFrom([{ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey: "admin.employeeProfile.write" }]) },
           { employeeId, managerEmployeeId, reason: "SAMPLE COMPANY V2 verifier proof" });
       } finally {
         await pool2.end();

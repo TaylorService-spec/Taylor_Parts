@@ -141,11 +141,12 @@ test("display name is derived deterministically from governed name facts", () =>
 test("reporting writer: capability, input and self-management refusals touch no database", async () => {
   let connects = 0;
   const pool = { connect: async () => { connects++; throw new Error("no database"); } };
-  // A RESOLVED actor carries its entitlements. Built through the real composer with the SHIPPED
-  // (empty) catalog, so every entitlement is unconditional -- what the deployed resolver produces.
+  // A RESOLVED actor carries its entitlement RESOLVER -- the required provider the deployed
+  // composer builds, never a value. Composed over the SHIPPED (empty) catalog, so every entitlement
+  // is unconditional, which is what the deployed resolver produces.
   const entitlement = require("../lib/eosOps/conditionalEntitlement.js");
   const actor = (caps) => ({ tenantId: "t1", principalId: "p1", capabilities: new Set(caps),
-    entitlements: entitlement.entitlementsFrom(caps.map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey }))) });
+    entitlements: async () => entitlement.entitlementsFrom(caps.map((capabilityKey) => ({ grantor: { kind: "ROLE", roleKey: "admin" }, capabilityKey }))) });
   await assert.rejects(commands.establishReportingRelationship({ pool }, actor(["employee.record.read"]), { employeeId: "e1", managerEmployeeId: "e2" }), (e) => e.code === "CAPABILITY_REQUIRED");
   await assert.rejects(commands.establishReportingRelationship({ pool }, actor(["admin.employeeProfile.write"]), { employeeId: "e1", managerEmployeeId: "e1" }), (e) => e.code === "REPORTING_SELF_MANAGER");
   await assert.rejects(commands.establishReportingRelationship({ pool }, actor(["admin.employeeProfile.write"]), { employeeId: "e1", managerEmployeeId: "e2", tenantId: "t2" }), (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED");

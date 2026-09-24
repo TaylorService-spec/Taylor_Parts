@@ -38,6 +38,7 @@ import {
   entitlementsFrom,
   SHIPPED_GRANT_CONDITIONS,
   type CapabilityGrant,
+  type EntitlementResolver,
   type EntitlementSet,
   type GrantConditionCatalog,
 } from "./conditionalEntitlement";
@@ -55,24 +56,101 @@ export type OperationalCapabilityKey =
   | "inventory.cycleCount.reconcile"
   | "inventory.cycleCount.close";
 
+/**
+ * WHERE THE CONDITIONS COME FROM — server composition, resolved LAZILY.
+ *
+ * A PROVIDER rather than a catalog, for the same reason `entitlements` is a provider: the deployed
+ * composition must be able to name PostgreSQL as the condition source without paying for a read on
+ * every request, including the eleven of thirteen gate sites that never consult the answer.
+ *
+ * It is a function of the RESOLVED tenant, never of anything the caller sent. Which provider is
+ * composed is a deployment decision (`deps.grantConditionSource`), never a request field.
+ */
+export type GrantConditionProvider =
+  (tenantId: string) => GrantConditionCatalog | Promise<GrantConditionCatalog>;
+
+/** The deployed provider: the SHIPPED catalog, which is empty, frozen, and costs ZERO queries. */
+export const SHIPPED_GRANT_CONDITION_PROVIDER: GrantConditionProvider = () => SHIPPED_GRANT_CONDITIONS;
+
+/**
+ * What ONE request actually spent on conditional entitlement. Deterministic integers, no clock.
+ *
+ * `requests` counts how many times a gate site ASKED this request for its entitlements;
+ * `resolutions` counts how many times the grant and condition stores were actually READ. With
+ * request-scoped memoization `resolutions` is 0 (nobody asked) or 1 (somebody asked, once or many
+ * times) and is never larger, whatever a kernel's capability loop does.
+ */
+export interface EntitlementLookupCounters {
+  readonly requests: number;
+  readonly resolutions: number;
+}
+
+interface MutableLookupCounters { requests: number; resolutions: number }
+
 export interface ResolvedOperationalContext {
   readonly principalContext: PrincipalContext;
   /** Capability KEYS held via active Role assignments, in the resolved tenant only. UNCHANGED. */
   readonly capabilities: ReadonlySet<string>;
   /**
-   * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- the conditional-entitlement metadata,
-   * carried on the real request path.
+   * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- behind a REQUIRED, REQUEST-SCOPED,
+   * MEMOIZING resolver.
    *
-   * Every one of the five EOS transports composes `resolveOperationalContext`, so this is the single
-   * place provenance can enter the runtime without thirteen separate changes. `capabilityKeysOf` of
-   * this list EQUALS `capabilities` above; a gate site may keep reading the flat Set and lose
-   * nothing, or ask `entitledActionAuthority.authorizeOperationalAction` and reach a CONDITIONAL
-   * decision with no further resolution.
+   * Every one of the EOS transports composes `resolveOperationalContext`, so this is the single
+   * place provenance can enter the runtime without thirteen separate changes -- and, for the same
+   * reason, the single place a per-request cost lands on all of them. Eleven of the thirteen gate
+   * sites read `capabilities.has(key)` and never look at this at all, so resolving it eagerly spent
+   * one indexed read of `role_capabilities` per request to answer a question nobody asked.
    *
-   * It is a field, not an optional one: a caller that could omit it could omit every condition with
-   * it, which is precisely the caller-controlled-bypass shape this repository has already paid for.
+   * DEFERRING THE WORK IS NOT DEFERRING THE OBLIGATION. This is a required field holding a required
+   * PROVIDER, not an optional value: a caller cannot omit it, cannot substitute a stale array for
+   * it, and cannot hand in one that answers "unconditioned" when the store is unreadable -- the
+   * provider propagates the failure and `authorizeEntitledAction` refuses
+   * CONTEXT_AUTHORITY_UNAVAILABLE. `capabilityKeysOf(await entitlements())` still EQUALS
+   * `capabilities` above.
+   *
+   * MEMOIZED FOR THIS REQUEST AND NOTHING LONGER. The promise lives on this frozen context object
+   * and dies with it. There is no TTL, no global cache, no invalidation: a second request resolves
+   * again, from the store, as it must.
    */
-  readonly entitlements: EntitlementSet;
+  readonly entitlements: EntitlementResolver;
+  /** What this request spent. See EntitlementLookupCounters. */
+  readonly lookups: EntitlementLookupCounters;
+}
+
+/**
+ * The request-scoped, memoizing entitlement resolver.
+ *
+ * ONE resolution per request, however many gate sites ask and however many capabilities a kernel
+ * checks in its loop. A REJECTION is memoized too, deliberately: the store was unreadable for this
+ * request, and a retry inside the same request must not be able to turn that outage into a
+ * successful "no conditions found".
+ */
+function requestScopedEntitlementResolver(
+  pool: Pool,
+  tenantId: string,
+  heldRoleKeys: readonly string[],
+  conditions: GrantConditionProvider,
+  counters: MutableLookupCounters,
+): EntitlementResolver {
+  let pending: Promise<EntitlementSet> | undefined;
+  return () => {
+    counters.requests += 1;
+    if (pending) return pending;
+    counters.resolutions += 1;
+    pending = (async () => {
+      // The provenance read and the condition catalog, together, and only now. `capabilitiesForRoleKeys`
+      // already answered "what may this Principal do"; this answers "and WHO granted it, under what".
+      const [grantRows, catalog] = await Promise.all([
+        roleCapabilityGrants(pool, tenantId, heldRoleKeys),
+        Promise.resolve(conditions(tenantId)),
+      ]);
+      const grants: CapabilityGrant[] = grantRows.map((r) => ({
+        grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey,
+      }));
+      return entitlementsFrom(grants, catalog);
+    })();
+    return pending;
+  };
 }
 
 /**
@@ -88,22 +166,30 @@ export async function resolveOperationalContext(
   reader: PolicyReader,
   pool: Pool,
   input: ResolveContextInput,
-  conditions: GrantConditionCatalog = SHIPPED_GRANT_CONDITIONS,
+  conditions: GrantConditionProvider = SHIPPED_GRANT_CONDITION_PROVIDER,
 ): Promise<ResolvedOperationalContext> {
+  // FAIL CLOSED ON A MISCOMPOSED SERVER. The fourth argument used to be a catalog; a deployment that
+  // still passes one would silently produce a resolver that throws on first use. It refuses here,
+  // loudly, at composition time, rather than one request later.
+  if (typeof conditions !== "function") {
+    throw new Error("resolveOperationalContext: the condition source must be a GrantConditionProvider");
+  }
   const principalContext = await resolvePrincipalContext(reader, input);
   // TWO RESOLVERS, DELIBERATELY. `capabilitiesForRoleKeys` is untouched and stays the authority for
   // "what may this Principal do"; `roleCapabilityGrants` answers "and WHO granted it" over the same
   // rows. They are proved equal by test rather than derived from one another, because a single
-  // resolver silently changing shape is how a policy answer drifts without anyone noticing. The cost
-  // is one extra indexed read of role_capabilities per request.
-  const [capabilities, grantRows] = await Promise.all([
-    capabilitiesForRoleKeys(pool, principalContext.tenantId, principalContext.heldRoleKeys),
-    roleCapabilityGrants(pool, principalContext.tenantId, principalContext.heldRoleKeys),
-  ]);
-  const grants: CapabilityGrant[] = grantRows.map((r) => ({
-    grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey,
-  }));
-  return Object.freeze({ principalContext, capabilities, entitlements: entitlementsFrom(grants, conditions) });
+  // resolver silently changing shape is how a policy answer drifts without anyone noticing.
+  //
+  // ONLY THE FIRST IS EAGER. The flat set is what every one of the thirteen gate sites reads, so it
+  // is resolved on the request path as it always was. The provenance read and the condition catalog
+  // are deferred behind the required resolver below, because eleven of those gate sites never look
+  // at them -- and a request that does not ask a question should not pay for its answer.
+  const capabilities = await capabilitiesForRoleKeys(
+    pool, principalContext.tenantId, principalContext.heldRoleKeys);
+  const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
+  const entitlements = requestScopedEntitlementResolver(
+    pool, principalContext.tenantId, principalContext.heldRoleKeys, conditions, counters);
+  return Object.freeze({ principalContext, capabilities, entitlements, lookups: counters });
 }
 
 /**

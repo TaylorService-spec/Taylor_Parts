@@ -211,9 +211,11 @@ export async function executeWorkforceOperation(
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
       capabilities: ctx.capabilities,
-      // The conditional-entitlement metadata, already resolved by resolveOperationalContext on this
-      // request. The same actor serves the read kernel and the command kernel, so both gate sites
-      // reach a per-GRANT decision without a second resolution.
+      // The conditional-entitlement obligation, as the REQUIRED request-scoped resolver
+      // resolveOperationalContext built for this request. The same actor serves the read kernel and
+      // the command kernel, and the resolver memoizes, so both gate sites -- and a read requiring
+      // several capabilities -- reach a per-GRANT decision on ONE resolution of the stores. A
+      // request whose gate sites never ask resolves nothing at all.
       entitlements: ctx.entitlements,
     });
     return { ok: true, operation, result: await RUNNERS[operation](deps, actor, request.input) };

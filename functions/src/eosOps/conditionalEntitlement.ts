@@ -276,9 +276,37 @@ export const hasUnconditionalEntitlement = (entitlements: EntitlementSet, capabi
 
 // ════════════════════ THE DECISION ════════════════════
 
+/**
+ * THE OBLIGATION, AS A PROVIDER — how "resolve lazily" is said WITHOUT saying "resolve optionally".
+ *
+ * Lane AJ made `entitlements` a required FIELD and gave the reason: "an optional field is a
+ * caller-controlled bypass". That reason is right, and it is about the OBLIGATION, not about the
+ * WORK. A required field forces the work to happen on every request, including the eleven of
+ * thirteen gate sites that never consult the result — which is the cost the Owner asked to remove.
+ *
+ * A required THUNK removes the work and keeps the obligation:
+ *
+ *   - It is not optional. `EntitledActor.entitlements` has no `?`; an actor cannot be built without
+ *     one, and `hasResolvedEntitlements` refuses anything that is not a function. A caller that
+ *     omits it is refused, exactly as before.
+ *   - It cannot be satisfied by a VALUE. A pre-computed array -- stale, hand-built, or carried over
+ *     from another request -- no longer type-checks and no longer passes the gate. This is STRICTER
+ *     than the field it replaces, which accepted any array including `[]`.
+ *   - It cannot answer "unconditioned" when the store is unreadable. The thunk the composition
+ *     builds propagates the store's failure; `authorizeEntitledAction` turns a rejected resolution
+ *     into CONTEXT_AUTHORITY_UNAVAILABLE and never into an allow. Reading a missing condition store
+ *     as "there are no conditions" is the one thing this model may never do.
+ *   - It is invoked ONLY after the flat capability check has already admitted the caller, so a
+ *     caller without the key costs zero reads -- the lazy order the Owner ruled.
+ */
+export type EntitlementResolver = () => EntitlementSet | Promise<EntitlementSet>;
+
 export interface EntitledActor extends ContextualActor {
-  /** Provenance-preserving entitlements for this actor, in the resolved tenant only. */
-  readonly entitlements: EntitlementSet;
+  /**
+   * Provenance-preserving entitlements for this actor, in the resolved tenant only, behind a
+   * REQUIRED resolver. Required, never optional, and never a plain value -- see EntitlementResolver.
+   */
+  readonly entitlements: EntitlementResolver;
 }
 
 export interface EntitlementDenial {
@@ -335,11 +363,16 @@ const decide = (d: Omit<EntitledActionDecision, "denials"> & { denials?: readonl
 /**
  * Decide one action for one entitled actor.
  *
- * ORDER, and every step observable in the returned decision:
+ * ORDER — the Owner's lazy order, and every step observable in the returned decision:
  *
- *   1  CAPABILITY, from the flat set the runtime authority resolved — unchanged, first, and on its
- *      own. Zero context reads for a caller who does not hold the key. Then the entitlement list
- *      must agree; a disagreement between the two resolvers refuses, never allows.
+ *   0  CAPABILITY, from the flat set the runtime authority resolved — unchanged, first, and on its
+ *      own. A caller who does not hold the key is refused CAPABILITY_MISSING having read NOTHING:
+ *      the entitlement resolver is not invoked, so no grant row and no condition row is touched.
+ *   1  THE OBLIGATION, discharged. The resolver is invoked exactly once here and its result
+ *      memoized by whoever built it. A resolver that is absent, that is not a function, or that
+ *      cannot answer is CONTEXT_AUTHORITY_UNAVAILABLE — never a fall back to the flat set, and
+ *      never "then there are no conditions". Then the entitlement list must AGREE with the flat
+ *      set; a disagreement between the two resolvers refuses, never allows.
  *   2  ANY UNCONDITIONAL ENTITLEMENT ALLOWS, before any conditional one is considered, so an
  *      unconditioned holder costs ZERO context reads — the property that keeps the other eleven
  *      Purchase Order Roles exactly as they are.
@@ -355,13 +388,37 @@ export async function authorizeEntitledAction(
 ): Promise<EntitledActionDecision> {
   const { actor, capabilityKey } = request;
 
-  // 1. CAPABILITY FIRST — byte-identical to the seam's refusal, and BEFORE the entitlement list is
-  //    consulted, so a caller without authority learns only that they lack the capability.
+  // 0. CAPABILITY FIRST — byte-identical to the seam's refusal, BEFORE the entitlement resolver is
+  //    invoked, so a caller without authority learns only that they lack the capability AND costs
+  //    the platform nothing. This is step 1 of the Owner's evaluation order.
   if (!actor || !(actor.capabilities instanceof Set) || !actor.capabilities.has(capabilityKey)) {
     return decide({ allowed: false, outcome: "CAPABILITY_MISSING", detail: capabilityKey,
       contextEvaluated: false, viaGrantor: null, viaCondition: false });
   }
-  const reaching = entitlementsFor(actor.entitlements ?? [], capabilityKey);
+
+  // 1. THE OBLIGATION. Deferring the WORK never defers the DUTY: an actor that cannot produce its
+  //    entitlements is refused, never decided on the flat capability set alone.
+  if (typeof actor.entitlements !== "function") {
+    return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+      detail: "a resolved entitlement provider is required", contextEvaluated: false,
+      viaGrantor: null, viaCondition: false });
+  }
+  let resolvedEntitlements: EntitlementSet;
+  try {
+    resolvedEntitlements = await actor.entitlements();
+  } catch {
+    // The grant store or the condition store could not be read. That is an OUTAGE, and an outage is
+    // not the fact "this grant carries no condition".
+    return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+      detail: "entitlements could not be resolved", contextEvaluated: false,
+      viaGrantor: null, viaCondition: false });
+  }
+  if (!Array.isArray(resolvedEntitlements)) {
+    return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+      detail: "the entitlement provider did not return an entitlement set", contextEvaluated: false,
+      viaGrantor: null, viaCondition: false });
+  }
+  const reaching = entitlementsFor(resolvedEntitlements, capabilityKey);
   if (reaching.length === 0) {
     // The runtime capability set says held, the provenance resolver says nobody granted it. Two
     // authorities disagreeing is not a licence to pick the permissive one.
@@ -428,21 +485,26 @@ export async function authorizeEntitledAction(
 }
 
 /**
- * Is this actor carrying the conditional-entitlement metadata at all?
+ * Is this actor carrying the conditional-entitlement OBLIGATION at all?
  *
  * A gate site must REFUSE an actor without it rather than fall back to the flat capability set.
  * Falling back would mean any caller that omitted the field escaped every condition -- the
  * caller-controlled bypass shape this repository has already paid for once. Absent metadata is an
  * unresolved actor, and an unresolved actor is refused.
  *
+ * STRICTER THAN THE CHECK IT REPLACES. It used to accept any ARRAY, so an actor carrying
+ * `entitlements: []` -- a hand-built, stale or deliberately emptied list -- passed this gate and was
+ * only caught one step later. It now accepts only a PROVIDER, which nothing but a resolution
+ * against the live grant and condition stores can satisfy: a value, of any shape, is refused here.
+ *
  * It lives HERE, in the pure model, rather than beside the PostgreSQL composition, so that a domain
  * kernel adopting the seam imports no SQL, no connection pool factory and no `pg` -- which is a
  * boundary several Workforce and Commercial guards already pin.
  */
 export function hasResolvedEntitlements(
-  actor: { readonly entitlements?: EntitlementSet } | null | undefined,
+  actor: { readonly entitlements?: EntitlementResolver | EntitlementSet } | null | undefined,
 ): boolean {
-  return Array.isArray(actor?.entitlements);
+  return typeof actor?.entitlements === "function";
 }
 
 /** Every reason this module can report. The evaluator's vocabulary, plus the seam's outage outcome. */
