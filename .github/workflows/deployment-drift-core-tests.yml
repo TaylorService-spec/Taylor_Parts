@@ -29,6 +29,9 @@ on:
       - "scripts/sandboxHostingOnlyMode.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
+      - "scripts/eosApiEnvironmentContract.test.mjs"
+      - "config/environments.json"
+      - "render.yaml"
       - "scripts/indexDriftGuard.mjs"
       - "scripts/listIndexCoverage.mjs"
       - "field-ops-app-vite/src/metadata/**"
@@ -70,6 +73,9 @@ on:
       - "scripts/sandboxHostingOnlyMode.test.mjs"
       - "scripts/resolveEnvironment.mjs"
       - "scripts/environmentArchitecture.test.mjs"
+      - "scripts/eosApiEnvironmentContract.test.mjs"
+      - "config/environments.json"
+      - "render.yaml"
       - "scripts/indexDriftGuard.mjs"
       - "scripts/listIndexCoverage.mjs"
       - "field-ops-app-vite/src/metadata/**"
@@ -141,6 +147,11 @@ jobs:
       # conflation, no weakened production guard.
       - name: Environment architecture invariants (O-3)
         run: node --test scripts/environmentArchitecture.test.mjs
+      # WAVE 7 / LANE AD -- the EOS trusted API connectivity contract. Where the API is, that the
+      # registry and render.yaml agree about it, that only the sandbox has one, and that declaring
+      # an address did not enable the navigation authority seam.
+      - name: EOS API environment contract (Lane AD)
+        run: node --test scripts/eosApiEnvironmentContract.test.mjs
       # O-4 — a repo-driven index deploy must never silently delete a live index.
       - name: Index drift guard (O-4)
         run: node --test scripts/indexDriftGuard.test.mjs

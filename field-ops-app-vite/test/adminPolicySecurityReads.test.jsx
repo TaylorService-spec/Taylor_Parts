@@ -220,7 +220,9 @@ describe("a refusal is a refusal, never an empty security answer", () => {
 
 describe("not configured, not signed in and unreachable stay three different answers", () => {
   it("NOT CONFIGURED never reaches the network, and is not an empty result", async () => {
-    // The state every environment is in today: VITE_EOS_API_BASE_URL is absent. A screen that
+    // The state of any build without VITE_EOS_API_BASE_URL -- a local run, and a production build,
+    // where config/environments.json declares `eosApi: null` on purpose. (The non-production Vercel
+    // build DOES carry the variable; this used to say "every environment" and was wrong.) A screen that
     // rendered an empty security grid here would be lying about the tenant rather than about the
     // connection -- and on a security screen that reads as "nobody holds anything".
     const f = respond({ ok: true, data: [], tenantId: "t" });

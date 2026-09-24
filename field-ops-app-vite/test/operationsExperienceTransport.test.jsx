@@ -31,6 +31,7 @@ import {
   EXPERIENCE_STATE,
   EXPERIENCE_UNAVAILABLE_REASON,
 } from "../src/access/experienceContext.js";
+import { isPolicyApiConfigured, policyApiBaseUrl } from "../src/services/adminPolicyApiClient.js";
 import { useExperienceContext } from "../src/hooks/useExperienceContext.js";
 import { EOS_NAVIGATION_AUTHORITY_READY } from "../src/config/navigationAuthorityReadiness.js";
 
@@ -183,5 +184,121 @@ describe("useExperienceContext", () => {
     expect(EXPERIENCE_UNAVAILABLE_REASON.length).toBeGreaterThan(60);
     expect(EXPERIENCE_UNAVAILABLE_REASON).toMatch(/not a sign-in problem/);
     expect(EXPERIENCE_UNAVAILABLE_REASON).toMatch(/not a permission decision/);
+  });
+});
+
+// ════════════════════ WAVE 7 / LANE AD — CONFIGURED IS NOT ENABLED ════════════════════
+//
+// Everything above proves the transport and the hook behave. This last group proves the thing a
+// deployment actually turns on, and it is the pair that has to hold TOGETHER:
+//
+//   configured + readiness false  ->  not one request leaves the browser
+//   configured + readiness true   ->  NOT_CONFIGURED is no longer reachable
+//
+// It matters because the two were being conflated. `VITE_EOS_API_BASE_URL` is set in the Vercel
+// non-production project and inlined into that bundle, and a reader who takes that to mean the EOS
+// navigation seam is live has it backwards; a reader who takes the seam being off to mean the API is
+// unconfigured has it backwards the other way, and blocks work that is not blocked.
+//
+// The suites above inject a client. These deliberately do NOT stub `policyApiBaseUrl` -- they set the
+// real environment variable the shipped bundle reads, so "configured" means configured.
+describe("the EOS API address and the navigation seam are two different switches", () => {
+  // The address config/environments.json records for platform-sandbox, and the one render.yaml's
+  // eos-api-nonprod service serves. Duplicated here on purpose: if the registry moves and this does
+  // not, the first assertion fails and says so.
+  const NONPROD_BASE = "https://eos-api-nonprod.onrender.com";
+
+  it("is pointed at the address the ONE registry declares for the non-production environment", () => {
+    const registry = JSON.parse(readFileSync("../config/environments.json", "utf8"));
+    const sandbox = registry.environments.find((e) => e.id === "platform-sandbox");
+    expect(sandbox.eosApi.baseUrl).toBe(NONPROD_BASE);
+    // And the registry has not quietly enabled the seam while declaring the address.
+    for (const env of registry.environments) {
+      expect(env.readiness.EOS_NAVIGATION_AUTHORITY_READY).toBe(false);
+    }
+  });
+
+  it("NOT CONFIGURED is what an environment without the variable really gets", () => {
+    // The control. Without it, the two tests below could both pass against a client that ignored
+    // configuration entirely.
+    vi.stubEnv("VITE_EOS_API_BASE_URL", "");
+    try {
+      expect(policyApiBaseUrl()).toBeNull();
+      expect(isPolicyApiConfigured()).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("CONFIGURED + readiness false: NOT ONE experience request is made", async () => {
+    vi.stubEnv("VITE_EOS_API_BASE_URL", NONPROD_BASE);
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("the network must not be reached while the seam is off");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      // The API really is configured -- this is not a test that passes because nothing was set up.
+      expect(policyApiBaseUrl()).toBe(NONPROD_BASE);
+      expect(isPolicyApiConfigured()).toBe(true);
+      // Readiness is what is false, and it is a compile-time constant.
+      expect(EOS_NAVIGATION_AUTHORITY_READY).toBe(false);
+
+      const client = {
+        call: vi.fn(async () => ({ ok: true, operation: "resolveMyExperienceContext", result: WELL_FORMED })),
+      };
+      // `enabled` is NOT passed: the hook takes the environment's readiness flag, exactly as the
+      // shipped app does.
+      const { result, rerender } = renderHook(() => useExperienceContext({ client, principalKey: "uid-1" }));
+      rerender();
+      await Promise.resolve();
+
+      expect(client.call).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      // null authority is how every caller knows the legacy navigation path is still in charge.
+      // Navigation is unchanged by configuring the API, which is the whole claim.
+      expect(result.current.authority).toBeNull();
+      expect(result.current.context).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("CONFIGURED + readiness true (in this test only): NOT_CONFIGURED can no longer happen", async () => {
+    // The isolated counterfactual. Nothing here flips a deployed environment: the seam is enabled
+    // for ONE hook instance through the `enabled` argument, which is the injection point the design
+    // provides precisely so that no production-importable override has to exist.
+    vi.stubEnv("VITE_EOS_API_BASE_URL", NONPROD_BASE);
+    try {
+      let seenUrl = null;
+      // The REAL transport, reading the REAL environment variable -- baseUrl is not passed.
+      const result = await callOperationsApi("resolveMyExperienceContext", {
+        getIdToken: async () => "token-abc",
+        fetchImpl: async (url) => {
+          seenUrl = url;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ ok: true, operation: "resolveMyExperienceContext", result: WELL_FORMED }),
+          };
+        },
+      });
+      // The precise failure the blocker predicted, and it is gone: with the base URL present the
+      // client resolves an address instead of reporting NOT_CONFIGURED -> UNAVAILABLE -> a retry
+      // refusal for every persona.
+      expect(result.ok).toBe(true);
+      expect(result.code).toBeUndefined();
+      expect(seenUrl).toBe(`${NONPROD_BASE}/operations/experience`);
+
+      // And through the hook: a seam that is ON reaches READY rather than UNAVAILABLE.
+      const client = {
+        call: vi.fn(async () => ({ ok: true, operation: "resolveMyExperienceContext", result: WELL_FORMED })),
+      };
+      const { result: hook } = renderHook(() => useExperienceContext({ client, principalKey: "uid-1", enabled: true }));
+      await waitFor(() => expect(hook.current.state).toBe(EXPERIENCE_STATE.READY));
+      expect(hook.current.reason).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
