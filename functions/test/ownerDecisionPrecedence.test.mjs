@@ -57,6 +57,35 @@ const DECIDED_HOLDERS = [
       "admin/owner. The matrix grants nearly every role Contacts CR; mapping that to crm.activity.* " +
       "would have reversed the ruling by spreadsheet column.",
   },
+  // ---- OWNER_ACCEPTED_CATALOG_RECONCILIATION (docs/DECISIONS.md #180, 2026-09-23) ----
+  //
+  // Three capabilities, six eos_policy.role_capabilities rows (admin and owner for each), written into the
+  // nonprod policy database by the existing governed Role-catalog grant reconciliation while a persona
+  // seed was being unblocked. The Owner reviewed them and ruled KEEP: they are GOVERNED CATALOG
+  // RECONCILIATION, not persona-specific grants, because they match the compiled catalog exactly.
+  // ROLE_CATALOG_RECONCILIATION_ACCEPTED = YES.
+  //
+  // Recording them HERE, and not only in prose, is the point: the acceptance rests entirely on the
+  // holder set being admin + owner and nothing else. If a regenerated Role definition ever widened one
+  // of these three, the row the Owner accepted would no longer be the row in the database, and the
+  // acceptance would have been quietly transferred to something the Owner never saw.
+  ...[
+    ["admin.employeeJobRole.write", "EMP-RT-08: the tenant Job Role catalog is administered, never earned by holding a Job Role and never delegated to managers."],
+    ["admin.employeeWorkEligibility.write", "the operationalRoles decomposition (Owner ruling 2026-09-17): a qualification is ADMINISTERED, never earned by Security Role."],
+    ["admin.employeeOperationalScope.write", "the operationalRoles decomposition (Owner ruling 2026-09-17): WHERE an Employee may work is its own capability, separate from WHAT they are qualified for."],
+  ].map(([capability, why]) => ({
+    capability,
+    holders: ["admin", "owner"],
+    decision:
+      "OWNER_ACCEPTED_CATALOG_RECONCILIATION -- docs/DECISIONS.md #180 (2026-09-23). The Owner ruled KEEP on the " +
+      "six role_capabilities rows (this capability to admin and to owner, for each of the three Employee " +
+      "administration capabilities) that a governed grant reconciliation wrote into the nonprod policy database: " +
+      "they EXACTLY match the compiled Role catalog, so they reconciled the catalog rather than widening it, and " +
+      "they are not persona-specific grants. Do not revert them. " + why + " The same ruling forbids persona " +
+      "tooling from reaching for that power implicitly: see scripts/sampleCompany/personaE2EHarness.js, where " +
+      "PERSONA_PROVISIONING may not write eos_policy.role_capabilities at all and the separate, explicitly named " +
+      "GOVERNED_CATALOG_RECONCILIATION mode provisions no persona.",
+  })),
 ];
 
 for (const entry of DECIDED_HOLDERS) {

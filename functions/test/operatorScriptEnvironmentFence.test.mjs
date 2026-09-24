@@ -331,6 +331,11 @@ for (const [label, args, env, pattern] of [
 // scripts/seedPersonaAuthorityDimensionsCli.js writes eos_workforce.employee_work_eligibility and
 // employee_operational_scopes through their governed commands (--apply). It administers as a NAMED Principal and must
 // refuse before `pg` or lib/ is resolved. It has no production mode and never creates a tenant, Employee or Principal.
+//
+// THE PERSONA WRITE BOUNDARY (Owner ruling, docs/DECISIONS.md #180) is part of that same fence: the governed
+// catalog-reconciliation mode -- the only mode in which this CLI may touch eos_policy.role_capabilities -- is named by
+// TWO explicit flags together, and a half-named mode is refused here, before `pg` loads, rather than downgraded to a
+// persona run that quietly provisions instead.
 const PERSONA_DIMENSIONS = "scripts/seedPersonaAuthorityDimensionsCli.js";
 const PERSONA_ARGS = ["--environment", "platform-sandbox", "--databaseUrlEnv", "EMP_FENCE_DB", "--tenantKey", "taylor-nonprod", "--performedBy", "op", "--adminPrincipalId", "p-1", "--apply"];
 for (const [label, args, env, pattern] of [
@@ -341,6 +346,12 @@ for (const [label, args, env, pattern] of [
   ["no tenant key", PERSONA_ARGS.filter((a) => a !== "--tenantKey" && a !== "taylor-nonprod"), EMP_ENV, /--tenantKey is required/],
   ["no performedBy", PERSONA_ARGS.filter((a) => a !== "--performedBy" && a !== "op"), EMP_ENV, /--performedBy <operator> is required/],
   ["no administering Principal", PERSONA_ARGS.filter((a) => a !== "--adminPrincipalId" && a !== "p-1"), EMP_ENV, /--adminPrincipalId is required/],
+  ["the catalog-reconciliation mode without the Owner decision", [...PERSONA_ARGS, "--governedCatalogReconciliation"], EMP_ENV,
+    /--governedCatalogReconciliation requires --ownerDecision 180/],
+  ["the catalog-reconciliation mode naming the WRONG Owner decision", [...PERSONA_ARGS, "--governedCatalogReconciliation", "--ownerDecision", "179"], EMP_ENV,
+    /--governedCatalogReconciliation requires --ownerDecision 180/],
+  ["an Owner decision without the mode flag", [...PERSONA_ARGS, "--ownerDecision", "180"], EMP_ENV,
+    /--ownerDecision is only meaningful with --governedCatalogReconciliation/],
 ]) {
   test(`persona authority dimensions: refuses (${label}) before any client library loads`, () => {
     const res = runCli(PERSONA_DIMENSIONS, args, env);

@@ -156,8 +156,13 @@ test("the Work Order assignment path needs nothing except a Role that declares i
 
 // ════════════════════════════ the preflight ════════════════════════════
 
+const PERSONA_CAPABILITIES = ["admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"];
+
 const LIVE = Object.freeze({
-  capabilities: new Set(["admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"]),
+  // What the canonical policy CATALOG declares for any Role in the tenant, vs. what the ADMINISTERING
+  // PRINCIPAL actually holds. Two different facts, two different remedies, two different block codes.
+  catalogCapabilityKeys: new Set(PERSONA_CAPABILITIES),
+  capabilities: new Set(PERSONA_CAPABILITIES),
   employeeIds: new Set(SAMPLE_COMPANY.employees.map((e) => e.id)),
   warehouseIds: new Set(["SC-WH-MAIN", "SC-WH-SERVICE"]),
   activeOperatingCompanyKeys: new Set(["taylor"]),
@@ -213,6 +218,115 @@ test("the preflight writes nothing and holds no driver", () => {
   for (const f of ["require(\"pg\")", "require('pg')", "firebase-admin", "INSERT INTO", "UPDATE ", "DELETE FROM"]) {
     assert.ok(!source.includes(f), `the harness must not contain ${f}`);
   }
+});
+
+// ══════════ the persona write boundary (Owner ruling, docs/DECISIONS.md #180) ══════════
+//
+// The Owner accepted six role_capabilities rows as governed catalog reconciliation and ruled that
+// future persona tooling must not reach for that power unless explicitly operating in a governed
+// catalog-reconciliation mode. These tests pin the boundary and the fail-closed default.
+
+test("a capability the CANONICAL CATALOG lacks is its own block code, and its own remedy", () => {
+  const plan = dimensions.planPersonaAuthorityDimensions();
+  const result = harness.preflightAuthorityPlan(plan, { ...LIVE, catalogCapabilityKeys: new Set() });
+  assert.equal(result.counts.applicable, 0, "nothing is applicable when the catalog declares neither capability");
+  assert.equal(result.counts.blocked, 13);
+  assert.deepEqual([...new Set(result.blocked.map((b) => b.code))], ["POLICY_RECONCILIATION_REQUIRED"]);
+  assert.deepEqual([...new Set(result.blocked.map((b) => b.detail))].sort(), [...PERSONA_CAPABILITIES].sort(),
+    "the refusal names the exact capability keys the canonical policy database lacks");
+});
+
+test("an unreconciled CATALOG is reported BEFORE, and never as, a Principal that lacks the grant", () => {
+  // Both facts missing at once. The catalog is the one the operator must act on first, because no
+  // Role assignment can make a capability live that no Role in the tenant holds at all.
+  const plan = dimensions.planPersonaAuthorityDimensions();
+  const result = harness.preflightAuthorityPlan(plan, {
+    ...LIVE, catalogCapabilityKeys: new Set(), capabilities: new Set(),
+  });
+  assert.ok(result.blocked.every((b) => b.code === "POLICY_RECONCILIATION_REQUIRED"));
+  assert.ok(!result.blocked.some((b) => b.code === "CAPABILITY_NOT_LIVE"),
+    "reporting CAPABILITY_NOT_LIVE here would send the operator to fix a Role assignment that could not help");
+});
+
+test("a catalog that declares the capability, held by nobody, is still the ordinary CAPABILITY_NOT_LIVE", () => {
+  const plan = dimensions.planPersonaAuthorityDimensions();
+  const result = harness.preflightAuthorityPlan(plan, { ...LIVE, capabilities: new Set() });
+  assert.ok(result.blocked.every((b) => b.code === "CAPABILITY_NOT_LIVE"),
+    "the catalog is reconciled; what is missing is this operator's Role assignment, which is not a catalog change");
+});
+
+test("the two persona modes are disjoint: neither may write the other's authority", () => {
+  assert.deepEqual([...harness.PERSONA_PROVISIONING_MODES], ["PERSONA_PROVISIONING", "GOVERNED_CATALOG_RECONCILIATION"]);
+  assert.deepEqual([...harness.CATALOG_RECONCILIATION_MAY_WRITE], ["eos_policy.role_capabilities"],
+    "the canonical policy catalog is the ONLY thing a reconciliation run may write");
+  for (const target of harness.PERSONA_PROVISIONING_MAY_WRITE) {
+    assert.equal(harness.assertPersonaWriteTarget("PERSONA_PROVISIONING", target), target);
+    assert.equal(refusal(() => harness.assertPersonaWriteTarget("GOVERNED_CATALOG_RECONCILIATION", target)).code,
+      "PERSONA_WRITE_OUTSIDE_PROVISIONING", `${target} must not be writable by a catalog-reconciliation run`);
+  }
+  assert.ok(harness.PERSONA_PROVISIONING_MAY_WRITE.includes("eos_workforce.employee_work_eligibility"));
+  assert.ok(harness.PERSONA_PROVISIONING_MAY_WRITE.includes("eos_workforce.employee_operational_scopes"));
+  assert.ok(!harness.PERSONA_PROVISIONING_MAY_WRITE.includes("eos_policy.role_capabilities"));
+});
+
+test("persona provisioning refuses the canonical policy catalog by NAME, not by omission", () => {
+  const err = refusal(() => harness.assertPersonaWriteTarget("PERSONA_PROVISIONING", "eos_policy.role_capabilities"));
+  assert.equal(err.code, "POLICY_RECONCILIATION_REQUIRED");
+  assert.match(err.message, /GOVERNED_CATALOG_RECONCILIATION/, "the refusal names the mode that may do it instead");
+  assert.equal(harness.assertPersonaWriteTarget("GOVERNED_CATALOG_RECONCILIATION", "eos_policy.role_capabilities"),
+    "eos_policy.role_capabilities");
+  assert.equal(refusal(() => harness.assertPersonaWriteTarget("SOME_OTHER_MODE", "eos_policy.role_capabilities")).code, "MODE_UNKNOWN");
+  assert.equal(refusal(() => harness.assertPersonaWriteTarget("PERSONA_PROVISIONING", "eos_policy.capabilities")).code,
+    "WRITE_TARGET_UNDECLARED", "an undeclared target is refused rather than allowed by default");
+});
+
+test("the run's outcome and exit code cannot be mistaken for success, and POLICY_RECONCILIATION_REQUIRED is its own code", () => {
+  const plan = dimensions.planPersonaAuthorityDimensions();
+  const unreconciled = harness.preflightAuthorityPlan(plan, { ...LIVE, catalogCapabilityKeys: new Set() });
+  const failed = harness.resolveSeedOutcome("PERSONA_PROVISIONING", true, unreconciled.blocked);
+  assert.equal(failed.outcome, "POLICY_RECONCILIATION_REQUIRED");
+  assert.equal(failed.exitCode, 3, "neither 0 nor the ordinary blocked-step 1");
+  assert.deepEqual([...failed.capabilities], [...PERSONA_CAPABILITIES].sort());
+  assert.match(failed.remedy, /wrote nothing/);
+
+  const partial = harness.preflightAuthorityPlan(plan, LIVE);
+  assert.equal(harness.resolveSeedOutcome("PERSONA_PROVISIONING", true, partial.blocked).outcome, "BLOCKED");
+  assert.equal(harness.resolveSeedOutcome("PERSONA_PROVISIONING", true, partial.blocked).exitCode, 1,
+    "an ordinary blocked step keeps its own exit code, so the two situations stay distinguishable");
+  assert.equal(harness.resolveSeedOutcome("PERSONA_PROVISIONING", true, []).outcome, "APPLIED");
+  assert.equal(harness.resolveSeedOutcome("PERSONA_PROVISIONING", true, []).exitCode, 0);
+  assert.equal(harness.resolveSeedOutcome("PERSONA_PROVISIONING", false, []).outcome, "PLANNED");
+  assert.equal(refusal(() => harness.resolveSeedOutcome("NOT_A_MODE", false, [])).code, "MODE_UNKNOWN");
+});
+
+test("the CLI's mode is never a default: both flags, or persona provisioning", () => {
+  const cli = require("../scripts/seedPersonaAuthorityDimensionsCli.js");
+  assert.equal(cli.assertProvisioningMode({}), "PERSONA_PROVISIONING");
+  assert.equal(cli.assertProvisioningMode({ apply: "true" }), "PERSONA_PROVISIONING");
+  assert.equal(
+    cli.assertProvisioningMode({ governedCatalogReconciliation: "true", ownerDecision: cli.OWNER_ACCEPTED_CATALOG_RECONCILIATION }),
+    "GOVERNED_CATALOG_RECONCILIATION");
+  assert.match(refusal(() => cli.assertProvisioningMode({ governedCatalogReconciliation: "true" })).message,
+    /--ownerDecision 180/, "the mode flag alone is not enough");
+  assert.match(refusal(() => cli.assertProvisioningMode({ governedCatalogReconciliation: "true", ownerDecision: "179" })).message,
+    /--ownerDecision 180/, "and it is not any decision, it is the one that accepted this");
+  assert.match(refusal(() => cli.assertProvisioningMode({ ownerDecision: "180" })).message,
+    /only meaningful with --governedCatalogReconciliation/,
+    "an operator who believes they asked for reconciliation and did not is told so, rather than silently provisioning");
+});
+
+test("the persona CLI holds no path that writes role_capabilities outside the named mode", () => {
+  const source = require("node:fs").readFileSync(
+    new URL("../scripts/seedPersonaAuthorityDimensionsCli.js", import.meta.url), "utf8");
+  assert.ok(!/INSERT INTO|UPDATE |DELETE FROM/.test(source),
+    "the CLI issues no raw SQL write of its own; every write goes through a governed writer");
+  const reconcileRequires = source.split("\n").filter((l) => l.includes("require(\"../lib/eosOps/migration/inventoryCapabilityGrantMigration.js\")"));
+  assert.equal(reconcileRequires.length, 1, "the grant reconciliation is reachable from exactly one place");
+  const fn = source.slice(source.indexOf("async function runGovernedCatalogReconciliation"), source.indexOf("async function main"));
+  assert.ok(fn.includes("require(\"../lib/eosOps/migration/inventoryCapabilityGrantMigration.js\")"),
+    "and that place is the explicitly named governed catalog-reconciliation function");
+  assert.ok(fn.includes("assertPersonaWriteTarget(GOVERNED_CATALOG_RECONCILIATION_MODE"),
+    "which asserts the mode's write boundary before it reconciles anything");
 });
 
 // ════════════════════════════ the validator's own guards ════════════════════════════

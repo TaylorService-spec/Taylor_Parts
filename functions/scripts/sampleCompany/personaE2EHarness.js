@@ -4,15 +4,19 @@
 // ════════════════════ WHY A PREFLIGHT EXISTS AT ALL ════════════════════
 //
 // personaAuthorityDimensions.js plans 13 governed writes. Six of them cannot be applied to the nonprod
-// database as it stands, for THREE DIFFERENT reasons, and the difference matters:
+// database as it stands, for FOUR DIFFERENT reasons, and the difference matters:
 //
+//   the canonical policy CATALOG declares no Role at all holding the command's capability
 //   the administering Principal does not hold a LIVE grant for the command's capability
 //   the scope names a warehouse that does not exist in this tenant
 //   the scope names an operating company KEY with no ACTIVE tenant_operating_company_keys binding
 //
-// Calling the command anyway produces, respectively, a FORBIDDEN, a foreign-key violation and a
-// plpgsql RAISE from `eos_workforce.operational_scope_target_exists`. All three are correct refusals
-// and all three are useless to an operator, because a seed phase that aborts on step 4 leaves steps
+// The first two look identical from inside the command -- both are a FORBIDDEN -- and they are not the
+// same problem at all: the first is fixed by a governed catalog reconciliation and the second by a Role
+// assignment for that operator. Calling the command anyway produces, for the other two, a foreign-key
+// violation and a plpgsql RAISE from `eos_workforce.operational_scope_target_exists`. Every one of
+// them is a correct refusal, and every one is useless to an operator, because a seed phase that
+// aborts on step 4 leaves steps
 // 5..13 unattempted and unexplained. The preflight asks the database the SAME questions the guards
 // ask, BEFORE the transaction, and partitions the plan. Nothing is weakened: a step the preflight
 // clears is still checked again by the command itself, and a step it blocks is never attempted.
@@ -27,6 +31,29 @@
 //   never substitutes a different Employee, warehouse or company key for one that is missing
 //   never turns a test-persona requirement into a business permission: a scenario that needs a
 //     capability nobody holds is declared BLOCKED, never made to pass by granting it
+//
+// ════════════════════ THE PERSONA WRITE BOUNDARY (Owner ruling, docs/DECISIONS.md #180) ════════════════════
+//
+// The Owner accepted six `eos_policy.role_capabilities` rows -- admin.employeeJobRole.write,
+// admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write, each to `admin` and
+// to `owner` -- as GOVERNED CATALOG RECONCILIATION, because they exactly match what the compiled Role
+// catalog declares, and ruled: "Future persona tooling must not broadly reconcile missing Role grants
+// unless explicitly operating in a governed catalog-reconciliation mode."
+//
+// That ruling is encoded here as a DISJOINT pair of modes, so one run carries one authority and never
+// two:
+//
+//   PERSONA_PROVISIONING             may write the persona authorities -- Principal, Employee, Role
+//                                    assignment, Work Eligibility, Operational Scope, record
+//                                    assignment -- and MAY NOT touch the canonical policy catalog.
+//   GOVERNED_CATALOG_RECONCILIATION  may write the canonical policy catalog, and NOTHING else. No
+//                                    persona is provisioned in this mode at all.
+//
+// The default is PERSONA_PROVISIONING. No argument, environment variable or measured fact promotes a
+// persona run into the reconciliation mode: the operator names it, explicitly, per run. The point is
+// that provisioning a test identity can never quietly move the Render runtime's authority, and the
+// cheapest way to guarantee that is to make the run that may touch the catalog incapable of
+// provisioning anything.
 "use strict";
 
 const PERSONA_MANIFEST = require("../fixtures/personaAuthorityDimensions.v1.json");
@@ -58,11 +85,92 @@ const refuse = (code, message) => {
  * company key binding -- and this module deliberately performs none of them.
  */
 const PREFLIGHT_BLOCK_CODES = Object.freeze([
+  // THE CANONICAL POLICY CATALOG ITSELF LACKS THE CAPABILITY: no Role in this tenant holds a
+  // role_capabilities row for it, so it is live for NOBODY and no Role assignment could make it live.
+  // Removing this block is a GOVERNED CATALOG RECONCILIATION -- a separate, explicitly named run
+  // (docs/DECISIONS.md #180) -- and never something persona provisioning does on its own behalf.
+  "POLICY_RECONCILIATION_REQUIRED",
+  // The catalog declares the capability, but the NAMED administering Principal's Roles do not carry
+  // it. Removing this block is a Role assignment for that operator, not a change to the catalog.
   "CAPABILITY_NOT_LIVE",
   "EMPLOYEE_NOT_IN_TENANT",
   "WAREHOUSE_NOT_IN_TENANT",
   "OPERATING_COMPANY_KEY_NOT_ACTIVE",
 ]);
+
+/**
+ * The two modes a persona run may be in. Disjoint by construction -- see the header.
+ */
+const PERSONA_PROVISIONING_MODE = "PERSONA_PROVISIONING";
+const GOVERNED_CATALOG_RECONCILIATION_MODE = "GOVERNED_CATALOG_RECONCILIATION";
+const PERSONA_PROVISIONING_MODES = Object.freeze([PERSONA_PROVISIONING_MODE, GOVERNED_CATALOG_RECONCILIATION_MODE]);
+
+/** What persona provisioning may create or update. Exactly the authorities the Owner named, no more. */
+const PERSONA_PROVISIONING_MAY_WRITE = Object.freeze([
+  "eos_policy.principals",
+  "eos_policy.tenant_memberships",
+  "eos_policy.user_role_assignments",
+  "eos_workforce.employees",
+  "eos_workforce.employee_work_eligibility",
+  "eos_workforce.employee_operational_scopes",
+  "eos_ops.reorder_requests.assigned_employee_id",
+  "eos_ops.work_orders.assigned_employee_id",
+]);
+
+/** The canonical policy catalog -- the Render runtime's authority. Reconciliation mode, or nothing. */
+const CATALOG_RECONCILIATION_MAY_WRITE = Object.freeze([
+  "eos_policy.role_capabilities",
+]);
+
+const MODE_WRITE_TARGETS = Object.freeze({
+  [PERSONA_PROVISIONING_MODE]: PERSONA_PROVISIONING_MAY_WRITE,
+  [GOVERNED_CATALOG_RECONCILIATION_MODE]: CATALOG_RECONCILIATION_MAY_WRITE,
+});
+
+/**
+ * Refuse, BY NAME and before anything is attempted, a write this mode may not perform.
+ *
+ * The two refusals carry different codes because they are different mistakes:
+ * POLICY_RECONCILIATION_REQUIRED means "this needs the other, explicitly named run"; a persona write
+ * inside the reconciliation mode means one run is doing two jobs, which is what the ruling forbids.
+ */
+function assertPersonaWriteTarget(mode, target) {
+  if (!PERSONA_PROVISIONING_MODES.includes(mode)) refuse("MODE_UNKNOWN", `${mode} is not a persona provisioning mode`);
+  if (MODE_WRITE_TARGETS[mode].includes(target)) return target;
+  if (mode === PERSONA_PROVISIONING_MODE && CATALOG_RECONCILIATION_MAY_WRITE.includes(target)) {
+    refuse("POLICY_RECONCILIATION_REQUIRED",
+      `${target} is the canonical policy catalog; persona provisioning never writes it -- re-run in ${GOVERNED_CATALOG_RECONCILIATION_MODE}`);
+  }
+  if (mode === GOVERNED_CATALOG_RECONCILIATION_MODE && PERSONA_PROVISIONING_MAY_WRITE.includes(target)) {
+    refuse("PERSONA_WRITE_OUTSIDE_PROVISIONING",
+      `${target} is a persona authority; a governed catalog-reconciliation run provisions nothing`);
+  }
+  refuse("WRITE_TARGET_UNDECLARED", `${target} is not a write target either persona mode declares`);
+  return undefined;
+}
+
+/**
+ * The run's single, unmistakable outcome, and the exit code that carries it.
+ *
+ * A capability the CATALOG lacks gets its own outcome and its own exit code -- never merged into the
+ * ordinary "some steps were blocked" case -- precisely so that an operator reading the exit status
+ * cannot read it as success, and cannot read it as an ordinary partial run either.
+ */
+function resolveSeedOutcome(mode, apply, blocked) {
+  if (!PERSONA_PROVISIONING_MODES.includes(mode)) refuse("MODE_UNKNOWN", `${mode} is not a persona provisioning mode`);
+  if (!Array.isArray(blocked)) refuse("PLAN_INVALID", "blocked is the preflight's blocked list");
+  const reconciliation = blocked.filter((b) => b.code === "POLICY_RECONCILIATION_REQUIRED");
+  if (reconciliation.length > 0) {
+    return Object.freeze({
+      outcome: "POLICY_RECONCILIATION_REQUIRED",
+      exitCode: 3,
+      capabilities: Object.freeze([...new Set(reconciliation.map((b) => b.detail))].sort()),
+      remedy: `the canonical policy catalog declares no Role holding these; persona provisioning granted nothing and wrote nothing for these steps. Re-run in ${GOVERNED_CATALOG_RECONCILIATION_MODE}.`,
+    });
+  }
+  if (blocked.length > 0) return Object.freeze({ outcome: "BLOCKED", exitCode: 1, capabilities: Object.freeze([]) });
+  return Object.freeze({ outcome: apply ? "APPLIED" : "PLANNED", exitCode: 0, capabilities: Object.freeze([]) });
+}
 
 /** The scenario phases a persona acceptance run walks, in order. */
 const E2E_PHASES = Object.freeze([
@@ -87,7 +195,7 @@ const PROCESS_AVAILABILITY = Object.freeze([
  */
 function preflightAuthorityPlan(plan, live) {
   if (!Array.isArray(plan)) refuse("PLAN_INVALID", "a plan is an array of governed command steps");
-  for (const field of ["capabilities", "employeeIds", "warehouseIds", "activeOperatingCompanyKeys"]) {
+  for (const field of ["catalogCapabilityKeys", "capabilities", "employeeIds", "warehouseIds", "activeOperatingCompanyKeys"]) {
     if (!(live?.[field] instanceof Set)) refuse("LIVE_FACTS_INVALID", `live.${field} must be a Set of measured values`);
   }
   const applicable = [];
@@ -100,7 +208,15 @@ function preflightAuthorityPlan(plan, live) {
     if (typeof step?.command !== "string" || typeof step?.requiresCapability !== "string" || typeof step?.input !== "object") {
       refuse("PLAN_INVALID", "every step names a command, the capability it requires and its input");
     }
-    // CAPABILITY FIRST, exactly as the command itself checks it. A step whose capability is not live
+    // THE CATALOG FIRST OF ALL. A capability no Role in this tenant holds is live for nobody, so
+    // reporting it as "not live for this Principal" would send the operator to fix a Role assignment
+    // that could not help. It is its OWN code because its only remedy is the separate, explicitly
+    // named governed catalog-reconciliation run -- never this one (docs/DECISIONS.md #180).
+    if (!live.catalogCapabilityKeys.has(step.requiresCapability)) {
+      block(step, "POLICY_RECONCILIATION_REQUIRED", step.requiresCapability);
+      continue;
+    }
+    // CAPABILITY NEXT, exactly as the command itself checks it. A step whose capability is not live
     // is blocked before anything about the Employee or the target is considered, so the refusal never
     // reports a second, incidental gap the operator cannot act on yet.
     if (!live.capabilities.has(step.requiresCapability)) {
@@ -296,7 +412,14 @@ module.exports = {
   E2E_READINESS,
   PROCESS_AVAILABILITY,
   PREFLIGHT_BLOCK_CODES,
+  PERSONA_PROVISIONING_MODE,
+  GOVERNED_CATALOG_RECONCILIATION_MODE,
+  PERSONA_PROVISIONING_MODES,
+  PERSONA_PROVISIONING_MAY_WRITE,
+  CATALOG_RECONCILIATION_MAY_WRITE,
   PersonaE2EError,
+  assertPersonaWriteTarget,
+  resolveSeedOutcome,
   preflightAuthorityPlan,
   validateE2EManifest,
 };

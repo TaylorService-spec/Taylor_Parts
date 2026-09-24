@@ -6428,3 +6428,65 @@ predates #170. It is preserved and reconciled against current main on a new bran
    write, no Transfer authority, no bin management, no Cycle Count and no adjustment authority.
 6. **Production** remains unauthorized for activation, grants, deployment, Rules, Functions, Hosting,
    inventory conversion and Cycle Count migration.
+
+## #180 — OWNER RULING: the six Employee-administration grants are ACCEPTED catalog reconciliation, and persona tooling may never reconcile implicitly (2026-09-23)
+
+**Context.** While the persona authority-dimensions seed (`scripts/seedPersonaAuthorityDimensionsCli.js`) was being
+unblocked in nonprod, the existing governed Role-catalog grant reconciliation
+(`scripts/employeeCapabilityGrantMigrationCli.js` → `eosWorkforce/migration/employeeCapabilityGrants.ts`) wrote six
+`eos_policy.role_capabilities` rows into the nonprod policy database. This records the Owner's ruling on them and the
+fence built in response. It rewrites no earlier decision.
+
+**A — KEEP. `ROLE_CATALOG_RECONCILIATION_ACCEPTED = YES`.**
+
+The six rows are three capabilities, each to `admin` and to `owner`:
+
+| capability | holders written |
+| --- | --- |
+| `admin.employeeJobRole.write` | `admin`, `owner` |
+| `admin.employeeWorkEligibility.write` | `admin`, `owner` |
+| `admin.employeeOperationalScope.write` | `admin`, `owner` |
+
+They are accepted as **GOVERNED CATALOG RECONCILIATION**, not persona-specific grants: `deriveLegacyRoleGrants` over
+the compiled Role catalog (`access/governedBusinessRoles.ts` + `access/compatibilityRoles.ts`) returns exactly
+`admin, owner` for each of the three, so the run reconciled rows the catalog already declared rather than widening
+anything. **They are not to be reverted.** No Job Role confers them, no manager holds them, no operational Role holds
+them.
+
+The acceptance rests entirely on that holder set, so it is recorded where a change has to argue with it: the three
+capabilities are pinned in `functions/test/ownerDecisionPrecedence.test.mjs`'s `DECIDED_HOLDERS`, under the marker
+`OWNER_ACCEPTED_CATALOG_RECONCILIATION`. A regenerated Role definition that widened one of them now fails a test
+rather than silently transferring this acceptance to a row the Owner never saw.
+
+**B — Future persona tooling must not broadly reconcile missing Role grants unless explicitly operating in a governed
+catalog-reconciliation mode.**
+
+The previous run was defensible — an existing governed tool, rows the catalog declared, an Owner who accepted them.
+What must never happen is a **persona** tool reaching for that power *implicitly*, so that provisioning a test
+identity quietly moves the Render runtime's authority. The boundary is therefore encoded, not merely stated:
+
+- **Two disjoint modes**, declared in `scripts/sampleCompany/personaE2EHarness.js`. `PERSONA_PROVISIONING` (the
+  default) may write the persona authorities — Principal, Employee, Role assignment, Work Eligibility, Operational
+  Scope, record assignment — and **may not write `eos_policy.role_capabilities` at all**.
+  `GOVERNED_CATALOG_RECONCILIATION` may write the catalog and **provisions no persona whatsoever**. One run, one
+  authority; `assertPersonaWriteTarget` refuses the other side by name.
+- **The mode is named twice, per run, or not at all**: `--governedCatalogReconciliation --ownerDecision 180`. Neither
+  flag is accepted alone, and the refusal happens inside the existing operator fence, before `pg` or `lib/` is
+  resolved. No environment variable, stored setting or prior run makes a later invocation reconciliation-capable.
+  In that mode the reconciliation is bounded twice over: to the capability keys the persona plan actually requires,
+  and to the declared Employee grant key set — a key outside it is refused, not reconciled.
+- **The default fails closed.** A persona step whose capability the canonical policy database lacks is reported
+  `POLICY_RECONCILIATION_REQUIRED` — a new preflight block code, checked *before* `CAPABILITY_NOT_LIVE`, because a
+  capability no Role holds is live for nobody and no Role assignment could help. The step is never attempted, writes
+  nothing, is never auto-granted, and the process exits **3** — neither `0` nor the ordinary blocked-step `1`, so an
+  operator cannot read it as success nor as a routine partial run.
+- **"Fail closed, then continue" is unchanged.** The blocked step writes nothing; the remaining steps still run, and
+  a re-run of an already-provisioned fixture still returns `NO_CHANGE`.
+
+Proved end to end against a real PostgreSQL in `functions/test/personaProvisioningBoundaryPostgres.test.mjs`, which
+runs the real CLI as a child process and then counts rows: against an unreconciled catalog the persona run adds zero
+`role_capabilities` rows, zero eligibility rows and zero scope rows, and exits 3.
+
+**C — No nonprod or production mutation was made in recording this.** Nonprod stands as measured: `role_capabilities`
+378, `employee_work_eligibility` 7 CURRENT, `employee_operational_scopes` 6 CURRENT. Production remains unauthorized
+for activation, grants, deployment, Rules, Functions and Hosting.
