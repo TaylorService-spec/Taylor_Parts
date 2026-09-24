@@ -87,6 +87,11 @@ on:
       - "functions/test/support/roleAssignmentCensusFixture.mjs"
       - "functions/test/policyRoleCatalogReconcile.test.mjs"
       - "functions/test/policyRoleCatalogReconcilePostgres.test.mjs"
+      # WAVE 10 / LANE AN: the governed Role -> Capability AUTHORITY BASELINE -- the manifest, its
+      # generated artifact, and the deterministic rebuild guard (test:adminPolicyPostgres).
+      - "functions/src/adminPolicy/roleCapabilityAuthorityBaseline.ts"
+      - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
+      - "functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
@@ -351,6 +356,11 @@ on:
       - "functions/test/support/roleAssignmentCensusFixture.mjs"
       - "functions/test/policyRoleCatalogReconcile.test.mjs"
       - "functions/test/policyRoleCatalogReconcilePostgres.test.mjs"
+      # WAVE 10 / LANE AN: the governed Role -> Capability AUTHORITY BASELINE -- the manifest, its
+      # generated artifact, and the deterministic rebuild guard (test:adminPolicyPostgres).
+      - "functions/src/adminPolicy/roleCapabilityAuthorityBaseline.ts"
+      - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
+      - "functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
