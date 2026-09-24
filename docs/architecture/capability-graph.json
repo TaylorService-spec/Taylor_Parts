@@ -4287,6 +4287,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/adminPolicy/migration/credEquivalence.ts",
+          "functions/src/eosOps/coordinatedVisitPostgresRead.ts",
           "functions/src/fulfillment/coordinatedVisitReadService.ts"
         ],
         "clientReferences": [
@@ -4295,7 +4296,7 @@
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
           "field-ops-app-vite/src/domain/dashboardComposition.js"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 4,
         "evidence": "EXPORTED"
       },
