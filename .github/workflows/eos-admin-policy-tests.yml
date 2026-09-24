@@ -375,6 +375,14 @@ on:
       - "field-ops-app-vite/src/navigation/mobilePrimaryNav.js"
       - "field-ops-app-vite/test/navigationExperienceProjection.test.mjs"
       - "field-ops-app-vite/test/operationsExperienceTransport.test.jsx"
+      # WAVE 15 / LANE BC: the migration LEDGER guard. `functions/package.json`'s `migrate:up` --
+      # the whole of render.yaml's preDeployCommand -- now runs with `--no-check-order`, because a
+      # legitimately applied migration sits out of id order in nonprod and the ordering check was
+      # failing every pre-deploy over it. That flag switches off the only thing that was watching
+      # the migration INVENTORY on deploy, so this suite watches it instead: the accepted anomaly
+      # is enumerated exhaustively, an unknown or duplicated applied name fails, and a pending
+      # migration back-dated into applied history fails. It runs in test:adminPolicyPostgres.
+      - "functions/test/migrationLedgerOrderGuard.test.mjs"
       - ".github/workflows/eos-admin-policy-tests.yml"
   push:
     branches: [main]
@@ -593,6 +601,18 @@ on:
       - "field-ops-app-vite/src/domain/adminPolicyView.js"
       - "field-ops-app-vite/src/metadata/entityRegistry.js"
       - "field-ops-app-vite/src/modules/administration/**"
+      # WAVE 15 / LANE BC: the migration LEDGER guard. `functions/package.json`'s `migrate:up` --
+      # the whole of render.yaml's preDeployCommand -- now runs with `--no-check-order`, because a
+      # legitimately applied migration sits out of id order in nonprod and the ordering check was
+      # failing every pre-deploy over it. That flag switches off the only thing that was watching
+      # the migration INVENTORY on deploy, so this suite watches it instead: the accepted anomaly
+      # is enumerated exhaustively, an unknown or duplicated applied name fails, and a pending
+      # migration back-dated into applied history fails. It runs in test:adminPolicyPostgres.
+      - "functions/test/migrationLedgerOrderGuard.test.mjs"
+      # functions/package.json was named by the pull_request filter and NOT by this one, so an edit
+      # to the deploy command itself could reach main without ever triggering the suite that proves
+      # it. Named here too.
+      - "functions/package.json"
       - ".github/workflows/eos-admin-policy-tests.yml"
   workflow_dispatch:
 
