@@ -52,14 +52,24 @@ const SAMPLE_COMPANY = require("../fixtures/sampleCompany.v2.json");
 // Owner ruled neither list canonical. The fixture no longer declares a catalog at all; the vocabulary below is the only
 // source, so this harness and that seed cannot produce different Job Role universes.
 //
-// WHY A lib/ REQUIRE IN A SCRIPT. The alternative is a mirrored copy plus a test asserting the two are equal, which is
-// the idiom this file uses for vocabularies it only ever READS in order to refuse them
+// WHY A lib/ REQUIRE IN A SCRIPT, AND NOT A MIRROR. The alternative is a mirrored copy plus a test asserting the two
+// are equal, which is the idiom this file uses for vocabularies it only ever READS in order to refuse them
 // (LEGACY_OPERATIONAL_ROLE_VALUES, CONTEXT_PREDICATE_KINDS). A mirror is not good enough here: the ruling is that ONE
-// list exists, and a mirror is a second list that happens to agree. Every caller of this module -- the seeding CLI and
-// the tests -- already runs against compiled lib/.
-const {
-  CANONICAL_JOB_ROLES, CANONICAL_JOB_ROLE_BY_MANIFEST_KEY,
-} = require("../../lib/eosWorkforce/jobRoleVocabulary.js");
+// list exists, and a mirror is a second list that happens to agree.
+//
+// WHY IT IS LAZY, AND MUST STAY LAZY. `lib/` is a BUILD ARTIFACT and this file is reached by a FENCED operator script.
+// functions/test/operatorScriptEnvironmentFence.test.mjs spawns scripts/seedPersonaAuthorityDimensionsCli.js under a
+// preload that bans client libraries and asserts the script refuses -- "--environment is required" -- before anything
+// else happens. That suite runs in the Access Operator Script Tests workflow, which does NOT run `npm run build`, so
+// `lib/` does not exist there at all. A top-level require of a compiled artifact therefore threw
+// MODULE_NOT_FOUND before the fence could refuse, and 52 of the 219 fence subtests failed on it.
+//
+// Requiring at the point of USE keeps ONE list and satisfies the fence: nothing compiled loads until an invocation has
+// already passed the environment and tenant checks and a plan is actually being built. Do not hoist this back to the
+// top of the file -- the fence suite has no build, and the whole point of the fence is that a script validates its
+// arguments before it loads anything.
+let canonicalJobRoleVocabulary = null;
+const jobRoleVocabulary = () => (canonicalJobRoleVocabulary ??= require("../../lib/eosWorkforce/jobRoleVocabulary.js"));
 
 /**
  * The legacy `operationalRoles` vocabulary, mirrored here for ONE purpose: to refuse it. A
@@ -443,6 +453,7 @@ function planPersonaAuthorityDimensions(manifest = MANIFEST, sampleCompany = SAM
   // THE CATALOG IS NOT THE FIXTURE'S TO DECIDE. These steps are a projection of CANONICAL_JOB_ROLES, in its order. The
   // fixture contributes only the ASSIGNMENTS -- which Employee holds which position -- and it names a position by
   // manifestKey, which must resolve in the canonical vocabulary or the run refuses rather than inventing an entry.
+  const { CANONICAL_JOB_ROLES, CANONICAL_JOB_ROLE_BY_MANIFEST_KEY } = jobRoleVocabulary();
   for (const role of CANONICAL_JOB_ROLES) {
     plan.push({
       command: "createJobRole",

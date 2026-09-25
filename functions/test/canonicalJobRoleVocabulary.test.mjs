@@ -442,3 +442,38 @@ test("INVARIANT 8: the P01-P16 mapping admits only canonical positions, never a 
   const canonical = new Set(vocabulary.CANONICAL_JOB_ROLE_MANIFEST_KEYS);
   for (const e of SAMPLE_COMPANY.employees) assert.ok(canonical.has(e.jobRole), `${e.key} -> ${e.jobRole}`);
 });
+
+// ════════════════════════════ 6. THE lib/ REQUIRE MUST STAY LAZY ════════════════════════════
+//
+// The two fenced operator scripts read the ONE vocabulary out of compiled `lib/` rather than mirroring it, which is
+// what the ruling requires -- a mirror is a second list that happens to agree. But `lib/` is a BUILD ARTIFACT and
+// functions/test/operatorScriptEnvironmentFence.test.mjs runs in the Access Operator Script Tests workflow, which
+// does NOT run `npm run build`. A TOP-LEVEL require therefore threw MODULE_NOT_FOUND before the fence could refuse,
+// and 52 of that suite's 219 subtests failed on it -- the fence's whole contract being that a script refuses before
+// it loads anything.
+//
+// The fix is a lazy accessor, resolved at the point of use. This test exists so the next person does not hoist it
+// back to the top of the file, where it reads more naturally and breaks CI.
+
+test("the scripts require the canonical vocabulary LAZILY: the operator fence suite runs with no build", () => {
+  for (const rel of ["scripts/seedSampleCompany.js", "scripts/sampleCompany/personaAuthorityDimensions.js"]) {
+    const lines = source(rel).split("\n");
+    const requires = lines.filter((l) => l.includes('jobRoleVocabulary.js")') && !l.trimStart().startsWith("//"));
+    assert.equal(requires.length, 1, `${rel} must read the one vocabulary in exactly one place`);
+    // A lazy accessor: the require lives inside a function, on a line that declares one. A top-level
+    // `const { ... } = require("../lib/...")` has no `=>` and is what this refuses.
+    assert.match(requires[0], /=>/, `${rel} requires lib/ at the top level; the fence suite has no build`);
+    assert.doesNotMatch(requires[0], /^\s*const\s*\{/, `${rel} destructures the vocabulary at module scope`);
+    // And nothing else in either script reaches into lib/ at module scope for this vocabulary.
+    assert.ok(!/^(const|let|var)[^\n]*jobRoleVocabulary/m.test(lines.filter((l) => !l.includes("=>")).join("\n")),
+      `${rel} binds the vocabulary at module scope`);
+  }
+  // seedSampleCompany.js exports the projection through GETTERS for the same reason: merely requiring the module --
+  // which is what the fence suite does -- must not load a build artifact.
+  const seedSource = source("scripts/seedSampleCompany.js");
+  assert.match(seedSource, /get JOB_ROLE_VOCABULARY\(\) \{ return jobRoleManifestKeys\(\); \}/);
+  assert.match(seedSource, /get MANIFEST_JOB_ROLES\(\) \{ return jobRoleProjection\(\); \}/);
+  // The getters still hand back the real thing, so laziness costs the reader nothing.
+  assert.deepEqual([...sampleCompanySeed.JOB_ROLE_VOCABULARY], [...vocabulary.CANONICAL_JOB_ROLE_MANIFEST_KEYS]);
+  assert.equal(sampleCompanySeed.MANIFEST_JOB_ROLES.length, 16);
+});

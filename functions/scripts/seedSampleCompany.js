@@ -160,26 +160,37 @@ const USER_ACCESS_STATES = Object.freeze(["ENABLED", "DISABLED", "NONE"]);
  * Job Roles -- and which keeps the Job Role GENERAL_EMPLOYEE off the one persona that holds the Security
  * Role `generalEmployee`, where the pair would read as a derivation.
  *
- * REQUIRED AT THE TOP, NOT LAZILY. Every caller of this module runs against compiled lib/ (the seeding CLI,
- * and the tests, which build first). A lazy require would leave a window in which a malformed manifest was
- * accepted because the vocabulary had not loaded yet.
+ * LAZY, AND IT MUST STAY LAZY. `lib/` is a BUILD ARTIFACT and this is a FENCED operator script.
+ * functions/test/operatorScriptEnvironmentFence.test.mjs spawns this script under a preload that bans client
+ * libraries and asserts it refuses -- "--environment is required" -- before anything else happens, and that
+ * suite runs in the Access Operator Script Tests workflow, which does NOT run `npm run build`. So `lib/` does
+ * not exist there, and a top-level require threw MODULE_NOT_FOUND before the fence could refuse.
+ *
+ * Requiring at the point of USE costs nothing and loses nothing: the vocabulary is read inside
+ * validateManifest, which runs before a database is opened and long before anything is written, so there is
+ * no window in which a malformed manifest is accepted. It is also still exactly ONE list -- the lazy accessor
+ * reads the same compiled module, rather than mirroring it into a second list that happens to agree.
+ *
+ * Do not hoist this to the top of the file. The fence suite has no build, and the point of the fence is that
+ * a script validates its arguments before it loads anything.
  */
-const {
-  CANONICAL_JOB_ROLES, CANONICAL_JOB_ROLE_MANIFEST_KEYS, JOB_ROLE_ID_SHAPE,
-} = require("../lib/eosWorkforce/jobRoleVocabulary.js");
+let canonicalJobRoleVocabulary = null;
+const jobRoleVocabulary = () => (canonicalJobRoleVocabulary ??= require("../lib/eosWorkforce/jobRoleVocabulary.js"));
 
-const JOB_ROLE_VOCABULARY = CANONICAL_JOB_ROLE_MANIFEST_KEYS;
+/** The governed manifest keys, read from the one vocabulary on first use. */
+const jobRoleManifestKeys = () => jobRoleVocabulary().CANONICAL_JOB_ROLE_MANIFEST_KEYS;
 /**
  * The tenant catalog this fixture WOULD declare, projected from the canonical vocabulary so that it cannot
- * be a second list. It is exported for the manifest tests and for any reader who wants the fixture's view of
- * the catalog; the rows themselves are created by scripts/sampleCompany/personaAuthorityDimensions.js
- * through the governed writer, never by this seed.
+ * be a second list. Exported (as a getter, so reading the export is what loads lib/) for the manifest tests
+ * and for any reader who wants the fixture's view of the catalog; the rows themselves are created by
+ * scripts/sampleCompany/personaAuthorityDimensions.js through the governed writer, never by this seed.
  */
-const MANIFEST_JOB_ROLES = Object.freeze(CANONICAL_JOB_ROLES.map((r) => Object.freeze({
+let manifestJobRoles = null;
+const jobRoleProjection = () => (manifestJobRoles ??= Object.freeze(jobRoleVocabulary().CANONICAL_JOB_ROLES.map((r) => Object.freeze({
   key: r.manifestKey, label: r.displayName, pgJobRoleId: r.jobRoleId,
-})));
+}))));
 /** The id shape functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts accepts for a catalog entry. */
-const PG_JOB_ROLE_ID_SHAPE = JOB_ROLE_ID_SHAPE;
+const pgJobRoleIdShape = () => jobRoleVocabulary().JOB_ROLE_ID_SHAPE;
 
 /** The environment this sample company lives in, and the one that is refused by NAME however it is labelled. */
 const REQUIRED_ENVIRONMENT = "platform-sandbox";
@@ -250,17 +261,20 @@ function validateManifest(m) {
     refuse("MANIFEST_INVALID",
       "the manifest may not declare jobRoles[]; the one Job Role vocabulary is src/eosWorkforce/jobRoleVocabulary.ts and employees[].jobRole references it by manifestKey");
   }
-  const jobRoles = new Set(JOB_ROLE_VOCABULARY);
+  // The one vocabulary, read HERE rather than at module load: this validator runs before a database is opened,
+  // and a fenced script must not load a build artifact before it has checked its arguments.
+  const jobRoles = new Set(jobRoleManifestKeys());
+  const idShape = pgJobRoleIdShape();
   // The projection has to survive the same invariants the manifest array was held to, because it is what
   // reaches the governed writer: a generic SALES position is forbidden, the two sales positions stay separate,
   // every catalog id matches the shape the writer accepts, and no key or id repeats.
   const pgJobRoleIds = new Set();
-  for (const r of MANIFEST_JOB_ROLES) {
+  for (const r of jobRoleProjection()) {
     if (/^sales$/i.test(r.key) || /^sales$/i.test(String(r.label).trim())) {
       refuse("MANIFEST_INVALID", "a generic Job Role named SALES is forbidden; Retail Sales and National Accounts Sales are separate");
     }
-    if (!PG_JOB_ROLE_ID_SHAPE.test(r.pgJobRoleId ?? "")) {
-      refuse("MANIFEST_INVALID", `Job Role ${r.key} declares no governed catalog id (pgJobRoleId must match ${PG_JOB_ROLE_ID_SHAPE})`);
+    if (!idShape.test(r.pgJobRoleId ?? "")) {
+      refuse("MANIFEST_INVALID", `Job Role ${r.key} declares no governed catalog id (pgJobRoleId must match ${idShape})`);
     }
     if (pgJobRoleIds.has(r.pgJobRoleId)) refuse("MANIFEST_INVALID", `duplicate governed Job Role id ${r.pgJobRoleId}`);
     pgJobRoleIds.add(r.pgJobRoleId);
@@ -1440,7 +1454,6 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   // THE FENCE FIRST, before any client library exists in this process.
   const options = assertSampleCompanyInvocation(args, process.env);
-  validateManifest(MANIFEST);
 
   if (options.mode === "verify") {
     const { verifySampleCompanyMain } = require("./verifySampleCompany.js");
@@ -1458,6 +1471,16 @@ async function main() {
   // THE CREDENTIAL IS PROVED BEFORE ANYTHING IS WRITTEN -- to Auth or to PostgreSQL. A missing or rejected
   // operator credential refuses here, not at the first persona.
   if (authDirectory) await authDirectory.preflight();
+
+  // THE MANIFEST IS VALIDATED AFTER THE WHOLE FENCE, NOT IN THE MIDDLE OF IT. This call used to sit between
+  // assertSampleCompanyInvocation and the Auth-target fence above, which put a pure, fence-irrelevant check
+  // ahead of the refusals that matter most -- the production/Certification Firebase project and the operator
+  // credential. It also made the script unable to reach those refusals at all once validateManifest began
+  // reading the canonical Job Role vocabulary out of `lib/`: functions/test/operatorScriptEnvironmentFence
+  // .test.mjs runs with no build, so the require threw before the fence could speak. Validation still happens
+  // before ANY write -- `verify` validates inside verifySampleCompany.js and every writing path validates
+  // inside seedSampleCompany() -- so this is strictly a reordering of two checks, both of which still run.
+  validateManifest(MANIFEST);
 
   // CREDENTIAL ACTIVATION NEEDS NO DATABASE. It is the one phase that touches only the identity provider,
   // so it runs and returns before a pool is ever opened.
@@ -1500,8 +1523,11 @@ module.exports = {
   EMPLOYMENT_STATUS_VALUES,
   SYNTHETIC_IDENTITY_PROVIDER,
   RUNTIME_IDENTITY_PROVIDER,
-  JOB_ROLE_VOCABULARY,
-  MANIFEST_JOB_ROLES,
+  // GETTERS, not values. `const { JOB_ROLE_VOCABULARY } = require(...)` still yields the array, because
+  // destructuring invokes the getter -- but requiring this module without touching them loads no build artifact,
+  // which is what keeps the operator fence suite (no `npm run build`) able to reach its refusal.
+  get JOB_ROLE_VOCABULARY() { return jobRoleManifestKeys(); },
+  get MANIFEST_JOB_ROLES() { return jobRoleProjection(); },
   REQUIRED_ENVIRONMENT,
   REQUIRED_TENANT_KEY,
   PROFILE_COLUMNS,
