@@ -21,6 +21,7 @@ import { bootstrapAdministrator, bootstrapTenant, ensureTenantPrincipal } from "
 import { executeAdminOperation } from "../lib/adminPolicy/adminPolicyApi.js";
 import { resolvePrincipalContext } from "../lib/adminPolicy/principalContext.js";
 import { handleAdminRequest } from "../lib/adminPolicy/adminPolicyHttp.js";
+import { ADMINISTRATION_READ_CAPABILITY_KEYS } from "../lib/adminPolicy/administrationSurfaceAuthority.js";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -85,6 +86,7 @@ async function standUpTaylor() {
 
   const adminContext = await resolvePrincipalContext(r, { externalSubject: ADMIN_SUBJECT });
   const actorRoleKeys = adminContext.heldRoleKeys;
+  await grantAdministrationReads(r, tenant.id, adminContext.uid);
 
   const others = {};
   for (const [name, subject] of [["owner", OWNER_SUBJECT], ["gm", GM_SUBJECT], ["plain", PLAIN_SUBJECT]]) {
@@ -97,6 +99,40 @@ async function standUpTaylor() {
   }
 
   return { repo: r, tenant, seed, admin, adminContext, others };
+}
+
+/**
+ * Give the `admin` Role the four Administration READ capabilities.
+ *
+ * ════════════════════ WHY THE FIXTURE HAS TO DO THIS ════════════════════
+ *
+ * Administration reads are now gated on the capability the surface they serve declares, so an
+ * administrator who holds no grant reads nothing. In a real environment the grants arrive from the
+ * migration chain -- 1762041600000 and 1762128000000 -- but `resetDatabase()` migrates a database
+ * with NO TENANT IN IT, and those migrations resolve Roles by key against a `roles` table that does
+ * not yet have any. A clean chain over an empty database produces ZERO `role_capabilities` rows;
+ * roleCapabilityAuthorityBaseline.ts states the same measurement and is why the seed sits between
+ * the migration phases in the deterministic rebuild.
+ *
+ * So the CALLER is repaired, not the gate: the fixture writes the grants the migrations would have
+ * written had the tenant existed when they ran. It grants nothing that is not already this Role's
+ * in nonprod, it adds no capability, and it touches no migration.
+ */
+async function grantAdministrationReads(r, tenantId, actorUid) {
+  const capabilities = await r.listCapabilities();
+  const roles = await r.listRoles(tenantId);
+  const adminRole = roles.find((x) => x.key === "admin");
+  assert.ok(adminRole, "the seed created an admin Role");
+  await r.transact({ tenantId, uid: actorUid }, async (tx) => {
+    for (const key of ADMINISTRATION_READ_CAPABILITY_KEYS) {
+      const capability = capabilities.find((c) => c.key === key);
+      assert.ok(capability, `${key} is registered by a migration`);
+      await tx.grantRoleCapability({
+        roleId: adminRole.id, capabilityId: capability.id,
+        grantedBy: actorUid, grantedAt: new Date().toISOString(),
+      });
+    }
+  });
 }
 
 const asAdmin = (operation, input) => ({ caller: { externalSubject: ADMIN_SUBJECT }, operation, input });
@@ -278,9 +314,12 @@ test("an unknown subject, and a member with no Roles, are different answers", { 
   assert.equal(unknown.ok, false);
   assert.equal(unknown.code, "UNAUTHENTICATED", "EOS does not know this identity");
 
-  // A member with no Roles gets a context and can READ the configuration -- and can change nothing.
+  // A member with no Roles gets a CONTEXT and reads NOTHING. Membership used to be enough to read
+  // the whole policy model; it is not any more, and the two refusals stay distinguishable --
+  // UNAUTHENTICATED means EOS does not know you, FORBIDDEN means it does and you may not.
   const plain = await executeAdminOperation({ repo: r }, asSubject(PLAIN_SUBJECT, "listObjects", {}));
-  assert.equal(plain.ok, true, "membership alone is enough to read the model");
+  assert.equal(plain.ok, false, "membership alone is NOT enough to read the model");
+  assert.equal(plain.code, "FORBIDDEN", "and it is a refusal about authority, not about identity");
   const context = await resolvePrincipalContext(r, { externalSubject: PLAIN_SUBJECT });
   assert.deepEqual(context.heldRoleKeys, [], "and holds nothing");
 });

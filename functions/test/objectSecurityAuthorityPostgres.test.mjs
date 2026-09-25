@@ -27,6 +27,7 @@ const commands = require("../lib/adminPolicy/policyCommands.js");
 const authority = require("../lib/adminPolicy/objectSecurityAuthority.js");
 const { measureCredEquivalence } = require("../lib/adminPolicy/migration/credEquivalence.js");
 const { executeAdminOperation } = require("../lib/adminPolicy/adminPolicyApi.js");
+const { ADMINISTRATION_READ_CAPABILITY_KEYS } = require("../lib/adminPolicy/administrationSurfaceAuthority.js");
 
 const OPERATOR = "operator-under-test";
 const ADMIN_SUBJECT = "firebase-uid-admin";
@@ -67,6 +68,25 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
   });
   const plainId = plain.principal?.id ?? plain.id ?? plain.principalId;
   const nobody = { tenantId: tenant.id, uid: plainId, heldRoleKeys: [] };
+
+  // ════════════════════ THE ADMINISTRATOR IS MADE A GRANTED READER ════════════════════
+  //
+  // Administration reads are gated on the capability the surface they serve declares. The grant
+  // migrations (1762041600000, 1762128000000) resolve Roles by key, and in this database they ran
+  // against an EMPTY `roles` table -- the tenant is bootstrapped afterwards -- so they granted
+  // nothing here. The fixture writes what they would have written; the gate is not weakened.
+  {
+    const catalog = await repo.listCapabilities();
+    const adminRole = await repo.getRoleByKey(tenant.id, "admin");
+    await repo.transact({ tenantId: tenant.id, uid: adminContext.uid }, async (tx) => {
+      for (const key of ADMINISTRATION_READ_CAPABILITY_KEYS) {
+        await tx.grantRoleCapability({
+          roleId: adminRole.id, capabilityId: catalog.find((c) => c.key === key).id,
+          grantedBy: adminContext.uid, grantedAt: new Date().toISOString(),
+        });
+      }
+    });
+  }
 
   // ════════════════════ §25 ROLE GRANTS ════════════════════
 

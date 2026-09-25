@@ -561,6 +561,28 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   // The capability catalog is GLOBAL -- not tenant-filtered -- exactly as in the postgres adapter,
   // so a test that passes here cannot pass for a reason the real store would not reproduce.
   async listCapabilities() { return [...this.tables.capabilities]; }
+
+  /**
+   * Put catalog rows in front of the code, as a MIGRATION would.
+   *
+   * THE CATALOG IS BORN IN A MIGRATION. That is why no `PolicyTransaction` method writes it and why
+   * the postgres adapter has no equivalent of this: `capabilities` is platform vocabulary, not
+   * tenant configuration, and nothing in the running system may mint a key. This seam exists so a
+   * fixture can stand up the same rows the migration chain writes; it is the ONLY way to put a
+   * capability into this repository, and it grants nothing -- a row here confers no access to
+   * anybody until a Role or a Principal is granted it.
+   */
+  registerCapabilities(rows: readonly Omit<CapabilityRecord, "id">[]): readonly CapabilityRecord[] {
+    const made: CapabilityRecord[] = [];
+    for (const row of rows) {
+      const existing = this.tables.capabilities.find((c) => c.key === row.key);
+      if (existing) { made.push(existing); continue; }
+      const record: CapabilityRecord = { id: this.nextId(), ...row };
+      this.tables.capabilities.push(record);
+      made.push(record);
+    }
+    return made;
+  }
   async listRoleCapabilities(tenantId: TenantId, roleIds?: readonly string[]) {
     const mine = this.mine(this.tables.roleCapabilities, tenantId);
     return roleIds ? mine.filter((g) => roleIds.includes(g.roleId)) : mine;
