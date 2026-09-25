@@ -690,7 +690,8 @@ void INACTIVE_ID;
 
 // ---------------------------------------------------------------------------
 // Phase 6a -- Sales/Fulfillment/Finance spine ROLE GRANTS (spec 2026-08-14).
-// owner/admin = full 13; dispatcher = 8 operational only; technician = 0.
+// admin = full 13; owner = 12 (see the owner check below); dispatcher = 8 operational only;
+// technician = 0.
 // (salesOrder.read added 2026-08-15, Owner-ratified, same operational grant shape
 // as the other 3 operational Sales ids -- see permissionCatalog.ts's entry.
 // inventory.catalog.read added 2026-08-15, Wave 6 Owner Decision -- same operational
@@ -736,10 +737,26 @@ check("Phase 6a: admin ALLOWs the FULL spine (all 13) under sandbox activation",
   }
 });
 
-check("Phase 6a: owner ALLOWs the FULL spine (all 13) under activation (inherits admin)", () => {
+// PIN MOVED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). Owner used to ALLOW all
+// 13 by INHERITING admin, which is exactly the composition the ruling removed. Twelve are retained
+// on Owner's own declared contract, because the Phase 6a spec named owner explicitly and this lane
+// does not overturn a recorded decision on inference. The thirteenth is dropped on EVIDENCE:
+// opportunity.createSalesOrder is one of the 19 capabilities live nonprod grants to admin and
+// withholds from owner, and it is also the maker/checker hole -- Owner edits the Opportunity, so
+// Owner must not also be the actor who converts it into a committed Sales Order. Owner can still
+// raise the order directly through salesOrder.write, which it retains.
+const SPINE_NOT_OWNER = ["opportunity.createSalesOrder"];
+
+check("Phase 6a: owner ALLOWs 12 of the 13 spine ids on its own contract, and is refused the 13th", () => {
   const roles = { ...COMPATIBILITY_ROLES, owner: OWNER_ROLE };
   for (const id of SPINE_ALL) {
+    if (SPINE_NOT_OWNER.includes(id)) continue;
     assert.equal(resolveWithActivation("owner", id, roles).decision, "ALLOW", `owner should ALLOW ${id}`);
+  }
+  for (const id of SPINE_NOT_OWNER) {
+    const r = resolveWithActivation("owner", id, roles);
+    assert.equal(r.decision, "DENY", `owner must DENY ${id} -- admin-only in live nonprod`);
+    assert.equal(r.reason, "noQualifyingGrant", `owner's DENY of ${id} must be an absent grant, not an inactive capability`);
   }
 });
 

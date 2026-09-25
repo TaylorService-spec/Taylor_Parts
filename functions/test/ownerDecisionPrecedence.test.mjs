@@ -35,7 +35,7 @@ const holdersOf = (cap) =>
 const DECIDED_HOLDERS = [
   {
     capability: "inventory.stock.receive",
-    holders: ["admin", "dispatcher", "inventoryReceivingClerk", "owner"],
+    holders: ["admin", "dispatcher", "inventoryReceivingClerk"],
     decision:
       "EI Phase-2 Receiving capability grant gate. Granted to EXACTLY the admin and dispatcher " +
       "compatibility Roles, with owner inheriting by composition (OWNER_PERMISSIONS is a superset of " +
@@ -47,7 +47,14 @@ const DECIDED_HOLDERS = [
       "Owner directed a NARROW STANDALONE receiving Role rather than composition into an associate " +
       "title, so inventoryReceivingClerk joins this set -- and only it. The original gate is not " +
       "weakened: no business title gains receiving, the PARTS_ASSOCIATE deferral recorded in " +
-      "compatibilityRoles.ts is untouched, and the matrix rows for GM/Warehouse remain refused.",
+      "compatibilityRoles.ts is untouched, and the matrix rows for GM/Warehouse remain refused. " +
+      "AMENDED AGAIN by Owner ruling A (2026-09-24, narrow the compiled Owner Role): `owner` leaves " +
+      "this set. Note what the original decision text says about it -- owner was here \"by " +
+      "composition (OWNER_PERMISSIONS is a superset of ADMIN_ROLE)\", i.e. as a side effect of the " +
+      "spread, never as a decision that the Owner should receive stock. Ruling A removed the spread, " +
+      "and live nonprod eos_policy confirms the intent: inventory.stock.receive is one of the 19 " +
+      "capabilities granted to admin and withheld from owner. The gate itself is UNCHANGED and is " +
+      "now narrower by one, not wider: no business title gains receiving.",
   },
   {
     capability: "crm.activity.create",

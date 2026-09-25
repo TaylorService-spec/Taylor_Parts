@@ -49,9 +49,9 @@
  },
  "authoritySource": {
   "operableHoldingsTotal": 2179,
-  "fromCompatibilityRoleOnly": 1257,
+  "fromCompatibilityRoleOnly": 1292,
   "fromGovernedRoleOnly": 488,
-  "fromBoth": 434,
+  "fromBoth": 399,
   "employeesWithZeroOperableGovernedAuthority": 12,
   "note": "Compatibility-role authority is what R-1 exists to retire. A workstream operable only through it is borrowing authority from the thing being removed."
  },
