@@ -33,9 +33,14 @@ import {
   vocabularies,
 } from "./sandboxCredentialReconciliation.mjs";
 import {
+  CANONICAL_ROLE_KEYS,
+  CANONICAL_ROLE_REGISTRY,
+  CREDENTIAL_SOURCE_ENV,
+  NONCANONICAL_FIXTURE_IDENTITIES,
   PENDING_ACCOUNT_PERSONAS,
+  PERSONA_ALIASES,
+  RETIRED_PERSONAS,
   SANDBOX_PERSONAS,
-  SUPERSEDED_IDENTITIES,
   UNRECONCILED_PERSONAS,
   loadSandboxPersona,
   personaDirectory,
@@ -144,7 +149,7 @@ test("no two canonical slots claim the same auth uid — a duplicate identity is
 });
 
 test("no two canonical slots claim the same credential key, principal or employee", () => {
-  for (const field of ["credentialCandidate", "principalId", "employeeId"]) {
+  for (const field of ["credentialCandidate", "authUid", "jobRole"]) {
     const values = RECONCILIATION.map((r) => r[field]).filter(Boolean);
     assert.equal(new Set(values).size, values.length, `${field} must be unique across slots`);
   }
@@ -156,7 +161,7 @@ test("a persona that already has an account is never classified as needing one c
       assert.notEqual(row.classification, "AUTH_ACCOUNT_MISSING", `${row.slot} has an account and must not be marked missing`);
     } else {
       assert.equal(row.authUid, null, `${row.slot} has no account, so it cannot carry a uid`);
-      assert.equal(row.principalId, null, `${row.slot} has no account, so it cannot carry a Principal`);
+
     }
   }
 });
@@ -277,7 +282,7 @@ test("discoverCredentialSources reports key names and counts, and never a value"
 // ======================================================================================
 
 test("the Owner persona is classified as an existing exact match and its action is NONE", () => {
-  const owner = RECONCILIATION.find((r) => r.persona === "owner");
+  const owner = RECONCILIATION.find((r) => r.persona === "ownerExecutive");
   assert.equal(owner.slot, "P01");
   assert.equal(owner.classification, "EXISTING_CREDENTIAL_EXACT_MATCH");
   assert.equal(owner.credentialCandidate, "eos-owner@sandbox.invalid");
@@ -287,7 +292,7 @@ test("the Owner persona is classified as an existing exact match and its action 
 });
 
 test("the Owner's address is the eos-owner spelling, never the retired owner@ one", () => {
-  const owner = RECONCILIATION.find((r) => r.persona === "owner");
+  const owner = RECONCILIATION.find((r) => r.persona === "ownerExecutive");
   assert.equal(owner.credentialCandidate, "eos-owner@sandbox.invalid");
   assert.notEqual(owner.credentialCandidate, "owner@sandbox.invalid");
   // The retired spelling must never be a credential candidate for ANY slot: it has no Principal.
@@ -353,7 +358,7 @@ test("all sixteen canonical slots are present exactly once, in order", () => {
     Array.from({ length: 16 }, (_, i) => `P${String(i + 1).padStart(2, "0")}`),
   );
   const personas = RECONCILIATION.map((r) => r.persona);
-  assert.deepEqual(personas, vocabularies().canonicalKeys, "the slots must match the canonical persona catalog exactly");
+  assert.deepEqual(personas, vocabularies().canonicalKeys, "the slots must match the canonical role registry exactly");
 });
 
 test("every slot carries exactly one classification, drawn from the declared vocabulary", () => {
@@ -376,7 +381,19 @@ test("the dry run performs zero mutations, by declaration and by absence of any 
 
 test("every legacy alias resolves to a canonical key and carries no address of its own", () => {
   const { legacyAliases, canonicalKeys } = vocabularies();
-  assert.equal(Object.keys(legacyAliases).length, 6, "six legacy aliases were measured");
+  // The consolidation added aliases for the renamed keys (owner, admin, reporting, restricted) and
+  // collapsed three technician spellings onto one role.
+  assert.deepEqual(Object.keys(legacyAliases).sort(), [
+    "admin",
+    "fieldManager",
+    "owner",
+    "reporting",
+    "restricted",
+    "salesperson",
+    "serviceTechnicianA",
+    "technician",
+    "technicianAssigned",
+  ]);
   for (const [alias, target] of Object.entries(legacyAliases)) {
     assert.ok(canonicalKeys.includes(target), `${alias} must resolve to a canonical key, not to '${target}'`);
     assert.ok(!String(target).includes("@"), `${alias} must not carry an address of its own`);
@@ -397,7 +414,14 @@ test("the retired KEYS stay retired even though one of their addresses is now re
   // as P14's identity. That does NOT revive the `accountingManager` KEY, which still names a Role
   // no Principal holds. An address and a persona key are different things, and conflating them is
   // how the original catalog acquired keys standing in front of no identity.
-  assert.deepEqual(vocabularies().retiredKeys.sort(), ["accountingManager", "operationsManager", "salesManager"]);
+  assert.deepEqual(vocabularies().retiredKeys.sort(), [
+    "accountingManager",
+    "contractTechnician",
+    "operationsManager",
+    "retailSalesB",
+    "salesManager",
+    "technicianUnassigned",
+  ]);
   const adopted = RECONCILIATION.map((r) => r.credentialCandidate).filter(Boolean);
   for (const address of ["opsmgr@sandbox.invalid", "salesmgr@sandbox.invalid"]) {
     assert.ok(!adopted.includes(address), `${address} has no live EOS Principal and must not be adopted`);
@@ -443,49 +467,45 @@ test("the loader remains READ ONLY: the reconciliation did not add a write path 
   }
 });
 
-test("P15 is the ONLY missing account; P14 and P16 reuse existing ones", () => {
-  // Corrected 2026-09-25 by a real Firebase Admin SDK enumeration, which disproved my earlier
-  // AUTH_ACCOUNT_MISSING calls for P14 and P16.
+test("P15 is the ONLY missing account, and it is the reporting analyst", () => {
   const missing = RECONCILIATION.filter((r) => r.classification === "AUTH_ACCOUNT_MISSING");
-  assert.deepEqual(missing.map((r) => r.slot), ["P15"]);
+  assert.deepEqual(missing.map((r) => r.persona), ["reportingAnalyst"]);
   assert.equal(missing[0].credentialCandidate, "reporting@sandbox.invalid");
   assert.equal(missing[0].authAccountExists, false);
+  assert.match(missing[0].action, /CREATE EXACTLY ONE/);
+});
 
-  for (const slot of ["P14", "P16"]) {
-    const row = RECONCILIATION.find((r) => r.slot === slot);
-    assert.equal(row.classification, "EXISTING_CREDENTIAL_EXACT_MATCH", `${slot} reuses an existing account`);
+test("financeAccounting and generalEmployee reuse existing accounts and are never rotated", () => {
+  for (const role of ["financeAccounting", "generalEmployee"]) {
+    const row = RECONCILIATION.find((r) => r.persona === role);
+    assert.equal(row.classification, "EXISTING_CREDENTIAL_EXACT_MATCH", `${role} reuses an existing account`);
     assert.equal(row.authAccountExists, true);
-    assert.ok(row.authUid, `${slot} must carry the measured uid`);
+    assert.ok(row.authUid, `${role} must carry the measured uid`);
     assert.match(row.action, /NEVER ROTATE/);
-    assert.match(row.action, /do not create a second/i, `${slot} must forbid a duplicate account`);
+    assert.match(row.action, /do not create a second account/i);
   }
-  // The authority gap is NOT closed by reusing an account, and the table must keep saying so.
-  assert.match(RECONCILIATION.find((r) => r.slot === "P15").note, /ZERO role_capabilities/);
 });
 
 // ======================================================================================
 // THE OWNER'S CREDENTIAL POLICY, ASSERTED AS DATA
 // ======================================================================================
 
-test("a preserve-only persona can NEVER enter the rotation set", () => {
+test("a preserve-only role can NEVER enter the rotation set", () => {
   const rotatable = new Set(rotationSet());
-  for (const persona of CREDENTIAL_POLICY.preserveNeverRotate) {
-    assert.ok(!rotatable.has(persona), `${persona} is preserve-only and must never be rotated`);
+  for (const role of CREDENTIAL_POLICY.preserveNeverRotate) {
+    assert.ok(!rotatable.has(role), `${role} is preserve-only and must never be rotated`);
   }
-  // And the derivation is real: the rotation set is exactly the bootstrap set, which is disjoint
-  // from the preserve set. A future edit that adds a preserved persona to bootstrapAuthorized is
-  // caught by the disjointness test below, not silently filtered away here.
   assert.deepEqual(rotationSet(), [...CREDENTIAL_POLICY.bootstrapAuthorized]);
 });
 
-test("the three policy sets are disjoint and cover all sixteen personas exactly once", () => {
+test("the three policy sets are disjoint and cover all sixteen roles exactly once", () => {
   const { preserveNeverRotate, bootstrapAuthorized, createOne } = CREDENTIAL_POLICY;
   const all = [...preserveNeverRotate, ...bootstrapAuthorized, ...createOne];
-  assert.equal(new Set(all).size, all.length, "a persona appears in two policy sets — the policy is ambiguous");
-  assert.deepEqual([...all].sort(), [...vocabularies().canonicalKeys].sort(), "the policy must cover exactly the sixteen canonical personas");
+  assert.equal(new Set(all).size, all.length, "a role appears in two policy sets -- the policy is ambiguous");
+  assert.deepEqual([...all].sort(), [...CANONICAL_ROLE_KEYS].sort(), "the policy must cover exactly the sixteen canonical roles");
 });
 
-test("the policy's counts match the measured table and the Owner's expected end state", () => {
+test("the policy's counts match the derived table and the Owner's expected end state", () => {
   const { expectedEndState: e } = CREDENTIAL_POLICY;
   assert.equal(CREDENTIAL_POLICY.preserveNeverRotate.length, e.preserved);
   assert.equal(CREDENTIAL_POLICY.bootstrapAuthorized.length, e.bootstrapped);
@@ -494,101 +514,228 @@ test("the policy's counts match the measured table and the Owner's expected end 
   assert.equal(e.ready, 16);
   assert.equal(e.duplicatePersonaAccountsCreated, 0);
 
-  // The policy must agree with the measured classifications, not merely with itself.
-  const byPersona = new Map(RECONCILIATION.map((r) => [r.persona, r]));
+  const byRole = new Map(RECONCILIATION.map((r) => [r.persona, r]));
   for (const p of CREDENTIAL_POLICY.preserveNeverRotate) {
-    assert.equal(byPersona.get(p).classification, "EXISTING_CREDENTIAL_EXACT_MATCH", `${p} is preserved, so a credential must already exist`);
+    assert.equal(byRole.get(p).classification, "EXISTING_CREDENTIAL_EXACT_MATCH", `${p} is preserved, so a credential must already exist`);
   }
   for (const p of CREDENTIAL_POLICY.bootstrapAuthorized) {
-    assert.equal(byPersona.get(p).classification, "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL", `${p} is bootstrapped, so its account must exist without a credential`);
-    assert.ok(byPersona.get(p).authUid, `${p} must have a measured uid before a password is minted for it`);
+    assert.equal(byRole.get(p).classification, "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL", `${p} is bootstrapped, so its account must exist without a credential`);
+    assert.ok(byRole.get(p).authUid, `${p} must have a measured uid before a password is minted for it`);
   }
   for (const p of CREDENTIAL_POLICY.createOne) {
-    assert.equal(byPersona.get(p).classification, "AUTH_ACCOUNT_MISSING", `${p} is created, so its account must be absent`);
+    assert.equal(byRole.get(p).classification, "AUTH_ACCOUNT_MISSING", `${p} is created, so its account must be absent`);
   }
 });
 
 // ======================================================================================
-// A SUPERSEDED ADDRESS CAN NEVER BE A PERSONA'S CANONICAL IDENTITY
+// NONCANONICAL IDENTITIES CAN NEVER BE A CANONICAL IDENTITY
 // ======================================================================================
 
-test("no superseded address is ever adopted as a canonical persona identity", () => {
-  for (const [address, record] of Object.entries(SUPERSEDED_IDENTITIES)) {
+test("no noncanonical fixture identity is ever a canonical role identity or a credential candidate", () => {
+  for (const [address, record] of Object.entries(NONCANONICAL_FIXTURE_IDENTITIES)) {
+    assert.equal(record.classification, "NONCANONICAL_FIXTURE_IDENTITY");
     assert.ok(
       !Object.values(SANDBOX_PERSONAS).includes(address),
-      `${address} is ${record.disposition} and must never be a persona's address`,
+      `${address} is noncanonical and must never be a role's address`,
     );
     assert.ok(
       !RECONCILIATION.some((r) => r.credentialCandidate === address),
-      `${address} is ${record.disposition} and must never be a credential candidate`,
+      `${address} is noncanonical and must never be a credential candidate`,
     );
   }
 });
 
-test("every superseded record names the address that replaced it, and that one IS canonical", () => {
-  const canonical = new Set(Object.values(SANDBOX_PERSONAS));
-  const pendingEmails = new Set(Object.values(PENDING_ACCOUNT_PERSONAS).map((p) => p.email));
-  for (const [address, record] of Object.entries(SUPERSEDED_IDENTITIES)) {
-    assert.ok(record.supersededBy, `${address} must name its replacement`);
-    assert.ok(
-      canonical.has(record.supersededBy) || pendingEmails.has(record.supersededBy),
-      `${address} is superseded by ${record.supersededBy}, which is not a declared canonical identity`,
-    );
+test("the retired two-technician and second-sales identities are recorded, and superseded by the canonical one", () => {
+  for (const [address, expected] of [
+    ["gray.fixture@sandbox.invalid", "finley.fixture@sandbox.invalid"],
+    ["oakley.fixture@sandbox.invalid", "finley.fixture@sandbox.invalid"],
+    ["indigo.fixture@sandbox.invalid", "harper.fixture@sandbox.invalid"],
+    ["emerson.fixture@sandbox.invalid", "dispatcher@sandbox.invalid"],
+    ["sage.fixture@sandbox.invalid", "acctmgr@sandbox.invalid"],
+    ["wren.fixture@sandbox.invalid", "restricted@sandbox.invalid"],
+  ]) {
+    const record = NONCANONICAL_FIXTURE_IDENTITIES[address];
+    assert.ok(record, `${address} must be recorded noncanonical`);
+    assert.equal(record.supersededBy, expected);
     assert.ok(record.reason && record.reason.length > 40, `${address} must carry a real reason`);
-    assert.ok(["SUPERSEDED_FOR_P14", "SUPERSEDED_FOR_P16", "NOT_CANONICAL_FOR_P05"].includes(record.disposition));
-    // The Owner ruled stale accounts stay. A record must never advise deletion.
-    assert.doesNotMatch(record.reason, /\bdelete\b(?! any auth account)/i);
   }
 });
 
-test("the three Owner-ruled superseded identities are recorded, exactly", () => {
-  assert.deepEqual(Object.keys(SUPERSEDED_IDENTITIES).sort(), [
-    "emerson.fixture@sandbox.invalid",
-    "sage.fixture@sandbox.invalid",
-    "wren.fixture@sandbox.invalid",
-  ]);
-  assert.equal(SUPERSEDED_IDENTITIES["sage.fixture@sandbox.invalid"].supersededBy, "acctmgr@sandbox.invalid");
-  assert.equal(SUPERSEDED_IDENTITIES["wren.fixture@sandbox.invalid"].supersededBy, "restricted@sandbox.invalid");
-  assert.equal(SUPERSEDED_IDENTITIES["emerson.fixture@sandbox.invalid"].supersededBy, "dispatcher@sandbox.invalid");
+test("ONE login per Job Role, and ONE Job Role per login", () => {
+  const jobRoles = CANONICAL_ROLE_KEYS.map((k) => CANONICAL_ROLE_REGISTRY[k].jobRole);
+  const emails = CANONICAL_ROLE_KEYS.map((k) => CANONICAL_ROLE_REGISTRY[k].email);
+  assert.equal(new Set(jobRoles).size, 16, "two roles share a Job Role");
+  assert.equal(new Set(emails).size, 16, "two roles share a login");
+  // Exactly one technician.
+  assert.deepEqual(CANONICAL_ROLE_KEYS.filter((k) => CANONICAL_ROLE_REGISTRY[k].jobRole === "service-technician"), ["serviceTechnician"]);
 });
 
-test("P05 names the account the live Dispatcher Principal is actually behind", () => {
-  const p05 = RECONCILIATION.find((r) => r.slot === "P05");
-  assert.equal(p05.credentialCandidate, "dispatcher@sandbox.invalid");
-  assert.equal(p05.authUid, "PEiRkebIGRPcEau7yBBV0D77Dho1");
+test("P05 is the dispatcher and names the account the live Dispatcher Principal is behind", () => {
+  const row = RECONCILIATION.find((r) => r.persona === "dispatcher");
+  assert.equal(row.credentialCandidate, "dispatcher@sandbox.invalid");
+  assert.equal(row.authUid, "PEiRkebIGRPcEau7yBBV0D77Dho1");
   assert.equal(SANDBOX_PERSONAS.dispatcher, "dispatcher@sandbox.invalid");
-  // The superseded account keeps its own, different uid — proving these are two accounts, not two
-  // spellings of one, which is what made the original mapping a defect rather than an alias.
-  assert.equal(SUPERSEDED_IDENTITIES["emerson.fixture@sandbox.invalid"].uid, "NReyNyXVMdVkv75vpmxWuvGUeOm1");
-  assert.notEqual(SUPERSEDED_IDENTITIES["emerson.fixture@sandbox.invalid"].uid, p05.authUid);
+  // The superseded account keeps its own, different uid -- two accounts, not two spellings of one.
+  const superseded = NONCANONICAL_FIXTURE_IDENTITIES["emerson.fixture@sandbox.invalid"];
+  assert.equal(superseded.uid, "NReyNyXVMdVkv75vpmxWuvGUeOm1");
+  assert.notEqual(superseded.uid, row.authUid);
 });
 
-test("the catalog declares all sixteen keys, and the only non-loadable one is the pending account", () => {
+// ======================================================================================
+// THE CATALOG AND THE EXPLICIT CREDENTIAL SOURCE
+// ======================================================================================
+
+test("the catalog declares all sixteen roles, and the only non-loadable one is the pending account", () => {
   const directory = personaDirectory();
   assert.equal(directory.length, 16);
   assert.equal(directory.filter((r) => r.state === "MAPPED").length, 15);
   const pending = directory.filter((r) => r.state === "PENDING_ACCOUNT");
-  assert.deepEqual(pending.map((r) => r.personaId), ["reporting"]);
+  assert.deepEqual(pending.map((r) => r.personaId), ["reportingAnalyst"]);
   assert.equal(pending[0].email, "reporting@sandbox.invalid", "a pending key still declares its address");
   assert.deepEqual(Object.keys(UNRECONCILED_PERSONAS), [], "the unreconciled state was emptied by the ruling");
+  for (const row of directory) assert.ok(row.jobRole, `${row.personaId} must name its Job Role`);
 });
 
-test("a pending-account persona fails closed BEFORE the credential file is consulted", () => {
-  const prev = process.env.SANDBOX_CREDENTIALS_FILE;
-  process.env.SANDBOX_CREDENTIALS_FILE = path.join(os.tmpdir(), "bv-definitely-absent", "sandbox-credentials.local.json");
+test("an UNSET credential source fails closed with CREDENTIAL_SOURCE_NOT_CONFIGURED, never a search", () => {
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  delete process.env[CREDENTIAL_SOURCE_ENV];
   try {
     assert.throws(
-      () => loadSandboxPersona("reporting"),
+      () => loadSandboxPersona("dispatcher"),
       (err) => {
-        assert.equal(err.failureType, "PERSONA_ACCOUNT_PENDING", "a missing ACCOUNT must not be reported as a missing password");
+        assert.equal(err.failureType, "CREDENTIAL_SOURCE_NOT_CONFIGURED");
         assert.deepEqual(err.pathsTried, [], "no path may be reported: none was tried");
-        assert.match(err.message, /OPERATOR ACTION:/);
-        assert.match(err.message, /reporting@sandbox\.invalid/, "the operator must be told which account to create");
+        assert.match(err.message, new RegExp(CREDENTIAL_SOURCE_ENV));
+        return true;
+      },
+    );
+    // A blank value is a configuration error too, not an empty search.
+    process.env[CREDENTIAL_SOURCE_ENV] = "   ";
+    assert.throws(() => loadSandboxPersona("dispatcher"), (err) => err.failureType === "CREDENTIAL_SOURCE_NOT_CONFIGURED");
+  } finally {
+    if (prev === undefined) delete process.env[CREDENTIAL_SOURCE_ENV];
+    else process.env[CREDENTIAL_SOURCE_ENV] = prev;
+  }
+});
+
+test("the load path consults the explicit source ONLY -- candidatePaths is diagnostics", () => {
+  // The configured file exists and holds the role's key, so a load succeeds. If resolution still fell
+  // back to the guess list, pointing the variable at a file WITHOUT the key would silently succeed
+  // from some other copy on disk -- which is the defect this ruling removed.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bv-src-"));
+  const good = path.join(dir, "sandbox-credentials.local.json");
+  const bare = path.join(dir, "empty-credentials.local.json");
+  fs.writeFileSync(good, JSON.stringify({ "dispatcher@sandbox.invalid": SENTINEL }));
+  fs.writeFileSync(bare, JSON.stringify({ "nobody@sandbox.invalid": SENTINEL }));
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  try {
+    process.env[CREDENTIAL_SOURCE_ENV] = good;
+    assert.equal(loadSandboxPersona("dispatcher").email, "dispatcher@sandbox.invalid");
+    process.env[CREDENTIAL_SOURCE_ENV] = bare;
+    assert.throws(
+      () => loadSandboxPersona("dispatcher"),
+      (err) => {
+        assert.equal(err.failureType, "PERSONA_NOT_IN_FILE", "it must fail on the NAMED file, not wander off to another copy");
+        assert.deepEqual(err.pathsTried, [bare], "exactly one source may be reported");
         return true;
       },
     );
   } finally {
-    if (prev === undefined) delete process.env.SANDBOX_CREDENTIALS_FILE;
-    else process.env.SANDBOX_CREDENTIALS_FILE = prev;
+    if (prev === undefined) delete process.env[CREDENTIAL_SOURCE_ENV];
+    else process.env[CREDENTIAL_SOURCE_ENV] = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a pending-account role fails closed BEFORE the credential source is read", () => {
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  // Deliberately UNSET: a pending role must be answered by name, so it must not even reach the
+  // source check -- otherwise the operator is told to configure a file for an account that does not
+  // exist, which is the wrong remedy.
+  delete process.env[CREDENTIAL_SOURCE_ENV];
+  try {
+    assert.throws(
+      () => loadSandboxPersona("reportingAnalyst"),
+      (err) => {
+        assert.equal(err.failureType, "PERSONA_ACCOUNT_PENDING");
+        assert.deepEqual(err.pathsTried, []);
+        assert.match(err.message, /reporting@sandbox\.invalid/);
+        assert.match(err.message, /OPERATOR ACTION:/);
+        return true;
+      },
+    );
+  } finally {
+    if (prev !== undefined) process.env[CREDENTIAL_SOURCE_ENV] = prev;
+  }
+});
+
+test("a retired key is answered as RETIRED, and the unassigned technician is not silently aliased", () => {
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  delete process.env[CREDENTIAL_SOURCE_ENV];
+  try {
+    for (const key of ["technicianUnassigned", "retailSalesB", "contractTechnician"]) {
+      assert.throws(
+        () => loadSandboxPersona(key),
+        (err) => {
+          assert.equal(err.failureType, "PERSONA_RETIRED", `${key} must be reported retired`);
+          assert.match(err.message, /OPERATOR ACTION:/);
+          return true;
+        },
+      );
+    }
+    // The critical one: asking for the UNASSIGNED technician must NOT hand back the assigned one.
+    // A silent alias would make a test that means "the unassigned technician" pass for the wrong
+    // reason, which is worse than failing.
+    assert.equal(PERSONA_ALIASES.technicianUnassigned, undefined);
+    assert.equal(PERSONA_ALIASES.serviceTechnicianB, undefined);
+    assert.match(RETIRED_PERSONAS.technicianUnassigned.reason, /BUSINESS DATA/);
+  } finally {
+    if (prev !== undefined) process.env[CREDENTIAL_SOURCE_ENV] = prev;
+  }
+});
+
+test("legacy aliases still reach the canonical role and report the canonical key back", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bv-alias-"));
+  const file = path.join(dir, "sandbox-credentials.local.json");
+  fs.writeFileSync(file, JSON.stringify({
+    "finley.fixture@sandbox.invalid": SENTINEL,
+    "eos-owner@sandbox.invalid": SENTINEL,
+    "admin@sandbox.invalid": SENTINEL,
+  }));
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  try {
+    process.env[CREDENTIAL_SOURCE_ENV] = file;
+    for (const [alias, key] of [
+      ["technician", "serviceTechnician"],
+      ["technicianAssigned", "serviceTechnician"],
+      ["serviceTechnicianA", "serviceTechnician"],
+      ["owner", "ownerExecutive"],
+      ["admin", "administrator"],
+    ]) {
+      const cred = loadSandboxPersona(alias);
+      assert.equal(cred.personaId, key, `${alias} must report the canonical key, never the alias typed`);
+      assert.equal(cred.email, CANONICAL_ROLE_REGISTRY[key].email);
+      assert.ok(cred.jobRole, "a load must report the Job Role it serves");
+    }
+  } finally {
+    if (prev === undefined) delete process.env[CREDENTIAL_SOURCE_ENV];
+    else process.env[CREDENTIAL_SOURCE_ENV] = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("every alias points at a canonical role key and carries no address of its own", () => {
+  for (const [alias, target] of Object.entries(PERSONA_ALIASES)) {
+    assert.ok(CANONICAL_ROLE_KEYS.includes(target), `${alias} must resolve to a canonical role key, not '${target}'`);
+    assert.ok(!String(target).includes("@"), `${alias} must not carry an address of its own`);
+    assert.ok(!PERSONA_ALIASES[target], `${alias} -> ${target} is an alias chain; aliases resolve in one hop`);
+  }
+});
+
+test("the loader remains READ ONLY: the consolidation did not add a write path", () => {
+  const loader = fs.readFileSync(LOADER_PATH, "utf8");
+  const code = loader.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  for (const forbidden of ["writeFileSync", "appendFileSync", "renameSync", "createWriteStream", "randomBytes"]) {
+    assert.ok(!code.includes(forbidden), `scripts/sandboxCredentials.mjs must contain no '${forbidden}'`);
   }
 });

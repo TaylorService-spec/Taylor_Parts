@@ -1174,31 +1174,37 @@ test("(2) credential activation DELEGATES to the existing implementation and doe
 test("(3) Sample Company credential activation is confined to manifest personas", () => {
   const { sampleCompanyCredentialAllowlist, supersededExclusions } = require("../scripts/sampleCompany/credentialActivation.js");
   const allowlist = sampleCompanyCredentialAllowlist(MANIFEST);
-  // OWNER RULING 2026-09-25. The allowlist is the interactive personas MINUS the two reused real
-  // Principals MINUS any address the ruling superseded. The supersession fence is what stops
-  // activate-logins creating sage.fixture@ / wren.fixture@ -- accounts that do not exist, whose
-  // identities already have perfectly good accounts -- and what stops emerson.fixture@, which
-  // exists but has no EOS Principal, being given a working password for the wrong identity.
-  const superseded = MANIFEST.sandboxCredentials.supersededIdentities;
+  // OWNER RULING 2026-09-25: ONE CANONICAL SANDBOX LOGIN PER CANONICAL JOB ROLE. Activation
+  // eligibility is derived from config/sandboxRoleIdentityRegistry.json -- the single authority --
+  // not from a list kept in this manifest. Canonical role login -> eligible; noncanonical fixture
+  // login -> excluded and reported; unknown login -> refused.
+  const registry = require("../../config/sandboxRoleIdentityRegistry.json");
+  const canonicalEmails = new Set(registry.roles.map((r) => r.authEmail));
+  const noncanonicalEmails = new Set(registry.noncanonical.map((n) => n.email));
   const expected = MANIFEST.principals
     .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .map((p) => p.loginPrincipal.credentialEmail)
-    .filter((email) => !superseded[email])
+    .filter((email) => canonicalEmails.has(email))
     .sort();
   assert.deepEqual(allowlist, expected);
-  assert.equal(allowlist.length, 13, "sixteen interactive personas, less the three superseded identities");
+  assert.equal(allowlist.length, 13, "the canonical role logins this manifest declares");
+  for (const email of allowlist) {
+    assert.ok(canonicalEmails.has(email), `${email} is allowlisted but is not a canonical role identity`);
+  }
 
-  // What was dropped is REPORTED, never silent: an excluded identity must say why and name its
-  // replacement, so a run surfaces the divergence between this manifest and the ruling.
+  // What was dropped is REPORTED, never silent: an excluded identity says why and names the canonical
+  // login that replaced it, so a run surfaces any divergence between manifest and registry.
   const excluded = supersededExclusions(MANIFEST);
   assert.deepEqual(excluded.map((e) => e.email).sort(), [
-    "emerson.fixture@sandbox.invalid",
-    "sage.fixture@sandbox.invalid",
-    "wren.fixture@sandbox.invalid",
+    "gray.fixture@sandbox.invalid",
+    "indigo.fixture@sandbox.invalid",
+    "oakley.fixture@sandbox.invalid",
   ]);
   for (const e of excluded) {
-    assert.ok(e.disposition && e.supersededBy, `${e.email} must name its disposition and replacement`);
-    assert.ok(!allowlist.includes(e.email), `${e.email} is superseded and must never be activatable`);
+    assert.equal(e.classification, "NONCANONICAL_FIXTURE_IDENTITY");
+    assert.ok(e.supersededBy, `${e.email} must name the canonical login that replaced it`);
+    assert.ok(noncanonicalEmails.has(e.email));
+    assert.ok(!allowlist.includes(e.email), `${e.email} is noncanonical and must never be activatable`);
   }
   // NEITHER REUSED PRINCIPAL IS IN IT, and neither can be: both credentialEmails are null by construction.
   const administrator = MANIFEST.principals.find((p) => p.existingAdministrator);

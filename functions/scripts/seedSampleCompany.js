@@ -124,6 +124,24 @@ const { assertMeasurementTarget, parseArgs } = require("./measureEmployeeReferen
 const { assertNonprodRuntime } = require("./measureWorkforceActivation.js");
 const MANIFEST = require("./fixtures/sampleCompany.v2.json");
 
+/**
+ * THE CANONICAL ROLE IDENTITY REGISTRY -- one authority, read as data.
+ *
+ * scripts/sandboxCredentials.mjs is ESM and this file is CommonJS, so neither can import the other.
+ * A second copy of the sixteen addresses here is how the two would drift, and the symptom of drift
+ * is an account created for an identity that already has one. Both read this JSON instead, so the
+ * registry is the single authority and this file holds no address literal.
+ */
+const CANONICAL_ROLE_IDENTITY_REGISTRY = require("../../config/sandboxRoleIdentityRegistry.json");
+
+/**
+ * The canonical role entry for a manifest Employee key, or null when that Employee is an ordinary
+ * fixture persona. Null is the common case and means the default invariant applies.
+ */
+function canonicalRoleIdentityFor(employeeKey) {
+  return CANONICAL_ROLE_IDENTITY_REGISTRY.roles.find((r) => r.sampleCompanyEmployee === employeeKey) ?? null;
+}
+
 /** Mirrored from functions/src/employeeIdentity/employeeAuthority.ts; a test asserts equality. */
 const EMPLOYMENT_STATUS_VALUES = Object.freeze(["ACTIVE", "ON_LEAVE", "INACTIVE", "TERMINATED", "RETIRED", "CONTRACTOR"]);
 const SYNTHETIC_IDENTITY_PROVIDER = "eos-synthetic-nonprod";
@@ -382,7 +400,33 @@ function validateManifest(m) {
       if (login.externalSubject !== "RESOLVED_FROM_AUTH_UID") {
         refuse("MANIFEST_INVALID", `${p.employee}: a login subject is resolved from the sandbox Auth account, never written into the manifest`);
       }
-      if (login.credentialEmail !== employee.workEmail) {
+      // ============================ THE CREDENTIAL-EMAIL INVARIANT ============================
+      //
+      // DEFAULT: credentialEmail === employee.workEmail. That coupling exists so a persona cannot
+      // acquire a quiet second identity nobody declared.
+      //
+      // THE NARROW EXCEPTION (Owner ruling 2026-09-25). `employee.workEmail` is business/profile
+      // CONTACT data; `loginPrincipal.credentialEmail` is an AUTHENTICATION identity. They are
+      // distinct concepts, and the sandbox consolidation -- one canonical login per canonical Job
+      // Role -- depends on that distinction: a role's stable sandbox login may intentionally differ
+      // from the synthetic person's business email. So a persona listed in the canonical role
+      // identity registry must match THE REGISTRY's declared authEmail, and its workEmail is
+      // independent and is never rewritten to suit an account.
+      //
+      // THE REGISTRY IS THE ONLY AUTHORITY FOR THE EXCEPTION. This file holds NO address literals
+      // and NO per-email special cases: one lookup, and anything not in the registry still obeys the
+      // default. Ad hoc exceptions accumulating here is precisely the failure mode the ruling was
+      // written to prevent -- each one is individually defensible and collectively they mean the
+      // invariant no longer exists.
+      const canonical = canonicalRoleIdentityFor(p.employee);
+      if (canonical) {
+        if (login.credentialEmail !== canonical.authEmail) {
+          refuse(
+            "MANIFEST_INVALID",
+            `${p.employee}: it is canonical role '${canonical.key}', whose authentication identity the registry declares; credentialEmail must be that declared address and nothing else`,
+          );
+        }
+      } else if (login.credentialEmail !== employee.workEmail) {
         refuse("MANIFEST_INVALID", `${p.employee}: the credential email must be the Employee's own work email`);
       }
       const fixture = p.fixturePrincipal;

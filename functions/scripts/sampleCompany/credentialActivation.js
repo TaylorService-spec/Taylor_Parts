@@ -27,6 +27,14 @@
 // NOTHING HERE RETURNS, LOGS OR COMMITS A PASSWORD. The result carries email addresses and counts.
 "use strict";
 
+/**
+ * THE CANONICAL ROLE IDENTITY REGISTRY -- the authority for which authentication identity a
+ * canonical persona uses. Read as JSON because scripts/sandboxCredentials.mjs is ESM and this file
+ * is CommonJS: a second copy of the addresses is how the two drift, and drift here means an account
+ * created for an identity that already has one.
+ */
+const REGISTRY = require("../../../config/sandboxRoleIdentityRegistry.json");
+
 class CredentialActivationError extends Error {
   constructor(code, message) {
     super(`${code}: ${message}`);
@@ -41,56 +49,80 @@ class CredentialActivationError extends Error {
  * out of scope, and both carry a null credentialEmail so neither could become an allowlist entry anyway --
  * the filter states the rule rather than relying on that.
  */
-function sampleCompanyCredentialAllowlist(manifest) {
+function sampleCompanyCredentialAllowlist(manifest, registry = REGISTRY) {
   const employees = new Map(manifest.employees.map((e) => [e.key, e]));
-  const allowlist = manifest.principals
+  const interactive = manifest.principals
     .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .filter((p) => employees.get(p.employee)?.sandboxPersona?.interactiveLogin === true)
-    .map((p) => p.loginPrincipal.credentialEmail)
-    .filter((email) => typeof email === "string" && email.length > 0)
-    .sort();
+    .map((p) => ({ employee: p.employee, email: p.loginPrincipal.credentialEmail }))
+    .filter((x) => typeof x.email === "string" && x.email.length > 0);
 
-  // ============================ THE SUPERSESSION FENCE ============================
-  //
-  // OWNER RULING 2026-09-25. An address the manifest still declares may have been SUPERSEDED by an
-  // account that already exists. Three are, and each would have done real damage here:
-  //
-  //   sage.fixture@ / wren.fixture@  do not exist in eos-platform-sandbox at all, so activate-logins
-  //                                  would have CREATED them -- a brand new persona account for an
-  //                                  identity that already has a perfectly good one, which is the
-  //                                  duplicate the Owner ruled out (duplicates created = 0).
-  //   emerson.fixture@               exists but has NO EOS Principal, while the live Dispatcher
-  //                                  Principal sits behind dispatcher@. Activating it would put a
-  //                                  working password on the WRONG identity -- the failure that
-  //                                  surfaces later as a surprising authorization answer.
-  //
-  // EXCLUDED, NOT REFUSED. Throwing here would block the ten personas that are legitimately
-  // activatable along with the three that are not, which serves nobody. Excluded is not the same as
-  // silent: `supersededExclusions()` returns exactly what was dropped and why, and the activation
-  // result carries it, so the phase reports the divergence between manifest and ruling every run.
-  const superseded = manifest.sandboxCredentials?.supersededIdentities ?? {};
-  return allowlist.filter((email) => !superseded[email]);
+  const canonicalByEmail = new Map(registry.roles.map((r) => [r.authEmail, r]));
+  const noncanonicalByEmail = new Map(registry.noncanonical.map((n) => [n.email, n]));
+
+  const eligible = [];
+  for (const { employee, email } of interactive) {
+    // CANONICAL -> eligible.
+    if (canonicalByEmail.has(email)) {
+      eligible.push(email);
+      continue;
+    }
+    // SUPERSEDED FIXTURE -> excluded and reported (see supersededExclusions). Never created, never
+    // reset, never activated as a canonical acceptance user.
+    if (noncanonicalByEmail.has(email)) continue;
+    // UNKNOWN -> refused. An address in neither list is an identity nobody declared, and the one
+    // thing never to do with an undeclared sandbox login is create it: that is how a duplicate
+    // persona account appears. Failing closed costs a registry entry; guessing costs an account.
+    throw new CredentialActivationError(
+      "UNKNOWN_LOGIN_IDENTITY",
+      `${employee} declares credentialEmail ${email}, which is neither a canonical role identity nor a recorded noncanonical fixture identity. Add it to config/sandboxRoleIdentityRegistry.json before this phase can run.`,
+    );
+  }
+  return eligible.sort();
 }
 
 /**
- * What the supersession fence removed from the allowlist, and why. Returned by the activation phase
- * so a run can never drop an identity without saying so.
+ * What the supersession fence removed from the allowlist, and why.
+ *
+ * EXCLUDED, NOT REFUSED, and never SILENT. Throwing would block the canonical personas alongside the
+ * superseded ones, which serves nobody; dropping them quietly would let the manifest keep declaring a
+ * dead identity with no way to notice. So the phase reports the divergence between manifest and
+ * registry on every run.
  */
-function supersededExclusions(manifest) {
+function supersededExclusions(manifest, registry = REGISTRY) {
   const employees = new Map(manifest.employees.map((e) => [e.key, e]));
-  const superseded = manifest.sandboxCredentials?.supersededIdentities ?? {};
+  const noncanonicalByEmail = new Map(registry.noncanonical.map((n) => [n.email, n]));
   return manifest.principals
     .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .filter((p) => employees.get(p.employee)?.sandboxPersona?.interactiveLogin === true)
     .map((p) => p.loginPrincipal.credentialEmail)
-    .filter((email) => typeof email === "string" && superseded[email])
+    .filter((email) => typeof email === "string" && noncanonicalByEmail.has(email))
     .sort()
-    .map((email) => ({
-      email,
-      disposition: superseded[email].disposition,
-      supersededBy: superseded[email].supersededBy,
-      existsInProject: superseded[email].existsInProject,
-    }));
+    .map((email) => {
+      const n = noncanonicalByEmail.get(email);
+      return {
+        email,
+        classification: "NONCANONICAL_FIXTURE_IDENTITY",
+        supersededBy: n.supersededBy ?? null,
+        role: n.role ?? null,
+        reason: n.reason,
+      };
+    });
+}
+
+/**
+ * Every canonical role identity, with whether this manifest can activate it. Lets a run state the
+ * registry's own coverage rather than only what the manifest happened to declare.
+ */
+function canonicalRoleCoverage(manifest, registry = REGISTRY) {
+  const allowlist = new Set(sampleCompanyCredentialAllowlist(manifest, registry));
+  return registry.roles.map((r) => ({
+    key: r.key,
+    jobRole: r.jobRole,
+    email: r.authEmail,
+    accountExists: r.accountExists === true,
+    activatableByThisManifest: allowlist.has(r.authEmail),
+  }));
 }
 
 /**
@@ -161,4 +193,11 @@ async function activateSampleCompanyCredentials(options, manifest, authDirectory
   };
 }
 
-module.exports = { activateSampleCompanyCredentials, sampleCompanyCredentialAllowlist, supersededExclusions, CredentialActivationError };
+module.exports = {
+  activateSampleCompanyCredentials,
+  sampleCompanyCredentialAllowlist,
+  supersededExclusions,
+  canonicalRoleCoverage,
+  CredentialActivationError,
+  CANONICAL_ROLE_IDENTITY_REGISTRY: REGISTRY,
+};

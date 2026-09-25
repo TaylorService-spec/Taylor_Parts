@@ -59,7 +59,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  CANONICAL_PERSONA_KEYS,
+  CANONICAL_ROLE_KEYS,
+  CANONICAL_ROLE_REGISTRY,
+  CREDENTIAL_SOURCE_ENV,
+  NONCANONICAL_FIXTURE_IDENTITIES,
   PERSONA_ALIASES,
   RETIRED_PERSONAS,
   SANDBOX_PERSONAS,
@@ -184,248 +187,82 @@ export function discoverCredentialSources({ extraPaths = [] } = {}) {
 }
 
 /**
- * THE MEASURED 16-ROW RECONCILIATION.
+ * ============================ THE MEASURED CREDENTIAL KEYS ============================
  *
- * Measured 2026-09-25 against, in order of authority:
- *   1. functions/scripts/fixtures/personaBusinessConnectionCensus.v1.json — the live-nonprod census
- *      (read-only SELECTs over eos_policy.principals / user_role_assignments /
- *      employee_principal_links). Supplies every VERIFIED external subject, principal id and
- *      employee id below.
- *   2. functions/scripts/fixtures/sampleCompany.v2.json — the declared login addresses and each
- *      principal's disposition.
- *   3. docs/architecture/eos-real-nonprod-activation.md — independently corroborates the
- *      administrator's uid twice (a console read and a minted-token read).
+ * The named `@sandbox.invalid` keys present in the operator's real credential file, measured
+ * 2026-09-25 by reading KEY NAMES ONLY (`Object.keys`) -- no value was read, printed, hashed or
+ * measured for length. The 47 `cw-emp-*` certification keys are a separate namespace and are
+ * deliberately not listed.
  *
- * `credentialCandidate` is the credential-file KEY NAME that could serve the row, or null. A row is
- * only EXACT/ALIAS matched when the key names an account whose uid IS this persona's uid — a key
- * that merely SOUNDS like the persona is the collision this whole catalog was rewritten to kill.
+ * This is the one fact the table cannot derive, so it is pinned. Everything else below is computed
+ * from the registry, because a second hand-maintained copy of sixteen addresses is exactly how the
+ * catalog and its commentary came to disagree in the first place.
  */
-export const RECONCILIATION = Object.freeze([
-  {
-    slot: "P01",
-    persona: "owner",
-    label: "Owner / Executive (authority side)",
-    credentialCandidate: "eos-owner@sandbox.invalid",
-    authAccountExists: true,
-    authUid: "ajXZSa0gTcWAyDHVSsVifwZfNRf1",
-    principalId: "dca03ad1-9278-49e6-b4f9-d09d3f587dc4",
-    employeeId: null,
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
-    action: "NONE. Holds `owner` (47 capabilities) and NO employee link. The credential is the sole entry in the canonical 70-byte file and it authenticates. NEVER ROTATE.",
-    note: "The Employee side of P01 is a DIFFERENT Principal — see P02. `avery.fixture@sandbox.invalid` is that Employee's WORK EMAIL, has no auth account, and must not be given one.",
-  },
-  {
-    slot: "P02",
-    persona: "admin",
-    label: "Administrator (also P01's Employee side)",
-    credentialCandidate: "admin@sandbox.invalid",
-    authAccountExists: true,
-    authUid: "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
-    principalId: "639c1970-dbdb-4bc0-af7c-118559151e2f",
-    employeeId: "synthetic-np-emp-owner-executive",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
-    action: "NONE. A credential for this exact address EXISTS in the operator's 60-entry file. The brief listed `admin` as a bootstrap candidate; that was the false-absence premise. NEVER ROTATE.",
-    note: "The ONE legacy `sbx-*`-era address that was never a collision. Holds `admin` (66 capabilities). Reused verbatim by the manifest as REUSE_UNCHANGED, and excluded from the Sample Company allowlist because its loginPrincipal.credentialEmail is null.",
-  },
-  {
-    slot: "P03",
-    persona: "generalManager",
-    label: "General Manager",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "xiyAcX4UQEQRRqbMRrIXv3LwWVi2",
-    principalId: "98fbb1ee-4998-4082-adea-bf94fa82f4c8",
-    employeeId: "synthetic-np-emp-general-manager",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required. The account exists; no credential file holds `bailey.fixture@sandbox.invalid`. The governed remedy is the existing allowlisted activate-credentials path, NOT a new script.",
-    note: "No legacy loader key ever named General Manager — an absence, not a collision. Nothing in the 60-entry file can serve it.",
-  },
-  {
-    slot: "P04",
-    persona: "serviceManager",
-    label: "Service Manager",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "oQPfzG2AUgWOo8Tm0LJvurj8dXi2",
-    principalId: "45b60e4f-f20f-4915-b9bb-17f851072aa4",
-    employeeId: "synthetic-np-emp-service-manager",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path.",
-    note: "`fieldmgr@sandbox.invalid` HAS a credential in the 60-entry file but has NO EOS Principal. It is a different, dead identity — not an alias spelling of devon.fixture@. Using it would authenticate as nobody.",
-  },
-  {
-    slot: "P05",
-    persona: "dispatcher",
-    label: "Dispatcher",
-    credentialCandidate: "dispatcher@sandbox.invalid",
-    authAccountExists: true,
-    authUid: "PEiRkebIGRPcEau7yBBV0D77Dho1",
-    principalId: "18e54b1f-05e1-402d-8982-66efc8393f05",
-    employeeId: "synthetic-np-emp-dispatcher",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
-    action: "NONE. The credential exists and the account holds the live Dispatcher Principal. NEVER ROTATE.",
-    note: "CORRECTED 2026-09-25 by Admin SDK enumeration. My earlier row had this backwards, and so did the catalog: uid PEiRkebIGRPcEau7... belongs to `dispatcher@sandbox.invalid`, NOT to `emerson.fixture@sandbox.invalid` (uid NReyNyXVMdVkv75vpmxWuvGUeOm1, no Principal). The catalog named emerson.fixture@ while attributing this uid to it, so P05 resolved to an account with no Principal while the real one went unnamed. emerson.fixture@ is now recorded NOT_CANONICAL_FOR_P05 and is NOT deleted.",
-  },
-  {
-    slot: "P06",
-    persona: "technicianAssigned",
-    label: "Service Technician — ASSIGNED",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "i4EYSBGPXPM8lweuhI5a5y2TRgH3",
-    principalId: "97652f09-07bf-48e8-90b9-f321a01fe10d",
-    employeeId: "synthetic-np-emp-service-technician-a",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path. NOTHING NEEDS CREATING.",
-    note: "P06/P07 ANSWERED: two DISTINCT auth identities with distinct uids, Principals and Employees already exist. The single legacy `tech@sandbox.invalid` credential could not have represented both, but that is moot — neither persona needs it, and neither needs a new account.",
-  },
-  {
-    slot: "P07",
-    persona: "technicianUnassigned",
-    label: "Service Technician — UNASSIGNED",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "l2AKXJ44hzUEWpYfEpiQeg208CF2",
-    principalId: "728f5b0d-45bf-4708-8624-0864ab19bcab",
-    employeeId: "synthetic-np-emp-service-technician-b",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path. NOTHING NEEDS CREATING.",
-    note: "Identical to P06 in Security Role, Job Role and Work Eligibility; the only measured difference is the absence of a record assignment, and exactly one open work_order_assignment now exists and belongs to P06. The pair is genuinely exercisable.",
-  },
-  {
-    slot: "P08",
-    persona: "partsAssociate",
-    label: "Parts Associate",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "Ap6MRSs1gKW5lQtN4lTZOaecHgu1",
-    principalId: "29ec481c-51a6-468f-831e-5f84308bad0d",
-    employeeId: "synthetic-np-emp-parts-associate",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path.",
-    note: "`partsassoc@sandbox.invalid` has a credential and no Principal.",
-  },
-  {
-    slot: "P09",
-    persona: "partsManager",
-    label: "Parts Manager / Purchasing",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "p9zXxj5SJiOAwbSoFcKriaQ8NGt1",
-    principalId: "68ab4dec-5922-4d0c-954c-5161befe3bd8",
-    employeeId: "synthetic-np-emp-parts-manager",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path.",
-    note: "`partsmgr@sandbox.invalid` has a credential and no Principal. Purchasing needs no duplicate login: this Principal holds partsManager + purchasingManager.",
-  },
-  {
-    slot: "P10",
-    persona: "warehouseAssociate",
-    label: "Warehouse Associate",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "cgVnRUMA2Sc7WxHl1lgTmbQAhwG2",
-    principalId: "65a269d9-86f8-4c7a-b974-436dd6779bbf",
-    employeeId: "synthetic-np-emp-warehouse-associate",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path. NOTHING NEEDS CREATING.",
-    note: "P10 ANSWERED: the identity EXISTS. The legacy world had no `whassoc@` at all, so the absence of a credential key is expected and is not evidence the account is missing.",
-  },
-  {
-    slot: "P11",
-    persona: "warehouseManager",
-    label: "Warehouse Manager",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "0KBdhU9Z8Yc4aTQqXHODEP1jeHf1",
-    principalId: "00e45827-043a-484f-b150-0d8502e8e39f",
-    employeeId: "synthetic-np-emp-warehouse-manager",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path.",
-    note: "`whmgr@sandbox.invalid` has a credential and no Principal.",
-  },
-  {
-    slot: "P12",
-    persona: "retailSales",
-    label: "Retail Sales (primary; retailSalesB is the control)",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "4OVJwVRisyOlgBQDkjA75rs7djm2",
-    principalId: "c117537e-21ac-43e7-a210-b6cfa5323ed6",
-    employeeId: "synthetic-np-emp-retail-sales-a",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path. NOTHING NEEDS CREATING.",
-    note: "P12/P13 ANSWERED: THREE distinct salesperson identities already exist — retail-sales-a (this row), retail-sales-b (uid jUzI7OPsdIbJ0WGa2YlYvGUXYKW2, Principal 09aa317f-4cb7-4b90-b675-0ec9db216648) and national-accounts-sales (P13). They map one-to-one. Neither `salesmgr@` nor `mikael@` can serve any of them: both have credentials and no Principal, and all six live sales logins hold `salesperson`, never `salesManager`.",
-  },
-  {
-    slot: "P13",
-    persona: "nationalAccountsSales",
-    label: "National Accounts Sales",
-    credentialCandidate: null,
-    authAccountExists: true,
-    authUid: "zpfYS0PKUJOwVbskY1WjUreWqg72",
-    principalId: "da330746-66c5-4d99-ba94-57f3d241a814",
-    employeeId: "synthetic-np-emp-national-accounts-sales",
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path.",
-    note: "Distinct from P12 in the manifest's Job Role only; there is no PostgreSQL Job Role authority holding the distinction yet.",
-  },
-  {
-    slot: "P14",
-    persona: "financeAccounting",
-    label: "Finance / Accounting",
-    credentialCandidate: "acctmgr@sandbox.invalid",
-    authAccountExists: true,
-    authUid: "anKfqN34GSS1RKCgF00nWTse6062",
-    principalId: null,
-    employeeId: null,
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
-    action: "NONE. Owner ruled the EXISTING account is reused. NEVER ROTATE, and do not create a second finance account beside it.",
-    note: "CORRECTED 2026-09-25: I classified this AUTH_ACCOUNT_MISSING, which the Admin SDK disproves — acctmgr@ exists (uid anKfqN34GSS1RKCgF00nWTse6062) and holds a credential. My reasoning rejected it for having no EOS Principal; that fact is unchanged and still means the Employee/Principal chain is a separate governed step, but it was the wrong ground on which to call the ACCOUNT missing. `sage.fixture@sandbox.invalid` — which the manifest declares — does NOT exist in the project and is now recorded SUPERSEDED_FOR_P14.",
-  },
-  {
-    slot: "P15",
-    persona: "reporting",
-    label: "Reporting / read-only",
-    credentialCandidate: "reporting@sandbox.invalid",
-    authAccountExists: false,
-    authUid: null,
-    principalId: null,
-    employeeId: null,
-    mappingConfidence: "CERTAIN",
-    classification: "AUTH_ACCOUNT_MISSING",
-    action: "CREATE EXACTLY ONE account for reporting@sandbox.invalid — later, through the governed path, not in this commit. It is the only account this programme creates.",
-    note: "CONFIRMED the only genuinely missing account: the Admin SDK found 28 @sandbox.invalid accounts and no reporting address among them. The Owner ruled `reporting@sandbox.invalid` canonical; it is declared in PENDING_ACCOUNT_PERSONAS so the key is reported as declared while loadSandboxPersona still fails closed with PERSONA_ACCOUNT_PENDING. `tatum.fixture@sandbox.invalid` is report-analyst's WORK EMAIL and was never a login. The authority gap is UNCHANGED and is not fixed by creating the account: all three reporting Roles still resolve to ZERO role_capabilities rows in nonprod, so the persona measures nothing until those grants exist.",
-  },
-  {
-    slot: "P16",
-    persona: "restricted",
-    label: "Restricted / no-authority negative control",
-    credentialCandidate: "restricted@sandbox.invalid",
-    authAccountExists: true,
-    authUid: "lT75guU9mEY46QFQcegWRZRhYBi2",
-    principalId: null,
-    employeeId: null,
-    mappingConfidence: "CERTAIN",
-    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
-    action: "NONE. Owner ruled the EXISTING account is reused. NEVER ROTATE, and do not create a second restricted account beside it.",
-    note: "CORRECTED 2026-09-25: I classified this AUTH_ACCOUNT_MISSING, which the Admin SDK disproves — restricted@ exists (uid lT75guU9mEY46QFQcegWRZRhYBi2) with a credential. My objection stands as a SEPARATE finding and is not resolved by this row: with no EOS Principal it is refused for having no Principal rather than for holding no authority, so it is not yet the negative control it is meant to be. `wren.fixture@sandbox.invalid` does NOT exist in the project and is now recorded SUPERSEDED_FOR_P16.",
-  },
+export const MEASURED_CREDENTIAL_KEYS = Object.freeze([
+  "acctmgr@sandbox.invalid",
+  "admin@sandbox.invalid",
+  "dispatcher@sandbox.invalid",
+  "eos-owner@sandbox.invalid",
+  "fieldmgr@sandbox.invalid",
+  "mikael@sandbox.invalid",
+  "opsmgr@sandbox.invalid",
+  "owner@sandbox.invalid",
+  "partsassoc@sandbox.invalid",
+  "partsmgr@sandbox.invalid",
+  "restricted@sandbox.invalid",
+  "salesmgr@sandbox.invalid",
+  "tech@sandbox.invalid",
+  "whmgr@sandbox.invalid",
 ]);
+
+/**
+ * THE 16-ROW RECONCILIATION, DERIVED from the canonical role registry.
+ *
+ * One row per canonical Job Role. `credentialCandidate` is the registry's declared authentication
+ * identity -- never a plausible-looking neighbour, which is the substitution this whole exercise
+ * exists to prevent.
+ *
+ * Classification is computed, not asserted:
+ *   account missing                        -> AUTH_ACCOUNT_MISSING
+ *   account exists, credential measured    -> EXISTING_CREDENTIAL_EXACT_MATCH
+ *   account exists, no credential measured -> EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL
+ *
+ * EXISTING_CREDENTIAL_ALIAS_MATCH is structurally unreachable and that is a finding, not a gap:
+ * aliases map key -> key and never carry an address, so no alias can contribute a credential key.
+ */
+function buildReconciliation() {
+  const measured = new Set(MEASURED_CREDENTIAL_KEYS.map((k) => k.toLowerCase()));
+  return Object.freeze(
+    CANONICAL_ROLE_KEYS.map((role, i) => {
+      const entry = CANONICAL_ROLE_REGISTRY[role];
+      const hasCredential = measured.has(entry.email.toLowerCase());
+      const classification = !entry.accountExists
+        ? "AUTH_ACCOUNT_MISSING"
+        : hasCredential
+          ? "EXISTING_CREDENTIAL_EXACT_MATCH"
+          : "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL";
+      const action =
+        classification === "EXISTING_CREDENTIAL_EXACT_MATCH"
+          ? "NONE. A credential for this exact identity already exists and works. NEVER ROTATE, and do not create a second account for this Job Role."
+          : classification === "AUTH_ACCOUNT_MISSING"
+            ? "CREATE EXACTLY ONE account, later, through sandboxPersonaBootstrap after merge and deploy. It is the only account this programme creates."
+            : "Password bootstrap authorized: the account exists and its uid matches its live Principal, and no credential is present. Mint through the existing activateMissingSandboxPasswords.";
+      return Object.freeze({
+        slot: `P${String(i + 1).padStart(2, "0")}`,
+        persona: role,
+        jobRole: entry.jobRole,
+        credentialCandidate: entry.email,
+        authAccountExists: entry.accountExists,
+        authUid: entry.uid,
+        mappingConfidence: "CERTAIN",
+        classification,
+        action,
+      });
+    }),
+  );
+}
+
+export const RECONCILIATION = buildReconciliation();
 
 /**
  * THE CREDENTIAL POLICY FOR THE LATER APPLY. Declared here, executed nowhere in this repository.
@@ -441,13 +278,19 @@ export const RECONCILIATION = Object.freeze([
  */
 export const CREDENTIAL_POLICY = Object.freeze({
   /** Credential EXISTS and works. Reuse as-is. Never rotate, never recreate. */
-  preserveNeverRotate: Object.freeze(["owner", "admin", "dispatcher", "financeAccounting", "restricted"]),
-  /** Account exists with a uid matching its live Principal; it has no credential, so a password may be minted. */
+  preserveNeverRotate: Object.freeze([
+    "ownerExecutive",
+    "administrator",
+    "dispatcher",
+    "financeAccounting",
+    "generalEmployee",
+  ]),
+  /** Account exists with a uid matching its live Principal; no credential, so a password may be minted. */
   bootstrapAuthorized: Object.freeze([
     "generalManager",
+    "officeManager",
     "serviceManager",
-    "technicianAssigned",
-    "technicianUnassigned",
+    "serviceTechnician",
     "partsAssociate",
     "partsManager",
     "warehouseAssociate",
@@ -456,7 +299,7 @@ export const CREDENTIAL_POLICY = Object.freeze({
     "nationalAccountsSales",
   ]),
   /** The ONE account this programme creates. */
-  createOne: Object.freeze(["reporting"]),
+  createOne: Object.freeze(["reportingAnalyst"]),
   expectedEndState: Object.freeze({
     ready: 16,
     preserved: 5,
@@ -518,12 +361,15 @@ export function reconcile({ credentialKeyNames = [] } = {}) {
  */
 export function vocabularies() {
   return {
-    canonicalKeys: [...CANONICAL_PERSONA_KEYS],
+    canonicalKeys: [...CANONICAL_ROLE_KEYS],
+    jobRoles: CANONICAL_ROLE_KEYS.map((k) => CANONICAL_ROLE_REGISTRY[k].jobRole),
     legacyAliases: { ...PERSONA_ALIASES },
     retiredKeys: Object.keys(RETIRED_PERSONAS),
     unreconciledKeys: Object.keys(UNRECONCILED_PERSONAS),
+    noncanonicalIdentities: Object.keys(NONCANONICAL_FIXTURE_IDENTITIES).sort(),
     mappedAddresses: Object.values(SANDBOX_PERSONAS).sort(),
     slots: RECONCILIATION.map((r) => r.slot),
+    credentialSourceEnv: CREDENTIAL_SOURCE_ENV,
   };
 }
 
