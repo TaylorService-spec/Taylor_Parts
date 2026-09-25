@@ -62,6 +62,24 @@ on:
       # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
       - "functions/test/ownerCapabilityContract.test.mjs"
       - "functions/src/access/governedBusinessRoles.ts"
+      # THE ONE CANONICAL JOB ROLE VOCABULARY (Owner ruling 2026-09-25). The guard AND every subject it
+      # guards: the canonical module, the two former catalogs that now project from it, the seed that
+      # consumes it, and the two fixtures whose Job Role references it pins. Listing the guard alone would
+      # leave a PR that renames a position unable to trigger the job that would have caught it.
+      - "functions/test/canonicalJobRoleVocabulary.test.mjs"
+      - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
+      - "functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts"
+      - "functions/scripts/jobRoleCatalogSeedCli.js"
+      - "functions/scripts/sampleCompany/personaAuthorityDimensions.js"
+      - "functions/scripts/seedPersonaAuthorityDimensionsCli.js"
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
+      - "functions/test/sampleCompanyManifest.test.mjs"
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/employeeWorkEligibility.test.mjs"
       - "functions/test/adminPolicySeedCoverage.test.mjs"
       - "functions/test/adminPolicyReorderSeparation.test.mjs"
       - "functions/test/adminPolicyActivation.test.mjs"
@@ -421,6 +439,24 @@ on:
       # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
       - "functions/test/ownerCapabilityContract.test.mjs"
       - "functions/src/access/governedBusinessRoles.ts"
+      # THE ONE CANONICAL JOB ROLE VOCABULARY (Owner ruling 2026-09-25). The guard AND every subject it
+      # guards: the canonical module, the two former catalogs that now project from it, the seed that
+      # consumes it, and the two fixtures whose Job Role references it pins. Listing the guard alone would
+      # leave a PR that renames a position unable to trigger the job that would have caught it.
+      - "functions/test/canonicalJobRoleVocabulary.test.mjs"
+      - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
+      - "functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts"
+      - "functions/scripts/jobRoleCatalogSeedCli.js"
+      - "functions/scripts/sampleCompany/personaAuthorityDimensions.js"
+      - "functions/scripts/seedPersonaAuthorityDimensionsCli.js"
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
+      - "functions/test/sampleCompanyManifest.test.mjs"
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/employeeWorkEligibility.test.mjs"
       - "functions/test/adminPolicyActivation.test.mjs"
       - "functions/test/adminPolicyIdentity.test.mjs"
       - "functions/src/eosApi/**"

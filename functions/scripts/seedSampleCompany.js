@@ -138,23 +138,48 @@ const RUNTIME_IDENTITY_PROVIDER = "firebase";
 const DERIVE_FROM_OWNER = "DERIVE_FROM_OWNER";
 const USER_ACCESS_STATES = Object.freeze(["ENABLED", "DISABLED", "NONE"]);
 /**
- * THE GOVERNED JOB ROLE VOCABULARY -- fourteen business functions, extended from twelve by deliberate act.
+ * THE GOVERNED JOB ROLE VOCABULARY -- a PROJECTION, not a list (Owner ruling 2026-09-25).
  *
- * ADMINISTRATOR was added because the Owner ruled that Owner/Executive and Administrator are two business
- * functions and that no merged Owner/Admin fixture may survive as the canonical acceptance persona; a
- * persona separation with no Job Role separation would be a separation in name only.
- * FINANCE_MANAGER was added so the Finance / Accounting persona carries its own business function instead of
- * borrowing OFFICE_MANAGER. Reporting and the restricted negative control deliberately DO reuse
- * OFFICE_MANAGER: neither is a distinct business function in this fixture company, and reusing it buys the
- * SAME_JOB_ROLE_DIFFERENT_SECURITY_ROLE proof that mirrors the sales personas' opposite one.
+ * This used to be fourteen hand-written SCREAMING_SNAKE keys, and the manifest used to carry a matching
+ * `jobRoles[]` with a `pgJobRoleId` per row. That made this fixture one of TWO Job Role catalogs: the other
+ * was LAUNCH_JOB_ROLES in functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts, ten entries, writing
+ * the same tenant catalog table in eos_workforce through the same governed writer. The Owner ruled NEITHER
+ * canonical: they overlapped in seven ids and disagreed about what the Owner, Parts and Finance positions
+ * were called, so whichever seed ran last decided the business's position names.
+ *
+ * The single authority is functions/src/eosWorkforce/jobRoleVocabulary.ts. Both former catalogs project
+ * from it, and this file is now a CONSUMER of the vocabulary: adding or renaming a position is not
+ * reachable from here.
+ *
+ * Three of the former keys were retired because they named SECURITY authority rather than a business
+ * position -- ADMINISTRATOR, DISPATCHER and FINANCE_MANAGER became OFFICE_ADMINISTRATION,
+ * SERVICE_COORDINATOR_DISPATCHER and FINANCE_ACCOUNTING. Reporting stopped borrowing OFFICE_MANAGER and
+ * took REPORTING_ANALYST, the position the ruling names for persona P15. records-clerk and restricted-user
+ * KEEP OFFICE_MANAGER, which is what preserves the SAME_JOB_ROLE_DIFFERENT_SECURITY_ROLE proof against the
+ * office-manager persona -- the mirror image of the two sales personas holding one Security Role under two
+ * Job Roles -- and which keeps the Job Role GENERAL_EMPLOYEE off the one persona that holds the Security
+ * Role `generalEmployee`, where the pair would read as a derivation.
+ *
+ * REQUIRED AT THE TOP, NOT LAZILY. Every caller of this module runs against compiled lib/ (the seeding CLI,
+ * and the tests, which build first). A lazy require would leave a window in which a malformed manifest was
+ * accepted because the vocabulary had not loaded yet.
  */
-const JOB_ROLE_VOCABULARY = Object.freeze([
-  "OWNER_EXECUTIVE", "ADMINISTRATOR", "GENERAL_MANAGER", "OFFICE_MANAGER", "SERVICE_MANAGER", "DISPATCHER",
-  "SERVICE_TECHNICIAN", "RETAIL_SALES", "NATIONAL_ACCOUNTS_SALES", "PARTS_MANAGER", "PARTS_ASSOCIATE",
-  "WAREHOUSE_MANAGER", "WAREHOUSE_ASSOCIATE", "FINANCE_MANAGER",
-]);
+const {
+  CANONICAL_JOB_ROLES, CANONICAL_JOB_ROLE_MANIFEST_KEYS, JOB_ROLE_ID_SHAPE,
+} = require("../lib/eosWorkforce/jobRoleVocabulary.js");
+
+const JOB_ROLE_VOCABULARY = CANONICAL_JOB_ROLE_MANIFEST_KEYS;
+/**
+ * The tenant catalog this fixture WOULD declare, projected from the canonical vocabulary so that it cannot
+ * be a second list. It is exported for the manifest tests and for any reader who wants the fixture's view of
+ * the catalog; the rows themselves are created by scripts/sampleCompany/personaAuthorityDimensions.js
+ * through the governed writer, never by this seed.
+ */
+const MANIFEST_JOB_ROLES = Object.freeze(CANONICAL_JOB_ROLES.map((r) => Object.freeze({
+  key: r.manifestKey, label: r.displayName, pgJobRoleId: r.jobRoleId,
+})));
 /** The id shape functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts accepts for a catalog entry. */
-const PG_JOB_ROLE_ID_SHAPE = /^[a-z][a-z0-9-]{1,62}$/;
+const PG_JOB_ROLE_ID_SHAPE = JOB_ROLE_ID_SHAPE;
 
 /** The environment this sample company lives in, and the one that is refused by NAME however it is labelled. */
 const REQUIRED_ENVIRONMENT = "platform-sandbox";
@@ -215,27 +240,34 @@ function validateManifest(m) {
     refuse("MANIFEST_INVALID", "the eligibility policy must be exactly COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1 = ACTIVE, CONTRACTOR");
   }
 
-  // ---- Job Roles. A generic SALES Job Role is forbidden, and the two sales Job Roles are separate.
-  const jobRoles = new Set();
+  // ---- Job Roles. THE MANIFEST MAY NOT DECLARE THE CATALOG (Owner ruling 2026-09-25). It used to, and the
+  // loop that stood here checked the manifest's own fourteen rows against this file's own fourteen keys --
+  // two lists agreeing with each other while a third, LAUNCH_JOB_ROLES, disagreed with both. The catalog is
+  // now projected from functions/src/eosWorkforce/jobRoleVocabulary.ts, so the only thing left to check is
+  // that the manifest has not grown the array back; an array nobody reads, sitting where a catalog used to
+  // be, is how the next drift starts.
+  if (m.jobRoles !== undefined) {
+    refuse("MANIFEST_INVALID",
+      "the manifest may not declare jobRoles[]; the one Job Role vocabulary is src/eosWorkforce/jobRoleVocabulary.ts and employees[].jobRole references it by manifestKey");
+  }
+  const jobRoles = new Set(JOB_ROLE_VOCABULARY);
+  // The projection has to survive the same invariants the manifest array was held to, because it is what
+  // reaches the governed writer: a generic SALES position is forbidden, the two sales positions stay separate,
+  // every catalog id matches the shape the writer accepts, and no key or id repeats.
   const pgJobRoleIds = new Set();
-  for (const r of m.jobRoles) {
+  for (const r of MANIFEST_JOB_ROLES) {
     if (/^sales$/i.test(r.key) || /^sales$/i.test(String(r.label).trim())) {
       refuse("MANIFEST_INVALID", "a generic Job Role named SALES is forbidden; Retail Sales and National Accounts Sales are separate");
     }
-    if (!JOB_ROLE_VOCABULARY.includes(r.key)) refuse("MANIFEST_INVALID", `Job Role ${r.key} is outside the governed vocabulary`);
-    if (jobRoles.has(r.key)) refuse("MANIFEST_INVALID", `duplicate Job Role ${r.key}`);
-    // The id the GOVERNED PostgreSQL catalog writer accepts. Declared here so the catalog entry and the
-    // manifest vocabulary can never drift, and so nobody ever passes the SCREAMING_CASE key to a writer
-    // whose id shape forbids it.
     if (!PG_JOB_ROLE_ID_SHAPE.test(r.pgJobRoleId ?? "")) {
       refuse("MANIFEST_INVALID", `Job Role ${r.key} declares no governed catalog id (pgJobRoleId must match ${PG_JOB_ROLE_ID_SHAPE})`);
     }
     if (pgJobRoleIds.has(r.pgJobRoleId)) refuse("MANIFEST_INVALID", `duplicate governed Job Role id ${r.pgJobRoleId}`);
     pgJobRoleIds.add(r.pgJobRoleId);
-    jobRoles.add(r.key);
   }
-  for (const required of JOB_ROLE_VOCABULARY) {
-    if (!jobRoles.has(required)) refuse("MANIFEST_INVALID", `Job Role ${required} must be declared`);
+  if (pgJobRoleIds.size !== jobRoles.size) refuse("MANIFEST_INVALID", "the Job Role projection lost an entry to a duplicate key");
+  for (const required of ["RETAIL_SALES", "NATIONAL_ACCOUNTS_SALES"]) {
+    if (!jobRoles.has(required)) refuse("MANIFEST_INVALID", `Job Role ${required} must exist separately`);
   }
 
   // ---- Employees.
@@ -1469,6 +1501,7 @@ module.exports = {
   SYNTHETIC_IDENTITY_PROVIDER,
   RUNTIME_IDENTITY_PROVIDER,
   JOB_ROLE_VOCABULARY,
+  MANIFEST_JOB_ROLES,
   REQUIRED_ENVIRONMENT,
   REQUIRED_TENANT_KEY,
   PROFILE_COLUMNS,

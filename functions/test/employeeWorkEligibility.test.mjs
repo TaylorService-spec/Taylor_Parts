@@ -14,6 +14,7 @@ const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const vocab = require("../lib/eosWorkforce/workEligibilityVocabulary.js");
 const jobRoleSeed = require("../lib/eosWorkforce/migration/jobRoleCatalogSeed.js");
+const jobRoleVocabulary = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 
 const MIGRATION = readFileSync(join(FUNCTIONS_DIR, "migrations", "1760054400000_employee-work-eligibility-authority.sql"), "utf8");
 /** The executable SQL with `--` commentary removed: prose naming a forbidden source must not fail a "never reads" check. */
@@ -134,7 +135,9 @@ test("a qualification is not a Job Role: the two vocabularies are independent au
   // from it and is deliberately far smaller. SERVICE_TECHNICIAN intentionally PARALLELS the `Service Technician` Job
   // Role in wording while remaining a separate authority -- an Employee may hold either without the other.
   const jobRoleIds = jobRoleSeed.LAUNCH_JOB_ROLES.map((r) => r.jobRoleId);
-  assert.equal(jobRoleIds.length, 10);
+  // Sixteen since the 2026-09-25 canonical ruling, and asserted against the canonical vocabulary rather than a
+  // hard-coded count: this test is about the two vocabularies being INDEPENDENT, not about how big either one is.
+  assert.deepEqual([...jobRoleIds].sort(), [...jobRoleVocabulary.CANONICAL_JOB_ROLE_IDS]);
   assert.equal(vocab.WORK_ELIGIBILITY_CODES.length, 3);
   // No qualification code is a Job Role id, and no Job Role id is a qualification code.
   for (const code of vocab.WORK_ELIGIBILITY_CODES) assert.ok(!jobRoleIds.includes(code));

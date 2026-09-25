@@ -1,25 +1,34 @@
-// EMP-RT-08 launch Job Role catalog seed (Owner ruling 2026-09-16). Driven only by functions/scripts/jobRoleCatalogSeedCli.js,
-// which fences the environment and tenant before this module or `pg` loads.
+// Launch Job Role catalog seed. Driven only by functions/scripts/jobRoleCatalogSeedCli.js, which fences the environment
+// and tenant before this module or `pg` loads.
 //
-// Adds the Owner-named launch Job Roles as ACTIVE catalog entries for ONE tenant. It never renames, deactivates, deletes
+// Adds the canonically ruled Job Roles as ACTIVE catalog entries for ONE tenant. It never renames, deactivates, deletes
 // or re-activates an existing entry, and never assigns a Job Role to any Employee (assignments start empty). An existing
 // entry whose name or status differs from the ruling is REPORTED for a person to decide. Dry run by default; idempotent.
+//
+// THIS MODULE NO LONGER OWNS A VOCABULARY (Owner ruling 2026-09-25). LAUNCH_JOB_ROLES used to be a hand-written list of
+// ten entries (EMP-RT-08, ruling 2026-09-16) and was ONE OF TWO catalogs that wrote eos_workforce.job_roles through the
+// same governed writer -- the other being the tenant catalog declared by scripts/fixtures/sampleCompany.v2.json. The
+// Owner ruled that neither was canonical. Both now project from ../jobRoleVocabulary.ts, so this seed and the persona
+// harness cannot create different Job Role universes; there is one universe and this file is a WRITER for it, not a
+// second author.
+//
+// THREE OF THIS FILE'S FORMER IDS ARE RETIRED: `owner` (a live Security Role key -- the position is `owner-executive`),
+// `parts-warehouse` (one entry for four distinct positions) and `accounting` (a department, not a position). They are
+// recorded in SUPERSEDED_JOB_ROLE_IDS rather than deleted, because this seed is ADD-ONLY: if a pre-ruling revision ever
+// ran, those rows exist and nothing here removes them. eos_workforce.job_roles holds 0 rows in nonprod (measured
+// 2026-09-24), so today the canonical sixteen is simply WHAT WILL BE CREATED when this seed is next applied.
 import type { Pool } from "pg";
 import { randomUUID } from "node:crypto";
+import { CANONICAL_JOB_ROLES } from "../jobRoleVocabulary";
 
-/** The Owner-ruled launch catalog. Stable ids; display names are the ruling's words. Retail and National Accounts Sales are distinct. */
-export const LAUNCH_JOB_ROLES = Object.freeze([
-  Object.freeze({ jobRoleId: "owner", displayName: "Owner" }),
-  Object.freeze({ jobRoleId: "general-manager", displayName: "General Manager" }),
-  Object.freeze({ jobRoleId: "service-manager", displayName: "Service Manager" }),
-  Object.freeze({ jobRoleId: "service-coordinator-dispatcher", displayName: "Service Coordinator / Dispatcher" }),
-  Object.freeze({ jobRoleId: "service-technician", displayName: "Service Technician" }),
-  Object.freeze({ jobRoleId: "retail-sales", displayName: "Retail Sales" }),
-  Object.freeze({ jobRoleId: "national-accounts-sales", displayName: "National Accounts Sales" }),
-  Object.freeze({ jobRoleId: "parts-warehouse", displayName: "Parts / Warehouse" }),
-  Object.freeze({ jobRoleId: "accounting", displayName: "Accounting" }),
-  Object.freeze({ jobRoleId: "office-administration", displayName: "Office / Administration" }),
-]);
+/**
+ * The catalog this seed writes: a PROJECTION of the canonical vocabulary, narrowed to the two columns
+ * eos_workforce.job_roles needs. No membership decision is taken here -- changing the launch catalog means changing
+ * ../jobRoleVocabulary.ts, which moves every projection at once.
+ */
+export const LAUNCH_JOB_ROLES = Object.freeze(
+  CANONICAL_JOB_ROLES.map((r) => Object.freeze({ jobRoleId: r.jobRoleId, displayName: r.displayName })),
+);
 
 export interface JobRoleCatalogSeedReport {
   readonly tenantId: string;
@@ -62,7 +71,7 @@ export async function seedJobRoleCatalog(pool: Pool, input: { tenantId: string; 
       }
       await client.query(
         `INSERT INTO eos_policy.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id, before, after, reason)
-         VALUES ($1, $2, 'jobRole.catalog.seed', $3, 'tenant', $2, NULL, $4, 'EMP-RT-08 Owner ruling launch catalog')`,
+         VALUES ($1, $2, 'jobRole.catalog.seed', $3, 'tenant', $2, NULL, $4, 'Owner ruling 2026-09-25 canonical Job Role vocabulary')`,
         [`audit_${randomUUID()}`, input.tenantId, input.actor, JSON.stringify({ added: report.additions })],
       );
     }

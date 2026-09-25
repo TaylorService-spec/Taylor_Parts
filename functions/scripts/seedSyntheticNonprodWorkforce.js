@@ -201,6 +201,13 @@ function validateManifest(m) {
     refuse("MANIFEST_INVALID", "the eligibility policy must be exactly COMMERCIAL_ACCOUNTABILITY_ELIGIBILITY_V1 = ACTIVE, CONTRACTOR");
   }
 
+  // THIS MANIFEST'S jobRoles[] IS NOT A VOCABULARY, and this seed is not a Job Role authority: it writes
+  // nothing to eos_workforce.job_roles and these rows are population metadata. The ONE Job Role vocabulary is
+  // functions/src/eosWorkforce/jobRoleVocabulary.ts (Owner ruling 2026-09-25), and
+  // test/canonicalJobRoleVocabulary.test.mjs pins every key declared here as a member of it -- a SUBSET, since
+  // this superseded v1 manifest predates five of the canonical sixteen. A key that is not a canonical position
+  // fails that guard. Nothing is required from lib/ here on purpose: this script's fence test proves it loads
+  // no module before the environment is checked, and a subset pin does not need the list in hand.
   const jobRoles = new Set();
   for (const r of m.jobRoles) {
     if (/^sales$/i.test(r.key) || /^sales$/i.test(r.label)) refuse("MANIFEST_INVALID", "a generic Sales Job Role is forbidden");

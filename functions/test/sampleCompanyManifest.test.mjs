@@ -17,7 +17,8 @@ const FUNCTIONS_DIR = resolve(HERE, "..");
 
 const seed = require("../scripts/seedSampleCompany.js");
 const { MANIFEST, validateManifest, sampleCompanyCapabilityKeys, sampleCompanyRoleKeys, assertSampleCompanyInvocation,
-  EMPLOYMENT_STATUS_VALUES, JOB_ROLE_VOCABULARY, PROFILE_COLUMNS } = seed;
+  EMPLOYMENT_STATUS_VALUES, JOB_ROLE_VOCABULARY, MANIFEST_JOB_ROLES, PROFILE_COLUMNS } = seed;
+const jobRoleVocabulary = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 const { deriveLegacyRoleGrants } = require("../lib/eosOps/migration/inventoryCapabilityGrantMigration.js");
 const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
 const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
@@ -80,14 +81,17 @@ test("v2 is a byte-identical SUPERSET of the v1 synthetic seed, never a second p
 // ════════════════════════════ Job Role ════════════════════════════
 
 test("there is NEVER a generic SALES Job Role, and the two sales Job Roles are separate", () => {
-  for (const r of MANIFEST.jobRoles) {
+  // The catalog is the PROJECTION now (Owner ruling 2026-09-25), not an array in the manifest, so the invariant is
+  // asserted where the rows that reach the governed writer actually come from.
+  for (const r of MANIFEST_JOB_ROLES) {
     assert.notEqual(r.key.toUpperCase(), "SALES");
     assert.notEqual(String(r.label).trim().toUpperCase(), "SALES");
   }
-  assert.ok(MANIFEST.jobRoles.some((r) => r.key === "RETAIL_SALES"));
-  assert.ok(MANIFEST.jobRoles.some((r) => r.key === "NATIONAL_ACCOUNTS_SALES"));
-  refusal((m) => m.jobRoles.push({ key: "SALES", label: "Sales" }), /generic Job Role named SALES is forbidden/);
-  refusal((m) => m.jobRoles.push({ key: "RETAIL_SALES", label: "Sales" }), /generic Job Role named SALES is forbidden/);
+  assert.ok(MANIFEST_JOB_ROLES.some((r) => r.key === "RETAIL_SALES"));
+  assert.ok(MANIFEST_JOB_ROLES.some((r) => r.key === "NATIONAL_ACCOUNTS_SALES"));
+  // And the manifest may no longer bring a catalog of its own back, whatever it puts in it.
+  refusal((m) => { m.jobRoles = [{ key: "SALES", label: "Sales" }]; }, /may not declare jobRoles/);
+  refusal((m) => { m.jobRoles = []; }, /may not declare jobRoles/);
 });
 
 test("Retail Sales and National Accounts Sales are genuinely distinct, not one Job Role with two labels", () => {
@@ -102,15 +106,26 @@ test("Retail Sales and National Accounts Sales are genuinely distinct, not one J
   assert.ok(nationalAccounts.every((a) => a.segment === "NATIONAL_ACCOUNTS"));
 });
 
-// FOURTEEN, MOVED DELIBERATELY FROM TWELVE. ADMINISTRATOR exists because the Owner ruled Owner/Executive
-// and Administrator apart and a persona separation with no business-function separation is a separation in
-// name only; FINANCE_MANAGER exists so the Finance / Accounting persona is not borrowing OFFICE_MANAGER.
-// Reporting and the restricted negative control DO reuse OFFICE_MANAGER, on purpose.
-test("the Job Role vocabulary is exactly the governed fourteen", () => {
-  assert.equal(JOB_ROLE_VOCABULARY.length, 14);
-  assert.ok(JOB_ROLE_VOCABULARY.includes("ADMINISTRATOR") && JOB_ROLE_VOCABULARY.includes("FINANCE_MANAGER"));
-  assert.deepEqual([...MANIFEST.jobRoles.map((r) => r.key)].sort(), [...JOB_ROLE_VOCABULARY].sort());
-  refusal((m) => { m.jobRoles.push({ key: "INVENTED_ROLE", label: "Invented" }); }, /outside the governed vocabulary/);
+// THIS SEED NO LONGER HAS A VOCABULARY OF ITS OWN (Owner ruling 2026-09-25). It used to hold fourteen keys, the
+// manifest held a matching jobRoles[], and a third list of ten lived in migration/jobRoleCatalogSeed.ts. The Owner
+// ruled none of them canonical. What is asserted here is the PROJECTION: that this seed's view of the vocabulary is
+// the canonical one and nothing else, and that a key cannot be added from this side. Membership, the refused Security
+// Role names and the P01-P16 mapping are pinned by test/canonicalJobRoleVocabulary.test.mjs.
+test("the Job Role vocabulary is the canonical vocabulary, projected and not restated", () => {
+  assert.deepEqual([...JOB_ROLE_VOCABULARY], [...jobRoleVocabulary.CANONICAL_JOB_ROLE_MANIFEST_KEYS]);
+  assert.deepEqual(
+    MANIFEST_JOB_ROLES.map((r) => [r.key, r.label, r.pgJobRoleId]),
+    jobRoleVocabulary.CANONICAL_JOB_ROLES.map((r) => [r.manifestKey, r.displayName, r.jobRoleId]),
+  );
+  // The three keys the ruling retired, each because it named Security authority rather than a business position.
+  for (const retired of ["ADMINISTRATOR", "DISPATCHER", "FINANCE_MANAGER"]) {
+    assert.ok(!JOB_ROLE_VOCABULARY.includes(retired), `${retired} is a retired Job Role key`);
+  }
+  // Every Employee's declared position resolves in the canonical vocabulary; nothing else is assignable.
+  for (const e of MANIFEST.employees) {
+    assert.ok(JOB_ROLE_VOCABULARY.includes(e.jobRole), `${e.key} names Job Role ${e.jobRole}`);
+  }
+  refusal((m) => { m.employees[0].jobRole = "INVENTED_ROLE"; }, /undeclared Job Role INVENTED_ROLE/);
 });
 
 test("Job Role is never written to a PostgreSQL authority column", () => {
@@ -129,8 +144,9 @@ test("Job Role is never written to a PostgreSQL authority column", () => {
   assert.ok(!MANIFEST.blockedRelationships.some((b) => b.code === "JOB_ROLE_POSTGRES_AUTHORITY_ABSENT"),
     "the old code claimed the PostgreSQL authority was absent; it exists and is empty, which is a different fact");
   // Every catalog entry carries the id the GOVERNED writer accepts, so nobody passes SCREAMING_CASE to it.
-  for (const r of MANIFEST.jobRoles) assert.match(r.pgJobRoleId, /^[a-z][a-z0-9-]{1,62}$/, r.key);
-  assert.equal(new Set(MANIFEST.jobRoles.map((r) => r.pgJobRoleId)).size, MANIFEST.jobRoles.length);
+  // Read off the PROJECTION, because the manifest no longer declares the catalog.
+  for (const r of MANIFEST_JOB_ROLES) assert.match(r.pgJobRoleId, /^[a-z][a-z0-9-]{1,62}$/, r.key);
+  assert.equal(new Set(MANIFEST_JOB_ROLES.map((r) => r.pgJobRoleId)).size, MANIFEST_JOB_ROLES.length);
 });
 
 // ════════════════════════════ identity: three separate things ════════════════════════════
