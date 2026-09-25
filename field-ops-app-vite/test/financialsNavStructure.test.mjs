@@ -121,11 +121,24 @@ test("no Financials item declares a newly invented capabilityAccess (or any othe
   }
 });
 
+// WAVE 16 / LANE BQ, CORRECTED BY LANE BR. Two of the twenty-one Financials destinations --
+// `financials/invoices` and `financials/payments` -- are the only ones MAPPED to a governed EOS
+// surface, so they are the only ones the cutover moves. Lane BQ moved them by deleting their legacy
+// rows globally, which closed them in the four flag-false environments; Lane BR keeps the rows, so
+// under the LEGACY source all twenty-one answer exactly as they did on main. The other nineteen are
+// Frame-0 information architecture with no authority behind them -- FIN-001/FIN-004 own that
+// capability model -- and no flag will ever change their answer.
+const GOVERNED_FINANCIALS = Object.freeze(["invoices", "payments"]);
+
 test("Financials visibility follows existing conservative nav semantics — admin/dispatcher yes, technician no", () => {
   for (const role of PLACEHOLDER_DEFAULT_ROLES) {
     assert.equal(isDomainVisible(financials, role, ROLE_NAV_ACCESS[role]), true, `${role} must see Financials`);
     for (const item of financials.subnav) {
       assert.equal(isNavItemVisible(item, role, ROLE_NAV_ACCESS[role]), true, `${role} must see ${item.key}`);
+      // The cutover asymmetry, recorded rather than acted on: exactly two of these have somewhere to
+      // go when this environment flips the flag.
+      assert.equal(Boolean(item.surfaceAccess), GOVERNED_FINANCIALS.includes(item.key),
+        `${item.key}'s governed-surface mapping moved -- that changes which partition its row is in`);
     }
   }
   assert.equal(isDomainVisible(financials, "technician", ROLE_NAV_ACCESS.technician), false);
@@ -179,7 +192,14 @@ test("no existing domain's routes changed — every non-financials domain path s
   const routes = (domain) => (domain.subnav ?? []).map((i) => `/${domain.path}${i.path ? `/${i.path}` : ""}`);
   const byKey = Object.fromEntries(NAV_DOMAINS.map((d) => [d.key, routes(d)]));
   assert.deepEqual(byKey.dashboard, ["/dashboard", "/dashboard/operations", "/dashboard/notifications"]);
-  assert.deepEqual(byKey.customers, ["/customers", "/customers/opportunities", "/customers/sales-orders"]);
+  // /customers/sales-agreements joined 2026-09-24 (Owner ruling D, Wave 16 / Lane BQ): the Sales
+  // Agreement index that closes the server catalog's last DESTINATION gap. It declares ONLY a
+  // governed surface -- no legacyKey, no capabilityAccess, no placeholder row -- so it is
+  // fail-closed under the legacy source and this route is an addition to the inventory, not a
+  // change to anyone's access.
+  assert.deepEqual(byKey.customers, [
+    "/customers", "/customers/opportunities", "/customers/sales-orders", "/customers/sales-agreements",
+  ]);
   assert.deepEqual(byKey.serviceOperations, ["/service-operations"]);
   assert.deepEqual(byKey.equipment, ["/equipment"]);
   assert.deepEqual(byKey.service, [

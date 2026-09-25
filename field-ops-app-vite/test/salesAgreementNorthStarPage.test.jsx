@@ -1,5 +1,12 @@
 // THE SALES AGREEMENT RECORD PAGE, AGAINST NORTH STAR P1v2 — family 5.
 //
+// ONE SURFACE, ONE FILE (Phase 3 integration). This suite is the RECORD page. The INDEX surface
+// (modules/sales/SalesAgreementsList.jsx, Owner ruling D) used to sit at the foot of this file
+// because test/ciSuiteCoverage.test.mjs refuses a vitest suite that no workflow names and lane BQ
+// was not permitted to edit .github/workflows. It now lives in test/salesAgreementsList.test.jsx,
+// which composition-conformance-tests.yml names beside this file's three siblings — the move lane
+// BQ's header asked for, made at the first moment it could be made.
+//
 // Visual authority: docs/north-star/sales-agreement/North Star - Sales Agreement P1v2.dc.html.
 // Owner ruling: DECISIONS #134. The derivation layer is asserted offline in
 // test/salesAgreementNorthStar.test.mjs and the read seam in test/salesAgreementByIdRead.test.mjs;

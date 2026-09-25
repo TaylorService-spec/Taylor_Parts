@@ -208,12 +208,29 @@ test("the reads a position does carry are exactly the two the canonical matrix g
   assert.equal(EXPECTED_READS.includes("inventory.catalog.alias.read"), false);
 });
 
-test("OWNER inherits the admin grants by composition, and no persona inherits by accident", () => {
+// PIN MOVED 2026-09-24 (Owner ruling A). This used to assert that Owner held all thirteen scanner
+// capabilities "by composition" -- Owner's grant was a spread of ADMIN_ROLE's, which is the whole
+// PERMISSION_CATALOG, so the assertion was about the mechanism rather than about any decision.
+// Ruling A narrowed Owner to a declared contract, and the scanner ids split exactly the way the two
+// checks above already split them for the warehouse positions: the Owner is accountable for the
+// stock, so it READS; the Owner does not work the floor, so it holds no scanner WRITE. Every write
+// dropped here (receive, placement, bin management, transfer dispatch/receive, cycle count
+// create/submit, returns intake) is also withheld from `owner` in live nonprod eos_policy.
+test("OWNER holds the scanner READS and none of the scanner WRITES, by its own contract", () => {
   const owner = governedRoles.OWNER_ROLE;
   assert.ok(owner, "the owner role should exist");
-  for (const id of ALL_SCANNER_CAPABILITIES) {
-    assert.ok(holds(owner, id), `owner should inherit ${id}`);
-  }
+  const writes = ALL_SCANNER_CAPABILITIES.filter((id) => !id.endsWith(".read") && holds(owner, id));
+  assert.deepEqual(writes, [], `owner holds scanner WRITE authority ${writes.join(", ")} -- floor work is not oversight`);
+  // inventory.catalog.alias.read is excluded from Owner for the same reason it is excluded from the
+  // four warehouse positions: it belongs to the lookup FUNCTIONAL Role, not to any title.
+  const reads = ALL_SCANNER_CAPABILITIES.filter((id) => id.endsWith(".read") && holds(owner, id)).sort();
+  assert.deepEqual(reads, [
+    "inventory.balance.read",
+    "inventory.location.bin.read",
+    "inventory.location.display.read",
+    "inventory.serializedAsset.read",
+  ]);
+  assert.equal(holds(owner, "inventory.catalog.alias.read"), false);
 });
 
 // ═══════════════════════════════════════════ readiness gates

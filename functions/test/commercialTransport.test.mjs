@@ -7,8 +7,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
+import { opaqueFirestoreAccess, namesFirestoreCollection } from "./support/firestoreCollectionFence.mjs";
+import { stripComments, importsModule, namesInCode, namesStringLiteral } from "./support/executableReferenceFence.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = resolve(FUNCTIONS_DIR, "..");
@@ -250,10 +252,138 @@ test("only the server identity seam imports firebase-admin; server composes one 
   assert.doesNotMatch(server, /NOT DEPLOYED/);
 });
 
-test("(21) the client never references the Commercial transport", () => {
-  const client = walk(join(REPO, "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
-  const offenders = client.filter((f) => /\/commercial\/sales|commercialHttp|COMMERCIAL_ROUTE/.test(readFileSync(f, "utf8"))).map(rel);
-  assert.deepEqual(offenders, []);
+// ════════════════════ (21) THE APPROVED SALES AGREEMENTS READ PATH ════════════════════
+//
+// SUPERSEDED, DELIBERATELY: "(21) the client never references the Commercial transport".
+//
+// That assertion was correct for wave C4, when the transport was deployed, capability-scoped and
+// UNREACHABLE: no browser could call it, `listSalesAgreements` existed and was dead, and the server
+// catalog carried `commercial.agreements` as a DESTINATION gap. Wave 16 / Lane BQ closed that gap by
+// building the one governed client path, which is the approved product outcome -- so a guard that
+// says "no client may ever name the transport" now forbids the thing the Owner approved. It is not
+// loosened here and the transport is NOT re-homed behind an unrelated existing client module to make
+// the old sentence true again; the sentence is replaced with the invariant that was actually meant:
+//
+//   ONE approved read path may reach the governed Commercial transport. Nothing else may, it may
+//   only READ, it may not reach Firestore, it may not read a Firebase role or claim, it is earned by
+//   the `salesAgreement.read` that already existed, and it invents no capability and no grant.
+//
+// An ALLOWLIST, not a blanket scan. A blanket "no references" grep cannot distinguish the approved
+// path from a second one appearing next week; naming the approved files means a new client module
+// reaching the transport is a test failure that has to be argued for, which is the whole point.
+const CLIENT_SRC = join(REPO, "field-ops-app-vite", "src");
+const clientFiles = () => walk(CLIENT_SRC, [".js", ".jsx", ".ts", ".tsx"]);
+
+/** The ONE client module permitted to name the governed Commercial transport. */
+const COMMERCIAL_TRANSPORT_CLIENT = "field-ops-app-vite/src/services/commercialApiClient.js";
+/** The ONE module permitted to import it: the Sales Agreements index hook. */
+const APPROVED_TRANSPORT_IMPORTERS = ["field-ops-app-vite/src/hooks/useSalesAgreementIndex.js"];
+/** The ONE screen permitted to consume that hook. */
+const APPROVED_HOOK_CONSUMERS = ["field-ops-app-vite/src/modules/sales/SalesAgreementsList.jsx"];
+/** The approved path end to end, for the shape checks below. */
+const APPROVED_READ_PATH = [
+  COMMERCIAL_TRANSPORT_CLIENT,
+  "field-ops-app-vite/src/hooks/useSalesAgreementIndex.js",
+  "field-ops-app-vite/src/modules/sales/SalesAgreementsList.jsx",
+  "field-ops-app-vite/src/domain/salesAgreementIndex.js",
+];
+
+/**
+ * ANCHORED, in the sense adminPolicyNoFirebase.test.mjs argues for around line 241: a route is only
+ * evidence of a transport CALL when it sits in a string literal something can be pointed at, and a
+ * module is only reached when it sits in a module-specifier position. "POST /commercial/sales" in a
+ * sentence explaining the boundary is documentation -- it is exactly the comment that should survive,
+ * and the old bare-text scan tripped on three of them.
+ */
+const namesCommercialTransport = (file) => {
+  const source = readFileSync(file, "utf8");
+  return namesStringLiteral(source, "\\/commercial\\/sales")
+    || namesInCode(source, /\bCOMMERCIAL_ROUTE\b/)
+    || namesInCode(source, /\bcommercialHttp\b/)
+    || importsModule(source, /commercialHttp(\.[jt]s)?$/);
+};
+
+test("(21a) exactly the approved Sales Agreements read path reaches the governed Commercial transport", () => {
+  const naming = clientFiles().filter(namesCommercialTransport).map(rel);
+  assert.deepEqual(naming, [COMMERCIAL_TRANSPORT_CLIENT], "a client module other than the approved transport client names the Commercial transport");
+
+  const importers = clientFiles().filter((f) => importsModule(readFileSync(f, "utf8"), /commercialApiClient(\.js)?$/)).map(rel);
+  assert.deepEqual(importers, APPROVED_TRANSPORT_IMPORTERS, "a client module other than the Sales Agreements index hook imports the Commercial transport client");
+
+  const consumers = clientFiles().filter((f) => importsModule(readFileSync(f, "utf8"), /useSalesAgreementIndex(\.js)?$/)).map(rel);
+  assert.deepEqual(consumers, APPROVED_HOOK_CONSUMERS, "a client module other than the Sales Agreements list consumes the governed index hook");
+
+  // The scan still BITES: the approved client is found by the anchor, not excused by it.
+  assert.ok(namesCommercialTransport(join(REPO, COMMERCIAL_TRANSPORT_CLIENT)), "the anchored scan stopped recognising the transport client and would now pass for the wrong reason");
+});
+
+test("(21b) the browser's Commercial path is READS ONLY: no Commercial write transport exists", async () => {
+  const client = await import(pathToFileURL(join(REPO, COMMERCIAL_TRANSPORT_CLIENT)).href);
+  // The closed list is exactly the server's READ_RUNNERS -- no more, and no C2 mutation.
+  assert.deepEqual([...client.COMMERCIAL_READ_OPERATIONS].sort(), [...EXPECTED_READS].sort(), "the client's read list drifted from the transport's READ_RUNNERS");
+  for (const mutation of EXPECTED_MUTATIONS) {
+    assert.equal(client.isCommercialReadOperation(mutation), false, `${mutation} is callable from the browser`);
+  }
+  // EXECUTABLE, not textual: a write is refused before any network transport is touched.
+  const attempted = await client.callCommercialApi("createSalesAgreement", {
+    baseUrl: "http://eos.invalid", getIdToken: async () => "t",
+    fetchImpl: () => { throw new Error("the browser reached the network for a Commercial write"); },
+  });
+  assert.deepEqual([attempted.ok, attempted.code], [false, "UNKNOWN_OPERATION"], "a C2 mutation left the browser through the Commercial transport");
+  // And no module on the approved path spells one, so the list cannot be widened quietly.
+  for (const file of APPROVED_READ_PATH) {
+    const code = stripComments(readFileSync(join(REPO, file), "utf8"));
+    for (const mutation of EXPECTED_MUTATIONS) {
+      assert.doesNotMatch(code, new RegExp(`\\b${mutation}\\b`), `${file} names the C2 mutation ${mutation}`);
+    }
+  }
+});
+
+test("(21c) the approved path opens no Firestore Commercial read and no Firebase role or claim authority", () => {
+  // The Firestore clause reuses Lane AO's shared fence rather than a fifth bare-string variant: a
+  // collection name is only evidence of Firestore when a Firestore-shaped receiver is handed it.
+  const COMMERCIAL_COLLECTIONS = ["sales_agreements", "salesAgreements", "opportunities", "salesOrders", "sales_orders", "customers"];
+  for (const file of APPROVED_READ_PATH) {
+    const code = stripComments(readFileSync(join(REPO, file), "utf8"));
+    assert.equal(opaqueFirestoreAccess(code), false, `${file} holds a Firestore accessor`);
+    for (const collection of COMMERCIAL_COLLECTIONS) {
+      assert.equal(namesFirestoreCollection(code, collection), false, `${file} reads ${collection} from Firestore`);
+    }
+    for (const forbidden of [/\bgetIdTokenResult\b/, /\bcustomClaims\b/, /\bclaims\s*\./, /\bsecurityRole\b/, /\boperationalRoles\b/, /ROLE_NAV_ACCESS/, /\bhasRole\s*\(/]) {
+      assert.doesNotMatch(code, forbidden, `${file} reaches for Firebase role or claim authority: ${forbidden}`);
+    }
+    assert.ok(!importsModule(readFileSync(join(REPO, file), "utf8"), /firebase/i), `${file} imports Firebase directly`);
+  }
+});
+
+test("(21d) the path is earned by the existing salesAgreement.read, and creates no capability and no grant", () => {
+  // CLIENT: the door is mapped to the server-earned surface key, and to nothing wider.
+  const nav = stripComments(readFileSync(join(CLIENT_SRC, "navigation", "navConfig.js"), "utf8"));
+  assert.match(nav, /"customers\/salesAgreements":\s*\["commercial\.agreements"\]/, "the Sales Agreements destination is opened by something other than commercial.agreements");
+  // SERVER: that surface key is granted from salesAgreement.read alone.
+  const experience = stripComments(readFileSync(join(SRC, "eosOps", "experienceAuthority.ts"), "utf8"));
+  assert.match(experience, /surface\("commercial\.agreements",\s*"Sales Agreements",\s*\[\{\s*capabilityKey:\s*"salesAgreement\.read"\s*\}\]\)/, "commercial.agreements is earned by something other than salesAgreement.read");
+  // READ: and the governed read the client calls still demands it.
+  const projection = readFileSync(join(SRC, "eosCommercial", "reads", "salesAgreementReadProjection.ts"), "utf8");
+  const at = projection.indexOf("export function listSalesAgreements");
+  assert.ok(at > 0, "listSalesAgreements is no longer the exported cross-account read");
+  assert.match(projection.slice(at, at + 900), /COMMERCIAL_READ_CAPABILITIES\.SALES_AGREEMENT_READ/, "listSalesAgreements stopped requiring salesAgreement.read");
+
+  // NO NEW CAPABILITY: the salesAgreement vocabulary is still exactly the four registered keys.
+  const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
+  assert.deepEqual([...catalog.matchAll(/id: "(salesAgreement\.[A-Za-z]+)"/g)].map((m) => m[1]).sort(),
+    ["salesAgreement.accept", "salesAgreement.create", "salesAgreement.read", "salesAgreement.updateDraft"],
+    "a salesAgreement capability was added to or removed from the catalog");
+  // NO NEW GRANT: registration is still migration 023's alone, and granting still the one preservation migration's.
+  const MIGRATIONS = join(FUNCTIONS_DIR, "migrations");
+  const touches = (sql, table) => sql.replace(/^\s*--.*$/gm, "").split(";")
+    .filter((stmt) => new RegExp(`INSERT\\s+INTO\\s+${table}`, "i").test(stmt))
+    .some((stmt) => /'salesAgreement\.[A-Za-z]+'/.test(stmt));
+  const sqlFiles = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql"));
+  assert.deepEqual(sqlFiles.filter((f) => touches(readFileSync(join(MIGRATIONS, f), "utf8"), "capabilities")),
+    ["1759536000000_commercial-capability-vocabulary.sql"], "a salesAgreement capability was registered outside migration 023");
+  assert.deepEqual(sqlFiles.filter((f) => touches(readFileSync(join(MIGRATIONS, f), "utf8"), "role_capabilities")),
+    ["1761609600000_finance-administration-reorder-vocabulary.sql"], "a salesAgreement grant was created outside the named preservation migration");
 });
 
 test("(22) C4 leaves Firebase callables as the legacy runtime and does not wire the Commercial transport through Functions or Rules", () => {

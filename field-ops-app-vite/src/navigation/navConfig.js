@@ -138,6 +138,37 @@ export const NAV_DOMAINS = [
       // PLACEHOLDER_DEFAULT_ROLES (admin/dispatcher), and the read re-authorizes
       // server-side against salesOrder.read regardless of who the nav lets through.
       { key: "salesOrders", label: "Sales Orders", path: "sales-orders" },
+      // Sales Agreements -- the cross-account INDEX over the deployed listSalesAgreements read
+      // (functions/src/eosCommercial/reads/salesAgreementReadProjection.ts, exposed by the C4
+      // Commercial transport), added on the Owner's ruling D, Wave 16 / Lane BQ.
+      //
+      // THE SAME SITUATION AS SALES ORDERS ABOVE, AND THE SAME ANSWER. The capability was never the
+      // thing missing: salesAgreement.read is registered under Object `salesAgreement` and held by
+      // six Security Roles (admin, dispatcher, generalManager, owner, salesManager, salesperson),
+      // the governed cross-account read was built, and a salesperson still saw nothing about Sales
+      // Agreements anywhere in the product -- the only surface was a record page at
+      // /customers/opportunities/sales-agreement/:id, reachable by first opening the Opportunity
+      // that created it. The server catalog carried that as a DESTINATION gap
+      // (experienceAuthority.ts EXPERIENCE_SURFACE_GAPS["commercial.agreements"]) and named this
+      // item's Sales Orders sibling as the precedent for closing it. This is that precedent applied.
+      //
+      // IT DECLARES A SURFACE AND NOTHING ELSE, WHICH IS THE WHOLE AUTHORITY PROOF.
+      // NAV_SURFACE_ACCESS maps it to `commercial.agreements`, which the server grants from
+      // salesAgreement.read alone -- so the destination appears exactly when the caller already
+      // holds the existing read authority, and for nobody else.
+      //
+      // NO legacyKey, NO capabilityAccess, and deliberately NO
+      // NAV_LEGACY_PLACEHOLDER_DESTINATIONS row. Those are the three ways a door can be opened by
+      // something other than the governed read, and each would be wrong here in its own way: a
+      // legacyKey would hand it to ROLE_NAV_ACCESS, a placeholder row would hand it to a
+      // Firebase-era role literal (and the register is SHRINK-ONLY -- adding to it is adding an
+      // ungoverned door), and `capabilityAccess: ["salesAgreement.read"]` would point at the
+      // Firestore accessVersion feed, which App.jsx resolves for the report-definition ids only and
+      // which would therefore answer a permanent, silent false. Under the legacy source this
+      // destination is INVISIBLE TO EVERYONE, and that is the honest answer rather than an
+      // oversight: the legacy source cannot evaluate salesAgreement.read, so it cannot honestly
+      // offer a door earned by it.
+      { key: "salesAgreements", label: "Sales Agreements", path: "sales-agreements" },
     ],
   },
   // Platform Task 3 -- Service Operations, promoted from the former Service >
@@ -690,6 +721,10 @@ export const NAV_SURFACE_ACCESS = Object.freeze({
   "customers/customers": ["crm.accounts"],
   "customers/opportunities": ["commercial.opportunities"],
   "customers/salesOrders": ["commercial.salesOrders"],
+  // Sales Agreements. ONE surface, no any-of: `commercial.agreements` is earned server-side by
+  // salesAgreement.read and by nothing else, so this row cannot widen it -- it only says which door
+  // shows it.
+  "customers/salesAgreements": ["commercial.agreements"],
   // Service Operations + Service
   "serviceOperations/serviceOperations": ["service.workOrders"],
   "service/workOrders": ["service.workOrders"],
@@ -947,40 +982,93 @@ export const NAV_CONTAINERS = Object.freeze({
 // not, and a destination added tomorrow with no authority at all would open the same way without
 // anyone deciding to open it.
 //
-// The role answer for the 62 destinations below is UNCHANGED -- this lane narrows nobody's access to
-// any of them. What changes is that it is now WRITTEN DOWN. A destination absent from this register
-// and from every other authority path is INVISIBLE, not admin/dispatcher-visible.
+// Lane AM wrote this register at 62 and said "the role answer for the 62 destinations below is
+// UNCHANGED -- this lane narrows nobody's access to any of them". That was true of THAT lane. What
+// changes is that the answer is now WRITTEN DOWN. A destination absent from this register and from
+// every other authority path is INVISIBLE, not admin/dispatcher-visible.
 //
 // THIS REGISTER MAY ONLY SHRINK. Every entry is a door with no governed authority behind it; each
 // one leaves when its destination earns a capability or a surface. Adding a row is adding an
 // ungoverned door, and needs the same deliberation as writing one into firestore.rules.
+//
+// ════ WAVE 16 / LANE BQ -- 62 -> 42. THE TWENTY THAT EARNED A SURFACE LEFT, GLOBALLY ════
+//
+// Owner ruling F (the EOS navigation cutover, option B). Twenty of the sixty-two were ALREADY mapped
+// in NAV_SURFACE_ACCESS to a real, earnable EOS surface:
+//
+//   customers/{customers,opportunities,salesOrders}      equipment/equipment
+//   service/{workOrders,coordinatedVisits}               purchasing/{purchaseOrders,receipts}
+//   inventory/{partMaster,warehouses,truckInventory,receiving}
+//   financials/{invoices,payments}
+//   administration/{users,rolesPermissions,objects,workflows,permissionPreview,auditLogs}
+//
+// Each therefore held BOTH a governed surface and an ungoverned Firebase-era role assertion, and the
+// rule at the top of this block says what that means: the row leaves when the destination earns a
+// surface. Lane BQ deleted all twenty from THIS list, took the ceiling 62 -> 42, and reported the
+// consequence honestly: where the flag is FALSE -- local-emulator, platform-certification,
+// platform-integration AND taylor-parts-production -- admin went 75 -> 54 and dispatcher 72 -> 51.
+//
+// ════════ WAVE 16 / LANE BR -- THAT DELETION WAS GLOBAL, AND IT SHOULD NOT HAVE BEEN ════════
+//
+// THE OWNER RULED: this is an ENVIRONMENT CUTOVER, not a global source deletion. A row leaves when
+// its destination earns a surface AND THE ENVIRONMENT READING THIS LIST CAN SEE THAT SURFACE. Those
+// are two conditions and Lane BQ satisfied only the first. In the four environments where
+// `EOS_NAVIGATION_AUTHORITY_READY` is false there is no EOS source at all -- production declares
+// `eosApi: null`, so there is not even an address to ask -- and deleting the row there does not move
+// the door from one authority to another, it closes the door. Twenty-one destinations
+// (`administration/overview` is the twenty-first, a pure container over six of them) would have gone
+// dark in PRODUCTION on a commit whose subject is a sandbox cutover.
+//
+// SO THE REGISTER IS 62 AGAIN, AND IT IS NOW EXPLICITLY THE *LEGACY* REGISTER. It is read by exactly
+// one branch of `isNavItemVisible`, and that branch is unreachable whenever the EOS source answers
+// -- twice over since this lane: by the EOS early return that has stood since Wave 6, and by
+// `effectivePlaceholderRegister()` below, which hands the placeholder branch an EMPTY register under
+// the EOS source rather than relying on statement order to keep it away from one.
+//
+// THE TWENTY ARE NOT BACK AS AN UNDO. They are back as a NAMED, BOUNDED, SHRINK-ONLY REMAINDER:
+// `NAV_CUTOVER_PLACEHOLDER_DESTINATIONS`, derived (not re-typed) as exactly the rows this list holds
+// that NAV_SURFACE_ACCESS also maps. Its ceiling is 20 and can only fall. It reaches 0 when the last
+// environment flips `EOS_NAVIGATION_AUTHORITY_READY` to true, and on that day these rows leave for
+// good -- which is the retirement Lane BQ tried to take twenty environments early.
+//
+// THE OTHER FORTY-TWO CANNOT BE CLOSED AT ALL TODAY. Each is a destination with no governed surface,
+// no capability, and mostly no backend -- NAV_SURFACE_GAPS above states the reason destination by
+// destination. They are `NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS`, ceiling 42, and THAT is the
+// ceiling that refuses a brand-new ungoverned door. Lane BQ's 42 was the right number attached to
+// the wrong list: it constrained the whole register, which meant the twenty could never come back
+// even for the environment that still needs them, while saying nothing specific about the only kind
+// of row that is a genuinely new hole.
 export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "dashboard/notifications",
-  "customers/customers",
-  "customers/opportunities",
-  "customers/salesOrders",
-  "equipment/equipment",
-  "service/workOrders",
-  "service/coordinatedVisits",
+  // ── LANE BR: the rows marked (CUTOVER) below are the twenty Lane BQ deleted globally. They are
+  // here for the LEGACY source only, they are derived into NAV_CUTOVER_PLACEHOLDER_DESTINATIONS by
+  // the fact that NAV_SURFACE_ACCESS maps them rather than by being re-listed, and they retire the
+  // day the last environment sets EOS_NAVIGATION_AUTHORITY_READY to true. ──
+  "customers/customers", // (CUTOVER) crm.accounts
+  "customers/opportunities", // (CUTOVER) commercial.opportunities
+  "customers/salesOrders", // (CUTOVER) commercial.salesOrders
+  "equipment/equipment", // (CUTOVER) equipment.register
+  "service/workOrders", // (CUTOVER) service.workOrders
+  "service/coordinatedVisits", // (CUTOVER) service.coordinatedVisits
   "service/scheduling",
   "service/dispatchScheduling",
   "service/warranty",
-  "inventory/partMaster",
+  "inventory/partMaster", // (CUTOVER) inventory.catalog
   "inventory/manufacturers",
-  "inventory/warehouses",
-  "inventory/truckInventory",
-  "inventory/receiving",
+  "inventory/warehouses", // (CUTOVER) warehouse.management
+  "inventory/truckInventory", // (CUTOVER) inventory.balances
+  "inventory/receiving", // (CUTOVER) receiving.checkIn
   "inventory/backOrders",
-  "purchasing/purchaseOrders",
+  "purchasing/purchaseOrders", // (CUTOVER) purchasing.purchaseOrders
   "purchasing/suppliers",
   "purchasing/quotes",
-  "purchasing/receipts",
+  "purchasing/receipts", // (CUTOVER) receiving.checkIn
   "purchasing/demandPlanning",
   "financials/overview",
   "financials/billingQueue",
-  "financials/invoices",
+  "financials/invoices", // (CUTOVER) financials.invoices
   "financials/accountsReceivable",
-  "financials/payments",
+  "financials/payments", // (CUTOVER) financials.payments
   "financials/creditsAdjustments",
   "financials/customerFinancials",
   "financials/salesToGoal",
@@ -1020,16 +1108,26 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   // and under the legacy source it is visible exactly when one of those six children is. It grants
   // nothing, it asserts nothing, and it never reaches PLACEHOLDER_DEFAULT_ROLES.
   //
-  // SO THIS REGISTER STAYS AT 62 AND THE RULE THAT KEEPS IT OUT STAYS ARMED. Rule 2 below still
-  // refuses a placeholder row on a destination mapped to a derived surface -- it refuses Lane AR's
-  // 63-row register AND the count-preserving swap -- and the check that a destination may not be
-  // BOTH a container and a legacy placeholder now refuses this destination a second way. Nothing
-  // about the container answer makes a placeholder row acceptable; it makes it unnecessary.
-  "administration/users",
-  "administration/rolesPermissions",
-  "administration/objects",
-  "administration/workflows",
-  "administration/permissionPreview",
+  // SO THE RULE THAT KEEPS IT OUT STAYS ARMED. Rule 2 below still refuses a placeholder row on a
+  // destination mapped to a derived surface -- it refuses Lane AR's 63-row register AND the
+  // count-preserving swap -- and the check that a destination may not be BOTH a container and a
+  // legacy placeholder refuses this destination a second way. Nothing about the container answer
+  // makes a placeholder row acceptable; it makes it unnecessary.
+  //
+  // WAVE 16 / LANE BQ AND LANE BR: `administration/overview` is STILL ABSENT, under both registers
+  // and in both directions, and this lane did not need to reconsider it. Lane BQ observed that with
+  // all six of its children's rows deleted the container had no reachable child, so the
+  // Administration tab closed for admin and dispatcher wherever the flag is false -- and said,
+  // correctly, that the answer was the flag and not a role literal. Lane BR removes the premise
+  // instead: the six children keep their rows under the LEGACY register, so the container is
+  // reachable again exactly as it was on main, derived from them and asserting nothing itself. The
+  // row stays out because a container can never carry one, which is a statement about containers and
+  // not about how many of its children happen to be open this week.
+  "administration/users", // (CUTOVER) administration.users
+  "administration/rolesPermissions", // (CUTOVER) administration.rolesPermissions
+  "administration/objects", // (CUTOVER) administration.objects
+  "administration/workflows", // (CUTOVER) administration.workflows
+  "administration/permissionPreview", // (CUTOVER) administration.permissionPreview
   "administration/vehicles",
   "administration/regions",
   "administration/companySettings",
@@ -1037,10 +1135,79 @@ export const NAV_LEGACY_PLACEHOLDER_DESTINATIONS = Object.freeze([
   "administration/warehouseRacking",
   "administration/financialPolicy",
   "administration/integrations",
-  "administration/auditLogs",
+  "administration/auditLogs", // (CUTOVER) administration.auditLogs
 ]);
 
 const LEGACY_PLACEHOLDER_SET = new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS);
+
+// ════════════ WAVE 16 / LANE BR -- THE REGISTER, PARTITIONED BY WHY EACH ROW IS THERE ════════════
+//
+// Two reasons a destination can be in the list above, and they have OPPOSITE futures. Keeping them
+// in one undifferentiated list is what made Lane BQ's edit look like a single number that could be
+// moved; separating them makes each number mean one thing that can be argued about on its own.
+//
+// BOTH PARTITIONS ARE DERIVED FROM THE CRITERION, NOT TYPED. `NAV_SURFACE_ACCESS` is the criterion:
+// a row whose destination is mapped to a governed surface has somewhere else to go, and a row whose
+// destination is not, does not. Nobody has to keep two lists equal, and a destination that earns a
+// surface tomorrow moves partition by itself -- which immediately brings it under the shrink-only
+// ceiling of the partition it moved INTO, so the move is visible rather than free.
+
+/**
+ * THE CUTOVER REMAINDER -- rows that exist ONLY because some environment has not cut over yet.
+ *
+ * Twenty today. Each one's destination already holds a real, earnable EOS surface, so under the EOS
+ * source it is answered by the governed authority and this row is never consulted. It is here for
+ * the four environments where `EOS_NAVIGATION_AUTHORITY_READY` is false -- including
+ * `taylor-parts-production`, which declares `eosApi: null` and therefore has no EOS source to
+ * replace it with. THIS PARTITION'S ONLY CORRECT DESTINY IS ZERO, reached by flipping the flag,
+ * never by deleting rows out from under an environment that is still reading them.
+ */
+export const NAV_CUTOVER_PLACEHOLDER_DESTINATIONS = Object.freeze(
+  NAV_LEGACY_PLACEHOLDER_DESTINATIONS.filter(
+    (destination) => Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, destination),
+  ),
+);
+
+/**
+ * THE UNGOVERNED REMAINDER -- rows with no governed surface anywhere, under any source.
+ *
+ * Forty-two today, and these are the ones the original "adding a row is adding an ungoverned door"
+ * sentence was written about: a destination here is reachable by a Firebase-era role literal and by
+ * nothing else, in EVERY environment, and flipping a flag does not help it. Each leaves only by its
+ * destination earning a capability or a surface, or by the destination being retired.
+ */
+export const NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS = Object.freeze(
+  NAV_LEGACY_PLACEHOLDER_DESTINATIONS.filter(
+    (destination) => !Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, destination),
+  ),
+);
+
+/**
+ * THE EFFECTIVE PLACEHOLDER REGISTER UNDER THE EOS SOURCE: EMPTY, AND EMPTY BY CONSTRUCTION.
+ *
+ * Owner ruling, Wave 16: when `EOS_NAVIGATION_AUTHORITY_READY` is true there is NO
+ * admin/dispatcher/technician placeholder-role fallback of any kind. Not a smaller list -- no list.
+ * So the governed register is not "the 62 minus the 20", which would be a subtraction somebody could
+ * get wrong by one; it is a frozen empty array, and every row of every partition is absent from it
+ * for the same structural reason rather than because a filter happened to catch it.
+ */
+export const NAV_GOVERNED_PLACEHOLDER_DESTINATIONS = Object.freeze([]);
+
+/**
+ * WHICH PLACEHOLDER REGISTER THIS SESSION'S SOURCE IS ALLOWED TO READ.
+ *
+ * The environment filter, expressed as a value rather than as statement order. `isNavItemVisible`
+ * already returns on the EOS branch long before the placeholder branch, so under the EOS source this
+ * function is belt to that branch's braces -- deliberately, and for the same reason Lane BQ stopped
+ * App.jsx SUPPLYING `role`: an unreachable branch that would still do the wrong thing if reached is
+ * one refactor away from doing it. Exported so a test can measure the effective register per source
+ * instead of inferring it from behaviour.
+ */
+export function effectivePlaceholderRegister(operationalContext) {
+  return isEosNavigationSource(operationalContext)
+    ? NAV_GOVERNED_PLACEHOLDER_DESTINATIONS
+    : NAV_LEGACY_PLACEHOLDER_DESTINATIONS;
+}
 
 // ══════════ WAVE 11 / LANE AS: THE SHRINK-ONLY RULE, ENFORCED INSTEAD OF WRITTEN DOWN ══════════
 //
@@ -1066,7 +1233,37 @@ const LEGACY_PLACEHOLDER_SET = new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS);
 //
 // Rule 2 is what makes this a guard rather than a number. A count alone permits a swap; rule 2
 // refuses the specific defect by its shape.
+//
+// ════════ WAVE 16 / LANE BR -- ONE CEILING BECOMES THREE, AND EACH ONE MEANS SOMETHING ════════
+//
+// Lane BQ moved this constant 62 -> 42 alongside a global row deletion. Lane BR restores the rows
+// for the legacy source, which would put the register back at 62 -- and a ratchet that goes back up
+// is not a ratchet. So the number is not simply restored: it is REPLACED BY THREE, one per question,
+// and every kind of growth is refused by at least one of them.
+//
+//   NAV_LEGACY_PLACEHOLDER_CEILING       62  the whole legacy register. Shrink-only. It is back at
+//                                            62 because the rows are back, and this is the weakest
+//                                            of the three -- on its own it would permit the swap
+//                                            that rule 2 and the two ceilings below refuse.
+//   NAV_UNGOVERNED_PLACEHOLDER_CEILING   42  rows with NO governed surface anywhere. Shrink-only,
+//                                            and never raised by a cutover of any kind, because
+//                                            flipping a flag does nothing for a destination that
+//                                            has no surface to flip TO. THIS is the ceiling that
+//                                            refuses a brand-new ungoverned door, and it is the
+//                                            number Lane BQ was really reaching for.
+//   NAV_CUTOVER_PLACEHOLDER_CEILING      20  rows kept alive only by an environment that has not
+//                                            cut over. Shrink-only, and its correct end state is 0.
+//                                            It refuses a NEW row on a governed destination, which
+//                                            is the specific mistake "put the rows back" could turn
+//                                            into: the twenty may return, a twenty-first may not.
+//
+// A SIXTY-THIRD ROW IS REFUSED WHICHEVER KIND IT IS, and that is the property to check rather than
+// any one number: an unmapped row trips 42 (and 62), a mapped row trips 20 (and 62), and a mapped
+// row on a DERIVED surface -- `administration/overview`, the one that keeps being argued for --
+// trips rule 2 as well, which is not a count at all.
 export const NAV_LEGACY_PLACEHOLDER_CEILING = 62;
+export const NAV_UNGOVERNED_PLACEHOLDER_CEILING = 42;
+export const NAV_CUTOVER_PLACEHOLDER_CEILING = 20;
 
 // The derived-surface mirror now lives ABOVE the container table, because the container table is
 // COMPUTED FROM IT. See "THE CLIENT MIRROR OF THE SERVER CATALOG'S CONTAINERS" earlier in this file.
@@ -1168,6 +1365,8 @@ export function legacyPlaceholderRegisterViolations({
   surfaceAccess = NAV_SURFACE_ACCESS,
   derivedSurfaceKeys = NAV_DERIVED_SURFACE_KEYS,
   ceiling = NAV_LEGACY_PLACEHOLDER_CEILING,
+  ungovernedCeiling = NAV_UNGOVERNED_PLACEHOLDER_CEILING,
+  cutoverCeiling = NAV_CUTOVER_PLACEHOLDER_CEILING,
 } = {}) {
   const problems = [];
   if (register.length > ceiling) {
@@ -1175,6 +1374,31 @@ export function legacyPlaceholderRegisterViolations({
       `NAV_LEGACY_PLACEHOLDER_DESTINATIONS holds ${register.length} rows, above the shrink-only `
       + `ceiling of ${ceiling} -- every row is an ungoverned door, so this register may only get `
       + `smaller. Retire a destination instead, or take an Owner ruling to move the ceiling.`,
+    );
+  }
+  // ── LANE BR: the two partition ceilings, which are what actually bite. The register-wide ceiling
+  // above permits a count-preserving swap between the partitions; these do not, because a row that
+  // changes partition is counted by the ceiling it moves into. ──
+  const mapped = (destination) => Object.prototype.hasOwnProperty.call(surfaceAccess, destination);
+  const ungovernedRows = register.filter((destination) => !mapped(destination));
+  const cutoverRows = register.filter(mapped);
+  if (ungovernedRows.length > ungovernedCeiling) {
+    problems.push(
+      `${ungovernedRows.length} placeholder rows name a destination with NO governed surface, above `
+      + `the shrink-only ceiling of ${ungovernedCeiling}. A row like this is reachable by a `
+      + `Firebase-era role literal and by nothing else, in EVERY environment -- no cutover retires `
+      + `it, because there is no surface to cut over TO. Give the destination a surface or a `
+      + `capability, or do not give it a door.`,
+    );
+  }
+  if (cutoverRows.length > cutoverCeiling) {
+    problems.push(
+      `${cutoverRows.length} placeholder rows name a destination that ALREADY holds a governed `
+      + `surface, above the shrink-only ceiling of ${cutoverCeiling}. These rows exist only to keep `
+      + `the environments where EOS_NAVIGATION_AUTHORITY_READY is false working until they cut over, `
+      + `and that population can only get smaller: the correct way to lose one is to flip an `
+      + `environment, never to add another. A destination that earns a surface from today onward `
+      + `gets its door from the surface.`,
     );
   }
   const derived = new Set(derivedSurfaceKeys);
@@ -1357,6 +1581,36 @@ function eosGrantsSurface(item, authority) {
 }
 
 /**
+ * WHICH SOURCE IS ANSWERING NAVIGATION FOR THIS SESSION -- the cutover question, asked once.
+ *
+ * Wave 16 / Lane BQ, Owner ruling F (option B). `isNavItemVisible` has answered from the EOS source
+ * alone since Wave 6 whenever one was present, but the QUESTION "is the EOS source the source?" was
+ * not something any other file could ask -- so App.jsx kept computing `ROLE_NAV_ACCESS[role]`,
+ * kept threading `operationalRoles`, and kept two route branches gated on `role === "admin" ||
+ * role === "dispatcher"`, all of which are legacy navigation authority still running under a
+ * cutover that says there is only one. The first three were inert; the route branches were not.
+ *
+ * Exported so the answer is derived in ONE place and every caller gets the same one. It returns the
+ * authority itself (or null) rather than a boolean so a caller that needs to interrogate the
+ * source's state -- App.jsx's LOADING / UNAVAILABLE / REFUSED rendering -- does not have to reach
+ * past this function to get at it.
+ *
+ * NO STATE TEST HERE, DELIBERATELY -- see the note on `isNavigationAuthority` in
+ * access/experienceContext.js. A LOADING, REFUSED or UNAVAILABLE authority IS the source; it simply
+ * grants nothing. Treating a non-READY authority as "no source" is the one change that would
+ * reintroduce the legacy fallback, because the very next line of `isNavItemVisible` is the legacy
+ * path.
+ */
+export function eosNavigationAuthorityFor(operationalContext) {
+  const authority = operationalContext?.eosNavigationAuthority;
+  return isNavigationAuthority(authority) ? authority : null;
+}
+
+/** True when the EOS experience authority is the navigation source, so no legacy path may run. */
+export const isEosNavigationSource = (operationalContext) =>
+  eosNavigationAuthorityFor(operationalContext) !== null;
+
+/**
  * A CONTAINER'S ANSWER: is anything on the menu?
  *
  * Walks the destinations in the container's declared scope and asks the ORDINARY predicate about
@@ -1397,8 +1651,15 @@ export function isNavItemVisible(item, role, allowedLegacyKeys, operationalConte
   if (item.containerScope) return containerHasReachableChild(item, role, allowedLegacyKeys, operationalContext);
 
   // ════════════════════ THE EOS SOURCE, WHEN IT IS THE SOURCE ════════════════════
-  const eosAuthority = operationalContext?.eosNavigationAuthority;
-  if (isNavigationAuthority(eosAuthority)) return eosGrantsSurface(item, eosAuthority);
+  //
+  // EVERYTHING BELOW THIS LINE IS THE LEGACY SOURCE AND IS UNREACHABLE WHEN EOS ANSWERS. That has
+  // been true since Wave 6; what Wave 16 / Lane BQ adds is that the same question is now askable
+  // from outside this function (`isEosNavigationSource`), so App.jsx stops SUPPLYING the legacy
+  // inputs as well as stopping reading them -- `role` arrives as null and `allowedLegacyKeys` as
+  // empty. That is belt and braces on purpose: an unreachable branch that is still fed live
+  // Firebase-era values is one refactor away from being reachable again.
+  const eosAuthority = eosNavigationAuthorityFor(operationalContext);
+  if (eosAuthority) return eosGrantsSurface(item, eosAuthority);
 
   // GOVERNED CAPABILITY IS THE FINAL ACCESS AUTHORITY FOR GOVERNED SURFACES (Owner decision
   // 2026-08-16, closing #1065). A positive governed decision grants visibility OUTRIGHT and is never
@@ -1422,11 +1683,27 @@ export function isNavItemVisible(item, role, allowedLegacyKeys, operationalConte
   // (Report Builder / Saved Reports rely on exactly this -- byte-for-byte their previous behaviour.)
   if (item.capabilityAccess) return false;
 
-  // THE PLACEHOLDER, DECLARED. Only a destination named in NAV_LEGACY_PLACEHOLDER_DESTINATIONS
-  // reaches the Firebase-era role literal, and the answer for those 62 is byte-for-byte what it was.
-  // What is gone is the FALL-THROUGH: a destination that declares no authority at all is now
-  // invisible instead of admin/dispatcher-visible, so a new door cannot open by omission.
-  if (item.legacyPlaceholder) return PLACEHOLDER_DEFAULT_ROLES.includes(role);
+  // THE PLACEHOLDER, DECLARED -- AND ONLY WHERE THE LEGACY SOURCE IS THE SOURCE.
+  //
+  // Only a destination named in the EFFECTIVE placeholder register reaches the Firebase-era role
+  // literal. That register is `NAV_LEGACY_PLACEHOLDER_DESTINATIONS` (62) under the legacy source and
+  // `NAV_GOVERNED_PLACEHOLDER_DESTINATIONS` (EMPTY) under the EOS source, which is Wave 16 / Lane
+  // BR's whole correction: Lane BQ expressed "these twenty are gone under EOS" by deleting them from
+  // the one list every environment reads, which also deleted them from `taylor-parts-production`,
+  // where `EOS_NAVIGATION_AUTHORITY_READY` is false and `eosApi` is null and nothing else answers.
+  //
+  // THE EOS TEST HERE IS REDUNDANT AND IS KEPT ON PURPOSE. The EOS branch above already returned, so
+  // this line cannot be reached under the EOS source today. Stating it anyway is what makes the
+  // exclusion STRUCTURAL rather than a property of the order of two `if`s: rearrange this function
+  // and the governed register is still empty. It is the same belt-and-braces Lane BQ applied when it
+  // stopped App.jsx supplying `role` to a branch that had already stopped reading it.
+  //
+  // What is gone, from both registers, is the FALL-THROUGH: a destination that declares no authority
+  // at all is invisible rather than admin/dispatcher-visible, so a new door cannot open by omission.
+  if (item.legacyPlaceholder) {
+    if (isEosNavigationSource(operationalContext)) return false;
+    return PLACEHOLDER_DEFAULT_ROLES.includes(role);
+  }
 
   return false;
 }

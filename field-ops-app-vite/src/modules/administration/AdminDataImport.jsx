@@ -173,9 +173,21 @@ export default function AdminDataImport({ hasCapability }) {
   // Tracked, not inferred from an empty list -- see History for why.
   const [historyStatus, setHistoryStatus] = useState("loading");
 
-  const refreshHistory = useCallback(async () => {
+  // `isCurrent` is how the CALLER says whether its own run is still the live one. The mount effect
+  // below passes a per-effect flag; callers with no cleanup hook (the approve handler) pass nothing
+  // and get the previous behavior unchanged.
+  //
+  // WHY A PARAMETER AND NOT A REF. usePolicyStore.js in this same directory records what a
+  // mounted-ref costs: "a ref set false by an unmount cleanup stays false FOR EVER, and React
+  // StrictMode mounts, unmounts and remounts every component in development. The second -- real --
+  // mount then discarded its own response, and the panel sat on 'Reading the policy store...'
+  // indefinitely." A flag scoped to ONE run of the effect is the idiom this codebase settled on
+  // (see also EmployeeChangeHistorySection.jsx and AdministrationOverview.jsx, both `let alive`).
+  const refreshHistory = useCallback(async (isCurrent = () => true) => {
     // Access is still resolving, or this account cannot stage. Either way there is nothing to
     // read yet -- and saying "none" here would be the same lie the empty state used to tell.
+    // No await on this path, so it completes synchronously inside the caller and cannot land
+    // after an unmount.
     if (!canStage) {
       setHistoryStatus("loading");
       setJobs([]);
@@ -183,6 +195,15 @@ export default function AdminDataImport({ hasCapability }) {
     }
     setHistoryStatus("loading");
     const res = await listDataImportJobs();
+    // THE UNMOUNT WINDOW. Everything below is a setState on the far side of an await, so it must
+    // not run once the caller's run has been superseded or the component has gone away. React
+    // schedules a post-unmount setState anyway and the resulting dispatchSetState touches `window`;
+    // after a test environment (or a torn-down jsdom) has gone, that throws
+    // "ReferenceError: window is not defined" as an UNHANDLED REJECTION -- attributable to whatever
+    // test happened to be running, not to this component. This guard is required regardless of
+    // which branch below is taken: the permission-denied path is simply the one that resolves
+    // late often enough to have exposed it.
+    if (!isCurrent()) return;
     if (res.ok && Array.isArray(res.data?.jobs)) {
       setJobs(res.data.jobs);
       setHistoryStatus("ready");
@@ -193,7 +214,11 @@ export default function AdminDataImport({ hasCapability }) {
   }, [canStage]);
 
   useEffect(() => {
-    refreshHistory();
+    let alive = true;
+    refreshHistory(() => alive);
+    return () => {
+      alive = false;
+    };
   }, [refreshHistory]);
 
   const onFile = useCallback(async (event) => {

@@ -38,6 +38,15 @@ async function withClient(url, fn) {
 const T = "t-lane-p-seam";
 const COMPANY_KEY = MANIFEST.operatingCompanyKey;         // sample-co-synthetic
 const REORDER_RECORD = "RR-2026-000901";
+/**
+ * The WORK ORDER the assigned/unassigned pair is proved against. Unlike the Reorder record, this one is
+ * not a declaration: eos_ops.work_order_assignments in nonprod holds exactly one open row, naming this
+ * work order and synthetic-np-emp-service-technician-a, with no row at all for -b (measured 2026-09-24).
+ * The manifest's recordRelationships entry is the authority for which persona is assigned; the id is read
+ * from it rather than restated, so the two cannot drift.
+ */
+const WORK_ORDER_RELATIONSHIP = MANIFEST.recordRelationships.find((r) => r.recordKind === "workOrder");
+const WORK_ORDER_RECORD = WORK_ORDER_RELATIONSHIP.recordId;
 
 // ════════════════════ the grant list, read from the MIGRATION rather than copied ════════════════════
 //
@@ -58,6 +67,12 @@ const TEST_GRANTS = Object.freeze([
   { roleKey: "warehouseAssociate", capabilityKey: "inventory.cycleCount.create" },
   { roleKey: "inventoryCycleCountCounter", capabilityKey: "inventory.cycleCount.create" },
   { roleKey: "salesperson", capabilityKey: "opportunity.read" },
+  // The assigned-vs-unassigned pair moved onto the WORK ORDER record, because that is the record an
+  // assignment row actually exists for. `technician` DECLARES workOrder.transition in the compiled Role
+  // catalog; what it lacks is a live grant row, which is a reconciliation this file does not perform
+  // anywhere real -- so the pair is declared here as a test grant in this throwaway database, exactly like
+  // the three above, and no business permission is altered by it.
+  { roleKey: "technician", capabilityKey: "workOrder.transition" },
 ]);
 
 const personaEmployeeId = (personaKey) => `emp-${personaKey}`;
@@ -156,7 +171,21 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
   await q(`INSERT INTO eos_ops.reorder_request_assignments
              (id,tenant_id,reorder_request_id,assigned_employee_id,effective_from,provenance,assigned_by_principal_id)
            VALUES ('a-cx',$1,$2,$3,now(),'NATIVE',$4)`,
-  [T, REORDER_RECORD, personaEmployeeId(relationship.assignedEmployee), personaPrincipalId("owner-executive")]);
+  [T, REORDER_RECORD, personaEmployeeId(relationship.assignedEmployee), personaPrincipalId("administrator")]);
+
+  // The WORK ORDER pair, which is NOT a declaration being resolved -- it is the arrangement nonprod
+  // already has, reproduced here so the evaluator is asked the same question the database can answer.
+  // One open row for service-technician-a, and deliberately none for service-technician-b.
+  await q(`INSERT INTO eos_ops.work_orders
+             (id,tenant_id,operating_company_key,work_order_number,status,work_order_type,priority,
+              customer_id,location_id,provenance,created_by_principal_id,created_at,updated_at)
+           VALUES ($1,$2,$3,'WO-2026-000063','SCHEDULED','SERVICE_CALL',3,'cust-1','loc-1','NATIVE',$4,now(),now())`,
+  [WORK_ORDER_RECORD, T, COMPANY_KEY, personaPrincipalId("dispatcher")]);
+  await q(`INSERT INTO eos_ops.work_order_assignments
+             (id,tenant_id,work_order_id,assignee_employee_id,source,effective_from,
+              assigned_by_principal_id,provenance)
+           VALUES ('a-wo',$1,$2,$3,'SCHEDULE',now(),$4,'NATIVE')`,
+  [T, WORK_ORDER_RECORD, personaEmployeeId(WORK_ORDER_RELATIONSHIP.assignedEmployee), personaPrincipalId("dispatcher")]);
 
   // ════════════════════ the actors, resolved by the REAL runtime authority ════════════════════
   //
@@ -542,17 +571,20 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
   });
 
   await t.test("PERSONA EXECUTABILITY: assigned vs unassigned Technician, on the same record", async () => {
+    // THE WORK ORDER, not the Reorder Request. The Owner ruled that a Reorder assignee is a PARTS persona
+    // and that the Service Technician is the standing negative eligibility case, so the technician pair is
+    // proved where a technician assignment actually exists -- and in nonprod one does.
     const registry = seam.actionContextRegistry([{
-      capabilityKey: "reorder.request.read",
+      capabilityKey: "workOrder.transition",
       paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]],
-      recordKind: "reorderRequest",
+      recordKind: "workOrder",
     }]);
     const assigned = await seam.authorizeContextualAction(reader, {
-      actor: await actorFor("service-technician-a"), capabilityKey: "reorder.request.read", recordId: REORDER_RECORD,
+      actor: await actorFor("service-technician-a"), capabilityKey: "workOrder.transition", recordId: WORK_ORDER_RECORD,
     }, registry);
     assert.equal(assigned.allowed, true);
     const unassigned = await seam.authorizeContextualAction(reader, {
-      actor: await actorFor("service-technician-b"), capabilityKey: "reorder.request.read", recordId: REORDER_RECORD,
+      actor: await actorFor("service-technician-b"), capabilityKey: "workOrder.transition", recordId: WORK_ORDER_RECORD,
     }, registry);
     assert.equal(unassigned.allowed, false);
     assert.equal(unassigned.outcome, "NOT_ASSIGNED");
@@ -583,7 +615,16 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
   await t.test("OPERATIONAL SCOPE is not RECORD ASSIGNMENT, through the seam", async () => {
     // Technician A reaches their OWN record and is still refused the queue; the parts manager
     // reaches the queue without any assignment. Neither authority implies the other.
+    //
+    // The technician's OWN record is the WORK ORDER: the Owner ruled that a Reorder assignee is a Parts
+    // persona and that the Service Technician stays the negative eligibility case, so the technician is
+    // assigned where a technician assignment actually exists. The proof is unchanged in substance -- an
+    // Employee with a record assignment and no scope, against an Employee with a scope and no assignment.
     const own = seam.actionContextRegistry([{
+      capabilityKey: "workOrder.transition",
+      paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder",
+    }]);
+    const ownReorder = seam.actionContextRegistry([{
       capabilityKey: "reorder.request.read",
       paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "reorderRequest",
     }]);
@@ -593,12 +634,12 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
     }]);
     const techA = await actorFor("service-technician-a");
     assert.equal((await seam.authorizeContextualAction(reader, {
-      actor: techA, capabilityKey: "reorder.request.read", recordId: REORDER_RECORD }, own)).allowed, true);
+      actor: techA, capabilityKey: "workOrder.transition", recordId: WORK_ORDER_RECORD }, own)).allowed, true);
     assert.equal((await seam.authorizeContextualAction(reader, {
       actor: techA, capabilityKey: "reorder.request.read" }, queue)).outcome, "OUTSIDE_OPERATIONAL_SCOPE");
     const partsManager = await actorFor("parts-manager");
     assert.equal((await seam.authorizeContextualAction(reader, {
-      actor: partsManager, capabilityKey: "reorder.request.read", recordId: REORDER_RECORD }, own)).outcome,
+      actor: partsManager, capabilityKey: "reorder.request.read", recordId: REORDER_RECORD }, ownReorder)).outcome,
     "NOT_ASSIGNED", "queue scope conveys no assignment");
     assert.equal((await seam.authorizeContextualAction(reader, {
       actor: partsManager, capabilityKey: "reorder.request.read" }, queue)).allowed, true);
@@ -609,11 +650,11 @@ test("the contextual authorization SEAM", { skip: SKIP, concurrency: 1 }, async 
                (id,tenant_id,operating_company_key,status,work_order_type,priority,provenance,customer_id,location_id,
                 created_by_principal_id,created_at,updated_at)
              VALUES ('wo-lane-p',$1,$2,'WORK_IN_PROGRESS','SERVICE_CALL',3,'NATIVE','c1','l1',$3,now(),now())`,
-    [T, COMPANY_KEY, personaPrincipalId("owner-executive")]);
+    [T, COMPANY_KEY, personaPrincipalId("administrator")]);
     await q(`INSERT INTO eos_ops.work_order_assignments
                (id,tenant_id,work_order_id,assignee_employee_id,effective_from,provenance,assigned_by_principal_id,source)
              VALUES ('wa-lane-p',$1,'wo-lane-p',$2,now(),'NATIVE',$3,'SCHEDULE')`,
-    [T, personaEmployeeId("service-technician-a"), personaPrincipalId("owner-executive")]);
+    [T, personaEmployeeId("service-technician-a"), personaPrincipalId("administrator")]);
     // TEST-ONLY: no Work Order lifecycle capability is granted to any Role by any migration, so this
     // registry entry and its capability grant exist only inside this database.
     await q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)

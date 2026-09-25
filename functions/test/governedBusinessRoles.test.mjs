@@ -28,6 +28,7 @@ import {
   INVENTORY_CATALOG_ADMINISTRATOR_ROLE,
   WORK_ORDER_PARTS_PLANNER_ROLE,
   CRM_ACTIVITY_CONTRIBUTOR_ROLE,
+  OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES,
 } from "../lib/access/governedBusinessRoles.js";
 import { findPermission, PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 import { __GOVERNED_ASSIGNABLE_ROLES_FOR_TEST } from "../lib/access/trustedWriterCommands.js";
@@ -672,7 +673,13 @@ check("fulfillment.coordinatedVisit.read: Field Manager and Operations Manager h
   }
 });
 
-check("fulfillment.coordinatedVisit.read: Owner inherits it by composition (through ADMIN_ROLE.permissions), same inactivePermission reason", () => {
+// PREMISE CORRECTED 2026-09-24 (Owner ruling A). The title used to read "Owner inherits it by
+// composition (through ADMIN_ROLE.permissions)". Owner no longer spreads ADMIN_ROLE.permissions, so
+// the MECHANISM named here was wrong; the assertion is not. Cross-domain reads are Owner's by
+// decision, and this id is now declared on OWNER_ENTERPRISE_VISIBILITY in its own right. The check
+// still refuses exactly what it always refused: this id disappearing from Owner, and Owner being
+// denied for the wrong reason (a missing grant instead of the active:false gate).
+check("fulfillment.coordinatedVisit.read: Owner DECLARES it in its own right (OWNER_ENTERPRISE_VISIBILITY), same inactivePermission reason", () => {
   assert.ok(OWNER_ROLE.permissions.includes("fulfillment.coordinatedVisit.read"));
   const result = resolve("fulfillment.coordinatedVisit.read", "owner", GOVERNED_BUSINESS_ROLES);
   assert.equal(result.decision, "DENY");
@@ -838,19 +845,18 @@ check("no OTHER governed Role carries these capabilities in its permission set",
   // Asserted on the permission SETS, not on resolution: every id here resolves DENY anyway while
   // active:false, so a resolution-based check would pass vacuously and prove nothing.
   for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
-    // "owner" exempted for the same composition reason recorded just below: the
-    // 2026-08-19 ruling gives admin the whole catalog and OWNER_PERMISSIONS is composed
-    // from ADMIN_ROLE.permissions, so owner holds every id by inheritance. What this
-    // still protects is that no other governed Role carries it on its own.
-    if (id !== "workOrderPartsPlanner" && id !== "owner") {
+    // PIN MOVED 2026-09-24. "owner" used to be exempted here because the ADMIN_ROLE spread gave
+    // it every catalog id whether anyone decided so or not. Ruling A removed the spread and
+    // DECIDED this one: planning parts on a Work Order is the planner's act, not oversight, so
+    // owner is no longer exempt and must not hold it either.
+    if (id !== "workOrderPartsPlanner") {
       assert.equal(role.permissions.includes("workOrder.parts.plan"), false, id);
     }
-    // "owner" is exempted, not overlooked. Owner ruling 2026-08-19 granted CRM activity
-    // on ADMIN_ROLE (canonical admin authority), and OWNER_PERMISSIONS is composed from
-    // ADMIN_ROLE.permissions -- so owner holds these ids BY COMPOSITION, exactly the way
-    // it already inherits fulfillment.coordinatedVisit.read. The invariant this check
-    // protects is that no OTHER governed Role picks them up independently; that still
-    // holds, and a dedicated check below pins owner-via-composition explicitly.
+    // "owner" is still exempted here, and now for a DECIDED reason rather than a compositional
+    // one: Owner ruling 2026-08-19 granted CRM activity as a real authority, and ruling A restated
+    // it on Owner explicitly (OWNER_COMMERCIAL_AUTHORITY) rather than letting it vanish with the
+    // spread. The invariant this check protects is that no OTHER governed Role picks them up
+    // independently; the dedicated check below pins Owner's own declaration.
     if (id !== "crmActivityContributor" && id !== "owner") {
       assert.equal(role.permissions.includes("crm.activity.create"), false, id);
       assert.equal(role.permissions.includes("crm.activity.read"), false, id);
@@ -862,12 +868,16 @@ check("no OTHER governed Role carries these capabilities in its permission set",
 // Before this, exactly one Role carried these ids, so a dispatcher holding the operational
 // crmActivityContributor assignment could read CRM notes on an Account while the ADMIN could
 // not, and owner inherited the same gap. Pinned in both directions: admin holds them
-// directly, owner by composition, and dispatcher does NOT gain create as a side effect of
-// the shared admin/dispatcher base.
-check("CRM activity: admin holds create+read directly, owner by composition, dispatcher NOT via the shared base", () => {
+// directly, owner on its own declared contract, and dispatcher does NOT gain create as a side
+// effect of the shared admin/dispatcher base.
+//
+// PIN MOVED 2026-09-24. Owner used to inherit these two ids through the ADMIN_ROLE spread. Ruling
+// A removed the spread, which would have silently DELETED the Owner's CRM activity authority --
+// so OWNER_COMMERCIAL_AUTHORITY now names them. Same grant, stated instead of inherited.
+check("CRM activity: admin holds create+read directly, owner on its own contract, dispatcher NOT via the shared base", () => {
   for (const id of ["crm.activity.create", "crm.activity.read"]) {
     assert.ok(ADMIN_ROLE.permissions.includes(id), `admin must hold ${id}`);
-    assert.ok(OWNER_ROLE.permissions.includes(id), `owner must inherit ${id} via OWNER_PERMISSIONS`);
+    assert.ok(OWNER_ROLE.permissions.includes(id), `owner must declare ${id} in OWNER_COMMERCIAL_AUTHORITY`);
     assert.equal(
       DISPATCHER_ROLE.permissions.includes(id),
       false,
@@ -943,7 +953,10 @@ check("catalog MANAGE is held by the three management Roles plus the purpose-bui
   );
   assert.deepEqual(granting.sort(), EXPECTED_MANAGE, "exactly these Roles may write the catalog");
 
-  // Owner holds MANAGE by composition through ADMIN_ROLE, not by its own grant.
+  // Owner holds MANAGE by its OWN declared grant since 2026-09-24 (it used to arrive by
+  // composition through ADMIN_ROLE). The 2026-08-19 ruling put catalog WRITE on the management
+  // Roles including Owner, so narrowing Owner had to carry it explicitly -- see
+  // OWNER_PROCUREMENT_AUTHORITY.
   assert.equal(resolve("inventory.catalog.manage", "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
 
   // ACTIVATE was NOT part of the reversal. Creating and correcting reference data is a
@@ -952,15 +965,16 @@ check("catalog MANAGE is held by the three management Roles plus the purpose-bui
   const activating = Object.keys(GOVERNED_BUSINESS_ROLES).filter(
     (id) => resolve("inventory.catalog.activate", id, GOVERNED_BUSINESS_ROLES).decision === "ALLOW",
   );
-  // owner now resolves ALLOW for activate. That is a CONSEQUENCE of the 2026-08-19
-  // ruling (admin holds the full catalog; owner is composed from admin), not a
-  // reversal of the confinement this check was written for -- the point was that no
-  // OPERATIONAL Role picks activate up, and none does. Owner and admin are the two
-  // Roles the ruling deliberately makes unrestricted.
+  // PIN MOVED 2026-09-24. Owner used to resolve ALLOW for activate purely as a CONSEQUENCE of
+  // composing admin, and this assertion filtered owner out to say so. Ruling A removed the
+  // composition and decided activate explicitly: editing a Part is Owner's, changing its lifecycle
+  // status is the durable catalog administrator's. So the filter is gone and the confinement is
+  // now stated without an exception -- which is what this check was written to say in the first
+  // place, before the composition forced the carve-out.
   assert.deepEqual(
-    activating.filter((id) => id !== "owner").sort(),
+    activating.sort(),
     ["inventoryCatalogAdministrator"],
-    "activate stays confined to the durable catalog administrator among non-owner Roles",
+    "activate is confined to the durable catalog administrator -- owner included",
   );
 });
 
@@ -1123,16 +1137,32 @@ check("warehouse RECORD and STOCK-LOCATION read stay confined; transferOrder rea
   assert.deepEqual(actual, EXPECTED_TRANSFER_READ, "exactly the roles the canonical matrix grants Transfer Orders read");
 });
 
-check("Owner mirrors admin's warehouse grant too, since Owner always includes every ADMIN_ROLE id", () => {
+// PIN MOVED 2026-09-24. The old title's reason -- "since Owner always includes every ADMIN_ROLE
+// id" -- stopped being true when Owner was narrowed. The GRANT is unchanged and is now held on its
+// own merits: all three are READS, and enterprise visibility is the first thing oversight means.
+check("Owner holds the three warehouse reads on its own contract (enterprise visibility)", () => {
   for (const id of ["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]) {
     assert.ok(OWNER_ROLE.permissions.includes(id), id);
     assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
 });
 
-check("Owner holds every ADMIN_ROLE permission, through the same governed resolver -- never a bypass", () => {
+// PIN MOVED 2026-09-24 (Owner ruling A). This check used to be titled "Owner holds every
+// ADMIN_ROLE permission" and asserted exactly that, id by id. It was a faithful pin of what the
+// code did and a pin of the DEFECT: Owner's grant was `[...ADMIN_ROLE.permissions, ...]` and
+// ADMIN_ROLE.permissions is the whole PERMISSION_CATALOG, so the assertion could never fail and
+// the two Roles were the same Role. The ruling is that Owner is business/enterprise OVERSIGHT and
+// Admin is access/security/PLATFORM ADMINISTRATION, and that the compiled catalog must say so.
+//
+// What survives unchanged is the half that was always the real invariant -- "never a bypass".
+// Owner resolves every capability it holds through resolveEffectivePermission, with the same
+// Scope, Condition and audit path as anyone else, and its one Condition-gated id still behaves
+// exactly as admin's does. What is replaced is "Owner >= admin", which is now false BY DECISION.
+// The exact contract, and the 19 admin-only exclusions, are pinned by ownerCapabilityContract
+// .test.mjs against the measured nonprod baseline.
+check("Owner resolves everything it holds through the governed resolver -- never a bypass", () => {
   assert.equal(OWNER_ROLE.privileged, true);
-  for (const id of ADMIN_ROLE.permissions) {
+  for (const id of OWNER_ROLE.permissions) {
     // reorder.purchaseOrder.void carries an isOwnAssignment Condition
     // (both admin's and Owner's) -- resolve() below always targets an
     // empty condition context, so this one id legitimately DENIES here,
@@ -1141,14 +1171,10 @@ check("Owner holds every ADMIN_ROLE permission, through the same governed resolv
     // assignee" assertion. The Condition itself is checked separately,
     // right below.
     if (id === "reorder.purchaseOrder.void") continue;
-    // Phase 6a: admin (and therefore owner, by inheritance) now holds the
-    // Sales/Fulfillment/Finance spine, which is registered `active: false`.
-    // resolve() below passes no activationOverrides, so an active:false id
-    // legitimately DENIES here (inactivePermission) for BOTH admin and owner --
-    // the "owner >= admin" property still holds at the permission-list level,
-    // and the spine's ALLOW-under-activation is proven in
-    // resolveEffectivePermission.test.mjs (Phase 6a behavioral block). Skipping
-    // them here mirrors the reorder.purchaseOrder.void Condition exemption above.
+    // An `active: false` id resolves DENY with reason `inactivePermission` for EVERY holder,
+    // Owner included -- register != grant != activate. resolve() passes no activationOverrides,
+    // so those are proven elsewhere (resolveEffectivePermission.test.mjs Phase 6a; the report.*
+    // block below, under the sandbox activation set).
     if (findPermission(id)?.active === false) continue;
     assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
@@ -1163,13 +1189,35 @@ check("Owner holds every ADMIN_ROLE permission, through the same governed resolv
     "ALLOW",
     "reorder.purchaseOrder.void must ALLOW when Owner IS the request's own assignee"
   );
-  // Every non-admin id Owner holds must be an active wave-1 report.* id
-  // (Issue #325 W1) -- Owner never gains any OTHER capability admin
-  // itself doesn't have.
+});
+
+check("Owner is NOT Administrator: the admin-only capabilities resolve DENY for owner", () => {
+  // The inverse of the pin this replaced, and the thing ruling A actually cares about. Every id
+  // here is admin-only in live nonprod; the compiled catalog used to hand Owner all of them, which
+  // is what would have made the next seed apply widen the live Owner Role.
+  for (const id of OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES) {
+    assert.equal(
+      OWNER_ROLE.permissions.includes(id),
+      false,
+      `owner must not declare the admin-only capability ${id}`,
+    );
+    assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+  // ...and admin keeps them. Narrowing ADMIN instead of OWNER would have "fixed" the drift by
+  // revoking authority the business does grant.
+  for (const id of OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES) {
+    if (!findPermission(id)) continue; // the two workOrder.lifecycle.* ids are not catalog ids
+    assert.ok(ADMIN_ROLE.permissions.includes(id), `admin must still hold ${id}`);
+  }
+});
+
+check("Owner's only capabilities admin lacks are report.* -- Owner never invents authority", () => {
+  // Retained from the old check, and now the ONLY direction that still holds: Owner may exceed
+  // admin solely through the reporting family (Issue #325 W1 + W-SAVE).
   const adminSet = new Set(ADMIN_ROLE.permissions);
   for (const id of OWNER_ROLE.permissions) {
     if (adminSet.has(id)) continue;
-    assert.ok(id.startsWith("report."), `Owner has "${id}" that admin does not, and it isn't a report.* id -- not a mirror plus the documented W1 addition`);
+    assert.ok(id.startsWith("report."), `Owner has "${id}" that admin does not, and it isn't a report.* id`);
   }
 });
 

@@ -8,6 +8,8 @@ import { spawnSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { opaqueFirestoreAccess, namesFirestoreCollection } from "./support/firestoreCollectionFence.mjs";
+import { stripComments, moduleSpecifiers, resolveSpecifier, importsModule, namesInCode } from "./support/executableReferenceFence.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(FUNCTIONS_DIR, "src");
@@ -50,18 +52,108 @@ test("(1) no Firebase: no read module imports it, and loading every one resolves
   assert.equal(probe.status, 0, `a C3 module transitively loaded Firebase: ${probe.stderr}`);
 });
 
+const REPO = resolve(FUNCTIONS_DIR, "..");
+const CLIENT_SRC = join(REPO, "field-ops-app-vite", "src");
+const crel = (f) => relative(REPO, f).split("\\").join("/");
+const PATH = { relative, resolve, dirname };
+
+/** The approved Sales Agreements read path, and nothing else, may reach a Commercial read. */
+const APPROVED_TRANSPORT_CLIENT = "field-ops-app-vite/src/services/commercialApiClient.js";
+const APPROVED_INDEX_HOOK = "field-ops-app-vite/src/hooks/useSalesAgreementIndex.js";
+const APPROVED_INDEX_SCREEN = "field-ops-app-vite/src/modules/sales/SalesAgreementsList.jsx";
+const APPROVED_INDEX_DOMAIN = "field-ops-app-vite/src/domain/salesAgreementIndex.js";
+const APPROVED_CLIENT_PATH = [APPROVED_TRANSPORT_CLIENT, APPROVED_INDEX_HOOK, APPROVED_INDEX_SCREEN, APPROVED_INDEX_DOMAIN];
+/** The C3 operations the C4 transport serves. Exact names: listOpportunitiesForAccount is a LEGACY callable, not one of these. */
+const C3_OPERATIONS = ["getAccountCommercialProjection", "getOpportunityDetail", "getSalesAgreementDetail", "getSalesOrderDetail", "listOpportunities", "listSalesAgreements", "listSalesOrders"];
+
 test("(2) the only runtime entry point to the read projections is the C4 Commercial transport", () => {
-  // A relative "./reads/" import reaches the Commercial read layer only from src/eosCommercial itself; elsewhere (e.g.
-  // src/eosWorkforce/reads) it names a different domain's reads.
-  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) &&
-    (/eosCommercial\/reads\//.test(readFileSync(f, "utf8")) || (dirname(f) === join(SRC, "eosCommercial") && /["']\.\/reads\//.test(readFileSync(f, "utf8")))));
+  // ANCHORED TO A MODULE SPECIFIER, not to raw text.
+  //
+  // This assertion used to read the whole file and look for "eosCommercial/reads/" anywhere in it. It
+  // then failed on src/eosOps/experienceAuthority.ts, which imports nothing from the read layer and
+  // merely NAMES it in a comment explaining which governed read backs the Sales Agreements surface --
+  // the fifth time a bare-substring boundary probe in this repository has fired on the prose that
+  // documents the boundary. A module is reached when it sits in a specifier position; a sentence
+  // about it is not a dependency, and deleting the sentence to appease a grep would delete the note
+  // saying why the boundary exists. A relative "./reads/" import is resolved rather than pattern-
+  // matched, so src/eosWorkforce/reads (a different domain's reads) is distinguished by path.
+  const importsReadLayer = (f) => moduleSpecifiers(readFileSync(f, "utf8"))
+    .some((spec) => /^eosCommercial\/reads\//.test(resolveSpecifier(f, spec, SRC, PATH)));
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(READS) && importsReadLayer(f));
   assert.deepEqual(importers.map(rel), ["src/eosCommercial/commercialHttp.ts"], "a module other than the C4 transport imports the read layer");
+  assert.ok(importsReadLayer(join(SRC, "eosCommercial", "commercialHttp.ts")), "the specifier scan stopped seeing the transport's own imports and would now pass for the wrong reason");
   for (const surface of ["index.ts", "eosOps/eosOpsHttp.ts", "adminPolicy/adminPolicyHttp.ts"]) {
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCommercial|ReadProjection|commercialReadKernel/, `${surface} reaches Commercial reads`);
   }
   assert.doesNotMatch(strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8")), /ReadProjection|commercialReadKernel|eosCommercial\/reads/, "server.ts reaches reads without the transport");
-  const client = walk(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
-  assert.ok(!client.some((f) => /eosCommercial\/reads|(opportunity|salesAgreement|salesOrder)ReadProjection|commercialReadKernel|getAccountCommercialProjection/.test(readFileSync(f, "utf8"))), "the client references a C3 projection");
+
+  // THE CLIENT MAY NEVER REACH THE READ LAYER ITSELF. This is unchanged and deliberately not loosened:
+  // the approved path's allowance (below) is for an OPERATION NAME sent over the governed transport,
+  // never for the projection modules.
+  const client = walk(CLIENT_SRC, [".js", ".jsx", ".ts", ".tsx"]);
+  const reaching = client.filter((f) => {
+    const source = readFileSync(f, "utf8");
+    return importsModule(source, /eosCommercial\/reads|ReadProjection|commercialReadKernel/)
+      || namesInCode(source, /eosCommercial\/reads|(?:opportunity|salesAgreement|salesOrder)ReadProjection|commercialReadKernel/);
+  }).map(crel);
+  assert.deepEqual(reaching, [], "a client module reaches a C3 read projection module");
+
+  // PINNED BOTH WAYS. experienceAuthority.ts is the module that failed this assertion before the
+  // anchor: it NAMES the governed read in a comment and IMPORTS nothing from it. Both halves are
+  // asserted, so this can never be "fixed" by rewording the comment to slip past a scan -- that
+  // would leave the defective probe in place and delete the note saying which read backs the surface.
+  const experience = readFileSync(join(SRC, "eosOps", "experienceAuthority.ts"), "utf8");
+  assert.match(experience, /eosCommercial\/reads\/salesAgreementReadProjection\.ts/, "the comment naming the governed read was edited away instead of the guard being fixed");
+  assert.equal(importsReadLayer(join(SRC, "eosOps", "experienceAuthority.ts")), false, "experienceAuthority.ts now really imports the C3 read layer");
+});
+
+test("(2b) the approved Sales Agreements index is the ONE client Commercial read, pinned to the transport and to salesAgreement.read", () => {
+  // RECOGNISED, NOT LOOSENED. Lane BQ built the governed client path the C4 transport was always for,
+  // so a Commercial read operation named in the browser is no longer automatically a defect. The
+  // allowance is pinned to the approved files and to the operations they are approved to name; every
+  // other way a Commercial projection could appear in the client is still a failure.
+  const client = walk(CLIENT_SRC, [".js", ".jsx", ".ts", ".tsx"]);
+  const naming = new Map();
+  for (const f of client) {
+    const source = readFileSync(f, "utf8");
+    const hits = C3_OPERATIONS.filter((op) => namesInCode(source, new RegExp(`\\b${op}\\b`)));
+    if (hits.length) naming.set(crel(f), hits.sort());
+  }
+  assert.deepEqual([...naming.keys()].sort(), [APPROVED_INDEX_HOOK, APPROVED_TRANSPORT_CLIENT].sort(),
+    "an unapproved client module names a Commercial read operation");
+  assert.deepEqual(naming.get(APPROVED_TRANSPORT_CLIENT), [...C3_OPERATIONS].sort(),
+    "the transport client's mirrored read list drifted from the transport's READ_RUNNERS");
+  assert.deepEqual(naming.get(APPROVED_INDEX_HOOK), ["listSalesAgreements"],
+    "the Sales Agreements hook names a Commercial read other than its own index");
+
+  // NO WRITE MASQUERADING AS A READ. The C2 mutations stay absent from the whole approved path.
+  const C2_MUTATIONS = ["createOpportunity", "updateOpportunity", "transitionOpportunity", "closeOpportunityAsWon", "createSalesAgreement",
+    "updateSalesAgreementDraft", "acceptSalesAgreement", "createSalesOrder", "createSalesOrderFromOpportunity", "transitionSalesOrder"];
+  for (const file of APPROVED_CLIENT_PATH) {
+    const code = stripComments(readFileSync(join(REPO, file), "utf8"));
+    for (const mutation of C2_MUTATIONS) assert.doesNotMatch(code, new RegExp(`\\b${mutation}\\b`), `${file} names the C2 mutation ${mutation}`);
+
+    // NO DIRECT FIRESTORE READ. Lane AO's shared fence, not a fifth bare-string variant.
+    assert.equal(opaqueFirestoreAccess(code), false, `${file} holds a Firestore accessor`);
+    for (const collection of ["sales_agreements", "salesAgreements", "opportunities", "salesOrders", "sales_orders"]) {
+      assert.equal(namesFirestoreCollection(code, collection), false, `${file} reads ${collection} from Firestore`);
+    }
+
+    // NO ALTERNATE PERMISSION VOCABULARY AND NO ROLE-STRING AUTHORIZATION. The client states no
+    // capability at all: authority is resolved server-side from the bearer, and the screen only
+    // renders the answer. A capability literal here would be a second, client-stated vocabulary.
+    assert.deepEqual([...code.matchAll(/["'`]([a-z][A-Za-z]*\.[a-z][A-Za-z]*(?:\.[a-z][A-Za-z]*)?)["'`]/g)].map((m) => m[1]), [],
+      `${file} states a capability-shaped permission literal`);
+    for (const forbidden of [/\bsecurityRole\b/, /\boperationalRoles\b/, /\bcustomClaims\b/, /\bgetIdTokenResult\b/, /\bROLE_[A-Z_]+\b/]) {
+      assert.doesNotMatch(code, forbidden, `${file} authorizes from a role or a claim: ${forbidden}`);
+    }
+  }
+
+  // The Firestore door the client must not fall back through is still shut, read AND write.
+  const rules = readFileSync(join(REPO, "firestore.rules"), "utf8");
+  const at = rules.indexOf("match /sales_agreements/{salesAgreementId}");
+  assert.ok(at > 0, "the sales_agreements rule is gone; the no-fallback claim is unproven");
+  assert.match(rules.slice(at, at + 200), /allow read, write: if false;/, "sales_agreements is no longer deny-all in firestore.rules");
 });
 
 test("(3) no Commercial capability is activated, and no read capability id is invented", () => {

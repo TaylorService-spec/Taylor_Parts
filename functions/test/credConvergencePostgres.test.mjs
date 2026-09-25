@@ -105,9 +105,12 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 76,
+    assert.equal(total, 79,
       "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read) + 1 (admin.securityPolicy.read, " +
-      "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read)");
+      "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read) " +
+      "+ 3 from migration 1762300800000, the authority activation vehicle: receivingOrder.record.read " +
+      "and workOrder.record.read, which close the measured EDIT-WITHOUT-READ defect on two Objects " +
+      "that had NO registered READ at all, and reportDefinition.read, Reporting Slice 1");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {
@@ -158,7 +161,18 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
     //
     // migrationChainSafety.test.mjs proves the same population from the migration SOURCE; this
     // proves it from the migrated DATABASE.
-    const RELEASED = "workflowDefinition.read";
+    //
+    // THE HOLD MOVED AGAIN, BY EXACTLY TWO MORE KEYS AND EXACTLY ONE ROLE. Owner ruling S6 released
+    // workOrder.lifecycle.dispatch and .cancel to fieldManager -- the service manager must be able
+    // to schedule and to stand work down -- and released NOTHING else. `workOrder.lifecycle.complete`
+    // stays fully held: completion is execution attestation, and a manager who may both dispatch and
+    // complete can close work nobody performed. So the shape below is again EXACT POPULATIONS rather
+    // than a loosened count.
+    const RELEASED = {
+      "workflowDefinition.read": ["admin", "owner"],
+      "workOrder.lifecycle.dispatch": ["fieldManager"],
+      "workOrder.lifecycle.cancel": ["fieldManager"],
+    };
     const { rows } = await pool.query(`
       SELECT c.key, count(rc.role_id)::int AS grants
         FROM eos_policy.capabilities c
@@ -167,19 +181,22 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
        GROUP BY c.key ORDER BY c.key`);
     assert.equal(rows.length, 9, "three lifecycle + six workflow");
     for (const r of rows) {
-      if (r.key === RELEASED) continue;
+      if (r.key in RELEASED) continue;
       assert.equal(r.grants, 0, `${r.key} must remain ungranted -- no Owner ruling has released it`);
     }
-    assert.ok(rows.some((r) => r.key === RELEASED),
-      `${RELEASED} must still be a registered capability -- the released key cannot go missing`);
+    assert.equal(rows.find((r) => r.key === "workOrder.lifecycle.complete").grants, 0,
+      "completion remains technician execution authority and no migration may grant it");
 
-    const holders = await pool.query(
-      `SELECT r.key FROM eos_policy.role_capabilities rc
-         JOIN eos_policy.capabilities c ON c.id = rc.capability_id
-         JOIN eos_policy.roles r        ON r.id = rc.role_id
-        WHERE c.key = $1 ORDER BY r.key`, [RELEASED]);
-    assert.deepEqual(holders.rows.map((r) => r.key), ["admin", "owner"],
-      `${RELEASED} is released to exactly admin and owner by migration 1762128000000, and to nobody else`);
+    for (const [key, expected] of Object.entries(RELEASED)) {
+      assert.ok(rows.some((r) => r.key === key), `${key} must still be registered -- a released key cannot go missing`);
+      const holders = await pool.query(
+        `SELECT r.key FROM eos_policy.role_capabilities rc
+           JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+           JOIN eos_policy.roles r        ON r.id = rc.role_id
+          WHERE c.key = $1 ORDER BY r.key`, [key]);
+      assert.deepEqual(holders.rows.map((r) => r.key), expected,
+        `${key} is released to exactly ${expected.join(", ")} and to nobody else`);
+    }
 
     // And no direct Principal grant was minted alongside it: the released key is a ROLE grant only.
     const direct = await pool.query(

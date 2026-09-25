@@ -33,6 +33,8 @@ import { resolvePolicyDatabaseConfig } from "../lib/adminPolicy/policyDatabase.j
 import {
   EXPERIENCE_SURFACES,
   resolveExperienceContext,
+  EXPERIENCE_SURFACE_GAPS,
+  experienceSurfaceGapViolations,
   surfaceCatalogCapabilityKeys,
 } from "../lib/eosOps/experienceAuthority.js";
 import { postgresPrincipalDimensionReader } from "../lib/eosOps/contextualAuthorization.js";
@@ -197,6 +199,79 @@ test("EVERY capability the surface catalog names is a registered capability in t
   );
   assert.ok(declared.length >= 20, "the catalog should not have quietly shrunk to nothing");
   assert.ok(EXPERIENCE_SURFACES.length >= 20);
+});
+
+// ════════════════════ 1b. THE GATE, POINTED AT THE GAP REGISTER ════════════════════
+//
+// The anti-invention gate above asks whether a GRANTED surface names a real capability. Nothing
+// asked the mirror question about a GAP -- and a gap is a claim about this same table.
+//
+// `commercial.agreements` stated "No salesAgreement.* capability is registered in
+// eos_policy.capabilities". Four were, under Object `salesAgreement`, granted to six Roles including
+// the `salesperson` Role held by the very persona the entry named. The register carried that
+// sentence through the capability being registered, through the grants, and through a read service
+// being built on it, because prose is not checkable and nothing here was checking.
+//
+// It is checkable now, in the one place it can be: against the real table.
+//
+//   VOCABULARY  the prefixes it says are absent must BE absent. A capability appearing under one of
+//               them has falsified the reason, and this fails on the migration that registers it
+//               rather than whenever somebody next reads the paragraph.
+//   DESTINATION the capability it says already governs the work must be REGISTERED here.
+//
+// REGISTRATION IS WHAT THIS DATABASE CAN HONESTLY ANSWER, AND GRANTS ARE NOT. `reset()` re-migrates
+// from clean and this suite makes its grants per-test on purpose -- the header above says so: which
+// named Role holds which capability in a deployed tenant is the seed's job, not a migration's. So
+// asserting "and somebody holds it" here would measure the absence of a seed, not the truth of the
+// gap. The other half of the DESTINATION claim -- that the capability is actually HELD -- is checked
+// in experienceAuthority.test.mjs against adminPolicy/seed/roleCapabilityAuthorityBaseline.json, the
+// recorded nonprod measurement, which is the artifact in this repository where that IS measurable.
+test("EVERY declared gap's claim about this database is TRUE", { skip: SKIP }, async () => {
+  await reset();
+  assert.deepEqual(experienceSurfaceGapViolations(), [], "the gap register is malformed before it is even measured");
+
+  const { rows } = await query("SELECT key FROM eos_policy.capabilities");
+  const registered = rows.map((r) => r.key);
+
+  const falsified = [];
+  for (const gap of EXPERIENCE_SURFACE_GAPS) {
+    if (gap.kind === "VOCABULARY") {
+      for (const prefix of gap.absentCapabilityPrefixes ?? []) {
+        const found = registered.filter((k) => k.startsWith(prefix));
+        if (found.length > 0) {
+          falsified.push(`${gap.key}: claims nothing is registered under "${prefix}", but this database declares ${found.join(", ")}`);
+        }
+      }
+    }
+    if (gap.kind === "DESTINATION" && !registered.includes(gap.governedBy)) {
+      falsified.push(`${gap.key}: claims ${gap.governedBy} already governs it, but eos_policy.capabilities does not declare it -- this is a VOCABULARY gap`);
+    }
+  }
+  assert.deepEqual(falsified, [], `A declared gap states something this database contradicts:\n  ${falsified.join("\n  ")}`);
+});
+
+// THE CORRECTED ENTRY, MEASURED RATHER THAN DESCRIBED. Pinned separately from the loop above so the
+// regression has a test carrying its name: the four ids the old reason said did not exist are here,
+// registered under the `salesAgreement` Object, in a database built only by the migrations.
+test("the salesAgreement vocabulary the old commercial.agreements reason denied is REGISTERED", { skip: SKIP }, async () => {
+  await reset();
+  const { rows } = await query(
+    `SELECT key, object_key, action_kind FROM eos_policy.capabilities
+      WHERE key LIKE 'salesAgreement.%' ORDER BY key`,
+  );
+  assert.deepEqual(
+    rows.map((r) => r.key),
+    ["salesAgreement.accept", "salesAgreement.create", "salesAgreement.read", "salesAgreement.updateDraft"],
+    "the four Sales Agreement capabilities are not registered here -- if they genuinely went away, the gap reverts to a VOCABULARY one",
+  );
+  for (const row of rows) {
+    assert.equal(row.object_key, "salesAgreement", `${row.key} is not registered under the salesAgreement Object`);
+  }
+  assert.deepEqual(
+    rows.map((r) => r.action_kind).sort(),
+    ["BUSINESS_ACTION", "CREATE", "EDIT", "READ"],
+    "the four kinds the old reason said the vocabulary could not express",
+  );
 });
 
 // ════════════════════ 2. the projection, over the real tables ════════════════════

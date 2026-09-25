@@ -163,6 +163,9 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
      "and one from migration 1762214400000 (capability_grant_conditions: the condition that narrows ONE " +
      "grant, kept in its OWN relation so role_capabilities and principal_capabilities keep answering " +
      "WHAT and never WHICH -- created EMPTY, activating zero conditional entitlements). " +
+     "Migration 1762300800000 (the authority activation vehicle) adds NONE: it registers three " +
+     "capabilities, writes 26 Role grants and reconciles role_object_permissions, all into relations " +
+     "that already exist, which is what an authority activation should need. " +
      "Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(

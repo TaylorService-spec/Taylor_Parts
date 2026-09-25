@@ -94,9 +94,19 @@ test("the reconciliation adds up: 28 entities and 389 fields, all seeded", () =>
   // behind it. The one capability that governed something real,
   // `fulfillment.coordinatedVisit.read`, was re-homed onto salesOrder as a BUSINESS_ACTION rather
   // than retired with the Object it was filed under (migration 1761955200000).
-  assert.equal(ledger.seeded.objects, 39);
+  //
+  // 39 -> 40, and 5 -> 6 capability-authority: REPORTING SLICE 1, migration 1762300800000.
+  // `reportDefinition` is registered because a PostgreSQL capability names it -- `reportDefinition.
+  // read`, object_key NOT NULL -- and it mirrors `workflowDefinition` exactly: Administration
+  // domain, zero fields, a security subject rather than a data shape. The entity and field counts
+  // are UNCHANGED at 28/389 because it has no EntityDefinition behind it, which is precisely what
+  // the third bucket exists to say. The 34 FIELD-LEVEL report ids are deliberately NOT Objects and
+  // NOT capabilities: `capabilities` has no field column and UNIQUE (object_key, action_key), so
+  // they would have had to become 34 fake Objects to be registered at all. They belong to
+  // eos_policy.role_field_permission_overrides.
+  assert.equal(ledger.seeded.objects, 40);
   assert.equal(ledger.seeded.objectsWithoutAnEntity, 6);
-  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 5);
+  assert.equal(ledger.seeded.objectsFromCapabilityAuthority, 6);
   assert.equal(
     ledger.seeded.entities + ledger.seeded.objectsWithoutAnEntity + ledger.seeded.objectsFromCapabilityAuthority,
     ledger.seeded.objects,

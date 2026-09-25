@@ -61,6 +61,38 @@ async function twoTenants() {
   const disabled = await create(TENANT_A, "subject-disabled", { status: "disabled" });
   const inactiveMember = await create(TENANT_A, "subject-inactive", { membershipStatus: "disabled" });
 
+  // ════════════════════ subject-a IS A GRANTED READER, not merely a member ════════════════════
+  //
+  // COLLATERAL OF THE READ GATE, and the feature working. Every read below used to answer a bare
+  // membership principal because Administration reads were open to anyone with a context in the
+  // tenant; they are now gated on the capability the surface they serve declares. The CALLER is
+  // what changes -- the fixture grants subject-a the two reads the tests below exercise -- and the
+  // enforcement is not weakened to keep them passing.
+  //
+  // DIRECT GRANTS, deliberately: subject-a holds no Role at all, so these tests ALSO prove that a
+  // `principal_capabilities` grant is sufficient on its own. A gate written against
+  // `AdminActor.heldRoleKeys` would refuse this principal and fail here.
+  const [securityPolicyRead, principalAccessRead] = repo.registerCapabilities([
+    {
+      key: "admin.securityPolicy.read", description: "View the security policy model",
+      objectKey: "rolesPermissions", actionKey: "read", actionKind: "READ",
+      displayLabel: "View Security Policy",
+    },
+    {
+      key: "admin.principalAccess.read", description: "View principals and their access",
+      objectKey: "principal", actionKey: "read", actionKind: "READ",
+      displayLabel: "View Principal Access",
+    },
+  ]);
+  await repo.transact({ tenantId: TENANT_A, uid: "setup" }, async (tx) => {
+    for (const capability of [securityPolicyRead, principalAccessRead]) {
+      await tx.grantPrincipalCapability({
+        principalId: onlyA.id, capabilityId: capability.id,
+        grantedBy: "setup", grantedAt: "2026-09-24T00:00:00.000Z",
+      });
+    }
+  });
+
   // One human, two tenants — the ambiguity case.
   const both = await create(TENANT_A, "subject-both");
   await repo.transact({ tenantId: TENANT_B, uid: "setup" }, (tx) => tx.createTenantMembership(both.id));

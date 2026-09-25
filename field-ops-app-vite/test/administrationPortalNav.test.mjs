@@ -47,7 +47,7 @@ ok("Overview subnav item exists at a named path (not the index)", () => {
 // WHAT MUST REMAIN TRUE is asserted first and is unchanged from Lane AS: no legacyKey, no
 // capabilityAccess, no operationalRoleAccess, no placeholder row, no alwaysVisible. The visibility
 // below is DERIVED, and the blast radius is still exactly this one tab.
-ok("Overview asserts NO authority of its own, and is visible as a CONTAINER over its children", () => {
+ok("Overview asserts NO authority of its own, and follows its children under both sources", () => {
   const overview = byKey("overview");
   assert.equal(overview.legacyPlaceholder, undefined,
     "Overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- that register may only shrink");
@@ -62,8 +62,18 @@ ok("Overview asserts NO authority of its own, and is visible as a CONTAINER over
     "administration/permissionPreview", "administration/users", "administration/auditLogs",
   ], "the container's scope has drifted from the server catalog's containerOf children");
 
-  // ADMIN AND DISPATCHER see it because they can open its children; TECHNICIAN can open none of
-  // them and so gets no menu. Nobody was granted a child in order to light the container.
+  // WAVE 16 / LANE BQ, CORRECTED BY LANE BR -- THE CHILDREN ARE OPEN HERE, SO THE MENU IS.
+  //
+  // Lane BQ deleted the six children's NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows globally, which
+  // closed this menu for admin and dispatcher in every flag-false environment -- production among
+  // them, where `eosApi` is null and there is no governed child to open instead. The Owner ruled
+  // that the cutover is per environment, so the six keep their legacy rows and this file, which asks
+  // the question with NO operationalContext and therefore always under the LEGACY source, asserts
+  // main's answer again.
+  //
+  // The EOS half is not asserted here because it is not this file's source: the same container under
+  // a READY EOS authority, opening on a governed child and refusing every role literal, is in
+  // test/administrationNavigationReadiness.test.mjs and test/navCutoverEnvironmentScoped.test.mjs.
   for (const role of [ROLES.ADMIN, ROLES.DISPATCHER]) {
     const openChildren = overview.containerScope
       .filter((d) => isNavItemVisible(byKey(d.split("/")[1]), role, allowed(role)));
@@ -85,8 +95,19 @@ ok("Permission Preview subnav item exists at a named path", () => {
   assert.equal(preview.path, "permission-preview");
   assert.equal(preview.legacyKey, undefined);
 });
-ok("Permission Preview is admin/dispatcher visible, technician fail-closed", () => {
+// WAVE 16 / LANE BQ, CORRECTED BY LANE BR: governed-source-only WHERE THE GOVERNED SOURCE ANSWERS.
+// Permission Preview reads and evaluates a named principal's effective access, so
+// `administration.permissionPreview` (earned by admin.principalAccess.read) is the right and only
+// authority for it -- and under the EOS source that is exactly what opens it. Under the LEGACY
+// source, in an environment with no EOS source at all, the placeholder row is still what answers,
+// unchanged from main. Closing it there would not make the screen governed; it would make it
+// unreachable.
+ok("Permission Preview is admin/dispatcher visible under the legacy source, technician fail-closed", () => {
   const preview = byKey("permissionPreview");
+  assert.deepEqual(preview.surfaceAccess, ["administration.permissionPreview"],
+    "Permission Preview lost the governed surface that is what the cutover moves it to");
+  assert.equal(preview.legacyPlaceholder, true,
+    "Permission Preview lost its legacy row -- where the flag is false nothing else opens it");
   assert.equal(isNavItemVisible(preview, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
   assert.equal(isNavItemVisible(preview, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
   assert.equal(isNavItemVisible(preview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
@@ -116,8 +137,30 @@ ok("Users is the one people destination, at its own named path", () => {
   assert.equal(users.label, "Users");
 });
 
-// ----- Every pre-existing item's gating is unchanged -----
+// ----- Every pre-existing item's LEGACY gating is unchanged -----
+//
+// WAVE 16 / LANE BQ SPLIT THIS BLOCK IN TWO AND LANE BR PUTS IT BACK TOGETHER. Lane BQ's split used
+// the right criterion -- has this destination earned a governed EOS surface? -- but drew the wrong
+// conclusion from it, closing the earned ones' legacy doors in environments that have no EOS source
+// to answer instead. Under the LEGACY source, which is the only source this file exercises, all
+// seven answer exactly as they did on b6a36b15. Which of them the EOS source answers differently is
+// recorded below and proved in test/navCutoverEnvironmentScoped.test.mjs.
 ok("existing Users/Roles & Permissions/Vehicles/Regions/Company Settings/Integrations/Audit Logs items are untouched", () => {
+  // The three that HAVE earned a governed surface. Their legacy row is a cutover remainder: it is
+  // what answers where the flag is false, and it retires when that environment flips -- never before.
+  for (const key of ["users", "rolesPermissions", "auditLogs"]) {
+    const item = byKey(key);
+    assert.ok(Array.isArray(item.surfaceAccess) && item.surfaceAccess.length > 0,
+      `${key} lost the governed surface the cutover moves it to`);
+    assert.equal(item.legacyPlaceholder, true,
+      `${key} lost its legacy row -- in a flag-false environment that closes the door with nothing behind it`);
+  }
+  // The four that have NOT. No flag helps these: their row is the only authority they will ever have
+  // until the destination earns a capability or a surface of its own.
+  for (const key of ["vehicles", "regions", "companySettings", "integrations"]) {
+    assert.equal(byKey(key).surfaceAccess, undefined,
+      `${key} acquired a governed surface -- then it belongs in the cutover partition, deliberately`);
+  }
   const untouchedKeys = ["users", "rolesPermissions", "vehicles", "regions", "companySettings", "integrations", "auditLogs"];
   for (const key of untouchedKeys) {
     const item = byKey(key);

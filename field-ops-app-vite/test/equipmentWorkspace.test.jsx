@@ -169,10 +169,18 @@ describe("EquipmentWorkspace tabs", () => {
 // used (navConfig.js: no legacyKey -> PLACEHOLDER_DEFAULT_ROLES). This wiring
 // change adds no new permission and must not loosen or narrow that gate -- mirrors
 // the existing nav/route assertions in equipmentRegister.test.mjs.
+// WAVE 16 / LANE BQ, CORRECTED BY LANE BR: `equipment/equipment` now has TWO gates, one per source.
+// It is mapped to `equipment.register`, which is what opens it where EOS_NAVIGATION_AUTHORITY_READY
+// is true; it also keeps its placeholder row, which is what opens it in the four environments where
+// the flag is false and no EOS source exists. Lane BQ removed the row globally, which closed the
+// route in those four; the Owner scoped the removal to the environments that have a replacement.
+// What this test owns is unchanged either way: Add Equipment adds NO permission and must neither
+// loosen nor narrow the gate, and the call below -- with no operationalContext -- is the legacy one.
 describe("Equipment nav access is unchanged by wiring in Add Equipment", () => {
   it("admin and dispatcher can reach the Equipment route; technician cannot", () => {
     const item = NAV_DOMAINS.find((d) => d.key === "equipment").subnav[0];
     const allowed = (role) => ROLE_NAV_ACCESS[role];
+    expect(item.surfaceAccess).toEqual(["equipment.register"]);
     expect(isNavItemVisible(item, ROLES.ADMIN, allowed(ROLES.ADMIN))).toBe(true);
     expect(isNavItemVisible(item, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER))).toBe(true);
     expect(isNavItemVisible(item, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN))).toBe(false);

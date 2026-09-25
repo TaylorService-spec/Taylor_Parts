@@ -40,14 +40,25 @@ ok("admin: all four groups present with their children in display order", () => 
   // Scan reaches admin through the SAME legacyKey "fieldMode" the Technician Workspace uses -- no new
   // ROLE_NAV_ACCESS key was invented, and no business role was added to that map.
   assert.deepEqual(keys(groupByKey(m, "scanning").items), ["scan"]);
+  // WAVE 16 / LANE BQ, CORRECTED BY LANE BR. `service/workOrders` and `service/coordinatedVisits`
+  // are two of the twenty destinations the cutover retires; Lane BQ deleted their legacy rows
+  // globally, which removed them from these groups for admin in every flag-false environment, and
+  // the Owner scoped that deletion to the environments that have an EOS source. Under the LEGACY
+  // source the groups are main's again.
   assert.deepEqual(keys(groupByKey(m, "workManagement").items), ["workOrders", "jobAssignments", "warranty"]);
   // Coordinated Visits (admin/dispatcher, no legacyKey) is grouped under Dispatch.
   assert.deepEqual(keys(groupByKey(m, "dispatch").items), ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"]);
   // Coordinated Mission (legacyKey fieldMode → admin + technician) is grouped under Technician Workspace.
   assert.deepEqual(keys(groupByKey(m, "technicianWorkspace").items), ["technicianWorkspace", "coordinatedMission"]);
 });
-ok("admin: Work Management lands on Work Orders (/service, path '')", () =>
-  assert.equal(groupByKey(groupsFor(ROLES.ADMIN), "workManagement").landing.path, ""));
+// The landing is the group's FIRST VISIBLE child, which is the property worth pinning -- not any
+// particular child. Under the LEGACY source that is Work Orders, as it was on main; under the EOS
+// source it is whichever child that session's governed grants actually open. Both are the same rule.
+ok("admin: Work Management lands on Work Orders (/service, path '')", () => {
+  const wm = groupByKey(groupsFor(ROLES.ADMIN), "workManagement");
+  assert.equal(wm.landing.path, "");
+  assert.equal(wm.landing.key, wm.items[0].key, "the landing is not the first visible child");
+});
 ok("admin: Dispatch lands on Dispatcher Board (the group landing)", () =>
   assert.equal(groupByKey(groupsFor(ROLES.ADMIN), "dispatch").landing.path, "dispatcher-board"));
 ok("admin: no ungrouped Service items (Control Tower promoted to Service Operations)", () => {
@@ -112,6 +123,11 @@ ok("buildServiceNavGroups([]) -> no groups, no ungrouped", () => {
 
 // ===== findActiveServiceGroupKey: direct URLs select the correct parent group =====
 const adminGroups = groupsFor(ROLES.ADMIN).groups;
+// `findActiveServiceGroupKey` answers from the VISIBLE groups it is handed, so its answer is per
+// session rather than per URL: it is workManagement for a session that can see Work Orders and null
+// for one that cannot. `adminGroups` here is built under the LEGACY source, where Work Orders is
+// visible -- Lane BQ's global row deletion briefly made this null for admin too, and Lane BR scoped
+// that deletion to the environments where the EOS source answers instead.
 ok("active group: '' (/service) -> Work Management", () =>
   assert.equal(findActiveServiceGroupKey("", adminGroups), "workManagement"));
 ok("active group: 'job-assignments' -> Work Management", () =>
@@ -126,6 +142,7 @@ ok("active group: 'dispatch-scheduling' (Dispatch Board) -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatch-scheduling", adminGroups), "dispatch"));
 ok("active group: 'technician-workspace' -> Technician Workspace", () =>
   assert.equal(findActiveServiceGroupKey("technician-workspace", adminGroups), "technicianWorkspace"));
+// Same as '' above: visible to an admin under the legacy source, so the lookup finds its group.
 ok("active group: 'coordinated-visits' -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("coordinated-visits", adminGroups), "dispatch"));
 ok("active group: 'coordinated-mission' -> Technician Workspace", () =>

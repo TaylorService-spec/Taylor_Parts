@@ -20,13 +20,27 @@
 //
 // ════════════════════ WHAT THIS IS NOT ════════════════════
 //
-// NOT AN ENFORCEMENT POINT, and deliberately not. adminPolicyApi.ts's dispatcher states its own
-// posture in its own words -- "Reads are open to any principal with a context in the tenant... an
-// administrator's grid has to be readable by the people whose access it describes for 'why can I not
-// see this' to be answerable" -- and that is a recorded design decision, not an oversight. Wiring
-// this module into that dispatcher would overturn it and would remove access from principals who
-// legitimately read the policy store today. This module is the CANONICAL AUTHORITY the presentation
-// layer and any future enforcement point resolve against; adopting it is a separate, authorized act.
+// NOT THE ENFORCEMENT POINT, because it is a PURE FUNCTION OVER A CAPABILITY SET: it reads no
+// database, resolves no principal and refuses no request. It is the CANONICAL MAP -- surface to the
+// Object READ that governs it -- and two callers now resolve against it:
+//
+//     PRESENTATION   navigation and routing, from the capability set the client already holds
+//     THE SERVER     adminPolicyApi.ts's read gate, which maps each of the thirteen Administration
+//                    read operations to the SURFACE it serves and takes the key from the table
+//                    below, then resolves the caller's effective capabilities from PostgreSQL
+//                    (role_capabilities UNION principal_capabilities) and refuses without it
+//
+// THAT SECOND CALLER IS NEW, and it overturns what this header used to record. The dispatcher's old
+// posture -- "reads are open to any principal with a context in the tenant... the sensitive act is
+// CHANGING it" -- was a decision taken when nothing governed Administration at all. Once navigation
+// became capability-governed it stopped being a posture and became a hole: the capability model
+// decided what a browser DREW while every authenticated principal in the tenant could still fetch
+// the same policy configuration over one POST. It is closed. A principal who legitimately reads the
+// policy store does so because an administrator GRANTED them the read, which is a decision that can
+// be seen and withdrawn -- not because they managed to log in.
+//
+// ONE MODEL, ONE TABLE. A surface and the operations behind it can no longer answer differently,
+// because they are the same row.
 //
 // NOT A GRANT. Every key below is registered in eos_policy.capabilities by migration. This file
 // maps surfaces to keys; it creates no capability and confers nothing.
@@ -78,13 +92,13 @@ export type AdministrationSurface = (typeof ADMINISTRATION_SURFACES)[number];
  *                      which authority the built surface will need, so that when it is built it is
  *                      not gated on a write.
  *   workflows          listWorkflows / readWorkflowVersion  ->  `workflowDefinition.read`, which
- *                      already existed. IT IS HELD BY NO ROLE, by standing decision: migration
- *                      1761609600000 left every workflowDefinition.* at zero and
- *                      migrationChainSafety asserts that no migration may grant one, because the
- *                      Workflow Definition decisions are the Owner's. So this surface is correctly
- *                      gated and currently readable by nobody -- a fail-closed state that is
- *                      REPORTED rather than papered over by pointing the surface at a key somebody
- *                      happens to hold.
+ *                      already existed. It was held by NO Role for four migrations, by standing
+ *                      decision -- the Workflow Definition decisions are the Owner's -- and this
+ *                      surface was correctly gated and readable by nobody, a fail-closed state that
+ *                      was REPORTED rather than papered over by pointing it at a key somebody
+ *                      happened to hold. The Owner then took that one decision and migration
+ *                      1762128000000 granted the READ to admin and owner, and only the read: the
+ *                      five workflowDefinition MUTATIONS remain at zero holders.
  *   auditLogs          readPolicyAuditHistory  ->  `audit.event.read`, which already existed.
  *   overview           NOTHING. AdministrationOverview.jsx renders four static links and the
  *                      deployment manifest; it reads no governed data. See mayReadAdministration-

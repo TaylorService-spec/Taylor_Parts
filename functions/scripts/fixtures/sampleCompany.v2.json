@@ -9,7 +9,7 @@
     "note": "Every v1 Employee, Principal, Account, Contact, Location and Commercial record id/number is carried forward BYTE-IDENTICAL so v2 extends the same world rather than creating a second one. v2 adds profile facts, reporting relationships, a third Account, more Contacts/Locations/Commercial records, and the operational domains."
   },
   "rulings": {
-    "jobRole": "Job Role authority is NOT YET IMPLEMENTED in PostgreSQL (EMP-RT-08). Every jobRole value here is seed-manifest metadata only. No seed step writes it to any PostgreSQL authority column, and a test asserts that.",
+    "jobRole": "Job Role authority IS implemented in PostgreSQL (EMP-RT-08) and is NOT a column on eos_workforce.employees and never will be. Migration 1760011200000 created eos_workforce.job_roles (the tenant catalog) and eos_workforce.employee_job_role_assignments (one current role per Employee, history kept), and functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts is the governed writer -- createJobRole, updateJobRole, assignEmployeeJobRole, each requiring admin.employeeJobRole.write. Both tables hold 0 rows in nonprod (measured 2026-09-24), so Job Role carries no live authority yet and every jobRole value in this manifest is still seed metadata as far as THIS seed is concerned: seedSampleCompany.js writes no job role and a test asserts it names no job_role column. The catalog and the assignments are planned and applied by scripts/sampleCompany/personaAuthorityDimensions.js through the governed writers, never by a direct insert.",
     "jobRoleIsNotSecurityRole": "Job Role and Security Role are independent. No Security Role is derived from a Job Role and no Job Role is derived from a Security Role. Both are declared explicitly, per persona.",
     "salesJobRoles": "Retail Sales and National Accounts Sales are SEPARATE Job Roles. A generic Job Role named SALES is forbidden and refused by the manifest validator.",
     "identityChain": "Credential -> Principal -> governed tenant membership -> governed Employee/Principal link -> Employee. A Firebase uid is never an Employee id. Employee != User Access. Credential != Principal != Employee.",
@@ -55,51 +55,73 @@
   "jobRoles": [
     {
       "key": "OWNER_EXECUTIVE",
-      "label": "Owner / Executive"
+      "label": "Owner / Executive",
+      "pgJobRoleId": "owner-executive"
+    },
+    {
+      "key": "ADMINISTRATOR",
+      "label": "Administrator",
+      "pgJobRoleId": "administrator"
     },
     {
       "key": "GENERAL_MANAGER",
-      "label": "General Manager"
+      "label": "General Manager",
+      "pgJobRoleId": "general-manager"
     },
     {
       "key": "OFFICE_MANAGER",
-      "label": "Office Manager"
+      "label": "Office Manager",
+      "pgJobRoleId": "office-manager"
     },
     {
       "key": "SERVICE_MANAGER",
-      "label": "Service Manager"
+      "label": "Service Manager",
+      "pgJobRoleId": "service-manager"
     },
     {
       "key": "DISPATCHER",
-      "label": "Dispatcher"
+      "label": "Dispatcher",
+      "pgJobRoleId": "dispatcher"
     },
     {
       "key": "SERVICE_TECHNICIAN",
-      "label": "Service Technician"
+      "label": "Service Technician",
+      "pgJobRoleId": "service-technician"
     },
     {
       "key": "RETAIL_SALES",
-      "label": "Retail Sales"
+      "label": "Retail Sales",
+      "pgJobRoleId": "retail-sales"
     },
     {
       "key": "NATIONAL_ACCOUNTS_SALES",
-      "label": "National Accounts Sales"
+      "label": "National Accounts Sales",
+      "pgJobRoleId": "national-accounts-sales"
     },
     {
       "key": "PARTS_MANAGER",
-      "label": "Parts Manager"
+      "label": "Parts Manager",
+      "pgJobRoleId": "parts-manager"
     },
     {
       "key": "PARTS_ASSOCIATE",
-      "label": "Parts Associate"
+      "label": "Parts Associate",
+      "pgJobRoleId": "parts-associate"
     },
     {
       "key": "WAREHOUSE_MANAGER",
-      "label": "Warehouse Manager"
+      "label": "Warehouse Manager",
+      "pgJobRoleId": "warehouse-manager"
     },
     {
       "key": "WAREHOUSE_ASSOCIATE",
-      "label": "Warehouse Associate"
+      "label": "Warehouse Associate",
+      "pgJobRoleId": "warehouse-associate"
+    },
+    {
+      "key": "FINANCE_MANAGER",
+      "label": "Finance / Accounting Manager",
+      "pgJobRoleId": "finance-manager"
     }
   ],
   "employees": [
@@ -135,6 +157,41 @@
         "credentialEmail": "avery.fixture@sandbox.invalid",
         "existingAdministrator": true
       }
+    },
+    {
+      "key": "administrator",
+      "id": "synthetic-np-emp-administrator",
+      "fixtureLabel": "Synthetic Administrator",
+      "jobRole": "ADMINISTRATOR",
+      "employmentStatus": "ACTIVE",
+      "employeeNumber": "SC-0018",
+      "firstName": "Rowan",
+      "middleName": null,
+      "lastName": "Fixture",
+      "preferredName": "Rowan",
+      "displayName": "Rowan Fixture (SYNTHETIC)",
+      "jobTitle": "System Administrator",
+      "workEmail": "rowan.fixture@sandbox.invalid",
+      "workPhone": "+1-555-0118",
+      "mobilePhone": "+1-555-0167",
+      "addressStreet": "204 Example Ridge Parkway",
+      "addressUnit": null,
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "hireDate": "2013-03-11",
+      "separationDate": null,
+      "manager": "owner-executive",
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "rowan.fixture@sandbox.invalid",
+        "existingAdministrator": true
+      },
+      "extraEmployee": true,
+      "$comment": "THE ADMINISTRATOR, WHO IS NOT THE OWNER. Owner ruling: Administrator is not Owner and Owner is not Administrator, and no merged Owner/Admin fixture may survive as the canonical acceptance persona. The `admin` Security Role IS the Administrator authority, so the ONE reused real sandbox administrator Principal belongs to THIS Employee, not to the Owner/Executive. Its credential is real, pre-existing and never created, reset or rotated by any Sample Company path."
     },
     {
       "key": "general-manager",
@@ -648,22 +705,142 @@
         "interactiveLogin": false
       },
       "extraEmployee": true
+    },
+    {
+      "key": "finance-controller",
+      "id": "synthetic-np-emp-finance-controller",
+      "fixtureLabel": "Synthetic Finance Controller",
+      "jobRole": "FINANCE_MANAGER",
+      "employmentStatus": "ACTIVE",
+      "employeeNumber": "SC-0019",
+      "firstName": "Sage",
+      "middleName": null,
+      "lastName": "Fixture",
+      "preferredName": "Sage",
+      "displayName": "Sage Fixture (SYNTHETIC)",
+      "jobTitle": "Controller",
+      "workEmail": "sage.fixture@sandbox.invalid",
+      "workPhone": "+1-555-0119",
+      "mobilePhone": "+1-555-0168",
+      "addressStreet": "216 Example Ridge Parkway",
+      "addressUnit": null,
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "hireDate": "2016-09-19",
+      "separationDate": null,
+      "manager": "owner-executive",
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "sage.fixture@sandbox.invalid"
+      },
+      "extraEmployee": true,
+      "$comment": "THE FINANCIAL EXECUTION AUTHORITY NOBODY HELD. finance.invoice.issue, finance.invoice.read, finance.payment.apply, finance.payment.read, finance.adjustment.record and finance.refund.record are all REGISTERED in eos_policy.capabilities and were held by ZERO Principals (measured 2026-09-24: controller, accountingManager and financeManager each carry 17 grants and each has no holder). An authority nobody exercises is an untested authority. `controller` alone is taken; accountingManager and financeManager stay unheld deliberately -- see expectedAccess.roleGrantScope.financeRolesLeftUnheld."
+    },
+    {
+      "key": "report-analyst",
+      "id": "synthetic-np-emp-report-analyst",
+      "fixtureLabel": "Synthetic Reporting Analyst",
+      "jobRole": "OFFICE_MANAGER",
+      "employmentStatus": "ACTIVE",
+      "employeeNumber": "SC-0020",
+      "firstName": "Tatum",
+      "middleName": null,
+      "lastName": "Fixture",
+      "preferredName": "Tatum",
+      "displayName": "Tatum Fixture (SYNTHETIC)",
+      "jobTitle": "Reporting Analyst",
+      "workEmail": "tatum.fixture@sandbox.invalid",
+      "workPhone": "+1-555-0120",
+      "mobilePhone": null,
+      "addressStreet": "228 Example Ridge Parkway",
+      "addressUnit": null,
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "hireDate": "2023-02-13",
+      "separationDate": null,
+      "manager": "office-manager",
+      "userAccess": {
+        "state": "NONE",
+        "reason": "BLOCKED_DOMAIN, NOT 'no access by design'. This Employee exists so the Reporting persona is present in the canonical population and is COUNTED, but it holds no Principal and no Security Role because the reporting authority is OUTSIDE eos_policy: reportViewer, reportFinanceViewer and reportAuthor declare 27, 5 and 3 capabilities in the compiled Role catalog and NOT ONE of them is registered in eos_policy.capabilities (measured 2026-09-24: the governed vocabulary holds 76 ids and no report.* id among them; all three Roles hold zero role_capabilities rows). Granting one would grant nothing resolvable and would let a persona fixture stand in for a domain cutover. Owner ruling: add the Employee record, mark acceptance BLOCKED_DOMAIN, and grant no report permission while the capability is outside eos_policy."
+      },
+      "sandboxPersona": {
+        "interactiveLogin": false
+      },
+      "extraEmployee": true,
+      "acceptance": "BLOCKED_DOMAIN",
+      "acceptanceBlockedBy": "REPORTING_CAPABILITY_VOCABULARY_ABSENT",
+      "$comment": "DISTINCT FROM records-clerk. records-clerk proves EMPLOYEE != USER ACCESS -- a person who never needed access. This Employee WOULD have access the moment the reporting domain is registered in eos_policy; what withholds it is a domain gap, not a business decision. The two must never be collapsed, because closing the domain gap must flip exactly this one and leave records-clerk alone."
+    },
+    {
+      "key": "restricted-user",
+      "id": "synthetic-np-emp-restricted-user",
+      "fixtureLabel": "Synthetic Restricted User",
+      "jobRole": "OFFICE_MANAGER",
+      "employmentStatus": "ACTIVE",
+      "employeeNumber": "SC-0021",
+      "firstName": "Wren",
+      "middleName": null,
+      "lastName": "Fixture",
+      "preferredName": "Wren",
+      "displayName": "Wren Fixture (SYNTHETIC)",
+      "jobTitle": "Administrative Assistant",
+      "workEmail": "wren.fixture@sandbox.invalid",
+      "workPhone": "+1-555-0121",
+      "mobilePhone": null,
+      "addressStreet": "240 Example Ridge Parkway",
+      "addressUnit": null,
+      "addressCity": "Sampleton",
+      "addressState": "ZZ",
+      "addressPostalCode": "00000",
+      "hireDate": "2025-07-07",
+      "separationDate": null,
+      "manager": "office-manager",
+      "userAccess": {
+        "state": "ENABLED"
+      },
+      "sandboxPersona": {
+        "interactiveLogin": true,
+        "credentialEmail": "wren.fixture@sandbox.invalid"
+      },
+      "extraEmployee": true,
+      "$comment": "THE SIGNED-IN NEGATIVE CONTROL, which the catalog did not have. records-clerk and technician-on-leave prove 'Employee != user access' -- they have no Principal at all, so every refusal they produce happens BEFORE authorization is ever reached. This persona signs in, resolves a Principal, holds an ACTIVE tenant membership and a real Security Role -- `generalEmployee`, which declares ZERO capabilities in the compiled catalog and holds zero role_capabilities rows -- so every denial it receives is an AUTHORIZATION denial. That is what distinguishes 'denied because unauthorized' from 'denied because the surface is broken', and no other persona in this population produces it."
     }
   ],
   "principals": [
     {
       "employee": "owner-executive",
+      "existingOwnerPrincipal": true,
+      "securityRoles": [
+        "owner"
+      ],
+      "$comment": "THE OWNER PRINCIPAL THAT ALREADY EXISTS AND WAS NEVER LINKED. Measured in nonprod 2026-09-24: one Principal holds the `owner` Security Role (47 granted capabilities) and has NO Employee link at all, so every WORK_ELIGIBILITY, OPERATIONAL_SCOPE and RECORD_ASSIGNMENT predicate refuses it EMPLOYEE_LINK_REQUIRED before it reaches any authority question. This manifest ADOPTS that Principal for the Owner / Executive Employee rather than provisioning a second `owner`-holding Principal, which would be an authority increase for nothing. Establishing the link is an ADD -- there is no link to revoke -- and it creates no Principal, no credential and no grant.",
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "EXISTING_OWNER",
+        "credentialEmail": null,
+        "disposition": "REUSE_UNCHANGED",
+        "$comment": "The real sandbox Owner Principal. Reused exactly as it is: never recreated, never re-subjected, its credential never created, reset or rotated, its Role set never changed. Its subject is never restated here, for the same reason the administrator's is not."
+      },
+      "fixturePrincipal": null
+    },
+    {
+      "employee": "administrator",
       "existingAdministrator": true,
       "securityRoles": [
         "admin"
       ],
-      "$comment": "The ONE real administrator Principal in the nonprod tenant. REUSED verbatim: never recreated, never renamed, never re-credentialed, and its Role set is left exactly as v1 left it.",
+      "$comment": "The ONE real administrator Principal in the nonprod tenant. REUSED verbatim: never recreated, never renamed, never re-credentialed, and its Role set is left exactly as v1 left it. v1 linked it to the Owner/Executive Employee; v2 links it to the ADMINISTRATOR Employee, because `admin` is the Administrator authority and the Owner ruling forbids one persona from being both. That relink is a governed revoke-then-establish through employeePrincipalLinkRepository at apply time -- it creates no Principal, no credential and no grant, and it is declared in blockedRelationships.ADMINISTRATOR_PRINCIPAL_RELINK_PENDING rather than performed by the lane that wrote it.",
       "loginPrincipal": {
         "identityProvider": "firebase",
         "externalSubject": "EXISTING_ADMINISTRATOR",
         "credentialEmail": null,
         "disposition": "REUSE_UNCHANGED",
-        "$comment": "The ONE real sandbox Administrator Principal. Reused exactly as it is: never recreated, never re-subjected, its credential never rotated, its Role set never changed. It is linked to the Sample Owner/Executive Employee, and its visible person name comes from that Employee's display name through the governed Employee record -- never from its raw external subject."
+        "$comment": "The ONE real sandbox Administrator Principal. Reused exactly as it is: never recreated, never re-subjected, its credential never rotated, its Role set never changed. Its visible person name comes from the linked Employee's display name through the governed Employee record -- never from its raw external subject."
       },
       "fixturePrincipal": null
     },
@@ -937,6 +1114,44 @@
         "displayName": "Oakley Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
         "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
       }
+    },
+    {
+      "employee": "finance-controller",
+      "securityRoles": [
+        "controller"
+      ],
+      "$comment": "The financial-execution persona. `controller` is taken and accountingManager / financeManager are deliberately NOT, so the population holds ONE finance authority rather than three copies of the same seventeen capabilities.",
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "sage.fixture@sandbox.invalid",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      },
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-finance-controller",
+        "displayName": "SYNTHETIC NONPROD Controller (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      }
+    },
+    {
+      "employee": "restricted-user",
+      "securityRoles": [
+        "generalEmployee"
+      ],
+      "$comment": "The signed-in negative control. `generalEmployee` is a real governed Role that declares ZERO capabilities, so this Principal authenticates, resolves and is then refused by AUTHORIZATION on every governed operation. It is never given a second Role to make a test pass.",
+      "loginPrincipal": {
+        "identityProvider": "firebase",
+        "externalSubject": "RESOLVED_FROM_AUTH_UID",
+        "credentialEmail": "wren.fixture@sandbox.invalid",
+        "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
+      },
+      "fixturePrincipal": {
+        "identityProvider": "eos-synthetic-nonprod",
+        "externalSubject": "synthetic-np-principal-restricted-user",
+        "displayName": "SYNTHETIC NONPROD Administrative Assistant (fixture, cannot sign in)",
+        "disposition": "SUPERSEDED_BY_LOGIN_PRINCIPAL"
+      }
     }
   ],
   "employeePrincipalLinks": {
@@ -952,6 +1167,16 @@
       {
         "employee": "general-manager",
         "manager": "owner-executive"
+      },
+      {
+        "employee": "administrator",
+        "manager": "owner-executive",
+        "extraEdge": true
+      },
+      {
+        "employee": "finance-controller",
+        "manager": "owner-executive",
+        "extraEdge": true
       },
       {
         "employee": "office-manager",
@@ -1011,6 +1236,16 @@
       },
       {
         "employee": "records-clerk",
+        "manager": "office-manager",
+        "extraEdge": true
+      },
+      {
+        "employee": "report-analyst",
+        "manager": "office-manager",
+        "extraEdge": true
+      },
+      {
+        "employee": "restricted-user",
         "manager": "office-manager",
         "extraEdge": true
       }
@@ -1074,6 +1309,7 @@
       "opportunity.createSalesOrder",
       "opportunity.read",
       "opportunity.write",
+      "receivingOrder.record.read",
       "reorder.purchaseOrder.create",
       "reorder.purchaseOrder.read",
       "reorder.request.assign",
@@ -1081,6 +1317,7 @@
       "reorder.request.create.system",
       "reorder.request.read",
       "reorder.request.read.queue",
+      "reportDefinition.read",
       "salesAgreement.accept",
       "salesAgreement.create",
       "salesAgreement.read",
@@ -1093,6 +1330,7 @@
       "workOrder.lifecycle.cancel",
       "workOrder.lifecycle.complete",
       "workOrder.lifecycle.dispatch",
+      "workOrder.record.read",
       "workOrder.transition",
       "workflowDefinition.bindRole",
       "workflowDefinition.create",
@@ -1101,9 +1339,38 @@
       "workflowDefinition.read",
       "workflowDefinition.version"
     ],
-    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 76 ids and no others -- the newest being admin.securityPolicy.read, registered by migration 1762041600000 as the Administration READ authority: Administration > Objects, Roles & Permissions, Workflows, Permission Preview and Overview had no registered READ capability at all, and the `rolesPermissions` Object carried only admin.roleAssignment.write and admin.accessRequest.decide -- two ADMIN_ACTIONs -- so a navigation cutover could gate a read surface only on a write, making a reader indistinguishable from a writer. ONE Object-specific read was registered rather than a blanket administration.read: the Objects screen and the Roles & Permissions screen are two projections of the SAME stored authority over the SAME Object, and the four remaining Administration surfaces were ALREADY governed (admin.principalAccess.read for Users and the future Permission Preview, workflowDefinition.read for Workflows, audit.event.read for Audit Logs) while the Overview reads nothing governed and is answered by disjunction in code. Granted to exactly admin and owner, the population every other capability on the Administration authority Objects already has; workflowDefinition.read stays granted to NOBODY because Workflow Definition grant decisions are the Owner's and migrationChainSafety forbids a migration from making one. Before it, fulfillment.coordinatedVisit.read, which migration 1761955200000 REGISTERED rather than moved: the key existed only in the Firebase-era PERMISSION_CATALOG, and the governed seed pointed dispatchSchedule's R verb at it BY NAME while eos_policy.capabilities never carried the row. Retiring dispatchSchedule and notifications -- two Administration Objects over a record with no table, no collection and no document -- would have taken the one capability that governs something real down with them, so it is re-homed onto the Object whose state it reads (THE SALES ORDER IS THE COORDINATOR) as the BUSINESS_ACTION readCoordinatedVisits, never as a generic salesOrder READ. It is granted to exactly the five Roles the governed Role catalog already gives it and to no principal here; before that, inventory.manufacturer.read, split out of inventory.catalog.read by migration 1761782400000 so the capability names ONE Object (the Catalog read governed both Parts and Manufacturers, which a canonical capability cannot do); before that, the three keys added by migration 1761696000000 once the Owner ruled that whole-queue visibility is an Operational Scope and PARTS_ASSOCIATE is a Work Eligibility, so scope stopped needing to live in a capability key (reorder.request.read.queue is retained as SUPERSEDED migration evidence and may never be granted again); before that, the thirteen-key Finance, Administration and unconditioned Reorder vocabulary added by migration 1761609600000 (finance.read split into finance.invoice.read + finance.payment.read so a capability names ONE Object, the four named Finance acts registered as BUSINESS ACTIONS rather than minted as generic CRUD, and the three reorder keys that carry NO operationalRoleActive condition -- the conditioned ones are deliberately absent because role_capabilities has no scope column); before that, the eight-key CRED READ vocabulary added by migration 1761523200000, which registered the keys the CRUD matrix already used (inventory.catalog.read, warehouse.record.read, equipment.compatibility.view and five more) so the canonical model can finally express what role_object_permissions already enforces; migration 1761350400000 before it gave every capability its canonical object_key/action_key/action_kind/display_label so Administration can project security UNDER THE OBJECT (workOrder.cancel is deliberately NOT among them: workOrder.lifecycle.cancel already means it, and the new unique index on (object_key, action_key) now makes that duplication impossible) -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
+    "$postgresCapabilityVocabulary_comment": "THE GOVERNED POSTGRESQL CAPABILITY VOCABULARY, in full. eos_policy.capabilities is registered by migration, not by the in-repo Role catalog, and it currently holds these 79 ids and no others -- the newest THREE being receivingOrder.record.read, workOrder.record.read and reportDefinition.read, registered together by migration 1762300800000, THE AUTHORITY ACTIVATION VEHICLE. Owner ruling E requires a grant-bearing migration and the authority baseline that explains it to land as ONE change, so that migration also writes 26 Role grants and roleCapabilityAuthorityBaseline.json moved 387 -> 413 with it. The two record reads close a measured EDIT-WITHOUT-READ defect (ruling B): receivingOrder carried only inventory.stock.receive and workOrder carried only create/transition/three lifecycle actions, so both Objects had NO registered READ at all and thirteen Roles held a governed write on a record they could not read -- the READ verb was UNGOVERNED rather than withheld, which is a different fact and needed a registration rather than a grant. Each read is granted to exactly the Roles that hold the corresponding write, plus Owner, and confers no transition, dispatch, cancel, completion or receipt. reportDefinition.read is REPORTING SLICE 1 (ruling C): ONE Object-level read over saved report definitions, mirroring workflowDefinition, granted to admin, owner and reportViewer and to NO job-title Role. The 34 field-level report ids are deliberately NOT here: eos_policy.capabilities has object_key NOT NULL, UNIQUE (object_key, action_key) and no field column, so the relation cannot express a field dimension and field-level reporting belongs to eos_policy.role_field_permission_overrides. reportDefinition.delete is NOT REGISTERED, so it is ungrantable rather than merely ungranted, and reportFinanceViewer receives NO Object-level reporting capability because it is ADDITIVE finance-sensitive field visibility rather than a superset of reportViewer. Before those three, admin.securityPolicy.read, registered by migration 1762041600000 as the Administration READ authority: Administration > Objects, Roles & Permissions, Workflows, Permission Preview and Overview had no registered READ capability at all, and the `rolesPermissions` Object carried only admin.roleAssignment.write and admin.accessRequest.decide -- two ADMIN_ACTIONs -- so a navigation cutover could gate a read surface only on a write, making a reader indistinguishable from a writer. ONE Object-specific read was registered rather than a blanket administration.read: the Objects screen and the Roles & Permissions screen are two projections of the SAME stored authority over the SAME Object, and the four remaining Administration surfaces were ALREADY governed (admin.principalAccess.read for Users and the future Permission Preview, workflowDefinition.read for Workflows, audit.event.read for Audit Logs) while the Overview reads nothing governed and is answered by disjunction in code. Granted to exactly admin and owner, the population every other capability on the Administration authority Objects already has; workflowDefinition.read stays granted to NOBODY because Workflow Definition grant decisions are the Owner's and migrationChainSafety forbids a migration from making one. Before it, fulfillment.coordinatedVisit.read, which migration 1761955200000 REGISTERED rather than moved: the key existed only in the Firebase-era PERMISSION_CATALOG, and the governed seed pointed dispatchSchedule's R verb at it BY NAME while eos_policy.capabilities never carried the row. Retiring dispatchSchedule and notifications -- two Administration Objects over a record with no table, no collection and no document -- would have taken the one capability that governs something real down with them, so it is re-homed onto the Object whose state it reads (THE SALES ORDER IS THE COORDINATOR) as the BUSINESS_ACTION readCoordinatedVisits, never as a generic salesOrder READ. It is granted to exactly the five Roles the governed Role catalog already gives it and to no principal here; before that, inventory.manufacturer.read, split out of inventory.catalog.read by migration 1761782400000 so the capability names ONE Object (the Catalog read governed both Parts and Manufacturers, which a canonical capability cannot do); before that, the three keys added by migration 1761696000000 once the Owner ruled that whole-queue visibility is an Operational Scope and PARTS_ASSOCIATE is a Work Eligibility, so scope stopped needing to live in a capability key (reorder.request.read.queue is retained as SUPERSEDED migration evidence and may never be granted again); before that, the thirteen-key Finance, Administration and unconditioned Reorder vocabulary added by migration 1761609600000 (finance.read split into finance.invoice.read + finance.payment.read so a capability names ONE Object, the four named Finance acts registered as BUSINESS ACTIONS rather than minted as generic CRUD, and the three reorder keys that carry NO operationalRoleActive condition -- the conditioned ones are deliberately absent because role_capabilities has no scope column); before that, the eight-key CRED READ vocabulary added by migration 1761523200000, which registered the keys the CRUD matrix already used (inventory.catalog.read, warehouse.record.read, equipment.compatibility.view and five more) so the canonical model can finally express what role_object_permissions already enforces; migration 1761350400000 before it gave every capability its canonical object_key/action_key/action_kind/display_label so Administration can project security UNDER THE OBJECT (workOrder.cancel is deliberately NOT among them: workOrder.lifecycle.cancel already means it, and the new unique index on (object_key, action_key) now makes that duplication impossible) -- while PERMISSION_CATALOG holds several hundred. Every requiredCapabilities / forbiddenCapabilities id above is drawn from THIS list, because a capability the PostgreSQL authority does not know cannot be granted, cannot be resolved, and therefore cannot be proved either way. Role-catalog ids outside it are reported as CAPABILITY_VOCABULARY_PARTIAL rather than silently expected. The verifier asserts this list equals the live table, so a vocabulary migration is a reviewed change here.",
     "personas": {
       "owner-executive": {
+        "securityRoles": [
+          "owner"
+        ],
+        "requiredCapabilities": [],
+        "forbiddenCapabilities": [
+          "workOrder.lifecycle.dispatch",
+          "inventory.cycleCount.close"
+        ],
+        "expectedSurfaces": [
+          "administration.users",
+          "administration.overview",
+          "employees.directory",
+          "crm.accounts",
+          "commercial.opportunities",
+          "inventory.balances"
+        ],
+        "deniedSurfaces": [
+          "administration.objects",
+          "administration.rolesPermissions",
+          "administration.workflows"
+        ],
+        "accessModelGap": {
+          "code": "OWNER_ROLE_GRANTS_ARE_NOT_SEED_RECONCILED",
+          "classification": "SEED_GRANT_GAP"
+        },
+        "$requiredCapabilities_comment": "EMPTY, AND THAT IS THE MEASUREMENT, NOT AN OMISSION. The `owner` Role's grant set is deliberately WITHHELD from this seed's capability reconciliation (expectedAccess.roleGrantScope), because reconciling it would grant `owner` every capability the compiled catalog declares for it and the compiled catalog declares `owner` and `admin` IDENTICALLY -- 151 permissions each, 60 of them inside the governed PostgreSQL vocabulary, with no difference in either direction. Live nonprod does NOT agree: `owner` holds 47 granted capabilities and `admin` holds 66, `owner` is a STRICT SUBSET, and 19 capabilities are admin-only. Running the reconciliation over `owner` would therefore close that gap by copying the Administrator's permissions onto the Owner, which the Owner ruling forbids by name. A required capability this seed refuses to grant may not be asserted as required, because in a freshly seeded tenant it would be a guaranteed false negative. What IS asserted is the pair of capabilities NO Role holds, and the separation itself is asserted structurally in roleGrantScope.measuredOwnerVsAdministrator.",
+        "$forbiddenCapabilities_comment": "The Owner / Executive keeps the one assertion that a capability NOBODY holds must never start resolving. The 19 admin-only capabilities CANNOT be asserted forbidden here, because forbiddenCapabilities is validated against the COMPILED Role catalog and that catalog gives `owner` all of them. That divergence is itself the finding -- see blockedRelationships.OWNER_ROLE_CATALOG_EQUALS_ADMIN -- and it is declared rather than worked around by editing a Role definition."
+      },
+      "administrator": {
         "securityRoles": [
           "admin"
         ],
@@ -1134,7 +1401,8 @@
           "inventory.balances",
           "reporting.definitions"
         ],
-        "deniedSurfaces": []
+        "deniedSurfaces": [],
+        "$comment": "MOVED, NOT WEAKENED. Every capability this contract requires and forbids was carried by the merged owner-executive persona before the Owner ruled Owner and Administrator apart. It is asserted here unchanged, against the persona that actually holds `admin`."
       },
       "general-manager": {
         "securityRoles": [
@@ -1206,7 +1474,6 @@
         ],
         "expectedSurfaces": [
           "crm.accounts",
-          "crm.contacts",
           "crm.locations",
           "service.workOrders.create"
         ],
@@ -1218,7 +1485,18 @@
         "accessModelGap": {
           "code": "WORK_ORDER_LIFECYCLE_AUTHORITY_STILL_LEGACY",
           "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
-        }
+        },
+        "surfacesUngovernedToday": [
+          {
+            "surface": "crm.contacts",
+            "classification": "NO_GOVERNING_CAPABILITY",
+            "blockedBy": "CAPABILITY_GOVERNS_NO_CONTACT_DESTINATION",
+            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'Contact read has no capability of its own -- crm.createContact is a write, and customer.record.read governs the Account. A separate Contacts destination cannot be earned distinctly today.'",
+            "measured": "CONFIRMED against the governed vocabulary: eos_policy.capabilities registers 76 ids and NOT ONE of them names a contact. A Contacts destination can therefore only be gated on the Account's own capability, which would make a Contacts reader indistinguishable from an Account reader.",
+            "correctionOwner": "A capability registration, which is a reviewed migration and not a fixture change."
+          }
+        ],
+        "$surfacesUngovernedToday_comment": "SURFACES THIS PERSONA SHOULD REACH AND CANNOT, each with the reason MEASURED rather than inherited. These used to sit in expectedSurfaces while functions/src/eosOps/experienceAuthority.ts declared the very same keys ungovernable -- two files disagreeing in silence, because verifySampleCompany.js only echoes expectedSurfaces into its report and never compares it to the navigation catalog. They are MOVED, not deleted: the business expectation is right and today's answer is no. No surface is declared here; declaring a navigation destination is an Owner product decision and belongs to the navigation authority."
       },
       "service-manager": {
         "securityRoles": [
@@ -1415,11 +1693,9 @@
         ],
         "expectedSurfaces": [
           "crm.accounts",
-          "crm.contacts",
           "commercial.opportunities",
-          "commercial.agreements",
           "commercial.salesOrders",
-          "dashboard.myPipeline"
+          "commercial.agreements"
         ],
         "deniedSurfaces": [
           "administration.users",
@@ -1431,7 +1707,26 @@
         "accessModelGap": {
           "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
           "classification": "NOT_A_GAP"
-        }
+        },
+        "surfacesUngovernedToday": [
+          {
+            "surface": "crm.contacts",
+            "classification": "NO_GOVERNING_CAPABILITY",
+            "blockedBy": "CAPABILITY_GOVERNS_NO_CONTACT_DESTINATION",
+            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'Contact read has no capability of its own -- crm.createContact is a write, and customer.record.read governs the Account. A separate Contacts destination cannot be earned distinctly today.'",
+            "measured": "CONFIRMED against the governed vocabulary: eos_policy.capabilities registers 76 ids and NOT ONE of them names a contact. A Contacts destination can therefore only be gated on the Account's own capability, which would make a Contacts reader indistinguishable from an Account reader.",
+            "correctionOwner": "A capability registration, which is a reviewed migration and not a fixture change."
+          },
+          {
+            "surface": "dashboard.myPipeline",
+            "classification": "NOT_A_NAVIGABLE_DESTINATION",
+            "blockedBy": "DASHBOARD_IS_COMPOSED_CLIENT_SIDE",
+            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'The salesperson dashboard is composed client-side by domain/dashboardComposition.js from role literals and hasCapability; it is not a navigable destination with a governing capability.'",
+            "measured": "CONFIRMED against the governed vocabulary: no dashboard.* or pipeline.* id is registered in eos_policy.capabilities. The dashboard is an arrangement of other surfaces, so expecting it as a surface in its own right expects something the navigation authority has nothing to govern.",
+            "correctionOwner": "A product decision about whether the dashboard becomes a governed destination at all."
+          }
+        ],
+        "$surfacesUngovernedToday_comment": "SURFACES THIS PERSONA SHOULD REACH AND CANNOT, each with the reason MEASURED rather than inherited. These used to sit in expectedSurfaces while functions/src/eosOps/experienceAuthority.ts declared the very same keys ungovernable -- two files disagreeing in silence, because verifySampleCompany.js only echoes expectedSurfaces into its report and never compares it to the navigation catalog. They are MOVED, not deleted: the business expectation is right and today's answer is no. No surface is declared here; declaring a navigation destination is an Owner product decision and belongs to the navigation authority."
       },
       "retail-sales-b": {
         "securityRoles": [
@@ -1456,8 +1751,7 @@
         ],
         "expectedSurfaces": [
           "crm.accounts",
-          "commercial.opportunities",
-          "dashboard.myPipeline"
+          "commercial.opportunities"
         ],
         "deniedSurfaces": [
           "administration.users",
@@ -1467,7 +1761,18 @@
         "accessModelGap": {
           "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
           "classification": "NOT_A_GAP"
-        }
+        },
+        "surfacesUngovernedToday": [
+          {
+            "surface": "dashboard.myPipeline",
+            "classification": "NOT_A_NAVIGABLE_DESTINATION",
+            "blockedBy": "DASHBOARD_IS_COMPOSED_CLIENT_SIDE",
+            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'The salesperson dashboard is composed client-side by domain/dashboardComposition.js from role literals and hasCapability; it is not a navigable destination with a governing capability.'",
+            "measured": "CONFIRMED against the governed vocabulary: no dashboard.* or pipeline.* id is registered in eos_policy.capabilities. The dashboard is an arrangement of other surfaces, so expecting it as a surface in its own right expects something the navigation authority has nothing to govern.",
+            "correctionOwner": "A product decision about whether the dashboard becomes a governed destination at all."
+          }
+        ],
+        "$surfacesUngovernedToday_comment": "SURFACES THIS PERSONA SHOULD REACH AND CANNOT, each with the reason MEASURED rather than inherited. These used to sit in expectedSurfaces while functions/src/eosOps/experienceAuthority.ts declared the very same keys ungovernable -- two files disagreeing in silence, because verifySampleCompany.js only echoes expectedSurfaces into its report and never compares it to the navigation catalog. They are MOVED, not deleted: the business expectation is right and today's answer is no. No surface is declared here; declaring a navigation destination is an Owner product decision and belongs to the navigation authority."
       },
       "national-accounts-sales": {
         "securityRoles": [
@@ -1496,9 +1801,8 @@
         "expectedSurfaces": [
           "crm.accounts",
           "commercial.opportunities",
-          "commercial.agreements",
           "commercial.salesOrders",
-          "dashboard.myPipeline"
+          "commercial.agreements"
         ],
         "deniedSurfaces": [
           "administration.users",
@@ -1508,7 +1812,18 @@
         "accessModelGap": {
           "code": "RETAIL_AND_NATIONAL_ACCOUNTS_SHARE_THE_SALESPERSON_ROLE",
           "classification": "NOT_A_GAP"
-        }
+        },
+        "surfacesUngovernedToday": [
+          {
+            "surface": "dashboard.myPipeline",
+            "classification": "NOT_A_NAVIGABLE_DESTINATION",
+            "blockedBy": "DASHBOARD_IS_COMPOSED_CLIENT_SIDE",
+            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'The salesperson dashboard is composed client-side by domain/dashboardComposition.js from role literals and hasCapability; it is not a navigable destination with a governing capability.'",
+            "measured": "CONFIRMED against the governed vocabulary: no dashboard.* or pipeline.* id is registered in eos_policy.capabilities. The dashboard is an arrangement of other surfaces, so expecting it as a surface in its own right expects something the navigation authority has nothing to govern.",
+            "correctionOwner": "A product decision about whether the dashboard becomes a governed destination at all."
+          }
+        ],
+        "$surfacesUngovernedToday_comment": "SURFACES THIS PERSONA SHOULD REACH AND CANNOT, each with the reason MEASURED rather than inherited. These used to sit in expectedSurfaces while functions/src/eosOps/experienceAuthority.ts declared the very same keys ungovernable -- two files disagreeing in silence, because verifySampleCompany.js only echoes expectedSurfaces into its report and never compares it to the navigation catalog. They are MOVED, not deleted: the business expectation is right and today's answer is no. No surface is declared here; declaring a navigation destination is an Owner product decision and belongs to the navigation authority."
       },
       "parts-manager": {
         "securityRoles": [
@@ -1715,6 +2030,78 @@
           "code": "TECHNICIAN_AUTHORITY_STILL_LEGACY",
           "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
         }
+      },
+      "finance-controller": {
+        "securityRoles": [
+          "controller"
+        ],
+        "requiredCapabilities": [
+          "audit.event.read",
+          "customer.record.read",
+          "finance.adjustment.record",
+          "finance.invoice.issue",
+          "finance.payment.apply",
+          "finance.refund.record",
+          "opportunity.read",
+          "reorder.purchaseOrder.read",
+          "salesOrder.read"
+        ],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "admin.roleAssignment.write",
+          "customer.governedField.write",
+          "customer.record.create",
+          "customer.record.update",
+          "inventory.cycleCount.reconcile",
+          "inventory.cycleCount.submit",
+          "inventory.stock.receive",
+          "inventory.transfer.create",
+          "opportunity.write",
+          "salesAgreement.accept",
+          "salesOrder.write"
+        ],
+        "expectedSurfaces": [
+          "finance.invoices",
+          "finance.payments",
+          "commercial.salesOrders.read",
+          "reporting.financial"
+        ],
+        "deniedSurfaces": [
+          "administration.users",
+          "commercial.opportunities.write",
+          "inventory.cycleCount"
+        ],
+        "accessModelGap": {
+          "code": "FINANCIALS_DOMAIN_BLOCKED",
+          "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER"
+        },
+        "$comment": "READS THE MONEY, TOUCHES NOTHING ELSE. The finance authority is the sharpest untested authority in the catalog: six finance capabilities are registered in eos_policy and no Principal held one. requiredCapabilities is drawn from the COMPILED `controller` Role intersected with the governed PostgreSQL vocabulary -- note that finance.invoice.read and finance.payment.read are NOT among them, because the compiled catalog does not give `controller` those two even though live nonprod does (measured 2026-09-24: 17 live grants against 14 compiled-and-registered). That divergence is recorded, not silently resolved in either direction. The forbidden set is what makes this persona a financial EXECUTION authority rather than a second administrator: it may record an adjustment and apply a payment, and it may not create a customer, write an opportunity, accept an agreement, receive stock or reconcile a count."
+      },
+      "restricted-user": {
+        "securityRoles": [
+          "generalEmployee"
+        ],
+        "requiredCapabilities": [],
+        "forbiddenCapabilities": [
+          "admin.employeeProfile.write",
+          "admin.principalAccess.read",
+          "audit.event.read",
+          "customer.record.read",
+          "employee.record.read",
+          "finance.invoice.read",
+          "inventory.catalog.read",
+          "opportunity.read",
+          "reorder.request.read",
+          "salesOrder.read",
+          "warehouse.record.read",
+          "workOrder.create"
+        ],
+        "expectedSurfaces": [],
+        "deniedSurfaces": [
+          "*"
+        ],
+        "$comment": "THE SIGNED-IN NEGATIVE CONTROL. requiredCapabilities is empty BY DESIGN and is the whole point: `generalEmployee` declares zero capabilities in the compiled catalog and holds zero role_capabilities rows, so this persona resolves a Principal, an ACTIVE tenant membership and a real Security Role and is then refused by AUTHORIZATION on every governed operation. The forbidden list deliberately spans READS as well as writes, and reaches into every domain, so that a surface which starts answering an unauthorized reader fails here rather than somewhere nobody is looking. A future change that makes this persona hold ANY capability is either a Role widening or a default-grant regression, and either way it must break this contract first."
       }
     },
     "noAccessPersonas": {
@@ -1735,6 +2122,19 @@
         "deniedSurfaces": [
           "*"
         ]
+      },
+      "report-analyst": {
+        "userAccessState": "NONE",
+        "expectedPrincipals": 0,
+        "expectedRoleAssignments": 0,
+        "expectedSurfaces": [],
+        "deniedSurfaces": [
+          "*"
+        ],
+        "acceptance": "BLOCKED_DOMAIN",
+        "status": "BLOCKED",
+        "blockedBy": "REPORTING_CAPABILITY_VOCABULARY_ABSENT",
+        "$comment": "NOT the same control as records-clerk and technician-on-leave, which are here because a real Employee may simply never need access. This one is here because the REPORTING AUTHORITY IS NOT IN eos_policy: reportViewer / reportFinanceViewer / reportAuthor declare 27 / 5 / 3 capabilities in the compiled Role catalog and zero of them are registered, so all three Roles hold zero grants and any report permission granted here would resolve to nothing. Owner ruling: the Employee record is added so the population is complete and the gap is COUNTED, acceptance is marked BLOCKED_DOMAIN, and no report permission is granted while the capability is outside eos_policy. When the reporting domain is registered, exactly this entry moves -- and records-clerk must not."
       }
     },
     "$gapClassification_comment": "EVERY access finding carries EXACTLY ONE of the five governed classes. The class decides what may be done about it, which is why a vague 'gap' is not allowed to exist here: SEED_GRANT_GAP = the capability IS registered in eos_policy.capabilities and the Role catalog DOES declare it for this Role, but the live role_capabilities row is missing -- the governed reconciliation may add it. POSTGRES_VOCABULARY_GAP = a legitimate, currently-governed PostgreSQL runtime operation whose capability is a governed platform capability, but eos_policy.capabilities has no registration -- NEVER auto-fixed here; the exact capability and authority evidence are returned and a registration migration is PROPOSED separately, never authored. DOMAIN_AUTHORITY_NOT_CUT_OVER = the function is still legacy/non-PostgreSQL, so the scenario stays BLOCKED and NO PostgreSQL capability is invented for it. NOT_A_GAP = the model is already correct and nothing should change. CONDITIONAL_AUTHORITY_GAP = role_capabilities cannot honestly encode the intended condition or scope. A Role is NEVER widened globally to make one persona scenario pass.",
@@ -1814,6 +2214,41 @@
         "finding": "The reorder execution ids a Parts Associate would need (startPurchasing, recordPurchaseOrder, markReceived) live on the `technician` compatibility Role under an operationalRoleActive(PARTS_ASSOCIATE) CONDITION.",
         "authorityEvidence": "eos_policy.role_capabilities carries a (role, capability) pair and NO condition column, so the condition cannot be represented. Assigning `technician` to a Parts Associate to obtain them would grant them UNCONDITIONALLY -- precisely the defect R-32 removed from that Role.",
         "action": "BLOCKED. partsAssociate + inventoryReceivingClerk are assigned instead. The Role is NOT widened and `technician` is NOT assigned to a non-technician."
+      },
+      {
+        "code": "OWNER_ROLE_GRANTS_ARE_NOT_SEED_RECONCILED",
+        "classification": "SEED_GRANT_GAP",
+        "personas": [
+          "owner-executive"
+        ],
+        "finding": "The `owner` Role is named by the Owner / Executive Principal and is WITHHELD from this seed's capability-grant reconciliation, so in a freshly bootstrapped tenant it holds no grant and the Owner / Executive persona asserts no required capability.",
+        "whyItIsWithheld": "OWNER RULING: the Owner/Administrator authority asymmetry may not be solved by copying Administrator permissions onto the Owner. The compiled Role catalog declares `owner` and `admin` identically -- 151 permissions each, 60 of them inside the governed PostgreSQL vocabulary, no difference in either direction. eos_policy disagrees: `owner` holds 47 granted capabilities, `admin` holds 66, `owner` is a strict SUBSET and 19 are admin-only (measured nonprod 2026-09-24). Reconciling `owner` against the catalog would add those nineteen to the live Owner Role.",
+        "action": "NONE, and that is the decision. The live grant set is the authority. Closing the gap is an Owner decision -- narrow the compiled `owner` Role, or widen eos_policy's `owner` grants by a reviewed migration -- and neither may happen as a side effect of seeding a sample company. See expectedAccess.roleGrantScope and blockedRelationships.OWNER_ROLE_CATALOG_EQUALS_ADMIN.",
+        "authorityEvidence": "MEASURED nonprod 2026-09-24, read-only, eos_policy.role_capabilities joined to roles and capabilities: `owner` = 47 granted capabilities, `admin` = 66, owner \\ admin = {} and admin \\ owner = 19 ids (admin.dataImport.execute, customer.governedField.write, equipment.install, equipment.model.manage, inventory.catalog.activate, inventory.cycleCount.cancel/create/reconcile/submit, inventory.placement.record, inventory.stock.receive, inventory.stock.relocate, inventory.transfer.cancel/dispatch/receive, opportunity.createSalesOrder, salesAgreement.accept, workOrder.lifecycle.cancel, workOrder.lifecycle.dispatch). COMPILED, from functions/src/access/governedBusinessRoles.ts and compatibilityRoles.ts: `owner` and `admin` declare 151 permissions each, identical in both directions."
+      },
+      {
+        "code": "FINANCIALS_DOMAIN_BLOCKED",
+        "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+        "personas": [
+          "finance-controller"
+        ],
+        "finding": "All six finance capabilities the Controller persona requires ARE registered in eos_policy.capabilities and are resolvable through the identity chain, but no HTTP route serves an invoice or payment operation: the finance writers are Firebase onCall functions against Firestore.",
+        "whyNotADefect": "The authority half is real and testable today -- the persona resolves, the capabilities resolve, and the denials resolve. What is not testable is an end-to-end financial transaction, which needs the domain cutover rather than a persona. Recorded so the matrix is not read as claiming finance is covered end to end.",
+        "action": "BLOCKED. No capability is minted, no grant is written and no invoice or payment is seeded. The persona is added so the registered finance authority stops being held by nobody, and the transaction half stays blocked on the domain cutover.",
+        "authorityEvidence": "All six finance ids -- finance.invoice.issue, finance.invoice.read, finance.payment.apply, finance.payment.read, finance.adjustment.record, finance.refund.record -- are registered in eos_policy.capabilities (migration 1761609600000) and resolve through the identity chain. `controller` carries 17 live grants and, before this change, ZERO holders; so did accountingManager and financeManager (measured nonprod 2026-09-24). No HTTP route serves an invoice or a payment: the writers are Firebase onCall functions over Firestore."
+      },
+      {
+        "code": "REPORTING_CAPABILITY_VOCABULARY_ABSENT",
+        "classification": "DOMAIN_AUTHORITY_NOT_CUT_OVER",
+        "personas": [],
+        "finding": "eos_policy.capabilities registers 76 ids and not one of them is a report.* id, so reportViewer, reportFinanceViewer and reportAuthor each resolve to ZERO granted capabilities.",
+        "whyNotADefect": "It is a domain that has not been cut over, not a missing grant. Owner ruling: the Reporting Employee record is added and marked BLOCKED_DOMAIN, and no report permission is granted while the capability is outside eos_policy -- a persona fixture may not stand in for a cutover.",
+        "action": "BLOCKED. Owner ruling: the Reporting Employee record is added and marked BLOCKED_DOMAIN, and no report permission is granted while the capability is outside eos_policy. A persona fixture may not stand in for a domain cutover.",
+        "authorityEvidence": "eos_policy.capabilities holds 76 ids and not one is a report.* id (measured nonprod 2026-09-24). reportViewer / reportFinanceViewer / reportAuthor declare 27 / 5 / 3 permissions in the compiled catalog and hold ZERO role_capabilities rows each -- they do not even appear in a grant count by role.",
+        "noAccessPersonas": [
+          "report-analyst"
+        ],
+        "$personas_comment": "EMPTY ON PURPOSE. `personas` names entries in expectedAccess.personas -- the contracts of personas that HOLD a Principal. The Reporting persona holds none, which is the finding. It is named under noAccessPersonas instead, so the link is not lost and the contract list is not given a member that has no contract."
       }
     ],
     "seedGrantGap": {
@@ -1825,6 +2260,62 @@
       "classification": "POSTGRES_VOCABULARY_GAP",
       "found": [],
       "$comment": "NONE FOUND, and that is a measured answer rather than an omission. Every capability the currently-wired PostgreSQL runtimes actually resolve -- the Administration, Workforce, Commercial, CRM and Operations transports -- is already registered: employee.record.read, admin.principalAccess.read, admin.employeeProfile.write, customer.record.*, opportunity.*, salesAgreement.*, salesOrder.*, inventory.cycleCount.*. The unregistered ids all belong to functions that have NOT been cut over, which is DOMAIN_AUTHORITY_NOT_CUT_OVER and not a registration omission. NO registration migration is proposed, because proposing one for a runtime that does not exist yet would be inventing authority."
+    },
+    "roleGrantScope": {
+      "$contract": "THE ROLES THIS SEED MAY RECONCILE CAPABILITY GRANTS FOR. sampleCompanyRoleKeys() is every Role a manifest Principal names, MINUS this withheld list. The reconciliation grants a Role every capability the COMPILED catalog declares for it that eos_policy also registers, so naming a Role here is the difference between reproducing an authority and WIDENING one.",
+      "withheldFromReconciliation": [
+        {
+          "role": "owner",
+          "reason": "OWNER RULING: the Owner/Administrator authority asymmetry may NOT be solved by copying Administrator permissions onto the Owner. Reconciling `owner` would do exactly that. Measured in nonprod 2026-09-24: `owner` holds 47 granted capabilities, `admin` holds 66, `owner` is a strict SUBSET with 19 admin-only capabilities and 0 owner-only ones. The compiled catalog disagrees -- it declares `owner` and `admin` with identical 151-permission lists -- so reconciling `owner` against the catalog would add roughly twenty role_capabilities rows to the live Owner Role, every one of them currently admin-only. The seed therefore writes NO grant for `owner`; the live grant set is the authority and stays exactly as it is.",
+          "consequence": "In a freshly bootstrapped tenant the `owner` Role holds no grant at all, so the Owner / Executive persona's expectedAccess contract asserts no required capability there. This is a SEED_GRANT_GAP, declared, not a passing contract.",
+          "resolution": "An Owner decision, not a seed change: either the compiled `owner` Role definition is narrowed to what the Owner actually is, or eos_policy's `owner` grants are widened by a reviewed migration. Neither may happen as a side effect of seeding a sample company."
+        }
+      ],
+      "measuredOwnerVsAdministrator": {
+        "measuredOn": "2026-09-24",
+        "source": "eos_policy.role_capabilities joined to eos_policy.roles and eos_policy.capabilities, nonprod, read-only",
+        "ownerGrantedCapabilities": 47,
+        "administratorGrantedCapabilities": 66,
+        "relationship": "owner IS A STRICT SUBSET OF admin",
+        "ownerOnlyCapabilities": [],
+        "administratorOnlyCapabilities": [
+          "admin.dataImport.execute",
+          "customer.governedField.write",
+          "equipment.install",
+          "equipment.model.manage",
+          "inventory.catalog.activate",
+          "inventory.cycleCount.cancel",
+          "inventory.cycleCount.create",
+          "inventory.cycleCount.reconcile",
+          "inventory.cycleCount.submit",
+          "inventory.placement.record",
+          "inventory.stock.receive",
+          "inventory.stock.relocate",
+          "inventory.transfer.cancel",
+          "inventory.transfer.dispatch",
+          "inventory.transfer.receive",
+          "opportunity.createSalesOrder",
+          "salesAgreement.accept",
+          "workOrder.lifecycle.cancel",
+          "workOrder.lifecycle.dispatch"
+        ],
+        "$comment": "THIS IS THE SEPARATION, MEASURED. Owner is not Administrator: nineteen governed capabilities -- every operational execution act in Inventory, Equipment, Work Order lifecycle and agreement acceptance -- are held by `admin` and not by `owner`. It is asserted here as measured evidence rather than as forbiddenCapabilities on the Owner persona, because forbiddenCapabilities is validated against the COMPILED Role catalog and that catalog gives `owner` all nineteen. Closing that by editing the Role definition is an authority change and belongs to whoever owns the Role catalog, not to a fixture."
+      },
+      "financeRolesLeftUnheld": {
+        "roles": [
+          "accountingManager",
+          "financeManager"
+        ],
+        "reason": "The canonical population takes ONE finance authority, `controller`. accountingManager and financeManager hold the same seventeen live grants and would add a third and fourth Principal proving the same answer. They stay unheld so that 'a Role nobody holds' remains a real, visible state in this tenant rather than something the fixture quietly eliminated."
+      },
+      "reportingRolesLeftUnheld": {
+        "roles": [
+          "reportViewer",
+          "reportFinanceViewer",
+          "reportAuthor"
+        ],
+        "reason": "BLOCKED_DOMAIN. Not one of the capabilities these three Roles declare is registered in eos_policy.capabilities, so all three hold zero grants and granting one would grant nothing. Owner ruling: no report permission is granted while the capability is outside eos_policy, and the gap is carried as the report-analyst Employee marked BLOCKED_DOMAIN instead of being papered over with a persona fixture."
+      }
     }
   },
   "accounts": [
@@ -2967,7 +3458,7 @@
     {
       "id": "H",
       "name": "MANAGEMENT",
-      "narrative": "Managed Employees is non-vacuous at every level: Owner manages 1, General Manager manages 6, Service Manager manages 5, Parts Manager manages 2, Warehouse Manager manages 1, Office Manager manages 1. The General Manager is additionally the Accountable Person on three commercial records they do not own.",
+      "narrative": "Managed Employees is non-vacuous at every level: Owner manages 3 (General Manager, Administrator, Controller), General Manager manages 6, Service Manager manages 5, Parts Manager manages 2, Warehouse Manager manages 1, Office Manager manages 3. The General Manager is additionally the Accountable Person on three commercial records they do not own.",
       "personas": [
         "owner-executive",
         "general-manager",
@@ -2977,12 +3468,12 @@
         "office-manager"
       ],
       "expectedDirectReportCounts": {
-        "owner-executive": 1,
+        "owner-executive": 3,
         "general-manager": 6,
         "service-manager": 5,
         "parts-manager": 2,
         "warehouse-manager": 1,
-        "office-manager": 1
+        "office-manager": 3
       },
       "status": "COVERED"
     }
@@ -3439,9 +3930,9 @@
       ]
     },
     {
-      "code": "JOB_ROLE_POSTGRES_AUTHORITY_ABSENT",
-      "desired": "employee HAS_JOB_ROLE jobRole",
-      "missingAuthority": "EMP-RT-08. eos_workforce.employees has no job role column (migrations 1759104000000 + 1759838400000). Job Role stays manifest metadata and is written nowhere.",
+      "code": "JOB_ROLE_NOT_WRITTEN_BY_THIS_SEED",
+      "desired": "seedSampleCompany.js writes employee HAS_JOB_ROLE jobRole",
+      "missingAuthority": "CORRECTED 2026-09-24; the previous text said the PostgreSQL authority was absent, which is no longer true. eos_workforce.job_roles and eos_workforce.employee_job_role_assignments exist (migration 1760011200000) and have governed writers requiring admin.employeeJobRole.write. What this seed lacks is not an authority, it is PERMISSION TO BE ONE: seedSampleCompany.js owns the Employee record and is deliberately not a second Job Role writer, and eos_workforce.employees has no job role column for it to fill. The assignments are planned and applied by personaAuthorityDimensions through the governed commands.",
       "domains": [
         "workforce"
       ]
@@ -3523,6 +4014,59 @@
       "domains": [
         "identityAccess",
         "purchasing"
+      ]
+    },
+    {
+      "code": "REPORTING_CAPABILITY_VOCABULARY_ABSENT",
+      "desired": "reportAnalyst HOLDS reportViewer, and that Role resolves a capability",
+      "missingAuthority": "eos_policy.capabilities registers 76 ids and not one of them is a report.* id, so reportViewer (27 declared permissions), reportFinanceViewer (5) and reportAuthor (3) all resolve to ZERO granted capabilities. Reporting is served only by Firebase onCall callables over Firestore-authoritative saved report definitions; there is no registered capability for a grant to point at and no PostgreSQL authority for a verifier to resolve against.",
+      "domains": [
+        "reporting",
+        "access"
+      ]
+    },
+    {
+      "code": "OWNER_ROLE_CATALOG_EQUALS_ADMIN",
+      "desired": "the compiled `owner` Role definition states what the Owner is, and is not the Administrator's definition",
+      "missingAuthority": "functions/src/access/governedBusinessRoles.ts declares `owner` with a 151-permission list byte-identical to the `admin` compatibility Role, while eos_policy grants `owner` 47 capabilities and `admin` 66. Because the access contract validates forbiddenCapabilities against the COMPILED catalog, the nineteen admin-only capabilities cannot be asserted as forbidden to the Owner even though they are measurably not held. Narrowing a Role definition is an authority change and is not a fixture's to make.",
+      "domains": [
+        "access"
+      ]
+    },
+    {
+      "code": "ADMINISTRATOR_PRINCIPAL_RELINK_PENDING",
+      "desired": "the reused real administrator Principal is linked to the ADMINISTRATOR Employee, and the existing `owner` Principal is linked to the OWNER / EXECUTIVE Employee",
+      "missingAuthority": "Both facts are declared by this manifest and neither is performed by the lane that declared them, because they are nonprod mutations. Today the administrator Principal is linked to synthetic-np-emp-owner-executive (the v1 arrangement) and the `owner`-holding Principal has NO Employee link at all, which is why every contextual predicate refuses it EMPLOYEE_LINK_REQUIRED. Applying this manifest performs one governed revoke-then-establish and one governed establish through employeePrincipalLinkRepository; it creates no Principal, no credential and no grant.",
+      "domains": [
+        "identity",
+        "access"
+      ]
+    },
+    {
+      "code": "SALES_AGREEMENT_HAS_NO_DESTINATION",
+      "desired": "salesperson NAVIGATES_TO commercial.agreements",
+      "missingAuthority": "NOT an authority gap, which is what the catalog's own gap reason says and what makes this worth recording. experienceAuthority.ts EXPERIENCE_SURFACE_GAPS gives the reason as 'No salesAgreement.* capability is registered in eos_policy.capabilities' -- MEASURABLY FALSE as of 2026-09-24: salesAgreement.read, .create, .updateDraft and .accept are all registered and hold 6, 6, 6 and 4 grants, and salesAgreement.read is held by admin, dispatcher, generalManager, owner, salesManager and salesperson. What is actually missing is a DESTINATION: the client has no Sales Agreements index, and an Agreement is reachable only as a record page from its Opportunity. Correcting the catalog's gap REASON belongs to whoever owns experienceAuthority.ts; this manifest records the measurement and stops claiming the surface.",
+      "domains": [
+        "commercial",
+        "navigation"
+      ]
+    },
+    {
+      "code": "CAPABILITY_GOVERNS_NO_CONTACT_DESTINATION",
+      "desired": "officeManager / salesperson NAVIGATES_TO crm.contacts",
+      "missingAuthority": "eos_policy.capabilities registers 76 ids and none names a contact: crm.createContact is a write that is not registered, and customer.record.read governs the ACCOUNT. A Contacts destination gated on the Account's capability would make a Contacts reader indistinguishable from an Account reader, which is the failure the navigation catalog refuses by name.",
+      "domains": [
+        "crm",
+        "navigation"
+      ]
+    },
+    {
+      "code": "DASHBOARD_IS_COMPOSED_CLIENT_SIDE",
+      "desired": "salesperson NAVIGATES_TO dashboard.myPipeline",
+      "missingAuthority": "No dashboard.* or pipeline.* capability is registered in eos_policy.capabilities. The salesperson dashboard is composed client-side from role literals and hasCapability checks over OTHER surfaces, so it is an arrangement rather than a destination and there is nothing for a navigation authority to govern.",
+      "domains": [
+        "dashboard",
+        "navigation"
       ]
     }
   ],
@@ -3617,5 +4161,6 @@
       "NO SECOND COPY PATH: v3 never writes into eos_commercial while the pg_advisory_xact_lock('commercial-c5|<tenant>') C5 takes is held; it acquires the same key, so a v3 seed and a C5 copy can never interleave.",
       "REVERSIBLE BY ONE FLAG: flipping `commercialSeedState.status` back to BLOCKED returns the whole fixture to the state this commit establishes, with no code change."
     ]
-  }
+  },
+  "$jobRoles_comment": "THE TENANT JOB ROLE CATALOG. `key` is this manifest's vocabulary; `pgJobRoleId` is the id the GOVERNED PostgreSQL writer (employeeJobRoleCommands.createJobRole) accepts -- lowercase, hyphenated, ^[a-z][a-z0-9-]{1,62}$. ADMINISTRATOR was added by the Owner ruling that Owner/Executive and Administrator are two business functions and must never be one persona; FINANCE_MANAGER was added so the Finance / Accounting persona has a business function of its own rather than borrowing OFFICE_MANAGER. Extending this vocabulary is a deliberate act: functions/test/sampleCompanyManifest.test.mjs pins it against JOB_ROLE_VOCABULARY in seedSampleCompany.js, and both moved together in this change (twelve -> fourteen)."
 }

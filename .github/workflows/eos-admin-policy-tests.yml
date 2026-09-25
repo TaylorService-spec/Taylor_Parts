@@ -55,6 +55,13 @@ on:
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
+      # The Owner capability contract proof. Registered by NO npm script and NO
+      # workflow until now, so it had never executed in CI: it was red on the
+      # Phase 3 integration branch and nothing reported it. Its subject file is
+      # listed too, because a change to governedBusinessRoles.ts alone (exactly
+      # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
+      - "functions/test/ownerCapabilityContract.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
       - "functions/test/adminPolicySeedCoverage.test.mjs"
       - "functions/test/adminPolicyReorderSeparation.test.mjs"
       - "functions/test/adminPolicyActivation.test.mjs"
@@ -92,6 +99,7 @@ on:
       - "functions/src/adminPolicy/roleCapabilityAuthorityBaseline.ts"
       - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
       - "functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs"
+      - "functions/test/pendingAuthorityCorrectionsPostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
@@ -229,6 +237,9 @@ on:
       # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
       # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
       - "functions/test/administrationReadAuthority.test.mjs"
+      # LANE BD: the Administration READ GATE. Its map/closure proofs run without a database, its
+      # refusal proofs need one, so it is registered in test:adminPolicy AND test:adminPolicyPostgres.
+      - "functions/test/administrationReadEnforcement.test.mjs"
       # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
       # legacyInventoryMovementMapping all import it, so a change to it must run them.
       - "functions/test/support/firestoreCollectionFence.mjs"
@@ -339,6 +350,12 @@ on:
       - "functions/src/adminPolicy/inMemoryPolicyRepository.ts"
       - "functions/scripts/bindOwnerPersonaIdentity.js"
       - "functions/test/ownerIdentityBindingPostgres.test.mjs"
+      # LANE BG: the GENERIC governed identity re-bind operator. rebindPrincipalIdentity is absent from
+      # ADMIN_MUTATION_OPERATIONS, so an operator script is its only entry point -- and the only
+      # committed one was Owner-only. This is the general one, with its fences and its preservation
+      # measurements. It runs in test:adminPolicyPostgres.
+      - "functions/scripts/rebindPrincipalIdentity.js"
+      - "functions/test/principalIdentityRebindPostgres.test.mjs"
       # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
       # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
       # named here for the same reason every entry above is -- a suite in a registered job that no
@@ -366,6 +383,10 @@ on:
       - "functions/test/personaAuthorityDimensions.test.mjs"
       - "functions/test/personaE2EHarness.test.mjs"
       - "functions/test/personaSuiteRegistration.test.mjs"
+      # WAVE 14 / LANE BH -- the persona business ACCESS REGRESSION. Unlike the three above it
+      # resolves through a real PostgreSQL (capabilitiesForRoleKeys), so it runs in
+      # test:adminPolicyPostgres, where POLICY_TEST_DATABASE_URL is set and it cannot skip.
+      - "functions/test/personaBusinessAccessRegression.test.mjs"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "field-ops-app-vite/src/access/experienceContext.js"
       - "field-ops-app-vite/src/services/operationsApiClient.js"
@@ -393,6 +414,13 @@ on:
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
+      # The Owner capability contract proof. Registered by NO npm script and NO
+      # workflow until now, so it had never executed in CI: it was red on the
+      # Phase 3 integration branch and nothing reported it. Its subject file is
+      # listed too, because a change to governedBusinessRoles.ts alone (exactly
+      # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
+      - "functions/test/ownerCapabilityContract.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
       - "functions/test/adminPolicyActivation.test.mjs"
       - "functions/test/adminPolicyIdentity.test.mjs"
       - "functions/src/eosApi/**"
@@ -420,6 +448,7 @@ on:
       - "functions/src/adminPolicy/roleCapabilityAuthorityBaseline.ts"
       - "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"
       - "functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs"
+      - "functions/test/pendingAuthorityCorrectionsPostgres.test.mjs"
       - "functions/scripts/crmCutover.js"
       - "functions/scripts/exportCrmSnapshot.js"
       - "functions/test/crmCutover.test.mjs"
@@ -557,6 +586,9 @@ on:
       # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
       # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
       - "functions/test/administrationReadAuthority.test.mjs"
+      # LANE BD: the Administration READ GATE. Its map/closure proofs run without a database, its
+      # refusal proofs need one, so it is registered in test:adminPolicy AND test:adminPolicyPostgres.
+      - "functions/test/administrationReadEnforcement.test.mjs"
       # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
       # legacyInventoryMovementMapping all import it, so a change to it must run them.
       - "functions/test/support/firestoreCollectionFence.mjs"
@@ -591,6 +623,10 @@ on:
       - "functions/test/personaAuthorityDimensions.test.mjs"
       - "functions/test/personaE2EHarness.test.mjs"
       - "functions/test/personaSuiteRegistration.test.mjs"
+      # WAVE 14 / LANE BH -- the persona business ACCESS REGRESSION. Unlike the three above it
+      # resolves through a real PostgreSQL (capabilitiesForRoleKeys), so it runs in
+      # test:adminPolicyPostgres, where POLICY_TEST_DATABASE_URL is set and it cannot skip.
+      - "functions/test/personaBusinessAccessRegression.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"
@@ -609,10 +645,28 @@ on:
       # is enumerated exhaustively, an unknown or duplicated applied name fails, and a pending
       # migration back-dated into applied history fails. It runs in test:adminPolicyPostgres.
       - "functions/test/migrationLedgerOrderGuard.test.mjs"
+      # LANE BG: the GENERIC governed identity re-bind operator. rebindPrincipalIdentity is absent from
+      # ADMIN_MUTATION_OPERATIONS, so an operator script is its only entry point -- and the only
+      # committed one was Owner-only. This is the general one, with its fences and its preservation
+      # measurements. It runs in test:adminPolicyPostgres.
+      - "functions/scripts/rebindPrincipalIdentity.js"
+      - "functions/test/principalIdentityRebindPostgres.test.mjs"
       # functions/package.json was named by the pull_request filter and NOT by this one, so an edit
       # to the deploy command itself could reach main without ever triggering the suite that proves
       # it. Named here too.
       - "functions/package.json"
+      # WAVE 15 / LANE BL: the EXPERIENCE projection's own files, for the identical reason as
+      # functions/package.json directly above. `functions/src/eosOps/**` already covers
+      # experienceAuthority.ts here, but the four files that PROVE it -- its two suites and the two
+      # client modules they import across the package boundary -- were named by the pull_request
+      # filter and NOT by this one. So a change landing on main that touched only a suite or only
+      # navConfig.js ran neither, and the surface catalog's invariants (0 catalog violations, 0
+      # unmapped surfaces, the 62-row placeholder ceiling) went unchecked on the branch that
+      # deploys. Named here too.
+      - "functions/test/experienceAuthority.test.mjs"
+      - "functions/test/experienceAuthorityPostgres.test.mjs"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/src/access/experienceContext.js"
       - ".github/workflows/eos-admin-policy-tests.yml"
   workflow_dispatch:
 

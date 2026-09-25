@@ -29,10 +29,18 @@ check("catalog resolves the EXACT tuple exactly once", () => {
   assert.equal("active" in e, false); // grantable (not the inactive equipment.* posture)
 });
 
-// The direct grant targets admin + dispatcher; the governed OWNER role is defined as a SUPERSET of admin
-// (OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...reports]), so it necessarily inherits this capability
-// by explicit role composition -- NOT a wildcard/claim/users.role bypass, and it cannot be excluded without
-// breaking the owner>=admin invariant. Flagged for Owner/Codex ratification.
+// The direct grant targets admin + dispatcher.
+//
+// SUPERSEDED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). This paragraph used to
+// continue: "the governed OWNER role is defined as a SUPERSET of admin (OWNER_PERMISSIONS =
+// [...ADMIN_ROLE.permissions, ...reports]), so it necessarily inherits this capability by explicit
+// role composition ... and it cannot be excluded without breaking the owner>=admin invariant.
+// Flagged for Owner/Codex ratification." The ratification came back the other way: the spread WAS
+// the defect, `owner >= admin` is no longer an invariant, and the Owner has ruled the resulting
+// strict subset correct. Receiving is warehouse execution, so `owner` is excluded BY NAME in
+// OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES and the pin below is narrower by one. What is unchanged is
+// the part that always mattered: every holder gets it through explicit role composition, never
+// through a wildcard/claim/users.role bypass.
 // AMENDED 2026-08-21 by Owner decision. inventoryReceivingClerk joins this set -- and only it.
 //
 // The capacity report found Receiving had ZERO assigned workers and 32 operable ones, every one of
@@ -51,12 +59,18 @@ check("catalog resolves the EXACT tuple exactly once", () => {
 // The first-slice deferral this file was written to protect is therefore intact: what changed is
 // that receiving now has a NAME to grant, instead of being reachable only by holding a legacy role
 // that happens to include it.
-const RECEIVE_HOLDERS = ["admin", "dispatcher", "inventoryReceivingClerk", "owner"];
-check("inventory.stock.receive is granted by EXACTLY admin + dispatcher + inventoryReceivingClerk (+ owner, which inherits admin)", () => {
+// PIN MOVED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). `owner` leaves this set,
+// and the reason is in this file's own former wording: it was here "(+ owner, which inherits
+// admin)" -- a side effect of OWNER_PERMISSIONS spreading ADMIN_ROLE.permissions, never a decision
+// that the Owner should receive stock. Ruling A removed the spread, and live nonprod eos_policy
+// agrees: inventory.stock.receive is one of the 19 capabilities granted to admin and withheld from
+// owner. The deferral this file protects is UNCHANGED and the holder set is now narrower by one.
+const RECEIVE_HOLDERS = ["admin", "dispatcher", "inventoryReceivingClerk"];
+check("inventory.stock.receive is granted by EXACTLY admin + dispatcher + inventoryReceivingClerk -- owner NO LONGER inherits it", () => {
   const grantingRoles = Object.entries(ALL_ROLES)
     .filter(([, r]) => Array.isArray(r.permissions) && r.permissions.includes(CAP))
     .map(([n]) => n).sort();
-  assert.deepEqual(grantingRoles, [...RECEIVE_HOLDERS].sort(), "held by exactly admin, dispatcher, inventoryReceivingClerk, owner");
+  assert.deepEqual(grantingRoles, [...RECEIVE_HOLDERS].sort(), "held by exactly admin, dispatcher, inventoryReceivingClerk");
 });
 
 check("admin + dispatcher DO hold it; technician + operational roles do NOT", () => {

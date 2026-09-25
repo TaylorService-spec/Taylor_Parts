@@ -107,6 +107,16 @@ function preflightAuthorityPlan(plan, live) {
       block(step, "CAPABILITY_NOT_LIVE", step.requiresCapability);
       continue;
     }
+    // A CATALOG step names no Employee, because a Job Role catalog entry is a tenant fact rather than a
+    // fact about a person. It is the ONLY step shape that may omit one, and it must name a governed
+    // catalog id instead: a step that names neither is a malformed plan, not a passable one.
+    if (!("employeeId" in step.input)) {
+      if (typeof step.input.jobRoleId !== "string" || step.input.jobRoleId === "") {
+        refuse("PLAN_INVALID", "a step that names no Employee must name a governed catalog id");
+      }
+      applicable.push(step);
+      continue;
+    }
     if (!live.employeeIds.has(step.input.employeeId)) {
       block(step, "EMPLOYEE_NOT_IN_TENANT", step.input.employeeId);
       continue;
@@ -276,6 +286,12 @@ function validateE2EManifest(manifest = e2eManifest(), personaManifest = PERSONA
     }
     if (path.status !== "SEEDED" && (typeof path.blockedBy !== "string" || path.blockedBy.trim() === "")) {
       refuse("ASSIGNMENT_PATH_INCOMPLETE", `${path.recordKind}: an unseeded path names the exact blocker`);
+    }
+    // A SEEDED path may not go quiet either. An assignment ROW existing is not the same fact as the
+    // governed assignment COMMAND being invokable, and a path that reported the first while staying silent
+    // about the second would read as "this works" when nothing can write it.
+    if (path.status === "SEEDED" && (typeof path.stillBlockedForWriting !== "string" || path.stillBlockedForWriting.trim() === "")) {
+      refuse("ASSIGNMENT_PATH_INCOMPLETE", `${path.recordKind}: a seeded path states what still blocks the governed writer, or NONE`);
     }
   }
 

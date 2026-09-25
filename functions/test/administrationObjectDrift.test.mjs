@@ -67,7 +67,26 @@ const { PERMISSION_CATALOG } = await import(
 const RECONCILE_SCRIPT = path.join(REPO, "scripts", "reconcileCrudMatrix.mjs");
 const reconcileSource = readFileSync(RECONCILE_SCRIPT, "utf8");
 
-const catalogIds = new Set(PERMISSION_CATALOG.map((p) => p.id));
+/**
+ * THE TWO AUTHORITIES A CAPABILITY ID MAY COME FROM, and it stopped being one of them.
+ *
+ * `PERMISSION_CATALOG` is the Firebase-era catalog. `eos_policy.capabilities` is the GOVERNED
+ * PostgreSQL vocabulary, registered by migration, and it is the one every server gate resolves
+ * through (`capabilitiesForRoleKeys`). The two overlap heavily and neither contains the other:
+ * migration 1762041600000 registered `admin.securityPolicy.read` in PostgreSQL ALONE, and migration
+ * 1762300800000 added `receivingOrder.record.read`, `workOrder.record.read` and
+ * `reportDefinition.read` the same way.
+ *
+ * So the question this file asks -- "can an advertised id ever be granted, held or enforced?" -- is
+ * answered by the UNION, and asking it of the legacy catalog alone would now report a defect where
+ * there is none while still missing a genuinely invented id. The PostgreSQL side is read from
+ * `sampleCompany.v2.json`'s `postgresCapabilityVocabulary`, which is the in-repo record of that
+ * table and which `verifySampleCompany` asserts equals the live one.
+ */
+const POSTGRES_VOCABULARY = new Set(JSON.parse(readFileSync(
+  path.join(HERE, "..", "scripts", "fixtures", "sampleCompany.v2.json"), "utf8",
+)).expectedAccess.postgresCapabilityVocabulary);
+const catalogIds = new Set([...PERMISSION_CATALOG.map((p) => p.id), ...POSTGRES_VOCABULARY]);
 
 /** Every (where, id) pair the four tables advertise, so a failure can name its own source. */
 function advertisedCapabilities() {
@@ -92,8 +111,12 @@ function advertisedCapabilities() {
 
 // ════════════════════ 1. nothing is advertised that the catalog does not define ════════════════
 
-test("every capability Administration advertises is defined in the permission catalog", () => {
+test("every capability Administration advertises is defined by one of the two authorities", () => {
   const unknown = advertisedCapabilities().filter(({ id }) => !catalogIds.has(id));
+  // NON-VACUITY, in both directions: the union really is a union, and it really can still miss one.
+  assert.ok(POSTGRES_VOCABULARY.has("admin.securityPolicy.read"));
+  assert.equal(PERMISSION_CATALOG.some((p) => p.id === "admin.securityPolicy.read"), false);
+  assert.equal(catalogIds.has("workOrder.aCapabilityNobodyRegistered"), false);
   assert.deepEqual(
     unknown,
     [],

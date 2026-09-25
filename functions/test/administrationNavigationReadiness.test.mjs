@@ -337,8 +337,17 @@ test("the client's derived-surface mirror names exactly this catalog's container
   assert.equal(NAV_CONTAINERS["administration/overview"].includes("administration/dataImport"), false,
     "the client container would open the policy menu on a data-import grant; the server's does not");
 
-  // Both client guards are clean against the real registers, and the shrink-only register is still
-  // 62 with the container out of it -- the container answer made the row unnecessary, not allowed.
+  // Both client guards are clean against the real registers, and the container is still OUT of the
+  // shrink-only register -- the container answer made the row unnecessary, not allowed.
+  //
+  // THE REGISTER IS 62, AND THAT IS NOT A REGROW (Wave 16 / Lane BQ, then Lane BR). Lane BQ took it
+  // to 42 by deleting the twenty rows whose destinations had already earned a governed EOS surface
+  // -- six of them this container's own children -- and the Owner ruled that deletion must be scoped
+  // to the environments that HAVE an EOS source, since in the four where
+  // EOS_NAVIGATION_AUTHORITY_READY is false those rows are the only navigation authority there is.
+  // The total is main's again; what replaced the single ceiling is three, one per partition, so no
+  // part of the register can grow. Their arithmetic is proved in the client's
+  // test/navCutoverEnvironmentScoped.test.mjs.
   assert.deepEqual(containerRegisterViolations(), []);
   assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
   assert.deepEqual(navigationSurfaceMapViolations(), []);

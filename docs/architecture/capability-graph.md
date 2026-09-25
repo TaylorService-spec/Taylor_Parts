@@ -32,7 +32,7 @@ things and this document never fuses them into one verdict.
 - **eligibleForEnvironmentActivation**: 92
 - **activatedInSomeEnvironment**: 92
 - **callableExports**: 48
-- **destinations**: 94
+- **destinations**: 95
 - **destinationsHidden**: 19
 - **guides**: 0
 - **registerEntries**: 18
@@ -47,8 +47,8 @@ Evidence of reference. **Not** proof that a callable exists, except where stated
 | Class | Count | Means |
 | --- | ---: | --- |
 | EXPORTED | 21 | An exported callable in `index.ts` names this capability |
-| SERVER_REFERENCED | 126 | Referenced under `functions/src`; no callable matched |
-| CLIENT_ONLY | 1 | Referenced only in the client app |
+| SERVER_REFERENCED | 127 | Referenced under `functions/src`; no callable matched |
+| CLIENT_ONLY | 0 | Referenced only in the client app |
 | NO_IMPLEMENTATION_EVIDENCE | 3 | No literal reference found — **may be a false negative** for ids assembled indirectly |
 
 ## Environment activation

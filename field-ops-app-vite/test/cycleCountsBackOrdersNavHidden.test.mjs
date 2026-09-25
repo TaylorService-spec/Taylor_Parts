@@ -47,7 +47,12 @@ test("the rail's presentation filter (isNavItemVisible && !navHidden) excludes B
   // Cycle Counts is now discoverable rather than reachable-only-by-URL: a Role exists that carries its
   // authority, so a holder must be able to FIND the surface, not just deep-link to it.
   assert.equal(railFilter(cycleCounts), true);
-  // A sibling item with no navHidden flag is unaffected.
+  // A sibling item with no navHidden flag is unaffected. Inventory > Receiving keeps standing here
+  // as the control: Lane BQ's cutover removed its ungoverned placeholder row globally, which made it
+  // fail-closed under the legacy source for a reason that has nothing to do with navHidden and would
+  // have made this a test of the cutover rather than of the presentation rule. Lane BR restored the
+  // row for the legacy source, so the control is a control again.
   const receiving = inventory.subnav.find((i) => i.key === "receiving");
+  assert.equal(receiving.navHidden, undefined);
   assert.equal(railFilter(receiving), true);
 });

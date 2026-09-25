@@ -38,12 +38,27 @@ test("Manufacturers stays navHidden while its read is Rules-closed", () => {
   assert.equal(manufacturers.navHidden, true);
 });
 
+// WAVE 16 / LANE BQ SPLIT THESE TWO AND LANE BR PUT THEM BACK TOGETHER, under the legacy source.
+// The criterion Lane BQ used is real and is recorded below -- `inventory/partMaster` is MAPPED to
+// the governed surface `inventory.catalogAdmin` and `inventory/manufacturers` has none (its read is
+// Rules-closed for every persona; NAV_SURFACE_GAPS says so) -- but the conclusion it drew, that the
+// mapped one loses its legacy row everywhere, closed the door in the four environments that have no
+// EOS source to answer it. Both keep their legacy answer; only Part Master ALSO has a governed one.
+//
+// NEITHER DECISION IS ABOUT navHidden, which is what the two tests above own and what is unchanged.
 test("both remain route-eligible (isNavItemVisible alone, unaffected) for admin/dispatcher", () => {
   for (const role of ["admin", "dispatcher"]) {
     const allowed = ROLE_NAV_ACCESS[role];
     assert.equal(isNavItemVisible(partMaster, role, allowed), true, `partMaster route should stay reachable for ${role}`);
     assert.equal(isNavItemVisible(manufacturers, role, allowed), true, `manufacturers route should stay reachable for ${role}`);
   }
+  // The cutover asymmetry, recorded where it is relevant: one of these two has somewhere to go when
+  // its environment flips the flag, and the other does not.
+  assert.deepEqual(partMaster.surfaceAccess, ["inventory.catalogAdmin"]);
+  assert.equal(partMaster.legacyPlaceholder, true);
+  assert.equal(manufacturers.surfaceAccess, undefined,
+    "Manufacturers earned a surface -- then it joins the cutover partition and its ceiling");
+  assert.equal(manufacturers.legacyPlaceholder, true);
 });
 
 test("the rail's presentation filter (isNavItemVisible && !navHidden) shows Part Master, hides Manufacturers", () => {

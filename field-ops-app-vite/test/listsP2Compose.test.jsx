@@ -66,6 +66,8 @@ const COLLECTION_PAGES = [
   "modules/workOrders/WorkOrdersList.jsx",
   "modules/accounts/AccountsList.jsx",
   "modules/sales/SalesOrdersList.jsx",
+  // Owner ruling D, Wave 16 / Lane BQ -- the Sales Agreement index.
+  "modules/sales/SalesAgreementsList.jsx",
   "modules/inventory/PartMasterList.jsx",
   "modules/equipment/EquipmentWorkspace.jsx",
   "modules/purchasing/Suppliers.jsx",

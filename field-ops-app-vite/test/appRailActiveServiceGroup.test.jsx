@@ -67,10 +67,16 @@ describe("AppRail active Service group (Fix 3)", () => {
     expect(workManagementGroup.className).not.toMatch(/fo-rail__group--active/);
   });
 
+  // /service IS the Work Orders path, and this harness renders under the LEGACY source. Lane BQ's
+  // global removal of `service/workOrders`'s placeholder row took it out of the rail here and the
+  // test moved to /service/job-assignments to compensate; Lane BR scoped that removal to the
+  // environments with an EOS source, so the original route is drawn again and the original
+  // assertion stands. The Dispatch check is kept from that detour: it is worth having.
   it("marks Work Management active for /service (the group landing)", () => {
     render(<Harness path="/service" />);
     const workManagementGroup = screen.getByRole("group", { name: "Work Management" });
     expect(workManagementGroup.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("group", { name: "Dispatch" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("marks Technician Workspace active for /service/coordinated-mission", () => {

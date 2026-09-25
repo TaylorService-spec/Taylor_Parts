@@ -138,8 +138,15 @@ ok("the Equipment area is routed at /equipment with an index screen", () => {
   assert.deepEqual(d.subnav.map((i) => i.path), [""]);
 });
 
+// WAVE 16 / LANE BQ, CORRECTED BY LANE BR. Lane BQ made this governed-source-only everywhere by
+// deleting `equipment/equipment`'s placeholder row; the Owner ruled the deletion environment-scoped,
+// so the row stays for the four environments with no EOS source and the legacy answer is main's
+// again. Under the EOS source the same door is earned by `equipment.register`, which is asserted in
+// test/navCutoverEnvironmentScoped.test.mjs. Rules remain the security boundary under both.
 ok("Equipment nav is admin/dispatcher only -- technician fails closed, mirroring E3's Rules", () => {
   const item = NAV_DOMAINS.find((x) => x.key === "equipment").subnav[0];
+  assert.deepEqual(item.surfaceAccess, ["equipment.register"]);
+  assert.equal(item.legacyPlaceholder, true, "the legacy row that answers where the flag is false is gone");
   assert.equal(isNavItemVisible(item, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
   assert.equal(isNavItemVisible(item, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
   // E3 (#289) denies a technician every Equipment operation; nav must not advertise a
@@ -153,10 +160,10 @@ ok("adding Equipment did not disturb the CRM/Sales area (union)", () => {
   assert.equal(c.label, "CRM/Sales");
   assert.equal(c.path, "customers");
   // "customers" (customer list) + "opportunities" (Sales Cycle 2 Opportunity workspace)
-  // + "salesOrders" (the Sales Order index); Equipment did not add or remove any of them,
-  // which is the only thing THIS test is asserting. The items themselves are validated in
-  // crmSalesNav.test.mjs.
-  assert.deepEqual(c.subnav.map((i) => i.key), ["customers", "opportunities", "salesOrders"]);
+  // + "salesOrders" (the Sales Order index) + "salesAgreements" (the Sales Agreement index, Owner
+  // ruling D); Equipment did not add or remove any of them, which is the only thing THIS test is
+  // asserting. The items themselves are validated in crmSalesNav.test.mjs.
+  assert.deepEqual(c.subnav.map((i) => i.key), ["customers", "opportunities", "salesOrders", "salesAgreements"]);
   // The retired customers/equipment SUBNAV entry stays retired -- the new area is a
   // separate top-level domain, not a resurrection of the old placeholder.
   assert.equal(c.subnav.some((i) => (i.path ?? "") === "equipment"), false);

@@ -600,7 +600,10 @@ const SAMPLE_VERIFY = "scripts/verifySampleCompany.js";
 const SAMPLE_ENV = { EOS_ENVIRONMENT: "nonprod", SAMPLE_FENCE_DB: "postgres://fence:fence@127.0.0.1:1/never" };
 const SAMPLE_ARGS = [
   "--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_FENCE_DB",
-  "--tenantKey", "taylor-nonprod", "--existingAdminPrincipalId", "p", "--performedBy", "op",
+  // The Owner and the Administrator are two NAMED Principals, so a well-formed invocation names both and
+  // they must differ -- otherwise the fence itself would let the merged persona back in at the CLI.
+  "--tenantKey", "taylor-nonprod", "--existingAdminPrincipalId", "p", "--existingOwnerPrincipalId", "o",
+  "--performedBy", "op",
 ];
 const sampleEnvSwap = (args, environment) => args.map((a) => (a === "platform-sandbox" ? environment : a));
 

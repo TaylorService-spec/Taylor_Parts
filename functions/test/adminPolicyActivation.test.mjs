@@ -21,6 +21,7 @@ import { bootstrapAdministrator, bootstrapTenant, ensureTenantPrincipal } from "
 import { executeAdminOperation } from "../lib/adminPolicy/adminPolicyApi.js";
 import { resolvePrincipalContext } from "../lib/adminPolicy/principalContext.js";
 import { handleAdminRequest } from "../lib/adminPolicy/adminPolicyHttp.js";
+import { ADMINISTRATION_READ_CAPABILITY_KEYS } from "../lib/adminPolicy/administrationSurfaceAuthority.js";
 
 const URL = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -85,6 +86,7 @@ async function standUpTaylor() {
 
   const adminContext = await resolvePrincipalContext(r, { externalSubject: ADMIN_SUBJECT });
   const actorRoleKeys = adminContext.heldRoleKeys;
+  await grantAdministrationReads(r, tenant.id, adminContext.uid);
 
   const others = {};
   for (const [name, subject] of [["owner", OWNER_SUBJECT], ["gm", GM_SUBJECT], ["plain", PLAIN_SUBJECT]]) {
@@ -97,6 +99,40 @@ async function standUpTaylor() {
   }
 
   return { repo: r, tenant, seed, admin, adminContext, others };
+}
+
+/**
+ * Give the `admin` Role the four Administration READ capabilities.
+ *
+ * ════════════════════ WHY THE FIXTURE HAS TO DO THIS ════════════════════
+ *
+ * Administration reads are now gated on the capability the surface they serve declares, so an
+ * administrator who holds no grant reads nothing. In a real environment the grants arrive from the
+ * migration chain -- 1762041600000 and 1762128000000 -- but `resetDatabase()` migrates a database
+ * with NO TENANT IN IT, and those migrations resolve Roles by key against a `roles` table that does
+ * not yet have any. A clean chain over an empty database produces ZERO `role_capabilities` rows;
+ * roleCapabilityAuthorityBaseline.ts states the same measurement and is why the seed sits between
+ * the migration phases in the deterministic rebuild.
+ *
+ * So the CALLER is repaired, not the gate: the fixture writes the grants the migrations would have
+ * written had the tenant existed when they ran. It grants nothing that is not already this Role's
+ * in nonprod, it adds no capability, and it touches no migration.
+ */
+async function grantAdministrationReads(r, tenantId, actorUid) {
+  const capabilities = await r.listCapabilities();
+  const roles = await r.listRoles(tenantId);
+  const adminRole = roles.find((x) => x.key === "admin");
+  assert.ok(adminRole, "the seed created an admin Role");
+  await r.transact({ tenantId, uid: actorUid }, async (tx) => {
+    for (const key of ADMINISTRATION_READ_CAPABILITY_KEYS) {
+      const capability = capabilities.find((c) => c.key === key);
+      assert.ok(capability, `${key} is registered by a migration`);
+      await tx.grantRoleCapability({
+        roleId: adminRole.id, capabilityId: capability.id,
+        grantedBy: actorUid, grantedAt: new Date().toISOString(),
+      });
+    }
+  });
 }
 
 const asAdmin = (operation, input) => ({ caller: { externalSubject: ADMIN_SUBJECT }, operation, input });
@@ -153,7 +189,9 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   // a record that does not exist. Field counts are unchanged for that same reason. The one
   // capability that governed something real, `fulfillment.coordinatedVisit.read`, is registered by
   // migration 1761955200000 under salesOrder as a BUSINESS_ACTION rather than retired with it.
-  assert.equal(first.seed.created.objects, 39, "39 canonical objects");
+  // 39 -> 40: `reportDefinition`, Reporting Slice 1 (migration 1762300800000). A capability names
+  // it, so the governed catalog must declare it or the grant would be unadministrable.
+  assert.equal(first.seed.created.objects, 40, "40 canonical objects");
   // 394 -> 395: PR 1881 declared `payment.paymentId`. This is the THIRD independent copy of the
   // field census in the repository (the others are field-ops-app-vite/test/entityRegistry.test.mjs
   // and functions/test/adminPolicySeedCoverage.test.mjs); the lane updated the one it knew about.
@@ -176,7 +214,7 @@ test("bootstrap creates the Taylor tenant once, and a rerun changes nothing", { 
   assert.equal(second.seed.created.fields, 0);
 
   const objects = await r.listObjects(first.tenant.id);
-  assert.equal(objects.length, 39, "still 39 after the rerun, not 78");
+  assert.equal(objects.length, 40, "still 40 after the rerun, not 80");
 });
 
 test("the seeded configuration version is recorded on the tenant", { skip: SKIP }, async () => {
@@ -278,9 +316,12 @@ test("an unknown subject, and a member with no Roles, are different answers", { 
   assert.equal(unknown.ok, false);
   assert.equal(unknown.code, "UNAUTHENTICATED", "EOS does not know this identity");
 
-  // A member with no Roles gets a context and can READ the configuration -- and can change nothing.
+  // A member with no Roles gets a CONTEXT and reads NOTHING. Membership used to be enough to read
+  // the whole policy model; it is not any more, and the two refusals stay distinguishable --
+  // UNAUTHENTICATED means EOS does not know you, FORBIDDEN means it does and you may not.
   const plain = await executeAdminOperation({ repo: r }, asSubject(PLAIN_SUBJECT, "listObjects", {}));
-  assert.equal(plain.ok, true, "membership alone is enough to read the model");
+  assert.equal(plain.ok, false, "membership alone is NOT enough to read the model");
+  assert.equal(plain.code, "FORBIDDEN", "and it is a refusal about authority, not about identity");
   const context = await resolvePrincipalContext(r, { externalSubject: PLAIN_SUBJECT });
   assert.deepEqual(context.heldRoleKeys, [], "and holds nothing");
 });
@@ -1052,7 +1093,7 @@ test("RESTART: every pool and every in-process object is discarded, and the stat
 
     // Configuration survives.
     const objects = await restarted.listObjects(tenant.id);
-    assert.equal(objects.length, 39);
+    assert.equal(objects.length, 40);
 
     const read = await executeAdminOperation({ repo: restarted }, asAdmin("readObjectWithFields", {
       objectKey: "account",

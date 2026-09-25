@@ -103,10 +103,18 @@ async function readAccessVersion(principalUid) {
 async function main() {
   // ════════════════════ A. WHO MAY PERFORM THE READ ════════════════════
   //
-  // admin.principalAccess.read is granted to the Administrator Role only. Owner inherits it by the
-  // existing composition (OWNER_PERMISSIONS spreads ADMIN_ROLE.permissions) rather than by a second
-  // grant, and that inheritance is asserted rather than assumed -- a composition that silently
-  // stopped including it would otherwise be invisible until an owner hit a denial in production.
+  // admin.principalAccess.read is held by BOTH the Administrator and the Owner Role, and A2 below
+  // asserts that rather than assuming it -- a catalog that silently stopped including it would
+  // otherwise be invisible until an owner hit a denial in production.
+  //
+  // PREMISE CORRECTED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). This used to
+  // say Owner "inherits it by the existing composition (OWNER_PERMISSIONS spreads
+  // ADMIN_ROLE.permissions) rather than by a second grant". That spread is gone and Owner is now a
+  // strict subset of Admin, so the reason Owner still holds this id is a DECISION, not inheritance:
+  // administration READS are explicitly a shared authority (migration 1762041600000 granted
+  // admin.securityPolicy.read and admin.principalAccess.read to exactly {admin, owner}), and the id
+  // is declared on OWNER_ENTERPRISE_VISIBILITY. The assertion is unchanged and now means MORE than
+  // it did: under the old spread it could not fail, and today it can.
 
   await check("A1 admin: an Administrator resolves the read and gets state back", async () => {
     const actor = await makeActor("admin");

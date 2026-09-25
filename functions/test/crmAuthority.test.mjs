@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { stripComments, moduleSpecifiers, resolveSpecifier, importsModule, namesInCode } from "./support/executableReferenceFence.mjs";
 
 const FUNCTIONS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(FUNCTIONS_DIR, "src");
@@ -67,8 +68,23 @@ test("(F2) the only runtime entry point is the CRM transport composed by server.
   // its census imports the authority's vocabularies and bounds so it cannot accept what the authority refuses. It is
   // itself unwired -- only functions/scripts/crmCutover.js loads it -- which the second assertion keeps true.
   const CUTOVER = new Set(["src/crm/crmCutoverSnapshot.ts", "src/crm/crmCutoverCopy.ts", "src/crm/postgresCustomerImport.ts"]);
-  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(CRM) && /eosCrm\//.test(readFileSync(f, "utf8")));
+  // THE TEST WAS THE DEFECT, NOT THE CODE IT ACCUSED.
+  //
+  // This filter read the whole file and looked for "eosCrm/" anywhere in it. It then failed on
+  // src/eosOps/experienceAuthority.ts, which imports nothing from eosCrm and merely names
+  // `eosCrm/contactAuthority.ts` in a COMMENT explaining why a Contacts destination cannot be earned
+  // distinctly today. A comment naming a module is not an authority dependency, and the fix is the
+  // guard, not the comment: editing BQ's wording to slip past a grep would leave the defective probe
+  // in place to fire on the next honest sentence. See (F2-regression) below, which proves both halves.
+  //
+  // ANCHORED TO A MODULE SPECIFIER. Strictly stronger than the text scan it replaces: it also sees a
+  // dynamic import(), a require(), a bare `import "..."`, and single-quoted or backticked specifiers.
+  const PATH = { relative, resolve, dirname };
+  const importsCrm = (f) => moduleSpecifiers(readFileSync(f, "utf8"))
+    .some((spec) => /^eosCrm\//.test(resolveSpecifier(f, spec, SRC, PATH)));
+  const importers = walk(SRC, [".ts"]).filter((f) => !f.startsWith(CRM) && importsCrm(f));
   assert.deepEqual(importers.map(rel).filter((f) => !CUTOVER.has(f)), ["src/eosApi/server.ts"], "a module other than server.ts or the cutover imports the CRM authority layer");
+  assert.ok(importsCrm(join(SRC, "eosApi", "server.ts")), "the specifier scan stopped seeing server.ts's own CRM import and would now pass for the wrong reason");
   // The assignedToUserId census NAMES crmCutoverSnapshot.ts as an entry PATH -- it is a migration-only inventory of
   // which files use that field, and it imports nothing at all. This guard is about IMPORTERS, so the census is
   // excluded by path rather than by widening the pattern, which would stop catching a real import.
@@ -81,7 +97,72 @@ test("(F2) the only runtime entry point is the CRM transport composed by server.
     assert.doesNotMatch(strip(readFileSync(join(SRC, surface), "utf8")), /eosCrm|crmAuthorityKernel|accountAuthority|contactAuthority|accountLocationAuthority/, `${surface} reaches the CRM authority layer`);
   }
   const client = walk(join(FUNCTIONS_DIR, "..", "field-ops-app-vite", "src"), [".js", ".jsx", ".ts", ".tsx"]);
-  assert.ok(!client.some((f) => /eosCrm|crmAuthorityKernel/.test(readFileSync(f, "utf8"))), "the client references the CRM authority layer");
+  const clientImporters = client.filter((f) => {
+    const source = readFileSync(f, "utf8");
+    return importsModule(source, /eosCrm|crmAuthorityKernel/) || namesInCode(source, /\beosCrm\b|\bcrmAuthorityKernel\b/);
+  }).map((f) => relative(join(FUNCTIONS_DIR, ".."), f).split("\\").join("/"));
+  assert.deepEqual(clientImporters, [], "the client references the CRM authority layer");
+});
+
+test("(F2-regression) the boundary scan reads CODE: a forbidden import fails, the same text in a comment passes", () => {
+  // THE FIFTH OCCURRENCE OF ONE DEFECT, PINNED SO THERE IS NO SIXTH.
+  //
+  // Lane AO proved this for Firestore collection names; this proves it for module references. Both
+  // halves are required, and a fix that only delivers one is not a fix: dropping the false positive
+  // while losing the true positive trades a noisy guard for a blind one.
+  const dir = mkdtempSync(join(tmpdir(), "crm-f2-"));
+  const PATH = { relative, resolve, dirname };
+  const importsCrm = (f) => moduleSpecifiers(readFileSync(f, "utf8"))
+    .some((spec) => /^eosCrm\//.test(resolveSpecifier(f, spec, dir, PATH)));
+
+  // (a) A REAL executable reference is still refused -- in every spelling, including the three the
+  //     old raw-text scan could not see at all.
+  const violations = {
+    "static.ts": 'import { createAccount } from "./eosCrm/accountAuthority";\nexport const x = createAccount;\n',
+    "named.ts": "export { CRM_CAPABILITIES } from './eosCrm/crmAuthorityKernel';\n",
+    "bare.ts": 'import "./eosCrm/contactAuthority";\n',
+    "dynamic.ts": 'export const load = () => import(`./eosCrm/accountLocationAuthority`);\n',
+    "cjs.ts": 'const k = require("./eosCrm/crmAuthorityKernel");\nexport default k;\n',
+    "trailing.ts": 'export const q = 1; // a trailing note\nimport { x } from "./eosCrm/accountVocabulary";\nexport const y = x;\n',
+  };
+  for (const [name, body] of Object.entries(violations)) {
+    writeFileSync(join(dir, name), body);
+    assert.equal(importsCrm(join(dir, name)), true, `${name}: a forbidden executable CRM reference was not refused`);
+  }
+
+  // (b) The SAME text inside a comment is not a dependency, and passes. This is exactly the shape of
+  //     src/eosOps/experienceAuthority.ts, which the old scan failed.
+  const comments = {
+    "line.ts": '// crm.createContact is a CRM command name (eosCrm/contactAuthority.ts), not a capability.\nexport const a = 1;\n',
+    "block.ts": '/*\n * The governed read lives in eosCrm/crmAuthorityKernel.ts and is reached only through crmHttp.\n */\nexport const b = 2;\n',
+    "jsdoc.ts": '/** @see eosCrm/accountAuthority.ts -- import("./eosCrm/accountAuthority") would be a violation. */\nexport const c = 3;\n',
+    "prose.ts": 'export const d = 4;\n// Do not import from "./eosCrm/accountVocabulary" here; go through the transport.\n',
+  };
+  for (const [name, body] of Object.entries(comments)) {
+    writeFileSync(join(dir, name), body);
+    assert.equal(importsCrm(join(dir, name)), false, `${name}: a comment naming the CRM layer was treated as a dependency`);
+  }
+
+  // (c) The raw-text scan this replaced fails BOTH ways, which is why it was replaced and not tuned.
+  const rawScan = (f) => /eosCrm\//.test(readFileSync(f, "utf8"));
+  assert.equal(rawScan(join(dir, "line.ts")), true, "the old raw scan is being misreported as innocent");
+  assert.equal(rawScan(join(dir, "dynamic.ts")), true);
+  // ...and it is also BLIND: a specifier it never listed a spelling for slips straight past it.
+  writeFileSync(join(dir, "aliased.ts"), 'import k from "../../eosCrm/crmAuthorityKernel";\nexport default k;\n');
+  assert.equal(/["']\.\/eosCrm\//.test(readFileSync(join(dir, "aliased.ts"), "utf8")), false, "the narrow spelling scan is being misreported as complete");
+  assert.equal(moduleSpecifiers(readFileSync(join(dir, "aliased.ts"), "utf8")).some((s) => /eosCrm\//.test(s)), true, "the anchored scan missed a real import");
+
+  // (d) Comment stripping alone would NOT be enough, which is why the anchor carries the weight.
+  const strippedOnly = stripComments(violations["trailing.ts"]);
+  assert.match(strippedOnly, /from "\.\/eosCrm\/accountVocabulary"/, "the executable import did not survive comment stripping");
+
+  // (e) THE REAL FILE, PINNED BOTH WAYS. src/eosOps/experienceAuthority.ts is the module that failed
+  //     (F2) before this change. The comment stays and the import stays absent -- so this cannot be
+  //     "fixed" in future by rewording BQ's comment to slip past a grep, which would leave the
+  //     defective probe in place and delete the explanation of why the boundary exists.
+  const experience = readFileSync(join(SRC, "eosOps", "experienceAuthority.ts"), "utf8");
+  assert.match(experience, /eosCrm\/contactAuthority\.ts/, "the comment this regression exists for was edited away instead of the guard being fixed");
+  assert.equal(moduleSpecifiers(experience).some((spec) => /eosCrm/.test(spec)), false, "experienceAuthority.ts now really imports the CRM authority layer");
 });
 
 test("(F3) capabilities: the Owner V1 ruling -- customer.record.* for every CRM family, governedField.write for governed fields", () => {

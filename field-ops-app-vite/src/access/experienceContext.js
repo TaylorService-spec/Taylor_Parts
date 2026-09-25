@@ -40,6 +40,11 @@ export const EXPERIENCE_SURFACE_KEYS = Object.freeze([
   "administration.rolesPermissions",
   "administration.users",
   "administration.workflows",
+  // Sales Agreements. Mirrored like every other key -- the client still only ever projects what the
+  // server listed, and `salesAgreement.read` is decided in one place (experienceAuthority.ts), never
+  // here. It joined the catalog in the same change that built its door (Wave 16 / Lane BQ); before
+  // that it was a declared DESTINATION gap precisely because no destination showed it.
+  "commercial.agreements",
   "commercial.opportunities",
   "commercial.salesOrders",
   "crm.accounts",
@@ -138,6 +143,45 @@ export function buildNavigationAuthority({ state, context = null, reason = null 
   });
 }
 
-/** Is this value a navigation authority produced by buildNavigationAuthority? Used to fail closed on junk. */
+/**
+ * Is this value a navigation authority produced by buildNavigationAuthority? Used to fail closed on junk.
+ *
+ * ════ IT DOES NOT INSPECT `state`, AND IT MUST NOT (Wave 16 / Lane BQ, examined and kept) ════
+ *
+ * This predicate answers WHICH SOURCE IS ANSWERING, not WHAT IT ANSWERED. LOADING, REFUSED and
+ * UNAVAILABLE all pass it, and that is the property that makes the EOS source TOTAL: navConfig's
+ * `isNavItemVisible` returns `eosGrantsSurface(...)` the moment this is true, and the very next line
+ * of that function is the legacy path. Adding `state === READY` here would therefore not make
+ * anything stricter -- it would make a LOADING, REFUSED or UNAVAILABLE EOS session fall THROUGH to
+ * `ROLE_NAV_ACCESS[users/{uid}.role]`, which is precisely the silent degrade Owner ruling F forbids
+ * and this whole seam exists to remove. The stricter-looking change is the insecure one.
+ *
+ * FAIL-CLOSED IS ALREADY HERE, IN `grants`. `buildNavigationAuthority` builds an EMPTY grant set for
+ * every state but READY, so a non-READY authority is a source that answers "nothing" -- an answer,
+ * and the right one. Nothing depends on the caller remembering to check a state.
+ *
+ * THE CONTAINMENT LIVING IN ANOTHER FILE WAS THE REAL FINDING, AND IT IS ANSWERED HERE RATHER THAN
+ * BY WEAKENING THIS. App.jsx early-returns on LOADING and UNAVAILABLE before navigation renders, so
+ * a reader of this line could not see why a LOADING authority was harmless. Two things now say so
+ * without leaving this file's vocabulary: `navigationAuthorityGrantsAnything()` below, which is the
+ * "did it actually answer with something" question stated where the predicate is, and
+ * `navigationAuthoritySourceState()`, which lets a caller render the RIGHT refusal instead of
+ * guessing from an empty grant set. Neither is an input to visibility.
+ */
 export const isNavigationAuthority = (value) =>
   !!value && value.source === "EOS" && typeof value.grants === "function";
+
+/**
+ * The state an EOS navigation authority is in, or null if this is not one.
+ *
+ * For PRESENTATION only -- which refusal to show, never whether a door opens. App.jsx uses it to
+ * tell a governed REFUSED persona ("the governed source answered, and you hold no surfaces") apart
+ * from a legacy no-access session ("no role is assigned"), which used to be one sentence blaming
+ * roles for both.
+ */
+export const navigationAuthoritySourceState = (value) =>
+  (isNavigationAuthority(value) ? value.state ?? EXPERIENCE_STATE.LOADING : null);
+
+/** Did the EOS source actually grant anything? Non-READY is always false, with no state test needed. */
+export const navigationAuthorityGrantsAnything = (value) =>
+  isNavigationAuthority(value) && value.grantedSurfaces.length > 0;

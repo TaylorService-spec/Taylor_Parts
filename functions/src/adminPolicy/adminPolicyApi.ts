@@ -11,6 +11,11 @@
 //   ONE NAMED OPERATION            <- from the closed list below
 //        |
 //        v
+//   AUTHORITY                      <- a READ needs the one capability its surface declares,
+//                                     resolved from role_capabilities UNION principal_capabilities;
+//                                     a MUTATION is checked by the command, next to its transaction
+//        |
+//        v
 //   command / query                <- validates, transacts, audits
 //        |
 //        v
@@ -56,6 +61,8 @@ import {
   updateWorkflowDefinition,
 } from "./workflowCommands";
 import { AdministrationDeniedError, requireAdministrationAuthority } from "./administrationAuthority";
+import { ADMINISTRATION_SURFACE_READ_CAPABILITY } from "./administrationSurfaceAuthority";
+import type { AdministrationSurface } from "./administrationSurfaceAuthority";
 import { loadWorkflowVersionDefinition } from "./workflowEngine";
 import {
   actionsForObject,
@@ -64,6 +71,7 @@ import {
   objectSecurityMatrix,
   roleSecurityView,
 } from "./objectSecurityAuthority";
+import type { EffectiveCapability } from "./objectSecurityAuthority";
 import { PrincipalContextError, resolvePrincipalContext } from "./principalContext";
 import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
@@ -141,6 +149,82 @@ export const isAdminOperation = (name: unknown): name is AdminOperation =>
   typeof name === "string" && (READS.has(name) || MUTATIONS.has(name));
 
 export const isMutation = (name: AdminOperation): boolean => MUTATIONS.has(name);
+
+// ════════════════════ the read authority ════════════════════
+//
+// ════════════════════ WHAT CHANGED, AND WHY THE OLD POSTURE WAS WRONG ════════════════════
+//
+// This dispatcher used to say, in its own words, that "reads are open to any principal with a
+// context in the tenant... the sensitive act is CHANGING it". That was a defensible reading of a
+// world in which nothing else governed Administration. It is no longer true of this one.
+//
+// The Administration surfaces are now governed by capabilities -- administrationSurfaceAuthority.ts
+// names the READ each surface requires, and navigation resolves against it. An API whose reads
+// stayed membership-open would mean the capability model governed only what a browser DRAWS, while
+// the data behind it stayed available to every authenticated principal in the tenant over one POST.
+// A permission that the UI honours and the server does not is not a permission; it is a label.
+//
+// So the reads are gated here, on the SAME capability the surface that shows them requires. Not a
+// parallel one: this table names the SURFACE each read serves and takes the key from
+// ADMINISTRATION_SURFACE_READ_CAPABILITY, so "may open Administration > Users" and "may call
+// listTenantPrincipals" cannot drift into two answers. There is no second permission catalog here.
+//
+// CLOSED BY THE TYPE, not by a lookup that returns a default. The record below is
+// `Record<AdminReadOperation, AdministrationSurface>`, so a read added to ADMIN_READ_OPERATIONS
+// without a surface is a COMPILE ERROR, and `capabilityForAdminRead` returns null -- a refusal --
+// for anything it cannot map. An unmapped read is unreachable, never open.
+const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, AdministrationSurface>> = Object.freeze({
+  // The Object -> action -> grantee projection, and the Role -> object -> action projection of the
+  // SAME rows. One authority seen from two sides, so one key: `admin.securityPolicy.read`.
+  listObjects: "objects",
+  readObjectWithFields: "objects",
+  listObjectsWithActions: "objects",
+  getObjectSecurityMatrix: "objects",
+  listRoles: "rolesPermissions",
+  readRolePolicy: "rolesPermissions",
+  getRoleSecurity: "rolesPermissions",
+  // WHO this tenant knows about, what Roles they hold, and what that resolves to.
+  // `getPrincipalEffectiveAccess` is the Permission Preview read and is gated identically: the
+  // preview surface and the Users surface are the same authority over the same principal rows.
+  listTenantPrincipals: "users",
+  listPrincipalRoleAssignments: "users",
+  getPrincipalEffectiveAccess: "users",
+  listWorkflows: "workflows",
+  readWorkflowVersion: "workflows",
+  readPolicyAuditHistory: "auditLogs",
+});
+
+/** The one capability each Administration read requires. Derived, never restated. */
+export const ADMIN_READ_CAPABILITY: Readonly<Record<AdminReadOperation, string | null>> = Object.freeze(
+  Object.fromEntries(ADMIN_READ_OPERATIONS.map(
+    (operation) => [operation, ADMINISTRATION_SURFACE_READ_CAPABILITY[READ_OPERATION_SURFACE[operation]]],
+  )) as Record<AdminReadOperation, string | null>,
+);
+
+/**
+ * The capability this read requires, or `null` for anything this table cannot answer for.
+ *
+ * FAILS CLOSED. A null is not "no capability needed" -- it is "this operation has no declared
+ * authority", and the gate refuses on it. The only way to make a read callable is to map it.
+ */
+export const capabilityForAdminRead = (operation: string): string | null => {
+  const required = (ADMIN_READ_CAPABILITY as Record<string, string | null | undefined>)[operation];
+  return typeof required === "string" && required.length > 0 ? required : null;
+};
+
+/**
+ * Refusal of a READ. Separate from AdministrationDeniedError, which names an engine-invariant
+ * MUTATION action and has a fixed vocabulary of four; this one names the capability that was
+ * missing, because "you need admin.principalAccess.read" is the answerable form of the question an
+ * administrator will actually be asked.
+ */
+export class AdminReadDeniedError extends Error {
+  constructor(readonly operation: string, readonly requiredCapability: string | null) {
+    super(requiredCapability
+      ? `not authorized to read: "${requiredCapability}" is required`
+      : `not authorized to read: "${operation}" declares no read authority`);
+  }
+}
 
 // ════════════════════ request and result ════════════════════
 
@@ -265,10 +349,92 @@ export async function executeAdminOperation<T = unknown>(
   const reason = withRequestId(input.reason, request.requestId);
 
   try {
+    // ════════════════════ THE READ GATE ════════════════════
+    //
+    // HERE, and not inside the switch: one site that every read passes through, evaluated BEFORE
+    // the operation runs, so a refused read executes no query and reveals nothing by its timing or
+    // its error. Per-case checks would be thirteen places to forget one.
+    //
+    // MUTATIONS ARE UNTOUCHED. Each still re-checks its own authority next to its transaction --
+    // the engine invariant, the privileged-role approval and the anti-lockout guard all stay where
+    // they are, because a mutation gated only here would be unguarded for any future caller that
+    // reached the command directly.
+    if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation);
     const data = await dispatch(repo, actor, operation, input, reason);
     return { ok: true, operation, tenantId: context.tenantId, data: data as T };
   } catch (err) {
     return fail(operation, classify(err), messageFor(err));
+  }
+}
+
+/**
+ * What this principal's access actually resolves to, from PostgreSQL and nothing else.
+ *
+ * Identity -> Principal -> the tenant membership that already resolved -> ACTIVE Role assignments
+ * -> `role_capabilities`, UNIONED WITH `principal_capabilities`. This is the same resolution the
+ * `getPrincipalEffectiveAccess` read answers with, and it is this ONE function because a gate that
+ * computed effective access its own way would eventually disagree with the screen that displays it.
+ *
+ * ════════════════════ WHY NOT `heldRoleKeys` ════════════════════
+ *
+ * `AdminActor.heldRoleKeys` carries ROLE KEYS. Gating on them would compile, would pass a test
+ * written with a Role-granted persona, and would SILENTLY IGNORE every direct Principal grant in
+ * `principal_capabilities` -- a grant an administrator made through the governed
+ * `grantObjectActionToPrincipal` command would simply not count. Role keys answer "who is this";
+ * only the union answers "what may they do".
+ */
+async function resolvePrincipalEffectiveAccess(
+  repo: PolicyRepository,
+  tenantId: string,
+  principalId: string,
+): Promise<{
+  readonly principalId: string;
+  readonly roles: readonly string[];
+  readonly directGrants: readonly string[];
+  readonly effective: readonly EffectiveCapability[];
+  readonly objects: Readonly<Record<string, readonly string[]>>;
+}> {
+  const [capabilities, roles, assignments, directGrants] = await Promise.all([
+    repo.listCapabilities(), repo.listRoles(tenantId),
+    repo.listAssignmentsForPrincipal(tenantId, principalId),
+    repo.listPrincipalCapabilities(tenantId, principalId),
+  ]);
+  const activeRoleIds = assignments.filter((a) => a.status === "active").map((a) => a.roleId);
+  const roleGrants = await repo.listRoleCapabilities(tenantId, activeRoleIds);
+  const effective = effectiveCapabilities({
+    tenantId, principalId,
+    roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),
+    directCapabilityIds: directGrants.map((g) => g.capabilityId),
+    capabilities,
+  });
+  const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+  return {
+    principalId,
+    roles: activeRoleIds.map((id) => roleKeyById.get(id) ?? id).sort(),
+    directGrants: directGrants.map((g) => g.capabilityId),
+    effective,
+    objects: objectActionsForPrincipal(effective),
+  };
+}
+
+/**
+ * Refuse this read unless the caller holds the capability it declares.
+ *
+ * FAILS CLOSED, with no second chance. There is no fallback to membership, no "well, they hold the
+ * admin Role", no Firebase claim, no `users/{uid}.role`, no frontend authority and no default. A
+ * principal who holds nothing is refused; an operation that maps to nothing is refused; an empty
+ * capability catalog refuses everything. Every one of those is the safe direction.
+ */
+async function requireAdminReadAuthority(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  operation: AdminOperation,
+): Promise<void> {
+  const required = capabilityForAdminRead(operation);
+  if (!required) throw new AdminReadDeniedError(operation, null);
+  const access = await resolvePrincipalEffectiveAccess(repo, actor.tenantId, actor.uid);
+  if (!access.effective.some((c) => c.capabilityKey === required)) {
+    throw new AdminReadDeniedError(operation, required);
   }
 }
 
@@ -282,10 +448,16 @@ async function dispatch(
   switch (operation) {
     // ──────────── reads ────────────
     //
-    // Reads are open to any principal with a context in the tenant. That is not a gap: what a read
-    // RETURNS is the tenant's policy configuration, and an administrator's grid has to be readable
-    // by the people whose access it describes for "why can I not see this" to be answerable. The
-    // sensitive act is CHANGING it, and every mutation below is authority-gated.
+    // EVERY CASE BELOW HAS ALREADY BEEN AUTHORIZED. `requireAdminReadAuthority` ran in
+    // executeAdminOperation and refused unless the caller holds the one capability
+    // READ_OPERATION_SURFACE declares for this operation -- resolved from `role_capabilities` UNION
+    // `principal_capabilities`, never from a Role key and never from a membership.
+    //
+    // A context in the tenant is NO LONGER ENOUGH. What a read returns is the tenant's policy
+    // configuration, and "an administrator's grid has to be readable by the people whose access it
+    // describes" is answered by GRANTING them `admin.securityPolicy.read`, which is a decision an
+    // administrator makes and can withdraw -- not by leaving the door open to everyone who can log
+    // in. Mutations are gated as they always were, in the commands.
     case "listObjects":
       return repo.listObjects(actor.tenantId);
 
@@ -351,31 +523,15 @@ async function dispatch(
       const principalId = requireString(input.principalId, "principalId");
       const membership = await repo.getMembership(actor.tenantId, principalId);
       if (!membership) throw new NotFound("principal not found in this tenant");
-      const [capabilities, roles, assignments, directGrants] = await Promise.all([
-        repo.listCapabilities(), repo.listRoles(actor.tenantId),
-        repo.listAssignmentsForPrincipal(actor.tenantId, principalId),
-        repo.listPrincipalCapabilities(actor.tenantId, principalId),
-      ]);
-      const activeRoleIds = assignments.filter((a) => a.status === "active").map((a) => a.roleId);
-      const roleGrants = await repo.listRoleCapabilities(actor.tenantId, activeRoleIds);
-      const effective = effectiveCapabilities({
-        tenantId: actor.tenantId, principalId,
-        roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),
-        directCapabilityIds: directGrants.map((g) => g.capabilityId),
-        capabilities,
-      });
-      const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+      // THE SAME RESOLVER THE READ GATE USES, deliberately. If this screen and the gate could
+      // disagree about what a principal's effective access is, one of them would be wrong and
+      // nobody would be able to tell which.
+      //
       // Work Eligibility, Operational Scope, the linked Employee and record-level authority are
       // DELIBERATELY ABSENT from this payload. They are subordinate constraints on a capability the
       // principal already holds, answered by eos_workforce and the domain kernels, and folding them
       // in here would let a business fact read as a security grant.
-      return {
-        principalId,
-        roles: activeRoleIds.map((id) => roleKeyById.get(id) ?? id).sort(),
-        directGrants: directGrants.map((g) => g.capabilityId),
-        effective,
-        objects: objectActionsForPrincipal(effective),
-      };
+      return resolvePrincipalEffectiveAccess(repo, actor.tenantId, principalId);
     }
 
     case "readRolePolicy": {
@@ -764,6 +920,9 @@ function withRequestId(reason: unknown, requestId: string | undefined): string |
 
 function classify(err: unknown): AdminApiFailureCode {
   if (err instanceof AdministrationDeniedError) return "FORBIDDEN";
+  // A missing READ capability is a refusal about authority, exactly like a missing write authority
+  // -- never a 404 and never a 500, so a caller cannot tell "you may not" from "it is not there".
+  if (err instanceof AdminReadDeniedError) return "FORBIDDEN";
   if (err instanceof NotFound) return "NOT_FOUND";
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;
