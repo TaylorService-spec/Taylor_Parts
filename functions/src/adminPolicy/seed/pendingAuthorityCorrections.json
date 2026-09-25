@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "status": "APPROVED_NOT_APPLIED",
+  "ruledOn": "2026-09-24",
+  "ruledBy": "Owner -- lane BK exact authority corrections (S1, S2, S3, S4, S6)",
+  "appliedToEnvironments": [],
+  "measuredAgainst": {
+    "baseline": "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json",
+    "totalGrants": 387,
+    "environment": "nonprod",
+    "measuredAt": "2026-09-24"
+  },
+  "proof": "functions/test/pendingAuthorityCorrectionsPostgres.test.mjs",
+
+  "pendingCapabilities": [
+    {
+      "capabilityKey": "receivingOrder.record.read",
+      "objectKey": "receivingOrder",
+      "actionKey": "read",
+      "actionKind": "READ",
+      "label": "View Receiving Orders",
+      "ruling": "S1",
+      "why": "receivingOrder carries exactly one governing capability, inventory.stock.receive (BUSINESS_ACTION). Nothing in eos_policy.capabilities means 'may read a receiving order', so the Object's READ verb is UNGOVERNED and can_read is false for every Role -- not withheld from Owner, ungrantable to anyone. Modelled on migration 1762041600000, which registered admin.securityPolicy.read for exactly this reason on rolesPermissions."
+    },
+    {
+      "capabilityKey": "workOrder.record.read",
+      "objectKey": "workOrder",
+      "actionKey": "read",
+      "actionKind": "READ",
+      "label": "View Work Orders",
+      "ruling": "S1",
+      "why": "workOrder carries create, transition and three lifecycle BUSINESS_ACTIONs and NO READ capability. Same ungoverned-verb defect as receivingOrder. READ confers no transition, no dispatch, no cancel and no completion."
+    }
+  ],
+
+  "pendingGrants": [
+    {
+      "roleKey": "owner",
+      "capabilityKey": "receivingOrder.record.read",
+      "ruling": "S1",
+      "requiresPendingCapability": true,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": [],
+      "why": "Owner holds no read on receivingOrder while the Object's only other authority is a write. Owner gets the read required to exercise legitimate Owner business authority -- the read alone, not inventory.stock.receive."
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "S1",
+      "requiresPendingCapability": true,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": [],
+      "why": "Owner holds workOrder.create and workOrder.transition and cannot read a work order. Owner gets the read only; no lifecycle dispatch, cancel or complete is added."
+    },
+    {
+      "roleKey": "warehouseManager",
+      "capabilityKey": "warehouse.record.read",
+      "ruling": "S2",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": ["admin", "dispatcher", "operationsManager", "owner"],
+      "why": "A warehouse position Role could not read the warehouse record it works in. READ only. This Role is deliberately NOT given inventory.placement.record or inventory.stock.relocate: a job title is not an operating authority."
+    },
+    {
+      "roleKey": "warehouseAssociate",
+      "capabilityKey": "warehouse.record.read",
+      "ruling": "S2",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": ["admin", "dispatcher", "operationsManager", "owner"],
+      "why": "Same as warehouseManager. READ only, no operating write."
+    },
+    {
+      "roleKey": "inventoryPutAwayOperator",
+      "capabilityKey": "inventory.placement.record",
+      "ruling": "S2",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": true,
+      "measuredHoldersToday": ["admin"],
+      "why": "The bin-placement write belongs to the FUNCTIONAL Role that performs put-away, never to a warehouse position Role. Already declared by the Role catalog and recorded in the baseline's catalogDeclaredNotActivated -- this correction ACTIVATES an existing declaration rather than inventing authority."
+    },
+    {
+      "roleKey": "inventoryStockRelocationOperator",
+      "capabilityKey": "inventory.stock.relocate",
+      "ruling": "S2",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": true,
+      "measuredHoldersToday": ["admin"],
+      "why": "The stock relocation write belongs to the FUNCTIONAL relocation Role. Already catalog-declared and recorded in catalogDeclaredNotActivated; this ACTIVATES it."
+    },
+    {
+      "roleKey": "inventoryCycleCountReconciler",
+      "capabilityKey": "inventory.cycleCount.close",
+      "ruling": "S3",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": [],
+      "why": "inventory.cycleCount.close has ZERO holders, so no one can close a cycle count. Close is reconciliation authority. inventoryCycleCountCounter is deliberately excluded: SOD_EXCLUSIVE_PAIRS and DECISIONS #111 make counter and reconciler mutually exclusive so a counter may not approve their own material variance."
+    },
+    {
+      "roleKey": "partsManager",
+      "capabilityKey": "reorder.request.assign",
+      "ruling": "S4",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": [],
+      "why": "reorder.request.assign has ZERO holders, so no one can assign a reorder request. Assignment is queue-management authority and lands on partsManager alone -- deliberately NOT dispatcher, NOT technician, NOT purchasingManager and NOT every parts employee."
+    },
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.lifecycle.dispatch",
+      "ruling": "S6",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": ["admin", "dispatcher"],
+      "why": "The service manager must be able to dispatch work. Dispatch is scheduling authority."
+    },
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.lifecycle.cancel",
+      "ruling": "S6",
+      "requiresPendingCapability": false,
+      "alreadyCatalogDeclared": false,
+      "measuredHoldersToday": ["admin", "dispatcher"],
+      "why": "The service manager must be able to cancel work. Cancel is scheduling authority."
+    }
+  ],
+
+  "refusedGrants": [
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.lifecycle.complete",
+      "ruling": "S6",
+      "why": "NOT AUTHORIZED. Completion remains technician execution authority: the person who did the work attests that it is done. A manager who may both dispatch and complete can close work nobody performed."
+    },
+    {
+      "roleKey": "inventoryCycleCountCounter",
+      "capabilityKey": "inventory.cycleCount.close",
+      "ruling": "S3",
+      "why": "NOT AUTHORIZED. SOD_EXCLUSIVE_PAIRS / DECISIONS #111: the counter may not approve their own material variance."
+    },
+    {
+      "roleKey": "warehouseManager",
+      "capabilityKey": "inventory.placement.record",
+      "ruling": "S2",
+      "why": "NOT AUTHORIZED. A warehouse position Role does not receive an inventory operating write because of its job title. Position is not a Functional Role."
+    },
+    {
+      "roleKey": "warehouseManager",
+      "capabilityKey": "inventory.stock.relocate",
+      "ruling": "S2",
+      "why": "NOT AUTHORIZED. Same reason: Position is not a Functional Role."
+    },
+    {
+      "roleKey": "warehouseAssociate",
+      "capabilityKey": "inventory.placement.record",
+      "ruling": "S2",
+      "why": "NOT AUTHORIZED. Same reason: Position is not a Functional Role."
+    },
+    {
+      "roleKey": "warehouseAssociate",
+      "capabilityKey": "inventory.stock.relocate",
+      "ruling": "S2",
+      "why": "NOT AUTHORIZED. Same reason: Position is not a Functional Role."
+    },
+    {
+      "roleKey": "partsAssociate",
+      "capabilityKey": "reorder.request.assign",
+      "ruling": "S4",
+      "why": "NOT AUTHORIZED. Assignment is queue management, which a parts associate does not perform. Not every parts employee assigns."
+    },
+    {
+      "roleKey": "dispatcher",
+      "capabilityKey": "reorder.request.assign",
+      "ruling": "S4",
+      "why": "NOT AUTHORIZED. Named explicitly by the ruling as NOT a holder."
+    },
+    {
+      "roleKey": "technician",
+      "capabilityKey": "reorder.request.assign",
+      "ruling": "S4",
+      "why": "NOT AUTHORIZED. Named explicitly by the ruling as NOT a holder."
+    },
+    {
+      "roleKey": "purchasingManager",
+      "capabilityKey": "reorder.request.assign",
+      "ruling": "S4",
+      "why": "NOT AUTHORIZED. Named explicitly by the ruling as NOT a holder."
+    }
+  ],
+
+  "pendingCredReadWiring": [
+    {
+      "objectKey": "employee",
+      "matrixObject": "Employees",
+      "readCapabilityKey": "employee.record.read",
+      "ruling": "S1",
+      "capabilityAlreadyExists": true,
+      "ownerAlreadyHolds": true,
+      "holdersToday": ["admin", "generalManager", "owner"],
+      "why": "NO NEW AUTHORITY. employee.record.read already exists in eos_policy.capabilities (object employee, action read, kind READ) and Owner already holds it. The measured can_read=false is a CRED PROJECTION defect: the seed snapshot carries an EMPTY read-verb list for this Object, so deriveObjectCred leaves R false for every Role however much READ authority it holds. The correction is to wire the Object's READ verb to the capability that already governs it."
+    },
+    {
+      "objectKey": "rolesPermissions",
+      "matrixObject": "Roles / Permissions",
+      "readCapabilityKey": "admin.securityPolicy.read",
+      "ruling": "S1",
+      "capabilityAlreadyExists": true,
+      "ownerAlreadyHolds": true,
+      "holdersToday": ["admin", "owner"],
+      "why": "NO NEW AUTHORITY. admin.securityPolicy.read (object rolesPermissions, action read, kind READ) was registered by migration 1762041600000 and granted to admin AND owner as two independent rows. Owner already holds it. Wiring the matrix R verb to it reconciles the projection WITHOUT copying Admin to Owner: Owner reads the security policy on its own grant, and still does not hold admin.roleAssignment.write's sibling administration authorities it lacks."
+    },
+    {
+      "objectKey": "receivingOrder",
+      "matrixObject": "Receiving",
+      "readCapabilityKey": "receivingOrder.record.read",
+      "ruling": "S1",
+      "capabilityAlreadyExists": false,
+      "ownerAlreadyHolds": false,
+      "holdersToday": [],
+      "why": "Requires the pending capability of the same key first, then the Owner grant above."
+    },
+    {
+      "objectKey": "workOrder",
+      "matrixObject": "Work Orders",
+      "readCapabilityKey": "workOrder.record.read",
+      "ruling": "S1",
+      "capabilityAlreadyExists": false,
+      "ownerAlreadyHolds": false,
+      "holdersToday": [],
+      "why": "Requires the pending capability of the same key first, then the Owner grant above."
+    }
+  ],
+
+  "residualEditWithoutRead": {
+    "$comment": "MEASURED AND REPORTED, NOT GRANTED. The Owner ruling scopes S1 to the Owner persona. These Roles hold a modify authority on an Object they will still not be able to read after the pending set is applied. Recording them keeps the gap visible and reviewable; closing it is a separate Owner decision, and this lane did not take it.",
+    "rows": [
+      { "objectKey": "receivingOrder", "roleKey": "admin", "holdsModifyCapability": "inventory.stock.receive" },
+      { "objectKey": "receivingOrder", "roleKey": "dispatcher", "holdsModifyCapability": "inventory.stock.receive" },
+      { "objectKey": "receivingOrder", "roleKey": "inventoryReceivingClerk", "holdsModifyCapability": "inventory.stock.receive" },
+      { "objectKey": "workOrder", "roleKey": "admin", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "dispatcher", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "fieldManager", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "generalManager", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "operationsManager", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "partsAssociate", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "partsManager", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "shopAssociate", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "shopManager", "holdsModifyCapability": "workOrder.transition" },
+      { "objectKey": "workOrder", "roleKey": "technician", "holdsModifyCapability": "workOrder.transition" }
+    ]
+  },
+
+  "unchanged": {
+    "$comment": "This lane changes NOTHING in these dimensions. Asserted executably by the proof suite.",
+    "workEligibility": "no qualification code added, removed or reassigned; technician remains the standing negative PARTS_OPERATIONS case",
+    "operationalScope": "no scope row added or removed; the technician reorder-queue denial continues to rest on a withheld SCOPE row, not on an absent capability",
+    "roles": "no Role created, renamed or deleted",
+    "conditions": "no condition or conditioned capability added",
+    "principalCapabilities": "no direct principal grant",
+    "revocations": "no existing grant is removed by this lane"
+  }
+}
