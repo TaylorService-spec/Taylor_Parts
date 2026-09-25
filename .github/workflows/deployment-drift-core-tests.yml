@@ -42,6 +42,9 @@ on:
       - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
       - "scripts/powershellEncoding.test.mjs"
+      - "scripts/sandboxCredentials.mjs"
+      - "scripts/sandboxCredentialReconciliation.mjs"
+      - "scripts/sandboxCredentialReconciliation.test.mjs"
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
@@ -86,6 +89,9 @@ on:
       - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
       - "scripts/powershellEncoding.test.mjs"
+      - "scripts/sandboxCredentials.mjs"
+      - "scripts/sandboxCredentialReconciliation.mjs"
+      - "scripts/sandboxCredentialReconciliation.test.mjs"
       - "**/*.ps1"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/cssClassCoverage.test.mjs"
@@ -183,6 +189,18 @@ jobs:
       # here once, to this repository's own sandbox refresh launcher.
       - name: PowerShell scripts are ASCII (or declare a BOM)
         run: node --test scripts/powershellEncoding.test.mjs
+
+      # SANDBOX CREDENTIAL RECONCILIATION -- the negative tests, and they are the point.
+      #
+      # Hermetic: no network, no Firebase, no Auth, no database, temp files only. It pins that
+      # production is refused twice over (by literal project id BEFORE the editable registry is
+      # read, and by registry role), that a wrong or unknown project fails closed, that no two
+      # personas can claim one auth identity, that the Owner credential is never rotated, that a
+      # merge loses no existing entry -- and, behaviourally, that NO credential value can reach
+      # stdout or stderr. That last one is verified by capturing a real dry run whose file is full
+      # of sentinel values, so adding a `console.log(password)` later turns this step red.
+      - name: Sandbox credential reconciliation is read-only and leaks nothing
+        run: node --test scripts/sandboxCredentialReconciliation.test.mjs
 
       # A component naming a class is asserting that rule exists. 887a0a50 replaced index.css
       # wholesale and deleted 811 net lines that live components still referenced -- nothing threw,
