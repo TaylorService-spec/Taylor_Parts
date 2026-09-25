@@ -169,13 +169,20 @@ describe("EquipmentWorkspace tabs", () => {
 // used (navConfig.js: no legacyKey -> PLACEHOLDER_DEFAULT_ROLES). This wiring
 // change adds no new permission and must not loosen or narrow that gate -- mirrors
 // the existing nav/route assertions in equipmentRegister.test.mjs.
+// WAVE 16 / LANE BQ: the gate moved from a role literal to the governed surface, and this wiring
+// change still does not touch it. `equipment/equipment` is mapped to `equipment.register`, so Owner
+// ruling F removed its ungoverned placeholder row in the cutover; under the LEGACY source no role
+// reaches the route, and under the EOS source the governed grant does. What this test owns is
+// unchanged: Add Equipment adds NO permission and must not loosen the gate. It is now asserted as
+// "no role literal opens it", which is strictly stronger than the previous admin/dispatcher pin.
 describe("Equipment nav access is unchanged by wiring in Add Equipment", () => {
-  it("admin and dispatcher can reach the Equipment route; technician cannot", () => {
+  it("no legacy role literal reaches the Equipment route; the governed surface is the gate", () => {
     const item = NAV_DOMAINS.find((d) => d.key === "equipment").subnav[0];
     const allowed = (role) => ROLE_NAV_ACCESS[role];
-    expect(isNavItemVisible(item, ROLES.ADMIN, allowed(ROLES.ADMIN))).toBe(true);
-    expect(isNavItemVisible(item, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER))).toBe(true);
-    expect(isNavItemVisible(item, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN))).toBe(false);
+    expect(item.surfaceAccess).toEqual(["equipment.register"]);
+    for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
+      expect(isNavItemVisible(item, role, allowed(role))).toBe(false);
+    }
   });
 });
 

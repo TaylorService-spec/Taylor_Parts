@@ -214,19 +214,40 @@ const POLICY_SURFACE_DESTINATIONS = Object.freeze([
   "rolesPermissions", "objects", "workflows", "permissionPreview",
 ]);
 
-test("today, dispatcher reaches the four policy SURFACES through a Firebase role literal and no grant", () => {
-  // No EOS authority in context -> the legacy branch. `dispatcher` holds ZERO capabilities on the
-  // rolesPermissions, principal, workflowDefinition and auditLog Objects in nonprod (measured
-  // read-only 2026-09-24), and reaches every one of these screens anyway.
+// ════ WAVE 16 / LANE BQ: THE FIREBASE ROLE LITERAL NO LONGER REACHES THEM. INVERTED, NOT DELETED ════
+//
+// This test used to pin the defect it is named for: `dispatcher` holds ZERO capabilities on the
+// rolesPermissions, principal, workflowDefinition and auditLog Objects in nonprod (measured
+// read-only 2026-09-24) and reached every one of these screens anyway, through
+// PLACEHOLDER_DEFAULT_ROLES. It was the readiness lane's evidence that the cutover was worth doing.
+//
+// Owner ruling F did it. All four destinations lost their NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows
+// in the same change that made the EOS experience authority the only navigation authority, so the
+// ungoverned door is closed -- and the assertion is flipped rather than removed, because "a Firebase
+// role literal must not reach a governed policy surface" is exactly as worth pinning now as its
+// negation was before. If a row comes back, this fails.
+//
+// THE COST IS REAL AND IS THE RULING'S. Where EOS_NAVIGATION_AUTHORITY_READY is false, admin and
+// dispatcher now reach none of these four. That is the cutover's stated consequence, not a
+// side-effect: an ungoverned door is closed whether or not a governed one is open behind it yet.
+test("a Firebase role literal no longer reaches the four policy SURFACES -- the placeholder rows are gone", () => {
   const legacy = { operationalRoles: [], employmentStatus: "ACTIVE" };
   assert.deepEqual(PLACEHOLDER_DEFAULT_ROLES, ["admin", "dispatcher"]);
   for (const key of POLICY_SURFACE_DESTINATIONS) {
     const item = itemFor(key);
+    // STILL NO capabilityAccess AND STILL NO legacyKey. The door did not move to another legacy
+    // authority; it closed. The governed surface is the only thing that opens it.
     assert.equal(item.capabilityAccess, undefined,
-      `${key} now declares capabilityAccess -- step 1 of the wiring has been done`);
+      `${key} now declares capabilityAccess -- the Firestore feed is not the governed source`);
     assert.equal(item.legacyKey, undefined);
-    assert.equal(isNavItemVisible(item, "dispatcher", [], legacy), true,
-      `${key} no longer falls to PLACEHOLDER_DEFAULT_ROLES -- re-run the readiness matrix`);
+    assert.equal(item.legacyPlaceholder, undefined,
+      `${key} carries a placeholder row again -- the shrink-only register may not regrow`);
+    assert.ok(Array.isArray(item.surfaceAccess) && item.surfaceAccess.length > 0,
+      `${key} lost its governed surface mapping, which would make it unreachable under BOTH sources`);
+    for (const role of ["admin", "dispatcher", "technician", null]) {
+      assert.equal(isNavItemVisible(item, role, [], legacy), false,
+        `${key} is still reachable by the legacy role "${role}" -- something re-opened the ungoverned door`);
+    }
   }
 });
 
@@ -246,10 +267,24 @@ test("today, dispatcher reaches the four policy SURFACES through a Firebase role
 // `containerHasReachableChild` asks the ORDINARY predicate about each child. Wave 12 simply points
 // it at the children the server's `containerOf` names, computed rather than typed.
 //
-// SO NOTHING WAS ASSERTED TO RESTORE THIS. The register is still 62, `alwaysVisible` is still at
-// zero declarations, no legacy key was invented, and admin/dispatcher reach the menu for the only
-// legitimate reason: the six destinations it is a menu over are ones they can already open.
-test("under the LEGACY source the Administration index follows its children -- restored, and asserted nothing", () => {
+// SO NOTHING WAS ASSERTED TO RESTORE THIS. `alwaysVisible` is still at zero declarations and no
+// legacy key was invented: admin/dispatcher reached the menu for the only legitimate reason, that
+// the six destinations it is a menu over were ones they could already open.
+//
+// ════ WAVE 16 / LANE BQ: THE CHILDREN CLOSED, SO THE MENU CLOSED. SAME RULE, OPPOSITE ANSWER ════
+//
+// Owner ruling F removed the placeholder rows from all six children. Under the LEGACY source they
+// now have no authority at all, so the container has nothing on it and answers false for admin and
+// dispatcher too. That is Lane AM's rule working, not failing -- "a menu is as reachable as what it
+// is a menu over" -- and it is emphatically NOT a reason to add `administration/overview` back to
+// the register: the row was refused when the children were open and it is refused now. The fix, when
+// the Owner wants the tab back in a given environment, is EOS_NAVIGATION_AUTHORITY_READY, which
+// gives the menu governed children to open on.
+//
+// The container MECHANISM is still asserted here in full, because the mechanism is what must not
+// drift: it asserts no authority, its scope is still exactly the server's six `containerOf`
+// children, dataImport is still excluded, and it still tracks its children in both directions.
+test("under the LEGACY source the Administration index still follows its children -- which are now closed", () => {
   const legacy = { operationalRoles: [], employmentStatus: "ACTIVE" };
   const overview = itemFor("overview");
 
@@ -268,46 +303,54 @@ test("under the LEGACY source the Administration index follows its children -- r
   assert.equal(overview.containerScope.includes("administration/dataImport"), false,
     "import authority must not open the policy menu, on either side");
 
-  // ADMIN AND DISPATCHER: visible, and visible BECAUSE the children are. PLACEHOLDER_DEFAULT_ROLES
-  // reaches all six of them, so the menu has six things on it.
+  // NO ROLE REACHES A CHILD UNDER THIS SOURCE ANY MORE, SO NO ROLE REACHES THE MENU. One rule, one
+  // input changed. `["inventory"]` is passed as the legacy key set to prove the point from the other
+  // side too: a principal with a real legacy answer SOMEWHERE ELSE still does not get this menu,
+  // because the menu asks only about its own six.
   assert.deepEqual(PLACEHOLDER_DEFAULT_ROLES, ["admin", "dispatcher"]);
-  for (const role of ["admin", "dispatcher"]) {
+  for (const role of ["admin", "dispatcher", "technician", "owner", "", null]) {
     const reachable = overview.containerScope
       .filter((d) => isNavItemVisible(itemFor(d.split("/")[1]), role, [], legacy));
-    assert.equal(reachable.length, 6, `${role} reaches ${reachable.length} of the six, not six`);
-    assert.equal(isNavItemVisible(overview, role, ["inventory"], legacy), true,
-      `${role} cannot reach the Administration index it has six open children under`);
-  }
-
-  // AN ORDINARY PERSONA WITH NO ADMINISTRATION CHILDREN GETS NO MENU. Nobody was granted a child to
-  // make the container appear -- technician and owner hold no legacy Administration answer, so they
-  // hold no Administration index either, under this source exactly as under the governed one.
-  for (const role of ["technician", "owner", "", null]) {
-    const reachable = overview.containerScope
-      .filter((d) => isNavItemVisible(itemFor(d.split("/")[1]), role, [], legacy));
-    assert.deepEqual(reachable, [], `${role} unexpectedly reaches an Administration child`);
+    assert.deepEqual(reachable, [],
+      `${role} reaches an Administration child under the legacy source -- a placeholder row came back`);
     assert.equal(isNavItemVisible(overview, role, ["inventory"], legacy), false,
       `${role} reached an Administration index with nothing on it`);
   }
 
-  // AND THE BLAST RADIUS IS STILL EXACTLY ONE TAB, measured the other way now: the other thirteen
-  // Administration destinations keep their own rows and their own answers, unchanged by any of this.
+  // THE MENU OPENS THE MOMENT A CHILD DOES, and the governed source is what opens one. Same
+  // container, same predicate, one governed grant -- which is the whole of the remedy for the
+  // closure above, and the proof that the container did not become a dead node.
+  const governed = eosContext(buildNavigationAuthority({
+    state: EXPERIENCE_STATE.READY,
+    context: { tenantId: "t", principalId: "p", securityRoleKeys: [], employeeId: null,
+      workEligibility: [], operationalScopes: [], surfaces: ["administration.auditLogs"] },
+  }));
+  assert.equal(isNavItemVisible(itemFor("auditLogs"), null, [], governed), true);
+  assert.equal(isNavItemVisible(overview, null, [], governed), true,
+    "one governed child no longer opens the Administration menu");
+
+  // AND THE REST OF THE DOMAIN IS UNCHANGED BY THE CONTAINER RULE ITSELF: the Administration
+  // destinations that still hold placeholder rows still answer from them, so the domain tab survives
+  // under the legacy source. What closed is exactly the twenty destinations the ruling named.
   assert.equal(isDomainVisible(administration(), "admin", [], legacy), true);
   assert.equal(isDomainVisible(administration(), "dispatcher", [], legacy), true);
-  for (const key of POLICY_SURFACE_DESTINATIONS.concat(["users", "auditLogs"])) {
+  for (const key of ["vehicles", "regions", "companySettings"]) {
     assert.equal(isNavItemVisible(itemFor(key), "dispatcher", [], legacy), true,
-      `${key} lost its legacy answer -- the container was supposed to change one destination`);
+      `${key} lost its legacy answer -- only the twenty mapped destinations were supposed to change`);
   }
 });
 
 // ═════ WAVE 11 / LANE AS: THE REGISTER MAY ONLY SHRINK, AND THE GUARD IS PROVED TO BITE ═════
 test("the placeholder register is at its ceiling and the shrink-only rules refuse Lane AR's edit", () => {
-  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62,
+  // 42 SINCE WAVE 16 / LANE BQ -- moved DOWN by twenty in the same commit that performed the EOS
+  // navigation cutover, which is the one governed edit to this number. The ratchet re-arms at the
+  // new size: everything below still refuses a regrow, now against 42 rather than 62.
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 42,
     "the shrink-only register changed size -- if it GREW, that needs an Owner ruling, not a ceiling edit");
-  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 42);
   assert.ok(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length <= NAV_LEGACY_PLACEHOLDER_CEILING);
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false);
-  assert.equal(new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS).size, 62, "the register holds a duplicate");
+  assert.equal(new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS).size, 42, "the register holds a duplicate");
 
   // The real registers are clean.
   assert.deepEqual(legacyPlaceholderRegisterViolations(), []);

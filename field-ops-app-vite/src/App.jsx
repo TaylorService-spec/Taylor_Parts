@@ -52,6 +52,11 @@ const SalesOrderDetail = lazy(() => import("./modules/sales/SalesOrderDetail.jsx
 // (#129) -- a URL shape is not ownership, and the Opportunity does not own the Agreement record UX.
 const SalesAgreementDetail = lazy(() => import("./modules/sales/SalesAgreementDetail.jsx"));
 const SalesOrdersList = lazy(() => import("./modules/sales/SalesOrdersList.jsx"));
+// The Sales Agreement INDEX (Owner ruling D, Wave 16 / Lane BQ). The record page above has existed
+// since North Star family 5; what did not exist was a way to reach an Agreement without first
+// opening the Opportunity that created it. Reads through the governed listSalesAgreements on the C4
+// Commercial transport, capability-scoped on the existing salesAgreement.read -- no new capability.
+const SalesAgreementsList = lazy(() => import("./modules/sales/SalesAgreementsList.jsx"));
 import { governedOpportunitySource } from "./access/opportunitySource.js";
 import { useOpportunityCapabilities } from "./access/useOpportunityCapabilities.js";
 import { OPPORTUNITY_WRITE_CAPABILITY } from "./access/opportunityCapabilityAccess.js";
@@ -166,7 +171,7 @@ import PlaceholderPage from "./navigation/PlaceholderPage";
 import MyDashboard from "./modules/dashboard/MyDashboard.jsx";
 // WAVE 9 / LANE AL -- the dashboard-surface rule, stated beside the composition it pairs with.
 import { DASHBOARD_SURFACE, dashboardSurfaceFor } from "./domain/dashboardComposition.js";
-import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
+import { NAV_DOMAINS, isDomainVisible, isEosNavigationSource, isNavItemVisible } from "./navigation/navConfig";
 import {
   EXPERIENCE_STATE,
   EXPERIENCE_UNAVAILABLE_REASON,
@@ -476,6 +481,12 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   }
   if (domain.key === "customers" && item.key === "salesOrders") {
     return <SalesOrdersList />;
+  }
+  // The Sales Agreements index, beside Sales Orders because that is the stage it PRECEDES
+  // (Opportunity -> Agreement -> Sales Order). No props: the screen resolves its own governed read
+  // and states its own refusal, so nothing about who may see it is decided here.
+  if (domain.key === "customers" && item.key === "salesAgreements") {
+    return <SalesAgreementsList />;
   }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
@@ -887,7 +898,43 @@ function WarehouseWorkspaceSurface({ operationalContext, role }) {
   return useIsPhone() ? <WarehouseShell deps={deps} /> : <ScanWorkspace deps={deps} />;
 }
 
+// The empty legacy key set, defined once so the EOS branch below cannot allocate a new array per
+// render and re-run every route memo that depends on it.
+const NO_LEGACY_KEYS = Object.freeze([]);
+
 function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
+  // ════════════ WAVE 16 / LANE BQ -- THE CUTOVER, WHERE THE ROUTES ARE DECIDED ════════════
+  //
+  // Owner ruling F, option B: when the EOS experience authority is the navigation source it is the
+  // ONLY navigation authority. `isNavItemVisible` has answered that way since Wave 6 -- its EOS
+  // branch returns before any legacy path runs -- but THIS function kept deciding two things off
+  // `users/{uid}.role` directly, outside that function and therefore outside that guarantee:
+  //
+  //   * /service/work-orders/new and /service/work-orders/:id, emitted when
+  //     previewHasPermission("workOrder.create", role) with an explicit
+  //     `role === "admin" || role === "dispatcher"` fallback;
+  //   * /inventory-role/* , redirected to /inventory when `role === "admin" || role === "dispatcher"`.
+  //
+  // Both are navigation: they decide which addresses exist for this session. Under the EOS source
+  // they now see `navRole === null`, so neither raw-role test can be true and neither route is
+  // emitted off a Firebase-era role literal. Nothing about them changes where the flag is false.
+  //
+  // THE LEGACY INPUTS ARE NOT MERELY UNREAD, THEY ARE NOT SUPPLIED. `navRole` is null and
+  // `navAllowedLegacyKeys` is empty for every visibility question below. That is deliberate belt and
+  // braces: an unreachable branch that is still being fed live values is one refactor away from
+  // being reachable again, and this way a regression fails as "nobody can see anything" rather than
+  // as "the legacy role quietly answered".
+  //
+  // `role` ITSELF IS STILL THREADED TO SCREENS, and that is not a fallback. renderSubnavItem passes
+  // it to components that use it for CONTENT and for action affordances backed by their own
+  // server-side checks (TruckInventoryConnected, the scanner, MyDashboard). The dashboard's own
+  // surface choice already asks the EOS source first -- domain/dashboardComposition.js
+  // `dashboardSurfaceFor` branches on the authority before it looks at the role -- so passing the
+  // real role there is what lets its EOS branch stay correct. Navigation is what this ruling governs
+  // and navigation is what is cut over.
+  const eosIsNavigationSource = isEosNavigationSource(operationalContext);
+  const navRole = eosIsNavigationSource ? null : role;
+  const navAllowedLegacyKeys = eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys;
   return (
     // ONE boundary around every route. A lazily-loaded surface that arrives a moment later shows this
     // instead of a blank frame -- and a blank frame is indistinguishable from a broken app on the slow
@@ -911,7 +958,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
         <Route key={domain.key} path={domain.path}>
           {domain.subnav
-            .filter((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext))
+            .filter((item) => isNavItemVisible(item, navRole, navAllowedLegacyKeys, operationalContext))
             .map((item) => (
               <Route
                 key={item.key}
@@ -942,7 +989,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               emitting these routes takes the path back from the record lookup.
               Access is unchanged -- this only gives the refusal somewhere to be said. */}
           {domain.subnav
-            .filter((item) => !isNavItemVisible(item, role, allowedLegacyKeys, operationalContext))
+            .filter((item) => !isNavItemVisible(item, navRole, navAllowedLegacyKeys, operationalContext))
             .map((item) => (
               <Route
                 key={`denied-${item.key}`}
@@ -979,7 +1026,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               collide across companies (INV-000001 exists three times), so a number in the URL
               would be ambiguous. Gated by isDomainVisible so a role without Financials never
               mounts the record view at all. */}
-          {domain.key === "financials" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+          {domain.key === "financials" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
             <>
               <Route path="invoices/:invoiceId" element={<FinancialsInvoiceDetail />} />
               {/* The URL carries the document id because a URL is technical identity; the page
@@ -987,7 +1034,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               <Route path="payments/:paymentId" element={<FinancialsPaymentDetail />} />
             </>
           )}
-          {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+          {domain.key === "customers" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
             <>
               {/* Customer hierarchy nav cleanup: the Contacts / Locations /
                   Equipment / Service History subnav entries were removed
@@ -1026,7 +1073,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               every Equipment read, so mounting this for them would only produce a
               permission-denied they cannot act on. Rules remain the boundary; this
               keeps the route from disagreeing with them. */}
-          {domain.key === "equipment" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+          {domain.key === "equipment" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
             <Route path=":equipmentId" element={<EquipmentDetail />} />
           )}
           {/* ADMINISTRATION USERS CONSOLIDATION.
@@ -1054,7 +1101,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               <Route path="employees" element={<Navigate to="/administration/users" replace />} />
             </>
           )}
-          {domain.key === "administration" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+          {domain.key === "administration" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
             <Route
               path="users/:employeeId"
               element={<UserDetail hasCapability={operationalContext?.hasCapability} />}
@@ -1082,8 +1129,11 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               for this combined Wizard+Detail gate; today only admin/
               dispatcher hold it, matching the original check exactly. */}
           {domain.key === "service" &&
-            previewHasPermission("workOrder.create", role, {
-              fallback: role === "admin" || role === "dispatcher",
+            previewHasPermission("workOrder.create", navRole, {
+              // `navRole` is null under the EOS source, so both the preview and this fallback are
+              // false there and neither route is emitted from a role literal. Under the legacy
+              // source it is byte-for-byte the previous check.
+              fallback: navRole === "admin" || navRole === "dispatcher",
             }) && (
               <>
                 <Route path="work-orders/new" element={<WorkOrderWizard />} />
@@ -1106,7 +1156,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               legacyKey/PLACEHOLDER_DEFAULT_ROLES access to any Inventory
               subnav item today, so isDomainVisible is already false for
               that role -- this route simply doesn't exist for them). */}
-          {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+          {domain.key === "inventory" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
             <Route path=":partId" element={<PartDetail hasCapability={operationalContext?.hasCapability} accessVersion={operationalContext?.accessVersion} />} />
           )}
           {/* Platform Task 3 -- Service Operations fails CLOSED for a role without
@@ -1115,7 +1165,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               explicit gated redirect (only when the domain is NOT visible) sends
               them to /dashboard instead of an empty shell -- a stronger denial
               than relying on the empty-Outlet fallthrough. */}
-          {domain.key === "serviceOperations" && !isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+          {domain.key === "serviceOperations" && !isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
             <Route index element={<Navigate to="/dashboard" replace />} />
           )}
           {/* Issue #100 PR 2b -- per the Specification's "admin/dispatcher
@@ -1139,7 +1189,12 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               through to the ordinary top-level catch-all below -- same
               mechanism as every other operationalRoleAccess-gated item,
               no separate handling needed. */}
-          {domain.key === "inventoryRole" && (role === "admin" || role === "dispatcher") && (
+          {/* `navRole`, not `role`: under the EOS source this convenience redirect is not emitted at
+              all, and an admin hitting /inventory-role/* falls through to the ordinary top-level
+              catch-all like anybody else. A redirect IS navigation, so it may not be decided by a
+              Firebase-era role literal once the governed source is answering. Where the flag is
+              false the behaviour is unchanged. */}
+          {domain.key === "inventoryRole" && (navRole === "admin" || navRole === "dispatcher") && (
             <Route path="*" element={<Navigate to="/inventory" replace />} />
           )}
           {/* Issue #100 PR 2b -- unlike Customers/Service Operations, this
@@ -1158,7 +1213,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
           {domain.key === "inventoryRole" &&
             (() => {
               const firstVisible = domain.subnav.find((item) =>
-                isNavItemVisible(item, role, allowedLegacyKeys, operationalContext)
+                isNavItemVisible(item, navRole, navAllowedLegacyKeys, operationalContext)
               );
               return firstVisible ? <Route index element={<Navigate to={firstVisible.path} replace />} /> : null;
             })()}
@@ -1224,7 +1279,18 @@ export default function App() {
     accessVersion,
     ...(experienceAuthority ? { eosNavigationAuthority: experienceAuthority } : {}),
   };
-  const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
+  // WHICH SOURCE IS ANSWERING -- derived once, from navConfig, so this shell and the route table
+  // below cannot reach different conclusions about it (Wave 16 / Lane BQ, Owner ruling F).
+  const eosIsNavigationSource = isEosNavigationSource(operationalContext);
+  // The same containment AppRoutes applies, applied to the shell's own question. Under the EOS
+  // source `hasAnyAccess` is "the governed source granted at least one surface a door shows" and
+  // NOTHING else -- the legacy role is not consulted because it is not supplied.
+  const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(
+    d,
+    eosIsNavigationSource ? null : role,
+    eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys,
+    operationalContext,
+  ));
 
   if (loading) return <div className="fo-panel">Loading...</div>;
 
@@ -1277,18 +1343,54 @@ export default function App() {
     );
   }
 
+  // ════════ NO ACCESS -- AND IT SAYS WHICH SOURCE DECIDED THAT (Wave 16 / Lane BQ) ════════
+  //
+  // This panel told EVERY refused session to "ask an administrator to grant your account a role".
+  // That is the LEGACY remedy: it describes `users/{uid}.role` and ROLE_NAV_ACCESS, and it is simply
+  // wrong under the EOS source, where access comes from Security Role assignments in
+  // eos_policy.role_capabilities plus governed Work Eligibility and Operational Scope rows -- none
+  // of which is "a role" in the sense the old sentence means, and none of which an administrator
+  // changes in the place that sentence sends them. A governed persona who holds no surface was being
+  // handed an instruction that cannot fix their situation, which costs the reader a support round
+  // trip and teaches them to distrust the panel.
+  //
+  // PURE PRESENTATION. Both branches are reached from the identical `hasAnyAccess === false`; no
+  // authority, no grant and no visibility decision is different. The only thing that changed is that
+  // the sentence names the source that answered.
+  //
+  // THE THIRD STATE IS ALREADY ELSEWHERE, deliberately: an EOS session that could not be READ is
+  // UNAVAILABLE and returned above as a retryable failure, never as this refusal. Reaching here
+  // under the EOS source therefore means the governed source ANSWERED and this principal holds no
+  // surface that any destination shows -- which is a fact, not a fault.
   if (!hasAnyAccess) {
     return (
       <div className="fo-panel">
         <h2>No access</h2>
-        <p className="fo-muted">
-          You're signed in as <strong>{user.email}</strong>, but your account isn't
-          assigned a role with access yet.
-        </p>
-        <p className="fo-muted">
-          Ask an administrator to grant your account a role — giving them the email above
-          helps them find it. Once access is granted, choose <strong>Check again</strong>.
-        </p>
+        {eosIsNavigationSource ? (
+          <>
+            <p className="fo-muted">
+              You're signed in as <strong>{user.email}</strong>. Your access was read from the
+              governed source and it grants no areas of the application.
+            </p>
+            <p className="fo-muted">
+              Access here comes from the Security Roles assigned to your EOS principal, and from your
+              work eligibility and operational scope — not from a role on your sign-in account. Ask
+              an administrator to review your role assignments in Administration, giving them the
+              email above. Once they are changed, choose <strong>Check again</strong>.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="fo-muted">
+              You're signed in as <strong>{user.email}</strong>, but your account isn't
+              assigned a role with access yet.
+            </p>
+            <p className="fo-muted">
+              Ask an administrator to grant your account a role — giving them the email above
+              helps them find it. Once access is granted, choose <strong>Check again</strong>.
+            </p>
+          </>
+        )}
         <Button type="button" variant="primary" onClick={() => window.location.reload()}>
           Check again
         </Button>
@@ -1312,7 +1414,18 @@ export default function App() {
               AppShell for the same reason as before: AppHeader's one canonical
               part-name read must re-run and its name map be invalidated on any
               access change (governs NotificationPanel names). */}
-          <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext}>
+          {/* THE RAIL AND THE PHONE BAR ARE NAVIGATION TOO, so they get the contained values, not the
+              raw ones: under the EOS source the shell decides from governed surfaces and the legacy
+              role is not supplied to it either. AppRail's identity block reads its own `role` from
+              useAuth() rather than from this prop, so the signed-in person's role is still displayed
+              -- what it may no longer do is DECIDE a destination. AppRoutes takes the raw `role`
+              because it threads it to SCREENS as well; it applies the identical containment to every
+              visibility question inside itself. */}
+          <AppShell
+            role={eosIsNavigationSource ? null : role}
+            allowedLegacyKeys={eosIsNavigationSource ? NO_LEGACY_KEYS : allowedLegacyKeys}
+            operationalContext={operationalContext}
+          >
             <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
           </AppShell>
         </div>

@@ -67,10 +67,19 @@ describe("AppRail active Service group (Fix 3)", () => {
     expect(workManagementGroup.className).not.toMatch(/fo-rail__group--active/);
   });
 
-  it("marks Work Management active for /service (the group landing)", () => {
-    render(<Harness path="/service" />);
+  // Uses Job Assignments rather than bare /service, which this test used to drive. /service IS the
+  // Work Orders path, and Work Orders left the rail under the LEGACY source in the Wave 16 / Lane BQ
+  // cutover: `service/workOrders` is mapped to the governed surface `service.workOrders`, so Owner
+  // ruling F removed its ungoverned placeholder row along with the other nineteen. The rail's active
+  // group is computed from the items the rail actually DRAWS, so a route whose item is not drawn has
+  // no active group -- the same reason this file already moved off /service/scheduling when that
+  // went navHidden. What is being asserted -- that a Work-Management route activates Work Management
+  // and not Dispatch -- is unchanged; only the representative route moved.
+  it("marks Work Management active for a Work Management route the rail draws", () => {
+    render(<Harness path="/service/job-assignments" />);
     const workManagementGroup = screen.getByRole("group", { name: "Work Management" });
     expect(workManagementGroup.getAttribute("aria-current")).toBe("true");
+    expect(screen.getByRole("group", { name: "Dispatch" }).getAttribute("aria-current")).toBeNull();
   });
 
   it("marks Technician Workspace active for /service/coordinated-mission", () => {

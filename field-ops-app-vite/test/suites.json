@@ -894,6 +894,10 @@
       "runner": "node --test"
     },
     {
+      "file": "test/salesAgreementsAndNavCutover.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/salesOrderActions.test.mjs",
       "runner": "node"
     },

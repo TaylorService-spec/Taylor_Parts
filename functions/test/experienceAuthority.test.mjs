@@ -142,17 +142,33 @@ test("a gap whose kind and evidence disagree is REFUSED, each way", () => {
   }
 });
 
-// THE SPECIFIC CORRECTION, PINNED BY NAME -- not a style assertion. This entry is the one that was
-// false, and the shape asserted here is the shape that makes its falseness measurable next time.
-test("commercial.agreements is a DESTINATION gap governed by a real salesAgreement capability", () => {
-  const gap = EXPERIENCE_SURFACE_GAPS.find((g) => g.key === "commercial.agreements");
-  assert.ok(gap, "the commercial.agreements gap is gone -- declaring the surface requires a destination for it");
-  assert.equal(gap.kind, "DESTINATION");
-  assert.equal(gap.governedBy, "salesAgreement.read");
-  assert.equal(gap.absentCapabilityPrefixes, undefined);
-  // The old reason claimed the vocabulary did not exist. It must never say that again.
-  assert.doesNotMatch(gap.reason, /No salesAgreement\.\* capability is registered/);
-  assert.match(gap.reason, /DESTINATION GAP/);
+// THE SPECIFIC CORRECTION, PINNED BY NAME, AND NOW CLOSED (Wave 16 / Lane BQ, Owner ruling D).
+//
+// This entry travelled the whole arc a gap register is supposed to make possible: a VOCABULARY claim
+// that was measurably FALSE, corrected to the DESTINATION claim that was true (Lane BL), and then
+// removed because the Owner built the destination. The assertion pinning it is rewritten rather than
+// deleted, because the thing worth pinning is the same one from the other side.
+//
+// A GAP MAY NOT SIMPLY VANISH. Deleting the entry without building the door would have hidden the
+// surface; declaring the surface without the door would have broken the "reachable from SOME
+// destination" invariant below. This test refuses both at once: no gap entry AND a declared surface
+// AND a door, or it fails.
+test("commercial.agreements is NO LONGER a gap -- it is a declared surface with a real door", () => {
+  assert.equal(
+    EXPERIENCE_SURFACE_GAPS.find((g) => g.key === "commercial.agreements"),
+    undefined,
+    "the commercial.agreements gap is back -- a surface may not be both granted and declared unreachable",
+  );
+  const declared = EXPERIENCE_SURFACES.find((s) => s.key === "commercial.agreements");
+  assert.ok(declared, "the gap was removed WITHOUT declaring the surface, which hides it instead of closing it");
+  // THE EXISTING READ, AND ONLY IT. No new capability was minted for this door, and no write earns
+  // it: gating an index on salesAgreement.create/.updateDraft/.accept would mean a reader could not
+  // read and a writer could not be told apart from a reader.
+  assert.deepEqual(declared.grants.map((g) => g.capabilityKey), ["salesAgreement.read"]);
+  assert.deepEqual(declared.grants[0].predicates ?? [], []);
+  // The door itself. The "reachable from SOME destination" test below would catch its absence in
+  // aggregate; this says WHICH destination, by name, so a future re-point is a visible diff.
+  assert.deepEqual(NAV_SURFACE_ACCESS["customers/salesAgreements"], ["commercial.agreements"]);
 });
 
 // ════════ THE OTHER HALF OF A DESTINATION CLAIM: IS IT ACTUALLY HELD? ════════
@@ -167,7 +183,7 @@ test("commercial.agreements is a DESTINATION gap governed by a real salesAgreeme
 // If that baseline ever shows the capability held by nobody, the gap has become a vocabulary-shaped
 // problem again and the reason has to be rewritten -- which is precisely the transition nothing
 // noticed last time, in the other direction.
-test("every DESTINATION gap's governing capability is HELD in the recorded grant baseline", () => {
+test("a DESTINATION gap's governing capability is HELD, and so is the Sales Agreements surface's", () => {
   const baseline = JSON.parse(
     readFileSync(path.join(here, "..", "src", "adminPolicy", "seed", "roleCapabilityAuthorityBaseline.json"), "utf8"),
   );
@@ -176,8 +192,12 @@ test("every DESTINATION gap's governing capability is HELD in the recorded grant
     if (!holders.has(grant.capabilityKey)) holders.set(grant.capabilityKey, new Set());
     holders.get(grant.capabilityKey).add(grant.roleKey);
   }
+  // THERE ARE NONE TODAY, AND THE CHECK STAYS ARMED. `commercial.agreements` was the only DESTINATION
+  // gap and it is closed (see above), so this loop is empty -- which is not a reason to delete it.
+  // The kind is still in the vocabulary and `experienceSurfaceGapViolations()` still enforces its
+  // shape; the day somebody writes the next one, the grant half of its claim is measured here rather
+  // than taken on trust, which is the entire lesson of the entry that used to be here.
   const destinationGaps = EXPERIENCE_SURFACE_GAPS.filter((g) => g.kind === "DESTINATION");
-  assert.ok(destinationGaps.length >= 1, "commercial.agreements is the one this exists for");
   for (const gap of destinationGaps) {
     const held = holders.get(gap.governedBy);
     assert.ok(
@@ -185,8 +205,11 @@ test("every DESTINATION gap's governing capability is HELD in the recorded grant
       `${gap.key} claims ${gap.governedBy} already governs it, but ${baseline.environment} (measured ${baseline.measuredAt}) records no grant of it`,
     );
   }
-  // The specific population the corrected reason states, so the sentence and the measurement cannot
-  // drift apart silently.
+  // THE POPULATION THE SALES AGREEMENTS DOOR IS BUILT ON, still pinned after the gap closed -- and
+  // now it pins something stronger. While this was a gap the six holders were the EVIDENCE FOR
+  // building the door; now they are the people the door actually opens for, so the sentence in
+  // EXPERIENCE_SURFACES and this measurement must not drift apart. If the grant is ever withdrawn
+  // this fails, and the surface has to be reconsidered rather than quietly standing over nobody.
   assert.deepEqual(
     [...holders.get("salesAgreement.read")].sort(),
     ["admin", "dispatcher", "generalManager", "owner", "salesManager", "salesperson"],
@@ -631,13 +654,32 @@ test("an EOS authority that is not READY grants NOTHING -- there is no degrade t
   }
 });
 
-test("the legacy source is untouched when no EOS authority is supplied", () => {
-  // The seam is OFF in every environment today. An admin must still see exactly what an admin saw.
+// THE LEGACY SOURCE STILL ANSWERS, AND THE CUTOVER CHANGED WHAT IT ANSWERS FOR TWENTY DESTINATIONS.
+//
+// This used to assert "an admin must still see exactly what an admin saw", with Administration >
+// Users as the example. That is no longer true and the change is the point rather than a regression:
+// Owner ruling F removed the NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows from the twenty destinations
+// that had already earned a governed EOS surface, IN THE SAME CHANGE that made the EOS source the
+// only navigation authority. `administration/users` was one of them, and a placeholder row was the
+// only thing making it visible to admin under the legacy source -- so under that source it is now
+// invisible, in every environment where EOS_NAVIGATION_AUTHORITY_READY is false.
+//
+// WHAT IS UNCHANGED IS EVERYTHING WITH A REAL LEGACY AUTHORITY. Inventory > Parts carries
+// legacyKey "inventory", so ROLE_NAV_ACCESS still answers it exactly as before; a technician is
+// still refused Administration, as they always were. The legacy MECHANISM is untouched -- what
+// shrank is the set of doors that had nothing but that mechanism behind them.
+test("the legacy source still answers from ROLE_NAV_ACCESS, and no longer from the twenty removed rows", () => {
   const legacyContext = { operationalRoles: [], employmentStatus: "ACTIVE" };
   const adminKeys = ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "operations", "dispatcherBoard"];
   const parts = NAV_DOMAINS.find((d) => d.key === "inventory").subnav.find((i) => i.key === "parts");
   const users = NAV_DOMAINS.find((d) => d.key === "administration").subnav.find((i) => i.key === "users");
+  // A real legacyKey: byte-for-byte what it always was.
   assert.equal(isNavItemVisible(parts, "admin", adminKeys, legacyContext), true);
-  assert.equal(isNavItemVisible(users, "admin", adminKeys, legacyContext), true);
+  // A destination whose ONLY legacy authority was a placeholder row that has now gone.
+  assert.equal(
+    isNavItemVisible(users, "admin", adminKeys, legacyContext),
+    false,
+    "administration/users is visible under the legacy source again -- its placeholder row came back",
+  );
   assert.equal(isNavItemVisible(users, "technician", ["fieldMode", "jobs", "technicianDashboard"], legacyContext), false);
 });

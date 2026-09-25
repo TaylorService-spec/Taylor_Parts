@@ -47,7 +47,7 @@ ok("Overview subnav item exists at a named path (not the index)", () => {
 // WHAT MUST REMAIN TRUE is asserted first and is unchanged from Lane AS: no legacyKey, no
 // capabilityAccess, no operationalRoleAccess, no placeholder row, no alwaysVisible. The visibility
 // below is DERIVED, and the blast radius is still exactly this one tab.
-ok("Overview asserts NO authority of its own, and is visible as a CONTAINER over its children", () => {
+ok("Overview asserts NO authority of its own, and follows its children under both sources", () => {
   const overview = byKey("overview");
   assert.equal(overview.legacyPlaceholder, undefined,
     "Overview is back in NAV_LEGACY_PLACEHOLDER_DESTINATIONS -- that register may only shrink");
@@ -62,20 +62,27 @@ ok("Overview asserts NO authority of its own, and is visible as a CONTAINER over
     "administration/permissionPreview", "administration/users", "administration/auditLogs",
   ], "the container's scope has drifted from the server catalog's containerOf children");
 
-  // ADMIN AND DISPATCHER see it because they can open its children; TECHNICIAN can open none of
-  // them and so gets no menu. Nobody was granted a child in order to light the container.
-  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER]) {
+  // WAVE 16 / LANE BQ -- THE CHILDREN CLOSED UNDER THE LEGACY SOURCE, SO THE MENU DID TOO.
+  //
+  // The line above used to read "ADMIN AND DISPATCHER see it because they can open its children",
+  // and the reason they could was a NAV_LEGACY_PLACEHOLDER_DESTINATIONS row on each of the six.
+  // Owner ruling F removed all twenty rows whose destinations had already earned a governed EOS
+  // surface, in the same change that made the EOS authority the only navigation authority; these six
+  // were among them. So under the LEGACY source no role opens a child, and the container -- asking
+  // the one question it has ever asked -- answers false for everyone including admin.
+  //
+  // THAT IS THE RULE HOLDING, NOT BREAKING, and it is emphatically not an argument for putting the
+  // row back: the row was refused while the children were open and is refused now. The menu opens
+  // again the moment a GOVERNED child does, which is asserted in
+  // test/administrationNavigationReadiness.test.mjs against a READY EOS authority.
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
     const openChildren = overview.containerScope
       .filter((d) => isNavItemVisible(byKey(d.split("/")[1]), role, allowed(role)));
-    assert.equal(openChildren.length, 6, `${role} opens ${openChildren.length} of the six children`);
-    assert.equal(isNavItemVisible(overview, role, allowed(role)), true,
-      `${role} cannot reach an Administration index with six open children under it`);
+    assert.deepEqual(openChildren, [],
+      `${role} opens an Administration child under the legacy source -- a placeholder row came back`);
+    assert.equal(isNavItemVisible(overview, role, allowed(role)), false,
+      `${role} reached an Administration index with nothing on it`);
   }
-  const techChildren = overview.containerScope
-    .filter((d) => isNavItemVisible(byKey(d.split("/")[1]), ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)));
-  assert.deepEqual(techChildren, [], "technician unexpectedly opens an Administration child");
-  assert.equal(isNavItemVisible(overview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false,
-    "technician reached an Administration index with nothing on it");
 });
 
 // ----- Permission Preview: net-new, reachable, admin/dispatcher-only -----
@@ -85,11 +92,20 @@ ok("Permission Preview subnav item exists at a named path", () => {
   assert.equal(preview.path, "permission-preview");
   assert.equal(preview.legacyKey, undefined);
 });
-ok("Permission Preview is admin/dispatcher visible, technician fail-closed", () => {
+// WAVE 16 / LANE BQ: it is governed-source-only now. Permission Preview reads and evaluates a named
+// principal's effective access, and Owner ruling F removed the placeholder row that let a
+// Firebase-era role literal open it. `administration.permissionPreview` (earned by
+// admin.principalAccess.read) is the only thing that opens it, so under the legacy source it is
+// fail-closed for EVERY role -- which is the correct answer for a screen that discloses somebody
+// else's access.
+ok("Permission Preview is governed-source-only -- no legacy role opens it", () => {
   const preview = byKey("permissionPreview");
-  assert.equal(isNavItemVisible(preview, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
-  assert.equal(isNavItemVisible(preview, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
-  assert.equal(isNavItemVisible(preview, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+  assert.deepEqual(preview.surfaceAccess, ["administration.permissionPreview"]);
+  assert.equal(preview.legacyPlaceholder, undefined, "the placeholder row came back");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
+    assert.equal(isNavItemVisible(preview, role, allowed(role)), false,
+      `${role} opens Permission Preview from a legacy role literal`);
+  }
 });
 
 // ----- Employees: CONSOLIDATED INTO USERS -----
@@ -116,13 +132,33 @@ ok("Users is the one people destination, at its own named path", () => {
   assert.equal(users.label, "Users");
 });
 
-// ----- Every pre-existing item's gating is unchanged -----
-ok("existing Users/Roles & Permissions/Vehicles/Regions/Company Settings/Integrations/Audit Logs items are untouched", () => {
-  const untouchedKeys = ["users", "rolesPermissions", "vehicles", "regions", "companySettings", "integrations", "auditLogs"];
-  for (const key of untouchedKeys) {
+// ----- The legacy answer, split by whether the destination has earned a governed surface -----
+//
+// WAVE 16 / LANE BQ. This block used to assert one answer for all seven items ("untouched"). Owner
+// ruling F split them, and the split is exactly the ruling's own criterion: a destination MAPPED to
+// an EOS surface lost its ungoverned placeholder row; a destination with no governed surface behind
+// it kept its row, because removing it would close a door with nothing to replace it.
+ok("the Administration items that EARNED a governed surface no longer answer to a legacy role", () => {
+  for (const key of ["users", "rolesPermissions", "auditLogs"]) {
+    const item = byKey(key);
+    assert.ok(item, `${key} subnav item must still be present`);
+    assert.equal(item.legacyKey, undefined, `${key} must remain legacyKey-less`);
+    assert.ok(Array.isArray(item.surfaceAccess) && item.surfaceAccess.length > 0,
+      `${key} has no governed surface, so it should have KEPT its placeholder row`);
+    assert.equal(item.legacyPlaceholder, undefined, `${key} carries a placeholder row again`);
+    for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
+      assert.equal(isNavItemVisible(item, role, allowed(role)), false,
+        `${key} is still reachable by the legacy role "${role}"`);
+    }
+  }
+});
+ok("the Administration items with NO governed surface keep their placeholder answer, unchanged", () => {
+  for (const key of ["vehicles", "regions", "companySettings", "integrations"]) {
     const item = byKey(key);
     assert.ok(item, `${key} subnav item must still be present`);
     assert.equal(item.legacyKey, undefined, `${key} must remain legacyKey-less (still a PlaceholderPage/deferred surface)`);
+    assert.equal(item.surfaceAccess, undefined,
+      `${key} acquired a governed surface -- then its placeholder row must go, in the same change`);
     assert.equal(isNavItemVisible(item, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
     assert.equal(isNavItemVisible(item, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
     assert.equal(isNavItemVisible(item, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
