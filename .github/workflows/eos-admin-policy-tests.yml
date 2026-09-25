@@ -69,6 +69,11 @@ on:
       - "functions/test/canonicalJobRoleVocabulary.test.mjs"
       - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
       - "functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts"
+      # The governed Job Role WRITER. It was in neither filter: a PR changing createJobRole alone -- including the
+      # supersession refusal that stops a retired position being re-created -- could not trigger either gate that
+      # covers it. employeeJobRolePostgres.test.mjs proves its behaviour; canonicalJobRoleVocabulary.test.mjs reads
+      # it as source to prove the refusal is derived from SUPERSEDED_JOB_ROLE_IDS and not from a retyped list.
+      - "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts"
       - "functions/scripts/jobRoleCatalogSeedCli.js"
       - "functions/scripts/sampleCompany/personaAuthorityDimensions.js"
       - "functions/scripts/seedPersonaAuthorityDimensionsCli.js"
@@ -473,6 +478,11 @@ on:
       - "functions/test/canonicalJobRoleVocabulary.test.mjs"
       - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
       - "functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts"
+      # The governed Job Role WRITER. It was in neither filter: a PR changing createJobRole alone -- including the
+      # supersession refusal that stops a retired position being re-created -- could not trigger either gate that
+      # covers it. employeeJobRolePostgres.test.mjs proves its behaviour; canonicalJobRoleVocabulary.test.mjs reads
+      # it as source to prove the refusal is derived from SUPERSEDED_JOB_ROLE_IDS and not from a retyped list.
+      - "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts"
       - "functions/scripts/jobRoleCatalogSeedCli.js"
       - "functions/scripts/sampleCompany/personaAuthorityDimensions.js"
       - "functions/scripts/seedPersonaAuthorityDimensionsCli.js"

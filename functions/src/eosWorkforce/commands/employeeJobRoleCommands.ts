@@ -5,6 +5,8 @@
 // Retail Sales and National Accounts Sales are distinct catalog entries; nothing collapses them.
 //
 //   createJobRole          { jobRoleId, displayName }                 ACTIVE catalog entry in the actor's tenant
+//                          -- the catalog is TENANT-OPEN (a tenant may mint its own positions) with ONE exception:
+//                             an id RETIRED by the canonical ruling is refused. See refuseSupersededJobRoleId.
 //   updateJobRole          { jobRoleId, displayName?, status? }       rename, or ACTIVE <-> INACTIVE; never deleted
 //   assignEmployeeJobRole  { employeeId, jobRoleId, reason? }         one current primary Job Role, history kept
 //
@@ -23,6 +25,9 @@ import {
   EmployeeCommandError, acceptOnly, appendEmployeeAudit, lockEmployee, optionalReason, refuse, requireId,
   runEmployeeCommand, type EmployeeCommandActor, type EmployeeCommandDeps,
 } from "./employeeCommandKernel";
+// The supersession half of the canonical Job Role vocabulary. Pure data, no I/O -- see below for what is read from it
+// and, more importantly, what is NOT.
+import { SUPERSEDED_JOB_ROLE_IDS } from "../jobRoleVocabulary";
 
 /** The Job Role catalog and assignment capability. Separate from admin.employeeProfile.write by Owner ruling. */
 export const EMPLOYEE_JOB_ROLE_WRITE = "admin.employeeJobRole.write";
@@ -40,6 +45,41 @@ function requireJobRoleId(value: unknown): string {
     refuse("JOB_ROLE_ID_INVALID", "INVALID_INPUT", "jobRoleId must be a stable Job Role id (lowercase letters, digits and hyphens)");
   }
   return value as string;
+}
+
+/**
+ * A RETIRED POSITION MAY NOT BE RE-CREATED (Owner ruling 2026-09-25).
+ *
+ * THE TENANT CATALOG STAYS OPEN. This is deliberately NOT a check that `jobRoleId` is one of the canonical sixteen:
+ * the Owner ruled that EOS supports governed tenant-created business positions, so a tenant minting `field-trainer`
+ * through this command is correct and stays allowed. The canonical sixteen govern the SEED, the Taylor default
+ * catalog, the P01-P16 acceptance mapping and reconciliation expectations -- not the set a tenant may ever create.
+ *
+ * WHAT IS CLOSED is the narrow hole underneath that: the ids the ruling RETIRED. `owner`, `parts-warehouse` and
+ * `accounting` were withdrawn because each named Security authority, a department, or four positions fused into one
+ * (SUPERSEDED_JOB_ROLE_IDS records which, and why). Every one of them is a well-shaped id that passes
+ * requireJobRoleId and, once the canonical seed has run, collides with nothing -- so before this check a caller
+ * could simply create `owner` again and put the Security Role name back in the business-position vocabulary, with
+ * no refusal anywhere. A ruling that only changed what the seed writes would have been a ruling about one script.
+ *
+ * DERIVED FROM THE MAP, NOT RETYPED (Owner instruction). The refused set is exactly the KEYS of
+ * SUPERSEDED_JOB_ROLE_IDS, so retiring a position in the future closes it here with no second edit, and the message
+ * names the map's own `replacedBy` -- which is the thing the caller actually needs in order to proceed.
+ *
+ * AN INPUT VALIDATION, AND ONLY AT CREATION. It grants nothing, alters no capability and adds no authority: the
+ * command still gates on admin.employeeJobRole.write exactly as before. It is also deliberately NOT applied to
+ * updateJobRole or assignEmployeeJobRole. The seed is add-only and never removes an entry, which is the whole reason
+ * SUPERSEDED_JOB_ROLE_IDS exists -- if a pre-ruling revision already created `accounting` in some tenant, that row
+ * must stay renameable, deactivatable, readable in history and assignable-in-place. Refusing creation stops the
+ * vocabulary regrowing; refusing an update would strand a row nobody could then tidy up.
+ */
+function refuseSupersededJobRoleId(jobRoleId: string): void {
+  const superseded = Object.prototype.hasOwnProperty.call(SUPERSEDED_JOB_ROLE_IDS, jobRoleId)
+    ? SUPERSEDED_JOB_ROLE_IDS[jobRoleId]
+    : undefined;
+  if (superseded === undefined) return;
+  refuse("JOB_ROLE_ID_SUPERSEDED", "INVALID_INPUT",
+    `the Job Role '${jobRoleId}' was retired by the canonical Job Role ruling and may not be created again; use ${superseded.replacedBy.join(" or ")} instead`);
 }
 
 function requireDisplayName(value: unknown): string {
@@ -75,12 +115,23 @@ export interface JobRoleCatalogChangeResult {
   readonly jobRole: JobRoleCatalogEntry;
 }
 
-/** Add an ACTIVE Job Role to the actor's tenant catalog. */
+/**
+ * Add an ACTIVE Job Role to the actor's tenant catalog.
+ *
+ * A NEW POSITION, AND NOTHING ELSE. It writes one eos_workforce.job_roles row and one catalog audit event. It creates
+ * no Security Role, grants no capability, writes no Work Eligibility or Operational Scope, confers no workflow
+ * authority, and assigns the position to NO Employee -- a catalog entry is a vocabulary row, and an Employee holds it
+ * only once assignEmployeeJobRole says so.
+ */
 export function createJobRole(deps: EmployeeCommandDeps, actor: EmployeeCommandActor, input: Record<string, unknown>): Promise<JobRoleCatalogChangeResult> {
   return runEmployeeCommand(deps, actor,
     () => {
       const i = acceptOnly(input, ["jobRoleId", "displayName"]);
-      return { jobRoleId: requireJobRoleId(i.jobRoleId), displayName: requireDisplayName(i.displayName) };
+      const jobRoleId = requireJobRoleId(i.jobRoleId);
+      // AFTER the shape check, so a retired id is refused for BEING RETIRED rather than for looking malformed --
+      // every retired id is perfectly well-shaped, which is exactly why this check has to exist.
+      refuseSupersededJobRoleId(jobRoleId);
+      return { jobRoleId, displayName: requireDisplayName(i.displayName) };
     },
     async (db, p, at) => {
       await db.query(

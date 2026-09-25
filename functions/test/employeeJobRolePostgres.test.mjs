@@ -22,7 +22,8 @@ const require = createRequire(import.meta.url);
 const jobRoles = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
 const jobRoleReads = require("../lib/eosWorkforce/reads/jobRoleReads.js");
 const seed = require("../lib/eosWorkforce/migration/jobRoleCatalogSeed.js");
-const { CANONICAL_JOB_ROLE_IDS, SUPERSEDED_JOB_ROLE_IDS } = require("../lib/eosWorkforce/jobRoleVocabulary.js");
+const { CANONICAL_JOB_ROLE_IDS, SUPERSEDED_JOB_ROLE_IDS, CANONICAL_PERSONA_JOB_ROLES }
+  = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 const seedCli = require("../scripts/jobRoleCatalogSeedCli.js");
 const http = require("../lib/eosWorkforce/workforceHttp.js");
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
@@ -270,6 +271,151 @@ test("Job Role catalog, assignment and reads over the real Workforce and policy 
     assert.ok(!remediation.items.some((i) => i.employeeId === "e-edit"), "an Employee with a Job Role is in the remediation set");
     if (remediation.count > 2) assert.ok(remediation.nextCursor);
     await assert.rejects(jobRoleReads.listEmployeesWithoutJobRole(deps, await resolveActor(t2Admin), { cursor: "garbage" }), (e) => e.code === "CURSOR_INVALID");
+  });
+
+  // ════════════════════ THE TENANT CATALOG IS OPEN; THE RETIRED IDS ARE CLOSED ════════════════════
+  //
+  // Owner ruling: EOS supports governed TENANT-CREATED business positions, so `field-trainer` above is correct and
+  // stays allowed -- the canonical sixteen govern the seed, the Taylor default catalog, the P01-P16 acceptance
+  // mapping and reconciliation expectations, NOT the set a tenant may ever create. The one thing that is closed is
+  // the narrow hole underneath: an id the ruling RETIRED must not be creatable again, or a caller could simply put
+  // `owner` -- a live Security Role key -- back into the business-position vocabulary.
+  await t.test("a retired Job Role id is REFUSED at creation, derived from the supersession map and not from a retyped list", async () => {
+    // NON-VACUITY, PART 1: every retired id is a PERFECTLY VALID input by every other rule this command applies.
+    // If any of these were malformed, duplicated or name-clashing, the refusal below could be the wrong refusal.
+    const retired = Object.keys(SUPERSEDED_JOB_ROLE_IDS).sort();
+    assert.deepEqual(retired, ["accounting", "administrator", "dispatcher", "finance-manager", "owner", "parts-warehouse"]);
+    const seeded = new Set((await jobRoleReads.listJobRoles(deps, adminActor, {})).items.map((r) => r.jobRoleId));
+    for (const id of retired) {
+      assert.match(id, /^[a-z][a-z0-9-]{1,62}$/, `${id} must be well-shaped, or the refusal proves nothing`);
+      assert.ok(!seeded.has(id), `${id} is in the catalog, so a create would refuse as a duplicate instead`);
+      assert.ok(!CANONICAL_JOB_ROLE_IDS.includes(id), `${id} must not be canonical`);
+    }
+
+    // NON-VACUITY, PART 2: the SAME call shape, with a tenant id that is merely NEW rather than retired, SUCCEEDS.
+    // So the only difference between acceptance and refusal is membership of the supersession map.
+    const control = await jobRoles.createJobRole(deps, adminActor, { jobRoleId: "shop-foreman", displayName: "Shop Foreman" });
+    assert.equal(control.outcome, "CREATED", "a tenant-created position must still be allowed");
+
+    // Every key of the map is refused, with the named code, whatever display name is offered.
+    for (const id of retired) {
+      const entry = SUPERSEDED_JOB_ROLE_IDS[id];
+      await assert.rejects(
+        jobRoles.createJobRole(deps, adminActor, { jobRoleId: id, displayName: `Resurrected ${id}` }),
+        (e) => e.code === "JOB_ROLE_ID_SUPERSEDED" && e.category === "INVALID_INPUT"
+          // The message names the replacement, because that is what the caller needs in order to proceed.
+          && entry.replacedBy.every((to) => e.message.includes(to)),
+        id);
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.job_roles WHERE id = $1`, [id])).rows[0].n, 0,
+        `the refused id ${id} reached the catalog`);
+    }
+    // The three the pre-ruling launch catalog actually created, named explicitly -- `owner` above all, because it is
+    // the one that is also a live Security Role key.
+    for (const id of ["owner", "parts-warehouse", "accounting"]) assert.ok(retired.includes(id), id);
+
+    // A RETIRED ID IS REFUSED FOR EVERY TENANT, not only the one whose catalog the ruling seeded.
+    await assert.rejects(jobRoles.createJobRole(deps, await resolveActor(t2Admin), { jobRoleId: "owner", displayName: "Owner" }),
+      (e) => e.code === "JOB_ROLE_ID_SUPERSEDED");
+
+    // AND IT IS A REFUSAL AT CREATION ONLY. The seed is add-only and never removes an entry, which is the whole
+    // reason the supersession map exists: a row a pre-ruling revision already created must stay renameable,
+    // deactivatable and readable, or nobody could tidy it up. Proved by inserting one the way that revision would
+    // have and then driving the governed writers over it.
+    await q(`INSERT INTO eos_workforce.job_roles (tenant_id, id, display_name, status, created_by, updated_by)
+             VALUES ('t1', 'accounting', 'Accounting', 'ACTIVE', 'pre-ruling-seed', 'pre-ruling-seed')`);
+    try {
+      assert.equal((await jobRoles.updateJobRole(deps, adminActor, { jobRoleId: "accounting", status: "INACTIVE" })).outcome, "UPDATED",
+        "a pre-ruling row must stay deactivatable");
+      assert.equal((await jobRoles.updateJobRole(deps, adminActor, { jobRoleId: "accounting", displayName: "Accounting (retired)" })).outcome, "UPDATED",
+        "a pre-ruling row must stay renameable");
+      // Creation is still refused even though the row now exists -- the refusal is about the id, not the collision.
+      await assert.rejects(jobRoles.createJobRole(deps, adminActor, { jobRoleId: "accounting", displayName: "Accounting Again" }),
+        (e) => e.code === "JOB_ROLE_ID_SUPERSEDED", "an existing retired row must not turn the refusal into a duplicate error");
+    } finally {
+      await q(`DELETE FROM eos_workforce.job_roles WHERE tenant_id = 't1' AND id = 'accounting'`);
+    }
+  });
+
+  await t.test("creating a tenant Job Role grants ZERO business authority and assigns it to no Employee", async () => {
+    // Invariants 3 and 5 together, as a BEFORE/AFTER snapshot of every authority relation that exists. A Job Role is
+    // a vocabulary row. It is not a Security Role, it grants no capability, it is not Work Eligibility, it is not an
+    // Operational Scope, it binds no workflow, and it does not put itself on anybody.
+    const authorityWorld = async () => ({
+      roles: (await q(`SELECT tenant_id, id, key FROM eos_policy.roles ORDER BY 1, 2`)).rows,
+      roleAssignments: (await q(`SELECT principal_id, role_id, status FROM eos_policy.user_role_assignments ORDER BY 1, 2`)).rows,
+      roleCapabilities: (await q(`SELECT tenant_id, role_id, capability_id FROM eos_policy.role_capabilities ORDER BY 1, 2, 3`)).rows,
+      capabilities: (await q(`SELECT key FROM eos_policy.capabilities ORDER BY 1`)).rows,
+      principalCapabilities: (await q(`SELECT count(*)::int n FROM eos_policy.principal_capabilities`)).rows[0].n,
+      grantConditions: (await q(`SELECT count(*)::int n FROM eos_policy.capability_grant_conditions`)).rows[0].n,
+      roleObjectPermissions: (await q(`SELECT count(*)::int n FROM eos_policy.role_object_permissions`)).rows[0].n,
+      workflowRoleBindings: (await q(`SELECT count(*)::int n FROM eos_policy.workflow_role_bindings`)).rows[0].n,
+      workflowActions: (await q(`SELECT count(*)::int n FROM eos_policy.workflow_actions`)).rows[0].n,
+      workEligibility: (await q(`SELECT employee_id, qualification_code, effective_to FROM eos_workforce.employee_work_eligibility ORDER BY 1, 2`)).rows,
+      operationalScopes: (await q(`SELECT employee_id, scope_type, scope_id, effective_to FROM eos_workforce.employee_operational_scopes ORDER BY 1, 2, 3`)).rows,
+      jobRoleAssignments: (await q(`SELECT employee_id, job_role_id, effective_to FROM eos_workforce.employee_job_role_assignments ORDER BY 1, 2`)).rows,
+      employees: (await q(`SELECT id, employment_status::text, operating_company_id, job_title, updated_at FROM eos_workforce.employees ORDER BY 1`)).rows,
+      reporting: (await q(`SELECT count(*)::int n FROM eos_workforce.employee_reporting_relationships`)).rows[0].n,
+      links: (await q(`SELECT count(*)::int n FROM eos_policy.employee_principal_links`)).rows[0].n,
+    });
+
+    // NON-VACUITY: the snapshot must actually be watching something, or "nothing changed" is trivially true.
+    const before = await authorityWorld();
+    assert.ok(before.roles.length > 0 && before.roleCapabilities.length > 0 && before.capabilities.length > 0);
+    assert.ok(before.jobRoleAssignments.length > 0, "the snapshot must contain assignments, or it cannot show none were added");
+
+    const created = await jobRoles.createJobRole(deps, adminActor, { jobRoleId: "field-trainer-2", displayName: "Field Trainer II" });
+    assert.deepEqual([created.outcome, created.jobRole.status], ["CREATED", "ACTIVE"]);
+
+    const after = await authorityWorld();
+    assert.deepEqual(after, before,
+      "creating a Job Role changed a Security Role, a grant, a capability, a workflow binding, Work Eligibility, an Operational Scope, a Job Role assignment, an Employee or a Principal link");
+
+    // The ONLY effects: one catalog row, and one catalog audit event naming the Job Role -- never an Employee.
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.job_roles WHERE tenant_id = 't1' AND id = 'field-trainer-2'`)).rows[0].n, 1);
+    const createAudits = (await q(`SELECT action, target_kind, target_id FROM eos_policy.audit_events WHERE target_id = 'field-trainer-2'`)).rows;
+    assert.deepEqual(createAudits, [{ action: "jobRole.catalog.create", target_kind: "jobRole", target_id: "field-trainer-2" }]);
+
+    // `field-trainer`, the position subtest 7 created, carries the same nothing -- named because the ruling names it.
+    for (const tenantPosition of ["field-trainer", "field-trainer-2", "shop-foreman"]) {
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.employee_job_role_assignments WHERE job_role_id = $1`, [tenantPosition])).rows[0].n, 0,
+        `${tenantPosition} was assigned to an Employee by its own creation`);
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.roles WHERE key = $1`, [tenantPosition])).rows[0].n, 0,
+        `${tenantPosition} became a Security Role`);
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.capabilities WHERE key LIKE '%' || $1 || '%'`, [tenantPosition])).rows[0].n, 0,
+        `${tenantPosition} became a capability`);
+      // Invariant 8: a tenant position is not a canonical position and can never be a P01-P16 acceptance mapping.
+      assert.ok(!CANONICAL_JOB_ROLE_IDS.includes(tenantPosition));
+      assert.ok(!Object.values(CANONICAL_PERSONA_JOB_ROLES).includes(tenantPosition),
+        `${tenantPosition} appears in the P01-P16 mapping, which admits only the canonical sixteen`);
+    }
+  });
+
+  await t.test("createJobRole is confined to the actor's tenant: no caller-supplied tenant, no cross-tenant reach, no unauthorized creation", async () => {
+    // Test 8 (cross-tenant) and test 7 (unauthorized) for the CATALOG writer specifically. The capability is never
+    // granted to make anything pass here -- the denial is the assertion.
+    const t2Actor = await resolveActor(t2Admin);
+    // A caller may not name the tenant. The tenant is the ACTOR's, resolved, never input.
+    for (const extra of ["tenantId", "principalId", "capabilities", "status", "createdBy"]) {
+      await assert.rejects(jobRoles.createJobRole(deps, adminActor, { jobRoleId: "smuggled", displayName: "Smuggled", [extra]: "t2" }),
+        (e) => e.code === "INPUT_FIELD_NOT_ACCEPTED", extra);
+    }
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.job_roles WHERE id = 'smuggled'`)).rows[0].n, 0);
+    // The same id may exist in two tenants and they are separate rows; neither tenant sees the other's.
+    assert.equal((await jobRoles.createJobRole(deps, t2Actor, { jobRoleId: "shop-foreman", displayName: "Shop Foreman" })).outcome, "CREATED");
+    assert.deepEqual((await q(`SELECT tenant_id FROM eos_workforce.job_roles WHERE id = 'shop-foreman' ORDER BY 1`)).rows.map((r) => r.tenant_id), ["t1", "t2"]);
+    assert.ok(!(await jobRoleReads.listJobRoles(deps, t2Actor, {})).items.some((r) => r.jobRoleId === "field-trainer"),
+      "t2 can see a Job Role only t1 created");
+    // An actor claiming a tenant it is not a member of is refused, and creates nothing.
+    await assert.rejects(jobRoles.createJobRole(deps, { ...adminActor, tenantId: "t2" }, { jobRoleId: "foreign-position", displayName: "Foreign Position" }),
+      (e) => e.code === "ACTOR_NOT_TENANT_MEMBER");
+    // Without admin.employeeJobRole.write there is no creation at all. `gm` holds generalManager and nothing here.
+    const gmActor = await resolveActor(gm);
+    assert.ok(!gmActor.capabilities.has(jobRoles.EMPLOYEE_JOB_ROLE_WRITE), "the fixture must not already grant the capability");
+    await assert.rejects(jobRoles.createJobRole(deps, gmActor, { jobRoleId: "unauthorized-position", displayName: "Unauthorized Position" }),
+      (e) => e.code === "CAPABILITY_REQUIRED");
+    for (const id of ["foreign-position", "unauthorized-position"]) {
+      assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.job_roles WHERE id = $1`, [id])).rows[0].n, 0, id);
+    }
   });
 
   await t.test("transport: Job Role reads and commands served; no Firebase module loads", async () => {

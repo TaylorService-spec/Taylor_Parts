@@ -200,8 +200,11 @@ test("assignable Employees: qualification, lifecycle and account, each independe
   });
 
   await t.test("JOB ROLE alone makes nobody assignable, and the read never consults it", async () => {
-    await jobRoles.createJobRole(deps, admin, { jobRoleId: "parts-warehouse", displayName: "Parts / Warehouse" });
-    await jobRoles.assignEmployeeJobRole(deps, admin, { employeeId: "e-unqualified", jobRoleId: "parts-warehouse" });
+    // ANY Job Role will do here -- the claim is that holding one confers no assignability. It used to be
+    // `parts-warehouse`, borrowed from the pre-ruling launch catalog; the 2026-09-25 canonical ruling retired that id
+    // (one entry for four distinct positions) and createJobRole now refuses it, so this is one of the four it became.
+    await jobRoles.createJobRole(deps, admin, { jobRoleId: "parts-associate", displayName: "Parts Associate" });
+    await jobRoles.assignEmployeeJobRole(deps, admin, { employeeId: "e-unqualified", jobRoleId: "parts-associate" });
     assert.ok(!(await ids({ qualificationCode: "WAREHOUSE_OPERATIONS" })).includes("e-unqualified"),
       "a Job Role conferred assignability");
     const src = require("node:fs").readFileSync(`${FUNCTIONS_DIR}/src/eosWorkforce/reads/assignableEmployeeReads.ts`, "utf8")

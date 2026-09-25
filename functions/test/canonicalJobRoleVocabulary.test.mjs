@@ -374,3 +374,71 @@ test("a position exists whether or not anyone currently holds it", () => {
   const officeManager = SAMPLE_COMPANY.employees.find((e) => e.key === "office-manager");
   assert.equal(restricted.jobRole, officeManager.jobRole);
 });
+
+// ════════════════════════════ 5. THE TENANT CATALOG IS OPEN; RETIRED IDS ARE CLOSED ════════════════════════════
+//
+// Owner ruling: EOS supports governed TENANT-CREATED business positions, so `createJobRole` is deliberately NOT
+// fenced to the canonical sixteen -- a tenant minting `field-trainer` is correct. The canonical sixteen govern the
+// seed, the Taylor default catalog, the P01-P16 acceptance mapping and reconciliation expectations. What IS closed is
+// the hole underneath: an id the ruling RETIRED must not be creatable again, or `owner` -- a live Security Role key --
+// walks back into the business-position vocabulary. The behaviour is proved against a real database by
+// test/employeeJobRolePostgres.test.mjs; what is pinned here is that the refusal is DERIVED from the one
+// supersession map and not from a second, retyped list that would drift away from it.
+
+test("createJobRole derives its refusal from the supersession map and retypes no list", () => {
+  const text = source("src/eosWorkforce/commands/employeeJobRoleCommands.ts");
+  assert.match(text, /import \{ SUPERSEDED_JOB_ROLE_IDS \} from "\.\.\/jobRoleVocabulary"/,
+    "the writer must read the one supersession map");
+  assert.match(text, /JOB_ROLE_ID_SUPERSEDED/, "the refusal must carry its own named code, not a generic invalid-input");
+  const executable = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  // NOT retyped: no retired id appears as a literal in the executable source. The derivation is over the map's KEYS,
+  // so a future retirement closes creation here with no second edit -- and a second edit is what would rot.
+  for (const retired of Object.keys(vocabulary.SUPERSEDED_JOB_ROLE_IDS)) {
+    assert.ok(!executable.includes(`"${retired}"`) && !executable.includes(`'${retired}'`),
+      `${retired} is written out as a literal in the governed writer; the refused set must be the map's keys`);
+  }
+  // Nor is the CANONICAL list consulted: fencing creation to the sixteen is exactly what the ruling forbids.
+  for (const id of RULED_JOB_ROLE_IDS) {
+    assert.ok(!executable.includes(`"${id}"`), `${id} is named in the writer, which would fence the tenant catalog`);
+  }
+  assert.ok(!/CANONICAL_JOB_ROLE_IDS|CANONICAL_JOB_ROLES\b/.test(text),
+    "the writer must not consult the canonical membership: a tenant may create a position of its own");
+  // AN INPUT VALIDATION, NOT AN AUTHORITY CHANGE. The writer still gates on the same one capability and registers none.
+  assert.match(text, /export const EMPLOYEE_JOB_ROLE_WRITE = "admin\.employeeJobRole\.write";/);
+  // The capability STRING appears once in executable source -- that one export -- and all four writers gate on the
+  // constant. The supersession check added no second capability and no alternative gate.
+  assert.equal((executable.match(/admin\.employeeJobRole\.write/g) ?? []).length, 1, "a second capability string appeared");
+  assert.equal((executable.match(/EMPLOYEE_JOB_ROLE_WRITE/g) ?? []).length, 4, "the export plus one gate per writer");
+  assert.doesNotMatch(executable, /role_capabilities|INSERT INTO eos_policy\.roles|user_role_assignments/,
+    "the Job Role writer must touch no Security Role, grant or capability row");
+});
+
+test("the refusal is at CREATION only: update and assign still reach a pre-ruling row", () => {
+  // The seed is add-only and never removes an entry, which is the whole reason SUPERSEDED_JOB_ROLE_IDS exists. A row
+  // a pre-ruling revision already created must stay renameable, deactivatable and readable, so the supersession check
+  // belongs to createJobRole and nowhere else. Pinned structurally: the refusal is called exactly once, by create.
+  const text = source("src/eosWorkforce/commands/employeeJobRoleCommands.ts");
+  const calls = text.match(/^\s*refuseSupersededJobRoleId\(/gm) ?? [];
+  assert.equal(calls.length, 1, "the supersession refusal must apply to createJobRole alone");
+  const createBody = text.slice(text.indexOf("export function createJobRole"), text.indexOf("export function updateJobRole"));
+  assert.match(createBody, /refuseSupersededJobRoleId\(jobRoleId\);/, "createJobRole must be the caller");
+});
+
+test("INVARIANT 8: the P01-P16 mapping admits only canonical positions, never a tenant-created one", () => {
+  // A tenant position is a real Job Role and confers nothing; what it may never be is an ACCEPTANCE expectation. The
+  // persona mapping is the ruling's own table, so a tenant-minted id appearing in it would mean a tenant could define
+  // what the acceptance personas are.
+  for (const [persona, jobRoleId] of Object.entries(vocabulary.CANONICAL_PERSONA_JOB_ROLES)) {
+    assert.ok(RULED_JOB_ROLE_IDS.includes(jobRoleId), `${persona} -> ${jobRoleId} is outside the ruled sixteen`);
+  }
+  for (const tenantPosition of ["field-trainer", "field-trainer-2", "shop-foreman", "astronaut"]) {
+    assert.ok(!vocabulary.isCanonicalJobRoleId(tenantPosition), tenantPosition);
+    assert.ok(!Object.values(vocabulary.CANONICAL_PERSONA_JOB_ROLES).includes(tenantPosition),
+      `${tenantPosition} appears in the P01-P16 mapping`);
+    assert.ok(!vocabulary.CANONICAL_JOB_ROLE_MANIFEST_KEYS.includes(tenantPosition.replace(/-/g, "_").toUpperCase()),
+      `${tenantPosition} reached the manifest vocabulary`);
+  }
+  // And no fixture Employee holds a tenant-created position: the acceptance population uses the canonical sixteen.
+  const canonical = new Set(vocabulary.CANONICAL_JOB_ROLE_MANIFEST_KEYS);
+  for (const e of SAMPLE_COMPANY.employees) assert.ok(canonical.has(e.jobRole), `${e.key} -> ${e.jobRole}`);
+});
