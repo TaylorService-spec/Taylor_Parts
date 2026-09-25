@@ -364,8 +364,11 @@ export function dashboardSurfaceFor({ role = null, operationalContext = null } =
  * being defined by whoever owns that domain, NOT this file pointing a tile at a near-enough grant.
  *
  * Mirrors functions/src/eosOps/experienceAuthority.ts EXPERIENCE_SURFACE_GAPS, which already names
- * `dashboards.salesperson` as composed client-side "from role literals and hasCapability". This is
- * the same finding, itemised.
+ * `dashboard.myPipeline` -- kind NOT_A_DESTINATION -- as composed client-side "from role literals and
+ * hasCapability". This is the same finding, itemised. (The key was written here as
+ * `dashboards.salesperson`, which has never existed in that register; a cross-reference to a key
+ * nobody declares cannot be checked from either side, which is the same failure mode as the false
+ * reason that register's `commercial.agreements` entry used to carry.)
  */
 export const EOS_DASHBOARD_PROJECTION_GAPS = Object.freeze([
   Object.freeze({
