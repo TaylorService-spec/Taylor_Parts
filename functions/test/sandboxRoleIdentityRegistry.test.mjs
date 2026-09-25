@@ -16,6 +16,7 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import test from "node:test";
 
@@ -31,6 +32,14 @@ const bootstrap = require("../scripts/sandboxPersonaBootstrap.js");
 const REGISTRY = require("../../config/sandboxRoleIdentityRegistry.json");
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
+
+/** A DEPLOYED command set: present and callable. Nothing here writes -- the point is availability. */
+const DEPLOYED_COMMANDS = Object.fromEntries(
+  ["createJobRole", "createEmployee", "linkEmployeePrincipal", "relinkEmployeePrincipal", "assignEmployeeJobRole"].map((n) => [
+    n,
+    async () => ({ outcome: "APPLIED" }),
+  ]),
+);
 const roleByKey = (key) => REGISTRY.roles.find((r) => r.key === key);
 const employee = (m, key) => m.employees.find((e) => e.key === key);
 const principal = (m, key) => m.principals.find((p) => p.employee === key);
@@ -312,7 +321,7 @@ test("(8) production and certification are refused, by name before the editable 
     assert.throws(() => bootstrap.assertSandboxProject(empty), (err) => err.code === "PROJECT_ID_REQUIRED");
   }
   // The literal deny list must be evaluated BEFORE the environment registry, which is editable.
-  const src = require("node:fs").readFileSync(require.resolve("../scripts/sandboxPersonaBootstrap.js"), "utf8");
+  const src = readFileSync(require.resolve("../scripts/sandboxPersonaBootstrap.js"), "utf8");
   assert.ok(
     src.indexOf("FORBIDDEN_PROJECT_IDS.includes(projectId)") < src.indexOf('JSON.parse(fs.readFileSync(envPath'),
     "the literal deny list must run before the editable registry is read",
@@ -326,7 +335,7 @@ test("(8) production and certification are refused, by name before the editable 
 // ======================================================================================
 
 test("(9) the bootstrap creates no Firebase business authority and no secret", () => {
-  const src = require("node:fs").readFileSync(require.resolve("../scripts/sandboxPersonaBootstrap.js"), "utf8");
+  const src = readFileSync(require.resolve("../scripts/sandboxPersonaBootstrap.js"), "utf8");
   // Strip comments: this file DISCUSSES what it must not do, and prose must not satisfy a code fence.
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
   for (const forbidden of [
@@ -366,7 +375,12 @@ test("(9c) no output carries a secret, and a plan given sentinel values leaks no
   });
   const serialized = JSON.stringify(result) + bootstrap.formatPlan(result);
   assert.ok(!serialized.includes(SENTINEL), "a supplied value reached the plan output");
-  assert.ok(!/password/i.test(bootstrap.formatPlan(result)), "the summary must not mention a password at all");
+  // Deliberately NOT a blunt /password/i scan: the plan legitimately names the operation
+  // `createPasswordlessAuthAccount` and the step detail says it sets no password, and a test that
+  // forbids the WORD would push that meaning out of the report to stay green. What must never appear
+  // is a VALUE, so the output is checked against the sentinel and against the repository's own
+  // generated-password shape.
+  assert.doesNotMatch(serialized, /Sbx![A-Za-z0-9_-]{8,}/, "a generated-password-shaped token reached the output");
 });
 
 // ======================================================================================
@@ -381,7 +395,8 @@ test("every role runs all ten steps, in order, and ends with a verdict", () => {
   for (const row of result.rows) {
     assert.deepEqual(row.steps.map((s) => s.step), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `${row.key} step order`);
     assert.equal(row.steps.at(-1).name, "VERDICT");
-    assert.ok([bootstrap.STATES.READY, bootstrap.STATES.BLOCKED].includes(row.state));
+    assert.ok([bootstrap.STATES.READY, bootstrap.STATES.BLOCKED].includes(row.verdict));
+    assert.ok(Object.values(bootstrap.ROLE_STATES).includes(row.state), `${row.key} state ${row.state} is not a declared state`);
   }
 });
 
@@ -405,15 +420,15 @@ test("a uid that disagrees with the registry BLOCKS rather than being silently a
     authAccountsByEmail: { "admin@sandbox.invalid": { uid: "someOtherUidEntirely000000000" } },
   });
   const admin = result.rows.find((r) => r.key === "administrator");
-  assert.equal(admin.state, bootstrap.STATES.BLOCKED);
-  assert.ok(admin.blockers.some((b) => b.code === "UID_MISMATCH"), "an address/uid disagreement must block");
+  assert.equal(admin.verdict, bootstrap.STATES.BLOCKED);
+  assert.ok(admin.states.includes(bootstrap.ROLE_STATES.AUTH_UID_MISMATCH), "an address/uid disagreement must block");
 });
 
 test("a disabled account blocks; a credential already present is preserved, never rotated", () => {
   const disabled = bootstrap.plan({
     authAccountsByEmail: { "admin@sandbox.invalid": { uid: roleByKey("administrator").uid, disabled: true } },
   });
-  assert.ok(disabled.rows.find((r) => r.key === "administrator").blockers.some((b) => b.code === "ACCOUNT_DISABLED"));
+  assert.ok(disabled.rows.find((r) => r.key === "administrator").states.includes(bootstrap.ROLE_STATES.AUTH_ACCOUNT_DISABLED));
 
   const withCred = bootstrap.plan({
     authAccountsByEmail: { "admin@sandbox.invalid": { uid: roleByKey("administrator").uid } },
@@ -424,32 +439,61 @@ test("a disabled account blocks; a credential already present is preserved, neve
   assert.match(admin.steps.find((s) => s.step === 5).detail, /PRESERVE, never rotate/);
 });
 
-test("steps 6-8 report BLOCKED_PENDING_DEPLOY until the governed commands are injected", () => {
+test("DIRECTION A -- commands genuinely absent reports GOVERNED_COMMANDS_UNAVAILABLE", () => {
   const observations = {
     authAccountsByEmail: Object.fromEntries(REGISTRY.roles.filter((r) => r.accountExists).map((r) => [r.authEmail, { uid: r.uid }])),
   };
-  const undeployed = bootstrap.plan(observations);
-  for (const row of undeployed.rows) {
-    for (const step of [6, 7, 8]) {
-      assert.equal(row.steps.find((s) => s.step === step).result, "BLOCKED_PENDING_DEPLOY", `${row.key} step ${step}`);
-    }
-    assert.ok(row.blockers.some((b) => b.code === "GOVERNED_COMMANDS_NOT_DEPLOYED"));
+  const result = bootstrap.plan(observations); // no governedCommands injected
+  assert.equal(result.governedAvailable, false);
+  assert.deepEqual([...result.missingCommands].sort(), [...bootstrap.GOVERNED_COMMANDS].sort());
+  for (const row of result.rows) {
+    assert.ok(row.states.includes(bootstrap.ROLE_STATES.GOVERNED_COMMANDS_UNAVAILABLE), `${row.key} must say the commands are unavailable`);
   }
-  assert.equal(undeployed.counts.ready, 0, "nothing can be READY before the governed chain is deployable");
+  // And it plans NO governed operation it could not execute.
+  assert.equal(result.operations.filter((o) => o.command !== "createPasswordlessAuthAccount").length, 0);
+});
 
-  // With the commands present AND the chain observed, a role reaches READY -- so the blocker above is
-  // really about deployment and not about something permanently broken.
-  const role = roleByKey("administrator");
-  const deployed = bootstrap.plan({
-    authAccountsByEmail: { [role.authEmail]: { uid: role.uid } },
-    principalsByUid: { [role.uid]: { principalId: "p-1", employeeId: "emp-1", jobRole: role.jobRole, securityRoles: ["admin"] } },
-    credentialKeyNames: [role.authEmail],
-    governedCommands: { createEmployee: () => {}, ensurePrincipal: () => {}, assignJobRole: () => {} },
+test("DIRECTION B -- commands DEPLOYED but state unreconciled reports what is MISSING, never the deploy code", () => {
+  // This is the defect being fixed. The old code collapsed every unsatisfied step into
+  // GOVERNED_COMMANDS_NOT_DEPLOYED, which was a guess at a CAUSE; worse, once deployed, a role with no
+  // Principal at all reported READY because an unsatisfied step raised no blocker.
+  const result = bootstrap.plan({
+    authAccountsByEmail: Object.fromEntries(REGISTRY.roles.filter((r) => r.accountExists).map((r) => [r.authEmail, { uid: r.uid }])),
+    jobRoleCatalog: [], // live measurement: eos_workforce.job_roles held 0 rows
+    governedCommands: DEPLOYED_COMMANDS,
   });
-  const admin = deployed.rows.find((r) => r.key === "administrator");
-  assert.equal(admin.state, bootstrap.STATES.READY, JSON.stringify(admin.blockers));
-  assert.equal(admin.steps.find((s) => s.step === 8).result, "PRESENT");
-  assert.match(admin.steps.find((s) => s.step === 9).detail, /reported, never granted/);
+  assert.equal(result.governedAvailable, true);
+  for (const row of result.rows) {
+    assert.ok(
+      !row.states.includes(bootstrap.ROLE_STATES.GOVERNED_COMMANDS_UNAVAILABLE),
+      `${row.key} must NOT claim the commands are unavailable when they are deployed`,
+    );
+  }
+
+  // The Owner's named example, exactly.
+  const finance = result.rows.find((r) => r.key === "financeAccounting");
+  for (const expected of [
+    bootstrap.ROLE_STATES.PRINCIPAL_MISSING,
+    bootstrap.ROLE_STATES.EMPLOYEE_MISSING,
+    bootstrap.ROLE_STATES.JOB_ROLE_ASSIGNMENT_MISSING,
+  ]) {
+    assert.ok(finance.states.includes(expected), `financeAccounting must report ${expected}`);
+  }
+  assert.ok(!finance.states.includes("GOVERNED_COMMANDS_NOT_DEPLOYED"), "the retired code must never appear");
+  assert.ok(!finance.states.includes(bootstrap.ROLE_STATES.GOVERNED_COMMANDS_UNAVAILABLE));
+
+  // An empty catalog is its own state, distinct from a missing assignment: seeding a catalog and
+  // assigning from it are different fixes, and one code for both sends the operator to the wrong one.
+  assert.ok(finance.states.includes(bootstrap.ROLE_STATES.JOB_ROLE_CATALOG_MISSING));
+  assert.equal(result.counts.jobRoleCatalogMissing, 16);
+  assert.equal(result.operations.filter((o) => o.command === "createJobRole").length, 16);
+});
+
+test("the retired GOVERNED_COMMANDS_NOT_DEPLOYED code appears nowhere in the source", () => {
+  const src = readFileSync(require.resolve("../scripts/sandboxPersonaBootstrap.js"), "utf8");
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+  assert.ok(!code.includes("GOVERNED_COMMANDS_NOT_DEPLOYED"), "the false blocker must be gone from code");
+  assert.ok(!code.includes("BLOCKED_PENDING_DEPLOY"));
 });
 
 test("a Job Role conflict blocks: one identity may not hold a Job Role the registry does not declare", () => {
@@ -460,8 +504,8 @@ test("a Job Role conflict blocks: one identity may not hold a Job Role the regis
     governedCommands: { createEmployee: () => {}, ensurePrincipal: () => {}, assignJobRole: () => {} },
   });
   const admin = result.rows.find((r) => r.key === "administrator");
-  assert.equal(admin.state, bootstrap.STATES.BLOCKED);
-  assert.ok(admin.blockers.some((b) => b.code === "JOB_ROLE_CONFLICT"));
+  assert.equal(admin.verdict, bootstrap.STATES.BLOCKED);
+  assert.ok(admin.states.includes(bootstrap.ROLE_STATES.JOB_ROLE_CONFLICT));
 });
 
 // ======================================================================================
