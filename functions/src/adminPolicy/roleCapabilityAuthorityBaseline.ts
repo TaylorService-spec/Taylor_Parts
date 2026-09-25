@@ -2,7 +2,8 @@
 //
 // ════════════════════ WHY THIS FILE EXISTS ════════════════════
 //
-// `eos_policy.role_capabilities` holds 387 rows in nonprod. Only 258 of them carry a
+// `eos_policy.role_capabilities` held 387 rows in nonprod when this baseline was established. Only
+// 258 of them carried a
 // `granted_by` of the form `migration:<id>`; the other 129 were written by governed operator
 // commands (the Sample Company seed's grant reconcile, the Employee capability reconcile, an
 // Owner-ruled reconcile run, and one Administration activation made by an admin Principal).
@@ -44,6 +45,25 @@
 // catalog AND stamped in nonprod with a later reconcile actor; they are MIGRATION_BACKED, because
 // the migration is what a clean rebuild uses to produce them. `observedGrantedBy` on each entry
 // preserves the live stamp so the secondary evidence is never lost.
+//
+// ════════════════════ WHAT THE NUMBER MEANS AFTER RULING E ════════════════════
+//
+// This file now declares 413 pairs, and nonprod holds 387. That difference is NAMED, not drift.
+//
+// Owner ruling E: a governed capability/grant activation and the authority baseline that explains
+// it MUST land as one change -- migration, baseline, migration-chain proof, rebuild-exactness
+// proof, tests -- because the rebuild guard replays EVERY migration in `migrations/`, so a
+// grant-bearing migration landed alone makes the rebuild produce rows the baseline does not declare
+// and the guard reports MISSING DECLARATION. Migration 1762300800000 (the Owner-approved
+// corrections, the edit-without-read reconciliation and Reporting Slice 1) therefore arrived
+// together with its 26 rows here.
+//
+// So the baseline measures WHAT A DETERMINISTIC REBUILD OF THIS REPOSITORY PRODUCES. `deployment`
+// in the JSON keeps the other question separately answerable: `measuredInNonprodTotal` 387,
+// `notYetAppliedToNonprod` naming the one migration the deploy has not run. AN2 -- DO NOT BLESS
+// LIVE DRIFT -- is untouched by this: drift is a row in the DATABASE that nothing in the repository
+// explains, and this is the opposite, a row in the REPOSITORY the database has not run yet,
+// attributable to exactly one migration and removable by its guarded down.
 //
 // ════════════════════ THE DETERMINISTIC REBUILD PIPELINE ════════════════════
 //
@@ -126,6 +146,16 @@ export const AUTHORITY_BASELINE_GRANTS = GRANTS;
 /** The measurement this baseline was established from. */
 export const AUTHORITY_BASELINE_MEASURED_AT = baseline.measuredAt;
 export const AUTHORITY_BASELINE_TENANT_KEY = baseline.tenantKey;
+
+/**
+ * THE TWO QUESTIONS, KEPT SEPARATE. `AUTHORITY_BASELINE_GRANTS` is what a deterministic rebuild of
+ * this repository produces. These record what the live environment held when it was last measured
+ * and which grant-bearing migrations the deploy has not run yet, so "what does nonprod hold RIGHT
+ * NOW" never has to be inferred by subtracting one from the other in somebody's head.
+ */
+export const AUTHORITY_BASELINE_NONPROD_MEASURED_TOTAL: number = baseline.deployment.measuredInNonprodTotal;
+export const AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS: readonly string[] =
+  Object.freeze([...baseline.deployment.notYetAppliedToNonprod]);
 
 /**
  * The migration whose replay needs a seeded tenant. Everything BEFORE it runs against the empty

@@ -134,7 +134,15 @@ async function rebuildAuthority(pool, { includeActivation = true, extraGlobalPai
 
 test("every grant carries exactly one canonical source and NOTHING is unexplained", () => {
   const counts = countsBySource();
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 387);
+  // 387 -> 413 (MIGRATION_BACKED 329 -> 355): migration 1762300800000, the authority activation
+  // vehicle. Owner ruling E makes the grant migration and the baseline that explains it ONE change,
+  // so this number moves when a migration lands, never afterwards and never separately. The 26 rows
+  // are the ten Owner-approved corrections lane BK recorded as pending, the thirteen
+  // edit-without-read reads ruling B reconciles, and Reporting Slice 1's three.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 413);
+  assert.deepEqual(counts, {
+    MIGRATION_BACKED: 355, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+  });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);
   assert.equal(counts.UNEXPLAINED, 0, "an unexplained grant is a governance failure, not a category");
@@ -226,8 +234,13 @@ test("no NONPROD activation key is declared by the Role catalog -- the activatio
     "a legacy Role permission array naming workOrder.lifecycle.* would manufacture an owner grant the ruling never made");
 });
 
-test("the Role catalog declares 32 pairs the environment has not activated, and they are NOT authority", () => {
-  assert.equal(CATALOG_DECLARED_NOT_ACTIVATED.length, 32);
+test("the Role catalog declares 30 pairs the environment has not activated, and they are NOT authority", () => {
+  // 32 -> 30: migration 1762300800000 ACTIVATED inventoryPutAwayOperator/inventory.placement.record
+  // and inventoryStockRelocationOperator/inventory.stock.relocate (Owner ruling S2 -- the operating
+  // write belongs to the FUNCTIONAL Role that performs the work). A pair cannot be both authority
+  // and a recorded gap, so activating one must REMOVE it from here; the assertion below is what
+  // makes that structural rather than remembered.
+  assert.equal(CATALOG_DECLARED_NOT_ACTIVATED.length, 30);
   const authority = new Set(nonprodAuthorityGrants().map(pairId));
   for (const p of CATALOG_DECLARED_NOT_ACTIVATED) {
     assert.ok(!authority.has(pairId(p)), `${p.roleKey}/${p.capabilityKey} must not be in the authority baseline`);
@@ -275,8 +288,20 @@ test("the rebuild without the activation phase is GLOBAL authority, and the five
       const rebuilt = await rebuildAuthority(pool, { includeActivation: false });
       assertAuthorityRebuildMatches(globalAuthorityGrants(), rebuilt);
       assert.equal(rebuilt.length, AUTHORITY_BASELINE_GRANTS.length - NONPROD_ACTIVATED_CAPABILITY_GRANTS.length);
-      const keys = new Set(rebuilt.map((r) => r.capabilityKey));
-      assert.ok(!keys.has("workOrder.lifecycle.dispatch"), "an activation must never appear in a global rebuild");
+      // PAIR-LEVEL, not key-level, and the distinction became load-bearing with migration
+      // 1762300800000: Owner ruling S6 granted workOrder.lifecycle.dispatch and .cancel to
+      // fieldManager as GLOBAL authority, so the KEY now legitimately appears in a global rebuild
+      // while admin's and dispatcher's rows on the same key remain a nonprod-only activation. What
+      // must never appear is an activated (Role, capability) PAIR -- which is exactly what
+      // assertNoEnvironmentActivationInGlobalAuthority means, and asserting the key instead would
+      // have been the cruder check passing for the wrong reason.
+      const rebuiltPairs = new Set(rebuilt.map((r) => `${r.roleKey}\u0000${r.capabilityKey}`));
+      for (const p of NONPROD_ACTIVATED_CAPABILITY_GRANTS) {
+        assert.ok(!rebuiltPairs.has(`${p.roleKey}\u0000${p.capabilityKey}`),
+          `${p.roleKey}/${p.capabilityKey} is an environment activation and must never appear in a global rebuild`);
+      }
+      assert.ok(rebuiltPairs.has(`fieldManager\u0000workOrder.lifecycle.dispatch`),
+        "...while the Role the Owner granted it to globally IS present, so this is not vacuous");
     } finally {
       await pool.end();
     }

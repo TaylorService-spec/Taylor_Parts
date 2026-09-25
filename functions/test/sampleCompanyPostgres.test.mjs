@@ -203,8 +203,20 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // grant carry a predicate without putting a condition column on role_capabilities -- and inserts
 // ZERO rows by Owner ruling. It registers no capability and writes no grant, so every count below
 // is unchanged and only the migration count moves.
-const PINNED_LAST_MIGRATION = "1762214400000_capability-grant-conditions";
-const PINNED_MIGRATION_COUNT = 50;
+//
+// Moved deliberately again for 1762300800000 (THE AUTHORITY ACTIVATION VEHICLE): the Owner-approved
+// authority corrections, the edit-without-read reconciliation and Reporting Slice 1, landed as ONE
+// change with the authority baseline that explains them (Owner ruling E). It REGISTERS THREE
+// capabilities -- receivingOrder.record.read, workOrder.record.read and reportDefinition.read -- so
+// the vocabulary count moves 76 -> 79 and is reconciled in the manifest below. Its 26 Role grants
+// write NOTHING here, for the same reason every grant before them wrote nothing: this fixture
+// migrates a clean database and seeds afterwards, so no Role exists at migration time. Its CRED
+// projection reconcile writes nothing here either, for the stronger reason that no tenant exists at
+// migration time, so `objects` is empty and the statement matches no row. One new Object,
+// `reportDefinition`, joins the governed seed (39 -> 40), and the Sample Company seed writes no
+// report definition, so every row count asserted below is unchanged.
+const PINNED_LAST_MIGRATION = "1762300800000_authority-activation-and-reporting-read";
+const PINNED_MIGRATION_COUNT = 51;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

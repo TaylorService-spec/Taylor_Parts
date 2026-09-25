@@ -96,9 +96,31 @@ const grantStatementsInChain = () =>
  *     which refuses to report an exact population it did not actually read.
  */
 const WORKFLOW_READ_GRANTEES = Object.freeze(["admin", "owner"]);
+
+/**
+ * THE WORK ORDER LIFECYCLE HOLD, AS THE OWNER NOW STATES IT.
+ *
+ * The same pattern, for the same reason. The hold used to be total on all three lifecycle keys.
+ * Owner ruling S6 released exactly two of them, to exactly one Role:
+ *
+ *     workOrder.lifecycle.dispatch -> fieldManager.  workOrder.lifecycle.cancel -> fieldManager.
+ *     workOrder.lifecycle.complete -> NOBODY, and it stays in HELD_CAPABILITIES below.
+ *
+ * COMPLETION IS NOT SCHEDULING. Dispatch and cancel are scheduling authority: deciding WHEN work
+ * happens and whether it happens at all. Completion is execution attestation -- the person who did
+ * the work says it is done. A manager who may both dispatch and complete can close work nobody
+ * performed, which is the exact control this split exists to keep.
+ *
+ * admin and dispatcher hold dispatch and cancel in nonprod through the Wave 6 ENVIRONMENT
+ * ACTIVATION, not through any migration, so they are correctly absent from the chain population
+ * below: NONPROD_ACTIVATION is deliberately not global authority and no migration may promote it.
+ */
+const WORK_ORDER_LIFECYCLE_GRANTEES = Object.freeze({
+  "workOrder.lifecycle.dispatch": ["fieldManager"],
+  "workOrder.lifecycle.cancel": ["fieldManager"],
+});
+
 const HELD_CAPABILITIES = Object.freeze([
-  "workOrder.lifecycle.dispatch",
-  "workOrder.lifecycle.cancel",
   "workOrder.lifecycle.complete",
   "workflowDefinition.create",
   "workflowDefinition.edit",
@@ -120,6 +142,30 @@ test("no migration in the chain grants a held capability", () => {
       assert.equal(action, "read",
         `${f} grants workflowDefinition.${action}; no Owner ruling has released it from the hold`);
     }
+  }
+});
+
+test("the released work order lifecycle keys go to exactly fieldManager, and completion to nobody", () => {
+  // The SAME non-vacuity discipline as the workflowDefinition test below: if a grant statement names
+  // one of these keys in a shape this parser cannot read, the population was read from less than the
+  // whole chain, so refuse rather than report an "exact" answer derived from a partial read.
+  for (const [key, expected] of Object.entries(WORK_ORDER_LIFECYCLE_GRANTEES)) {
+    const grantees = [];
+    for (const [f, stmt] of grantStatementsInChain()) {
+      const mentions = [...stmt.matchAll(new RegExp(`'${key.replace(/\./g, "\\.")}'`, "g"))].length;
+      const pairs = [...stmt.matchAll(new RegExp(`\\(\\s*'([A-Za-z0-9_]+)'\\s*,\\s*'${key.replace(/\./g, "\\.")}'\\s*\\)`, "g"))];
+      assert.equal(pairs.length, mentions,
+        `${f}: ${key} is granted in a shape this guard cannot read (${mentions} mention(s), ` +
+        `${pairs.length} recognised pair(s)) -- review it by hand rather than letting the population go unmeasured`);
+      for (const m of pairs) grantees.push(m[1]);
+    }
+    assert.deepEqual([...grantees].sort(), [...expected].sort(),
+      `the chain must grant ${key} to exactly ${expected.join(", ")} -- a second Role here is a ruling nobody made`);
+  }
+  // And the third key is not released at all: HELD_CAPABILITIES carries it and the test above bites.
+  assert.ok(HELD_CAPABILITIES.includes("workOrder.lifecycle.complete"));
+  for (const [f, stmt] of grantStatementsInChain()) {
+    assert.equal(stmt.includes("workOrder.lifecycle.complete"), false, `${f} grants completion`);
   }
 });
 

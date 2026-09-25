@@ -3262,10 +3262,11 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
+          "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {

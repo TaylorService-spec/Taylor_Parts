@@ -17,9 +17,9 @@
     "fields": 389
   },
   "seeded": {
-    "objects": 39,
+    "objects": 40,
     "objectsWithoutAnEntity": 6,
-    "objectsFromCapabilityAuthority": 5,
+    "objectsFromCapabilityAuthority": 6,
     "entities": 28,
     "fields": 389
   },
