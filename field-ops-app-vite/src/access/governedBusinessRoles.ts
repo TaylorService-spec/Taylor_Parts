@@ -37,56 +37,361 @@ import type { Role } from "../types/access";
 import { ADMIN_ROLE } from "./compatibilityRoles";
 import { PERMISSION_CATALOG } from "./permissionCatalog";
 
-// Spec §26.2: Owner's own grant is defined as "every id ADMIN_ROLE
-// holds" rather than a hand-copied list, so the two can never silently
-// drift apart if ADMIN_ROLE's own grant set is ever revised.
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// THE OWNER CAPABILITY CONTRACT (Owner ruling A, 2026-09-24 -- NARROW, do not widen)
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
 //
-// Issue #325 / ADR-007: Owner ADDITIONALLY holds every ACTIVE `report.*`
-// capability the catalog currently registers -- derived from
-// permissionCatalog.ts, not hand-listed, so this can never silently
-// drift from D-226's own registration and automatically picks up each
-// later wave's additions without a code change here. Two waves
-// contribute ids as of this comment:
-//   - W1 (4 object-level `report.<object>.read` + 27 active field-level
-//     `report.<object>.field.<id>.read` ids -- customer/contact/
-//     location/equipment).
-//   - W-SAVE (5 saved-definition CRUD ids: `report.definition.
-//     {create,read,rename,duplicate,delete}` -- enforced exclusively
-//     through the trusted saved-definition service,
-//     functions/src/reporting/savedDefinitionCommands.ts; firestore.
-//     rules denies ALL direct client read/write on reportDefinitions
-//     unconditionally, so holding these ids confers nothing outside
-//     that service).
-// `active:false` ids (customer.notes/accountOwner, location.accessNotes
-// -- security-text/employee-sensitivity fields pending their own later
-// review/wave, per D-226's own catalog comment) are deliberately
-// EXCLUDED from this list, not merely relied on to deny via the
-// resolver's own active check: Owner's catalog membership should
-// reflect exactly what's currently reportable, not carry ids that
-// aren't yet meaningfully grantable. This is the ONLY Role (of all
-// eleven -- three compatibility, eight governed business) that holds
-// any report.* id; admin/dispatcher/technician and the other seven
-// governed business Roles are byte-unchanged by this addition (see the
-// dedicated tests) -- "only the approved W-SAVE role" (Owner) holds the
-// five new ids, per this task's own explicit requirement.
-const OWNER_ACTIVE_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter(
-  (p) => p.id.startsWith("report.") && p.active !== false,
+// WHAT WAS WRONG. Owner's grant used to be defined as `[...ADMIN_ROLE.permissions, ...reports]`,
+// on the stated reasoning that deriving it "can never silently drift apart from ADMIN_ROLE".
+// It cannot drift, which is true and is exactly the defect: it makes Owner and Administrator the
+// SAME Role by construction. ADMIN_ROLE.permissions is itself derived as ADMIN_CURATED_PERMISSIONS
+// plus the ENTIRE PERMISSION_CATALOG (Owner ruling 2026-08-19), so `owner` declared every one of
+// the 151 catalog ids, 60 of them inside the governed PostgreSQL capability vocabulary, with ZERO
+// difference from admin in either direction. A derivation that can only ever produce equality is
+// not a safeguard against drift; it is a refusal to state the distinction.
+//
+// THE DISTINCTION, as ruled:
+//   Owner  = business / enterprise OVERSIGHT authority.
+//   Admin  = access / security / PLATFORM ADMINISTRATION authority.
+// They overlap heavily -- both see almost everything -- and they are not the same Role. The
+// separation is not "Owner sees less"; it is "Owner does not execute the floor, and does not run
+// the platform's own administration tooling".
+//
+// WHY IT MATTERS, MEASURED rather than argued. In live nonprod eos_policy the Role `owner` holds
+// 47 grants and `admin` holds 66: owner is a STRICT SUBSET, 19 admin-only, 0 owner-only. Because
+// the seed writes role_capabilities from THIS catalog, naming `owner` on a Principal would have
+// made the next seed apply widen the live Owner Role by ~20 rows, every one of them currently
+// admin-only. That is the widening ruling S5 forbids, and it is why
+// `roleCapabilityAuthorityBaseline.json` already carries an owner x 19 `catalogDeclaredNotActivated`
+// block: the catalog was declaring an authority the business never granted.
+//
+// HOW THIS LIST WAS BUILT. Not by copying the live grant set into source. Every id below was
+// decided against a named Taylor business responsibility, and the result was THEN compared with
+// live nonprod; the full per-capability contract (capability - Object - action - rationale -
+// OWNER_REQUIRED - ADMIN_ONLY) is pinned by ownerCapabilityContract.test.mjs, which also proves
+// the subset property this lane exists to establish.
+//
+// DELIBERATELY NOT DERIVED FROM ADMIN_ROLE. Owner's permission list is now written out. Two ids
+// Owner should hold would be picked up for free by a spread and are therefore stated explicitly
+// instead -- see OWNER_ENTERPRISE_PERFORMANCE_AUTHORITY and OWNER_ACCOUNT_RELATIONSHIP_AUTHORITY.
+// The previously-recorded reason for NOT listing the performance-goal ids ("admin composes the
+// whole catalog and owner composes admin, so the explicit list was a duplicate that encoded a
+// false distinction") was correct while Owner spread admin and is FALSE the moment it stops:
+// deleting that spread deletes the Owner's own goal authority unless it is re-declared here. The
+// same reversal applies to the CRM activity ids granted by Owner ruling 2026-08-19.
+//
+// CONDITIONS ARE STILL INHERITED FROM ADMIN, AND THAT IS NOT THE SAME MISTAKE. A
+// conditionsByPermission entry can only RESTRICT a grant Owner already holds; it can never add
+// one. Inheriting admin's permission list was fail-OPEN (anything admin gained, Owner gained);
+// inheriting admin's condition map is fail-CLOSED (anything admin is constrained by, Owner is
+// constrained by too). Today that map holds exactly one entry, the isOwnAssignment Condition on
+// reorder.purchaseOrder.void, which Owner holds and must carry.
+
+// ─── 1. ENTERPRISE VISIBILITY ────────────────────────────────────────────────────────────────
+// Oversight is, first and mostly, the right to LOOK. The Owner is accountable for the whole
+// business, so every cross-domain read the catalog registers is Owner's: what was sold, what is
+// owed, what is in stock, who works here, what happened and who can do what. No read on this list
+// separates Owner from Administrator and none is meant to -- ruling reference point: migration
+// 1762041600000 granted admin.securityPolicy.read and admin.principalAccess.read to exactly
+// {admin, owner}, so administration READS are explicitly a shared authority.
+const OWNER_ENTERPRISE_VISIBILITY = [
+  "admin.principalAccess.read",
+  "audit.event.read",
+  "customer.record.read",
+  "employee.record.read",
+  "equipment.compatibility.view",
+  "fulfillment.coordinatedVisit.read",
+  "inventory.action.read",
+  "inventory.analytics.read",
+  "inventory.balance.read",
+  // NOT inventory.catalog.alias.read. A recorded decision (scannerReleaseReadiness.test.mjs,
+  // INVENTORY_LOOKUP_READER_ROLE) says resolving a Part alias belongs to the lookup FUNCTIONAL
+  // Role and that "reusing it by position is the mistake that capability was created to avoid".
+  // Owner is a position. The ADMIN_ROLE spread used to hand it over anyway; ruling A does not.
+  "inventory.catalog.read",
+  "inventory.location.bin.read",
+  "inventory.location.display.read",
+  "inventory.serializedAsset.read",
+  "inventory.transaction.read",
+  "opportunity.read",
+  "reorder.purchaseOrder.read",
+  "reorder.request.read.own",
+  "salesAgreement.read",
+  "salesOrder.read",
+  "service.inboundWork.read",
+  "warehouse.record.read",
+  "warehouse.stockLocation.read",
+  "warehouse.transferOrder.read",
+];
+
+// ─── 2. PEOPLE AND ACCESS ACCOUNTABILITY ─────────────────────────────────────────────────────
+// The one group where the Owner/Administrator line has to be drawn by argument rather than by
+// domain, because every id here lives on an Administration Object. The line drawn is: the Owner
+// decides EMPLOYMENT and ACCOUNTABILITY facts; the Administrator runs the platform.
+//
+//   Job Role, Work Eligibility, Operational Scope, profile and account status are BUSINESS facts
+//   about a person's position, competence, coverage and employment (EMP-RT-08; the 2026-09-17
+//   Workforce authority rulings). Who holds which position is the Owner's call, not IT's.
+//
+//   admin.roleAssignment.write and admin.accessRequest.decide are genuine access administration,
+//   and Owner holds them anyway for a stated reason: `privileged: true` Roles require a SECOND,
+//   distinct approver (Spec 15). A decider population of one cannot satisfy two-person approval,
+//   and an Owner who cannot assign a Security Role can be locked out of their own business by
+//   their own administrator. Held as the accountable second approver, not as a platform duty.
+//
+//   admin.credentialReset.initiate restores an employee's access when the administrator is
+//   unavailable. It resets a credential; it never reveals one.
+const OWNER_PEOPLE_AND_ACCESS_ACCOUNTABILITY = [
+  "admin.accessRequest.decide",
+  "admin.credentialReset.initiate",
+  "admin.employeeJobRole.write",
+  "admin.employeeOperationalScope.write",
+  "admin.employeeProfile.write",
+  "admin.employeeWorkEligibility.write",
+  "admin.roleAssignment.write",
+  "admin.userStatus.write",
+];
+
+// ─── 3. COMMERCIAL AUTHORITY ─────────────────────────────────────────────────────────────────
+// The Owner's own book of business: the customer relationships, the pipeline, the agreements they
+// draft and the orders they raise. Territory/coverage design is here rather than under Sales
+// because the shape of the commercial organisation is an ownership decision -- the same ruling
+// that placed Marketing "equal to salesManager" rather than beneath it.
+//
+// TWO COMMERCIAL ACTS ARE DELIBERATELY ABSENT, both on maker/checker grounds, and both match live
+// nonprod: `opportunity.createSalesOrder` and `salesAgreement.accept`. Owner can edit an
+// Opportunity's stage and value, and Owner drafts the Agreement -- so Owner must not also be the
+// actor who converts that Opportunity into a committed Sales Order, nor the actor who records the
+// counterparty's acceptance of the document Owner wrote. Excluding them costs the Owner nothing
+// real (Owner can raise a Sales Order directly via salesOrder.write) and removes the only two
+// places where one person could originate and bind the same commitment.
+const OWNER_COMMERCIAL_AUTHORITY = [
+  "coverage.read",
+  "coverage.write",
+  "crm.activity.create",
+  "crm.activity.read",
+  "customer.record.create",
+  "customer.record.read",
+  "customer.record.update",
+  "opportunity.read",
+  "opportunity.write",
+  "salesAgreement.create",
+  "salesAgreement.read",
+  "salesAgreement.updateDraft",
+  "salesOrder.fulfill",
+  "salesOrder.read",
+  "salesOrder.service",
+  "salesOrder.write",
+  "workOrder.create",
+  "workOrder.transition",
+];
+
+// WHY salesOrder.fulfill / .service ARE HERE and opportunity.createSalesOrder IS NOT, although all
+// three are Phase 6a "spine" ids the 2026-08-14 spec assigned to owner/admin as one block of 13.
+// The two rules this lane used, in order:
+//   - Where a MEASUREMENT exists, it wins. opportunity.createSalesOrder is one of the 19 keys the
+//     live nonprod authority grants to admin and withholds from owner, and ruling A is precisely
+//     that the catalog must stop contradicting that.
+//   - Where no measurement exists, the RECORDED SPEC wins over a fresh reading. fulfill and service
+//     are not in the governed PostgreSQL vocabulary at all, so nothing measured speaks to them; a
+//     first-principles reading would call them fulfilment execution and drop them, but the spec
+//     named owner explicitly and this lane does not overturn recorded decisions on inference.
+// So Owner holds 12 of the 13, and the one it loses it loses on evidence.
+
+// ─── 4. FINANCIAL AUTHORITY ──────────────────────────────────────────────────────────────────
+// Money in, money out, and the policy that governs how it is seen. Issuing an invoice, applying a
+// payment, recording an adjustment and recording a refund are the four acts that move the
+// business's cash position, and the Owner is the party accountable for it. The visibility tiers
+// and the accounting-policy profile are enterprise financial governance: the Owner configures the
+// policy, which is why financialPolicyAuthorityActivation.test.mjs pins CONFIGURE to exactly
+// {admin, owner} and refuses it to every finance Role -- supplying or approving a policy confers
+// no authority to configure it.
+//
+// NOT HERE: `customer.governedField.write`. Payment terms, tax status and commercial profile are
+// CREDIT CONTROL, and the catalog homes that id on accountingManager / financeManager. The party
+// accountable for revenue must not be the party who unilaterally relaxes a customer's credit
+// terms. Live nonprod agrees (admin-only today); the intended long-run home is Finance, not admin.
+const OWNER_FINANCIAL_AUTHORITY = [
+  "finance.adjustment.record",
+  "finance.invoice.issue",
+  "finance.payment.apply",
+  "finance.read",
+  "finance.refund.record",
+  "finance.visibility.businessUnit",
+  "finance.visibility.company",
+  "finance.visibility.consolidated",
+  "finance.visibility.self",
+  "finance.visibility.team",
+  "financialPolicy.profile.configure",
+  "financialPolicy.profile.read",
+];
+
+// ─── 5. PROCUREMENT AND STOCK-COMMITMENT AUTHORITY ───────────────────────────────────────────
+// Spending the business's money, and moving its stock between its own warehouses, are commitments
+// -- decisions with a cost. Executing them is not.
+//
+//   RAISE and AUTHORISE are Owner's: create a reorder request, approve or reject one, cancel one,
+//   raise the Purchase Order, and void a PO on the isOwnAssignment Condition that travels with it.
+//   Create a transfer order -- deciding stock should move is planning.
+//
+//   The BUYER'S WORKFLOW is not Owner's: startPurchasing, postPurchasingUpdate,
+//   recordPurchaseOrder and markReceived are the Purchasing Manager's sequence, and
+//   transfer dispatch / receive / cancel are the warehouse floor executing a decision already
+//   made. Owner raises the transfer; Owner does not put it on the truck.
+//
+// RECORDED, NOT HIDDEN: Owner holds both `reorder.request.create.manual` and
+// `reorder.request.approve`, which is the very segregation PURCHASING_MANAGER_ROLE is denied
+// ("whoever raises an order must not approve it"). That is how live nonprod stands for admin too,
+// and it is defensible only because the Owner is the terminal approver -- there is nobody above
+// them to escalate to. Stated here so a later ruling can overturn it deliberately.
+// Also recorded: `reorder.request.create.system` names the AUTOMATIC replenishment raiser. A human
+// Role holding a system-actor verb is questionable for any Role; it is retained because live
+// nonprod grants it and this lane may not narrow BELOW live (see the subset proof).
+const OWNER_PROCUREMENT_AUTHORITY = [
+  "inventory.catalog.manage",
+  "inventory.transfer.create",
+  "reorder.purchaseOrder.create",
+  "reorder.purchaseOrder.void",
+  "reorder.request.approve",
+  "reorder.request.cancel",
+  "reorder.request.create.manual",
+  "reorder.request.create.system",
+  "reorder.request.reject",
+];
+
+// ─── 6. ENTERPRISE PERFORMANCE AUTHORITY ─────────────────────────────────────────────────────
+// Setting, approving, superseding and retiring the goals the business is measured against is the
+// definition of enterprise oversight, and the Owner's own goal policy names Owner. These five ids
+// were removed from this file once, correctly, because Owner composed admin and admin composed the
+// whole catalog -- so listing them was a duplicate that read as a distinction. Removing the
+// composition puts them back: without this list the Owner would hold NO goal verb at all.
+const OWNER_ENTERPRISE_PERFORMANCE_AUTHORITY = [
+  "performance.goal.approve",
+  "performance.goal.create",
+  "performance.goal.read",
+  "performance.goal.retire",
+  "performance.goal.supersede",
+];
+
+// ─── 7. REPORTING (Issue #325 / ADR-007 W1 + W-SAVE) ─────────────────────────────────────────
+// DEAD PREDICATE, FIXED. This list used to be
+//   PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.") && p.active !== false)
+// with the stated reason that "Owner's catalog membership should reflect exactly what's currently
+// reportable". DECISIONS #167 then moved the whole report.* family to `active: false` so
+// production is fail-closed, and pushed the active/inactive split down to the ACTIVATION layer
+// (environmentCapabilityOverrides.ts activates 36 of the 39 in eos-platform-sandbox and withholds
+// the three sensitive fields). From that moment the predicate matched NOTHING: it evaluated to the
+// empty array, and Owner held report.* only by accident, through the ADMIN_ROLE spread that this
+// change removes.
+//
+// So the filter is not merely dead, it is load-bearing in the wrong direction: leaving it in place
+// while removing the spread would silently delete Owner's ONE genuinely Owner-only authority and
+// break the W-SAVE ruling that "only the approved W-SAVE role (Owner) holds the five new ids".
+//
+// The fix is to stop filtering catalog MEMBERSHIP on ACTIVATION state, which was always a category
+// error: register != grant != activate. Owner holds every registered report.* id; the resolver's
+// own active check plus the per-environment overrides decide which of them resolve ALLOW, which is
+// where that decision belongs and is already proven by reportingActivationBoundary.test.mjs.
+const OWNER_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter((p) =>
+  p.id.startsWith("report."),
 ).map((p) => p.id);
 
-// PERFORMANCE GOAL AUTHORITY needs NO line here, and the reason is worth recording because the
-// first version of this file added one.
+// ─── EXCLUDED BY DECISION ────────────────────────────────────────────────────────────────────
+// Exported so the exclusion is a checkable artifact rather than an absence, and so the Sample
+// Company manifest can finally assert these as Owner `forbiddenCapabilities` -- which it could not
+// do while the compiled catalog handed Owner every one of them.
 //
-// The intent was "the Owner's goal policy names Owner and not admin, so grant owner explicitly".
-// That reasoning was wrong about how this Role is built. `ADMIN_ROLE.permissions` is DERIVED as
-// ADMIN_CURATED_PERMISSIONS plus the ENTIRE PERMISSION_CATALOG (Owner ruling 2026-08-19), so
-// registering the five goal capabilities granted them to admin -- and therefore to owner, which
-// composes admin's set -- the moment they entered the catalog. The explicit list was a duplicate
-// that read as a deliberate distinction and encoded a false one.
+// All 19 are inside the governed PostgreSQL capability vocabulary and all 19 are admin-only in
+// live nonprod. Two further vocabulary ids the old spread also gave Owner are not listed here
+// because they are admin-only in neither sense -- see OWNER_EXCLUDED_NOT_AN_AUTHORITY below.
+export const OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES = Object.freeze([
+  // Platform administration. Bulk-loading records through the import pipeline is migration
+  // TOOLING (nonprod-only by the Catalog Lane 2 ruling), not a business act.
+  "admin.dataImport.execute",
+  // Credit control. See OWNER_FINANCIAL_AUTHORITY.
+  "customer.governedField.write",
+  // Field execution -- installing equipment at a customer site is the installer's act.
+  "equipment.install",
+  // Reference-data administration -- curating the equipment model catalog.
+  "equipment.model.manage",
+  // Part lifecycle administration. Owner may EDIT a Part (inventory.catalog.manage, Owner ruling
+  // 2026-08-19); changing its lifecycle status stays with the durable catalog administrator.
+  "inventory.catalog.activate",
+  // Cycle counting is warehouse execution end to end, and one Role holding submit AND reconcile
+  // is a recorded internal-control problem already; Owner does not need to join it.
+  "inventory.cycleCount.cancel",
+  "inventory.cycleCount.create",
+  "inventory.cycleCount.reconcile",
+  "inventory.cycleCount.submit",
+  // Physical stock handling -- putting it away, taking it in, moving it. Floor work.
+  "inventory.placement.record",
+  "inventory.stock.receive",
+  "inventory.stock.relocate",
+  // Executing a transfer Owner may already have raised. Raise != dispatch/receive/cancel.
+  "inventory.transfer.cancel",
+  "inventory.transfer.dispatch",
+  "inventory.transfer.receive",
+  // Maker/checker -- see OWNER_COMMERCIAL_AUTHORITY.
+  "opportunity.createSalesOrder",
+  "salesAgreement.accept",
+  // Not in PERMISSION_CATALOG at all, so the compiled Owner never declared them; listed because
+  // the five-row Work Order lifecycle activation ruling excluded `owner` EXPLICITLY and that
+  // exclusion must survive any future registration of these ids.
+  "workOrder.lifecycle.cancel",
+  "workOrder.lifecycle.dispatch",
+]);
+
+// Vocabulary ids the old ADMIN_ROLE spread also handed Owner, excluded for reasons that are NOT
+// "admin holds it and Owner does not". Kept separate so the 19 above stay exactly the admin-only
+// set that the manifest asserts.
+export const OWNER_EXCLUDED_NOT_AN_AUTHORITY = Object.freeze([
+  // Assigning a reorder request to a buyer is work COORDINATION, not oversight.
+  "reorder.request.assign",
+  // SUPERSEDED. Retained in eos_policy only as migration evidence after the 2026-09-17 ruling
+  // moved whole-queue visibility out of the capability key and into Operational Scope; the
+  // manifest's own words are that it "may never be granted again".
+  "reorder.request.read.queue",
+]);
+
+// Outside the governed vocabulary, and excluded on the same Owner/Administrator line:
+//   admin.dataImport.stage, administration.emailIntake.{read,manage}   platform administration
+//   equipment.compatibility.{correct,import,verify}                    reference-data curation
+//   inventory.action.create                                            stock correction, floor work
+//   inventory.location.bin.manage                                      warehouse layout admin
+//   inventory.returns.intake, inventory.serializedAsset.acquire        physical intake
+//   reorder.request.{startPurchasing,postPurchasingUpdate,
+//                    recordPurchaseOrder,markReceived}                 the buyer's workflow
+//   salesOrder.{fulfill,service}                                       fulfilment execution
+//   service.inboundWork.{accept,decline,attachExisting}                intake triage
+//   workOrder.labor.{record,correct}, workOrder.parts.plan             technician / planner work
+//   workOrder.cancel                                                   see immediately below
 //
-// MEASURED, not assumed: admin resolves all five goal verbs today. That is the same derivation
-// which defeated the dashboard census's grep-based FIN-004 measurement (#1743), met a second time
-// in the same week -- so the correction is stated here rather than quietly applied.
-const OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...OWNER_ACTIVE_REPORT_PERMISSIONS];
+// `workOrder.cancel` deserves its own sentence. It is the LEGACY id for the act that
+// `workOrder.lifecycle.cancel` now names -- the canonical vocabulary deliberately omits it as a
+// duplicate. The five-row activation ruling excluded `owner` from lifecycle.cancel explicitly, so
+// leaving the legacy id on Owner would have granted through the Firebase-era resolver exactly the
+// authority the governed ruling withholds. Removing it is the only way the two agree.
+
+// SIX LIVE OWNER GRANTS CANNOT BE DECLARED HERE, and their absence is a catalog gap, not a
+// decision: admin.securityPolicy.read, finance.invoice.read, finance.payment.read,
+// inventory.manufacturer.read, reorder.request.read and workflowDefinition.read exist in the
+// eos_policy vocabulary but have NO id in PERMISSION_CATALOG. Declaring them would be registering
+// a new capability, which this lane is forbidden to do. Owner already holds all six in live
+// nonprod; this catalog simply cannot say so yet. Registering them is the activation lane's work.
+
+const OWNER_PERMISSIONS = [
+  ...new Set([
+    ...OWNER_ENTERPRISE_VISIBILITY,
+    ...OWNER_PEOPLE_AND_ACCESS_ACCOUNTABILITY,
+    ...OWNER_COMMERCIAL_AUTHORITY,
+    ...OWNER_FINANCIAL_AUTHORITY,
+    ...OWNER_PROCUREMENT_AUTHORITY,
+    ...OWNER_ENTERPRISE_PERFORMANCE_AUTHORITY,
+    ...OWNER_REPORT_PERMISSIONS,
+  ]),
+];
+
+// Restrictions only -- see the header note. Inheriting admin's condition map can never widen Owner.
 const OWNER_CONDITIONS = ADMIN_ROLE.conditionsByPermission;
 
 // Spec §26.2 -- least-privilege baseline. Deliberately zero permissions:
@@ -949,19 +1254,25 @@ export const SUPPORT_STAFF_ROLE: Role = Object.freeze({
   ],
 }) as Role;
 
-// Spec §26.2 -- privileged full-platform Role. Matches ADMIN_ROLE's
-// exact grant rather than inventing a broader one: "privileged/full-
-// access but never a security bypass" is satisfied by holding the same
-// audited, Condition-gated grant `admin` already holds, through the
-// same resolver (resolveEffectivePermission.ts), not a special-cased
-// escape hatch. `privileged: true` (same as ADMIN_ROLE) means grant/
-// revoke requires a second, distinct approver (Spec §15) -- Owner is
-// never single-admin-assignable.
+// Spec §26.2 -- privileged BUSINESS OVERSIGHT Role, NARROWED 2026-09-24 (Owner
+// ruling A). It previously "matched ADMIN_ROLE's exact grant rather than
+// inventing a broader one", which sounded conservative and was not: admin's
+// grant IS the whole catalog, so matching it made Owner and Administrator one
+// Role wearing two names. Owner now holds an explicitly stated contract -- see
+// THE OWNER CAPABILITY CONTRACT at the top of this file for the per-capability
+// reasoning and for the 19 admin-only capabilities it deliberately excludes.
+//
+// "Privileged/full-access but never a security bypass" is still satisfied the
+// same way: every id Owner holds resolves through the same governed resolver
+// (resolveEffectivePermission.ts), Scope, Condition and audit path as anyone
+// else's, with no special case anywhere. `privileged: true` (same as
+// ADMIN_ROLE) means grant/revoke requires a second, distinct approver (Spec
+// §15) -- Owner is never single-admin-assignable.
 export const OWNER_ROLE: Role = Object.freeze({
   id: "owner",
   name: "Owner",
   description:
-    "Privileged full-platform Role. Holds every capability the admin compatibility Role holds, through the same governed resolver, Scope, Condition, and audit path -- never a bypass -- PLUS every active wave-1 report.* object/field capability (Issue #325 W1), which admin itself does not hold. The only Role with report access today.",
+    "Privileged business and enterprise OVERSIGHT Role: enterprise visibility, people and access accountability, commercial, financial, procurement, performance-goal and reporting authority, through the same governed resolver, Scope, Condition and audit path as every other Role -- never a bypass. Deliberately NOT the Administrator: platform administration, warehouse execution and the two maker/checker commercial acts are excluded (OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES). The only Role with report.* access.",
   systemSeed: true,
   compatibility: false,
   privileged: true,

@@ -26,16 +26,33 @@ const deny = (r) => assert.equal(r.decision, "DENY", `expected DENY, got ${r.dec
 
 check("ADMIN allowed", () => allow(resolve([assign("admin")])));
 check("DISPATCHER allowed", () => allow(resolve([assign("dispatcher")])));
-// OWNER (Owner-ratified) inherits the capability from ADMIN by governed composition (owner >= admin).
-check("OWNER allowed (inherits admin by governed composition)", () => allow(resolve([assign("owner")])));
-check("OWNER stale accessVersion denied", () => deny(resolve([assign("owner", { accessVersionAtGrant: 2 })], 1)));
-check("OWNER revoked/disabled assignment denied", () => {
-  deny(resolve([assign("owner", { status: "inactive" })]));
-  deny(resolve([assign("owner", { status: "disabled" })]));
+// PIN MOVED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). This used to read "OWNER
+// allowed (inherits admin by governed composition)", which named the mechanism honestly: Owner held
+// receiving because OWNER_PERMISSIONS spread ADMIN_ROLE.permissions, not because anyone decided the
+// Owner should receive stock. Live nonprod never granted it -- inventory.stock.receive is one of the
+// 19 capabilities held by admin and withheld from owner -- so the catalog was the thing that was
+// wrong. Owner is now DENIED here, and denied for the right reason: it has no such grant.
+check("OWNER denied -- receiving is warehouse execution, not oversight (ruling A)", () => {
+  const r = resolve([assign("owner")]);
+  assert.equal(r.decision, "DENY");
+  assert.equal(r.reason, "noQualifyingGrant", "the DENY must be an absent grant, not an inactive capability");
 });
-check("OWNER malformed assignment state denied -- fail closed", () => {
-  deny(resolve([assign("owner", { accessVersionAtGrant: "bad" })]));
-  deny(resolve([assign("owner", { status: "weird" })]));
+
+// The assignment-state machinery below was previously exercised through `owner`. It has been moved
+// to `inventoryReceivingClerk` -- the narrow standalone Role the Owner directed for this capability
+// -- because a stale-version or revoked-assignment check run against a Role that no longer HOLDS
+// the capability would DENY for the wrong reason and prove nothing. Same assertions, live subject.
+check("holder with stale accessVersion denied", () => deny(resolve([assign("inventoryReceivingClerk", { accessVersionAtGrant: 2 })], 1)));
+check("holder with revoked/disabled assignment denied", () => {
+  deny(resolve([assign("inventoryReceivingClerk", { status: "inactive" })]));
+  deny(resolve([assign("inventoryReceivingClerk", { status: "disabled" })]));
+});
+check("holder with malformed assignment state denied -- fail closed", () => {
+  deny(resolve([assign("inventoryReceivingClerk", { accessVersionAtGrant: "bad" })]));
+  deny(resolve([assign("inventoryReceivingClerk", { status: "weird" })]));
+});
+check("the moved subject really does hold the capability -- these checks are not vacuous", () => {
+  allow(resolve([assign("inventoryReceivingClerk")]));
 });
 
 check("technician denied", () => deny(resolve([assign("technician")])));

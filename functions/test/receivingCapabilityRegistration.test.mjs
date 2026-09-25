@@ -51,12 +51,18 @@ check("catalog resolves the EXACT tuple exactly once", () => {
 // The first-slice deferral this file was written to protect is therefore intact: what changed is
 // that receiving now has a NAME to grant, instead of being reachable only by holding a legacy role
 // that happens to include it.
-const RECEIVE_HOLDERS = ["admin", "dispatcher", "inventoryReceivingClerk", "owner"];
-check("inventory.stock.receive is granted by EXACTLY admin + dispatcher + inventoryReceivingClerk (+ owner, which inherits admin)", () => {
+// PIN MOVED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). `owner` leaves this set,
+// and the reason is in this file's own former wording: it was here "(+ owner, which inherits
+// admin)" -- a side effect of OWNER_PERMISSIONS spreading ADMIN_ROLE.permissions, never a decision
+// that the Owner should receive stock. Ruling A removed the spread, and live nonprod eos_policy
+// agrees: inventory.stock.receive is one of the 19 capabilities granted to admin and withheld from
+// owner. The deferral this file protects is UNCHANGED and the holder set is now narrower by one.
+const RECEIVE_HOLDERS = ["admin", "dispatcher", "inventoryReceivingClerk"];
+check("inventory.stock.receive is granted by EXACTLY admin + dispatcher + inventoryReceivingClerk -- owner NO LONGER inherits it", () => {
   const grantingRoles = Object.entries(ALL_ROLES)
     .filter(([, r]) => Array.isArray(r.permissions) && r.permissions.includes(CAP))
     .map(([n]) => n).sort();
-  assert.deepEqual(grantingRoles, [...RECEIVE_HOLDERS].sort(), "held by exactly admin, dispatcher, inventoryReceivingClerk, owner");
+  assert.deepEqual(grantingRoles, [...RECEIVE_HOLDERS].sort(), "held by exactly admin, dispatcher, inventoryReceivingClerk");
 });
 
 check("admin + dispatcher DO hold it; technician + operational roles do NOT", () => {
