@@ -38,6 +38,7 @@ import {
   EXPERIENCE_SURFACES,
   EXPERIENCE_SURFACE_GAPS,
   EXPERIENCE_SURFACE_KEYS,
+  experienceSurfaceGapViolations,
   grantedSurfaceKeys,
   surfaceCatalogCapabilityKeys,
   surfaceCatalogViolations,
@@ -103,6 +104,94 @@ test("no surface is both granted and declared a gap, and every gap states a reas
     assert.equal(granted.has(gap.key), false, `${gap.key} is both a surface and a gap`);
     assert.ok(gap.reason.length > 40, `${gap.key} has no real reason`);
   }
+});
+
+// ════════════════════ THE GAP REGISTER IS A CLAIM, AND CLAIMS GET CHECKED ════════════════════
+//
+// `commercial.agreements` declared "No salesAgreement.* capability is registered in
+// eos_policy.capabilities" while four WERE registered and granted to six Roles -- including
+// `salesperson`, the exact Role held by the persona the entry was written about. Nothing failed,
+// because the only thing ever asserted about a gap was that its reason ran past 40 characters.
+//
+// These tests assert the SHAPE. experienceAuthorityPostgres.test.mjs asserts the same entries
+// against the real eos_policy.capabilities table, which is the only place the claims are measurable.
+test("every gap declares a checkable kind, and its evidence fields match that kind", () => {
+  assert.deepEqual(experienceSurfaceGapViolations(), []);
+  for (const gap of EXPERIENCE_SURFACE_GAPS) {
+    assert.ok(["VOCABULARY", "DESTINATION", "NOT_A_DESTINATION"].includes(gap.kind), `${gap.key} has no kind`);
+  }
+});
+
+test("a gap whose kind and evidence disagree is REFUSED, each way", () => {
+  const long = "x".repeat(41);
+  const cases = [
+    [{ key: "a.b", kind: "VOCABULARY", reason: long }, /naming no absent capability prefix/],
+    [{ key: "a.b", kind: "VOCABULARY", absentCapabilityPrefixes: ["z."], governedBy: "z.read", reason: long }, /it is a DESTINATION gap/],
+    // THE INVERSE OF WHAT WENT WRONG HERE: a DESTINATION gap naming no governing capability is a
+    // vocabulary claim wearing a destination label, and is refused for the same reason.
+    [{ key: "a.b", kind: "DESTINATION", reason: long }, /naming no governing capability/],
+    [{ key: "a.b", kind: "DESTINATION", governedBy: "z.read", absentCapabilityPrefixes: ["z."], reason: long }, /cannot both have and lack its vocabulary/],
+    [{ key: "a.b", kind: "NOT_A_DESTINATION", governedBy: "z.read", reason: long }, /carries capability evidence/],
+    [{ key: "a.b", kind: "SOMETHING_ELSE", reason: long }, /unknown gap kind/],
+    [{ key: "a.b", kind: "NOT_A_DESTINATION", reason: "too short" }, /no real reason/],
+  ];
+  for (const [gap, pattern] of cases) {
+    const problems = experienceSurfaceGapViolations([gap]);
+    assert.ok(problems.length >= 1, `${gap.kind} was accepted and should not have been`);
+    assert.ok(problems.some((p) => pattern.test(p)), `${gap.kind}: got ${JSON.stringify(problems)}`);
+  }
+});
+
+// THE SPECIFIC CORRECTION, PINNED BY NAME -- not a style assertion. This entry is the one that was
+// false, and the shape asserted here is the shape that makes its falseness measurable next time.
+test("commercial.agreements is a DESTINATION gap governed by a real salesAgreement capability", () => {
+  const gap = EXPERIENCE_SURFACE_GAPS.find((g) => g.key === "commercial.agreements");
+  assert.ok(gap, "the commercial.agreements gap is gone -- declaring the surface requires a destination for it");
+  assert.equal(gap.kind, "DESTINATION");
+  assert.equal(gap.governedBy, "salesAgreement.read");
+  assert.equal(gap.absentCapabilityPrefixes, undefined);
+  // The old reason claimed the vocabulary did not exist. It must never say that again.
+  assert.doesNotMatch(gap.reason, /No salesAgreement\.\* capability is registered/);
+  assert.match(gap.reason, /DESTINATION GAP/);
+});
+
+// ════════ THE OTHER HALF OF A DESTINATION CLAIM: IS IT ACTUALLY HELD? ════════
+//
+// A DESTINATION gap asserts "the authority is already here and the door is not". Registration alone
+// does not make that true -- a capability nobody holds is not an authority anybody has. The
+// registration half is proved against the real table by experienceAuthorityPostgres.test.mjs; that
+// database is migrated from clean and carries no seed grants, so the GRANT half cannot be measured
+// there. It is measured here, against the recorded nonprod measurement this repository already
+// keeps: adminPolicy/seed/roleCapabilityAuthorityBaseline.json.
+//
+// If that baseline ever shows the capability held by nobody, the gap has become a vocabulary-shaped
+// problem again and the reason has to be rewritten -- which is precisely the transition nothing
+// noticed last time, in the other direction.
+test("every DESTINATION gap's governing capability is HELD in the recorded grant baseline", () => {
+  const baseline = JSON.parse(
+    readFileSync(path.join(here, "..", "src", "adminPolicy", "seed", "roleCapabilityAuthorityBaseline.json"), "utf8"),
+  );
+  const holders = new Map();
+  for (const grant of baseline.grants) {
+    if (!holders.has(grant.capabilityKey)) holders.set(grant.capabilityKey, new Set());
+    holders.get(grant.capabilityKey).add(grant.roleKey);
+  }
+  const destinationGaps = EXPERIENCE_SURFACE_GAPS.filter((g) => g.kind === "DESTINATION");
+  assert.ok(destinationGaps.length >= 1, "commercial.agreements is the one this exists for");
+  for (const gap of destinationGaps) {
+    const held = holders.get(gap.governedBy);
+    assert.ok(
+      held && held.size > 0,
+      `${gap.key} claims ${gap.governedBy} already governs it, but ${baseline.environment} (measured ${baseline.measuredAt}) records no grant of it`,
+    );
+  }
+  // The specific population the corrected reason states, so the sentence and the measurement cannot
+  // drift apart silently.
+  assert.deepEqual(
+    [...holders.get("salesAgreement.read")].sort(),
+    ["admin", "dispatcher", "generalManager", "owner", "salesManager", "salesperson"],
+    "salesAgreement.read's holders have moved; the corrected commercial.agreements reason names them",
+  );
 });
 
 test("every capability the catalog names looks like a capability key and none is invented prose", () => {

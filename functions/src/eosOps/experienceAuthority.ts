@@ -301,35 +301,192 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
  * SURFACES THE PERSONA CATALOG ASKS FOR AND THIS PLATFORM CANNOT YET GOVERN.
  *
  * Declared, never silently omitted. Each names a destination a persona's North Star expects and the
- * exact reason no governed grant can earn it today. A surface listed here is invisible under the EOS
+ * exact reason it cannot be a granted surface today. A surface listed here is invisible under the EOS
  * navigation authority -- which is the honest answer, and is the blocker list for the cutover.
+ *
+ * THERE ARE TWO KINDS OF BLOCKER HERE AND THEY MUST NOT BE WRITTEN AS ONE (Wave 15 / Lane BL).
+ * This register used to say every reason was "a property of the governed vocabulary", and
+ * `commercial.agreements` carried a reason of that shape which was measurably FALSE (see its entry).
+ * The kinds are:
+ *
+ *   VOCABULARY    no capability exists that could earn the surface, so no grant could ever open it.
+ *                 The fix is a capability decision. crm.contacts, service.scheduling and
+ *                 purchasing.suppliers are these.
+ *   DESTINATION   the capability exists AND IS GRANTED, and the product has no door to offer. The
+ *                 fix is a product decision about information architecture, not a policy one, and
+ *                 the grant population is evidence FOR building the door rather than against it.
+ *                 commercial.agreements is this one.
+ *
+ * A DESTINATION-KIND GAP IS NOT AN EXCUSE TO DECLARE THE SURFACE ANYWAY. experienceAuthority.test.mjs
+ * asserts that every key in EXPERIENCE_SURFACES is reachable from some entry in the client's
+ * NAV_SURFACE_ACCESS, and that assertion is the reason the surface stays here rather than being added
+ * with no door: a persona that earns something the product cannot offer is the defect this whole
+ * catalog exists to remove, pointed the other way.
  *
  * DO NOT "fix" one of these by pointing it at an unrelated capability. `administration.rolesPermissions`
  * gated by `admin.roleAssignment.write` would mean a reader could not read and a writer could not be
- * told apart from a reader; that is how a navigation model stops meaning anything.
+ * told apart from a reader; that is how a navigation model stops meaning anything. The same refusal
+ * applies to closing a DESTINATION gap by mapping its surface onto a neighbouring door: adding
+ * `commercial.agreements` to `customers/opportunities` would mean holding `salesAgreement.read` and
+ * nothing else opened the Opportunities list, which is a grant the governed model never made.
  */
-export const EXPERIENCE_SURFACE_GAPS: readonly { readonly key: string; readonly reason: string }[] = Object.freeze([
+export type ExperienceSurfaceGapKind = "VOCABULARY" | "DESTINATION" | "NOT_A_DESTINATION";
+
+/**
+ * A GAP, WITH THE PART THAT CAN BE CHECKED SEPARATED FROM THE PART THAT CAN ONLY BE READ.
+ *
+ * `reason` is prose and prose cannot be verified -- which is exactly how `commercial.agreements`
+ * carried a false one past every suite in this repository for as long as it did. The discriminator
+ * and the two evidence fields below are the same claim in a form the real table can refuse:
+ *
+ *   VOCABULARY        `absentCapabilityPrefixes` -- NOTHING in eos_policy.capabilities may start
+ *                     with any of them. The day somebody registers one, the gap's reason has become
+ *                     false and experienceAuthorityPostgres.test.mjs says so.
+ *   DESTINATION       `governedBy` -- a capability that MUST be registered and MUST be HELD. A
+ *                     destination gap claims the authority is already there; if it is not, this is a
+ *                     vocabulary gap wearing the wrong label. The two halves are checked in the two
+ *                     different places they are measurable: REGISTRATION against the real table in
+ *                     experienceAuthorityPostgres.test.mjs, and the GRANT population against the
+ *                     recorded nonprod measurement in adminPolicy/seed/roleCapabilityAuthorityBaseline.json
+ *                     in experienceAuthority.test.mjs. The PostgreSQL suite migrates from clean and
+ *                     carries no seed grants, so asking it about holders would measure the absence
+ *                     of a seed rather than the truth of the gap.
+ *   NOT_A_DESTINATION neither field. The North Star names something that is not a navigable
+ *                     destination at all (a dashboard composed in-page), so there is no capability
+ *                     the claim could be checked against and none should be invented to check it.
+ */
+export interface ExperienceSurfaceGap {
+  readonly key: string;
+  readonly kind: ExperienceSurfaceGapKind;
+  /** VOCABULARY only. Capability-key prefixes whose ABSENCE is what makes the reason true. */
+  readonly absentCapabilityPrefixes?: readonly string[];
+  /** DESTINATION only. The registered, granted capability that already governs this surface's work. */
+  readonly governedBy?: string;
+  readonly reason: string;
+}
+
+export const EXPERIENCE_SURFACE_GAPS: readonly ExperienceSurfaceGap[] = Object.freeze([
   Object.freeze({
     key: "crm.contacts",
+    kind: "VOCABULARY" as const,
+    // `contact.` is the Object prefix a Contact read would have to be registered under. It is absent,
+    // which is the whole gap. `crm.createContact` is a CRM command name (eosCrm/contactAuthority.ts),
+    // not an eos_policy capability id, and is named below only to say what DOES exist.
+    absentCapabilityPrefixes: Object.freeze(["contact."]),
     reason: "Contact read has no capability of its own -- crm.createContact is a write, and customer.record.read governs the Account. A separate Contacts destination cannot be earned distinctly today.",
   }),
+  // ── A DESTINATION GAP, AND IT USED TO BE WRITTEN AS A VOCABULARY ONE ──
+  //
+  // THE OLD REASON WAS FALSE, NOT MERELY STALE: "No salesAgreement.* capability is registered in
+  // eos_policy.capabilities". Four are, under Object `salesAgreement`, and they are GRANTED.
+  // Measured read-only against nonprod on 2026-09-24
+  // (`render psql <eos-policy> --command "SELECT ..."`, eos_policy.capabilities JOIN
+  // role_capabilities JOIN roles) and reproduced from
+  // adminPolicy/seed/roleCapabilityAuthorityBaseline.json:
+  //
+  //     salesAgreement.read        READ             6 grants  admin, dispatcher, generalManager,
+  //     salesAgreement.create      CREATE           6 grants  owner, salesManager, salesperson
+  //     salesAgreement.updateDraft EDIT             6 grants  (same six)
+  //     salesAgreement.accept      BUSINESS_ACTION  4 grants  admin, dispatcher, generalManager,
+  //                                                           salesperson
+  //
+  // `salesperson` is the exact Security Role the persona this gap names holds
+  // (scripts/fixtures/personaAuthorityDimensions.v1.json, "national-accounts-sales"), so the sentence
+  // that was here said the vocabulary could not express a surface the vocabulary had already
+  // expressed and granted to the very persona it was written about. A gap whose stated reason is
+  // false is not a gap -- the Wave 9 / Lane AH note above says exactly that about the Administration
+  // entries, and it is why THAT reason had to go whatever replaced it.
+  //
+  // WHAT IS ACTUALLY MISSING IS THE DOOR. The governed cross-account read exists too --
+  // `listSalesAgreements` (eosCommercial/reads/salesAgreementReadProjection.ts, exposed by
+  // eosCommercial/commercialHttp.ts) is capability-scoped on `salesAgreement.read`. What does not
+  // exist anywhere in the client is a Sales Agreements INDEX: there is no list screen beside
+  // SalesOrdersList.jsx, no route, and no NAV_SURFACE_ACCESS row. The only Agreement destination is
+  // the RECORD page at /customers/opportunities/sales-agreement/:salesAgreementId, reached by first
+  // opening the Opportunity that created it.
+  //
+  // THAT IS THE SALES ORDERS SITUATION, VERBATIM, AND IT IS THE PRECEDENT FOR CLOSING IT. The
+  // `customers/salesOrders` nav item in navConfig.js says so about itself: "the capability was never
+  // the thing missing: admin holds all four salesOrder.* ids ... and an admin still saw nothing about
+  // Sales Orders anywhere in the product -- the only surface was a detail route reachable by first
+  // opening the Opportunity that created the order." An index screen was built and the surface
+  // followed. Doing the same here is a PRODUCT decision -- whether Sales Agreements gets its own door
+  // under CRM/Sales -- and it is the Owner's, not this catalog's. It is not made by editing this
+  // file, and it must not be faked by mapping the surface onto a door that is not it.
   Object.freeze({
     key: "commercial.agreements",
-    reason: "No salesAgreement.* capability is registered in eos_policy.capabilities; the national-accounts persona's North Star names a surface the governed vocabulary cannot express.",
+    kind: "DESTINATION" as const,
+    governedBy: "salesAgreement.read",
+    reason: "DESTINATION GAP, NOT A VOCABULARY ONE. salesAgreement.read/.create/.updateDraft/.accept are registered under Object salesAgreement and granted (6/6/6/4 grants; .read is held by admin, dispatcher, generalManager, owner, salesManager, salesperson -- measured read-only in nonprod 2026-09-24), and the governed cross-account read listSalesAgreements already exists. The client has no Sales Agreements index destination: the Agreement is reachable only as a record page from its Opportunity, so there is no door for the surface to be offered through. Declaring the surface without one would break the invariant that every granted surface is reachable from some destination. Building the index is an Owner product decision, not a capability one.",
   }),
   Object.freeze({
     key: "dashboard.myPipeline",
+    // NOT_A_DESTINATION, and deliberately carries no capability evidence of either kind. The pipeline
+    // is tiles composed inside My Dashboard, so "which capability would earn it" has no answer --
+    // and inventing one to satisfy a checker is how a gap register starts naming things that are not
+    // there. domain/dashboardComposition.js keeps its OWN itemised register for those modules.
+    kind: "NOT_A_DESTINATION" as const,
     reason: "The salesperson dashboard is composed client-side by domain/dashboardComposition.js from role literals and hasCapability; it is not a navigable destination with a governing capability.",
   }),
   Object.freeze({
     key: "service.scheduling",
+    kind: "VOCABULARY" as const,
+    absentCapabilityPrefixes: Object.freeze(["dispatchSchedule.", "schedule."]),
     reason: "dispatchSchedule was retired as a policy Object; no capability governs a Scheduling destination distinct from service.dispatch.",
   }),
   Object.freeze({
     key: "purchasing.suppliers",
+    kind: "VOCABULARY" as const,
+    absentCapabilityPrefixes: Object.freeze(["supplier."]),
     reason: "Supplier master reads are Firestore-authoritative and no supplier.* capability is registered.",
   }),
 ]);
+
+/**
+ * The rules a GAP entry must satisfy. Pure and offline; the real-table half lives in
+ * experienceAuthorityPostgres.test.mjs, which is the only place the claims can actually be measured.
+ *
+ * This exists because `surfaceCatalogViolations` guards the GRANTED half of the catalog and nothing
+ * guarded the other half. A gap is a claim about the governed model exactly as a surface is, and an
+ * unchecked claim is the one that goes stale: the entry corrected here survived a capability being
+ * registered, granted to six Roles including the persona it named, and a read service being built
+ * on it, still asserting that none of that existed.
+ */
+export function experienceSurfaceGapViolations(
+  gaps: readonly ExperienceSurfaceGap[] = EXPERIENCE_SURFACE_GAPS,
+): readonly string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  for (const gap of gaps) {
+    if (seen.has(gap.key)) problems.push(`duplicate gap key: ${gap.key}`);
+    seen.add(gap.key);
+    if (gap.reason.trim().length <= 40) problems.push(`${gap.key} has no real reason`);
+    const prefixes = gap.absentCapabilityPrefixes ?? [];
+    switch (gap.kind) {
+      case "VOCABULARY":
+        if (prefixes.length === 0) {
+          problems.push(`${gap.key} is a VOCABULARY gap naming no absent capability prefix -- the claim cannot be measured, which is how a false one survives`);
+        }
+        if (gap.governedBy) problems.push(`${gap.key} is a VOCABULARY gap AND names governedBy ${gap.governedBy} -- if a capability governs it, it is a DESTINATION gap`);
+        break;
+      case "DESTINATION":
+        if (!gap.governedBy) problems.push(`${gap.key} is a DESTINATION gap naming no governing capability -- the claim "the authority already exists" must name it`);
+        if (prefixes.length > 0) problems.push(`${gap.key} is a DESTINATION gap AND claims absent prefixes -- it cannot both have and lack its vocabulary`);
+        break;
+      case "NOT_A_DESTINATION":
+        if (gap.governedBy || prefixes.length > 0) {
+          problems.push(`${gap.key} is NOT_A_DESTINATION and carries capability evidence -- there is nothing for it to be evidence about`);
+        }
+        break;
+      default:
+        problems.push(`${gap.key} declares unknown gap kind "${String((gap as { kind?: unknown }).kind)}"`);
+    }
+    if (gap.governedBy && !gap.governedBy.includes(".")) {
+      problems.push(`${gap.key}: governedBy "${gap.governedBy}" is not a capability key`);
+    }
+  }
+  return Object.freeze(problems);
+}
 
 // ════════════════════ the projection ════════════════════
 
