@@ -340,17 +340,20 @@ test("the client's derived-surface mirror names exactly this catalog's container
   // Both client guards are clean against the real registers, and the container is still OUT of the
   // shrink-only register -- the container answer made the row unnecessary, not allowed.
   //
-  // THE REGISTER IS 42 NOW, NOT 62 (Wave 16 / Lane BQ, Owner ruling F). The twenty destinations that
-  // already carried a governed EOS surface lost their placeholder rows in the same change that made
-  // the EOS authority the only navigation authority. Six of those twenty are this container's own
-  // children, which is why the number is asserted here as well as in the cutover's own suite: the
-  // Administration menu's legacy answer moved with them.
+  // THE REGISTER IS 62, AND THAT IS NOT A REGROW (Wave 16 / Lane BQ, then Lane BR). Lane BQ took it
+  // to 42 by deleting the twenty rows whose destinations had already earned a governed EOS surface
+  // -- six of them this container's own children -- and the Owner ruled that deletion must be scoped
+  // to the environments that HAVE an EOS source, since in the four where
+  // EOS_NAVIGATION_AUTHORITY_READY is false those rows are the only navigation authority there is.
+  // The total is main's again; what replaced the single ceiling is three, one per partition, so no
+  // part of the register can grow. Their arithmetic is proved in the client's
+  // test/navCutoverEnvironmentScoped.test.mjs.
   assert.deepEqual(containerRegisterViolations(), []);
   assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
   assert.deepEqual(navigationSurfaceMapViolations(), []);
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false,
     "the Administration container is back in the shrink-only legacy placeholder register");
-  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 42);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
 });
 
 test("the two authority modules AGREE on every Administration surface -- pinned from both sides", () => {

@@ -40,24 +40,23 @@ ok("admin: all four groups present with their children in display order", () => 
   // Scan reaches admin through the SAME legacyKey "fieldMode" the Technician Workspace uses -- no new
   // ROLE_NAV_ACCESS key was invented, and no business role was added to that map.
   assert.deepEqual(keys(groupByKey(m, "scanning").items), ["scan"]);
-  // WAVE 16 / LANE BQ. `service/workOrders` and `service/coordinatedVisits` were two of the twenty
-  // destinations whose ungoverned NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows Owner ruling F removed in
-  // the cutover, so under the LEGACY source they are gone from these groups for admin too. Job
-  // Assignments (legacyKey "jobs"), Warranty, the Dispatcher Board and Jobs are unaffected -- they
-  // answer from ROLE_NAV_ACCESS or from a row of their own. Grouping itself is untouched: this is a
-  // visibility change flowing through buildServiceNavGroups, not a change to the group model.
-  assert.deepEqual(keys(groupByKey(m, "workManagement").items), ["jobAssignments", "warranty"]);
-  assert.deepEqual(keys(groupByKey(m, "dispatch").items), ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch"]);
+  // WAVE 16 / LANE BQ, CORRECTED BY LANE BR. `service/workOrders` and `service/coordinatedVisits`
+  // are two of the twenty destinations the cutover retires; Lane BQ deleted their legacy rows
+  // globally, which removed them from these groups for admin in every flag-false environment, and
+  // the Owner scoped that deletion to the environments that have an EOS source. Under the LEGACY
+  // source the groups are main's again.
+  assert.deepEqual(keys(groupByKey(m, "workManagement").items), ["workOrders", "jobAssignments", "warranty"]);
+  // Coordinated Visits (admin/dispatcher, no legacyKey) is grouped under Dispatch.
+  assert.deepEqual(keys(groupByKey(m, "dispatch").items), ["dispatcherBoard", "scheduling", "dispatchScheduling", "dispatch", "coordinatedVisits"]);
   // Coordinated Mission (legacyKey fieldMode → admin + technician) is grouped under Technician Workspace.
   assert.deepEqual(keys(groupByKey(m, "technicianWorkspace").items), ["technicianWorkspace", "coordinatedMission"]);
 });
 // The landing is the group's FIRST VISIBLE child, which is the property worth pinning -- not any
-// particular child. Work Orders was it while a placeholder row made it visible under the legacy
-// source; since Wave 16 / Lane BQ removed that row, Job Assignments is, exactly as it already was
-// for a technician (asserted below). The rule did not change; its input did.
-ok("admin: Work Management lands on its first visible child, Job Assignments", () => {
+// particular child. Under the LEGACY source that is Work Orders, as it was on main; under the EOS
+// source it is whichever child that session's governed grants actually open. Both are the same rule.
+ok("admin: Work Management lands on Work Orders (/service, path '')", () => {
   const wm = groupByKey(groupsFor(ROLES.ADMIN), "workManagement");
-  assert.equal(wm.landing.key, "jobAssignments");
+  assert.equal(wm.landing.path, "");
   assert.equal(wm.landing.key, wm.items[0].key, "the landing is not the first visible child");
 });
 ok("admin: Dispatch lands on Dispatcher Board (the group landing)", () =>
@@ -124,14 +123,13 @@ ok("buildServiceNavGroups([]) -> no groups, no ungrouped", () => {
 
 // ===== findActiveServiceGroupKey: direct URLs select the correct parent group =====
 const adminGroups = groupsFor(ROLES.ADMIN).groups;
-// '' IS THE WORK ORDERS PATH, and Work Orders is no longer a visible child of Work Management under
-// the legacy source (Wave 16 / Lane BQ removed its ungoverned placeholder row). `findActiveServiceGroupKey`
-// answers from the VISIBLE groups it is handed, so it correctly returns null: there is no group that
-// URL is inside for this session. That is the function behaving, not a broken mapping -- under the
-// EOS source, where `service.workOrders` is granted, the item is visible and the answer is
-// workManagement again.
-ok("active group: '' (/service) -> null when Work Orders is not visible to this session", () =>
-  assert.equal(findActiveServiceGroupKey("", adminGroups), null));
+// `findActiveServiceGroupKey` answers from the VISIBLE groups it is handed, so its answer is per
+// session rather than per URL: it is workManagement for a session that can see Work Orders and null
+// for one that cannot. `adminGroups` here is built under the LEGACY source, where Work Orders is
+// visible -- Lane BQ's global row deletion briefly made this null for admin too, and Lane BR scoped
+// that deletion to the environments where the EOS source answers instead.
+ok("active group: '' (/service) -> Work Management", () =>
+  assert.equal(findActiveServiceGroupKey("", adminGroups), "workManagement"));
 ok("active group: 'job-assignments' -> Work Management", () =>
   assert.equal(findActiveServiceGroupKey("job-assignments", adminGroups), "workManagement"));
 ok("active group: 'scheduling' -> Dispatch", () =>
@@ -144,11 +142,9 @@ ok("active group: 'dispatch-scheduling' (Dispatch Board) -> Dispatch", () =>
   assert.equal(findActiveServiceGroupKey("dispatch-scheduling", adminGroups), "dispatch"));
 ok("active group: 'technician-workspace' -> Technician Workspace", () =>
   assert.equal(findActiveServiceGroupKey("technician-workspace", adminGroups), "technicianWorkspace"));
-// Same as '' above: Coordinated Visits lost its ungoverned placeholder row in the Wave 16 cutover,
-// so it is not among the visible children this session's Dispatch group holds, and the lookup
-// correctly finds no group for the URL.
-ok("active group: 'coordinated-visits' -> null when it is not visible to this session", () =>
-  assert.equal(findActiveServiceGroupKey("coordinated-visits", adminGroups), null));
+// Same as '' above: visible to an admin under the legacy source, so the lookup finds its group.
+ok("active group: 'coordinated-visits' -> Dispatch", () =>
+  assert.equal(findActiveServiceGroupKey("coordinated-visits", adminGroups), "dispatch"));
 ok("active group: 'coordinated-mission' -> Technician Workspace", () =>
   assert.equal(findActiveServiceGroupKey("coordinated-mission", adminGroups), "technicianWorkspace"));
 ok("active group: 'control-tower' (standalone) -> null", () =>

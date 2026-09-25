@@ -654,32 +654,33 @@ test("an EOS authority that is not READY grants NOTHING -- there is no degrade t
   }
 });
 
-// THE LEGACY SOURCE STILL ANSWERS, AND THE CUTOVER CHANGED WHAT IT ANSWERS FOR TWENTY DESTINATIONS.
+// THE LEGACY SOURCE IS UNTOUCHED -- AND WAVE 16 IS WHY THAT SENTENCE NEEDED DEFENDING.
 //
-// This used to assert "an admin must still see exactly what an admin saw", with Administration >
-// Users as the example. That is no longer true and the change is the point rather than a regression:
-// Owner ruling F removed the NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows from the twenty destinations
-// that had already earned a governed EOS surface, IN THE SAME CHANGE that made the EOS source the
-// only navigation authority. `administration/users` was one of them, and a placeholder row was the
-// only thing making it visible to admin under the legacy source -- so under that source it is now
-// invisible, in every environment where EOS_NAVIGATION_AUTHORITY_READY is false.
+// Lane BQ flipped the `administration/users` assertion here to FALSE, having deleted the
+// NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows from the twenty destinations that had earned a governed
+// EOS surface. The Owner ruled that deletion must be scoped to the environments that HAVE an EOS
+// source: in the four where `EOS_NAVIGATION_AUTHORITY_READY` is false -- `taylor-parts-production`
+// among them, declaring `eosApi: null` -- the row is the only navigation authority there is, and
+// deleting it closes the door rather than moving it.
 //
-// WHAT IS UNCHANGED IS EVERYTHING WITH A REAL LEGACY AUTHORITY. Inventory > Parts carries
-// legacyKey "inventory", so ROLE_NAV_ACCESS still answers it exactly as before; a technician is
-// still refused Administration, as they always were. The legacy MECHANISM is untouched -- what
-// shrank is the set of doors that had nothing but that mechanism behind them.
-test("the legacy source still answers from ROLE_NAV_ACCESS, and no longer from the twenty removed rows", () => {
+// So the seam being OFF still means what it has always meant. An admin sees exactly what an admin
+// saw, whether the destination's legacy authority is a real legacyKey (Inventory > Parts) or a
+// placeholder row (Administration > Users), and a technician is refused Administration as always.
+// What Wave 16 added is a SECOND authority for twenty of those doors, consulted only where the flag
+// is true; the client's test/navCutoverEnvironmentScoped.test.mjs measures both sides.
+test("the legacy source is untouched when no EOS authority is supplied", () => {
   const legacyContext = { operationalRoles: [], employmentStatus: "ACTIVE" };
   const adminKeys = ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "operations", "dispatcherBoard"];
   const parts = NAV_DOMAINS.find((d) => d.key === "inventory").subnav.find((i) => i.key === "parts");
   const users = NAV_DOMAINS.find((d) => d.key === "administration").subnav.find((i) => i.key === "users");
   // A real legacyKey: byte-for-byte what it always was.
   assert.equal(isNavItemVisible(parts, "admin", adminKeys, legacyContext), true);
-  // A destination whose ONLY legacy authority was a placeholder row that has now gone.
+  // A destination whose only legacy authority is a placeholder row -- which it still has, and must,
+  // until its environment has an EOS source to answer it instead.
   assert.equal(
     isNavItemVisible(users, "admin", adminKeys, legacyContext),
-    false,
-    "administration/users is visible under the legacy source again -- its placeholder row came back",
+    true,
+    "administration/users lost its placeholder row -- where the flag is false nothing else opens it",
   );
   assert.equal(isNavItemVisible(users, "technician", ["fieldMode", "jobs", "technicianDashboard"], legacyContext), false);
 });

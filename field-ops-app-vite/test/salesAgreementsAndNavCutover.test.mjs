@@ -12,8 +12,8 @@
 //   2. Under the EOS source, NO legacy navigation authority runs: not ROLE_NAV_ACCESS, not
 //      operationalRoles, not PLACEHOLDER_DEFAULT_ROLES. Each of those paths is shown to fail closed
 //      individually, by being fed a value that WOULD have opened the door under the legacy source.
-//   3. The twenty placeholder rows are gone and the register is 42, with the before/after
-//      consequence measured rather than described.
+//   3. The twenty placeholder rows that earned a governed surface are answered by it under the EOS
+//      source and by their legacy row everywhere else, with the consequence measured (Lane BR).
 //
 // It is NOT registered in package.json by this lane -- see the lane report's
 // SUITES_ADDED_NEEDING_REGISTRATION. `npm test` (scripts/runSuites.mjs) discovers test/*.test.mjs.
@@ -24,6 +24,8 @@ import {
   NAV_SURFACE_ACCESS,
   NAV_LEGACY_PLACEHOLDER_DESTINATIONS,
   NAV_LEGACY_PLACEHOLDER_CEILING,
+  NAV_CUTOVER_PLACEHOLDER_DESTINATIONS,
+  NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS,
   PLACEHOLDER_DEFAULT_ROLES,
   isDomainVisible,
   isNavItemVisible,
@@ -282,7 +284,10 @@ test("an EOS authority that is not READY grants nothing AND does not hand naviga
 
 // ════════════════════ RULING F -- THE TWENTY ROWS ════════════════════
 
-const REMOVED_ROWS = Object.freeze([
+// The twenty destinations that hold BOTH a governed surface and a legacy placeholder row. Lane BQ
+// called these REMOVED_ROWS and deleted them; Lane BR calls them what they are -- the rows the
+// cutover retires ONE ENVIRONMENT AT A TIME, as each sets EOS_NAVIGATION_AUTHORITY_READY to true.
+const CUTOVER_ROWS = Object.freeze([
   "customers/customers", "customers/opportunities", "customers/salesOrders",
   "equipment/equipment",
   "service/workOrders", "service/coordinatedVisits",
@@ -293,41 +298,49 @@ const REMOVED_ROWS = Object.freeze([
   "administration/workflows", "administration/permissionPreview", "administration/auditLogs",
 ]);
 
-test("the placeholder register is 42, the ceiling moved with it, and the twenty are the mapped ones", () => {
-  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 42);
-  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 42);
-  assert.equal(new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS).size, 42);
+// ════════ AMENDED BY WAVE 16 / LANE BR -- THE ROWS LEAVE PER ENVIRONMENT, NOT GLOBALLY ════════
+//
+// The two tests below asserted the register at 42 and measured admin 75 -> 54, dispatcher 72 -> 51
+// as the cutover's cost. The measurement was right; the change it measured was not. Those twenty
+// rows are the only navigation authority in the four environments where EOS_NAVIGATION_AUTHORITY_READY
+// is false -- `taylor-parts-production` among them, with `eosApi: null` and so no EOS source to take
+// over -- and the Owner ruled that deleting them there is not a cutover, it is an outage.
+//
+// So `REMOVED_ROWS` is renamed to what it now is: the CUTOVER rows, which the EOS source answers and
+// the legacy source still needs. They are asserted here from BOTH sides. The register arithmetic and
+// the three partition ratchets are proved in test/navCutoverEnvironmentScoped.test.mjs, which also
+// pins the per-role destination sets against the b6a36b15 measurement.
+test("the placeholder register is 62, split into 20 cutover rows and 42 ungoverned ones", () => {
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_CEILING, 62);
+  assert.equal(new Set(NAV_LEGACY_PLACEHOLDER_DESTINATIONS).size, 62);
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false,
     "the container is back in the register -- a placeholder is the one thing a menu may never be");
 
-  // THE CRITERION, RE-DERIVED RATHER THAN TRUSTED. The rows that left are exactly the destinations
-  // NAV_SURFACE_ACCESS maps; the rows that stayed are exactly the ones it does not. Nobody had to
-  // keep two lists equal -- if a 43rd destination earns a surface tomorrow and keeps its row, this
-  // fails on the criterion rather than on a count.
-  for (const destination of NAV_LEGACY_PLACEHOLDER_DESTINATIONS) {
+  // THE CRITERION, RE-DERIVED RATHER THAN TRUSTED. The partition is computed from NAV_SURFACE_ACCESS
+  // in navConfig, so the twenty are not a second hand-list that somebody has to keep equal to this
+  // one; the assertion here is that the derivation lands on exactly the twenty the ruling named.
+  assert.deepEqual([...NAV_CUTOVER_PLACEHOLDER_DESTINATIONS].sort(), [...CUTOVER_ROWS].sort());
+  for (const destination of NAV_UNGOVERNED_PLACEHOLDER_DESTINATIONS) {
     assert.equal(Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, destination), false,
-      `${destination} holds BOTH a governed surface and an ungoverned placeholder row`);
+      `${destination} is in the UNGOVERNED partition while holding a governed surface`);
   }
-  for (const destination of REMOVED_ROWS) {
+  for (const destination of CUTOVER_ROWS) {
     assert.ok(Object.prototype.hasOwnProperty.call(NAV_SURFACE_ACCESS, destination),
-      `${destination} lost its placeholder row without having a governed surface -- it is now unreachable by anyone`);
-    assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes(destination), false);
+      `${destination} is in the CUTOVER partition without a governed surface to cut over TO`);
+    assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes(destination), true,
+      `${destination} lost its legacy row -- where the flag is false nothing else answers it`);
   }
 
   // Every guard in navConfig is clean against the real registers.
   assert.deepEqual(navigationSurfaceMapViolations(EXPERIENCE_SURFACE_KEYS), []);
   assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
   assert.deepEqual(containerRegisterViolations(), []);
-
-  // THE RATCHET RE-ARMED AT THE NEW SIZE. A forty-third row is refused now, not in twenty rows' time.
-  const regrown = [...NAV_LEGACY_PLACEHOLDER_DESTINATIONS, "service/warranty"];
-  assert.ok(legacyPlaceholderRegisterViolations({ register: regrown })
-    .some((p) => p.includes("above the shrink-only ceiling")));
 });
 
 // THE PER-ENVIRONMENT CONSEQUENCE, MEASURED. This is the number the Owner asked for, computed rather
 // than asserted from memory, so the report and the code cannot disagree.
-test("where the flag is FALSE the twenty removals narrow admin and dispatcher by exactly 21 destinations", () => {
+test("where the flag is FALSE nothing is narrowed -- the twenty rows still answer, exactly as on main", () => {
   const visibleUnderLegacy = (role) => destinations()
     .filter(([, item]) => isNavItemVisible(item, role, keysFor(role), legacy))
     .map(([key]) => key);
@@ -337,21 +350,22 @@ test("where the flag is FALSE the twenty removals narrow admin and dispatcher by
   const technician = visibleUnderLegacy(ROLES.TECHNICIAN);
 
   // Measured on origin/main at b6a36b15 (52d4f24a with the Lane BL cherry-pick, which changed no
-  // visibility): admin 75, dispatcher 72, technician 5.
-  assert.equal(admin.length, 54, "admin's legacy destination count has moved from the measured 75 - 21");
-  assert.equal(dispatcher.length, 51, "dispatcher's legacy destination count has moved from the measured 72 - 21");
-  assert.equal(technician.length, 5, "the technician was narrowed -- no removed row was one of theirs");
+  // visibility): admin 75, dispatcher 72, technician 5. Lane BQ took them to 54 / 51 / 5; Lane BR
+  // puts them back, and test/navCutoverEnvironmentScoped.test.mjs pins the SETS, not just the sizes.
+  assert.equal(admin.length, 75, "admin's legacy destination count no longer matches b6a36b15");
+  assert.equal(dispatcher.length, 72, "dispatcher's legacy destination count no longer matches b6a36b15");
+  assert.equal(technician.length, 5, "the technician count no longer matches b6a36b15");
 
-  // TWENTY-ONE, NOT TWENTY, AND THE TWENTY-FIRST IS DERIVED. `administration/overview` is a pure
-  // container over six of the removed destinations, so it closes with them. It was never a
-  // placeholder row and must not become one to compensate.
-  for (const destination of [...REMOVED_ROWS, "administration/overview"]) {
-    assert.equal(admin.includes(destination), false, `admin still reaches ${destination} under the legacy source`);
-    assert.equal(dispatcher.includes(destination), false, `dispatcher still reaches ${destination} under the legacy source`);
+  // TWENTY-ONE DESTINATIONS, AND THE TWENTY-FIRST IS DERIVED. `administration/overview` is a pure
+  // container over six of the cutover rows, so it follows them -- open under the legacy source
+  // because they are, and never itself a placeholder row.
+  for (const destination of [...CUTOVER_ROWS, "administration/overview"]) {
+    assert.equal(admin.includes(destination), true, `admin lost ${destination} under the legacy source`);
+    assert.equal(dispatcher.includes(destination), true, `dispatcher lost ${destination} under the legacy source`);
   }
 
-  // NOTHING ELSE MOVED. Every destination still visible to admin is one with a real legacy authority
-  // -- a legacyKey, or a placeholder row that was kept because nothing governs it.
+  // NOTHING OPENED BY OMISSION. Every destination visible to admin is one with a real legacy
+  // authority -- a legacyKey, a placeholder row, or a container derivation over one of those.
   for (const destination of admin) {
     const item = itemAt(destination);
     const derived = Boolean(item.containerScope);
@@ -359,14 +373,17 @@ test("where the flag is FALSE the twenty removals narrow admin and dispatcher by
       `${destination} is visible to admin under the legacy source with no legacy authority at all`);
   }
 
-  // AND THE DOORS ARE NOT LOST, THEY MOVED SOURCE. Every removed destination opens under the EOS
-  // source for a principal granted its surface -- which is the half of the ruling that makes the
-  // narrowing a cutover rather than a deletion.
-  for (const destination of REMOVED_ROWS) {
+  // AND UNDER THE EOS SOURCE THE SAME TWENTY ARE ANSWERED BY THE GOVERNED SURFACE INSTEAD. That is
+  // what makes this a cutover: the door does not move environments, the AUTHORITY behind it does.
+  for (const destination of CUTOVER_ROWS) {
     const surfaces = NAV_SURFACE_ACCESS[destination];
     const ctx = eosContext(eosAuthority([surfaces[0]]));
     assert.equal(isNavItemVisible(itemAt(destination), null, [], ctx), true,
-      `${destination} does not open under the EOS source either -- the door is gone, not moved`);
+      `${destination} does not open under the EOS source -- the door would be lost, not moved`);
+    // ...and the legacy row behind it is inert there, handed the role literal that would open it.
+    const refused = eosContext(eosAuthority([]));
+    assert.equal(isNavItemVisible(itemAt(destination), ROLES.ADMIN, keysFor(ROLES.ADMIN), refused), false,
+      `${destination} opened under the EOS source from a Firebase role literal`);
   }
 });
 
