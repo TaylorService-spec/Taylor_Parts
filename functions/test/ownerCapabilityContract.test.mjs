@@ -20,8 +20,9 @@
 //
 // THE MEASURED LIVE SET IS NOT RE-DERIVED HERE. It is read from
 // functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json -- the nonprod measurement
-// (387 grants, 2026-09-24) that roleCapabilityAuthorityBaselinePostgres.test.mjs asserts equals the
-// live table. Re-measuring inside a unit test would need a live connection and would prove less.
+// (413 grants after ruling B; 387 when this file was written) that
+// roleCapabilityAuthorityBaselinePostgres.test.mjs asserts equals the live table. Re-measuring
+// inside a unit test would need a live connection and would prove less.
 //
 // Dependency-free: plain Node assert against the compiled catalog, matching governedBusinessRoles
 // .test.mjs's convention. No emulator, no database, no network.
@@ -243,10 +244,25 @@ check("RECONCILE PROOF: and in particular it adds no ADMIN-ONLY capability", () 
   assert.deepEqual(addedAdminOnly, []);
 });
 
-check("RECONCILE PROOF: the six live Owner grants this catalog lacks are a catalog gap, not a narrowing", () => {
-  // The other direction, recorded rather than hidden: live Owner holds six ids that have no
+check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a catalog gap, not a narrowing", () => {
+  // The other direction, recorded rather than hidden: live Owner holds ids that have no
   // PERMISSION_CATALOG entry at all, so this catalog CANNOT declare them without registering a new
   // capability -- which this lane is forbidden to do. Their absence pre-dates this change.
+  //
+  // RE-MEASURED 2026-09-24 at Phase 3 integration: six -> nine. This pin was correct on lane BN's
+  // own branch and correct on the ruling-B branch, and wrong only in the MERGE of the two -- the
+  // same merged-result-only drift class as the capability graph. Commit 9fa82e94 ("activate the
+  // Owner-ruled authority corrections, ruling B and Reporting Slice 1") registered
+  // receivingOrder.record.read, reportDefinition.read and workOrder.record.read in eos_policy and
+  // granted all three to BOTH admin and owner, so the measured baseline moved 387 -> 413 grants,
+  // live owner 47 -> 50 and live admin 66 -> 69.
+  //
+  // THIS IS A RE-MEASUREMENT, NOT A RELAXATION, and the loop below is what makes that checkable:
+  // every id listed here must still be ABSENT from PERMISSION_CATALOG. An id that IS in the catalog
+  // and withheld from Owner would be a genuine narrowing and would fail, exactly as before. The
+  // three additions pass that test (none is a PERMISSION_CATALOG id), and the two properties this
+  // whole file exists to protect are untouched by the merge: admin-only is still exactly 19, and
+  // owner-only is still 0.
   const catalog = new Set(PERMISSION_CATALOG.map((p) => p.id));
   const liveNotDeclared = [...LIVE_OWNER].filter((id) => !OWNER.has(id)).sort();
   assert.deepEqual(liveNotDeclared, [
@@ -254,7 +270,10 @@ check("RECONCILE PROOF: the six live Owner grants this catalog lacks are a catal
     "finance.invoice.read",
     "finance.payment.read",
     "inventory.manufacturer.read",
+    "receivingOrder.record.read",
     "reorder.request.read",
+    "reportDefinition.read",
+    "workOrder.record.read",
     "workflowDefinition.read",
   ]);
   for (const id of liveNotDeclared) {
@@ -262,11 +281,15 @@ check("RECONCILE PROOF: the six live Owner grants this catalog lacks are a catal
   }
 });
 
-check("the vocabulary this proof is measured against is the full 76-key registered set", () => {
+check("the vocabulary this proof is measured against is the full 79-key registered set", () => {
   // If the vocabulary shrank to "keys someone happens to hold", the subset proof above would stop
   // seeing an Owner declaration of a registered-but-ungranted capability -- which is precisely the
-  // shape a future over-declaration would take.
-  assert.equal(VOCABULARY.size, 76);
+  // shape a future over-declaration would take. The pin is therefore a floor against SHRINKAGE, and
+  // re-pinning it upward after a registration keeps that property; leaving it at 76 would only
+  // assert that ruling B never happened.
+  //
+  // RE-PINNED 2026-09-24 at Phase 3 integration: 76 -> 79, the three ids registered by 9fa82e94.
+  assert.equal(VOCABULARY.size, 79);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

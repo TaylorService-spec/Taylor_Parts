@@ -20,10 +20,16 @@
 // WHY inventory.stock.receive IS THE REACHABILITY CAPABILITY. Resolved -- not grepped -- through
 // the SAME shipped modules the harness itself requires (lib/access/resolveEffectivePermission.js
 // over lib/access/compatibilityRoles.js + lib/access/governedBusinessRoles.js), it is the ONE
-// census capability carrying no `active:false` flag, and it resolves ALLOW for exactly four Roles:
-// admin, dispatcher, owner and the purpose-built inventoryReceivingClerk. `owner` is a DERIVED
-// holder (OWNER_PERMISSIONS composes from ADMIN_ROLE) and `admin` is spread the whole catalogue by
-// compatibilityRoles.ts, which is why the count must be resolved rather than read off a grep. The
+// census capability carrying no `active:false` flag, and it resolves ALLOW for exactly three Roles:
+// admin, dispatcher and the purpose-built inventoryReceivingClerk. `admin` is spread the whole
+// catalogue by compatibilityRoles.ts, which is why the count must be resolved rather than read off
+// a grep.
+//
+// RE-MEASURED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role): four Roles -> three.
+// `owner` used to appear here as a DERIVED holder because OWNER_PERMISSIONS composed from
+// ADMIN_ROLE; that spread is gone and inventory.stock.receive is one of the 19 capabilities
+// withheld from Owner by name. No assertion in this file counted the holders, so nothing below
+// changes -- this is the comment catching up with the catalog. The
 // proofs below use inventoryReceivingClerk: a NON-ADMIN principal, so no broad Administrator grant
 // is invented merely to make a test green. The other thirteen CAPABILITY_CATALOG census keys are
 // `active:false`, hence refused for every principal with no activation override in force -- which

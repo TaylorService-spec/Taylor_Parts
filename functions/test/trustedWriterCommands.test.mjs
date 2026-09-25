@@ -1146,16 +1146,39 @@ async function main() {
   });
 
   // =====================================================================
-  // owner >= admin, verified by COMPOSITION through the real, merged catalog
+  // OWNER vs ADMIN, verified by COMPOSITION through the real, merged catalog
   // path a caller actually uses (resolveEffectiveAccess / effectiveAccessFeed.ts
   // -- COMPATIBILITY_ROLES + GOVERNED_BUSINESS_ROLES), not by asserting the
   // Role objects' own .permissions arrays contain each other. Two principals,
   // one holding only `admin`, one holding only `owner`, resolved against the
   // SAME capability id set.
+  //
+  // PREMISE REPLACED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role).
+  // This block used to assert `owner >= admin`: for every sampled id admin ALLOWed,
+  // owner had to ALLOW too. That invariant is SUPERSEDED. It only ever held because
+  // OWNER_PERMISSIONS was `[...ADMIN_ROLE.permissions, ...reports]` and
+  // ADMIN_ROLE.permissions is the whole PERMISSION_CATALOG -- so the old loop could
+  // not fail, and what it "proved" was that Owner and Administrator were the same
+  // Role. Ruling A writes Owner's list out (151 -> 110 declarations) and the Owner
+  // has ruled the result correct: "Owner being a strict capability subset of Admin
+  // is NOT itself a defect."
+  //
+  // THE RULED PREMISE, which is what this block now proves:
+  //   (1) Owner is a strict SUBSET of Admin over this sample -- nothing Owner
+  //       resolves is refused to Admin.
+  //   (2) Every id Admin resolves and Owner does not is withheld BY NAME, on a
+  //       recorded exclusion list. A capability that silently falls off Owner
+  //       WITHOUT being named still fails this check -- that is where the teeth
+  //       moved to, and it is a stronger statement than the old loop, which could
+  //       not detect any drift at all.
+  //   (3) ADMIN RETAINS all of them. Narrowing Admin to make the two Roles agree
+  //       would "fix" the drift by revoking authority the business does grant.
   // =====================================================================
 
-  await check("owner >= admin by composition: every capability a solely-admin principal ALLOWs, a solely-owner principal ALLOWs too, through the real merged Role catalog", async () => {
+  await check("owner vs admin by composition: Owner is a strict SUBSET of Admin over the sample, every difference is withheld BY NAME, and Admin retains all of them", async () => {
     const { resolveEffectiveAccess } = await import("../lib/access/effectiveAccessFeed.js");
+    const { OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES, OWNER_EXCLUDED_NOT_AN_AUTHORITY } =
+      await import("../lib/access/governedBusinessRoles.js");
     const adminOnly = await makePrincipal("admin-only");
     await seedActiveRoleAssignment(adminOnly, "admin");
     const ownerOnly = await makePrincipal("owner-only");
@@ -1177,38 +1200,98 @@ async function main() {
       "admin.accessRequest.decide",
       "reorder.request.read.queue",
       "reorder.purchaseOrder.read",
-      // report.customer.read is the one capability owner holds that admin
-      // does NOT -- confirms the composition is a strict superset, not an
-      // identical set.
+      // Owner's reporting family. Owner is the only Role with report.* on its OWN
+      // declared contract; admin reaches it through the whole-catalog composition of
+      // the 2026-08-19 ruling. Both resolve it, so it is no longer an owner-only id --
+      // ruling A leaves ZERO owner-only capabilities in the governed vocabulary, which
+      // is exactly what "strict subset" means. Kept in the sample because it is the one
+      // id here that Owner declares for itself rather than sharing with admin.
       "report.customer.read",
     ];
     const adminDecisions = (await resolveEffectiveAccess({ principalUid: adminOnly, permissionIds: sampleCapabilities })).decisions;
     const ownerDecisions = (await resolveEffectiveAccess({ principalUid: ownerOnly, permissionIds: sampleCapabilities })).decisions;
 
+    // The ids in THIS sample that ruling A withholds from Owner, each traced to where it is
+    // recorded. This list is not a waiver: both directions are asserted below, so an entry
+    // that stops being withheld fails, and a NEW gap that is not listed here fails too.
+    const OWNER_WITHHELD_IN_SAMPLE = {
+      // One of the 19 admin-only exclusions. Credit control -- changing a Customer's governed
+      // credit fields is the Administrator's act, not oversight.
+      "customer.governedField.write": "OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES",
+      // Whole-queue reorder visibility moved out of the capability key and into Operational
+      // Scope by the 2026-09-17 ruling; the manifest's words are that it "may never be granted
+      // again".
+      "reorder.request.read.queue": "OWNER_EXCLUDED_NOT_AN_AUTHORITY",
+      // Outside the governed PostgreSQL vocabulary, and withheld on the same Owner/Administrator
+      // line -- both are named in governedBusinessRoles.ts's own exclusion block.
+      // inventory.action.create is stock correction (floor work); workOrder.cancel is the LEGACY
+      // id for what workOrder.lifecycle.cancel now names, and the five-row activation ruling
+      // excluded `owner` from lifecycle.cancel EXPLICITLY -- leaving the legacy id on Owner
+      // would have granted through the Firebase-era resolver the very authority the governed
+      // ruling withholds.
+      "inventory.action.create": "governedBusinessRoles.ts named out-of-vocabulary exclusions",
+      "workOrder.cancel": "governedBusinessRoles.ts named out-of-vocabulary exclusions",
+    };
+    // The two exported lists must actually back the entries that cite them, so this mapping
+    // cannot drift away from the source of truth it claims to quote.
+    assert.ok(
+      OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES.includes("customer.governedField.write"),
+      "customer.governedField.write must still be one of the 19 admin-only exclusions",
+    );
+    assert.ok(
+      OWNER_EXCLUDED_NOT_AN_AUTHORITY.includes("reorder.request.read.queue"),
+      "reorder.request.read.queue must still be on OWNER_EXCLUDED_NOT_AN_AUTHORITY",
+    );
+
+    let withheldExercised = 0;
     for (const id of sampleCapabilities) {
-      if (adminDecisions[id] === true) {
-        assert.equal(ownerDecisions[id], true, `owner must ALLOW "${id}" because admin does (owner >= admin)`);
+      // (1) strict subset: Owner never exceeds Admin anywhere in the sample.
+      if (ownerDecisions[id] === true) {
+        assert.equal(adminDecisions[id], true, `owner resolves "${id}" but admin does not -- Owner must never exceed Admin`);
       }
+      if (adminDecisions[id] !== true) continue;
+      if (Object.hasOwn(OWNER_WITHHELD_IN_SAMPLE, id)) {
+        // (2a) a NAMED difference must really be refused. If Owner regains it, this list is
+        // stale and the failure says so -- it does not silently pass.
+        assert.notEqual(
+          ownerDecisions[id],
+          true,
+          `owner must NOT resolve "${id}": it is withheld by ${OWNER_WITHHELD_IN_SAMPLE[id]}`,
+        );
+        // (3) ...and Admin keeps it.
+        assert.equal(adminDecisions[id], true, `admin must still resolve "${id}" -- ruling A narrowed OWNER, not ADMIN`);
+        withheldExercised += 1;
+        continue;
+      }
+      // (2b) an UNNAMED difference is a defect. This is the replacement for the old
+      // `owner >= admin` loop and it refuses strictly more: a capability may leave Owner
+      // only by being recorded as excluded.
+      assert.equal(
+        ownerDecisions[id],
+        true,
+        `owner must resolve "${id}": admin does, and "${id}" is on NO recorded Owner exclusion list -- ` +
+          "either grant it to Owner or record the exclusion by name",
+      );
     }
+    // Non-vacuity. If the sample ever stops containing a withheld id, the loop above proves
+    // only containment and the exclusion half quietly stops being tested.
+    assert.ok(withheldExercised >= 1, "the sample must exercise at least one capability admin resolves and Owner is refused");
+
     // WAS: admin must NOT resolve report.customer.read -- reports were Owner-only.
     // The 2026-08-19 Owner ruling ("Admin and Owner have full access to all possible
     // features and permissions") gives admin the whole catalog, reports included, so the
-    // old assertion now asserts against a standing decision.
-    //
-    // What this check is really for is the owner >= admin property, and that is proven by
-    // the loop directly above -- which is stronger now, not weaker, because admin resolving
-    // MORE means the loop has more to prove owner also resolves. Asserting admin ALLOWs
-    // keeps the id load-bearing here rather than deleting the line and quietly narrowing
-    // what the test covers.
+    // old assertion now asserts against a standing decision. Asserting admin ALLOWs keeps
+    // the id load-bearing here rather than deleting the line and quietly narrowing what
+    // the test covers.
     assert.equal(
       adminDecisions["report.customer.read"],
       true,
       "admin resolves report.customer.read since the 2026-08-19 full-catalog ruling",
     );
-    assert.equal(ownerDecisions["report.customer.read"], true, "owner alone must resolve report.customer.read (the strict-superset id)");
+    assert.equal(ownerDecisions["report.customer.read"], true, "owner must resolve report.customer.read -- the reporting family is on Owner's OWN declared contract, not inherited");
   });
 
-  await check("owner >= admin does NOT extend to the trusted-writer commands' OWN actor check: an owner-only principal (no admin compatibility Role) still cannot invoke grantRole itself -- a documented, pre-existing scope boundary this change leaves unmodified", async () => {
+  await check("Owner's merged-catalog authority does NOT extend to the trusted-writer commands' OWN actor check: an owner-only principal (no admin compatibility Role) still cannot invoke grantRole itself -- a documented, pre-existing scope boundary this change leaves unmodified", async () => {
     // trustedWriterCommands.ts's own resolvePrincipalPermission resolves the
     // ACTOR/APPROVER of its six commands against COMPATIBILITY_ROLES only
     // (see its own header comment: "ITS actions are compatibility-only by

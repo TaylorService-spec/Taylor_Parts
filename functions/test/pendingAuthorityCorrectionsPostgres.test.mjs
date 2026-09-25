@@ -431,8 +431,13 @@ test("PROOF 6/6: Owner does not become Admin", () => {
     assert.ok(adminOnly.includes(k), `${k} must remain Admin-only`);
   }
 
-  // Neither is a superset of the other: admin and owner now differ in BOTH directions because the
-  // ruling-B reads landed on the Roles that hold the writes, and admin holds writes owner does not.
+  // Owner remains a STRICT SUBSET of Admin -- they differ in ONE direction only. (This sentence
+  // previously read "Neither is a superset of the other: admin and owner now differ in BOTH
+  // directions", which the very next assertion contradicts: the ruling-B reads landed on BOTH Roles,
+  // so they added nothing owner-only. Corrected 2026-09-24 to match what is actually asserted and
+  // what the Owner ruled -- "Owner being a strict capability subset of Admin is NOT itself a
+  // defect".) The distinction between the two Roles is the WRITES owner lacks, not any read it has
+  // exclusively.
   const ownerOnly = [...owner].filter((c) => !admin.has(c)).sort();
   assert.deepEqual(ownerOnly, [], "admin holds every read owner does; the distinction is the WRITES owner lacks");
   assert.equal(admin.size - owner.size, 19);

@@ -18,7 +18,7 @@
     "eligibleForEnvironmentActivation": 92,
     "activatedInSomeEnvironment": 92,
     "callableExports": 48,
-    "destinations": 94,
+    "destinations": 95,
     "destinationsHidden": 19,
     "guides": 0,
     "registerEntries": 18,
@@ -916,6 +916,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
+          "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
           "functions/src/salesAgreement/salesAgreementReadService.ts"
         ],
@@ -924,10 +925,11 @@
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/policyObjectRegistry.js",
           "field-ops-app-vite/src/access/salesAgreementCapabilityAccess.js",
-          "field-ops-app-vite/src/metadata/definitions/salesAgreement.js"
+          "field-ops-app-vite/src/metadata/definitions/salesAgreement.js",
+          "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 5,
-        "clientReferenceCount": 5,
+        "serverReferenceCount": 6,
+        "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -5225,6 +5227,15 @@
       "key": "salesOrders",
       "label": "Sales Orders",
       "path": "sales-orders",
+      "legacyKey": null,
+      "navHidden": false,
+      "future": false,
+      "placeholderExplanation": null
+    },
+    {
+      "key": "salesAgreements",
+      "label": "Sales Agreements",
+      "path": "sales-agreements",
       "legacyKey": null,
       "navHidden": false,
       "future": false,

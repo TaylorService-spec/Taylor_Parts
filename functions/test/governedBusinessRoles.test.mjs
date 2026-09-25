@@ -673,7 +673,13 @@ check("fulfillment.coordinatedVisit.read: Field Manager and Operations Manager h
   }
 });
 
-check("fulfillment.coordinatedVisit.read: Owner inherits it by composition (through ADMIN_ROLE.permissions), same inactivePermission reason", () => {
+// PREMISE CORRECTED 2026-09-24 (Owner ruling A). The title used to read "Owner inherits it by
+// composition (through ADMIN_ROLE.permissions)". Owner no longer spreads ADMIN_ROLE.permissions, so
+// the MECHANISM named here was wrong; the assertion is not. Cross-domain reads are Owner's by
+// decision, and this id is now declared on OWNER_ENTERPRISE_VISIBILITY in its own right. The check
+// still refuses exactly what it always refused: this id disappearing from Owner, and Owner being
+// denied for the wrong reason (a missing grant instead of the active:false gate).
+check("fulfillment.coordinatedVisit.read: Owner DECLARES it in its own right (OWNER_ENTERPRISE_VISIBILITY), same inactivePermission reason", () => {
   assert.ok(OWNER_ROLE.permissions.includes("fulfillment.coordinatedVisit.read"));
   const result = resolve("fulfillment.coordinatedVisit.read", "owner", GOVERNED_BUSINESS_ROLES);
   assert.equal(result.decision, "DENY");

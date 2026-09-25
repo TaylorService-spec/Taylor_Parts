@@ -24,8 +24,16 @@ const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 const GLOBAL_TARGET: TargetContext = { scope: { type: "global" }, condition: {} };
 // The CANONICAL governed role catalog is the merge of the compatibility roles (admin/dispatcher/technician)
 // and the governed business roles (owner, managers, ...), exactly as effectiveAccessFeed resolves. A
-// principal may hold ANY governed role, so resolution must know all of them -- e.g. the Owner-ratified
-// OWNER role (owner >= admin) holds inventory.stock.receive by composition and must resolve ALLOW.
+// principal may hold ANY governed role, so resolution must know all of them -- e.g. the governed
+// `inventoryReceivingClerk` Role holds inventory.stock.receive and must resolve ALLOW even though it is
+// not a compatibility role. The merge is what makes that reachable; it is NOT a widening.
+//
+// CORRECTED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role). This note used to name the
+// OWNER role here and assert "owner >= admin ... holds inventory.stock.receive by composition and must
+// resolve ALLOW". That is now false by decision: inventory.stock.receive is one of the 19 admin-only
+// capabilities withheld from Owner, and the holders are exactly admin + dispatcher +
+// inventoryReceivingClerk. Nothing about this file's behavior changes -- it resolves whatever the
+// merged catalog says -- but the comment must not keep stating a contract the catalog refuses.
 const RECEIVE_ROLE_CATALOG: Readonly<Record<string, Role>> = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
 
 // Governed authorization for inventory.stock.receive, read THROUGH the transaction so a concurrent

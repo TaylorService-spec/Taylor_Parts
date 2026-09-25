@@ -60,8 +60,13 @@ test("the activation set is EXACTLY the five grants the Owner authorized", () =>
 test("no Role outside admin/dispatcher/technician appears, and no Object outside workOrder", () => {
   const roleKeys = new Set(activation.WORK_ORDER_LIFECYCLE_ACTIVATION_GRANTS.map((g) => g.roleKey));
   assert.deepEqual([...roleKeys].sort(), ["admin", "dispatcher", "technician"]);
-  // `owner` in particular: OWNER_PERMISSIONS spreads ADMIN_ROLE.permissions, so any route through the
-  // Role catalog would have handed it these three by composition. This route does not.
+  // `owner` in particular. While OWNER_PERMISSIONS spread ADMIN_ROLE.permissions, any route through
+  // the Role catalog would have handed Owner these three by composition; this route never did.
+  // STRENGTHENED 2026-09-24 (Owner ruling A -- narrow the compiled Owner Role): that spread is gone,
+  // and workOrder.lifecycle.cancel/.dispatch are now named in
+  // OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES precisely so this exclusion survives any future
+  // registration of those ids. The catalog and this activation route now AGREE about Owner instead
+  // of disagreeing, and the assertion below is what holds the route to it.
   assert.equal(roleKeys.has("owner"), false, "owner is an ADDITIONAL Role and the ruling excluded it");
   const objectKeys = new Set(activation.WORK_ORDER_LIFECYCLE_ACTIVATION_GRANTS.map((g) => g.objectKey));
   assert.deepEqual([...objectKeys], ["workOrder"]);
