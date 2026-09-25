@@ -138,14 +138,20 @@ ok("the Equipment area is routed at /equipment with an index screen", () => {
   assert.deepEqual(d.subnav.map((i) => i.path), [""]);
 });
 
-ok("Equipment nav is admin/dispatcher only -- technician fails closed, mirroring E3's Rules", () => {
+// WAVE 16 / LANE BQ: Equipment nav is GOVERNED-SOURCE-ONLY now, and the invariant this test exists
+// for is stronger than before rather than weakened. It used to read "admin/dispatcher only --
+// technician fails closed", which came from an ungoverned placeholder row; Owner ruling F removed
+// that row because `equipment/equipment` had already earned the EOS surface `equipment.register`.
+// E3 (#289) denies a technician every Equipment operation, and nav must not advertise a screen whose
+// every read would be denied -- that requirement is now met for every role under the legacy source,
+// and met by the governed grant under the EOS one. Rules remain the security boundary either way.
+ok("Equipment nav is governed-source-only -- no legacy role literal opens it", () => {
   const item = NAV_DOMAINS.find((x) => x.key === "equipment").subnav[0];
-  assert.equal(isNavItemVisible(item, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
-  assert.equal(isNavItemVisible(item, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
-  // E3 (#289) denies a technician every Equipment operation; nav must not advertise a
-  // screen whose every read would be denied. Nav visibility is not the security
-  // boundary -- Rules are -- but the two must not disagree.
-  assert.equal(isNavItemVisible(item, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+  assert.deepEqual(item.surfaceAccess, ["equipment.register"]);
+  assert.equal(item.legacyPlaceholder, undefined, "the ungoverned placeholder row came back");
+  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
+    assert.equal(isNavItemVisible(item, role, allowed(role)), false, `${role} opened Equipment from a role literal`);
+  }
 });
 
 ok("adding Equipment did not disturb the CRM/Sales area (union)", () => {
@@ -153,10 +159,10 @@ ok("adding Equipment did not disturb the CRM/Sales area (union)", () => {
   assert.equal(c.label, "CRM/Sales");
   assert.equal(c.path, "customers");
   // "customers" (customer list) + "opportunities" (Sales Cycle 2 Opportunity workspace)
-  // + "salesOrders" (the Sales Order index); Equipment did not add or remove any of them,
-  // which is the only thing THIS test is asserting. The items themselves are validated in
-  // crmSalesNav.test.mjs.
-  assert.deepEqual(c.subnav.map((i) => i.key), ["customers", "opportunities", "salesOrders"]);
+  // + "salesOrders" (the Sales Order index) + "salesAgreements" (the Sales Agreement index, Owner
+  // ruling D); Equipment did not add or remove any of them, which is the only thing THIS test is
+  // asserting. The items themselves are validated in crmSalesNav.test.mjs.
+  assert.deepEqual(c.subnav.map((i) => i.key), ["customers", "opportunities", "salesOrders", "salesAgreements"]);
   // The retired customers/equipment SUBNAV entry stays retired -- the new area is a
   // separate top-level domain, not a resurrection of the old placeholder.
   assert.equal(c.subnav.some((i) => (i.path ?? "") === "equipment"), false);

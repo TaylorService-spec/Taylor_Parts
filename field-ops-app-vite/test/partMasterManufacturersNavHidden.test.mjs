@@ -38,20 +38,38 @@ test("Manufacturers stays navHidden while its read is Rules-closed", () => {
   assert.equal(manufacturers.navHidden, true);
 });
 
-test("both remain route-eligible (isNavItemVisible alone, unaffected) for admin/dispatcher", () => {
+// WAVE 16 / LANE BQ SPLIT THESE TWO, and the split is the cutover's own criterion rather than
+// anything about navHidden. `inventory/partMaster` is MAPPED to the governed surface
+// `inventory.catalogAdmin`, so it was one of the twenty destinations whose ungoverned placeholder
+// row Owner ruling F removed: under the legacy source it is now fail-closed for every role, and
+// under the EOS source it opens on inventory.catalog.manage/.activate. `inventory/manufacturers` has
+// NO governed surface (its read is Rules-closed for every persona; NAV_SURFACE_GAPS says so), so it
+// kept its row and its legacy answer is untouched.
+//
+// NEITHER DECISION IS ABOUT navHidden, which is what the two tests above own and what is unchanged.
+test("route eligibility now follows the cutover: Part Master is governed-source-only, Manufacturers is not", () => {
   for (const role of ["admin", "dispatcher"]) {
     const allowed = ROLE_NAV_ACCESS[role];
-    assert.equal(isNavItemVisible(partMaster, role, allowed), true, `partMaster route should stay reachable for ${role}`);
+    assert.equal(isNavItemVisible(partMaster, role, allowed), false,
+      `partMaster still answers to the legacy role ${role} -- its placeholder row came back`);
     assert.equal(isNavItemVisible(manufacturers, role, allowed), true, `manufacturers route should stay reachable for ${role}`);
   }
+  assert.deepEqual(partMaster.surfaceAccess, ["inventory.catalogAdmin"]);
+  assert.equal(partMaster.legacyPlaceholder, undefined);
+  assert.equal(manufacturers.surfaceAccess, undefined, "Manufacturers earned a surface -- then its row must go too");
+  assert.equal(manufacturers.legacyPlaceholder, true);
 });
 
-test("the rail's presentation filter (isNavItemVisible && !navHidden) shows Part Master, hides Manufacturers", () => {
+test("the rail's presentation filter (isNavItemVisible && !navHidden) hides Manufacturers for its own reason", () => {
   const allowed = ROLE_NAV_ACCESS.admin;
   const railFilter = (item) => isNavItemVisible(item, "admin", allowed) && !item.navHidden;
-  assert.equal(railFilter(partMaster), true);
+  // TWO DIFFERENT FALSES, and keeping them apart is the point of this file. Manufacturers is hidden
+  // by navHidden; Part Master is not hidden at all -- it simply has no legacy authority any more.
   assert.equal(railFilter(manufacturers), false);
-  // Parts itself -- the catalog operating surface -- is unaffected by either decision.
+  assert.equal(partMaster.navHidden, undefined);
+  assert.equal(railFilter(partMaster), false);
+  // Parts itself -- the catalog operating surface, gated by legacyKey "inventory" -- is unaffected
+  // by either decision and by the cutover.
   const parts = inventory.subnav.find((i) => i.key === "parts");
   assert.equal(railFilter(parts), true);
 });

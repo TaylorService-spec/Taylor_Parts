@@ -136,6 +136,35 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
   surface("crm.accounts", "Customers", [{ capabilityKey: "customer.record.read" }]),
   surface("commercial.opportunities", "Opportunities", [{ capabilityKey: "opportunity.read" }]),
   surface("commercial.salesOrders", "Sales Orders", [{ capabilityKey: "salesOrder.read" }]),
+  // SALES AGREEMENTS -- DECLARED NOW, ON THE READ THAT ALREADY GOVERNED IT, WITH A DOOR BUILT IN THE
+  // SAME CHANGE (Owner ruling D, Wave 16 / Lane BQ).
+  //
+  // This key was `EXPERIENCE_SURFACE_GAPS["commercial.agreements"]`, kind DESTINATION, and that gap
+  // has been DELETED rather than rewritten -- the same treatment the Wave 9 / Lane AH note below
+  // gives the Administration entries, for the same reason: a gap whose stated reason is no longer
+  // true is not a gap. Lane BL corrected that entry from a VOCABULARY claim ("No salesAgreement.*
+  // capability is registered") that was measurably FALSE to a DESTINATION one -- "the authority is
+  // here, the door is not" -- and deliberately did not build the door, because building it is an
+  // Owner product decision. The Owner has now made it.
+  //
+  // NO NEW CAPABILITY AND NO NEW GRANT. `salesAgreement.read` is registered under Object
+  // `salesAgreement` and is held by admin, dispatcher, generalManager, owner, salesManager and
+  // salesperson (6 grants; measured read-only in nonprod 2026-09-24 and reproduced from
+  // adminPolicy/seed/roleCapabilityAuthorityBaseline.json, which experienceAuthority.test.mjs pins).
+  // Nothing about who holds it moved. What moved is that the product now has somewhere to offer it.
+  //
+  // THE READ, NEVER A WRITE. `.create`, `.updateDraft` and `.accept` are deliberately not grant
+  // paths here -- the same rule the Administration block states about `admin.roleAssignment.write`.
+  // An index is a read; gating it on a write would mean a reader could not read and a writer could
+  // not be told apart from a reader. The governed cross-account read behind the door is
+  // `listSalesAgreements` (eosCommercial/reads/salesAgreementReadProjection.ts, exposed by
+  // commercialHttp.ts), capability-scoped on this exact key -- so the door and the data answer to
+  // one authority rather than to two that can drift.
+  //
+  // NO PREDICATE. A Sales Agreement is a commercial record, not field work and not warehouse work:
+  // the governed model attaches no Work Eligibility and no Operational Scope to reading one, and
+  // inventing one here would be this file deciding policy rather than projecting it.
+  surface("commercial.agreements", "Sales Agreements", [{ capabilityKey: "salesAgreement.read" }]),
 
   // ── Inventory
   surface("inventory.catalog", "Parts Catalog", [{ capabilityKey: "inventory.catalog.read" }]),
@@ -315,20 +344,27 @@ export const EXPERIENCE_SURFACES: readonly ExperienceSurface[] = Object.freeze([
  *   DESTINATION   the capability exists AND IS GRANTED, and the product has no door to offer. The
  *                 fix is a product decision about information architecture, not a policy one, and
  *                 the grant population is evidence FOR building the door rather than against it.
- *                 commercial.agreements is this one.
+ *                 `commercial.agreements` was the only one, and it is GONE (Wave 16 / Lane BQ):
+ *                 the Owner made the product decision, the Sales Agreements index exists, and the
+ *                 surface is declared above on the `salesAgreement.read` this entry already named.
+ *                 The kind stays in the vocabulary and stays enforced -- the next destination gap
+ *                 must be writable, and must be refused if it is really a vocabulary one.
  *
- * A DESTINATION-KIND GAP IS NOT AN EXCUSE TO DECLARE THE SURFACE ANYWAY. experienceAuthority.test.mjs
- * asserts that every key in EXPERIENCE_SURFACES is reachable from some entry in the client's
- * NAV_SURFACE_ACCESS, and that assertion is the reason the surface stays here rather than being added
- * with no door: a persona that earns something the product cannot offer is the defect this whole
- * catalog exists to remove, pointed the other way.
+ * A DESTINATION-KIND GAP IS NOT AN EXCUSE TO DECLARE THE SURFACE ANYWAY, AND THE WAY OUT IS THE DOOR.
+ * experienceAuthority.test.mjs asserts that every key in EXPERIENCE_SURFACES is reachable from some
+ * entry in the client's NAV_SURFACE_ACCESS, which is why a destination gap may not simply be deleted
+ * in favour of declaring the surface: a persona that earns something the product cannot offer is the
+ * defect this whole catalog exists to remove, pointed the other way. `commercial.agreements` left
+ * this register in ONE change with its screen, its route, its nav item and its NAV_SURFACE_ACCESS
+ * row -- which is the only order in which that assertion can stay true.
  *
  * DO NOT "fix" one of these by pointing it at an unrelated capability. `administration.rolesPermissions`
  * gated by `admin.roleAssignment.write` would mean a reader could not read and a writer could not be
  * told apart from a reader; that is how a navigation model stops meaning anything. The same refusal
  * applies to closing a DESTINATION gap by mapping its surface onto a neighbouring door: adding
- * `commercial.agreements` to `customers/opportunities` would mean holding `salesAgreement.read` and
- * nothing else opened the Opportunities list, which is a grant the governed model never made.
+ * `commercial.agreements` to `customers/opportunities` would have meant holding `salesAgreement.read`
+ * and nothing else opened the Opportunities list, which is a grant the governed model never made.
+ * It got its OWN door instead, which is the distinction that refusal was protecting.
  */
 export type ExperienceSurfaceGapKind = "VOCABULARY" | "DESTINATION" | "NOT_A_DESTINATION";
 
@@ -375,50 +411,22 @@ export const EXPERIENCE_SURFACE_GAPS: readonly ExperienceSurfaceGap[] = Object.f
     absentCapabilityPrefixes: Object.freeze(["contact."]),
     reason: "Contact read has no capability of its own -- crm.createContact is a write, and customer.record.read governs the Account. A separate Contacts destination cannot be earned distinctly today.",
   }),
-  // ── A DESTINATION GAP, AND IT USED TO BE WRITTEN AS A VOCABULARY ONE ──
+  // ── `commercial.agreements` WAS HERE, AND IT IS CLOSED, NOT SUPPRESSED (Wave 16 / Lane BQ) ──
   //
-  // THE OLD REASON WAS FALSE, NOT MERELY STALE: "No salesAgreement.* capability is registered in
-  // eos_policy.capabilities". Four are, under Object `salesAgreement`, and they are GRANTED.
-  // Measured read-only against nonprod on 2026-09-24
-  // (`render psql <eos-policy> --command "SELECT ..."`, eos_policy.capabilities JOIN
-  // role_capabilities JOIN roles) and reproduced from
-  // adminPolicy/seed/roleCapabilityAuthorityBaseline.json:
+  // It was the register's only DESTINATION gap: `salesAgreement.read` registered and held by six
+  // Roles, `listSalesAgreements` built and capability-scoped on it, and no door in the client. Its
+  // own text named the way out -- "THAT IS THE SALES ORDERS SITUATION, VERBATIM, AND IT IS THE
+  // PRECEDENT FOR CLOSING IT ... An index screen was built and the surface followed" -- and said
+  // that doing the same here was an Owner product decision rather than this file's. The Owner made
+  // it, and the entry is deleted because the sentence it asserted is now false: there IS a Sales
+  // Agreements index (modules/sales/SalesAgreementsList.jsx), a route
+  // (/customers/sales-agreements), a nav item and a NAV_SURFACE_ACCESS row, and the surface is
+  // declared above.
   //
-  //     salesAgreement.read        READ             6 grants  admin, dispatcher, generalManager,
-  //     salesAgreement.create      CREATE           6 grants  owner, salesManager, salesperson
-  //     salesAgreement.updateDraft EDIT             6 grants  (same six)
-  //     salesAgreement.accept      BUSINESS_ACTION  4 grants  admin, dispatcher, generalManager,
-  //                                                           salesperson
-  //
-  // `salesperson` is the exact Security Role the persona this gap names holds
-  // (scripts/fixtures/personaAuthorityDimensions.v1.json, "national-accounts-sales"), so the sentence
-  // that was here said the vocabulary could not express a surface the vocabulary had already
-  // expressed and granted to the very persona it was written about. A gap whose stated reason is
-  // false is not a gap -- the Wave 9 / Lane AH note above says exactly that about the Administration
-  // entries, and it is why THAT reason had to go whatever replaced it.
-  //
-  // WHAT IS ACTUALLY MISSING IS THE DOOR. The governed cross-account read exists too --
-  // `listSalesAgreements` (eosCommercial/reads/salesAgreementReadProjection.ts, exposed by
-  // eosCommercial/commercialHttp.ts) is capability-scoped on `salesAgreement.read`. What does not
-  // exist anywhere in the client is a Sales Agreements INDEX: there is no list screen beside
-  // SalesOrdersList.jsx, no route, and no NAV_SURFACE_ACCESS row. The only Agreement destination is
-  // the RECORD page at /customers/opportunities/sales-agreement/:salesAgreementId, reached by first
-  // opening the Opportunity that created it.
-  //
-  // THAT IS THE SALES ORDERS SITUATION, VERBATIM, AND IT IS THE PRECEDENT FOR CLOSING IT. The
-  // `customers/salesOrders` nav item in navConfig.js says so about itself: "the capability was never
-  // the thing missing: admin holds all four salesOrder.* ids ... and an admin still saw nothing about
-  // Sales Orders anywhere in the product -- the only surface was a detail route reachable by first
-  // opening the Opportunity that created the order." An index screen was built and the surface
-  // followed. Doing the same here is a PRODUCT decision -- whether Sales Agreements gets its own door
-  // under CRM/Sales -- and it is the Owner's, not this catalog's. It is not made by editing this
-  // file, and it must not be faked by mapping the surface onto a door that is not it.
-  Object.freeze({
-    key: "commercial.agreements",
-    kind: "DESTINATION" as const,
-    governedBy: "salesAgreement.read",
-    reason: "DESTINATION GAP, NOT A VOCABULARY ONE. salesAgreement.read/.create/.updateDraft/.accept are registered under Object salesAgreement and granted (6/6/6/4 grants; .read is held by admin, dispatcher, generalManager, owner, salesManager, salesperson -- measured read-only in nonprod 2026-09-24), and the governed cross-account read listSalesAgreements already exists. The client has no Sales Agreements index destination: the Agreement is reachable only as a record page from its Opportunity, so there is no door for the surface to be offered through. Declaring the surface without one would break the invariant that every granted surface is reachable from some destination. Building the index is an Owner product decision, not a capability one.",
-  }),
+  // THE ENTRY DID NOT LEAVE ON ITS OWN. Deleting a DESTINATION gap without building its door would
+  // simply have hidden the surface instead of declaring it, and declaring the surface without the
+  // door would have broken "every granted surface is reachable from SOME destination". Both halves
+  // moved in one commit, which is the only order in which either assertion holds.
   Object.freeze({
     key: "dashboard.myPipeline",
     // NOT_A_DESTINATION, and deliberately carries no capability evidence of either kind. The pipeline

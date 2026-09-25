@@ -97,6 +97,9 @@ const CONFORMANT_SURFACES = [
   "modules/workOrders/WorkOrdersList.jsx",
   "modules/accounts/AccountsList.jsx",
   "modules/sales/SalesOrdersList.jsx",
+  // The Sales Agreement index (Owner ruling D, Wave 16 / Lane BQ), born conformant rather than
+  // migrated: it is a new collection page and there was never a pre-North-Star version of it.
+  "modules/sales/SalesAgreementsList.jsx",
   "modules/inventory/PartMasterList.jsx",
   "modules/equipment/EquipmentWorkspace.jsx",
   "modules/purchasing/Suppliers.jsx",
@@ -188,6 +191,9 @@ const NORTH_STAR_COLLECTION_PAGES = [
   // migration could not have merged.
   "modules/accounts/AccountsList.jsx",     // Phase 4
   "modules/sales/SalesOrdersList.jsx",     // Phase 5
+  // Born on this list rather than migrated onto it (Owner ruling D, Wave 16 / Lane BQ). The Sales
+  // Agreement index did not exist before, so it has no WorkspaceShell history to drop.
+  "modules/sales/SalesAgreementsList.jsx",
   // TRANCHE 1 — catalog / reference families.
   "modules/inventory/PartMasterList.jsx",  // moved from CONFORMANT_WORKSPACES (Wave 4)
   "modules/equipment/EquipmentWorkspace.jsx",

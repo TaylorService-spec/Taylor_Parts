@@ -337,14 +337,20 @@ test("the client's derived-surface mirror names exactly this catalog's container
   assert.equal(NAV_CONTAINERS["administration/overview"].includes("administration/dataImport"), false,
     "the client container would open the policy menu on a data-import grant; the server's does not");
 
-  // Both client guards are clean against the real registers, and the shrink-only register is still
-  // 62 with the container out of it -- the container answer made the row unnecessary, not allowed.
+  // Both client guards are clean against the real registers, and the container is still OUT of the
+  // shrink-only register -- the container answer made the row unnecessary, not allowed.
+  //
+  // THE REGISTER IS 42 NOW, NOT 62 (Wave 16 / Lane BQ, Owner ruling F). The twenty destinations that
+  // already carried a governed EOS surface lost their placeholder rows in the same change that made
+  // the EOS authority the only navigation authority. Six of those twenty are this container's own
+  // children, which is why the number is asserted here as well as in the cutover's own suite: the
+  // Administration menu's legacy answer moved with them.
   assert.deepEqual(containerRegisterViolations(), []);
   assert.deepEqual(legacyPlaceholderRegisterViolations(), []);
   assert.deepEqual(navigationSurfaceMapViolations(), []);
   assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.includes("administration/overview"), false,
     "the Administration container is back in the shrink-only legacy placeholder register");
-  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 62);
+  assert.equal(NAV_LEGACY_PLACEHOLDER_DESTINATIONS.length, 42);
 });
 
 test("the two authority modules AGREE on every Administration surface -- pinned from both sides", () => {

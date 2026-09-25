@@ -47,7 +47,15 @@ test("the rail's presentation filter (isNavItemVisible && !navHidden) excludes B
   // Cycle Counts is now discoverable rather than reachable-only-by-URL: a Role exists that carries its
   // authority, so a holder must be able to FIND the surface, not just deep-link to it.
   assert.equal(railFilter(cycleCounts), true);
-  // A sibling item with no navHidden flag is unaffected.
+  // A sibling item with no navHidden flag is unaffected BY THIS DECISION -- `transfers`, which holds
+  // a placeholder row of its own, still shows. Inventory > Receiving used to stand here and no
+  // longer can: it was one of the twenty destinations whose ungoverned placeholder row the Wave 16 /
+  // Lane BQ cutover removed, so under the legacy source it is fail-closed and the rail filter is
+  // false for a reason that has nothing to do with navHidden. Using it as the control would make
+  // this test assert the cutover rather than the presentation rule it is about.
+  const transfers = inventory.subnav.find((i) => i.key === "transfers");
+  assert.equal(railFilter(transfers), true);
   const receiving = inventory.subnav.find((i) => i.key === "receiving");
-  assert.equal(railFilter(receiving), true);
+  assert.equal(receiving.navHidden, undefined, "Receiving is still not hidden -- it is governed-source-only now");
+  assert.equal(railFilter(receiving), false);
 });
