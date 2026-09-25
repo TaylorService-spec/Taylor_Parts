@@ -356,6 +356,17 @@ on:
       # measurements. It runs in test:adminPolicyPostgres.
       - "functions/scripts/rebindPrincipalIdentity.js"
       - "functions/test/principalIdentityRebindPostgres.test.mjs"
+      # LANE BU: the GENERIC governed Principal PROVISIONING operator. The write is
+      # `ensureTenantPrincipal` in src/adminPolicy/tenantBootstrap.ts (already covered by
+      # "functions/src/adminPolicy/**" above); the operator is the only place its missing guards
+      # live -- PostgreSQL-derived administering capability over role_capabilities UNION
+      # principal_capabilities, argv-supplied authority refused, duplicate external subject and
+      # duplicate canonical Principal refused. Both the operator AND its subject command are named,
+      # because a path filter omitting either yields a guard that is green because it never ran.
+      - "functions/scripts/provisionGovernedPrincipal.js"
+      - "functions/src/adminPolicy/tenantBootstrap.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/test/governedPrincipalProvisioningPostgres.test.mjs"
       # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
       # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
       # named here for the same reason every entry above is -- a suite in a registered job that no
@@ -651,6 +662,17 @@ on:
       # measurements. It runs in test:adminPolicyPostgres.
       - "functions/scripts/rebindPrincipalIdentity.js"
       - "functions/test/principalIdentityRebindPostgres.test.mjs"
+      # LANE BU: the GENERIC governed Principal PROVISIONING operator. The write is
+      # `ensureTenantPrincipal` in src/adminPolicy/tenantBootstrap.ts (already covered by
+      # "functions/src/adminPolicy/**" above); the operator is the only place its missing guards
+      # live -- PostgreSQL-derived administering capability over role_capabilities UNION
+      # principal_capabilities, argv-supplied authority refused, duplicate external subject and
+      # duplicate canonical Principal refused. Both the operator AND its subject command are named,
+      # because a path filter omitting either yields a guard that is green because it never ran.
+      - "functions/scripts/provisionGovernedPrincipal.js"
+      - "functions/src/adminPolicy/tenantBootstrap.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/test/governedPrincipalProvisioningPostgres.test.mjs"
       # functions/package.json was named by the pull_request filter and NOT by this one, so an edit
       # to the deploy command itself could reach main without ever triggering the suite that proves
       # it. Named here too.
