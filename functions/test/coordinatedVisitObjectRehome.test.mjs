@@ -98,7 +98,11 @@ test("the five Role grants are derived from the governed catalog, not chosen", (
 test("the governed seed no longer declares either retired Object", () => {
   const seed = JSON.parse(readFileSync(
     resolve(FUNCTIONS_DIR, "src/adminPolicy/seed/policySeedSnapshot.json"), "utf8"));
-  assert.equal(seed.objects.length, 39, "41 minus the two Objects that governed nothing");
+  assert.equal(seed.objects.length, 40,
+    "41 minus the two Objects that governed nothing, plus reportDefinition -- Reporting Slice 1, "
+    + "migration 1762300800000. The retirement this file guards is unaffected: a later Object being "
+    + "REGISTERED does not un-retire dispatchSchedule or notifications, and the two assertions "
+    + "below still name them.");
   for (const key of RETIRED) {
     assert.equal(seed.objects.some((o) => o.key === key), false, `${key} must be gone from the seed`);
   }
@@ -163,7 +167,7 @@ test("retirement and re-home, in PostgreSQL", { skip: SKIP, concurrency: 1 }, as
        WHERE NOT EXISTS (SELECT 1 FROM eos_policy.objects o WHERE o.id = r.object_id)`);
     assert.equal(orphans.rows[0].n, 0, "no CRED row points at a deleted Object");
     const total = await pool.query("SELECT count(*)::int n FROM eos_policy.objects");
-    assert.equal(total.rows[0].n, 39, "the seed and the database agree on 39 Objects");
+    assert.equal(total.rows[0].n, 40, "the seed and the database agree on 40 Objects");
   });
 
   await t.test("the capability survives, under the Sales Order, with exactly its five grants", async () => {

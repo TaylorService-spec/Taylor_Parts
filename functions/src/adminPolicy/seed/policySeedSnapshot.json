@@ -5,7 +5,7 @@
     "field-ops-app-vite/src/access/policyObjectRegistry.js"
   ],
   "counts": {
-    "objects": 39,
+    "objects": 40,
     "objectsWithFields": 28,
     "fields": 389
   },
@@ -1034,7 +1034,9 @@
         "C": [
           "workOrder.create"
         ],
-        "R": [],
+        "R": [
+          "workOrder.record.read"
+        ],
         "E": [
           "workOrder.transition",
           "workOrder.cancel",
@@ -2787,7 +2789,9 @@
       "supportsDelete": false,
       "capabilitiesByVerb": {
         "C": [],
-        "R": [],
+        "R": [
+          "receivingOrder.record.read"
+        ],
         "E": [
           "inventory.stock.receive"
         ],
@@ -4032,7 +4036,9 @@
       "supportsDelete": false,
       "capabilitiesByVerb": {
         "C": [],
-        "R": [],
+        "R": [
+          "employee.record.read"
+        ],
         "E": [
           "admin.userStatus.write",
           "admin.credentialReset.initiate"
@@ -4376,7 +4382,9 @@
       "supportsDelete": false,
       "capabilitiesByVerb": {
         "C": [],
-        "R": [],
+        "R": [
+          "admin.securityPolicy.read"
+        ],
         "E": [
           "admin.roleAssignment.write",
           "admin.accessRequest.decide"
@@ -6432,6 +6440,24 @@
       "capabilitiesByVerb": {
         "C": [],
         "R": [],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
+      "key": "reportDefinition",
+      "label": "Report Definition",
+      "labelPlural": "Report Definitions",
+      "description": "A saved report definition: what it selects and how it is shaped. Registered by migration 1762300800000 as Reporting Slice 1, mirroring workflowDefinition -- a security subject with no data shape of its own. It carries NO field dimension: eos_policy.capabilities has object_key NOT NULL, UNIQUE (object_key, action_key) and no field column, so the 34 field-level report ids are NOT capability rows. Which fields a definition may show belongs to eos_policy.role_field_permission_overrides.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": [
+          "reportDefinition.read"
+        ],
         "E": [],
         "D": []
       },

@@ -34,7 +34,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -406,6 +406,17 @@ test("the conditional entitlement relation, in PostgreSQL", { skip: SKIP, concur
   // ════════════════════ reversal ════════════════════
 
   await t.test("the DOWN refuses while a condition exists, and reverses when none does", async () => {
+    // THE CHAIN HAS GROWN ABOVE THIS MIGRATION, so "down 1" no longer names it. Migration
+    // 1762300800000 (the authority activation vehicle) was appended after 1762214400000, and a
+    // reversal test that silently reversed the WRONG migration would report a property of some
+    // other file. The steps are counted from the chain rather than hard-coded, so the next
+    // migration appended after this one does not break it again.
+    const chain = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
+    const index = chain.findIndex((f) => f.startsWith("1762214400000"));
+    assert.ok(index >= 0, "the migration under test is still in the chain");
+    const above = chain.length - 1 - index;
+    if (above > 0) migrate("down", String(above));
+
     const failed = (() => { try { migrate("down", "1"); return null; } catch (e) { return e; } })();
     assert.ok(failed, "the down destroyed established policy instead of refusing");
     assert.match(String(failed.stderr ?? failed.message), /refuses to reverse/);
@@ -425,6 +436,10 @@ test("the conditional entitlement relation, in PostgreSQL", { skip: SKIP, concur
               (SELECT count(*)::int FROM eos_policy.capability_grant_conditions) AS n`);
     assert.equal(back[0].present, true);
     assert.equal(back[0].n, 0, "up restores the relation EMPTY, exactly as it was created");
+
+    // ...and the chain is put back the way this subtest found it, so nothing after it runs against
+    // a database that is silently missing the migrations above.
+    if (above > 0) migrate("up", String(above));
   });
 
   await t.test("the grant population of the capability is unchanged by all of the above", async () => {

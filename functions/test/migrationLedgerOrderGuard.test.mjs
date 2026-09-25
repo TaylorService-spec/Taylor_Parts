@@ -149,8 +149,13 @@ const ACCEPTED_OUT_OF_ORDER = Object.freeze([
 /** Tracked but NEVER applied, by design. It lives outside the migrations dir so the runner never sees it. */
 const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sql";
 
-const RUNNABLE_MIGRATION_COUNT = 50;
-const TRACKED_MIGRATION_COUNT = 51; // the 50 runnable + the one deferred file
+// 50 -> 51 runnable: migration 1762300800000, the authority activation vehicle. It is APPENDED at
+// the end of the chain (its id is above every applied one), so it is an EXPLAINED pending migration
+// and the ledger model below is deliberately NOT extended to include it -- NONPROD_LEDGER is a
+// measurement of what nonprod has RUN, and nonprod has not run this one.
+const RUNNABLE_MIGRATION_COUNT = 51;
+const TRACKED_MIGRATION_COUNT = 52; // the 51 runnable + the one deferred file
+const PENDING_AT_MEASUREMENT = Object.freeze(["1762300800000_authority-activation-and-reporting-read"]);
 
 const repoMigrations = () =>
   readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).map((f) => f.replace(/\.sql$/, "")).sort();
@@ -206,7 +211,7 @@ export function analyseLedger(repo, applied) {
 
 // ════════════════════ THE CHAIN ITSELF ════════════════════
 
-test("the migration chain is well formed: 50 runnable, 51 tracked, unique ids, filename order == id order", () => {
+test("the migration chain is well formed: 51 runnable, 52 tracked, unique ids, filename order == id order", () => {
   const repo = repoMigrations();
   assert.equal(repo.length, RUNNABLE_MIGRATION_COUNT,
     `expected ${RUNNABLE_MIGRATION_COUNT} runnable migrations, found ${repo.length}. ` +
@@ -268,18 +273,21 @@ test("there is no unexplained pending migration", () => {
     "a pending migration whose id falls INSIDE already-applied history. Before --no-check-order " +
     "this aborted the deploy; now it applies silently against a schema that moved past it. " +
     "Re-date it above the highest applied id.");
-  // Today the model and the chain agree exactly; say so, so that a pending migration appearing at
-  // all is a deliberate, visible change to this line rather than a silent drift.
-  assert.deepEqual(pending, [], "the modelled ledger and the repository chain are the same 50 migrations");
+  // ONE pending migration, and it is NAMED rather than tolerated. 1762300800000 is the authority
+  // activation vehicle: authored, proved against disposable databases, and deliberately NOT applied
+  // to nonprod by the lane that wrote it. Its id is above every applied one, so it is new work
+  // appended to the end of the chain -- the explained case -- and the deploy will apply exactly it.
+  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT],
+    "a pending migration this file does not name. Adding one is a deliberate, visible change here.");
 });
 
 // ════════════════════ THE GUARD BITES -- each failure mode, injected ════════════════════
 
 test("an unknown applied name is REPORTED, not tolerated", () => {
   const repo = repoMigrations();
-  const injected = [...NONPROD_LEDGER, "1762300800000_a-migration-this-repository-does-not-have"];
+  const injected = [...NONPROD_LEDGER, "1762473600000_a-migration-this-repository-does-not-have"];
   const { unknownApplied } = analyseLedger(repo, injected);
-  assert.deepEqual(unknownApplied, ["1762300800000_a-migration-this-repository-does-not-have"]);
+  assert.deepEqual(unknownApplied, ["1762473600000_a-migration-this-repository-does-not-have"]);
 });
 
 test("a duplicated ledger entry is REPORTED, not tolerated", () => {
@@ -311,14 +319,17 @@ test("a SECOND out-of-order pair -- one that is not the accepted anomaly -- is R
 test("a BACK-DATED pending migration is REPORTED -- the hazard --no-check-order newly creates", () => {
   const repo = [...repoMigrations(), "1760500000000_a-migration-back-dated-into-applied-history"].sort();
   const { pending, unexplainedPending } = analyseLedger(repo, NONPROD_LEDGER);
-  assert.deepEqual(pending, ["1760500000000_a-migration-back-dated-into-applied-history"]);
+  assert.deepEqual(pending,
+    ["1760500000000_a-migration-back-dated-into-applied-history", ...PENDING_AT_MEASUREMENT]);
+  // AND THE GUARD SEPARATES THEM. Two pending migrations, one explained and one not: the appended
+  // one is ordinary new work, the back-dated one is the hazard --no-check-order creates.
   assert.deepEqual(unexplainedPending, ["1760500000000_a-migration-back-dated-into-applied-history"]);
 });
 
 test("a properly APPENDED pending migration is explained, and is not reported", () => {
-  const repo = [...repoMigrations(), "1762300800000_a-migration-appended-after-the-chain"].sort();
+  const repo = [...repoMigrations(), "1762473600000_a-migration-appended-after-the-chain"].sort();
   const { pending, unexplainedPending } = analyseLedger(repo, NONPROD_LEDGER);
-  assert.deepEqual(pending, ["1762300800000_a-migration-appended-after-the-chain"]);
+  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1762473600000_a-migration-appended-after-the-chain"]);
   assert.deepEqual(unexplainedPending, [], "new work at the end of the chain is normal and must not fire the guard");
 });
 
@@ -348,9 +359,17 @@ test("the deploy's migrate:up returns cleanly over the anomalous ledger, applyin
     // Seed pgmigrations with exactly the table node-pg-migrate creates, in the measured order.
     // Nothing else is created: this proves the ORDERING decision, which happens before any
     // migration body would run.
+    //
+    // THE PENDING MIGRATION IS SEEDED TOO, and that is deliberate rather than a fudge. This test
+    // asks ONE question -- does the ordering check still reject this ledger without the flag, and
+    // accept it with the flag -- and the answer must not depend on whether a migration BODY can run
+    // here, because no eos_policy schema exists in this database at all. So the ledger is modelled
+    // as the deploy will leave it, one row longer, and the ordering decision is unchanged by the
+    // append: 1762300800000 sorts after everything, so it introduces no new inversion.
+    const LEDGER_AFTER_DEPLOY = [...NONPROD_LEDGER, ...PENDING_AT_MEASUREMENT];
     await withClient(dbUrlFor(name), async (c) => {
       await c.query("CREATE TABLE pgmigrations (id SERIAL PRIMARY KEY, name varchar(255) NOT NULL, run_on timestamp NOT NULL)");
-      for (const [i, m] of NONPROD_LEDGER.entries()) {
+      for (const [i, m] of LEDGER_AFTER_DEPLOY.entries()) {
         await c.query("INSERT INTO pgmigrations (name, run_on) VALUES ($1, TIMESTAMP '2026-09-01 00:00:00' + ($2 * INTERVAL '1 minute'))", [m, i]);
       }
     });
@@ -379,6 +398,6 @@ test("the deploy's migrate:up returns cleanly over the anomalous ledger, applyin
 
     const after = await withClient(dbUrlFor(name), (c) =>
       c.query("SELECT name FROM pgmigrations ORDER BY run_on, id"));
-    assert.equal(after.rows.length, NONPROD_LEDGER.length, "the ledger must be untouched: 0 unexpected migrations applied");
-    assert.deepEqual(after.rows.map((r) => r.name), [...NONPROD_LEDGER], "and in the same order it was read in");
+    assert.equal(after.rows.length, LEDGER_AFTER_DEPLOY.length, "the ledger must be untouched: 0 unexpected migrations applied");
+    assert.deepEqual(after.rows.map((r) => r.name), [...LEDGER_AFTER_DEPLOY], "and in the same order it was read in");
   });

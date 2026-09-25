@@ -66,6 +66,22 @@
       "fields": []
     },
     {
+      "key": "reportDefinition",
+      "label": "Report Definition",
+      "labelPlural": "Report Definitions",
+      "description": "A saved report definition: what it selects and how it is shaped. Registered by migration 1762300800000 as Reporting Slice 1, mirroring workflowDefinition -- a security subject with no data shape of its own. It carries NO field dimension: eos_policy.capabilities has object_key NOT NULL, UNIQUE (object_key, action_key) and no field column, so the 34 field-level report ids are NOT capability rows. Which fields a definition may show belongs to eos_policy.role_field_permission_overrides.",
+      "domain": "Administration",
+      "source": "CAPABILITY_AUTHORITY",
+      "supportsDelete": false,
+      "capabilitiesByVerb": {
+        "C": [],
+        "R": ["reportDefinition.read"],
+        "E": [],
+        "D": []
+      },
+      "fields": []
+    },
+    {
       "key": "workflowInstance",
       "label": "Workflow Instance",
       "labelPlural": "Workflow Instances",

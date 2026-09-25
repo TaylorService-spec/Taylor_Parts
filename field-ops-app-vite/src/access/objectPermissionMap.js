@@ -42,8 +42,15 @@ export const OBJECT_PERMISSIONS = Object.freeze([
     C: ["opportunity.createSalesOrder"], R: ["salesOrder.read"],
     E: ["salesOrder.write", "salesOrder.fulfill", "salesOrder.service"], D: [] },
   { object: "Commissions", domain: "Sales / Finance", C: [], R: [], E: [], D: [] },
+  // R WAS EMPTY, and that was an UNGOVERNED verb rather than an ungranted one: nothing in
+  // eos_policy.capabilities meant "may read a work order", so `deriveObjectCred` left R false for
+  // every Role -- including the ten that hold `workOrder.transition` and the Owner. Migration
+  // 1762300800000 registers `workOrder.record.read` (workOrder / read / READ) and grants it to
+  // exactly those holders. It confers NO transition, dispatch, cancel, completion or creation:
+  // the UNIQUE index on (object_key, action_key) keeps the read its own row.
   { object: "Work Orders", domain: "Service",
-    C: ["workOrder.create"], R: [], E: ["workOrder.transition", "workOrder.cancel", "workOrder.parts.plan"], D: [] },
+    C: ["workOrder.create"], R: ["workOrder.record.read"],
+    E: ["workOrder.transition", "workOrder.cancel", "workOrder.parts.plan"], D: [] },
   // "Dispatch Schedule" REMOVED (Owner ruling 2026-09-23). It was a MATRIX_ONLY row describing a
   // data authority that does not exist: no table, no collection, no document, no field. There is no
   // Dispatch/Visit/WorkOrderGroup record in this platform -- THE SALES ORDER IS THE COORDINATOR --
@@ -88,8 +95,12 @@ export const OBJECT_PERMISSIONS = Object.freeze([
   // `reorder.request.markReceived` MOVED OUT: it is the ORDERED -> RECEIVED transition, an action in
   // the Parts / Purchasing workflow. `inventory.stock.receive` stays -- it is the Receiving
   // command's own authority and is not part of the reorder family this ruling covers.
+  // R WAS EMPTY for the same reason: `inventory.stock.receive` is the only capability naming this
+  // Object, so admin, dispatcher and inventoryReceivingClerk could record a receipt against a
+  // record they could not read. Migration 1762300800000 registers `receivingOrder.record.read` and
+  // grants it to exactly those three plus the Owner. The READ is not the receipt.
   { object: "Receiving", domain: "Inventory",
-    C: [], R: [], E: ["inventory.stock.receive"], D: [] },
+    C: [], R: ["receivingOrder.record.read"], E: ["inventory.stock.receive"], D: [] },
   { object: "Transfer Orders", domain: "Inventory",
     C: ["inventory.transfer.create"], R: ["warehouse.transferOrder.read"],
     E: ["inventory.transfer.dispatch", "inventory.transfer.receive", "inventory.transfer.cancel"], D: [] },
@@ -109,10 +120,20 @@ export const OBJECT_PERMISSIONS = Object.freeze([
   // "Employees", not "Users". This row governs the WORKFORCE record (entity key `employee`); the
   // security actor is the Principal, which is its own Object. Calling the workforce record "Users"
   // is the Principal/Employee conflation the platform removes everywhere else.
+  // R WAS EMPTY while `employee.record.read` (employee / read / READ) HAS EXISTED ALL ALONG and is
+  // held by admin, generalManager and owner. That is a PROJECTION defect, not a missing authority:
+  // an empty verb list makes R unsatisfiable for every Role however much READ it holds. Wiring the
+  // verb to the capability that already governs it invents nothing and grants nobody anything.
   { object: "Employees", domain: "Administration",
-    C: [], R: [], E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
+    C: [], R: ["employee.record.read"],
+    E: ["admin.userStatus.write", "admin.credentialReset.initiate"], D: [] },
+  // R WAS EMPTY while `admin.securityPolicy.read` -- registered by migration 1762041600000 for
+  // exactly this gap and granted to admin AND owner as two independent rows -- already governed it.
+  // Wiring the verb to it does NOT copy Admin to Owner: Owner reads the security policy on its own
+  // grant and still holds none of the ADMIN_ACTION writes beside it in this row's E cell.
   { object: "Roles / Permissions", domain: "Administration",
-    C: [], R: [], E: ["admin.roleAssignment.write", "admin.accessRequest.decide"], D: [] },
+    C: [], R: ["admin.securityPolicy.read"],
+    E: ["admin.roleAssignment.write", "admin.accessRequest.decide"], D: [] },
   { object: "Audit Log", domain: "Administration",
     C: [], R: ["audit.event.read"], E: [], D: [] },
 ]);

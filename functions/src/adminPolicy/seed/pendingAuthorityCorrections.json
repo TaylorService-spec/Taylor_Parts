@@ -1,18 +1,24 @@
 {
-  "version": 1,
-  "status": "APPROVED_NOT_APPLIED",
+  "version": 2,
+  "status": "ACTIVATED",
+  "activatedBy": "migration:1762300800000",
   "ruledOn": "2026-09-24",
-  "ruledBy": "Owner -- lane BK exact authority corrections (S1, S2, S3, S4, S6)",
+  "activatedOn": "2026-09-24",
   "appliedToEnvironments": [],
+  "$statusComment": "ACTIVATED means the corrections are now GLOBAL CANONICAL AUTHORITY in this repository: migration 1762300800000 registers three capabilities and writes 26 Role grants, and roleCapabilityAuthorityBaseline.json declares all 26 in the same change, because Owner ruling E forbids landing a grant migration without the baseline that explains it. appliedToEnvironments is EMPTY and that is not a contradiction: the migration has not been RUN against nonprod or production, and lane BO was not authorized to run it. The deploy applies it. pendingGrants and pendingCapabilities are now EMPTY BY CONSTRUCTION -- assertPendingIsNotAuthority refuses any pair that is both pending here and declared in the measured baseline, so a grant cannot be counted twice or claimed outstanding while it is live.",
   "measuredAgainst": {
     "baseline": "functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json",
-    "totalGrants": 387,
-    "environment": "nonprod",
+    "totalGrantsBefore": 387,
+    "totalGrantsAfter": 413,
+    "capabilitiesBefore": 76,
+    "capabilitiesAfter": 79,
+    "environment": "repository rebuild (disposable local database); nonprod UNCHANGED at 387/76",
     "measuredAt": "2026-09-24"
   },
-  "proof": "functions/test/pendingAuthorityCorrectionsPostgres.test.mjs",
-
-  "pendingCapabilities": [
+  "proof": "functions/test/pendingAuthorityCorrectionsPostgres.test.mjs, functions/test/authorityActivationVehiclePostgres.test.mjs",
+  "pendingCapabilities": [],
+  "pendingGrants": [],
+  "activatedCapabilities": [
     {
       "capabilityKey": "receivingOrder.record.read",
       "objectKey": "receivingOrder",
@@ -20,7 +26,8 @@
       "actionKind": "READ",
       "label": "View Receiving Orders",
       "ruling": "S1",
-      "why": "receivingOrder carries exactly one governing capability, inventory.stock.receive (BUSINESS_ACTION). Nothing in eos_policy.capabilities means 'may read a receiving order', so the Object's READ verb is UNGOVERNED and can_read is false for every Role -- not withheld from Owner, ungrantable to anyone. Modelled on migration 1762041600000, which registered admin.securityPolicy.read for exactly this reason on rolesPermissions."
+      "registeredBy": "migration:1762300800000",
+      "why": "receivingOrder carried exactly one governing capability, inventory.stock.receive (BUSINESS_ACTION). Nothing in eos_policy.capabilities meant 'may read a receiving order', so the Object's READ verb was UNGOVERNED and can_read was false for every Role -- not withheld from Owner, ungrantable to anyone. Modelled on migration 1762041600000, which registered admin.securityPolicy.read for exactly this reason on rolesPermissions."
     },
     {
       "capabilityKey": "workOrder.record.read",
@@ -29,109 +36,236 @@
       "actionKind": "READ",
       "label": "View Work Orders",
       "ruling": "S1",
-      "why": "workOrder carries create, transition and three lifecycle BUSINESS_ACTIONs and NO READ capability. Same ungoverned-verb defect as receivingOrder. READ confers no transition, no dispatch, no cancel and no completion."
+      "registeredBy": "migration:1762300800000",
+      "why": "workOrder carried create, transition and three lifecycle BUSINESS_ACTIONs and NO READ capability. Same ungoverned-verb defect as receivingOrder. READ confers no transition, no dispatch, no cancel and no completion."
+    },
+    {
+      "capabilityKey": "reportDefinition.read",
+      "objectKey": "reportDefinition",
+      "actionKey": "read",
+      "actionKind": "READ",
+      "label": "View Report Definitions",
+      "ruling": "C",
+      "registeredBy": "migration:1762300800000",
+      "why": "Reporting Slice 1. ONE Object-level read over saved report definitions, mirroring workflowDefinition. It carries NO field-level visibility: eos_policy.capabilities has object_key NOT NULL, UNIQUE (object_key, action_key) and no field column, so the 34 field-level report ids cannot be capability rows and belong to eos_policy.role_field_permission_overrides. reportDefinition.delete is NOT registered by this or any migration, so it cannot be granted to anyone."
     }
   ],
-
-  "pendingGrants": [
+  "activatedGrants": [
+    {
+      "roleKey": "admin",
+      "capabilityKey": "receivingOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds inventory.stock.receive, whose canonical object_key in eos_policy.capabilities IS receivingOrder -- so the write is real rather than a matrix row pointing somewhere else -- and it could not read the record it records a receipt against. The grant is CANONICAL_CATALOG: the in-repo Role catalog declares it, so classifying it WRITE_NOT_LEGITIMATE would mean deleting a catalog declaration this change does not own. The narrowest READ is added and nothing else.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "dispatcher",
+      "capabilityKey": "receivingOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds inventory.stock.receive, whose canonical object_key in eos_policy.capabilities IS receivingOrder -- so the write is real rather than a matrix row pointing somewhere else -- and it could not read the record it records a receipt against. The grant is CANONICAL_CATALOG: the in-repo Role catalog declares it, so classifying it WRITE_NOT_LEGITIMATE would mean deleting a catalog declaration this change does not own. The narrowest READ is added and nothing else.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "inventoryReceivingClerk",
+      "capabilityKey": "receivingOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds inventory.stock.receive, whose canonical object_key in eos_policy.capabilities IS receivingOrder -- so the write is real rather than a matrix row pointing somewhere else -- and it could not read the record it records a receipt against. The grant is CANONICAL_CATALOG: the in-repo Role catalog declares it, so classifying it WRITE_NOT_LEGITIMATE would mean deleting a catalog declaration this change does not own. The narrowest READ is added and nothing else.",
+      "grantedBy": "migration:1762300800000"
+    },
     {
       "roleKey": "owner",
       "capabilityKey": "receivingOrder.record.read",
       "ruling": "S1",
-      "requiresPendingCapability": true,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": [],
-      "why": "Owner holds no read on receivingOrder while the Object's only other authority is a write. Owner gets the read required to exercise legitimate Owner business authority -- the read alone, not inventory.stock.receive."
+      "why": "Owner held no read on receivingOrder while the Object's only other authority was a write. Owner gets the read required to exercise legitimate Owner business authority -- the read alone, not inventory.stock.receive.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "dispatcher",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "generalManager",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "operationsManager",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "partsAssociate",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "partsManager",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "shopAssociate",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "shopManager",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "technician",
+      "capabilityKey": "workOrder.record.read",
+      "ruling": "B",
+      "alreadyCatalogDeclared": false,
+      "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "owner",
       "capabilityKey": "workOrder.record.read",
       "ruling": "S1",
-      "requiresPendingCapability": true,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": [],
-      "why": "Owner holds workOrder.create and workOrder.transition and cannot read a work order. Owner gets the read only; no lifecycle dispatch, cancel or complete is added."
+      "why": "Owner held workOrder.create and workOrder.transition and could not read a work order. Owner gets the read only; no lifecycle dispatch, cancel or complete is added.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "warehouseManager",
       "capabilityKey": "warehouse.record.read",
       "ruling": "S2",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": ["admin", "dispatcher", "operationsManager", "owner"],
-      "why": "A warehouse position Role could not read the warehouse record it works in. READ only. This Role is deliberately NOT given inventory.placement.record or inventory.stock.relocate: a job title is not an operating authority."
+      "why": "A warehouse position Role could not read the warehouse record it works in. READ only. This Role is deliberately NOT given inventory.placement.record or inventory.stock.relocate: a job title is not an operating authority.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "warehouseAssociate",
       "capabilityKey": "warehouse.record.read",
       "ruling": "S2",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": ["admin", "dispatcher", "operationsManager", "owner"],
-      "why": "Same as warehouseManager. READ only, no operating write."
+      "why": "Same as warehouseManager. READ only, no operating write.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "inventoryPutAwayOperator",
       "capabilityKey": "inventory.placement.record",
       "ruling": "S2",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": true,
-      "measuredHoldersToday": ["admin"],
-      "why": "The bin-placement write belongs to the FUNCTIONAL Role that performs put-away, never to a warehouse position Role. Already declared by the Role catalog and recorded in the baseline's catalogDeclaredNotActivated -- this correction ACTIVATES an existing declaration rather than inventing authority."
+      "why": "The bin-placement write belongs to the FUNCTIONAL Role that performs put-away, never to a warehouse position Role. It was already declared by the Role catalog and recorded in the baseline's catalogDeclaredNotActivated, so this ACTIVATES an existing declaration rather than inventing authority -- and the pair has LEFT catalogDeclaredNotActivated, which went 32 -> 30.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "inventoryStockRelocationOperator",
       "capabilityKey": "inventory.stock.relocate",
       "ruling": "S2",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": true,
-      "measuredHoldersToday": ["admin"],
-      "why": "The stock relocation write belongs to the FUNCTIONAL relocation Role. Already catalog-declared and recorded in catalogDeclaredNotActivated; this ACTIVATES it."
+      "why": "The stock relocation write belongs to the FUNCTIONAL relocation Role. Already catalog-declared and recorded in catalogDeclaredNotActivated; this ACTIVATES it and removes it from that list.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "inventoryCycleCountReconciler",
       "capabilityKey": "inventory.cycleCount.close",
       "ruling": "S3",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": [],
-      "why": "inventory.cycleCount.close has ZERO holders, so no one can close a cycle count. Close is reconciliation authority. inventoryCycleCountCounter is deliberately excluded: SOD_EXCLUSIVE_PAIRS and DECISIONS #111 make counter and reconciler mutually exclusive so a counter may not approve their own material variance."
+      "why": "inventory.cycleCount.close had ZERO holders, so nobody could close a cycle count. Close is reconciliation authority. inventoryCycleCountCounter is deliberately excluded: SOD_EXCLUSIVE_PAIRS and DECISIONS #111 make counter and reconciler mutually exclusive so a counter may not approve their own material variance.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "partsManager",
       "capabilityKey": "reorder.request.assign",
       "ruling": "S4",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": [],
-      "why": "reorder.request.assign has ZERO holders, so no one can assign a reorder request. Assignment is queue-management authority and lands on partsManager alone -- deliberately NOT dispatcher, NOT technician, NOT purchasingManager and NOT every parts employee."
+      "why": "reorder.request.assign had ZERO holders, so nobody could assign a reorder request. Assignment is queue-management authority and lands on partsManager alone. The Role catalog also declares it for admin, dispatcher and owner; ruling S4 named partsManager and named dispatcher, technician and purchasingManager as NOT holders, so those three catalog declarations stay unactivated rather than being swept in because they were nearby.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "fieldManager",
       "capabilityKey": "workOrder.lifecycle.dispatch",
       "ruling": "S6",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": ["admin", "dispatcher"],
-      "why": "The service manager must be able to dispatch work. Dispatch is scheduling authority."
+      "why": "The service manager must be able to dispatch work. Dispatch is scheduling authority. This narrows the migration-chain hold on workOrder.lifecycle.dispatch by exactly one Role; migrationChainSafety was rewritten to express that ruling rather than switched off.",
+      "grantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "fieldManager",
       "capabilityKey": "workOrder.lifecycle.cancel",
       "ruling": "S6",
-      "requiresPendingCapability": false,
       "alreadyCatalogDeclared": false,
-      "measuredHoldersToday": ["admin", "dispatcher"],
-      "why": "The service manager must be able to cancel work. Cancel is scheduling authority."
+      "why": "The service manager must be able to cancel work. Cancel is scheduling authority. Same narrowing, same Role, same guard.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "reportDefinition.read",
+      "ruling": "C",
+      "alreadyCatalogDeclared": false,
+      "why": "Reporting Slice 1. admin and owner are the population every capability on the Administration authority Objects already has.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "reportDefinition.read",
+      "ruling": "C",
+      "alreadyCatalogDeclared": false,
+      "why": "Reporting Slice 1. Owner reads report definitions on its own grant; this adds no administration write and does not make Owner an Administrator.",
+      "grantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "reportViewer",
+      "capabilityKey": "reportDefinition.read",
+      "ruling": "C",
+      "alreadyCatalogDeclared": false,
+      "why": "Reporting Slice 1. reportViewer is the Role the catalog already defines for ordinary operational reporting reads, so the Object-level read lands there and on no job-title Role. Its finance sibling reportFinanceViewer gets NOTHING here, by ruling: it is ADDITIVE field visibility, not a superset.",
+      "grantedBy": "migration:1762300800000"
     }
   ],
-
   "refusedGrants": [
     {
       "roleKey": "fieldManager",
       "capabilityKey": "workOrder.lifecycle.complete",
       "ruling": "S6",
-      "why": "NOT AUTHORIZED. Completion remains technician execution authority: the person who did the work attests that it is done. A manager who may both dispatch and complete can close work nobody performed."
+      "why": "NOT AUTHORIZED. Completion remains technician execution authority: the person who did the work attests that it is done. A manager who may both dispatch and complete can close work nobody performed. migrationChainSafety keeps this key fully held against the whole chain and the migration's census refuses to run if it is already held."
     },
     {
       "roleKey": "inventoryCycleCountCounter",
@@ -173,7 +307,7 @@
       "roleKey": "dispatcher",
       "capabilityKey": "reorder.request.assign",
       "ruling": "S4",
-      "why": "NOT AUTHORIZED. Named explicitly by the ruling as NOT a holder."
+      "why": "NOT AUTHORIZED. Named explicitly by the ruling as NOT a holder, although the Role catalog declares it -- which is why the activation grants partsManager alone rather than everything the catalog would allow."
     },
     {
       "roleKey": "technician",
@@ -186,19 +320,49 @@
       "capabilityKey": "reorder.request.assign",
       "ruling": "S4",
       "why": "NOT AUTHORIZED. Named explicitly by the ruling as NOT a holder."
+    },
+    {
+      "roleKey": "reportFinanceViewer",
+      "capabilityKey": "reportDefinition.read",
+      "ruling": "C",
+      "why": "NOT AUTHORIZED. reportFinanceViewer is ADDITIVE finance-sensitive FIELD visibility, NOT a superset of reportViewer. Giving it the Object-level read would make 'reporting access' one decision where the Role catalog deliberately made it two, and a holder who legitimately needs the five commercial-terms fields would silently acquire ordinary reporting as well."
+    },
+    {
+      "roleKey": "reportAuthor",
+      "capabilityKey": "reportDefinition.read",
+      "ruling": "C",
+      "why": "NOT AUTHORIZED. reportAuthor is saved-report AUTHORING only and carries no implied finance visibility and no implied read. Authoring and reading are separate grants; a holder who needs both holds both."
     }
   ],
-
-  "pendingCredReadWiring": [
+  "refusedCapabilities": [
+    {
+      "capabilityKey": "reportDefinition.delete",
+      "objectKey": "reportDefinition",
+      "ruling": "C",
+      "why": "NOT REGISTERED, so it cannot be granted to anyone by anyone. Destroying a shared report definition is not authoring one and there is no per-definition ownership model to scope it. reportDefinition is also declared supportsDelete:false, so the Object's D verb can never be true either. Registering the key 'so the matrix looks complete' would create the grantable authority the ruling withholds."
+    },
+    {
+      "capabilityKey": "reportDefinition.create / .rename / .duplicate",
+      "objectKey": "reportDefinition",
+      "ruling": "C",
+      "why": "NOT REGISTERED in this slice. sampleCompanyManifest asserts postgresVocabularyGaps.found === [] -- 'No registration migration was authored for a runtime that does not exist.' Slice 1 registers a READ, whose runtime does exist. The authoring verbs' callables are not deployed, so registering them would be exactly the gap that assertion forbids."
+    }
+  ],
+  "credReadWiring": [
     {
       "objectKey": "employee",
       "matrixObject": "Employees",
       "readCapabilityKey": "employee.record.read",
       "ruling": "S1",
       "capabilityAlreadyExists": true,
-      "ownerAlreadyHolds": true,
-      "holdersToday": ["admin", "generalManager", "owner"],
-      "why": "NO NEW AUTHORITY. employee.record.read already exists in eos_policy.capabilities (object employee, action read, kind READ) and Owner already holds it. The measured can_read=false is a CRED PROJECTION defect: the seed snapshot carries an EMPTY read-verb list for this Object, so deriveObjectCred leaves R false for every Role however much READ authority it holds. The correction is to wire the Object's READ verb to the capability that already governs it."
+      "disposition": "PROJECTION_DEFECT",
+      "action": "WIRED. The frontend CRUD matrix (field-ops-app-vite/src/access, the Owner's object-to-capability table) now names employee.record.read in the Employees R cell, and migration 1762300800000 reconciles the stored role_object_permissions row for every Role that already holds it. No functions/src module reads that table -- the seed reads the GENERATED policySeedSnapshot.json.",
+      "holdersToday": [
+        "admin",
+        "generalManager",
+        "owner"
+      ],
+      "why": "NO NEW AUTHORITY. employee.record.read already existed (employee / read / READ) and Owner already held it. The measured can_read=false was a CRED PROJECTION defect: the seed snapshot carried an EMPTY read-verb list, so deriveObjectCred left R false for every Role however much READ authority it held."
     },
     {
       "objectKey": "rolesPermissions",
@@ -206,9 +370,13 @@
       "readCapabilityKey": "admin.securityPolicy.read",
       "ruling": "S1",
       "capabilityAlreadyExists": true,
-      "ownerAlreadyHolds": true,
-      "holdersToday": ["admin", "owner"],
-      "why": "NO NEW AUTHORITY. admin.securityPolicy.read (object rolesPermissions, action read, kind READ) was registered by migration 1762041600000 and granted to admin AND owner as two independent rows. Owner already holds it. Wiring the matrix R verb to it reconciles the projection WITHOUT copying Admin to Owner: Owner reads the security policy on its own grant, and still does not hold admin.roleAssignment.write's sibling administration authorities it lacks."
+      "disposition": "PROJECTION_DEFECT",
+      "action": "WIRED. Roles / Permissions.R now names admin.securityPolicy.read; the migration reconciles the stored projection.",
+      "holdersToday": [
+        "admin",
+        "owner"
+      ],
+      "why": "NO NEW AUTHORITY. admin.securityPolicy.read (rolesPermissions / read / READ) was registered by migration 1762041600000 and granted to admin AND owner as two independent rows. Wiring the matrix R verb to it reconciles the projection WITHOUT copying Admin to Owner: Owner reads the security policy on its own grant and still holds none of the ADMIN_ACTION writes beside it."
     },
     {
       "objectKey": "receivingOrder",
@@ -216,9 +384,15 @@
       "readCapabilityKey": "receivingOrder.record.read",
       "ruling": "S1",
       "capabilityAlreadyExists": false,
-      "ownerAlreadyHolds": false,
-      "holdersToday": [],
-      "why": "Requires the pending capability of the same key first, then the Owner grant above."
+      "disposition": "UNGOVERNED_VERB",
+      "action": "REGISTERED AND WIRED by migration 1762300800000, then granted to the three receipt writers and to Owner.",
+      "holdersToday": [
+        "admin",
+        "dispatcher",
+        "inventoryReceivingClerk",
+        "owner"
+      ],
+      "why": "The READ verb was ungoverned outright: no capability existed. Registration had to come first, then the grant, then the wiring."
     },
     {
       "objectKey": "workOrder",
@@ -226,38 +400,260 @@
       "readCapabilityKey": "workOrder.record.read",
       "ruling": "S1",
       "capabilityAlreadyExists": false,
-      "ownerAlreadyHolds": false,
-      "holdersToday": [],
-      "why": "Requires the pending capability of the same key first, then the Owner grant above."
+      "disposition": "UNGOVERNED_VERB",
+      "action": "REGISTERED AND WIRED by migration 1762300800000, then granted to the ten transition holders and to Owner.",
+      "holdersToday": [
+        "admin",
+        "dispatcher",
+        "fieldManager",
+        "generalManager",
+        "operationsManager",
+        "owner",
+        "partsAssociate",
+        "partsManager",
+        "shopAssociate",
+        "shopManager",
+        "technician"
+      ],
+      "why": "Same ungoverned-verb defect. officeManager (workOrder.create only) and workOrderPartsPlanner (a LEGACY workOrder.parts.plan id eos_policy.capabilities does not register) are OUTSIDE ruling B's thirteen rows and are recorded in residualEditWithoutRead rather than granted."
+    },
+    {
+      "objectKey": "reportDefinition",
+      "matrixObject": "(capability-authority Object, no matrix row)",
+      "readCapabilityKey": "reportDefinition.read",
+      "ruling": "C",
+      "capabilityAlreadyExists": false,
+      "disposition": "NEW_OBJECT",
+      "action": "Object declared in seed/capabilityGovernedObjects.json with R wired to reportDefinition.read from the start, so it is never born with an ungoverned verb.",
+      "holdersToday": [
+        "admin",
+        "owner",
+        "reportViewer"
+      ],
+      "why": "Reporting Slice 1. The Object is registered with its READ verb already governed -- the defect the other four Objects had is not reproduced on the newest one."
     }
   ],
-
-  "residualEditWithoutRead": {
-    "$comment": "MEASURED AND REPORTED, NOT GRANTED. The Owner ruling scopes S1 to the Owner persona. These Roles hold a modify authority on an Object they will still not be able to read after the pending set is applied. Recording them keeps the gap visible and reviewable; closing it is a separate Owner decision, and this lane did not take it.",
+  "editWithoutReadReconciliation": {
+    "$comment": "RULING B, EXECUTED. Thirteen measured rows in, zero left. Each was classified BEFORE any read was added, against two measured facts: does the Role hold a capability whose canonical object_key IS this Object (is the write real?), and what is that grant's reconstruction source (may this change revoke it?). All thirteen came out WRITE_LEGITIMATE_READ_REQUIRED and the answer is recorded with its evidence rather than assumed -- the other two dispositions ARE used, on rows in the wider census below.",
+    "before": 13,
+    "after": 0,
+    "dispositionCounts": {
+      "WRITE_LEGITIMATE_READ_REQUIRED": 13,
+      "WRITE_NOT_LEGITIMATE": 0,
+      "PROJECTION_DEFECT": 0
+    },
     "rows": [
-      { "objectKey": "receivingOrder", "roleKey": "admin", "holdsModifyCapability": "inventory.stock.receive" },
-      { "objectKey": "receivingOrder", "roleKey": "dispatcher", "holdsModifyCapability": "inventory.stock.receive" },
-      { "objectKey": "receivingOrder", "roleKey": "inventoryReceivingClerk", "holdsModifyCapability": "inventory.stock.receive" },
-      { "objectKey": "workOrder", "roleKey": "admin", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "dispatcher", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "fieldManager", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "generalManager", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "operationsManager", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "partsAssociate", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "partsManager", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "shopAssociate", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "shopManager", "holdsModifyCapability": "workOrder.transition" },
-      { "objectKey": "workOrder", "roleKey": "technician", "holdsModifyCapability": "workOrder.transition" }
+      {
+        "objectKey": "receivingOrder",
+        "roleKey": "admin",
+        "holdsModifyCapability": "inventory.stock.receive",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds inventory.stock.receive, whose canonical object_key in eos_policy.capabilities IS receivingOrder -- so the write is real rather than a matrix row pointing somewhere else -- and it could not read the record it records a receipt against. The grant is CANONICAL_CATALOG: the in-repo Role catalog declares it, so classifying it WRITE_NOT_LEGITIMATE would mean deleting a catalog declaration this change does not own. The narrowest READ is added and nothing else."
+      },
+      {
+        "objectKey": "receivingOrder",
+        "roleKey": "dispatcher",
+        "holdsModifyCapability": "inventory.stock.receive",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds inventory.stock.receive, whose canonical object_key in eos_policy.capabilities IS receivingOrder -- so the write is real rather than a matrix row pointing somewhere else -- and it could not read the record it records a receipt against. The grant is CANONICAL_CATALOG: the in-repo Role catalog declares it, so classifying it WRITE_NOT_LEGITIMATE would mean deleting a catalog declaration this change does not own. The narrowest READ is added and nothing else."
+      },
+      {
+        "objectKey": "receivingOrder",
+        "roleKey": "inventoryReceivingClerk",
+        "holdsModifyCapability": "inventory.stock.receive",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds inventory.stock.receive, whose canonical object_key in eos_policy.capabilities IS receivingOrder -- so the write is real rather than a matrix row pointing somewhere else -- and it could not read the record it records a receipt against. The grant is CANONICAL_CATALOG: the in-repo Role catalog declares it, so classifying it WRITE_NOT_LEGITIMATE would mean deleting a catalog declaration this change does not own. The narrowest READ is added and nothing else."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "admin",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "dispatcher",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "fieldManager",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "generalManager",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "operationsManager",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "partsAssociate",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "partsManager",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "shopAssociate",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "shopManager",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "technician",
+        "holdsModifyCapability": "workOrder.transition",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "CLOSED by migration 1762300800000: the narrowest READ authority on this Object was registered and granted to this Role.",
+        "why": "Ruling B, WRITE_LEGITIMATE_READ_REQUIRED. This Role holds workOrder.transition, whose canonical object_key IS workOrder, and could not read the work order it transitions. All eleven transition grants are CANONICAL_CATALOG and carry the live stamp owner-ruling-2026-09-22, so the write is a recorded Owner decision rather than something to revoke here. The READ confers no transition, dispatch, cancel, completion or creation."
+      }
     ]
   },
-
+  "residualEditWithoutRead": {
+    "$comment": "THE WIDER CENSUS, MEASURED AND CLASSIFIED, NOT HIDDEN. The full edit-without-read census over the rebuilt authority was 29 rows, of which 19 are closed by this activation (the 13 of ruling B, the 4 Owner rows of ruling S1 on receivingOrder and workOrder, and the 2 admin rows on employee and rolesPermissions the CRED wiring reconciles). These 10 remain. Each carries a disposition and the reason the action was NOT taken here: every one is outside the Objects the rulings scoped, and closing a row nobody ruled on would be this lane inventing the decision it was told to apply. ZERO of them is unexplained.",
+    "censusBefore": 29,
+    "censusWithMatrixWiringOnly": 27,
+    "closedByThisActivation": 19,
+    "censusAfter": 10,
+    "$countsComment": "THREE NUMBERS, BECAUSE THE ACTIVATION HAS TWO HALVES AND ONLY ONE OF THEM IS A MIGRATION. 29 is the census on the tree BEFORE this change: the matrix R verbs unwired and the migration unwritten. 27 is the census with the matrix wiring applied and the migration NOT applied -- the two `employee` rows close on the WIRING ALONE, because employee.record.read is one of the few registered READ keys the LEGACY Role catalog also declares, so deriveObjectCred can satisfy it at seed time. The other three wired Objects cannot close that way, which is the structuralFinding below. 10 is the census after both halves. The test measures 27 -> 10 because a test can rerun the migration and cannot un-wire a committed matrix; 29 is recorded as the measurement it was.",
+    "rows": [
+      {
+        "objectKey": "workOrder",
+        "roleKey": "officeManager",
+        "holdsModifyCapability": "workOrder.create",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside ruling B, which scoped its thirteen rows to workOrder.transition holders.",
+        "why": "officeManager holds workOrder.create (MIGRATION_BACKED, migration 1761523200000) and no transition, so it is a CREATE-without-read rather than an edit-without-read. The narrowest READ that would close it is workOrder.record.read, which now exists -- the grant is one line and one Owner decision away, and this lane did not take a decision the ruling did not name."
+      },
+      {
+        "objectKey": "workOrder",
+        "roleKey": "workOrderPartsPlanner",
+        "holdsModifyCapability": "workOrder.parts.plan",
+        "disposition": "PROJECTION_DEFECT",
+        "action": "RECORDED, NOT REPAIRED. The repair is removing two ids from a matrix cell, which moves other Roles' projections too and is its own reviewed change.",
+        "why": "workOrderPartsPlanner holds NO governed write on workOrder. Its E is true only because the matrix Work Orders.E cell lists workOrder.parts.plan and workOrder.cancel, two LEGACY ids eos_policy.capabilities does not register at all -- migration 1761350400000 refused workOrder.cancel explicitly because workOrder.lifecycle.cancel already means it. Granting this Role a READ would close a symptom whose cause is an ungoverned id in a matrix cell."
+      },
+      {
+        "objectKey": "inventoryAction",
+        "roleKey": "inventoryCycleCountCounter",
+        "holdsModifyCapability": "inventory.cycleCount.create / .submit",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside the four Objects ruling S1 and ruling B scoped.",
+        "why": "The narrowest existing READ is inventory.action.read, which EXISTS and which this functional Role does not hold. This is the same shape as ruling B and wants the same answer; it wants it from a ruling that names it."
+      },
+      {
+        "objectKey": "inventoryAction",
+        "roleKey": "inventoryCycleCountReconciler",
+        "holdsModifyCapability": "inventory.cycleCount.reconcile",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside scope; note that S3 gave this Role inventory.cycleCount.close, which does not confer a read.",
+        "why": "Same as the counter: inventory.action.read exists and is not held."
+      },
+      {
+        "objectKey": "inventoryTransaction",
+        "roleKey": "inventoryReceivingClerk",
+        "holdsModifyCapability": "inventory.stock.receive",
+        "disposition": "PROJECTION_DEFECT",
+        "action": "RECORDED, NOT REPAIRED. The repair is removing one id from one matrix cell and it changes no effective authority.",
+        "why": "MEASURED: inventory.stock.receive carries object_key receivingOrder in eos_policy.capabilities, and the matrix lists it in BOTH Inventory Stock.E and Receiving.E. One capability, two Objects -- the two-owners defect. This Role's edit-without-read on inventoryTransaction is entirely an artifact of the second home; its real Object, receivingOrder, IS closed by this activation."
+      },
+      {
+        "objectKey": "part",
+        "roleKey": "inventoryCreateExecutor",
+        "holdsModifyCapability": "inventory.catalog.manage",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside scope.",
+        "why": "The narrowest existing READ is inventory.catalog.read, which EXISTS and is not held by this functional Role."
+      },
+      {
+        "objectKey": "part",
+        "roleKey": "operationsManager",
+        "holdsModifyCapability": "inventory.catalog.manage / .activate",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside scope.",
+        "why": "Same: inventory.catalog.read exists and is not held."
+      },
+      {
+        "objectKey": "reorderRequest",
+        "roleKey": "warehouseManager",
+        "holdsModifyCapability": "reorder.request.create.manual",
+        "disposition": "PROJECTION_DEFECT",
+        "action": "RECORDED, NOT REPAIRED.",
+        "why": "A CREATE-without-read whose R cell names reorder.request.read.queue -- a SUPERSEDED capability migration 1761696000000 says may never be granted again -- and reorder.request.read.own. The CANONICAL unscoped read, reorder.request.read, is NOT in the matrix R cell at all. So the verb is projected against a key nobody may hold; adding the canonical key to the cell is the repair, and it is a Reorder-domain change rather than an authority grant."
+      },
+      {
+        "objectKey": "transferOrder",
+        "roleKey": "inventoryTransferOperator",
+        "holdsModifyCapability": "inventory.transfer.create / .dispatch / .receive / .cancel",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside scope.",
+        "why": "The narrowest existing READ is warehouse.transferOrder.read, which EXISTS and is not held."
+      },
+      {
+        "objectKey": "transferOrder",
+        "roleKey": "inventoryTransferReceiver",
+        "holdsModifyCapability": "inventory.transfer.receive",
+        "disposition": "WRITE_LEGITIMATE_READ_REQUIRED",
+        "action": "RECORDED, NOT GRANTED. Outside scope.",
+        "why": "Same: warehouse.transferOrder.read exists and is not held."
+      }
+    ]
+  },
+  "structuralFinding": {
+    "code": "CRED_PROJECTION_DERIVES_FROM_THE_LEGACY_ROLE_CATALOG",
+    "severity": "REPORTED, NOT CLOSED",
+    "measured": "policySeed.ts seeds role_object_permissions from `held = roleDefinitions[key].permissions` -- the in-repo LEGACY Role catalog arrays -- and not from eos_policy.role_capabilities. It cannot read the grants, because at seed time (rebuild phase B) role_capabilities is empty by construction. CONSEQUENCE: a capability registered by MIGRATION ALONE can never flip a freshly seeded CRED verb, however many Roles hold it. admin.securityPolicy.read has been in exactly that state since migration 1762041600000, and receivingOrder.record.read, workOrder.record.read and reportDefinition.read would join it.",
+    "mitigationApplied": "Migration 1762300800000 reconciles role_object_permissions for the five Objects it touches, setting can_read true ONLY where the Role already holds a registered READ capability on that Object -- so it changes no effective authority, it makes the stored projection agree with the grants. That fixes every database seeded BEFORE the migration, which is every real one.",
+    "notFixed": "A tenant seeded AFTER this migration still derives its CRED from the legacy arrays and will be born with can_read false on rolesPermissions, receivingOrder, workOrder and reportDefinition. The durable fix is to give the seed the governed grants as an input, which moves hundreds of projection rows and is an Owner decision, not a side effect of an activation."
+  },
   "unchanged": {
-    "$comment": "This lane changes NOTHING in these dimensions. Asserted executably by the proof suite.",
+    "$comment": "This lane changes NOTHING in these dimensions. Asserted executably by the proof suites.",
     "workEligibility": "no qualification code added, removed or reassigned; technician remains the standing negative PARTS_OPERATIONS case",
     "operationalScope": "no scope row added or removed; the technician reorder-queue denial continues to rest on a withheld SCOPE row, not on an absent capability",
     "roles": "no Role created, renamed or deleted",
     "conditions": "no condition or conditioned capability added",
     "principalCapabilities": "no direct principal grant",
-    "revocations": "no existing grant is removed by this lane"
+    "revocations": "no existing grant is removed by this lane",
+    "fieldPermissions": "no role_field_permission_overrides row written; the relation stays EMPTY and is named as the home of field-level reporting rather than pre-empted"
   }
 }

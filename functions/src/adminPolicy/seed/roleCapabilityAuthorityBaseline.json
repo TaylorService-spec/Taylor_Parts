@@ -13,9 +13,9 @@
   "environment": "nonprod",
   "tenantId": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
   "tenantKey": "taylor-nonprod",
-  "totalGrants": 387,
+  "totalGrants": 413,
   "countsBySource": {
-    "MIGRATION_BACKED": 329,
+    "MIGRATION_BACKED": 355,
     "CANONICAL_CATALOG": 53,
     "NONPROD_ACTIVATION": 5,
     "FIXTURE_ONLY": 0,
@@ -28,9 +28,20 @@
     "migration:1761782400000",
     "migration:1761955200000",
     "migration:1762041600000",
-    "migration:1762128000000"
+    "migration:1762128000000",
+    "migration:1762300800000"
   ],
   "seedBoundaryMigration": "1761523200000",
+  "deployment": {
+    "$comment": "WHAT THIS FILE MEASURES, AFTER RULING E. It is the authority a DETERMINISTIC REBUILD of this repository produces -- the five-phase pipeline above -- and the rebuild guard proves expected == actual with ZERO unexplained. Ruling E requires a grant-bearing migration and the baseline that explains it to land in ONE change, so the moment migration 1762300800000 entered migrations/ this number moved with it. It is therefore AHEAD of the live nonprod row count until that migration is deployed, and saying so here is the point: 'what the repository produces' and 'what nonprod holds right now' are two questions and both stay answerable. This is NOT blessed live drift (AN2). Drift is a row in the database that nothing in the repository explains; this is a row in the repository that the database has not run yet, and it is named, counted and attributable to one migration.",
+    "rebuildTotal": 413,
+    "measuredInNonprodAt": "2026-09-24",
+    "measuredInNonprodTotal": 387,
+    "notYetAppliedToNonprod": [
+      "migration:1762300800000"
+    ],
+    "appliedToNonprodBy": "the ordinary deploy (functions migrate:up); lane BO did not and may not apply it"
+  },
   "catalogDeclaredNotActivated": [
     {
       "roleKey": "accountingManager",
@@ -51,14 +62,6 @@
     {
       "roleKey": "inventoryCatalogAdministrator",
       "capabilityKey": "inventory.catalog.activate"
-    },
-    {
-      "roleKey": "inventoryPutAwayOperator",
-      "capabilityKey": "inventory.placement.record"
-    },
-    {
-      "roleKey": "inventoryStockRelocationOperator",
-      "capabilityKey": "inventory.stock.relocate"
     },
     {
       "roleKey": "inventoryTransferOperator",
@@ -619,6 +622,13 @@
     },
     {
       "roleKey": "admin",
+      "capabilityKey": "receivingOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "admin",
       "capabilityKey": "reorder.purchaseOrder.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
@@ -651,6 +661,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
       "observedGrantedBy": "migration:1761696000000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "reportDefinition.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "admin",
@@ -710,6 +727,13 @@
     },
     {
       "roleKey": "admin",
+      "capabilityKey": "workflowDefinition.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762128000000",
+      "observedGrantedBy": "migration:1762128000000"
+    },
+    {
+      "roleKey": "admin",
       "capabilityKey": "workOrder.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -731,17 +755,17 @@
     },
     {
       "roleKey": "admin",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "admin",
       "capabilityKey": "workOrder.transition",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
       "observedGrantedBy": "owner-ruling-2026-09-22"
-    },
-    {
-      "roleKey": "admin",
-      "capabilityKey": "workflowDefinition.read",
-      "source": "MIGRATION_BACKED",
-      "evidence": "migration:1762128000000",
-      "observedGrantedBy": "migration:1762128000000"
     },
     {
       "roleKey": "controller",
@@ -948,6 +972,13 @@
     },
     {
       "roleKey": "dispatcher",
+      "capabilityKey": "receivingOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "dispatcher",
       "capabilityKey": "reorder.purchaseOrder.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
@@ -1060,6 +1091,13 @@
     },
     {
       "roleKey": "dispatcher",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "dispatcher",
       "capabilityKey": "workOrder.transition",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -1148,6 +1186,27 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "owner-ruling-2026-09-22"
+    },
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.lifecycle.cancel",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.lifecycle.dispatch",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "fieldManager",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "fieldManager",
@@ -1487,6 +1546,13 @@
     },
     {
       "roleKey": "generalManager",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "generalManager",
       "capabilityKey": "workOrder.transition",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -1543,6 +1609,13 @@
     },
     {
       "roleKey": "inventoryCycleCountReconciler",
+      "capabilityKey": "inventory.cycleCount.close",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "inventoryCycleCountReconciler",
       "capabilityKey": "inventory.cycleCount.reconcile",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -1556,11 +1629,25 @@
       "observedGrantedBy": "migration:1761523200000"
     },
     {
+      "roleKey": "inventoryPutAwayOperator",
+      "capabilityKey": "inventory.placement.record",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
       "roleKey": "inventoryReceivingClerk",
       "capabilityKey": "inventory.stock.receive",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "inventoryReceivingClerk",
+      "capabilityKey": "receivingOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "inventoryStockRelocationOperator",
@@ -1575,6 +1662,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761782400000",
       "observedGrantedBy": "migration:1761782400000"
+    },
+    {
+      "roleKey": "inventoryStockRelocationOperator",
+      "capabilityKey": "inventory.stock.relocate",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "inventoryTransferOperator",
@@ -1715,6 +1809,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "owner-ruling-2026-09-22"
+    },
+    {
+      "roleKey": "operationsManager",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "operationsManager",
@@ -1949,6 +2050,13 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "receivingOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "reorder.purchaseOrder.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
@@ -1981,6 +2089,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761696000000",
       "observedGrantedBy": "migration:1761696000000"
+    },
+    {
+      "roleKey": "owner",
+      "capabilityKey": "reportDefinition.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "owner",
@@ -2033,6 +2148,13 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "workflowDefinition.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762128000000",
+      "observedGrantedBy": "migration:1762128000000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "workOrder.create",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
@@ -2040,17 +2162,17 @@
     },
     {
       "roleKey": "owner",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "owner",
       "capabilityKey": "workOrder.transition",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
       "observedGrantedBy": "owner-ruling-2026-09-22"
-    },
-    {
-      "roleKey": "owner",
-      "capabilityKey": "workflowDefinition.read",
-      "source": "MIGRATION_BACKED",
-      "evidence": "migration:1762128000000",
-      "observedGrantedBy": "migration:1762128000000"
     },
     {
       "roleKey": "partsAssociate",
@@ -2114,6 +2236,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "owner-ruling-2026-09-22"
+    },
+    {
+      "roleKey": "partsAssociate",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "partsAssociate",
@@ -2201,6 +2330,13 @@
     },
     {
       "roleKey": "partsManager",
+      "capabilityKey": "reorder.request.assign",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "partsManager",
       "capabilityKey": "reorder.request.create.manual",
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761609600000",
@@ -2226,6 +2362,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "owner-ruling-2026-09-22"
+    },
+    {
+      "roleKey": "partsManager",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "partsManager",
@@ -2324,6 +2467,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "migration:1761523200000"
+    },
+    {
+      "roleKey": "reportViewer",
+      "capabilityKey": "reportDefinition.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "salesManager",
@@ -2621,6 +2771,13 @@
     },
     {
       "roleKey": "shopAssociate",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "shopAssociate",
       "capabilityKey": "workOrder.transition",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -2698,6 +2855,13 @@
     },
     {
       "roleKey": "shopManager",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
+    },
+    {
+      "roleKey": "shopManager",
       "capabilityKey": "workOrder.transition",
       "source": "CANONICAL_CATALOG",
       "evidence": "role-catalog",
@@ -2723,6 +2887,13 @@
       "source": "NONPROD_ACTIVATION",
       "evidence": "owner-ruling:wave6-workorder-lifecycle-activation",
       "observedGrantedBy": "639c1970-dbdb-4bc0-af7c-118559151e2f"
+    },
+    {
+      "roleKey": "technician",
+      "capabilityKey": "workOrder.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "technician",
@@ -2779,6 +2950,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "warehouseAssociate",
+      "capabilityKey": "warehouse.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "warehouseAssociate",
@@ -2863,6 +3041,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1761523200000",
       "observedGrantedBy": "sample-company-v2:rudy"
+    },
+    {
+      "roleKey": "warehouseManager",
+      "capabilityKey": "warehouse.record.read",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762300800000",
+      "observedGrantedBy": "migration:1762300800000"
     },
     {
       "roleKey": "warehouseManager",
