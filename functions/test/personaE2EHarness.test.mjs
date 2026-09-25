@@ -19,6 +19,8 @@ const compiledWorkEligibility = require("../lib/eosWorkforce/workEligibilityVoca
 const compiledScope = require("../lib/eosWorkforce/operationalScopeVocabulary.js");
 const compiledWorkOrderAssignment = require("../lib/eosOps/workOrderAssignmentAuthority.js");
 const compiledReorderAssignment = require("../lib/eosOps/reorderAssignmentAuthority.js");
+const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
+const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const refusal = (fn) => {
@@ -34,21 +36,42 @@ const refusal = (fn) => {
 
 test("the committed scenario manifest validates against the persona catalog it layers onto", () => {
   const summary = harness.validateE2EManifest();
-  assert.equal(summary.personas, 14, "the fourteen canonical personas the Owner named are each dispositioned once");
-  assert.equal(summary.provisionable + summary.merged + summary.blocked, 14);
+  // SEVENTEEN ROWS FOR THE OWNER'S SIXTEEN PERSONAS. The seventeenth is "Purchasing", kept as an explicit
+  // MERGED disposition into parts-manager, because the Owner's own population writes that persona as
+  // "Parts Manager/Purchasing" -- the merge is recorded rather than silently absorbed.
+  assert.equal(summary.personas, 17, "the sixteen canonical personas the Owner named, plus the Purchasing merge, each dispositioned once");
+  assert.equal(summary.provisionable + summary.merged + summary.blocked, 17);
   assert.ok(summary.readyScenarios > 0, "a harness in which nothing is runnable is a design, not a harness");
 });
 
 test("every canonical persona the Owner named is present, exactly once", () => {
   const requested = MANIFEST.canonicalPersonas.map((r) => r.requestedRole);
   assert.equal(new Set(requested).size, requested.length, "no requested role is dispositioned twice");
-  for (const role of [
-    "Owner / Executive", "General Manager", "Administrator", "Dispatcher", "Service Technician",
-    "Parts Associate", "Parts Manager", "Warehouse Associate", "Warehouse Manager", "Purchasing",
+  // THE OWNER'S SIXTEEN. Owner/Executive and Administrator are SEPARATE entries by ruling; the two
+  // technicians are SEPARATE entries because the whole point of the pair is that they differ in one fact;
+  // Service Manager, Finance/Accounting, Reporting and Restricted were all missing before.
+  const REQUIRED = [
+    "Owner / Executive", "Administrator", "General Manager", "Service Manager", "Dispatcher",
+    "Service Technician (assigned)", "Service Technician (unassigned)",
+    "Parts Associate", "Parts Manager", "Warehouse Associate", "Warehouse Manager",
     "Retail Sales", "National Accounts Sales", "Finance / Accounting", "Reporting / Read-Only",
-  ]) {
-    assert.ok(requested.includes(role), `${role} is not dispositioned`);
-  }
+    "Restricted (negative control)",
+  ];
+  assert.equal(REQUIRED.length, 16);
+  for (const role of REQUIRED) assert.ok(requested.includes(role), `${role} is not dispositioned`);
+  // "Purchasing" stays dispositioned as the merge the Owner made into Parts Manager.
+  assert.ok(requested.includes("Purchasing"));
+  assert.equal(requested.length, 17);
+  // AND NO MERGED OWNER/ADMIN ROW MAY SURVIVE, in either direction.
+  const administrator = MANIFEST.canonicalPersonas.find((r) => r.requestedRole === "Administrator");
+  assert.equal(administrator.disposition, "PROVISIONABLE");
+  assert.equal(administrator.persona, "administrator");
+  assert.notEqual(administrator.mergedInto, "owner-executive");
+  const owner = MANIFEST.canonicalPersonas.find((r) => r.requestedRole === "Owner / Executive");
+  assert.deepEqual(owner.securityRoles, ["owner"]);
+  assert.deepEqual(administrator.securityRoles, ["admin"]);
+  assert.notEqual(owner.persona, administrator.persona);
+  assert.notEqual(owner.employee, administrator.employee);
 });
 
 test("every provisionable persona names an Employee the Sample Company declares and a Principal it can log in as", () => {
@@ -140,24 +163,56 @@ test("THE CONFLICT, ASSERTED: the Reorder writer's qualification is not one any 
     assert.ok(!persona.workEligibility.includes(required),
       `${key} holds ${required}; a Service Technician given warehouse eligibility to satisfy a test writer is a fabricated workforce fact`);
   }
-  assert.equal(MANIFEST.assignedUnassignedFixture.status, "NOT_SEEDED");
-  assert.ok(MANIFEST.assignedUnassignedFixture.candidatePaths.every((p) => typeof p.blockedBy === "string" && p.blockedBy.length > 0),
-    "an unseeded path names its exact blocker rather than going quiet");
+  // The REORDER path is the one that is still unseeded, and it still names its blocker. The fixture as a
+  // whole is PARTIALLY_SEEDED because the WORK ORDER path is not: see the next test.
+  assert.equal(MANIFEST.assignedUnassignedFixture.status, "PARTIALLY_SEEDED");
+  assert.ok(MANIFEST.assignedUnassignedFixture.candidatePaths
+    .filter((p) => p.status !== "SEEDED")
+    .every((p) => typeof p.blockedBy === "string" && p.blockedBy.length > 0),
+  "an unseeded path names its exact blocker rather than going quiet");
 });
 
-test("the Work Order assignment path needs nothing except a Role that declares its capability", () => {
+test("the assigned/unassigned separation is LIVE on the Work Order, and the governed WRITER is still not", () => {
+  // THE STALE CLAIM THIS REPLACES. The fixture read NOT_SEEDED and both paths read BLOCKED, so the
+  // assigned-vs-unassigned proof the Owner asked for looked unrunnable. It was unrunnable on the REORDER
+  // path only. eos_ops.work_order_assignments already holds one open row for service-technician-a and none
+  // for -b (measured 2026-09-24), so the SEPARATION is provable today against a real record.
   const workOrder = MANIFEST.assignedUnassignedFixture.candidatePaths.find((p) => p.recordKind === "workOrder");
-  assert.equal(workOrder.assigneeQualificationSatisfied, true, "this lane made SERVICE_TECHNICIAN eligibility live");
+  assert.equal(workOrder.status, "SEEDED");
+  assert.equal(workOrder.assigneeQualificationSatisfied, true, "SERVICE_TECHNICIAN eligibility is live for both technicians");
   assert.equal(workOrder.recordStatusSatisfied, true);
-  assert.equal(workOrder.blockedBy, "WORK_ORDER_LIFECYCLE_DISPATCH_DECLARED_BY_NO_ROLE");
+  assert.equal(workOrder.blockedBy, undefined, "a seeded path has no blocker to name");
+  // AND THE DISTINCTION THAT MUST NOT BE LOST. The row exists; the governed COMMAND is still uninvokable,
+  // because workOrder.lifecycle.dispatch is declared by no Role in the compiled catalog. Nothing here
+  // grants it, and a later change that quietly did must fail this assertion first.
+  assert.match(workOrder.stillBlockedForWriting, /^WORK_ORDER_LIFECYCLE_DISPATCH_DECLARED_BY_NO_ROLE\b/);
+  const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  const declarers = Object.values(roles)
+    .filter((r) => (r.permissions ?? []).includes(compiledWorkOrderAssignment.WORK_ORDER_ASSIGN)).map((r) => r.id);
+  assert.deepEqual(declarers, [], "workOrder.lifecycle.dispatch is declared by NO Role; the governed writer stays unreachable");
   const statuses = new Set(compiledWorkOrderAssignment.ASSIGNABLE_WORK_ORDER_STATUSES);
   assert.ok(statuses.has("SCHEDULED"), "the nonprod record the fixture names is SCHEDULED, which must be an assignable status");
+  // The two technician personas differ in EXACTLY one fact, which is what makes the pair a proof.
+  const a = PERSONA_MANIFEST.personas["service-technician-a"];
+  const b = PERSONA_MANIFEST.personas["service-technician-b"];
+  assert.deepEqual(a.securityRoles, b.securityRoles);
+  assert.deepEqual(a.jobRole, b.jobRole);
+  assert.deepEqual(a.workEligibility, b.workEligibility);
+  assert.deepEqual(a.operationalScopes, b.operationalScopes);
+  const relationship = PERSONA_MANIFEST.recordRelationships.find((r) => r.recordKind === "workOrder");
+  assert.equal(relationship.status, "SEEDED");
+  assert.equal(relationship.assignedEmployee, "service-technician-a");
 });
 
 // ════════════════════════════ the preflight ════════════════════════════
 
+// All three governed workforce capabilities are REGISTERED and granted to admin and owner in nonprod
+// (measured 2026-09-24), so all three belong in the live set. `taylor` is the only ACTIVE operating
+// company key, which is why the three sample-co-synthetic REORDER_QUEUE scopes are the blocked steps.
 const LIVE = Object.freeze({
-  capabilities: new Set(["admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"]),
+  capabilities: new Set([
+    "admin.employeeJobRole.write", "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write",
+  ]),
   employeeIds: new Set(SAMPLE_COMPANY.employees.map((e) => e.id)),
   warehouseIds: new Set(["SC-WH-MAIN", "SC-WH-SERVICE"]),
   activeOperatingCompanyKeys: new Set(["taylor"]),
@@ -165,12 +220,28 @@ const LIVE = Object.freeze({
 
 test("the preflight reproduces the measured nonprod partition exactly", () => {
   const plan = dimensions.planPersonaAuthorityDimensions();
+  const expected = SAMPLE_COMPANY.jobRoles.length + SAMPLE_COMPANY.employees.length
+    + PERSONA_MANIFEST.workEligibility.length + PERSONA_MANIFEST.operationalScopes.length;
   const result = harness.preflightAuthorityPlan(plan, LIVE);
-  assert.equal(result.counts.planned, 13);
-  assert.equal(result.counts.applicable, 10);
+  assert.equal(result.counts.planned, expected);
+  assert.equal(result.counts.planned, 48, "14 Job Role catalog entries, 21 Job Role assignments, 7 eligibilities, 6 scopes");
   assert.equal(result.counts.blocked, 3);
+  assert.equal(result.counts.applicable, 45);
   assert.ok(result.blocked.every((b) => b.code === "OPERATING_COMPANY_KEY_NOT_ACTIVE"));
   assert.ok(result.blocked.every((b) => b.detail === "sample-co-synthetic"));
+});
+
+test("a Job Role catalog step names no Employee, and a step that names neither is refused as malformed", () => {
+  // The catalog entry is a TENANT fact, so there is no Employee for the preflight to look up. That is the
+  // only step shape allowed to omit one, and omitting BOTH is a plan bug rather than a passable step.
+  const catalog = dimensions.planPersonaAuthorityDimensions().filter((s) => s.command === "createJobRole");
+  assert.equal(catalog.length, SAMPLE_COMPANY.jobRoles.length);
+  for (const s of catalog) assert.equal("employeeId" in s.input, false);
+  assert.equal(harness.preflightAuthorityPlan(catalog, LIVE).counts.applicable, catalog.length);
+  assert.throws(
+    () => harness.preflightAuthorityPlan(
+      [{ command: "createJobRole", requiresCapability: "admin.employeeJobRole.write", input: {} }], LIVE),
+    /PLAN_INVALID/);
 });
 
 test("a missing capability blocks a step BEFORE anything about the Employee or the target is considered", () => {
@@ -189,7 +260,7 @@ test("a warehouse the tenant does not hold blocks only that step", () => {
   const codes = result.blocked.map((b) => b.code);
   assert.ok(codes.includes("WAREHOUSE_NOT_IN_TENANT"));
   assert.equal(result.blocked.filter((b) => b.code === "WAREHOUSE_NOT_IN_TENANT").length, 1);
-  assert.equal(result.counts.applicable, 9, "fail closed on one step, continue with the rest");
+  assert.equal(result.counts.applicable, 44, "fail closed on one step, continue with the rest");
 });
 
 test("an Employee outside the tenant blocks its step and is never substituted", () => {
@@ -300,8 +371,39 @@ test("a provisionable persona with no Principal is refused: Employee is not user
 
 test("the assignment fixture cannot go quiet about a path it refused", () => {
   const broken = clone(MANIFEST);
-  delete broken.assignedUnassignedFixture.candidatePaths[0].blockedBy;
+  const unseeded = broken.assignedUnassignedFixture.candidatePaths.find((p) => p.status !== "SEEDED");
+  delete unseeded.blockedBy;
   assert.equal(refusal(() => harness.validateE2EManifest(broken)).code, "ASSIGNMENT_PATH_INCOMPLETE");
+  // ...and a path cannot escape the rule by CLAIMING to be seeded without saying what still blocks writing.
+  const quiet = clone(MANIFEST);
+  const seeded = quiet.assignedUnassignedFixture.candidatePaths.find((p) => p.status === "SEEDED");
+  delete seeded.stillBlockedForWriting;
+  assert.equal(refusal(() => harness.validateE2EManifest(quiet)).code, "ASSIGNMENT_PATH_INCOMPLETE");
+});
+
+test("the Administration READ claim names every login persona, and reads do NOT separate Owner from Administrator", () => {
+  // THE CLAIM THIS REPLACES. This row used to read "Reads require only an active Principal with an ACTIVE
+  // tenant membership -- so every one of the 15 personas can perform them", which described a BYPASS. Once
+  // Administration reads are capability-enforced before dispatch, that sentence is false, and a persona
+  // census is the honest replacement. The census cannot be recomputed offline -- the grants live in
+  // eos_policy, not in the compiled catalog -- so what IS asserted here is that it stays COMPLETE.
+  const row = MANIFEST.businessProcessCoverage.find((r) => r.administrationReadAuthority);
+  const census = row.administrationReadAuthority;
+  const loginPersonas = SAMPLE_COMPANY.principals.map((p) => p.employee).sort();
+  assert.deepEqual(Object.keys(census.byPersona).sort(), loginPersonas,
+    "a persona added to the catalog must appear here, even with an empty list -- 'reads nothing' is a measurement");
+  // The negative control reads nothing, and says so explicitly rather than by omission.
+  assert.deepEqual(census.byPersona["restricted-user"], []);
+  // READS DO NOT SEPARATE OWNER FROM ADMINISTRATOR. All four Administration read capabilities are granted
+  // to exactly `admin` and `owner`, so the separation lives on the mutation side and on the 19 admin-only
+  // operational capabilities -- not here. Asserting it keeps anyone from citing reads as the difference.
+  assert.deepEqual(census.byPersona["owner-executive"], census.byPersona.administrator);
+  for (const key of ["admin.principalAccess.read", "admin.securityPolicy.read", "workflowDefinition.read"]) {
+    assert.deepEqual(census.byCapability[key].grantedToRoles, ["admin", "owner"], key);
+  }
+  // The bypass sentence survives only as a QUOTED correction, never as the row's own claim.
+  assert.match(row.measuredEvidence, /^CORRECTED 2026-09-24\./);
+  assert.match(row.measuredEvidence, /described a BYPASS, and it is being closed/);
 });
 
 // ════════════════════════════ the honesty the Owner asked for by name ════════════════════════════

@@ -36,8 +36,8 @@ const refusal = (mutate, pattern) => {
 
 test("the manifest validates as it is committed", () => {
   const lookups = validateManifest(MANIFEST);
-  assert.equal(lookups.employees.size, 17);
-  assert.equal(lookups.principalsByEmployee.size, 15);
+  assert.equal(lookups.employees.size, 21);
+  assert.equal(lookups.principalsByEmployee.size, 18);
 });
 
 test("employment status vocabulary is the governed one, not a second copy that could drift", () => {
@@ -102,7 +102,13 @@ test("Retail Sales and National Accounts Sales are genuinely distinct, not one J
   assert.ok(nationalAccounts.every((a) => a.segment === "NATIONAL_ACCOUNTS"));
 });
 
-test("the Job Role vocabulary is exactly the governed twelve", () => {
+// FOURTEEN, MOVED DELIBERATELY FROM TWELVE. ADMINISTRATOR exists because the Owner ruled Owner/Executive
+// and Administrator apart and a persona separation with no business-function separation is a separation in
+// name only; FINANCE_MANAGER exists so the Finance / Accounting persona is not borrowing OFFICE_MANAGER.
+// Reporting and the restricted negative control DO reuse OFFICE_MANAGER, on purpose.
+test("the Job Role vocabulary is exactly the governed fourteen", () => {
+  assert.equal(JOB_ROLE_VOCABULARY.length, 14);
+  assert.ok(JOB_ROLE_VOCABULARY.includes("ADMINISTRATOR") && JOB_ROLE_VOCABULARY.includes("FINANCE_MANAGER"));
   assert.deepEqual([...MANIFEST.jobRoles.map((r) => r.key)].sort(), [...JOB_ROLE_VOCABULARY].sort());
   refusal((m) => { m.jobRoles.push({ key: "INVENTED_ROLE", label: "Invented" }); }, /outside the governed vocabulary/);
 });
@@ -112,9 +118,19 @@ test("Job Role is never written to a PostgreSQL authority column", () => {
   // The profile column map is the ONLY place this script names Employee columns; job role is absent from it.
   assert.equal(PROFILE_COLUMNS.filter(([, col]) => /job_role/.test(col)).length, 0);
   assert.ok(!/job_role/.test(source), "seedSampleCompany.js must never name a job_role column");
-  // And nothing in the manifest claims a Job Role authority.
-  assert.match(MANIFEST.rulings.jobRole, /NOT YET IMPLEMENTED in PostgreSQL/);
-  assert.ok(MANIFEST.blockedRelationships.some((b) => b.code === "JOB_ROLE_POSTGRES_AUTHORITY_ABSENT"));
+  // THE CLAIM THAT MOVED. The ruling used to read "Job Role authority is NOT YET IMPLEMENTED in
+  // PostgreSQL", which was stale: migration 1760011200000 created eos_workforce.job_roles and
+  // eos_workforce.employee_job_role_assignments and employeeJobRoleCommands.ts has been their governed
+  // writer since EMP-RT-08. What stays true -- and is what this test is actually for -- is that Job Role is
+  // never a COLUMN on the Employee and that THIS seed never writes one.
+  assert.match(MANIFEST.rulings.jobRole, /NOT a column on eos_workforce\.employees and never will be/);
+  assert.match(MANIFEST.rulings.jobRole, /employee_job_role_assignments/);
+  assert.ok(MANIFEST.blockedRelationships.some((b) => b.code === "JOB_ROLE_NOT_WRITTEN_BY_THIS_SEED"));
+  assert.ok(!MANIFEST.blockedRelationships.some((b) => b.code === "JOB_ROLE_POSTGRES_AUTHORITY_ABSENT"),
+    "the old code claimed the PostgreSQL authority was absent; it exists and is empty, which is a different fact");
+  // Every catalog entry carries the id the GOVERNED writer accepts, so nobody passes SCREAMING_CASE to it.
+  for (const r of MANIFEST.jobRoles) assert.match(r.pgJobRoleId, /^[a-z][a-z0-9-]{1,62}$/, r.key);
+  assert.equal(new Set(MANIFEST.jobRoles.map((r) => r.pgJobRoleId)).size, MANIFEST.jobRoles.length);
 });
 
 // ════════════════════════════ identity: three separate things ════════════════════════════
@@ -164,17 +180,56 @@ test("a Principal carries no Job Role, and a Security Role is never inferred fro
 test("exactly one existing administrator Principal is reused and never recreated", () => {
   const administrators = MANIFEST.principals.filter((p) => p.existingAdministrator);
   assert.equal(administrators.length, 1);
-  assert.equal(administrators[0].employee, "owner-executive");
+  // THE SEPARATION, AT THE IDENTITY LAYER. v1 linked the reused real administrator to the Owner / Executive
+  // Employee. Owner ruling: Administrator is not Owner. The `admin` Role IS the Administrator authority, so
+  // the Principal that holds it belongs to the ADMINISTRATOR Employee and to nobody else.
+  assert.equal(administrators[0].employee, "administrator");
+  assert.deepEqual(administrators[0].securityRoles, ["admin"]);
   assert.equal(administrators[0].fixturePrincipal, null, "the reused administrator supersedes nothing");
   assert.equal(administrators[0].loginPrincipal.disposition, "REUSE_UNCHANGED");
   assert.equal(administrators[0].loginPrincipal.externalSubject, "EXISTING_ADMINISTRATOR",
     "the real administrator's credential subject is never written into the manifest");
   refusal((m) => {
-    const second = m.principals[1];
+    const second = m.principals.find((p) => !p.existingAdministrator && !p.existingOwnerPrincipal);
     second.existingAdministrator = true;
     second.fixturePrincipal = null;
     second.loginPrincipal.externalSubject = "EXISTING_ADMINISTRATOR";
+    second.loginPrincipal.credentialEmail = null;
+    second.securityRoles = ["admin"];
   }, /exactly one existing administrator Principal is reused/);
+});
+
+test("exactly one existing OWNER Principal is reused, it is a different Principal, and it never holds admin", () => {
+  const owners = MANIFEST.principals.filter((p) => p.existingOwnerPrincipal);
+  assert.equal(owners.length, 1);
+  assert.equal(owners[0].employee, "owner-executive");
+  assert.deepEqual(owners[0].securityRoles, ["owner"]);
+  assert.equal(owners[0].fixturePrincipal, null, "the reused owner supersedes nothing");
+  assert.equal(owners[0].loginPrincipal.disposition, "REUSE_UNCHANGED");
+  assert.equal(owners[0].loginPrincipal.externalSubject, "EXISTING_OWNER",
+    "the real owner's credential subject is never written into the manifest either");
+  assert.equal(owners[0].loginPrincipal.credentialEmail, null,
+    "the owner's credential is real and pre-existing; it can never become a credential-activation allowlist entry");
+  // NO PERSONA IS BOTH. This is the whole ruling, asserted as a property of the file rather than as prose.
+  const administrator = MANIFEST.principals.find((p) => p.existingAdministrator);
+  assert.notEqual(administrator.employee, owners[0].employee);
+  assert.deepEqual(MANIFEST.principals.filter((p) => p.securityRoles.includes("admin")).map((p) => p.employee), ["administrator"]);
+  assert.deepEqual(MANIFEST.principals.filter((p) => p.securityRoles.includes("owner")).map((p) => p.employee), ["owner-executive"]);
+  refusal((m) => {
+    m.principals.find((p) => p.existingOwnerPrincipal).securityRoles = ["owner", "admin"];
+  }, /the Owner \/ Executive persona may never hold admin/);
+  refusal((m) => {
+    const o = m.principals.find((p) => p.existingOwnerPrincipal);
+    delete o.existingOwnerPrincipal;
+    o.loginPrincipal.externalSubject = "RESOLVED_FROM_AUTH_UID";
+    o.loginPrincipal.credentialEmail = m.employees.find((e) => e.key === "owner-executive").workEmail;
+    o.fixturePrincipal = {
+      identityProvider: "eos-synthetic-nonprod",
+      externalSubject: "synthetic-np-principal-owner-executive",
+      displayName: "SYNTHETIC NONPROD Owner (fixture, cannot sign in)",
+      disposition: "SUPERSEDED_BY_LOGIN_PRINCIPAL",
+    };
+  }, /exactly one existing owner Principal is reused/);
 });
 
 // ════════════════════════════ responsibility: three separate facts ════════════════════════════
@@ -288,6 +343,43 @@ test("every Security Role the manifest names exists in the governed catalog -- n
   assert.throws(() => sampleCompanyCapabilityKeys(m), /ROLE_NOT_IN_CATALOG/);
 });
 
+// THE COMPARISON NOBODY WAS MAKING. verifySampleCompany.js echoes expectedSurfaces into its report and
+// never checks it against the navigation catalog, so the fixture listed commercial.agreements for both
+// salesperson personas while experienceAuthority.ts declared that very key a GAP -- two files disagreeing
+// in silence. A surface the navigation authority cannot govern is not a surface a persona can be expected
+// to reach, whatever the persona's capabilities say.
+test("no persona expects a surface the navigation catalog declares a GAP", () => {
+  const { EXPERIENCE_SURFACE_GAPS } = require("../lib/eosOps/experienceAuthority.js");
+  const gaps = new Set(EXPERIENCE_SURFACE_GAPS.map((g) => g.key));
+  assert.ok(gaps.size > 0, "if the gap list is ever empty this guard should be retired deliberately");
+  const claimed = [];
+  for (const [key, c] of Object.entries(MANIFEST.expectedAccess.personas)) {
+    for (const surface of c.expectedSurfaces) if (gaps.has(surface)) claimed.push(`${key}:${surface}`);
+  }
+  assert.deepEqual(claimed, [],
+    "a persona expects a surface the navigation authority declares ungovernable; move it to surfacesUngovernedToday rather than declaring the surface, which is an Owner product decision");
+  // MOVED, NOT DELETED. Each one names a declared blocker, states its own classification, and carries the
+  // MEASUREMENT rather than repeating the catalog's reason -- which for commercial.agreements is itself
+  // false: the salesAgreement capabilities ARE registered, and the missing half is the destination.
+  const CLASSES = ["DESTINATION_ABSENT", "NO_GOVERNING_CAPABILITY", "NOT_A_NAVIGABLE_DESTINATION"];
+  let ungoverned = 0;
+  for (const [key, c] of Object.entries(MANIFEST.expectedAccess.personas)) {
+    for (const b of c.surfacesUngovernedToday ?? []) {
+      ungoverned += 1;
+      assert.ok(gaps.has(b.surface), `${key}: ${b.surface} is not a catalog gap and belongs in expectedSurfaces`);
+      assert.ok(CLASSES.includes(b.classification), `${key}: ${b.surface} carries ${b.classification}`);
+      assert.ok(MANIFEST.blockedRelationships.some((x) => x.code === b.blockedBy), `${key}: ${b.blockedBy} is not a declared blocker`);
+      assert.ok(b.catalogReason.length > 40 && b.measured.length > 40 && b.correctionOwner.length > 20,
+        `${key}: ${b.surface} must quote the catalog, state the measurement and name who may correct it`);
+    }
+  }
+  assert.ok(ungoverned >= 5, "the five contradictions this guard found must all stay recorded");
+  const agreements = MANIFEST.expectedAccess.personas["national-accounts-sales"].surfacesUngovernedToday
+    .find((b) => b.surface === "commercial.agreements");
+  assert.equal(agreements.classification, "DESTINATION_ABSENT");
+  assert.match(agreements.measured, /MEASURABLY FALSE/);
+});
+
 test("every REQUIRED capability is derivable from the persona's declared Roles (no ACCESS_MODEL_GAP)", () => {
   const gaps = [];
   for (const [key, c] of Object.entries(MANIFEST.expectedAccess.personas)) {
@@ -358,11 +450,21 @@ test("the capability key set is derived from the Role catalog, never hand-typed"
   assert.ok(keys.includes("admin.employeeProfile.write"), "the reporting-relationship command's own capability must be reconciled");
 });
 
-test("the capability Role scope is exactly the Roles manifest Principals name, deduplicated and sorted", () => {
+test("the capability Role scope is the Roles manifest Principals name MINUS the ones deliberately withheld", () => {
   const named = MANIFEST.principals.flatMap((p) => p.securityRoles);
-  assert.deepEqual(sampleCompanyRoleKeys(), [...new Set(named)].sort());
+  const withheld = MANIFEST.expectedAccess.roleGrantScope.withheldFromReconciliation.map((r) => r.role);
+  assert.deepEqual(sampleCompanyRoleKeys(), [...new Set(named)].filter((k) => !withheld.includes(k)).sort());
+  // THE WITHHOLDING IS THE OWNER RULING IN CODE. `owner` is named by a Principal and is deliberately NOT
+  // reconciled: the compiled catalog declares `owner` identically to `admin` (151 permissions each), while
+  // eos_policy grants `owner` 47 and `admin` 66 with 19 admin-only. Reconciling would close that gap by
+  // copying the Administrator's permissions onto the Owner, which is the one solution the Owner refused.
+  assert.deepEqual(withheld, ["owner"]);
+  assert.ok(named.includes("owner"), "owner must still be a Role a Principal HOLDS -- only its grants are withheld");
+  assert.ok(!sampleCompanyRoleKeys().includes("owner"));
+  // Withholding can only ever NARROW: a Role not named by any Principal is out of scope regardless.
   const m = clone();
-  m.principals = [{ ...m.principals[0], securityRoles: ["warehouseManager", "admin", "warehouseManager"] }];
+  m.principals = [{ ...m.principals.find((p) => p.existingAdministrator), securityRoles: ["warehouseManager", "admin", "warehouseManager"] }];
+  m.expectedAccess.roleGrantScope.withheldFromReconciliation = [];
   assert.deepEqual(sampleCompanyRoleKeys(m), ["admin", "warehouseManager"]);
 });
 
@@ -438,8 +540,8 @@ test("every relationship assertion names a declared subject and object, and only
     ...MANIFEST.trucks.records.map((t) => `truck:${t.truckId}`),
     ...MANIFEST.trucks.mobileLocations.map((l) => `mobileLocation:${l.locationId}`),
     ...MANIFEST.parts.records.map((p) => `part:${p.partId}`),
-    ...MANIFEST.principals.filter((p) => !p.existingAdministrator).map((p) => `fixturePrincipal:${p.fixturePrincipal.externalSubject}`),
-    ...MANIFEST.principals.filter((p) => !p.existingAdministrator).map((p) => `loginPrincipal:${p.loginPrincipal.credentialEmail}`),
+    ...MANIFEST.principals.filter((p) => p.fixturePrincipal).map((p) => `fixturePrincipal:${p.fixturePrincipal.externalSubject}`),
+    ...MANIFEST.principals.filter((p) => p.loginPrincipal.credentialEmail).map((p) => `loginPrincipal:${p.loginPrincipal.credentialEmail}`),
     ...MANIFEST.purchasing.map((p) => `reorderRequest:${p.reorderRequestNumber}`),
   ]);
   for (const a of MANIFEST.relationshipAssertions) {
@@ -539,7 +641,7 @@ test("NON-COMMERCIAL acceptance coverage did not shrink: 31 assertions, still un
   }
   // The non-Commercial DOMAIN expectations are untouched by this ruling, stated as exact numbers so a
   // later edit that trimmed one to make a suite green would fail here first.
-  assert.equal(MANIFEST.employees.length, 17);
+  assert.equal(MANIFEST.employees.length, 21);
   assert.equal(MANIFEST.accounts.length, 3);
   assert.equal(MANIFEST.contacts.length, 6);
   assert.equal(MANIFEST.locations.length, 5);
@@ -547,7 +649,7 @@ test("NON-COMMERCIAL acceptance coverage did not shrink: 31 assertions, still un
   assert.equal(MANIFEST.warehouses.length, 2);
   assert.equal(MANIFEST.purchasing.length, 2);
   assert.equal(MANIFEST.cycleCounts.length, 3);
-  assert.equal(MANIFEST.reportingRelationships.edges.length, 16);
+  assert.equal(MANIFEST.reportingRelationships.edges.length, 20);
 });
 
 test("scenario A is PREREQUISITE-BLOCKED, not failed, and keeps every independently testable part", () => {
@@ -676,6 +778,7 @@ const NONPROD = { EOS_ENVIRONMENT: "nonprod", SAMPLE_FENCE_DB: "postgres://fence
 const BASE = {
   environment: "platform-sandbox", databaseUrlEnv: "SAMPLE_FENCE_DB",
   tenantKey: "taylor-nonprod", performedBy: "operator", existingAdminPrincipalId: "principal-1",
+  existingOwnerPrincipalId: "principal-2",
 };
 
 test("plan is the default and writes nothing", () => {
@@ -684,15 +787,21 @@ test("plan is the default and writes nothing", () => {
   assert.equal(options.apply, false);
 });
 
-test("apply requires ALL FIVE facts together", () => {
+test("apply requires ALL SIX facts together", () => {
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply" }, NONPROD), /--mode apply additionally requires the explicit --apply/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, apply: "true" }, NONPROD), /--apply was given without a writing mode/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true" }, { ...NONPROD, EOS_ENVIRONMENT: "production" }), /EOS_ENVIRONMENT must read exactly 'nonprod'/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", tenantKey: "some-other-tenant" }, NONPROD), /--tenantKey taylor-nonprod is required/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", performedBy: undefined }, NONPROD), /--performedBy <operator> is required/);
   assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", existingAdminPrincipalId: undefined }, NONPROD), /--existingAdminPrincipalId is required/);
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", existingOwnerPrincipalId: undefined }, NONPROD), /--existingOwnerPrincipalId is required/);
+  // OWNER RULING, ENFORCED AT THE FENCE: Owner and Administrator are two Principals. Naming one id twice
+  // would re-merge them at the command line, which is exactly how the merged fixture would come back.
+  assert.throws(() => assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true", existingOwnerPrincipalId: "principal-1" }, NONPROD),
+    /must name DIFFERENT Principals/);
   const ok = assertSampleCompanyInvocation({ ...BASE, mode: "apply", apply: "true" }, NONPROD);
   assert.equal(ok.apply, true);
+  assert.equal(ok.existingOwnerPrincipalId, "principal-2");
 });
 
 test("production and the Certification world are refused, and platform-sandbox is required positively", () => {
@@ -745,7 +854,8 @@ test("(2) no interactive persona resolves through a provider no verifier recogni
   // The fixture Principal still EXISTS in the manifest -- it is what the transition supersedes -- but it is
   // never the thing a persona logs in as, and its disposition says so.
   for (const p of MANIFEST.principals) {
-    if (p.existingAdministrator) continue;
+    // The two REUSED real Principals supersede nothing and have no fixture Principal at all.
+    if (p.existingAdministrator || p.existingOwnerPrincipal) continue;
     assert.equal(p.fixturePrincipal.identityProvider, seed.SYNTHETIC_IDENTITY_PROVIDER);
     assert.equal(p.fixturePrincipal.disposition, "SUPERSEDED_BY_LOGIN_PRINCIPAL");
     assert.equal(p.loginPrincipal.disposition, "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK");
@@ -779,11 +889,17 @@ test("(4) a Firebase uid is never an Employee id, and is never written into the 
       assert.equal(p.loginPrincipal.externalSubject, "EXISTING_ADMINISTRATOR");
       continue;
     }
+    if (p.existingOwnerPrincipal) {
+      assert.equal(p.loginPrincipal.externalSubject, "EXISTING_OWNER");
+      continue;
+    }
     assert.equal(p.loginPrincipal.externalSubject, "RESOLVED_FROM_AUTH_UID",
       "a uid is discovered from the Auth account, never committed to the repository");
   }
-  refusal((m) => { m.principals[1].loginPrincipal.externalSubject = "AbCdEfGhIjKlMnOpQrStUvWxYz01"; },
-    /a login subject is resolved from the sandbox Auth account, never written into the manifest/);
+  refusal((m) => {
+    m.principals.find((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
+      .loginPrincipal.externalSubject = "AbCdEfGhIjKlMnOpQrStUvWxYz01";
+  }, /a login subject is resolved from the sandbox Auth account, never written into the manifest/);
   // The activation phase refuses a uid that collides with an Employee id, by name.
   const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
   assert.ok((activation.match(/UID_IS_NOT_AN_EMPLOYEE_ID/g) || []).length >= 2,
@@ -1030,14 +1146,18 @@ test("(3) Sample Company credential activation is confined to manifest personas"
   const { sampleCompanyCredentialAllowlist } = require("../scripts/sampleCompany/credentialActivation.js");
   const allowlist = sampleCompanyCredentialAllowlist(MANIFEST);
   const expected = MANIFEST.principals
-    .filter((p) => !p.existingAdministrator)
+    .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .map((p) => p.loginPrincipal.credentialEmail)
     .sort();
   assert.deepEqual(allowlist, expected);
-  assert.equal(allowlist.length, 14, "fourteen sandbox personas; the reused Administrator is excluded");
-  // THE REUSED ADMINISTRATOR IS NOT IN IT, and cannot be: its credentialEmail is null by construction.
+  assert.equal(allowlist.length, 16, "sixteen sandbox personas; the two reused real Principals are excluded");
+  // NEITHER REUSED PRINCIPAL IS IN IT, and neither can be: both credentialEmails are null by construction.
   const administrator = MANIFEST.principals.find((p) => p.existingAdministrator);
   assert.equal(administrator.loginPrincipal.credentialEmail, null);
+  const owner = MANIFEST.principals.find((p) => p.existingOwnerPrincipal);
+  assert.equal(owner.loginPrincipal.credentialEmail, null);
+  assert.ok(!allowlist.includes(MANIFEST.employees.find((e) => e.key === "owner-executive").workEmail),
+    "the Owner's own work email must not become a credential to create: its credential is real and pre-existing");
   assert.ok(!allowlist.includes(null) && !allowlist.includes(undefined));
   for (const email of allowlist) assert.ok(email.endsWith("@sandbox.invalid"));
   // Every no-access Employee is absent.

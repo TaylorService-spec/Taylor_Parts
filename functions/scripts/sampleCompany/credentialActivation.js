@@ -35,11 +35,16 @@ class CredentialActivationError extends Error {
   }
 }
 
-/** The addresses this Sample Company may activate: interactive personas only, administrator excluded. */
+/**
+ * The addresses this Sample Company may activate: interactive personas only, with BOTH reused real
+ * Principals excluded. The administrator's credential and the owner's credential are real, pre-existing and
+ * out of scope, and both carry a null credentialEmail so neither could become an allowlist entry anyway --
+ * the filter states the rule rather than relying on that.
+ */
 function sampleCompanyCredentialAllowlist(manifest) {
   const employees = new Map(manifest.employees.map((e) => [e.key, e]));
   return manifest.principals
-    .filter((p) => !p.existingAdministrator)
+    .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .filter((p) => employees.get(p.employee)?.sandboxPersona?.interactiveLogin === true)
     .map((p) => p.loginPrincipal.credentialEmail)
     .filter((email) => typeof email === "string" && email.length > 0)

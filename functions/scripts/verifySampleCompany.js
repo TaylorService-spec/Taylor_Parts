@@ -31,7 +31,7 @@
 //
 // Usage:
 //   node scripts/verifySampleCompany.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
-//     --tenantKey taylor-nonprod --performedBy <operator> --existingAdminPrincipalId <principal id>
+//     --tenantKey taylor-nonprod --performedBy <operator> --existingAdminPrincipalId <principal id> --existingOwnerPrincipalId <principal id>
 //
 // Exit 0 pass; 1 the report says pass:false; 2 refused or failed.
 "use strict";
@@ -145,7 +145,7 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
   // THE LOGIN PRINCIPALS ARE THE ONES THAT MATTER: `firebase`-provider Principals with an ACTIVE membership
   // are what a signed-in browser resolves to. The fixture Principals are counted separately, and the
   // expectation for them is RETIREMENT rather than presence.
-  const interactivePersonas = manifest.principals.filter((p) => !p.existingAdministrator);
+  const interactivePersonas = manifest.principals.filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal);
   await count("identity.loginPrincipals",
     `SELECT count(*)::int AS n FROM eos_policy.principals p
        JOIN eos_policy.tenant_memberships m ON m.principal_id = p.id
@@ -295,8 +295,22 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
   const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
   const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
   const roleCatalog = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  // A Role the seed deliberately grants nothing for cannot be verified against the Role catalog: the catalog
+  // is exactly what the withholding refuses to apply. `owner` is withheld by Owner ruling (the compiled
+  // catalog declares it identically to `admin`; the live grant set is a strict subset and must stay one), so
+  // its rows are reported as WITHHELD evidence rather than asserted as MISSING_GRANT failures.
+  const withheldRoles = new Set((manifest.expectedAccess.roleGrantScope?.withheldFromReconciliation ?? []).map((r) => r.role));
   const usedRoleKeys = [...new Set(manifest.principals.flatMap((p) => p.securityRoles))].sort();
-  for (const roleKey of usedRoleKeys) {
+  for (const roleKey of usedRoleKeys.filter((k) => withheldRoles.has(k))) {
+    grantRows.push({
+      role: roleKey,
+      expectedCapability: null,
+      liveGrant: null,
+      liveGrantCount: (liveByRole.get(roleKey) ?? new Set()).size,
+      status: "GRANT_RECONCILIATION_WITHHELD",
+    });
+  }
+  for (const roleKey of usedRoleKeys.filter((k) => !withheldRoles.has(k))) {
     const expected = (roleCatalog[roleKey]?.permissions ?? []).filter((k) => capabilityKeys.has(k)).sort();
     const held = liveByRole.get(roleKey) ?? new Set();
     for (const capability of expected) {
@@ -348,7 +362,7 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
     // sign-in provider are all readable without one. That is what lets ordinary read-only verification stay
     // free of the credential file while still telling the truth about whether a persona can log in.
     let authUid = null;
-    if (interactiveLogin && !p.existingAdministrator) {
+    if (interactiveLogin && !p.existingAdministrator && !p.existingOwnerPrincipal) {
       if (!authProbe) {
         persona.authAccount = "NOT_PROBED";
       } else {
@@ -381,49 +395,56 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
     let effective = new Set();
     let resolvedPrincipalId = null;
     try {
-      if (p.existingAdministrator) {
-        const assignments = await reader.listAssignmentsForPrincipal(tenantId, options.existingAdminPrincipalId);
+      if (p.existingAdministrator || p.existingOwnerPrincipal) {
+        // THE TWO REUSED REAL PRINCIPALS -- the Administrator and the Owner -- resolved identically and kept
+        // SEPARATE by Owner ruling. Neither is created here, neither is re-credentialed, and neither is ever
+        // inferred from "whoever holds the Role": each is NAMED on the command line.
+        const isAdministrator = p.existingAdministrator === true;
+        const reusedId = isAdministrator ? options.existingAdminPrincipalId : options.existingOwnerPrincipalId;
+        const who = isAdministrator ? "administrator" : "owner";
+        const readyLabel = isAdministrator ? "REUSED_EXISTING_ADMINISTRATOR" : "REUSED_EXISTING_OWNER";
+        const assignments = await reader.listAssignmentsForPrincipal(tenantId, reusedId);
         const roles = await reader.listRoles(tenantId);
         const keyById = new Map(roles.map((r) => [r.id, r.key]));
         persona.heldRoleKeys = [...new Set(assignments.filter((a) => a.status === "active").map((a) => keyById.get(a.roleId)).filter(Boolean))].sort();
         effective = await capabilitiesForRoleKeys(client, tenantId, persona.heldRoleKeys);
-        resolvedPrincipalId = options.existingAdminPrincipalId;
-        const adminPrincipal = await reader.getPrincipal(options.existingAdminPrincipalId);
-        persona.subjectFingerprint = adminPrincipal ? fingerprint(adminPrincipal.externalSubject) : null;
+        resolvedPrincipalId = reusedId;
+        const reusedPrincipal = await reader.getPrincipal(reusedId);
+        persona.subjectFingerprint = reusedPrincipal ? fingerprint(reusedPrincipal.externalSubject) : null;
         persona.authorizationReady = true;
 
-        // THE ADMINISTRATOR'S CREDENTIAL IS UNCHANGED BUT NOT UNCHECKED.
+        // A REUSED CREDENTIAL IS UNCHANGED BUT NOT UNCHECKED.
         //
         // This workstream never creates it, renames it, or sets or rotates its password -- and that is
         // exactly why its readiness has to be PROVED rather than assumed: nothing here would notice if the
         // account had been disabled or deleted underneath us, and the Owner would be told to log in as an
-        // Administrator who cannot. The probe is READ ONLY and by UID, because the Principal's external
+        // identity that cannot. The probe is READ ONLY and by UID, because the Principal's external
         // subject is the only handle we legitimately hold for an account that has no manifest email.
         if (!uidProbe) {
           persona.authAccount = "AUTH_NOT_PROBED";
-        } else if (!adminPrincipal) {
+        } else if (!reusedPrincipal) {
           persona.authAccount = "PRINCIPAL_NOT_FOUND";
-          fail("access.sandboxAuthAccount", p.employee, "the named administrator Principal does not exist");
-        } else if (adminPrincipal.identityProvider !== RUNTIME_IDENTITY_PROVIDER) {
+          fail("access.sandboxAuthAccount", p.employee, `the named ${who} Principal does not exist`);
+        } else if (reusedPrincipal.identityProvider !== RUNTIME_IDENTITY_PROVIDER) {
           persona.authAccount = "WRONG_PROVIDER";
           fail("access.sandboxAuthAccount", p.employee,
-            `the administrator Principal resolves under '${adminPrincipal.identityProvider}', not the runtime provider`);
+            `the ${who} Principal resolves under '${reusedPrincipal.identityProvider}', not the runtime provider`);
         } else {
-          const account = await uidProbe(adminPrincipal.externalSubject);
+          const account = await uidProbe(reusedPrincipal.externalSubject);
           if (!account) {
             persona.authAccount = "MISSING";
-            fail("access.sandboxAuthAccount", p.employee, "no Auth account exists for the administrator Principal's subject");
+            fail("access.sandboxAuthAccount", p.employee, `no Auth account exists for the ${who} Principal's subject`);
           } else if (account.disabled) {
             persona.authAccount = "DISABLED";
-            fail("access.sandboxAuthAccount", p.employee, "the administrator's Auth account is disabled and cannot sign in");
-          } else if (account.uid !== adminPrincipal.externalSubject) {
+            fail("access.sandboxAuthAccount", p.employee, `the ${who}'s Auth account is disabled and cannot sign in`);
+          } else if (account.uid !== reusedPrincipal.externalSubject) {
             persona.authAccount = "SUBJECT_MISMATCH";
-            fail("access.sandboxAuthAccount", p.employee, "the administrator Principal's subject does not match its Auth account");
+            fail("access.sandboxAuthAccount", p.employee, `the ${who} Principal's subject does not match its Auth account`);
           } else if (!account.hasPassword) {
             persona.authAccount = "NO_SIGN_IN_CREDENTIAL";
-            fail("access.sandboxAuthAccount", p.employee, "the administrator's Auth account has no enabled sign-in credential");
+            fail("access.sandboxAuthAccount", p.employee, `the ${who}'s Auth account has no enabled sign-in credential`);
           } else {
-            persona.authAccount = "REUSED_EXISTING_ADMINISTRATOR";
+            persona.authAccount = readyLabel;
           }
         }
       } else {
@@ -495,7 +516,9 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
       && persona.employeeLink === "ACTIVE"
       && persona.missingCapabilities.length === 0
       && persona.forbiddenCapabilityViolations.length === 0
-      && (p.existingAdministrator ? persona.authAccount === "REUSED_EXISTING_ADMINISTRATOR" : persona.authAccount === "READY");
+      && (p.existingAdministrator ? persona.authAccount === "REUSED_EXISTING_ADMINISTRATOR"
+        : p.existingOwnerPrincipal ? persona.authAccount === "REUSED_EXISTING_OWNER"
+          : persona.authAccount === "READY");
     if (interactiveLogin && !persona.loginReady) {
       fail("access.loginReady", p.employee,
         persona.authAccount === "NOT_PROBED"

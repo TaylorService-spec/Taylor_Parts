@@ -223,10 +223,28 @@
       "persona": "owner-executive",
       "employee": "synthetic-np-emp-owner-executive",
       "securityRoles": [
+        "owner"
+      ],
+      "liveInNonprod": true,
+      "notes": "Holds `owner` and NOT `admin`. Measured nonprod 2026-09-24: `owner` carries 47 granted capabilities, `admin` carries 66, `owner` is a STRICT SUBSET and 19 capabilities are admin-only. The previous note here said this persona 'holds the `admin` Role key, which is what the Administration mutation surface actually checks' -- which was true of the merged fixture and was exactly the merge the Owner ruled out.",
+      "separatedFrom": "Administrator",
+      "whatMakesItDifferent": "Administration's definition surface -- editObjectDefinition, editRoleDefinition, editWorkflowDefinition -- is gated on the Role KEY `admin` and nothing else, so this persona is REFUSED all three while still holding admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write, which are capability-gated and which `owner` does hold. assignRole permits owner | generalManager | admin, so it keeps that one. That is a measurable, three-way difference from both the Administrator and the General Manager.",
+      "principalDisposition": "ADOPTS the `owner`-holding Principal that ALREADY EXISTS in nonprod and had NO Employee link at all -- which is why every WORK_ELIGIBILITY / OPERATIONAL_SCOPE / RECORD_ASSIGNMENT predicate refused it EMPLOYEE_LINK_REQUIRED. No Principal is created, no credential is created, reset or rotated.",
+      "authorityNotWidened": "The `owner` Role is WITHHELD from the Sample Company's capability-grant reconciliation. The compiled catalog declares `owner` identically to `admin`, so reconciling it would add the nineteen admin-only capabilities to the live Owner Role -- the one way the Owner ruled this asymmetry may NOT be closed."
+    },
+    {
+      "requestedRole": "Administrator",
+      "disposition": "PROVISIONABLE",
+      "persona": "administrator",
+      "employee": "synthetic-np-emp-administrator",
+      "securityRoles": [
         "admin"
       ],
       "liveInNonprod": true,
-      "notes": "Holds the `admin` Role key, which is what the Administration mutation surface actually checks."
+      "notes": "Holds `admin`, through the ONE reused real sandbox administrator Principal -- never recreated, never renamed, never re-credentialed. Sample Company v1 linked that Principal to the Owner / Executive Employee; v2 links it to this one.",
+      "supersedes": "disposition MERGED (mergedInto owner-executive), which is WITHDRAWN.",
+      "whyTheMergeWasWrong": "The merge evidence argued that a second Principal holding `admin` would answer identically on all 19 mutations and all 13 reads. That is true and was never the question: Owner and Administrator do not hold the same Role. The merged fixture concealed that by giving the Owner / Executive persona the ADMINISTRATOR's Role, so the two 'identical' personas were identical by construction.",
+      "correctsAMeasurablyFalseClaim": "The merge also recorded that a persona holding `owner` but not `admin` 'is the genuinely missing administrative persona' and that 'the catalog contains no such persona'. MEASURABLY FALSE: a Principal holding `owner` and not `admin` exists in nonprod today, with 47 granted capabilities. It had no Employee link, which is why nothing could reach it -- not because it did not exist. The Owner / Executive persona now adopts it."
     },
     {
       "requestedRole": "General Manager",
@@ -240,12 +258,15 @@
       "notes": "generalManager is one of the three Role keys permitted to assignRole, and holds employee.record.read. It is NOT permitted editObjectDefinition / editRoleDefinition / editWorkflowDefinition -- that is the measured difference from Owner/Executive."
     },
     {
-      "requestedRole": "Administrator",
-      "disposition": "MERGED",
-      "mergedInto": "owner-executive",
-      "mergeEvidence": "RE-EVALUATED AGAINST THE ADMINISTRATION SURFACE, not inherited. ADMIN_MUTATION_OPERATIONS is gated by requireAdministrationAuthority(actor.heldRoleKeys, action) over the closed action set editObjectDefinition | editRoleDefinition | editWorkflowDefinition | assignRole. The first three require the Role KEY `admin` (ADMIN_ROLE_KEY) and nothing else; assignRole permits owner | generalManager | admin. The owner-executive persona holds `admin` in nonprod (measured). A second Principal holding `admin` would produce byte-identical answers on all 19 mutations and all 13 reads. The difference would be org-chart position, which is a Job Role, not an authority.",
-      "whatWouldSeparateThem": "A persona holding `owner` but NOT `admin`. That persona is measurably different -- it would be REFUSED editObjectDefinition, editRoleDefinition and editWorkflowDefinition while still holding admin.employeeWorkEligibility.write and admin.employeeOperationalScope.write, because those two are capability-gated and the Administration definition surface is Role-key-gated. The catalog contains no such persona. That, not 'Administrator', is the genuinely missing administrative persona.",
-      "alsoRecorded": "If the Owner later wants an administrator whose sandbox credential the fixture may freely reset (the reused real administrator's may not be), that is credential hygiene, not authority, and it needs its own ruling because it adds a second `admin`-Role Principal in nonprod."
+      "requestedRole": "Service Manager",
+      "disposition": "PROVISIONABLE",
+      "persona": "service-manager",
+      "employee": "synthetic-np-emp-service-manager",
+      "securityRoles": [
+        "fieldManager"
+      ],
+      "liveInNonprod": true,
+      "notes": "Holds `fieldManager`. Present in Sample Company v2 from the start and simply NOT DISPOSITIONED here before -- the fourteen-row list had no Service Manager entry at all, which is how a persona that exists can still be missing from the canonical population. It holds NO Work Eligibility: managing field work is not being qualified to perform it, which is the MANAGER_HOLDS_NO_FIELD_ELIGIBILITY proof."
     },
     {
       "requestedRole": "Dispatcher",
@@ -259,7 +280,7 @@
       "notes": "Holds reorder.request.read and a REORDER_QUEUE:taylor scope (migration-derived) and NO Work Eligibility -- the capability-without-eligibility proof."
     },
     {
-      "requestedRole": "Service Technician",
+      "requestedRole": "Service Technician (assigned)",
       "disposition": "PROVISIONABLE",
       "persona": "service-technician-a",
       "employee": "synthetic-np-emp-service-technician-a",
@@ -267,12 +288,22 @@
         "technician"
       ],
       "liveInNonprod": true,
+      "notes": "The ASSIGNED half of the pair. MEASURED 2026-09-24: eos_ops.work_order_assignments holds exactly one open row -- work order dDas6xXNgcPi3WYPPCIL, assignee synthetic-np-emp-service-technician-a, source SCHEDULE, effective_to NULL. So assigned-vs-unassigned is SEPARABLE TODAY, against a real record. The two technicians were one row here before, with the unassigned one recorded as a `variant`; the Owner's canonical population names them separately because the whole point of the pair is that they are two personas differing in exactly one fact.",
       "variants": [
-        "service-technician-b -- identical in Security Role, Job Role and Work Eligibility; the ONLY intended difference is a record assignment",
-        "contract-technician -- employment_status CONTRACTOR, same qualification",
+        "contract-technician -- employment_status CONTRACTOR, same SERVICE_TECHNICIAN qualification; proves employment status does not decide eligibility",
         "technician-on-leave -- ON_LEAVE, no Principal, no qualification"
+      ]
+    },
+    {
+      "requestedRole": "Service Technician (unassigned)",
+      "disposition": "PROVISIONABLE",
+      "persona": "service-technician-b",
+      "employee": "synthetic-np-emp-service-technician-b",
+      "securityRoles": [
+        "technician"
       ],
-      "notes": "SERVICE_TECHNICIAN Work Eligibility is now LIVE for a, b and contract (3 rows written by this lane). technician-on-leave deliberately holds none."
+      "liveInNonprod": true,
+      "notes": "The UNASSIGNED half. Identical to service-technician-a in Security Role, Job Role and Work Eligibility -- synthetic-np-emp-service-technician-b holds a CURRENT SERVICE_TECHNICIAN qualification too -- and it has NO row in eos_ops.work_order_assignments. The assignment row is the only difference, which is what makes the pair a proof rather than a pair of examples."
     },
     {
       "requestedRole": "Parts Associate",
@@ -357,31 +388,40 @@
     },
     {
       "requestedRole": "Finance / Accounting",
-      "disposition": "BLOCKED",
-      "blockedBy": "SAMPLE_COMPANY_V3_REQUIRED",
-      "reEvaluation": "Lane M called this a catalog gap. MEASURED MORE PRECISELY: it is a PERSONA-catalog gap, not a ROLE-catalog gap. The compiled Role catalog defines controller, financeManager and accountingManager (48 Roles total). What is missing is any Employee/Principal holding one of them. Creating an Employee requires the ONE documented direct insert, which lives in seedSampleCompany.js and which a second writer must not duplicate.",
-      "alsoBlockedBy": "FINANCIALS_DOMAIN_BLOCKED -- no HTTP route serves an invoice or payment operation, the finance writers are Firebase onCall against Firestore, and an invoice without priced lines would be a manufactured number.",
-      "proposedPersona": {
-        "employeeKey": "finance-controller",
-        "securityRoles": [
-          "controller"
-        ],
-        "jobRole": "FINANCE_MANAGER (a new Job Role key; the twelve-key vocabulary is pinned by a test and would need extending)"
-      }
+      "disposition": "PROVISIONABLE",
+      "persona": "finance-controller",
+      "employee": "synthetic-np-emp-finance-controller",
+      "securityRoles": [
+        "controller"
+      ],
+      "liveInNonprod": true,
+      "notes": "Holds `controller`. CLOSED, having been BLOCKED by SAMPLE_COMPANY_V3_REQUIRED. The Employee is created by the ONE documented direct insert in seedSampleCompany.js, which is the existing Employee writer -- no second Employee authority was created. Its Job Role is FINANCE_MANAGER and its Security Role is `controller`, which is deliberate: the two axes do not have to agree even when they share a word.",
+      "supersedesDisposition": "BLOCKED / SAMPLE_COMPANY_V3_REQUIRED",
+      "stillBlocked": "FINANCIALS_DOMAIN_BLOCKED. The six finance capabilities are REGISTERED and resolve through the identity chain, so login, capability resolution and every denial are provable today. What is not provable is an end-to-end invoice or payment: no HTTP route serves one and the writers are Firebase onCall functions over Firestore. The persona exists so a registered authority stops being held by nobody; the transaction half stays blocked on the domain cutover."
     },
     {
       "requestedRole": "Reporting / Read-Only",
       "disposition": "BLOCKED",
-      "blockedBy": "SAMPLE_COMPANY_V3_REQUIRED",
-      "reEvaluation": "Same correction: reportViewer, reportFinanceViewer and reportAuthor all exist in the compiled Role catalog; no persona holds one. This is the cheapest and strongest negative control the matrix does not have -- a persona whose every write is denied is what distinguishes 'denied because unauthorized' from 'denied because the surface is broken'.",
-      "alsoBlockedBy": "REPORTING_DOMAIN_BLOCKED -- saved report definitions are Firestore-authoritative and reporting is served only by Firebase onCall callables.",
-      "proposedPersona": {
-        "employeeKey": "report-viewer",
-        "securityRoles": [
-          "reportViewer"
-        ],
-        "jobRole": "OFFICE_MANAGER (reused)"
-      }
+      "blockedBy": "REPORTING_CAPABILITY_VOCABULARY_ABSENT",
+      "persona": "report-analyst",
+      "employee": "synthetic-np-emp-report-analyst",
+      "securityRoles": [],
+      "liveInNonprod": false,
+      "acceptance": "BLOCKED_DOMAIN",
+      "supersedesDisposition": "BLOCKED / SAMPLE_COMPANY_V3_REQUIRED, which named the wrong blocker: the obstacle was never that a v3 was required to create an Employee.",
+      "notes": "OWNER RULING: Reporting is blocked by DOMAIN AUTHORITY ACTIVATION and must not be papered over with a persona fixture. The Employee record IS added -- so the canonical population is complete and the gap is counted rather than forgotten -- and it holds no Principal and no Security Role. MEASURED 2026-09-24: eos_policy.capabilities registers 76 ids and not one is a report.* id; reportViewer, reportFinanceViewer and reportAuthor declare 27, 5 and 3 permissions in the compiled catalog and hold ZERO role_capabilities rows each. A grant here would resolve to nothing and would report an un-cut-over domain as covered.",
+      "whatWouldUnblockIt": "Registration of the reporting capability vocabulary in eos_policy by a reviewed migration. Until then no report permission may be granted, and the SIGNED-IN negative control the matrix needed is 'Restricted (negative control)' below, which holds a zero-capability Role rather than a withheld one."
+    },
+    {
+      "requestedRole": "Restricted (negative control)",
+      "disposition": "PROVISIONABLE",
+      "persona": "restricted-user",
+      "employee": "synthetic-np-emp-restricted-user",
+      "securityRoles": [
+        "generalEmployee"
+      ],
+      "liveInNonprod": false,
+      "notes": "Holds `generalEmployee`, a real governed Role that declares ZERO capabilities and holds zero role_capabilities rows. THE CONTROL THE CATALOG DID NOT HAVE: records-clerk and technician-on-leave have no Principal, so their refusals happen before authorization is reached; this persona signs in, resolves a Principal and an ACTIVE membership, and is then refused by AUTHORIZATION on everything. That is what distinguishes 'denied because unauthorized' from 'denied because the surface is broken'. It shares the OFFICE_MANAGER Job Role with office-manager, whose Security Role is `officeManager` -- the mirror of the retail-vs-national-accounts proof."
     }
   ],
   "personaAuthorityFixtures": {
@@ -619,21 +659,22 @@
   "assignedUnassignedFixture": {
     "$comment": "Q5. ONE governed assignment fixture was authorized. The Work Order path is blocked by a Role declaration gap. The Reorder path was re-ruled by the Owner (REORDER_ASSIGNMENT_QUALIFICATION = PARTS_OPERATIONS) and its business-rule conflict is GONE; one ordinary grant gap remains, and this lane reconciles no grant.",
     "goal": "The SAME persona allowed on an assigned record and denied on an unassigned one, with the assignment row as the only difference. The Reorder assignee is a PARTS persona -- Parts Associate for execution, Parts Manager for oversight -- and never a Service Technician, who is the negative eligibility case.",
-    "status": "NOT_SEEDED",
+    "status": "PARTIALLY_SEEDED",
     "whatThisLaneDidUnblock": "Both governed assignment writers require the assignee to hold a Work Eligibility. That precondition was 0 rows before the persona authority-dimension lane and is now satisfied for BOTH paths: synthetic-np-emp-service-technician-a and -b hold a CURRENT SERVICE_TECHNICIAN qualification, and synthetic-np-emp-parts-associate and synthetic-np-emp-parts-manager hold a CURRENT PARTS_OPERATIONS one -- which is what the re-ruled Reorder writer requires.",
     "candidatePaths": [
       {
         "recordKind": "workOrder",
-        "record": "any of the 5 SCHEDULED rows in eos_ops.work_orders (e.g. dDas6xXNgcPi3WYPPCIL / WO-2026-000063)",
+        "record": "dDas6xXNgcPi3WYPPCIL (WO-2026-000063), which is the record the OPEN assignment row names",
         "governedWriter": "functions/src/eosOps/workOrderAssignmentAuthority.ts assignWorkOrderToEmployee",
         "requiredCapability": "workOrder.lifecycle.dispatch",
         "assigneeQualification": "SERVICE_TECHNICIAN",
         "assigneeQualificationSatisfied": true,
         "recordStatusSatisfied": true,
-        "status": "BLOCKED",
-        "blockedBy": "WORK_ORDER_LIFECYCLE_DISPATCH_DECLARED_BY_NO_ROLE",
-        "detail": "workOrder.lifecycle.dispatch IS registered in eos_policy.capabilities and is granted to 0 Roles in nonprod. Resolved from the COMPILED Role catalog (48 Roles, COMPATIBILITY_ROLES + GOVERNED_BUSINESS_ROLES), it is declared by NO Role either -- and so are workOrder.lifecycle.complete and workOrder.lifecycle.cancel. There is therefore no Principal in any tenant who can invoke the governed Work Order assignment command. Removing this needs a ROLE CHANGE, and this lane widens no Role.",
-        "whyNotForced": "Granting workOrder.lifecycle.dispatch to a Role so a test could pass would turn a test-persona requirement into a business permission."
+        "status": "SEEDED",
+        "detail": "MEASURED: one open row in eos_ops.work_order_assignments for this work order and synthetic-np-emp-service-technician-a, source SCHEDULE. The row was NOT written by the governed dispatch path -- workOrder.lifecycle.dispatch is registered, is declared by NO Role in the compiled catalog and holds 0 grants, so assignWorkOrderToEmployee remains uninvokable and that has NOT changed. It was written by the SCHEDULE source. The distinction matters: the assigned-vs-unassigned SEPARATION is provable today; the governed ASSIGNMENT COMMAND is still unreachable, and nothing here grants a capability to change that.",
+        "whyNotForced": "Granting workOrder.lifecycle.dispatch to a Role so a test could pass would turn a test-persona requirement into a business permission.",
+        "measuredOn": "2026-09-24",
+        "stillBlockedForWriting": "WORK_ORDER_LIFECYCLE_DISPATCH_DECLARED_BY_NO_ROLE -- the governed writer cannot be invoked by any Principal in any tenant, and removing that needs a ROLE CHANGE this lane does not make."
       },
       {
         "recordKind": "reorderRequest",
@@ -651,7 +692,8 @@
         "intersectionNoLongerEmpty": "The earlier finding that no persona could satisfy both halves is superseded by the ruling. MEASURED in nonprod: reorder.request.read resolves for admin, dispatcher, operationsManager, owner, partsManager, purchasingManager and technician; PARTS_OPERATIONS is held by synthetic-np-emp-parts-associate and synthetic-np-emp-parts-manager. synthetic-np-emp-parts-manager holds partsManager AND purchasingManager, so it satisfies BOTH halves -- the intersection is non-empty. synthetic-np-emp-parts-associate holds inventoryReceivingClerk and partsAssociate, neither of which carries any reorder.* capability, so it is qualified to RECEIVE the assignment while not yet able to READ the queue.",
         "queueScopeIsNotRequiredHere": "Assignment is CASE A: reorderAssignmentAuthority.ts requires the qualification and NO Operational Scope. REORDER_QUEUE answers 'which queue may they see', which is a different authority. So the Parts Associate needs no REORDER_QUEUE row to be assignable, and not holding one is not a defect.",
         "queueScopeMismatchMeasured": "Separately measured, and NOT fixed here: every CURRENT REORDER_QUEUE row in nonprod names scope_id 'taylor' (synthetic-np-emp-dispatcher, -owner-executive, -parts-manager), while BOTH eos_ops.reorder_requests rows carry operating_company_key 'sample-co-synthetic'. Only 'taylor' has an ACTIVE row in eos_policy.tenant_operating_company_keys, so a REORDER_QUEUE:sample-co-synthetic scope is refused by the eos_workforce.operational_scope_target_exists trigger. #1961 is HELD; the binding was not created.",
-        "whyNotForced": "Granting reorder.request.assign to a Role so a test could pass would turn a test-persona requirement into a business permission. Assigning synthetic-np-emp-service-technician-a instead, or giving that technician PARTS_OPERATIONS, is refused by Owner ruling: the technician is the negative case and must stay negative."
+        "whyNotForced": "Granting reorder.request.assign to a Role so a test could pass would turn a test-persona requirement into a business permission. Assigning synthetic-np-emp-service-technician-a instead, or giving that technician PARTS_OPERATIONS, is refused by Owner ruling: the technician is the negative case and must stay negative.",
+        "$roleInTheProof": "THE SECOND proof, not the first. eos_ops.reorder_request_assignments still holds 0 rows (measured 2026-09-24) and this path stays BLOCKED on an ordinary grant gap. It is kept because a second assignment authority proving the same separation over a different record kind is worth having -- not because the first one is missing."
       }
     ],
     "refusedAlternatives": [
@@ -662,10 +704,9 @@
     ],
     "becomesSeedableWhen": "EITHER workOrder.lifecycle.dispatch is declared by a Role in the compiled catalog and reconciled into role_capabilities -- after which the Work Order path needs NOTHING else -- OR reorder.request.assign is reconciled into role_capabilities for a Role it is ALREADY declared by (admin, dispatcher, owner, partsManager), after which the Reorder path needs nothing else either: the record, its ORDERED status, synthetic-np-emp-parts-associate, its active Principal link and its CURRENT PARTS_OPERATIONS qualification are all already live.",
     "declaredExpectationsItWouldSatisfy": [
-      "CX-05",
-      "CX-06",
-      "CX-07"
-    ]
+      "CX-05 and CX-06 on the REORDER record kind (the Work Order record kind is already satisfied)"
+    ],
+    "$statusCorrection": "CORRECTED 2026-09-24. This read NOT_SEEDED, and both candidate paths read BLOCKED. That was true of the REORDER path and FALSE of the WORK ORDER path: eos_ops.work_order_assignments already holds one open row -- work order dDas6xXNgcPi3WYPPCIL, assignee synthetic-np-emp-service-technician-a, source SCHEDULE, provenance NATIVE, effective_to NULL, assigned_by a dispatcher Principal -- and synthetic-np-emp-service-technician-b has none. The assigned-vs-unassigned proof the Owner asked for is therefore RUNNABLE TODAY, and CX-05 / CX-06 / CX-07 now name that record instead of the reorder request they could never run against."
   },
   "requiredDomains": [
     "Work Orders",
@@ -836,13 +877,122 @@
       "domain": "Administration",
       "availability": "READY",
       "authority": "eos_policy",
-      "measuredEvidence": "CONFIRMS THE INHERITED FINDING. POST /admin/policy serves 13 ADMIN_READ_OPERATIONS (listTenantPrincipals, listObjects, readObjectWithFields, listRoles, readRolePolicy, listPrincipalRoleAssignments, listObjectsWithActions, getObjectSecurityMatrix, getRoleSecurity, getPrincipalEffectiveAccess, listWorkflows, readWorkflowVersion, readPolicyAuditHistory) and 19 ADMIN_MUTATION_OPERATIONS, over the Firebase-verified bearer token. Reads require only an active Principal with an ACTIVE tenant membership -- so every one of the 15 personas can perform them. Mutations are gated on ROLE KEYS: editObjectDefinition / editRoleDefinition / editWorkflowDefinition require `admin`; assignRole permits owner | generalManager | admin. owner-executive holds `admin` in nonprod (measured).",
+      "measuredEvidence": "CORRECTED 2026-09-24. POST /admin/policy serves 13 ADMIN_READ_OPERATIONS (listTenantPrincipals, listObjects, readObjectWithFields, listRoles, readRolePolicy, listPrincipalRoleAssignments, listObjectsWithActions, getObjectSecurityMatrix, getRoleSecurity, getPrincipalEffectiveAccess, listWorkflows, readWorkflowVersion, readPolicyAuditHistory) and 19 ADMIN_MUTATION_OPERATIONS over the Firebase-verified bearer token. The previous sentence here -- 'Reads require only an active Principal with an ACTIVE tenant membership, so every one of the 15 personas can perform them' -- described a BYPASS, and it is being closed: Administration reads are capability-enforced before dispatch, on the same key the surface requires, resolved from PostgreSQL with direct principal_capabilities grants counted, failing closed to FORBIDDEN. Mutations are unchanged and still gated on ROLE KEYS: editObjectDefinition / editRoleDefinition / editWorkflowDefinition require `admin`; assignRole permits owner | generalManager | admin.",
       "personasAffected": [
         "owner-executive",
         "general-manager",
         "and all 15 for the read half"
       ],
-      "testableToday": "The whole administration contract, positive and negative, end to end over HTTP."
+      "testableToday": "The whole administration contract, positive and negative, end to end over HTTP.",
+      "administrationReadAuthority": {
+        "measuredOn": "2026-09-24",
+        "source": "eos_policy.role_capabilities joined to roles and capabilities, nonprod, read-only",
+        "$comment": "WHICH PERSONA MAY PERFORM WHICH ADMINISTRATION READ, once the read is capability-enforced. Four registered capabilities govern the Administration surfaces; Overview reads nothing governed and is answered in code by disjunction over the other four, so it follows whoever holds any of them. This replaces 'every persona can read' with the measurement.",
+        "byCapability": {
+          "admin.principalAccess.read": {
+            "surfaces": [
+              "administration.users",
+              "administration.permissionPreview"
+            ],
+            "grantedToRoles": [
+              "admin",
+              "owner"
+            ]
+          },
+          "admin.securityPolicy.read": {
+            "surfaces": [
+              "administration.objects",
+              "administration.rolesPermissions"
+            ],
+            "grantedToRoles": [
+              "admin",
+              "owner"
+            ]
+          },
+          "workflowDefinition.read": {
+            "surfaces": [
+              "administration.workflows"
+            ],
+            "grantedToRoles": [
+              "admin",
+              "owner"
+            ]
+          },
+          "audit.event.read": {
+            "surfaces": [
+              "administration.auditLogs"
+            ],
+            "grantedToRoles": [
+              "accountingManager",
+              "admin",
+              "controller",
+              "fieldManager",
+              "financeManager",
+              "generalManager",
+              "operationsManager",
+              "owner",
+              "partsManager",
+              "salesManager",
+              "shopManager",
+              "warehouseManager"
+            ]
+          }
+        },
+        "byPersona": {
+          "owner-executive": [
+            "administration.users",
+            "administration.permissionPreview",
+            "administration.objects",
+            "administration.rolesPermissions",
+            "administration.workflows",
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "administrator": [
+            "administration.users",
+            "administration.permissionPreview",
+            "administration.objects",
+            "administration.rolesPermissions",
+            "administration.workflows",
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "general-manager": [
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "service-manager": [
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "parts-manager": [
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "warehouse-manager": [
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "finance-controller": [
+            "administration.auditLogs",
+            "administration.overview"
+          ],
+          "office-manager": [],
+          "dispatcher": [],
+          "service-technician-a": [],
+          "service-technician-b": [],
+          "contract-technician": [],
+          "retail-sales-a": [],
+          "retail-sales-b": [],
+          "national-accounts-sales": [],
+          "parts-associate": [],
+          "warehouse-associate": [],
+          "restricted-user": []
+        },
+        "summary": "7 of the 18 login personas can perform ANY Administration read, and only 2 -- the Owner / Executive and the Administrator -- can reach Users, Objects, Roles & Permissions, Workflows or Permission Preview. Eleven personas can perform NONE. The other five read the Audit Log and nothing else.",
+        "whyThisMattersForTheOwnerAdminSeparation": "It does NOT separate them. All four Administration read capabilities are granted to exactly `admin` and `owner`, so on READS the two personas are indistinguishable. The separation is on the MUTATION side and on the 19 admin-only operational capabilities -- see sampleCompany.v2 expectedAccess.roleGrantScope.measuredOwnerVsAdministrator.",
+        "refusedToAssert": "The restricted negative control is listed with an EMPTY array rather than omitted. A persona that can read nothing is the measurement, not an absence of one."
+      }
     },
     {
       "domain": "Workflow Administration",
@@ -1190,5 +1340,6 @@
     "noRawSql": "Every write this lane made went through a governed command or the existing governed grant reconciliation. No INSERT, UPDATE or DELETE was issued by hand.",
     "noCredentialAnywhere": "No password, token, connection string or Render secret appears in this manifest, in any other fixture, in any test output, in any log this lane produced or in its commit.",
     "productionRefused": "No production identity was read or written. The customer production Firebase project was never named as a target and is refused by config/environments.json project id. platform-certification was refused by name. No Firebase CLI was invoked at all."
-  }
+  },
+  "$canonicalPersonas_comment": "SEVENTEEN DISPOSITIONED ROWS FOR THE OWNER'S SIXTEEN-PERSONA POPULATION. The sixteen the Owner named are Owner/Executive, Administrator, General Manager, Service Manager, Dispatcher, Technician (assigned), Technician (unassigned), Parts Associate, Parts Manager/Purchasing, Warehouse Associate, Warehouse Manager, Retail Sales, National Accounts Sales, Finance/Accounting, Reporting (BLOCKED_DOMAIN) and Restricted. The seventeenth row is 'Purchasing', kept as an explicit MERGED disposition into parts-manager because the Owner's own population writes that persona as 'Parts Manager/Purchasing' -- the merge is recorded rather than silently absorbed, so what would separate the two again stays written down. The previous list held fourteen rows and was wrong in four ways: Administrator was MERGED into Owner/Executive, Service Manager was not dispositioned at all, the two technicians were one row with the unassigned one demoted to a `variant`, and Restricted did not exist."
 }
