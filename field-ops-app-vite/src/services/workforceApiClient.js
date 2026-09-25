@@ -75,6 +75,15 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
   "endEmployeeWorkEligibility",
   "assignEmployeeOperationalScope",
   "endEmployeeOperationalScope",
+  // Lane BT: the governed PostgreSQL Employee administration commands. Named here for the same reason
+  // changeEmploymentStatus was -- the server serves them, so the browser's vocabulary must mirror the
+  // server's or a typo becomes a 404. No screen calls them yet; UI wiring follows the server proof.
+  // Each requires admin.employeeProfile.write, which the SERVER checks. Creating an Employee creates no
+  // authority: no Security Role, no Job Role, no Work Eligibility, no Operational Scope.
+  "createEmployee",
+  "linkEmployeePrincipal",
+  "unlinkEmployeePrincipal",
+  "relinkEmployeePrincipal",
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */

@@ -52,7 +52,11 @@ describe("the closed operation list", () => {
     const names = [...block.matchAll(/^\s+([a-zA-Z]+):\s*command\(/gm)].map((m) => m[1]);
     expect(names).toEqual(["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit",
       "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
-      "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope"]);
+      "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope",
+      // Lane BT -- governed PostgreSQL Employee administration. The mirror stays an EQUALITY: a served
+      // command the browser does not name would be a 404 waiting to happen, and a name the server does
+      // not serve would be a lie. Job Role assignment is deliberately NOT among them.
+      "createEmployee", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal"]);
     expect([...WORKFORCE_COMMAND_OPERATIONS]).toEqual(names);
     for (const name of [...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]) expect(isWorkforceOperation(name), name).toBe(true);
     // No Security Role, generic patch or unserved writer is a name the browser can send.
