@@ -436,7 +436,7 @@ test("a disabled account blocks; a credential already present is preserved, neve
   });
   const admin = withCred.rows.find((r) => r.key === "administrator");
   assert.equal(admin.credentialPresent, true);
-  assert.match(admin.steps.find((s) => s.step === 5).detail, /PRESERVE, never rotate/);
+  assert.match(admin.steps.find((s) => s.step === 5).detail, /PRESERVE it, never rotate/);
 });
 
 test("DIRECTION A -- commands genuinely absent reports GOVERNED_COMMANDS_UNAVAILABLE", () => {

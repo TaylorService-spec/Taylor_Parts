@@ -31,7 +31,8 @@
       "$comment": "The Owner AUTHORITY. Holds `owner` (47 capabilities) and NO employee link, so every WORK_ELIGIBILITY, OPERATIONAL_SCOPE and RECORD_ASSIGNMENT predicate refuses it EMPLOYEE_LINK_REQUIRED before reaching any authority question. Deliberately NOT the administrator. NOTE the address: eos-owner@, not the retired owner@, which no Principal ever held. Its manifest Principal is REUSE_UNCHANGED with credentialEmail null, so it is out of activation scope entirely.",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-owner-executive"
+      "expectedEmployeeId": "synthetic-np-emp-owner-executive",
+      "credentialDisposition": "PRESERVE"
     },
     {
       "key": "generalManager",
@@ -42,7 +43,8 @@
       "sampleCompanyEmployee": "general-manager",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-general-manager"
+      "expectedEmployeeId": "synthetic-np-emp-general-manager",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "officeManager",
@@ -54,7 +56,8 @@
       "$comment": "PROMOTED TO CANONICAL by the ruling. It was previously a 'supplemental' login -- reachable but outside the catalog -- which left the Office Manager Job Role with no canonical credential at all.",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-office-manager"
+      "expectedEmployeeId": "synthetic-np-emp-office-manager",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "administrator",
@@ -66,7 +69,8 @@
       "$comment": "The ONE pre-existing sandbox Administrator, reused verbatim; holds `admin` (66 capabilities). The single legacy sbx-*-era address that was never a collision. Its manifest Principal is REUSE_UNCHANGED with credentialEmail null, so it can never become an activation allowlist entry.",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-administrator"
+      "expectedEmployeeId": "synthetic-np-emp-administrator",
+      "credentialDisposition": "PRESERVE"
     },
     {
       "key": "serviceManager",
@@ -78,7 +82,8 @@
       "$comment": "Holds the `fieldManager` SECURITY Role while serving the service-manager JOB Role. The two vocabularies are allowed to differ and must not be conflated.",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-service-manager"
+      "expectedEmployeeId": "synthetic-np-emp-service-manager",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "dispatcher",
@@ -90,7 +95,8 @@
       "$comment": "USES THE EXCEPTION: the Employee's workEmail is emerson.fixture@sandbox.invalid and stays that way. The catalog used to name emerson.fixture@ while quoting THIS uid, so the key resolved to an account (NReyNyXVMdVkv75vpmxWuvGUeOm1) that no EOS Principal stood behind, while the account holding the live Dispatcher Principal went unnamed.",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-dispatcher"
+      "expectedEmployeeId": "synthetic-np-emp-dispatcher",
+      "credentialDisposition": "PRESERVE"
     },
     {
       "key": "serviceTechnician",
@@ -102,7 +108,8 @@
       "$comment": "THE ONE TECHNICIAN. technicianAssigned/technicianUnassigned are retired: they were one Job Role wearing two logins, told apart by a record assignment that identity has no business encoding. Assigned-vs-unassigned is BUSINESS DATA -- Scenario A assigns a Work Order to this technician and proves own-record access, Scenario B does not and proves the denial.",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-service-technician-a"
+      "expectedEmployeeId": "synthetic-np-emp-service-technician-a",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "partsAssociate",
@@ -113,7 +120,8 @@
       "sampleCompanyEmployee": "parts-associate",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-parts-associate"
+      "expectedEmployeeId": "synthetic-np-emp-parts-associate",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "partsManager",
@@ -124,7 +132,8 @@
       "sampleCompanyEmployee": "parts-manager",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-parts-manager"
+      "expectedEmployeeId": "synthetic-np-emp-parts-manager",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "warehouseAssociate",
@@ -135,7 +144,8 @@
       "sampleCompanyEmployee": "warehouse-associate",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-warehouse-associate"
+      "expectedEmployeeId": "synthetic-np-emp-warehouse-associate",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "warehouseManager",
@@ -146,7 +156,8 @@
       "sampleCompanyEmployee": "warehouse-manager",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-warehouse-manager"
+      "expectedEmployeeId": "synthetic-np-emp-warehouse-manager",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "retailSales",
@@ -157,7 +168,8 @@
       "sampleCompanyEmployee": "retail-sales-a",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-retail-sales-a"
+      "expectedEmployeeId": "synthetic-np-emp-retail-sales-a",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "nationalAccountsSales",
@@ -168,7 +180,8 @@
       "sampleCompanyEmployee": "national-accounts-sales",
       "phase": 3,
       "expectedSecurityRoles": null,
-      "expectedEmployeeId": "synthetic-np-emp-national-accounts-sales"
+      "expectedEmployeeId": "synthetic-np-emp-national-accounts-sales",
+      "credentialDisposition": "RESET_EXISTING_SANDBOX_PASSWORD"
     },
     {
       "key": "financeAccounting",
@@ -182,7 +195,8 @@
       "expectedSecurityRoles": [
         "accountingManager"
       ],
-      "expectedEmployeeId": "synthetic-np-emp-finance-controller"
+      "expectedEmployeeId": "synthetic-np-emp-finance-controller",
+      "credentialDisposition": "PRESERVE"
     },
     {
       "key": "reportingAnalyst",
@@ -197,7 +211,8 @@
       "expectedSecurityRoles": [
         "reportViewer"
       ],
-      "expectedEmployeeId": "synthetic-np-emp-report-analyst"
+      "expectedEmployeeId": "synthetic-np-emp-report-analyst",
+      "credentialDisposition": "CREATE_AUTH_ACCOUNT"
     },
     {
       "key": "generalEmployee",
@@ -212,7 +227,8 @@
       "forbiddenSecurityRoles": [
         "generalEmployee"
       ],
-      "expectedEmployeeId": "synthetic-np-emp-restricted-user"
+      "expectedEmployeeId": "synthetic-np-emp-restricted-user",
+      "credentialDisposition": "PRESERVE"
     }
   ],
   "$noncanonicalPolicy": "RETAINED, NOT DELETED. The Owner ruled stale accounts stay until a separate cleanup wave authorizes deletion. None of these may appear in the canonical catalog, be required for browser acceptance, receive a duplicate EOS Principal, or drive role or security decisions. Recorded as DATA rather than prose because a comment cannot stop one being adopted, and adopting a plausible-looking fixture address is the exact mistake this registry exists to end.",
@@ -385,5 +401,19 @@
     ],
     "$expectedCurrentProtection": "relinkEmployeePrincipal takes expectedCurrentPrincipalId, so the move is refused if the link is not where we measured it. That turns a stale observation into a refusal instead of a silent repoint onto the wrong Principal -- which is the whole class of failure this registry exists to end."
   },
-  "$expectedEmployeeId_comment": "The Employee this canonical role is linked to. Declared so the bootstrap can detect an EMPLOYEE_PRINCIPAL_LINK_MISMATCH -- a Principal linked to some OTHER Employee is not a missing link, it is a wrong one, and the two need different fixes. ownerExecutive and administrator are named explicitly because they are the two REUSED real Principals and the Owner/Admin split moves one of them."
+  "$expectedEmployeeId_comment": "The Employee this canonical role is linked to. Declared so the bootstrap can detect an EMPLOYEE_PRINCIPAL_LINK_MISMATCH -- a Principal linked to some OTHER Employee is not a missing link, it is a wrong one, and the two need different fixes. ownerExecutive and administrator are named explicitly because they are the two REUSED real Principals and the Owner/Admin split moves one of them.",
+  "credentialDispositions": {
+    "$comment": "OWNER RULING 2026-09-25. THE VOCABULARY IS LOAD-BEARING. These ten accounts were previously described as needing password ACTIVATION, and that name is why a wrong expectation survived so long: activation acts only where there is NO password, an authoritative Admin lookup showed all fifteen existing accounts already have one, so the activation path would have acted on ZERO of them while the plan claimed ten. A name that misdescribes the operation hides the fact that the operation cannot happen.",
+    "PRESERVE": "A credential already exists in the canonical file and works. Reuse verbatim: never rotated, never reset, never recreated. Five roles.",
+    "RESET_EXISTING_SANDBOX_PASSWORD": "The Auth account EXISTS and already HAS a password, but that password is in no canonical source, so no mission can sign in as it. The password is RESET -- an intentional, authorized sandbox credential rotation, not an activation. Preconditions, each asserted: the account exists, an authoritative Admin lookup confirms the EXPECTED UID before the write, the UID is unchanged after it, no Auth account is created, no Principal is created, no duplicate identity appears. Ten roles.",
+    "CREATE_AUTH_ACCOUNT": "No Auth account exists. Exactly ONE is created and given one secure password. No Firebase Role document, no business custom claim, no duplicate Principal. One role.",
+    "expectedFinalState": {
+      "preserved": 5,
+      "rotated": 10,
+      "created": 1,
+      "canonicalUsableLogins": 16,
+      "duplicates": 0
+    },
+    "secrets": "Every password is cryptographically random and is written ONLY to the canonical gitignored credential file. No password is printed, logged, returned, snapshotted or committed."
+  }
 }

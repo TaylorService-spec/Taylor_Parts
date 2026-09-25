@@ -104,6 +104,24 @@ const ROLE_STATES = Object.freeze({
 /** Kept for callers that read the old shape. READY/BLOCKED remains the coarse verdict. */
 const STATES = Object.freeze({ READY: "READY", BLOCKED: "BLOCKED" });
 
+/**
+ * THE CREDENTIAL DISPOSITIONS. Owner ruling 2026-09-25, and the names are load-bearing.
+ *
+ * The ten reset accounts were previously described as needing password ACTIVATION. That name is why
+ * a wrong expectation survived: activation acts ONLY where there is no password, an authoritative
+ * Admin lookup showed all fifteen existing accounts already have one, so the activation path would
+ * have acted on ZERO of them while the plan claimed ten. A name that misdescribes the operation hides
+ * the fact that the operation cannot happen, so this vocabulary is asserted, not merely preferred.
+ */
+const CREDENTIAL_DISPOSITIONS = Object.freeze({
+  /** A working credential exists in the canonical file. Reuse verbatim; never rotate. */
+  PRESERVE: "PRESERVE",
+  /** The account exists and HAS a password, but it is in no canonical source. Reset it. Not an activation. */
+  RESET_EXISTING_SANDBOX_PASSWORD: "RESET_EXISTING_SANDBOX_PASSWORD",
+  /** No account exists. Create exactly one and give it one secure password. */
+  CREATE_AUTH_ACCOUNT: "CREATE_AUTH_ACCOUNT",
+});
+
 /** The governed commands this orchestrator may call. Nothing else is permitted to write. */
 const GOVERNED_COMMANDS = Object.freeze([
   "createJobRole",
@@ -370,16 +388,31 @@ function plan(observations = {}) {
 
     // 5 -- the local credential. Delegated; never generated here.
     const hasCredential = credentials.has(r.authEmail.toLowerCase());
+    const disposition = r.credentialDisposition ?? CREDENTIAL_DISPOSITIONS.PRESERVE;
     if (!hasCredential) {
       note(ROLE_STATES.CREDENTIAL_MISSING, `the explicit credential source holds no entry for ${r.authEmail}`);
+    }
+    // A PRESERVE role whose credential is absent is a CONTRADICTION, not a quiet upgrade to reset.
+    // Measured today for ownerExecutive: its credential sits in the retiring stub rather than the
+    // canonical file. The fix is the Owner-credential merge, NOT a rotation -- and deciding that here
+    // would be precisely the silent rotation the disposition exists to forbid.
+    if (disposition === CREDENTIAL_DISPOSITIONS.PRESERVE && !hasCredential) {
+      note(
+        ROLE_STATES.CREDENTIAL_MISSING,
+        `${r.authEmail} is PRESERVE but absent from the canonical source. Resolve by merging the existing credential (mergeOwnerCredentialFromStub), never by resetting it.`,
+      );
     }
     steps.push({
       step: 5,
       name: "ENSURE_LOCAL_CREDENTIAL",
       result: hasCredential ? "PRESENT" : "MISSING",
-      detail: hasCredential
-        ? "a credential already exists: PRESERVE, never rotate"
-        : "delegate to activateMissingSandboxPasswords; this command generates no secret and rotates nothing",
+      detail: `disposition ${disposition}; ` + (hasCredential
+        ? "a credential already exists: PRESERVE it, never rotate"
+        : disposition === CREDENTIAL_DISPOSITIONS.PRESERVE
+          ? "MERGE the existing credential into the canonical file; a PRESERVE role is never reset"
+          : disposition === CREDENTIAL_DISPOSITIONS.RESET_EXISTING_SANDBOX_PASSWORD
+            ? "the account exists and already HAS a password that is in no canonical source: RESET it, guarded by the expected uid. This is not an activation."
+            : "no account exists: CREATE exactly one and give it one secure password"),
     });
 
     // 6 / 7 / 8 -- the governed chain. Each step names what is MISSING; the deployment code appears
@@ -496,6 +529,7 @@ function plan(observations = {}) {
       accountExists: Boolean(account),
       authHasPassword: account?.hasPassword ?? null,
       credentialPresent: hasCredential,
+      credentialDisposition: disposition,
       wouldCreateAccount: !account && !noncanonical.has(r.authEmail),
       state,
       verdict: blockers.length === 0 ? STATES.READY : STATES.BLOCKED,
@@ -541,6 +575,9 @@ function plan(observations = {}) {
     accountsToCreate: rows.filter((r) => r.wouldCreateAccount).length,
     credentialsPresentPreserve: rows.filter((r) => r.credentialPresent).length,
     credentialsMissing: rows.filter((r) => !r.credentialPresent).length,
+    preserve: rows.filter((r) => r.credentialDisposition === CREDENTIAL_DISPOSITIONS.PRESERVE).length,
+    resetExistingSandboxPassword: rows.filter((r) => r.credentialDisposition === CREDENTIAL_DISPOSITIONS.RESET_EXISTING_SANDBOX_PASSWORD).length,
+    createAuthAccount: rows.filter((r) => r.credentialDisposition === CREDENTIAL_DISPOSITIONS.CREATE_AUTH_ACCOUNT).length,
     jobRoleCatalogMissing: catalogMissingIds.length,
     duplicateCanonicalIdentities: 0,
     operations: operations.length,
@@ -647,6 +684,9 @@ function formatPlan(result) {
     `accounts to create        : ${c.accountsToCreate}`,
     `credentials present       : ${c.credentialsPresentPreserve}`,
     `credentials missing       : ${c.credentialsMissing}`,
+    `  PRESERVE                : ${c.preserve}`,
+    `  RESET_EXISTING_SANDBOX_PASSWORD : ${c.resetExistingSandboxPassword}`,
+    `  CREATE_AUTH_ACCOUNT     : ${c.createAuthAccount}`,
     `job role catalog missing  : ${c.jobRoleCatalogMissing}`,
     `planned operations        : ${c.operations}`,
     `duplicate identities      : ${c.duplicateCanonicalIdentities}`,
@@ -679,6 +719,7 @@ module.exports = {
   BootstrapRefusal,
   ROLE_STATES,
   STATES,
+  CREDENTIAL_DISPOSITIONS,
   GOVERNED_COMMANDS,
   SANDBOX_PROJECT_ID,
   FORBIDDEN_PROJECT_IDS,
