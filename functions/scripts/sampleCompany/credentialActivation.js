@@ -43,12 +43,54 @@ class CredentialActivationError extends Error {
  */
 function sampleCompanyCredentialAllowlist(manifest) {
   const employees = new Map(manifest.employees.map((e) => [e.key, e]));
-  return manifest.principals
+  const allowlist = manifest.principals
     .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .filter((p) => employees.get(p.employee)?.sandboxPersona?.interactiveLogin === true)
     .map((p) => p.loginPrincipal.credentialEmail)
     .filter((email) => typeof email === "string" && email.length > 0)
     .sort();
+
+  // ============================ THE SUPERSESSION FENCE ============================
+  //
+  // OWNER RULING 2026-09-25. An address the manifest still declares may have been SUPERSEDED by an
+  // account that already exists. Three are, and each would have done real damage here:
+  //
+  //   sage.fixture@ / wren.fixture@  do not exist in eos-platform-sandbox at all, so activate-logins
+  //                                  would have CREATED them -- a brand new persona account for an
+  //                                  identity that already has a perfectly good one, which is the
+  //                                  duplicate the Owner ruled out (duplicates created = 0).
+  //   emerson.fixture@               exists but has NO EOS Principal, while the live Dispatcher
+  //                                  Principal sits behind dispatcher@. Activating it would put a
+  //                                  working password on the WRONG identity -- the failure that
+  //                                  surfaces later as a surprising authorization answer.
+  //
+  // EXCLUDED, NOT REFUSED. Throwing here would block the ten personas that are legitimately
+  // activatable along with the three that are not, which serves nobody. Excluded is not the same as
+  // silent: `supersededExclusions()` returns exactly what was dropped and why, and the activation
+  // result carries it, so the phase reports the divergence between manifest and ruling every run.
+  const superseded = manifest.sandboxCredentials?.supersededIdentities ?? {};
+  return allowlist.filter((email) => !superseded[email]);
+}
+
+/**
+ * What the supersession fence removed from the allowlist, and why. Returned by the activation phase
+ * so a run can never drop an identity without saying so.
+ */
+function supersededExclusions(manifest) {
+  const employees = new Map(manifest.employees.map((e) => [e.key, e]));
+  const superseded = manifest.sandboxCredentials?.supersededIdentities ?? {};
+  return manifest.principals
+    .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
+    .filter((p) => employees.get(p.employee)?.sandboxPersona?.interactiveLogin === true)
+    .map((p) => p.loginPrincipal.credentialEmail)
+    .filter((email) => typeof email === "string" && superseded[email])
+    .sort()
+    .map((email) => ({
+      email,
+      disposition: superseded[email].disposition,
+      supersededBy: superseded[email].supersededBy,
+      existsInProject: superseded[email].existsInProject,
+    }));
 }
 
 /**
@@ -69,8 +111,10 @@ async function activateSampleCompanyCredentials(options, manifest, authDirectory
   const alreadyUsable = inScope.filter((u) => u.passwordHash).map((u) => u.email).sort();
   const needingActivation = inScope.filter((u) => !u.passwordHash).map((u) => u.email).sort();
 
+  const supersededExcluded = supersededExclusions(manifest);
   const base = {
     phase: "activate-credentials",
+    supersededExcluded,
     applied: apply,
     firebaseProjectId: authDirectory.projectId,
     delegatedTo: "functions/scripts/activateSandboxPersonas.js activateMissingSandboxPasswords (the same function its --activate-missing CLI calls)",
@@ -117,4 +161,4 @@ async function activateSampleCompanyCredentials(options, manifest, authDirectory
   };
 }
 
-module.exports = { activateSampleCompanyCredentials, sampleCompanyCredentialAllowlist, CredentialActivationError };
+module.exports = { activateSampleCompanyCredentials, sampleCompanyCredentialAllowlist, supersededExclusions, CredentialActivationError };

@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   CLASSIFICATIONS,
+  CREDENTIAL_POLICY,
   FORBIDDEN_PROJECT_IDS,
   RECONCILIATION,
   ReconciliationRefusal,
@@ -28,8 +29,17 @@ import {
   discoverCredentialSources,
   formatCounts,
   reconcile,
+  rotationSet,
   vocabularies,
 } from "./sandboxCredentialReconciliation.mjs";
+import {
+  PENDING_ACCOUNT_PERSONAS,
+  SANDBOX_PERSONAS,
+  SUPERSEDED_IDENTITIES,
+  UNRECONCILED_PERSONAS,
+  loadSandboxPersona,
+  personaDirectory,
+} from "./sandboxCredentials.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MODULE_PATH = path.join(HERE, "sandboxCredentialReconciliation.mjs");
@@ -382,34 +392,47 @@ test("an alias can never supply a credential, so ALIAS_MATCH is structurally unr
   assert.equal(aliasMatches.length, 0);
 });
 
-test("the three retired keys are never used as a credential candidate for a canonical slot", () => {
-  // opsmgr@/salesmgr@/acctmgr@ all HAVE credentials and all lack a Principal. Pointing a canonical
-  // slot at one would authenticate as an identity EOS does not know — the original catalog defect.
-  const retiredAddresses = ["opsmgr@sandbox.invalid", "salesmgr@sandbox.invalid", "acctmgr@sandbox.invalid"];
-  for (const row of RECONCILIATION) {
-    assert.ok(!retiredAddresses.includes(row.credentialCandidate), `${row.slot} must not adopt a retired address`);
-  }
+test("the retired KEYS stay retired even though one of their addresses is now reused", () => {
+  // Subtle and worth stating: the Owner ruled `acctmgr@sandbox.invalid` — the ADDRESS — is reused
+  // as P14's identity. That does NOT revive the `accountingManager` KEY, which still names a Role
+  // no Principal holds. An address and a persona key are different things, and conflating them is
+  // how the original catalog acquired keys standing in front of no identity.
   assert.deepEqual(vocabularies().retiredKeys.sort(), ["accountingManager", "operationsManager", "salesManager"]);
+  const adopted = RECONCILIATION.map((r) => r.credentialCandidate).filter(Boolean);
+  for (const address of ["opsmgr@sandbox.invalid", "salesmgr@sandbox.invalid"]) {
+    assert.ok(!adopted.includes(address), `${address} has no live EOS Principal and must not be adopted`);
+  }
 });
 
-test("the legacy sbx-* addresses are never credential candidates, except the one with a Principal", () => {
-  const legacy = [
+test("a legacy address is adopted ONLY where the Owner ruled it reused", () => {
+  // Never adopted: no Principal, and no ruling reusing them.
+  const stillDead = [
     "owner@sandbox.invalid",
-    "dispatcher@sandbox.invalid",
     "tech@sandbox.invalid",
     "whmgr@sandbox.invalid",
     "partsmgr@sandbox.invalid",
     "partsassoc@sandbox.invalid",
     "fieldmgr@sandbox.invalid",
     "mikael@sandbox.invalid",
-    "restricted@sandbox.invalid",
+    "opsmgr@sandbox.invalid",
+    "salesmgr@sandbox.invalid",
   ];
   const adopted = RECONCILIATION.map((r) => r.credentialCandidate).filter(Boolean);
-  for (const address of legacy) {
-    assert.ok(!adopted.includes(address), `${address} has no live EOS Principal and must not be adopted`);
+  for (const address of stillDead) {
+    assert.ok(!adopted.includes(address), `${address} must not be adopted`);
   }
-  // admin@ is the single exception and it is adopted deliberately.
-  assert.ok(adopted.includes("admin@sandbox.invalid"));
+  // The four the Owner ruled reused, each against a real Admin SDK account.
+  for (const address of [
+    "admin@sandbox.invalid",
+    "dispatcher@sandbox.invalid",
+    "acctmgr@sandbox.invalid",
+    "restricted@sandbox.invalid",
+  ]) {
+    assert.ok(adopted.includes(address), `${address} was ruled reused and must be adopted`);
+  }
+  // The retired `owner@` spelling stays dead; the Owner persona uses eos-owner@.
+  assert.ok(!adopted.includes("owner@sandbox.invalid"));
+  assert.ok(adopted.includes("eos-owner@sandbox.invalid"));
 });
 
 test("the loader remains READ ONLY: the reconciliation did not add a write path to it", () => {
@@ -420,14 +443,152 @@ test("the loader remains READ ONLY: the reconciliation did not add a write path 
   }
 });
 
-test("P14/P15/P16 are not proposed for creation in this lane, and P15 has no address at all", () => {
-  for (const slot of ["P14", "P15", "P16"]) {
+test("P15 is the ONLY missing account; P14 and P16 reuse existing ones", () => {
+  // Corrected 2026-09-25 by a real Firebase Admin SDK enumeration, which disproved my earlier
+  // AUTH_ACCOUNT_MISSING calls for P14 and P16.
+  const missing = RECONCILIATION.filter((r) => r.classification === "AUTH_ACCOUNT_MISSING");
+  assert.deepEqual(missing.map((r) => r.slot), ["P15"]);
+  assert.equal(missing[0].credentialCandidate, "reporting@sandbox.invalid");
+  assert.equal(missing[0].authAccountExists, false);
+
+  for (const slot of ["P14", "P16"]) {
     const row = RECONCILIATION.find((r) => r.slot === slot);
-    assert.equal(row.classification, "AUTH_ACCOUNT_MISSING");
-    assert.equal(row.credentialCandidate, null);
-    assert.match(row.action, /DO NOT CREATE/, `${slot} must not be actioned in this lane`);
+    assert.equal(row.classification, "EXISTING_CREDENTIAL_EXACT_MATCH", `${slot} reuses an existing account`);
+    assert.equal(row.authAccountExists, true);
+    assert.ok(row.authUid, `${slot} must carry the measured uid`);
+    assert.match(row.action, /NEVER ROTATE/);
+    assert.match(row.action, /do not create a second/i, `${slot} must forbid a duplicate account`);
   }
-  // P15 is the one slot with no declared login anywhere, and the reporting Roles carry zero
-  // capabilities — so an address must NOT be invented for it.
+  // The authority gap is NOT closed by reusing an account, and the table must keep saying so.
   assert.match(RECONCILIATION.find((r) => r.slot === "P15").note, /ZERO role_capabilities/);
+});
+
+// ======================================================================================
+// THE OWNER'S CREDENTIAL POLICY, ASSERTED AS DATA
+// ======================================================================================
+
+test("a preserve-only persona can NEVER enter the rotation set", () => {
+  const rotatable = new Set(rotationSet());
+  for (const persona of CREDENTIAL_POLICY.preserveNeverRotate) {
+    assert.ok(!rotatable.has(persona), `${persona} is preserve-only and must never be rotated`);
+  }
+  // And the derivation is real: the rotation set is exactly the bootstrap set, which is disjoint
+  // from the preserve set. A future edit that adds a preserved persona to bootstrapAuthorized is
+  // caught by the disjointness test below, not silently filtered away here.
+  assert.deepEqual(rotationSet(), [...CREDENTIAL_POLICY.bootstrapAuthorized]);
+});
+
+test("the three policy sets are disjoint and cover all sixteen personas exactly once", () => {
+  const { preserveNeverRotate, bootstrapAuthorized, createOne } = CREDENTIAL_POLICY;
+  const all = [...preserveNeverRotate, ...bootstrapAuthorized, ...createOne];
+  assert.equal(new Set(all).size, all.length, "a persona appears in two policy sets — the policy is ambiguous");
+  assert.deepEqual([...all].sort(), [...vocabularies().canonicalKeys].sort(), "the policy must cover exactly the sixteen canonical personas");
+});
+
+test("the policy's counts match the measured table and the Owner's expected end state", () => {
+  const { expectedEndState: e } = CREDENTIAL_POLICY;
+  assert.equal(CREDENTIAL_POLICY.preserveNeverRotate.length, e.preserved);
+  assert.equal(CREDENTIAL_POLICY.bootstrapAuthorized.length, e.bootstrapped);
+  assert.equal(CREDENTIAL_POLICY.createOne.length, e.created);
+  assert.equal(e.preserved + e.bootstrapped + e.created, e.ready);
+  assert.equal(e.ready, 16);
+  assert.equal(e.duplicatePersonaAccountsCreated, 0);
+
+  // The policy must agree with the measured classifications, not merely with itself.
+  const byPersona = new Map(RECONCILIATION.map((r) => [r.persona, r]));
+  for (const p of CREDENTIAL_POLICY.preserveNeverRotate) {
+    assert.equal(byPersona.get(p).classification, "EXISTING_CREDENTIAL_EXACT_MATCH", `${p} is preserved, so a credential must already exist`);
+  }
+  for (const p of CREDENTIAL_POLICY.bootstrapAuthorized) {
+    assert.equal(byPersona.get(p).classification, "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL", `${p} is bootstrapped, so its account must exist without a credential`);
+    assert.ok(byPersona.get(p).authUid, `${p} must have a measured uid before a password is minted for it`);
+  }
+  for (const p of CREDENTIAL_POLICY.createOne) {
+    assert.equal(byPersona.get(p).classification, "AUTH_ACCOUNT_MISSING", `${p} is created, so its account must be absent`);
+  }
+});
+
+// ======================================================================================
+// A SUPERSEDED ADDRESS CAN NEVER BE A PERSONA'S CANONICAL IDENTITY
+// ======================================================================================
+
+test("no superseded address is ever adopted as a canonical persona identity", () => {
+  for (const [address, record] of Object.entries(SUPERSEDED_IDENTITIES)) {
+    assert.ok(
+      !Object.values(SANDBOX_PERSONAS).includes(address),
+      `${address} is ${record.disposition} and must never be a persona's address`,
+    );
+    assert.ok(
+      !RECONCILIATION.some((r) => r.credentialCandidate === address),
+      `${address} is ${record.disposition} and must never be a credential candidate`,
+    );
+  }
+});
+
+test("every superseded record names the address that replaced it, and that one IS canonical", () => {
+  const canonical = new Set(Object.values(SANDBOX_PERSONAS));
+  const pendingEmails = new Set(Object.values(PENDING_ACCOUNT_PERSONAS).map((p) => p.email));
+  for (const [address, record] of Object.entries(SUPERSEDED_IDENTITIES)) {
+    assert.ok(record.supersededBy, `${address} must name its replacement`);
+    assert.ok(
+      canonical.has(record.supersededBy) || pendingEmails.has(record.supersededBy),
+      `${address} is superseded by ${record.supersededBy}, which is not a declared canonical identity`,
+    );
+    assert.ok(record.reason && record.reason.length > 40, `${address} must carry a real reason`);
+    assert.ok(["SUPERSEDED_FOR_P14", "SUPERSEDED_FOR_P16", "NOT_CANONICAL_FOR_P05"].includes(record.disposition));
+    // The Owner ruled stale accounts stay. A record must never advise deletion.
+    assert.doesNotMatch(record.reason, /\bdelete\b(?! any auth account)/i);
+  }
+});
+
+test("the three Owner-ruled superseded identities are recorded, exactly", () => {
+  assert.deepEqual(Object.keys(SUPERSEDED_IDENTITIES).sort(), [
+    "emerson.fixture@sandbox.invalid",
+    "sage.fixture@sandbox.invalid",
+    "wren.fixture@sandbox.invalid",
+  ]);
+  assert.equal(SUPERSEDED_IDENTITIES["sage.fixture@sandbox.invalid"].supersededBy, "acctmgr@sandbox.invalid");
+  assert.equal(SUPERSEDED_IDENTITIES["wren.fixture@sandbox.invalid"].supersededBy, "restricted@sandbox.invalid");
+  assert.equal(SUPERSEDED_IDENTITIES["emerson.fixture@sandbox.invalid"].supersededBy, "dispatcher@sandbox.invalid");
+});
+
+test("P05 names the account the live Dispatcher Principal is actually behind", () => {
+  const p05 = RECONCILIATION.find((r) => r.slot === "P05");
+  assert.equal(p05.credentialCandidate, "dispatcher@sandbox.invalid");
+  assert.equal(p05.authUid, "PEiRkebIGRPcEau7yBBV0D77Dho1");
+  assert.equal(SANDBOX_PERSONAS.dispatcher, "dispatcher@sandbox.invalid");
+  // The superseded account keeps its own, different uid — proving these are two accounts, not two
+  // spellings of one, which is what made the original mapping a defect rather than an alias.
+  assert.equal(SUPERSEDED_IDENTITIES["emerson.fixture@sandbox.invalid"].uid, "NReyNyXVMdVkv75vpmxWuvGUeOm1");
+  assert.notEqual(SUPERSEDED_IDENTITIES["emerson.fixture@sandbox.invalid"].uid, p05.authUid);
+});
+
+test("the catalog declares all sixteen keys, and the only non-loadable one is the pending account", () => {
+  const directory = personaDirectory();
+  assert.equal(directory.length, 16);
+  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 15);
+  const pending = directory.filter((r) => r.state === "PENDING_ACCOUNT");
+  assert.deepEqual(pending.map((r) => r.personaId), ["reporting"]);
+  assert.equal(pending[0].email, "reporting@sandbox.invalid", "a pending key still declares its address");
+  assert.deepEqual(Object.keys(UNRECONCILED_PERSONAS), [], "the unreconciled state was emptied by the ruling");
+});
+
+test("a pending-account persona fails closed BEFORE the credential file is consulted", () => {
+  const prev = process.env.SANDBOX_CREDENTIALS_FILE;
+  process.env.SANDBOX_CREDENTIALS_FILE = path.join(os.tmpdir(), "bv-definitely-absent", "sandbox-credentials.local.json");
+  try {
+    assert.throws(
+      () => loadSandboxPersona("reporting"),
+      (err) => {
+        assert.equal(err.failureType, "PERSONA_ACCOUNT_PENDING", "a missing ACCOUNT must not be reported as a missing password");
+        assert.deepEqual(err.pathsTried, [], "no path may be reported: none was tried");
+        assert.match(err.message, /OPERATOR ACTION:/);
+        assert.match(err.message, /reporting@sandbox\.invalid/, "the operator must be told which account to create");
+        return true;
+      },
+    );
+  } finally {
+    if (prev === undefined) delete process.env.SANDBOX_CREDENTIALS_FILE;
+    else process.env.SANDBOX_CREDENTIALS_FILE = prev;
+  }
 });

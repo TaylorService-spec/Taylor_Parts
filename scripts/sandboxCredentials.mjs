@@ -125,8 +125,22 @@ const CANONICAL_PERSONAS = Object.freeze({
   // names the person, the Role names the authority, and they are allowed to differ.
   serviceManager: "devon.fixture@sandbox.invalid",
 
-  // Principal PEiRkebIGRPcEau7..., Role dispatcher, Employee synthetic-np-emp-dispatcher.
-  dispatcher: "emerson.fixture@sandbox.invalid",
+  // Principal 18e54b1f..., subject PEiRkebIGRPcEau7yBBV0D77Dho1, Role dispatcher, Employee
+  // synthetic-np-emp-dispatcher.
+  //
+  // CORRECTED 2026-09-25 by Owner ruling, against a real Firebase Admin SDK enumeration of the
+  // 28 `@sandbox.invalid` accounts in eos-platform-sandbox. This key used to read
+  // `emerson.fixture@sandbox.invalid`, and the comment beside it claimed subject
+  // PEiRkebIGRPcEau7... -- but that subject belongs to `dispatcher@sandbox.invalid`.
+  // `emerson.fixture@` is a DIFFERENT account (uid NReyNyXVMdVkv75vpmxWuvGUeOm1) with NO EOS
+  // Principal behind it at all.
+  //
+  // So this entry was the very defect the catalog rewrite existed to kill, reintroduced one layer
+  // down: the key resolved, to a real account, that no Principal stood behind -- while the account
+  // that DOES hold the live Dispatcher Principal went unnamed. It fails late, as the wrong
+  // identity, exactly as the header warns. `emerson.fixture@` is recorded in SUPERSEDED_IDENTITIES
+  // as NOT_CANONICAL_FOR_P05 so it can never be selected again.
+  dispatcher: "dispatcher@sandbox.invalid",
 
   // The assigned/unassigned PAIR. Identical in Security Role, Job Role and Work Eligibility
   // (both hold a CURRENT SERVICE_TECHNICIAN qualification); the only intended difference is a
@@ -154,6 +168,89 @@ const CANONICAL_PERSONAS = Object.freeze({
   // synthetic-np-emp-national-accounts-sales. The SAME Role as retailSales; the difference is
   // the book of business, not the authority.
   nationalAccountsSales: "jules.fixture@sandbox.invalid",
+
+  // ---- DECLARED CANONICAL 2026-09-25 by Owner ruling. ----
+  //
+  // These two were UNRECONCILED until a real Firebase Admin SDK enumeration settled what exists.
+  // Both accounts ALREADY EXIST and are REUSED; neither was created, reset or rotated to make a
+  // key resolve, and no duplicate was minted beside them.
+  //
+  // The earlier UNRECONCILED reasoning was not wrong about AUTHORITY -- the finance Roles still
+  // hold few or no live assignments, and no Role keyed `restricted` exists -- but it conflated
+  // "no authority" with "no account", and it was the account question that blocked the credential
+  // work. The authority gap is real, is tracked elsewhere, and is not this file's business: what
+  // an identity may do is read from PostgreSQL at request time.
+  //
+  // uid anKfqN34GSS1RKCgF00nWTse6062. NO EOS Principal yet -- the Employee/Principal chain is a
+  // separate governed step. Supersedes `sage.fixture@sandbox.invalid`, which does NOT exist in
+  // the project and must not be created.
+  financeAccounting: "acctmgr@sandbox.invalid",
+
+  // uid lT75guU9mEY46QFQcegWRZRhYBi2. NO EOS Principal yet. Supersedes
+  // `wren.fixture@sandbox.invalid`, which does NOT exist in the project and must not be created.
+  // The negative control this persona is meant to be still needs its Principal declared; until
+  // then it authenticates and is refused for having no Principal, which proves a DIFFERENT thing.
+  restricted: "restricted@sandbox.invalid",
+});
+
+/**
+ * Canonical keys whose ADDRESS is settled but whose ACCOUNT does not exist yet.
+ *
+ * This state exists so that `personaDirectory()` can report all sixteen keys as DECLARED -- the
+ * Owner ruled the catalog complete -- without this module asserting that an account exists when it
+ * does not. That assertion is the whole failure mode the header warns about: a key that resolves
+ * to an address nothing is behind fails late, as "invalid password", instead of failing here.
+ *
+ * So the address is declared and the load still FAILS CLOSED, with the reason and the operator
+ * action. No account is created here, and none may be created to make the key resolve -- creation
+ * is a separate, explicitly authorized step through the governed path.
+ */
+export const PENDING_ACCOUNT_PERSONAS = Object.freeze({
+  reporting: Object.freeze({
+    email: "reporting@sandbox.invalid",
+    reason:
+      "ACCOUNT_NOT_CREATED_YET: a Firebase Admin SDK enumeration of eos-platform-sandbox on 2026-09-25 found 28 @sandbox.invalid accounts and no reporting address among them. This is the ONLY canonical persona with no account; every other key names one that exists.",
+    operatorAction:
+      "Create exactly ONE account for reporting@sandbox.invalid through the governed activation path, then activate its credential with the existing activateMissingSandboxPasswords. Do not create a second reporting-shaped account, and do not point this key at a substitute. NOTE the authority gap is unchanged and is tracked separately: reportViewer, reportFinanceViewer and reportAuthor each resolve to ZERO role_capabilities in nonprod, so a holder measures nothing until those grants exist.",
+  }),
+});
+
+/**
+ * ADDRESSES THAT MUST NEVER BE SELECTED AS A PERSONA'S CANONICAL IDENTITY.
+ *
+ * A first-class contract fact rather than a comment, because a comment cannot be asserted and this
+ * is precisely the class of mistake that keeps recurring here: a plausible-looking address, spelled
+ * consistently with its neighbours, adopted for a persona it was never the identity of.
+ *
+ * `supersededBy` names the address that IS canonical. A null uid means the account does not exist
+ * in the project at all -- so adopting it would not merely be wrong, it would be unloadable, and
+ * the tempting "fix" would be to create it, which is how duplicate personas get minted.
+ */
+export const SUPERSEDED_IDENTITIES = Object.freeze({
+  "sage.fixture@sandbox.invalid": Object.freeze({
+    disposition: "SUPERSEDED_FOR_P14",
+    persona: "financeAccounting",
+    supersededBy: "acctmgr@sandbox.invalid",
+    uid: null,
+    reason:
+      "Declared by sampleCompany.v2.json as the Finance / Accounting login, but no such account exists in eos-platform-sandbox. The Owner ruled the EXISTING acctmgr@sandbox.invalid is reused instead. Creating sage.fixture@ would mint a duplicate persona account for an identity that already has one.",
+  }),
+  "wren.fixture@sandbox.invalid": Object.freeze({
+    disposition: "SUPERSEDED_FOR_P16",
+    persona: "restricted",
+    supersededBy: "restricted@sandbox.invalid",
+    uid: null,
+    reason:
+      "Declared by sampleCompany.v2.json as the Restricted negative-control login, but no such account exists in eos-platform-sandbox. The Owner ruled the EXISTING restricted@sandbox.invalid is reused instead.",
+  }),
+  "emerson.fixture@sandbox.invalid": Object.freeze({
+    disposition: "NOT_CANONICAL_FOR_P05",
+    persona: "dispatcher",
+    supersededBy: "dispatcher@sandbox.invalid",
+    uid: "NReyNyXVMdVkv75vpmxWuvGUeOm1",
+    reason:
+      "This account EXISTS but has NO EOS Principal. The catalog pointed the `dispatcher` key at it while attributing to it the subject PEiRkebIGRPcEau7yBBV0D77Dho1 -- which actually belongs to dispatcher@sandbox.invalid, the account the live Dispatcher Principal is behind. A resolving key standing in front of no Principal is the exact defect this catalog was rewritten to eliminate. NOT deleted: stale accounts stay until a separate cleanup wave authorizes deletion, and they must not be bound to duplicate Principals.",
+  }),
 });
 
 /**
@@ -180,26 +277,24 @@ const SUPPLEMENTAL_PERSONAS = Object.freeze({
  * reportViewer and salesManager each hold ZERO active user_role_assignments in nonprod, and no
  * Role keyed `restricted` exists at all.
  */
-export const UNRECONCILED_PERSONAS = Object.freeze({
-  financeAccounting: Object.freeze({
-    reason:
-      "NO_LIVE_PRINCIPAL: the Finance Roles (financeManager, accountingManager) hold zero active assignments in nonprod, and the Sample Company declares no finance Employee, Principal or login.",
-    operatorAction:
-      "Declare a finance Employee and Principal in sampleCompany.v2.json and assign a finance Role through the governed path (Lane BI is adding the Employee chains). Only then does an authentication account for it mean anything.",
-  }),
-  reporting: Object.freeze({
-    reason:
-      "NO_LIVE_PRINCIPAL_AND_NO_AUTHORITY: reportAuthor, reportViewer and reportFinanceViewer hold zero active assignments, and those Roles hold zero capabilities -- so even a holder would be indistinguishable from a persona with no Roles at all.",
-    operatorAction:
-      "Grant the Reporting Roles their capabilities first (a governed grant reconciliation), then declare a holder. A login before that measures nothing.",
-  }),
-  restricted: Object.freeze({
-    reason:
-      "NO_SUCH_ROLE: nonprod contains no Role keyed `restricted` and no Principal holds one. The legacy restricted@sandbox.invalid account was a Firebase-era control with no EOS Principal behind it.",
-    operatorAction:
-      "Decide what `restricted` is meant to prove. A Principal holding NO Roles is the honest negative control and needs no new Role -- but it still needs a declared Employee/Principal pair, which is an Owner call, not a loader change.",
-  }),
-});
+/**
+ * DELIBERATELY EMPTY since 2026-09-25, and kept rather than deleted.
+ *
+ * All three former members -- financeAccounting, reporting and restricted -- were resolved by the
+ * Owner ruling: the first and third name EXISTING accounts and moved into the canonical map, and
+ * the second has a settled canonical address and moved to PENDING_ACCOUNT_PERSONAS.
+ *
+ * The export survives because callers destructure it and because an empty map is a stronger
+ * statement than a missing one: it says the unreconciled state was emptied, not forgotten. A key
+ * may legitimately land here again -- it is the right home for a persona whose identity nobody has
+ * settled -- but nothing is here today.
+ *
+ * NOTE what this emptiness does NOT claim. It says every canonical key now has a settled ADDRESS.
+ * It does not say every persona has its authority: the finance Roles and all three reporting Roles
+ * still hold few or no live grants. That gap is real and is tracked outside this file, because what
+ * an identity may do is read from PostgreSQL at request time and is none of this module's business.
+ */
+export const UNRECONCILED_PERSONAS = Object.freeze({});
 
 /**
  * Keys retired outright: each named a Role or a control that no live Principal holds, and no
@@ -268,11 +363,18 @@ export function resolvePersonaKey(personaId) {
  * print: it carries addresses and states, and no credential of any kind.
  */
 export function personaDirectory() {
-  return CANONICAL_PERSONA_KEYS.map((personaId) =>
-    SANDBOX_PERSONAS[personaId]
-      ? { personaId, canonical: true, state: "MAPPED", email: SANDBOX_PERSONAS[personaId] }
-      : { personaId, canonical: true, state: "UNRECONCILED", email: null, ...UNRECONCILED_PERSONAS[personaId] },
-  );
+  return CANONICAL_PERSONA_KEYS.map((personaId) => {
+    if (SANDBOX_PERSONAS[personaId]) {
+      return { personaId, canonical: true, state: "MAPPED", email: SANDBOX_PERSONAS[personaId] };
+    }
+    // PENDING_ACCOUNT carries its address -- the key is declared -- while still being a state the
+    // loader refuses. Declared is not the same as loadable, and conflating them is what sent
+    // readers to the credential file for an identity that does not exist.
+    if (PENDING_ACCOUNT_PERSONAS[personaId]) {
+      return { personaId, canonical: true, state: "PENDING_ACCOUNT", ...PENDING_ACCOUNT_PERSONAS[personaId] };
+    }
+    return { personaId, canonical: true, state: "UNRECONCILED", email: null, ...UNRECONCILED_PERSONAS[personaId] };
+  });
 }
 
 export class CredentialAccessError extends Error {
@@ -362,6 +464,19 @@ export function loadSandboxPersona(personaId) {
   // persona with no identity behind it is not a missing password, and treating it as one sends
   // the reader to the file -- which is exactly the wrong place, and the reason this catalog was
   // wrong for so long.
+  // A persona whose ADDRESS is settled but whose ACCOUNT does not exist yet. Answered by name,
+  // before the credential file is looked for, for the same reason as the unreconciled keys: this
+  // is not a missing password, and sending the reader to the file is sending them to the wrong
+  // place. The address IS reported, so the operator can see exactly what must be created.
+  if (!email && PENDING_ACCOUNT_PERSONAS[key]) {
+    const { email: pending, reason, operatorAction } = PENDING_ACCOUNT_PERSONAS[key];
+    throw new CredentialAccessError(
+      "PERSONA_ACCOUNT_PENDING",
+      personaId,
+      [],
+      `${reason} CANONICAL ADDRESS: ${pending} OPERATOR ACTION: ${operatorAction}`,
+    );
+  }
   if (!email && UNRECONCILED_PERSONAS[key]) {
     const { reason, operatorAction } = UNRECONCILED_PERSONAS[key];
     throw new CredentialAccessError("PERSONA_UNRECONCILED", personaId, [], `${reason} OPERATOR ACTION: ${operatorAction}`);

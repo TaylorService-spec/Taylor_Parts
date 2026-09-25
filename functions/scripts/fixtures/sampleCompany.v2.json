@@ -4067,7 +4067,32 @@
     "credentialFile": "sandbox-credentials.local.json (gitignored; read only through scripts/sandboxCredentials.mjs)",
     "activationCommand": "node scripts/seedSampleCompany.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL --tenantKey taylor-nonprod --existingAdminPrincipalId <principal id> --performedBy <operator> --mode activate-credentials --apply --firebaseProjectId eos-platform-sandbox --credentialFile <operator file ending credentials.local.json>",
     "delegatesTo": "functions/scripts/activateSandboxPersonas.js activateMissingSandboxPasswords (one implementation, called by both its own CLI and this orchestrator; never copied)",
-    "scope": "EXACTLY the manifest Employees with sandboxPersona.interactiveLogin = true. The reused real Administrator is EXCLUDED -- its credential is real, pre-existing and out of scope, and its credentialEmail is null so it cannot become an allowlist entry. An @sandbox.invalid account outside the allowlist is never mutated; an allowlisted account that does not exist is REPORTED, never silently skipped."
+    "scope": "EXACTLY the manifest Employees with sandboxPersona.interactiveLogin = true. The reused real Administrator is EXCLUDED -- its credential is real, pre-existing and out of scope, and its credentialEmail is null so it cannot become an allowlist entry. An @sandbox.invalid account outside the allowlist is never mutated; an allowlisted account that does not exist is REPORTED, never silently skipped.",
+    "supersededIdentities": {
+      "$comment": "OWNER RULING 2026-09-25, recorded as DATA because a comment cannot be enforced. Each address below was declared by this manifest as a persona login, and each is now superseded. A real Firebase Admin SDK enumeration of eos-platform-sandbox found 28 @sandbox.invalid accounts: sage.fixture@ and wren.fixture@ are NOT among them, so the activate-logins phase would have CREATED them -- minting a duplicate persona account for an identity that already has a perfectly good one, which is exactly the outcome the Owner ruled out (duplicate persona accounts created = 0). functions/scripts/sampleCompany/credentialActivation.js REFUSES any allowlist containing one of these, so the hazard is closed by code rather than by anyone remembering. scripts/sandboxCredentials.mjs mirrors this list as SUPERSEDED_IDENTITIES and a test asserts the two agree, so they cannot drift apart.",
+      "sage.fixture@sandbox.invalid": {
+        "disposition": "SUPERSEDED_FOR_P14",
+        "employee": "finance-controller",
+        "supersededBy": "acctmgr@sandbox.invalid",
+        "existsInProject": false,
+        "reason": "Finance / Accounting reuses the EXISTING acctmgr@sandbox.invalid (uid anKfqN34GSS1RKCgF00nWTse6062). This address has no account and must not be given one."
+      },
+      "wren.fixture@sandbox.invalid": {
+        "disposition": "SUPERSEDED_FOR_P16",
+        "employee": "restricted-user",
+        "supersededBy": "restricted@sandbox.invalid",
+        "existsInProject": false,
+        "reason": "The Restricted negative control reuses the EXISTING restricted@sandbox.invalid (uid lT75guU9mEY46QFQcegWRZRhYBi2). This address has no account and must not be given one."
+      },
+      "emerson.fixture@sandbox.invalid": {
+        "disposition": "NOT_CANONICAL_FOR_P05",
+        "employee": "dispatcher",
+        "supersededBy": "dispatcher@sandbox.invalid",
+        "existsInProject": true,
+        "reason": "This account EXISTS (uid NReyNyXVMdVkv75vpmxWuvGUeOm1) but has NO EOS Principal. The live Dispatcher Principal 18e54b1f is behind dispatcher@sandbox.invalid (uid PEiRkebIGRPcEau7yBBV0D77Dho1). NOT deleted: the Owner ruled stale accounts remain until a separate cleanup wave authorizes deletion, and they must never be bound to duplicate Principals."
+      }
+    },
+    "$supersededIdentities_blockedChange": "The credentialEmail for finance-controller and restricted-user is NOT rewritten to the superseding address here, and this is deliberate. seedSampleCompany.js refuses any Principal whose loginPrincipal.credentialEmail differs from the Employee's workEmail (MANIFEST_INVALID, 'the credential email must be the Employee's own work email'). Pointing those two at acctmgr@/restricted@ therefore requires EITHER rewriting a synthetic person's work email to an account alias -- which corrupts business data and is the precise work-email-is-not-a-login confusion this fixture warns about elsewhere -- OR relaxing a governed manifest invariant. Both are Owner calls, not a lane's. Until one is made, the supersession is enforced at the ALLOWLIST, which is the surface where the duplicate account would actually have been created."
   },
   "sampleCompanyV3": {
     "status": "PLANNED_NOT_IMPLEMENTED",

@@ -1172,14 +1172,34 @@ test("(2) credential activation DELEGATES to the existing implementation and doe
 });
 
 test("(3) Sample Company credential activation is confined to manifest personas", () => {
-  const { sampleCompanyCredentialAllowlist } = require("../scripts/sampleCompany/credentialActivation.js");
+  const { sampleCompanyCredentialAllowlist, supersededExclusions } = require("../scripts/sampleCompany/credentialActivation.js");
   const allowlist = sampleCompanyCredentialAllowlist(MANIFEST);
+  // OWNER RULING 2026-09-25. The allowlist is the interactive personas MINUS the two reused real
+  // Principals MINUS any address the ruling superseded. The supersession fence is what stops
+  // activate-logins creating sage.fixture@ / wren.fixture@ -- accounts that do not exist, whose
+  // identities already have perfectly good accounts -- and what stops emerson.fixture@, which
+  // exists but has no EOS Principal, being given a working password for the wrong identity.
+  const superseded = MANIFEST.sandboxCredentials.supersededIdentities;
   const expected = MANIFEST.principals
     .filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal)
     .map((p) => p.loginPrincipal.credentialEmail)
+    .filter((email) => !superseded[email])
     .sort();
   assert.deepEqual(allowlist, expected);
-  assert.equal(allowlist.length, 16, "sixteen sandbox personas; the two reused real Principals are excluded");
+  assert.equal(allowlist.length, 13, "sixteen interactive personas, less the three superseded identities");
+
+  // What was dropped is REPORTED, never silent: an excluded identity must say why and name its
+  // replacement, so a run surfaces the divergence between this manifest and the ruling.
+  const excluded = supersededExclusions(MANIFEST);
+  assert.deepEqual(excluded.map((e) => e.email).sort(), [
+    "emerson.fixture@sandbox.invalid",
+    "sage.fixture@sandbox.invalid",
+    "wren.fixture@sandbox.invalid",
+  ]);
+  for (const e of excluded) {
+    assert.ok(e.disposition && e.supersededBy, `${e.email} must name its disposition and replacement`);
+    assert.ok(!allowlist.includes(e.email), `${e.email} is superseded and must never be activatable`);
+  }
   // NEITHER REUSED PRINCIPAL IS IN IT, and neither can be: both credentialEmails are null by construction.
   const administrator = MANIFEST.principals.find((p) => p.existingAdministrator);
   assert.equal(administrator.loginPrincipal.credentialEmail, null);

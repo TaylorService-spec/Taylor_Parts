@@ -261,15 +261,15 @@ export const RECONCILIATION = Object.freeze([
     slot: "P05",
     persona: "dispatcher",
     label: "Dispatcher",
-    credentialCandidate: null,
+    credentialCandidate: "dispatcher@sandbox.invalid",
     authAccountExists: true,
     authUid: "PEiRkebIGRPcEau7yBBV0D77Dho1",
     principalId: "18e54b1f-05e1-402d-8982-66efc8393f05",
     employeeId: "synthetic-np-emp-dispatcher",
     mappingConfidence: "CERTAIN",
-    classification: "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
-    action: "Owner ruling required, via the existing governed path.",
-    note: "`dispatcher@sandbox.invalid` has a credential and no Principal. Same shape as P04: a name collision, not an alias.",
+    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
+    action: "NONE. The credential exists and the account holds the live Dispatcher Principal. NEVER ROTATE.",
+    note: "CORRECTED 2026-09-25 by Admin SDK enumeration. My earlier row had this backwards, and so did the catalog: uid PEiRkebIGRPcEau7... belongs to `dispatcher@sandbox.invalid`, NOT to `emerson.fixture@sandbox.invalid` (uid NReyNyXVMdVkv75vpmxWuvGUeOm1, no Principal). The catalog named emerson.fixture@ while attributing this uid to it, so P05 resolved to an account with no Principal while the real one went unnamed. emerson.fixture@ is now recorded NOT_CANONICAL_FOR_P05 and is NOT deleted.",
   },
   {
     slot: "P06",
@@ -387,45 +387,93 @@ export const RECONCILIATION = Object.freeze([
     slot: "P14",
     persona: "financeAccounting",
     label: "Finance / Accounting",
-    credentialCandidate: null,
-    authAccountExists: false,
-    authUid: null,
+    credentialCandidate: "acctmgr@sandbox.invalid",
+    authAccountExists: true,
+    authUid: "anKfqN34GSS1RKCgF00nWTse6062",
     principalId: null,
     employeeId: null,
     mappingConfidence: "CERTAIN",
-    classification: "AUTH_ACCOUNT_MISSING",
-    action: "DO NOT CREATE in this lane. The manifest already DECLARES the address and the governed creation path.",
-    note: "`acctmgr@sandbox.invalid` EVALUATED AND REJECTED as a candidate: it has a credential in the 60-entry file but NO EOS Principal, no Employee, and the three finance Roles (controller, financeManager, accountingManager) hold ZERO active assignments between them — so it cannot serve P14. The manifest declares finance-controller with credentialEmail `sage.fixture@sandbox.invalid`, disposition ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK, and it IS already in the 16-address governed activation allowlist. The finance Roles DO carry 17 real capabilities each, so unlike P15 this persona would measure something once the Owner declares it.",
+    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
+    action: "NONE. Owner ruled the EXISTING account is reused. NEVER ROTATE, and do not create a second finance account beside it.",
+    note: "CORRECTED 2026-09-25: I classified this AUTH_ACCOUNT_MISSING, which the Admin SDK disproves — acctmgr@ exists (uid anKfqN34GSS1RKCgF00nWTse6062) and holds a credential. My reasoning rejected it for having no EOS Principal; that fact is unchanged and still means the Employee/Principal chain is a separate governed step, but it was the wrong ground on which to call the ACCOUNT missing. `sage.fixture@sandbox.invalid` — which the manifest declares — does NOT exist in the project and is now recorded SUPERSEDED_FOR_P14.",
   },
   {
     slot: "P15",
     persona: "reporting",
     label: "Reporting / read-only",
-    credentialCandidate: null,
+    credentialCandidate: "reporting@sandbox.invalid",
     authAccountExists: false,
     authUid: null,
     principalId: null,
     employeeId: null,
     mappingConfidence: "CERTAIN",
     classification: "AUTH_ACCOUNT_MISSING",
-    action: "DO NOT CREATE, and do not propose an address. Creating it would measure nothing.",
-    note: "The ONLY slot with no declared login anywhere: employees[report-analyst].sandboxPersona is { interactiveLogin: false } with NO credentialEmail, so it is deliberately absent from the governed allowlist. `tatum.fixture@sandbox.invalid` is a WORK EMAIL, not a login. Decisive: all three reporting Roles (reportViewer, reportFinanceViewer, reportAuthor) resolve to ZERO role_capabilities rows in nonprod — the reporting authority is UNBUILT, not merely unheld, so a holder would be indistinguishable from a persona with no Roles at all.",
+    action: "CREATE EXACTLY ONE account for reporting@sandbox.invalid — later, through the governed path, not in this commit. It is the only account this programme creates.",
+    note: "CONFIRMED the only genuinely missing account: the Admin SDK found 28 @sandbox.invalid accounts and no reporting address among them. The Owner ruled `reporting@sandbox.invalid` canonical; it is declared in PENDING_ACCOUNT_PERSONAS so the key is reported as declared while loadSandboxPersona still fails closed with PERSONA_ACCOUNT_PENDING. `tatum.fixture@sandbox.invalid` is report-analyst's WORK EMAIL and was never a login. The authority gap is UNCHANGED and is not fixed by creating the account: all three reporting Roles still resolve to ZERO role_capabilities rows in nonprod, so the persona measures nothing until those grants exist.",
   },
   {
     slot: "P16",
     persona: "restricted",
     label: "Restricted / no-authority negative control",
-    credentialCandidate: null,
-    authAccountExists: false,
-    authUid: null,
+    credentialCandidate: "restricted@sandbox.invalid",
+    authAccountExists: true,
+    authUid: "lT75guU9mEY46QFQcegWRZRhYBi2",
     principalId: null,
     employeeId: null,
     mappingConfidence: "CERTAIN",
-    classification: "AUTH_ACCOUNT_MISSING",
-    action: "DO NOT CREATE in this lane. The manifest already declares the address and the governed creation path.",
-    note: "`restricted@sandbox.invalid` EVALUATED AND REJECTED as a candidate: it HAS a credential in the 60-entry file, but it is a Firebase-era control with NO EOS Principal behind it. Authenticating it proves the wrong thing — it is refused for having no Principal at all, not for holding no authority, and those are different findings. The manifest declares restricted-user with credentialEmail `wren.fixture@sandbox.invalid` and Role `generalEmployee` (0 capabilities), already in the governed allowlist. NOTE the loader's UNRECONCILED reason says 'no Role keyed restricted exists', which is true but incomplete: the manifest's chosen vehicle is `generalEmployee`.",
+    classification: "EXISTING_CREDENTIAL_EXACT_MATCH",
+    action: "NONE. Owner ruled the EXISTING account is reused. NEVER ROTATE, and do not create a second restricted account beside it.",
+    note: "CORRECTED 2026-09-25: I classified this AUTH_ACCOUNT_MISSING, which the Admin SDK disproves — restricted@ exists (uid lT75guU9mEY46QFQcegWRZRhYBi2) with a credential. My objection stands as a SEPARATE finding and is not resolved by this row: with no EOS Principal it is refused for having no Principal rather than for holding no authority, so it is not yet the negative control it is meant to be. `wren.fixture@sandbox.invalid` does NOT exist in the project and is now recorded SUPERSEDED_FOR_P16.",
   },
 ]);
+
+/**
+ * THE CREDENTIAL POLICY FOR THE LATER APPLY. Declared here, executed nowhere in this repository.
+ *
+ * This is the Owner's ruling written as data so it can be ASSERTED. The three sets are disjoint and
+ * must together cover all sixteen slots: a persona that appears in none of them, or in two, is a
+ * policy that has not actually been decided, and the tests refuse it.
+ *
+ * `preserveNeverRotate` is the load-bearing one. Every member has a WORKING credential today, and
+ * rotating any of them invalidates the Owner's saved copy and every running mission -- the failure
+ * that has already happened twice here and surfaces as "invalid password", which sends you
+ * debugging the wrong thing. A guard asserts these can never enter the rotation set.
+ */
+export const CREDENTIAL_POLICY = Object.freeze({
+  /** Credential EXISTS and works. Reuse as-is. Never rotate, never recreate. */
+  preserveNeverRotate: Object.freeze(["owner", "admin", "dispatcher", "financeAccounting", "restricted"]),
+  /** Account exists with a uid matching its live Principal; it has no credential, so a password may be minted. */
+  bootstrapAuthorized: Object.freeze([
+    "generalManager",
+    "serviceManager",
+    "technicianAssigned",
+    "technicianUnassigned",
+    "partsAssociate",
+    "partsManager",
+    "warehouseAssociate",
+    "warehouseManager",
+    "retailSales",
+    "nationalAccountsSales",
+  ]),
+  /** The ONE account this programme creates. */
+  createOne: Object.freeze(["reporting"]),
+  expectedEndState: Object.freeze({
+    ready: 16,
+    preserved: 5,
+    bootstrapped: 10,
+    created: 1,
+    duplicatePersonaAccountsCreated: 0,
+  }),
+});
+
+/**
+ * The personas a rotation may touch. Derived, never hand-listed, so the preserve set cannot drift
+ * into it by someone editing one list and not the other.
+ */
+export function rotationSet() {
+  const preserved = new Set(CREDENTIAL_POLICY.preserveNeverRotate);
+  return CREDENTIAL_POLICY.bootstrapAuthorized.filter((p) => !preserved.has(p));
+}
 
 /**
  * Classify the catalog against a set of credential-file KEY NAMES.
