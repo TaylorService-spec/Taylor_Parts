@@ -94,7 +94,10 @@ const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "rea
 
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
   // Step C: each authority gets an assign and an end -- never a generic patch, and never one command for both.
-  "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope"];
+  "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope",
+  // Lane BT: the governed Employee BIRTH, and the Employee <-> Principal link. The link's move and revoke take a
+  // mandatory expectedCurrentPrincipalId; there is deliberately no single "setEmployeePrincipal" that would not.
+  "createEmployee", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal"];
 
 test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08, H1 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
@@ -256,8 +259,15 @@ const HISTORY_MODULE = "employeeChangeHistoryRead.ts";
 // Finding #17: the self capability read NAMES admin.employeeJobRole.write as one of its four closed ids. It is ruled
 // separately below: it names capability ids only and reads nothing.
 const CAPABILITY_MODULE = "myWorkforceCapabilities.ts";
+// Lane BT: the ADMINISTERING ACTOR resolver NAMES heldRoleKeys and securityRole -- the first because resolving an
+// administrator's capabilities from its ACTIVE Security Role assignments is the whole of what it does, and the second
+// because it REFUSES a caller that tries to supply one. It is ruled separately in
+// employeeAdministrationCommand.test.mjs: every statement in it is a SELECT, it produces no Job Role and no Security
+// Role, and it can only ever ADD capability keys eos_policy already grants to that Principal.
+const ADMIN_ACTOR_MODULE = "employeeAdministrationAuthority.ts";
 test("no Job Role, Security Role or operationalRoles is produced, inferred or named anywhere in the Workforce reads or commands", () => {
-  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])].filter((f) => !f.endsWith(HISTORY_MODULE) && !f.endsWith(CAPABILITY_MODULE));
+  const files = [...walk(READS, [".ts"]), ...walk(join(WORKFORCE, "commands"), [".ts"])]
+    .filter((f) => !f.endsWith(HISTORY_MODULE) && !f.endsWith(CAPABILITY_MODULE) && !f.endsWith(ADMIN_ACTOR_MODULE));
   assert.deepEqual(JOB_ROLE_MODULES.map((m) => files.some((f) => f.endsWith(m))), [true, true], "the Job Role modules moved");
   for (const f of files.filter((f) => !JOB_ROLE_MODULES.some((m) => f.endsWith(m)))) {
     assert.doesNotMatch(code(f), /jobRole|job_role|JobRole|Retail Sales|National Accounts|salesperson|securityRole|heldRoleKeys|RETAIL|NATIONAL_ACCOUNTS|operationalRoles|operational_roles/, rel(f));
@@ -337,6 +347,8 @@ test("EMP-RT-H1 history: the closed action list is exactly the governed commands
   const profileCmd = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
   const lifecycle = require("../lib/eosWorkforce/commands/employeeLifecycleCommand.js");
   const jobRoleCmd = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
+  const creation = require("../lib/eosWorkforce/commands/employeeCreationCommand.js");
+  const linkCmd = require("../lib/eosWorkforce/commands/employeePrincipalLinkCommands.js");
   assert.deepEqual([...history.EMPLOYEE_CHANGE_HISTORY_ACTIONS], [
     profileCmd.EMPLOYEE_PROFILE_UPDATE_ACTION,
     "employee.reportingRelationship.establish",
@@ -344,6 +356,12 @@ test("EMP-RT-H1 history: the closed action list is exactly the governed commands
     lifecycle.EMPLOYMENT_STATUS_CHANGE_ACTION,
     lifecycle.OPERATING_COMPANY_CHANGE_ACTION,
     jobRoleCmd.JOB_ROLE_ASSIGN_ACTION,
+    // Lane BT: the Employee's own creation, and the three Employee <-> Principal link changes. The link
+    // actions project ONLY userAccess -- never which Principal, which is admin.principalAccess.read's fact.
+    creation.EMPLOYEE_CREATE_ACTION,
+    linkCmd.PRINCIPAL_LINK_ESTABLISH_ACTION,
+    linkCmd.PRINCIPAL_LINK_REVOKE_ACTION,
+    linkCmd.PRINCIPAL_LINK_RELINK_ACTION,
   ]);
   // Every action a Workforce command audits against an Employee is in the list, and nothing else is.
   const commandSources = walk(join(WORKFORCE, "commands"), [".ts"]).map(code).join("\n");
