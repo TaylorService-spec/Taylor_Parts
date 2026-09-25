@@ -72,8 +72,20 @@ function fakeAuthDirectory(initial = []) {
   };
 }
 
-const INTERACTIVE = MANIFEST.principals.filter((p) => !p.existingAdministrator);
-const activationOptions = (apply) => ({ tenantKey: TENANT_KEY, performedBy: "sample-company-proof", existingAdminPrincipalId: adminPrincipalId, apply });
+const INTERACTIVE = MANIFEST.principals.filter((p) => !p.existingAdministrator && !p.existingOwnerPrincipal);
+/** The two REUSED real Principals: the Administrator and the Owner. Separate identities by Owner ruling. */
+const REUSED = MANIFEST.principals.filter((p) => p.existingAdministrator || p.existingOwnerPrincipal);
+/**
+ * The Auth accounts that ALREADY EXIST before anything in this suite runs -- one per reused real Principal.
+ * Neither is created, renamed or re-credentialed by any Sample Company path; they are here because the
+ * world the seed is applied to already contains them, and because a reused credential still has to be
+ * PROVED usable rather than assumed. A fresh object each call, so one test's mutation cannot leak.
+ */
+const REUSED_ACCOUNTS = () => [
+  { uid: "real-login-subject", email: "administrator@example.test", hasPassword: true },
+  { uid: "real-owner-subject", email: "owner@example.test", hasPassword: true },
+];
+const activationOptions = (apply) => ({ tenantKey: TENANT_KEY, performedBy: "sample-company-proof", existingAdminPrincipalId: adminPrincipalId, existingOwnerPrincipalId: ownerPrincipalId, apply });
 
 async function withPool(fn) {
   const pool = new pg.Pool({ connectionString: dbUrl(), max: 2 });
@@ -92,7 +104,7 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
     await client.query("SET TRANSACTION READ ONLY");
     const report = await verifySampleCompany(
       client,
-      { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId },
+      { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId, existingOwnerPrincipalId: ownerPrincipalId },
       MANIFEST,
       authProbe,
       uidProbe,
@@ -227,6 +239,8 @@ writeFileSync(
 const TENANT_KEY = "taylor-nonprod";
 const env = () => ({ ...process.env, SAMPLE_DB: dbUrl(), EOS_ENVIRONMENT: "nonprod" });
 let adminPrincipalId;
+/** The OWNER Principal, which is a DIFFERENT real Principal from the administrator by Owner ruling. */
+let ownerPrincipalId;
 let tenantId;
 /** Module scope, because the module-scope `verifyWith` closes over it. */
 let authDirectory;
@@ -236,7 +250,7 @@ const cli = (script, args, extraEnv = {}) =>
     "--environment", "platform-sandbox", "--databaseUrlEnv", "SAMPLE_DB", ...args],
   { cwd: FUNCTIONS_DIR, encoding: "utf8", env: { ...env(), ...extraEnv }, maxBuffer: 64 * 1024 * 1024 });
 
-const IDENTITY = () => ["--tenantKey", TENANT_KEY, "--existingAdminPrincipalId", adminPrincipalId, "--performedBy", "sample-company-proof"];
+const IDENTITY = () => ["--tenantKey", TENANT_KEY, "--existingAdminPrincipalId", adminPrincipalId, "--existingOwnerPrincipalId", ownerPrincipalId, "--performedBy", "sample-company-proof"];
 const plan = (extra = []) => cli("seedSampleCompany.js", [...IDENTITY(), ...extra]);
 const apply = () => cli("seedSampleCompany.js", [...IDENTITY(), "--mode", "apply", "--apply"]);
 const verify = () => cli("verifySampleCompany.js", [...IDENTITY(), "--skipAuthProbe"]);
@@ -284,6 +298,24 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     const admin = await bootstrapAdministrator(repo, { tenantId: tenant.id, externalSubject: "real-login-subject", performedBy: "proof" });
     adminPrincipalId = admin.principal.id;
     tenantId = tenant.id;
+
+    // ...AND THE OWNER PRINCIPAL, which nonprod already has and the bootstrap does not create. It is a
+    // SEPARATE real `firebase` Principal holding the `owner` Role, with an ACTIVE membership and NO Employee
+    // link -- exactly the shape measured in nonprod on 2026-09-24, where it had 47 granted capabilities and
+    // no link at all, so every contextual predicate refused it EMPLOYEE_LINK_REQUIRED. The Sample Company
+    // ADOPTS it; it never creates it, which is why the world it is seeded into has to already contain one.
+    const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
+    const { assignRole } = require("../lib/adminPolicy/policyCommands.js");
+    const ownerPrincipal = await ensureTenantPrincipal(repo, {
+      tenantId: tenant.id, externalSubject: "real-owner-subject", identityProvider: "firebase",
+      displayName: "Sample Company proof owner", actorUid: "proof", actorRoleKeys: ["admin"],
+    });
+    ownerPrincipalId = ownerPrincipal.id;
+    const ownerRole = (await repo.listRoles(tenant.id)).find((r) => r.key === "owner");
+    assert.ok(ownerRole, "the tenant bootstrap must seed the governed `owner` Role");
+    await assignRole(repo, { tenantId: tenant.id, uid: "proof", heldRoleKeys: ["admin"] },
+      { principalId: ownerPrincipal.id, roleId: ownerRole.id, reason: "Sample Company v2 proof: the pre-existing owner Principal" });
+    assert.notEqual(ownerPrincipalId, adminPrincipalId);
   } finally {
     await pool.end();
   }
@@ -311,7 +343,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
   });
 
   await t.test("a Principal that cannot administer is refused -- the seed asserts no authority of its own", async () => {
-    const r = cli("seedSampleCompany.js", ["--tenantKey", TENANT_KEY, "--existingAdminPrincipalId", "no-such-principal", "--performedBy", "x"]);
+    const r = cli("seedSampleCompany.js", ["--tenantKey", TENANT_KEY, "--existingAdminPrincipalId", "no-such-principal", "--existingOwnerPrincipalId", "no-such-owner", "--performedBy", "x"]);
     assert.equal(r.status, 2);
     assert.match(r.stderr, /ADMINISTRATOR_INVALID/);
     assert.equal((await q("SELECT count(*)::int AS n FROM eos_workforce.employees")).rows[0].n, 0);
@@ -333,7 +365,14 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(planned.totals.FIXTURE_DRIFT, 0);
     assert.ok(planned.totals.BLOCKED > 0, "the blocked domains must be counted, not omitted");
     assert.equal(planned.capabilityGrants.appliedAdditions, 0);
-    assert.deepEqual(planned.capabilityGrants.roleScope, [...new Set(MANIFEST.principals.flatMap((p) => p.securityRoles))].sort());
+    // The reconciliation scope is every Role a Principal names MINUS the ones deliberately withheld, and
+    // the withheld ones are REPORTED beside it with their reason rather than quietly missing.
+    const withheld = MANIFEST.expectedAccess.roleGrantScope.withheldFromReconciliation.map((r) => r.role);
+    assert.deepEqual(planned.capabilityGrants.roleScope,
+      [...new Set(MANIFEST.principals.flatMap((p) => p.securityRoles))].filter((k) => !withheld.includes(k)).sort());
+    assert.deepEqual(planned.capabilityGrants.roleScopeWithheld.map((r) => r.role), withheld);
+    assert.deepEqual(withheld, ["owner"]);
+    assert.match(planned.capabilityGrants.roleScopeWithheld[0].reason, /may NOT be solved by copying/);
     assert.deepEqual(await rowCounts(), before, "the plan changed the database");
   });
 
@@ -389,11 +428,22 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       JOIN eos_policy.roles r ON r.id = rc.role_id WHERE rc.granted_by LIKE 'sample-company-v2:%'`)).rows.map((r) => r.key);
     assert.ok(granted.length > 0, "the apply granted nothing, so the scope proves nothing");
     assert.deepEqual(granted.filter((k) => !scope.has(k)), [], "a Role outside the manifest was granted a capability");
-    for (const key of ["owner", "salesManager", "financeManager"]) {
+    for (const key of ["salesManager", "financeManager", "accountingManager", "reportViewer"]) {
       const n = (await q(`SELECT count(*)::int AS n FROM eos_policy.role_capabilities rc
         JOIN eos_policy.roles r ON r.id = rc.role_id WHERE r.key = $1`, [key])).rows[0].n;
       assert.equal(n, 0, `${key} is not a Sample Company Role and must hold no grant from its apply`);
     }
+    // THE OWNER RULING, PROVED AGAINST THE DATABASE. `owner` IS a Sample Company Role -- the Owner /
+    // Executive persona holds it -- and it is WITHHELD from the grant reconciliation, so the apply must
+    // leave it with nothing. The compiled catalog declares `owner` identically to `admin`, so reconciling
+    // it would copy the Administrator's permissions onto the Owner: the one solution the Owner refused.
+    assert.ok(MANIFEST.principals.some((p) => p.securityRoles.includes("owner")));
+    assert.ok(!granted.includes("owner"), "the apply granted a capability to the withheld `owner` Role");
+    const ownerGrants = (await q(`SELECT count(*)::int AS n FROM eos_policy.role_capabilities rc
+      JOIN eos_policy.roles r ON r.id = rc.role_id WHERE r.key = 'owner'`)).rows[0].n;
+    assert.equal(ownerGrants, 0, "`owner` is withheld from reconciliation and must hold no grant from this apply");
+    // ...while `admin` DID get its grants, so the withholding is a narrowing and not a broken reconciliation.
+    assert.ok(granted.includes("admin"), "the reconciliation still runs for the Roles that are not withheld");
   });
 
   await t.test("the only inventory movements are the governed cycle-count adjustments", async () => {
@@ -444,10 +494,12 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       assert.ok(!employees.includes(p.id), `Principal id ${p.id} is also an Employee id`);
       assert.ok(!employees.includes(p.external_subject), `subject ${p.external_subject} is also an Employee id`);
     }
-    // Exactly one real (firebase) Principal -- the reused administrator. Everything else cannot sign in.
-    assert.equal(principals.filter((p) => p.identity_provider === "firebase").length, 1);
-    assert.equal(principals.filter((p) => p.identity_provider === "eos-synthetic-nonprod").length,
-      MANIFEST.principals.filter((p) => !p.existingAdministrator).length);
+    // Exactly TWO real (firebase) Principals -- the reused administrator and the reused owner, which are
+    // separate identities by Owner ruling and neither of which this seed creates. Everything else cannot
+    // sign in until login activation runs.
+    assert.equal(principals.filter((p) => p.identity_provider === "firebase").length, REUSED.length);
+    assert.equal(REUSED.length, 2);
+    assert.equal(principals.filter((p) => p.identity_provider === "eos-synthetic-nonprod").length, INTERACTIVE.length);
   });
 
   await t.test("Employee != User Access: the no-access personas have no Principal at all", async () => {
@@ -546,12 +598,12 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
 
   await t.test("activate-logins DRY RUN creates no Auth account and writes nothing", async () => {
     const before = await rowCounts();
-    authDirectory = fakeAuthDirectory([{ uid: "real-login-subject", email: "administrator@example.test", hasPassword: true }]);
+    authDirectory = fakeAuthDirectory(REUSED_ACCOUNTS());
     const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(false), MANIFEST, authDirectory));
     assert.equal(report.applied, false);
     assert.equal(report.pass, true);
     assert.equal(authDirectory.createdCount, 0, "a dry run created a credential");
-    assert.equal(authDirectory.accounts.size, 1, "only the pre-existing administrator account");
+    assert.equal(authDirectory.accounts.size, REUSED.length, "only the pre-existing administrator and owner accounts");
     assert.equal(report.summary.authAccountsCreated, INTERACTIVE.length, "the plan must say what it would create");
     assert.deepEqual(await rowCounts(), before);
   });
@@ -559,7 +611,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
   await t.test("activate-logins builds the real chain: sandbox account -> firebase Principal -> link -> Employee", async () => {
     // The reused real Administrator already has its own Auth account; it is NEVER created, renamed or
     // re-credentialed here, only read. Its subject is the one the bootstrap gave it.
-    authDirectory = fakeAuthDirectory([{ uid: "real-login-subject", email: "administrator@example.test", hasPassword: true }]);
+    authDirectory = fakeAuthDirectory(REUSED_ACCOUNTS());
     const report = await withPool((pool) => activateSampleCompanyLogins(pool, activationOptions(true), MANIFEST, authDirectory));
     assert.equal(report.pass, true, JSON.stringify(report.drift));
     assert.equal(report.identityProvider, "firebase");
@@ -634,7 +686,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     assert.equal(report.summary.authAccountsCreated, 0);
     assert.equal(report.summary.linksTransitioned, 0);
     // +1 for the reused real administrator, whose link is already correct and is never transitioned.
-    assert.equal(report.summary.linksAlreadyCorrect, INTERACTIVE.length + 1);
+    assert.equal(report.summary.linksAlreadyCorrect, INTERACTIVE.length + REUSED.length);
     assert.equal(report.summary.fixturePrincipalsAlreadyRetired, INTERACTIVE.length);
     assert.equal(report.summary.credentialsTouched, 0, "the Sample Company touched a credential");
     assert.deepEqual(await rowCounts(), before);
@@ -772,10 +824,10 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     // Exactly ONE persona is login-ready at this point: the reused real administrator, whose credential is
     // real, pre-existing and deliberately untouched. The fourteen sandbox personas have accounts but no way
     // to sign in yet, and the report says so rather than averaging it away.
-    assert.equal(passwordless.loginReadiness.interactivePersonas, INTERACTIVE.length + 1);
-    assert.equal(passwordless.loginReadiness.loginReady, 1);
+    assert.equal(passwordless.loginReadiness.interactivePersonas, INTERACTIVE.length + REUSED.length);
+    assert.equal(passwordless.loginReadiness.loginReady, REUSED.length);
     assert.equal(passwordless.loginReadiness.authorizationReady, passwordless.loginReadiness.interactivePersonas);
-    assert.equal(passwordless.personas.find((p) => p.employeeKey === "owner-executive").loginReady, true);
+    assert.equal(passwordless.personas.find((p) => p.employeeKey === "administrator").loginReady, true);
 
     // Now the EXISTING activate-missing tool's effect: a password only where there was none.
     assert.equal(authDirectory.activateMissingPasswords(INTERACTIVE.map((p) => p.loginPrincipal.credentialEmail)), INTERACTIVE.length);
@@ -817,7 +869,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
   });
 
   await t.test("(11)(12) the reused Administrator is LOGIN_READY only when a real read-only Auth probe proves it", async () => {
-    const administrator = report.personas.find((p) => p.employeeKey === "owner-executive");
+    const administrator = report.personas.find((p) => p.employeeKey === "administrator");
     assert.equal(administrator.interactiveLogin, true);
     assert.equal(administrator.authAccount, "REUSED_EXISTING_ADMINISTRATOR");
     assert.equal(administrator.loginReady, true);
@@ -825,7 +877,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
 
     // (11) WITHOUT the probe it must NOT claim readiness, even though every governed fact is unchanged.
     const unprobed = await verifyWith((e) => authDirectory.findByEmail(e), null);
-    const unprobedAdmin = unprobed.personas.find((p) => p.employeeKey === "owner-executive");
+    const unprobedAdmin = unprobed.personas.find((p) => p.employeeKey === "administrator");
     assert.equal(unprobedAdmin.authorizationReady, true, "the governed half is unaffected");
     assert.equal(unprobedAdmin.authAccount, "AUTH_NOT_PROBED");
     assert.equal(unprobedAdmin.loginReady, false);
@@ -837,7 +889,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     authDirectory.accounts.delete("administrator@example.test");
     try {
       const missing = await verifyWith((e) => authDirectory.findByEmail(e));
-      const missingAdmin = missing.personas.find((p) => p.employeeKey === "owner-executive");
+      const missingAdmin = missing.personas.find((p) => p.employeeKey === "administrator");
       assert.equal(missingAdmin.authAccount, "MISSING");
       assert.equal(missingAdmin.loginReady, false);
       assert.equal(missing.pass, false);
@@ -849,7 +901,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     account.disabled = true;
     try {
       const disabled = await verifyWith((e) => authDirectory.findByEmail(e));
-      const disabledAdmin = disabled.personas.find((p) => p.employeeKey === "owner-executive");
+      const disabledAdmin = disabled.personas.find((p) => p.employeeKey === "administrator");
       assert.equal(disabledAdmin.authAccount, "DISABLED");
       assert.equal(disabledAdmin.loginReady, false);
       assert.equal(disabled.pass, false);
@@ -861,7 +913,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     account.hasPassword = false;
     try {
       const noCredential = await verifyWith((e) => authDirectory.findByEmail(e));
-      assert.equal(noCredential.personas.find((p) => p.employeeKey === "owner-executive").authAccount, "NO_SIGN_IN_CREDENTIAL");
+      assert.equal(noCredential.personas.find((p) => p.employeeKey === "administrator").authAccount, "NO_SIGN_IN_CREDENTIAL");
       assert.equal(noCredential.pass, false);
     } finally {
       account.hasPassword = true;
@@ -1143,7 +1195,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       });
       armed = await verifySampleCompany(
         client,
-        { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId },
+        { environmentId: "platform-sandbox", tenantKey: TENANT_KEY, existingAdminPrincipalId: adminPrincipalId, existingOwnerPrincipalId: ownerPrincipalId },
         MANIFEST,
         (email) => authDirectory.findByEmail(email),
         (uid) => authDirectory.findByUid(uid),

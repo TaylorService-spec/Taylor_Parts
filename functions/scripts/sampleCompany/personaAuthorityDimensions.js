@@ -100,6 +100,14 @@ const RATIONALE_MIN_LENGTH = 24;
 const RECORDED_REASON_MAX_LENGTH = 500;
 const DIMENSION_WORK_ELIGIBILITY = "WORK_ELIGIBILITY";
 const DIMENSION_OPERATIONAL_SCOPE = "OPERATIONAL_SCOPE";
+/**
+ * The THIRD governed workforce authority, and the one that answers the narrowest question of the three:
+ * what is this person's BUSINESS FUNCTION. It grants nothing, implies no Work Eligibility, implies no
+ * Operational Scope and is never inferred from a Security Role. It lives in its own tables --
+ * eos_workforce.job_roles and eos_workforce.employee_job_role_assignments, created by migration
+ * 1760011200000 -- and NEVER as a column on eos_workforce.employees.
+ */
+const DIMENSION_JOB_ROLE = "JOB_ROLE";
 
 /** The manifest's per-row sentence, with the fixture prefix stripped so it is not written twice. */
 function rationaleOf(reason) {
@@ -398,6 +406,41 @@ function planPersonaAuthorityDimensions(manifest = MANIFEST, sampleCompany = SAM
     return recorded;
   };
   const plan = [];
+
+  // ---- THE JOB ROLE AUTHORITY, FIRST. The tenant catalog before the assignments that name it, because
+  // assignEmployeeJobRole reads the catalog entry FOR SHARE and refuses one that does not exist or is not
+  // ACTIVE. Both tables hold 0 rows in nonprod, so this is the step that turns Job Role from a manifest
+  // string -- Jules's "National Accounts Manager" was free-text job_title and nothing more -- into a
+  // governed fact. RETAIL_SALES and NATIONAL_ACCOUNTS_SALES become two SEPARATE catalog entries here,
+  // which is the only place that distinction is real: both personas hold the identical `salesperson`
+  // Security Role by design.
+  const jobRoleById = new Map(sampleCompany.jobRoles.map((r) => [r.key, r]));
+  for (const role of sampleCompany.jobRoles) {
+    plan.push({
+      command: "createJobRole",
+      requiresCapability: "admin.employeeJobRole.write",
+      input: { jobRoleId: role.pgJobRoleId, displayName: role.label },
+    });
+  }
+  for (const e of sampleCompany.employees) {
+    const role = jobRoleById.get(e.jobRole);
+    if (!role) refuse("JOB_ROLE_UNKNOWN", `${e.key}: Job Role ${e.jobRole} is not in the Sample Company catalog`);
+    plan.push({
+      command: "assignEmployeeJobRole",
+      requiresCapability: "admin.employeeJobRole.write",
+      input: {
+        employeeId: e.id,
+        jobRoleId: role.pgJobRoleId,
+        // Composed exactly the way the other two dimensions are: persona, Employee id, dimension, target.
+        // The Job Role's rationale is structural rather than per-persona prose, because a Job Role IS the
+        // business function -- there is no second fact to explain, and inventing one per Employee would be
+        // twenty-one paraphrases of the same sentence.
+        reason: composeStepReason(e.key, e.id, DIMENSION_JOB_ROLE, role.pgJobRoleId,
+          `the Sample Company declares this Employee's business function as ${role.label}; it grants nothing and implies no qualification or scope`),
+      },
+    });
+  }
+
   for (const row of manifest.workEligibility) {
     plan.push({
       command: "assignEmployeeWorkEligibility",
@@ -433,17 +476,29 @@ async function seedPersonaAuthorityDimensions(deps, actor, options, manifest = M
   const plan = planPersonaAuthorityDimensions(manifest, sampleCompany);
   const summary = {
     planned: plan.length,
+    jobRoleCatalog: { created: 0, unchanged: 0 },
+    jobRoles: { assigned: 0, unchanged: 0 },
     workEligibility: { assigned: 0, unchanged: 0 },
     operationalScopes: { assigned: 0, unchanged: 0 },
   };
   if (!options.apply) return { applied: false, summary, plan };
 
+  const BUCKET = {
+    createJobRole: "jobRoleCatalog",
+    assignEmployeeJobRole: "jobRoles",
+    assignEmployeeWorkEligibility: "workEligibility",
+    assignEmployeeOperationalScope: "operationalScopes",
+  };
   for (const step of plan) {
-    const bucket = step.command === "assignEmployeeWorkEligibility" ? "workEligibility" : "operationalScopes";
+    const bucket = BUCKET[step.command];
     const result = await deps.commands[step.command](deps, actor, step.input);
+    // The Job Role catalog writer says CREATED where the assignment writers say ASSIGNED; both say
+    // NO_CHANGE on a second run, which is what makes the whole phase idempotent. An END-shaped outcome is
+    // still a bug: this phase creates and assigns, and never retires anything.
     if (result.outcome === "NO_CHANGE") summary[bucket].unchanged += 1;
-    else if (result.outcome === "ASSIGNED") summary[bucket].assigned += 1;
-    else refuse("UNEXPECTED_OUTCOME", `${step.command} returned ${result.outcome}; this phase only ever assigns`);
+    else if (result.outcome === "CREATED" && step.command === "createJobRole") summary[bucket].created += 1;
+    else if (result.outcome === "ASSIGNED" && step.command !== "createJobRole") summary[bucket].assigned += 1;
+    else refuse("UNEXPECTED_OUTCOME", `${step.command} returned ${result.outcome}; this phase only ever creates a catalog entry or assigns`);
   }
   return { applied: true, summary, plan };
 }
@@ -457,6 +512,7 @@ module.exports = {
   ASSIGN_REASON_PREFIX,
   DIMENSION_WORK_ELIGIBILITY,
   DIMENSION_OPERATIONAL_SCOPE,
+  DIMENSION_JOB_ROLE,
   RECORDED_REASON_MAX_LENGTH,
   PersonaDimensionsError,
   composeStepReason,

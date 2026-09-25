@@ -113,7 +113,7 @@
 //
 // Usage (Render Shell on eos-api-nonprod):
 //   node scripts/seedSampleCompany.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
-//     --tenantKey taylor-nonprod --existingAdminPrincipalId <principal id> --performedBy <operator>
+//     --tenantKey taylor-nonprod --existingAdminPrincipalId <principal id> --existingOwnerPrincipalId <principal id> --performedBy <operator>
 //   ... add `--mode apply --apply` to write.
 //
 // Exit 0 planned/seeded; 1 drift or unresolved grants; 2 refused or failed. Output: deterministic JSON, no
@@ -137,10 +137,24 @@ const SYNTHETIC_IDENTITY_PROVIDER = "eos-synthetic-nonprod";
 const RUNTIME_IDENTITY_PROVIDER = "firebase";
 const DERIVE_FROM_OWNER = "DERIVE_FROM_OWNER";
 const USER_ACCESS_STATES = Object.freeze(["ENABLED", "DISABLED", "NONE"]);
+/**
+ * THE GOVERNED JOB ROLE VOCABULARY -- fourteen business functions, extended from twelve by deliberate act.
+ *
+ * ADMINISTRATOR was added because the Owner ruled that Owner/Executive and Administrator are two business
+ * functions and that no merged Owner/Admin fixture may survive as the canonical acceptance persona; a
+ * persona separation with no Job Role separation would be a separation in name only.
+ * FINANCE_MANAGER was added so the Finance / Accounting persona carries its own business function instead of
+ * borrowing OFFICE_MANAGER. Reporting and the restricted negative control deliberately DO reuse
+ * OFFICE_MANAGER: neither is a distinct business function in this fixture company, and reusing it buys the
+ * SAME_JOB_ROLE_DIFFERENT_SECURITY_ROLE proof that mirrors the sales personas' opposite one.
+ */
 const JOB_ROLE_VOCABULARY = Object.freeze([
-  "OWNER_EXECUTIVE", "GENERAL_MANAGER", "OFFICE_MANAGER", "SERVICE_MANAGER", "DISPATCHER", "SERVICE_TECHNICIAN",
-  "RETAIL_SALES", "NATIONAL_ACCOUNTS_SALES", "PARTS_MANAGER", "PARTS_ASSOCIATE", "WAREHOUSE_MANAGER", "WAREHOUSE_ASSOCIATE",
+  "OWNER_EXECUTIVE", "ADMINISTRATOR", "GENERAL_MANAGER", "OFFICE_MANAGER", "SERVICE_MANAGER", "DISPATCHER",
+  "SERVICE_TECHNICIAN", "RETAIL_SALES", "NATIONAL_ACCOUNTS_SALES", "PARTS_MANAGER", "PARTS_ASSOCIATE",
+  "WAREHOUSE_MANAGER", "WAREHOUSE_ASSOCIATE", "FINANCE_MANAGER",
 ]);
+/** The id shape functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts accepts for a catalog entry. */
+const PG_JOB_ROLE_ID_SHAPE = /^[a-z][a-z0-9-]{1,62}$/;
 
 /** The environment this sample company lives in, and the one that is refused by NAME however it is labelled. */
 const REQUIRED_ENVIRONMENT = "platform-sandbox";
@@ -203,12 +217,21 @@ function validateManifest(m) {
 
   // ---- Job Roles. A generic SALES Job Role is forbidden, and the two sales Job Roles are separate.
   const jobRoles = new Set();
+  const pgJobRoleIds = new Set();
   for (const r of m.jobRoles) {
     if (/^sales$/i.test(r.key) || /^sales$/i.test(String(r.label).trim())) {
       refuse("MANIFEST_INVALID", "a generic Job Role named SALES is forbidden; Retail Sales and National Accounts Sales are separate");
     }
     if (!JOB_ROLE_VOCABULARY.includes(r.key)) refuse("MANIFEST_INVALID", `Job Role ${r.key} is outside the governed vocabulary`);
     if (jobRoles.has(r.key)) refuse("MANIFEST_INVALID", `duplicate Job Role ${r.key}`);
+    // The id the GOVERNED PostgreSQL catalog writer accepts. Declared here so the catalog entry and the
+    // manifest vocabulary can never drift, and so nobody ever passes the SCREAMING_CASE key to a writer
+    // whose id shape forbids it.
+    if (!PG_JOB_ROLE_ID_SHAPE.test(r.pgJobRoleId ?? "")) {
+      refuse("MANIFEST_INVALID", `Job Role ${r.key} declares no governed catalog id (pgJobRoleId must match ${PG_JOB_ROLE_ID_SHAPE})`);
+    }
+    if (pgJobRoleIds.has(r.pgJobRoleId)) refuse("MANIFEST_INVALID", `duplicate governed Job Role id ${r.pgJobRoleId}`);
+    pgJobRoleIds.add(r.pgJobRoleId);
     jobRoles.add(r.key);
   }
   for (const required of JOB_ROLE_VOCABULARY) {
@@ -260,9 +283,12 @@ function validateManifest(m) {
     return e;
   };
 
-  // ---- Principals: exactly one reused real administrator, everything else a non-authenticating fixture.
+  // ---- Principals: exactly one reused real administrator, exactly one reused real owner, everything else a
+  // non-authenticating fixture. The two reused Principals are SEPARATE by Owner ruling -- Owner is not
+  // Administrator and Administrator is not Owner -- and neither is ever created, renamed or re-credentialed.
   const principalsByEmployee = new Map();
   let administrators = 0;
+  let owners = 0;
   const subjects = new Set();
   for (const p of m.principals) {
     const employee = eligible(p.employee, "a Principal link");
@@ -286,10 +312,24 @@ function validateManifest(m) {
     if (employee.sandboxPersona?.interactiveLogin === true && login.identityProvider === SYNTHETIC_IDENTITY_PROVIDER) {
       refuse("MANIFEST_INVALID", `${p.employee}: interactiveLogin is true but the login Principal uses ${SYNTHETIC_IDENTITY_PROVIDER}, which no verifier recognizes`);
     }
+    if (p.existingAdministrator && p.existingOwnerPrincipal) {
+      refuse("MANIFEST_INVALID", `${p.employee}: one Principal may not be both the reused Administrator and the reused Owner -- that is the merge the Owner ruled out`);
+    }
     if (p.existingAdministrator) {
       administrators += 1;
       if (login.externalSubject !== "EXISTING_ADMINISTRATOR") refuse("MANIFEST_INVALID", `${p.employee}: the reused administrator's subject is never restated in the manifest`);
+      if (login.credentialEmail !== null) refuse("MANIFEST_INVALID", `${p.employee}: the reused administrator's credential is real and out of scope; its credentialEmail must be null so it can never become a credential-activation allowlist entry`);
       if (p.fixturePrincipal !== null) refuse("MANIFEST_INVALID", `${p.employee}: the reused administrator has no fixture Principal to supersede`);
+      if (!p.securityRoles.includes("admin")) refuse("MANIFEST_INVALID", `${p.employee}: the reused administrator Principal is the one that holds admin`);
+    } else if (p.existingOwnerPrincipal) {
+      // The `owner`-holding Principal that ALREADY EXISTS in nonprod and has never been linked to an
+      // Employee. Adopted, never provisioned: a second owner login would be an authority increase for nothing.
+      owners += 1;
+      if (login.externalSubject !== "EXISTING_OWNER") refuse("MANIFEST_INVALID", `${p.employee}: the reused owner's subject is never restated in the manifest`);
+      if (login.credentialEmail !== null) refuse("MANIFEST_INVALID", `${p.employee}: the reused owner's credential is real and out of scope; its credentialEmail must be null`);
+      if (p.fixturePrincipal !== null) refuse("MANIFEST_INVALID", `${p.employee}: the reused owner has no fixture Principal to supersede`);
+      if (!p.securityRoles.includes("owner")) refuse("MANIFEST_INVALID", `${p.employee}: the reused owner Principal is the one that holds owner`);
+      if (p.securityRoles.includes("admin")) refuse("MANIFEST_INVALID", `${p.employee}: the Owner / Executive persona may never hold admin -- Owner is not Administrator`);
     } else {
       // A uid is discovered from the Auth account at activation time. A literal here would commit a
       // credential subject to the repository and invite somebody to reuse it as an Employee id.
@@ -311,6 +351,7 @@ function validateManifest(m) {
     }
   }
   if (administrators !== 1) refuse("MANIFEST_INVALID", "exactly one existing administrator Principal is reused");
+  if (owners !== 1) refuse("MANIFEST_INVALID", "exactly one existing owner Principal is reused; Owner / Executive and Administrator are separate Principals by Owner ruling");
   for (const e of m.employees) {
     const hasPrincipal = principalsByEmployee.has(e.key);
     if (e.userAccess.state === "ENABLED" && !hasPrincipal) refuse("MANIFEST_INVALID", `${e.key} declares userAccess ENABLED but has no Principal`);
@@ -512,7 +553,22 @@ function validateManifest(m) {
  * grant them to every other catalog Role that declares them, which is outside what seeding the sample company may do.
  */
 function sampleCompanyRoleKeys(manifest = MANIFEST) {
-  return [...new Set(manifest.principals.flatMap((p) => p.securityRoles))].sort();
+  const withheld = new Set((manifest.expectedAccess.roleGrantScope?.withheldFromReconciliation ?? []).map((r) => r.role));
+  return [...new Set(manifest.principals.flatMap((p) => p.securityRoles))].filter((k) => !withheld.has(k)).sort();
+}
+
+/**
+ * The Roles a manifest Principal names that this seed deliberately does NOT reconcile grants for, with the
+ * reason each one is withheld. Withholding NARROWS what the seed may write and can never widen it.
+ *
+ * `owner` is withheld by Owner ruling. The compiled Role catalog declares `owner` and `admin` with identical
+ * 151-permission lists; eos_policy grants `owner` 47 capabilities and `admin` 66, with 19 admin-only and none
+ * owner-only. Reconciling `owner` against the catalog would therefore add the Administrator's operational
+ * capabilities to the Owner Role -- which is precisely the way the Owner ruled the asymmetry may NOT be
+ * solved. The live grant set is the authority and this seed leaves it exactly as it is.
+ */
+function withheldRoleGrantScope(manifest = MANIFEST) {
+  return manifest.expectedAccess.roleGrantScope?.withheldFromReconciliation ?? [];
 }
 
 /** Every capability key the Roles this sample company uses declare. Derived from the Role catalog, never typed. */
@@ -562,6 +618,16 @@ function assertSampleCompanyInvocation(args, env) {
   if (typeof args.existingAdminPrincipalId !== "string" || args.existingAdminPrincipalId.trim() === "" || args.existingAdminPrincipalId === "true") {
     refuse("ARGUMENT_REQUIRED", "--existingAdminPrincipalId is required: the administering Principal is named, never inferred, and its authority is read from its own Role assignments");
   }
+  // THE OWNER PRINCIPAL IS NAMED TOO, AND SEPARATELY. Owner ruling: Owner is not Administrator. The
+  // `owner`-holding Principal already exists in the tenant and is ADOPTED for the Owner / Executive Employee
+  // -- never created, never re-credentialed, and never inferred from "whoever holds owner", because
+  // inferring an identity from a Role is how the two got merged in the first place.
+  if (typeof args.existingOwnerPrincipalId !== "string" || args.existingOwnerPrincipalId.trim() === "" || args.existingOwnerPrincipalId === "true") {
+    refuse("ARGUMENT_REQUIRED", "--existingOwnerPrincipalId is required: the Owner / Executive Principal is named, never inferred, and it is a DIFFERENT Principal from the administrator");
+  }
+  if (args.existingOwnerPrincipalId === args.existingAdminPrincipalId) {
+    refuse("ARGUMENT_INVALID", "--existingOwnerPrincipalId and --existingAdminPrincipalId must name DIFFERENT Principals; Owner and Administrator are separate by Owner ruling");
+  }
   const writes = mode === "apply" || mode === "activate-logins" || mode === "activate-credentials";
   const apply = writes && args.apply === "true";
   if (writes && args.apply !== "true") {
@@ -607,6 +673,7 @@ function assertSampleCompanyInvocation(args, env) {
     mode, apply, environmentId, connectionString,
     tenantKey: args.tenantKey, performedBy: args.performedBy,
     existingAdminPrincipalId: args.existingAdminPrincipalId,
+    existingOwnerPrincipalId: args.existingOwnerPrincipalId,
     firebaseProjectId: args.firebaseProjectId,
     credentialFile,
   };
@@ -684,6 +751,17 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   const adminMembership = admin ? await repo.getMembership(tenantId, admin.id) : null;
   if (!admin || admin.status !== "active" || !adminMembership || adminMembership.status !== "active") {
     refuse("ADMINISTRATOR_INVALID", "--existingAdminPrincipalId must name an active Principal with an active membership in this tenant");
+  }
+
+  // ---- 2b. the OWNER Principal, adopted and never created. A separate identity from the administrator,
+  // and the reason every contextual predicate stops answering EMPLOYEE_LINK_REQUIRED for it.
+  const ownerPrincipal = await repo.getPrincipal(options.existingOwnerPrincipalId);
+  const ownerMembership = ownerPrincipal ? await repo.getMembership(tenantId, ownerPrincipal.id) : null;
+  if (!ownerPrincipal || ownerPrincipal.status !== "active" || !ownerMembership || ownerMembership.status !== "active") {
+    refuse("OWNER_PRINCIPAL_INVALID", "--existingOwnerPrincipalId must name an active Principal with an active membership in this tenant");
+  }
+  if (ownerPrincipal.id === admin.id) {
+    refuse("OWNER_PRINCIPAL_INVALID", "the Owner and the Administrator may not be the same Principal");
   }
   const roles = await repo.listRoles(tenantId);
   const roleByKey = new Map(roles.map((r) => [r.key, r]));
@@ -800,6 +878,10 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       // REUSED, never recreated and never re-credentialed. Its own Role set is left exactly as it is.
       principal = admin;
       ledger.record("principals", "ALREADY_PRESENT", "(the reused existing administrator)");
+    } else if (p.existingOwnerPrincipal) {
+      // ADOPTED, never created. Same rule as the administrator, and a DIFFERENT Principal.
+      principal = ownerPrincipal;
+      ledger.record("principals", "ALREADY_PRESENT", "(the reused existing owner)");
     } else {
       // ONCE LOGIN ACTIVATION HAS RUN, THIS PHASE MUST NOT UNDO IT. The fixture Principal has been
       // deliberately retired (membership disabled) and the Employee's active link moved to the `firebase`
@@ -1304,6 +1386,9 @@ function finish(manifest, options, ledger, grantReport, capabilityKeys, tenantId
       // Declared, named, and counted -- never silently dropped and never reported as UNKNOWN_CAPABILITY noise.
       capabilityVocabularyGap: { code: "CAPABILITY_VOCABULARY_PARTIAL", count: capabilityVocabularyGap.length, keys: capabilityVocabularyGap },
       roleScope: sampleCompanyRoleKeys(manifest),
+      // A Role a Principal names and this seed deliberately grants nothing for. Reported beside the scope so
+      // "the Owner Role gained no capability" is a stated outcome rather than something nobody looked for.
+      roleScopeWithheld: withheldRoleGrantScope(manifest).map((r) => ({ role: r.role, reason: r.reason })),
       apply: grantReport.apply,
       beforeCount: grantReport.beforeCount,
       proposedAdditions: grantReport.proposedAdditions,
@@ -1379,6 +1464,7 @@ module.exports = {
   assertSampleCompanyInvocation,
   sampleCompanyCapabilityKeys,
   sampleCompanyRoleKeys,
+  withheldRoleGrantScope,
   EMPLOYMENT_STATUS_VALUES,
   SYNTHETIC_IDENTITY_PROVIDER,
   RUNTIME_IDENTITY_PROVIDER,

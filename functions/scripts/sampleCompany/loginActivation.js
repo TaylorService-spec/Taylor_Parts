@@ -93,6 +93,13 @@ async function activateSampleCompanyLogins(pool, options, manifest, authDirector
   if (!hasAdministrationAuthority(adminRoleKeys, "assignRole")) {
     refuse("ADMINISTRATOR_INVALID", "the named administrator Principal holds no Role that may assign Roles; this phase asserts no authority of its own");
   }
+  // The OWNER Principal is adopted, not created -- a separate real Principal from the administrator, named
+  // rather than inferred from "whoever holds owner". Owner ruling: Owner is not Administrator.
+  const ownerPrincipal = await repo.getPrincipal(options.existingOwnerPrincipalId);
+  const ownerMembership = ownerPrincipal ? await repo.getMembership(tenantId, ownerPrincipal.id) : null;
+  if (!ownerPrincipal || ownerPrincipal.status !== "active" || !ownerMembership || ownerMembership.status !== "active") {
+    refuse("OWNER_PRINCIPAL_INVALID", "--existingOwnerPrincipalId must name an active Principal with an active membership in this tenant");
+  }
   const actor = { tenantId, uid: actorUid, heldRoleKeys: adminRoleKeys };
 
   const personas = [];
@@ -124,17 +131,21 @@ async function activateSampleCompanyLogins(pool, options, manifest, authDirector
       fixturePrincipalDisposition: null,
     };
 
-    // ---- the ONE real administrator: reused exactly as it is.
-    if (p.existingAdministrator) {
-      record.authAccount = "REUSED_EXISTING_ADMINISTRATOR";
+    // ---- the two REUSED real Principals -- the administrator and the owner -- each used exactly as it is.
+    // They are separate Principals for separate Employees by Owner ruling, and neither is ever created,
+    // renamed or re-credentialed here.
+    if (p.existingAdministrator || p.existingOwnerPrincipal) {
+      const reused = p.existingAdministrator ? admin : ownerPrincipal;
+      const label = p.existingAdministrator ? "administrator" : "owner";
+      record.authAccount = p.existingAdministrator ? "REUSED_EXISTING_ADMINISTRATOR" : "REUSED_EXISTING_OWNER";
       record.loginPrincipal = "REUSED_UNCHANGED";
-      record.subjectFingerprint = fingerprint(admin.externalSubject);
+      record.subjectFingerprint = fingerprint(reused.externalSubject);
       const link = await links.readActiveLinkForEmployee(pool, tenantId, employee.id);
-      if (link && link.principalId === admin.id) {
+      if (link && link.principalId === reused.id) {
         record.employeeLink = "ACTIVE";
         summary.linksAlreadyCorrect += 1;
       } else if (link) {
-        drift.push({ persona: p.employee, detail: `the Owner/Executive Employee is actively linked to ${link.principalId}, not to the named administrator Principal` });
+        drift.push({ persona: p.employee, detail: `the ${p.employee} Employee is actively linked to ${link.principalId}, not to the named ${label} Principal` });
         record.employeeLink = "FIXTURE_DRIFT";
       } else {
         record.employeeLink = "MISSING";

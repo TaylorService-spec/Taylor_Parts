@@ -241,9 +241,95 @@ test("the three separations are each proved by a NAMED persona, not by an accide
   assert.ok(eligibilityByEmployee.has("service-technician-a") && !scopesByEmployee.has("service-technician-a"));
   // Job Role without the matching qualification
   assert.ok(!eligibilityByEmployee.has("technician-on-leave"));
-  // the broadest Security Role with no operational qualification at all
-  assert.deepEqual(MANIFEST.personas["owner-executive"].securityRoles, ["admin"]);
+  // the broadest Security Role with no operational qualification at all -- and it is the ADMINISTRATOR's,
+  // not the Owner's. Owner ruling: Owner is not Administrator and Administrator is not Owner.
+  assert.deepEqual(MANIFEST.personas.administrator.securityRoles, ["admin"]);
+  assert.deepEqual(MANIFEST.personas.administrator.workEligibility, []);
+  assert.deepEqual(MANIFEST.personas["owner-executive"].securityRoles, ["owner"]);
   assert.deepEqual(MANIFEST.personas["owner-executive"].workEligibility, []);
+});
+
+test("OWNER IS NOT ADMINISTRATOR: two personas, two Employees, two Principals, two Roles, and no merge left", () => {
+  const owner = MANIFEST.personas["owner-executive"];
+  const administrator = MANIFEST.personas.administrator;
+  assert.notEqual(owner.employee, administrator.employee);
+  assert.notEqual(owner.jobRole, administrator.jobRole);
+  assert.deepEqual(owner.securityRoles, ["owner"]);
+  assert.deepEqual(administrator.securityRoles, ["admin"]);
+  // The merged OWNER/ADMIN fixture may not survive in ANY form: not as a persona field, not as a catalog
+  // disposition. (parts-manager keeps `mergedFrom: ["Purchasing"]`, which is a merge the Owner made: the
+  // required population names that persona "Parts Manager/Purchasing" as one entry.)
+  for (const [key, p] of Object.entries(MANIFEST.personas)) {
+    assert.ok(!(p.mergedFrom ?? []).includes("Administrator"), `${key} still merges Administrator into itself`);
+    assert.ok(!(p.mergedFrom ?? []).includes("Owner / Executive"), `${key} still merges Owner / Executive into itself`);
+  }
+  assert.equal(MANIFEST.personas["owner-executive"].mergedFrom, undefined);
+  assert.equal(MANIFEST.personas["owner-executive"].mergeReason, undefined);
+  const administratorGap = MANIFEST.catalogGaps.find((g) => /^Administrator/.test(g.requestedRole));
+  assert.notEqual(administratorGap.disposition, "MERGED_INTO_OWNER_EXECUTIVE");
+  assert.equal(administratorGap.disposition, "CLOSED_IN_SAMPLE_COMPANY_V2");
+  assert.equal(administratorGap.closedBy, "personas['administrator']");
+  // And the separation is NOT made by giving the Owner the Administrator's permissions: the `owner` Role
+  // is withheld from the Sample Company's grant reconciliation for exactly that reason.
+  assert.deepEqual(SAMPLE_COMPANY.expectedAccess.roleGrantScope.withheldFromReconciliation.map((r) => r.role), ["owner"]);
+  assert.match(SAMPLE_COMPANY.expectedAccess.roleGrantScope.withheldFromReconciliation[0].reason, /may NOT be solved by copying/);
+});
+
+test("REPORTING is a BLOCKED_DOMAIN placeholder and holds no reporting authority of any kind", () => {
+  const p = MANIFEST.personas["report-analyst"];
+  assert.equal(p.acceptance, "BLOCKED_DOMAIN");
+  assert.equal(p.blockedBy, "REPORTING_CAPABILITY_VOCABULARY_ABSENT");
+  assert.deepEqual(p.securityRoles, []);
+  assert.equal(p.northStar, "NONE");
+  assert.ok(!SAMPLE_COMPANY.principals.some((x) => x.employee === "report-analyst"), "the Reporting persona holds no Principal");
+  // NOT ONE report capability may be granted while the domain is outside eos_policy. Measured, not assumed:
+  // no report.* id is in the governed vocabulary, so no contract anywhere could name one and pass.
+  const vocabulary = SAMPLE_COMPANY.expectedAccess.postgresCapabilityVocabulary;
+  assert.deepEqual(vocabulary.filter((k) => k.startsWith("report")), []);
+  for (const role of ["reportViewer", "reportFinanceViewer", "reportAuthor"]) {
+    assert.ok(!SAMPLE_COMPANY.principals.some((x) => x.securityRoles.includes(role)), `${role} is held by nobody`);
+  }
+  assert.ok(MANIFEST.blockers.some((b) => b.code === "REPORTING_CAPABILITY_VOCABULARY_ABSENT"));
+});
+
+test("the RESTRICTED negative control is signed in, and that is what makes it different from records-clerk", () => {
+  const restricted = MANIFEST.personas["restricted-user"];
+  assert.deepEqual(restricted.securityRoles, ["generalEmployee"]);
+  assert.deepEqual(restricted.workEligibility, []);
+  assert.deepEqual(restricted.operationalScopes, []);
+  // IT HAS A PRINCIPAL. records-clerk and technician-on-leave do not, so their refusals come before
+  // authorization is reached; this one's come FROM authorization.
+  assert.ok(SAMPLE_COMPANY.principals.some((x) => x.employee === "restricted-user"));
+  for (const key of ["records-clerk", "technician-on-leave"]) {
+    assert.ok(!SAMPLE_COMPANY.principals.some((x) => x.employee === key), `${key} must stay Principal-less`);
+  }
+  // Its Role is real and grants nothing -- measured from the compiled catalog, never assumed.
+  const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  assert.ok(roles.generalEmployee, "generalEmployee must be a real governed Role");
+  assert.deepEqual(roles.generalEmployee.permissions ?? [], []);
+  // Same Job Role as the office manager, radically different Security Role: the mirror image of the
+  // retail-vs-national-accounts proof, which is same Security Role and different Job Role.
+  assert.equal(restricted.jobRole, MANIFEST.personas["office-manager"].jobRole);
+  assert.notDeepEqual(restricted.securityRoles, MANIFEST.personas["office-manager"].securityRoles);
+});
+
+test("the FINANCE persona holds the registered financial authority that nobody held", () => {
+  const finance = MANIFEST.personas["finance-controller"];
+  assert.deepEqual(finance.securityRoles, ["controller"]);
+  assert.equal(finance.jobRole, "FINANCE_MANAGER");
+  // JOB ROLE IS NOT SECURITY ROLE, and this persona is where the two most obviously do not have to agree:
+  // it carries the FINANCE_MANAGER business function and does NOT hold the `financeManager` Security Role.
+  assert.ok(!finance.securityRoles.includes("financeManager"));
+  const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
+  const contract = SAMPLE_COMPANY.expectedAccess.personas["finance-controller"];
+  const held = new Set(roles.controller.permissions ?? []);
+  for (const cap of contract.requiredCapabilities) assert.ok(held.has(cap), `controller does not declare ${cap}`);
+  for (const cap of contract.forbiddenCapabilities) assert.ok(!held.has(cap), `controller declares forbidden ${cap}`);
+  assert.ok(contract.requiredCapabilities.some((c) => c.startsWith("finance.")), "the finance authority must actually be exercised");
+  // And it is ONE finance authority, not three copies of the same seventeen capabilities.
+  for (const role of ["accountingManager", "financeManager"]) {
+    assert.ok(!SAMPLE_COMPANY.principals.some((x) => x.securityRoles.includes(role)), `${role} stays held by nobody`);
+  }
 });
 
 // ════════════════════ (4) THE PERSONA CATALOG CAN NEVER DRIFT FROM THE SAMPLE COMPANY ════════════════════
@@ -477,26 +563,73 @@ test("the Owner's TEST_PERSONA ruling is recorded against the persona it was abo
 
 test("(8) the plan is exactly the manifest's rows, through the governed commands and nothing else", () => {
   const plan = planPersonaAuthorityDimensions();
-  assert.equal(plan.length, MANIFEST.workEligibility.length + MANIFEST.operationalScopes.length);
+  assert.equal(plan.length,
+    SAMPLE_COMPANY.jobRoles.length + SAMPLE_COMPANY.employees.length
+    + MANIFEST.workEligibility.length + MANIFEST.operationalScopes.length);
   const commands = new Set(plan.map((s) => s.command));
-  assert.deepEqual([...commands].sort(), ["assignEmployeeOperationalScope", "assignEmployeeWorkEligibility"]);
-  // Eligibility is planned BEFORE scope: a scope on an unqualified Employee is a legitimate state,
-  // but ordering the writes this way keeps the seed's output readable as the model reads.
-  assert.equal(plan[0].command, "assignEmployeeWorkEligibility");
+  assert.deepEqual([...commands].sort(),
+    ["assignEmployeeJobRole", "assignEmployeeOperationalScope", "assignEmployeeWorkEligibility", "createJobRole"]);
+  // THE JOB ROLE CATALOG FIRST, because assignEmployeeJobRole reads its entry FOR SHARE and refuses one
+  // that does not exist. Then eligibility BEFORE scope: a scope on an unqualified Employee is a legitimate
+  // state, but ordering the writes this way keeps the seed's output readable as the model reads.
+  assert.equal(plan[0].command, "createJobRole");
   assert.equal(plan[plan.length - 1].command, "assignEmployeeOperationalScope");
+  const order = plan.map((s) => s.command);
+  const lastCatalog = order.lastIndexOf("createJobRole");
+  assert.ok(lastCatalog < order.indexOf("assignEmployeeJobRole"), "no assignment may be planned before its catalog entry");
+  assert.ok(order.lastIndexOf("assignEmployeeJobRole") < order.indexOf("assignEmployeeWorkEligibility"));
+  assert.ok(order.lastIndexOf("assignEmployeeWorkEligibility") < order.indexOf("assignEmployeeOperationalScope"));
+});
+
+test("EVERY Employee gets a governed Job Role assignment -- access has nothing to do with it", () => {
+  const plan = planPersonaAuthorityDimensions().filter((s) => s.command === "assignEmployeeJobRole");
+  assert.equal(plan.length, SAMPLE_COMPANY.employees.length,
+    "a Job Role is a business function; an Employee with no Principal still has one");
+  const byEmployee = new Map(plan.map((s) => [s.input.employeeId, s.input.jobRoleId]));
+  const catalog = new Map(SAMPLE_COMPANY.jobRoles.map((r) => [r.key, r.pgJobRoleId]));
+  for (const e of SAMPLE_COMPANY.employees) {
+    assert.equal(byEmployee.get(e.id), catalog.get(e.jobRole), `${e.key} is assigned its own declared Job Role and no other`);
+  }
+  // The personas with NO Principal are in it, which is the point: Job Role is not access.
+  for (const key of ["records-clerk", "technician-on-leave", "report-analyst"]) {
+    const e = SAMPLE_COMPANY.employees.find((x) => x.key === key);
+    assert.ok(byEmployee.has(e.id), `${key} has no Principal and must still carry a Job Role`);
+  }
+});
+
+test("RETAIL SALES and NATIONAL ACCOUNTS SALES are two catalog entries and stay two", () => {
+  const catalog = planPersonaAuthorityDimensions().filter((s) => s.command === "createJobRole");
+  assert.equal(catalog.length, SAMPLE_COMPANY.jobRoles.length);
+  const ids = catalog.map((s) => s.input.jobRoleId);
+  assert.equal(new Set(ids).size, ids.length, "two Job Roles may never collapse onto one governed id");
+  assert.ok(ids.includes("retail-sales") && ids.includes("national-accounts-sales"));
+  for (const id of ids) assert.match(id, /^[a-z][a-z0-9-]{1,62}$/, "the governed writer refuses any other id shape");
+  // The distinction is REAL only here: both sales personas hold the identical `salesperson` Security Role.
+  const roleOf = (k) => SAMPLE_COMPANY.principals.find((p) => p.employee === k).securityRoles;
+  assert.deepEqual(roleOf("retail-sales-a"), roleOf("national-accounts-sales"));
+  assert.notEqual(MANIFEST.personas["retail-sales-a"].jobRole, MANIFEST.personas["national-accounts-sales"].jobRole);
 });
 
 test("the plan asks for the NARROW capability each authority declares, and they are not the same one", () => {
   assert.notEqual(EMPLOYEE_WORK_ELIGIBILITY_WRITE, EMPLOYEE_OPERATIONAL_SCOPE_WRITE);
+  const { EMPLOYEE_JOB_ROLE_WRITE } = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
+  assert.notEqual(EMPLOYEE_JOB_ROLE_WRITE, EMPLOYEE_WORK_ELIGIBILITY_WRITE);
+  assert.notEqual(EMPLOYEE_JOB_ROLE_WRITE, EMPLOYEE_OPERATIONAL_SCOPE_WRITE);
+  const BY_COMMAND = {
+    createJobRole: EMPLOYEE_JOB_ROLE_WRITE,
+    assignEmployeeJobRole: EMPLOYEE_JOB_ROLE_WRITE,
+    assignEmployeeWorkEligibility: EMPLOYEE_WORK_ELIGIBILITY_WRITE,
+    assignEmployeeOperationalScope: EMPLOYEE_OPERATIONAL_SCOPE_WRITE,
+  };
   for (const step of planPersonaAuthorityDimensions()) {
-    const expected = step.command === "assignEmployeeWorkEligibility" ? EMPLOYEE_WORK_ELIGIBILITY_WRITE : EMPLOYEE_OPERATIONAL_SCOPE_WRITE;
-    assert.equal(step.requiresCapability, expected);
+    assert.equal(step.requiresCapability, BY_COMMAND[step.command], step.command);
   }
 });
 
 test("every planned input carries the governed Employee ID, never a persona key or a subject", () => {
   const ids = new Set(SAMPLE_COMPANY.employees.map((e) => e.id));
   for (const step of planPersonaAuthorityDimensions()) {
+    if (step.command === "createJobRole") continue; // a catalog entry names no Employee at all
     assert.ok(ids.has(step.input.employeeId), step.input.employeeId);
     assert.match(step.input.employeeId, /^synthetic-np-emp-[a-z0-9-]+$/);
   }
@@ -504,7 +637,8 @@ test("every planned input carries the governed Employee ID, never a persona key 
 
 test("plan writes nothing", async () => {
   let called = 0;
-  const deps = { commands: { assignEmployeeWorkEligibility: async () => { called += 1; }, assignEmployeeOperationalScope: async () => { called += 1; } } };
+  const bump = async () => { called += 1; };
+  const deps = { commands: { createJobRole: bump, assignEmployeeJobRole: bump, assignEmployeeWorkEligibility: bump, assignEmployeeOperationalScope: bump } };
   const result = await seedPersonaAuthorityDimensions(deps, { tenantId: "t", principalId: "p" }, { apply: false });
   assert.equal(called, 0);
   assert.equal(result.applied, false);
@@ -515,6 +649,18 @@ test("apply is idempotent: a second run over an already-seeded world assigns not
   const state = new Set();
   const deps = {
     commands: {
+      async createJobRole(_d, _a, input) {
+        const handle = `jr:${input.jobRoleId}`;
+        const seen = state.has(handle);
+        state.add(handle);
+        return { outcome: seen ? "NO_CHANGE" : "CREATED" };
+      },
+      async assignEmployeeJobRole(_d, _a, input) {
+        const handle = `ejr:${input.employeeId}:${input.jobRoleId}`;
+        const seen = state.has(handle);
+        state.add(handle);
+        return { outcome: seen ? "NO_CHANGE" : "ASSIGNED" };
+      },
       async assignEmployeeWorkEligibility(_d, _a, input) {
         const handle = `we:${input.employeeId}:${input.qualificationCode}`;
         const seen = state.has(handle);
@@ -531,19 +677,33 @@ test("apply is idempotent: a second run over an already-seeded world assigns not
   };
   const actor = { tenantId: "t", principalId: "p" };
   const first = await seedPersonaAuthorityDimensions(deps, actor, { apply: true });
+  assert.equal(first.summary.jobRoleCatalog.created, SAMPLE_COMPANY.jobRoles.length);
+  assert.equal(first.summary.jobRoles.assigned, SAMPLE_COMPANY.employees.length);
   assert.equal(first.summary.workEligibility.assigned, MANIFEST.workEligibility.length);
   assert.equal(first.summary.operationalScopes.assigned, MANIFEST.operationalScopes.length);
   assert.equal(first.summary.workEligibility.unchanged, 0);
 
   const second = await seedPersonaAuthorityDimensions(deps, actor, { apply: true });
+  assert.equal(second.summary.jobRoleCatalog.created, 0);
+  assert.equal(second.summary.jobRoles.assigned, 0);
   assert.equal(second.summary.workEligibility.assigned, 0);
   assert.equal(second.summary.operationalScopes.assigned, 0);
+  assert.equal(second.summary.jobRoleCatalog.unchanged, SAMPLE_COMPANY.jobRoles.length);
+  assert.equal(second.summary.jobRoles.unchanged, SAMPLE_COMPANY.employees.length);
   assert.equal(second.summary.workEligibility.unchanged, MANIFEST.workEligibility.length);
   assert.equal(second.summary.operationalScopes.unchanged, MANIFEST.operationalScopes.length);
 });
 
-test("this phase only ever ASSIGNS -- an END outcome is a bug and refuses", async () => {
-  const deps = { commands: { assignEmployeeWorkEligibility: async () => ({ outcome: "ENDED" }), assignEmployeeOperationalScope: async () => ({ outcome: "ASSIGNED" }) } };
+test("this phase only ever CREATES a catalog entry or ASSIGNS -- an END outcome is a bug and refuses", async () => {
+  const ok = async () => ({ outcome: "ASSIGNED" });
+  const deps = {
+    commands: {
+      createJobRole: async () => ({ outcome: "CREATED" }),
+      assignEmployeeJobRole: ok,
+      assignEmployeeWorkEligibility: async () => ({ outcome: "ENDED" }),
+      assignEmployeeOperationalScope: ok,
+    },
+  };
   await assert.rejects(
     seedPersonaAuthorityDimensions(deps, { tenantId: "t", principalId: "p" }, { apply: true }),
     /UNEXPECTED_OUTCOME/,
@@ -595,8 +755,10 @@ test("the administering authority is MEASURED from the compiled catalog, not gre
     const holders = Object.values(roles).filter((r) => (r.permissions ?? []).includes(capability)).map((r) => r.id).sort();
     assert.deepEqual(holders, ["admin", "owner"], capability);
   }
-  // and the persona that administers this phase is the one holding `admin`
-  assert.ok(MANIFEST.personas["owner-executive"].securityRoles.includes("admin"));
+  // and the persona that administers this phase is the one holding `admin` -- which, since the Owner ruled
+  // Owner and Administrator apart, is the ADMINISTRATOR persona and no longer the Owner / Executive.
+  assert.ok(MANIFEST.personas.administrator.securityRoles.includes("admin"));
+  assert.ok(!MANIFEST.personas["owner-executive"].securityRoles.includes("admin"));
   const item = MANIFEST.prerequisites.find((p) => p.code === "ADMINISTERING_CAPABILITIES_REQUIRED");
   assert.equal(item.blocks, "NOTHING");
   assert.match(item.measured, /admin.*owner/);
