@@ -706,6 +706,11 @@ on:
       # resolves through a real PostgreSQL (capabilitiesForRoleKeys), so it runs in
       # test:adminPolicyPostgres, where POLICY_TEST_DATABASE_URL is set and it cannot skip.
       - "functions/test/personaBusinessAccessRegression.test.mjs"
+      # REGISTRATION GAP CLOSED (lane BS, canonical Job Role vocabulary). This suite pins the persona
+      # provisioning plan's step count and its command mix, so it is a subject of every Job Role vocabulary
+      # change. It was named in the pull_request filter above and NOT here, so a commit landing on main that
+      # touched only this suite could not trigger the job that runs it.
+      - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"

@@ -22,6 +22,7 @@ const require = createRequire(import.meta.url);
 const jobRoles = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
 const jobRoleReads = require("../lib/eosWorkforce/reads/jobRoleReads.js");
 const seed = require("../lib/eosWorkforce/migration/jobRoleCatalogSeed.js");
+const { CANONICAL_JOB_ROLE_IDS, SUPERSEDED_JOB_ROLE_IDS } = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 const seedCli = require("../scripts/jobRoleCatalogSeedCli.js");
 const http = require("../lib/eosWorkforce/workforceHttp.js");
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
@@ -112,17 +113,42 @@ test("Job Role catalog, assignment and reads over the real Workforce and policy 
     accounts: (await q(`SELECT count(*)::int n FROM eos_crm.accounts`)).rows[0].n,
   });
 
-  await t.test("launch catalog seed: dry run writes nothing; apply adds the ten ruled roles; idempotent; never assigns; CLI fenced to taylor-nonprod", async () => {
+  // SIXTEEN, NOT TEN (Owner ruling 2026-09-25). This subtest used to name "the ten ruled roles" and pin the ten
+  // display names of the 2026-09-16 launch catalog. That catalog is no longer an authority: LAUNCH_JOB_ROLES now
+  // PROJECTS from src/eosWorkforce/jobRoleVocabulary.ts, the one canonical Job Role vocabulary.
+  //
+  // WHAT THIS SUBTEST IS FOR, and what it is deliberately NOT for. It proves the seed puts the WHOLE canonical
+  // vocabulary into eos_workforce.job_roles, once, idempotently, assigning nothing. Whether the vocabulary is the
+  // RIGHT sixteen is pinned offline, against a transcription of the ruling, by
+  // test/canonicalJobRoleVocabulary.test.mjs -- restating the sixteen names here would duplicate that pin and put
+  // two transcriptions of one ruling in the repository. So the expectation is read from the vocabulary, and what is
+  // written out literally is the part a derived assertion could not catch: that the three ids this file used to
+  // create are GONE from the seeded catalog, and that the positions replacing them are present.
+  await t.test("launch catalog seed: dry run writes nothing; apply adds the whole canonical vocabulary; idempotent; never assigns; CLI fenced to taylor-nonprod", async () => {
     const dry = await seed.seedJobRoleCatalog(pool, { tenantId: "t1", actor: "job-role-catalog-seed:test" });
-    assert.deepEqual([dry.additions.length, dry.applied, (await q(`SELECT count(*)::int n FROM eos_workforce.job_roles`)).rows[0].n], [10, false, 0]);
+    assert.deepEqual([dry.additions.length, dry.applied, (await q(`SELECT count(*)::int n FROM eos_workforce.job_roles`)).rows[0].n],
+      [CANONICAL_JOB_ROLE_IDS.length, false, 0]);
+    assert.equal(CANONICAL_JOB_ROLE_IDS.length, 16, "the ruling names sixteen positions");
     const applied = await seed.seedJobRoleCatalog(pool, { tenantId: "t1", actor: "job-role-catalog-seed:test", apply: true });
     assert.equal(applied.applied, true);
     const listed = await jobRoleReads.listJobRoles(deps, adminActor, {});
-    assert.deepEqual(listed.items.map((r) => r.displayName).sort(), ["Accounting", "General Manager", "National Accounts Sales", "Office / Administration", "Owner",
-      "Parts / Warehouse", "Retail Sales", "Service Coordinator / Dispatcher", "Service Manager", "Service Technician"]);
+    // Every canonical position reached the table, and nothing else did.
+    assert.deepEqual(listed.items.map((r) => r.jobRoleId).sort(), [...CANONICAL_JOB_ROLE_IDS]);
+    // The three ids the pre-ruling launch catalog created are retired and must not be seeded again. `owner` is the
+    // sharpest of them: it is a live Security Role key, which is why the Owner's POSITION is `owner-executive`.
+    const seeded = new Set(listed.items.map((r) => r.jobRoleId));
+    for (const retired of ["owner", "parts-warehouse", "accounting"]) {
+      assert.ok(SUPERSEDED_JOB_ROLE_IDS[retired], `${retired} must be recorded as superseded`);
+      assert.ok(!seeded.has(retired), `the retired id ${retired} was seeded`);
+    }
+    // ... and the positions that replaced them are there, including the four `parts-warehouse` was fused from.
+    for (const replacement of ["owner-executive", "parts-associate", "parts-manager", "warehouse-associate", "warehouse-manager", "finance-accounting"]) {
+      assert.ok(seeded.has(replacement), `${replacement} is missing from the seeded catalog`);
+    }
     assert.ok(!listed.items.some((r) => /^sales$/i.test(r.displayName)), "a generic Sales role exists");
+    assert.equal(new Set(listed.items.map((r) => r.displayName)).size, listed.items.length, "two positions share a display name");
     const again = await seed.seedJobRoleCatalog(pool, { tenantId: "t1", actor: "job-role-catalog-seed:test", apply: true });
-    assert.deepEqual([again.additions, again.applied, again.alreadyPresent.length], [[], false, 10]);
+    assert.deepEqual([again.additions, again.applied, again.alreadyPresent.length], [[], false, CANONICAL_JOB_ROLE_IDS.length]);
     assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.employee_job_role_assignments`)).rows[0].n, 0, "the seed assigned a Job Role");
     await seed.seedJobRoleCatalog(pool, { tenantId: "t2", actor: "job-role-catalog-seed:test", apply: true }); // t2 gets its own catalog rows
     const base = { environment: "platform-sandbox", databaseUrlEnv: "DB", tenantKey: "taylor-nonprod", performedBy: "op" };
@@ -149,22 +175,32 @@ test("Job Role catalog, assignment and reads over the real Workforce and policy 
     const h = await jobRoleReads.listEmployeeJobRoleHistory(deps, adminActor, { employeeId: "e-edit" });
     assert.deepEqual([h.current.jobRoleId, h.current.displayName, h.items.length, h.items[1].current], ["national-accounts-sales", "National Accounts Sales", 2, false]);
     await assert.rejects(q(`DELETE FROM eos_workforce.employee_job_role_assignments WHERE employee_id = 'e-edit'`), /DELETE is refused/);
-    await assert.rejects(q(`UPDATE eos_workforce.employee_job_role_assignments SET job_role_id = 'accounting' WHERE employee_id = 'e-edit' AND effective_to IS NULL`), /only permitted change/);
+    // A LIVE position, deliberately: the refusal is about the COLUMN, not about the id being unknown. A correction
+    // to a current assignment is made by assigning again through the governed writer, never by an UPDATE.
+    await assert.rejects(q(`UPDATE eos_workforce.employee_job_role_assignments SET job_role_id = 'finance-accounting' WHERE employee_id = 'e-edit' AND effective_to IS NULL`), /only permitted change/);
   });
 
+  // THE DEACTIVATED POSITION IS finance-accounting, not `accounting`. `accounting` was retired by the Owner ruling
+  // of 2026-09-25 -- it named a department rather than a position -- so it is not in the seeded catalog and every
+  // call here refused with JOB_ROLE_NOT_FOUND instead of proving anything about INACTIVE. SUPERSEDED_JOB_ROLE_IDS
+  // records finance-accounting as its replacement, and the assertion below pins that so the substitution is not a
+  // silent choice of a convenient id.
   await t.test("inactive, unknown and foreign-tenant Job Roles refused; inactive role stays readable in history", async () => {
-    await jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-other", jobRoleId: "accounting" });
-    const off = await jobRoles.updateJobRole(deps, adminActor, { jobRoleId: "accounting", status: "INACTIVE" });
+    assert.deepEqual(SUPERSEDED_JOB_ROLE_IDS.accounting.replacedBy, ["finance-accounting"]);
+    await jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-other", jobRoleId: "finance-accounting" });
+    const off = await jobRoles.updateJobRole(deps, adminActor, { jobRoleId: "finance-accounting", status: "INACTIVE" });
     assert.equal(off.outcome, "UPDATED");
-    await assert.rejects(jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-linked", jobRoleId: "accounting" }), (e) => e.code === "JOB_ROLE_INACTIVE");
+    await assert.rejects(jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-linked", jobRoleId: "finance-accounting" }), (e) => e.code === "JOB_ROLE_INACTIVE");
+    // A RETIRED id is simply unknown to the catalog, which is the other half of the same point.
+    await assert.rejects(jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-linked", jobRoleId: "accounting" }), (e) => e.code === "JOB_ROLE_NOT_FOUND");
     await assert.rejects(jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-linked", jobRoleId: "astronaut" }), (e) => e.code === "JOB_ROLE_NOT_FOUND");
     await q(`INSERT INTO eos_workforce.job_roles (tenant_id, id, display_name, status, created_by, updated_by) VALUES ('t2', 't2-only-role', 'T2 Only', 'ACTIVE', 'x', 'x')`);
     await assert.rejects(jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-linked", jobRoleId: "t2-only-role" }), (e) => e.code === "JOB_ROLE_NOT_FOUND");
     assert.equal((await history("e-linked")).length, 0);
     const hist = await jobRoleReads.listEmployeeJobRoleHistory(deps, adminActor, { employeeId: "e-other" });
-    assert.deepEqual([hist.current.jobRoleId, hist.current.jobRoleStatus], ["accounting", "INACTIVE"], "an inactive role must stay readable");
-    assert.ok((await jobRoleReads.listJobRoles(deps, adminActor, {})).items.some((r) => r.jobRoleId === "accounting" && r.status === "INACTIVE"));
-    await jobRoles.updateJobRole(deps, adminActor, { jobRoleId: "accounting", status: "ACTIVE" });
+    assert.deepEqual([hist.current.jobRoleId, hist.current.jobRoleStatus], ["finance-accounting", "INACTIVE"], "an inactive role must stay readable");
+    assert.ok((await jobRoleReads.listJobRoles(deps, adminActor, {})).items.some((r) => r.jobRoleId === "finance-accounting" && r.status === "INACTIVE"));
+    await jobRoles.updateJobRole(deps, adminActor, { jobRoleId: "finance-accounting", status: "ACTIVE" });
   });
 
   await t.test("foreign-tenant Employee, Principal id and provider subject refused; inactive/no membership refused", async () => {
