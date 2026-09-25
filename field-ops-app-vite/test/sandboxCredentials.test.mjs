@@ -6,6 +6,11 @@ import path from "node:path";
 import {
   SANDBOX_PERSONAS,
   CANONICAL_PERSONA_KEYS,
+  CANONICAL_ROLE_KEYS,
+  CANONICAL_ROLE_REGISTRY,
+  CREDENTIAL_SOURCE_ENV,
+  NONCANONICAL_FIXTURE_IDENTITIES,
+  PENDING_ACCOUNT_PERSONAS,
   PERSONA_ALIASES,
   RETIRED_PERSONAS,
   UNRECONCILED_PERSONAS,
@@ -18,9 +23,12 @@ import {
   resolvePersonaKey,
 } from "../../scripts/sandboxCredentials.mjs";
 
-// Fictional values against the RECONCILED addresses: the dispatcher persona is the Sample
-// Company login emerson.fixture@, not the retired dispatcher@ that no Principal ever held.
-const FAKE = '"emerson.fixture@sandbox.invalid": "Sbx!fictional-value-01",\n"finley.fixture@sandbox.invalid": "Sbx!fictional-value-02"';
+// Fictional values against the CANONICAL role logins (Owner ruling 2026-09-25: one canonical
+// sandbox login per canonical Job Role). The dispatcher role's authentication identity is
+// dispatcher@sandbox.invalid -- the account the live Dispatcher Principal is actually behind.
+// emerson.fixture@ remains the Employee's WORK EMAIL, which is contact data and not a login, and it
+// is recorded NONCANONICAL_FIXTURE_IDENTITY.
+const FAKE = '"dispatcher@sandbox.invalid": "Sbx!fictional-value-01",\n"finley.fixture@sandbox.invalid": "Sbx!fictional-value-02"';
 
 function withTempCredentialFile(contents, fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sbxcreds-"));
@@ -39,13 +47,13 @@ function withTempCredentialFile(contents, fn) {
 
 test("parses the brace-less entry list the real file has been seen to contain", () => {
   const table = parseCredentials(FAKE);
-  assert.equal(table["emerson.fixture@sandbox.invalid"], "Sbx!fictional-value-01");
+  assert.equal(table["dispatcher@sandbox.invalid"], "Sbx!fictional-value-01");
   assert.equal(table["finley.fixture@sandbox.invalid"], "Sbx!fictional-value-02");
 });
 
 test("parses a proper JSON object too", () => {
-  const table = parseCredentials('{"emerson.fixture@sandbox.invalid": "Sbx!fictional-value-01"}');
-  assert.equal(table["emerson.fixture@sandbox.invalid"], "Sbx!fictional-value-01");
+  const table = parseCredentials('{"dispatcher@sandbox.invalid": "Sbx!fictional-value-01"}');
+  assert.equal(table["dispatcher@sandbox.invalid"], "Sbx!fictional-value-01");
 });
 
 test("a trailing comma does not defeat the parse", () => {
@@ -65,7 +73,7 @@ test("loads a persona by stable id, never by hard-coded email", () => {
   withTempCredentialFile(FAKE, () => {
     const cred = loadSandboxPersona("dispatcher");
     assert.equal(cred.personaId, "dispatcher");
-    assert.equal(cred.email, "emerson.fixture@sandbox.invalid");
+    assert.equal(cred.email, "dispatcher@sandbox.invalid");
     assert.equal(cred.password, "Sbx!fictional-value-01");
   });
 });
@@ -136,10 +144,12 @@ test("describeLoad reveals only a length -- never anything reversible", () => {
     const info = describeLoad("dispatcher");
     assert.deepEqual(info, {
       personaId: "dispatcher",
-      email: "emerson.fixture@sandbox.invalid",
+      email: "dispatcher@sandbox.invalid",
+      jobRole: "service-coordinator-dispatcher",
       passwordLength: "Sbx!fictional-value-01".length,
       loaded: true,
     });
+    // A length and a Job Role are not reversible; the VALUE must never appear.
     assert.doesNotMatch(JSON.stringify(info), /fictional-value/);
   });
 });
@@ -164,15 +174,17 @@ test("the loader exposes no write path", async () => {
 // which is the one failure mode this module exists to prevent.
 
 /**
- * The twelve retired `sbx-*`-era addresses: every one had no live EOS Principal, and nine of
- * them collided by NAME with a persona that does exist. The thirteenth legacy entry,
- * `admin@sandbox.invalid`, is deliberately ABSENT from this list -- it is the one that was
- * always correct: the reused pre-existing sandbox Administrator, Principal subject
- * ZVu3lHTP1NQhj0Am04zTAGou0dx1.
+ * The legacy `sbx-*`-era addresses that remain DEAD: no live EOS Principal, and no Owner ruling
+ * reusing them. Three of the original twelve are no longer here, and deliberately so -- the Owner
+ * ruled `dispatcher@`, `acctmgr@` and `restricted@` REUSED as canonical role identities, each
+ * confirmed against a real Firebase Admin SDK lookup. `admin@` was never a collision.
+ *
+ * An ADDRESS being reused does not revive its old KEY: `accountingManager` is still a retired key
+ * naming a Security Role no Principal holds, while `acctmgr@` is the canonical `financeAccounting`
+ * login. Conflating the two is how the catalog acquired keys standing in front of no identity.
  */
-const RETIRED_ADDRESSES = [
+const STILL_DEAD_ADDRESSES = [
   "owner@sandbox.invalid",
-  "dispatcher@sandbox.invalid",
   "tech@sandbox.invalid",
   "whmgr@sandbox.invalid",
   "partsmgr@sandbox.invalid",
@@ -181,34 +193,119 @@ const RETIRED_ADDRESSES = [
   "mikael@sandbox.invalid",
   "opsmgr@sandbox.invalid",
   "salesmgr@sandbox.invalid",
-  "acctmgr@sandbox.invalid",
-  "restricted@sandbox.invalid",
 ];
 
-test("no persona key resolves to a retired address -- the collision that returned the wrong identity", () => {
+test("no canonical role resolves to a dead address -- the collision that returned the wrong identity", () => {
   for (const [id, email] of Object.entries(SANDBOX_PERSONAS)) {
     assert.ok(
-      !RETIRED_ADDRESSES.includes(email),
+      !STILL_DEAD_ADDRESSES.includes(email),
       `${id} still points at ${email}, which no live EOS Principal is behind. A name collision against a live persona is a defect, not an alias.`,
     );
   }
 });
 
-test("all sixteen canonical keys are accounted for, as mapped or as unreconciled -- never missing", () => {
+test("every NONCANONICAL fixture identity is excluded from the canonical registry", () => {
+  const canonical = new Set(Object.values(SANDBOX_PERSONAS));
+  const pending = new Set(Object.values(PENDING_ACCOUNT_PERSONAS).map((x) => x.email));
+  for (const [email, record] of Object.entries(NONCANONICAL_FIXTURE_IDENTITIES)) {
+    assert.equal(record.classification, "NONCANONICAL_FIXTURE_IDENTITY");
+    assert.ok(!canonical.has(email), `${email} is noncanonical and must not be a canonical role login`);
+    assert.ok(!pending.has(email), `${email} is noncanonical and must not be a pending canonical login`);
+  }
+  // The retired second technician, second retail sales and contract technician are all recorded.
+  for (const email of [
+    "gray.fixture@sandbox.invalid",
+    "indigo.fixture@sandbox.invalid",
+    "oakley.fixture@sandbox.invalid",
+    "emerson.fixture@sandbox.invalid",
+    "sage.fixture@sandbox.invalid",
+    "wren.fixture@sandbox.invalid",
+  ]) {
+    assert.ok(NONCANONICAL_FIXTURE_IDENTITIES[email], `${email} must be recorded noncanonical`);
+  }
+});
+
+test("ONE canonical login per Job Role, and exactly ONE serviceTechnician", () => {
+  assert.equal(CANONICAL_ROLE_KEYS.length, 16);
+  const jobRoles = CANONICAL_ROLE_KEYS.map((k) => CANONICAL_ROLE_REGISTRY[k].jobRole);
+  const emails = CANONICAL_ROLE_KEYS.map((k) => CANONICAL_ROLE_REGISTRY[k].email);
+  assert.equal(new Set(jobRoles).size, 16, "two roles share a Job Role");
+  assert.equal(new Set(emails).size, 16, "two roles share a login -- the duplication the ruling removed");
+
+  const technicians = CANONICAL_ROLE_KEYS.filter((k) => CANONICAL_ROLE_REGISTRY[k].jobRole === "service-technician");
+  assert.deepEqual(technicians, ["serviceTechnician"]);
+  assert.equal(CANONICAL_ROLE_REGISTRY.serviceTechnician.email, "finley.fixture@sandbox.invalid");
+  // Asking for the UNASSIGNED technician must never silently hand back the assigned one: that would
+  // make a test meaning "the unassigned technician" pass for the wrong reason.
+  assert.equal(PERSONA_ALIASES.technicianUnassigned, undefined);
+  assert.equal(PERSONA_ALIASES.serviceTechnicianB, undefined);
+  assert.ok(RETIRED_PERSONAS.technicianUnassigned, "the retired key must still explain itself");
+  assert.match(RETIRED_PERSONAS.technicianUnassigned.reason, /BUSINESS DATA/);
+});
+
+test("SANDBOX_CREDENTIALS_FILE is THE source, and unset fails closed without searching", () => {
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  delete process.env[CREDENTIAL_SOURCE_ENV];
+  try {
+    for (const blank of [undefined, "", "   "]) {
+      if (blank === undefined) delete process.env[CREDENTIAL_SOURCE_ENV];
+      else process.env[CREDENTIAL_SOURCE_ENV] = blank;
+      assert.throws(
+        () => loadSandboxPersona("dispatcher"),
+        (err) => {
+          assert.equal(err.failureType, "CREDENTIAL_SOURCE_NOT_CONFIGURED");
+          assert.deepEqual(err.pathsTried, [], "no path may be reported: none was tried");
+          assert.match(err.message, new RegExp(CREDENTIAL_SOURCE_ENV));
+          return true;
+        },
+      );
+    }
+  } finally {
+    if (prev === undefined) delete process.env[CREDENTIAL_SOURCE_ENV];
+    else process.env[CREDENTIAL_SOURCE_ENV] = prev;
+  }
+});
+
+test("the load path reads ONLY the configured file -- candidatePaths is diagnostics, not resolution", () => {
+  // Point the variable at a file that does NOT hold the role's key. If guessing were still part of
+  // resolution, some other copy on disk could satisfy the load and this would silently pass -- which
+  // is precisely the defect that let a 70-byte stub hide a 60-entry file.
+  withTempCredentialFile('"nobody@sandbox.invalid": "Sbx!fictional-value-03"', (file) => {
+    assert.throws(
+      () => loadSandboxPersona("dispatcher"),
+      (err) => {
+        assert.equal(err.failureType, "PERSONA_NOT_IN_FILE");
+        assert.deepEqual(err.pathsTried, [file], "exactly one source may be reported");
+        return true;
+      },
+    );
+  });
+});
+
+test("all sixteen canonical role keys are accounted for -- mapped or pending, never missing", () => {
   assert.equal(CANONICAL_PERSONA_KEYS.length, 16);
+  assert.deepEqual([...CANONICAL_PERSONA_KEYS], [...CANONICAL_ROLE_KEYS], "the old export must be the role registry");
   const directory = personaDirectory();
   assert.equal(directory.length, 16);
   for (const row of directory) {
-    assert.ok(["MAPPED", "UNRECONCILED"].includes(row.state), `${row.personaId} has no state`);
-    if (row.state === "MAPPED") assert.match(row.email, /@sandbox\.invalid$/);
-    else assert.equal(row.email, null, `${row.personaId} is unreconciled and must offer NO address`);
+    assert.ok(["MAPPED", "PENDING_ACCOUNT"].includes(row.state), `${row.personaId} has no state`);
+    assert.match(row.email, /@sandbox\.invalid$/, `${row.personaId} must declare its address in either state`);
+    assert.ok(row.jobRole, `${row.personaId} must name the Job Role it serves`);
   }
-  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 13);
+  // Fifteen accounts exist; exactly one (the reporting analyst) does not.
+  assert.equal(directory.filter((r) => r.state === "MAPPED").length, 15);
+  const pending = directory.filter((r) => r.state === "PENDING_ACCOUNT");
+  assert.deepEqual(pending.map((r) => r.personaId), ["reportingAnalyst"]);
+  assert.equal(pending[0].email, "reporting@sandbox.invalid");
+  assert.equal(pending[0].uid, null, "a pending role has no uid because it has no account");
 });
 
-test("the three unreconciled keys are exactly the ones with no live Principal, each with a reason and an operator action", () => {
-  assert.deepEqual(Object.keys(UNRECONCILED_PERSONAS).sort(), ["financeAccounting", "reporting", "restricted"]);
-  for (const [id, entry] of Object.entries({ ...UNRECONCILED_PERSONAS, ...RETIRED_PERSONAS })) {
+test("the unreconciled state is EMPTY: every canonical role now has a settled address", () => {
+  // The three former members were resolved by the ruling -- financeAccounting and generalEmployee
+  // name EXISTING accounts, reportingAnalyst has a settled address with its account pending. The
+  // export is kept rather than deleted: an emptied state says it was emptied, not forgotten.
+  assert.deepEqual(Object.keys(UNRECONCILED_PERSONAS), []);
+  for (const [id, entry] of Object.entries(RETIRED_PERSONAS)) {
     assert.ok(entry.reason && entry.reason.length > 20, `${id} must carry a reason`);
     assert.ok(entry.operatorAction && entry.operatorAction.length > 20, `${id} must name the operator action that would fix it`);
     assert.doesNotMatch(entry.operatorAction, /create (a|an|the)? ?(password|credential)/i,
@@ -216,30 +313,41 @@ test("the three unreconciled keys are exactly the ones with no live Principal, e
   }
 });
 
-test("an unreconciled persona fails closed BEFORE the credential file is consulted", () => {
-  // Point the loader at a path that does not exist. A FILE_NOT_FOUND here would mean the
-  // loader went looking for a password for an identity that does not exist -- which is what
-  // sends the reader to the wrong place.
-  const prev = process.env.SANDBOX_CREDENTIALS_FILE;
-  process.env.SANDBOX_CREDENTIALS_FILE = path.join(os.tmpdir(), "definitely-absent", "sandbox-credentials.local.json");
+test("a PENDING_ACCOUNT role fails closed before the credential source is read, and names what to create", () => {
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  // Deliberately unset: a pending role must be answered BY NAME, so it must not even reach the source
+  // check. Otherwise the operator is told to configure a file for an account that does not exist.
+  delete process.env[CREDENTIAL_SOURCE_ENV];
   try {
-    for (const id of Object.keys(UNRECONCILED_PERSONAS)) {
+    assert.throws(() => loadSandboxPersona("reportingAnalyst"), (err) => {
+      assert.equal(err.failureType, "PERSONA_ACCOUNT_PENDING", "a missing ACCOUNT is not a missing password");
+      assert.deepEqual(err.pathsTried, [], "no path may be reported: none was tried");
+      assert.match(err.message, /reporting@sandbox\.invalid/);
+      assert.match(err.message, /OPERATOR ACTION:/);
+      return true;
+    });
+  } finally {
+    if (prev !== undefined) process.env[CREDENTIAL_SOURCE_ENV] = prev;
+  }
+});
+
+test("a RETIRED key fails closed with an explanation, before the credential source is consulted", () => {
+  const prev = process.env[CREDENTIAL_SOURCE_ENV];
+  // Unset on purpose: a retired key must be answered by name. A CREDENTIAL_SOURCE_NOT_CONFIGURED here
+  // would mean the loader went looking for a password for an identity that does not exist, which is
+  // what sends the reader to the wrong place.
+  delete process.env[CREDENTIAL_SOURCE_ENV];
+  try {
+    for (const id of Object.keys(RETIRED_PERSONAS)) {
       assert.throws(() => loadSandboxPersona(id), (err) => {
-        assert.equal(err.failureType, "PERSONA_UNRECONCILED", `${id} must not be reported as a missing password`);
+        assert.equal(err.failureType, "PERSONA_RETIRED", `${id} must be reported as retired, not as unknown`);
         assert.deepEqual(err.pathsTried, [], "no path may be reported: none was tried");
         assert.match(err.message, /OPERATOR ACTION:/);
         return true;
       });
     }
-    for (const id of Object.keys(RETIRED_PERSONAS)) {
-      assert.throws(() => loadSandboxPersona(id), (err) => {
-        assert.equal(err.failureType, "PERSONA_RETIRED", `${id} must be reported as retired, not as unknown`);
-        return true;
-      });
-    }
   } finally {
-    if (prev === undefined) delete process.env.SANDBOX_CREDENTIALS_FILE;
-    else process.env.SANDBOX_CREDENTIALS_FILE = prev;
+    if (prev !== undefined) process.env[CREDENTIAL_SOURCE_ENV] = prev;
   }
 });
 
@@ -247,8 +355,8 @@ test("every alias points at a canonical key and carries no address of its own", 
   for (const [alias, target] of Object.entries(PERSONA_ALIASES)) {
     assert.ok(!Object.prototype.hasOwnProperty.call(SANDBOX_PERSONAS, alias),
       `${alias} is an alias and must hold no address -- an address is how a collision hides`);
-    assert.ok(SANDBOX_PERSONAS[target] || UNRECONCILED_PERSONAS[target],
-      `${alias} -> ${target}, which is not a key this module knows`);
+    assert.ok(CANONICAL_ROLE_KEYS.includes(target),
+      `${alias} -> ${target}, which is not a canonical role key`);
     assert.ok(!PERSONA_ALIASES[target], `${alias} -> ${target} is an alias chain; aliases resolve in one hop`);
     assert.equal(resolvePersonaKey(alias), target);
   }
@@ -257,8 +365,9 @@ test("every alias points at a canonical key and carries no address of its own", 
 test("a legacy alias reaches the reconciled identity and reports the CANONICAL key back", () => {
   withTempCredentialFile(FAKE, () => {
     const cred = loadSandboxPersona("technician");
-    assert.equal(cred.personaId, "technicianAssigned", "the canonical key is returned, never the alias that was typed");
+    assert.equal(cred.personaId, "serviceTechnician", "the canonical key is returned, never the alias that was typed");
     assert.equal(cred.email, "finley.fixture@sandbox.invalid");
+    assert.equal(cred.jobRole, "service-technician", "a load reports the Job Role it serves");
   });
 });
 
@@ -271,16 +380,36 @@ test("no two persona keys share an authentication account -- one identity, one k
   }
 });
 
-test("the assigned and unassigned technicians are two DIFFERENT live accounts", () => {
-  assert.notEqual(SANDBOX_PERSONAS.technicianAssigned, SANDBOX_PERSONAS.technicianUnassigned,
-    "the pair exists to differ by record assignment; one account cannot be both sides of it");
+test("assigned-vs-unassigned is BUSINESS DATA, not two identities", () => {
+  // The pre-consolidation catalog held two technician logins told apart by a record assignment. That
+  // put a business fact inside identity: every new acceptance scenario wanted another login, and two
+  // logins for one Job Role are two things to keep in step. Owner ruling 2026-09-25 collapsed them.
+  //
+  // There is ONE canonical technician. Scenario A assigns a Work Order to it and proves own-record
+  // access; Scenario B does not and proves the denial. The ASSIGNMENT changes; the identity does not.
+  assert.equal(SANDBOX_PERSONAS.technicianAssigned, undefined, "the assigned-technician key is retired");
+  assert.equal(SANDBOX_PERSONAS.technicianUnassigned, undefined, "the unassigned-technician key is retired");
+  assert.equal(SANDBOX_PERSONAS.serviceTechnician, "finley.fixture@sandbox.invalid");
+
+  // The second technician account is RETAINED as history -- the Owner ruled stale accounts stay until
+  // a cleanup wave authorizes deletion -- but it is noncanonical and the loader must not require it.
+  const gray = NONCANONICAL_FIXTURE_IDENTITIES["gray.fixture@sandbox.invalid"];
+  assert.ok(gray, "the second technician must still be recorded, not erased");
+  assert.equal(gray.supersededBy, "finley.fixture@sandbox.invalid");
+  assert.ok(!Object.values(SANDBOX_PERSONAS).includes("gray.fixture@sandbox.invalid"));
 });
 
-test("the operator's own credential location is searched, under the one canonical filename", () => {
+test("candidatePaths is DIAGNOSTICS ONLY and names one filename -- it no longer resolves anything", () => {
+  // Retained so an operator can be SHOWN where stray copies are and which one the old loader would
+  // have picked. It is not consulted when loading, which the source assertion below pins: guessing is
+  // how a 70-byte stub hid a 60-entry file and got read as "these personas have no passwords".
   const paths = candidatePaths();
-  assert.ok(paths.some((p) => p.includes(`${path.sep}.eos-sandbox${path.sep}`)),
-    "the only credential file on the primary host lives in ~/.eos-sandbox; a correctly spelled persona must not fail FILE_NOT_FOUND while the file sits on disk");
   for (const p of paths) assert.match(path.basename(p), /^\.?sandbox-credentials\.local\.json$/);
+
+  const src = fs.readFileSync(new URL("../../scripts/sandboxCredentials.mjs", import.meta.url), "utf8");
+  const load = src.slice(src.indexOf("export function loadSandboxPersona"), src.indexOf("export function describeLoad"));
+  assert.ok(!load.includes("candidatePaths("), "loadSandboxPersona must never consult the guess list");
+  assert.ok(load.includes("credentialSourcePath("), "loadSandboxPersona must resolve from the explicit source");
 });
 
 test("the module names no credential, only addresses and identifiers", () => {

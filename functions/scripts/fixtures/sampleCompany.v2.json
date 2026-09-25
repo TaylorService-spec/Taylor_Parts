@@ -52,78 +52,7 @@
     ],
     "$operatorWorkflow_comment": "ONE SCRIPT, FIVE INVOCATIONS. Each step is independently explicit and there is no second command an operator must find; the credential step delegates rather than reimplementing. --rotate is not reachable from any of them."
   },
-  "jobRoles": [
-    {
-      "key": "OWNER_EXECUTIVE",
-      "label": "Owner / Executive",
-      "pgJobRoleId": "owner-executive"
-    },
-    {
-      "key": "ADMINISTRATOR",
-      "label": "Administrator",
-      "pgJobRoleId": "administrator"
-    },
-    {
-      "key": "GENERAL_MANAGER",
-      "label": "General Manager",
-      "pgJobRoleId": "general-manager"
-    },
-    {
-      "key": "OFFICE_MANAGER",
-      "label": "Office Manager",
-      "pgJobRoleId": "office-manager"
-    },
-    {
-      "key": "SERVICE_MANAGER",
-      "label": "Service Manager",
-      "pgJobRoleId": "service-manager"
-    },
-    {
-      "key": "DISPATCHER",
-      "label": "Dispatcher",
-      "pgJobRoleId": "dispatcher"
-    },
-    {
-      "key": "SERVICE_TECHNICIAN",
-      "label": "Service Technician",
-      "pgJobRoleId": "service-technician"
-    },
-    {
-      "key": "RETAIL_SALES",
-      "label": "Retail Sales",
-      "pgJobRoleId": "retail-sales"
-    },
-    {
-      "key": "NATIONAL_ACCOUNTS_SALES",
-      "label": "National Accounts Sales",
-      "pgJobRoleId": "national-accounts-sales"
-    },
-    {
-      "key": "PARTS_MANAGER",
-      "label": "Parts Manager",
-      "pgJobRoleId": "parts-manager"
-    },
-    {
-      "key": "PARTS_ASSOCIATE",
-      "label": "Parts Associate",
-      "pgJobRoleId": "parts-associate"
-    },
-    {
-      "key": "WAREHOUSE_MANAGER",
-      "label": "Warehouse Manager",
-      "pgJobRoleId": "warehouse-manager"
-    },
-    {
-      "key": "WAREHOUSE_ASSOCIATE",
-      "label": "Warehouse Associate",
-      "pgJobRoleId": "warehouse-associate"
-    },
-    {
-      "key": "FINANCE_MANAGER",
-      "label": "Finance / Accounting Manager",
-      "pgJobRoleId": "finance-manager"
-    }
-  ],
+  "$jobRolesRemoved_comment": "THIS MANIFEST NO LONGER DECLARES A JOB ROLE CATALOG (Owner ruling 2026-09-25). It used to carry a fourteen-entry `jobRoles[]` with a `pgJobRoleId` per row, and scripts/sampleCompany/personaAuthorityDimensions.js turned that array into the createJobRole plan -- which made this fixture one of TWO Job Role authorities, the other being LAUNCH_JOB_ROLES in functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts. The two overlapped in seven ids out of ten and fourteen and disagreed about what the Owner, Parts and Finance positions were called; whichever seed ran last decided the business's positions. The Owner ruled NEITHER canonical. The single authority is now functions/src/eosWorkforce/jobRoleVocabulary.ts CANONICAL_JOB_ROLES -- sixteen positions -- and both former catalogs project from it. THIS MANIFEST STILL DECLARES ASSIGNMENTS: employees[].jobRole names a position by its canonical manifestKey and must resolve there, or the plan refuses. Three of this fixture's former keys were retired by the ruling because they named SECURITY authority rather than a business position: ADMINISTRATOR became OFFICE_ADMINISTRATION, DISPATCHER became SERVICE_COORDINATOR_DISPATCHER, FINANCE_MANAGER became FINANCE_ACCOUNTING. report-analyst moved off the borrowed OFFICE_MANAGER onto REPORTING_ANALYST, which is both the position the ruling names for persona P15 and this Employee's own jobTitle. records-clerk and restricted-user KEEP OFFICE_MANAGER on purpose: restricted-user is what carries the same-Job-Role-different-Security-Role proof against the office-manager persona, and giving it GENERAL_EMPLOYEE would have paired the Job Role GENERAL_EMPLOYEE with the Security Role `generalEmployee` on one persona -- which reads as a Job Role DERIVED from a Security Role, the exact inference this fixture exists to disprove. general-employee is therefore a canonical position with no fixture holder, which is what reporting-analyst was until this change.",
   "employees": [
     {
       "key": "owner-executive",
@@ -162,7 +91,7 @@
       "key": "administrator",
       "id": "synthetic-np-emp-administrator",
       "fixtureLabel": "Synthetic Administrator",
-      "jobRole": "ADMINISTRATOR",
+      "jobRole": "OFFICE_ADMINISTRATION",
       "employmentStatus": "ACTIVE",
       "employeeNumber": "SC-0018",
       "firstName": "Rowan",
@@ -293,7 +222,7 @@
       "key": "dispatcher",
       "id": "synthetic-np-emp-dispatcher",
       "fixtureLabel": "Synthetic Dispatcher",
-      "jobRole": "DISPATCHER",
+      "jobRole": "SERVICE_COORDINATOR_DISPATCHER",
       "employmentStatus": "ACTIVE",
       "employeeNumber": "SC-0005",
       "firstName": "Emerson",
@@ -318,7 +247,7 @@
       },
       "sandboxPersona": {
         "interactiveLogin": true,
-        "credentialEmail": "emerson.fixture@sandbox.invalid"
+        "credentialEmail": "dispatcher@sandbox.invalid"
       }
     },
     {
@@ -710,7 +639,7 @@
       "key": "finance-controller",
       "id": "synthetic-np-emp-finance-controller",
       "fixtureLabel": "Synthetic Finance Controller",
-      "jobRole": "FINANCE_MANAGER",
+      "jobRole": "FINANCE_ACCOUNTING",
       "employmentStatus": "ACTIVE",
       "employeeNumber": "SC-0019",
       "firstName": "Sage",
@@ -735,7 +664,7 @@
       },
       "sandboxPersona": {
         "interactiveLogin": true,
-        "credentialEmail": "sage.fixture@sandbox.invalid"
+        "credentialEmail": "acctmgr@sandbox.invalid"
       },
       "extraEmployee": true,
       "$comment": "THE FINANCIAL EXECUTION AUTHORITY NOBODY HELD. finance.invoice.issue, finance.invoice.read, finance.payment.apply, finance.payment.read, finance.adjustment.record and finance.refund.record are all REGISTERED in eos_policy.capabilities and were held by ZERO Principals (measured 2026-09-24: controller, accountingManager and financeManager each carry 17 grants and each has no holder). An authority nobody exercises is an untested authority. `controller` alone is taken; accountingManager and financeManager stay unheld deliberately -- see expectedAccess.roleGrantScope.financeRolesLeftUnheld."
@@ -744,7 +673,7 @@
       "key": "report-analyst",
       "id": "synthetic-np-emp-report-analyst",
       "fixtureLabel": "Synthetic Reporting Analyst",
-      "jobRole": "OFFICE_MANAGER",
+      "jobRole": "REPORTING_ANALYST",
       "employmentStatus": "ACTIVE",
       "employeeNumber": "SC-0020",
       "firstName": "Tatum",
@@ -805,7 +734,7 @@
       },
       "sandboxPersona": {
         "interactiveLogin": true,
-        "credentialEmail": "wren.fixture@sandbox.invalid"
+        "credentialEmail": "restricted@sandbox.invalid"
       },
       "extraEmployee": true,
       "$comment": "THE SIGNED-IN NEGATIVE CONTROL, which the catalog did not have. records-clerk and technician-on-leave prove 'Employee != user access' -- they have no Principal at all, so every refusal they produce happens BEFORE authorization is ever reached. This persona signs in, resolves a Principal, holds an ACTIVE tenant membership and a real Security Role -- `generalEmployee`, which declares ZERO capabilities in the compiled catalog and holds zero role_capabilities rows -- so every denial it receives is an AUTHORIZATION denial. That is what distinguishes 'denied because unauthorized' from 'denied because the surface is broken', and no other persona in this population produces it."
@@ -915,7 +844,7 @@
       "loginPrincipal": {
         "identityProvider": "firebase",
         "externalSubject": "RESOLVED_FROM_AUTH_UID",
-        "credentialEmail": "emerson.fixture@sandbox.invalid",
+        "credentialEmail": "dispatcher@sandbox.invalid",
         "displayName": "Emerson Fixture (SYNTHETIC) -- SAMPLE COMPANY V2 sandbox persona",
         "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
       }
@@ -1124,7 +1053,7 @@
       "loginPrincipal": {
         "identityProvider": "firebase",
         "externalSubject": "RESOLVED_FROM_AUTH_UID",
-        "credentialEmail": "sage.fixture@sandbox.invalid",
+        "credentialEmail": "acctmgr@sandbox.invalid",
         "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
       },
       "fixturePrincipal": {
@@ -1143,7 +1072,7 @@
       "loginPrincipal": {
         "identityProvider": "firebase",
         "externalSubject": "RESOLVED_FROM_AUTH_UID",
-        "credentialEmail": "wren.fixture@sandbox.invalid",
+        "credentialEmail": "restricted@sandbox.invalid",
         "disposition": "ENSURE_SANDBOX_AUTH_ACCOUNT_THEN_LINK"
       },
       "fixturePrincipal": {
@@ -4138,7 +4067,10 @@
     "credentialFile": "sandbox-credentials.local.json (gitignored; read only through scripts/sandboxCredentials.mjs)",
     "activationCommand": "node scripts/seedSampleCompany.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL --tenantKey taylor-nonprod --existingAdminPrincipalId <principal id> --performedBy <operator> --mode activate-credentials --apply --firebaseProjectId eos-platform-sandbox --credentialFile <operator file ending credentials.local.json>",
     "delegatesTo": "functions/scripts/activateSandboxPersonas.js activateMissingSandboxPasswords (one implementation, called by both its own CLI and this orchestrator; never copied)",
-    "scope": "EXACTLY the manifest Employees with sandboxPersona.interactiveLogin = true. The reused real Administrator is EXCLUDED -- its credential is real, pre-existing and out of scope, and its credentialEmail is null so it cannot become an allowlist entry. An @sandbox.invalid account outside the allowlist is never mutated; an allowlisted account that does not exist is REPORTED, never silently skipped."
+    "scope": "EXACTLY the manifest Employees with sandboxPersona.interactiveLogin = true. The reused real Administrator is EXCLUDED -- its credential is real, pre-existing and out of scope, and its credentialEmail is null so it cannot become an allowlist entry. An @sandbox.invalid account outside the allowlist is never mutated; an allowlisted account that does not exist is REPORTED, never silently skipped.",
+    "canonicalRoleIdentityRegistry": "config/sandboxRoleIdentityRegistry.json",
+    "$canonicalRoleIdentityRegistry_comment": "OWNER RULING 2026-09-25: ONE CANONICAL SANDBOX LOGIN PER CANONICAL JOB ROLE, and that registry -- not this manifest -- is the authority for which authentication identity a canonical persona uses. This block used to carry its own supersededIdentities map; it was removed because two copies of the same facts drift, and the symptom of drift here is an account created for an identity that already has one. functions/scripts/sampleCompany/credentialActivation.js derives activation eligibility from the registry file directly.",
+    "$credentialEmailIsNotAWorkEmail": "employee.workEmail is business/profile contact data; loginPrincipal.credentialEmail is an authentication identity. For ordinary fixture personas the two are deliberately equal and seedSampleCompany.js still enforces that. THREE canonical personas are the narrowly authorized exception, because their stable sandbox login intentionally differs from the synthetic Employee business email: dispatcher (workEmail emerson.fixture@, login dispatcher@), finance-controller (workEmail sage.fixture@, login acctmgr@) and restricted-user (workEmail wren.fixture@, login restricted@). NO workEmail WAS CHANGED to achieve this -- rewriting a person contact address to match an account is the data corruption the ruling forbids. The exception is granted by the registry and by nothing else; it is NOT a general permission for emails to differ."
   },
   "sampleCompanyV3": {
     "status": "PLANNED_NOT_IMPLEMENTED",
@@ -4162,5 +4094,5 @@
       "REVERSIBLE BY ONE FLAG: flipping `commercialSeedState.status` back to BLOCKED returns the whole fixture to the state this commit establishes, with no code change."
     ]
   },
-  "$jobRoles_comment": "THE TENANT JOB ROLE CATALOG. `key` is this manifest's vocabulary; `pgJobRoleId` is the id the GOVERNED PostgreSQL writer (employeeJobRoleCommands.createJobRole) accepts -- lowercase, hyphenated, ^[a-z][a-z0-9-]{1,62}$. ADMINISTRATOR was added by the Owner ruling that Owner/Executive and Administrator are two business functions and must never be one persona; FINANCE_MANAGER was added so the Finance / Accounting persona has a business function of its own rather than borrowing OFFICE_MANAGER. Extending this vocabulary is a deliberate act: functions/test/sampleCompanyManifest.test.mjs pins it against JOB_ROLE_VOCABULARY in seedSampleCompany.js, and both moved together in this change (twelve -> fourteen)."
+  "$jobRoleAssignments_comment": "employees[].jobRole NAMES a position; it does not define one. The name is the canonical manifestKey from functions/src/eosWorkforce/jobRoleVocabulary.ts, the ONE authoritative Job Role vocabulary (Owner ruling 2026-09-25, sixteen positions), and scripts/sampleCompany/personaAuthorityDimensions.js refuses any value that does not resolve there. The governed catalog id the PostgreSQL writer (employeeJobRoleCommands.createJobRole) receives -- lowercase, hyphenated, ^[a-z][a-z0-9-]{1,62}$ -- comes from that module too, so this manifest no longer carries a pgJobRoleId per row and cannot disagree with the catalog about what a position is called. Adding a position is an Owner ruling applied in that module; it is not reachable by editing this file. See $jobRolesRemoved_comment for what was removed and why."
 }

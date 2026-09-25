@@ -45,6 +45,31 @@
 
 const MANIFEST = require("../fixtures/personaAuthorityDimensions.v1.json");
 const SAMPLE_COMPANY = require("../fixtures/sampleCompany.v2.json");
+// THE ONE JOB ROLE AUTHORITY (Owner ruling 2026-09-25). Compiled from src/eosWorkforce/jobRoleVocabulary.ts, which is
+// also what migration/jobRoleCatalogSeed.ts projects its LAUNCH_JOB_ROLES from. This harness used to build its
+// `createJobRole` steps from sampleCompany.v2.json `jobRoles[]` -- a fourteen-entry list that overlapped the launch
+// seed's ten in seven places and disagreed with it about what the Owner, Parts and Finance positions were called. The
+// Owner ruled neither list canonical. The fixture no longer declares a catalog at all; the vocabulary below is the only
+// source, so this harness and that seed cannot produce different Job Role universes.
+//
+// WHY A lib/ REQUIRE IN A SCRIPT, AND NOT A MIRROR. The alternative is a mirrored copy plus a test asserting the two
+// are equal, which is the idiom this file uses for vocabularies it only ever READS in order to refuse them
+// (LEGACY_OPERATIONAL_ROLE_VALUES, CONTEXT_PREDICATE_KINDS). A mirror is not good enough here: the ruling is that ONE
+// list exists, and a mirror is a second list that happens to agree.
+//
+// WHY IT IS LAZY, AND MUST STAY LAZY. `lib/` is a BUILD ARTIFACT and this file is reached by a FENCED operator script.
+// functions/test/operatorScriptEnvironmentFence.test.mjs spawns scripts/seedPersonaAuthorityDimensionsCli.js under a
+// preload that bans client libraries and asserts the script refuses -- "--environment is required" -- before anything
+// else happens. That suite runs in the Access Operator Script Tests workflow, which does NOT run `npm run build`, so
+// `lib/` does not exist there at all. A top-level require of a compiled artifact therefore threw
+// MODULE_NOT_FOUND before the fence could refuse, and 52 of the 219 fence subtests failed on it.
+//
+// Requiring at the point of USE keeps ONE list and satisfies the fence: nothing compiled loads until an invocation has
+// already passed the environment and tenant checks and a plan is actually being built. Do not hoist this back to the
+// top of the file -- the fence suite has no build, and the whole point of the fence is that a script validates its
+// arguments before it loads anything.
+let canonicalJobRoleVocabulary = null;
+const jobRoleVocabulary = () => (canonicalJobRoleVocabulary ??= require("../../lib/eosWorkforce/jobRoleVocabulary.js"));
 
 /**
  * The legacy `operationalRoles` vocabulary, mirrored here for ONE purpose: to refuse it. A
@@ -161,6 +186,16 @@ function validateManifest(manifest = MANIFEST, sampleCompany = SAMPLE_COMPANY, v
   }
   if (manifest.tenantKey !== sampleCompany.company.tenantKey || manifest.environment !== sampleCompany.company.environment) {
     refuse("MANIFEST_INVALID", "tenant and environment must be the Sample Company's own");
+  }
+
+  // ---- NO FIXTURE MAY RE-DECLARE THE JOB ROLE CATALOG (Owner ruling 2026-09-25). sampleCompany.v2.json used to
+  // carry a fourteen-entry `jobRoles[]` and this harness turned it into the createJobRole plan, which made the fixture
+  // a second Job Role authority alongside migration/jobRoleCatalogSeed.ts. Both now project from
+  // src/eosWorkforce/jobRoleVocabulary.ts. This refusal is what stops the list growing back: a re-added `jobRoles[]`
+  // would sit there looking authoritative while nothing read it, which is worse than either arrangement.
+  if (sampleCompany.jobRoles !== undefined || manifest.jobRoles !== undefined) {
+    refuse("JOB_ROLE_CATALOG_NOT_FIXTURE_DECLARED",
+      "a manifest may reference a Job Role by manifestKey but may not declare the catalog; the canonical vocabulary is src/eosWorkforce/jobRoleVocabulary.ts");
   }
 
   // ---- the Employees this manifest may talk about, and the warehouses a scope may name
@@ -414,29 +449,33 @@ function planPersonaAuthorityDimensions(manifest = MANIFEST, sampleCompany = SAM
   // governed fact. RETAIL_SALES and NATIONAL_ACCOUNTS_SALES become two SEPARATE catalog entries here,
   // which is the only place that distinction is real: both personas hold the identical `salesperson`
   // Security Role by design.
-  const jobRoleById = new Map(sampleCompany.jobRoles.map((r) => [r.key, r]));
-  for (const role of sampleCompany.jobRoles) {
+  //
+  // THE CATALOG IS NOT THE FIXTURE'S TO DECIDE. These steps are a projection of CANONICAL_JOB_ROLES, in its order. The
+  // fixture contributes only the ASSIGNMENTS -- which Employee holds which position -- and it names a position by
+  // manifestKey, which must resolve in the canonical vocabulary or the run refuses rather than inventing an entry.
+  const { CANONICAL_JOB_ROLES, CANONICAL_JOB_ROLE_BY_MANIFEST_KEY } = jobRoleVocabulary();
+  for (const role of CANONICAL_JOB_ROLES) {
     plan.push({
       command: "createJobRole",
       requiresCapability: "admin.employeeJobRole.write",
-      input: { jobRoleId: role.pgJobRoleId, displayName: role.label },
+      input: { jobRoleId: role.jobRoleId, displayName: role.displayName },
     });
   }
   for (const e of sampleCompany.employees) {
-    const role = jobRoleById.get(e.jobRole);
-    if (!role) refuse("JOB_ROLE_UNKNOWN", `${e.key}: Job Role ${e.jobRole} is not in the Sample Company catalog`);
+    const role = CANONICAL_JOB_ROLE_BY_MANIFEST_KEY[e.jobRole];
+    if (!role) refuse("JOB_ROLE_UNKNOWN", `${e.key}: Job Role ${e.jobRole} is not in the canonical Job Role vocabulary`);
     plan.push({
       command: "assignEmployeeJobRole",
       requiresCapability: "admin.employeeJobRole.write",
       input: {
         employeeId: e.id,
-        jobRoleId: role.pgJobRoleId,
+        jobRoleId: role.jobRoleId,
         // Composed exactly the way the other two dimensions are: persona, Employee id, dimension, target.
         // The Job Role's rationale is structural rather than per-persona prose, because a Job Role IS the
         // business function -- there is no second fact to explain, and inventing one per Employee would be
         // twenty-one paraphrases of the same sentence.
-        reason: composeStepReason(e.key, e.id, DIMENSION_JOB_ROLE, role.pgJobRoleId,
-          `the Sample Company declares this Employee's business function as ${role.label}; it grants nothing and implies no qualification or scope`),
+        reason: composeStepReason(e.key, e.id, DIMENSION_JOB_ROLE, role.jobRoleId,
+          `the Sample Company declares this Employee's business position as ${role.displayName}; it grants nothing and implies no qualification or scope`),
       },
     });
   }

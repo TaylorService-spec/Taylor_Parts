@@ -395,7 +395,7 @@
         "controller"
       ],
       "liveInNonprod": true,
-      "notes": "Holds `controller`. CLOSED, having been BLOCKED by SAMPLE_COMPANY_V3_REQUIRED. The Employee is created by the ONE documented direct insert in seedSampleCompany.js, which is the existing Employee writer -- no second Employee authority was created. Its Job Role is FINANCE_MANAGER and its Security Role is `controller`, which is deliberate: the two axes do not have to agree even when they share a word.",
+      "notes": "Holds `controller`. CLOSED, having been BLOCKED by SAMPLE_COMPANY_V3_REQUIRED. The Employee is created by the ONE documented direct insert in seedSampleCompany.js, which is the existing Employee writer -- no second Employee authority was created. Its Job Role is FINANCE_ACCOUNTING (spelled FINANCE_MANAGER until the 2026-09-25 canonical Job Role ruling retired that spelling, because `financeManager` is a Security Role key) and its Security Role is `controller`, which is deliberate: the two axes do not have to agree even when they share a word.",
       "supersedesDisposition": "BLOCKED / SAMPLE_COMPANY_V3_REQUIRED",
       "stillBlocked": "FINANCIALS_DOMAIN_BLOCKED. The six finance capabilities are REGISTERED and resolve through the identity chain, so login, capability resolution and every denial are provable today. What is not provable is an end-to-end invoice or payment: no HTTP route serves one and the writers are Firebase onCall functions over Firestore. The persona exists so a registered authority stops being held by nobody; the transaction half stays blocked on the domain cutover."
     },
@@ -1320,7 +1320,7 @@
       "finding": "Finance/Accounting and Reporting/Read-Only need a new Employee, and the only governed Employee writer is the ONE documented direct insert in seedSampleCompany.js.",
       "consequence": "controller, financeManager, accountingManager, reportViewer, reportFinanceViewer and reportAuthor are real Roles that NO persona exercises.",
       "refusedAlternative": "Adding a second Employee writer in this lane.",
-      "resolution": "A Sample Company v3 change, which also needs the twelve-key Job Role vocabulary extended for FINANCE_MANAGER."
+      "resolution": "A Sample Company v3 change. The Job Role half is DONE: the canonical vocabulary (functions/src/eosWorkforce/jobRoleVocabulary.ts, Owner ruling 2026-09-25) carries FINANCE_ACCOUNTING, so no vocabulary extension is outstanding."
     },
     {
       "code": "REORDER_QUEUE_SCOPE_HAS_NO_GOVERNED_WRITER",

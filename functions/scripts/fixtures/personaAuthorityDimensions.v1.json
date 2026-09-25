@@ -503,7 +503,7 @@
       "separatedFrom": "Owner / Executive",
       "separationReason": "OWNER RULING: Administrator is not Owner and Owner is not Administrator, and no merged Owner/Admin fixture may survive as the canonical acceptance persona. The previous catalog recorded this as MERGED_INTO_OWNER_EXECUTIVE on the argument that a second Principal holding `admin` would answer identically on every operation -- which was true of a second ADMIN Principal and was never the question. The two personas differ because they hold DIFFERENT ROLES: `admin` and `owner` are two Roles with two different live grant sets, and the merged fixture hid that by giving the Owner the Administrator's Role.",
       "employee": "synthetic-np-emp-administrator",
-      "jobRole": "ADMINISTRATOR",
+      "jobRole": "OFFICE_ADMINISTRATION",
       "securityRoles": [
         "admin"
       ],
@@ -567,7 +567,7 @@
       "requestedRole": "Dispatcher",
       "disposition": "EXISTS_IN_SAMPLE_COMPANY_V2",
       "employee": "synthetic-np-emp-dispatcher",
-      "jobRole": "DISPATCHER",
+      "jobRole": "SERVICE_COORDINATOR_DISPATCHER",
       "securityRoles": [
         "dispatcher"
       ],
@@ -808,7 +808,7 @@
       "disposition": "ADDED_TO_SAMPLE_COMPANY_V2",
       "previously": "catalogGaps[Finance / Accounting], MISSING_FROM_SAMPLE_COMPANY_V2",
       "employee": "synthetic-np-emp-finance-controller",
-      "jobRole": "FINANCE_MANAGER",
+      "jobRole": "FINANCE_ACCOUNTING",
       "securityRoles": [
         "controller"
       ],
@@ -820,7 +820,7 @@
         "FINANCE_IS_NOT_ADMINISTRATION",
         "JOB_ROLE_DOES_NOT_IMPLY_SECURITY_ROLE"
       ],
-      "$comment": "Holds `controller`, NOT `financeManager`, while carrying the FINANCE_MANAGER Job Role -- the Job Role and the Security Role are two axes and this persona is the sharpest place in the catalog to see that they do not have to agree even when they share a word. It holds no Work Eligibility and no Operational Scope: recording an adjustment is a capability, not a kind of field work, and it happens nowhere in particular."
+      "$comment": "Holds `controller`, NOT `financeManager`, while carrying the FINANCE_ACCOUNTING Job Role -- the Job Role and the Security Role are two axes and this persona is the sharpest place in the catalog to see that they do not have to agree. The Job Role used to be spelled FINANCE_MANAGER and the argument used to rest on the shared word; the 2026-09-25 canonical ruling retired that spelling BECAUSE `financeManager` is a Security Role key, so what is left is the stronger form of the same point: the position covers the whole finance function and names no Role at all. It holds no Work Eligibility and no Operational Scope: recording an adjustment is a capability, not a kind of field work, and it happens nowhere in particular."
     },
     "report-analyst": {
       "requestedRole": "Reporting / Read-Only",
@@ -828,7 +828,7 @@
       "acceptance": "BLOCKED_DOMAIN",
       "blockedBy": "REPORTING_CAPABILITY_VOCABULARY_ABSENT",
       "employee": "synthetic-np-emp-report-analyst",
-      "jobRole": "OFFICE_MANAGER",
+      "jobRole": "REPORTING_ANALYST",
       "securityRoles": [],
       "workEligibility": [],
       "operationalScopes": [],
@@ -1458,8 +1458,8 @@
       "assignEmployeeJobRole"
     ],
     "requiresCapability": "admin.employeeJobRole.write",
-    "catalogSource": "sampleCompany.v2.json jobRoles[] -- `pgJobRoleId` is the governed catalog id, `label` its display name",
-    "assignmentSource": "sampleCompany.v2.json employees[].jobRole, mapped through the same jobRoles[] row",
+    "catalogSource": "functions/src/eosWorkforce/jobRoleVocabulary.ts CANONICAL_JOB_ROLES -- the ONE authoritative Job Role vocabulary (Owner ruling 2026-09-25, sixteen positions). `jobRoleId` is the governed catalog id, `displayName` its display name. sampleCompany.v2.json no longer declares jobRoles[] and personaAuthorityDimensions.js REFUSES a manifest that re-declares it; migration/jobRoleCatalogSeed.ts LAUNCH_JOB_ROLES projects from the same module, so the two former catalogs can no longer produce different Job Role universes.",
+    "assignmentSource": "sampleCompany.v2.json employees[].jobRole -- a REFERENCE by canonical manifestKey, resolved through CANONICAL_JOB_ROLE_BY_MANIFEST_KEY. A value that does not resolve refuses the plan; it never creates a catalog entry.",
     "neverDoes": [
       "never writes a job role column on eos_workforce.employees -- there is none and there will be none",
       "never ends an existing current assignment except through the governed writer's own one-current-row transaction",

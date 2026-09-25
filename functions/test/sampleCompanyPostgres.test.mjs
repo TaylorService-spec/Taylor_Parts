@@ -25,7 +25,7 @@ const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no datab
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FUNCTIONS_DIR = resolve(HERE, "..");
 const require = createRequire(import.meta.url);
-const { MANIFEST } = require("../scripts/seedSampleCompany.js");
+const { MANIFEST, JOB_ROLE_VOCABULARY } = require("../scripts/seedSampleCompany.js");
 const { verifySampleCompany } = require("../scripts/verifySampleCompany.js");
 const { activateSampleCompanyLogins, transitionEmployeeLink } = require("../scripts/sampleCompany/loginActivation.js");
 const linkRepository = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
@@ -530,7 +530,9 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
       WHERE table_schema = 'eos_workforce' AND table_name = 'employees' ORDER BY 1`)).rows.map((r) => r.column_name);
     assert.deepEqual(columns.filter((c) => /role|uid|firebase|principal|subject|provider|technician/.test(c)), [],
       "a Job Role or identity column reached the Employee table");
-    for (const jobRole of MANIFEST.jobRoles.map((r) => r.key)) {
+    // The vocabulary, not a manifest array: sampleCompany.v2.json stopped declaring a Job Role catalog under
+    // the 2026-09-25 canonical ruling and JOB_ROLE_VOCABULARY projects from jobRoleVocabulary.ts.
+    for (const jobRole of JOB_ROLE_VOCABULARY) {
       const hits = (await q(`SELECT count(*)::int AS n FROM eos_workforce.employees WHERE job_title = $1`, [jobRole])).rows[0].n;
       assert.equal(hits, 0, `${jobRole} was written into job_title, which is a free-text job TITLE, not the Job Role`);
     }

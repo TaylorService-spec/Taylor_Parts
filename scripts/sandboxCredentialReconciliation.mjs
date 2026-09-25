@@ -1,0 +1,462 @@
+/**
+ * SANDBOX CREDENTIAL RECONCILIATION — read-only, dry-run only, counts out.
+ *
+ * WHY THIS EXISTS, AND WHY IT IS NOT A BOOTSTRAP.
+ *
+ * This lane was briefed to build a "credential bootstrap": generate passwords for the twelve
+ * canonical personas that had no entry in the canonical credential file, and create auth accounts
+ * for the three that had no declared address. Both halves of that brief rested on one premise:
+ *
+ *     "no canonical credential" MEANS "no credential exists".
+ *
+ * THE PREMISE WAS FALSE, and measuring it is the whole point of this file. The canonical loader
+ * resolved to a 70-byte file holding ONE entry, and that was read as credential absence. It was a
+ * LOADER REACHABILITY result, not a credential-existence result: the operator's real credential
+ * source holds SIXTY entries and the loader cannot see it.
+ *
+ * ============================ THE REACHABILITY DEFECT ============================
+ *
+ * `candidatePaths()` in scripts/sandboxCredentials.mjs builds two of its five candidates from
+ * `os.homedir()`:
+ *
+ *     path.join(home, "Favorites", "Downloads", CANONICAL_FILENAME)
+ *     path.join(home, "Downloads",  CANONICAL_FILENAME)
+ *
+ * `Favorites\Downloads` is a WINDOWS shell folder. Those two candidates were authored for a
+ * Windows profile, but this host runs the loader under WSL, where `os.homedir()` is the LINUX home
+ * (`/home/<user>`). So the loader looks for `/home/<user>/Favorites/Downloads/...`, which does not
+ * exist and never did, while the real file sits in the Windows profile
+ * (`/mnt/c/Users/<user>/Favorites/Downloads/...`) holding every credential anybody was looking for.
+ *
+ * This is the exact failure shape scripts/sandboxCredentials.mjs was written to prevent, one level
+ * up: it does not surface as "your file is somewhere else", it surfaces as an empty catalog, which
+ * reads as "these personas have no passwords" — and the remedy that suggests itself is to MINT new
+ * ones. Doing that would have reset live accounts and invalidated the operator's working file,
+ * which is precisely the harm `--rotate`'s warnings exist to prevent, reached by a different road.
+ *
+ * ============================ WHAT THIS MODULE MAY DO ============================
+ *
+ * NOTHING THAT WRITES. There is no write path here, no `node:crypto` import, no password
+ * generation, no account creation, no Auth client, and no network call. A reconciliation that could
+ * mutate is not a reconciliation.
+ *
+ * There is also deliberately NO SECOND PASSWORD IMPLEMENTATION. The repository already has exactly
+ * one (`activateMissingSandboxPasswords` in functions/scripts/activateSandboxPersonas.js), it
+ * already refuses production, already generates a password ONLY where none exists, already merges
+ * rather than replaces, and the Sample Company orchestrator already calls it through an explicit
+ * allowlist and is DRY RUN BY DEFAULT. Adding another would be a second thing to keep honest about
+ * rotation and merge semantics, and the first time the two drifted the symptom would be "invalid
+ * password" with no clue which one was wrong.
+ *
+ * KEY NAMES, NEVER VALUES. Every function here accepts and returns credential-file KEY NAMES
+ * (addresses) and counts. No function accepts, returns, logs, compares, measures the length of, or
+ * otherwise derives anything from a password. `discoverCredentialSources()` reports how many
+ * entries a file holds and what they are KEYED by, and nothing else.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import {
+  CANONICAL_ROLE_KEYS,
+  CANONICAL_ROLE_REGISTRY,
+  CREDENTIAL_SOURCE_ENV,
+  NONCANONICAL_FIXTURE_IDENTITIES,
+  PERSONA_ALIASES,
+  RETIRED_PERSONAS,
+  SANDBOX_PERSONAS,
+  UNRECONCILED_PERSONAS,
+  candidatePaths,
+  parseCredentials,
+} from "./sandboxCredentials.mjs";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REGISTRY_PATH = path.resolve(HERE, "..", "config", "environments.json");
+
+/** The only Firebase project this workstream may ever name. */
+export const SANDBOX_PROJECT_ID = "eos-platform-sandbox";
+
+/**
+ * The customer production project, denied BY NAME and independently of the registry.
+ *
+ * Two fences, because they fail differently: a registry `role` check is the general rule and
+ * catches any production environment, but it is only as good as the registry file, which is
+ * editable. The literal name is the backstop that survives a registry edit. `taylor-parts` must be
+ * unreachable even if `config/environments.json` is wrong, absent or malicious.
+ */
+export const FORBIDDEN_PROJECT_IDS = Object.freeze(["taylor-parts"]);
+
+/** The five reconciliation states. Every canonical persona lands in exactly one. */
+export const CLASSIFICATIONS = Object.freeze([
+  "EXISTING_CREDENTIAL_EXACT_MATCH",
+  "EXISTING_CREDENTIAL_ALIAS_MATCH",
+  "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL",
+  "NEEDS_DISTINCT_SECOND_TEST_IDENTITY",
+  "AUTH_ACCOUNT_MISSING",
+]);
+
+export class ReconciliationRefusal extends Error {
+  constructor(code, detail) {
+    // Carries a code and a reason. Never a credential, and never a file's contents.
+    super(`${code}: ${detail}`);
+    this.name = "ReconciliationRefusal";
+    this.code = code;
+  }
+}
+
+/**
+ * Refuse any target that is not the sandbox, by BOTH fences.
+ *
+ * Order matters: the literal deny list is checked FIRST, so `taylor-parts` is refused before the
+ * registry is even read. A registry that has been edited to relabel production as `sandbox`
+ * therefore still cannot let it through.
+ */
+export function assertSandboxTarget(projectId) {
+  if (!projectId || typeof projectId !== "string") {
+    throw new ReconciliationRefusal("PROJECT_ID_REQUIRED", "no default target; name the project explicitly");
+  }
+  if (FORBIDDEN_PROJECT_IDS.includes(projectId)) {
+    throw new ReconciliationRefusal("PRODUCTION_PROJECT_FORBIDDEN", `'${projectId}' is the customer production project`);
+  }
+
+  let registry;
+  try {
+    registry = JSON.parse(fs.readFileSync(REGISTRY_PATH, "utf8"));
+  } catch (err) {
+    throw new ReconciliationRefusal("REGISTRY_UNREADABLE", `cannot read the environment registry (${err.code ?? "error"})`);
+  }
+  const env = (registry.environments ?? []).find((e) => e.firebase && e.firebase.projectId === projectId);
+  if (!env) {
+    throw new ReconciliationRefusal("UNKNOWN_PROJECT", `'${projectId}' is not a provisioned environment; unknown projects fail closed`);
+  }
+  if (env.role === "production") {
+    throw new ReconciliationRefusal("PRODUCTION_ROLE_FORBIDDEN", `environment '${env.id}' has role 'production'`);
+  }
+  // Reconciliation is pinned to ONE sandbox. `eos-platform-certification` is also role=sandbox and
+  // is deliberately still refused: the certification identities are a separate namespace
+  // (`@eos-sandbox.invalid`) with their own lifecycle, and reconciling them against the persona
+  // catalog would compare two things that are not the same population.
+  if (projectId !== SANDBOX_PROJECT_ID) {
+    throw new ReconciliationRefusal("WRONG_SANDBOX_PROJECT", `this reconciliation is pinned to '${SANDBOX_PROJECT_ID}', not '${projectId}'`);
+  }
+  return env;
+}
+
+/**
+ * Every place the loader looks, plus whether a file is actually there.
+ *
+ * Returns KEY NAMES and counts only. `reachableByLoader` is the honest answer to "would
+ * loadSandboxPersona find this?", which is the question the 70-byte stub answered misleadingly.
+ */
+export function discoverCredentialSources({ extraPaths = [] } = {}) {
+  const canonical = candidatePaths();
+  const seen = new Set();
+  const sources = [];
+
+  for (const [group, list] of [["CANONICAL_CANDIDATE", canonical], ["OFF_LOADER_PATH", extraPaths]]) {
+    for (const p of list) {
+      if (seen.has(p)) continue;
+      seen.add(p);
+      const source = { path: p, group, present: false, entryCount: 0, keyNames: [], reachableByLoader: group === "CANONICAL_CANDIDATE" };
+      let raw;
+      try {
+        if (!fs.statSync(p).isFile()) {
+          sources.push(source);
+          continue;
+        }
+        raw = fs.readFileSync(p, "utf8");
+      } catch {
+        sources.push(source);
+        continue;
+      }
+      source.present = true;
+      try {
+        // The canonical parser, so this module cannot disagree with the loader about what an entry
+        // is. Only Object.keys() is taken from the result; the values are never touched.
+        const table = parseCredentials(raw);
+        source.keyNames = Object.keys(table).sort();
+        source.entryCount = source.keyNames.length;
+      } catch (err) {
+        source.parseFailure = err.failureType ?? "UNPARSEABLE";
+      }
+      sources.push(source);
+    }
+  }
+  return sources;
+}
+
+/**
+ * ============================ THE MEASURED CREDENTIAL KEYS ============================
+ *
+ * The named `@sandbox.invalid` keys present in the operator's real credential file, measured
+ * 2026-09-25 by reading KEY NAMES ONLY (`Object.keys`) -- no value was read, printed, hashed or
+ * measured for length. The 47 `cw-emp-*` certification keys are a separate namespace and are
+ * deliberately not listed.
+ *
+ * This is the one fact the table cannot derive, so it is pinned. Everything else below is computed
+ * from the registry, because a second hand-maintained copy of sixteen addresses is exactly how the
+ * catalog and its commentary came to disagree in the first place.
+ */
+export const MEASURED_CREDENTIAL_KEYS = Object.freeze([
+  "acctmgr@sandbox.invalid",
+  "admin@sandbox.invalid",
+  "dispatcher@sandbox.invalid",
+  "eos-owner@sandbox.invalid",
+  "fieldmgr@sandbox.invalid",
+  "mikael@sandbox.invalid",
+  "opsmgr@sandbox.invalid",
+  "owner@sandbox.invalid",
+  "partsassoc@sandbox.invalid",
+  "partsmgr@sandbox.invalid",
+  "restricted@sandbox.invalid",
+  "salesmgr@sandbox.invalid",
+  "tech@sandbox.invalid",
+  "whmgr@sandbox.invalid",
+]);
+
+/**
+ * THE 16-ROW RECONCILIATION, DERIVED from the canonical role registry.
+ *
+ * One row per canonical Job Role. `credentialCandidate` is the registry's declared authentication
+ * identity -- never a plausible-looking neighbour, which is the substitution this whole exercise
+ * exists to prevent.
+ *
+ * Classification is computed, not asserted:
+ *   account missing                        -> AUTH_ACCOUNT_MISSING
+ *   account exists, credential measured    -> EXISTING_CREDENTIAL_EXACT_MATCH
+ *   account exists, no credential measured -> EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL
+ *
+ * EXISTING_CREDENTIAL_ALIAS_MATCH is structurally unreachable and that is a finding, not a gap:
+ * aliases map key -> key and never carry an address, so no alias can contribute a credential key.
+ */
+function buildReconciliation() {
+  const measured = new Set(MEASURED_CREDENTIAL_KEYS.map((k) => k.toLowerCase()));
+  return Object.freeze(
+    CANONICAL_ROLE_KEYS.map((role, i) => {
+      const entry = CANONICAL_ROLE_REGISTRY[role];
+      const hasCredential = measured.has(entry.email.toLowerCase());
+      const classification = !entry.accountExists
+        ? "AUTH_ACCOUNT_MISSING"
+        : hasCredential
+          ? "EXISTING_CREDENTIAL_EXACT_MATCH"
+          : "EXISTING_ACCOUNT_BUT_NO_MATCHED_CREDENTIAL";
+      const action =
+        classification === "EXISTING_CREDENTIAL_EXACT_MATCH"
+          ? "NONE. A credential for this exact identity already exists and works. NEVER ROTATE, and do not create a second account for this Job Role."
+          : classification === "AUTH_ACCOUNT_MISSING"
+            ? "CREATE EXACTLY ONE account, later, through sandboxPersonaBootstrap after merge and deploy. It is the only account this programme creates."
+            : "Password bootstrap authorized: the account exists and its uid matches its live Principal, and no credential is present. Mint through the existing activateMissingSandboxPasswords.";
+      return Object.freeze({
+        slot: `P${String(i + 1).padStart(2, "0")}`,
+        persona: role,
+        jobRole: entry.jobRole,
+        credentialCandidate: entry.email,
+        authAccountExists: entry.accountExists,
+        authUid: entry.uid,
+        mappingConfidence: "CERTAIN",
+        classification,
+        action,
+      });
+    }),
+  );
+}
+
+export const RECONCILIATION = buildReconciliation();
+
+/**
+ * THE CREDENTIAL POLICY FOR THE LATER APPLY. Declared here, executed nowhere in this repository.
+ *
+ * This is the Owner's ruling written as data so it can be ASSERTED. The three sets are disjoint and
+ * must together cover all sixteen slots: a persona that appears in none of them, or in two, is a
+ * policy that has not actually been decided, and the tests refuse it.
+ *
+ * `preserveNeverRotate` is the load-bearing one. Every member has a WORKING credential today, and
+ * rotating any of them invalidates the Owner's saved copy and every running mission -- the failure
+ * that has already happened twice here and surfaces as "invalid password", which sends you
+ * debugging the wrong thing. A guard asserts these can never enter the rotation set.
+ */
+export const CREDENTIAL_POLICY = Object.freeze({
+  /** Credential EXISTS and works. Reuse as-is. Never rotate, never recreate. */
+  preserveNeverRotate: Object.freeze([
+    "ownerExecutive",
+    "administrator",
+    "dispatcher",
+    "financeAccounting",
+    "generalEmployee",
+  ]),
+  /** Account exists with a uid matching its live Principal; no credential, so a password may be minted. */
+  bootstrapAuthorized: Object.freeze([
+    "generalManager",
+    "officeManager",
+    "serviceManager",
+    "serviceTechnician",
+    "partsAssociate",
+    "partsManager",
+    "warehouseAssociate",
+    "warehouseManager",
+    "retailSales",
+    "nationalAccountsSales",
+  ]),
+  /** The ONE account this programme creates. */
+  createOne: Object.freeze(["reportingAnalyst"]),
+  expectedEndState: Object.freeze({
+    ready: 16,
+    preserved: 5,
+    bootstrapped: 10,
+    created: 1,
+    duplicatePersonaAccountsCreated: 0,
+  }),
+});
+
+/**
+ * The personas a rotation may touch. Derived, never hand-listed, so the preserve set cannot drift
+ * into it by someone editing one list and not the other.
+ */
+export function rotationSet() {
+  const preserved = new Set(CREDENTIAL_POLICY.preserveNeverRotate);
+  return CREDENTIAL_POLICY.bootstrapAuthorized.filter((p) => !preserved.has(p));
+}
+
+/**
+ * Classify the catalog against a set of credential-file KEY NAMES.
+ *
+ * @param {{credentialKeyNames?: Iterable<string>}} input KEY NAMES ONLY — addresses, never values.
+ *        Passing anything that is not a string is refused rather than coerced, so a caller cannot
+ *        hand this function a `{email: password}` table by accident.
+ * @returns rows plus counts. Never a credential, never a length, never a hash.
+ */
+export function reconcile({ credentialKeyNames = [] } = {}) {
+  const keys = new Set();
+  for (const k of credentialKeyNames) {
+    if (typeof k !== "string") {
+      throw new ReconciliationRefusal("KEY_NAMES_ONLY", "credentialKeyNames must be strings; this function never receives credential values");
+    }
+    keys.add(k.trim().toLowerCase());
+  }
+
+  const rows = RECONCILIATION.map((row) => ({
+    ...row,
+    // An EXACT match is only honoured when the key is ACTUALLY PRESENT in the sources given. The
+    // pinned table records which key COULD serve the row; presence is measured, not assumed.
+    credentialPresent: row.credentialCandidate ? keys.has(row.credentialCandidate.toLowerCase()) : false,
+  }));
+
+  const counts = Object.fromEntries(CLASSIFICATIONS.map((c) => [c, 0]));
+  for (const row of rows) counts[row.classification] += 1;
+
+  return {
+    projectId: SANDBOX_PROJECT_ID,
+    mode: "DRY_RUN",
+    mutations: 0,
+    slots: rows.length,
+    counts,
+    rows,
+  };
+}
+
+/**
+ * The vocabularies this reconciliation had to span, so a reader can see that all four were checked
+ * rather than take it on trust.
+ */
+export function vocabularies() {
+  return {
+    canonicalKeys: [...CANONICAL_ROLE_KEYS],
+    jobRoles: CANONICAL_ROLE_KEYS.map((k) => CANONICAL_ROLE_REGISTRY[k].jobRole),
+    legacyAliases: { ...PERSONA_ALIASES },
+    retiredKeys: Object.keys(RETIRED_PERSONAS),
+    unreconciledKeys: Object.keys(UNRECONCILED_PERSONAS),
+    noncanonicalIdentities: Object.keys(NONCANONICAL_FIXTURE_IDENTITIES).sort(),
+    mappedAddresses: Object.values(SANDBOX_PERSONAS).sort(),
+    slots: RECONCILIATION.map((r) => r.slot),
+    credentialSourceEnv: CREDENTIAL_SOURCE_ENV,
+  };
+}
+
+/**
+ * COUNTS ONLY, as the deliverable requires. Addresses and uids are identifiers and are safe to
+ * print, but this summary deliberately prints neither: a count cannot leak.
+ */
+export function formatCounts(result) {
+  const lines = [
+    `project        : ${result.projectId}`,
+    `mode           : ${result.mode}   (mutations: ${result.mutations})`,
+    `canonical slots: ${result.slots}`,
+    "",
+  ];
+  for (const c of CLASSIFICATIONS) lines.push(`${String(result.counts[c]).padStart(3)}  ${c}`);
+  return lines.join("\n");
+}
+
+/**
+ * ============================ THE DRY-RUN CLI ============================
+ *
+ * Read-only by construction: it discovers sources, classifies, and prints COUNTS. There is no
+ * `--apply`, because there is nothing here to apply. `--project` is required and is fenced twice.
+ *
+ * `--source <path>` adds an OFF-LOADER path to the discovery sweep. It exists because the whole
+ * finding of this lane is that the operator's real file sits somewhere `candidatePaths()` cannot
+ * reach, and a reconciliation that could only look where the broken loader looks would reproduce
+ * the very false negative it is meant to expose. Sources are reported by key name and count only.
+ */
+function parseArgv(argv) {
+  const out = { sources: [] };
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === "--project") out.project = argv[++i];
+    else if (a === "--source") out.sources.push(argv[++i]);
+    else if (a === "--verbose") out.verbose = true;
+  }
+  return out;
+}
+
+function cli(argv) {
+  const args = parseArgv(argv);
+  let env;
+  try {
+    env = assertSandboxTarget(args.project);
+  } catch (err) {
+    console.error(err.message);
+    process.exitCode = 1;
+    return;
+  }
+
+  const sources = discoverCredentialSources({ extraPaths: args.sources });
+  const keyNames = new Set();
+  for (const s of sources) for (const k of s.keyNames) keyNames.add(k);
+
+  const result = reconcile({ credentialKeyNames: keyNames });
+
+  console.log(`environment    : ${env.id}`);
+  console.log(formatCounts(result));
+  console.log("");
+  console.log("credential sources (key COUNTS only; no value is read, printed or derived):");
+  for (const s of sources) {
+    const state = s.present ? (s.parseFailure ? `PRESENT/${s.parseFailure}` : `PRESENT entries=${s.entryCount}`) : "ABSENT";
+    console.log(`  [${s.reachableByLoader ? "loader-reachable" : "OFF-LOADER-PATH "}] ${state.padEnd(22)} ${s.path}`);
+  }
+  const reachable = sources.filter((s) => s.present && s.reachableByLoader).reduce((n, s) => n + s.entryCount, 0);
+  const offPath = sources.filter((s) => s.present && !s.reachableByLoader).reduce((n, s) => n + s.entryCount, 0);
+  console.log("");
+  console.log(`entries reachable by the canonical loader : ${reachable}`);
+  console.log(`entries present but OFF the loader's paths: ${offPath}`);
+  if (offPath > reachable) {
+    console.log("");
+    console.log("LOADER REACHABILITY DEFECT: more credentials exist off the loader's candidate paths than on them.");
+    console.log("Reading that as credential ABSENCE is what produced the false 'these personas need new passwords'.");
+  }
+  if (args.verbose) {
+    console.log("");
+    console.log("per-slot classification (identifiers only):");
+    for (const r of result.rows) {
+      console.log(`  ${r.slot}  ${String(r.persona).padEnd(22)} ${r.classification}`);
+    }
+  }
+  console.log("");
+  console.log("DRY RUN. No account, credential, file or password was created, read for its value, modified or rotated.");
+}
+
+// Only when this file IS the entry point, so importing it for tests runs nothing.
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  cli(process.argv.slice(2));
+}

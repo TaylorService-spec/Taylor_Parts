@@ -58,6 +58,7 @@ const reorderAssignment = require("../lib/eosOps/reorderAssignmentAuthority.js")
 const eligibilityCommands = require("../lib/eosWorkforce/commands/employeeWorkEligibilityCommands.js");
 const scopeCommands = require("../lib/eosWorkforce/commands/employeeOperationalScopeCommands.js");
 const dimensions = require("../scripts/sampleCompany/personaAuthorityDimensions.js");
+const { CANONICAL_JOB_ROLE_IDS } = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
 async function withClient(url, fn) {
@@ -174,10 +175,13 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
     }
 
     await t.test("AC6: every governed persona provisioning mutation carries its OWN specific reason", async () => {
-      // 48, not the 13 measured before lane BI completed the canonical test workforce. The number is
-      // pinned for the same reason it always was -- so that the per-step assertions below are known to
-      // run over THE WHOLE provisioning run and not just the Parts slice this suite is named for.
-      assert.equal(plan.length, 48, "the whole persona provisioning run, not just the Parts slice");
+      // 50, not the 48 of the previous revision and not the 13 measured before lane BI completed the canonical
+      // test workforce. The +2 is the Owner ruling of 2026-09-25: the Job Role catalog moved from the fixture's
+      // fourteen entries to the canonical SIXTEEN positions in src/eosWorkforce/jobRoleVocabulary.ts, so the plan
+      // carries two more createJobRole steps. Nothing about the per-Employee mutations changed. The number is
+      // pinned for the same reason it always was -- so that the per-step assertions below are known to run over
+      // THE WHOLE provisioning run and not just the Parts slice this suite is named for.
+      assert.equal(plan.length, 50, "the whole persona provisioning run, not just the Parts slice");
 
       // FOUR COMMAND KINDS, AND ONE OF THEM CANNOT CARRY A REASON -- which is a property of the
       // governed command, not an omission in the plan. `createJobRole` writes a TENANT CATALOG entry
@@ -187,7 +191,11 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
       // by a per-Employee reason. The other three ARE per-Employee mutations and every one of them
       // carries its own reason. Both halves are asserted, so neither can drift: if a reason is ever
       // added to a catalog step, or dropped from a mutation step, this fails.
-      const BY_COMMAND = { createJobRole: 14, assignEmployeeJobRole: 21,
+      // The catalog count is READ FROM THE ONE VOCABULARY rather than restated, so that the next ruling that
+      // adds or removes a position moves this expectation with it instead of turning this suite red for a reason
+      // that has nothing to do with Reorder. The other three are per-Employee counts and stay literal.
+      assert.equal(CANONICAL_JOB_ROLE_IDS.length, 16, "the canonical vocabulary is the ruled sixteen");
+      const BY_COMMAND = { createJobRole: CANONICAL_JOB_ROLE_IDS.length, assignEmployeeJobRole: 21,
         assignEmployeeWorkEligibility: 7, assignEmployeeOperationalScope: 6 };
       const counted = {};
       for (const s of plan) counted[s.command] = (counted[s.command] ?? 0) + 1;

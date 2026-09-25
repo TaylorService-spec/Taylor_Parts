@@ -1,0 +1,184 @@
+{
+  "$schema": "sandbox-role-identity-registry/v1",
+  "ruling": "OWNER RULING 2026-09-25: ONE CANONICAL SANDBOX LOGIN PER CANONICAL JOB ROLE. Exactly one chain per role: Credential -> Auth account -> EOS Principal -> Employee -> Job Role. Security Roles stay SEPARATE from Job Roles; nothing here says what an identity may do, which is read from PostgreSQL at request time.",
+  "$whyThisFileExists": "ONE AUTHORITY, TWO MODULE SYSTEMS. scripts/sandboxCredentials.mjs is ESM and functions/scripts/seedSampleCompany.js is CommonJS, so neither can import the other. Duplicating the registry in both is how the two would drift, and the symptom of drift here is an account created for an identity that already has one. JSON is the one shape both can read, so this file is the authority and both consume it. NO CODE MAY CARRY A COPY OF THESE ADDRESSES: the seed does one lookup against this file and holds no address literals, which is the failure mode the ruling explicitly forbids.",
+  "firebaseProjectId": "eos-platform-sandbox",
+  "emailDomain": "sandbox.invalid",
+  "confirmedBy": "Authoritative Firebase Admin SDK lookup against eos-platform-sandbox via ADC, 2026-09-25. 15 of 16 accounts exist; reporting@sandbox.invalid does not.",
+  "$uidNote": "A uid is an IDENTIFIER, not a credential: it proves which account a key names without revealing anything that can be signed in with. It is also the only way to catch the defect that keeps recurring here -- a key whose address and whose uid belong to two different accounts.",
+
+  "credentialEmailInvariant": {
+    "default": "credentialEmail === employee.workEmail",
+    "exception": "A canonical role identity declared in `roles` below MAY have a credentialEmail that differs from the Employee's workEmail. employee.workEmail is business/profile contact data; loginPrincipal.credentialEmail is authentication identity. They are distinct concepts and the sandbox consolidation is built on that distinction.",
+    "$notAGenericRule": "This is NOT a general 'emails may differ' permission. The exception applies ONLY to a persona with an entry in this registry, and ONLY when the declared authEmail matches exactly. Any other divergence is still MANIFEST_INVALID.",
+    "conditions": [
+      "environment is eos-platform-sandbox / governed nonprod",
+      "the persona is in the canonical 16-role identity registry",
+      "the registry explicitly declares the canonical authentication email",
+      "that declared Auth email resolves to exactly one intended sandbox identity",
+      "no duplicate canonical persona uses that Auth identity",
+      "the Employee workEmail is left UNCHANGED",
+      "no Firebase business authority is created"
+    ]
+  },
+
+  "roles": [
+    {
+      "key": "ownerExecutive",
+      "jobRole": "owner-executive",
+      "authEmail": "eos-owner@sandbox.invalid",
+      "uid": "ajXZSa0gTcWAyDHVSsVifwZfNRf1",
+      "accountExists": true,
+      "sampleCompanyEmployee": null,
+      "$comment": "The Owner AUTHORITY. Holds `owner` (47 capabilities) and NO employee link, so every WORK_ELIGIBILITY, OPERATIONAL_SCOPE and RECORD_ASSIGNMENT predicate refuses it EMPLOYEE_LINK_REQUIRED before reaching any authority question. Deliberately NOT the administrator. NOTE the address: eos-owner@, not the retired owner@, which no Principal ever held. Its manifest Principal is REUSE_UNCHANGED with credentialEmail null, so it is out of activation scope entirely."
+    },
+    {
+      "key": "generalManager",
+      "jobRole": "general-manager",
+      "authEmail": "bailey.fixture@sandbox.invalid",
+      "uid": "xiyAcX4UQEQRRqbMRrIXv3LwWVi2",
+      "accountExists": true,
+      "sampleCompanyEmployee": "general-manager"
+    },
+    {
+      "key": "officeManager",
+      "jobRole": "office-manager",
+      "authEmail": "casey.fixture@sandbox.invalid",
+      "uid": "Trvw2vp0yhd2SnXOfZvDUAcv6Aj2",
+      "accountExists": true,
+      "sampleCompanyEmployee": "office-manager",
+      "$comment": "PROMOTED TO CANONICAL by the ruling. It was previously a 'supplemental' login -- reachable but outside the catalog -- which left the Office Manager Job Role with no canonical credential at all."
+    },
+    {
+      "key": "administrator",
+      "jobRole": "office-administration",
+      "authEmail": "admin@sandbox.invalid",
+      "uid": "ZVu3lHTP1NQhj0Am04zTAGou0dx1",
+      "accountExists": true,
+      "sampleCompanyEmployee": null,
+      "$comment": "The ONE pre-existing sandbox Administrator, reused verbatim; holds `admin` (66 capabilities). The single legacy sbx-*-era address that was never a collision. Its manifest Principal is REUSE_UNCHANGED with credentialEmail null, so it can never become an activation allowlist entry."
+    },
+    {
+      "key": "serviceManager",
+      "jobRole": "service-manager",
+      "authEmail": "devon.fixture@sandbox.invalid",
+      "uid": "oQPfzG2AUgWOo8Tm0LJvurj8dXi2",
+      "accountExists": true,
+      "sampleCompanyEmployee": "service-manager",
+      "$comment": "Holds the `fieldManager` SECURITY Role while serving the service-manager JOB Role. The two vocabularies are allowed to differ and must not be conflated."
+    },
+    {
+      "key": "dispatcher",
+      "jobRole": "service-coordinator-dispatcher",
+      "authEmail": "dispatcher@sandbox.invalid",
+      "uid": "PEiRkebIGRPcEau7yBBV0D77Dho1",
+      "accountExists": true,
+      "sampleCompanyEmployee": "dispatcher",
+      "$comment": "USES THE EXCEPTION: the Employee's workEmail is emerson.fixture@sandbox.invalid and stays that way. The catalog used to name emerson.fixture@ while quoting THIS uid, so the key resolved to an account (NReyNyXVMdVkv75vpmxWuvGUeOm1) that no EOS Principal stood behind, while the account holding the live Dispatcher Principal went unnamed."
+    },
+    {
+      "key": "serviceTechnician",
+      "jobRole": "service-technician",
+      "authEmail": "finley.fixture@sandbox.invalid",
+      "uid": "i4EYSBGPXPM8lweuhI5a5y2TRgH3",
+      "accountExists": true,
+      "sampleCompanyEmployee": "service-technician-a",
+      "$comment": "THE ONE TECHNICIAN. technicianAssigned/technicianUnassigned are retired: they were one Job Role wearing two logins, told apart by a record assignment that identity has no business encoding. Assigned-vs-unassigned is BUSINESS DATA -- Scenario A assigns a Work Order to this technician and proves own-record access, Scenario B does not and proves the denial."
+    },
+    {
+      "key": "partsAssociate",
+      "jobRole": "parts-associate",
+      "authEmail": "logan.fixture@sandbox.invalid",
+      "uid": "Ap6MRSs1gKW5lQtN4lTZOaecHgu1",
+      "accountExists": true,
+      "sampleCompanyEmployee": "parts-associate"
+    },
+    {
+      "key": "partsManager",
+      "jobRole": "parts-manager",
+      "authEmail": "kai.fixture@sandbox.invalid",
+      "uid": "p9zXxj5SJiOAwbSoFcKriaQ8NGt1",
+      "accountExists": true,
+      "sampleCompanyEmployee": "parts-manager"
+    },
+    {
+      "key": "warehouseAssociate",
+      "jobRole": "warehouse-associate",
+      "authEmail": "noor.fixture@sandbox.invalid",
+      "uid": "cgVnRUMA2Sc7WxHl1lgTmbQAhwG2",
+      "accountExists": true,
+      "sampleCompanyEmployee": "warehouse-associate"
+    },
+    {
+      "key": "warehouseManager",
+      "jobRole": "warehouse-manager",
+      "authEmail": "morgan.fixture@sandbox.invalid",
+      "uid": "0KBdhU9Z8Yc4aTQqXHODEP1jeHf1",
+      "accountExists": true,
+      "sampleCompanyEmployee": "warehouse-manager"
+    },
+    {
+      "key": "retailSales",
+      "jobRole": "retail-sales",
+      "authEmail": "harper.fixture@sandbox.invalid",
+      "uid": "4OVJwVRisyOlgBQDkjA75rs7djm2",
+      "accountExists": true,
+      "sampleCompanyEmployee": "retail-sales-a"
+    },
+    {
+      "key": "nationalAccountsSales",
+      "jobRole": "national-accounts-sales",
+      "authEmail": "jules.fixture@sandbox.invalid",
+      "uid": "zpfYS0PKUJOwVbskY1WjUreWqg72",
+      "accountExists": true,
+      "sampleCompanyEmployee": "national-accounts-sales"
+    },
+    {
+      "key": "financeAccounting",
+      "jobRole": "finance-accounting",
+      "authEmail": "acctmgr@sandbox.invalid",
+      "uid": "anKfqN34GSS1RKCgF00nWTse6062",
+      "accountExists": true,
+      "sampleCompanyEmployee": "finance-controller",
+      "$comment": "USES THE EXCEPTION, explicitly authorized by the Owner. Reuses the EXISTING acctmgr@ account; the Employee's workEmail stays sage.fixture@sandbox.invalid. sage.fixture@ has NO account in the project, so the old manifest declaration would have CREATED a duplicate login for a Job Role that already has one."
+    },
+    {
+      "key": "reportingAnalyst",
+      "jobRole": "reporting-analyst",
+      "authEmail": "reporting@sandbox.invalid",
+      "uid": null,
+      "accountExists": false,
+      "sampleCompanyEmployee": "report-analyst",
+      "reason": "ACCOUNT_NOT_CREATED_YET: an authoritative Firebase Admin SDK enumeration of eos-platform-sandbox on 2026-09-25 found 28 @sandbox.invalid accounts and no reporting address among them. It is the only canonical role whose account does not exist.",
+      "operatorAction": "Run sandboxPersonaBootstrap after merge and deploy; it creates exactly ONE account for reporting@sandbox.invalid and then activates its credential through the existing activateMissingSandboxPasswords. Do not create a second reporting-shaped account and do not point this key at a substitute. NOTE the authority gap is separate and unchanged: reportViewer, reportFinanceViewer and reportAuthor each resolve to ZERO role_capabilities in nonprod, so a holder measures nothing until those grants exist."
+    },
+    {
+      "key": "generalEmployee",
+      "jobRole": "general-employee",
+      "authEmail": "restricted@sandbox.invalid",
+      "uid": "lT75guU9mEY46QFQcegWRZRhYBi2",
+      "accountExists": true,
+      "sampleCompanyEmployee": "restricted-user",
+      "$comment": "USES THE EXCEPTION, explicitly authorized by the Owner. Reuses the EXISTING restricted@ account; the Employee's workEmail stays wren.fixture@sandbox.invalid. Until its Principal exists this account authenticates and is refused for having NO Principal, which proves a DIFFERENT thing from holding no authority -- tracked separately, not papered over here."
+    }
+  ],
+
+  "$noncanonicalPolicy": "RETAINED, NOT DELETED. The Owner ruled stale accounts stay until a separate cleanup wave authorizes deletion. None of these may appear in the canonical catalog, be required for browser acceptance, receive a duplicate EOS Principal, or drive role or security decisions. Recorded as DATA rather than prose because a comment cannot stop one being adopted, and adopting a plausible-looking fixture address is the exact mistake this registry exists to end.",
+  "noncanonical": [
+    { "email": "gray.fixture@sandbox.invalid", "supersededBy": "finley.fixture@sandbox.invalid", "role": "serviceTechnician", "uid": "l2AKXJ44hzUEWpYfEpiQeg208CF2", "sampleCompanyEmployee": "service-technician-b", "reason": "The SECOND technician. Retired as a permanent credential: one Job Role does not get two logins, and assigned-vs-unassigned is business data. Its Auth account and Principal may remain as historical fixture data and must not be required by the loader." },
+    { "email": "emerson.fixture@sandbox.invalid", "supersededBy": "dispatcher@sandbox.invalid", "role": "dispatcher", "uid": "NReyNyXVMdVkv75vpmxWuvGUeOm1", "sampleCompanyEmployee": null, "reason": "Exists but has NO EOS Principal, while the live Dispatcher Principal sits behind dispatcher@. It remains the Employee's workEmail, which is business contact data and is left unchanged; it is simply not an authentication identity." },
+    { "email": "sage.fixture@sandbox.invalid", "supersededBy": "acctmgr@sandbox.invalid", "role": "financeAccounting", "uid": null, "sampleCompanyEmployee": null, "reason": "NO SUCH ACCOUNT EXISTS. It remains the finance Employee's workEmail. Creating it would mint a duplicate login for a Job Role that already has one." },
+    { "email": "wren.fixture@sandbox.invalid", "supersededBy": "restricted@sandbox.invalid", "role": "generalEmployee", "uid": null, "sampleCompanyEmployee": null, "reason": "NO SUCH ACCOUNT EXISTS. It remains the restricted Employee's workEmail. Creating it would mint a duplicate login for a Job Role that already has one." },
+    { "email": "indigo.fixture@sandbox.invalid", "supersededBy": "harper.fixture@sandbox.invalid", "role": "retailSales", "uid": "jUzI7OPsdIbJ0WGa2YlYvGUXYKW2", "sampleCompanyEmployee": "retail-sales-b", "reason": "A SECOND retail sales login. Two logins for one Job Role is the duplication this ruling removes; a different book of business is business data, not a separate identity." },
+    { "email": "oakley.fixture@sandbox.invalid", "supersededBy": "finley.fixture@sandbox.invalid", "role": "serviceTechnician", "uid": null, "sampleCompanyEmployee": "contract-technician", "reason": "The contract technician: a second service-technician login whose point was employment_status CONTRACTOR. That is an Employee attribute, not a reason for another credential." },
+    { "email": "tech@sandbox.invalid", "supersededBy": "finley.fixture@sandbox.invalid", "role": "serviceTechnician", "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address: it holds a credential in the operator's file and has NO EOS Principal. Adopting it authenticates as an identity EOS does not know." },
+    { "email": "whmgr@sandbox.invalid", "supersededBy": "morgan.fixture@sandbox.invalid", "role": "warehouseManager", "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal." },
+    { "email": "partsmgr@sandbox.invalid", "supersededBy": "kai.fixture@sandbox.invalid", "role": "partsManager", "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal." },
+    { "email": "partsassoc@sandbox.invalid", "supersededBy": "logan.fixture@sandbox.invalid", "role": "partsAssociate", "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal." },
+    { "email": "fieldmgr@sandbox.invalid", "supersededBy": "devon.fixture@sandbox.invalid", "role": "serviceManager", "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal." },
+    { "email": "mikael@sandbox.invalid", "supersededBy": "harper.fixture@sandbox.invalid", "role": "retailSales", "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal." },
+    { "email": "opsmgr@sandbox.invalid", "supersededBy": null, "role": null, "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal. No canonical Job Role corresponds to it." },
+    { "email": "salesmgr@sandbox.invalid", "supersededBy": null, "role": null, "uid": null, "sampleCompanyEmployee": null, "reason": "A dead legacy sbx-*-era address with a credential and no EOS Principal. Every live sales login holds `salesperson`, never `salesManager`." },
+    { "email": "owner@sandbox.invalid", "supersededBy": "eos-owner@sandbox.invalid", "role": "ownerExecutive", "uid": null, "sampleCompanyEmployee": null, "reason": "The RETIRED owner spelling. No Principal ever held it; the Owner authority signs in as eos-owner@." }
+  ]
+}

@@ -295,14 +295,17 @@ test("Work Eligibility and Operational Scope Administration commands over the re
 
   await t.test("JOB ROLE alone creates no qualification and no scope; a qualification/scope creates no Job Role", async () => {
     await jobRoles.createJobRole(deps, adminActor, { jobRoleId: "service-technician", displayName: "Service Technician" });
-    await jobRoles.createJobRole(deps, adminActor, { jobRoleId: "parts-warehouse", displayName: "Parts / Warehouse" });
+    // A SECOND Job Role, so the "another Employee's Job Role leaked a qualification" check below has one to use. It
+    // was `parts-warehouse` until the 2026-09-25 canonical ruling retired that id and createJobRole began refusing
+    // it; parts-associate is one of the four positions it was fused from.
+    await jobRoles.createJobRole(deps, adminActor, { jobRoleId: "parts-associate", displayName: "Parts Associate" });
     await jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-linked", jobRoleId: "service-technician" });
     // Holding the Service Technician Job Role produced NO SERVICE_TECHNICIAN qualification and NO warehouse scope.
     assert.deepEqual(await qualRows("e-linked"), []);
     assert.deepEqual(await scopeRows("e-linked"), []);
     assert.deepEqual((await eligibilityReads.listEmployeeWorkEligibility(deps, adminActor, { employeeId: "e-linked" })).items, []);
 
-    await jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-1", jobRoleId: "parts-warehouse" });
+    await jobRoles.assignEmployeeJobRole(deps, adminActor, { employeeId: "e-1", jobRoleId: "parts-associate" });
     assert.deepEqual(await qualRows("e-linked"), [], "another Employee's Job Role leaked a qualification");
   });
 

@@ -25,6 +25,14 @@ export const GOVERNED_EMPLOYEE_HISTORY_ACTION = Object.freeze({
   EMPLOYMENT_STATUS_CHANGE: "employee.employmentStatus.change",
   OPERATING_COMPANY_CHANGE: "employee.operatingCompany.change",
   JOB_ROLE_ASSIGN: "employee.jobRole.assign",
+  // Lane BT's governed PostgreSQL Employee administration. Order mirrors the server's ACTIONS
+  // exactly, because employeeChangeHistoryDomain.test.mjs reads that file and compares the two
+  // as an EQUALITY -- an action the server records and the client cannot name renders as no row
+  // at all, which would silently hide a governed mutation from the history.
+  RECORD_CREATE: "employee.record.create",
+  PRINCIPAL_LINK_ESTABLISH: "employee.principalLink.establish",
+  PRINCIPAL_LINK_REVOKE: "employee.principalLink.revoke",
+  PRINCIPAL_LINK_RELINK: "employee.principalLink.relink",
 });
 
 /** Action -> words, for the Field / Event column when an event changed no single field. */
@@ -35,6 +43,13 @@ export const GOVERNED_EMPLOYEE_HISTORY_EVENT_LABELS = Object.freeze({
   [GOVERNED_EMPLOYEE_HISTORY_ACTION.EMPLOYMENT_STATUS_CHANGE]: "Employment Status change",
   [GOVERNED_EMPLOYEE_HISTORY_ACTION.OPERATING_COMPANY_CHANGE]: "Operating Company change",
   [GOVERNED_EMPLOYEE_HISTORY_ACTION.JOB_ROLE_ASSIGN]: "Job Role assigned",
+  // The link events read as USER ACCESS, never as a Principal. The server projects only
+  // userAccess (LINKED/UNLINKED) for exactly this reason: which Principal an Employee is linked to
+  // is admin.principalAccess.read's fact, and this history is gated by employee.record.read.
+  [GOVERNED_EMPLOYEE_HISTORY_ACTION.RECORD_CREATE]: "Employee record created",
+  [GOVERNED_EMPLOYEE_HISTORY_ACTION.PRINCIPAL_LINK_ESTABLISH]: "User access linked",
+  [GOVERNED_EMPLOYEE_HISTORY_ACTION.PRINCIPAL_LINK_REVOKE]: "User access removed",
+  [GOVERNED_EMPLOYEE_HISTORY_ACTION.PRINCIPAL_LINK_RELINK]: "User access changed",
 });
 
 /** The field key a Job Role change is filed under. Not an Employee profile key: the Job Role is its own authority. */

@@ -64,12 +64,22 @@ export interface EmployeeProfileChangeResult {
   readonly auditEventId: string | null;
 }
 
-type Changes = ReadonlyMap<string, { column: ProfileColumn; value: string | null }>;
+export type ProfileFieldValues = ReadonlyMap<string, { column: ProfileColumn; value: string | null }>;
+type Changes = ProfileFieldValues;
 
-function prepareChanges(raw: unknown): Changes {
+/**
+ * Normalize an object of profile FIELD KEYS into the columns and values they address.
+ *
+ * Exported so the governed Employee CREATION command (employeeCreationCommand.ts) states the initial
+ * profile facts through THIS vocabulary and THIS normalization rather than a second copy of them: a
+ * create that validated differently from an update would be a second profile authority. `allowEmpty`
+ * is the only difference between the two callers -- an update with no field named is a caller
+ * mistake, a create with no profile fact at all is an Employee whose profile is simply empty.
+ */
+export function prepareProfileFields(raw: unknown, options: { readonly allowEmpty?: boolean } = {}): ProfileFieldValues {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) refuse("CHANGES_REQUIRED", "INVALID_INPUT", "changes must be an object of profile field keys");
   const entries = Object.entries(raw as Record<string, unknown>);
-  if (entries.length === 0) refuse("CHANGES_REQUIRED", "INVALID_INPUT", "changes must name at least one profile field");
+  if (entries.length === 0 && !options.allowEmpty) refuse("CHANGES_REQUIRED", "INVALID_INPUT", "changes must name at least one profile field");
   const unknown = entries.map(([k]) => k).filter((k) => !COLUMN_BY_KEY.has(k));
   if (unknown.length > 0) refuse("INPUT_FIELD_NOT_ACCEPTED", "INVALID_INPUT", `this command does not accept: ${unknown.sort().join(", ")}`);
   const out = new Map<string, { column: ProfileColumn; value: string | null }>();
@@ -99,7 +109,7 @@ export interface PreparedProfileUpdate {
 /** Validate a profile update input. Pure; runs before any connection. */
 export function prepareProfileUpdate(input: Record<string, unknown>): PreparedProfileUpdate {
   const i = acceptOnly(input, ["employeeId", "changes", "reason"]);
-  return { employeeId: requireId(i.employeeId, "employeeId"), changes: prepareChanges(i.changes), reason: optionalReason(i.reason) };
+  return { employeeId: requireId(i.employeeId, "employeeId"), changes: prepareProfileFields(i.changes), reason: optionalReason(i.reason) };
 }
 
 /**

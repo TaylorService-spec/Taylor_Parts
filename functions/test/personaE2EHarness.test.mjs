@@ -21,6 +21,7 @@ const compiledWorkOrderAssignment = require("../lib/eosOps/workOrderAssignmentAu
 const compiledReorderAssignment = require("../lib/eosOps/reorderAssignmentAuthority.js");
 const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
 const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
+const { CANONICAL_JOB_ROLES } = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const refusal = (fn) => {
@@ -220,13 +221,14 @@ const LIVE = Object.freeze({
 
 test("the preflight reproduces the measured nonprod partition exactly", () => {
   const plan = dimensions.planPersonaAuthorityDimensions();
-  const expected = SAMPLE_COMPANY.jobRoles.length + SAMPLE_COMPANY.employees.length
+  // The catalog comes from CANONICAL_JOB_ROLES since the 2026-09-25 ruling, not from the fixture.
+  const expected = CANONICAL_JOB_ROLES.length + SAMPLE_COMPANY.employees.length
     + PERSONA_MANIFEST.workEligibility.length + PERSONA_MANIFEST.operationalScopes.length;
   const result = harness.preflightAuthorityPlan(plan, LIVE);
   assert.equal(result.counts.planned, expected);
-  assert.equal(result.counts.planned, 48, "14 Job Role catalog entries, 21 Job Role assignments, 7 eligibilities, 6 scopes");
+  assert.equal(result.counts.planned, 50, "16 Job Role catalog entries, 21 Job Role assignments, 7 eligibilities, 6 scopes");
   assert.equal(result.counts.blocked, 3);
-  assert.equal(result.counts.applicable, 45);
+  assert.equal(result.counts.applicable, 47);
   assert.ok(result.blocked.every((b) => b.code === "OPERATING_COMPANY_KEY_NOT_ACTIVE"));
   assert.ok(result.blocked.every((b) => b.detail === "sample-co-synthetic"));
 });
@@ -235,7 +237,7 @@ test("a Job Role catalog step names no Employee, and a step that names neither i
   // The catalog entry is a TENANT fact, so there is no Employee for the preflight to look up. That is the
   // only step shape allowed to omit one, and omitting BOTH is a plan bug rather than a passable step.
   const catalog = dimensions.planPersonaAuthorityDimensions().filter((s) => s.command === "createJobRole");
-  assert.equal(catalog.length, SAMPLE_COMPANY.jobRoles.length);
+  assert.equal(catalog.length, CANONICAL_JOB_ROLES.length);
   for (const s of catalog) assert.equal("employeeId" in s.input, false);
   assert.equal(harness.preflightAuthorityPlan(catalog, LIVE).counts.applicable, catalog.length);
   assert.throws(
@@ -260,7 +262,7 @@ test("a warehouse the tenant does not hold blocks only that step", () => {
   const codes = result.blocked.map((b) => b.code);
   assert.ok(codes.includes("WAREHOUSE_NOT_IN_TENANT"));
   assert.equal(result.blocked.filter((b) => b.code === "WAREHOUSE_NOT_IN_TENANT").length, 1);
-  assert.equal(result.counts.applicable, 44, "fail closed on one step, continue with the rest");
+  assert.equal(result.counts.applicable, 46, "fail closed on one step, continue with the rest");
 });
 
 test("an Employee outside the tenant blocks its step and is never substituted", () => {

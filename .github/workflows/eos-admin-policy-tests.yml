@@ -62,6 +62,34 @@ on:
       # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
       - "functions/test/ownerCapabilityContract.test.mjs"
       - "functions/src/access/governedBusinessRoles.ts"
+      # THE ONE CANONICAL JOB ROLE VOCABULARY (Owner ruling 2026-09-25). The guard AND every subject it
+      # guards: the canonical module, the two former catalogs that now project from it, the seed that
+      # consumes it, and the two fixtures whose Job Role references it pins. Listing the guard alone would
+      # leave a PR that renames a position unable to trigger the job that would have caught it.
+      - "functions/test/canonicalJobRoleVocabulary.test.mjs"
+      - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
+      - "functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts"
+      # The governed Job Role WRITER. It was in neither filter: a PR changing createJobRole alone -- including the
+      # supersession refusal that stops a retired position being re-created -- could not trigger either gate that
+      # covers it. employeeJobRolePostgres.test.mjs proves its behaviour; canonicalJobRoleVocabulary.test.mjs reads
+      # it as source to prove the refusal is derived from SUPERSEDED_JOB_ROLE_IDS and not from a retyped list.
+      - "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts"
+      - "functions/scripts/jobRoleCatalogSeedCli.js"
+      - "functions/scripts/sampleCompany/personaAuthorityDimensions.js"
+      - "functions/scripts/seedPersonaAuthorityDimensionsCli.js"
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
+      - "functions/test/sampleCompanyManifest.test.mjs"
+      - "config/sandboxRoleIdentityRegistry.json"
+      - "scripts/sandboxCredentials.mjs"
+      - "functions/scripts/sandboxPersonaBootstrap.js"
+      - "functions/scripts/sampleCompany/credentialActivation.js"
+      - "functions/test/sandboxRoleIdentityRegistry.test.mjs"
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/employeeWorkEligibility.test.mjs"
       - "functions/test/adminPolicySeedCoverage.test.mjs"
       - "functions/test/adminPolicyReorderSeparation.test.mjs"
       - "functions/test/adminPolicyActivation.test.mjs"
@@ -140,6 +168,11 @@ on:
       - "functions/scripts/sampleCompany/**"
       - "functions/scripts/fixtures/sampleCompany.v2.json"
       - "functions/test/sampleCompanyManifest.test.mjs"
+      - "config/sandboxRoleIdentityRegistry.json"
+      - "scripts/sandboxCredentials.mjs"
+      - "functions/scripts/sandboxPersonaBootstrap.js"
+      - "functions/scripts/sampleCompany/credentialActivation.js"
+      - "functions/test/sandboxRoleIdentityRegistry.test.mjs"
       - "functions/test/sampleCompanyPostgres.test.mjs"
       # BLOCKER #1: the PostgreSQL accountability history proof runs in test:adminPolicyPostgres.
       - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
@@ -198,6 +231,22 @@ on:
       - "functions/test/legacyWorkforceEvidencePostgres.test.mjs"
       - "functions/scripts/legacyWorkforceEvidenceCli.js"
       - "functions/test/employeeChangeHistoryPostgres.test.mjs"
+      # LANE BT (required registration): the governed Employee ADMINISTRATION capability -- createEmployee and the
+      # Employee <-> Principal link commands. The SOURCE files they guard are listed too, because a path filter that
+      # omits the subject produces a guard that is green because it never runs.
+      - "functions/test/employeeAdministrationCommand.test.mjs"
+      - "functions/test/employeeAdministrationCommandPostgres.test.mjs"
+      - "functions/src/eosWorkforce/commands/employeeCreationCommand.ts"
+      - "functions/src/eosWorkforce/commands/employeePrincipalLinkCommands.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationAuthority.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationInput.ts"
+      - "functions/src/eosWorkforce/commands/employeeCommandKernel.ts"
+      - "functions/src/eosWorkforce/commands/employeeProfileCommand.ts"
+      - "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts"
+      - "functions/src/eosWorkforce/workforceHttp.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/src/eosOps/entitledActionAuthority.ts"
+      - "functions/scripts/administerEmployeeCli.js"
       - "functions/test/workforceCapabilitiesPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
@@ -356,6 +405,17 @@ on:
       # measurements. It runs in test:adminPolicyPostgres.
       - "functions/scripts/rebindPrincipalIdentity.js"
       - "functions/test/principalIdentityRebindPostgres.test.mjs"
+      # LANE BU: the GENERIC governed Principal PROVISIONING operator. The write is
+      # `ensureTenantPrincipal` in src/adminPolicy/tenantBootstrap.ts (already covered by
+      # "functions/src/adminPolicy/**" above); the operator is the only place its missing guards
+      # live -- PostgreSQL-derived administering capability over role_capabilities UNION
+      # principal_capabilities, argv-supplied authority refused, duplicate external subject and
+      # duplicate canonical Principal refused. Both the operator AND its subject command are named,
+      # because a path filter omitting either yields a guard that is green because it never ran.
+      - "functions/scripts/provisionGovernedPrincipal.js"
+      - "functions/src/adminPolicy/tenantBootstrap.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/test/governedPrincipalProvisioningPostgres.test.mjs"
       # NAVIGATION BLOCKER #4 -- the Reorder queue destination and the proof that its two refusals
       # (missing qualification vs outside scope) stay distinguishable. Runs in test:adminPolicy;
       # named here for the same reason every entry above is -- a suite in a registered job that no
@@ -421,6 +481,34 @@ on:
       # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
       - "functions/test/ownerCapabilityContract.test.mjs"
       - "functions/src/access/governedBusinessRoles.ts"
+      # THE ONE CANONICAL JOB ROLE VOCABULARY (Owner ruling 2026-09-25). The guard AND every subject it
+      # guards: the canonical module, the two former catalogs that now project from it, the seed that
+      # consumes it, and the two fixtures whose Job Role references it pins. Listing the guard alone would
+      # leave a PR that renames a position unable to trigger the job that would have caught it.
+      - "functions/test/canonicalJobRoleVocabulary.test.mjs"
+      - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
+      - "functions/src/eosWorkforce/migration/jobRoleCatalogSeed.ts"
+      # The governed Job Role WRITER. It was in neither filter: a PR changing createJobRole alone -- including the
+      # supersession refusal that stops a retired position being re-created -- could not trigger either gate that
+      # covers it. employeeJobRolePostgres.test.mjs proves its behaviour; canonicalJobRoleVocabulary.test.mjs reads
+      # it as source to prove the refusal is derived from SUPERSEDED_JOB_ROLE_IDS and not from a retyped list.
+      - "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts"
+      - "functions/scripts/jobRoleCatalogSeedCli.js"
+      - "functions/scripts/sampleCompany/personaAuthorityDimensions.js"
+      - "functions/scripts/seedPersonaAuthorityDimensionsCli.js"
+      - "functions/scripts/seedSampleCompany.js"
+      - "functions/scripts/fixtures/sampleCompany.v2.json"
+      - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
+      - "functions/scripts/fixtures/syntheticNonprodWorkforceSeed.v1.json"
+      - "functions/test/sampleCompanyManifest.test.mjs"
+      - "config/sandboxRoleIdentityRegistry.json"
+      - "scripts/sandboxCredentials.mjs"
+      - "functions/scripts/sandboxPersonaBootstrap.js"
+      - "functions/scripts/sampleCompany/credentialActivation.js"
+      - "functions/test/sandboxRoleIdentityRegistry.test.mjs"
+      - "functions/test/personaAuthorityDimensions.test.mjs"
+      - "functions/test/personaE2EHarness.test.mjs"
+      - "functions/test/employeeWorkEligibility.test.mjs"
       - "functions/test/adminPolicyActivation.test.mjs"
       - "functions/test/adminPolicyIdentity.test.mjs"
       - "functions/src/eosApi/**"
@@ -489,6 +577,11 @@ on:
       - "functions/scripts/sampleCompany/**"
       - "functions/scripts/fixtures/sampleCompany.v2.json"
       - "functions/test/sampleCompanyManifest.test.mjs"
+      - "config/sandboxRoleIdentityRegistry.json"
+      - "scripts/sandboxCredentials.mjs"
+      - "functions/scripts/sandboxPersonaBootstrap.js"
+      - "functions/scripts/sampleCompany/credentialActivation.js"
+      - "functions/test/sandboxRoleIdentityRegistry.test.mjs"
       - "functions/test/sampleCompanyPostgres.test.mjs"
       # BLOCKER #1: the PostgreSQL accountability history proof runs in test:adminPolicyPostgres.
       - "functions/src/eosCommercial/commercialAccountabilityRepository.ts"
@@ -547,6 +640,22 @@ on:
       - "functions/test/legacyWorkforceEvidencePostgres.test.mjs"
       - "functions/scripts/legacyWorkforceEvidenceCli.js"
       - "functions/test/employeeChangeHistoryPostgres.test.mjs"
+      # LANE BT (required registration): the governed Employee ADMINISTRATION capability -- createEmployee and the
+      # Employee <-> Principal link commands. The SOURCE files they guard are listed too, because a path filter that
+      # omits the subject produces a guard that is green because it never runs.
+      - "functions/test/employeeAdministrationCommand.test.mjs"
+      - "functions/test/employeeAdministrationCommandPostgres.test.mjs"
+      - "functions/src/eosWorkforce/commands/employeeCreationCommand.ts"
+      - "functions/src/eosWorkforce/commands/employeePrincipalLinkCommands.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationAuthority.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationInput.ts"
+      - "functions/src/eosWorkforce/commands/employeeCommandKernel.ts"
+      - "functions/src/eosWorkforce/commands/employeeProfileCommand.ts"
+      - "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts"
+      - "functions/src/eosWorkforce/workforceHttp.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/src/eosOps/entitledActionAuthority.ts"
+      - "functions/scripts/administerEmployeeCli.js"
       - "functions/test/workforceCapabilitiesPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
@@ -627,6 +736,11 @@ on:
       # resolves through a real PostgreSQL (capabilitiesForRoleKeys), so it runs in
       # test:adminPolicyPostgres, where POLICY_TEST_DATABASE_URL is set and it cannot skip.
       - "functions/test/personaBusinessAccessRegression.test.mjs"
+      # REGISTRATION GAP CLOSED (lane BS, canonical Job Role vocabulary). This suite pins the persona
+      # provisioning plan's step count and its command mix, so it is a subject of every Job Role vocabulary
+      # change. It was named in the pull_request filter above and NOT here, so a commit landing on main that
+      # touched only this suite could not trigger the job that runs it.
+      - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"
@@ -651,6 +765,17 @@ on:
       # measurements. It runs in test:adminPolicyPostgres.
       - "functions/scripts/rebindPrincipalIdentity.js"
       - "functions/test/principalIdentityRebindPostgres.test.mjs"
+      # LANE BU: the GENERIC governed Principal PROVISIONING operator. The write is
+      # `ensureTenantPrincipal` in src/adminPolicy/tenantBootstrap.ts (already covered by
+      # "functions/src/adminPolicy/**" above); the operator is the only place its missing guards
+      # live -- PostgreSQL-derived administering capability over role_capabilities UNION
+      # principal_capabilities, argv-supplied authority refused, duplicate external subject and
+      # duplicate canonical Principal refused. Both the operator AND its subject command are named,
+      # because a path filter omitting either yields a guard that is green because it never ran.
+      - "functions/scripts/provisionGovernedPrincipal.js"
+      - "functions/src/adminPolicy/tenantBootstrap.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/test/governedPrincipalProvisioningPostgres.test.mjs"
       # functions/package.json was named by the pull_request filter and NOT by this one, so an edit
       # to the deploy command itself could reach main without ever triggering the suite that proves
       # it. Named here too.

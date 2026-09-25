@@ -28,6 +28,8 @@ const contextual = require("../lib/eosOps/contextualAuthorization.js");
 const { OPERATIONAL_ROLE_VALUES } = require("../lib/access/employeeProfileCommands.js");
 const { COMPATIBILITY_ROLES } = require("../lib/access/compatibilityRoles.js");
 const { GOVERNED_BUSINESS_ROLES } = require("../lib/access/governedBusinessRoles.js");
+const { CANONICAL_JOB_ROLES, CANONICAL_JOB_ROLE_BY_MANIFEST_KEY, CANONICAL_JOB_ROLE_MANIFEST_KEYS }
+  = require("../lib/eosWorkforce/jobRoleVocabulary.js");
 
 const VOCABULARY = { workEligibilityCodes: WORK_ELIGIBILITY_CODES, operationalScopeTypes: OPERATIONAL_SCOPE_TYPES };
 const clone = () => JSON.parse(JSON.stringify(MANIFEST));
@@ -80,7 +82,8 @@ const AUTHORITY_SECTION_KEYS = ["workEligibility", "operationalScopes"];
 // share a spelling; neither grants anyone a Work Eligibility or an Operational Scope.
 const DECLARED_UPSTREAM_TERM_PATHS = {
   SAMPLE_COMPANY_V2: {
-    "$.jobRoles[].key = SERVICE_TECHNICIAN": "JOB_ROLE",
+    // No "$.jobRoles[].key" path: sampleCompany.v2.json stopped declaring a Job Role catalog under the
+    // 2026-09-25 canonical ruling and now only REFERENCES a position from an Employee row.
     "$.employees[].jobRole = SERVICE_TECHNICIAN": "JOB_ROLE",
     "$.purchasing[].receipt.receivingLocation.type = WAREHOUSE": "LOCATION_TYPE",
     "$.cycleCounts[].location.type = WAREHOUSE": "LOCATION_TYPE",
@@ -323,9 +326,11 @@ test("the RESTRICTED negative control is signed in, and that is what makes it di
 test("the FINANCE persona holds the registered financial authority that nobody held", () => {
   const finance = MANIFEST.personas["finance-controller"];
   assert.deepEqual(finance.securityRoles, ["controller"]);
-  assert.equal(finance.jobRole, "FINANCE_MANAGER");
-  // JOB ROLE IS NOT SECURITY ROLE, and this persona is where the two most obviously do not have to agree:
-  // it carries the FINANCE_MANAGER business function and does NOT hold the `financeManager` Security Role.
+  assert.equal(finance.jobRole, "FINANCE_ACCOUNTING");
+  // JOB ROLE IS NOT SECURITY ROLE, and this persona is where the two most obviously do not have to agree: it
+  // carries the FINANCE_ACCOUNTING business position and does NOT hold the `financeManager` Security Role. The
+  // position used to be spelled FINANCE_MANAGER, and the 2026-09-25 canonical ruling retired that spelling for
+  // exactly the reason this assertion exists: `financeManager` is a Security Role key.
   assert.ok(!finance.securityRoles.includes("financeManager"));
   const roles = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
   const contract = SAMPLE_COMPANY.expectedAccess.personas["finance-controller"];
@@ -526,8 +531,8 @@ test("(7) no legacy operationalRoles value is carried as a qualification code or
   }
 });
 
-test("every Job Role a persona names is the Sample Company's own, never a legacy role re-entering", () => {
-  const jobRoleKeys = new Set(SAMPLE_COMPANY.jobRoles.map((r) => r.key));
+test("every Job Role a persona names is canonical, never a legacy or retired role re-entering", () => {
+  const jobRoleKeys = new Set(CANONICAL_JOB_ROLE_MANIFEST_KEYS);
   for (const [key, persona] of Object.entries(MANIFEST.personas)) {
     assert.ok(jobRoleKeys.has(persona.jobRole), `${key} names Job Role ${persona.jobRole}`);
   }
@@ -571,7 +576,7 @@ test("the Owner's TEST_PERSONA ruling is recorded against the persona it was abo
 test("(8) the plan is exactly the manifest's rows, through the governed commands and nothing else", () => {
   const plan = planPersonaAuthorityDimensions();
   assert.equal(plan.length,
-    SAMPLE_COMPANY.jobRoles.length + SAMPLE_COMPANY.employees.length
+    CANONICAL_JOB_ROLES.length + SAMPLE_COMPANY.employees.length
     + MANIFEST.workEligibility.length + MANIFEST.operationalScopes.length);
   const commands = new Set(plan.map((s) => s.command));
   assert.deepEqual([...commands].sort(),
@@ -593,9 +598,10 @@ test("EVERY Employee gets a governed Job Role assignment -- access has nothing t
   assert.equal(plan.length, SAMPLE_COMPANY.employees.length,
     "a Job Role is a business function; an Employee with no Principal still has one");
   const byEmployee = new Map(plan.map((s) => [s.input.employeeId, s.input.jobRoleId]));
-  const catalog = new Map(SAMPLE_COMPANY.jobRoles.map((r) => [r.key, r.pgJobRoleId]));
   for (const e of SAMPLE_COMPANY.employees) {
-    assert.equal(byEmployee.get(e.id), catalog.get(e.jobRole), `${e.key} is assigned its own declared Job Role and no other`);
+    // Resolved through the CANONICAL vocabulary, which is the only place a manifestKey becomes a governed id.
+    assert.equal(byEmployee.get(e.id), CANONICAL_JOB_ROLE_BY_MANIFEST_KEY[e.jobRole].jobRoleId,
+      `${e.key} is assigned its own declared Job Role and no other`);
   }
   // The personas with NO Principal are in it, which is the point: Job Role is not access.
   for (const key of ["records-clerk", "technician-on-leave", "report-analyst"]) {
@@ -606,7 +612,7 @@ test("EVERY Employee gets a governed Job Role assignment -- access has nothing t
 
 test("RETAIL SALES and NATIONAL ACCOUNTS SALES are two catalog entries and stay two", () => {
   const catalog = planPersonaAuthorityDimensions().filter((s) => s.command === "createJobRole");
-  assert.equal(catalog.length, SAMPLE_COMPANY.jobRoles.length);
+  assert.equal(catalog.length, CANONICAL_JOB_ROLES.length);
   const ids = catalog.map((s) => s.input.jobRoleId);
   assert.equal(new Set(ids).size, ids.length, "two Job Roles may never collapse onto one governed id");
   assert.ok(ids.includes("retail-sales") && ids.includes("national-accounts-sales"));
@@ -684,7 +690,7 @@ test("apply is idempotent: a second run over an already-seeded world assigns not
   };
   const actor = { tenantId: "t", principalId: "p" };
   const first = await seedPersonaAuthorityDimensions(deps, actor, { apply: true });
-  assert.equal(first.summary.jobRoleCatalog.created, SAMPLE_COMPANY.jobRoles.length);
+  assert.equal(first.summary.jobRoleCatalog.created, CANONICAL_JOB_ROLES.length);
   assert.equal(first.summary.jobRoles.assigned, SAMPLE_COMPANY.employees.length);
   assert.equal(first.summary.workEligibility.assigned, MANIFEST.workEligibility.length);
   assert.equal(first.summary.operationalScopes.assigned, MANIFEST.operationalScopes.length);
@@ -695,7 +701,7 @@ test("apply is idempotent: a second run over an already-seeded world assigns not
   assert.equal(second.summary.jobRoles.assigned, 0);
   assert.equal(second.summary.workEligibility.assigned, 0);
   assert.equal(second.summary.operationalScopes.assigned, 0);
-  assert.equal(second.summary.jobRoleCatalog.unchanged, SAMPLE_COMPANY.jobRoles.length);
+  assert.equal(second.summary.jobRoleCatalog.unchanged, CANONICAL_JOB_ROLES.length);
   assert.equal(second.summary.jobRoles.unchanged, SAMPLE_COMPANY.employees.length);
   assert.equal(second.summary.workEligibility.unchanged, MANIFEST.workEligibility.length);
   assert.equal(second.summary.operationalScopes.unchanged, MANIFEST.operationalScopes.length);
