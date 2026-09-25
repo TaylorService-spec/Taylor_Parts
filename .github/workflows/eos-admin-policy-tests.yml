@@ -55,6 +55,13 @@ on:
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
+      # The Owner capability contract proof. Registered by NO npm script and NO
+      # workflow until now, so it had never executed in CI: it was red on the
+      # Phase 3 integration branch and nothing reported it. Its subject file is
+      # listed too, because a change to governedBusinessRoles.ts alone (exactly
+      # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
+      - "functions/test/ownerCapabilityContract.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
       - "functions/test/adminPolicySeedCoverage.test.mjs"
       - "functions/test/adminPolicyReorderSeparation.test.mjs"
       - "functions/test/adminPolicyActivation.test.mjs"
@@ -407,6 +414,13 @@ on:
       - "functions/test/adminPolicyNoFirebase.test.mjs"
       - "functions/test/adminPolicyPostgres.test.mjs"
       - "functions/test/adminPolicySeed.test.mjs"
+      # The Owner capability contract proof. Registered by NO npm script and NO
+      # workflow until now, so it had never executed in CI: it was red on the
+      # Phase 3 integration branch and nothing reported it. Its subject file is
+      # listed too, because a change to governedBusinessRoles.ts alone (exactly
+      # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
+      - "functions/test/ownerCapabilityContract.test.mjs"
+      - "functions/src/access/governedBusinessRoles.ts"
       - "functions/test/adminPolicyActivation.test.mjs"
       - "functions/test/adminPolicyIdentity.test.mjs"
       - "functions/src/eosApi/**"
