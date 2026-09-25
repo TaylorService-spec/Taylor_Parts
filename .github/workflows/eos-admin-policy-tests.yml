@@ -229,6 +229,9 @@ on:
       # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
       # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
       - "functions/test/administrationReadAuthority.test.mjs"
+      # LANE BD: the Administration READ GATE. Its map/closure proofs run without a database, its
+      # refusal proofs need one, so it is registered in test:adminPolicy AND test:adminPolicyPostgres.
+      - "functions/test/administrationReadEnforcement.test.mjs"
       # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
       # legacyInventoryMovementMapping all import it, so a change to it must run them.
       - "functions/test/support/firestoreCollectionFence.mjs"
@@ -557,6 +560,9 @@ on:
       # The Administration read authority that administrationNavigationReadiness defers its read proof to. It SKIPS
       # itself without a database, so it is registered in test:adminPolicyPostgres, where one exists.
       - "functions/test/administrationReadAuthority.test.mjs"
+      # LANE BD: the Administration READ GATE. Its map/closure proofs run without a database, its
+      # refusal proofs need one, so it is registered in test:adminPolicy AND test:adminPolicyPostgres.
+      - "functions/test/administrationReadEnforcement.test.mjs"
       # The shared Firestore collection fence. adminPolicyNoFirebase, eosOpsNoFirebase and
       # legacyInventoryMovementMapping all import it, so a change to it must run them.
       - "functions/test/support/firestoreCollectionFence.mjs"

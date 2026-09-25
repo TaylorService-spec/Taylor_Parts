@@ -215,6 +215,41 @@ test("the Postgres adapter parameterises every value it sends", () => {
   assert.deepEqual(unexpected, [], "only the schema name and locally-built fragments may be interpolated");
 });
 
+// ════════════════════ THE ADMINISTRATION READ GATE ════════════════════
+//
+// The Administration reads are authority-gated, and a read gate is the most tempting place in this
+// subsystem to reach for a Firebase custom claim: the question it asks -- what may this caller do --
+// is one a token LOOKS like it answers. It does not. A claim is minted by the identity provider and
+// says nothing about eos_policy, so the gate is held to the same rule as everything else here, plus
+// one of its own about Role keys.
+test("H: the read gate resolves from the policy store, never from an identity claim", () => {
+  const source = readFileSync(join(POLICY_DIR, "adminPolicyApi.ts"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  for (const forbidden of [
+    "customClaims", "custom_claims", "getFirestore", "firebase-admin", "firebase/firestore",
+    "users/", "securityRole", "operationalRoles", "PLACEHOLDER_DEFAULT_ROLES", "decodedToken",
+  ]) {
+    assert.equal(source.includes(forbidden), false,
+      `the Administration API reaches for "${forbidden}" -- authority comes from PostgreSQL`);
+  }
+  // THE ROLE-KEY TRAP, made structural. `heldRoleKeys` is still carried on AdminActor because the
+  // MUTATION invariant is keyed on Role identity, but the read gate must never consult it: Role keys
+  // cannot see a direct `principal_capabilities` grant.
+  const gate = source.slice(source.indexOf("async function requireAdminReadAuthority"));
+  const body = gate.slice(0, gate.indexOf("\nasync function dispatch"));
+  assert.equal(body.includes("heldRoleKeys"), false,
+    "the read gate consults Role keys, which silently ignores every direct Principal grant");
+  assert.match(body, /resolvePrincipalEffectiveAccess/,
+    "the read gate must use the resolver that unions role_capabilities and principal_capabilities");
+
+  // And the resolver it uses reads BOTH tables. Named here so a later edit that drops the direct
+  // grants for "simplicity" fails a test rather than quietly narrowing nobody's access to zero.
+  const resolver = source.slice(source.indexOf("async function resolvePrincipalEffectiveAccess"));
+  const resolverBody = resolver.slice(0, resolver.indexOf("\nasync function requireAdminReadAuthority"));
+  assert.match(resolverBody, /listPrincipalCapabilities/, "direct Principal grants are not read");
+  assert.match(resolverBody, /listRoleCapabilities/, "Role grants are not read");
+});
+
 test("the guard would actually catch an offence", () => {
   // A validator that runs on nothing is worse than none. This proves the patterns match what they
   // claim to, so the four passing tests above mean something.
