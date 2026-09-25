@@ -77,9 +77,17 @@ test("role holders come from the Role catalog: exactly Administrator, Owner and 
 
 test("the grant is delivered by the existing reconciliation, never by migration SQL or a request-time Security Role inference", () => {
   assert.doesNotMatch(upSql(), /role_capabilities|INSERT INTO\s+(eos_policy\.)?roles|user_role_assignments/i);
+  // Lane BT: commands/employeeAdministrationAuthority.ts NAMES `securityRole` for the opposite reason --
+  // it is one of the argument names the administering-actor resolver REFUSES, so that a caller can never
+  // state a Security Role instead of having its Roles read from eos_policy. It infers nothing from one,
+  // and employeeAdministrationCommand.test.mjs rules it separately (SELECT-only, refuses supplied authority).
+  const ADMIN_ACTOR_MODULE = "employeeAdministrationAuthority.ts";
   for (const f of walk(join(WORKFORCE, "reads"), [".ts"]).concat(walk(join(WORKFORCE, "commands"), [".ts"]))) {
+    if (f.endsWith(ADMIN_ACTOR_MODULE)) continue;
     assert.doesNotMatch(strip(readFileSync(f, "utf8")), /compatibilityRoles|governedBusinessRoles|securityRole|users\/|\.role\b/, rel(f));
   }
+  assert.doesNotMatch(strip(readFileSync(join(WORKFORCE, "commands", ADMIN_ACTOR_MODULE), "utf8")),
+    /compatibilityRoles|governedBusinessRoles|users\//, "the administering-actor resolver reaches a legacy Role catalog");
   const grants = strip(readFileSync(join(WORKFORCE, "migration", "employeeCapabilityGrants.ts"), "utf8"));
   assert.match(grants, /reconcileInventoryCapabilityGrants\(pool, \{ \.\.\.options, capabilityKeys: EMPLOYEE_CAPABILITY_GRANT_KEYS \}\)/);
   assert.doesNotMatch(grants, /generalManager|"admin"|"owner"/, "the grant module lists Roles by hand");

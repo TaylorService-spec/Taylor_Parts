@@ -4,12 +4,13 @@
 // target_id = the Employee id and actor_uid = the EOS Principal id (eosWorkforce/commands, appendEmployeeAudit). This
 // read exposes those rows for ONE Employee, and nothing else:
 //
-//   * CLOSED ACTION ALLOW-LIST. Only the six Employee actions below. Any other audit row -- a tenant reconciliation,
+//   * CLOSED ACTION ALLOW-LIST. Only the ten Employee actions below. Any other audit row -- a tenant reconciliation,
 //     a Job Role catalog change, a policy mutation, a future action nobody has reviewed -- is not history here, even
 //     if it happens to carry target_kind 'employee'. Adding an action is a code change with a test.
 //   * CLOSED VALUE PROJECTION. `before` / `after` are NOT the stored JSON verbatim: each action projects only its
 //     named keys (profile: the seventeen PROFILE_FIELD_MAP keys; reporting: the manager; lifecycle: the status or
-//     company; Job Role: the role). Internal row ids (relationshipId, assignmentId) and any unknown key are dropped.
+//     company; Job Role: the role; creation: the two lifecycle facts; User Access: LINKED / UNLINKED and NOTHING about
+//     which Principal). Internal row ids (relationshipId, assignmentId, linkId) and any unknown key are dropped.
 //     Readable names are resolved in the same snapshot, from sources employee.record.read already exposes:
 //     managerDisplayName (the manager Employee's CURRENT derived display name, eos_workforce.employees) and
 //     jobRoleDisplayName (eos_workforce.job_roles). Operating company and employment status stay governed codes the
@@ -59,6 +60,19 @@ const ACTIONS = Object.freeze({
   "employee.employmentStatus.change": pick(["employmentStatus"]),
   "employee.operatingCompany.change": pick(["operatingCompanyId"]),
   "employee.jobRole.assign": pick(["jobRoleId"]),
+  // The Employee's own CREATION (commands/employeeCreationCommand.ts). `before` is null, which is what
+  // "this Employee did not exist" looks like; `after` projects the two lifecycle facts the create
+  // states. The profile facts a create may also state are already history under employee.profile.update's
+  // vocabulary and are deliberately not restated here.
+  "employee.record.create": pick(["employmentStatus", "operatingCompanyId"]),
+  // The Employee <-> Principal link changes (commands/employeePrincipalLinkCommands.ts). ONLY
+  // `userAccess` -- LINKED or UNLINKED -- is projected. The audit row also carries the Principal id,
+  // and it stays there: revealing WHICH Principal is a Principal-identity fact, which EMP-RT-02 gates
+  // behind admin.principalAccess.read. This read's capability is employee.record.read, so projecting
+  // the id here would hand a Principal id to a caller the access authority never admitted.
+  "employee.principalLink.establish": pick(["userAccess"]),
+  "employee.principalLink.revoke": pick(["userAccess"]),
+  "employee.principalLink.relink": pick(["userAccess"]),
 } as const satisfies Record<string, Projector>);
 
 export type EmployeeChangeAction = keyof typeof ACTIONS;

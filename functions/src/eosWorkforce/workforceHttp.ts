@@ -41,7 +41,7 @@
 //   step G   listAssignableEmployees                                                      employee.record.read.
 //             A Job Role is a business function only: no Security Role, permission, ownership, assignment,
 //             reporting or operating-company authority is read or written by these operations.
-//   EMP-RT-H1 listEmployeeChangeHistory      employee.record.read. The governed Employee audit trail (six closed actions,
+//   EMP-RT-H1 listEmployeeChangeHistory      employee.record.read. The governed Employee audit trail (ten closed actions,
 //                                             projected values); the actor's display name only with
 //                                             admin.principalAccess.read, never a Principal id.
 //   EMP-RT-W1B updateEmployeeProfile          admin.employeeProfile.write. The 17 profile facts only (W1A command).
@@ -51,7 +51,21 @@
 //                                             both in one transaction, or neither.
 //   EMP-RT-W2  changeEmploymentStatus         admin.employeeProfile.write. Allowed transitions only.
 //   EMP-RT-W2  changeOperatingCompany         admin.employeeProfile.write. A known, active operating company only.
-// User Access, Security Roles and Job Roles are NOT served.
+//   lane BT    createEmployee                 admin.employeeProfile.write. The governed birth of an Employee: the two
+//                                             lifecycle facts plus the optional 17 profile facts, and NO authority --
+//                                             no Security Role, Job Role, Work Eligibility, Operational Scope or link.
+//                                             A duplicate id REFUSES; it is never an upsert.
+//   lane BT    linkEmployeePrincipal          admin.employeeProfile.write. The FIRST Employee <-> Principal link.
+//   lane BT    unlinkEmployeePrincipal        admin.employeeProfile.write. Revoke, with MANDATORY
+//   lane BT    relinkEmployeePrincipal        admin.employeeProfile.write. Move, with MANDATORY
+//                                             expectedCurrentPrincipalId -- a stale value refuses rather than
+//                                             proceeding. The TARGET Principal is spelled linkedPrincipalId /
+//                                             newPrincipalId, never `principalId`, which this transport refuses as an
+//                                             authority-bearing field before it verifies a token.
+//                                             These four also count DIRECT Principal grants
+//                                             (eosWorkforce/commands/employeeAdministrationAuthority.ts, standing Owner ruling);
+//                                             every other operation here resolves from Roles exactly as before.
+// Security Roles and Job Roles are NOT served, and creating an Employee grants neither.
 // An unserved name is an ordinary unknown operation (404); nothing is stubbed.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
@@ -69,6 +83,8 @@ import { updateEmployeeProfile } from "./commands/employeeProfileCommand";
 import { endReportingRelationship, establishReportingRelationship } from "./commands/reportingRelationshipCommands";
 import { saveEmployeeEdit } from "./commands/employeeEditCommand";
 import { changeEmploymentStatus, changeOperatingCompany } from "./commands/employeeLifecycleCommand";
+import { createEmployee } from "./commands/employeeCreationCommand";
+import { linkEmployeePrincipal, relinkEmployeePrincipal, unlinkEmployeePrincipal } from "./commands/employeePrincipalLinkCommands";
 import { assignEmployeeJobRole, createJobRole, updateJobRole } from "./commands/employeeJobRoleCommands";
 import { listEmployeeJobRoleHistory, listEmployeesWithoutJobRole, listJobRoles } from "./reads/jobRoleReads";
 import { listEmployeeChangeHistory } from "./reads/employeeChangeHistoryRead";
@@ -150,6 +166,10 @@ const COMMAND_RUNNERS = Object.freeze({
   endEmployeeWorkEligibility: command(endEmployeeWorkEligibility),
   assignEmployeeOperationalScope: command(assignEmployeeOperationalScope),
   endEmployeeOperationalScope: command(endEmployeeOperationalScope),
+  createEmployee: command(createEmployee),
+  linkEmployeePrincipal: command(linkEmployeePrincipal),
+  unlinkEmployeePrincipal: command(unlinkEmployeePrincipal),
+  relinkEmployeePrincipal: command(relinkEmployeePrincipal),
 } as const);
 
 const RUNNERS: Readonly<Record<string, Runner>> = Object.freeze({ ...READ_RUNNERS, ...COMMAND_RUNNERS });

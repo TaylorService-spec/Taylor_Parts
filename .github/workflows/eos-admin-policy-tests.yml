@@ -198,6 +198,22 @@ on:
       - "functions/test/legacyWorkforceEvidencePostgres.test.mjs"
       - "functions/scripts/legacyWorkforceEvidenceCli.js"
       - "functions/test/employeeChangeHistoryPostgres.test.mjs"
+      # LANE BT (required registration): the governed Employee ADMINISTRATION capability -- createEmployee and the
+      # Employee <-> Principal link commands. The SOURCE files they guard are listed too, because a path filter that
+      # omits the subject produces a guard that is green because it never runs.
+      - "functions/test/employeeAdministrationCommand.test.mjs"
+      - "functions/test/employeeAdministrationCommandPostgres.test.mjs"
+      - "functions/src/eosWorkforce/commands/employeeCreationCommand.ts"
+      - "functions/src/eosWorkforce/commands/employeePrincipalLinkCommands.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationAuthority.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationInput.ts"
+      - "functions/src/eosWorkforce/commands/employeeCommandKernel.ts"
+      - "functions/src/eosWorkforce/commands/employeeProfileCommand.ts"
+      - "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts"
+      - "functions/src/eosWorkforce/workforceHttp.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/src/eosOps/entitledActionAuthority.ts"
+      - "functions/scripts/administerEmployeeCli.js"
       - "functions/test/workforceCapabilitiesPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
@@ -547,6 +563,22 @@ on:
       - "functions/test/legacyWorkforceEvidencePostgres.test.mjs"
       - "functions/scripts/legacyWorkforceEvidenceCli.js"
       - "functions/test/employeeChangeHistoryPostgres.test.mjs"
+      # LANE BT (required registration): the governed Employee ADMINISTRATION capability -- createEmployee and the
+      # Employee <-> Principal link commands. The SOURCE files they guard are listed too, because a path filter that
+      # omits the subject produces a guard that is green because it never runs.
+      - "functions/test/employeeAdministrationCommand.test.mjs"
+      - "functions/test/employeeAdministrationCommandPostgres.test.mjs"
+      - "functions/src/eosWorkforce/commands/employeeCreationCommand.ts"
+      - "functions/src/eosWorkforce/commands/employeePrincipalLinkCommands.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationAuthority.ts"
+      - "functions/src/eosWorkforce/commands/employeeAdministrationInput.ts"
+      - "functions/src/eosWorkforce/commands/employeeCommandKernel.ts"
+      - "functions/src/eosWorkforce/commands/employeeProfileCommand.ts"
+      - "functions/src/eosWorkforce/reads/employeeChangeHistoryRead.ts"
+      - "functions/src/eosWorkforce/workforceHttp.ts"
+      - "functions/src/eosOps/capabilityAuthority.ts"
+      - "functions/src/eosOps/entitledActionAuthority.ts"
+      - "functions/scripts/administerEmployeeCli.js"
       - "functions/test/workforceCapabilitiesPostgres.test.mjs"
       # D1-A: the governed PostgreSQL CRM authority layer, its migrations (also covered by functions/migrations/**,
       # named explicitly) and its two suites, run by test:adminPolicy / test:adminPolicyPostgres.
