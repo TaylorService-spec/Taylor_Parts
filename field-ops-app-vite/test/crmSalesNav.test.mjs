@@ -45,34 +45,50 @@ ok("the customer-list subnav entry is retained (route '' under /customers)", () 
 
 // ----- Permissions -----
 //
-// WAVE 16 / LANE BQ. These four assertions used to read "admin/dispatcher visible, technician
-// fail-closed", and that answer came from NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows -- not from any
-// governed authority. Owner ruling F removed those rows from every CRM/Sales destination in the same
-// change that made the EOS experience authority the only navigation authority, so under the LEGACY
-// source the whole area is fail-closed for every role. The "technician fail-closed" half is
-// unchanged and still asserted; what changed is that admin and dispatcher are no longer an exception
-// to it under a source that cannot evaluate customer.record.read, opportunity.read, salesOrder.read
-// or salesAgreement.read.
-ok("under the LEGACY source no role reaches CRM/Sales -- the ungoverned rows are gone", () => {
-  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "not_a_real_role", undefined]) {
-    assert.equal(isDomainVisible(customersDomain, role, allowed(role) ?? []), false,
-      `${role} reaches CRM/Sales from a legacy role literal`);
-  }
+// WAVE 16 / LANE BQ, CORRECTED BY LANE BR. Lane BQ flipped these to "no role reaches CRM/Sales
+// under the legacy source", having removed the NAV_LEGACY_PLACEHOLDER_DESTINATIONS rows from three
+// of the four destinations. The Owner ruled that removal environment-scoped: the rows are the only
+// authority in the four environments where EOS_NAVIGATION_AUTHORITY_READY is false -- production
+// included -- so they stay, and the legacy answer is main's again. Every test in this file calls the
+// predicate with NO operationalContext, so every answer below is the LEGACY answer by construction;
+// the governed answers live in test/navCutoverEnvironmentScoped.test.mjs.
+ok("admin sees the CRM/Sales area", () => {
+  assert.equal(isDomainVisible(customersDomain, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
 });
-ok("every CRM/Sales destination declares a governed surface and no placeholder row", () => {
+ok("dispatcher sees the CRM/Sales area", () => {
+  assert.equal(isDomainVisible(customersDomain, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+});
+ok("technician does NOT see the CRM/Sales area (fail-closed)", () => {
+  assert.equal(isDomainVisible(customersDomain, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+});
+ok("an unknown/unauthorized role does NOT see the CRM/Sales area (fail-closed)", () => {
+  assert.equal(isDomainVisible(customersDomain, "not_a_real_role", []), false);
+  assert.equal(isDomainVisible(customersDomain, undefined, undefined), false);
+});
+// THE DIVIDING LINE INSIDE THIS DOMAIN, WHICH IS THE CUTOVER IN MINIATURE. All four destinations
+// declare a governed surface. THREE also carry a legacy placeholder row, because they existed before
+// the EOS source did and something has to answer them where it is off; the FOURTH, Sales Agreements,
+// was born after the cutover began and therefore has no row and never will -- it is earned by
+// salesAgreement.read or not at all. That asymmetry is deliberate and is what the cutover looks like
+// while it is half done.
+ok("every CRM/Sales destination declares a governed surface; only the pre-cutover three carry a row", () => {
   for (const item of customersDomain.subnav) {
     assert.ok(Array.isArray(item.surfaceAccess) && item.surfaceAccess.length > 0,
-      `${item.key} has no governed surface, so removing its placeholder row made it unreachable by anyone`);
-    assert.equal(item.legacyPlaceholder, undefined, `${item.key} carries a placeholder row again`);
+      `${item.key} has no governed surface, so the EOS source could never answer it`);
     assert.equal(item.legacyKey, undefined);
   }
+  assert.deepEqual(
+    customersDomain.subnav.filter((i) => i.legacyPlaceholder).map((i) => i.key),
+    ["customers", "opportunities", "salesOrders"],
+    "the CRM/Sales legacy rows changed -- a new destination must never acquire one",
+  );
 });
-ok("the customer-list item is governed-source-only, and fail-closed under the legacy source", () => {
+ok("the customer-list item is admin/dispatcher-only under the legacy source, technician-denied", () => {
   const list = customersDomain.subnav.find((i) => i.key === "customers");
   assert.deepEqual(list.surfaceAccess, ["crm.accounts"]);
-  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
-    assert.equal(isNavItemVisible(list, role, allowed(role)), false);
-  }
+  assert.equal(isNavItemVisible(list, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
+  assert.equal(isNavItemVisible(list, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+  assert.equal(isNavItemVisible(list, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
 });
 
 // ----- Retired links NOT reintroduced -----
@@ -112,16 +128,17 @@ ok("the Equipment top-level area is a real built screen, not a reintroduced plac
   assert.deepEqual(equipment.subnav.map((i) => i.path), [""], "an index route at /equipment");
   // No legacyKey: admin/dispatcher only, technician fail-closed -- mirroring E3's Rules
   // (#289), where a technician has no Equipment authority at all (E17 owns self-scope).
-  // WAVE 16 / LANE BQ: equipment/equipment was one of the twenty destinations whose placeholder row
-  // the cutover removed, so under the LEGACY source no role reaches it. `equipment.register` opens
-  // it now, and E3's Rules remain the actual boundary either way.
+  // WAVE 16 / LANE BQ, CORRECTED BY LANE BR: equipment/equipment is one of the twenty destinations
+  // the cutover retires, so it holds BOTH a governed surface (`equipment.register`, which answers it
+  // where the flag is true) and its original legacy row (which answers it everywhere else, until
+  // that environment flips). E3's Rules remain the actual boundary either way.
   const item = equipment.subnav[0];
   assert.equal(item.legacyKey, undefined);
   assert.deepEqual(item.surfaceAccess, ["equipment.register"]);
-  assert.equal(item.legacyPlaceholder, undefined);
-  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
-    assert.equal(isNavItemVisible(item, role, allowed(role)), false);
-  }
+  assert.equal(item.legacyPlaceholder, true);
+  assert.equal(isNavItemVisible(item, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
+  assert.equal(isNavItemVisible(item, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+  assert.equal(isNavItemVisible(item, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
 });
 
 ok("the CRM/Sales area is untouched by the Equipment addition (preserved by union)", () => {
@@ -149,13 +166,16 @@ ok("Sales Cycle 2: the Opportunities item is admin/dispatcher-only (no legacyKey
   assert.equal(opportunities.path, "opportunities");
   // No legacyKey -> PLACEHOLDER_DEFAULT_ROLES (admin/dispatcher); same brand-new-screen posture as the
   // customer-list item and Part Master. Read-first; no governed write path is wired here yet.
-  // No legacyKey and, since Wave 16 / Lane BQ, no placeholder row either: `commercial.opportunities`
-  // (earned by opportunity.read) is the only thing that opens it.
+  // No legacyKey, and since Wave 16 a governed surface as well: `commercial.opportunities` (earned
+  // by opportunity.read) is what opens it where EOS_NAVIGATION_AUTHORITY_READY is true, and the
+  // placeholder row is what still opens it everywhere else -- Lane BR, correcting Lane BQ's global
+  // removal of that row.
   assert.equal(opportunities.legacyKey, undefined);
   assert.deepEqual(opportunities.surfaceAccess, ["commercial.opportunities"]);
-  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN]) {
-    assert.equal(isNavItemVisible(opportunities, role, allowed(role)), false);
-  }
+  assert.equal(opportunities.legacyPlaceholder, true);
+  assert.equal(isNavItemVisible(opportunities, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
+  assert.equal(isNavItemVisible(opportunities, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+  assert.equal(isNavItemVisible(opportunities, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
 });
 
 // ═══════════════ OWNER RULING D: SALES AGREEMENTS IS A FIRST-CLASS CRM/SALES DESTINATION
@@ -217,11 +237,14 @@ ok("Issue #288 follow-up: the `financials` future placeholder was PROMOTED, not 
 ok("Issue #288: role visibility of the real CRM/Sales domain is unchanged after the removal", () => {
   // admin/dispatcher visible, technician + unknown fail-closed -- identical to the #208 assertions above,
   // re-asserted here to prove the salesCrm removal did not perturb the real domain's access behavior.
-  // Unchanged by #288 -- and, since Wave 16 / Lane BQ, fail-closed for every role under the legacy
-  // source. What #288 protects is that removing salesCrm perturbed nothing, and it still did not.
-  for (const role of [ROLES.ADMIN, ROLES.DISPATCHER, ROLES.TECHNICIAN, "not_a_real_role"]) {
-    assert.equal(isDomainVisible(customersDomain, role, allowed(role) ?? []), false);
-  }
+  // Unchanged by #288, and unchanged by Wave 16 under the legacy source: Lane BQ made this
+  // fail-closed for every role by deleting the CRM/Sales placeholder rows, and Lane BR restored them
+  // for the environments that have no EOS source. What #288 protects is that removing salesCrm
+  // perturbed nothing, and it still did not.
+  assert.equal(isDomainVisible(customersDomain, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
+  assert.equal(isDomainVisible(customersDomain, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+  assert.equal(isDomainVisible(customersDomain, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+  assert.equal(isDomainVisible(customersDomain, "not_a_real_role", []), false);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

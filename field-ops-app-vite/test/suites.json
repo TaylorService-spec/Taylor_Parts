@@ -562,6 +562,10 @@
       "runner": "node"
     },
     {
+      "file": "test/navCutoverEnvironmentScoped.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/navigationExperienceProjection.test.mjs",
       "runner": "node"
     },
