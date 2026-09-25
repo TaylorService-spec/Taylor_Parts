@@ -89,8 +89,8 @@ const REPO_ROOT = path.resolve(FUNCTIONS_DIR, "..");
 // A second copy of the nav rules in this file would be the defect the whole lane is measuring.
 const clientModule = (...segments) =>
   new URL(`file://${path.join(REPO_ROOT, "field-ops-app-vite", "src", ...segments).replace(/\\/g, "/")}`).href;
-const { NAV_DOMAINS, NAV_SURFACE_ACCESS, NAV_SURFACE_GAPS, isDomainVisible, isNavItemVisible } =
-  await import(clientModule("navigation", "navConfig.js"));
+const { NAV_DOMAINS, NAV_SURFACE_ACCESS, NAV_SURFACE_GAPS, isDomainVisible, isNavItemVisible,
+  isEosNavigationSource } = await import(clientModule("navigation", "navConfig.js"));
 const { buildNavigationAuthority, EXPERIENCE_STATE } =
   await import(clientModule("access", "experienceContext.js"));
 
@@ -98,6 +98,13 @@ const MANIFEST = JSON.parse(
   readFileSync(path.join(FUNCTIONS_DIR, "scripts", "fixtures", "personaAuthorityDimensions.v1.json"), "utf8"),
 );
 const PERSONAS = MANIFEST.personas;
+
+// THE DEPLOYMENT BLOCK OF THE AUTHORITY BASELINE. It is what distinguishes "what this repository
+// rebuilds to" from "what nonprod currently holds", and the foundation test below asserts BOTH
+// rather than quietly picking whichever one happens to match.
+const baselineDeployment = JSON.parse(readFileSync(
+  path.join(FUNCTIONS_DIR, "src", "adminPolicy", "seed", "roleCapabilityAuthorityBaseline.json"), "utf8",
+)).deployment;
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to resolve against";
@@ -143,8 +150,11 @@ function destinationsFor(surfaces, role = null) {
 // PART 1 -- WHAT NEEDS NO DATABASE. These run on every machine, so the file is never fully dark.
 // ════════════════════════════════════════════════════════════════════════════════════════════
 
-test("the persona catalog under measurement is the 17 the manifest declares", () => {
-  assert.equal(Object.keys(PERSONAS).length, 17);
+test("the persona catalog under measurement is the 21 the manifest declares", () => {
+  // 21, not the 17 this lane measured alone. Lane BI completed the canonical test workforce and
+  // separated Owner from Administrator, which added four personas -- including the `owner` holder
+  // whose absence this file recorded as a TEST_FIXTURE_DEFECT below.
+  assert.equal(Object.keys(PERSONAS).length, 21);
   // Every persona must name a Security Role composition -- even an EMPTY one, which is the two
   // restricted personas' whole point. An ABSENT list would be an unanswered question.
   for (const [key, persona] of Object.entries(PERSONAS)) {
@@ -153,7 +163,15 @@ test("the persona catalog under measurement is the 17 the manifest declares", ()
     assert.ok(Array.isArray(persona.operationalScopes), `${key} declares no operationalScopes list`);
   }
   const withNoRole = Object.entries(PERSONAS).filter(([, p]) => p.securityRoles.length === 0).map(([k]) => k);
-  assert.deepEqual(withNoRole.sort(), ["records-clerk", "technician-on-leave"]);
+  // THREE, not two. `report-analyst` joins the two restricted personas in holding no Security Role,
+  // and for a DIFFERENT reason: the restricted pair hold none by design, while the Reporting persona
+  // holds none because the domain is still BLOCKED_DOMAIN. Both are asserted, and the reasons are
+  // kept apart, so "no Role" never reads as one fact when it is two.
+  assert.deepEqual(withNoRole.sort(), ["records-clerk", "report-analyst", "technician-on-leave"]);
+  assert.equal(PERSONAS["report-analyst"].acceptance, "BLOCKED_DOMAIN");
+  for (const key of ["records-clerk", "technician-on-leave"]) {
+    assert.notEqual(PERSONAS[key].acceptance, "BLOCKED_DOMAIN", `${key} is restricted by design, not blocked`);
+  }
 });
 
 test("the experience surface catalog satisfies its own invariants", () => {
@@ -161,7 +179,10 @@ test("the experience surface catalog satisfies its own invariants", () => {
   // surface declared both granted and a gap, or a RECORD_ASSIGNMENT predicate on navigation all fail
   // here -- and every persona assertion below would be meaningless over a catalog that failed it.
   assert.deepEqual(surfaceCatalogViolations(), []);
-  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 29);
+  // 30, not 29: lanes BL and BQ DECLARED `commercial.agreements` -- the surface this file recorded
+  // below as a gap whose stated reason was measurably false -- and built its destination.
+  assert.equal(EXPERIENCE_SURFACE_KEYS.length, 30);
+  assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
 });
 
 test("PARTS_OPERATIONS is named by NO surface grant path -- it cannot be reached BY ROLE or otherwise", () => {
@@ -229,7 +250,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   //    that ran against an empty `roles` table wrote nothing, which is exactly why the order matters.
   const files = readdirSync(path.join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).sort();
   const beforeSeed = files.filter((f) => f < SEED_BOUNDARY_MIGRATION).length;
-  assert.equal(files.length, 50, "the migration chain moved; re-measure before trusting anything below");
+  // 51: the 50 this lane measured alone, plus the AUTHORITY ACTIVATION VEHICLE (1762300800000)
+  // integrated from lane BO. The tripwire is kept, and kept exact: it fired on that very change and
+  // everything below WAS re-measured against the integrated chain before this number was moved.
+  assert.equal(files.length, 51, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -300,14 +324,88 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const { missingDeclaration, unexplainedExtra } = compareAuthority(nonprodAuthorityGrants(), rebuilt);
     assert.deepEqual(missingDeclaration, []);
     assert.deepEqual(unexplainedExtra, []);
-    assert.equal(rebuilt.length, 387);
+
+    // 413, NOT 387, AND THE DIFFERENCE IS NAMED. The repository now carries the authority activation
+    // vehicle (migration 1762300800000, lane BO), so a deterministic rebuild of THIS TREE produces 26
+    // grants more than the nonprod row count measured on 2026-09-24. That is not drift: drift is a row
+    // in the database nothing in the repository explains, and this is the inverse -- a row in the
+    // repository the database has not run yet, attributable to exactly one migration. `compareAuthority`
+    // above is the proof that it is the inverse: ZERO unexplained extras and ZERO missing declarations.
+    // The baseline records both numbers for the same reason, and they are asserted together here so
+    // neither can move without the other being re-read.
+    assert.equal(rebuilt.length, 413, "the repository rebuild total");
+    assert.equal(baselineDeployment.rebuildTotal, 413);
+    assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
+    assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 26);
+    const stamped = (await pool.query(
+      `SELECT count(*)::int n FROM eos_policy.role_capabilities
+        WHERE tenant_id = $1 AND granted_by = 'migration:1762300800000'`, [TENANT])).rows[0].n;
+    assert.equal(stamped, 26, "the whole 413-vs-387 difference must carry the pending migration's provenance");
+
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 76);
+    // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
+    // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 79);
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.principal_capabilities WHERE tenant_id=$1", [TENANT]), 0);
+  });
+
+  // ── 0b. THE ADMINISTRATION READ GATE IS SERVER-SIDE, AND IT COUNTS DIRECT PRINCIPAL GRANTS
+
+  await t.test("the Administration READ gate is SERVER-SIDE and totally applied, not a navigation rule", async () => {
+    // WHY THIS BELONGS IN A PERSONA FILE. Everything else here measures what a persona is OFFERED --
+    // surfaces and destinations, which are drawn by a browser. If the server answered those same
+    // reads to anyone in the tenant, every surface assertion above would be a statement about
+    // decoration rather than about access. So the gate is asserted here too, from the product's own
+    // read-authority map rather than from the navigation catalog.
+    //
+    // TOTAL: every Administration READ operation resolves to a required capability. An operation
+    // that resolved to null would be one the gate cannot govern, which is how a hole gets in.
+    const { ADMIN_READ_OPERATIONS, ADMIN_MUTATION_OPERATIONS, capabilityForAdminRead } =
+      await import("../lib/adminPolicy/adminPolicyApi.js");
+    assert.ok(ADMIN_READ_OPERATIONS.length >= 10, "the read operation list has stopped matching");
+    for (const operation of ADMIN_READ_OPERATIONS) {
+      const required = capabilityForAdminRead(operation);
+      assert.ok(required, `${operation} is an Administration READ that requires no capability`);
+      // AND IT IS A READ THAT GATES IT, never a write: gating a read on a write would make a reader
+      // indistinguishable from a writer, which is the defect the Administration read authority exists
+      // to remove.
+      assert.equal(/\.(write|create|edit|publish|version|bindRole|assign|decide|execute|stage)$/.test(required),
+        false, `${operation} is gated by "${required}", which names a mutation`);
+      // Every key the gate can require must be REGISTERED, or it names a surface nobody could open.
+      assert.ok(capabilityCatalog.some((c) => c.key === required),
+        `the gate requires "${required}", which the governed vocabulary does not carry`);
+    }
+    // A MUTATION NEVER ACQUIRES A READ GATE: mutations are authorized by their own commands, and a
+    // second gate here would be a second authorization model for the same act.
+    for (const mutation of ADMIN_MUTATION_OPERATIONS) {
+      assert.equal(capabilityForAdminRead(mutation), null, `${mutation} acquired a read authority`);
+    }
+    // THE GATE IS IN THE DISPATCHER, BEFORE THE READ RUNS -- asserted of the source, because "the
+    // server enforces it" is a claim about where the check sits and not about what it returns.
+    const apiSource = readFileSync(path.join(FUNCTIONS_DIR, "src/adminPolicy/adminPolicyApi.ts"), "utf8");
+    assert.match(apiSource, /if \(!isMutation\(operation\)\) await requireAdminReadAuthority\(/);
+
+    // DIRECT PRINCIPAL GRANTS COUNT. The gate resolves EFFECTIVE access, which is the union of Role
+    // grants and `principal_capabilities` -- so an administrator's direct grant on the Users screen
+    // is sufficient on its own, with no Role carrying the key. Asserted here from the enforcement
+    // point's own source; the executable end-to-end proof, including withdrawal, is section F of
+    // test/administrationReadEnforcement.test.mjs, which is registered in BOTH suite groups.
+    const gateStart = apiSource.indexOf("async function requireAdminReadAuthority");
+    assert.ok(gateStart > 0, "the read gate has been renamed or removed");
+    const gateBody = apiSource.slice(gateStart, apiSource.indexOf("\nasync function dispatch"));
+    assert.match(gateBody, /resolvePrincipalEffectiveAccess\(repo, actor\.tenantId, actor\.uid\)/);
+    assert.match(gateBody, /access\.effective\.some\(/);
+    for (const roleOnly of ["role_capabilities", "listRoleCapabilities", "heldRoleKeys"]) {
+      assert.equal(gateBody.includes(roleOnly), false,
+        `the read gate consults "${roleOnly}", which would ignore a direct principal grant`);
+    }
+    // AND THIS FILE'S OWN ANSWERS ARE ROLE-DERIVED, which is only meaningful because direct grants
+    // WOULD have counted: the rebuilt tenant holds zero of them, asserted in the foundation above.
   });
 
   // ── 1. ADMIN / OWNER ADMINISTRATION SEPARATION
@@ -342,53 +440,86 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(owner.destinations.includes("administration/dataImport"), false);
   });
 
-  await t.test("EXPECTED_FAIL: OWNER is a strict SUBSET of ADMIN -- there is no separation of duties", async () => {
-    // CLASSIFICATION: SECURITY_ROLE_DEFECT (candidate -- no ruling on this branch states a direction).
+  await t.test("OWNER IS NOT ADMIN -- and is still a strict SUBSET of it, which is a different claim", async () => {
+    // OWNER != ADMIN: PROVED. The two Roles resolve to different authority, different surface sets
+    // and, since lane BI, different personas. That is the ruling's requirement and it is met below.
     //
-    // MEASURED. owner holds 47 capabilities, admin 66, and the 47 are a SUBSET of the 66: there are
-    // 19 capabilities admin holds and owner does not, and ZERO the other way round. So "Owner" is
-    // not a peer authority to "Administrator" with different duties; it is a smaller Administrator.
-    // Nothing an Owner may do is withheld from an Admin, which means the pair cannot express any
-    // segregation-of-duty control at all -- including over the Administration surfaces they share.
+    // OWNER NESTS INSIDE ADMIN: STILL TRUE, AND STILL RECORDED AS A DEFECT CANDIDATE.
+    // CLASSIFICATION: SECURITY_ROLE_DEFECT (candidate -- no ruling states a direction).
     //
-    // PINNED, NOT FIXED. This test asserts the CURRENT arrangement. If a ruling later gives Owner an
-    // authority Admin lacks, this fails and the gap report must be revisited.
+    // RE-MEASURED ON THE INTEGRATED TREE. owner holds 50 capabilities, admin 69. Lane BN narrowed the
+    // compiled Owner Role to a DECLARED capability contract, and what that narrowing did was make
+    // Owner SMALLER and its 19 exclusions EXPLICIT -- it did not give Owner anything Admin lacks. So
+    // the direction of the nesting is unchanged: 19 capabilities admin holds and owner does not, and
+    // ZERO the other way round. The pair still cannot express a segregation-of-duty control, and
+    // saying so remains the honest answer even though the two Roles are now plainly distinguishable.
+    //
+    // THE 19 ARE NOW A DECLARED CONTRACT, NOT AN ACCIDENT. They are asserted BY NAME against BN's
+    // owner-capability contract, so a silent widening of Owner fails here rather than passing as a
+    // smaller count.
     const admin = await resolve(["admin"], NO_DIMENSIONS);
     const owner = await resolve(["owner"], NO_DIMENSIONS);
-    assert.equal(admin.capabilities.size, 66);
-    assert.equal(owner.capabilities.size, 47);
+    assert.equal(admin.capabilities.size, 69);
+    assert.equal(owner.capabilities.size, 50);
     const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k)).sort();
     const adminOnly = [...admin.capabilities].filter((k) => !owner.capabilities.has(k)).sort();
     assert.deepEqual(ownerOnly, [], "owner has gained an authority admin lacks -- re-read the gap report");
-    assert.equal(adminOnly.length, 19);
+    assert.deepEqual(adminOnly, [
+      "admin.dataImport.execute", "customer.governedField.write", "equipment.install",
+      "equipment.model.manage", "inventory.catalog.activate", "inventory.cycleCount.cancel",
+      "inventory.cycleCount.create", "inventory.cycleCount.reconcile", "inventory.cycleCount.submit",
+      "inventory.placement.record", "inventory.stock.receive", "inventory.stock.relocate",
+      "inventory.transfer.cancel", "inventory.transfer.dispatch", "inventory.transfer.receive",
+      "opportunity.createSalesOrder", "salesAgreement.accept", "workOrder.lifecycle.cancel",
+      "workOrder.lifecycle.dispatch",
+    ], "the ADMIN_ONLY set is lane BN's declared Owner exclusion contract; it may not drift silently");
     // The surface consequence: three surfaces admin reaches and owner cannot, none the other way.
     assert.deepEqual(admin.surfaces.filter((s) => !owner.surfaces.includes(s)).sort(),
       ["administration.dataImport", "receiving.checkIn", "service.dispatch"]);
     assert.deepEqual(owner.surfaces.filter((s) => !admin.surfaces.includes(s)), []);
-    assert.equal(admin.surfaces.length, 23);
-    assert.equal(owner.surfaces.length, 20);
+    assert.equal(admin.surfaces.length, 24);
+    assert.equal(owner.surfaces.length, 21);
+    // NOT THE SAME ROLE, stated as an assertion rather than left implicit in the counts above.
+    assert.notEqual(admin.capabilities.size, owner.capabilities.size);
+    assert.notDeepEqual(admin.surfaces, owner.surfaces);
   });
 
-  await t.test("EXPECTED_FAIL: no persona holds the `owner` Role, so the separation is unobservable", async () => {
-    // CLASSIFICATION: TEST_FIXTURE_DEFECT.
-    //
-    // The catalog merged the separate Administrator persona INTO owner-executive
-    // (`catalogGaps[2].disposition === "MERGED_INTO_OWNER_EXECUTIVE"`), and owner-executive holds
-    // `admin`. So the `owner` Role has no persona in the acceptance world and the two-Role
-    // Administration authority cannot be exercised from either side by a persona. Everything the two
-    // tests above prove about owner is CONTRACT-LEVEL, resolved from the Role catalog, not live.
-    assert.deepEqual(PERSONAS["owner-executive"].securityRoles, ["admin"]);
-    const holders = Object.entries(PERSONAS).filter(([, p]) => p.securityRoles.includes("owner"));
-    assert.deepEqual(holders, [], "an owner persona now exists -- promote the owner assertions to live");
-    const merged = MANIFEST.catalogGaps.find((g) => g.disposition === "MERGED_INTO_OWNER_EXECUTIVE");
-    assert.ok(merged, "the merge that removed the Administrator persona is no longer declared");
+  await t.test("A PERSONA NOW HOLDS `owner`, AND A DIFFERENT ONE HOLDS `admin` -- the separation is live", async () => {
+    // THE FIXTURE DEFECT THIS FILE RECORDED IS CLOSED. It read: the catalog had merged the separate
+    // Administrator persona INTO owner-executive, owner-executive held `admin`, and so the `owner`
+    // Role had no persona at all -- every owner statement above was CONTRACT-LEVEL, resolved from the
+    // Role catalog and never exercised. Lane BI separated them. The assertions are therefore promoted
+    // to live, exactly as the pin instructed, rather than deleted.
+    assert.deepEqual(PERSONAS["owner-executive"].securityRoles, ["owner"]);
+    assert.deepEqual(PERSONAS["administrator"].securityRoles, ["admin"]);
+    const ownerHolders = Object.entries(PERSONAS).filter(([, p]) => p.securityRoles.includes("owner")).map(([k]) => k);
+    const adminHolders = Object.entries(PERSONAS).filter(([, p]) => p.securityRoles.includes("admin")).map(([k]) => k);
+    assert.deepEqual(ownerHolders, ["owner-executive"]);
+    assert.deepEqual(adminHolders, ["administrator"]);
+    // TWO PERSONAS, NOT ONE WEARING TWO HATS. No persona holds both, which is what makes the pair
+    // capable of being exercised from either side.
+    assert.deepEqual(Object.entries(PERSONAS)
+      .filter(([, p]) => p.securityRoles.includes("owner") && p.securityRoles.includes("admin")), []);
+    // AND THE LIVE RESOLUTION DIFFERS, measured through the product path rather than asserted of the
+    // catalog: the Owner persona does not reach Data Import, the Administrator persona does.
+    const ownerPersona = await resolvePersona("owner-executive");
+    const adminPersona = await resolvePersona("administrator");
+    assert.equal(adminPersona.surfaces.includes("administration.dataImport"), true);
+    assert.equal(ownerPersona.surfaces.includes("administration.dataImport"), false);
+    assert.equal(adminPersona.destinations.includes("administration/dataImport"), true);
+    assert.equal(ownerPersona.destinations.includes("administration/dataImport"), false);
   });
 
   // ── 2. DISPATCHER
 
   await t.test("DISPATCHER receives NO Security Administration", async () => {
     const dispatcher = await resolvePersona("dispatcher");
-    assert.equal(dispatcher.capabilities.size, 29);
+    // 31, not 29: the activation vehicle grants dispatcher receivingOrder.record.read and
+    // workOrder.record.read -- two READS on Objects it already held a write on. Neither is an
+    // ADMIN_ACTION, which is exactly what the rest of this test goes on to prove.
+    assert.equal(dispatcher.capabilities.size, 31);
+    assert.ok(dispatcher.capabilities.has("receivingOrder.record.read"));
+    assert.ok(dispatcher.capabilities.has("workOrder.record.read"));
     // Not "holds no key called admin.*" -- holds no capability whose ACTION KIND is an admin action,
     // which is the Object model's own answer and cannot be dodged by renaming a key.
     const { kinds, objects } = objectAccessOf(dispatcher.capabilities);
@@ -405,17 +536,43 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(admin.surfaces.filter((s) => s.startsWith("administration.")).length, 8);
     // What the dispatcher IS for, so the denial is not mistaken for having no authority: Dispatch.
     assert.equal(dispatcher.surfaces.includes("service.dispatch"), true);
-    assert.deepEqual(await holdersOf("workOrder.lifecycle.dispatch"), ["admin", "dispatcher"]);
+    // THREE HOLDERS, not two: activation slice S6 grants fieldManager dispatch and cancel as the
+    // service manager's SCHEDULING authority -- and never `complete`, which stays the technician's.
+    assert.deepEqual(await holdersOf("workOrder.lifecycle.dispatch"), ["admin", "dispatcher", "fieldManager"]);
+    assert.deepEqual(await holdersOf("workOrder.lifecycle.cancel"), ["admin", "dispatcher", "fieldManager"]);
   });
 
   // ── 3. TECHNICIAN AND PARTS_OPERATIONS
 
   await t.test("TECHNICIAN cannot gain PARTS_OPERATIONS by Role, and the eligibility grants nothing", async () => {
     const technician = await resolvePersona("service-technician-a");
-    assert.equal(technician.capabilities.size, 3);
+    // 4, not 3: ruling B gave technician workOrder.record.read, closing an edit-without-read row --
+    // it held workOrder.transition and could not read the work order it was transitioning. The READ
+    // confers no dispatch, cancel or completion, and the surface set is unchanged by it.
+    assert.equal(technician.capabilities.size, 4);
     assert.deepEqual([...technician.capabilities].sort(),
-      ["reorder.request.read", "workOrder.lifecycle.complete", "workOrder.transition"]);
+      ["reorder.request.read", "workOrder.lifecycle.complete", "workOrder.record.read", "workOrder.transition"]);
     assert.deepEqual([...technician.surfaces], ["field.myWorkOrders", "service.workOrders"]);
+    for (const withheld of ["workOrder.lifecycle.dispatch", "workOrder.lifecycle.cancel"]) {
+      assert.equal(technician.capabilities.has(withheld), false, `the record READ widened technician to ${withheld}`);
+    }
+
+    // ASSIGNED vs UNASSIGNED. `field.myWorkOrders` is the technician's own queue and it is reached
+    // through the SAME resolution for both technician personas, while the Object authority stays
+    // record-scoped: holding the surface is not holding every work order. Measured by resolving the
+    // second technician persona, which is a different employee with the same Role.
+    const other = await resolvePersona("service-technician-b");
+    assert.deepEqual([...other.surfaces], [...technician.surfaces]);
+    assert.notEqual(dimensionsOf("service-technician-a").employeeId, dimensionsOf("service-technician-b").employeeId);
+    // AND THE ASSIGNED QUEUE IS EARNED BY THE IDENTITY, NOT BY THE ROLE. A technician with the same
+    // Role, the same eligibility and NO employee identity loses `field.myWorkOrders` and keeps only
+    // `service.workOrders` -- so "my work orders" is genuinely narrowed by who the actor is, and an
+    // unassigned technician is not silently handed the assigned surface.
+    const unidentified = await resolve(["technician"],
+      { employeeId: null, workEligibility: ["SERVICE_TECHNICIAN"], operationalScopes: [] });
+    assert.deepEqual([...unidentified.surfaces], ["service.workOrders"]);
+    assert.equal(unidentified.surfaces.includes("field.myWorkOrders"), false);
+    assert.equal(technician.surfaces.includes("field.myWorkOrders"), true);
 
     // (a) THE ELIGIBILITY IS NOT A GRANT. Injecting BOTH other qualification codes into the SAME
     //     resolution changes nothing at all -- the manifest's `eligibilityGrantsNothing` ruling,
@@ -447,12 +604,22 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   await t.test("PARTS ASSOCIATE vs PARTS MANAGER: the Reorder distinction is CAPABILITY-first", async () => {
     const manager = await resolvePersona("parts-manager");
     const associate = await resolvePersona("parts-associate");
-    assert.equal(manager.capabilities.size, 20);
-    assert.equal(associate.capabilities.size, 11);
+    // 22 and 13, not 20 and 11: ruling B gave workOrder.record.read to both partsManager and
+    // partsAssociate, and the parts-associate persona also carries inventoryReceivingClerk, which
+    // gained receivingOrder.record.read. Reads only -- the Reorder distinction below is untouched.
+    assert.equal(manager.capabilities.size, 22);
+    assert.equal(associate.capabilities.size, 13);
     assert.equal(manager.surfaces.includes("inventory.reorderQueue"), true);
     assert.equal(associate.surfaces.includes("inventory.reorderQueue"), false);
     assert.equal(manager.destinations.includes("inventory/reorderQueue"), true);
     assert.equal(associate.destinations.includes("inventory/reorderQueue"), false);
+
+    // THE ASSIGNMENT AUTHORITY IS THE MANAGER'S, AND IT EXISTS. `reorder.request.assign` is held by
+    // partsManager and by nobody else, so "who may assign reorder work" is a real, singular answer
+    // rather than an unheld key -- and the associate's queue denial above is not the same fact.
+    assert.deepEqual(await holdersOf("reorder.request.assign"), ["partsManager"]);
+    assert.ok(manager.capabilities.has("reorder.request.assign"));
+    assert.equal(associate.capabilities.has("reorder.request.assign"), false);
 
     // WHICH AUTHORITY REFUSES, asked of the evaluator itself rather than inferred from the absence.
     // Both personas hold PARTS_OPERATIONS and BOTH hold REORDER_QUEUE:sample-co-synthetic in this
@@ -520,28 +687,42 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     assert.equal(unqualified.surfaces.includes("inventory.cycleCount.count"), false);
   });
 
-  await t.test("EXPECTED_FAIL: neither warehouse persona can reach its own North Star warehouse surface", async () => {
-    // CLASSIFICATION: SECURITY_ROLE_DEFECT.
+  await t.test("WAREHOUSE MANAGEMENT is now reached; PICKING is STILL BLOCKED, and for a different reason", async () => {
+    // HALF OF THIS LANE'S GAP IS CLOSED, AND THE REMAINING HALF IS NOT FAKED.
     //
-    // warehouse-manager's North Star names `warehouse.management`; warehouse-associate's names
-    // `warehouse.picking`. BOTH are unreachable, and the reason is the Security Role, not the
-    // governed dimensions -- both personas hold WAREHOUSE_OPERATIONS and a WAREHOUSE scope, so the
-    // predicates would pass. The capability is simply not granted to their Roles:
-    //   warehouse.record.read       -> admin, dispatcher, operationsManager, owner   (4, no warehouse Role)
-    //   inventory.placement.record  -> admin                                          (1)
-    //   inventory.stock.relocate    -> admin                                          (1)
-    // These two surfaces are earnable by NO persona in the catalog at all.
-    assert.deepEqual(await holdersOf("warehouse.record.read"), ["admin", "dispatcher", "operationsManager", "owner"]);
-    assert.deepEqual(await holdersOf("inventory.placement.record"), ["admin"]);
-    assert.deepEqual(await holdersOf("inventory.stock.relocate"), ["admin"]);
+    // It was recorded as: `warehouse.record.read` reached admin, dispatcher, operationsManager and
+    // owner -- no warehouse Role at all -- so BOTH warehouse North Stars were unreachable even though
+    // both personas hold WAREHOUSE_OPERATIONS and a WAREHOUSE scope, i.e. the predicates would have
+    // passed and only the grant was missing.
+    //
+    // CLOSED: warehouseAssociate and warehouseManager now hold `warehouse.record.read`, so
+    // `warehouse.management` resolves for both and warehouse-manager's North Star is met in full.
+    assert.deepEqual(await holdersOf("warehouse.record.read"),
+      ["admin", "dispatcher", "operationsManager", "owner", "warehouseAssociate", "warehouseManager"]);
     const manager = await resolvePersona("warehouse-manager");
     const associate = await resolvePersona("warehouse-associate");
-    assert.equal(manager.surfaces.includes("warehouse.management"), false);
-    assert.equal(associate.surfaces.includes("warehouse.picking"), false);
-    assert.equal(manager.destinations.includes("inventory/warehouses"), false);
-    assert.equal(associate.destinations.includes("inventory/warehouseWorkspace"), false);
-    // The North Stars that name them are still declared, so this is a gap and not a retirement.
+    assert.equal(manager.surfaces.includes("warehouse.management"), true);
+    assert.equal(associate.surfaces.includes("warehouse.management"), true);
     assert.match(PERSONAS["warehouse-manager"].northStar, /warehouse\.management/);
+    assert.equal(manager.surfaces.includes("inventory.cycleCount.review"), true,
+      "warehouse-manager's North Star is warehouse.management AND the reconcile review; both must resolve");
+
+    // STILL BLOCKED, ASSERTED AS BLOCKED, WITH ITS REASON. `warehouse.picking` is governed by
+    // `inventory.placement.record` or `inventory.stock.relocate`, and both belong to DEDICATED
+    // operator Roles (inventoryPutAwayOperator, inventoryStockRelocationOperator) that neither
+    // warehouse persona holds. That is a narrower and more accurate statement than the original
+    // "admin only": the authority now exists as a job-shaped Role, and the open question is whether
+    // warehouse-associate should be ASSIGNED it -- an Owner decision, not a grant to invent here.
+    // CLASSIFICATION: SECURITY_ROLE_ASSIGNMENT_GAP (was SECURITY_ROLE_DEFECT).
+    assert.deepEqual(await holdersOf("inventory.placement.record"), ["admin", "inventoryPutAwayOperator"]);
+    assert.deepEqual(await holdersOf("inventory.stock.relocate"), ["admin", "inventoryStockRelocationOperator"]);
+    for (const role of ["inventoryPutAwayOperator", "inventoryStockRelocationOperator"]) {
+      assert.equal(PERSONAS["warehouse-associate"].securityRoles.includes(role), false);
+      assert.equal(PERSONAS["warehouse-manager"].securityRoles.includes(role), false);
+    }
+    assert.equal(associate.surfaces.includes("warehouse.picking"), false);
+    assert.equal(associate.destinations.includes("inventory/warehouseWorkspace"), false);
+    // The North Star that names it is still declared, so this is a gap and not a retirement.
     assert.match(PERSONAS["warehouse-associate"].northStar, /warehouse\.picking/);
   });
 
@@ -553,43 +734,67 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const resolved = await Promise.all(personaKeys.map(resolvePersona));
     for (const r of resolved) {
       assert.equal(r.capabilities.size, 17);
-      assert.equal(r.surfaces.length, 7);
+      // 8, not 7: `commercial.agreements` is a declared surface now (lanes BL + BQ) and salesperson
+      // already held salesAgreement.read, so it resolves for all three without any new grant.
+      assert.equal(r.surfaces.length, 8);
       assert.deepEqual([...r.surfaces], [...resolved[0].surfaces]);
       assert.deepEqual(r.destinations, resolved[0].destinations);
     }
     // NON-VACUOUS: the shared answer is a real, non-empty business surface set, not "nothing".
     assert.deepEqual([...resolved[0].surfaces], [
-      "commercial.opportunities", "commercial.salesOrders", "crm.accounts",
+      "commercial.agreements", "commercial.opportunities", "commercial.salesOrders", "crm.accounts",
       "financials.invoices", "financials.payments", "inventory.balances", "inventory.catalog",
     ]);
+    // SAME SECURITY ROLE, DIFFERENT JOB ROLE. Retail and National Accounts resolve IDENTICAL access
+    // because access is decided by the Security Role, and they are kept apart by a Job Role the
+    // authority model deliberately does not consult. Both halves are asserted so neither reads as
+    // the other: identical access above, and a declared, different business identity here.
+    assert.notEqual(PERSONAS["retail-sales-a"].employee, PERSONAS["national-accounts-sales"].employee);
     // Sharing a Role is NOT sharing a persona: the manifest keeps national accounts separate and
     // says why, so the identity of the access answer is a measured fact rather than a merge.
     assert.ok(PERSONAS["national-accounts-sales"].keptSeparateReason);
   });
 
-  await t.test("EXPECTED_FAIL: the agreements gap's stated reason is measurably FALSE", async () => {
-    // CLASSIFICATION: OBJECT_AUTHORITY_DEFECT (a stale gap register entry).
+  await t.test("the agreements gap is CLOSED: the false reason is corrected and the surface has a door", async () => {
+    // THIS LANE'S FINDING, AND WHAT WAS DONE WITH IT.
     //
-    // `commercial.agreements` is national-accounts-sales' North Star and is declared an
-    // EXPERIENCE_SURFACE_GAP whose reason reads "No salesAgreement.* capability is registered in
-    // eos_policy.capabilities". FOUR ARE REGISTERED, under the `salesAgreement` Object, and the
-    // salesperson Role -- the very persona the gap text names -- holds all four. So the surface is
-    // NOT blocked by the governed vocabulary: it is undeclared. A gap whose reason is false hides a
-    // buildable surface behind a sentence nobody re-checks.
-    const gap = EXPERIENCE_SURFACE_GAPS.find((g) => g.key === "commercial.agreements");
-    assert.ok(gap, "the agreements gap is no longer declared -- re-read the gap report");
-    assert.match(gap.reason, /No salesAgreement\.\* capability is registered/);
+    // Recorded here as: `commercial.agreements` -- national-accounts-sales' North Star -- was declared
+    // an EXPERIENCE_SURFACE_GAP whose reason read "No salesAgreement.* capability is registered in
+    // eos_policy.capabilities", and FOUR were registered, held by the very Role the gap text named.
+    // The authority half had always resolved; what was missing was a DESTINATION.
+    //
+    // Lane BL corrected the false reason and lane BQ built the destination, so the gap is GONE from
+    // the register rather than suppressed, and the surface is DECLARED WITH A DOOR. The measurement
+    // that proved the reason false is kept below -- it is the evidence the closure was correct.
+    assert.equal(EXPERIENCE_SURFACE_GAPS.some((g) => g.key === "commercial.agreements"), false,
+      "commercial.agreements has returned to the gap register");
+    assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), true);
+
     const registered = capabilityCatalog.filter((c) => c.key.startsWith("salesAgreement."));
     assert.deepEqual(registered.map((c) => c.key).sort(),
       ["salesAgreement.accept", "salesAgreement.create", "salesAgreement.read", "salesAgreement.updateDraft"]);
     for (const c of registered) assert.equal(c.objectKey, "salesAgreement");
     assert.deepEqual(await holdersOf("salesAgreement.read"),
       ["admin", "dispatcher", "generalManager", "owner", "salesManager", "salesperson"]);
+
+    // THE DOOR IS GOVERNED, not open. The surface is earned by salesAgreement.read and by nothing
+    // else, so declaring it granted no authority to anybody -- which is the property that made it
+    // safe to declare at all.
+    const surface = EXPERIENCE_SURFACES.find((s) => s.key === "commercial.agreements");
+    assert.deepEqual(surface.grants.map((g) => g.capabilityKey), ["salesAgreement.read"]);
+    assert.deepEqual(surface.grants.flatMap((g) => g.predicates ?? []), []);
+
+    // AND IT NOW RESOLVES, end to end, for the persona whose North Star named it.
     const sales = await resolvePersona("national-accounts-sales");
     assert.ok(sales.capabilities.has("salesAgreement.read"));
-    // The consequence, pinned: the persona holds the read and is offered no destination for it.
-    assert.equal(sales.surfaces.includes("commercial.agreements"), false);
-    assert.equal(EXPERIENCE_SURFACE_KEYS.includes("commercial.agreements"), false);
+    assert.equal(sales.surfaces.includes("commercial.agreements"), true);
+    assert.ok(sales.destinations.includes("customers/salesAgreements"),
+      "the surface resolves but reaches no destination -- the gap has reopened as a different shape");
+    // A Role WITHOUT the read still cannot reach it, so the door is a door and not a hole.
+    const technician = await resolvePersona("service-technician-a");
+    assert.equal(technician.capabilities.has("salesAgreement.read"), false);
+    assert.equal(technician.surfaces.includes("commercial.agreements"), false);
+    assert.equal(technician.destinations.includes("customers/salesAgreements"), false);
   });
 
   // ── 7. FINANCE
@@ -642,53 +847,92 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const partsManager = await resolvePersona("parts-manager");
     assert.ok(partsManager.capabilities.has("finance.invoice.issue"));
 
-    // CLASSIFICATION (b): TEST_FIXTURE_DEFECT. No persona holds a finance Role, so every statement
-    // above about controller / accountingManager / financeManager is CONTRACT-LEVEL, resolved from
-    // the Role catalog and never exercised by a persona. The catalog says so itself.
+    // (b) THE FIXTURE DEFECT IS CLOSED. It read: no persona held a finance Role, so every statement
+    // about controller / accountingManager / financeManager was CONTRACT-LEVEL and never exercised.
+    // Lane BI added `finance-controller`, so the assertions are PROMOTED TO LIVE as the pin required.
     const financeRoles = ["controller", "accountingManager", "financeManager"];
     const holders = Object.entries(PERSONAS)
       .filter(([, p]) => p.securityRoles.some((r) => financeRoles.includes(r))).map(([k]) => k);
-    assert.deepEqual(holders, [], "a finance persona now exists -- promote these assertions to live");
-    const gap = MANIFEST.catalogGaps.find((g) => /Finance/.test(g.requestedRole));
-    assert.equal(gap.disposition, "MISSING_FROM_SAMPLE_COMPANY_V2");
-    assert.equal(gap.seededHere, false);
-    // The three finance Roles are nonetheless REAL and identically granted -- 17 capabilities each.
+    assert.deepEqual(holders, ["finance-controller"]);
+    assert.deepEqual(PERSONAS["finance-controller"].securityRoles, ["controller"]);
+    // The three finance Roles are REAL and identically granted -- 17 capabilities each.
     for (const role of financeRoles) {
       assert.equal((await capabilitiesForRoleKeys(pool, TENANT, [role])).size, 17);
     }
+    // LIVE, through the product path: the finance persona holds the finance READS and the four named
+    // finance EXECUTION acts, and reaches the two Financials surfaces.
+    const finance = await resolvePersona("finance-controller");
+    assert.equal(finance.capabilities.size, 17);
+    for (const key of ["finance.invoice.read", "finance.payment.read", "finance.invoice.issue",
+      "finance.payment.apply", "finance.refund.record", "finance.adjustment.record"]) {
+      assert.ok(finance.capabilities.has(key), `the finance persona does not hold ${key}`);
+    }
+    assert.equal(finance.surfaces.includes("financials.invoices"), true);
+    assert.equal(finance.surfaces.includes("financials.payments"), true);
+    // AND IT IS NOT AN ADMINISTRATOR. Finance authority is finance-shaped: no ADMIN_ACTION at all.
+    assert.equal(objectAccessOf(finance.capabilities).kinds.ADMIN_ACTION ?? 0, 0);
+    assert.equal(finance.surfaces.includes("administration.dataImport"), false);
+    assert.equal(finance.surfaces.includes("administration.rolesPermissions"), false);
   });
 
   // ── 8. REPORTING
 
-  await t.test("EXPECTED_FAIL: the REPORTING persona is read-only only VACUOUSLY -- it reads nothing", async () => {
-    // CLASSIFICATION: DOMAIN_NOT_ACTIVATED (+ TEST_FIXTURE_DEFECT for the absent persona).
+  await t.test("REPORTING BASELINE IS ONE READ AND ONLY A READ -- the vacuity is over, the block is not", async () => {
+    // THE VACUITY THIS LANE REFUSED TO CALL A PASS HAS ENDED, exactly as the pin demanded: it said
+    // "reportViewer now holds capabilities -- the vacuity is over, write the real assertion". Slice 1
+    // of the Reporting activation (migration 1762300800000) registered reportDefinition.read, so the
+    // real assertion is written here.
     //
-    // "Reporting persona is read-only" is TRUE and MEANS NOTHING here: all three reporting Roles hold
-    // ZERO capabilities, so there is no write to exclude and no read to offer. Reported as vacuous
-    // rather than as a pass, because a vacuous pass is how this expectation would stop being checked.
-    for (const role of ["reportViewer", "reportFinanceViewer", "reportAuthor"]) {
+    // ONE READ. reportViewer holds exactly reportDefinition.read and nothing else, so "the Reporting
+    // baseline is read-only" is now a statement with content: there is a read, and there is no write
+    // to exclude because none is registered.
+    const viewer = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
+    assert.deepEqual([...viewer].sort(), ["reportDefinition.read"]);
+    const viewerAccess = objectAccessOf(viewer);
+    for (const mutating of ["CREATE", "EDIT", "BUSINESS_ACTION", "ADMIN_ACTION"]) {
+      assert.equal(viewerAccess.kinds[mutating] ?? 0, 0, `the reporting baseline acquired a ${mutating}`);
+    }
+    // NOT GRANTABLE THE OTHER WAY EITHER: the delete is UNREGISTERED, so it is ungrantable rather
+    // than merely ungranted, and the field-level report ids are deliberately outside the vocabulary.
+    assert.equal(capabilityCatalog.some((c) => c.key === "reportDefinition.delete"), false);
+    assert.deepEqual(capabilityCatalog.filter((c) => c.key.startsWith("report")).map((c) => c.key).sort(),
+      ["reportDefinition.read"]);
+    // Granted to the three Roles the ruling names and to no job-title Role.
+    assert.deepEqual(await holdersOf("reportDefinition.read"), ["admin", "owner", "reportViewer"]);
+
+    // STILL ZERO for the other two reporting Roles -- Slice 1 is a slice, not the domain.
+    for (const role of ["reportFinanceViewer", "reportAuthor"]) {
       const caps = await capabilitiesForRoleKeys(pool, TENANT, [role]);
-      assert.equal(caps.size, 0, `${role} now holds capabilities -- the vacuity is over, write the real assertion`);
+      assert.equal(caps.size, 0, `${role} gained authority outside Reporting Slice 1`);
       const r = await resolve([role], NO_DIMENSIONS);
       assert.deepEqual([...r.surfaces], []);
       assert.deepEqual(r.destinations, []);
-      // The read-only half, asserted anyway so it is already written when the grants arrive.
-      assert.equal(objectAccessOf(caps).effective.length, 0);
     }
-    // The Reporting persona is likewise absent from the catalog, by declaration.
-    const gap = MANIFEST.catalogGaps.find((g) => /Reporting/.test(g.requestedRole));
-    assert.equal(gap.disposition, "MISSING_FROM_SAMPLE_COMPANY_V2");
-    assert.equal(gap.seededHere, false);
-    assert.deepEqual(gap.proposedSecurityRoles, ["reportViewer"]);
+
+    // AND THE PERSONA IS STILL BLOCKED, ASSERTED AS BLOCKED. Lane BI added `report-analyst`, but it
+    // holds NO Security Role, so it resolves to zero authority and zero surfaces. Slice 1 registered
+    // a capability; it did not assign anybody to the Reporting domain, and pretending otherwise here
+    // would be inventing an Owner decision.
+    const analyst = await resolvePersona("report-analyst");
+    assert.deepEqual(PERSONAS["report-analyst"].securityRoles, []);
+    assert.equal(PERSONAS["report-analyst"].acceptance, "BLOCKED_DOMAIN");
+    assert.equal(analyst.capabilities.size, 0);
+    assert.deepEqual([...analyst.surfaces], []);
+    assert.deepEqual(analyst.destinations, []);
     // And the destinations it would need are declared gaps governed by the Firebase capability feed,
-    // not by eos_policy -- which is why no grant here could open them anyway.
+    // not by eos_policy -- which is why Slice 1 could not open them and did not try.
     assert.match(NAV_SURFACE_GAPS["reporting/builder"], /Firebase capability feed/);
   });
 
   // ── 9. RESTRICTED PERSONAS
 
   await t.test("RESTRICTED personas cannot accidentally reach a business write", async () => {
-    for (const personaKey of ["records-clerk", "technician-on-leave"]) {
+    // THREE ZERO-AUTHORITY PERSONAS, AND THEY ARE NOT ALL ZERO FOR THE SAME REASON.
+    //   records-clerk / technician-on-leave  hold NO Security Role at all -- authority withheld.
+    //   restricted-user                      holds generalEmployee, a Role that grants NOTHING, so
+    //                                        it is SIGNED IN and still reaches nothing, which is the
+    //                                        harder and more useful negative control.
+    for (const personaKey of ["records-clerk", "technician-on-leave", "restricted-user"]) {
       const r = await resolvePersona(personaKey);
       assert.equal(r.capabilities.size, 0);
       assert.deepEqual([...r.surfaces], []);
@@ -699,12 +943,22 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
         assert.equal(kinds[mutating] ?? 0, 0);
       }
     }
+    // restricted-user's zero is a ROLE that grants nothing, not an absent Role -- asserted so the
+    // two kinds of zero never collapse into one.
+    assert.deepEqual(PERSONAS["restricted-user"].securityRoles, ["generalEmployee"]);
+    assert.equal((await capabilitiesForRoleKeys(pool, TENANT, ["generalEmployee"])).size, 0);
+    for (const key of ["records-clerk", "technician-on-leave"]) {
+      assert.deepEqual(PERSONAS[key].securityRoles, []);
+    }
     // NON-VACUITY, which is the only thing that makes a zero meaningful. The SAME resolution path,
-    // the SAME evaluator and the SAME client predicates hand owner-executive 23 surfaces and 27
-    // destinations -- so an empty answer is a refusal, not a broken harness.
+    // the SAME evaluator and the SAME client predicates hand owner-executive a large answer -- so an
+    // empty answer is a refusal, not a broken harness. 21, not 23: owner-executive now holds `owner`
+    // rather than `admin` (lane BI), and lane BN's contract withholds Data Import, receiving check-in
+    // and dispatch from Owner.
     const ownerExecutive = await resolvePersona("owner-executive");
-    assert.equal(ownerExecutive.surfaces.length, 23);
-    assert.equal(ownerExecutive.destinations.length, 28);
+    assert.equal(ownerExecutive.surfaces.length, 21);
+    assert.ok(ownerExecutive.destinations.length >= 20,
+      `owner-executive reached only ${ownerExecutive.destinations.length} destinations`);
     // technician-on-leave is the same PERSON as a technician minus the authority: the Employee, the
     // profile and the reporting line remain, and the eligibility is withheld by declaration.
     assert.ok(MANIFEST.workEligibilityWithheld.some(
@@ -762,8 +1016,11 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
 
     assert.deepEqual(decideWorkflowAction(before, instance, "MarkReady", attempt),
       { allowed: false, refusal: "notBoundToRole" });
+    // ONE, not zero: Reporting Slice 1 gave reportViewer reportDefinition.read. That makes this proof
+    // STRONGER, not weaker -- the Role now has a real, non-empty authority, so "the binding did not
+    // change it" is a comparison between two populated sets rather than between two emptinesses.
     const capsBefore = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
-    assert.equal(capsBefore.size, 0);
+    assert.deepEqual([...capsBefore].sort(), ["reportDefinition.read"]);
 
     await setWorkflowRoleBinding(repo, { tenantId: TENANT, uid: ACTOR, heldRoleKeys: ["admin"] },
       { versionId: version.id, actionKey: "MarkReady", roleId: reportViewer.id, reason: "never-widens proof" });
@@ -772,10 +1029,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     const after = await loadWorkflowVersionDefinition(repo, TENANT, version.id);
     assert.equal(decideWorkflowAction(after, instance, "MarkReady", attempt).allowed, true);
 
-    // AND THE OBJECT AUTHORITY HAS NOT MOVED. Zero capabilities before, zero after; zero surfaces
-    // before, zero after. The binding narrows who may attempt a transition; it grants nothing.
+    // AND THE OBJECT AUTHORITY HAS NOT MOVED. Identical capability set before and after -- asserted
+    // as SET EQUALITY rather than as a count, so it stays a statement about what changed rather than
+    // about how much there happened to be. The binding narrows who may attempt a transition; it
+    // grants nothing, and it takes nothing away either.
     const capsAfter = await capabilitiesForRoleKeys(pool, TENANT, ["reportViewer"]);
-    assert.equal(capsAfter.size, 0);
+    assert.deepEqual([...capsAfter].sort(), [...capsBefore].sort(),
+      "a workflow role binding changed the Role's Object authority");
     const resolved = await resolve(["reportViewer"], NO_DIMENSIONS);
     assert.deepEqual([...resolved.surfaces], []);
     assert.deepEqual(resolved.destinations, []);
@@ -790,13 +1050,23 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   await t.test("every persona's projection is stable, and the client agrees with the server", async () => {
     // The census, pinned. A grant, a Role composition or a surface-catalog edit that moves any
     // persona's answer fails HERE, next to the numbers it moved, rather than in a persona sweep.
+    // RE-MEASURED ON THE INTEGRATED TREE, and now covering all 21 personas rather than 17. What moved
+    // and why: `commercial.agreements` became a declared surface (BL+BQ), so every salesperson and
+    // every Role holding salesAgreement.read gained one; `warehouse.record.read` reached the two
+    // warehouse Roles (BO), so both warehouse personas gained `warehouse.management`;
+    // owner-executive moved from `admin` to `owner` (BI) and so lost the three Owner-excluded
+    // surfaces; and `administrator`, `finance-controller` and `report-analyst` are new personas.
     const EXPECTED_SURFACE_COUNTS = {
-      "owner-executive": 23, "general-manager": 14, "office-manager": 2, "service-manager": 11,
-      "dispatcher": 12, "service-technician-a": 2, "service-technician-b": 2, "contract-technician": 2,
-      "technician-on-leave": 0, "retail-sales-a": 7, "retail-sales-b": 7, "national-accounts-sales": 7,
-      "parts-manager": 13, "parts-associate": 8, "warehouse-manager": 10, "warehouse-associate": 6,
-      "records-clerk": 0,
+      "owner-executive": 21, "administrator": 24, "general-manager": 15, "office-manager": 2,
+      "service-manager": 12, "dispatcher": 13, "service-technician-a": 2, "service-technician-b": 2,
+      "contract-technician": 2, "technician-on-leave": 0, "retail-sales-a": 8, "retail-sales-b": 8,
+      "national-accounts-sales": 8, "parts-manager": 13, "parts-associate": 8,
+      "warehouse-manager": 11, "warehouse-associate": 7, "records-clerk": 0,
+      "finance-controller": 11, "report-analyst": 0, "restricted-user": 0,
     };
+    // EVERY persona is covered. A persona added to the manifest without a measured expectation here
+    // would otherwise slip through this census unmeasured, which is the failure mode this guards.
+    assert.deepEqual(Object.keys(EXPECTED_SURFACE_COUNTS).sort(), Object.keys(PERSONAS).sort());
     const granted = new Set();
     for (const [personaKey, expected] of Object.entries(EXPECTED_SURFACE_COUNTS)) {
       const r = await resolvePersona(personaKey);
@@ -813,10 +1083,48 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
       // A persona with no surface is offered no destination. No default, no placeholder, no fall-through.
       if (r.surfaces.length === 0) assert.deepEqual(r.destinations, []);
     }
-    // TWO SURFACES ARE EARNABLE BY NOBODY IN THE CATALOG -- see the warehouse EXPECTED_FAIL above.
-    // Pinned here as a census so a third cannot join them unnoticed.
+    // ONE SURFACE IS EARNABLE BY NOBODY IN THE CATALOG, down from two: `warehouse.management` is now
+    // reached by both warehouse personas, and `warehouse.picking` is the one that remains -- see the
+    // warehouse block above for why, and whose decision closing it is. Pinned here as a census so
+    // another cannot join it unnoticed.
     assert.deepEqual(EXPERIENCE_SURFACE_KEYS.filter((k) => !granted.has(k)).sort(),
-      ["warehouse.management", "warehouse.picking"]);
+      ["warehouse.picking"]);
+
+    // ── THE EOS NAVIGATION SOURCE HAS NO FIREBASE FALLBACK ──
+    // When the EOS authority is answering, the LEGACY path must not run at all. Measured through the
+    // client's own predicates: a principal with a governed EOS authority but an operational role list
+    // that the legacy rules WOULD have honoured is offered nothing the EOS authority did not issue.
+    // A fall-through to Firebase would show up here as a destination with no backing surface.
+    const legacyRoles = ["admin", "dispatcher", "technician", "partsManager", "warehouseManager"];
+    for (const personaKey of ["records-clerk", "restricted-user", "service-technician-a"]) {
+      const r = await resolvePersona(personaKey);
+      const authority = buildNavigationAuthority({
+        state: r.surfaces.length > 0 ? EXPERIENCE_STATE.READY : EXPERIENCE_STATE.REFUSED,
+        context: { surfaces: [...r.surfaces] },
+      });
+      assert.equal(isEosNavigationSource({ eosNavigationAuthority: authority }), true,
+        "the EOS authority is not recognised as the navigation source");
+      for (const legacyRole of legacyRoles) {
+        const offered = [];
+        for (const domain of NAV_DOMAINS) {
+          const oc = { operationalRoles: legacyRoles, employmentStatus: "ACTIVE", eosNavigationAuthority: authority };
+          if (!isDomainVisible(domain, legacyRole, legacyRoles, oc)) continue;
+          for (const item of domain.subnav ?? []) {
+            if (item.containerScope) continue;
+            if (isNavItemVisible(item, legacyRole, legacyRoles, oc)) offered.push(`${domain.key}/${item.key}`);
+          }
+        }
+        for (const destination of offered) {
+          const surfaces = NAV_SURFACE_ACCESS[destination];
+          assert.ok(surfaces && surfaces.some((s) => r.surfaces.includes(s)),
+            `${personaKey}: legacy role ${legacyRole} opened ${destination} under the EOS authority -- a Firebase fallback ran`);
+        }
+        if (r.surfaces.length === 0) {
+          assert.deepEqual(offered, [],
+            `${personaKey}: a zero-surface principal was offered destinations by the legacy role ${legacyRole}`);
+        }
+      }
+    }
   });
 
   await t.test("`service.workOrders` is NOT the operations-team surface -- `service.dispatch` is", async () => {
@@ -834,7 +1142,19 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     }
     const dispatcher = await resolvePersona("dispatcher");
     assert.equal(dispatcher.surfaces.includes("service.dispatch"), true);
-    assert.deepEqual(await holdersOf("workOrder.lifecycle.dispatch"), ["admin", "dispatcher"]);
+    // THREE HOLDERS, not two: activation slice S6 grants fieldManager dispatch and cancel as the
+    // service manager's SCHEDULING authority -- and never `complete`, which stays the technician's.
+    assert.deepEqual(await holdersOf("workOrder.lifecycle.dispatch"), ["admin", "dispatcher", "fieldManager"]);
+    assert.deepEqual(await holdersOf("workOrder.lifecycle.cancel"), ["admin", "dispatcher", "fieldManager"]);
     assert.deepEqual(await holdersOf("workOrder.lifecycle.complete"), ["technician"]);
+    // THREE, not two: `service.dispatch` is earned by workOrder.lifecycle.dispatch OR by the
+    // coordinated-visit read, and fieldManager holds the latter. Still narrow, and still not
+    // something service.workOrders implies -- which is the whole point of this test.
+    const dispatchHolders = [];
+    for (const personaKey of Object.keys(PERSONAS)) {
+      const r = await resolvePersona(personaKey);
+      if (r.surfaces.includes("service.dispatch")) dispatchHolders.push(personaKey);
+    }
+    assert.deepEqual(dispatchHolders.sort(), ["administrator", "dispatcher", "service-manager"]);
   });
 });

@@ -154,9 +154,15 @@ test("A: the map is the SAME authority navigation uses, and never a write", () =
 // ════════════════════ G. NO WIDENING — the access model is untouched ════════════════════
 
 test("G: this change mints no capability, writes no grant and adds no migration", () => {
-  // THE MIGRATION CHAIN IS UNCHANGED, counted rather than asserted in prose.
+  // THE MIGRATION CHAIN IS UNCHANGED BY THIS CHANGE, counted rather than asserted in prose.
+  // The count is 51, not the 50 this lane measured alone: the Phase 3 integration also carries the
+  // AUTHORITY ACTIVATION VEHICLE (1762300800000), which is a DIFFERENT change with its own baseline.
+  // The pin stays an exact equality so that a migration added or removed by the read enforcement --
+  // which still adds none -- fails here; only the integrated total moved.
   const migrations = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"));
-  assert.equal(migrations.length, 50, "a migration was added or removed by the read enforcement");
+  assert.equal(migrations.length, 51, "a migration was added or removed by the read enforcement");
+  assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
+    "the one migration beyond this lane's 50 must be the authority activation vehicle and nothing else");
 
   // Every capability the gate can require was ALREADY registered by a migration. The gate requires
   // keys; it does not create them, and a key it required that nothing registers would be a surface

@@ -174,15 +174,51 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
     }
 
     await t.test("AC6: every governed persona provisioning mutation carries its OWN specific reason", async () => {
-      assert.equal(plan.length, 13, "the whole persona provisioning run, not just the Parts slice");
-      const reasons = plan.map((s) => s.input.reason);
-      assert.equal(new Set(reasons).size, plan.length,
+      // 48, not the 13 measured before lane BI completed the canonical test workforce. The number is
+      // pinned for the same reason it always was -- so that the per-step assertions below are known to
+      // run over THE WHOLE provisioning run and not just the Parts slice this suite is named for.
+      assert.equal(plan.length, 48, "the whole persona provisioning run, not just the Parts slice");
+
+      // FOUR COMMAND KINDS, AND ONE OF THEM CANNOT CARRY A REASON -- which is a property of the
+      // governed command, not an omission in the plan. `createJobRole` writes a TENANT CATALOG entry
+      // (a vocabulary row: id + display name) and its parameter contract is
+      // `acceptOnly(input, ["jobRoleId", "displayName"])`, so a `reason` handed to it would be
+      // REFUSED as unknown input. It is audited by the catalog audit path under the Job Role id, not
+      // by a per-Employee reason. The other three ARE per-Employee mutations and every one of them
+      // carries its own reason. Both halves are asserted, so neither can drift: if a reason is ever
+      // added to a catalog step, or dropped from a mutation step, this fails.
+      const BY_COMMAND = { createJobRole: 14, assignEmployeeJobRole: 21,
+        assignEmployeeWorkEligibility: 7, assignEmployeeOperationalScope: 6 };
+      const counted = {};
+      for (const s of plan) counted[s.command] = (counted[s.command] ?? 0) + 1;
+      assert.deepEqual(counted, BY_COMMAND, "the provisioning plan's command mix moved");
+
+      const catalogSteps = plan.filter((s) => s.command === "createJobRole");
+      for (const step of catalogSteps) {
+        assert.equal(Object.hasOwn(step.input, "reason"), false,
+          `createJobRole carries a reason, which the governed command refuses as unknown input`);
+        assert.deepEqual(Object.keys(step.input).sort(), ["displayName", "jobRoleId"]);
+      }
+
+      // EVERY PER-EMPLOYEE MUTATION CARRIES ITS OWN SPECIFIC REASON. 34 of them, 34 distinct reasons:
+      // one broad reason for the run is what the ruling forbids, and so is two steps sharing one.
+      const mutations = plan.filter((s) => s.command !== "createJobRole");
+      assert.equal(mutations.length, 34);
+      const reasons = mutations.map((s) => s.input.reason);
+      assert.equal(new Set(reasons).size, mutations.length,
         "no two governed mutations share a reason -- one broad reason for the run is what the ruling forbids");
-      for (const step of plan) {
-        const dimension = step.command === "assignEmployeeWorkEligibility"
-          ? dimensions.DIMENSION_WORK_ELIGIBILITY : dimensions.DIMENSION_OPERATIONAL_SCOPE;
-        const target = step.command === "assignEmployeeWorkEligibility"
-          ? step.input.qualificationCode : `${step.input.scopeType}:${step.input.scopeId}`;
+      const DIMENSION_OF = {
+        assignEmployeeJobRole: dimensions.DIMENSION_JOB_ROLE,
+        assignEmployeeWorkEligibility: dimensions.DIMENSION_WORK_ELIGIBILITY,
+        assignEmployeeOperationalScope: dimensions.DIMENSION_OPERATIONAL_SCOPE,
+      };
+      for (const step of mutations) {
+        const dimension = DIMENSION_OF[step.command];
+        assert.ok(dimension, `${step.command} has no declared authority dimension`);
+        const target = step.command === "assignEmployeeWorkEligibility" ? step.input.qualificationCode
+          : step.command === "assignEmployeeJobRole" ? step.input.jobRoleId
+            : `${step.input.scopeType}:${step.input.scopeId}`;
+        assert.ok(step.input.reason, `${step.command} for ${step.input.employeeId} carries no reason`);
         assert.ok(step.input.reason.includes(step.input.employeeId), `${step.input.reason} does not name its persona`);
         assert.ok(step.input.reason.includes(dimension), `${step.input.reason} does not name its authority dimension`);
         assert.ok(step.input.reason.includes(target), `${step.input.reason} does not name its target`);

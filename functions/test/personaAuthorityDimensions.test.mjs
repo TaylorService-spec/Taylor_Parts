@@ -282,10 +282,17 @@ test("REPORTING is a BLOCKED_DOMAIN placeholder and holds no reporting authority
   assert.deepEqual(p.securityRoles, []);
   assert.equal(p.northStar, "NONE");
   assert.ok(!SAMPLE_COMPANY.principals.some((x) => x.employee === "report-analyst"), "the Reporting persona holds no Principal");
-  // NOT ONE report capability may be granted while the domain is outside eos_policy. Measured, not assumed:
-  // no report.* id is in the governed vocabulary, so no contract anywhere could name one and pass.
+  // THE REPORTING DOMAIN IS STILL BLOCKED, but it is no longer ENTIRELY outside eos_policy: the
+  // authority activation vehicle (1762300800000) registered REPORTING SLICE 1 -- exactly ONE
+  // Object-level read over saved report definitions. Measured, not assumed: the governed vocabulary
+  // holds that one id and no other reporting id, so report execution, authoring and the 34
+  // field-level report ids remain ungrantable and this persona stays BLOCKED_DOMAIN above.
+  // Pinning the exact set is STRICTER than the empty pin it replaces: a second reporting capability
+  // arriving without an Owner ruling fails here.
   const vocabulary = SAMPLE_COMPANY.expectedAccess.postgresCapabilityVocabulary;
-  assert.deepEqual(vocabulary.filter((k) => k.startsWith("report")), []);
+  assert.deepEqual(vocabulary.filter((k) => k.startsWith("report")), ["reportDefinition.read"]);
+  assert.equal(vocabulary.includes("reportDefinition.delete"), false,
+    "reportDefinition.delete must stay UNREGISTERED -- ungrantable rather than merely ungranted");
   for (const role of ["reportViewer", "reportFinanceViewer", "reportAuthor"]) {
     assert.ok(!SAMPLE_COMPANY.principals.some((x) => x.securityRoles.includes(role)), `${role} is held by nobody`);
   }

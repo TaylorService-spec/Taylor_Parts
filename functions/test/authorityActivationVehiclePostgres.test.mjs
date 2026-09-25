@@ -186,15 +186,27 @@ test("RULING B: the census moves 29 -> 10, and the ten that remain are the ten t
     const rowsBefore = await projectionEditWithoutRead(poolBefore);
     const rowsAfter = await projectionEditWithoutRead(poolAfter);
 
-    // 27, not 29. The activation has TWO halves and only one is a migration: the matrix READ verbs
+    // 26, not 29. The activation has TWO halves and only one is a migration: the matrix READ verbs
     // are wired in the same commit, and the two `employee` rows close on that wiring alone because
     // employee.record.read is one of the few registered READ keys the LEGACY Role catalog also
     // declares, so the seed can satisfy it. A test can rerun a migration and cannot un-wire a
-    // committed matrix, so 27 is what is measurable here and 29 is recorded in the manifest as the
+    // committed matrix, so this is what is measurable here and 29 is recorded in the manifest as the
     // measurement it was.
+    //
+    // 26 AND NOT 27, WHICH IS WHAT THIS LANE MEASURED ALONE. Lane BN's Owner narrowing EXCLUDES
+    // `inventory.stock.receive` from the compiled Owner Role, so receivingOrder/owner is not an
+    // edit-without-read row any more -- the write itself is gone, which closes the row without any
+    // grant at all. Asserted below by name so the two closures stay distinguishable.
     assert.equal(rowsBefore.length, EDIT_WITHOUT_READ_CENSUS_WIRING_ONLY,
       "the census with the wiring applied and the migration withheld");
     assert.equal(rowsAfter.length, EDIT_WITHOUT_READ_CENSUS_AFTER, "the measured 'after' the manifest records");
+
+    // CLOSED BY REMOVING THE WRITE, not by registering a read. Owner no longer holds
+    // inventory.stock.receive (lane BN), so this row is absent from BOTH censuses. If Owner ever
+    // regains that write without a receivingOrder read, it reappears in `before` and this fails.
+    assert.equal(rowsBefore.includes("receivingOrder/owner"), false,
+      "Owner has regained a receivingOrder write; BN's Owner capability contract has been widened");
+    assert.equal(rowsAfter.includes("receivingOrder/owner"), false);
 
     // THE THIRTEEN RULING B CLOSED are gone, by name.
     const closed = EDIT_WITHOUT_READ_RECONCILED.map((r) => `${r.objectKey}/${r.roleKey}`).sort();

@@ -374,10 +374,23 @@ test("no persona expects a surface the navigation catalog declares a GAP", () =>
     }
   }
   assert.ok(ungoverned >= 5, "the five contradictions this guard found must all stay recorded");
-  const agreements = MANIFEST.expectedAccess.personas["national-accounts-sales"].surfacesUngovernedToday
-    .find((b) => b.surface === "commercial.agreements");
-  assert.equal(agreements.classification, "DESTINATION_ABSENT");
-  assert.match(agreements.measured, /MEASURABLY FALSE/);
+
+  // ── commercial.agreements: RECORDED, THEN CLOSED. Not deleted, and not quietly dropped. ──
+  // This lane recorded it as DESTINATION_ABSENT with the measurement that the catalog's stated reason
+  // was MEASURABLY FALSE -- the salesAgreement.* capabilities were registered and granted, and what
+  // was actually missing was a destination. Lanes BL and BQ then corrected the false reason and BUILT
+  // that destination, so the surface is now DECLARED WITH A DOOR and the gap is genuinely gone.
+  // The guard therefore flips direction rather than being retired: the surface must NOT be a catalog
+  // gap, and every persona whose Roles earn it must EXPECT it.
+  assert.equal(gaps.has("commercial.agreements"), false,
+    "commercial.agreements is declared with a door (surface + salesAgreement.read); it may not return to the gap list without an Owner decision");
+  for (const key of ["retail-sales-a", "national-accounts-sales"]) {
+    const c = MANIFEST.expectedAccess.personas[key];
+    assert.ok(c.expectedSurfaces.includes("commercial.agreements"),
+      `${key} earns salesAgreement.read and the destination now exists, so the surface is expected, not ungoverned`);
+    assert.equal((c.surfacesUngovernedToday ?? []).some((b) => b.surface === "commercial.agreements"), false,
+      `${key} still records commercial.agreements as ungoverned after the destination was built`);
+  }
 });
 
 test("every REQUIRED capability is derivable from the persona's declared Roles (no ACCESS_MODEL_GAP)", () => {

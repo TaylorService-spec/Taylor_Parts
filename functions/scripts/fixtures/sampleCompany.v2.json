@@ -1694,7 +1694,8 @@
         "expectedSurfaces": [
           "crm.accounts",
           "commercial.opportunities",
-          "commercial.salesOrders"
+          "commercial.salesOrders",
+          "commercial.agreements"
         ],
         "deniedSurfaces": [
           "administration.users",
@@ -1708,14 +1709,6 @@
           "classification": "NOT_A_GAP"
         },
         "surfacesUngovernedToday": [
-          {
-            "surface": "commercial.agreements",
-            "classification": "DESTINATION_ABSENT",
-            "blockedBy": "SALES_AGREEMENT_HAS_NO_DESTINATION",
-            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'No salesAgreement.* capability is registered in eos_policy.capabilities; the national-accounts persona's North Star names a surface the governed vocabulary cannot express.'",
-            "measured": "THE CATALOG'S REASON IS MEASURABLY FALSE, and the gap is real anyway. Measured nonprod 2026-09-24: salesAgreement.read, .create, .updateDraft and .accept ARE all registered in eos_policy.capabilities and hold 6, 6, 6 and 4 grants; salesAgreement.read is held by admin, dispatcher, generalManager, owner, salesManager and salesperson -- which is this persona's only Security Role. The authority half resolves today. What is missing is a DESTINATION: the client has no Sales Agreements index and an Agreement is reachable only as a record page from its Opportunity.",
-            "correctionOwner": "The catalog's gap REASON belongs to whoever owns functions/src/eosOps/experienceAuthority.ts. This manifest does not declare the surface -- that is an Owner product decision -- and does not edit the catalog."
-          },
           {
             "surface": "crm.contacts",
             "classification": "NO_GOVERNING_CAPABILITY",
@@ -1808,7 +1801,8 @@
         "expectedSurfaces": [
           "crm.accounts",
           "commercial.opportunities",
-          "commercial.salesOrders"
+          "commercial.salesOrders",
+          "commercial.agreements"
         ],
         "deniedSurfaces": [
           "administration.users",
@@ -1820,14 +1814,6 @@
           "classification": "NOT_A_GAP"
         },
         "surfacesUngovernedToday": [
-          {
-            "surface": "commercial.agreements",
-            "classification": "DESTINATION_ABSENT",
-            "blockedBy": "SALES_AGREEMENT_HAS_NO_DESTINATION",
-            "catalogReason": "experienceAuthority.ts EXPERIENCE_SURFACE_GAPS: 'No salesAgreement.* capability is registered in eos_policy.capabilities; the national-accounts persona's North Star names a surface the governed vocabulary cannot express.'",
-            "measured": "THE CATALOG'S REASON IS MEASURABLY FALSE, and the gap is real anyway. Measured nonprod 2026-09-24: salesAgreement.read, .create, .updateDraft and .accept ARE all registered in eos_policy.capabilities and hold 6, 6, 6 and 4 grants; salesAgreement.read is held by admin, dispatcher, generalManager, owner, salesManager and salesperson -- which is this persona's only Security Role. The authority half resolves today. What is missing is a DESTINATION: the client has no Sales Agreements index and an Agreement is reachable only as a record page from its Opportunity.",
-            "correctionOwner": "The catalog's gap REASON belongs to whoever owns functions/src/eosOps/experienceAuthority.ts. This manifest does not declare the surface -- that is an Owner product decision -- and does not edit the catalog."
-          },
           {
             "surface": "dashboard.myPipeline",
             "classification": "NOT_A_NAVIGABLE_DESTINATION",
