@@ -230,6 +230,16 @@ BEGIN
        OR NEW.reason IS DISTINCT FROM OLD.reason OR NEW.effective_to IS NULL THEN
         RAISE EXCEPTION 'employee_functional_role_assignments keeps history: the only permitted change ends an open assignment';
     END IF;
+    -- THE END IS RECORDED NOW, AND NEVER REWRITES THE PAST (Pass 9 S6). ended_at is the moment of the end (within
+    -- clock skew of the transaction), and effective_to may not reach back before it -- except to CANCEL a period
+    -- that has not started, which ends exactly at its own start (zero length, never current).
+    IF NEW.ended_at IS NULL OR NEW.ended_at < now() - interval '5 minutes' OR NEW.ended_at > now() + interval '5 minutes' THEN
+        RAISE EXCEPTION 'FUNCTIONAL_ROLE_END_BACKDATED: ended_at must be the time of the end';
+    END IF;
+    IF NOT (NEW.effective_to >= now() - interval '5 minutes'
+            OR (OLD.effective_from > now() AND NEW.effective_to = OLD.effective_from)) THEN
+        RAISE EXCEPTION 'FUNCTIONAL_ROLE_END_BACKDATED: an assignment may not be ended in the past';
+    END IF;
     RETURN NEW;
 END
 $$ LANGUAGE plpgsql;
@@ -241,6 +251,21 @@ CREATE TRIGGER functional_roles_guard
 CREATE TRIGGER employee_functional_role_assignments_guard
     BEFORE INSERT OR UPDATE OR DELETE ON employee_functional_role_assignments
     FOR EACH ROW EXECUTE FUNCTION employee_functional_role_assignment_guard();
+
+-- TRUNCATE bypasses every row trigger above (Pass 9 S6; the Pass 8 D10 class): refused at statement level.
+CREATE FUNCTION functional_role_tables_no_truncate() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'FUNCTIONAL_ROLE_HISTORY_IMMUTABLE: TRUNCATE of % is refused', TG_TABLE_NAME;
+END
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER functional_roles_no_truncate
+    BEFORE TRUNCATE ON functional_roles
+    FOR EACH STATEMENT EXECUTE FUNCTION functional_role_tables_no_truncate();
+
+CREATE TRIGGER employee_functional_role_assignments_no_truncate
+    BEFORE TRUNCATE ON employee_functional_role_assignments
+    FOR EACH STATEMENT EXECUTE FUNCTION functional_role_tables_no_truncate();
 
 CREATE TRIGGER roles_key_not_functional_role
     BEFORE INSERT OR UPDATE OF key ON eos_policy.roles
@@ -295,11 +320,14 @@ ALTER TABLE eos_policy.workflow_role_bindings
 ALTER TABLE eos_policy.workflow_role_bindings ALTER COLUMN role_id SET NOT NULL;
 
 DROP TRIGGER IF EXISTS roles_key_not_functional_role ON eos_policy.roles;
+DROP TRIGGER IF EXISTS employee_functional_role_assignments_no_truncate ON eos_workforce.employee_functional_role_assignments;
+DROP TRIGGER IF EXISTS functional_roles_no_truncate ON eos_workforce.functional_roles;
 DROP TRIGGER IF EXISTS employee_functional_role_assignments_guard ON eos_workforce.employee_functional_role_assignments;
 DROP TRIGGER IF EXISTS functional_roles_guard ON eos_workforce.functional_roles;
 DROP TABLE IF EXISTS eos_workforce.employee_functional_role_assignments;
 DROP TABLE IF EXISTS eos_workforce.functional_roles;
 DROP FUNCTION IF EXISTS eos_workforce.employee_functional_role_assignment_guard();
+DROP FUNCTION IF EXISTS eos_workforce.functional_role_tables_no_truncate();
 DROP FUNCTION IF EXISTS eos_workforce.security_role_key_not_functional_role();
 DROP FUNCTION IF EXISTS eos_workforce.functional_roles_guard();
 DROP FUNCTION IF EXISTS eos_workforce.functional_role_reserved_eligibility_codes();
