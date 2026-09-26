@@ -70,6 +70,16 @@ import {
 // EMPTY, REFUSED and UNAVAILABLE are three different sentences here and none of them is a spinner
 // that never resolves -- domain/salesAgreementIndex.js decides which, in pure code a node test can
 // reach.
+//
+// ════════════════════ ...BUT ONLY ONCE THE WRITER IS HERE (lane S3) ════════════════════
+//
+// The paragraph above is true of the TABLE and was false of the SCREEN: every Agreement command
+// still writes Firestore `sales_agreements` through Firebase callables, so "No Sales Agreements
+// exist for this company yet" was printed while agreements existed on their Opportunities. Until the
+// Commercial writer cuts over, an empty page renders NOT_CUT_OVER (where Agreements actually are, no
+// empty-portfolio claim, no retry) and rows that do come back carry an "incomplete" notice. The index
+// does NOT read the Firestore-era callables to fill itself: there is no list callable, and adding one
+// would be a second authority for the same rows. See domain/salesAgreementIndex.js.
 
 const STATE_LABEL = Object.freeze({
   DRAFT: "Draft",
@@ -87,9 +97,14 @@ function totalCell(row) {
 // `client` is the transport seam, defaulted inside the hook to the real Commercial client. It is a
 // prop for one reason: so a test can drive the REAL read path against a canned HTTP answer instead
 // of a hand-written view object. Production never passes it (App.jsx renders `<SalesAgreementsList />`).
-export default function SalesAgreementsList({ client = undefined }) {
+// `writeAuthority` is the same kind of seam, for the post-cutover behaviour; production never passes
+// it either, so the domain's current value decides.
+export default function SalesAgreementsList({ client = undefined, writeAuthority = undefined }) {
   const navigate = useNavigate();
-  const { view, reload } = useSalesAgreementIndex(client ? { client } : undefined);
+  const { view, reload } = useSalesAgreementIndex({
+    ...(client ? { client } : {}),
+    ...(writeAuthority ? { writeAuthority } : {}),
+  });
 
   const body = () => {
     switch (view.state) {
@@ -111,9 +126,14 @@ export default function SalesAgreementsList({ client = undefined }) {
         // TRUE EMPTY: the read succeeded and there are none. Not a filtered view (this list has no
         // filters to have narrowed anything) and not a denial.
         return <HonestState state={HONEST_STATE.EMPTY} subject="Sales agreements" detail={view.reason} />;
+      case SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER:
+        // NOT EMPTY AND NOT A FAILURE. The read succeeded against a store Agreements are not yet
+        // written to. No retry: retrying cannot change the answer before the writer moves.
+        return <HonestState state={HONEST_STATE.NOT_ENABLED} subject="Sales agreements" detail={view.reason} />;
       default:
         return (
           <>
+            {view.reason ? <p className="ns-state ns-state--not-enabled">{view.reason}</p> : null}
             <div className="ns-table-wrap">
               <table className="ns-table ns-collection__table">
                 <caption className="sr-only">Sales Agreements</caption>
@@ -179,7 +199,15 @@ export default function SalesAgreementsList({ client = undefined }) {
       // boundary when the truth is that creation belongs to another object.
       summaryItems={[]}
     >
-      {body()}
+      {/* THE PAGE-STATE CONTRACT, MACHINE-READABLE. COMPLETE | PARTIAL_AUTHORITY | UNAVAILABLE (absent
+          while loading) -- decided in domain/salesAgreementIndex.js, never here. `display: contents`
+          so the marker adds no box and changes no layout. */}
+      <div
+        style={{ display: "contents" }}
+        data-authority-completeness={view.authorityCompleteness ?? undefined}
+      >
+        {body()}
+      </div>
     </WorkspaceIdentity>
   );
 }

@@ -28,11 +28,32 @@
 //
 // NOTHING IS SEEDED. Every row below is a literal in this file, handed back through the transport as
 // a server answer. No Commercial record is created anywhere by this suite.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import SalesAgreementsList from "../src/modules/sales/SalesAgreementsList.jsx";
 import { commercialApiClient, callCommercialApi } from "../src/services/commercialApiClient.js";
+import * as firestoreEraAgreementClient from "../src/services/salesAgreementCommandClient.js";
+
+// THE FIRESTORE-ERA AGREEMENT AUTHORITY, AS A LITERAL. Every Agreement write today (create,
+// updateDraft, accept) is a Firebase callable into Firestore `sales_agreements`, and the record page
+// reads back through getSalesAgreementContext. This mock stands in for that authority HOLDING an
+// agreement, so the index's answer can be compared against where Agreements actually live.
+vi.mock("../src/services/salesAgreementCommandClient.js", () => {
+  const held = { id: "sa-fs-1", salesAgreementNumber: "SA-2026-000007", state: "ACCEPTED", sourceOpportunityId: "opp-1" };
+  return {
+    createSalesAgreement: vi.fn(async () => ({ errorStatus: "unimplemented" })),
+    updateSalesAgreementDraft: vi.fn(async () => ({ errorStatus: "unimplemented" })),
+    acceptSalesAgreement: vi.fn(async () => ({ errorStatus: "unimplemented" })),
+    getSalesAgreementContext: vi.fn(async ({ salesAgreementId }) => (salesAgreementId === held.id
+      ? { result: { status: "ready", salesAgreement: held } }
+      : { result: { status: "not-found" } })),
+    getSalesAgreementForOpportunity: vi.fn(async ({ opportunityId }) => (opportunityId === held.sourceOpportunityId
+      ? { result: { status: "ready", salesAgreement: held } }
+      : { result: { status: "not-found" } })),
+    searchProductReferences: vi.fn(async () => ({ result: { items: [] } })),
+  };
+});
 
 const indexClientAnswering = ({ status = 200, body, fail = false }) => ({
   call: (operation, options = {}) => callCommercialApi(operation, {
@@ -69,7 +90,16 @@ describe("the Sales Agreements index states its answer honestly", () => {
   });
 
   it("EMPTY: a successful read with no rows says there are none, and offers no retry", async () => {
-    renderIndex(indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false, nextCursor: null } } }));
+    // Post-cutover semantics (lane S3): "none exist" is only true once the list reads the store
+    // Agreements are written to. Today's default is covered by THE AUTHORITY SPLIT block below.
+    render(
+      <MemoryRouter>
+        <SalesAgreementsList
+          client={indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false, nextCursor: null } } })}
+          writeAuthority="POSTGRES"
+        />
+      </MemoryRouter>,
+    );
     expect(await screen.findByText(/No Sales Agreements exist for this company yet/)).toBeTruthy();
     // An empty list is not a failure, so there is nothing to retry and nothing is offered...
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
@@ -140,5 +170,131 @@ describe("the Sales Agreements index states its answer honestly", () => {
 
   it("the production default seam is the real Commercial transport, not an injected stub", () => {
     expect(typeof commercialApiClient.call).toBe("function");
+  });
+});
+
+// ════════════════════ THE AUTHORITY SPLIT (lane S3) ════════════════════
+//
+// The index reads PostgreSQL (POST /commercial/sales -> eos_commercial.sales_agreements); every
+// Agreement write goes to Firestore through Firebase callables. Until the Commercial writer is cut
+// over (C5 copy + C6 writer), an EMPTY PostgreSQL answer is a fact about an un-migrated table, not
+// about the business -- and the screen must not present it as an empty portfolio.
+describe("the Sales Agreements index does not claim an empty portfolio while Agreements are written elsewhere", () => {
+  const pgEmpty = () => indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false, nextCursor: null } } });
+
+  it("PG answers [] while the Firestore-era authority holds an agreement: NO 'none exist' claim", async () => {
+    // The Firestore-era authority really does hold one -- proven through the same client the record
+    // page and the Opportunity card use.
+    const held = await firestoreEraAgreementClient.getSalesAgreementForOpportunity({ opportunityId: "opp-1" });
+    expect(held.result.status).toBe("ready");
+
+    renderIndex(pgEmpty());
+    expect(await screen.findByText(/not yet listed here/i)).toBeTruthy();
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+    // It points at where Agreements actually are, and draws no table over nothing.
+    expect(screen.getByText(/Opportunity/)).toBeTruthy();
+    expect(screen.queryByRole("table")).toBeNull();
+    // No retry: retrying the PostgreSQL read cannot change the answer before the writer moves.
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
+  it("NO NEW AUTHORITY: the index never reads the Firestore-era callables to fill itself", async () => {
+    vi.mocked(firestoreEraAgreementClient.getSalesAgreementContext).mockClear();
+    vi.mocked(firestoreEraAgreementClient.getSalesAgreementForOpportunity).mockClear();
+    renderIndex(pgEmpty());
+    await screen.findByText(/not yet listed here/i);
+    expect(firestoreEraAgreementClient.getSalesAgreementContext).not.toHaveBeenCalled();
+    expect(firestoreEraAgreementClient.getSalesAgreementForOpportunity).not.toHaveBeenCalled();
+  });
+
+  it("rows PG does return are shown, but never as the complete portfolio", async () => {
+    renderIndex(indexClientAnswering({ body: { ok: true, result: { items: [INDEX_ROW], truncated: false } } }));
+    expect(await screen.findByText("SA-2026-000041")).toBeTruthy();
+    expect(screen.getByText(/not the complete list/i)).toBeTruthy();
+  });
+
+  it("AUTHORITATIVE: a page whose rows are ALL unreadable is UNAVAILABLE, never 'none exist'", async () => {
+    render(
+      <MemoryRouter>
+        <SalesAgreementsList
+          client={indexClientAnswering({ body: { ok: true, result: { items: [{}, { id: "x" }], truncated: false } } })}
+          writeAuthority="POSTGRES"
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/not a permission decision/)).toBeTruthy();
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+  });
+
+  it("AUTHORITATIVE: an empty page marked truncated is UNAVAILABLE, never 'none exist'", async () => {
+    render(
+      <MemoryRouter>
+        <SalesAgreementsList
+          client={indexClientAnswering({ body: { ok: true, result: { items: [], truncated: true } } })}
+          writeAuthority="POSTGRES"
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/not a permission decision/)).toBeTruthy();
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+  });
+
+  it("AFTER THE WRITER MOVES to PostgreSQL, an empty answer is a true EMPTY again", async () => {
+    render(
+      <MemoryRouter>
+        <SalesAgreementsList client={pgEmpty()} writeAuthority="POSTGRES" />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/No Sales Agreements exist for this company yet/)).toBeTruthy();
+    expect(screen.queryByText(/not yet listed here/i)).toBeNull();
+    expect(screen.queryByText(/not the complete list/i)).toBeNull();
+  });
+});
+
+// THE PAGE-STATE CONTRACT ON THE RENDERED PAGE (Owner, lane S3). The screen carries the domain's
+// `authorityCompleteness` as data-authority-completeness, driven through the REAL transport seam.
+describe("the Sales Agreements index carries the page-state contract COMPLETE | PARTIAL_AUTHORITY | UNAVAILABLE", () => {
+  const marker = () => document.querySelector("[data-authority-completeness]");
+  const renderWith = (client, writeAuthority) => render(
+    <MemoryRouter>
+      <SalesAgreementsList client={client} {...(writeAuthority ? { writeAuthority } : {})} />
+    </MemoryRouter>,
+  );
+
+  it("PARTIAL_AUTHORITY today: an empty PG page is never 'all Agreements'", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false } } }));
+    await screen.findByText(/not yet listed here/i);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("PARTIAL_AUTHORITY");
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+  });
+
+  it("PARTIAL_AUTHORITY today: PG rows are shown but marked not complete", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [INDEX_ROW], truncated: false } } }));
+    await screen.findByText("SA-2026-000041");
+    expect(marker().getAttribute("data-authority-completeness")).toBe("PARTIAL_AUTHORITY");
+    expect(screen.getByText(/not the complete list/i)).toBeTruthy();
+  });
+
+  it("COMPLETE only after the writer moves: an authoritative, untruncated page", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [INDEX_ROW], truncated: false } } }), "POSTGRES");
+    await screen.findByText("SA-2026-000041");
+    expect(marker().getAttribute("data-authority-completeness")).toBe("COMPLETE");
+    expect(screen.queryByText(/not the complete list/i)).toBeNull();
+  });
+
+  it("COMPLETE for an authoritative empty page -- the one true 'none exist'", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false } } }), "POSTGRES");
+    await screen.findByText(/No Sales Agreements exist for this company yet/);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("COMPLETE");
+  });
+
+  it("UNAVAILABLE on refusal and on transport failure", async () => {
+    const { unmount } = renderWith(indexClientAnswering({ status: 403, body: { ok: false, code: "CAPABILITY_REQUIRED" } }));
+    await screen.findByText(/does not hold it/);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("UNAVAILABLE");
+    unmount();
+    renderWith(indexClientAnswering({ fail: true }));
+    await screen.findByText(/not a permission decision/);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("UNAVAILABLE");
   });
 });
