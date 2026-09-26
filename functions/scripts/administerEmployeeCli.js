@@ -12,15 +12,44 @@
 //   linkEmployeePrincipal    lib/eosWorkforce/commands/employeePrincipalLinkCommands.js
 //   unlinkEmployeePrincipal  lib/eosWorkforce/commands/employeePrincipalLinkCommands.js
 //   relinkEmployeePrincipal  lib/eosWorkforce/commands/employeePrincipalLinkCommands.js
+//   assignEmployeeJobRole    lib/eosWorkforce/commands/employeeJobRoleCommands.js
 //
 // THERE IS NO RAW SQL ESCAPE HATCH. This file contains no INSERT, no UPDATE and no DELETE. Its only
 // query is the tenant lookup by key, and the authority resolution's SELECTs inside
 // lib/eosWorkforce/commands/employeeAdministrationAuthority.js. A tool that could also write directly would
 // make every guarantee above optional.
 //
-// JOB ROLES ARE NOT ADMINISTERED HERE. `assignEmployeeJobRole` has its own capability
-// (admin.employeeJobRole.write) and its own operator surface; creating an Employee assigns no Job Role
-// and this wrapper offers no flag that would.
+// ---------------------------------------------------------------------------------------------------
+// JOB ROLES WERE NOT ADMINISTERED HERE, AND NOW ARE -- BY ONE COMMAND ONLY (Owner ruling 2026-09-25).
+//
+// This file used to say: "JOB ROLES ARE NOT ADMINISTERED HERE. `assignEmployeeJobRole` has its own
+// capability (admin.employeeJobRole.write) and its own operator surface". That sentence is kept above
+// rather than deleted because the REASONING in it is still true and still enforced -- only its
+// conclusion changed, and the record of why is worth more than a tidy paragraph.
+//
+// WHAT CHANGED. The "own operator surface" it pointed at was scripts/seedPersonaAuthorityDimensionsCli.js,
+// and that CLI cannot assign a Job Role: its planner emits createJobRole / assignEmployeeJobRole steps
+// that its executor does not wire, so an apply throws `commands[step.command] is not a function` before
+// any write (see that file's KNOWN DEFECT header). The Owner ruled that it is NOT repaired in this wave
+// -- it also plans redundant catalog creations and assignments for noncanonical Employees, both outside
+// the approved scope -- and that governed Job Role ASSIGNMENT is added here instead.
+//
+// WHAT DID NOT CHANGE, and is asserted by the suite:
+//
+//   THE CAPABILITY IS STILL ITS OWN. assignEmployeeJobRole gates on admin.employeeJobRole.write, NOT on
+//   admin.employeeProfile.write. A Principal that may create and edit Employees here still may not
+//   assign a position unless it separately holds the Job Role capability. No capability, role_capabilities
+//   row, grant or migration is added by this change: nonprod stays at 79 capabilities / 413 role_capabilities.
+//
+//   CREATING AN EMPLOYEE STILL ASSIGNS NO JOB ROLE. `--jobRoleId` is accepted by --command
+//   assignEmployeeJobRole and by NOTHING ELSE; on any other command it is refused
+//   (ARGUMENT_NOT_ACCEPTED) exactly as --employmentStatus is refused on a link.
+//
+//   THE ASSIGNMENT IS ONE BOUNDED OPERATION. It sets the Employee's one current primary Job Role and
+//   ends the prior one. It creates no Employee, links no Principal, grants no Security Role, and writes
+//   no Work Eligibility and no Operational Scope -- there is no flag here that could ask for any of
+//   those, and the suite snapshots every one of those relations across a real assignment.
+// ---------------------------------------------------------------------------------------------------
 //
 // ============================ THE AUTHORITY IS READ, NEVER ARGUED ============================
 //
@@ -46,7 +75,8 @@
 //   CERTIFICATION  the frozen Certification world refused by id.
 //   POSITIVELY     EOS_ENVIRONMENT must read exactly 'nonprod' in this process.
 //   NONPROD
-//   REQUIRED       --tenantKey, --performedBy, --adminPrincipalId, --command, --employeeId, --reason.
+//   REQUIRED       --tenantKey, --performedBy, --adminPrincipalId, --command, --employeeId, --reason,
+//                  and --jobRoleId for --command assignEmployeeJobRole (refused for every other command).
 //   DRY RUN        the default. --apply is required to write, and a dry run writes nothing at all.
 //
 // Usage (Render Shell on eos-api-nonprod):
@@ -54,6 +84,11 @@
 //     --tenantKey taylor-nonprod --performedBy <operator> --adminPrincipalId <principal> \
 //     --command createEmployee --employeeId emp-jane-doe --employmentStatus ACTIVE \
 //     --operatingCompanyId taylor --displayName "Jane Doe" --reason "new hire, per signed offer 2026-09-25" [--apply]
+//
+//   node scripts/administerEmployeeCli.js --environment platform-sandbox --databaseUrlEnv DATABASE_URL \
+//     --tenantKey taylor-nonprod --performedBy <operator> --adminPrincipalId <principal> \
+//     --command assignEmployeeJobRole --employeeId emp-jane-doe --jobRoleId service-technician \
+//     --reason "business position per the Owner-ruled catalog" [--apply]
 //
 // Exit 0 when the run is clean (PLANNED, or the command's own outcome); 2 when refused or failed.
 "use strict";
@@ -66,6 +101,7 @@ const FROZEN_ENVIRONMENTS = Object.freeze(["platform-certification"]);
 /** The governed commands this wrapper may drive. A name not in this list is not administered here. */
 const COMMANDS = Object.freeze([
   "createEmployee", "updateEmployeeProfile", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal",
+  "assignEmployeeJobRole",
 ]);
 
 /**
@@ -100,13 +136,21 @@ const FENCE_FLAGS = Object.freeze(["environment", "databaseUrlEnv", "tenantKey",
 const OPERATION_FLAGS = Object.freeze([
   "command", "employeeId", "employmentStatus", "operatingCompanyId",
   "linkedPrincipalId", "expectedCurrentPrincipalId", "newPrincipalId", "reason",
+  // A BUSINESS POSITION, NOT AUTHORITY. `jobRoleId` was in AUTHORITY_BEARING_FLAGS below while no command
+  // here took one; it is moved rather than duplicated, because a flag that is both "known" and "refused as
+  // authority" would be a lie in one of the two lists (KNOWN_FLAGS is tested first, so the refusal was
+  // already unreachable the moment the flag became real). A Job Role grants no capability, implies no Work
+  // Eligibility and no Operational Scope and is never inferred from a Security Role -- see
+  // src/eosWorkforce/jobRoleVocabulary.ts. `jobRole`, `securityRole` and every other authority term below
+  // stay refused, and `--jobRoleId` itself stays refused on every command but assignEmployeeJobRole.
+  "jobRoleId",
 ]);
 const KNOWN_FLAGS = Object.freeze([...FENCE_FLAGS, ...OPERATION_FLAGS, ...Object.keys(PROFILE_FLAGS)]);
 
 /** Flags that would SUPPLY authority. Already covered by the unknown-flag refusal; named so the refusal says WHY. */
 const AUTHORITY_BEARING_FLAGS = Object.freeze([
   "heldRoleKeys", "heldRoles", "roleKeys", "roles", "role", "capabilities", "capability",
-  "entitlements", "grant", "grants", "permissions", "securityRole", "jobRole", "jobRoleId",
+  "entitlements", "grant", "grants", "permissions", "securityRole", "jobRole",
   "tenantId", "principalId", "uid", "externalSubject",
 ]);
 const CREDENTIAL_BEARING_FLAGS = Object.freeze([
@@ -207,6 +251,11 @@ function assertInvocation(args, env) {
   }
 
   const input = { employeeId, reason };
+  // A BUSINESS POSITION IS NOT A SIDE EFFECT OF ANYTHING ELSE. Every other command refuses --jobRoleId,
+  // the way a link refuses --employmentStatus: the governed commands themselves refuse an unknown input
+  // field, and a wrapper that let one through would only move the refusal later and make the operator's
+  // report wrong about what it was going to do.
+  if (command !== "assignEmployeeJobRole") forbidden(args, ["jobRoleId"], command);
   if (command === "createEmployee") {
     forbidden(args, ["linkedPrincipalId", "expectedCurrentPrincipalId", "newPrincipalId"], command);
     input.employmentStatus = required(args, "employmentStatus");
@@ -219,6 +268,29 @@ function assertInvocation(args, env) {
       refuse("ARGUMENT_REQUIRED", "--command updateEmployeeProfile requires at least one profile flag; there is no empty edit.");
     }
     input.changes = profile;
+  } else if (command === "assignEmployeeJobRole") {
+    /**
+     * THE EMPLOYEE'S ONE CURRENT PRIMARY JOB ROLE. Three inputs, which are exactly the three the governed
+     * command accepts (employeeJobRoleCommands.assignEmployeeJobRole -> acceptOnly(["employeeId",
+     * "jobRoleId", "reason"])); this wrapper composes no fourth.
+     *
+     * NO EXPECTED-CURRENT PROTECTION, BECAUSE THE COMMAND HAS NONE. The link commands' revoke and move
+     * take a MANDATORY --expectedCurrentPrincipalId because unlinkEmployeePrincipal and
+     * relinkEmployeePrincipal require one. assignEmployeeJobRole does not: it locks the Employee, locks
+     * the current assignment row FOR UPDATE and ends it inside the same transaction, and a concurrent
+     * change is caught by employee_job_role_one_current_per_employee as JOB_ROLE_CONCURRENT_CHANGE.
+     * Inventing --expectedCurrentJobRoleId here would be a compare-and-swap the command cannot honour --
+     * the wrapper would have to read the current row itself, outside the command's transaction, which is
+     * a check that is worth less than nothing because it looks like a guarantee.
+     *
+     * REASON IS MANDATORY HERE AND OPTIONAL THERE. The command takes optionalReason; this tool requires
+     * --reason of every operation it drives (10-500 characters, checked above) and passes it through, so
+     * an operator-driven assignment always records why. That is a wrapper tightening its own input, not
+     * a wrapper changing what the command enforces.
+     */
+    forbidden(args, ["employmentStatus", "operatingCompanyId", "linkedPrincipalId", "expectedCurrentPrincipalId",
+      "newPrincipalId", ...Object.keys(PROFILE_FLAGS)], command);
+    input.jobRoleId = required(args, "jobRoleId");
   } else {
     forbidden(args, ["employmentStatus", "operatingCompanyId", ...Object.keys(PROFILE_FLAGS)], command);
     if (command === "linkEmployeePrincipal") {
@@ -284,12 +356,16 @@ async function main() {
   const creation = require("../lib/eosWorkforce/commands/employeeCreationCommand.js");
   const profile = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
   const links = require("../lib/eosWorkforce/commands/employeePrincipalLinkCommands.js");
+  // The EXISTING governed Job Role writer, under the EXISTING admin.employeeJobRole.write. Imported, not
+  // reimplemented: there is no Job Role SQL in this file and no second gate in front of the command's.
+  const jobRoles = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
   const commands = {
     createEmployee: creation.createEmployee,
     updateEmployeeProfile: profile.updateEmployeeProfile,
     linkEmployeePrincipal: links.linkEmployeePrincipal,
     unlinkEmployeePrincipal: links.unlinkEmployeePrincipal,
     relinkEmployeePrincipal: links.relinkEmployeePrincipal,
+    assignEmployeeJobRole: jobRoles.assignEmployeeJobRole,
   };
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: options.connectionString }));
   try {
