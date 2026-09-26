@@ -236,18 +236,39 @@ Transport: `POST` to the Admin policy endpoint (`adminPolicyHttp`).
 - `listTenantPrincipals`, `listPrincipalRoleAssignments`, `getPrincipalEffectiveAccess`: `admin.principalAccess.read`. `getPrincipalEffectiveAccess` reports ROLE / DIRECT / ROLE_AND_DIRECT provenance;
 - `readPolicyAuditHistory {limit}`: `audit.event.read`.
 
-### Specified, not implemented: `explainEffectiveAccess`
+### `explainEffectiveAccess` (IMPLEMENTED, 2026-09-26 follow-up)
 
-- Input: `{principalId}`. Gate: `admin.principalAccess.read`.
-- It needs the pool, and `adminPolicyApi` is repository-only, so it is composed in `adminPolicyHttp`/`server.ts`.
-- Behaviour:
-  - split `resolvePrincipalContext` so it resolves by principal id (qualifying, non-stale, GLOBAL-scope assignments only; scoped assignments grant nothing);
-  - resolve `capabilitiesForRoleKeys`;
-  - call the entitlement resolver with `postgresGrantConditionProvider(pool)` (the SAME source the runtime uses);
-  - apply the experience-context reader.
-- For each capability it returns `{capabilityKey, objectKey, actionKey, via:[{grantor:{kind,roleKey|principalId}, condition|null}], runtime: "ALLOWED"|"CONDITIONAL"|"WITHHELD_FROM_FLAT_KERNELS"|"NOT_ENFORCED_DIRECT"}`.
-- Actions that need a record return CONDITIONAL.
-- Parity test: for each canonical persona, the capability set must equal `resolveOperationalContext(...).capabilities`.
+**Gate.** `admin.principalAccess.read`, an existing key: the same authority as `getPrincipalEffectiveAccess`. No new capability.
+
+**Input.** `{principalId}`. The principal must be a member of the caller's tenant; otherwise NOT_FOUND. A disabled or unresolvable Principal is also NOT_FOUND.
+
+**Composition.** The read is served only when the server composes the evaluator (`AdminApiDeps.explainEffectiveAccess`, wired in `eosApi/server.ts` over the one shared pool). If it is not composed, the read refuses with INTERNAL; there is no fallback to a repository-only evaluator.
+
+**Evaluator (`eosOps/effectiveAccessExplanation.ts`).**
+- The Principal is resolved with `resolvePrincipalContextById`, which shares every rule after principal lookup with the runtime's `resolvePrincipalContext`.
+- Capabilities come from `resolveOperationalContextForPrincipal`, which runs `capabilitiesForRoleKeys` plus the same entitlement resolver, with conditions from `postgresGrantConditionProvider`.
+- Work Eligibility and Operational Scope are read with `postgresPrincipalDimensionReader`.
+- Surfaces come from `grantedSurfaceKeys`.
+- Each Object action is decided by `authorizeOperationalAction` over `snapshotContextualReader`.
+
+**Output.**
+```
+{tenantId, principalId, securityRoleKeys, accessVersion,
+ assignments:{excluded:[{assignmentId, roleKey, reason:"STALE"|"INACTIVE"|"SCOPED", scopeType?, scopeValue?}]},
+ employeeId, workEligibility, operationalScopes, capabilities, surfaces,
+ actions:[{objectKey, actionKey, actionKind, capabilityKey,
+           result:"ALLOWED"|"CONDITIONAL"|"DENIED", reasonCode,
+           sourceRoles:[{roleKey, condition|null}],
+           directGrant:{label:"DIRECT_EXCEPTION", exceptionReason, expiresAt, notEnforcedOnRoleOnlyRuntimePaths:true}|null,
+           withheldFromFlatSetKernels, surfaces:[...],
+           workflowSource:[{workflowKey, version, actionKey, roleKey}]|null}]}
+```
+
+**Result semantics.**
+- `reasonCode` is ALLOWED, RECORD_ASSIGNMENT_REQUIRED (the CONDITIONAL result), or the evaluator's refusal outcome.
+- Only GLOBAL, non-stale, active assignments grant. A scoped assignment is reported as excluded and grants nothing.
+
+**Direct grants.** `principal_capabilities` gains `exception_reason` and `expires_at` (migration 1762646400000). `grantObjectActionToPrincipal` requires a reason and accepts an optional future `expiresAt`. Every reader ignores expired rows.
 
 ## 9. Findings recorded by this lane
 
@@ -262,8 +283,6 @@ Transport: `POST` to the Admin policy endpoint (`adminPolicyHttp`).
 ## 10. Not done in this lane
 
 - The client UI: object×action toggles, the condition editor, and retiring the CRED grid.
-- `explainEffectiveAccess` (§8).
 - Moving definition, Object and Workflow mutations off the Role-name invariant (§6).
 - Principal-scope conditions: the relation supports them, but the API is ROLE-only.
-- `exception_reason` / `expires_at` on direct grants.
 - Applying migration 1762646400000 anywhere but local test databases.

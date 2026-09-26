@@ -178,6 +178,14 @@ CREATE TRIGGER capability_grant_conditions_never_widen
     BEFORE UPDATE OR DELETE ON capability_grant_conditions
     FOR EACH ROW EXECUTE FUNCTION capability_grant_conditions_never_widen();
 
+-- ── 5: a direct Principal grant is a governed EXCEPTION ──
+-- Additive. `exception_reason` records why the exception exists (required by the command on every new
+-- grant; NULL only on rows that predate this column, of which nonprod holds none). `expires_at` lapses
+-- it: readers ignore an expired row, so an exception cannot outlive the reason it was made for.
+ALTER TABLE principal_capabilities
+    ADD COLUMN exception_reason TEXT CHECK (exception_reason IS NULL OR length(btrim(exception_reason)) > 0),
+    ADD COLUMN expires_at       TIMESTAMPTZ;
+
 -- ── 4 ──
 INSERT INTO capabilities (id, key, description, object_key, action_key, action_kind, display_label) VALUES
     ('cap_admin_securityPolicy_write', 'admin.securityPolicy.write',
@@ -224,8 +232,15 @@ BEGIN
         RAISE EXCEPTION 'ADMINISTRATION_CONTROL_PLANE: refuses to reverse -- admin.securityPolicy.write is held by % direct grant(s)', v_n;
     END IF;
     DELETE FROM capabilities WHERE id = 'cap_admin_securityPolicy_write';
+
+    SELECT count(*) INTO v_n FROM principal_capabilities WHERE exception_reason IS NOT NULL OR expires_at IS NOT NULL;
+    IF v_n > 0 THEN
+        RAISE EXCEPTION 'ADMINISTRATION_CONTROL_PLANE: refuses to reverse -- % direct grant(s) carry an exception reason or expiry', v_n;
+    END IF;
 END
 $$;
+
+ALTER TABLE principal_capabilities DROP COLUMN IF EXISTS expires_at, DROP COLUMN IF EXISTS exception_reason;
 
 DROP TRIGGER IF EXISTS capability_grant_conditions_never_widen ON capability_grant_conditions;
 DROP FUNCTION IF EXISTS capability_grant_conditions_never_widen();

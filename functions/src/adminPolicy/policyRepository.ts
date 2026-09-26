@@ -87,6 +87,8 @@ export interface NewPrincipalCapabilityInput {
   readonly capabilityId: string;
   readonly grantedBy: string;
   readonly grantedAt: string;
+  readonly exceptionReason?: string | null;
+  readonly expiresAt?: string | null;
 }
 
 /** A new tenant. The store assigns the id; the caller owns the key. */

@@ -175,10 +175,10 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
 
   await t.test("a direct Principal grant succeeds, is idempotent, and revokes", async () => {
     const grant = await commands.grantObjectActionToPrincipal(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId });
+      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId, reason: "governed direct exception (fixture)" });
     assert.equal(grant.principalId, plainId);
     const again = await commands.grantObjectActionToPrincipal(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId });
+      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId, reason: "governed direct exception (fixture)" });
     assert.equal(again.id, grant.id, "re-granting returns the same row");
 
     const events = await repo.listAuditEvents(tenant.id, 80);
@@ -195,7 +195,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     // Employees live in eos_workforce and have their own id space. A workforce record must not be
     // able to receive a capability: it may exist with no login at all.
     await assert.rejects(() => commands.grantObjectActionToPrincipal(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", principalId: "emp_00000000000000000000000000" }),
+      { objectKey: "workOrder", actionKey: "dispatch", principalId: "emp_00000000000000000000000000", reason: "governed direct exception (fixture)" }),
     /not an active member/);
   });
 
@@ -207,7 +207,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     });
     const outsiderId = outsider.principal?.id ?? outsider.id ?? outsider.principalId;
     await assert.rejects(() => commands.grantObjectActionToPrincipal(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", principalId: outsiderId }), /not an active member/);
+      { objectKey: "workOrder", actionKey: "dispatch", principalId: outsiderId, reason: "governed direct exception (fixture)" }), /not an active member/);
   });
 
   // ════════════════════ §28 EFFECTIVE ACCESS ════════════════════
@@ -241,7 +241,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     await commands.grantObjectActionToRole(repo, admin,
       { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" });
     await commands.grantObjectActionToPrincipal(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId });
+      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId, reason: "governed direct exception (fixture)" });
 
     const objectView = await executeAdminOperation(
       { repo }, { caller: { externalSubject: ADMIN_SUBJECT }, operation: "getObjectSecurityMatrix", input: { objectKey: "workOrder" } });

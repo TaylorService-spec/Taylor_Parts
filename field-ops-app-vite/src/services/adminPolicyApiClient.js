@@ -62,6 +62,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "getSecurityRoleDetail",
   "getObjectActionGrantMatrix",
   "listRoleCapabilityDecisionHistory",
+  // Effective access explained by the runtime evaluator (server lane CP-S). Contract: section 8.
+  "explainEffectiveAccess",
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([

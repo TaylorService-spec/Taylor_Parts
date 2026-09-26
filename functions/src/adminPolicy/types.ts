@@ -463,6 +463,10 @@ export interface PrincipalCapabilityRecord extends TenantOwned, Provenance {
   readonly capabilityId: string;
   readonly grantedBy: string;
   readonly grantedAt: string;
+  /** A direct grant is a governed EXCEPTION: why it exists (required on every new grant). */
+  readonly exceptionReason?: string | null;
+  /** When the exception lapses. An expired grant confers nothing and is not returned by readers. */
+  readonly expiresAt?: string | null;
 }
 
 // ════════════════════ ADMINISTRATION DECISIONS AND GRANT CONDITIONS ════════════════════

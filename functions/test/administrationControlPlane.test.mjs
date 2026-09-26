@@ -310,7 +310,7 @@ test("the last path to a governing Administration capability is never removed", 
   // With a SECOND holder of the capability (a direct grant), the Role grant may go.
   const second = await ensureTenantPrincipal(repo, { tenantId, externalSubject: "uid-cp-second", actorUid: OPERATOR, actorRoleKeys: ["admin"] });
   const secondId = second.principal?.id ?? second.id ?? second.principalId;
-  await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId });
+  await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: "governed direct exception (fixture)" });
   await commands.revokeObjectActionFromRole(repo, admin,
     { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", roleKey: "admin", reason: REASON });
   // The admin Role no longer carries it, so the admin principal is now REFUSED -- the Role name
@@ -330,7 +330,7 @@ test("the control-plane reads show source, condition and holders; direct grants 
   // The read gate is admin.securityPolicy.read, like every other security-policy read.
   await commands.grantObjectActionToRole(repo, admin, { objectKey: "rolesPermissions", actionKey: "read", roleKey: "admin", reason: REASON });
   await commands.grantObjectActionToRole(repo, admin, { objectKey: "workOrder", actionKey: "read", roleKey: "technician", condition: ASSIGNED, reason: REASON });
-  await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "workOrder", actionKey: "read", principalId: plainId });
+  await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "workOrder", actionKey: "read", principalId: plainId, reason: "governed direct exception (fixture)" });
   // A pre-existing default grant (no decision) reads as SYSTEM_DEFAULT.
   const dispatcher = await repo.getRoleByKey(tenantId, "dispatcher");
   const dispatch = (await repo.listCapabilities()).find((c) => c.key === "workOrder.lifecycle.dispatch");

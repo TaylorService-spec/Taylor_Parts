@@ -963,7 +963,10 @@ export interface ObjectActionPrincipalGrantInput {
   readonly objectKey: string;
   readonly actionKey: string;
   readonly principalId: string;
+  /** REQUIRED on a grant: a direct grant is a governed exception and is stored with its reason. */
   readonly reason?: string | null;
+  /** Optional ISO instant the exception lapses. Must be in the future. */
+  readonly expiresAt?: string | null;
 }
 
 /** Resolve (objectKey, actionKey) against the canonical catalog, and prove the Object is governed. */
@@ -1271,6 +1274,14 @@ export async function grantObjectActionToPrincipal(
   repo: PolicyRepository, actor: AdminActor, input: ObjectActionPrincipalGrantInput,
 ): Promise<PrincipalCapabilityRecord> {
   await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  const reason = requireReason(input.reason, "a direct Principal grant (a governed exception)");
+  let expiresAt: string | null = null;
+  if (input.expiresAt !== undefined && input.expiresAt !== null) {
+    const at = Date.parse(String(input.expiresAt));
+    if (!Number.isFinite(at)) throw new PolicyValidationError("expiresAt must be an ISO timestamp");
+    if (at <= Date.now()) throw new PolicyValidationError("expiresAt must be in the future");
+    expiresAt = new Date(at).toISOString();
+  }
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const principalId = nonEmpty(input.principalId, "principalId");
 
@@ -1293,13 +1304,16 @@ export async function grantObjectActionToPrincipal(
       capabilityId: capability.id,
       grantedBy: actor.uid,
       grantedAt: new Date().toISOString(),
+      exceptionReason: reason,
+      expiresAt,
     });
     await tx.appendAudit({
-      ...auditBase(actor, "grantObjectActionToPrincipal", "principalCapability", grant.id, input.reason ?? null),
+      ...auditBase(actor, "grantObjectActionToPrincipal", "principalCapability", grant.id, reason),
       before: null,
       after: {
         objectKey: capability.objectKey, actionKey: capability.actionKey,
         capabilityKey: capability.key, granteeType: "PRINCIPAL", granteeKey: principalId, grant,
+        source: "DIRECT_EXCEPTION", exceptionReason: reason, expiresAt,
       },
     });
     return grant;

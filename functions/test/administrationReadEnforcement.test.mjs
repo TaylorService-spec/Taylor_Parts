@@ -86,6 +86,8 @@ const CANONICAL_MAP = Object.freeze({
   getSecurityRoleDetail: SECURITY_POLICY_READ,
   getObjectActionGrantMatrix: SECURITY_POLICY_READ,
   listRoleCapabilityDecisionHistory: SECURITY_POLICY_READ,
+  // The runtime evaluator's explanation of one Principal's access -- the SAME principal-access read.
+  explainEffectiveAccess: PRINCIPAL_ACCESS_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -100,12 +102,13 @@ const INPUT_FOR = Object.freeze({
   getSecurityRoleDetail: { roleKey: "dispatcher" },
   getObjectActionGrantMatrix: { objectKey: "workOrder" },
   listRoleCapabilityDecisionHistory: { limit: 5 },
+  explainEffectiveAccess: { principalId: "prn-none" },
 });
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: sixteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 16, "the read list changed size without this map changing");
+test("A: seventeen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 17, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -368,13 +371,14 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("C: without admin.principalAccess.read, the three principal reads are refused", async () => {
     assert.deepEqual(operationsRequiring(PRINCIPAL_ACCESS_READ),
-      ["getPrincipalEffectiveAccess", "listPrincipalRoleAssignments", "listTenantPrincipals"]);
+      ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listPrincipalRoleAssignments", "listTenantPrincipals"]);
     // THE READER HOLDS admin.securityPolicy.read AND IS STILL REFUSED. One Administration read is
     // not a key to the others; if it were, the four capabilities would be one capability.
     for (const subject of [reader.subject, bare.subject]) {
       await assertRefused(subject, "listTenantPrincipals", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "listPrincipalRoleAssignments", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "getPrincipalEffectiveAccess", PRINCIPAL_ACCESS_READ);
+      await assertRefused(subject, "explainEffectiveAccess", PRINCIPAL_ACCESS_READ);
     }
     // Including when the principal they ask about is THEMSELVES. "It is my own access" is not an
     // authority, and a self-exemption is how a read gate acquires its first bypass.
@@ -465,6 +469,10 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       const result = await executeAdminOperation({ repo }, {
         caller: { externalSubject: direct.subject }, operation, input,
       });
+      // explainEffectiveAccess needs the server-composed evaluator, absent here: the GATE admitted the
+      // caller (not FORBIDDEN) and the read then refuses as uncomposed. Its answer is proved in
+      // effectiveAccessExplanationPostgres.
+      if (operation === "explainEffectiveAccess") { assert.notEqual(result.code, "FORBIDDEN", operation); continue; }
       assert.equal(result.ok, true,
         `${operation} ignored a direct principal_capabilities grant: ${result.ok ? "" : result.message}`);
     }
@@ -531,7 +539,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
     for (const operation of ADMIN_READ_OPERATIONS) {
       const input = operation === "readRolePolicy" ? { roleId: (await repo.listRoles(tenant.id))[0].id }
-        : operation === "listPrincipalRoleAssignments" || operation === "getPrincipalEffectiveAccess"
+        : operation === "listPrincipalRoleAssignments" || operation === "getPrincipalEffectiveAccess" || operation === "explainEffectiveAccess"
           ? { principalId: adminContext.uid }
           : operation === "readWorkflowVersion"
             ? { versionId: (await repo.listWorkflowVersions(tenant.id,
@@ -539,8 +547,14 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
             : undefined;
 
       const allowed = await post(ADMIN_SUBJECT, operation, input);
-      assert.equal(allowed.status, 200, `${operation} as a holder: ${allowed.body}`);
-      assert.equal(JSON.parse(allowed.body).ok, true);
+      if (operation === "explainEffectiveAccess") {
+        // The gate admits the holder; the read then needs the server-composed evaluator, which this
+        // transport fixture does not compose (proved end to end in effectiveAccessExplanationPostgres).
+        assert.notEqual(allowed.status, 403, `${operation} as a holder: ${allowed.body}`);
+      } else {
+        assert.equal(allowed.status, 200, `${operation} as a holder: ${allowed.body}`);
+        assert.equal(JSON.parse(allowed.body).ok, true);
+      }
 
       const refused = await post(bare.subject, operation, input);
       assert.equal(refused.status, 403, `${operation} as a non-holder returned ${refused.status}`);

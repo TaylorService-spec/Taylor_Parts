@@ -252,8 +252,11 @@ const toPrincipalCapability = (r: Record<string, unknown>): PrincipalCapabilityR
   capabilityId: String(r.capability_id),
   grantedBy: String(r.granted_by),
   grantedAt: new Date(String(r.granted_at)).toISOString(),
+  exceptionReason: r.exception_reason === undefined || r.exception_reason === null ? null : String(r.exception_reason),
+  expiresAt: isoOrNull(r.expires_at),
   ...provenance(r),
 });
+
 
 const toObjectPermission = (r: Record<string, unknown>): RoleObjectPermissionRecord => ({
   id: String(r.id),
@@ -526,9 +529,13 @@ export class PostgresPolicyRepository implements PolicyRepository {
 
   listPrincipalCapabilities(tenantId: TenantId, principalId?: string) {
     return principalId
-      ? this.many(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2`,
+      // An EXPIRED direct grant confers nothing (migration 1762646400000). Read through to_jsonb so a database
+      // that predates the column still answers.
+      ? this.many(`SELECT pc.* FROM ${SCHEMA}.principal_capabilities pc WHERE pc.tenant_id = $1 AND pc.principal_id = $2
+                     AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`,
         [tenantId, principalId], toPrincipalCapability)
-      : this.many(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1`,
+      : this.many(`SELECT pc.* FROM ${SCHEMA}.principal_capabilities pc WHERE pc.tenant_id = $1
+                     AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`,
         [tenantId], toPrincipalCapability);
   }
 
@@ -1008,14 +1015,26 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
     },
 
     async grantPrincipalCapability(input: NewPrincipalCapabilityInput) {
-      const { rows } = await q.query(
-        `INSERT INTO ${SCHEMA}.principal_capabilities
-           (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
-         RETURNING *`,
-        [newId(), tenantId, input.principalId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()],
-      );
+      // exception_reason / expires_at (migration 1762646400000) are written only when supplied, so a writer on an
+      // older schema is unaffected.
+      const extra = input.exceptionReason != null || input.expiresAt != null;
+      const base = [newId(), tenantId, input.principalId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()];
+      const { rows } = extra
+        ? await q.query(
+          `INSERT INTO ${SCHEMA}.principal_capabilities
+             (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at,
+              exception_reason, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
+           RETURNING *`,
+          [...base, input.exceptionReason ?? null, input.expiresAt ?? null])
+        : await q.query(
+          `INSERT INTO ${SCHEMA}.principal_capabilities
+             (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
+           RETURNING *`,
+          base);
       if (rows.length > 0) return toPrincipalCapability(rows[0]);
       const existing = await q.query(
         `SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3`,

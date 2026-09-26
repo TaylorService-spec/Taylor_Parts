@@ -99,6 +99,35 @@ export async function resolvePrincipalContext(
 
   const principal = await reader.getPrincipalBySubject(identityProvider, subject);
   if (!principal) throw new PrincipalContextError("UNKNOWN_PRINCIPAL");
+  return contextForPrincipal(reader, principal, input.requestedTenantId ?? null);
+}
+
+/**
+ * The SAME resolution, starting from an EOS Principal id rather than an authenticated subject.
+ *
+ * For Administration's effective-access explanation, which is asked ABOUT a Principal by an
+ * administrator -- never used to authenticate anyone. It shares every rule below with
+ * `resolvePrincipalContext` (membership, tenant, qualifying assignments, access version), so the
+ * explanation and the runtime cannot resolve the same Principal two different ways.
+ */
+export async function resolvePrincipalContextById(
+  reader: PolicyReader,
+  principalId: string,
+  requestedTenantId: string | null,
+): Promise<PrincipalContext> {
+  const id = typeof principalId === "string" ? principalId.trim() : "";
+  if (id.length === 0) throw new PrincipalContextError("UNKNOWN_PRINCIPAL", "no principal id");
+  const principal = await reader.getPrincipal(id);
+  if (!principal) throw new PrincipalContextError("UNKNOWN_PRINCIPAL");
+  return contextForPrincipal(reader, principal, requestedTenantId);
+}
+
+/** Everything after "which Principal": the shared tail of both entry points. */
+async function contextForPrincipal(
+  reader: PolicyReader,
+  principal: PrincipalRecord,
+  requestedTenantId: string | null,
+): Promise<PrincipalContext> {
   // A disabled principal is refused outright rather than resolved to zero Roles. The two look the
   // same to an attacker and very different to an operator reading a log.
   if (principal.status !== "active") throw new PrincipalContextError("PRINCIPAL_DISABLED");
@@ -108,7 +137,7 @@ export async function resolvePrincipalContext(
   );
   if (memberships.length === 0) throw new PrincipalContextError("NO_TENANT_MEMBERSHIP");
 
-  const requested = typeof input.requestedTenantId === "string" ? input.requestedTenantId.trim() : "";
+  const requested = typeof requestedTenantId === "string" ? requestedTenantId.trim() : "";
   let tenantId: TenantId;
   if (requested.length > 0) {
     const match = memberships.find((m) => m.tenantId === requested);

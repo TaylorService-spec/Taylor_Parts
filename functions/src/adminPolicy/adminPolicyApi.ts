@@ -122,6 +122,10 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "getObjectActionGrantMatrix",
   // The append-only Administration decision history, superseded decisions included.
   "listRoleCapabilityDecisionHistory",
+  // Effective access EXPLAINED by the runtime's own evaluator: per Object action ALLOWED / CONDITIONAL /
+  // DENIED with the reason, source Roles, conditions, direct exceptions, scope and surfaces. Served only
+  // when the server composes the evaluator (AdminApiDeps.explainEffectiveAccess); it needs the pool.
+  "explainEffectiveAccess",
 ] as const);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -210,6 +214,8 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   getSecurityRoleDetail: "rolesPermissions",
   getObjectActionGrantMatrix: "objects",
   listRoleCapabilityDecisionHistory: "rolesPermissions",
+  // The same authority as getPrincipalEffectiveAccess: admin.principalAccess.read.
+  explainEffectiveAccess: "users",
 });
 
 /** The one capability each Administration read requires. Derived, never restated. */
@@ -323,6 +329,12 @@ export interface WorkflowVersionView {
 
 export interface AdminApiDeps {
   readonly repo: PolicyRepository;
+  /**
+   * The runtime evaluator, composed by the server (eosOps/effectiveAccessExplanation.ts over the shared
+   * pool) -- injected because this module never touches `pg`. Absent, the read refuses; there is no
+   * second, repository-only evaluator to fall back to.
+   */
+  readonly explainEffectiveAccess?: (tenantId: string, principalId: string) => Promise<unknown>;
 }
 
 /**
@@ -378,7 +390,9 @@ export async function executeAdminOperation<T = unknown>(
     // they are, because a mutation gated only here would be unguarded for any future caller that
     // reached the command directly.
     if (!isMutation(operation)) await requireAdminReadAuthority(repo, actor, operation);
-    const data = await dispatch(repo, actor, operation, input, reason);
+    const data = operation === "explainEffectiveAccess"
+      ? await explain(deps, actor, input)
+      : await dispatch(repo, actor, operation, input, reason);
     return { ok: true, operation, tenantId: context.tenantId, data: data as T };
   } catch (err) {
     return fail(operation, classify(err), messageFor(err));
@@ -453,6 +467,24 @@ async function requireAdminReadAuthority(
   const access = await resolvePrincipalEffectiveAccess(repo, actor.tenantId, actor.uid);
   if (!access.effective.some((c) => c.capabilityKey === required)) {
     throw new AdminReadDeniedError(operation, required);
+  }
+}
+
+/** Explain one Principal's effective access in the caller's tenant, through the injected runtime evaluator. */
+async function explain(deps: AdminApiDeps, actor: AdminActor, input: Record<string, unknown>): Promise<unknown> {
+  const principalId = requireString(input.principalId, "principalId");
+  const membership = await deps.repo.getMembership(actor.tenantId, principalId);
+  if (!membership) throw new NotFound("principal not found in this tenant");
+  if (typeof deps.explainEffectiveAccess !== "function") {
+    throw new Error("explainEffectiveAccess is not composed on this server");
+  }
+  try {
+    return await deps.explainEffectiveAccess(actor.tenantId, principalId);
+  } catch (err) {
+    // A Principal that cannot be resolved (disabled, no ACTIVE membership) has NO effective access; it is
+    // reported as not found rather than as a server fault.
+    if (err instanceof PrincipalContextError) throw new NotFound(`principal has no effective access: ${err.refusal}`);
+    throw err;
   }
 }
 
@@ -626,6 +658,10 @@ async function dispatch(
     case "getObjectActionGrantMatrix":
       return objectActionGrantMatrix(repo, actor.tenantId, requireString(input.objectKey, "objectKey"));
 
+    case "explainEffectiveAccess":
+      // Routed through `explain` in executeAdminOperation (it needs the injected evaluator).
+      throw new Error("explainEffectiveAccess is not a repository read");
+
     case "listRoleCapabilityDecisionHistory": {
       const roleKey = optionalString(input.roleKey);
       const capabilityKey = optionalString(input.capabilityKey);
@@ -771,7 +807,8 @@ async function dispatch(
         objectKey: requireString(input.objectKey, "objectKey"),
         actionKey: requireString(input.actionKey, "actionKey"),
         principalId: requireString(input.principalId, "principalId"),
-        reason: optionalString(input.reason),
+        reason: optionalString(input.reason) ? reason : null,
+        expiresAt: optionalString(input.expiresAt),
       });
 
     case "revokeObjectActionFromPrincipal":

@@ -31,7 +31,7 @@
 import type { Pool } from "pg";
 export type { Pool } from "pg";
 import { getPolicyDatabasePool } from "../adminPolicy/policyDatabase";
-import { resolvePrincipalContext } from "../adminPolicy/principalContext";
+import { resolvePrincipalContext, resolvePrincipalContextById } from "../adminPolicy/principalContext";
 import type { PrincipalContext, ResolveContextInput } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import {
@@ -175,6 +175,34 @@ export async function resolveOperationalContext(
     throw new Error("resolveOperationalContext: the condition source must be a GrantConditionProvider");
   }
   const principalContext = await resolvePrincipalContext(reader, input);
+  return operationalContextFor(pool, principalContext, conditions);
+}
+
+/**
+ * The SAME operational context for a Principal named by id -- for Administration's effective-access
+ * explanation only (never authentication). Principal resolution is `resolvePrincipalContextById`, which
+ * shares its whole tail with `resolvePrincipalContext`; everything after it is this module's own code.
+ */
+export async function resolveOperationalContextForPrincipal(
+  reader: PolicyReader,
+  pool: Pool,
+  principalId: string,
+  requestedTenantId: string | null,
+  conditions: GrantConditionProvider,
+): Promise<ResolvedOperationalContext> {
+  if (typeof conditions !== "function") {
+    throw new Error("resolveOperationalContextForPrincipal: the condition source must be a GrantConditionProvider");
+  }
+  const principalContext = await resolvePrincipalContextById(reader, principalId, requestedTenantId);
+  return operationalContextFor(pool, principalContext, conditions);
+}
+
+/** Principal context -> capabilities + the request-scoped entitlement resolver. Shared by both entry points. */
+async function operationalContextFor(
+  pool: Pool,
+  principalContext: PrincipalContext,
+  conditions: GrantConditionProvider,
+): Promise<ResolvedOperationalContext> {
   // TWO RESOLVERS, DELIBERATELY. `capabilitiesForRoleKeys` is untouched and stays the authority for
   // "what may this Principal do"; `roleCapabilityGrants` answers "and WHO granted it" over the same
   // rows. They are proved equal by test rather than derived from one another, because a single
@@ -328,6 +356,7 @@ export async function principalCapabilityGrants(
        FROM ${SCHEMA}.principal_capabilities pc
        JOIN ${SCHEMA}.capabilities c ON c.id = pc.capability_id
       WHERE pc.tenant_id = $1 AND pc.principal_id = $2
+        AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())
       ORDER BY c.key`,
     [tenantId, principalId],
   );

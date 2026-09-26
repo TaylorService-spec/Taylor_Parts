@@ -392,7 +392,8 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         if (found) return found;
         const row = {
           id: this.nextId(), tenantId, principalId: input.principalId, capabilityId: input.capabilityId,
-          grantedBy: input.grantedBy, grantedAt: input.grantedAt, ...this.stamp(actor),
+          grantedBy: input.grantedBy, grantedAt: input.grantedAt,
+          exceptionReason: input.exceptionReason ?? null, expiresAt: input.expiresAt ?? null, ...this.stamp(actor),
         };
         t.principalCapabilities.push(row);
         return row;
@@ -655,7 +656,8 @@ export class InMemoryPolicyRepository implements PolicyRepository {
     return roleIds ? mine.filter((g) => roleIds.includes(g.roleId)) : mine;
   }
   async listPrincipalCapabilities(tenantId: TenantId, principalId?: string) {
-    const mine = this.mine(this.tables.principalCapabilities, tenantId);
+    const now = this.now();
+    const mine = this.mine(this.tables.principalCapabilities, tenantId).filter((g) => !g.expiresAt || g.expiresAt > now);
     return principalId ? mine.filter((g) => g.principalId === principalId) : mine;
   }
   async listObjectPermissions(tenantId: TenantId, roleIds: readonly string[]) {
