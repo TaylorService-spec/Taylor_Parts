@@ -64,8 +64,8 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
 - Branch / worktree:   `lane/s1-receiving-multiline-po` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s1`
 - Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
-- Owned paths:         `functions/src/inventoryReceiving/receivingCallables.ts` · `functions/src/inventoryReceiving/receivingCallableWiring.ts` · new `functions/test/receivingCallableMultiLinePurchaseOrder*.test.mjs` · `field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx` and its client service (only if the defect is client-side)
-- Shared paths req'd:  `functions/src/index.ts`, workflow paths filters (request via integration)
+- Owned paths:         `functions/src/inventoryReceiving/receivingCallables.ts` · `functions/src/inventoryReceiving/receivingCallableWiring.ts` · new `functions/test/receivingCallablesCanonicalMultiLine.test.mjs` · `field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx` and its client service (only if the defect is client-side)
+- Shared paths req'd:  `functions/package.json` (`test:receivingCallables`) + `.github/workflows/receiving-callables-tests.yml` paths — applied by the integration lane on this branch (commit `f3afa588`); `functions/src/index.ts` unchanged
 - Dependencies:        none; Parts/Inventory parity fence applies (semantics-preserving)
 - Expected outcome:    a connected regression proving the canonical multi-line PO request is accepted end-to-end, with idempotency, serial/partial validation and authority unchanged; the existing command is not rewritten
 - Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. Also: parts/inventory/truck parity fence
@@ -109,7 +109,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Branch / worktree:   `lane/s5-commercial-grant-parity` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s5`
 - Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
 - Owned paths:         new `docs/security/commercial-grant-parity-2026-09-25.md` · new `functions/test/commercialGrantParity*.test.mjs` (measurement, may be skipped/pending until ruling)
-- Shared paths req'd:  `functions/src/adminPolicy/seed/**`, migrations — NOT touched; any grant/revoke is a protected Owner decision
+- Shared paths req'd:  `functions/package.json` (`test:adminPolicy`) + `.github/workflows/eos-admin-policy-tests.yml` paths — additive test registration made by the lane, accepted by integration after the fact; `functions/src/adminPolicy/seed/**`, migrations — NOT touched; any grant/revoke is a protected Owner decision
 - Dependencies:        none
 - Expected outcome:    measured matrix, correction proposal, prepared tests; NO grant/revoke applied or merged
 - Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. capability grant/revoke — Owner
