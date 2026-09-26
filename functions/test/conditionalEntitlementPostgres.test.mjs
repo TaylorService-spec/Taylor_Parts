@@ -1249,20 +1249,22 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
       { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
     const refused = await call(adminUser, { grantConditionSource: "POSTGRES" });
     assert.equal(refused.status, 403, JSON.stringify(refused.body));
-    assert.equal(refused.body.code, "CAPABILITY_CONDITION_UNSATISFIED");
-    assert.match(refused.body.message, new RegExp(`${PRINCIPAL_ACCESS_READ}: WORK_ELIGIBILITY_MISSING`));
+    // Pass 8 D1: admin.principalAccess.read is gated FLAT by the Workforce kernel's first check, so a
+    // key reached only through a conditioned grant is WITHHELD from the flat set -- refused at the
+    // capability, never decided as unconditional. (Administration refuses such a condition outright;
+    // this row is written behind its back.)
+    assert.equal(refused.body.code, "CAPABILITY_REQUIRED");
     // THE DEPLOYED DEFAULT BINDS THE ROW: Administration writes a condition and the runtime honours it
     // with no code change. Only the explicit SHIPPED composition ignores it.
     assert.equal((await call(adminUser)).status, 403, "the deployed default ignored an Administration-written condition");
     assert.equal((await call(adminUser, { grantConditionSource: "SHIPPED" })).status, 200);
 
-    // 4. Grant the governed fact the condition names. The SAME request now succeeds.
+    // 4. Satisfying the condition does NOT reopen a flat-gated key: fail closed, never widened.
     await q(`INSERT INTO eos_workforce.employee_work_eligibility
                (id,tenant_id,employee_id,qualification_code,effective_from,assigned_by)
              VALUES ('we-aj-seam',$1,'emp-admin','PARTS_OPERATIONS',now(),'fixture')`, [TENANT]);
-    const allowed = await call(adminUser, { grantConditionSource: "POSTGRES" });
-    assert.deepEqual([allowed.status, allowed.body], [shipped.status, shipped.body],
-      "the condition was satisfied and the read still did not answer");
+    const stillRefused = await call(adminUser, { grantConditionSource: "POSTGRES" });
+    assert.equal(stillRefused.status, 403, "a flat-gated key conditioned behind Administration's back reopened");
 
     // 5. RETIRING the row while admin still holds the grant is REFUSED by the database: it would widen
     //    the grant back to unconditional (Administration control plane, fail closed). Lift it the
@@ -1620,7 +1622,9 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
     const c = await request(adminUser, { source: "POSTGRES" });
     assert.equal(c.resolved.principalContext, 1, "BEFORE 2 principal resolutions, AFTER 1");
     assert.equal(c.resolved.conditionCatalog, 1, "the withheld-cell guard must still read the relation here");
-    assert.equal(c.resolved.total, 13, "BEFORE 23 queries, AFTER 13");
+    // 13 -> 14 (Pass 8 D1): a principal whose Role a condition names pays ONE provenance read at
+    // resolution, so a conditioned-only key never reaches the flat set.
+    assert.equal(c.resolved.total, 14, "BEFORE 23 queries, AFTER 14");
     c.m.reset();
     const [state, reader] = countingReader(pgReader);
     const d = await composition.authorizeResolvedOperationalAction(reader, c.ctx, { capabilityKey: PRINCIPAL_ACCESS_READ });
@@ -1694,7 +1698,9 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
     await storeCondition("aq-none-t", "ROLE", "technician", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
     await storeCondition("aq-none-p", "ROLE", "purchasingManager", REQUEST_READ, { paths: [[ELIGIBILITY("PARTS_OPERATIONS")]] });
     const closed = await request(bothRoles, { source: "POSTGRES" });
-    assert.equal(closed.ctx.capabilities.has(REQUEST_READ), true, "the FLAT set still says held -- which is the whole point");
+    // Pass 8 D1: a conditioned-only key is NOT in the flat set -- only the entitled seam may evaluate it.
+    assert.equal(closed.ctx.capabilities.has(REQUEST_READ), false, "a conditioned-only key reached the flat set");
+    assert.equal(closed.ctx.conditionallyHeld.has(REQUEST_READ), true);
     const refused = await composition.authorizeResolvedOperationalAction(pgReader, closed.ctx, { capabilityKey: REQUEST_READ });
     assert.equal(refused.allowed, false, "no path was valid and the caller was still admitted");
     assert.equal(refused.outcome, "WORK_ELIGIBILITY_MISSING");
@@ -1755,14 +1761,11 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
       connect: async () => { throw new Error("connection terminated unexpectedly"); } };
     await assert.rejects(() => capabilityAuthority.resolveOperationalContext(repo, dead, inputFor(adminUser)));
     await assert.rejects(() => composition.resolveEntitledOperationalContext(repo, dead, inputFor(adminUser)));
-    // A pool that answers the flat set but NOT the condition relation must still refuse: the lazy
-    // resolver propagates the failure rather than resolving to "unconditioned".
-    const noRelation = await capabilityAuthority.resolveOperationalContext(repo, pool, inputFor(adminUser),
-      async () => { throw new Error("relation eos_policy.capability_grant_conditions does not exist"); });
-    await assert.rejects(() => noRelation.entitlements(), /does not exist/);
-    const stillRefused = await composition.authorizeResolvedOperationalAction(pgReader, noRelation, { capabilityKey: held });
-    assert.equal(stillRefused.allowed, false, "an unreadable condition source allowed a request");
-    assert.equal(stillRefused.outcome, "CONTEXT_AUTHORITY_UNAVAILABLE");
+    // A pool that answers the flat set but NOT the condition relation must still refuse. Since Pass 8
+    // the catalog is read at RESOLUTION (so a conditioned-only key never reaches the flat set), and
+    // an unreadable condition source now fails the whole context -- never "unconditioned".
+    await assert.rejects(() => capabilityAuthority.resolveOperationalContext(repo, pool, inputFor(adminUser),
+      async () => { throw new Error("relation eos_policy.capability_grant_conditions does not exist"); }), /does not exist/);
 
     // 7. A MISCOMPOSED SERVER -- the old catalog argument -- refuses at COMPOSITION, not one request later.
     await assert.rejects(() => capabilityAuthority.resolveOperationalContext(repo, pool, inputFor(adminUser),

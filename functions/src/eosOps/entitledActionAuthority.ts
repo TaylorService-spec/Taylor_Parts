@@ -147,6 +147,7 @@ export async function authorizeEntitledResolvedAction(
     // The runtime authority's own set, NOT the derived one: if the two ever disagree the decision
     // takes the intersection, which is the stricter answer.
     capabilities: resolved.capabilities,
+    conditionallyHeld: (resolved as { conditionallyHeld?: ReadonlySet<string> }).conditionallyHeld,
     entitlements,
   });
   return authorizeEntitledAction(reader ?? postgresContextualReader(pool as unknown as Pick<PoolClient, "query">), {
@@ -173,6 +174,8 @@ export interface OperationalActor {
   readonly tenantId: string;
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
+  /** Keys held only through conditioned grants; evaluated by the entitled decision, never flat. */
+  readonly conditionallyHeld?: ReadonlySet<string>;
   /** The REQUIRED, request-scoped entitlement provider. Never an optional field, never a value. */
   readonly entitlements: EntitlementResolver;
 }
@@ -202,6 +205,7 @@ export function authorizeOperationalAction(
       tenantId: actor.tenantId,
       principalId: actor.principalId,
       capabilities: actor.capabilities,
+      conditionallyHeld: actor.conditionallyHeld,
       entitlements: actor.entitlements,
     },
     capabilityKey: request.capabilityKey,
@@ -219,6 +223,7 @@ export function authorizeResolvedOperationalAction(
     tenantId: resolved.principalContext.tenantId,
     principalId: resolved.principalContext.uid,
     capabilities: resolved.capabilities,
+    conditionallyHeld: resolved.conditionallyHeld,
     entitlements: resolved.entitlements,
   }, request);
 }

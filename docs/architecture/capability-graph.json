@@ -1619,6 +1619,7 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/legacyAuthorizationSurface.ts",
           "functions/src/access/parityFixtures.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts",
           "functions/src/adminPolicy/workflowSeeds.ts",
           "functions/src/eosOps/reorderAssignmentAuthority.ts"
         ],
@@ -1630,7 +1631,7 @@
           "field-ops-app-vite/src/access/parityFixtures.ts",
           "field-ops-app-vite/src/domain/adminWorkflowView.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
@@ -3165,7 +3166,8 @@
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/trustedWriterCommands.ts",
           "functions/src/adminPolicy/administrationAuthority.ts",
-          "functions/src/adminPolicy/administrationSurfaceAuthority.ts"
+          "functions/src/adminPolicy/administrationSurfaceAuthority.ts",
+          "functions/src/adminPolicy/roleCapabilityAdministration.ts"
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
@@ -3174,7 +3176,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },

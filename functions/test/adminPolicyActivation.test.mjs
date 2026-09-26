@@ -504,7 +504,7 @@ test("D-5 SURVIVES ACTIVATION: reorder data is CRED, reorder transitions are wor
 
 // ============================ USERS ============================
 
-test("USERS: Owner and Admin may each assign the Admin Role; General Manager only once Administration grants it", { skip: SKIP }, async () => {
+test("USERS: Admin appoints Administrators; Owner and (once granted) GM staff other Roles, never an Administrator", { skip: SKIP }, async () => {
   const { repo: r, tenant } = await standUpTaylor();
   const roles = await r.listRoles(tenant.id);
   const adminRole = roles.find((x) => x.key === "admin");
@@ -527,20 +527,26 @@ test("USERS: Owner and Admin may each assign the Admin Role; General Manager onl
   }));
   assert.equal(granted.ok, true, granted.ok ? "" : granted.message);
 
-  // A DIFFERENT TARGET EACH TIME. Assigning the same Role to the same principal three times is now
-  // idempotent, so the second and third calls would have returned the FIRST one's row and reported
-  // success without exercising anybody's authority -- a test that passes for the wrong reason.
-  const targets = [OWNER_SUBJECT, GM_SUBJECT, PLAIN_SUBJECT];
-  const created = new Set();
-  for (const [i, subject] of [OWNER_SUBJECT, GM_SUBJECT, ADMIN_SUBJECT].entries()) {
-    const target = await r.getPrincipalBySubject("firebase", targets[i]);
-    const result = await executeAdminOperation({ repo: r }, asSubject(subject, "assignRole", {
-      principalId: target.id, roleId: adminRole.id, reason: `assigned by ${subject}`,
+  // Pass 8 D5: nobody assigns a Role to themselves, and appointing an Administrator (a Role carrying
+  // admin.securityPolicy.write) needs admin.securityPolicy.write -- which Owner and a staffing GM do not
+  // hold. Owner and GM still staff every other Role; the Admin appoints the Administrator.
+  const plain = await r.getPrincipalBySubject("firebase", PLAIN_SUBJECT);
+  const gmPrincipal = await r.getPrincipalBySubject("firebase", GM_SUBJECT);
+  for (const subject of [OWNER_SUBJECT, GM_SUBJECT]) {
+    const appoint = await executeAdminOperation({ repo: r }, asSubject(subject, "assignRole", {
+      principalId: plain.id, roleId: adminRole.id, reason: `appointed by ${subject}`,
     }));
-    assert.equal(result.ok, true, `${subject} may assign Admin: ${result.ok ? "" : result.message}`);
-    created.add(result.data.id);
+    assert.deepEqual([appoint.ok, appoint.code], [false, "FORBIDDEN"], `${subject} appointed an Administrator`);
   }
-  assert.equal(created.size, 3, "three distinct assignments, one per assigning authority");
+  const salesperson = roles.find((x) => x.key === "salesperson");
+  const byOwner = await executeAdminOperation({ repo: r }, asSubject(OWNER_SUBJECT, "assignRole", {
+    principalId: plain.id, roleId: salesperson.id, reason: "owner staffs",
+  }));
+  assert.equal(byOwner.ok, true, byOwner.ok ? "" : byOwner.message);
+  const byAdmin = await executeAdminOperation({ repo: r }, asSubject(ADMIN_SUBJECT, "assignRole", {
+    principalId: gmPrincipal.id, roleId: adminRole.id, reason: "admin appoints",
+  }));
+  assert.equal(byAdmin.ok, true, byAdmin.ok ? "" : byAdmin.message);
 });
 
 // ============================ RULING B — REFERENTIAL INTEGRITY ============================

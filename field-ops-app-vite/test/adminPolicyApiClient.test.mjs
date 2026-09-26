@@ -28,6 +28,7 @@ const READS = [
   "listWorkflows", "readWorkflowVersion", "readPolicyAuditHistory",
   // The Administration control plane reads (server lane CP-S, 2026-09-26).
   "getSecurityRoleDetail", "getObjectActionGrantMatrix", "listRoleCapabilityDecisionHistory",
+  "explainEffectiveAccess", "listSupportedConditionKinds",
 ];
 const MUTATIONS = [
   // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the

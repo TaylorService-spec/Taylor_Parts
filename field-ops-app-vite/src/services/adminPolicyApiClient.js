@@ -64,6 +64,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listRoleCapabilityDecisionHistory",
   // Effective access explained by the runtime evaluator (server lane CP-S). Contract: section 8.
   "explainEffectiveAccess",
+  // The condition vocabulary the server enforces (server lane CP-S), returned as an object with a kinds list.
+  "listSupportedConditionKinds",
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([

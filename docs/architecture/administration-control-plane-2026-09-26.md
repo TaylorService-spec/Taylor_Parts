@@ -280,6 +280,77 @@ Transport: `POST` to the Admin policy endpoint (`adminPolicyHttp`).
 - **Technician Purchase Order cells.** Treating the withheld technician Purchase Order cells as a system invariant means the catalog reconcile no longer grants `technician → reorder.purchaseOrder.read/.create` in Sample Company fixtures. The legacy catalog declares both. The verifier now reports them as `SYSTEM_INVARIANT`, not `MISSING_GRANT`. The nonprod baseline never held them.
 - **Environmental test failures.** Four PostgreSQL down-migration suites fail on the shared local test database with `migration 027 cannot be reversed: eos_ops.parts holds 4 Part Master records`: eosOpsWarehouseBin, truckFleet, employeePrincipalLink and eosOpsEquipmentCustody. The same failure reproduces with this lane's migration removed, so it is pre-existing and environmental.
 
+## 11. Pass 8: review defects fixed, and hardening
+
+Source: the independent review at `round4-analysis/pass8-security-review.md`. Each proved probe is now a committed regression in `administrationControlPlaneSecurityPostgres.test.mjs`. I ran the suite against e896819f and every subtest failed there; all of them pass after the fix.
+
+### Invariant set after Pass 8
+The Owner rule is that only PLATFORM_SAFETY and OWNER_GOVERNANCE rules may be immutable.
+
+**OWNER_GOVERNANCE (`FORBIDDEN_ROLE_CAPABILITY_PAIRS`, 20 pairs).** These are `owner` × the 19 ruling-A keys, plus `owner` × `reorder.request.assign`. They are enforced:
+- on every Role grant;
+- at the PRINCIPAL level: an owner holder may not reach an excluded key through a custom Role or a direct grant, and this is checked on assignRole, on grants to Roles the owner holds, and on direct grants;
+- by the default writers;
+- in drift reporting, as `FORBIDDEN_PRESENT` and `FORBIDDEN_PRINCIPAL_HOLDING`.
+
+**PLATFORM_SAFETY (`PLATFORM_SAFETY_INVARIANTS`).**
+- ANTI_LOCKOUT
+- ADMIN_NOT_CONDITIONABLE, extended to "only `CONDITIONABLE_GRANTS` may carry a condition"
+- NEVER_WIDEN_ON_RETIRE
+- APPEND_ONLY_AUDIT
+
+**Removed from the immutable set (LEGACY_BASELINE_ARTIFACT).**
+- `owner` × `reorder.request.read.queue`.
+- `technician` × `reorder.purchaseOrder.read/.create`. The technician ruling withholds condition ACTIVATION on these cells. That is preserved, because the condition allow-list never includes them and the PostgreSQL provider still asserts them withheld.
+
+### Defect fixes
+| # | Fix |
+|---|---|
+| D1 | `resolveOperationalContext` now reads the condition catalog eagerly (one indexed read). The flat `capabilities` set holds only keys with an UNCONDITIONAL grant, and conditioned-only keys move to `conditionallyHeld`, which only the entitled seam (`authorizeEntitledAction`) may evaluate. The Admin read gate and the mutation gate apply the same withholding. `setGrantCondition` is restricted to the `CONDITIONABLE_GRANTS` allow-list, currently `workOrder.record.read` × recordKind `workOrder`, because no flat gate reads that key. |
+| D2 | Every Administration command runs `tx.beginAdministrationCommand()`, which takes a per-tenant advisory lock. The anti-lockout and protected-Role counts are recomputed INSIDE the transaction. |
+| D3 | A `grant_cell_lock(tenant, scope, grantor, capability)` advisory lock is taken by the grant-insert trigger, the retire/delete trigger and the commands. The grant path re-reads the cell under the lock and writes the condition before the grant. |
+| D4 | `administrationHolderCount` counts only principals that pass both conditions below. Unexpired direct grants with a set `expires_at` do NOT count, because an expiring grant would be a lockout on a timer. |
+| D5 | Three rules: (a) no self-assignment of any Role, and no self-grant of a capability (directly, or to a Role the actor holds); (b) a Role carrying `admin.securityPolicy.write` may only be assigned by a holder of `admin.securityPolicy.write`; (c) ruling A applies at the principal level (above). |
+| D6 | The `role_capabilities_honour_decisions` insert trigger refuses a Role grant whose current decision `requires_condition` while no ACTIVE condition exists. |
+| D8 | An apply-mode reconcile is one transaction under the tenant governance lock, and it reads decisions inside that lock. The insert trigger refuses any non-command insert of an ADMIN_REVOKED pair. |
+| D9 | Re-granting an expired direct exception refreshes its reason and expiry through `ON CONFLICT … WHERE expired`. The command refuses to audit a grant that is still expired. |
+| D10 | Four changes. (1) The supersede stamp must name the EXISTING current decision for the same cell and tenant, with a now-bounded `superseded_at`. (2) Current-decision uniqueness is a DEFERRED exclusion constraint, so the successor is inserted first. (3) Statement-level TRUNCATE triggers now guard `audit_events`, `role_capability_decisions` and `capability_grant_conditions`. (4) The `audit_event_id` and `superseded_by` FKs are tenant-composite. |
+| D11 | `revokeObjectActionFromPrincipal` requires a reason. Concurrent identical grants are a clean no-op: the no-op test runs inside the locks. |
+| D7 | This is client-side and belongs to lane CP-C. |
+
+**D4 holder rule, in full.** A principal counts only if both hold:
+- the principal is ENABLED, with an ACTIVE membership;
+- it holds the capability through an ACTIVE, GLOBAL, non-stale assignment to a Role that grants it UNCONDITIONED, or through a direct grant with NO expiry.
+
+**Owner question from D5(b).** Owner holds `admin.roleAssignment.write` but not `admin.securityPolicy.write`, so Owner can NO LONGER appoint an Administrator. Owner can still staff every Role that confers no security-policy authority. This is implemented fail-closed.
+
+### Capability map after Pass 8
+| Operation | Capability |
+|---|---|
+| grant/revoke to a Role or a Principal, set/retire a condition, createRole, updateRole, setObjectPermission, set/remove field override, updateObjectMetadata, createCustomField, updateCustomFieldMetadata | `admin.securityPolicy.write` |
+| assignRole, revokeRole, ensureTenantPrincipal, rebindPrincipalIdentity | `admin.roleAssignment.write` |
+| Workflow mutations | unchanged; owned by lane WF |
+
+No new capability keys were added.
+
+### New and changed reads
+**`listSupportedConditionKinds`** (gate: `admin.securityPolicy.read`).
+
+Returns `{kinds:[{kind, supported, reason, parameters, recordKinds, capabilities:[{capabilityKey, objectKey, actionKey, recordKinds}]}]}`.
+- Supported kinds:
+  - RECORD_ASSIGNMENT: `relation ASSIGNED_EMPLOYEE`, recordKinds `["workOrder"]`.
+  - WORK_ELIGIBILITY: `qualificationCode` must be one of the governed codes.
+  - OPERATIONAL_SCOPE: `scopeType` is WAREHOUSE or REORDER_QUEUE; `scopeId` is optional.
+- Unsupported kinds, each with its reason: SELF, TEAM, BUSINESS_UNIT, COMPANY, ALL.
+
+**`readPolicyAuditHistory`** now accepts optional filters: `{principalId, employeeId, roleKey, objectKey, capabilityKey, actionKey, workflowKey, from, to, limit}`.
+- The filters are tenant-scoped and parameterized, and use JSONB containment over `before`/`after` backed by GIN indexes.
+- `roleKey` also matches assignment events by Role id.
+- An unparseable date returns INVALID_INPUT.
+- With no filter, the read behaves exactly as before.
+
+**`explainEffectiveAccess`** adds `conditionallyHeld`.
+
 ## 10. Not done in this lane
 
 - The client UI: object×action toggles, the condition editor, and retiring the CRED grid.

@@ -79,8 +79,10 @@ export interface EffectiveAccessExplanation {
   readonly employeeId: string | null;
   readonly workEligibility: readonly string[];
   readonly operationalScopes: readonly { readonly scopeType: string; readonly scopeId: string }[];
-  /** EXACTLY resolveOperationalContext(...).capabilities, sorted. */
+  /** EXACTLY resolveOperationalContext(...).capabilities, sorted: the UNCONDITIONAL flat set. */
   readonly capabilities: readonly string[];
+  /** EXACTLY resolveOperationalContext(...).conditionallyHeld: keys reachable only through conditions. */
+  readonly conditionallyHeld: readonly string[];
   /** EXACTLY resolveExperienceContext(...).surfaces. */
   readonly surfaces: readonly string[];
   readonly actions: readonly ExplainedAction[];
@@ -139,7 +141,7 @@ export async function explainEffectiveAccess(
   }
 
   const snapshot = snapshotContextualReader(dimensions);
-  const actor = { ...actorBase, entitlements: ctx.entitlements };
+  const actor = { ...actorBase, conditionallyHeld: ctx.conditionallyHeld, entitlements: ctx.entitlements };
   const actions: ExplainedAction[] = [];
   for (const capability of [...catalog].sort((a, b) =>
     a.objectKey === b.objectKey ? a.actionKey.localeCompare(b.actionKey) : a.objectKey.localeCompare(b.objectKey))) {
@@ -192,6 +194,7 @@ export async function explainEffectiveAccess(
     workEligibility: Object.freeze([...workEligibility]),
     operationalScopes: Object.freeze(operationalScopes.map((s) => ({ scopeType: s.scopeType, scopeId: s.scopeId }))),
     capabilities: Object.freeze([...ctx.capabilities].sort()),
+    conditionallyHeld: Object.freeze([...ctx.conditionallyHeld].sort()),
     surfaces,
     actions: Object.freeze(actions),
   });

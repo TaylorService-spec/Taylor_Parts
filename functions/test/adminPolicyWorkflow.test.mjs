@@ -402,13 +402,15 @@ test("a NON-ADMIN cannot edit Objects, Role definitions or Workflows", async () 
   );
 
   for (const actor of [plainActor(), gmActor()]) {
+    // Object and Role definition are authorized by the CAPABILITY admin.securityPolicy.write (Pass 8
+    // removed the Role-name gate); Workflow definition stays on its own gate (lane WF).
     await assert.rejects(
       () => createCustomField(repo, actor, { objectKey: "customer", key: "nickname", label: "Nickname", dataType: "STRING" }),
-      /not authorized to perform "editObjectDefinition"/,
+      /"admin\.securityPolicy\.write" is required/,
     );
     await assert.rejects(
       () => createRole(repo, actor, { key: "sneaky", name: "Sneaky" }),
-      /not authorized to perform "editRoleDefinition"/,
+      /"admin\.securityPolicy\.write" is required/,
     );
     await assert.rejects(
       () => publishWorkflowVersion(repo, actor, { versionId: "whatever" }),
@@ -417,23 +419,28 @@ test("a NON-ADMIN cannot edit Objects, Role definitions or Workflows", async () 
   }
 });
 
-test("Owner and Admin may each assign ANY Role, including Admin; General Manager only when GRANTED the capability", async () => {
+test("Admin assigns ANY Role; Owner assigns Roles but NOT one conferring security-policy authority; GM only when GRANTED", async () => {
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin", "owner", "generalManager"]);
+  const ownerActor = { tenantId: TENANT, uid: "uid-owner", heldRoleKeys: ["owner"] };
 
-  for (const [i, actor] of [adminActor(), { tenantId: TENANT, uid: "uid-owner", heldRoleKeys: ["owner"] }].entries()) {
-    const assignment = await grantRole(repo, actor, `uid-target-${i}`, roles.admin.id);
-    assert.equal(assignment.roleId, roles.admin.id, "the Admin Role itself was assignable");
-    assert.equal(assignment.status, "active");
-  }
-  // Assignment is authorized by admin.roleAssignment.write, never by the Role name. generalManager
-  // does not hold it by default (Owner ruling 2026-08-21 vs the former Role-name invariant: reported
-  // for the Owner); granting it is an Administration decision, and then GM may assign.
-  await assert.rejects(() => grantRole(repo, gmActor(), "uid-target-gm", roles.admin.id), /"admin\.roleAssignment\.write" is required/);
+  const byAdmin = await grantRole(repo, adminActor(), "uid-target-0", roles.admin.id);
+  assert.equal(byAdmin.roleId, roles.admin.id, "the Admin Role itself is assignable by a security-policy holder");
+  // Pass 8 D5(b): assigning a Role that carries admin.securityPolicy.write needs admin.securityPolicy.write.
+  // Owner holds admin.roleAssignment.write only, so it may NOT appoint an Administrator (the Owner question).
+  await assert.rejects(() => grantRole(repo, ownerActor, "uid-target-1", roles.admin.id), /PRIVILEGE_ESCALATION/);
+  const byOwner = await grantRole(repo, ownerActor, "uid-target-1", roles.generalManager.id);
+  assert.equal(byOwner.status, "active", "Owner still staffs every Role that confers no security-policy authority");
+  // Pass 8 D5(a): nobody assigns a Role to themselves.
+  await assert.rejects(() => grantRole(repo, ownerActor, "uid-owner", roles.generalManager.id), /SELF_ADMINISTRATION/);
+
+  // generalManager holds no admin.roleAssignment.write by default (Owner ruling 2026-08-21 vs the former
+  // Role-name invariant: reported); granting it is an Administration decision, and then GM may assign.
+  await assert.rejects(() => grantRole(repo, gmActor(), "uid-target-gm", roles.owner.id), /"admin\.roleAssignment\.write" is required/);
   const [assign] = (await repo.listCapabilities()).filter((c) => c.key === "admin.roleAssignment.write");
   await repo.transact({ tenantId: TENANT, uid: SYS }, (tx) => tx.grantRoleCapability({
     roleId: roles.generalManager.id, capabilityId: assign.id, grantedBy: SYS, grantedAt: new Date().toISOString() }));
-  const byGm = await grantRole(repo, gmActor(), "uid-target-gm", roles.admin.id);
+  const byGm = await grantRole(repo, gmActor(), "uid-target-gm", roles.owner.id);
   assert.equal(byGm.status, "active");
 });
 

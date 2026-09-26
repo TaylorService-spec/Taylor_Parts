@@ -88,6 +88,8 @@ const CANONICAL_MAP = Object.freeze({
   listRoleCapabilityDecisionHistory: SECURITY_POLICY_READ,
   // The runtime evaluator's explanation of one Principal's access -- the SAME principal-access read.
   explainEffectiveAccess: PRINCIPAL_ACCESS_READ,
+  // The condition vocabulary the server enforces: part of the security policy model.
+  listSupportedConditionKinds: SECURITY_POLICY_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -107,8 +109,8 @@ const INPUT_FOR = Object.freeze({
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: seventeen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 17, "the read list changed size without this map changing");
+test("A: eighteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 18, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -316,9 +318,13 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   await commands.grantObjectActionToRole(repo, admin,
     { roleKey: "shopFloor", objectKey: "workOrder", actionKey: "dispatch", reason: "an unrelated grant" });
 
-  // Everything, so the positive path and the transport have somebody to answer.
+  // Everything, so the positive path and the transport have somebody to answer. Written as SYSTEM
+  // DEFAULT rows (fixture): an administrator may not widen a Role it holds (Pass 8 D5a).
   for (const key of [SECURITY_POLICY_READ, PRINCIPAL_ACCESS_READ, WORKFLOW_READ, AUDIT_READ]) {
-    await grantToRole("admin", OBJECT_OF[key]);
+    await pool.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+      SELECT 'rc-fx-' || md5($1 || c.id), $1, r.id, c.id, 'fixture','fixture','fixture'
+        FROM eos_policy.roles r, eos_policy.capabilities c WHERE r.tenant_id=$1 AND r.key='admin' AND c.key=$2
+      ON CONFLICT DO NOTHING`, [tenant.id, key]);
   }
 
   await t.test("the fixture is honest: the bare principal really is authenticated and ACTIVE", async () => {
@@ -340,8 +346,8 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
     const governed = operationsRequiring(SECURITY_POLICY_READ);
     assert.deepEqual(governed, [
       "getObjectActionGrantMatrix", "getObjectSecurityMatrix", "getRoleSecurity", "getSecurityRoleDetail",
-      "listObjects", "listObjectsWithActions", "listRoleCapabilityDecisionHistory",
-      "listRoles", "readObjectWithFields", "readRolePolicy",
+      "listObjects", "listObjectsWithActions", "listRoleCapabilityDecisionHistory", "listRoles",
+      "listSupportedConditionKinds", "readObjectWithFields", "readRolePolicy",
     ], "the population of security-policy reads changed");
 
     for (const operation of governed) {

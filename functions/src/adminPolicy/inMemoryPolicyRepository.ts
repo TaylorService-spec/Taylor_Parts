@@ -26,6 +26,7 @@ import type {
   PolicyReader,
   PolicyRepository,
   PolicyTransaction,
+  AuditEventFilter,
 } from "./policyRepository";
 import type {
   CredOverride,
@@ -387,8 +388,15 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return i === -1 ? null : t.roleCapabilities.splice(i, 1)[0];
       },
       grantPrincipalCapability: async (input) => {
-        const found = t.principalCapabilities.find(
+        const foundAt = t.principalCapabilities.findIndex(
           (g) => g.tenantId === tenantId && g.principalId === input.principalId && g.capabilityId === input.capabilityId);
+        const found = foundAt >= 0 ? t.principalCapabilities[foundAt] : undefined;
+        if (found && found.expiresAt && found.expiresAt <= this.now() && (input.exceptionReason != null || input.expiresAt != null)) {
+          // Refresh an EXPIRED exception, as the PostgreSQL adapter does.
+          t.principalCapabilities[foundAt] = { ...found, exceptionReason: input.exceptionReason ?? null, expiresAt: input.expiresAt ?? null,
+            grantedBy: input.grantedBy, grantedAt: input.grantedAt, updatedBy: actor.uid, updatedAt: this.now() };
+          return t.principalCapabilities[foundAt];
+        }
         if (found) return found;
         const row = {
           id: this.nextId(), tenantId, principalId: input.principalId, capabilityId: input.capabilityId,
@@ -572,6 +580,51 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         return t.grantConditions[i];
       },
 
+      // In memory, a transaction is already exclusive (one JS turn per await chain in tests); the locks
+      // are no-ops and the reads are the same rules the PostgreSQL adapter expresses in SQL.
+      beginAdministrationCommand: async () => undefined,
+      lockGrantCell: async () => undefined,
+      readGrantCell: async (roleKey, capabilityKey) => {
+        const role = t.roles.find((r) => r.tenantId === tenantId && r.key === roleKey);
+        const cap = t.capabilities.find((c) => c.key === capabilityKey);
+        return {
+          grant: t.roleCapabilities.find((g) => g.tenantId === tenantId && g.roleId === role?.id && g.capabilityId === cap?.id) ?? null,
+          decision: t.decisions.find((d) => d.tenantId === tenantId && d.roleKey === roleKey && d.capabilityKey === capabilityKey && d.supersededAt === null) ?? null,
+          condition: t.grantConditions.find((c) => c.tenantId === tenantId && c.grantScope === "ROLE" && c.grantorKey === roleKey
+            && c.capabilityKey === capabilityKey && c.status === "ACTIVE") ?? null,
+        };
+      },
+      readAssignment: async (assignmentId) =>
+        t.assignments.find((a) => a.tenantId === tenantId && a.id === assignmentId) ?? null,
+      administrationHolderCount: async (capabilityKey, exclude) => {
+        const cap = t.capabilities.find((c) => c.key === capabilityKey);
+        if (!cap) return 0;
+        const conditioned = new Set(t.grantConditions.filter((c) => c.tenantId === tenantId && c.grantScope === "ROLE"
+          && c.capabilityKey === capabilityKey && c.status === "ACTIVE").map((c) => c.grantorKey));
+        const holderRoles = new Set(t.roleCapabilities.filter((g) => g.tenantId === tenantId && g.capabilityId === cap.id
+          && g.roleId !== exclude.roleId
+          && !conditioned.has(t.roles.find((r) => r.id === g.roleId)?.key ?? "")).map((g) => g.roleId));
+        const holders = new Set<string>();
+        for (const a of t.assignments) {
+          if (a.tenantId !== tenantId || a.status !== "active" || a.id === exclude.assignmentId) continue;
+          if ((a.scopeType ?? "global") !== "global" || !holderRoles.has(a.roleId)) continue;
+          const version = t.accessVersions.find((v) => v.tenantId === tenantId && v.principalId === a.principalId)?.accessVersion ?? 0;
+          if (a.accessVersionAtGrant > version) continue;
+          holders.add(a.principalId);
+        }
+        for (const g of t.principalCapabilities) {
+          if (g.tenantId === tenantId && g.capabilityId === cap.id && g.principalId !== exclude.principalId && !g.expiresAt) holders.add(g.principalId);
+        }
+        return [...holders].filter((id) => {
+          const p = t.principals.find((x) => x.id === id);
+          const m = t.memberships.find((x) => x.tenantId === tenantId && x.principalId === id);
+          // A principal row may be absent in resolver fixtures that assign by id alone; membership decides.
+          return (!p || p.status === "active") && m?.status === "active";
+        }).length;
+      },
+      protectedRoleAssignmentCount: async (excludeAssignmentId) => t.assignments.filter((a) => a.tenantId === tenantId
+        && a.status === "active" && a.id !== excludeAssignmentId && t.roles.some((r) => r.id === a.roleId && r.protected)).length,
+
       appendAudit: async (input) => {
         const id = this.nextId();
         t.audit.push({ ...input, id, tenantId });
@@ -692,6 +745,27 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   async listAuditEvents(tenantId: TenantId, limit: number) {
     return this.mine(this.tables.audit, tenantId).slice(-limit);
   }
+  async queryAuditEvents(tenantId: TenantId, filter: AuditEventFilter) {
+    const field = (e: PolicyAuditEventRecord, key: string, value: string) =>
+      [e.after, e.before].some((p) => p !== null && typeof p === "object" && (p as Record<string, unknown>)[key] === value);
+    const rows = this.mine(this.tables.audit, tenantId).filter((e) => {
+      const f = filter;
+      if (f.principalId && !(e.actorUid === f.principalId || e.targetId === f.principalId
+        || field(e, "principalId", f.principalId) || field(e, "granteeKey", f.principalId))) return false;
+      if (f.employeeId && !(e.targetId === f.employeeId || field(e, "employeeId", f.employeeId))) return false;
+      if (f.roleKey && !(field(e, "granteeKey", f.roleKey) || field(e, "roleKey", f.roleKey)
+        || (f.roleId ? field(e, "roleId", f.roleId) : false))) return false;
+      if (f.objectKey && !field(e, "objectKey", f.objectKey)) return false;
+      if (f.capabilityKey && !field(e, "capabilityKey", f.capabilityKey)) return false;
+      if (f.actionKey && !field(e, "actionKey", f.actionKey)) return false;
+      if (f.workflowKey && !(field(e, "workflowKey", f.workflowKey) || (e.targetKind.startsWith("workflow") && field(e, "key", f.workflowKey)))) return false;
+      if (f.from && e.occurredAt < f.from) return false;
+      if (f.to && e.occurredAt >= f.to) return false;
+      return true;
+    });
+    return rows.slice(-filter.limit);
+  }
+
   async listRoleCapabilityDecisions(tenantId: TenantId, options: { readonly currentOnly?: boolean } = {}) {
     const mine = this.mine(this.tables.decisions, tenantId);
     return options.currentOnly === false ? mine : mine.filter((d) => d.supersededAt === null);

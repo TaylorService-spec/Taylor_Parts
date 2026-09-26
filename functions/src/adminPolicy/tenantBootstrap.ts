@@ -21,7 +21,8 @@
 // since removed. "Idempotent" here means a second run changes nothing -- NOT that it resets the
 // tenant to a known state. A bootstrap that reset policy on every deploy would silently undo
 // configuration, which is the worst kind of "safe".
-import { requireAdministrationAuthority } from "./administrationAuthority";
+import { AdministrationCapabilityDeniedError, hasSecurityAdministrationCapability } from "./administrationAuthority";
+import { capabilityKeysFor } from "./administrationCapabilityGate";
 import { ADMIN_ROLE_KEY, ADMINISTRATION_BOOTSTRAP_GRANTS } from "./administrationAuthority";
 import { seedTenantPolicy, SEED_VERSION } from "./seed/policySeed";
 import type { SeedResult } from "./seed/policySeed";
@@ -300,7 +301,12 @@ export async function ensureTenantPrincipal(
   const identityProvider = input.identityProvider ?? FIREBASE_IDENTITY_PROVIDER;
   // Admitting somebody to a tenant is an assignment-shaped act, so it takes the assignment
   // authority: Owner, General Manager or Admin.
-  requireAdministrationAuthority(input.actorRoleKeys, "assignRole");
+  // Admitting a Principal is assignment-shaped authority: admin.roleAssignment.write, resolved from the
+  // governed grants of the actor's Roles -- never the Role names themselves.
+  const actorCapabilities = await capabilityKeysFor(repo, tenantId, input.actorRoleKeys ?? [], null);
+  if (!hasSecurityAdministrationCapability(actorCapabilities, "assignRole")) {
+    throw new AdministrationCapabilityDeniedError("assignRole");
+  }
 
   const existing = await repo.getPrincipalBySubject(identityProvider, subject);
   const membership = existing ? await repo.getMembership(tenantId, existing.id) : null;

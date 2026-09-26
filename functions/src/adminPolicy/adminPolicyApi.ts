@@ -57,14 +57,17 @@ import {
   PolicyValidationError,
   AdministrationRefusal,
 } from "./policyCommands";
-import { forbiddenPair } from "./roleCapabilityAdministration";
+import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair } from "./roleCapabilityAdministration";
+import type { AuditEventFilter } from "./policyRepository";
+import { GOVERNED_QUALIFICATION_CODES } from "../eosOps/contextualAuthorization";
 import {
   createWorkflowDraft,
   createWorkflowVersion,
   setWorkflowRoleBinding,
   updateWorkflowDefinition,
 } from "./workflowCommands";
-import { AdministrationDeniedError, requireAdministrationAuthority } from "./administrationAuthority";
+import { AdministrationDeniedError } from "./administrationAuthority";
+import { requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
 import { ADMINISTRATION_SURFACE_READ_CAPABILITY } from "./administrationSurfaceAuthority";
 import type { AdministrationSurface } from "./administrationSurfaceAuthority";
 import { loadWorkflowVersionDefinition } from "./workflowEngine";
@@ -126,6 +129,9 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   // DENIED with the reason, source Roles, conditions, direct exceptions, scope and surfaces. Served only
   // when the server composes the evaluator (AdminApiDeps.explainEffectiveAccess); it needs the pool.
   "explainEffectiveAccess",
+  // What a grant condition may be: the evaluator's kinds, their parameters, and the capability x
+  // recordKind allow-list. Unsupported kinds are listed with the reason, never silently absent.
+  "listSupportedConditionKinds",
 ] as const);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -216,6 +222,7 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   listRoleCapabilityDecisionHistory: "rolesPermissions",
   // The same authority as getPrincipalEffectiveAccess: admin.principalAccess.read.
   explainEffectiveAccess: "users",
+  listSupportedConditionKinds: "rolesPermissions",
 });
 
 /** The one capability each Administration read requires. Derived, never restated. */
@@ -432,7 +439,16 @@ async function resolvePrincipalEffectiveAccess(
     repo.listPrincipalCapabilities(tenantId, principalId),
   ]);
   const activeRoleIds = assignments.filter((a) => a.status === "active").map((a) => a.roleId);
-  const roleGrants = await repo.listRoleCapabilities(tenantId, activeRoleIds);
+  const [allRoleGrants, conditions] = await Promise.all([
+    activeRoleIds.length > 0 ? repo.listRoleCapabilities(tenantId, activeRoleIds) : Promise.resolve([]),
+    repo.listGrantConditions(tenantId),
+  ]);
+  // FAIL CLOSED (Pass 8 D1): a Role grant narrowed by an ACTIVE condition is NOT effective here -- this
+  // flat read gate cannot evaluate a condition, so it must not treat a conditioned grant as unconditional.
+  const roleKeyOf = new Map(roles.map((r) => [r.id, r.key]));
+  const capabilityKeyOf = new Map(capabilities.map((c) => [c.id, c.key]));
+  const conditioned = new Set(conditions.filter((c) => c.grantScope === "ROLE").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
+  const roleGrants = allRoleGrants.filter((g) => !conditioned.has(`${roleKeyOf.get(g.roleId)}|${capabilityKeyOf.get(g.capabilityId)}`));
   const effective = effectiveCapabilities({
     tenantId, principalId,
     roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),
@@ -648,9 +664,15 @@ async function dispatch(
 
     case "readPolicyAuditHistory": {
       const limit = clampLimit(input.limit);
-      const events: readonly PolicyAuditEventRecord[] = await repo.listAuditEvents(actor.tenantId, limit);
-      return events;
+      const filter = auditFilterFrom(input);
+      if (!filter) return repo.listAuditEvents(actor.tenantId, limit) as Promise<readonly PolicyAuditEventRecord[]>;
+      // A Role filter also matches assignment events, which name the Role by id.
+      const roleId = filter.roleKey ? (await repo.getRoleByKey(actor.tenantId, filter.roleKey))?.id ?? null : null;
+      return repo.queryAuditEvents(actor.tenantId, { ...filter, roleId, limit });
     }
+
+    case "listSupportedConditionKinds":
+      return supportedConditionKinds(await repo.listCapabilities());
 
     case "getSecurityRoleDetail":
       return describeSecurityRole(repo, actor.tenantId, requireString(input.roleKey, "roleKey"));
@@ -816,7 +838,7 @@ async function dispatch(
         objectKey: requireString(input.objectKey, "objectKey"),
         actionKey: requireString(input.actionKey, "actionKey"),
         principalId: requireString(input.principalId, "principalId"),
-        reason: optionalString(input.reason),
+        reason: optionalString(input.reason) ? reason : null,
       });
 
     case "assignRole":
@@ -938,7 +960,7 @@ async function updateRoleMetadata(
   input: Record<string, unknown>,
   reason: string | null,
 ): Promise<PolicyRoleRecord> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editRoleDefinition");
+  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
 
   const name = optionalString(input.name);
   const description = input.description === undefined ? undefined : optionalString(input.description);
@@ -1059,6 +1081,65 @@ async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string,
   return { objectKey: object.key, label: object.label, actions };
 }
 
+// ════════════════════ audit filters and condition kinds ════════════════════
+
+const AUDIT_FILTER_KEYS = ["principalId", "employeeId", "roleKey", "objectKey", "capabilityKey", "actionKey", "workflowKey"] as const;
+
+/** The audit filter a request names, or null for the unfiltered read. Dates must parse. */
+function auditFilterFrom(input: Record<string, unknown>): Omit<AuditEventFilter, "limit"> | null {
+  const out: Record<string, string | null> = {};
+  let any = false;
+  for (const key of AUDIT_FILTER_KEYS) {
+    const v = optionalString(input[key]);
+    out[key] = v;
+    if (v) any = true;
+  }
+  for (const key of ["from", "to"] as const) {
+    const v = optionalString(input[key]);
+    if (v !== null) {
+      const at = Date.parse(v);
+      if (!Number.isFinite(at)) throw new PolicyValidationError(`${key} must be an ISO timestamp`);
+      out[key] = new Date(at).toISOString();
+      any = true;
+    } else out[key] = null;
+  }
+  return any ? (out as unknown as Omit<AuditEventFilter, "limit">) : null;
+}
+
+/**
+ * The condition vocabulary, as the server enforces it. Shape agreed with the client lane:
+ * `{ kinds: [{ kind, supported, reason, parameters, recordKinds, capabilities }] }`.
+ */
+function supportedConditionKinds(catalog: readonly { key: string; objectKey: string; actionKey: string }[]) {
+  const capabilitiesFor = (kind: string) => CONDITIONABLE_GRANTS
+    .filter((g) => (g.kinds as readonly string[]).includes(kind))
+    .map((g) => {
+      const c = catalog.find((x) => x.key === g.capabilityKey);
+      return { capabilityKey: g.capabilityKey, objectKey: c?.objectKey ?? null, actionKey: c?.actionKey ?? null,
+        recordKinds: kind === "RECORD_ASSIGNMENT" ? [...g.recordKinds] : [] };
+    });
+  const recordKinds = [...new Set(CONDITIONABLE_GRANTS.flatMap((g) => g.recordKinds))].sort();
+  const unsupported = (kind: string, reason: string) =>
+    ({ kind, supported: false, reason, parameters: {}, recordKinds: [], capabilities: [] });
+  return {
+    kinds: [
+      { kind: "RECORD_ASSIGNMENT", supported: true, reason: null,
+        parameters: { relation: ["ASSIGNED_EMPLOYEE"] }, recordKinds, capabilities: capabilitiesFor("RECORD_ASSIGNMENT") },
+      { kind: "WORK_ELIGIBILITY", supported: true, reason: null,
+        parameters: { qualificationCode: [...GOVERNED_QUALIFICATION_CODES].sort() }, recordKinds: [],
+        capabilities: capabilitiesFor("WORK_ELIGIBILITY") },
+      { kind: "OPERATIONAL_SCOPE", supported: true, reason: null,
+        parameters: { scopeType: [...CONDITION_OPERATIONAL_SCOPE_TYPES], scopeId: "optional: one target of that type" }, recordKinds: [],
+        capabilities: capabilitiesFor("OPERATIONAL_SCOPE") },
+      unsupported("SELF", "no evaluator: record ownership by the actor is not a governed relation"),
+      unsupported("TEAM", "no evaluator: there is no team / reportsTo edge to evaluate"),
+      unsupported("BUSINESS_UNIT", "no evaluator: business units are not a governed scope"),
+      unsupported("COMPANY", "no evaluator: operating-company scope is not a grant condition"),
+      unsupported("ALL", "not a condition: an unconditioned grant is expressed by having no condition"),
+    ],
+  };
+}
+
 // ════════════════════ input handling ════════════════════
 
 class NotFound extends Error {}
@@ -1106,8 +1187,9 @@ function classify(err: unknown): AdminApiFailureCode {
   // that would widen, the last administration path -- is a CONFLICT with what is there, not a
   // malformed request. A missing reason or an unloadable condition stays INVALID_INPUT.
   if (err instanceof AdministrationRefusal) {
+    if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
-      || err.code === "CONDITION_NOT_EVALUABLE" ? "INVALID_INPUT" : "CONFLICT";
+      || err.code === "CONDITION_NOT_SUPPORTED" ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;

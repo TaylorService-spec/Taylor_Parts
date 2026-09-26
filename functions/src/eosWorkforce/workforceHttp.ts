@@ -236,6 +236,7 @@ export async function executeWorkforceOperation(
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
       capabilities: ctx.capabilities,
+      conditionallyHeld: ctx.conditionallyHeld,
       // The conditional-entitlement obligation, as the REQUIRED request-scoped resolver
       // resolveOperationalContext built for this request. The same actor serves the read kernel and
       // the command kernel, and the resolver memoizes, so both gate sites -- and a read requiring

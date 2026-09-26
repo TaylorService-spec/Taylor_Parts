@@ -137,12 +137,14 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
     const runtime = await capabilityAuthority.resolveOperationalContext(repo, pool, inputOf(key), provider);
     const experience = await resolveExperienceContext(repo, pool, inputOf(key));
     assert.deepEqual(explained.capabilities, [...runtime.capabilities].sort(), `${key}: capabilities`);
+    assert.deepEqual(explained.conditionallyHeld, [...runtime.conditionallyHeld].sort(), `${key}: conditionally held`);
     assert.deepEqual(explained.securityRoleKeys, [...runtime.principalContext.heldRoleKeys], `${key}: Roles`);
     assert.deepEqual([explained.employeeId, explained.workEligibility, explained.operationalScopes, explained.surfaces],
       [experience.employeeId, [...experience.workEligibility], experience.operationalScopes.map((s) => ({ ...s })), [...experience.surfaces]],
       `${key}: experience context`);
     // Every row's result is the runtime evaluator's own decision over the runtime context.
-    const actor = { tenantId: TENANT, principalId: prnOf(key), capabilities: runtime.capabilities, entitlements: runtime.entitlements };
+    const actor = { tenantId: TENANT, principalId: prnOf(key), capabilities: runtime.capabilities,
+      conditionallyHeld: runtime.conditionallyHeld, entitlements: runtime.entitlements };
     const snapshot = evaluator.snapshotContextualReader({
       employeeId: experience.employeeId, workEligibility: experience.workEligibility, operationalScopes: experience.operationalScopes });
     for (const row of explained.actions) {
@@ -150,7 +152,8 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
       if (d.allowed) assert.equal(row.result, "ALLOWED", `${key} ${row.capabilityKey}`);
       else if (row.result === "CONDITIONAL") assert.ok(d.denials.some((x) => x.detail === "no record supplied"));
       else assert.deepEqual([row.result, row.reasonCode], ["DENIED", d.outcome], `${key} ${row.capabilityKey}`);
-      assert.equal(runtime.capabilities.has(row.capabilityKey), row.sourceRoles.length > 0, `${key} ${row.capabilityKey}: sources`);
+      const held = runtime.capabilities.has(row.capabilityKey) || runtime.conditionallyHeld.has(row.capabilityKey);
+      assert.equal(held, row.sourceRoles.length > 0, `${key} ${row.capabilityKey}: sources`);
     }
     return explained;
   };

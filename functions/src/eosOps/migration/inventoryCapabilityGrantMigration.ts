@@ -133,6 +133,27 @@ class UnknownTenantError extends Error {
  * belonging to a different tenant is indistinguishable from a Role that does not exist at all.
  */
 export async function reconcileInventoryCapabilityGrants(pool: Pool, options: ReconcileOptions): Promise<ReconcileReport> {
+  if (options.apply !== true) return reconcileWith(pool, options);
+  // AN APPLY RUN IS ONE TRANSACTION UNDER THE TENANT GOVERNANCE LOCK (Pass 8 D8) -- the same lock every
+  // Administration grant/revoke takes -- and it reads the decisions INSIDE it. An Administration revoke
+  // therefore either commits before this run reads decisions (and is honoured) or waits for it; it can
+  // never be re-inserted by a run that read stale decisions.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [options.tenantId]);
+    const report = await reconcileWith(client as unknown as Pool, options);
+    await client.query("COMMIT");
+    return report;
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch { /* the original error is rethrown */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function reconcileWith(pool: Pool, options: ReconcileOptions): Promise<ReconcileReport> {
   const apply = options.apply === true;
   const tenantId = options.tenantId;
 

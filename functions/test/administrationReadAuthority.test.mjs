@@ -197,7 +197,11 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
     performedBy: "operator", reason: "initial administrator",
   });
   const adminContext = await resolvePrincipalContext(repo, { externalSubject: "firebase-uid-admin" });
-  const admin = { tenantId: tenant.id, uid: adminContext.uid, heldRoleKeys: adminContext.heldRoleKeys };
+  // This database is held at 1762041600000 (before the Administration control plane), so the actor's
+  // capabilities are supplied as the trusted API resolves them rather than read from relations this
+  // schema does not have yet.
+  const admin = { tenantId: tenant.id, uid: adminContext.uid, heldRoleKeys: adminContext.heldRoleKeys,
+    capabilities: new Set(["admin.securityPolicy.write", "admin.roleAssignment.write"]) };
 
   await t.test("the read is registered UNDER the Object it governs", async () => {
     const caps = await repo.listCapabilities();
@@ -307,7 +311,8 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
   await t.test("a principal holding only the read is refused by the governed writes", async () => {
     // The grant command is now authorized by admin.securityPolicy.write (Administration control
     // plane); createRole still by the Role key. The reader holds neither, and is refused by both.
-    const reader = { tenantId: tenant.id, uid: "reader-principal", heldRoleKeys: ["securityPolicyReader"] };
+    const reader = { tenantId: tenant.id, uid: "reader-principal", heldRoleKeys: ["securityPolicyReader"],
+      capabilities: new Set([THE_READ]) };
     await assert.rejects(
       () => commands.grantObjectActionToRole(repo, reader, {
         roleKey: "securityPolicyReader", objectKey: "rolesPermissions", actionKey: "assignRole",

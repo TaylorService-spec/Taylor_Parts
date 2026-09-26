@@ -24,11 +24,7 @@
 // This is NOT per-Role withholding. No Role key appears below except in the SYSTEM INVARIANTS,
 // which are Owner rulings (ruling A's Owner exclusions and the withheld technician Purchase Order
 // cells) -- engine facts, not configuration, and deliberately not administrable.
-import {
-  OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES,
-  OWNER_EXCLUDED_NOT_AN_AUTHORITY,
-} from "../access/governedBusinessRoles";
-import { WITHHELD_CONDITIONED_CELLS } from "../eosOps/grantConditionPolicy";
+import { OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES } from "../access/governedBusinessRoles";
 import type { RoleCapabilityDecision } from "./types";
 
 export interface RoleCapabilityCell {
@@ -39,36 +35,76 @@ export interface RoleCapabilityCell {
 const cellKey = (roleKey: string, capabilityKey: string): string => `${roleKey}\u0000${capabilityKey}`;
 
 // ════════════════════ 2. SYSTEM INVARIANTS ════════════════════
+//
+// Owner rule (Pass 8): only PLATFORM_SAFETY and OWNER_GOVERNANCE rules may be immutable.
+//
+//   OWNER_GOVERNANCE  pairs the Owner has ruled no tenant may hold -- data-level, enforced on every
+//                     Role grant, at the PRINCIPAL level (custom Role or direct grant to an owner
+//                     holder), by every default writer, and reported as drift.
+//   PLATFORM_SAFETY   engine rules, enforced by code and database, listed in PLATFORM_SAFETY_INVARIANTS.
+//
+// NOT immutable any more (LEGACY_BASELINE_ARTIFACT, Pass 8 review): owner x reorder.request.read.queue
+// and technician x reorder.purchaseOrder.read/.create. The technician ruling withholds ACTIVATING a
+// CONDITION on those cells, which CONDITIONABLE_GRANTS below preserves by never listing them.
+
+export type InvariantClass = "OWNER_GOVERNANCE" | "PLATFORM_SAFETY";
 
 export interface ForbiddenRoleCapabilityPair extends RoleCapabilityCell {
+  readonly invariantClass: "OWNER_GOVERNANCE";
   /** The ruling that forbids it, so a refusal can say WHY in words an administrator can act on. */
   readonly ruling: string;
 }
+
+/** Capabilities the Owner Role -- and any PRINCIPAL holding it -- may never hold (Owner ruling A). */
+export const OWNER_EXCLUDED_CAPABILITIES: readonly string[] = Object.freeze([
+  ...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES,
+  "reorder.request.assign",
+]);
 
 /**
  * Pairs no tenant may hold. Derived from the constants that already carry the Owner rulings, never
  * re-typed, so a ruling edited in one place is enforced here without a second edit.
  */
-export const FORBIDDEN_ROLE_CAPABILITY_PAIRS: readonly ForbiddenRoleCapabilityPair[] = Object.freeze([
-  ...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES.map((capabilityKey) => Object.freeze({
-    roleKey: "owner", capabilityKey,
-    ruling: "Owner ruling A (2026-09-24): an administrator-only capability the Owner Role must never hold",
+export const FORBIDDEN_ROLE_CAPABILITY_PAIRS: readonly ForbiddenRoleCapabilityPair[] = Object.freeze(
+  OWNER_EXCLUDED_CAPABILITIES.map((capabilityKey) => Object.freeze({
+    roleKey: "owner", capabilityKey, invariantClass: "OWNER_GOVERNANCE" as const,
+    ruling: capabilityKey === "reorder.request.assign"
+      ? "Owner ruling A (2026-09-24): work coordination, not oversight -- excluded from the Owner"
+      : "Owner ruling A (2026-09-24): an administrator-only capability the Owner must never hold",
   })),
-  ...OWNER_EXCLUDED_NOT_AN_AUTHORITY.map((capabilityKey) => Object.freeze({
-    roleKey: "owner", capabilityKey,
-    ruling: "Owner ruling A (2026-09-24): excluded from the Owner Role",
-  })),
-  ...WITHHELD_CONDITIONED_CELLS.map((capabilityKey) => Object.freeze({
-    roleKey: "technician", capabilityKey,
-    ruling: "Owner ruling (2026-09-24): the technician Purchase Order cells are WITHHELD",
-  })),
-]);
+);
+
+/** The engine's own immutable rules, and where each is enforced. Read-only documentation of code. */
+export const PLATFORM_SAFETY_INVARIANTS = Object.freeze([
+  { key: "ANTI_LOCKOUT", invariantClass: "PLATFORM_SAFETY",
+    rule: "the last principal the gate would admit for admin.securityPolicy.write or admin.roleAssignment.write is never removed",
+    enforcedBy: "policyCommands (inside the tenant governance lock) -- WOULD_REMOVE_LAST_ADMINISTRATION_PATH" },
+  { key: "ADMIN_NOT_CONDITIONABLE", invariantClass: "PLATFORM_SAFETY",
+    rule: "no condition on an admin.* capability; only CONDITIONABLE_GRANTS may carry one",
+    enforcedBy: "setGrantCondition / grantObjectActionToRole -- CONDITION_NOT_SUPPORTED" },
+  { key: "NEVER_WIDEN_ON_RETIRE", invariantClass: "PLATFORM_SAFETY",
+    rule: "an ACTIVE condition is never retired or deleted while its grant is held; conditioned-only keys never reach a flat capability set",
+    enforcedBy: "capability_grant_conditions_never_widen trigger + grant-cell lock; resolveOperationalContext withholding" },
+  { key: "APPEND_ONLY_AUDIT", invariantClass: "PLATFORM_SAFETY",
+    rule: "audit_events and role_capability_decisions are never updated (bar the one-time supersede stamp), deleted or truncated",
+    enforcedBy: "append-only row triggers + statement TRUNCATE triggers (migration 1762646400000)" },
+] as const);
 
 const FORBIDDEN = new Map(FORBIDDEN_ROLE_CAPABILITY_PAIRS.map((p) => [cellKey(p.roleKey, p.capabilityKey), p]));
 
 /** The invariant a (Role, capability) pair violates, or null when it may be held. */
 export function forbiddenPair(roleKey: string, capabilityKey: string): ForbiddenRoleCapabilityPair | null {
   return FORBIDDEN.get(cellKey(roleKey, capabilityKey)) ?? null;
+}
+
+/**
+ * PRINCIPAL-LEVEL Owner governance: a principal holding the owner Role may not hold an excluded
+ * capability through ANY path -- another Role or a direct grant. Returns the offending keys.
+ */
+export function ownerPrincipalViolations(heldRoleKeys: readonly string[], effectiveCapabilityKeys: Iterable<string>): readonly string[] {
+  if (!heldRoleKeys.includes("owner")) return Object.freeze([]);
+  const held = new Set(effectiveCapabilityKeys);
+  return Object.freeze(OWNER_EXCLUDED_CAPABILITIES.filter((k) => held.has(k)).sort());
 }
 
 /**
@@ -81,8 +117,34 @@ export const ADMINISTRATION_GOVERNING_CAPABILITIES: readonly string[] = Object.f
   "admin.roleAssignment.write",
 ]);
 
-/** Keys whose gate cannot evaluate a per-grant condition: every `admin.*` Administration key. */
-export const conditionIsEvaluableFor = (capabilityKey: string): boolean => !capabilityKey.startsWith("admin.");
+/**
+ * THE CONDITION ALLOW-LIST: capability x recordKind that may carry a grant condition. A capability is
+ * listed ONLY when every server gate consuming it evaluates entitlements (the entitled seam); a key a
+ * flat-set gate reads would treat a conditioned grant as unconditional. Everything else is refused
+ * (CONDITION_NOT_SUPPORTED) -- including the withheld technician Purchase Order cells.
+ *
+ * workOrder.record.read: no flat-set gate reads it; the Work Order record read is decided per record
+ * by authorizeOperationalAction (technician RECORD_ASSIGNMENT, Pass 7 case D).
+ */
+export const CONDITIONABLE_GRANTS: readonly {
+  readonly capabilityKey: string;
+  readonly recordKinds: readonly string[];
+  readonly kinds: readonly ("RECORD_ASSIGNMENT" | "WORK_ELIGIBILITY" | "OPERATIONAL_SCOPE")[];
+}[] = Object.freeze([
+  Object.freeze({ capabilityKey: "workOrder.record.read", recordKinds: Object.freeze(["workOrder"]),
+    kinds: Object.freeze(["RECORD_ASSIGNMENT", "WORK_ELIGIBILITY", "OPERATIONAL_SCOPE"] as const) }),
+]);
+
+/**
+ * The Operational Scope types a condition may name. Restated (not imported) because nothing outside
+ * eosWorkforce may import it; administrationControlPlane.test.mjs proves it EQUALS
+ * eosWorkforce/operationalScopeVocabulary OPERATIONAL_SCOPE_TYPES.
+ */
+export const CONDITION_OPERATIONAL_SCOPE_TYPES: readonly string[] = Object.freeze(["WAREHOUSE", "REORDER_QUEUE"]);
+
+/** May this capability carry a condition at all? */
+export const conditionIsEvaluableFor = (capabilityKey: string): boolean =>
+  CONDITIONABLE_GRANTS.some((g) => g.capabilityKey === capabilityKey);
 
 // ════════════════════ 3. PRECEDENCE ════════════════════
 
@@ -165,6 +227,8 @@ export interface TenantAuthorityVerification {
   readonly adminGrantedMissing: readonly RoleCapabilityCell[];
   /** The store disagrees with its own decision: ADMIN_REVOKED but present. */
   readonly adminRevokedPresent: readonly RoleCapabilityCell[];
+  /** PRINCIPAL-level Owner governance: an owner holder reaching an excluded key via any path. */
+  readonly forbiddenPrincipalHoldings: readonly { readonly principalId: string; readonly capabilityKey: string }[];
   /** Every entry above that IS drift, flattened. Empty means the tenant is fully explained. */
   readonly drift: readonly (RoleCapabilityCell & { readonly kind: string })[];
 }
@@ -181,6 +245,9 @@ export function verifyTenantAuthority(input: {
   readonly systemDefault: readonly RoleCapabilityCell[];
   readonly live: readonly RoleCapabilityCell[];
   readonly decisions: readonly CurrentDecision[];
+  /** Optional principal view: each principal's GLOBAL Role keys and unexpired direct capability keys. */
+  readonly principals?: readonly { readonly principalId: string; readonly roleKeys: readonly string[];
+    readonly directCapabilityKeys: readonly string[] }[];
 }): TenantAuthorityVerification {
   const decisions = decisionIndex(input.decisions);
   const defaults = new Set(input.systemDefault.map((p) => cellKey(p.roleKey, p.capabilityKey)));
@@ -217,7 +284,21 @@ export function verifyTenantAuthority(input: {
     if (held && !isDefault) out.unexplainedExtra.push(cell);
     if (!held && isDefault) out.missingDefault.push(cell);
   }
+  const liveByRole = new Map<string, Set<string>>();
+  for (const p of input.live) {
+    if (!liveByRole.has(p.roleKey)) liveByRole.set(p.roleKey, new Set());
+    liveByRole.get(p.roleKey)!.add(p.capabilityKey);
+  }
+  const forbiddenPrincipalHoldings: { principalId: string; capabilityKey: string }[] = [];
+  for (const principal of input.principals ?? []) {
+    const effective = new Set(principal.directCapabilityKeys);
+    for (const roleKey of principal.roleKeys) for (const k of liveByRole.get(roleKey) ?? []) effective.add(k);
+    for (const capabilityKey of ownerPrincipalViolations(principal.roleKeys, effective)) {
+      forbiddenPrincipalHoldings.push({ principalId: principal.principalId, capabilityKey });
+    }
+  }
   const drift = [
+    ...forbiddenPrincipalHoldings.map((h) => ({ roleKey: `principal:${h.principalId}`, capabilityKey: h.capabilityKey, kind: "FORBIDDEN_PRINCIPAL_HOLDING" })),
     ...out.forbiddenPresent.map((c) => ({ ...c, kind: "FORBIDDEN_PRESENT" })),
     ...out.unexplainedExtra.map((c) => ({ ...c, kind: "UNEXPLAINED_EXTRA" })),
     ...out.missingDefault.map((c) => ({ ...c, kind: "MISSING_DEFAULT" })),
@@ -229,6 +310,7 @@ export function verifyTenantAuthority(input: {
     forbiddenPresent: freeze(out.forbiddenPresent), explainedByAdminGrant: freeze(out.explainedByAdminGrant),
     explainedByAdminRevoke: freeze(out.explainedByAdminRevoke), unexplainedExtra: freeze(out.unexplainedExtra),
     missingDefault: freeze(out.missingDefault), adminGrantedMissing: freeze(out.adminGrantedMissing),
-    adminRevokedPresent: freeze(out.adminRevokedPresent), drift: freeze(drift),
+    adminRevokedPresent: freeze(out.adminRevokedPresent),
+    forbiddenPrincipalHoldings: freeze(forbiddenPrincipalHoldings), drift: freeze(drift),
   });
 }

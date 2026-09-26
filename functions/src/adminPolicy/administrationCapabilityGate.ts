@@ -38,16 +38,26 @@ export async function capabilityKeysFor(
   const wanted = new Set(roleKeys);
   const roleIds = roles.filter((r) => wanted.has(r.key)).map((r) => r.id);
   // NEVER call listRoleCapabilities with an empty list: the port reads that as EVERY Role.
-  const [catalog, roleGrants, direct] = await Promise.all([
+  const [catalog, roleGrants, direct, conditions] = await Promise.all([
     repo.listCapabilities(),
     roleIds.length > 0 ? repo.listRoleCapabilities(tenantId, roleIds) : Promise.resolve([]),
     principalId ? repo.listPrincipalCapabilities(tenantId, principalId) : Promise.resolve([]),
+    repo.listGrantConditions(tenantId),
   ]);
   const keyById = new Map(catalog.map((c) => [c.id, c.key]));
+  const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+  // FAIL CLOSED: a Role grant narrowed by an ACTIVE condition is NOT in a flat capability set -- this
+  // gate cannot evaluate a condition, so a conditioned grant must not act as an unconditional one.
+  const conditioned = new Set(conditions.filter((c) => c.grantScope === "ROLE").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
+  const conditionedDirect = new Set(conditions.filter((c) => c.grantScope === "PRINCIPAL").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
   const keys = new Set<string>();
-  for (const g of [...roleGrants, ...direct]) {
+  for (const g of roleGrants) {
     const key = keyById.get(g.capabilityId);
-    if (key) keys.add(key);
+    if (key && !conditioned.has(`${roleKeyById.get(g.roleId)}|${key}`)) keys.add(key);
+  }
+  for (const g of direct) {
+    const key = keyById.get(g.capabilityId);
+    if (key && !conditionedDirect.has(`${g.principalId}|${key}`)) keys.add(key);
   }
   return keys;
 }
@@ -67,38 +77,4 @@ export async function requireSecurityAdministrationCapability(
 ): Promise<void> {
   const held = await actorCapabilities(repo, actor);
   if (!hasSecurityAdministrationCapability(held, action)) throw new AdministrationCapabilityDeniedError(action);
-}
-
-/**
- * How many ACTIVE principals would still hold `capabilityKey` if the given change were applied.
- *
- * A principal holds it through an ACTIVE assignment to a Role that holds it, or a direct grant.
- * `without` removes one Role grant, one direct grant, or one assignment from the count.
- */
-export async function holdersAfter(
-  repo: PolicyReader,
-  tenantId: TenantId,
-  capabilityKey: string,
-  without: { readonly roleId?: string; readonly principalId?: string; readonly assignmentId?: string },
-): Promise<number> {
-  const catalog = await repo.listCapabilities();
-  const capability = catalog.find((c) => c.key === capabilityKey);
-  if (!capability) return 0;
-  const roleGrants = (await repo.listRoleCapabilities(tenantId))
-    .filter((g) => g.capabilityId === capability.id && g.roleId !== without.roleId);
-  const holdingRoles = new Set(roleGrants.map((g) => g.roleId));
-  const directHolders = new Set((await repo.listPrincipalCapabilities(tenantId))
-    .filter((g) => g.capabilityId === capability.id && g.principalId !== without.principalId)
-    .map((g) => g.principalId));
-  let count = 0;
-  for (const principalId of await repo.listTenantPrincipalIds(tenantId)) {
-    const membership = await repo.getMembership(tenantId, principalId);
-    if (!membership || membership.status !== "active") continue;
-    if (directHolders.has(principalId)) { count += 1; continue; }
-    const assignments = await repo.listAssignmentsForPrincipal(tenantId, principalId);
-    if (assignments.some((a) => a.status === "active" && a.id !== without.assignmentId && holdingRoles.has(a.roleId))) {
-      count += 1;
-    }
-  }
-  return count;
 }

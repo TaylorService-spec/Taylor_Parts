@@ -54,6 +54,8 @@ export interface EmployeeReadActor {
    * Required, never optional, and never a plain value -- see the seam note below `runEmployeeRead`.
    */
   readonly entitlements: EntitlementResolver;
+  /** Keys held only through conditioned grants: evaluated by the entitled decision, never by a flat check. */
+  readonly conditionallyHeld?: ReadonlySet<string>;
 }
 
 export interface EmployeeReadDeps {

@@ -408,10 +408,13 @@ export function verifyLiveTenantAuthority(input: {
   readonly live: readonly RoleCapabilityPair[];
   readonly decisions: readonly CurrentDecision[];
   readonly environment: "nonprod" | "global";
+  readonly principals?: readonly { readonly principalId: string; readonly roleKeys: readonly string[];
+    readonly directCapabilityKeys: readonly string[] }[];
 }): TenantAuthorityVerification {
   return verifyTenantAuthority({
     systemDefault: input.environment === "nonprod" ? nonprodAuthorityGrants() : globalAuthorityGrants(),
     live: input.live,
     decisions: input.decisions,
+    principals: input.principals,
   });
 }

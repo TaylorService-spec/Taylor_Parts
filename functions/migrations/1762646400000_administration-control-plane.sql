@@ -86,6 +86,9 @@ END
 $$;
 
 -- ── 1 ──
+-- audit_events gains a (tenant_id, id) key so every reference to an audit event can be TENANT-COMPOSITE.
+ALTER TABLE audit_events ADD CONSTRAINT audit_events_tenant_id_key UNIQUE (tenant_id, id);
+
 CREATE TABLE role_capability_decisions (
     id                  TEXT PRIMARY KEY,
     tenant_id           TEXT NOT NULL REFERENCES tenants(id),
@@ -95,21 +98,32 @@ CREATE TABLE role_capability_decisions (
     requires_condition  BOOLEAN NOT NULL DEFAULT false,
     reason              TEXT NOT NULL CHECK (length(btrim(reason)) > 0),
     actor_principal_id  TEXT NOT NULL,
-    audit_event_id      TEXT NOT NULL REFERENCES audit_events(id),
+    audit_event_id      TEXT NOT NULL,
     decided_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     superseded_at       TIMESTAMPTZ,
-    superseded_by       TEXT REFERENCES role_capability_decisions(id) DEFERRABLE INITIALLY DEFERRED,
+    superseded_by       TEXT,
+    UNIQUE (tenant_id, id),
     FOREIGN KEY (tenant_id, role_key) REFERENCES roles(tenant_id, key),
+    -- TENANT-COMPOSITE: a decision can only name an audit event, and a successor, of its OWN tenant.
+    FOREIGN KEY (tenant_id, audit_event_id) REFERENCES audit_events(tenant_id, id),
+    FOREIGN KEY (tenant_id, superseded_by) REFERENCES role_capability_decisions(tenant_id, id) DEFERRABLE INITIALLY DEFERRED,
     CHECK (decision = 'ADMIN_GRANTED' OR requires_condition = false),
-    CHECK ((superseded_at IS NULL) = (superseded_by IS NULL))
+    CHECK ((superseded_at IS NULL) = (superseded_by IS NULL)),
+    CHECK (superseded_by IS NULL OR superseded_by <> id),
+    -- ONE CURRENT DECISION PER CELL, checked at COMMIT: the successor is inserted first and the
+    -- predecessor stamped after, so the stamp can be verified against a row that already exists.
+    EXCLUDE USING btree (tenant_id WITH =, role_key WITH =, capability_key WITH =)
+        WHERE (superseded_at IS NULL) DEFERRABLE INITIALLY DEFERRED
 );
-CREATE UNIQUE INDEX role_capability_decisions_current
-    ON role_capability_decisions (tenant_id, role_key, capability_key) WHERE superseded_at IS NULL;
 CREATE INDEX role_capability_decisions_by_tenant
     ON role_capability_decisions (tenant_id, decided_at DESC);
+CREATE INDEX role_capability_decisions_by_cell
+    ON role_capability_decisions (tenant_id, role_key, capability_key) WHERE superseded_at IS NULL;
 
 CREATE FUNCTION role_capability_decisions_append_only() RETURNS trigger
 LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+DECLARE
+    v_ok INT;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'role_capability_decisions is append-only: DELETE would destroy an Administration decision';
@@ -119,17 +133,25 @@ BEGIN
        AND NEW.capability_key = OLD.capability_key AND NEW.decision = OLD.decision
        AND NEW.requires_condition = OLD.requires_condition AND NEW.reason = OLD.reason
        AND NEW.actor_principal_id = OLD.actor_principal_id AND NEW.audit_event_id = OLD.audit_event_id
-       AND NEW.decided_at = OLD.decided_at THEN
-        RETURN NEW;
+       AND NEW.decided_at = OLD.decided_at
+       -- The stamp is NOW, not backdated or forward-dated, and never before the decision it closes.
+       AND NEW.superseded_at >= OLD.decided_at
+       AND NEW.superseded_at BETWEEN now() - interval '1 minute' AND now() + interval '1 minute' THEN
+        -- ...and it names an EXISTING successor: same tenant, same cell, decided no earlier, still current.
+        SELECT count(*) INTO v_ok FROM role_capability_decisions s
+         WHERE s.id = NEW.superseded_by AND s.tenant_id = OLD.tenant_id AND s.role_key = OLD.role_key
+           AND s.capability_key = OLD.capability_key AND s.decided_at >= OLD.decided_at AND s.superseded_at IS NULL;
+        IF v_ok = 1 THEN RETURN NEW; END IF;
+        RAISE EXCEPTION 'role_capability_decisions is append-only: a decision may be superseded only by the current decision for the SAME cell in the SAME tenant';
     END IF;
-    RAISE EXCEPTION 'role_capability_decisions is append-only: only a current decision may be superseded, once';
+    RAISE EXCEPTION 'role_capability_decisions is append-only: only a current decision may be superseded, once, now';
 END
 $fn$;
 CREATE TRIGGER role_capability_decisions_append_only
     BEFORE UPDATE OR DELETE ON role_capability_decisions
     FOR EACH ROW EXECUTE FUNCTION role_capability_decisions_append_only();
 
--- ── 2 ──
+-- ── 2: append-only audit, and no TRUNCATE of any governed history ──
 CREATE FUNCTION audit_events_append_only() RETURNS trigger
 LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
 BEGIN
@@ -140,9 +162,37 @@ CREATE TRIGGER audit_events_append_only
     BEFORE UPDATE OR DELETE ON audit_events
     FOR EACH ROW EXECUTE FUNCTION audit_events_append_only();
 
--- ── 3 ──
--- A trigger runs with the CALLER's search_path, so every name below is schema-qualified and the
--- function pins its own path.
+-- Row triggers do not fire on TRUNCATE; a statement trigger does.
+CREATE FUNCTION governed_history_no_truncate() RETURNS trigger
+LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+BEGIN
+    RAISE EXCEPTION '% is governed history: TRUNCATE is refused', TG_TABLE_NAME;
+END
+$fn$;
+CREATE TRIGGER audit_events_no_truncate BEFORE TRUNCATE ON audit_events
+    FOR EACH STATEMENT EXECUTE FUNCTION governed_history_no_truncate();
+CREATE TRIGGER role_capability_decisions_no_truncate BEFORE TRUNCATE ON role_capability_decisions
+    FOR EACH STATEMENT EXECUTE FUNCTION governed_history_no_truncate();
+CREATE TRIGGER capability_grant_conditions_no_truncate BEFORE TRUNCATE ON capability_grant_conditions
+    FOR EACH STATEMENT EXECUTE FUNCTION governed_history_no_truncate();
+
+-- Filtered audit history (Administration audit read): tenant-scoped time order, actor, and JSONB
+-- containment over the before/after payloads.
+CREATE INDEX audit_events_by_tenant_actor ON audit_events (tenant_id, actor_uid, occurred_at DESC);
+CREATE INDEX audit_events_after_gin  ON audit_events USING gin (after jsonb_path_ops);
+CREATE INDEX audit_events_before_gin ON audit_events USING gin (before jsonb_path_ops);
+
+-- ── 3: the GRANT CELL is serialized, and a condition can never be lifted into ALL ──
+--
+-- One advisory lock per (tenant, ROLE, role key, capability key), taken by EVERY writer of the cell:
+-- the grant insert (trigger below), the condition retire/delete (trigger below), and the Administration
+-- commands. READ COMMITTED gives each statement in these volatile functions a fresh snapshot, so the
+-- check that follows the lock sees whatever the lock holder committed.
+CREATE FUNCTION grant_cell_lock(p_tenant TEXT, p_scope TEXT, p_grantor TEXT, p_capability TEXT) RETURNS void
+LANGUAGE sql AS $fn$
+    SELECT pg_advisory_xact_lock(hashtextextended('grant-cell|' || p_tenant || '|' || p_scope || '|' || p_grantor || '|' || p_capability, 0));
+$fn$;
+
 CREATE FUNCTION capability_grant_conditions_never_widen() RETURNS trigger
 LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
 DECLARE
@@ -153,6 +203,7 @@ BEGIN
         RAISE EXCEPTION 'capability_grant_conditions: a condition''s grant cell is its identity and never changes';
     END IF;
     IF OLD.status = 'ACTIVE' AND (TG_OP = 'DELETE' OR NEW.status <> 'ACTIVE') THEN
+        PERFORM grant_cell_lock(OLD.tenant_id, OLD.grant_scope, OLD.grantor_key, OLD.capability_key);
         IF OLD.grant_scope = 'ROLE' THEN
             SELECT count(*) INTO v_held
               FROM eos_policy.role_capabilities rc
@@ -177,6 +228,46 @@ $fn$;
 CREATE TRIGGER capability_grant_conditions_never_widen
     BEFORE UPDATE OR DELETE ON capability_grant_conditions
     FOR EACH ROW EXECUTE FUNCTION capability_grant_conditions_never_widen();
+
+-- EVERY INSERT of a Role grant takes the cell lock, then honours the cell's CURRENT decision:
+--   ADMIN_REVOKED                          -> refused (no default writer re-inserts a revoke)
+--   ADMIN_GRANTED with requires_condition  -> refused unless an ACTIVE condition narrows it
+-- The Administration command itself marks its transaction (eos_policy.administration_command) and
+-- is exempt: it IS the decision, and it validates both rules itself, inside the same lock.
+CREATE FUNCTION role_capabilities_honour_decisions() RETURNS trigger
+LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+DECLARE
+    v_role TEXT;
+    v_cap  TEXT;
+    v_decision TEXT;
+    v_requires BOOLEAN;
+    v_active INT;
+BEGIN
+    SELECT key INTO v_role FROM eos_policy.roles WHERE id = NEW.role_id AND tenant_id = NEW.tenant_id;
+    SELECT key INTO v_cap  FROM eos_policy.capabilities WHERE id = NEW.capability_id;
+    IF v_role IS NULL OR v_cap IS NULL THEN RETURN NEW; END IF; -- the FKs refuse it
+    PERFORM grant_cell_lock(NEW.tenant_id, 'ROLE', v_role, v_cap);
+    IF coalesce(current_setting('eos_policy.administration_command', true), '') = 'on' THEN RETURN NEW; END IF;
+    SELECT decision, requires_condition INTO v_decision, v_requires
+      FROM eos_policy.role_capability_decisions
+     WHERE tenant_id = NEW.tenant_id AND role_key = v_role AND capability_key = v_cap AND superseded_at IS NULL;
+    IF v_decision = 'ADMIN_REVOKED' THEN
+        RAISE EXCEPTION 'ADMIN_REVOKED: %/% was revoked through EOS Administration; a default writer may not re-insert it', v_role, v_cap;
+    END IF;
+    IF v_decision = 'ADMIN_GRANTED' AND v_requires THEN
+        SELECT count(*) INTO v_active FROM eos_policy.capability_grant_conditions
+         WHERE tenant_id = NEW.tenant_id AND grant_scope = 'ROLE' AND grantor_key = v_role
+           AND capability_key = v_cap AND status = 'ACTIVE';
+        IF v_active = 0 THEN
+            RAISE EXCEPTION 'CONDITION_REQUIRED: %/% requires an ACTIVE condition and has none', v_role, v_cap;
+        END IF;
+    END IF;
+    RETURN NEW;
+END
+$fn$;
+CREATE TRIGGER role_capabilities_honour_decisions
+    BEFORE INSERT ON role_capabilities
+    FOR EACH ROW EXECUTE FUNCTION role_capabilities_honour_decisions();
 
 -- ── 5: a direct Principal grant is a governed EXCEPTION ──
 -- Additive. `exception_reason` records why the exception exists (required by the command on every new
@@ -242,9 +333,20 @@ $$;
 
 ALTER TABLE principal_capabilities DROP COLUMN IF EXISTS expires_at, DROP COLUMN IF EXISTS exception_reason;
 
+DROP TRIGGER IF EXISTS role_capabilities_honour_decisions ON role_capabilities;
+DROP FUNCTION IF EXISTS role_capabilities_honour_decisions();
 DROP TRIGGER IF EXISTS capability_grant_conditions_never_widen ON capability_grant_conditions;
 DROP FUNCTION IF EXISTS capability_grant_conditions_never_widen();
+DROP FUNCTION IF EXISTS grant_cell_lock(TEXT, TEXT, TEXT, TEXT);
+DROP INDEX IF EXISTS audit_events_before_gin;
+DROP INDEX IF EXISTS audit_events_after_gin;
+DROP INDEX IF EXISTS audit_events_by_tenant_actor;
+DROP TRIGGER IF EXISTS capability_grant_conditions_no_truncate ON capability_grant_conditions;
+DROP TRIGGER IF EXISTS role_capability_decisions_no_truncate ON role_capability_decisions;
+DROP TRIGGER IF EXISTS audit_events_no_truncate ON audit_events;
+DROP FUNCTION IF EXISTS governed_history_no_truncate();
 DROP TRIGGER IF EXISTS audit_events_append_only ON audit_events;
 DROP FUNCTION IF EXISTS audit_events_append_only();
 DROP TABLE IF EXISTS role_capability_decisions;
 DROP FUNCTION IF EXISTS role_capability_decisions_append_only();
+ALTER TABLE audit_events DROP CONSTRAINT IF EXISTS audit_events_tenant_id_key;

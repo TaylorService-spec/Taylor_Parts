@@ -220,6 +220,8 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "getObjectActionGrantMatrix", "getSecurityRoleDetail", "listRoleCapabilityDecisionHistory",
     // The runtime evaluator's effective-access explanation (server-composed; admin.principalAccess.read).
     "explainEffectiveAccess",
+    // The condition vocabulary the server enforces (Pass 8).
+    "listSupportedConditionKinds",
   ].sort(), "the Owner's eight, listTenantPrincipals, the four Object-owned projections and the three control-plane reads");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",

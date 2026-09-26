@@ -89,8 +89,16 @@ interface MutableLookupCounters { requests: number; resolutions: number }
 
 export interface ResolvedOperationalContext {
   readonly principalContext: PrincipalContext;
-  /** Capability KEYS held via active Role assignments, in the resolved tenant only. UNCHANGED. */
+  /**
+   * Capability KEYS held via active Role assignments UNCONDITIONALLY, in the resolved tenant only --
+   * the set every flat gate reads. A key reachable only through a conditioned grant is NOT here.
+   */
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * Keys held ONLY through conditioned grants. Never a flat-gate answer: only the entitled seam
+   * (authorizeEntitledAction, via the actor's `conditionallyHeld`) may evaluate them, per record.
+   */
+  readonly conditionallyHeld: ReadonlySet<string>;
   /**
    * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- behind a REQUIRED, REQUEST-SCOPED,
    * MEMOIZING resolver.
@@ -212,12 +220,30 @@ async function operationalContextFor(
   // is resolved on the request path as it always was. The provenance read and the condition catalog
   // are deferred behind the required resolver below, because eleven of those gate sites never look
   // at them -- and a request that does not ask a question should not pay for its answer.
-  const capabilities = await capabilitiesForRoleKeys(
+  const held = await capabilitiesForRoleKeys(
     pool, principalContext.tenantId, principalContext.heldRoleKeys);
+  // A CONDITIONED-ONLY CAPABILITY IS NEVER IN THE FLAT SET (Pass 8 D1, PLATFORM_SAFETY). Every flat
+  // gate -- `capabilities.has(key)` -- cannot evaluate a condition, so a key this principal reaches
+  // ONLY through conditioned grants is withheld from `capabilities` and reported in
+  // `conditionallyHeld`, which only the entitled seam (authorizeEntitledAction) consults. The
+  // condition catalog is therefore read EAGERLY (one indexed read; zero for the SHIPPED provider), and
+  // the provenance read happens only when a condition names one of this principal's Roles.
+  const catalog = await Promise.resolve(conditions(principalContext.tenantId));
+  const roleKeys = principalContext.heldRoleKeys;
+  const touchesHeldRole = [...catalog.keys()].some((k) => roleKeys.some((r) => k.startsWith(`ROLE:${r}|`)));
+  let capabilities: ReadonlySet<string> = held;
+  let conditionallyHeld: ReadonlySet<string> = new Set<string>();
+  if (touchesHeldRole) {
+    const grants: CapabilityGrant[] = (await roleCapabilityGrants(pool, principalContext.tenantId, roleKeys))
+      .map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
+    const unconditional = new Set(entitlementsFrom(grants, catalog).filter((e) => e.condition === null).map((e) => e.capabilityKey));
+    capabilities = new Set([...held].filter((k) => unconditional.has(k)));
+    conditionallyHeld = new Set([...held].filter((k) => !unconditional.has(k)));
+  }
   const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
   const entitlements = requestScopedEntitlementResolver(
-    pool, principalContext.tenantId, principalContext.heldRoleKeys, conditions, counters);
-  return Object.freeze({ principalContext, capabilities, entitlements, lookups: counters });
+    pool, principalContext.tenantId, roleKeys, () => catalog, counters);
+  return Object.freeze({ principalContext, capabilities, conditionallyHeld, entitlements, lookups: counters });
 }
 
 /**

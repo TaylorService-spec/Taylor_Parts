@@ -91,6 +91,26 @@ export interface NewPrincipalCapabilityInput {
   readonly expiresAt?: string | null;
 }
 
+/** Filters for the Administration audit history read. All optional; combined with AND. */
+export interface AuditEventFilter {
+  /** Actor, target, or a payload principalId / granteeKey. */
+  readonly principalId?: string | null;
+  /** Target, or a payload employeeId. */
+  readonly employeeId?: string | null;
+  /** A payload granteeKey / roleKey, or (for assignments) the Role id. */
+  readonly roleKey?: string | null;
+  readonly roleId?: string | null;
+  readonly objectKey?: string | null;
+  readonly capabilityKey?: string | null;
+  readonly actionKey?: string | null;
+  /** A payload workflowKey, or the key of a workflow target. */
+  readonly workflowKey?: string | null;
+  /** occurred_at >= from (inclusive), occurred_at < to (exclusive). ISO instants. */
+  readonly from?: string | null;
+  readonly to?: string | null;
+  readonly limit: number;
+}
+
 /** A new tenant. The store assigns the id; the caller owns the key. */
 export interface NewTenantInput {
   readonly key: string;
@@ -270,6 +290,34 @@ export interface PolicyTransaction {
    */
   retireGrantCondition(grantScope: "ROLE" | "PRINCIPAL", grantorKey: string, capabilityKey: string): Promise<GrantConditionRecord | null>;
 
+  // ── serialization and in-transaction reads (Administration commands) ──
+  /**
+   * Mark this transaction as an Administration command and take the tenant's GOVERNANCE lock. Every
+   * grant/revoke/condition/assignment command and the catalog reconcile serialize on it, so the checks
+   * each makes INSIDE the transaction (anti-lockout counts, the no-op test, the current decision) are
+   * taken against a state no concurrent writer is changing.
+   */
+  beginAdministrationCommand(): Promise<void>;
+  /** The (tenant, ROLE, role, capability) cell lock the database triggers also take. */
+  lockGrantCell(roleKey: string, capabilityKey: string): Promise<void>;
+  /** The cell as it stands NOW, inside this transaction: the grant row, the current decision, the ACTIVE condition. */
+  readGrantCell(roleKey: string, capabilityKey: string): Promise<{
+    readonly grant: RoleCapabilityRecord | null;
+    readonly decision: RoleCapabilityDecisionRecord | null;
+    readonly condition: GrantConditionRecord | null;
+  }>;
+  readAssignment(assignmentId: string): Promise<PolicyRoleAssignmentRecord | null>;
+  /**
+   * How many principals the gate would ADMIT for this capability, excluding one assignment, one Role
+   * grant or one direct grant: enabled, active member, active GLOBAL non-stale assignment to a Role that
+   * grants it unconditioned, or a direct grant with no expiry.
+   */
+  administrationHolderCount(capabilityKey: string, exclude: {
+    readonly assignmentId?: string; readonly roleId?: string; readonly principalId?: string;
+  }): Promise<number>;
+  /** Active assignments to protected Roles, excluding one. */
+  protectedRoleAssignmentCount(excludeAssignmentId: string | null): Promise<number>;
+
   // ── audit ──
   /**
    * Not optional and not configurable. Every mutation in this subsystem writes one. Returns the
@@ -346,6 +394,12 @@ export interface PolicyReader {
   listWorkflowRoleBindings(tenantId: TenantId, versionId: string): Promise<readonly WorkflowRoleBindingRecord[]>;
   getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string): Promise<WorkflowInstanceRecord | null>;
   listAuditEvents(tenantId: TenantId, limit: number): Promise<readonly PolicyAuditEventRecord[]>;
+  /**
+   * Tenant-scoped, FILTERED audit history, oldest first, bounded by `limit`. Every filter is optional
+   * and parameterized; payload filters match a top-level key of `before` OR `after` (JSONB containment,
+   * GIN-indexed by migration 1762646400000).
+   */
+  queryAuditEvents(tenantId: TenantId, filter: AuditEventFilter): Promise<readonly PolicyAuditEventRecord[]>;
 
   // ── Administration decisions and grant conditions ──
   /** Decisions in this tenant. `currentOnly` (default true) omits superseded history. */

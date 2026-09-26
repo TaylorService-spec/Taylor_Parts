@@ -62,6 +62,9 @@ const PRE_EXISTING_RECONCILE_EXTRAS = Object.freeze([
   "admin/reorder.request.assign", "admin/reorder.request.read.queue",
   "dispatcher/reorder.request.assign", "dispatcher/reorder.request.read.queue",
   "partsManager/reorder.request.read.queue", "purchasingManager/reorder.request.read.queue",
+  // Pass 8: the technician Purchase Order cells are no longer a SYSTEM INVARIANT (LEGACY_BASELINE_ARTIFACT);
+  // the legacy catalog declares them, so the reconcile now adds them like the rows above.
+  "technician/reorder.purchaseOrder.create", "technician/reorder.purchaseOrder.read",
 ]);
 
 const DISPATCHER_SELLING = Object.freeze([
@@ -149,7 +152,7 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
   const ctxFor = (p, conditions = provider) => capabilityAuthority.resolveOperationalContext(repo, pool,
     { identityProvider: "firebase", externalSubject: p.subject, requestedTenantId: null }, conditions);
   const actorOf = (ctx) => ({ tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid,
-    capabilities: ctx.capabilities, entitlements: ctx.entitlements });
+    capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld, entitlements: ctx.entitlements });
   const decide = async (p, capabilityKey, recordId) => composition.authorizeOperationalAction(
     evaluator.postgresContextualReader(pool), actorOf(await ctxFor(p)), { capabilityKey, recordId });
   const commercial = (p, operation) => executeCommercialOperation({ reader: repo, pool },
@@ -345,11 +348,16 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
     assert.equal((await decide(techA, WO_READ, "wo-cp-b")).outcome, "NOT_ASSIGNED");
   });
 
-  await t.test("FAIL CLOSED on flat-set kernels: a conditioned-only capability is withheld from Commercial", async () => {
+  await t.test("FAIL CLOSED on flat-set kernels: a condition on a flat-gated capability is refused, and a raw one withholds", async () => {
+    // Pass 8 D1: salesAgreement.accept is read by the Commercial kernel's FLAT check, so it is not on the
+    // condition allow-list at all.
     const res = await admin("setGrantCondition", { objectKey: "salesAgreement", actionKey: "accept", roleKey: "salesManager",
-      condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SALES_ACCEPTANCE" }]] }, reason: "narrow acceptance" });
-    assert.equal(res.ok, true, JSON.stringify(res));
-    // The Commercial kernel cannot evaluate the condition, so it must NOT treat the grant as unconditional.
+      condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] }, reason: "narrow acceptance" });
+    assert.deepEqual([res.ok, res.code], [false, "INVALID_INPUT"]);
+    assert.match(res.message, /CONDITION_NOT_SUPPORTED/);
+    // A condition row written behind Administration's back still never widens: the key leaves the flat set.
+    await q(`INSERT INTO eos_policy.capability_grant_conditions (id,tenant_id,grant_scope,grantor_key,capability_key,condition,established_by,updated_by)
+             VALUES ('gc-raw',$1,'ROLE','salesManager','salesAgreement.accept','{"paths":[[{"kind":"WORK_ELIGIBILITY","qualificationCode":"SERVICE_TECHNICIAN"}]]}'::jsonb,'x','x')`, [TENANT]);
     assert.equal((await commercial(salesManager, "acceptSalesAgreement")).code, "CAPABILITY_REQUIRED");
     // The other, unconditioned grant is unaffected.
     assert.equal((await commercial(salesManager, "createSalesOrderFromOpportunity")).code, "IDEMPOTENCY_KEY_REQUIRED");
@@ -440,9 +448,10 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
   });
 
   await t.test("the Admin reads show sources and conditions for the UI", async () => {
-    // Grant the security-policy read to admin through Administration itself -- no migration.
+    // admin already holds admin.securityPolicy.read (migration 1762041600000); an administrator may not
+    // widen a Role it holds (Pass 8 D5a), so the attempt is refused rather than silently a no-op.
     const g = await admin("grantObjectActionToRole", { objectKey: "rolesPermissions", actionKey: "read", roleKey: "admin", reason: "read the matrix" });
-    assert.equal(g.ok, true);
+    assert.deepEqual([g.ok, g.code], [false, "FORBIDDEN"]);
     const matrix = await admin("getObjectActionGrantMatrix", { objectKey: "workOrder" });
     assert.equal(matrix.ok, true, JSON.stringify(matrix));
     const read = matrix.data.actions.find((a) => a.actionKey === "read");

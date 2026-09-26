@@ -303,6 +303,12 @@ export type EntitlementResolver = () => EntitlementSet | Promise<EntitlementSet>
 
 export interface EntitledActor extends ContextualActor {
   /**
+   * Keys this actor reaches ONLY through conditioned grants (ResolvedOperationalContext.conditionallyHeld).
+   * They are absent from the flat `capabilities` set by design; the entitled decision may still
+   * EVALUATE them -- it admits nothing without an entitlement whose condition holds.
+   */
+  readonly conditionallyHeld?: ReadonlySet<string>;
+  /**
    * Provenance-preserving entitlements for this actor, in the resolved tenant only, behind a
    * REQUIRED resolver. Required, never optional, and never a plain value -- see EntitlementResolver.
    */
@@ -391,7 +397,8 @@ export async function authorizeEntitledAction(
   // 0. CAPABILITY FIRST — byte-identical to the seam's refusal, BEFORE the entitlement resolver is
   //    invoked, so a caller without authority learns only that they lack the capability AND costs
   //    the platform nothing. This is step 1 of the Owner's evaluation order.
-  if (!actor || !(actor.capabilities instanceof Set) || !actor.capabilities.has(capabilityKey)) {
+  const conditionallyHeld = actor?.conditionallyHeld instanceof Set && actor.conditionallyHeld.has(capabilityKey);
+  if (!actor || !(actor.capabilities instanceof Set) || (!actor.capabilities.has(capabilityKey) && !conditionallyHeld)) {
     return decide({ allowed: false, outcome: "CAPABILITY_MISSING", detail: capabilityKey,
       contextEvaluated: false, viaGrantor: null, viaCondition: false });
   }
@@ -457,8 +464,12 @@ export async function authorizeEntitledAction(
     let decision: AuthorizationDecision;
     try {
       contextEvaluated = true;
+      // The contextual evaluator re-checks the flat set first. A key reached ONLY through conditioned
+      // grants is absent from it by design (conditionallyHeld), and this entitlement is exactly such a
+      // grant -- so the evaluator is handed the key for THIS evaluation only, and decides the condition.
       decision = await authorizeAnyPath(reader, {
-        actor, capabilityKey, paths: condition.paths, record,
+        actor: conditionallyHeld ? { ...actor, capabilities: new Set([...actor.capabilities, capabilityKey]) } : actor,
+        capabilityKey, paths: condition.paths, record,
       });
     } catch {
       unavailable ??= { grantor: entitlement.grantor, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",

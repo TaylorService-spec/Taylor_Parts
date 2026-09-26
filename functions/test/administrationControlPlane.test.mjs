@@ -23,11 +23,16 @@ import {
 } from "../lib/adminPolicy/administrationAuthority.js";
 import * as commands from "../lib/adminPolicy/policyCommands.js";
 import { executeAdminOperation } from "../lib/adminPolicy/adminPolicyApi.js";
+import { OPERATIONAL_SCOPE_TYPES } from "../lib/eosWorkforce/operationalScopeVocabulary.js";
 import {
   FORBIDDEN_ROLE_CAPABILITY_PAIRS,
   forbiddenPair,
   resolveCell,
   defaultWriterMayInsert,
+  PLATFORM_SAFETY_INVARIANTS,
+  CONDITION_OPERATIONAL_SCOPE_TYPES,
+  conditionIsEvaluableFor,
+  ownerPrincipalViolations,
   decisionIndex,
   verifyTenantAuthority,
 } from "../lib/adminPolicy/roleCapabilityAdministration.js";
@@ -75,10 +80,19 @@ const auditCount = async (repo, tenantId) => (await repo.listAuditEvents(tenantI
 
 // ════════════════════ 1. invariants and precedence ════════════════════
 
-test("the system invariants derive from the Owner rulings and the baseline honours them", () => {
-  assert.equal(FORBIDDEN_ROLE_CAPABILITY_PAIRS.length, 23, "19 + 2 Owner ruling-A exclusions + 2 withheld technician cells");
+test("the system invariants: OWNER_GOVERNANCE pairs + PLATFORM_SAFETY rules, nothing else immutable", () => {
+  // Pass 8 Owner rule: only PLATFORM_SAFETY and OWNER_GOVERNANCE may be immutable. 19 ruling-A keys +
+  // reorder.request.assign; the superseded queue key and the technician PO cells are NOT immutable.
+  assert.equal(FORBIDDEN_ROLE_CAPABILITY_PAIRS.length, 20);
+  assert.ok(FORBIDDEN_ROLE_CAPABILITY_PAIRS.every((p) => p.roleKey === "owner" && p.invariantClass === "OWNER_GOVERNANCE"));
   assert.ok(forbiddenPair("owner", "salesAgreement.accept"), "ruling A: maker/checker");
-  assert.ok(forbiddenPair("technician", "reorder.purchaseOrder.read"), "the withheld technician cell");
+  assert.ok(forbiddenPair("owner", "reorder.request.assign"), "coordination, not oversight");
+  assert.equal(forbiddenPair("owner", "reorder.request.read.queue"), null, "LEGACY_BASELINE_ARTIFACT -- not immutable");
+  assert.equal(forbiddenPair("technician", "reorder.purchaseOrder.read"), null, "LEGACY_BASELINE_ARTIFACT -- the ruling withholds CONDITION activation");
+  assert.equal(conditionIsEvaluableFor("reorder.purchaseOrder.read"), false, "...which the condition allow-list preserves");
+  assert.deepEqual(PLATFORM_SAFETY_INVARIANTS.map((i) => i.key),
+    ["ANTI_LOCKOUT", "ADMIN_NOT_CONDITIONABLE", "NEVER_WIDEN_ON_RETIRE", "APPEND_ONLY_AUDIT"]);
+  assert.deepEqual([...CONDITION_OPERATIONAL_SCOPE_TYPES], [...OPERATIONAL_SCOPE_TYPES], "restated scope vocabulary equals the Workforce one");
   assert.equal(forbiddenPair("admin", "salesAgreement.accept"), null);
   assert.equal(forbiddenPair("technician", "workOrder.record.read"), null);
   assert.doesNotThrow(() => assertBaselineHonoursSystemInvariants());
@@ -230,8 +244,6 @@ test("a SYSTEM INVARIANT pair is refused, and so is a capability that does not e
   await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
     { objectKey: "salesAgreement", actionKey: "accept", roleKey: "owner", reason: REASON }), /SYSTEM_INVARIANT: owner may never hold salesAgreement\.accept/);
   await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
-    { objectKey: "purchaseOrder", actionKey: "read", roleKey: "technician", reason: REASON }), /SYSTEM_INVARIANT|no governed Object/);
-  await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
     { objectKey: "workOrder", actionKey: "frobnicate", roleKey: "dispatcher", reason: REASON }), /no governed action/);
   assert.equal(await auditCount(repo, tenantId), before, "a refusal writes nothing");
 });
@@ -251,7 +263,16 @@ test("conditions: validated like the runtime reads them; retiring one while the 
   }
   // Administration capabilities cannot be conditioned -- their gate reads the flat set.
   await assert.rejects(() => commands.setGrantCondition(repo, admin,
-    { objectKey: "rolesPermissions", actionKey: "assignRole", roleKey: "owner", condition: ASSIGNED, reason: REASON }), /CONDITION_NOT_EVALUABLE/);
+    { objectKey: "rolesPermissions", actionKey: "assignRole", roleKey: "owner", condition: ASSIGNED, reason: REASON }), /CONDITION_NOT_SUPPORTED/);
+  // THE ALLOW-LIST (Pass 8 D1): a capability a flat gate reads may not carry a condition at all.
+  await assert.rejects(() => commands.setGrantCondition(repo, admin,
+    { objectKey: "salesAgreement", actionKey: "accept", roleKey: "salesManager", reason: REASON,
+      condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] } }), /CONDITION_NOT_SUPPORTED/);
+  // Governed parameters only.
+  await assert.rejects(() => commands.setGrantCondition(repo, admin, { ...cell, reason: REASON,
+    condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "NO_SUCH_QUALIFICATION" }]] } }), /CONDITION_INVALID/);
+  await assert.rejects(() => commands.setGrantCondition(repo, admin, { ...cell, reason: REASON,
+    condition: { paths: [[{ kind: "OPERATIONAL_SCOPE", scopeType: "GALAXY" }]] } }), /CONDITION_INVALID/);
 
   // Grant WITH the condition in one transaction: one audit event, a requiresCondition decision.
   let before = await auditCount(repo, tenantId);
@@ -316,19 +337,22 @@ test("the last path to a governing Administration capability is never removed", 
   // The admin Role no longer carries it, so the admin principal is now REFUSED -- the Role name
   // authorizes nothing. The second principal administers through its direct grant...
   await assert.rejects(() => commands.revokeObjectActionFromPrincipal(repo, admin,
-    { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId }), /"admin\.securityPolicy\.write" is required/);
+    { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: REASON }), /"admin\.securityPolicy\.write" is required/);
   const secondActor = { tenantId, uid: secondId, heldRoleKeys: [] };
   // ...and that direct grant is now the last path, so IT is protected.
   await assert.rejects(() => commands.revokeObjectActionFromPrincipal(repo, secondActor,
-    { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId }), /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
+    { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", principalId: secondId, reason: REASON }), /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
 });
 
 // ════════════════════ 6. the API surface ════════════════════
 
 test("the control-plane reads show source, condition and holders; direct grants are DIRECT_EXCEPTION", async () => {
   const { repo, tenantId, admin, plainId, call } = await world();
-  // The read gate is admin.securityPolicy.read, like every other security-policy read.
-  await commands.grantObjectActionToRole(repo, admin, { objectKey: "rolesPermissions", actionKey: "read", roleKey: "admin", reason: REASON });
+  // The read gate is admin.securityPolicy.read, like every other security-policy read. Held by the admin
+  // Role as a SYSTEM DEFAULT here (a fixture row): an administrator may not grant a Role it holds.
+  const adminRole = await repo.getRoleByKey(tenantId, "admin");
+  const readCap = (await repo.listCapabilities()).find((c) => c.key === "admin.securityPolicy.read");
+  await repo.transact({ tenantId, uid: "migration:x" }, (tx) => tx.grantRoleCapability({ roleId: adminRole.id, capabilityId: readCap.id, grantedBy: "migration:x", grantedAt: new Date().toISOString() }));
   await commands.grantObjectActionToRole(repo, admin, { objectKey: "workOrder", actionKey: "read", roleKey: "technician", condition: ASSIGNED, reason: REASON });
   await commands.grantObjectActionToPrincipal(repo, admin, { objectKey: "workOrder", actionKey: "read", principalId: plainId, reason: "governed direct exception (fixture)" });
   // A pre-existing default grant (no decision) reads as SYSTEM_DEFAULT.
@@ -388,4 +412,90 @@ test("no Firebase and no Role-name authorization in the control-plane modules", 
     assert.match(body, /requireSecurityAdministrationCapability\(/, `${fn} is capability-gated`);
     assert.doesNotMatch(body, /requireAdministrationAuthority\(/, `${fn} still checks a Role name`);
   }
+});
+
+// ════════════════════ 7. Pass 8 review regressions (offline half) ════════════════════
+
+test("D5 Owner escalation: no self-administration; Owner cannot confer security-policy authority; ruling A at the PRINCIPAL", async () => {
+  const { repo, tenantId, admin, plainId } = await world();
+  const ownerRole = await repo.getRoleByKey(tenantId, "owner");
+  const adminRole = await repo.getRoleByKey(tenantId, "admin");
+  // An Owner principal, staffed by the administrator.
+  const ownerMade = await ensureTenantPrincipal(repo, { tenantId, externalSubject: "uid-cp-owner", actorUid: OPERATOR, actorRoleKeys: ["admin"] });
+  const ownerId = ownerMade.principal?.id ?? ownerMade.id ?? ownerMade.principalId;
+  await commands.assignRole(repo, admin, { principalId: ownerId, roleId: ownerRole.id, reason: REASON });
+  const ownerActor = { tenantId, uid: ownerId, heldRoleKeys: ["owner"] };
+
+  // (a) self-assignment of ANY Role, and a direct self-grant, are refused.
+  await assert.rejects(() => commands.assignRole(repo, ownerActor, { principalId: ownerId, roleId: adminRole.id, reason: REASON }), /SELF_ADMINISTRATION/);
+  await assert.rejects(() => commands.assignRole(repo, admin, { principalId: admin.uid, roleId: ownerRole.id, reason: REASON }), /SELF_ADMINISTRATION/);
+  await assert.rejects(() => commands.grantObjectActionToPrincipal(repo, admin,
+    { objectKey: "workOrder", actionKey: "read", principalId: admin.uid, reason: REASON }), /SELF_ADMINISTRATION/);
+  // ...and so is widening a Role the actor holds.
+  await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
+    { objectKey: "workOrder", actionKey: "read", roleKey: "admin", reason: REASON }), /SELF_ADMINISTRATION/);
+  // (b) Owner (admin.roleAssignment.write only) may not assign a Role conferring admin.securityPolicy.write.
+  await assert.rejects(() => commands.assignRole(repo, ownerActor, { principalId: plainId, roleId: adminRole.id, reason: REASON }), /PRIVILEGE_ESCALATION/);
+  // (c) ruling A at the principal: an owner holder may not reach an excluded key by a custom Role...
+  await commands.createRole(repo, admin, { key: "acceptDesk", name: "Accept Desk" });
+  const desk = await repo.getRoleByKey(tenantId, "acceptDesk");
+  await commands.grantObjectActionToRole(repo, admin, { objectKey: "salesAgreement", actionKey: "accept", roleKey: "acceptDesk", reason: REASON });
+  await assert.rejects(() => commands.assignRole(repo, admin, { principalId: ownerId, roleId: desk.id, reason: REASON }), /SYSTEM_INVARIANT/);
+  // ...nor by a direct grant...
+  await assert.rejects(() => commands.grantObjectActionToPrincipal(repo, admin,
+    { objectKey: "salesAgreement", actionKey: "accept", principalId: ownerId, reason: REASON }), /SYSTEM_INVARIANT/);
+  // ...nor by widening a Role an owner holder already holds.
+  await commands.createRole(repo, admin, { key: "ownerDesk", name: "Owner Desk" });
+  const ownerDesk = await repo.getRoleByKey(tenantId, "ownerDesk");
+  await commands.assignRole(repo, admin, { principalId: ownerId, roleId: ownerDesk.id, reason: REASON });
+  await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
+    { objectKey: "salesAgreement", actionKey: "accept", roleKey: "ownerDesk", reason: REASON }), /SYSTEM_INVARIANT/);
+  // The drift report sees a principal-level holding written behind Administration's back.
+  const v = verifyTenantAuthority({ systemDefault: [], live: [{ roleKey: "acceptDesk", capabilityKey: "salesAgreement.accept" }],
+    decisions: [], principals: [{ principalId: ownerId, roleKeys: ["owner", "acceptDesk"], directCapabilityKeys: [] }] });
+  assert.deepEqual(v.forbiddenPrincipalHoldings, [{ principalId: ownerId, capabilityKey: "salesAgreement.accept" }]);
+  assert.ok(v.drift.some((d) => d.kind === "FORBIDDEN_PRINCIPAL_HOLDING"));
+  assert.deepEqual(ownerPrincipalViolations(["owner"], ["reorder.request.assign", "workOrder.record.read"]), ["reorder.request.assign"]);
+});
+
+test("D9 an EXPIRED direct exception is refreshed, never audited as granted while it stays expired; D11 revoke needs a reason", async () => {
+  const { repo, tenantId, admin, plainId } = await world();
+  const cap = (await repo.listCapabilities()).find((c) => c.key === "workOrder.record.read");
+  await repo.transact({ tenantId, uid: OPERATOR }, (tx) => tx.grantPrincipalCapability({ principalId: plainId, capabilityId: cap.id,
+    grantedBy: OPERATOR, grantedAt: new Date().toISOString(), exceptionReason: "temp", expiresAt: new Date(Date.now() - 1000).toISOString() }));
+  assert.equal((await repo.listPrincipalCapabilities(tenantId, plainId)).length, 0, "expired confers nothing");
+  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const refreshed = await commands.grantObjectActionToPrincipal(repo, admin,
+    { objectKey: "workOrder", actionKey: "read", principalId: plainId, reason: "renewed cover", expiresAt: future });
+  assert.equal(refreshed.expiresAt, future);
+  assert.equal(refreshed.exceptionReason, "renewed cover");
+  assert.equal((await repo.listPrincipalCapabilities(tenantId, plainId)).length, 1, "the audited grant is effective");
+  await assert.rejects(() => commands.revokeObjectActionFromPrincipal(repo, admin,
+    { objectKey: "workOrder", actionKey: "read", principalId: plainId }), /REASON_REQUIRED/);
+});
+
+test("listSupportedConditionKinds: the enforced vocabulary; audit history filters server-side", async () => {
+  const { repo, tenantId, admin, call } = await world();
+  const adminRole = await repo.getRoleByKey(tenantId, "admin");
+  const readCap = (await repo.listCapabilities()).find((c) => c.key === "admin.securityPolicy.read");
+  await repo.transact({ tenantId, uid: "migration:x" }, (tx) => tx.grantRoleCapability({ roleId: adminRole.id, capabilityId: readCap.id, grantedBy: "migration:x", grantedAt: new Date().toISOString() }));
+  const kinds = await call("listSupportedConditionKinds", {});
+  assert.equal(kinds.ok, true, JSON.stringify(kinds));
+  const byKind = Object.fromEntries(kinds.data.kinds.map((k) => [k.kind, k]));
+  assert.deepEqual(Object.keys(byKind).sort(), ["ALL", "BUSINESS_UNIT", "COMPANY", "OPERATIONAL_SCOPE", "RECORD_ASSIGNMENT", "SELF", "TEAM", "WORK_ELIGIBILITY"]);
+  for (const k of kinds.data.kinds) assert.deepEqual(Object.keys(k).sort(), ["capabilities", "kind", "parameters", "reason", "recordKinds", "supported"]);
+  assert.deepEqual([byKind.RECORD_ASSIGNMENT.supported, byKind.RECORD_ASSIGNMENT.recordKinds], [true, ["workOrder"]]);
+  assert.deepEqual(byKind.RECORD_ASSIGNMENT.capabilities.map((c) => c.capabilityKey), ["workOrder.record.read"]);
+  assert.deepEqual([byKind.TEAM.supported, typeof byKind.TEAM.reason], [false, "string"]);
+  assert.ok(byKind.WORK_ELIGIBILITY.parameters.qualificationCode.includes("SERVICE_TECHNICIAN"));
+
+  // Audit history, filtered server-side.
+  await commands.grantObjectActionToRole(repo, admin, { objectKey: "workOrder", actionKey: "read", roleKey: "technician", reason: REASON });
+  await commands.grantObjectActionToRole(repo, admin, { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: REASON });
+  const filtered = await repo.queryAuditEvents(tenantId, { capabilityKey: "workOrder.record.read", limit: 50 });
+  assert.deepEqual(filtered.map((e) => e.after.capabilityKey), ["workOrder.record.read"]);
+  assert.deepEqual((await repo.queryAuditEvents(tenantId, { roleKey: "dispatcher", limit: 50 })).map((e) => e.action), ["grantObjectActionToRole"]);
+  assert.equal((await repo.queryAuditEvents(tenantId, { objectKey: "workOrder", limit: 50 })).length, 2);
+  assert.equal((await repo.queryAuditEvents(tenantId, { objectKey: "workOrder", from: "2999-01-01T00:00:00.000Z", limit: 50 })).length, 0);
+  assert.equal((await repo.queryAuditEvents(tenantId, { principalId: admin.uid, limit: 500 })).length >= 2, true);
 });

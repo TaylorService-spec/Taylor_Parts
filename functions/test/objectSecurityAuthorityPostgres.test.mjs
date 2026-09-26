@@ -187,7 +187,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     assert.equal(audited.after.granteeKey, plainId);
 
     const removed = await commands.revokeObjectActionFromPrincipal(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId });
+      { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId, reason: "exception ended" });
     assert.equal(removed.id, grant.id);
   });
 
@@ -201,6 +201,9 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
 
   await t.test("a principal from another tenant refuses", async () => {
     const other = await bootstrapTenant(repo, { key: "other-objsec", name: "Other", actorUid: OPERATOR });
+    // The other tenant's first administrator (the bootstrap grants admin.roleAssignment.write, which
+    // admitting a Principal now requires).
+    await bootstrapAdministrator(repo, { tenantId: other.tenant.id, externalSubject: "firebase-uid-other-admin", performedBy: OPERATOR });
     const outsider = await ensureTenantPrincipal(repo, {
       tenantId: other.tenant.id, externalSubject: "firebase-uid-outsider",
       actorUid: OPERATOR, actorRoleKeys: ["admin"],
