@@ -404,10 +404,14 @@ export const WORKFLOW_GUARD_KINDS = Object.freeze(["RECORD_ASSIGNMENT"] as const
 export type WorkflowGuardKind = (typeof WORKFLOW_GUARD_KINDS)[number];
 
 /**
- * Who a binding names. SECURITY_ROLE is the only evaluable kind. FUNCTIONAL_ROLE is the documented
- * extension point (pass8 census): when an evaluator exists it NARROWS -- the action is allowed only
- * if the capability comes from a qualifying Security Role AND, when the action has any
- * FUNCTIONAL_ROLE binding, the linked Employee holds one of them. Until then it is refused.
+ * Who a binding names. Both kinds are evaluable (migration 1762819200000):
+ *
+ *   SECURITY_ROLE    a Security Role the principal must hold (role_id). Unchanged.
+ *   FUNCTIONAL_ROLE  a Functional Role (eos_workforce.functional_roles) the principal's LINKED EMPLOYEE must
+ *                    currently hold (functional_role_id). It only NARROWS: the action is allowed only if the
+ *                    capability comes from a qualifying Security Role (the same evaluator) AND the Security Role
+ *                    binding rule holds AND, when the action has any FUNCTIONAL_ROLE binding, the linked Employee
+ *                    holds one of them. A Functional Role never grants a capability.
  */
 export const WORKFLOW_BINDING_KINDS = Object.freeze(["SECURITY_ROLE", "FUNCTIONAL_ROLE"] as const);
 export type WorkflowBindingKind = (typeof WORKFLOW_BINDING_KINDS)[number];
@@ -416,9 +420,25 @@ export type WorkflowBindingKind = (typeof WORKFLOW_BINDING_KINDS)[number];
 export interface WorkflowRoleBindingRecord extends TenantOwned, Provenance {
   readonly workflowVersionId: string;
   readonly actionKey: string;
-  readonly roleId: string;
+  /** The Security Role (SECURITY_ROLE bindings); null on a FUNCTIONAL_ROLE binding. */
+  readonly roleId: string | null;
+  /** The Functional Role (FUNCTIONAL_ROLE bindings); null/absent on a SECURITY_ROLE binding. */
+  readonly functionalRoleId?: string | null;
   /** Absent on a record written before the column; read as SECURITY_ROLE. */
   readonly bindingKind?: WorkflowBindingKind;
+}
+
+/**
+ * A tenant Functional Role catalog entry (eos_workforce.functional_roles), as the WORKFLOW control plane sees it:
+ * identity and status only. It carries no capability, by construction. The catalog is written by the governed
+ * Workforce commands (eosWorkforce/commands/employeeFunctionalRoleCommands.ts), never through this port.
+ */
+export interface FunctionalRoleRecord {
+  readonly tenantId: TenantId;
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly status: "ACTIVE" | "INACTIVE";
 }
 
 /** A running instance of a workflow over one business record, pinned to its version. */

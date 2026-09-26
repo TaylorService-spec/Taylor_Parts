@@ -272,6 +272,7 @@ const CONTEXT = Object.freeze({
     ["technician", new Set(["workOrder.transition", "workOrder.lifecycle.complete"])],
     ["fieldManager", new Set(["workOrder.transition"])],
   ]),
+  functionalRoles: new Map([["warranty-desk", { status: "ACTIVE" }], ["retired-duty", { status: "INACTIVE" }]]),
 });
 const VALID = () => ({
   objectKey: "workOrder",
@@ -316,7 +317,10 @@ test("validation: EVERY error code is produced by the case that should produce i
   expect("UNKNOWN_CAPABILITY", { ...v(), actions: v().actions.map((a) => (a.key === "go" ? { ...a, capabilityKey: "reorder.request.read.queue" } : a)) });
   expect("BINDING_WITHOUT_CAPABILITY", { ...v(), bindings: [...v().bindings, { actionKey: "end", roleKey: "dispatcher", roleRef: "dispatcher", bindingKind: "SECURITY_ROLE" }] });
   expect("UNKNOWN_ROLE", { ...v(), bindings: [...v().bindings, { actionKey: "go", roleKey: null, roleRef: "role-id-gone", bindingKind: "SECURITY_ROLE" }] });
-  expect("UNSUPPORTED_BINDING_KIND", { ...v(), bindings: [...v().bindings, { actionKey: "go", roleKey: "welder", roleRef: "welder", bindingKind: "FUNCTIONAL_ROLE" }] });
+  expect("UNSUPPORTED_BINDING_KIND", { ...v(), bindings: [...v().bindings, { actionKey: "go", roleKey: "welder", roleRef: "welder", bindingKind: "TEAM" }] });
+  // FUNCTIONAL_ROLE is evaluable (migration 1762819200000): an unknown or INACTIVE Functional Role refuses publish.
+  expect("UNKNOWN_FUNCTIONAL_ROLE", { ...v(), bindings: [...v().bindings, { actionKey: "go", roleKey: null, roleRef: "welder", bindingKind: "FUNCTIONAL_ROLE", functionalRoleKey: null }] });
+  expect("INACTIVE_FUNCTIONAL_ROLE", { ...v(), bindings: [...v().bindings, { actionKey: "go", roleKey: null, roleRef: "retired-duty", bindingKind: "FUNCTIONAL_ROLE", functionalRoleKey: "retired-duty" }] });
   expect("BINDING_UNKNOWN_ACTION", { ...v(), bindings: [...v().bindings, { actionKey: "nope", roleKey: "dispatcher", roleRef: "dispatcher", bindingKind: "SECURITY_ROLE" }] });
   expect("INVALID_GUARD", { ...v(), actions: v().actions.map((a) => (a.key === "go" ? { ...a, guardKind: "ANYTHING_GOES" } : a)) });
   expect("INVALID_GUARD", { ...v(), objectKey: "salesOrder" }); // RECORD_ASSIGNMENT has no salesOrder relation
@@ -355,9 +359,13 @@ test("runtime: decision = WORKFLOW_BINDING AND EFFECTIVE_AUTHORITY -- a binding 
   assert.equal(notBound.refusal, "notBoundToRole", "capability without binding: NO");
   const noCap = await authorizeWorkflowAction(definitionFor(bound.bindings, { capabilityKey: null }), INSTANCE, "go", attempt(["r-disp"], authority(true)));
   assert.equal(noCap.refusal, "actionWithoutCapability");
+  // A FUNCTIONAL_ROLE binding is evaluable now, and with NO Functional Role facts composed it fails closed.
   const functional = await authorizeWorkflowAction(
-    definitionFor([...bound.bindings, { actionKey: "go", roleId: "fr", bindingKind: "FUNCTIONAL_ROLE" }]), INSTANCE, "go", attempt(["r-disp"], authority(true)));
-  assert.equal(functional.refusal, "unsupportedBindingKind", "the documented extension point fails closed");
+    definitionFor([...bound.bindings, { actionKey: "go", roleId: null, functionalRoleId: "fr", bindingKind: "FUNCTIONAL_ROLE" }]), INSTANCE, "go", attempt(["r-disp"], authority(true)));
+  assert.equal(functional.refusal, "functionalRoleFactsUnavailable", "no facts composed: refused, never decided without them");
+  const unknownKind = await authorizeWorkflowAction(
+    definitionFor([...bound.bindings, { actionKey: "go", roleId: "r-x", bindingKind: "TEAM" }]), INSTANCE, "go", attempt(["r-disp"], authority(true)));
+  assert.equal(unknownKind.refusal, "unsupportedBindingKind", "a kind outside the closed list fails closed");
   const outage = await authorizeWorkflowAction(bound, INSTANCE, "go", attempt(["r-disp"], { async authorize() { throw new Error("db down"); } }));
   assert.deepEqual([outage.refusal, outage.outcome], ["effectiveAuthorityDenied", "CONTEXT_AUTHORITY_UNAVAILABLE"]);
 });

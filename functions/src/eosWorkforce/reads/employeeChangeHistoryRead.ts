@@ -4,7 +4,7 @@
 // target_id = the Employee id and actor_uid = the EOS Principal id (eosWorkforce/commands, appendEmployeeAudit). This
 // read exposes those rows for ONE Employee, and nothing else:
 //
-//   * CLOSED ACTION ALLOW-LIST. Only the ten Employee actions below. Any other audit row -- a tenant reconciliation,
+//   * CLOSED ACTION ALLOW-LIST. Only the twelve Employee actions below. Any other audit row -- a tenant reconciliation,
 //     a Job Role catalog change, a policy mutation, a future action nobody has reviewed -- is not history here, even
 //     if it happens to carry target_kind 'employee'. Adding an action is a code change with a test.
 //   * CLOSED VALUE PROJECTION. `before` / `after` are NOT the stored JSON verbatim: each action projects only its
@@ -73,6 +73,10 @@ const ACTIONS = Object.freeze({
   "employee.principalLink.establish": pick(["userAccess"]),
   "employee.principalLink.revoke": pick(["userAccess"]),
   "employee.principalLink.relink": pick(["userAccess"]),
+  // Functional Role assignment changes (commands/employeeFunctionalRoleCommands.ts). The Functional Role's id and key
+  // and the period; the assignment row id is internal and dropped.
+  "employee.functionalRole.assign": pick(["functionalRoleId", "functionalRoleKey", "effectiveFrom"]),
+  "employee.functionalRole.end": pick(["functionalRoleId", "functionalRoleKey", "effectiveFrom", "effectiveTo"]),
 } as const satisfies Record<string, Projector>);
 
 export type EmployeeChangeAction = keyof typeof ACTIONS;

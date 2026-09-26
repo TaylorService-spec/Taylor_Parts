@@ -257,7 +257,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // granted to admin only. Re-measured below: admin's set grows by exactly that key; no other persona moves.
   // 53: + the workflow control plane (1762732800000): workflow schema and triggers only -- no
   // capability, no grant, so no persona's set moves.
-  assert.equal(files.length, 53, "the migration chain moved; re-measure before trusting anything below");
+  // 54: + the Functional Role authority (1762819200000): one capability granted to NO Role, so no
+  // persona's set moves.
+  assert.equal(files.length, 54, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -355,7 +357,7 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 80); // + admin.securityPolicy.write (1762646400000)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 81); // + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.

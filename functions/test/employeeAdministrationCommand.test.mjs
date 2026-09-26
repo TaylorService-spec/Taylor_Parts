@@ -140,7 +140,9 @@ test("NO CAPABILITY IS ADDED BY THIS LANE: the new sources gate on the existing 
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"))
     .map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
   const declared = [...new Set([...migrations.matchAll(/'(admin\.employee[A-Za-z]*\.[a-z]+)'/g)].map((m) => m[1]))].sort();
-  assert.deepEqual(declared, ["admin.employeeJobRole.write", "admin.employeeOperationalScope.write",
+  // + admin.employeeFunctionalRole.write (migration 1762819200000, lane FR): a LATER wave's own narrow
+  // capability for the Functional Role fact -- not this lane's, and granted to no Role by its migration.
+  assert.deepEqual(declared, ["admin.employeeFunctionalRole.write", "admin.employeeJobRole.write", "admin.employeeOperationalScope.write",
     "admin.employeeProfile.write", "admin.employeeWorkEligibility.write"],
     "this lane changed the Employee capability vocabulary; capability authority must not change in this wave");
   for (const action of [creation.EMPLOYEE_CREATE_ACTION, links.PRINCIPAL_LINK_ESTABLISH_ACTION,

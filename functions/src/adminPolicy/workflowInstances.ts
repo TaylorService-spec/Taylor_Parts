@@ -39,6 +39,7 @@ import {
   loadWorkflowVersionDefinition,
   type WorkflowAuthorizationDecision,
   type WorkflowEffectiveAuthority,
+  type WorkflowFunctionalRoleFactsProvider,
 } from "./workflowEngine";
 import type { PolicyReader, PolicyRepository } from "./policyRepository";
 import type { TenantId, WorkflowInstanceRecord, WorkflowRecord } from "./types";
@@ -148,6 +149,12 @@ export async function transitionWorkflowInstance(
   actor: WorkflowRuntimeActor,
   input: TransitionWorkflowInstanceInput,
   authority: WorkflowEffectiveAuthority,
+  /**
+   * The acting Principal's Functional Role facts (eosOps/functionalRoleFacts.postgresWorkflowFunctionalRoleFacts),
+   * composed by the transport. Consulted only for an action with a FUNCTIONAL_ROLE binding, which is REFUSED when
+   * this is absent -- never decided without it.
+   */
+  functionalRoles?: WorkflowFunctionalRoleFactsProvider,
 ): Promise<WorkflowTransitionResult> {
   const objectKey = nonEmpty(input.objectKey, "objectKey");
   const recordId = nonEmpty(input.recordId, "recordId");
@@ -161,7 +168,7 @@ export async function transitionWorkflowInstance(
   const held = new Set(actor.heldRoleKeys ?? []);
   const roleIds = roles.filter((r) => held.has(r.key)).map((r) => r.id);
   const decision = await authorizeWorkflowAction(definition, instance, actionKey, {
-    tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority,
+    tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority, functionalRoles,
   });
   if (!decision.allowed) {
     throw new WorkflowRefusal("WORKFLOW_ACTION_REFUSED",

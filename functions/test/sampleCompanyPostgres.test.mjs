@@ -222,8 +222,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // one Role grant writes nothing here, for the same reason as every grant above.
 // 1762732800000 (the workflow control plane): workflow schema and triggers only -- no capability,
 // no grant, no vocabulary move.
-const PINNED_LAST_MIGRATION = "1762732800000_workflow-control-plane";
-const PINNED_MIGRATION_COUNT = 53;
+// 1762819200000 (the Functional Role authority): ONE capability, admin.employeeFunctionalRole.write
+// (vocabulary 80 -> 81, reconciled in the manifest), granted to NO Role -- so no persona moves.
+const PINNED_LAST_MIGRATION = "1762819200000_employee-functional-role-authority";
+const PINNED_MIGRATION_COUNT = 54;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

@@ -56,6 +56,7 @@ import type {
   WorkflowInstanceRecord,
   WorkflowRecord,
   WorkflowRoleBindingRecord,
+  FunctionalRoleRecord,
   WorkflowStepRecord,
   WorkflowVersionRecord,
 } from "./types";
@@ -85,6 +86,7 @@ interface Tables {
   audit: PolicyAuditEventRecord[];
   decisions: RoleCapabilityDecisionRecord[];
   grantConditions: GrantConditionRecord[];
+  functionalRoles: FunctionalRoleRecord[];
 }
 
 const emptyTables = (): Tables => ({
@@ -112,6 +114,7 @@ const emptyTables = (): Tables => ({
   audit: [],
   decisions: [],
   grantConditions: [],
+  functionalRoles: [],
 });
 
 export interface InMemoryOptions {
@@ -497,12 +500,21 @@ export class InMemoryPolicyRepository implements PolicyRepository {
 
       createWorkflowRoleBinding: async (input) => {
         assertDraft(requireOwned(t.workflowVersions, input.workflowVersionId, "workflow version"));
-        requireOwned(t.roles, input.roleId, "role");
         const bindingKind = input.bindingKind ?? "SECURITY_ROLE";
-        if (bindingKind !== "SECURITY_ROLE" && bindingKind !== "FUNCTIONAL_ROLE") {
+        // Mirrors workflow_role_bindings_target_matches_kind: exactly one target, the one the kind names.
+        if (bindingKind === "SECURITY_ROLE") {
+          if (!input.roleId || input.functionalRoleId) throw new PolicyStoreError("a SECURITY_ROLE binding names a Security Role only");
+          requireOwned(t.roles, input.roleId, "role");
+        } else if (bindingKind === "FUNCTIONAL_ROLE") {
+          if (input.roleId || !input.functionalRoleId) throw new PolicyStoreError("a FUNCTIONAL_ROLE binding names a Functional Role only");
+          requireOwned(t.functionalRoles, input.functionalRoleId, "functional role");
+        } else {
           throw new PolicyStoreError(`unknown binding kind "${String(bindingKind)}"`);
         }
-        const row: WorkflowRoleBindingRecord = { ...input, bindingKind, id: this.nextId(), tenantId, ...this.stamp(actor) };
+        const row: WorkflowRoleBindingRecord = {
+          ...input, roleId: input.roleId ?? null, functionalRoleId: input.functionalRoleId ?? null,
+          bindingKind, id: this.nextId(), tenantId, ...this.stamp(actor),
+        };
         t.workflowRoleBindings.push(row);
         return row;
       },
@@ -792,6 +804,21 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   }
   async listWorkflowRoleBindings(tenantId: TenantId, versionId: string) {
     return this.mine(this.tables.workflowRoleBindings, tenantId).filter((b) => b.workflowVersionId === versionId);
+  }
+  async listFunctionalRoles(tenantId: TenantId) { return this.mine(this.tables.functionalRoles, tenantId); }
+
+  /**
+   * Put a Functional Role catalog row in place, as the governed Workforce command would.
+   *
+   * The catalog is written by eosWorkforce/commands/employeeFunctionalRoleCommands.ts against PostgreSQL; the policy
+   * port only READS it. This seam lets an offline fixture stand up the same rows. It grants nothing.
+   */
+  putFunctionalRole(row: Omit<FunctionalRoleRecord, "id"> & { readonly id?: string }): FunctionalRoleRecord {
+    const existing = this.tables.functionalRoles.find((r) => r.tenantId === row.tenantId && (r.key === row.key || r.id === row.id));
+    const record: FunctionalRoleRecord = { ...row, id: row.id ?? existing?.id ?? this.nextId() };
+    if (existing) this.tables.functionalRoles[this.tables.functionalRoles.indexOf(existing)] = record;
+    else this.tables.functionalRoles.push(record);
+    return record;
   }
   async getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string) {
     return this.mine(this.tables.workflowInstances, tenantId)

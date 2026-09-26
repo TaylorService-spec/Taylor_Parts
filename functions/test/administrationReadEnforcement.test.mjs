@@ -187,7 +187,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // its parity grants. It registers no READ key, which is what the rest of this test proves.
   // 52 -> 53: the workflow control plane (1762732800000) -- workflow schema and triggers only. It
   // registers no capability and writes no grant.
-  assert.equal(migrations.length, 53, "a migration was added or removed by the read enforcement");
+  // 53 -> 54: the Functional Role authority (1762819200000) -- eos_workforce catalog + assignments, the
+  // FUNCTIONAL_ROLE binding target, and ONE WRITE capability granted to nobody. It registers no READ key.
+  assert.equal(migrations.length, 54, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

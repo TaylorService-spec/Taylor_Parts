@@ -304,7 +304,9 @@ test("governed synthetic nonprod seed, in PostgreSQL", { skip: SKIP, concurrency
                                                  'eos_workforce.employee_work_eligibility'::regclass,
                                                  'eos_workforce.employee_operational_scopes'::regclass,
                                                  'eos_ops.reorder_request_assignments'::regclass,
-                                                 'eos_ops.work_order_assignments'::regclass)`)).rows[0].n;
+                                                 'eos_ops.work_order_assignments'::regclass,
+                                                 -- The Functional Role assignment history (1762819200000): the Employee holds the responsibility.
+                                                 'eos_workforce.employee_functional_role_assignments'::regclass)`)).rows[0].n;
     assert.equal(fks, 0);
   });
 });

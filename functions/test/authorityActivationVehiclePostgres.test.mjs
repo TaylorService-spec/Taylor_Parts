@@ -154,7 +154,8 @@ test("the activation migration was APPENDED: only the later Administration and w
   const files = migrationFiles();
   const at = files.indexOf(`${MIGRATION}.sql`);
   assert.ok(at >= 0);
-  assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql", "1762732800000_workflow-control-plane.sql"],
+  assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql", "1762732800000_workflow-control-plane.sql",
+    "1762819200000_employee-functional-role-authority.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -374,8 +375,11 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
 
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
+    assert.deepEqual(await counts(), { caps: 81, grants: 414, mine: 26 });
+    // The Functional Role authority (1762819200000) is peeled first: -1 capability, no grant.
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 80, grants: 414, mine: 26 });
-    // The workflow control plane (1762732800000) is peeled first: schema only, the counts do not move.
+    // The workflow control plane (1762732800000) is peeled next: schema only, the counts do not move.
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 80, grants: 414, mine: 26 });
     runMigrate(url, "down", 1);
@@ -398,7 +402,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the later workflow control plane (1762732800000) first
+    runMigrate(url, "down", 1); // peel the later Functional Role authority (1762819200000) first
+    runMigrate(url, "down", 1); // then the workflow control plane (1762732800000)
     runMigrate(url, "down", 1); // then the Administration control plane (1762646400000)
 
     // An administrator grants the new read through the governed command AFTER the migration. Its

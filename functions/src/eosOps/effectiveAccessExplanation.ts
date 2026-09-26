@@ -10,6 +10,9 @@
 //                          -- the source every live transport composes
 //   eligibility / scope    postgresPrincipalDimensionReader -- the reader resolveExperienceContext uses
 //   surfaces               grantedSurfaceKeys over that flat set -- resolveExperienceContext's projection
+//   employee facts         the linked Employee's CURRENT Functional Roles (eosOps/functionalRoleFacts) -- shown
+//                          as FACTS ONLY. They are read AFTER every capability, surface and action decision above
+//                          and feed none of them: a Functional Role is never a permission source.
 //   per Object x action    authorizeOperationalAction over snapshotContextualReader(dimensions)
 //
 // Nothing here decides access that the runtime does not decide the same way; the parity test
@@ -43,6 +46,7 @@ import {
   type PrincipalDimensionReader,
 } from "./contextualAuthorization";
 import { EXPERIENCE_SURFACES, grantedSurfaceKeys, type PrincipalDimensions } from "./experienceAuthority";
+import { listCurrentFunctionalRoles, type CurrentFunctionalRole } from "./functionalRoleFacts";
 
 /**
  * SCOPED (lane SC): not held globally, held ONLY within an assignment scope -- the runtime admits it only for a record
@@ -113,12 +117,24 @@ export interface EffectiveAccessExplanation {
   /** EXACTLY resolveExperienceContext(...).surfaces. */
   readonly surfaces: readonly string[];
   readonly actions: readonly ExplainedAction[];
+  /**
+   * EMPLOYEE FACTS -- business facts about the linked Employee that are NOT permission sources. Today: the CURRENT
+   * Functional Roles. `grantsCapabilities` is the constant false, stated so no reader mistakes the list for access:
+   * no capability, surface or action above derives from anything here (a Functional Role only narrows a workflow
+   * action -- see listPrincipalWorkflowResponsibilities).
+   */
+  readonly employeeFacts: {
+    readonly functionalRoles: readonly CurrentFunctionalRole[];
+    readonly grantsCapabilities: false;
+  };
 }
 
 export interface ExplainOptions {
   /** Server composition. Defaults to the live transports' source; never a request field. */
   readonly conditions?: GrantConditionProvider;
   readonly dimensionReader?: PrincipalDimensionReader;
+  /** The Functional Role fact reader. Defaults to PostgreSQL. Read-only; never consulted for a decision. */
+  readonly functionalRoleReader?: (tenantId: string, employeeId: string) => Promise<readonly CurrentFunctionalRole[]>;
 }
 
 export async function explainEffectiveAccess(
@@ -158,7 +174,8 @@ export async function explainEffectiveAccess(
     for (const version of await reader.listWorkflowVersions(tenantId, workflow.id)) {
       if (version.status !== "PUBLISHED") continue;
       for (const binding of await reader.listWorkflowRoleBindings(tenantId, version.id)) {
-        if (!heldRoleIds.has(binding.roleId)) continue;
+        // Security Role bindings only: a FUNCTIONAL_ROLE binding names no Role and is not a source of anything.
+        if (binding.roleId === null || !heldRoleIds.has(binding.roleId)) continue;
         const list = workflowByObject.get(workflow.objectKey) ?? [];
         list.push({ workflowKey: workflow.key, version: version.version, actionKey: binding.actionKey,
           roleKey: roleKeyById.get(binding.roleId) ?? binding.roleId });
@@ -231,6 +248,10 @@ export async function explainEffectiveAccess(
         && i.scopeValue === a.scopeValue).map((i) => i.capabilityKey)),
     }));
   const scopedAssignmentIds = new Set(supportedScoped.map((a) => a.assignmentId).filter((id): id is string => !!id));
+  // EMPLOYEE FACTS, read LAST: every decision above is already made and nothing below can change it.
+  const functionalRoles = employeeId
+    ? await (options.functionalRoleReader ?? ((t: string, e: string) => listCurrentFunctionalRoles(pool, t, e)))(tenantId, employeeId)
+    : [];
 
   return Object.freeze({
     tenantId,
@@ -256,5 +277,9 @@ export async function explainEffectiveAccess(
       scopeValue: h.scopeValue, sourceRole: h.sourceRole, conditioned: h.condition !== null }))),
     surfaces,
     actions: Object.freeze(actions),
+    employeeFacts: Object.freeze({
+      functionalRoles: Object.freeze([...functionalRoles]),
+      grantsCapabilities: false as const,
+    }),
   });
 }

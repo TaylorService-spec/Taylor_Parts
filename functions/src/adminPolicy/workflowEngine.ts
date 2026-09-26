@@ -46,7 +46,12 @@ export type WorkflowRefusal =
   | "invalidFromState"
   | "notBoundToRole"
   | "notOwnAssignment"
-  | "terminalState";
+  | "terminalState"
+  /**
+   * The action has a FUNCTIONAL_ROLE binding and the linked Employee holds none of its Functional Roles (or the
+   * decision has no Functional Role facts to consult -- the legacy uid-shaped decision never has). Fails closed.
+   */
+  | "functionalRoleRequired";
 
 export type WorkflowDecision =
   | { readonly allowed: true; readonly action: WorkflowActionRecord; readonly toStepKey: string }
@@ -119,9 +124,15 @@ export function decideWorkflowAction(
   if (action.fromStepKey !== currentStepKey) return { allowed: false, refusal: "invalidFromState" };
 
   const bound = definition.bindings.some(
-    (b) => b.actionKey === actionKey && attempt.roleIds.includes(b.roleId),
+    (b) => b.actionKey === actionKey && (b.bindingKind ?? "SECURITY_ROLE") === "SECURITY_ROLE"
+      && b.roleId !== null && attempt.roleIds.includes(b.roleId),
   );
   if (!bound) return { allowed: false, refusal: "notBoundToRole" };
+  // This legacy decision carries no Employee facts, so it cannot prove a FUNCTIONAL_ROLE binding -- refused, never
+  // assumed. The runtime decision (authorizeWorkflowAction) is the one that evaluates it.
+  if (definition.bindings.some((b) => b.actionKey === actionKey && b.bindingKind === "FUNCTIONAL_ROLE")) {
+    return { allowed: false, refusal: "functionalRoleRequired" };
+  }
 
   if (action.requiresOwnAssignment) {
     // A missing assignee is a REFUSAL, not a pass. "Nobody is assigned" cannot satisfy "must be the
@@ -147,6 +158,15 @@ export function decideWorkflowAction(
 //                          capability_grant_conditions) allows the action's capability_key, and the
 //                          action's guard (RECORD_ASSIGNMENT) holds for this record
 //
+// FUNCTIONAL_ROLE bindings (migration 1762819200000) add a THIRD conjunct and never a disjunct:
+//
+//   FUNCTIONAL_ROLE        when the action has ANY FUNCTIONAL_ROLE binding, the Principal's LINKED EMPLOYEE currently
+//                          holds one of those Functional Roles (injected `WorkflowFunctionalRoleFacts`)
+//
+// so allowed <=> SECURITY_ROLE binding AND EFFECTIVE_AUTHORITY AND (no FUNCTIONAL_ROLE binding OR holds one). A
+// Functional Role never supplies the capability: a holder without it is refused by EFFECTIVE_AUTHORITY exactly as
+// before, and an action with no FUNCTIONAL_ROLE binding is decided exactly as before.
+//
 // A Role bound to an action whose capability it does not hold performs NOTHING -- the stale
 // operationsManager Sales Order binding is the measured example, and publish validation refuses it
 // (BINDING_WITHOUT_CAPABILITY) before it can even be live. The evaluator is INJECTED
@@ -162,10 +182,19 @@ export interface WorkflowEffectiveAuthority {
   }): Promise<{ readonly allowed: boolean; readonly outcome: string }>;
 }
 
+/** The acting Principal's linked Employee and its CURRENT Functional Roles (eosOps/functionalRoleFacts.ts). */
+export interface WorkflowFunctionalRoleFactsProvider {
+  currentFunctionalRoles(): Promise<{ readonly employeeId: string | null; readonly functionalRoleIds: readonly string[] }>;
+}
+
 export type WorkflowAuthorizationRefusal =
   | WorkflowRefusal
-  /** A FUNCTIONAL_ROLE binding exists on the action and no evaluator for it does. Fails closed. */
+  /** A binding of a kind outside SECURITY_ROLE / FUNCTIONAL_ROLE exists on the action. Fails closed. */
   | "unsupportedBindingKind"
+  /** The action has a FUNCTIONAL_ROLE binding and the Principal has no ACTIVE link to an Employee. */
+  | "employeeLinkRequired"
+  /** The action has a FUNCTIONAL_ROLE binding and no Functional Role facts could be read. Never an allow. */
+  | "functionalRoleFactsUnavailable"
   /** The action names no capability: nothing could authorize it, so nothing does. */
   | "actionWithoutCapability"
   /** Bound, but the runtime evaluator refused the capability or the guard. */
@@ -189,6 +218,11 @@ export interface WorkflowRuntimeAttempt {
   readonly roleIds: readonly string[];
   readonly recordId: string;
   readonly authority: WorkflowEffectiveAuthority;
+  /**
+   * The Principal's Functional Role facts. Consulted ONLY when the action has a FUNCTIONAL_ROLE binding; absent then,
+   * the action is refused (functionalRoleFactsUnavailable), never decided without it.
+   */
+  readonly functionalRoles?: WorkflowFunctionalRoleFactsProvider;
 }
 
 /**
@@ -215,11 +249,20 @@ export async function authorizeWorkflowAction(
   if (action.fromStepKey !== instance.currentStepKey) return { allowed: false, refusal: "invalidFromState" };
 
   const bindings = definition.bindings.filter((b) => b.actionKey === actionKey);
-  if (bindings.some((b) => (b.bindingKind ?? "SECURITY_ROLE") !== "SECURITY_ROLE")) {
+  const kindOf = (b: WorkflowRoleBindingRecord) => b.bindingKind ?? "SECURITY_ROLE";
+  if (bindings.some((b) => kindOf(b) !== "SECURITY_ROLE" && kindOf(b) !== "FUNCTIONAL_ROLE")) {
     return { allowed: false, refusal: "unsupportedBindingKind" };
   }
+  const securityBindings = bindings.filter((b) => kindOf(b) === "SECURITY_ROLE");
+  const functionalRoleIds = bindings
+    .filter((b) => kindOf(b) === "FUNCTIONAL_ROLE")
+    .map((b) => b.functionalRoleId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
   const roleIds = Array.isArray(attempt.roleIds) ? attempt.roleIds : [];
-  if (!bindings.some((b) => roleIds.includes(b.roleId))) return { allowed: false, refusal: "notBoundToRole" };
+  // The SECURITY_ROLE binding rule, exactly as before: a Functional Role binding never stands in for it.
+  if (!securityBindings.some((b) => b.roleId !== null && roleIds.includes(b.roleId))) {
+    return { allowed: false, refusal: "notBoundToRole" };
+  }
 
   const capabilityKey = typeof action.capabilityKey === "string" && action.capabilityKey.length > 0
     ? action.capabilityKey : null;
@@ -238,6 +281,24 @@ export async function authorizeWorkflowAction(
   }
   if (decision?.allowed !== true) {
     return { allowed: false, refusal: "effectiveAuthorityDenied", outcome: decision?.outcome ?? "DENIED" };
+  }
+  // THE NARROWING CONJUNCT. Only when the action carries a FUNCTIONAL_ROLE binding; otherwise untouched.
+  const hasFunctionalBinding = bindings.some((b) => kindOf(b) === "FUNCTIONAL_ROLE");
+  if (hasFunctionalBinding) {
+    if (!attempt.functionalRoles || typeof attempt.functionalRoles.currentFunctionalRoles !== "function") {
+      return { allowed: false, refusal: "functionalRoleFactsUnavailable", outcome: "FUNCTIONAL_ROLE_FACTS_UNAVAILABLE" };
+    }
+    let facts: { readonly employeeId: string | null; readonly functionalRoleIds: readonly string[] };
+    try {
+      facts = await attempt.functionalRoles.currentFunctionalRoles();
+    } catch {
+      return { allowed: false, refusal: "functionalRoleFactsUnavailable", outcome: "FUNCTIONAL_ROLE_FACTS_UNAVAILABLE" };
+    }
+    if (!facts?.employeeId) return { allowed: false, refusal: "employeeLinkRequired", outcome: "EMPLOYEE_LINK_REQUIRED" };
+    const held = new Set(Array.isArray(facts.functionalRoleIds) ? facts.functionalRoleIds : []);
+    if (!functionalRoleIds.some((id) => held.has(id))) {
+      return { allowed: false, refusal: "functionalRoleRequired", outcome: "FUNCTIONAL_ROLE_REQUIRED" };
+    }
   }
   return { allowed: true, action, toStepKey: action.toStepKey, capabilityKey, outcome: "ALLOWED" };
 }

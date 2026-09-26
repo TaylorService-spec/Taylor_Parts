@@ -58,6 +58,7 @@ import type {
   RoleFieldPermissionOverrideRecord,
   RoleObjectPermissionRecord,
   TenantId,
+  FunctionalRoleRecord,
   WorkflowActionRecord,
   WorkflowInstanceEventRecord,
   WorkflowInstanceRecord,
@@ -404,6 +405,11 @@ export interface PolicyReader {
   listWorkflowSteps(tenantId: TenantId, versionId: string): Promise<readonly WorkflowStepRecord[]>;
   listWorkflowActions(tenantId: TenantId, versionId: string): Promise<readonly WorkflowActionRecord[]>;
   listWorkflowRoleBindings(tenantId: TenantId, versionId: string): Promise<readonly WorkflowRoleBindingRecord[]>;
+  /**
+   * The tenant's Functional Role catalog (identity + status), for workflow binding resolution and publish
+   * validation. Read only: this port never writes it. A store without the catalog returns none.
+   */
+  listFunctionalRoles(tenantId: TenantId): Promise<readonly FunctionalRoleRecord[]>;
   getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string): Promise<WorkflowInstanceRecord | null>;
   getWorkflowInstanceById(tenantId: TenantId, instanceId: string): Promise<WorkflowInstanceRecord | null>;
   /** Instances pinned to one version. */
