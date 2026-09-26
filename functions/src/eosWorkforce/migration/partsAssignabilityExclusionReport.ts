@@ -25,9 +25,12 @@ export async function buildGovernedEmployeeFacts(
     const roles = await client.query(
       `SELECT l.employee_id, r.key
          FROM eos_policy.employee_principal_links l
-         JOIN eos_policy.user_role_assignments a ON a.tenant_id = l.tenant_id AND a.principal_uid = l.principal_id
+         JOIN eos_policy.user_role_assignments a ON a.tenant_id = l.tenant_id AND a.principal_id = l.principal_id
          JOIN eos_policy.roles r ON r.id = a.role_id
-        WHERE l.tenant_id = $1 AND l.status = 'active' AND a.status = 'active'`,
+         LEFT JOIN eos_policy.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
+        WHERE l.tenant_id = $1 AND l.status = 'active' AND a.status = 'active'
+          -- Pass 9 S3: GLOBAL, NON-STALE assignments only -- the runtime's rule; a scoped Role is not tenant-wide.
+          AND a.scope_type = 'global' AND a.access_version_at_grant <= coalesce(v.access_version, 0)`,
       [tenantId],
     );
     const jobRoles = await client.query(
