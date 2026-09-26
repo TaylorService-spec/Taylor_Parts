@@ -71,7 +71,7 @@ export interface EmployeeReadActor {
  * The REACH a read runs with. `global` -- every required capability was decided without a scope, exactly as before
  * assignment scope existed; the body applies no filter. Otherwise the read is admitted ONLY through scoped holdings:
  * a list filters to `operatingCompanyIds`, a single-record read calls `authorizeEmployee` with that record's own
- * governed operating company, which refuses OUTSIDE_ASSIGNMENT_SCOPE.
+ * governed operating company, which refuses an out-of-scope record exactly like a missing one (EMPLOYEE_NOT_FOUND).
  */
 export interface EmployeeRecordReach {
   readonly global: boolean;
@@ -146,8 +146,13 @@ export async function runEmployeeRead<P, R>(
             businessContext: typeof operatingCompanyId === "string" ? { operatingCompanyId } : {},
           });
           if (!decision.allowed) {
-            refuse(decision.outcome === "CONTEXT_AUTHORITY_UNAVAILABLE" ? "CAPABILITY_CONDITION_UNSATISFIED" : "OUTSIDE_ASSIGNMENT_SCOPE",
-              "FORBIDDEN", `this read requires ${capabilityKey} for this Employee: ${decision.outcome}`);
+            if (decision.outcome === "CONTEXT_AUTHORITY_UNAVAILABLE") {
+              refuse("CAPABILITY_CONDITION_UNSATISFIED", "FORBIDDEN", `this read requires ${capabilityKey} for this Employee: ${decision.outcome}`);
+            }
+            // NO EXISTENCE ORACLE (Pass 9 S7). A scoped holder is refused an out-of-scope Employee with EXACTLY the
+            // refusal a missing id gets, so it cannot enumerate other companies' Employee ids. (A GLOBAL holder never
+            // reaches here: its reach is GLOBAL_REACH, and its NOT_FOUND is unchanged.)
+            refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
           }
         }
       },
