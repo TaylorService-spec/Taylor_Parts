@@ -44,7 +44,9 @@ import {
   navigationAuthoritySourceState,
 } from "../src/access/experienceContext.js";
 import {
+  SALES_AGREEMENT_INDEX_AUTHORITY_COMPLETENESS,
   SALES_AGREEMENT_INDEX_STATE,
+  SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT,
   salesAgreementHref,
   salesAgreementIndexView,
 } from "../src/domain/salesAgreementIndex.js";
@@ -219,6 +221,43 @@ test("rows are projected, unidentifiable rows are dropped, and the record href i
   assert.match(view.reason, /not the complete list/);
   // Nothing asked yet is LOADING, and is never confused with a settled answer.
   assert.equal(salesAgreementIndexView(null).state, SALES_AGREEMENT_INDEX_STATE.LOADING);
+});
+
+test("THE PAGE-STATE CONTRACT: every view carries COMPLETE | PARTIAL_AUTHORITY | UNAVAILABLE, and only COMPLETE may mean 'all'", () => {
+  const C = SALES_AGREEMENT_INDEX_AUTHORITY_COMPLETENESS;
+  assert.deepEqual(Object.keys(C).sort(), ["COMPLETE", "PARTIAL_AUTHORITY", "UNAVAILABLE"]);
+  const ok = (result) => ({ ok: true, operation: "listSalesAgreements", result });
+  const row = { id: "sa-1", salesAgreementNumber: "SA-2026-000001" };
+  const PG = { writeAuthority: "POSTGRES" };
+  const cases = [
+    // [label, view, state, authorityCompleteness]
+    ["loading", salesAgreementIndexView(null), SALES_AGREEMENT_INDEX_STATE.LOADING, null],
+    // COMPLETE: authoritative AND untruncated AND read ok -- the only place an empty page means "none".
+    ["authoritative empty", salesAgreementIndexView(ok({ items: [], truncated: false }), PG), SALES_AGREEMENT_INDEX_STATE.EMPTY, C.COMPLETE],
+    ["authoritative rows", salesAgreementIndexView(ok({ items: [row], truncated: false }), PG), SALES_AGREEMENT_INDEX_STATE.READY, C.COMPLETE],
+    // PARTIAL_AUTHORITY: the split (TODAY, the default), rows or no rows -- and a truncated authoritative page.
+    ["split empty (default)", salesAgreementIndexView(ok({ items: [], truncated: false })), SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER, C.PARTIAL_AUTHORITY],
+    ["split rows (default)", salesAgreementIndexView(ok({ items: [row], truncated: false })), SALES_AGREEMENT_INDEX_STATE.READY, C.PARTIAL_AUTHORITY],
+    ["split truncated rows", salesAgreementIndexView(ok({ items: [row], truncated: true }), { writeAuthority: "FIRESTORE" }), SALES_AGREEMENT_INDEX_STATE.READY, C.PARTIAL_AUTHORITY],
+    ["split unrecognised writer", salesAgreementIndexView(ok({ items: [] }), { writeAuthority: "??" }), SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER, C.PARTIAL_AUTHORITY],
+    ["authoritative truncated rows", salesAgreementIndexView(ok({ items: [row], truncated: true }), PG), SALES_AGREEMENT_INDEX_STATE.READY, C.PARTIAL_AUTHORITY],
+    // UNAVAILABLE: refusal, transport, unparseable, unreadable.
+    ["refused", salesAgreementIndexView({ ok: false, code: "FORBIDDEN" }), SALES_AGREEMENT_INDEX_STATE.REFUSED, C.UNAVAILABLE],
+    ["refused post-cutover", salesAgreementIndexView({ ok: false, code: "UNAUTHENTICATED" }, PG), SALES_AGREEMENT_INDEX_STATE.REFUSED, C.UNAVAILABLE],
+    ["transport", salesAgreementIndexView({ ok: false, code: "UNREACHABLE" }), SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE, C.UNAVAILABLE],
+    ["unparseable", salesAgreementIndexView({ ok: true, result: { items: "no" } }), SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE, C.UNAVAILABLE],
+    ["unreadable rows", salesAgreementIndexView(ok({ items: [{}], truncated: false }), PG), SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE, C.UNAVAILABLE],
+    ["truncated empty", salesAgreementIndexView(ok({ items: [], truncated: true }), PG), SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE, C.UNAVAILABLE],
+  ];
+  for (const [label, view, state, completeness] of cases) {
+    assert.equal(view.state, state, `${label}: state`);
+    assert.equal(view.authorityCompleteness, completeness, `${label}: authorityCompleteness`);
+    // `complete` is exactly the COMPLETE contract value, never a second opinion.
+    assert.equal(view.complete, completeness === C.COMPLETE, `${label}: complete disagrees with the contract`);
+  }
+  // An empty PostgreSQL list is COMPLETE only once the writer is PostgreSQL; today it is never "all".
+  assert.notEqual(salesAgreementIndexView(ok({ items: [], truncated: false })).authorityCompleteness, C.COMPLETE);
+  assert.equal(SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT, "FIRESTORE");
 });
 
 test("the Commercial transport mirrors the server's READ operations and refuses anything else", () => {

@@ -199,7 +199,16 @@ export default function SalesAgreementsList({ client = undefined, writeAuthority
       // boundary when the truth is that creation belongs to another object.
       summaryItems={[]}
     >
-      {body()}
+      {/* THE PAGE-STATE CONTRACT, MACHINE-READABLE. COMPLETE | PARTIAL_AUTHORITY | UNAVAILABLE (absent
+          while loading) -- decided in domain/salesAgreementIndex.js, never here. `display: contents`
+          so the marker adds no box and changes no layout. */}
+      <div
+        className="sales-agreement-index__body"
+        style={{ display: "contents" }}
+        data-authority-completeness={view.authorityCompleteness ?? undefined}
+      >
+        {body()}
+      </div>
     </WorkspaceIdentity>
   );
 }

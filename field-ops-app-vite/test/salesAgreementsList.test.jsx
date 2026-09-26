@@ -250,3 +250,51 @@ describe("the Sales Agreements index does not claim an empty portfolio while Agr
     expect(screen.queryByText(/not the complete list/i)).toBeNull();
   });
 });
+
+// THE PAGE-STATE CONTRACT ON THE RENDERED PAGE (Owner, lane S3). The screen carries the domain's
+// `authorityCompleteness` as data-authority-completeness, driven through the REAL transport seam.
+describe("the Sales Agreements index carries the page-state contract COMPLETE | PARTIAL_AUTHORITY | UNAVAILABLE", () => {
+  const marker = () => document.querySelector("[data-authority-completeness]");
+  const renderWith = (client, writeAuthority) => render(
+    <MemoryRouter>
+      <SalesAgreementsList client={client} {...(writeAuthority ? { writeAuthority } : {})} />
+    </MemoryRouter>,
+  );
+
+  it("PARTIAL_AUTHORITY today: an empty PG page is never 'all Agreements'", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false } } }));
+    await screen.findByText(/not yet listed here/i);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("PARTIAL_AUTHORITY");
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+  });
+
+  it("PARTIAL_AUTHORITY today: PG rows are shown but marked not complete", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [INDEX_ROW], truncated: false } } }));
+    await screen.findByText("SA-2026-000041");
+    expect(marker().getAttribute("data-authority-completeness")).toBe("PARTIAL_AUTHORITY");
+    expect(screen.getByText(/not the complete list/i)).toBeTruthy();
+  });
+
+  it("COMPLETE only after the writer moves: an authoritative, untruncated page", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [INDEX_ROW], truncated: false } } }), "POSTGRES");
+    await screen.findByText("SA-2026-000041");
+    expect(marker().getAttribute("data-authority-completeness")).toBe("COMPLETE");
+    expect(screen.queryByText(/not the complete list/i)).toBeNull();
+  });
+
+  it("COMPLETE for an authoritative empty page -- the one true 'none exist'", async () => {
+    renderWith(indexClientAnswering({ body: { ok: true, result: { items: [], truncated: false } } }), "POSTGRES");
+    await screen.findByText(/No Sales Agreements exist for this company yet/);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("COMPLETE");
+  });
+
+  it("UNAVAILABLE on refusal and on transport failure", async () => {
+    const { unmount } = renderWith(indexClientAnswering({ status: 403, body: { ok: false, code: "CAPABILITY_REQUIRED" } }));
+    await screen.findByText(/does not hold it/);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("UNAVAILABLE");
+    unmount();
+    renderWith(indexClientAnswering({ fail: true }));
+    await screen.findByText(/not a permission decision/);
+    expect(marker().getAttribute("data-authority-completeness")).toBe("UNAVAILABLE");
+  });
+});
