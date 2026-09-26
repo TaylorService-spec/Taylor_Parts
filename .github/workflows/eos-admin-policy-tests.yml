@@ -200,6 +200,7 @@ on:
       - "functions/test/commercialReadProjections.test.mjs"
       - "functions/test/commercialReadProjectionsPostgres.test.mjs"
       - "functions/src/eosCommercial/commercialHttp.ts"
+      - "functions/src/eosCommercial/commercialWriterState.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
       # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
@@ -629,6 +630,7 @@ on:
       - "functions/test/commercialReadProjections.test.mjs"
       - "functions/test/commercialReadProjectionsPostgres.test.mjs"
       - "functions/src/eosCommercial/commercialHttp.ts"
+      - "functions/src/eosCommercial/commercialWriterState.ts"
       - "functions/test/commercialTransport.test.mjs"
       - "functions/test/commercialTransportPostgres.test.mjs"
       # EMPLOYEE RUNTIME READS: the governed PostgreSQL Workforce transport (test:adminPolicy / test:adminPolicyPostgres).
