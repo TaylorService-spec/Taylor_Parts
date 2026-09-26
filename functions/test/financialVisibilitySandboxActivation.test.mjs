@@ -181,7 +181,8 @@ test("caller filters still only narrow under consolidated reach", async () => {
     { id: "i2", data: { companyId: "ventana", accountId: "a2", currency: "USD", totalMinor: 200, lines: [{ businessUnitId: "SERVICE" }], attribution: { creditedSalespersonId: "e2" } } },
   ];
   const make = (r) => ({ _r: r, where(f, _o, v) { return make(r.filter((x) => x.data[f] === v)); }, limit(n) { return make(r.slice(0, n)); }, async get() { return { size: r.length, docs: r.map((x) => ({ id: x.id, data: () => x.data })) }; } });
-  const db = { collection: (n) => make(n === "invoices" ? rows : []) };
+  // The reporting read runs every read inside ONE read-only transaction.
+  const db = { collection: (n) => make(n === "invoices" ? rows : []), runTransaction: async (fn) => fn({ get: (q) => q.get() }) };
   const auth = authority([{ scope: "CONSOLIDATED" }]);
   const all = await readFinancialFacts(db, auth, {}, 50);
   assert.equal(all.invoices.length, 2, "consolidated sees both companies");

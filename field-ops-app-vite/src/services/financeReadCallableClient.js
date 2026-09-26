@@ -35,7 +35,8 @@ export async function fetchAccountInvoiceAr(accountId, limit = 100) {
 // The governed REPORTING read (functions/src/finance/financialReportingRead.ts). Same transport,
 // same error mapping — the caller-supplied filters travel as a REQUEST; the server intersects them
 // with the principal's governed reach and may only narrow. Nothing here is authorization.
-export async function fetchFinancialFacts(filters = {}, limit = 200) {
+// `limit` defaults to the server's existing maximum (500) — see hooks/useFinancialFacts.js.
+export async function fetchFinancialFacts(filters = {}, limit = 500) {
   try {
     const result = await invoke("listFinancialFacts", { ...filters, limit });
     return { result };
