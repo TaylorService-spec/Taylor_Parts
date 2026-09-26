@@ -57,8 +57,8 @@ export default function FinancialsOverview() {
     factTypes: ["INVOICE"],
     ...period.requestFields,
   }, { enabled: !period.blocked });
-  const { state, result } = financialFactsState(read);
-  const slots = lifecycleScorecard(state, result);
+  const { state, result, detail } = financialFactsState(read);
+  const slots = lifecycleScorecard(state, result, detail);
   // The 61+ exception is now a real governed figure — the server ages it. The other three lines
   // have no read behind them and say which one is missing, rather than sharing one vague sentence.
   const aging = agingSlots(state, result);

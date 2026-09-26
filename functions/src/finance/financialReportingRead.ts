@@ -28,8 +28,34 @@
 //   · no external reconciliation and no IN_SYNC/DRIFT — FIN-010 has no results surface;
 //   · no cross-currency summation — balances stay per currency, as the account read already does;
 //   · no client Firestore access — the collections remain deny-all to clients.
+//
+// ════════════════════ TEMPORARY FIREBASE REPAIR (variant A′) ════════════════════
+//
+// This is a TEMPORARY, ACCURACY-ONLY repair to a live Firestore reader ahead of Firebase
+// retirement. It adds no availability and no Firebase capacity: the bounds are the ones this read
+// already had (invoices ≤ the request `limit`, itself ≤ MAX_REPORTING_LIMIT = 500; applications
+// and receipts ≤ MAX_REPORTING_LIMIT, tenant-wide). What it repairs is honesty inside those bounds:
+//
+//   · ONE SNAPSHOT — every read of one call runs inside ONE read-only Firestore transaction
+//     (`runTransaction(fn, { readOnly: true })`, firebase-admin 12.7), so a COMPLETE answer cannot
+//     pair an invoice balance from before a payment with the application recorded after it;
+//   · MISSING RECEIPTS — an authorized application naming a receipt that is not in the (complete,
+//     bounded) receipts read is DANGLING_REFERENCE, never "ready";
+//   · THE COMPLETENESS CONTRACT — COMPLETE | PARTIAL | NOT_READ with a named reason and per-collection
+//     counts; rows and figures are returned ONLY when COMPLETE. Over a bound the answer is PARTIAL /
+//     READ_LIMIT_REACHED with no rows and no figures — never a partial total.
+//
+// REPLACEMENT: an EOS/PostgreSQL finance aggregate read (eos_finance) served through Render, with
+// FIN-004 reach applied server-side.
+//
+// DELETION CONDITION — delete this file's reader (and `listFinancialFacts`) when ALL hold:
+//   1. the PostgreSQL read is active AND verified for all 9 Financials pages and the dashboard;
+//   2. `useFinancialFacts` is switched to the Render read;
+//   3. zero `listFinancialFacts` callers remain (static census AND runtime census);
+//   4. the export is removed from functions/src/index.ts;
+//   5. no other Firestore finance reader exists.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
+import { getFirestore, type Firestore, type Query, type QuerySnapshot } from "firebase-admin/firestore";
 import {
   INVOICES_COLLECTION,
   PAYMENTS_COLLECTION,
@@ -50,8 +76,54 @@ import { loadFinancialVisibilityAuthority } from "./financeReadCallables";
 export const REPORTING_FACT_TYPES = ["INVOICE", "PAYMENT_RECEIPT", "PAYMENT_APPLICATION"] as const;
 export type ReportingFactType = (typeof REPORTING_FACT_TYPES)[number];
 
+/**
+ * The read's bounds — UNCHANGED by the A′ repair. `limit` bounds the invoice read (the callable
+ * refuses anything above MAX_REPORTING_LIMIT); the application and receipt reads are bounded by
+ * MAX_REPORTING_LIMIT itself. Past a bound the answer is PARTIAL / READ_LIMIT_REACHED.
+ */
 export const MAX_REPORTING_LIMIT = 500;
 export const DEFAULT_REPORTING_LIMIT = 200;
+
+/**
+ * ════════ THE COMPLETENESS CONTRACT ════════
+ *
+ *   COMPLETE  every read collection was read to its end inside its bound, in one snapshot, and every
+ *             receipt an authorized application names was found. Only then is `status` "ready",
+ *             and only then does the payload carry rows, summaries, aging and rollups.
+ *   PARTIAL   something was read but the answer is not whole (a bound was exceeded, a later read
+ *             failed, or a receipt is missing). NOTHING derived from it is returned.
+ *   NOT_READ  nothing was read (no reach, or the first read failed).
+ */
+export type ReportingCompletenessStatus = "COMPLETE" | "PARTIAL" | "NOT_READ";
+export type ReportingIncompleteReason =
+  | "NO_REACH"
+  /** A collection holds more records than this temporary reader's bound for it. */
+  | "READ_LIMIT_REACHED"
+  | "READ_FAILED"
+  /** An authorized payment application names a receipt that does not exist. */
+  | "DANGLING_REFERENCE";
+
+export interface ReportingCollectionRead {
+  collection: string;
+  /** Documents returned by this call's read of the collection (at most `bound` + 1). */
+  documentsRead: number;
+  /** This collection's bound for this call. */
+  bound: number;
+  /** True only when the collection (or its account-narrowed query) fit inside the bound. */
+  exhausted: boolean;
+  /** True when the read was over the WHOLE tenant's collection, not an account-narrowed query. */
+  tenantWide: boolean;
+  /** Receipts only: ids named by authorized applications that are absent from the complete read. */
+  danglingIds: number;
+}
+
+export interface FinancialFactsCompleteness {
+  status: ReportingCompletenessStatus;
+  reason: ReportingIncompleteReason | null;
+  /** Every read of the call shares one read-only transaction snapshot. */
+  consistency: "SINGLE_SNAPSHOT";
+  reads: ReportingCollectionRead[];
+}
 
 export interface FinancialFactsFilters {
   companyId?: string | null;
@@ -102,7 +174,9 @@ export interface PaymentApplicationReportRead {
 }
 
 export interface FinancialFactsResult {
+  /** "ready" if and only if `completeness.status` is COMPLETE. Kept for deployed clients. */
   status: "ready" | "unavailable";
+  completeness: FinancialFactsCompleteness;
   invoices: InvoiceReportRead[];
   payments: PaymentReportRead[];
   applications: PaymentApplicationReportRead[];
@@ -225,9 +299,24 @@ export function rollup(reads: InvoiceReportRead[], keyOf: (r: InvoiceReportRead)
   return [...byKey.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+class IncompleteRead extends Error {
+  constructor(readonly reason: ReportingIncompleteReason, readonly cause?: unknown) {
+    super(reason);
+  }
+}
+
+/** The one read shape the core uses — satisfied by a Firestore Transaction. */
+interface SnapshotReader {
+  get(query: Query): Promise<QuerySnapshot>;
+}
+
 /**
  * The bounded reporting read. Exported so tests exercise it with an injected Firestore and an
  * injected authority — no live grant needed to prove the scope rules.
+ *
+ * `limit` bounds the invoice read exactly as before; applications and receipts stay bounded by
+ * MAX_REPORTING_LIMIT. Each read asks for ONE row past its bound, so "exactly the bound"
+ * (COMPLETE) and "more than the bound" (PARTIAL) are distinguishable without a second query.
  */
 export async function readFinancialFacts(
   db: Firestore,
@@ -236,8 +325,15 @@ export async function readFinancialFacts(
   limit: number,
 ): Promise<FinancialFactsResult> {
   const now = Date.now();
-  const empty: FinancialFactsResult = {
+  const reads: ReportingCollectionRead[] = [];
+  const withheld = (reason: ReportingIncompleteReason): FinancialFactsResult => ({
     status: "unavailable",
+    completeness: {
+      status: reads.some((r) => r.documentsRead > 0) ? "PARTIAL" : "NOT_READ",
+      reason,
+      consistency: "SINGLE_SNAPSHOT",
+      reads: reads.map((r) => ({ ...r })),
+    },
     invoices: [],
     payments: [],
     applications: [],
@@ -249,25 +345,43 @@ export async function readFinancialFacts(
     byCreditedSalesperson: [],
     grantedScopes: [...authority.grantedScopes],
     unattributed: { businessUnit: 0, creditedSalesperson: 0 },
-  };
+  });
   const wants = (t: ReportingFactType): boolean =>
     !Array.isArray(filters.factTypes) || filters.factTypes.length === 0 || filters.factTypes.includes(t);
 
   // Fail closed HERE too, not only at the callable. A principal with no reach must never receive a
   // "ready" empty page — "ready, nothing outstanding" and "you cannot see this" are different facts,
-  // and only the second one is true.
-  if (!authority.anyReach) return empty;
+  // and only the second one is true. Nothing is read.
+  if (!authority.anyReach) return withheld("NO_REACH");
 
-  try {
+  /** One bounded read: `bound` + 1 rows requested; more than `bound` returned is READ_LIMIT_REACHED. */
+  const boundedRead = async (reader: SnapshotReader, collection: string, query: Query, bound: number, tenantWide: boolean) => {
+    const entry: ReportingCollectionRead = { collection, documentsRead: 0, bound, exhausted: false, tenantWide, danglingIds: 0 };
+    reads.push(entry);
+    let snap: QuerySnapshot;
+    try {
+      snap = await reader.get(query.limit(bound + 1));
+    } catch (err) {
+      throw new IncompleteRead("READ_FAILED", err);
+    }
+    entry.documentsRead = snap.size;
+    // BOUNDED-READ HONESTY: completeness is judged on the UNFILTERED read — a fact about the query,
+    // not about what survived scope — so a narrow scope can never mask an incomplete read.
+    if (snap.size > bound) throw new IncompleteRead("READ_LIMIT_REACHED");
+    entry.exhausted = true;
+    return { snap, entry };
+  };
+
+  // ONE read-only transaction: every read below shares one consistent snapshot. `reads` is reset
+  // at the top so a retry of the function starts its counts clean.
+  const readAll = async (reader: SnapshotReader): Promise<FinancialFactsResult> => {
+    reads.length = 0;
     // An accountId narrowing is pushed into the query so a single-account view stays cheap; every
-    // other narrowing happens after authorization, in memory, on the bounded page.
+    // other narrowing happens after authorization, in memory, on the bounded read.
     const base = db.collection(INVOICES_COLLECTION);
-    const query = nonEmpty(filters.accountId) ? base.where("accountId", "==", filters.accountId) : base;
-    const snap = await query.limit(limit + 1).get();
-    // BOUNDED-READ HONESTY, same rule as the account read: a truncated page is never "ready",
-    // because a partial set summarized confidently is worse than no set. The check runs on the
-    // UNFILTERED page — completeness is a fact about the query, not about what survived scope.
-    if (snap.size > limit) return empty;
+    const accountNarrowed = nonEmpty(filters.accountId);
+    const query = accountNarrowed ? base.where("accountId", "==", filters.accountId) : base;
+    const { snap } = await boundedRead(reader, INVOICES_COLLECTION, query, limit, !accountNarrowed);
 
     // ── AUTHORIZATION FIRST. Requested filters are not consulted until after this line. ──
     const visibleDocs = snap.docs.filter((d) => authority.isInvoiceVisible(invoiceVisibilityFacts(d.data() ?? {})));
@@ -296,8 +410,13 @@ export async function readFinancialFacts(
     let payments: PaymentReportRead[] = [];
     let applications: PaymentApplicationReportRead[] = [];
     if (visibleInvoiceIds.size > 0 && (wants("PAYMENT_APPLICATION") || wants("PAYMENT_RECEIPT"))) {
-      const appSnap = await db.collection(PAYMENT_APPLICATIONS_COLLECTION).limit(MAX_REPORTING_LIMIT + 1).get();
-      if (appSnap.size > MAX_REPORTING_LIMIT) return empty;
+      const { snap: appSnap } = await boundedRead(
+        reader,
+        PAYMENT_APPLICATIONS_COLLECTION,
+        db.collection(PAYMENT_APPLICATIONS_COLLECTION),
+        MAX_REPORTING_LIMIT,
+        true,
+      );
       const visibleApps = appSnap.docs.filter((d) => visibleInvoiceIds.has(String((d.data() ?? {}).invoiceId ?? "")));
       // Every application the caller may see, before any period narrowing — this is what authorizes
       // a receipt, so a receipt stays judged on its own received date.
@@ -327,8 +446,21 @@ export async function readFinancialFacts(
         // date rather than judged on its own received date.
         const paymentIds = new Set(allVisibleApplicationPaymentIds);
         if (paymentIds.size > 0) {
-          const paySnap = await db.collection(PAYMENTS_COLLECTION).limit(MAX_REPORTING_LIMIT + 1).get();
-          if (paySnap.size > MAX_REPORTING_LIMIT) return empty;
+          const { snap: paySnap, entry: payRead } = await boundedRead(
+            reader,
+            PAYMENTS_COLLECTION,
+            db.collection(PAYMENTS_COLLECTION),
+            MAX_REPORTING_LIMIT,
+            true,
+          );
+          // MISSING RECEIPTS. The receipts read above is the WHOLE collection (it fit inside its
+          // bound, or we would not be here), in the same snapshot as the applications. So a
+          // receipt id an authorized application names that is not in it does not exist — and an
+          // answer with a broken link between its records is not complete. No by-id fetch is
+          // needed to know that.
+          const present = new Set(paySnap.docs.map((d) => d.id));
+          payRead.danglingIds = [...paymentIds].filter((id) => !present.has(id)).length;
+          if (payRead.danglingIds > 0) throw new IncompleteRead("DANGLING_REFERENCE");
           payments = paySnap.docs
             .filter((d) => paymentIds.has(d.id))
             .map((d) => {
@@ -356,6 +488,7 @@ export async function readFinancialFacts(
 
     return {
       status: "ready",
+      completeness: { status: "COMPLETE", reason: null, consistency: "SINGLE_SNAPSHOT", reads: reads.map((r) => ({ ...r })) },
       invoices: wants("INVOICE") ? invoices : [],
       payments,
       applications: wants("PAYMENT_APPLICATION") ? applications : [],
@@ -374,9 +507,17 @@ export async function readFinancialFacts(
         creditedSalesperson: invoices.filter((r) => !nonEmpty(r.creditedSalespersonId)).length,
       },
     };
+  };
+
+  try {
+    return await db.runTransaction((tx) => readAll(tx), { readOnly: true });
   } catch (err) {
+    if (err instanceof IncompleteRead) {
+      if (err.reason !== "READ_LIMIT_REACHED") console.error(`[readFinancialFacts] ${err.reason}`, err.cause);
+      return withheld(err.reason);
+    }
     console.error("[readFinancialFacts] read failed", err);
-    return empty;
+    return withheld("READ_FAILED");
   }
 }
 

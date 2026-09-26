@@ -22,7 +22,7 @@ import {
 import FilterBar from "../../shared/ui/FilterBar";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
-import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency, paymentIdentity, paymentContext } from "../../domain/financialFactsView.js";
+import { FACTS_STATE, financialFactsState, formatByCurrency, paymentIdentity, paymentContext } from "../../domain/financialFactsView.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
 
 const VIEW_OPTIONS = [
@@ -51,7 +51,7 @@ export default function FinancialsPayments() {
     },
     { enabled: !period.blocked },
   );
-  const { state, result } = financialFactsState(read);
+  const { state, result, detail } = financialFactsState(read);
 
   // READY and EMPTY both mean the server answered; only the record count differs.
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
@@ -87,7 +87,7 @@ export default function FinancialsPayments() {
         }
       : answered
         ? { state: null }
-        : { state, detail: FACTS_DETAIL[state] ?? null };
+        : { state, detail: detail ?? null };
 
   return (
     <FinancialsPageFrame
