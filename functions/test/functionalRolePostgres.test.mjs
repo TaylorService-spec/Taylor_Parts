@@ -481,6 +481,54 @@ test("Functional Role authority: schema, governed commands, reads, effective acc
     const bound = await refused(() => commands.setFunctionalRoleStatus(deps, adminActor, { functionalRoleId: warranty.functionalRoleId, status: "INACTIVE", reason: REASON }));
     assert.deepEqual([bound.code, bound.category], ["FUNCTIONAL_ROLE_BOUND_TO_ACTIVE_WORKFLOW", "CONFLICT"]);
   });
+
+  await t.test("E + lane SC: capability held ONLY through a scoped assignment, on an FR-bound action -- scope, then condition, then FR", async () => {
+    // A company-scoped Role (lane SC): employee.record.read is the one scope-evaluable capability today.
+    await q(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id, operating_company_id, status, source, established_by, updated_by)
+             VALUES ('t1','taylor','ACTIVE','fixture','fixture','fixture'), ('t1','ventana','ACTIVE','fixture','fixture','fixture')`);
+    const companyReaderId = (await repo.transact(fixture("t1"), (tx) => tx.createRole({ key: "companyReader", name: "companyReader", description: null, origin: "CUSTOM", protected: false }))).id;
+    await grant("t1", "companyReader", "employee.record.read");
+    const scoped = await makePrincipal("t1", "uid-fr-scoped", []);
+    await repo.transact(fixture("t1"), async (tx) => {
+      const accessVersion = await tx.bumpAccessVersion(scoped.principalId);
+      return tx.createAssignment({ principalId: scoped.principalId, roleId: companyReaderId, scopeType: "operatingCompany", scopeValue: "taylor",
+        status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+    });
+    await employee("e-scoped");
+    await link(scoped, "e-scoped");
+    const ctx = await context(scoped);
+    assert.deepEqual([ctx.capabilities.has("employee.record.read"), ctx.scopedHeld.map((h) => [h.capabilityKey, h.scopeValue])],
+      [false, [["employee.record.read", "taylor"]]], "held ONLY within the taylor scope");
+    const scopedDuty = (await commands.createFunctionalRole(deps, adminActor, { key: "record-steward", name: "Record steward" })).functionalRole;
+    await repo.transact(fixture("t1"), (tx) => tx.createObject({ key: "employee", label: "Employee", labelPlural: null, description: null, origin: "SYSTEM", lifecycle: "ACTIVE", supportsDelete: false }));
+    const draft = await createWorkflowDraft(repo, wfActor, { key: "empReview", name: "Employee review", objectKey: "employee", reason: REASON, definition: {
+      steps: [{ key: "open", label: "Open", initial: true }, { key: "done", label: "Done", terminal: true }],
+      actions: [{ key: "review", label: "Review", from: "open", to: "done", capabilityKey: "employee.record.read", roleKeys: ["companyReader"], functionalRoleKeys: ["record-steward"] }],
+    } });
+    await publishWorkflowVersion(repo, wfActor, { versionId: draft.version.id, reason: REASON });
+    for (const recordId of ["emp-1", "emp-2"]) await startWorkflowInstance(repo, wfActor, { workflowKey: "empReview", recordId, reason: REASON });
+    const runtime = {
+      actor: { tenantId: "t1", principalId: scoped.principalId, heldRoleKeys: ctx.principalContext.heldRoleKeys,
+        scopedRoleKeys: [...new Set(ctx.scopedHeld.map((h) => h.sourceRole))] },
+      authority: operationalWorkflowAuthority(postgresContextualReader(pool), { tenantId: "t1", principalId: scoped.principalId,
+        capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld, scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }, "employee"),
+      facts: postgresWorkflowFunctionalRoleFacts(pool, "t1", scoped.principalId),
+    };
+    const run = (recordId, businessContext) => refused(() => transitionWorkflowInstance(repo, runtime.actor,
+      { objectKey: "employee", recordId, actionKey: "review", reason: REASON }, runtime.authority, runtime.facts, businessContext));
+    // Scope first: no context, or another company, refuses on the CAPABILITY -- the Functional Role is never consulted.
+    await commands.assignEmployeeFunctionalRole(deps, adminActor, { employeeId: "e-scoped", functionalRoleId: scopedDuty.functionalRoleId, reason: REASON });
+    assert.match((await run("emp-1", undefined)).message, /effectiveAuthorityDenied \(SCOPE_CONTEXT_REQUIRED\)/);
+    assert.match((await run("emp-1", { operatingCompanyId: "ventana" })).message, /effectiveAuthorityDenied \(OUTSIDE_ASSIGNMENT_SCOPE\)/);
+    // In scope AND holding the Functional Role: allowed.
+    assert.equal(await run("emp-1", { operatingCompanyId: "taylor" }), null);
+    // In scope WITHOUT the Functional Role: the narrowing refuses.
+    const held = (await reads.listEmployeeFunctionalRoles(deps, adminActor, { employeeId: "e-scoped" })).current[0];
+    await commands.endEmployeeFunctionalRoleAssignment(deps, adminActor, { employeeId: "e-scoped", assignmentId: held.assignmentId, reason: REASON });
+    assert.match((await run("emp-2", { operatingCompanyId: "taylor" })).message, /functionalRoleRequired/);
+    // The Functional Role never widened the scope, and the scoped key never entered the flat set.
+    assert.equal((await context(scoped)).capabilities.has("employee.record.read"), false);
+  });
 });
 
 test("the Functional Role migration's DOWN refuses while any Functional Role fact exists, and reverses cleanly when empty", { skip: SKIP, concurrency: 1 }, async (t) => {

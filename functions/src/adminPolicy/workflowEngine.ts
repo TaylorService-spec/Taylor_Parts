@@ -31,6 +31,7 @@
 // rewriting those rules afterwards makes the history unreadable. The store additionally refuses to
 // edit a PUBLISHED version at all.
 import type { PolicyReader } from "./policyRepository";
+import type { BusinessContext } from "./assignmentScopeRuntime";
 import type {
   TenantId,
   WorkflowGuardKind,
@@ -179,6 +180,11 @@ export interface WorkflowEffectiveAuthority {
     readonly capabilityKey: string;
     readonly recordId: string;
     readonly guardKind: WorkflowGuardKind | null;
+    /**
+     * The record's business context, resolved SERVER-SIDE from the governed record (lane SC). A capability held only
+     * through a scoped assignment is decided against it; absent, such a holding is refused SCOPE_CONTEXT_REQUIRED.
+     */
+    readonly businessContext?: BusinessContext;
   }): Promise<{ readonly allowed: boolean; readonly outcome: string }>;
 }
 
@@ -218,6 +224,8 @@ export interface WorkflowRuntimeAttempt {
   readonly roleIds: readonly string[];
   readonly recordId: string;
   readonly authority: WorkflowEffectiveAuthority;
+  /** The record's server-derived business context, for scoped capability holdings. Never a request field. */
+  readonly businessContext?: BusinessContext;
   /**
    * The Principal's Functional Role facts. Consulted ONLY when the action has a FUNCTIONAL_ROLE binding; absent then,
    * the action is refused (functionalRoleFactsUnavailable), never decided without it.
@@ -273,7 +281,7 @@ export async function authorizeWorkflowAction(
   let decision: { readonly allowed: boolean; readonly outcome: string };
   try {
     decision = await attempt.authority.authorize({
-      capabilityKey, recordId: attempt.recordId, guardKind: action.guardKind ?? null,
+      capabilityKey, recordId: attempt.recordId, guardKind: action.guardKind ?? null, businessContext: attempt.businessContext,
     });
   } catch {
     // An evaluator that cannot answer is an outage, never an allow.

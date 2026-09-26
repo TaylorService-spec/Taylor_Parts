@@ -41,6 +41,7 @@ import {
   type WorkflowEffectiveAuthority,
   type WorkflowFunctionalRoleFactsProvider,
 } from "./workflowEngine";
+import type { BusinessContext } from "./assignmentScopeRuntime";
 import type { PolicyReader, PolicyRepository } from "./policyRepository";
 import type { TenantId, WorkflowInstanceRecord, WorkflowRecord } from "./types";
 
@@ -125,6 +126,12 @@ export interface WorkflowRuntimeActor {
   readonly principalId: string;
   /** QUALIFYING Security Role keys from the access resolver. */
   readonly heldRoleKeys: readonly string[];
+  /**
+   * Security Role keys held ONLY through a scoped assignment (lane SC: the sourceRole of each scopedHeld holding).
+   * They satisfy the SECURITY_ROLE binding rule, which never grants; the capability is still decided by the evaluator
+   * against the record's business context, so a scoped Role binding confers nothing outside its scope.
+   */
+  readonly scopedRoleKeys?: readonly string[];
 }
 
 export interface TransitionWorkflowInstanceInput {
@@ -155,6 +162,8 @@ export async function transitionWorkflowInstance(
    * this is absent -- never decided without it.
    */
   functionalRoles?: WorkflowFunctionalRoleFactsProvider,
+  /** The record's business context, resolved server-side by the transport from the governed record. */
+  businessContext?: BusinessContext,
 ): Promise<WorkflowTransitionResult> {
   const objectKey = nonEmpty(input.objectKey, "objectKey");
   const recordId = nonEmpty(input.recordId, "recordId");
@@ -165,10 +174,10 @@ export async function transitionWorkflowInstance(
   // THE PINNED VERSION, never the active one.
   const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, instance.workflowVersionId);
   const roles = await repo.listRoles(actor.tenantId);
-  const held = new Set(actor.heldRoleKeys ?? []);
+  const held = new Set([...(actor.heldRoleKeys ?? []), ...(actor.scopedRoleKeys ?? [])]);
   const roleIds = roles.filter((r) => held.has(r.key)).map((r) => r.id);
   const decision = await authorizeWorkflowAction(definition, instance, actionKey, {
-    tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority, functionalRoles,
+    tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority, functionalRoles, businessContext,
   });
   if (!decision.allowed) {
     throw new WorkflowRefusal("WORKFLOW_ACTION_REFUSED",

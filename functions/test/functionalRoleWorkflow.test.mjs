@@ -223,3 +223,17 @@ test("responsibilities: source names the Functional Role rule; a held Functional
   assert.deepEqual(Object.keys(byKey(lacking.responsibilities)), ["plain"]);
   assert.equal(byKey(lacking.boundWithoutAuthority).go.reasonCode, "FUNCTIONAL_ROLE_REQUIRED");
 });
+
+test("lane SC composition: the record's businessContext reaches the capability decision BEFORE the Functional Role narrowing", async () => {
+  const seen = [];
+  const scopedAuthority = { async authorize(req) { seen.push(req.businessContext); const ok = req.businessContext?.operatingCompanyId === "taylor";
+    return { allowed: ok, outcome: ok ? "ALLOWED" : "OUTSIDE_ASSIGNMENT_SCOPE" }; } };
+  let factReads = 0;
+  const counted = { async currentFunctionalRoles() { factReads += 1; return { employeeId: "e-1", functionalRoleIds: ["fr-warranty"] }; } };
+  const run = (ctx) => decide([SR, FR], { ...attempt(["r-disp"], scopedAuthority, counted), businessContext: ctx });
+  const outside = await run({ operatingCompanyId: "ventana" });
+  assert.deepEqual([outside.refusal, outside.outcome, factReads], ["effectiveAuthorityDenied", "OUTSIDE_ASSIGNMENT_SCOPE", 0], "scope refuses first; FR never read");
+  assert.equal((await run({ operatingCompanyId: "taylor" })).allowed, true);
+  assert.equal(factReads, 1);
+  assert.deepEqual(seen, [{ operatingCompanyId: "ventana" }, { operatingCompanyId: "taylor" }]);
+});
