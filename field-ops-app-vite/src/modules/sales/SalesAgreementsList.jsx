@@ -203,7 +203,6 @@ export default function SalesAgreementsList({ client = undefined, writeAuthority
           while loading) -- decided in domain/salesAgreementIndex.js, never here. `display: contents`
           so the marker adds no box and changes no layout. */}
       <div
-        className="sales-agreement-index__body"
         style={{ display: "contents" }}
         data-authority-completeness={view.authorityCompleteness ?? undefined}
       >
