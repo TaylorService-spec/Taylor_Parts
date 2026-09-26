@@ -21,6 +21,13 @@
 //
 // The deployed composition supplies no catalog authority, so any command that validates a PART or EQUIPMENT_MODEL
 // reference refuses CATALOG_AUTHORITY_UNAVAILABLE until a governed PostgreSQL catalog exists.
+//
+// ONE-WRITER FENCE: the PostgreSQL Commercial commands are not the Commercial authority until the C6 cutover's
+// ACTIVATE_POSTGRES transition is committed (commercialWriterState.ts COMMERCIAL_WRITER_AUTHORITY); until then the
+// Firebase Commercial callables are. EVERY MUTATION refuses 503 COMMERCIAL_WRITER_INACTIVE after authentication and before
+// the caller context or any Commercial table is touched -- never a fallback to Firebase, never a partial write. READS stay
+// available: the Owner-directed Sales Agreements index (ruling D) reads PostgreSQL through this route, and a read grants
+// no mutation authority. server.ts never supplies `writerAuthority`; a static test holds that.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
@@ -35,6 +42,10 @@ import { getAccountCommercialProjection } from "./reads/accountCommercialProject
 import { getOpportunityDetail, listOpportunities } from "./reads/opportunityReadProjection";
 import { getSalesAgreementDetail, listSalesAgreements } from "./reads/salesAgreementReadProjection";
 import { getSalesOrderDetail, listSalesOrders } from "./reads/salesOrderReadProjection";
+import {
+  COMMERCIAL_WRITER_AUTHORITY, CommercialWriterInactiveError, CommercialWriterStateError, assertPostgresCommercialWriterActive,
+  type CommercialWriterAuthority,
+} from "./commercialWriterState";
 
 export interface VerifiedIdentity {
   readonly externalSubject: string;
@@ -51,6 +62,8 @@ export interface CommercialApiDeps {
   readonly catalog?: CommercialCatalogAuthority;
   /** TEST INJECTION ONLY: the C2 command clock. */
   readonly now?: () => Date;
+  /** TEST SEAM ONLY. Production composition never sets it, so the committed COMMERCIAL_WRITER_AUTHORITY decides. */
+  readonly writerAuthority?: CommercialWriterAuthority;
 }
 
 type Input = Record<string, unknown>;
@@ -95,6 +108,8 @@ export const COMMERCIAL_MUTATION_OPERATIONS = Object.freeze(Object.keys(MUTATION
 const RUNNERS: Readonly<Record<CommercialOperation, Runner>> = Object.freeze({ ...READ_RUNNERS, ...MUTATION_RUNNERS });
 export const isCommercialOperation = (name: unknown): name is CommercialOperation =>
   typeof name === "string" && Object.prototype.hasOwnProperty.call(RUNNERS, name);
+export const isCommercialMutationOperation = (name: unknown): name is CommercialMutationOperation =>
+  typeof name === "string" && Object.prototype.hasOwnProperty.call(MUTATION_RUNNERS, name);
 
 /**
  * The ONLY operations whose `input` may be omitted: the unfiltered list reads, whose C3 signatures take an optional input.
@@ -142,6 +157,10 @@ export async function executeCommercialOperation(
 ): Promise<CommercialApiResult> {
   const { operation } = request;
   try {
+    // The one-writer fence: the first act of every mutation, before any caller context or statement.
+    if (isCommercialMutationOperation(operation)) {
+      assertPostgresCommercialWriterActive(`commercial.transport.${operation}`, deps.writerAuthority ?? COMMERCIAL_WRITER_AUTHORITY);
+    }
     const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
@@ -154,6 +173,12 @@ export async function executeCommercialOperation(
     });
     return { ok: true, operation, result: await RUNNERS[operation](deps, actor, request.input) };
   } catch (err) {
+    if (err instanceof CommercialWriterInactiveError) {
+      return { ok: false, operation, code: err.code, message: "Commercial writes are not active on this service yet; the Commercial cutover has not completed", status: 503 };
+    }
+    if (err instanceof CommercialWriterStateError) {
+      return { ok: false, operation, code: err.code, message: "the Commercial writer authority is not coherent; no Commercial write is accepted", status: 503 };
+    }
     if (err instanceof PrincipalContextError) {
       return { ok: false, operation, code: "FORBIDDEN", message: err.refusal, status: 403 };
     }

@@ -133,7 +133,9 @@ test("Commercial transport end to end over the real policy and Commercial author
     if (!subject) throw new Error("invalid token");
     return { externalSubject: subject, identityProvider: "firebase" };
   };
-  const bare = { reader: repo, pool: spyPool, verifyToken, allowedOrigins: [] };
+  // TEST SEAM: this suite proves the C2/C3 path behind the fence, so it states PostgreSQL ACTIVE explicitly. The deployed
+  // composition (no writerAuthority) refuses every mutation -- proved by the ONE-WRITER FENCE suite below.
+  const bare = { reader: repo, pool: spyPool, verifyToken, allowedOrigins: [], writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) };
   const catalog = { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } };
   const withCatalog = { ...bare, catalog }; // TEST-ONLY governed catalog authority
 
@@ -296,7 +298,7 @@ test("Commercial transport end to end over the real policy and Commercial author
     assert.ok(full.body.result.salesAgreements.items.some((i) => i.id === agreement.salesAgreementId));
   });
 
-  await t.test("(40)(41) product references: 503 CATALOG_AUTHORITY_UNAVAILABLE on the deployed composition, success only with a test-injected catalog", async () => {
+  await t.test("(40)(41) product references: 503 CATALOG_AUTHORITY_UNAVAILABLE without a composed catalog, success only with a test-injected catalog", async () => {
     const productOpp = { ...SERVICE_OPP, need: "Freezer", lines: [{ kind: "EQUIPMENT_MODEL", ref: "model-a", qty: 1 }] };
     const before = (await q(`SELECT count(*)::int n FROM eos_commercial.opportunities`)).rows[0].n;
     const refused = await call(bare, writer, "createOpportunity", { idempotencyKey: key(), ...productOpp });
@@ -315,5 +317,165 @@ test("Commercial transport end to end over the real policy and Commercial author
     assert.ok(schemas.has("eos_policy") && schemas.has("eos_commercial"));
     const loaded = Object.keys(require.cache).filter((m) => /firebase/i.test(m));
     assert.deepEqual(loaded, [], "a Firebase module was loaded by the Commercial path");
+  });
+});
+
+// ════════════════════ THE ONE-WRITER FENCE (commercialWriterState.ts) ════════════════════
+//
+// Reachability, then refusal. A Principal holding EXACTLY the nonprod `salesperson` grants measured in
+// roleCapabilityAuthorityBaseline.json (2026-09-24) calls every Commercial mutation through the DEPLOYED composition
+// (no writerAuthority -- server.ts never supplies one). While the committed COMMERCIAL_WRITER_AUTHORITY is PostgreSQL
+// INACTIVE (the Firestore Commercial callables are the current authority), every mutation must refuse 503
+// COMMERCIAL_WRITER_INACTIVE after authentication, before the caller context is resolved and before any statement
+// reaches PostgreSQL -- so zero rows change in any eos_* schema. Reads stay available (the Sales Agreements index).
+// Fixtures are built through the TEST SEAM (writerAuthority ACTIVE) in this disposable database only.
+test("ONE-WRITER FENCE: baseline salesperson grants reach no Commercial mutation on the deployed composition; reads stay open", { skip: SKIP, concurrency: 1 }, async (t) => {
+  const { readFileSync } = await import("node:fs");
+  let pool;
+  const url = await freshDatabase(t, "c4_fence", () => pool?.end());
+  migrator(url)("up");
+  pool = new pg.Pool({ connectionString: url, max: 8 });
+  const q = (text, values = []) => pool.query(text, values);
+  const repo = new PostgresPolicyRepository(pool);
+  const statements = [];
+  const spyPool = new Proxy(pool, {
+    get(target, prop) {
+      if (prop === "query") return (text, values) => { statements.push(String(text?.text ?? text)); return target.query(text, values); };
+      if (prop === "connect") {
+        return async () => {
+          const client = await target.connect();
+          return new Proxy(client, { get(c, p) { if (p === "query") return (text, values) => { statements.push(String(text?.text ?? text)); return c.query(text, values); }; const v = c[p]; return typeof v === "function" ? v.bind(c) : v; } });
+        };
+      }
+      const v = target[prop];
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+
+  const baseline = JSON.parse(readFileSync(resolve(FUNCTIONS_DIR, "src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json"), "utf8"));
+  const salespersonKeys = baseline.grants.filter((g) => g.roleKey === "salesperson").map((g) => g.capabilityKey);
+  // The measured baseline grants salesperson every Commercial write key the transport's mutations require.
+  for (const k of WRITE_KEYS) assert.ok(salespersonKeys.includes(k), `baseline salesperson lacks ${k}`);
+
+  await q(`INSERT INTO eos_policy.tenants (id, key, name) VALUES ('t1','t1','T1')`);
+  const principalId = await repo.transact({ tenantId: "t1", uid: "uid-fixture-admin" }, async (tx) => {
+    const principal = await tx.createPrincipal({ externalSubject: "firebase-uid-salesperson", identityProvider: "firebase" });
+    await tx.createTenantMembership(principal.id);
+    return principal.id;
+  });
+  const role = await repo.transact({ tenantId: "t1", uid: "uid-fixture-admin" }, (tx) => tx.createRole({ key: "salesperson", name: "Salesperson", description: null, origin: "CUSTOM", protected: false }));
+  const granted = (await q(`INSERT INTO eos_policy.role_capabilities (id, tenant_id, role_id, capability_id, granted_by, created_by, updated_by)
+    SELECT 'rc_' || $2 || '_' || c.key, 't1', $2, c.id, 'fixture', 'fixture', 'fixture' FROM eos_policy.capabilities c WHERE c.key = ANY($1::text[]) RETURNING 1`, [salespersonKeys, role.id])).rowCount;
+  assert.ok(granted >= COMMERCIAL_KEYS.length);
+  await repo.transact({ tenantId: "t1", uid: "uid-fixture-admin" }, async (tx) => {
+    const accessVersion = await tx.bumpAccessVersion(principalId);
+    return tx.createAssignment({ principalId, roleId: role.id, scopeType: "global", scopeValue: null, status: "active", grantedBy: "fixture", grantedAt: new Date().toISOString(), accessVersionAtGrant: accessVersion });
+  });
+  await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES ('acct-1','t1','Retail Customer','ACTIVE','e-retail','x','x')`);
+  await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ('e-retail','t1','ACTIVE','taylor'), ('e-gm','t1','ACTIVE','taylor')`);
+
+  const verifyToken = async (token) => {
+    if (token !== "tok-salesperson") throw new Error("invalid token");
+    return { externalSubject: "firebase-uid-salesperson", identityProvider: "firebase" };
+  };
+  const deployed = { reader: repo, pool: spyPool, verifyToken, allowedOrigins: [] };
+  const seam = { ...deployed, writerAuthority: Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" }) }; // TEST SEAM ONLY
+  const call = async (deps, operation, input, token = "tok-salesperson") => {
+    const res = await http.handleCommercialRequest(deps, {
+      method: "POST", url: "/commercial/sales", headers: { authorization: `Bearer ${token}` },
+      body: JSON.stringify(input === undefined ? { operation } : { operation, input }),
+    });
+    return { status: res.status, body: JSON.parse(res.body) };
+  };
+  const ok = async (operation, input) => {
+    const res = await call(seam, operation, input);
+    assert.equal(res.status, 200, `fixture ${operation}: ${JSON.stringify(res.body)}`);
+    return res.body.result;
+  };
+  const key = () => `k-${randomUUID()}`;
+  const SERVICE_OPP = { accountId: "acct-1", salesChannel: "RETAIL", operatingCompanyId: "taylor", need: "Service contract", lines: [{ kind: "SERVICE", ref: "svc-pm", qty: 1 }] };
+  const AGREEMENT_LINES = [{ kind: "SERVICE", ref: "svc-pm", quantity: 1, unitPrice: 90000, businessUnitId: "SERVICE" }];
+  const STAGES = ["QUALIFYING", "SOLUTION", "QUOTING", "CUSTOMER_REVIEW", "DECISION"];
+  const editVersion = async (id) => Number((await q(`SELECT edit_version FROM eos_commercial.opportunities WHERE id=$1`, [id])).rows[0].edit_version);
+
+  // ── fixtures (through the seam): one precondition-satisfying target per mutation ──
+  const oppOpen = await ok("createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP, need: "open" });
+  const oppForAgreement = await ok("createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP, need: "for agreement" });
+  const oppWithDraft = await ok("createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP, need: "with draft" });
+  const draft = await ok("createSalesAgreement", { idempotencyKey: key(), opportunityId: oppWithDraft.opportunityId, ownerEmployeeId: "e-retail", lines: AGREEMENT_LINES });
+  const oppToWin = await ok("createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP, need: "to win" });
+  const accepted = await ok("createSalesAgreement", { idempotencyKey: key(), opportunityId: oppToWin.opportunityId, ownerEmployeeId: "e-retail", lines: AGREEMENT_LINES });
+  await ok("acceptSalesAgreement", { idempotencyKey: key(), salesAgreementId: accepted.salesAgreementId });
+  for (const toStage of STAGES) await ok("transitionOpportunity", { idempotencyKey: key(), opportunityId: oppToWin.opportunityId, toStage });
+  const directOrder = await ok("createSalesOrder", { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-gm", operatingCompanyId: "taylor",
+    salesChannel: "RETAIL", lines: [{ kind: "SERVICE", ref: "svc-pm", orderedQty: 1, unitPrice: 45000, businessUnitId: "SERVICE" }] });
+
+  // Every row of every eos_* table, fingerprinted: "zero rows changed" means zero, anywhere.
+  const fingerprint = async () => {
+    const tables = (await q(`SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema LIKE 'eos\\_%' AND table_type='BASE TABLE' ORDER BY 1, 2`)).rows;
+    const out = {};
+    for (const { table_schema: s, table_name: n } of tables) {
+      out[`${s}.${n}`] = (await q(`SELECT count(*)::int AS n, coalesce(md5(string_agg(x::text, '|' ORDER BY x::text)), '') AS h FROM ${s}.${n} x`)).rows[0];
+    }
+    return out;
+  };
+
+  const MUTATIONS = [
+    ["createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP, need: "fenced" }],
+    ["updateOpportunity", { idempotencyKey: key(), opportunityId: oppOpen.opportunityId, expectedEditVersion: await editVersion(oppOpen.opportunityId), need: "fenced update" }],
+    ["transitionOpportunity", { idempotencyKey: key(), opportunityId: oppOpen.opportunityId, toStage: "QUALIFYING" }],
+    ["createSalesAgreement", { idempotencyKey: key(), opportunityId: oppForAgreement.opportunityId, ownerEmployeeId: "e-retail", lines: AGREEMENT_LINES }],
+    ["updateSalesAgreementDraft", { idempotencyKey: key(), salesAgreementId: draft.salesAgreementId, customerPO: "PO-FENCED" }],
+    ["acceptSalesAgreement", { idempotencyKey: key(), salesAgreementId: draft.salesAgreementId }],
+    ["closeOpportunityAsWon", { idempotencyKey: key(), opportunityId: oppToWin.opportunityId, salesChannel: "RETAIL" }],
+    ["createSalesOrder", { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-gm", operatingCompanyId: "taylor", salesChannel: "RETAIL",
+      lines: [{ kind: "SERVICE", ref: "svc-pm", orderedQty: 2, unitPrice: 45000, businessUnitId: "SERVICE" }] }],
+    ["createSalesOrderFromOpportunity", { idempotencyKey: key(), opportunityId: oppToWin.opportunityId, salesChannel: "RETAIL" }],
+    ["transitionSalesOrder", { idempotencyKey: key(), salesOrderId: directOrder.salesOrderId, transition: "ADVANCE" }],
+  ];
+
+  await t.test("every mutating operation refuses 503 COMMERCIAL_WRITER_INACTIVE before any statement; zero rows change in any eos_* table", async () => {
+    assert.deepEqual(MUTATIONS.map(([op]) => op).sort(), [...http.COMMERCIAL_MUTATION_OPERATIONS].sort(), "a mutation is missing from the fence proof");
+    const observed = {};
+    const changed = {};
+    for (const [operation, input] of MUTATIONS) {
+      const before = await fingerprint();
+      statements.length = 0;
+      const res = await call(deployed, operation, input);
+      observed[operation] = [res.status, res.body.code, statements.length];
+      const after = await fingerprint();
+      const diff = Object.keys(after).filter((k) => JSON.stringify(after[k]) !== JSON.stringify(before[k]));
+      if (diff.length > 0) changed[operation] = diff;
+    }
+    const expected = Object.fromEntries(MUTATIONS.map(([op]) => [op, [503, "COMMERCIAL_WRITER_INACTIVE", 0]]));
+    assert.deepEqual(observed, expected, "a Commercial mutation reached PostgreSQL on the deployed composition");
+    assert.deepEqual(changed, {}, "a refused Commercial mutation changed rows");
+  });
+
+  await t.test("the refusal is typed and safe, and authentication still comes first", async () => {
+    const res = await call(deployed, "createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP });
+    assert.deepEqual(Object.keys(res.body).sort(), ["code", "message", "ok", "operation"]);
+    assert.deepEqual([res.body.ok, res.body.operation], [false, "createOpportunity"]);
+    assert.match(res.body.message, /Commercial/);
+    const unauth = await call(deployed, "createOpportunity", { idempotencyKey: key(), ...SERVICE_OPP }, "tok-bogus");
+    assert.deepEqual([unauth.status, unauth.body.code], [401, "UNAUTHENTICATED"]);
+  });
+
+  await t.test("reads stay available on the deployed composition (the Sales Agreements index reads PostgreSQL here)", async () => {
+    const before = await fingerprint();
+    for (const [operation, input] of [["listSalesAgreements", undefined], ["getSalesAgreementDetail", { salesAgreementId: draft.salesAgreementId }],
+      ["listOpportunities", undefined], ["getOpportunityDetail", { opportunityId: oppOpen.opportunityId }], ["listSalesOrders", undefined],
+      ["getSalesOrderDetail", { salesOrderId: directOrder.salesOrderId }], ["getAccountCommercialProjection", { accountId: "acct-1" }]]) {
+      const res = await call(deployed, operation, input);
+      assert.equal(res.status, 200, `${operation}: ${JSON.stringify(res.body)}`);
+    }
+    assert.deepEqual(await fingerprint(), before, "a read changed rows");
+  });
+
+  await t.test("no fallback: a refused mutation loads no Firebase module and names no Firestore path", async () => {
+    const res = await call(deployed, "acceptSalesAgreement", { idempotencyKey: key(), salesAgreementId: draft.salesAgreementId });
+    assert.equal(res.status, 503);
+    assert.doesNotMatch(JSON.stringify(res.body), /firebase|firestore|callable|fallback/i);
+    assert.deepEqual(Object.keys(require.cache).filter((m) => /firebase/i.test(m)), []);
   });
 });

@@ -19,6 +19,10 @@ const HTTP_SOURCE = join(SRC, "eosCommercial", "commercialHttp.ts");
 const MIGRATION = join(FUNCTIONS_DIR, "migrations", "1759536000000_commercial-capability-vocabulary.sql");
 const require = createRequire(import.meta.url);
 const http = require("../lib/eosCommercial/commercialHttp.js");
+const writerState = require("../lib/eosCommercial/commercialWriterState.js");
+const WRITER_STATE_SOURCE = join(SRC, "eosCommercial", "commercialWriterState.ts");
+/** TEST SEAM ONLY: the C2 layer behind the one-writer fence. The deployed composition never supplies writerAuthority. */
+const PG_ACTIVE = Object.freeze({ firestore: "FROZEN", postgres: "ACTIVE" });
 const { eosApiDomainFor } = require("../lib/eosApi/server.js");
 const { COMMERCIAL_CAPABILITIES } = require("../lib/eosCommercial/commands/commercialCommandKernel.js");
 const { COMMERCIAL_READ_CAPABILITIES } = require("../lib/eosCommercial/reads/commercialReadKernel.js");
@@ -177,7 +181,7 @@ test("(16) each governed category maps to its exact HTTP status", async () => {
   assert.deepEqual([denied.status, parsed(denied).code], [403, "CAPABILITY_REQUIRED"]);
   const unknownPrincipal = await post({ ...fakeWorld(), verifyToken: async () => ({ externalSubject: "subj-nobody", identityProvider: "firebase" }) }, { operation: "listOpportunities" });
   assert.deepEqual([unknownPrincipal.status, parsed(unknownPrincipal).code, parsed(unknownPrincipal).message], [403, "FORBIDDEN", "UNKNOWN_PRINCIPAL"]);
-  const idem = await post(fakeWorld(), { operation: "createOpportunity", input: { accountId: "a" } });
+  const idem = await post({ ...fakeWorld(), writerAuthority: PG_ACTIVE }, { operation: "createOpportunity", input: { accountId: "a" } });
   assert.deepEqual([idem.status, parsed(idem).code], [400, "IDEMPOTENCY_KEY_REQUIRED"]);
 });
 
@@ -218,12 +222,93 @@ test("omitted input: only the three unfiltered list reads may omit it; every oth
 });
 
 test("present empty input still reaches the governed layer and receives its own validation", async () => {
-  const create = await post(fakeWorld(), { operation: "createOpportunity", input: {} });
+  const create = await post({ ...fakeWorld(), writerAuthority: PG_ACTIVE }, { operation: "createOpportunity", input: {} });
   assert.deepEqual([create.status, parsed(create).code], [400, "IDEMPOTENCY_KEY_REQUIRED"]);
   const detail = await post(fakeWorld(), { operation: "getOpportunityDetail", input: {} });
   assert.deepEqual([detail.status, parsed(detail).code], [400, "RECORD_ID_REQUIRED"]);
   const account = await post(fakeWorld(), { operation: "getAccountCommercialProjection", input: {} });
   assert.deepEqual([account.status, parsed(account).code], [400, "RECORD_ID_REQUIRED"]);
+});
+
+// ════════════════════ THE ONE-WRITER FENCE (commercialWriterState.ts) ════════════════════
+
+test("fence: the committed Commercial writer authority is Firestore OPEN / PostgreSQL INACTIVE, and the transition model mirrors CRM", () => {
+  const S = (firestore, postgres) => ({ firestore, postgres });
+  assert.deepEqual({ ...writerState.COMMERCIAL_WRITER_AUTHORITY }, { firestore: "OPEN", postgres: "INACTIVE" });
+  assert.ok(Object.isFrozen(writerState.COMMERCIAL_WRITER_AUTHORITY));
+  assert.doesNotThrow(() => writerState.assertCommercialWriterAuthorityCoherent(writerState.COMMERCIAL_WRITER_AUTHORITY));
+  assert.deepEqual(writerState.COMMERCIAL_WRITER_TRANSITIONS.map((t) => t.name), ["FREEZE", "ROLLBACK_BEFORE_POSTGRES_WRITES", "ACTIVATE_POSTGRES", "RETIRE_FIRESTORE"]);
+  assert.equal(writerState.assertCommercialWriterTransition(S("OPEN", "INACTIVE"), S("FROZEN", "INACTIVE")), "FREEZE");
+  assert.equal(writerState.assertCommercialWriterTransition(S("FROZEN", "INACTIVE"), S("OPEN", "INACTIVE")), "ROLLBACK_BEFORE_POSTGRES_WRITES");
+  assert.equal(writerState.assertCommercialWriterTransition(S("FROZEN", "INACTIVE"), S("FROZEN", "ACTIVE")), "ACTIVATE_POSTGRES");
+  assert.equal(writerState.assertCommercialWriterTransition(S("FROZEN", "ACTIVE"), S("RETIRED", "ACTIVE")), "RETIRE_FIRESTORE");
+  assert.throws(() => writerState.assertCommercialWriterAuthorityCoherent(S("OPEN", "ACTIVE")), (e) => e.code === "TWO_AUTHORITATIVE_WRITER_SETS");
+  assert.throws(() => writerState.assertCommercialWriterAuthorityCoherent(S("RETIRED", "INACTIVE")), (e) => e.code === "NO_AUTHORITATIVE_WRITER_SET");
+  assert.throws(() => writerState.assertCommercialWriterAuthorityCoherent(S("open", "INACTIVE")), (e) => e.code === "COMMERCIAL_WRITER_STATE_INVALID");
+  assert.throws(() => writerState.assertCommercialWriterAuthorityCoherent(undefined), (e) => e.code === "COMMERCIAL_WRITER_STATE_INVALID");
+  // Activation never skips the freeze: OPEN/INACTIVE cannot jump to PostgreSQL ACTIVE.
+  assert.throws(() => writerState.assertCommercialWriterTransition(S("OPEN", "INACTIVE"), S("FROZEN", "ACTIVE")), (e) => e.code === "COMMERCIAL_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCommercialWriterTransition(S("FROZEN", "ACTIVE"), S("FROZEN", "INACTIVE")), (e) => e.code === "COMMERCIAL_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCommercialWriterTransition(S("RETIRED", "ACTIVE"), S("FROZEN", "INACTIVE")), (e) => e.code === "COMMERCIAL_WRITER_TRANSITION_NOT_ALLOWED");
+  assert.throws(() => writerState.assertCommercialWriterTransition(S("FROZEN", "ACTIVE"), S("OPEN", "ACTIVE")), (e) => e.code === "TWO_AUTHORITATIVE_WRITER_SETS");
+  assert.throws(() => writerState.assertPostgresCommercialWriterActive("w"), (e) => e.code === "COMMERCIAL_WRITER_INACTIVE" && e.writer === "w");
+  assert.throws(() => writerState.assertPostgresCommercialWriterActive("w", S("FROZEN", "INACTIVE")), (e) => e.code === "COMMERCIAL_WRITER_INACTIVE");
+  assert.throws(() => writerState.assertPostgresCommercialWriterActive("w", S("OPEN", "ACTIVE")), (e) => e.code === "TWO_AUTHORITATIVE_WRITER_SETS");
+  assert.doesNotThrow(() => writerState.assertPostgresCommercialWriterActive("w", S("FROZEN", "ACTIVE")));
+  assert.doesNotThrow(() => writerState.assertPostgresCommercialWriterActive("w", S("RETIRED", "ACTIVE")));
+});
+
+test("fence: every mutation on the deployed composition refuses 503 COMMERCIAL_WRITER_INACTIVE after the token and before reader, pool or domain", async () => {
+  for (const operation of EXPECTED_MUTATIONS) {
+    const touched = [];
+    const w = fakeWorld();
+    const watched = {
+      ...w,
+      verifyToken: async (tok) => { touched.push("verify"); return w.verifyToken(tok); },
+      reader: new Proxy(w.reader, { get: (target, prop) => { touched.push(`reader.${String(prop)}`); return target[prop]; } }),
+      pool: { query: async () => { touched.push("pool.query"); return { rows: [] }; }, connect: async () => { touched.push("pool.connect"); throw new Error("connected"); } },
+    };
+    const res = await post(watched, { operation, input: { idempotencyKey: "k-1" } });
+    assert.deepEqual([res.status, parsed(res).code, parsed(res).ok, parsed(res).operation], [503, "COMMERCIAL_WRITER_INACTIVE", false, operation], operation);
+    assert.deepEqual(Object.keys(parsed(res)).sort(), ["code", "message", "ok", "operation"]);
+    assert.deepEqual(touched, ["verify"], `${operation} reached ${touched.join(", ")} past the fence`);
+  }
+  assert.equal(EXPECTED_MUTATIONS.every((op) => http.isCommercialMutationOperation(op)), true);
+  assert.equal(EXPECTED_READS.some((op) => http.isCommercialMutationOperation(op)), false);
+});
+
+test("fence: an unauthenticated mutation is still 401 (authentication first), and an incoherent authority refuses 503, never executes", async () => {
+  const unauth = await http.handleCommercialRequest(fakeWorld(), { method: "POST", url: "/commercial/sales", headers: {}, body: JSON.stringify({ operation: "createOpportunity", input: {} }) });
+  assert.deepEqual([unauth.status, parsed(unauth).code], [401, "UNAUTHENTICATED"]);
+  for (const [authority, code] of [[{ firestore: "OPEN", postgres: "ACTIVE" }, "TWO_AUTHORITATIVE_WRITER_SETS"], [{ firestore: "RETIRED", postgres: "INACTIVE" }, "NO_AUTHORITATIVE_WRITER_SET"], [{ firestore: "X", postgres: "ACTIVE" }, "COMMERCIAL_WRITER_STATE_INVALID"]]) {
+    const w = fakeWorld();
+    const res = await post({ ...w, writerAuthority: authority }, { operation: "createOpportunity", input: { idempotencyKey: "k" } });
+    assert.deepEqual([res.status, parsed(res).code], [503, code]);
+    assert.deepEqual(w.lookups, [], "an incoherent authority reached EOS resolution");
+  }
+});
+
+test("fence: reads stay available on the deployed composition and reach the governed read layer", async () => {
+  for (const operation of ["listOpportunities", "listSalesAgreements", "listSalesOrders"]) {
+    const w = fakeWorld();
+    const res = await post(w, { operation });
+    assert.equal(res.status, 200, `${operation}: ${res.body}`);
+    assert.equal(w.lookups.length, 1);
+  }
+  const detail = await post(fakeWorld(), { operation: "getSalesAgreementDetail", input: { salesAgreementId: "sa_x" } });
+  assert.deepEqual([detail.status, parsed(detail).code], [404, "RECORD_NOT_FOUND"]);
+});
+
+test("fence: the committed state is a pure code constant; the transport asserts it before resolution; server.ts never supplies writerAuthority", () => {
+  const stateCode = stripComments(readFileSync(WRITER_STATE_SOURCE, "utf8"));
+  assert.doesNotMatch(stateCode, /\bimport\b|\brequire\(|process\.env|firebase|firestore\(/i, "the writer state is not pure");
+  assert.match(stateCode, /COMMERCIAL_WRITER_AUTHORITY: CommercialWriterAuthority = Object\.freeze\(\{ firestore: "OPEN", postgres: "INACTIVE" \}\)/);
+  const httpCode = strip(readFileSync(HTTP_SOURCE, "utf8"));
+  const fence = httpCode.indexOf("assertPostgresCommercialWriterActive(");
+  const resolve = httpCode.indexOf("await resolveOperationalContext(");
+  assert.ok(fence > 0 && resolve > fence, "the fence does not precede caller-context resolution");
+  assert.match(httpCode, /deps\.writerAuthority \?\? COMMERCIAL_WRITER_AUTHORITY/);
+  assert.doesNotMatch(strip(readFileSync(join(SRC, "eosApi", "server.ts"), "utf8")), /writerAuthority|COMMERCIAL_WRITER_AUTHORITY/);
 });
 
 // ════════════════════ static ratchets ════════════════════
