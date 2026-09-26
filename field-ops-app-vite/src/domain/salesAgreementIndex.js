@@ -128,10 +128,22 @@ export function salesAgreementIndexView(result, { writeAuthority = SALES_AGREEME
     });
   }
   // A row this bundle cannot identify is DROPPED rather than rendered half-blank: without an id and
-  // a number there is nothing to route to and nothing to name it by. A page of nothing but such rows
-  // is still EMPTY rather than an error -- the read succeeded, and the honest statement is that this
-  // build has nothing it can show.
+  // a number there is nothing to route to and nothing to name it by. But a page whose rows were ALL
+  // dropped, or that the server marked truncated, is NOT an empty company: the server said records
+  // exist and this bundle cannot show them. On the authoritative path that is UNAVAILABLE, never
+  // EMPTY -- "none exist" would be a claim about the business drawn from a projection mismatch, and
+  // the truncation fact would be lost with it. (The split path stays NOT_CUT_OVER, which already
+  // makes no claim about the business.)
   const rows = Object.freeze(page.items.filter(isRow).map((row) => Object.freeze({ ...row })));
+  if (rows.length === 0 && authoritative && (page.items.length > 0 || page.truncated === true)) {
+    return Object.freeze({
+      state: SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE,
+      rows,
+      truncated: page.truncated === true,
+      reason: SALES_AGREEMENT_INDEX_UNAVAILABLE_REASON,
+      complete: false,
+    });
+  }
   if (rows.length === 0) {
     // An empty page from a store Agreements are not written to says nothing about the business.
     return Object.freeze({

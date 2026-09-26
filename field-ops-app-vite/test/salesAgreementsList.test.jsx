@@ -213,6 +213,32 @@ describe("the Sales Agreements index does not claim an empty portfolio while Agr
     expect(screen.getByText(/not the complete list/i)).toBeTruthy();
   });
 
+  it("AUTHORITATIVE: a page whose rows are ALL unreadable is UNAVAILABLE, never 'none exist'", async () => {
+    render(
+      <MemoryRouter>
+        <SalesAgreementsList
+          client={indexClientAnswering({ body: { ok: true, result: { items: [{}, { id: "x" }], truncated: false } } })}
+          writeAuthority="POSTGRES"
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/not a permission decision/)).toBeTruthy();
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+  });
+
+  it("AUTHORITATIVE: an empty page marked truncated is UNAVAILABLE, never 'none exist'", async () => {
+    render(
+      <MemoryRouter>
+        <SalesAgreementsList
+          client={indexClientAnswering({ body: { ok: true, result: { items: [], truncated: true } } })}
+          writeAuthority="POSTGRES"
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/not a permission decision/)).toBeTruthy();
+    expect(screen.queryByText(/No Sales Agreements exist/)).toBeNull();
+  });
+
   it("AFTER THE WRITER MOVES to PostgreSQL, an empty answer is a true EMPTY again", async () => {
     render(
       <MemoryRouter>

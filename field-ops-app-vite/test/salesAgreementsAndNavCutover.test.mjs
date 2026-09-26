@@ -201,8 +201,18 @@ test("rows are projected, unidentifiable rows are dropped, and the record href i
   assert.equal(view.truncated, true);
   assert.equal(salesAgreementHref("sa-1"), "/customers/opportunities/sales-agreement/sa-1");
   assert.equal(salesAgreementHref("a/b"), "/customers/opportunities/sales-agreement/a%2Fb");
-  // A page of nothing but unreadable rows is EMPTY, not an error: the read succeeded.
-  assert.equal(salesAgreementIndexView({ ok: true, result: { items: [{}] } }, { writeAuthority: "POSTGRES" }).state, SALES_AGREEMENT_INDEX_STATE.EMPTY);
+  // A page of nothing but unreadable rows is NOT an empty company: the server said records exist.
+  // On the authoritative path it is UNAVAILABLE, never EMPTY.
+  const allDropped = salesAgreementIndexView({ ok: true, result: { items: [{}, { id: "x" }], truncated: false } }, { writeAuthority: "POSTGRES" });
+  assert.equal(allDropped.state, SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE);
+  assert.doesNotMatch(allDropped.reason, /No Sales Agreements exist/);
+  // An empty page the server marked TRUNCATED is not empty either, and keeps its truncation fact.
+  const truncatedEmpty = salesAgreementIndexView({ ok: true, result: { items: [], truncated: true } }, { writeAuthority: "POSTGRES" });
+  assert.equal(truncatedEmpty.state, SALES_AGREEMENT_INDEX_STATE.UNAVAILABLE);
+  assert.equal(truncatedEmpty.truncated, true);
+  assert.doesNotMatch(truncatedEmpty.reason, /No Sales Agreements exist/);
+  // Only a genuinely empty, untruncated page is EMPTY.
+  assert.equal(salesAgreementIndexView({ ok: true, result: { items: [], truncated: false } }, { writeAuthority: "POSTGRES" }).state, SALES_AGREEMENT_INDEX_STATE.EMPTY);
   assert.equal(salesAgreementIndexView({ ok: true, result: { items: [{}] } }).state, SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER);
   // Rows from a store Agreements are not written to are shown, but never claimed complete.
   assert.equal(view.complete, false);
