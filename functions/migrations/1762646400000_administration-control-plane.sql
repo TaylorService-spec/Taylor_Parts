@@ -188,6 +188,11 @@ CREATE INDEX audit_events_before_gin ON audit_events USING gin (before jsonb_pat
 -- the grant insert (trigger below), the condition retire/delete (trigger below), and the Administration
 -- commands. READ COMMITTED gives each statement in these volatile functions a fresh snapshot, so the
 -- check that follows the lock sees whatever the lock holder committed.
+--
+-- That guarantee holds ONLY at READ COMMITTED. Under REPEATABLE READ or SERIALIZABLE the count after the
+-- lock reads the transaction's OLDER snapshot and can miss a grant (or a retire) the lock holder just
+-- committed (Pass 10 P10-2). Every snapshot-dependent check below therefore REFUSES to run at any other
+-- isolation level: the Administration commands run at READ COMMITTED, and a raw writer must too.
 CREATE FUNCTION grant_cell_lock(p_tenant TEXT, p_scope TEXT, p_grantor TEXT, p_capability TEXT) RETURNS void
 LANGUAGE sql AS $fn$
     SELECT pg_advisory_xact_lock(hashtextextended('grant-cell|' || p_tenant || '|' || p_scope || '|' || p_grantor || '|' || p_capability, 0));
@@ -203,6 +208,12 @@ BEGIN
         RAISE EXCEPTION 'capability_grant_conditions: a condition''s grant cell is its identity and never changes';
     END IF;
     IF OLD.status = 'ACTIVE' AND (TG_OP = 'DELETE' OR NEW.status <> 'ACTIVE') THEN
+        -- Pass 10 P10-2: the count below is only sound on a fresh READ COMMITTED snapshot (ROLE and
+        -- PRINCIPAL cells alike).
+        IF current_setting('transaction_isolation') <> 'read committed' THEN
+            RAISE EXCEPTION 'CONDITION_RETIREMENT_REQUIRES_READ_COMMITTED: retiring the condition on % %/% at isolation level % could miss a concurrently committed grant -- retry at READ COMMITTED',
+                OLD.grant_scope, OLD.grantor_key, OLD.capability_key, current_setting('transaction_isolation');
+        END IF;
         PERFORM grant_cell_lock(OLD.tenant_id, OLD.grant_scope, OLD.grantor_key, OLD.capability_key);
         IF OLD.grant_scope = 'ROLE' THEN
             SELECT count(*) INTO v_held
@@ -255,6 +266,12 @@ BEGIN
         RAISE EXCEPTION 'ADMIN_REVOKED: %/% was revoked through EOS Administration; a default writer may not re-insert it', v_role, v_cap;
     END IF;
     IF v_decision = 'ADMIN_GRANTED' AND v_requires THEN
+        -- Pass 10 P10-2: the same snapshot rule as the retire trigger -- an older snapshot could still see a
+        -- condition the lock holder just retired.
+        IF current_setting('transaction_isolation') <> 'read committed' THEN
+            RAISE EXCEPTION 'CONDITION_CHECK_REQUIRES_READ_COMMITTED: %/% requires an ACTIVE condition, which cannot be verified at isolation level % -- retry at READ COMMITTED',
+                v_role, v_cap, current_setting('transaction_isolation');
+        END IF;
         SELECT count(*) INTO v_active FROM eos_policy.capability_grant_conditions
          WHERE tenant_id = NEW.tenant_id AND grant_scope = 'ROLE' AND grantor_key = v_role
            AND capability_key = v_cap AND status = 'ACTIVE';

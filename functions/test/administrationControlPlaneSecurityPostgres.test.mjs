@@ -9,6 +9,7 @@
 //   D5  Owner self-assigned admin and reached the ruling-A exclusions
 //   D9  an expired direct exception was "re-granted" (audited) while staying expired
 //   D10 the supersede stamp could be backdated to a foreign-tenant decision; TRUNCATE bypassed immutability
+// and Pass 10 P10-2: under REPEATABLE READ a raw retire read an older snapshot and lifted a held grant's condition.
 // plus D6 (requiresCondition at runtime), D8 (reconcile vs revoke), D11 (idempotent concurrent grants),
 // and Pass 8 section 2 (tenant isolation) and section 3 (concurrency: deterministic final state, one
 // current decision, complete audit, no duplicate effective rows, no lost revoke, anti-lockout).
@@ -217,6 +218,79 @@ test("the Administration control plane holds under attack and under concurrency"
     await assert.rejects(() => q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
       SELECT 'rc-d6',$1,r.id,c.id,'x','x','x' FROM eos_policy.roles r, eos_policy.capabilities c WHERE r.tenant_id=$1 AND r.key='fieldManager' AND c.key='workOrder.record.read'`, [T.a]),
     /CONDITION_REQUIRED/);
+  });
+
+  // ════════════════════ P10-2 ════════════════════
+  // Pass 10 P10-2: the never-widen trigger's count(*) runs after the cell lock, but under REPEATABLE READ /
+  // SERIALIZABLE it reads the transaction's OLDER snapshot and missed a grant the lock holder had just committed.
+  // Every snapshot-dependent cell check now refuses outside READ COMMITTED (ROLE and PRINCIPAL cells, and the
+  // requires-condition check on a Role grant insert).
+  await t.test("P10-2: a REPEATABLE READ raw retire (ROLE and PRINCIPAL cells) and a REPEATABLE READ conditioned insert are refused", async () => {
+    const cond = { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" };
+    const cap = (await q(`SELECT id FROM eos_policy.capabilities WHERE key='workOrder.record.read'`)).rows[0].id;
+    const made = await call("admin-a1", "createRole", { key: "p10RepeatableRead", name: "P10 repeatable read", reason: "fixture" });
+    assert.equal(made.ok, true, JSON.stringify(made));
+    const rrRole = await roleId(T.a, "p10RepeatableRead");
+    const set = await call("admin-a1", "setGrantCondition", { objectKey: "workOrder", actionKey: "read", roleKey: "p10RepeatableRead", condition: cond, reason: "prep" });
+    assert.equal(set.ok, true, JSON.stringify(set));
+    await q(`INSERT INTO eos_policy.capability_grant_conditions (id,tenant_id,grant_scope,grantor_key,capability_key,condition,established_by,updated_by)
+             VALUES ('gc-p10-principal',$1,'PRINCIPAL',$2,'workOrder.record.read',$3::jsonb,'x','x')`, [T.a, dispA, JSON.stringify(cond)]);
+    const status = async (scope, grantor) => (await q(`SELECT status FROM eos_policy.capability_grant_conditions
+      WHERE tenant_id=$1 AND grant_scope=$2 AND grantor_key=$3 ORDER BY status`, [T.a, scope, grantor])).rows.map((r) => r.status);
+
+    // The PROVED race: an older snapshot, a grant committed behind it, then the retire.
+    const race = async (scope, grantor, insertGrant) => {
+      const rr = await pool.connect();
+      try {
+        await rr.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        await rr.query("SELECT 1 FROM eos_policy.capabilities LIMIT 1"); // the snapshot is taken here
+        await insertGrant(); // committed by another session, behind the snapshot
+        const outcome = await rr.query(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED'
+          WHERE tenant_id=$1 AND grant_scope=$2 AND grantor_key=$3 AND status='ACTIVE'`, [T.a, scope, grantor]).then(() => "RETIRED", (e) => e.message);
+        await rr.query("ROLLBACK");
+        return outcome;
+      } finally { rr.release(); }
+    };
+    const roleOutcome = await race("ROLE", "p10RepeatableRead", () => q(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+      VALUES ('rc-p10-rr',$1,$2,$3,'x','x','x')`, [T.a, rrRole, cap]));
+    assert.match(roleOutcome, /CONDITION_RETIREMENT_REQUIRES_READ_COMMITTED/);
+    assert.deepEqual(await status("ROLE", "p10RepeatableRead"), ["ACTIVE"], "held => still conditioned (ROLE)");
+    const principalOutcome = await race("PRINCIPAL", dispA, () => q(`INSERT INTO eos_policy.principal_capabilities (id,tenant_id,principal_id,capability_id,granted_by,created_by,updated_by)
+      VALUES ('pc-p10-rr',$1,$2,$3,'x','x','x')`, [T.a, dispA, cap]));
+    assert.match(principalOutcome, /CONDITION_RETIREMENT_REQUIRES_READ_COMMITTED/);
+    assert.deepEqual(await status("PRINCIPAL", dispA), ["ACTIVE"], "held => still conditioned (PRINCIPAL)");
+    // SERIALIZABLE is refused the same way, even with no race at all.
+    await assert.rejects(async () => {
+      const c = await pool.connect();
+      try {
+        await c.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
+        await c.query(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='gc-p10-principal'`);
+      } finally { await c.query("ROLLBACK").catch(() => {}); c.release(); }
+    }, /CONDITION_RETIREMENT_REQUIRES_READ_COMMITTED/);
+    // READ COMMITTED still decides on the facts: held => refused; revoked => the retire is allowed.
+    await assert.rejects(() => q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='gc-p10-principal'`), /CONDITION_RETIREMENT_WOULD_WIDEN/);
+    await q(`DELETE FROM eos_policy.principal_capabilities WHERE id='pc-p10-rr'`);
+    await q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='gc-p10-principal'`);
+    assert.deepEqual(await status("PRINCIPAL", dispA), ["RETIRED"]);
+
+    // The insert side (D6 class): fieldManager x workOrder.record.read is decided requiresCondition (D6). A fresh
+    // ACTIVE condition, an older snapshot, the condition retired behind it (un-held, so allowed), then the insert.
+    const again = await call("admin-a1", "setGrantCondition", { objectKey: "workOrder", actionKey: "read", roleKey: "fieldManager", condition: cond, reason: "re-arm" });
+    assert.equal(again.ok, true, JSON.stringify(again));
+    const rr = await pool.connect();
+    let insertOutcome;
+    try {
+      await rr.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      await rr.query("SELECT 1 FROM eos_policy.capability_grant_conditions LIMIT 1");
+      await q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE tenant_id=$1 AND grant_scope='ROLE' AND grantor_key='fieldManager'
+                AND capability_key='workOrder.record.read' AND status='ACTIVE'`, [T.a]);
+      insertOutcome = await rr.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+        SELECT 'rc-p10-ins',$1,r.id,c.id,'x','x','x' FROM eos_policy.roles r, eos_policy.capabilities c
+         WHERE r.tenant_id=$1 AND r.key='fieldManager' AND c.key='workOrder.record.read'`, [T.a]).then(() => "INSERTED", (e) => e.message);
+      await rr.query("ROLLBACK");
+    } finally { rr.release(); }
+    assert.match(insertOutcome, /CONDITION_CHECK_REQUIRES_READ_COMMITTED/);
+    assert.equal((await cellState(T.a, "fieldManager", "workOrder.record.read")).held, 0, "a requires-condition grant is never held unconditioned");
   });
 
   // ════════════════════ D8 / section 3 REVOKE vs RECONCILE ════════════════════
