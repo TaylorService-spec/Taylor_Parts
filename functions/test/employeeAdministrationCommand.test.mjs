@@ -236,9 +236,17 @@ test("the operator wrapper is dry-run by default and refuses production by role 
 
 test("the operator wrapper refuses argv-supplied authority BY NAME, refuses a credential on argv, and refuses an unknown flag rather than ignoring it", () => {
   for (const flag of ["heldRoleKeys", "capabilities", "roles", "role", "grants", "permissions", "entitlements",
-    "securityRole", "jobRoleId", "tenantId", "principalId", "uid"]) {
+    "securityRole", "jobRole", "tenantId", "principalId", "uid"]) {
     refusedBy({ [flag]: "x" }, "AUTHORITY_ARGUMENT_REFUSED");
   }
+  // `jobRoleId` WAS on that list and is not any more, because --command assignEmployeeJobRole now takes
+  // one (Owner ruling 2026-09-25). It moved to OPERATION_FLAGS rather than being listed twice: a flag
+  // that is both known and authority-refused is a lie in one of the two lists, since KNOWN_FLAGS is
+  // tested first. A Job Role is a business position and carries no authority -- and the refusal that
+  // actually matters, that no OTHER command may take one, is proved below and in the Postgres suite.
+  assert.ok(!cli.AUTHORITY_BEARING_FLAGS.includes("jobRoleId"));
+  assert.ok(cli.AUTHORITY_BEARING_FLAGS.includes("jobRole") && cli.AUTHORITY_BEARING_FLAGS.includes("securityRole"));
+  assert.ok(cli.KNOWN_FLAGS.includes("jobRoleId"));
   for (const flag of ["password", "token", "idToken", "serviceAccountKey", "databaseUrl", "connectionString", "apiKey"]) {
     refusedBy({ [flag]: "x" }, "CREDENTIAL_ARGUMENT_REFUSED");
   }
@@ -257,9 +265,16 @@ test("the operator wrapper requires the named target, the named administrator an
   refusedBy({ reason: "too short" }, "REASON_REQUIRED");
   refusedBy({ performedBy: "not a valid operator!" }, "ARGUMENT_REQUIRED");
   refusedBy({ command: "deleteEmployee" }, "COMMAND_UNKNOWN");
-  refusedBy({ command: "assignEmployeeJobRole" }, "COMMAND_UNKNOWN");
+  refusedBy({ command: "createJobRole" }, "COMMAND_UNKNOWN");
+  refusedBy({ command: "updateJobRole" }, "COMMAND_UNKNOWN");
+  refusedBy({ command: "assignEmployeeWorkEligibility" }, "COMMAND_UNKNOWN");
+  refusedBy({ command: "assignEmployeeOperationalScope" }, "COMMAND_UNKNOWN");
+  // assignEmployeeJobRole was COMMAND_UNKNOWN here until the Owner ruling of 2026-09-25 added it. The
+  // catalog writers beside it (createJobRole, updateJobRole) and the two other decomposed Workforce
+  // authorities are still not administered here: ONE bounded operation was added, not a Job Role surface.
   assert.deepEqual([...cli.COMMANDS],
-    ["createEmployee", "updateEmployeeProfile", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal"]);
+    ["createEmployee", "updateEmployeeProfile", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal",
+      "assignEmployeeJobRole"]);
 });
 
 test("the operator wrapper builds ONLY inputs the governed command accepts, per command, and never a field it would refuse", () => {
@@ -292,6 +307,28 @@ test("the operator wrapper builds ONLY inputs the governed command accepts, per 
   refusedBy({ command: "linkEmployeePrincipal", employmentStatus: undefined, operatingCompanyId: undefined, linkedPrincipalId: "p-jane", displayName: "Jane" }, "ARGUMENT_NOT_ACCEPTED");
   refusedBy({ command: "createEmployee", linkedPrincipalId: "p-jane" }, "ARGUMENT_NOT_ACCEPTED");
   refusedBy({ command: "updateEmployeeProfile", employmentStatus: undefined, operatingCompanyId: undefined }, "ARGUMENT_REQUIRED");
+
+  // ---- the Job Role assignment: THREE inputs, exactly the three the governed command accepts ----
+  const jobRoleBase = { command: "assignEmployeeJobRole", employmentStatus: undefined, operatingCompanyId: undefined };
+  const assign = invoke({ ...jobRoleBase, jobRoleId: "service-technician" });
+  assert.deepEqual(assign.input, { employeeId: "emp-jane", reason: FENCE_BASE.reason, jobRoleId: "service-technician" });
+  // There is no fourth key, and in particular no employmentStatus, no profile change, no principal and
+  // no expected-current value -- the wrapper composes exactly acceptOnly(["employeeId","jobRoleId","reason"]).
+  assert.deepEqual(Object.keys(assign.input).sort(), ["employeeId", "jobRoleId", "reason"]);
+  refusedBy({ ...jobRoleBase }, "ARGUMENT_REQUIRED");                    // --jobRoleId is mandatory
+  refusedBy({ ...jobRoleBase, jobRoleId: "true" }, "ARGUMENT_REQUIRED"); // and cannot be a bare flag
+  refusedBy({ ...jobRoleBase, jobRoleId: "service-technician", reason: undefined }, "ARGUMENT_REQUIRED");
+  refusedBy({ ...jobRoleBase, jobRoleId: "service-technician", reason: "too short" }, "REASON_REQUIRED");
+  // IT ADDS NO IMPLICIT ANYTHING. Every field belonging to another operation is refused, not dropped.
+  for (const flag of ["employmentStatus", "operatingCompanyId", "linkedPrincipalId", "expectedCurrentPrincipalId",
+    "newPrincipalId", "displayName", "jobTitle", "hireDate"]) {
+    refusedBy({ ...jobRoleBase, jobRoleId: "service-technician", [flag]: "x" }, "ARGUMENT_NOT_ACCEPTED");
+  }
+  // AND --jobRoleId IS REFUSED BY EVERY OTHER COMMAND, which is the half of the old "JOB ROLES ARE NOT
+  // ADMINISTERED HERE" rule that survives: creating or editing an Employee still assigns no position.
+  for (const command of ["createEmployee", "updateEmployeeProfile", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal"]) {
+    refusedBy({ command, jobRoleId: "service-technician" }, "ARGUMENT_NOT_ACCEPTED");
+  }
 });
 
 test("the operator wrapper has NO raw SQL escape hatch: its only statement is the tenant lookup, and it drives the governed commands", () => {
@@ -300,10 +337,33 @@ test("the operator wrapper has NO raw SQL escape hatch: its only statement is th
   assert.deepEqual(statements, [], "the operator wrapper contains a write statement of its own");
   assert.deepEqual([...src.matchAll(/pool\.query\(/g)].length, 1, "the wrapper makes a query other than the tenant lookup");
   assert.match(src, /SELECT id FROM eos_policy\.tenants WHERE key = \$1/);
-  // Every write goes through one of the five governed commands, by module path.
-  for (const mod of ["employeeCreationCommand", "employeeProfileCommand", "employeePrincipalLinkCommands", "employeeAdministrationAuthority"]) {
+  // TIGHTENED, NOT LOOSENED, when the Job Role reconciliation precondition added a READ (Owner ruling on
+  // #1969). The precondition needs the Employee's CURRENT position, and the temptation was a second
+  // SELECT here. It goes through the EXISTING governed read instead, so the original guarantee -- one
+  // query, and it is the tenant lookup -- survives unweakened, and this adds the half that would
+  // otherwise have gone unstated: NO OTHER CURSOR IS OPENED BY ANY NAME, and the read is the governed one.
+  assert.deepEqual([...src.matchAll(/\.query\(/g)].length, 1, "the wrapper opened a second cursor under another name");
+  assert.deepEqual([...src.matchAll(/\bSELECT\b/g)].length, 1, "the wrapper contains a SELECT other than the tenant lookup");
+  assert.match(src, /require\("\.\.\/lib\/eosWorkforce\/reads\/jobRoleReads\.js"\)/);
+  assert.match(src, /reads\.listEmployeeJobRoleHistory\(/);
+  // And the precondition REFUSES rather than converging: the conflict code is named in the source, so a
+  // future edit that turned the refusal into a silent change would have to delete this line to pass.
+  assert.match(src, /JOB_ROLE_RECONCILIATION_CONFLICT/);
+  // Every write goes through one of the six governed commands, by module path.
+  for (const mod of ["employeeCreationCommand", "employeeProfileCommand", "employeePrincipalLinkCommands",
+    "employeeJobRoleCommands", "employeeAdministrationAuthority"]) {
     assert.ok(src.includes(mod), mod);
   }
-  // It never assigns a Job Role, a Role, an eligibility or a scope.
-  assert.doesNotMatch(src, /assignEmployeeJobRole|createJobRole|assignRole|createPrincipal|WorkEligibility|OperationalScope/);
+  // THE JOB ROLE ASSIGNMENT IS IMPORTED, NOT IMPLEMENTED. The wrapper names the governed command and the
+  // module it lives in, and holds not one line of Job Role logic: no catalog row, no assignment row, no
+  // status check, no history. Those live in src/eosWorkforce/commands/employeeJobRoleCommands.ts and are
+  // proved by employeeJobRolePostgres.test.mjs; the write-statement assertion above already proves this
+  // file cannot reach the tables itself.
+  assert.match(src, /require\("\.\.\/lib\/eosWorkforce\/commands\/employeeJobRoleCommands\.js"\)/);
+  // The map entry IS the imported symbol, and there is no local definition of that name anywhere.
+  assert.match(src, /assignEmployeeJobRole: jobRoles\.assignEmployeeJobRole/);
+  assert.doesNotMatch(src, /(?:async\s+)?function\s+assignEmployeeJobRole|assignEmployeeJobRole\s*=\s*(?:async\s*)?\(/);
+  assert.doesNotMatch(src, /employee_job_role_assignments|job_roles\b|effective_to|JOB_ROLE_ID_SHAPE/);
+  // And it still never creates a Job Role, assigns a Role, mints a Principal, or writes an eligibility or a scope.
+  assert.doesNotMatch(src, /createJobRole|updateJobRole|assignRole|createPrincipal|WorkEligibility|OperationalScope/);
 });

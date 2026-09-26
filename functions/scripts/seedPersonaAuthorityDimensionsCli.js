@@ -33,6 +33,37 @@
 //   node scripts/seedPersonaAuthorityDimensionsCli.js --environment platform-sandbox \
 //     --databaseUrlEnv DATABASE_URL --tenantKey taylor-nonprod --performedBy <operator> \
 //     --adminPrincipalId <principal> [--apply]
+//
+// ════════════════════ KNOWN DEFECT -- BACKLOG ITEM, NOT FIXED IN THIS WAVE ════════════════════
+//
+// THIS SCRIPT CANNOT APPLY. `--apply` throws `commands[step.command] is not a function`.
+//
+// PLANNER AND EXECUTOR HAVE DIVERGED. planPersonaAuthorityDimensions() now emits FOUR step commands
+// (measured 2026-09-25, 50 steps: createJobRole 16, assignEmployeeJobRole 21,
+// assignEmployeeWorkEligibility 7, assignEmployeeOperationalScope 6) after the canonical Job Role
+// ruling re-pointed it at the Job Role writers. The `commands` map in main() below wires only TWO --
+// assignEmployeeWorkEligibility and assignEmployeeOperationalScope. The first applicable Job Role step
+// therefore dereferences `undefined` and the run dies.
+//
+// NOTHING IS HALF-APPLIED. The throw happens at the call site, before the governed command opens a
+// transaction, so no row and no audit event is written by the failed step. Steps that ran BEFORE it in
+// the same loop did commit -- each governed command is its own transaction and there is no outer one --
+// so a future repair must be able to re-run, which the commands' NO_CHANGE outcomes already allow.
+//
+// THE OWNER RULED IT IS NOT REPAIRED HERE (2026-09-25). Wiring the two missing commands would make the
+// script apply, but it would then apply MORE than the approved scope: it plans 16 createJobRole steps
+// against a canonical catalog the governed seed (migration/jobRoleCatalogSeed.ts, driven by
+// scripts/jobRoleCatalogSeedCli.js) already creates -- redundant, add-only, and reported rather than
+// silent -- and it plans assignEmployeeJobRole for Employees outside the canonical persona census.
+// Deciding which of the 21 assignments are in scope is a scoping question, not a wiring bug.
+//
+// THE UNBLOCK, MEANWHILE. Governed Job Role ASSIGNMENT for a NAMED Employee now exists in
+// scripts/administerEmployeeCli.js (`--command assignEmployeeJobRole`), one bounded operation at a
+// time, under the same admin.employeeJobRole.write and the same governed command this script failed to
+// call. Phase 2C does not wait on this defect.
+//
+// NOT TOUCHED BY THAT LANE. No line of executable code in this file was changed; this block is the
+// record, so that the next operator meets the defect here rather than at an apply.
 "use strict";
 
 const { assertMeasurementTarget, parseArgs } = require("./measureEmployeeReferenceIntegrity.js");

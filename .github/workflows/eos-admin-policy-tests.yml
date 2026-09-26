@@ -246,6 +246,16 @@ on:
       # omits the subject produces a guard that is green because it never runs.
       - "functions/test/employeeAdministrationCommand.test.mjs"
       - "functions/test/employeeAdministrationCommandPostgres.test.mjs"
+      # LANE BT (reprise): governed Job Role ASSIGNMENT through the same wrapper, added by Owner ruling
+      # 2026-09-25. The suite AND the two sources it guards -- the wrapper and the governed Job Role
+      # writer it drives -- so a PR that changes either triggers the gate that proves the assignment
+      # grants nothing, touches neither Work Eligibility nor Operational Scope, and stays tenant-scoped.
+      - "functions/test/employeeJobRoleOperatorPostgres.test.mjs"
+      - "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts"
+      - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
+      - "functions/src/eosWorkforce/commands/employeeWorkEligibilityCommands.ts"
+      - "functions/src/eosWorkforce/commands/employeeOperationalScopeCommands.ts"
+      - "functions/src/eosWorkforce/reads/jobRoleReads.ts"
       - "functions/src/eosWorkforce/commands/employeeCreationCommand.ts"
       - "functions/src/eosWorkforce/commands/employeePrincipalLinkCommands.ts"
       - "functions/src/eosWorkforce/commands/employeeAdministrationAuthority.ts"
@@ -665,6 +675,16 @@ on:
       # omits the subject produces a guard that is green because it never runs.
       - "functions/test/employeeAdministrationCommand.test.mjs"
       - "functions/test/employeeAdministrationCommandPostgres.test.mjs"
+      # LANE BT (reprise): governed Job Role ASSIGNMENT through the same wrapper, added by Owner ruling
+      # 2026-09-25. The suite AND the two sources it guards -- the wrapper and the governed Job Role
+      # writer it drives -- so a PR that changes either triggers the gate that proves the assignment
+      # grants nothing, touches neither Work Eligibility nor Operational Scope, and stays tenant-scoped.
+      - "functions/test/employeeJobRoleOperatorPostgres.test.mjs"
+      - "functions/src/eosWorkforce/commands/employeeJobRoleCommands.ts"
+      - "functions/src/eosWorkforce/jobRoleVocabulary.ts"
+      - "functions/src/eosWorkforce/commands/employeeWorkEligibilityCommands.ts"
+      - "functions/src/eosWorkforce/commands/employeeOperationalScopeCommands.ts"
+      - "functions/src/eosWorkforce/reads/jobRoleReads.ts"
       - "functions/src/eosWorkforce/commands/employeeCreationCommand.ts"
       - "functions/src/eosWorkforce/commands/employeePrincipalLinkCommands.ts"
       - "functions/src/eosWorkforce/commands/employeeAdministrationAuthority.ts"
