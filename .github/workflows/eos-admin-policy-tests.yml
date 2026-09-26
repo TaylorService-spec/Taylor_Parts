@@ -101,6 +101,12 @@ on:
       - "functions/test/adminPolicyIdentity.test.mjs"
       - "functions/src/eosApi/**"
       - "functions/src/eosOps/**"
+      # WOC: the Work Order migration family (parity matrix, DRY RUN, COPY/VERIFY, its CLI and its
+      # contract). Registered by no workflow until now, so none of it had ever executed in CI.
+      - "functions/test/workOrderFieldParityMatrix.test.mjs"
+      - "functions/test/workOrderMigration*.test.mjs"
+      - "functions/scripts/workOrderMigrationCopyCli.js"
+      - "docs/engineering/work-order-migration-copy-contract-2026-09-26.md"
       - "functions/test/eosOpsPostgres.test.mjs"
       - "functions/test/eosOpsNoFirebase.test.mjs"
       - "functions/test/eosOpsApiShape.test.mjs"
@@ -538,6 +544,12 @@ on:
       - "functions/test/adminPolicyIdentity.test.mjs"
       - "functions/src/eosApi/**"
       - "functions/src/eosOps/**"
+      # WOC: the Work Order migration family (parity matrix, DRY RUN, COPY/VERIFY, its CLI and its
+      # contract). Registered by no workflow until now, so none of it had ever executed in CI.
+      - "functions/test/workOrderFieldParityMatrix.test.mjs"
+      - "functions/test/workOrderMigration*.test.mjs"
+      - "functions/scripts/workOrderMigrationCopyCli.js"
+      - "docs/engineering/work-order-migration-copy-contract-2026-09-26.md"
       - "functions/migrations/**"
       # W1-C9 (required registration): the CRM customer namespace suites run in
       # test:adminPolicy / test:adminPolicyPostgres but were named by no path filter, so a
