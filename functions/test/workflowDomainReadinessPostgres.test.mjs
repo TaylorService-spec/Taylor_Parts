@@ -244,7 +244,8 @@ test("workflow domain readiness: a synthetic domain consumes the control plane e
     return {
       ctx,
       actor: { tenantId: TENANT, principalId: ctx.principalContext.uid, heldRoleKeys: ctx.principalContext.heldRoleKeys,
-        scopedRoleKeys: [...new Set((ctx.scopedHeld ?? []).map((h) => h.sourceRole))] },
+        // Pass 9 S5: a scoped Role carries its scope and counts for a binding only where the record's context admits it.
+        scopedRoles: (ctx.scopedHeld ?? []).map((h) => ({ roleKey: h.sourceRole, scopeType: h.scopeType, scopeValue: h.scopeValue })) },
       authority: operationalWorkflowAuthority(evaluator.postgresContextualReader(pool), {
         tenantId: TENANT, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities,
         conditionallyHeld: ctx.conditionallyHeld, scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements,
@@ -394,11 +395,19 @@ test("workflow domain readiness: a synthetic domain consumes the control plane e
 
   // ════════════════════ 7 ════════════════════
   await t.test("7. scope: in scope allowed, another company OUTSIDE_ASSIGNMENT_SCOPE, no context SCOPE_CONTEXT_REQUIRED", async () => {
-    const outside = await refusedAct(scopedReader, "emp-rec-ventana", "review",
-      { objectKey: "employee", businessContext: await storedEmployeeContext("emp-rec-ventana") });
-    assert.match(outside.message, /review refused: effectiveAuthorityDenied \(OUTSIDE_ASSIGNMENT_SCOPE\)/);
+    // Pass 9 S5: outside its scope (or with no context) the scoped Role does not even satisfy the binding, so the
+    // transition is refused at notBoundToRole; the evaluator's own scope outcome for the capability is asserted too.
+    const r = await runtimeFor(scopedReader, "employee");
+    const ventana = await storedEmployeeContext("emp-rec-ventana");
+    const outside = await refusedAct(scopedReader, "emp-rec-ventana", "review", { objectKey: "employee", businessContext: ventana });
+    assert.match(outside.message, /review refused: notBoundToRole/);
+    assert.deepEqual(await r.authority.authorize({ capabilityKey: EMP_READ, recordId: "emp-rec-ventana", guardKind: null, businessContext: ventana }),
+      { allowed: false, outcome: "OUTSIDE_ASSIGNMENT_SCOPE" });
     const missing = await refusedAct(scopedReader, "emp-rec-taylor-2", "review", { objectKey: "employee" });
-    assert.match(missing.message, /review refused: effectiveAuthorityDenied \(SCOPE_CONTEXT_REQUIRED\)/);
+    assert.match(missing.message, /review refused: notBoundToRole/);
+    assert.deepEqual(await r.authority.authorize({ capabilityKey: EMP_READ, recordId: "emp-rec-taylor-2", guardKind: null }),
+      { allowed: false, outcome: "SCOPE_CONTEXT_REQUIRED" });
+    assert.equal((await storedInstance("employee", "emp-rec-taylor-2")).currentStepKey, "OPEN", "a refusal moves nothing");
     const inScope = await act(scopedReader, "emp-rec-taylor-2", "review",
       { objectKey: "employee", businessContext: await storedEmployeeContext("emp-rec-taylor-2") });
     assert.equal(inScope.instance.currentStepKey, "REVIEWED");
