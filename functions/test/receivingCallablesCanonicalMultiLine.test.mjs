@@ -297,6 +297,10 @@ test("bad shape is refused invalid-argument at the boundary, before any read", a
     ["line quantity not a number", canonical({}, [{ lineId: "L1", partId: PART_NONE, receivedQuantity: "1" }])],
     ["serialNumbers not an array", canonical({}, [{ lineId: "L2", partId: PART_SERIAL, receivedQuantity: 1, serialNumbers: "SN-1" }])],
     ["expectedVersion not a number", canonical({ expectedVersion: "0" })],
+    ["fractional receivedQuantity", canonical({}, [{ lineId: "L1", partId: PART_NONE, receivedQuantity: 1.5 }])],
+    ["fractional serial-line receivedQuantity", canonical({}, [{ lineId: "L2", partId: PART_SERIAL, receivedQuantity: 1.5, serialNumbers: ["SN-1"] }])],
+    ["fractional expectedVersion", canonical({ expectedVersion: 1.5 })],
+    ["negative expectedVersion", canonical({ expectedVersion: -1 })],
     ["client-supplied actor", canonical({ actor: { kind: "USER", id: "evil" } })],
     ["missing idempotencyKey", canonical({ idempotencyKey: "" })],
   ];
@@ -324,7 +328,6 @@ test("over-receipt, serial mismatch, stale version and key conflict are refused 
     ["part not on the named line", canonical({}, [{ lineId: "L1", partId: PART_SERIAL, receivedQuantity: 1, serialNumbers: ["SN-1"] }])],
     ["line not on the order", canonical({}, [{ lineId: "L9", partId: PART_NONE, receivedQuantity: 1 }])],
     ["duplicate submitted line", canonical({}, [{ lineId: "L1", partId: PART_NONE, receivedQuantity: 1 }, { lineId: "L1", partId: PART_NONE, receivedQuantity: 1 }])],
-    ["fractional quantity", canonical({}, [{ lineId: "L1", partId: PART_NONE, receivedQuantity: 1.5 }])],
     ["stale expectedVersion", canonical({ expectedVersion: 7 })],
   ];
   for (const [label, data] of deny) await expectCode(call(fake, data), "failed-precondition", label);

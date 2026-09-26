@@ -118,6 +118,10 @@ export function validateReceiveRequest(data: unknown): Record<string, unknown> {
     if (!isNonBlankString(line.partId)) throw invalidArg("line.partId is invalid.");
     if (!isCanonical && !isFiniteNumber(line.expectedQuantity)) throw invalidArg("line.expectedQuantity is invalid.");
     if (!isFiniteNumber(line.receivedQuantity)) throw invalidArg("line.receivedQuantity is invalid.");
+    // Canonical only: a fractional quantity is structurally not a receipt, so it is invalid-argument
+    // here rather than a later failed-precondition. Positivity stays the command's rule. The legacy
+    // branch is deliberately untouched so deployed callers see exactly the error codes they always did.
+    if (isCanonical && !Number.isInteger(line.receivedQuantity)) throw invalidArg("line.receivedQuantity is invalid.");
     // Shape only: when present it must be an array of non-blank strings. Count, duplication and
     // whether serials are required at all are the command's decisions, made against the authoritative
     // Part tracking mode -- this boundary must not second-guess them or it would fork the rule.
@@ -128,7 +132,9 @@ export function validateReceiveRequest(data: unknown): Record<string, unknown> {
   }
   // Canonical only (legacy rejects the key above). Shape only; whether it matches the PO's current
   // version is the command's optimistic-concurrency check.
-  if (data.expectedVersion !== undefined && !isFiniteNumber(data.expectedVersion)) throw invalidArg("expectedVersion is invalid.");
+  if (data.expectedVersion !== undefined && (!isFiniteNumber(data.expectedVersion) || !Number.isInteger(data.expectedVersion) || data.expectedVersion < 0)) {
+    throw invalidArg("expectedVersion is invalid.");
+  }
   if (!isNonBlankString(data.idempotencyKey)) throw invalidArg("idempotencyKey is invalid.");
   return data;
 }
