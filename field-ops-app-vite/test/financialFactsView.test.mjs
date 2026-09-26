@@ -620,7 +620,8 @@ const PARTIAL = {
     reason: "SCAN_CEILING_REACHED",
     pageSize: 500,
     scanCeiling: 5000,
-    scans: [{ collection: "invoices", documentsRead: 5001, pages: 11, exhausted: false }],
+    consistency: "SINGLE_SNAPSHOT",
+    scans: [{ collection: "invoices", documentsRead: 5001, pages: 11, exhausted: false, mode: "CURSOR_SCAN", tenantWide: true, danglingIds: 0 }],
   },
   invoices: [],
   payments: [],
@@ -645,8 +646,14 @@ test("a PARTIAL read is UNAVAILABLE with its named reason — not EMPTY, not a f
 
 test("the incomplete-read note names the reason and the server's counts, and estimates nothing", () => {
   const note = incompleteReadNote(financialFactsCompleteness(PARTIAL));
-  assert.match(note, /More than 5000 invoices/);
+  assert.match(note, /This tenant holds more than 5000 invoices/);
   assert.match(note, /Nothing is shown/);
+  assert.ok(!/company/i.test(note), "company never narrows the read, so it is never advised");
+  assert.ok(!/account/i.test(note), "no account advice where the page offers no account selector");
+  assert.match(incompleteReadNote(financialFactsCompleteness(PARTIAL), { accountSelector: true }), /Select a single account/);
+  const bounded = { ...PARTIAL.completeness, scans: [{ ...PARTIAL.completeness.scans[0], tenantWide: false }] };
+  assert.match(incompleteReadNote(bounded, { accountSelector: true }), /fall under this request/);
+  assert.ok(!/Select a single account/.test(incompleteReadNote(bounded, { accountSelector: true })), "an already-bounded read is not told to narrow");
   assert.ok(!/\$/.test(note), "no money figure in an incomplete-read sentence");
   assert.match(incompleteReadNote({ status: "NOT_READ", reason: "INDEX_MISSING", scans: [] }), /index is not deployed/);
   assert.match(
@@ -676,4 +683,51 @@ test("the hook surfaces the server's completeness verbatim and requests the maxi
   assert.match(src, /limit = 500/);
   assert.match(src, /completeness: state\.result \? financialFactsCompleteness\(state\.result\) : null/);
   assert.ok(!/Minor/.test(src), "the hook touches no money field");
+});
+
+// ─── Review fixes: the named reason reaches every page's honest state ───
+
+test("a PARTIAL read RENDERS its reason and counts as the page detail, and no figure", () => {
+  const s = financialFactsState({ loading: false, result: PARTIAL });
+  assert.equal(s.state, FACTS_STATE.UNAVAILABLE);
+  assert.match(s.detail, /more than 5000 invoices/);
+  assert.notEqual(s.detail, FACTS_DETAIL[FACTS_STATE.UNAVAILABLE], "the generic sentence is replaced by the named reason");
+  // Overview composes it through the scorecard: every slot carries the reason, none a value.
+  const slots = lifecycleScorecard(s.state, undefined, s.detail);
+  for (const slot of Object.values(slots)) {
+    assert.equal(slot.valueText, null);
+    assert.equal(slot.detail, s.detail);
+  }
+  assert.ok(!/\$\d/.test(s.detail), "no money figure in the detail");
+});
+
+test("a DANGLING_REFERENCE read names the missing-receipt count", () => {
+  const dangling = {
+    status: "unavailable",
+    completeness: { status: "PARTIAL", reason: "DANGLING_REFERENCE", scanCeiling: 5000, scans: [{ collection: "payments", documentsRead: 1, exhausted: false, danglingIds: 2 }] },
+  };
+  assert.match(financialFactsState({ loading: false, result: dangling }).detail, /^2 payment receipts named by a payment application could not be found/);
+});
+
+test("the generic sentence remains for a failure with no named reason", () => {
+  assert.equal(financialFactsState({ loading: false, errorStatus: "unavailable" }).detail, FACTS_DETAIL[FACTS_STATE.UNAVAILABLE]);
+});
+
+test("every Financials page renders the state's own detail — none indexes the generic FACTS_DETAIL directly", () => {
+  const pages = [
+    "FinancialsInvoiceDetail", "FinancialsInvoices", "FinancialsAccountsReceivable", "FinancialsPayments",
+    "FinancialsPaymentDetail", "FinancialsEmployeePerformance", "FinancialsCompanyPerformance",
+    "FinancialsCustomerFinancials", "FinancialsOverview",
+  ];
+  for (const page of pages) {
+    const src = readFileSync(new URL(`../src/modules/financials/${page}.jsx`, import.meta.url), "utf8");
+    assert.ok(!/FACTS_DETAIL\[/.test(src), `${page} must render financialFactsState's detail`);
+  }
+  const customer = readFileSync(new URL("../src/modules/financials/FinancialsCustomerFinancials.jsx", import.meta.url), "utf8");
+  assert.match(customer, /financialFactsState\(facts, \{ accountSelector: true \}\)/, "only the page with an account selector says so");
+  const others = pages.filter((p) => p !== "FinancialsCustomerFinancials");
+  for (const page of others) {
+    const src = readFileSync(new URL(`../src/modules/financials/${page}.jsx`, import.meta.url), "utf8");
+    assert.ok(!/accountSelector/.test(src), `${page} offers no account selector`);
+  }
 });
