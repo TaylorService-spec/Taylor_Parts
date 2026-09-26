@@ -110,7 +110,7 @@ const deviceClaim = (offline, at) => (offline ? at : null);
  * request shape, and because the structured-object standard says an attribute stays addressable all
  * the way through.
  */
-function warehouseIntent({ type, scopeId, principalUid, payload, captureKey, references = null, dependsOn = [], at = 0, offline = false }) {
+function warehouseIntent({ type, scopeId, principalUid, payload, captureKey, references = null, dependsOn = [], at = 0, offline = false, serverKey = null }) {
   const built = makeWarehouseEnvelope({
     type, scope: scopeId, principalUid, payload, captureKey, dependsOn,
     createdAtLocal: at,
@@ -121,11 +121,16 @@ function warehouseIntent({ type, scopeId, principalUid, payload, captureKey, ref
   if (!built.valid) return built;
   // The idempotency key IS the intent id. Every warehouse command derives its document id from the
   // key it is given, so the same act lands on the same record however many times it is sent.
+  //
+  // EXCEPT when the act was already ATTEMPTED ONLINE under a key of its own (`serverKey`). Then that
+  // key is the only one the server may know it by: an online attempt that committed and lost its
+  // response is recognised as a replay ONLY if the queued copy carries the very same key. Deriving a
+  // new one here would make the replay a second, different receipt.
   return {
     valid: true,
     value: Object.freeze({
       ...built.value,
-      payload: Object.freeze({ ...built.value.payload, idempotencyKey: built.value.intentId }),
+      payload: Object.freeze({ ...built.value.payload, idempotencyKey: serverKey ?? built.value.intentId }),
     }),
   };
 }
@@ -141,8 +146,35 @@ function warehouseIntent({ type, scopeId, principalUid, payload, captureKey, ref
  */
 export function captureReceive({
   principalUid, sourceId, partId, quantity = null, serialNumbers = null,
-  destinationId = null, captureKey, at = 0, offline = false,
+  destinationId = null, captureKey, at = 0, offline = false, request = null,
 }) {
+  // THE CANONICAL RECEIPT, CAPTURED EXACTLY. When the screen hands over the request it sent (or was
+  // about to send) online, THAT request is what is queued -- every line with its own lineId, partId,
+  // receivedQuantity and serials, the destination, the expectedVersion, and the SAME idempotency key.
+  // Nothing is summarised: collapsing a multi-line receipt into one part and a total is a receipt the
+  // server can never accept, and a fresh key is a receipt the server cannot recognise as a retry.
+  if (request !== null) {
+    if (typeof request !== "object" || Array.isArray(request)) return { valid: false, reason: "receipt_request_invalid" };
+    // The queued key and the online key are one key, or the replay guarantee is gone.
+    if (request.idempotencyKey !== captureKey) return { valid: false, reason: "receipt_request_key_mismatch" };
+    const exact = JSON.parse(JSON.stringify(request)); // detached from the screen's state
+    const lines = Array.isArray(exact.lines) ? exact.lines : [];
+    const serials = lines.flatMap((l) => (Array.isArray(l?.serialNumbers) ? l.serialNumbers : []));
+    return warehouseIntent({
+      type: WAREHOUSE_INTENT.INVENTORY_RECEIVE,
+      scopeId: sourceId, principalUid, captureKey, at, offline,
+      payload: exact,
+      serverKey: exact.idempotencyKey,
+      references: {
+        Source: sourceId,
+        // One part is a fact only for a one-line receipt; naming lines[0] for several would mislabel it.
+        Part: lines.length === 1 ? lines[0].partId ?? null : null,
+        Destination: exact.receivingLocation?.locationId ?? destinationId,
+        Quantity: lines.reduce((n, l) => n + (typeof l?.receivedQuantity === "number" ? l.receivedQuantity : 0), 0),
+        Serial: serials.length === 1 ? serials[0] : null,
+      },
+    });
+  }
   return warehouseIntent({
     type: WAREHOUSE_INTENT.INVENTORY_RECEIVE,
     scopeId: sourceId, principalUid, captureKey, at, offline,

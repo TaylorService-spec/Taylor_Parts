@@ -113,6 +113,21 @@ async function readCommittedReceipts(
 }
 
 /**
+ * REPLAY CONTEXT. Set by the command ONLY when the receipt id this request derives to already exists
+ * as a committed receipt (looked up inside the same transaction, before anything here runs).
+ *
+ * A replay is not a new receipt, so the gates that protect a NEW receipt do not apply to it:
+ *   - the receivable-status gate is skipped (the replayed receipt may itself have closed the order);
+ *   - the replayed receipt is EXCLUDED from the committed-receipt derivation, so the batch validation
+ *     sees remaining as it stood without this receipt, and the unchanged fingerprint comparison --
+ *     not a quantity rule that the original commit itself changed -- decides replay vs conflict.
+ * Nothing else changes: identity coherence, existence and normalization are still enforced.
+ */
+export interface ResolveReceivingSourceOptions {
+  readonly replayOfReceivingId?: string;
+}
+
+/**
  * Resolve the addressed authority and everything derived from it.
  *
  * READS ONLY. Every read here happens before the caller's first write, and the caller owns the
@@ -123,7 +138,9 @@ export async function resolveReceivingSource(
   txn: Transaction,
   db: Firestore,
   source: unknown,
+  opts: ResolveReceivingSourceOptions = {},
 ): Promise<ResolvedReceivingSource> {
+  const replayOf = opts.replayOfReceivingId;
   if (!source || typeof source !== "object" || Array.isArray(source)) {
     throw new SourceNotReceivableError("source is not an object");
   }
@@ -158,11 +175,12 @@ export async function resolveReceivingSource(
     }
 
     const storedStatus = str(data.status);
-    if (!storedStatus || !(RECEIVABLE_CANONICAL_STATUSES as readonly string[]).includes(storedStatus)) {
+    if (replayOf === undefined && (!storedStatus || !(RECEIVABLE_CANONICAL_STATUSES as readonly string[]).includes(storedStatus))) {
       throw new SourceNotReceivableError("purchase order is not in a receivable state");
     }
 
-    const receipts = await readCommittedReceipts(txn, db, purchaseOrderId);
+    const committed = await readCommittedReceipts(txn, db, purchaseOrderId);
+    const receipts = replayOf === undefined ? committed : committed.filter((r) => r.receivingId !== replayOf);
     return {
       sourceType,
       purchaseOrderId,
@@ -188,7 +206,7 @@ export async function resolveReceivingSource(
     const poSnap = await txn.get(poRef);
     if (!poSnap.exists) throw new SourceNotFoundError("purchase order not found");
     const data = poSnap.data() ?? {};
-    if (data.status !== LEGACY_RECEIVABLE_STATUS) {
+    if (replayOf === undefined && data.status !== LEGACY_RECEIVABLE_STATUS) {
       throw new SourceNotReceivableError("purchase order is not ORDERED");
     }
     if (data.reorderRequestId !== reorderRequestId) {

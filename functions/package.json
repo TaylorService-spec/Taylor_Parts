@@ -97,7 +97,7 @@
     "test:receivingLocationResolver": "npm run build && node test/receivingLocationResolver.test.mjs",
     "test:receivingResolverIntegration": "npm run build && node test/receiveInventoryStockResolverIntegration.test.mjs",
     "test:receivingCapability": "npm run build && node test/receivingCapabilityRegistration.test.mjs",
-    "test:receivingCallables": "npm run build && node test/receivingCallables.test.mjs && node test/receivingCallablesExport.test.mjs && node --test test/receivingCallablesCanonicalMultiLine.test.mjs",
+    "test:receivingCallables": "npm run build && node test/receivingCallables.test.mjs && node test/receivingCallablesExport.test.mjs && node --test test/receivingCallablesCanonicalMultiLine.test.mjs test/receivingCallablesReceiptReplay.test.mjs",
     "test:receivingCallablesEmulator": "npm run build && node test/receivingCallablesEmulator.test.mjs",
     "test:warehouseGovernance": "npm run build && node test/governedWarehouseValidation.test.mjs",
     "test:warehouseRootCompany": "npm run build && node --test test/warehousePhysicalRootCompany.test.mjs",

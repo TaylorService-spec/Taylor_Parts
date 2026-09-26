@@ -54,6 +54,13 @@ export interface BatchValidationContext {
   readonly resolved: ResolvedReceivingSource;
   /** Every distinct partId on the submitted lines, as the Part authority resolved it. */
   readonly partsByPartId: ReadonlyMap<string, ResolvedPartAuthority>;
+  /**
+   * True ONLY when this request's receipt id already exists as a committed receipt. The version
+   * comparison is then skipped: the replayed receipt's own commit moved the version, so comparing
+   * would refuse the exact retry the idempotency key exists to absorb. The version is not part of the
+   * stored receipt or its fingerprint, and the fingerprint check still refuses any changed payload.
+   */
+  readonly replay?: boolean;
 }
 
 /**
@@ -82,7 +89,7 @@ export function validateReceivingBatch(input: unknown, ctx: BatchValidationConte
     if (typeof input.expectedVersion !== "number" || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) {
       return fail("expected_version_invalid");
     }
-    if (input.expectedVersion !== resolved.version) return fail("version_conflict");
+    if (ctx.replay !== true && input.expectedVersion !== resolved.version) return fail("version_conflict");
   }
 
   if (!Array.isArray(input.lines) || input.lines.length === 0) return fail("lines_invalid");

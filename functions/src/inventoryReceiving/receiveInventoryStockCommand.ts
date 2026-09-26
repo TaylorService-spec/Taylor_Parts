@@ -175,6 +175,29 @@ function ledgerSerialIdempotencyKey(receivingId: string, lineId: string, serialN
   return "recvsn_" + createHash("sha256").update(JSON.stringify([receivingId, lineId, serialNo])).digest("hex").slice(0, 40);
 }
 
+// The receipt id THIS request derives to, computed from the raw request with exactly the derivation
+// step 7 uses (the validated idempotencyKey and the resolved purchaseOrderId are these same raw values,
+// unmodified). Null when the request cannot name a receipt at all -- such a request can never be a
+// replay, and the normal path refuses it with its usual reason. The legacy id stays `rcv_` + sha256 of
+// the key ALONE; the canonical id stays target- and actor-scoped.
+function requestedReceivingId(batch: Record<string, unknown>, actorId: string): string | null {
+  const source = batch.source as Record<string, unknown>;
+  const key = batch.idempotencyKey;
+  if (typeof key !== "string" || key.trim() === "") return null;
+  if (source.type === CANONICAL_SOURCE_TYPE) {
+    const purchaseOrderId = str(source.purchaseOrderId);
+    if (purchaseOrderId === null) return null;
+    return canonicalReceivingOrderDocId({
+      operation: "receiveInventoryStock",
+      sourceType: CANONICAL_SOURCE_TYPE,
+      purchaseOrderId,
+      actorId,
+      idempotencyKey: key,
+    });
+  }
+  return receivingOrderDocId(key);
+}
+
 // The trusted command. `request` is the UNTRUSTED receive payload ONLY (no actor). The server-derived
 // actor comes from deps.actor (trusted context).
 export async function receiveInventoryStock(request: unknown, deps: ReceiveInventoryStockDeps): Promise<ReceiveInventoryStockOutcome> {
@@ -221,9 +244,32 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     if (!authorized) throw new UnauthorizedReceivingError();
     if (deps.__afterAuthReadHook) await deps.__afterAuthReadHook();
 
+    // ---- 1b. REPLAY DETECTION, before ANY status / quantity / version gate ----
+    //
+    // Whether this request is a retry of a receipt that already committed must be known BEFORE the
+    // request is validated against current state. That state includes the committed receipt itself:
+    // its quantities are already counted against remaining, its commit moved the PO version, and it
+    // may have closed the order. Validating first refused the exact retry the idempotency key exists
+    // to absorb (failed-precondition instead of `replayed`). Read through the transaction, so a
+    // concurrent duplicate that commits first conflicts this attempt, which re-runs and replays.
+    //
+    // A replay still passes every identity / existence / shape check below, and the fingerprint
+    // comparison in step 8 still refuses the same key reused for a different payload.
+    const replayReceivingId = requestedReceivingId(batch, actor.id);
+    const replaying =
+      replayReceivingId !== null &&
+      (await txn.get(deps.db.collection(RECEIVING_ORDERS_COLLECTION).doc(replayReceivingId))).exists;
+
     // ---- 2. SOURCE AUTHORITY (read). Canonical: the concurrency anchor (see the transaction-order
-    // spec §1). Legacy: read-only, never written -- its immutability contract is preserved. ----
-    const resolved = await resolveReceivingSource(txn, deps.db, batch.source);
+    // spec §1). Legacy: read-only, never written -- its immutability contract is preserved. On a
+    // replay the receivable-status gate is skipped and the replayed receipt is excluded from the
+    // derivation (see ResolveReceivingSourceOptions). ----
+    const resolved = await resolveReceivingSource(
+      txn,
+      deps.db,
+      batch.source,
+      replaying ? { replayOfReceivingId: replayReceivingId as string } : {},
+    );
     if (deps.__afterSourceReadHook) await deps.__afterSourceReadHook();
 
     // ---- 3. LINKED REORDER REQUEST (LEGACY ONLY) ----
@@ -279,7 +325,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     if (deps.__afterLocationReadHook) await deps.__afterLocationReadHook();
 
     // ---- 6. VALIDATE THE WHOLE BATCH -- before any write, so a rejected batch leaves nothing ----
-    const validated = validateReceivingBatch(batch, { resolved, partsByPartId });
+    const validated = validateReceivingBatch(batch, { resolved, partsByPartId, replay: replaying });
     if (!validated.valid) {
       if (validated.reason === "tracking_mode_unsupported") throw new PartInvalidError("tracking mode not supported (LOT deferred)");
       if (validated.reason === "part_inactive") throw new PartInvalidError("part is not active");
@@ -301,6 +347,8 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
           idempotencyKey: value.idempotencyKey,
         })
       : receivingOrderDocId(value.idempotencyKey);
+    // The replay decision was taken on the id derived from the raw request; it must be this id.
+    if (replaying && receivingId !== replayReceivingId) throw new ReceivingIntegrityError("replay identity incoherent");
 
     // ---- occurredAt STABILITY: the ledger event's business time is the Receiving Order's authoritative
     // createdAt, so an exact retry at a later clock reproduces the same fingerprint (replay, not conflict).
@@ -312,6 +360,8 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     // create if applying) ----
     const receivingWriteIndex = writes.length;
     const receivingOutcome = await stageReceivingOrderValue(receivingStore, value, receivingId, { actor, now });
+    // Same document, same transaction: the two reads cannot disagree unless something is badly wrong.
+    if ((receivingOutcome.outcome === "replayed") !== replaying) throw new ReceivingIntegrityError("replay detection incoherent");
 
     // ---- 8b. RECEIVING ORDER REFERENCE NUMBER (RO-YYYY-######) -- allocated ONLY on a genuine new
     // create, never on replay. allocateReceivingOrderNumber performs a READ ONLY here; its counter
@@ -485,10 +535,10 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
       : new Map([[resolved.derived.lines[0].lineId, value.lines[0].receivedQuantity]]);
     const perLine = resolved.derived.lines.map((l) => {
       const receivedNow = receiptByLineId.get(l.lineId) ?? 0;
-      // On a REPLAY the derivation already includes this receipt (it is committed), so adding it again
-      // would double-count. `alreadyCounted` is what keeps the replayed answer equal to the original.
-      const alreadyCounted = receivingOutcome.outcome === "replayed";
-      const previouslyReceived = alreadyCounted ? l.receivedQuantity - receivedNow : l.receivedQuantity;
+      // On a REPLAY the derivation EXCLUDES this receipt (step 2), so -- exactly as on apply -- the
+      // derived quantity is everything received other than this receipt, and adding receivedNow never
+      // double-counts. That is what keeps the replayed answer equal to the original.
+      const previouslyReceived = l.receivedQuantity;
       const remainingAfter = Math.max(0, l.orderedQuantity - previouslyReceived - receivedNow);
       return {
         lineId: l.lineId,
