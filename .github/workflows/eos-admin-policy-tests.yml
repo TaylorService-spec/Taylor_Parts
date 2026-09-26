@@ -496,6 +496,8 @@ on:
       - "functions/src/eosOps/functionalRoleFacts.ts"
       - "functions/test/functionalRoleWorkflow.test.mjs"
       - "functions/test/functionalRolePostgres.test.mjs"
+      # PASS 9: Functional Role x assignment scope security regressions S4/S5/S6 (test:adminPolicyPostgres).
+      - "functions/test/administrationScopeSecurityPostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -869,6 +871,8 @@ on:
       - "functions/src/eosOps/functionalRoleFacts.ts"
       - "functions/test/functionalRoleWorkflow.test.mjs"
       - "functions/test/functionalRolePostgres.test.mjs"
+      # PASS 9: Functional Role x assignment scope security regressions S4/S5/S6 (test:adminPolicyPostgres).
+      - "functions/test/administrationScopeSecurityPostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
