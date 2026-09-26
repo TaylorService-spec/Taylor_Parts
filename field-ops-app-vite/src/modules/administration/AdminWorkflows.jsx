@@ -1,280 +1,130 @@
 import { useMemo, useState } from "react";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
-import { WorkflowsPolicyPanel } from "./PolicyStorePanels.jsx";
-import {
-  SEED_WORKFLOW_FAMILIES,
-  WORKFLOW_AREAS,
-  areaForMachine,
-  buildWorkflowVersionView,
-  machinesInArea,
-  summarizeWorkflowFamily,
-  workflowTerminologyCounts,
-} from "../../domain/adminWorkflowView.js";
+import { workflowAdminClient } from "../../services/workflowAdminClient.js";
+import { groupWorkflowsByArea, lifecycleLabel, summarizeWorkflow } from "../../domain/adminWorkflowView.js";
+import { useControlPlaneRead } from "./useControlPlaneRead.js";
+import { ReadState } from "./ObjectActionSecurity.jsx";
+import WorkflowVersionPanel from "./WorkflowVersionPanel.jsx";
 
-// ADMINISTRATION > WORKFLOWS -- the business processes EOS knows about.
+// ADMINISTRATION > WORKFLOWS -- the workflow control plane.
 //
 // ════════════════════ WHAT A WORKFLOW IS, AND IS NOT ════════════════════
 //
 // A workflow answers "what business ACTION may I perform" -- Approve, Dispatch, Void. That is a
-// different question from "what DATA may I access", which Objects and Roles & Permissions answer,
-// and neither implies the other:
+// different question from "what DATA may I access", which Objects and Roles & Permissions answer.
+// And A BINDING NEVER GRANTS: an action is performed only when a Security Role the person holds is
+// bound to it AND the runtime evaluator allows the action's capability. The screen says so.
 //
-//   being allowed to Start Purchasing does NOT mean reading every Purchase Order field
-//   holding PurchaseOrder.Read does NOT mean being allowed to Void Purchase Order
+// ════════════════════ EVERYTHING HERE IS THE SERVER'S ════════════════════
 //
-// The screen says so, because an administrator who assumes otherwise will grant the wrong thing.
+// The list, every version, its steps, actions, bindings and guards, the validation findings, the
+// pinned instances and the audit history are read from the EOS API. There is no client copy of any
+// definition. Every mutation (edit a draft, publish, activate, retire, new version) is sent with a
+// stated reason, is re-checked by the server against its workflowDefinition capability and the
+// version lifecycle, and is followed by a re-read. A refusal is shown VERBATIM.
 //
-// ════════════════════ WHAT THESE DEFINITIONS ARE ════════════════════
+// ════════════════════ AREAS ARE PRESENTATION ════════════════════
 //
-// They are MEASURED from the code that runs today -- the reorder status machine, the work-order
-// transition table, and the three Sales lifecycles -- and they are DRAFTS. A draft routes nothing:
-// no record moves through these definitions, and none will until each is proved to match the
-// behaviour it describes and is then separately published.
-//
-// Rendering them as though they were live would be the single most misleading thing this screen
-// could do, so every version carries its status and the page says it plainly.
-//
-// ════════════════════ THREE AREAS, FIVE STATE MACHINES ════════════════════
-//
-// Owner terminology. Administration presents THREE business workflow areas -- Parts / Purchasing,
-// Technician / Work Order, Sales -- over FIVE versioned state machines, because Sales is three:
-// Opportunity, Agreement and Order.
-//
-// Those three are chained by EVENTS, not transitions. There is no edge from WON to DRAFT; a won
-// opportunity CREATES an agreement, which is a different thing. So an AREA is a presentation
-// grouping and nothing more -- it has no state, no transition and no Role binding of its own, and
-// no authority is ever resolved against it. Collapsing Sales into one invented machine would draw
-// transitions no code performs.
-//
-// ════════════════════ READ-ONLY, AND WHY ════════════════════
-//
-// Editing a workflow is a policy-store operation, and the policy store is not stood up. The
-// trusted commands exist (functions/src/adminPolicy/policyCommands.ts) and are Admin-only; what is
-// missing is the database behind them. A disabled editor would still read as an affordance, so
-// none is drawn -- the page states the reason instead.
+// Three business areas group the state machines for reading (Sales is three machines chained by
+// events). An area has no state, transition or binding, and authority is never resolved against one.
 
-/** The four columns of a transition table, named once so the header and the rows agree. */
-const ACTION_COLUMNS = ["Action", "From", "To", "Who may perform it"];
-
-function StatusPill({ status }) {
-  const live = status === "PUBLISHED";
-  return (
-    <span className={live ? "fo-wf-status fo-wf-status--published" : "fo-wf-status fo-wf-status--draft"}>
-      {live ? "Published" : "Draft"}
-    </span>
+export default function AdminWorkflows({ api = workflowAdminClient }) {
+  const list = useControlPlaneRead(() => api.listWorkflows(), "workflows");
+  const summaries = useMemo(
+    () => (Array.isArray(list.data) ? list.data.map(summarizeWorkflow).filter(Boolean) : []),
+    [list.data],
   );
-}
+  const [selectedId, setSelectedId] = useState(null);
+  const [versionId, setVersionId] = useState(null);
+  const selected = summaries.find((w) => w.id === selectedId) ?? null;
+  const groups = groupWorkflowsByArea(summaries);
 
-export default function AdminWorkflows() {
-  const families = SEED_WORKFLOW_FAMILIES;
-  const [selectedKey, setSelectedKey] = useState(families[0]?.key ?? null);
-  const [expanded, setExpanded] = useState(() => new Set());
-
-  const selected = useMemo(
-    () => families.find((f) => f.key === selectedKey) ?? families[0] ?? null,
-    [families, selectedKey],
-  );
-  const view = useMemo(() => (selected ? buildWorkflowVersionView(selected) : null), [selected]);
-  const terminology = workflowTerminologyCounts();
-  // Named for what it is, so the WORKFLOW_AREAS.map below does not shadow it into ambiguity.
-  const selectedArea = selected ? areaForMachine(selected.key) : null;
-
-  const toggle = (key) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const choose = (workflow) => {
+    setSelectedId(workflow.id);
+    setVersionId(workflow.activeVersionId ?? workflow.versions[workflow.versions.length - 1]?.id ?? null);
+  };
 
   return (
-    <WorkspaceShell title="Workflows" subtitle="The business processes EOS knows about, and who may act in them">
+    <WorkspaceShell title="Workflows" subtitle="Business processes, their versions, and who may act in them">
       <section className="fo-panel" aria-label="What a workflow governs">
         <p className="fo-muted">
-          A workflow governs <strong>business actions</strong> — Approve, Dispatch, Void. That is a
-          different authority from <strong>data access</strong>, which Objects and Roles &amp;
-          Permissions govern, and neither grants the other: being allowed to start purchasing does
-          not reveal a purchase order&rsquo;s fields, and being able to read one does not permit
-          voiding it.
+          A workflow governs <strong>business actions</strong> — Approve, Dispatch, Void — not data
+          access. A Security Role bound to an action may perform it <strong>only if</strong> the Role
+          also holds the action&rsquo;s capability: a binding never grants. Publishing is refused while
+          any bound Role lacks the capability.
         </p>
-        <p className="fo-warning">
-          Every definition below is a <strong>draft measured from the code that runs today</strong>.
-          No record moves through them. They are read-only here because editing a workflow writes to
-          the EOS policy store, and that store is not yet stood up.
+        <p className="fo-muted">
+          Lifecycle: <strong>Draft</strong> → <strong>Published</strong> (the active version is where new
+          records start) → <strong>Retired</strong>. A published version never changes; records already
+          running stay on the version they started on.
         </p>
       </section>
 
-      <section className="fo-panel" aria-label="Workflow areas">
-        <h3>
-          Business areas{" "}
-          <span className="fo-muted">
-            · {terminology.areas} areas · {terminology.stateMachines} state machines
-          </span>
-        </h3>
-        {WORKFLOW_AREAS.map((area) => (
-          <div key={area.key} className="fo-wf-area">
-            <h4>
-              {area.name}
-              {area.machineKeys.length > 1 && (
-                <span className="fo-muted"> · {area.machineKeys.length} linked state machines</span>
-              )}
-            </h4>
-            <p className="fo-muted">{area.description}</p>
-            <div className="fo-pill-row">
-              {machinesInArea(area.key).map((family) => {
-                const summary = summarizeWorkflowFamily(family);
-                return (
-                  <Button
-                    key={family.key}
-                    variant={family.key === selected?.key ? "primary" : "secondary"}
-                    onClick={() => setSelectedKey(family.key)}
-                    aria-pressed={family.key === selected?.key}
-                  >
-                    {family.name}
-                    <span className="fo-muted"> · {summary.stepCount} states · {summary.actionCount} actions</span>
-                  </Button>
-                );
-              })}
-            </div>
+      <section className="fo-panel" aria-label="Workflow list">
+        <h3>Workflows</h3>
+        <ReadState read={list} what="the workflow list" />
+        {list.status === "ready" && summaries.length === 0 ? (
+          <p className="fo-muted">This tenant has no workflows.</p>
+        ) : null}
+        {groups.map((group) => (
+          <div key={group.key} className="fo-wf-area" data-workflow-area={group.key}>
+            <h4>{group.name}</h4>
+            <p className="fo-muted">{group.description}</p>
+            <table className="fo-table" aria-label={`${group.name} workflows`}>
+              <thead><tr><th>Workflow</th><th>Governs</th><th>Active version</th><th>Versions</th></tr></thead>
+              <tbody>
+                {group.workflows.map((w) => (
+                  <tr key={w.id} data-workflow={w.key} aria-selected={w.id === selectedId}>
+                    <td>
+                      <Button type="button" variant={w.id === selectedId ? "primary" : "secondary"} onClick={() => choose(w)}>
+                        {w.name}
+                      </Button>
+                    </td>
+                    <td className="fo-muted"><code>{w.objectKey ?? "—"}</code></td>
+                    <td>{w.activeVersion === null ? <span className="fo-muted">none</span> : `v${w.activeVersion}`}</td>
+                    <td className="fo-muted">
+                      {w.counts.draft} draft · {w.counts.published} published · {w.counts.retired} retired
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ))}
-        <p className="fo-muted">
-          An <strong>area</strong> groups related processes for reading. It has no states,
-          transitions or Role bindings of its own — every one of those belongs to a state machine,
-          and authority is only ever resolved against a machine. Sales is three machines chained by
-          events: a won Opportunity <em>creates</em> an Agreement rather than transitioning into
-          one, so drawing them as a single process would show transitions no code performs.
-        </p>
       </section>
 
-      {selected && view && (
-        <>
-          <section className="fo-panel" aria-label="Version">
-            <h3>
-              {selected.name} <StatusPill status={view.status} />
-            </h3>
-            {selectedArea && (
-              <p className="fo-muted">
-                A state machine in the <strong>{selectedArea.name}</strong> area.
-              </p>
-            )}
-            <p className="fo-muted">{selected.description}</p>
-            <dl className="fo-wf-meta">
-              <div><dt>Version</dt><dd>v{view.version}</dd></div>
-              <div><dt>Governs</dt><dd>{selected.objectKey ?? "—"}</dd></div>
-              <div><dt>States</dt><dd>{view.steps.length}</dd></div>
-              <div><dt>Actions</dt><dd>{view.actions.length}</dd></div>
-              <div><dt>Role bindings</dt><dd>{view.bindingCount}</dd></div>
-            </dl>
-          </section>
+      {selected ? (
+        <section className="fo-panel" aria-label="Versions" data-selected-workflow={selected.key}>
+          <h3>{selected.name} <span className="fo-muted">· versions</span></h3>
+          {selected.description ? <p className="fo-muted">{selected.description}</p> : null}
+          <div className="fo-pill-row">
+            {selected.versions.map((v) => (
+              <Button
+                key={v.id}
+                type="button"
+                variant={v.id === versionId ? "primary" : "secondary"}
+                onClick={() => setVersionId(v.id)}
+                aria-pressed={v.id === versionId}
+                data-version-status={v.status}
+              >
+                v{v.version} · {lifecycleLabel(v)}
+              </Button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
-          <section className="fo-panel" aria-label="States">
-            <h3>States</h3>
-            <p className="fo-muted">
-              A record sits in exactly one state. <strong>Initial</strong> is where an instance
-              starts; a <strong>terminal</strong> state accepts no further action.
-            </p>
-            <div className="fo-table-scroll">
-              <table className="fo-table" aria-label={`${selected.name} states`}>
-                <thead>
-                  <tr>
-                    <th scope="col">State</th>
-                    <th scope="col">Kind</th>
-                    <th scope="col">Actions available from here</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.steps.map((step) => (
-                    <tr key={step.key}>
-                      <td>{step.label}<span className="fo-muted"> · {step.key}</span></td>
-                      <td className="fo-muted">
-                        {step.initial ? "Initial" : step.terminal ? "Terminal" : "In progress"}
-                      </td>
-                      <td className="fo-muted">
-                        {step.outgoing.length === 0
-                          // A terminal state having no outgoing actions is the DEFINITION of
-                          // terminal, not a gap. Said in words so it does not read as missing data.
-                          ? (step.terminal ? "None — this state is terminal" : "None")
-                          : step.outgoing.join(", ")}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="fo-panel" aria-label="Actions and transitions">
-            <h3>Actions and transitions</h3>
-            <p className="fo-muted">
-              Each action moves a record from one state to one other state, and names the Roles
-              permitted to perform it. Expand an action to see its Role bindings.
-            </p>
-            <div className="fo-table-scroll">
-              <table className="fo-table" aria-label={`${selected.name} actions`}>
-                <thead>
-                  <tr>{ACTION_COLUMNS.map((c) => <th key={c} scope="col">{c}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {view.actions.map((action) => {
-                    const isOpen = expanded.has(action.key);
-                    return [
-                      <tr key={action.key}>
-                        <td>
-                          <button
-                            type="button"
-                            className="fo-caret"
-                            onClick={() => toggle(action.key)}
-                            aria-expanded={isOpen}
-                            aria-label={`${isOpen ? "Hide" : "Show"} the ${action.roleKeys.length} roles bound to ${action.label}`}
-                          >
-                            {isOpen ? "▾" : "▸"}
-                          </button>{" "}
-                          {action.label}
-                          {action.requiresOwnAssignment && (
-                            <span className="fo-muted" title="Only the person the record is assigned to may perform this">
-                              {" "}· own assignment
-                            </span>
-                          )}
-                        </td>
-                        <td className="fo-muted">{action.from}</td>
-                        <td className="fo-muted">{action.to}</td>
-                        <td className="fo-muted">{action.roleKeys.length} roles</td>
-                      </tr>,
-                      ...(isOpen
-                        ? [
-                            <tr key={`${action.key}:roles`} className="fo-row-nested">
-                              <td className="fo-nested-label" colSpan={ACTION_COLUMNS.length}>
-                                <span className="fo-muted">↳ May perform:</span>{" "}
-                                {action.roleKeys.join(", ")}
-                                <div className="fo-muted">
-                                  A Role bound here may perform this action. It grants no access to
-                                  the record&rsquo;s data.
-                                </div>
-                                {/* The capability this action is MEASURED to require, shown so an
-                                    administrator can see which authority an action answers to. It
-                                    appears here and in no CRED checkbox -- that is the Owner's
-                                    ruling made visible rather than merely asserted in a test. */}
-                                {action.capabilityId ? (
-                                  <div className="fo-muted">
-                                    Workflow capability: <code>{action.capabilityId}</code>
-                                  </div>
-                                ) : null}
-                              </td>
-                            </tr>,
-                          ]
-                        : []),
-                    ];
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      )}
-
-      <WorkflowsPolicyPanel />
+      {selected && versionId ? (
+        <WorkflowVersionPanel
+          key={versionId}
+          api={api}
+          workflow={selected}
+          versionId={versionId}
+          onVersionCreated={(id) => { list.reload(); setVersionId(id); }}
+          onChanged={() => list.reload()}
+        />
+      ) : null}
     </WorkspaceShell>
   );
 }

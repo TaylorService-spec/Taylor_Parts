@@ -26,6 +26,7 @@ import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
+import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
 import {
   OPERATIONAL_SCOPE_WRITE_CAPABILITY,
@@ -404,6 +405,13 @@ export default function UserDetail({
           <RuledSection title="Effective Access" meta="The server evaluator's explanation">
             <PrincipalGate linked={linked} principalLink={principalLink}>
               <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} />
+            </PrincipalGate>
+          </RuledSection>
+
+          {/* WORKFLOW RESPONSIBILITIES: bindings on held Security Roles INTERSECTED with effective authority, by the server. */}
+          <RuledSection title="Workflow responsibilities" meta="Active workflow actions this Employee may perform">
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeWorkflowResponsibilities principalId={principalId} />
             </PrincipalGate>
           </RuledSection>
         </div>
