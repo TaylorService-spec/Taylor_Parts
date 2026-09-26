@@ -3164,6 +3164,7 @@
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
           "functions/src/access/trustedWriterCommands.ts",
+          "functions/src/adminPolicy/administrationAuthority.ts",
           "functions/src/adminPolicy/administrationSurfaceAuthority.ts"
         ],
         "clientReferences": [
@@ -3173,7 +3174,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
         ],
-        "serverReferenceCount": 4,
+        "serverReferenceCount": 5,
         "clientReferenceCount": 5,
         "evidence": "SERVER_REFERENCED"
       },

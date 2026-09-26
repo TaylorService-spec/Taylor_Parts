@@ -47,7 +47,7 @@
 // lives in eosOps/workOrderLifecycle.ts (LIFECYCLE_CONTEXT_PREDICATES), never as a column here.
 // DRY RUN BY DEFAULT: `apply: true` is the only path that writes, matching every other operator tool
 // in this repository.
-import { requireAdministrationAuthority } from "./administrationAuthority";
+import { requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
 import { grantObjectActionToRole, type AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
 import type { RoleCapabilityRecord } from "./types";
@@ -78,7 +78,8 @@ export const WORK_ORDER_LIFECYCLE_ACTIVATION_GRANTS: readonly LifecycleActivatio
   Object.freeze({ objectKey: WORK_ORDER_OBJECT_KEY, actionKey: "complete", roleKey: "technician" }),
 ]);
 
-export type ActivationRowStatus = "PROPOSED" | "APPLIED" | "ALREADY_GRANTED";
+/** ADMIN_REVOKED: an administrator revoked the pair through Administration; the activation yields. */
+export type ActivationRowStatus = "PROPOSED" | "APPLIED" | "ALREADY_GRANTED" | "ADMIN_REVOKED";
 
 export interface ActivationRow extends LifecycleActivationGrant {
   readonly capabilityKey: string;
@@ -123,9 +124,12 @@ export async function activateWorkOrderLifecycleGrants(
   // but a run where all five are ALREADY_GRANTED writes nothing and would therefore check nothing --
   // and a report of who holds which lifecycle capability is itself a description of the tenant's
   // access configuration. An unauthorized caller gets the refusal, not the reading.
-  requireAdministrationAuthority(actor.heldRoleKeys, "editRoleDefinition");
+  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
 
   const apply = options.apply === true;
+  // An environment activation is a SYSTEM DEFAULT: it yields to a current ADMIN_REVOKED decision.
+  const revoked = new Set((await repo.listRoleCapabilityDecisions(actor.tenantId))
+    .filter((d) => d.decision === "ADMIN_REVOKED").map((d) => `${d.roleKey}|${d.capabilityKey}`));
 
   const capabilities = await repo.listCapabilities();
   const capabilityKeyByObjectAction = new Map(
@@ -151,6 +155,11 @@ export async function activateWorkOrderLifecycleGrants(
     const existing = before.find((g) => g.roleId === role.id && g.capabilityId === capability?.id);
     if (existing) {
       rows.push({ ...grant, capabilityKey, status: "ALREADY_GRANTED", roleCapabilityId: existing.id });
+      continue;
+    }
+
+    if (revoked.has(`${grant.roleKey}|${capabilityKey}`)) {
+      rows.push({ ...grant, capabilityKey, status: "ADMIN_REVOKED", roleCapabilityId: null });
       continue;
     }
 

@@ -22,7 +22,7 @@
 // tenant to a known state. A bootstrap that reset policy on every deploy would silently undo
 // configuration, which is the worst kind of "safe".
 import { requireAdministrationAuthority } from "./administrationAuthority";
-import { ADMIN_ROLE_KEY } from "./administrationAuthority";
+import { ADMIN_ROLE_KEY, ADMINISTRATION_BOOTSTRAP_GRANTS } from "./administrationAuthority";
 import { seedTenantPolicy, SEED_VERSION } from "./seed/policySeed";
 import type { SeedResult } from "./seed/policySeed";
 import { PolicyStoreError } from "./policyRepository";
@@ -192,7 +192,27 @@ export async function bootstrapAdministrator(
     }
   }
 
+  // THE GOVERNING CAPABILITIES COME WITH THE FIRST ADMINISTRATOR. Security administration is
+  // authorized by admin.securityPolicy.write / admin.roleAssignment.write, never by the Role name, so
+  // a tenant whose Roles were seeded after those grant migrations ran would otherwise have an Admin
+  // who can administer nothing. Only pairs whose Role and capability both exist are written.
+  const [catalog, roles, existingGrants] = await Promise.all([
+    repo.listCapabilities(), repo.listRoles(tenantId), repo.listRoleCapabilities(tenantId),
+  ]);
+  const capabilityIdByKey = new Map(catalog.map((c) => [c.key, c.id]));
+  const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
+  const bootstrapGrants = ADMINISTRATION_BOOTSTRAP_GRANTS
+    .map((g) => ({ ...g, roleId: roleIdByKey.get(g.roleKey), capabilityId: capabilityIdByKey.get(g.capabilityKey) }))
+    .filter((g): g is typeof g & { roleId: string; capabilityId: string } => Boolean(g.roleId && g.capabilityId))
+    .filter((g) => !existingGrants.some((e) => e.roleId === g.roleId && e.capabilityId === g.capabilityId));
+
   return repo.transact({ tenantId, uid: performedBy }, async (tx) => {
+    for (const g of bootstrapGrants) {
+      await tx.grantRoleCapability({
+        roleId: g.roleId, capabilityId: g.capabilityId,
+        grantedBy: `bootstrap:${performedBy}`, grantedAt: new Date().toISOString(),
+      });
+    }
     const principal =
       existingPrincipal ??
       (await tx.createPrincipal({
@@ -230,7 +250,10 @@ export async function bootstrapAdministrator(
       targetKind: "principal",
       targetId: principal.id,
       before: null,
-      after: { roleKey: ADMIN_ROLE_KEY, assignmentId: assignment.id, identityProvider, externalSubject: subject },
+      after: {
+        roleKey: ADMIN_ROLE_KEY, assignmentId: assignment.id, identityProvider, externalSubject: subject,
+        administrationGrants: bootstrapGrants.map((g) => `${g.roleKey}/${g.capabilityKey}`),
+      },
       occurredAt: new Date().toISOString(),
       reason: input.reason ?? "initial administrator",
     });

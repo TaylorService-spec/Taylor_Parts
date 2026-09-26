@@ -504,13 +504,28 @@ test("D-5 SURVIVES ACTIVATION: reorder data is CRED, reorder transitions are wor
 
 // ============================ USERS ============================
 
-test("USERS: Owner, General Manager and Admin may each assign the Admin Role", { skip: SKIP }, async () => {
+test("USERS: Owner and Admin may each assign the Admin Role; General Manager only once Administration grants it", { skip: SKIP }, async () => {
   const { repo: r, tenant } = await standUpTaylor();
   const roles = await r.listRoles(tenant.id);
   const adminRole = roles.find((x) => x.key === "admin");
 
   await grant(r, OWNER_SUBJECT, "owner");
   await grant(r, GM_SUBJECT, "generalManager");
+
+  // ASSIGNMENT IS THE CAPABILITY admin.roleAssignment.write, never a Role name (Administration control
+  // plane, 2026-09-26). The bootstrap gives it to admin and owner. generalManager is NOT a default
+  // holder -- the 2026-08-21 Owner ruling (generalManagerNoAdmin) conflicts with the former Role-name
+  // invariant, and that conflict is reported rather than resolved in code -- so GM is refused until an
+  // administrator grants it THROUGH ADMINISTRATION: one audited act, no migration.
+  const gmTarget = await r.getPrincipalBySubject("firebase", GM_SUBJECT);
+  const refused = await executeAdminOperation({ repo: r }, asSubject(GM_SUBJECT, "assignRole", {
+    principalId: gmTarget.id, roleId: adminRole.id, reason: "GM before the grant",
+  }));
+  assert.deepEqual([refused.ok, refused.code], [false, "FORBIDDEN"]);
+  const granted = await executeAdminOperation({ repo: r }, asSubject(ADMIN_SUBJECT, "grantObjectActionToRole", {
+    objectKey: "rolesPermissions", actionKey: "assignRole", roleKey: "generalManager", reason: "Owner decides GM staffing authority",
+  }));
+  assert.equal(granted.ok, true, granted.ok ? "" : granted.message);
 
   // A DIFFERENT TARGET EACH TIME. Assigning the same Role to the same principal three times is now
   // idempotent, so the second and third calls would have returned the FIRST one's row and reported

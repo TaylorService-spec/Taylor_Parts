@@ -856,6 +856,10 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
   await q(`DROP TABLE eos_policy.capability_grant_conditions`);
   const relationAbsent = await capabilityAuthority.describeGrantConditionRelation(pool);
   await q(model.GRANT_CONDITION_RELATION_SCHEMA);
+  // ...and re-attach the never-widen guard migration 1762646400000 puts on it, so the relation these
+  // proofs run against is the DEPLOYED one (the function survives the drop; only the trigger goes).
+  await q(`CREATE TRIGGER capability_grant_conditions_never_widen BEFORE UPDATE OR DELETE ON eos_policy.capability_grant_conditions
+           FOR EACH ROW EXECUTE FUNCTION eos_policy.capability_grant_conditions_never_widen()`);
 
   // ---- Roles, grants and Principals, through the real policy repository
   const fixture = { tenantId: TENANT, uid: "uid-lane-aj" };
@@ -943,7 +947,18 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
          (id,tenant_id,grant_scope,grantor_key,capability_key,condition,status,established_by,updated_by)
        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,'lane-aj','lane-aj')`,
     [id, TENANT, scope, grantorKey, capabilityKey, JSON.stringify(condition), status]);
-  const clearConditions = () => q(`DELETE FROM eos_policy.capability_grant_conditions`);
+  // FIXTURE RESET. Migration 1762646400000 refuses to delete an ACTIVE condition while its grant is
+  // held (it would widen the grant to ALL); a disposable database resetting between proofs lifts that
+  // guard for exactly this one statement.
+  // (A relation re-created from the bare DDL carries no trigger, so the guard is lifted only if present.)
+  const clearConditions = async () => {
+    const guarded = (await q(`SELECT 1 FROM pg_trigger WHERE tgname = 'capability_grant_conditions_never_widen'`)).rows.length > 0;
+    if (guarded) await q(`ALTER TABLE eos_policy.capability_grant_conditions DISABLE TRIGGER capability_grant_conditions_never_widen`);
+    try { return await q(`DELETE FROM eos_policy.capability_grant_conditions`); }
+    finally {
+      if (guarded) await q(`ALTER TABLE eos_policy.capability_grant_conditions ENABLE TRIGGER capability_grant_conditions_never_widen`);
+    }
+  };
   const conditionRowCount = async () =>
     (await q(`SELECT count(*)::int n FROM eos_policy.capability_grant_conditions`)).rows[0].n;
 
@@ -969,8 +984,12 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     const migrationsDir = resolve(FUNCTIONS_DIR, "migrations");
     const naming = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"))
       .filter((f) => readFileSync(resolve(migrationsDir, f), "utf8").includes("capability_grant_conditions"));
-    assert.deepEqual(naming, ["1762214400000_capability-grant-conditions.sql"],
+    // Migration 1762646400000 (the Administration control plane) names it too -- to GUARD it with the
+    // never-widen trigger, not to redefine it. Exactly ONE migration may CREATE it.
+    assert.deepEqual(naming, ["1762214400000_capability-grant-conditions.sql", "1762646400000_administration-control-plane.sql"],
       `the relation is named by ${naming.length} migrations on this lineage: ${naming}`);
+    const creating = naming.filter((f) => /CREATE TABLE eos_policy\.capability_grant_conditions/.test(readFileSync(resolve(migrationsDir, f), "utf8")));
+    assert.deepEqual(creating, ["1762214400000_capability-grant-conditions.sql"], "a second migration defines the relation");
     // AND THE DEPLOYED RELATION IS THE DECLARED ONE. This could not be measured on AJ's branch,
     // because there the only relation that existed was the one this test had just created.
     assert.equal(relationDeployed.present, true, "the migration chain did not create the relation");
@@ -1211,9 +1230,11 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
       return { status: res.status, body: JSON.parse(res.body) };
     };
 
-    // 1. The deployed composition: the SHIPPED (empty) catalog. Allowed.
-    const shipped = await call(adminUser);
+    // 1. The explicit SHIPPED (empty) composition. Allowed. (Since the Administration control plane
+    //    the DEPLOYED default reads PostgreSQL; SHIPPED survives only as an explicit composition.)
+    const shipped = await call(adminUser, { grantConditionSource: "SHIPPED" });
     assert.equal(shipped.status, 200, JSON.stringify(shipped.body));
+    assert.deepEqual((await call(adminUser)).status, 200, "the PostgreSQL default with zero rows allows");
 
     // 2. The SAME request, reading conditions from PostgreSQL with ZERO rows. Byte-identical.
     assert.equal(await conditionRowCount(), 0);
@@ -1230,8 +1251,10 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     assert.equal(refused.status, 403, JSON.stringify(refused.body));
     assert.equal(refused.body.code, "CAPABILITY_CONDITION_UNSATISFIED");
     assert.match(refused.body.message, new RegExp(`${PRINCIPAL_ACCESS_READ}: WORK_ELIGIBILITY_MISSING`));
-    // The SHIPPED composition is untouched by the row: activation is a code change, not a row.
-    assert.equal((await call(adminUser)).status, 200, "the stored row bound a composition that did not ask for it");
+    // THE DEPLOYED DEFAULT BINDS THE ROW: Administration writes a condition and the runtime honours it
+    // with no code change. Only the explicit SHIPPED composition ignores it.
+    assert.equal((await call(adminUser)).status, 403, "the deployed default ignored an Administration-written condition");
+    assert.equal((await call(adminUser, { grantConditionSource: "SHIPPED" })).status, 200);
 
     // 4. Grant the governed fact the condition names. The SAME request now succeeds.
     await q(`INSERT INTO eos_workforce.employee_work_eligibility
@@ -1241,8 +1264,12 @@ test("AJ: the DEPLOYED schema, the zero-condition runtime, and the seam that con
     assert.deepEqual([allowed.status, allowed.body], [shipped.status, shipped.body],
       "the condition was satisfied and the read still did not answer");
 
-    // 5. RETIRE the row rather than deleting it: a retired condition is not a condition.
-    await q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='aj-seam'`);
+    // 5. RETIRING the row while admin still holds the grant is REFUSED by the database: it would widen
+    //    the grant back to unconditional (Administration control plane, fail closed). Lift it the
+    //    governed way -- the fixture reset below -- and the read answers again.
+    await assert.rejects(() => q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='aj-seam'`),
+      /CONDITION_RETIREMENT_WOULD_WIDEN/);
+    await clearConditions();
     // The eligibility authority keeps history: a qualification is ENDED, never deleted.
     await q(`UPDATE eos_workforce.employee_work_eligibility
                 SET effective_to = now(), ended_by = 'fixture', ended_at = now() WHERE id='we-aj-seam'`);
@@ -1378,7 +1405,18 @@ test("AQ: LAZY conditional entitlement -- the Owner's order, counted", { skip: S
          (id,tenant_id,grant_scope,grantor_key,capability_key,condition,status,established_by,updated_by)
        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,'lane-aq','lane-aq')`,
     [id, TENANT, scope, grantorKey, capabilityKey, JSON.stringify(condition), status]);
-  const clearConditions = () => q(`DELETE FROM eos_policy.capability_grant_conditions`);
+  // FIXTURE RESET. Migration 1762646400000 refuses to delete an ACTIVE condition while its grant is
+  // held (it would widen the grant to ALL); a disposable database resetting between proofs lifts that
+  // guard for exactly this one statement.
+  // (A relation re-created from the bare DDL carries no trigger, so the guard is lifted only if present.)
+  const clearConditions = async () => {
+    const guarded = (await q(`SELECT 1 FROM pg_trigger WHERE tgname = 'capability_grant_conditions_never_widen'`)).rows.length > 0;
+    if (guarded) await q(`ALTER TABLE eos_policy.capability_grant_conditions DISABLE TRIGGER capability_grant_conditions_never_widen`);
+    try { return await q(`DELETE FROM eos_policy.capability_grant_conditions`); }
+    finally {
+      if (guarded) await q(`ALTER TABLE eos_policy.capability_grant_conditions ENABLE TRIGGER capability_grant_conditions_never_widen`);
+    }
+  };
   const conditionRowCount = async () =>
     (await q(`SELECT count(*)::int n FROM eos_policy.capability_grant_conditions`)).rows[0].n;
 

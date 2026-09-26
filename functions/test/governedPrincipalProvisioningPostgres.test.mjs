@@ -251,6 +251,11 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
   const bootstrappedA = await bootstrapAdministrator(repo, {
     tenantId: tenantA.id, externalSubject: "administering-principal-uid-a", performedBy: "bu-proof",
   });
+  // THE PREMISE BELOW NEEDS A TENANT THAT GRANTS NOTHING. Since the Administration control plane,
+  // bootstrapAdministrator writes the governing Administration grants (ADMINISTRATION_BOOTSTRAP_GRANTS)
+  // with the first administrator; this two-half authority proof removes exactly those rows -- a fixture
+  // act on a disposable database -- so each half can be shown to authorize on its own.
+  await pool.query(`DELETE FROM eos_policy.role_capabilities WHERE granted_by = 'bootstrap:bu-proof'`);
 
   /** A Principal holding one SEEDED catalog Role, created through the repository, never by hand. */
   async function makePrincipal(tenantId, subject, roleKey, displayName = null) {
@@ -324,10 +329,10 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
     `SELECT tenant_id, actor_uid, target_kind, target_id, reason, after FROM eos_policy.audit_events
       WHERE action = $1 ORDER BY occurred_at, id`, [tool.AUDIT_ACTION])).rows;
 
-  await t.test("the premise: the catalog carries 79 capabilities and NO tenant grants them yet", async () => {
+  await t.test("the premise: the catalog carries 80 capabilities and NO tenant grants them yet", async () => {
     const counts = await rowCounts();
-    assert.equal(counts["eos_policy.capabilities"], 79,
-      "the capability catalog is not the measured 79 -- this lane registers none, so this must hold");
+    assert.equal(counts["eos_policy.capabilities"], 80,
+      "the capability catalog is not the measured 80 (79 + admin.securityPolicy.write, 1762646400000) -- this lane registers none, so this must hold");
     assert.equal(counts["eos_policy.role_capabilities"], 0,
       "a freshly bootstrapped tenant already grants capabilities -- the two-half authority proof below needs it not to");
     assert.equal(counts["eos_policy.principal_capabilities"], 0);
@@ -378,7 +383,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
     await grantRoleCapability(tenantA.id, "admin");
     // Reproduces the measured nonprod pairing (admin, owner hold admin.roleAssignment.write) in this
     // throwaway database. The catalog is untouched: this is a GRANT row, not a capability.
-    assert.equal((await q("SELECT count(*)::int AS n FROM eos_policy.capabilities")).rows[0].n, 79);
+    assert.equal((await q("SELECT count(*)::int AS n FROM eos_policy.capabilities")).rows[0].n, 80);
 
     const resolved = await tool.resolveAdministrationAuthority(pool, repo, tenantA.id, roleGrantedAdminId, deps);
     assert.deepEqual(resolved.heldRoleKeys, ["admin"]);
@@ -472,7 +477,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
       "an Employee link was created as a side effect");
     assert.equal(after["eos_policy.principal_capabilities"], before["eos_policy.principal_capabilities"],
       "a direct Principal capability grant was made");
-    assert.equal(after["eos_policy.capabilities"], 79, "the capability catalog changed");
+    assert.equal(after["eos_policy.capabilities"], 80, "the capability catalog changed");
     assert.equal(after["eos_policy.role_capabilities"], before["eos_policy.role_capabilities"], "a Role was widened");
     assert.equal(after["eos_policy.roles"], before["eos_policy.roles"], "a Role was created");
     // The command bumps no access version for a bare admission either.
@@ -630,7 +635,7 @@ test("the governed Principal provisioning operator, in PostgreSQL", { skip: SKIP
       invariants: { before: clean.invariants.before, after: { ...clean.invariants.after, employeeLinks: 1 } },
     }).length >= 1);
     assert.ok(tampered({
-      invariants: { before: clean.invariants.before, after: { ...clean.invariants.after, capabilityCatalogRows: 80 } },
+      invariants: { before: clean.invariants.before, after: { ...clean.invariants.after, capabilityCatalogRows: 81 } },
     }).some((v) => /capability catalog/.test(v)));
   });
 

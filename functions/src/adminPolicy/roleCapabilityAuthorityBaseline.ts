@@ -103,6 +103,12 @@
 // statement of who holds a capability; the migration comments are historical records of a single
 // migration's own effect.
 import baseline from "./seed/roleCapabilityAuthorityBaseline.json";
+import {
+  forbiddenPair,
+  verifyTenantAuthority,
+  type CurrentDecision,
+  type TenantAuthorityVerification,
+} from "./roleCapabilityAdministration";
 
 export type CanonicalGrantSource =
   | "MIGRATION_BACKED"
@@ -361,4 +367,51 @@ export function assertAuthorityRebuildMatches(
         `${show(missingDeclaration)}; UNEXPLAINED EXTRA (${unexplainedExtra.length}): ${show(unexplainedExtra)}`,
     );
   }
+}
+
+// ════════════════════ THE BASELINE SPLIT (Administration control plane, 2026-09-26) ════════════════════
+//
+// This baseline is the SYSTEM DEFAULT half of tenant configuration -- what the repository produces.
+// It is no longer the whole answer to "is this live row explained?":
+//
+//   1. PLATFORM CATALOG    eos_policy.capabilities (migrations)
+//   2. SYSTEM INVARIANTS   roleCapabilityAdministration.FORBIDDEN_ROLE_CAPABILITY_PAIRS -- the
+//                          baseline may never declare one, and a live tenant may never hold one
+//   3. TENANT CONFIG       THIS baseline (SYSTEM_DEFAULT) composed with the tenant's CURRENT
+//                          Administration decisions (eos_policy.role_capability_decisions)
+//
+// A live row explained by an ADMIN_GRANTED decision, or a missing default explained by an
+// ADMIN_REVOKED decision, is NOT drift. Everything the rebuild guard above refuses is still refused:
+// the rebuild compares the REPOSITORY against itself on a disposable database, where no
+// Administration decision exists, so its exactness proof is unchanged. AN2 is unchanged too: a live
+// row explained by nothing -- not the baseline, not a decision -- is still UNEXPLAINED.
+
+/** FAIL CLOSED: the baseline can never declare a pair a system invariant forbids. */
+export function assertBaselineHonoursSystemInvariants(
+  grants: readonly RoleCapabilityPair[] = GRANTS,
+): void {
+  const violations = grants.filter((g) => forbiddenPair(g.roleKey, g.capabilityKey));
+  if (violations.length > 0) {
+    throw new AuthorityBaselineError(
+      "the authority baseline declares a pair a SYSTEM INVARIANT forbids: " +
+        violations.map((p) => `${p.roleKey}/${p.capabilityKey}`).join(", "),
+    );
+  }
+}
+
+/**
+ * Verify ONE live tenant: the environment's system default (this baseline) composed with that
+ * tenant's CURRENT Administration decisions. `environment` chooses the default: "nonprod" includes
+ * the NONPROD_ACTIVATION grants, "global" does not (AN3 -- an activation is never global).
+ */
+export function verifyLiveTenantAuthority(input: {
+  readonly live: readonly RoleCapabilityPair[];
+  readonly decisions: readonly CurrentDecision[];
+  readonly environment: "nonprod" | "global";
+}): TenantAuthorityVerification {
+  return verifyTenantAuthority({
+    systemDefault: input.environment === "nonprod" ? nonprodAuthorityGrants() : globalAuthorityGrants(),
+    live: input.live,
+    decisions: input.decisions,
+  });
 }

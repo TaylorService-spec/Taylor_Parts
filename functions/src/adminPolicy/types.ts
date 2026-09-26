@@ -464,3 +464,43 @@ export interface PrincipalCapabilityRecord extends TenantOwned, Provenance {
   readonly grantedBy: string;
   readonly grantedAt: string;
 }
+
+// ════════════════════ ADMINISTRATION DECISIONS AND GRANT CONDITIONS ════════════════════
+//
+// `role_capabilities` answers WHAT a Role holds. A decision answers WHY -- because an administrator
+// granted it, or why it is ABSENT although a default would put it there. See
+// adminPolicy/roleCapabilityAdministration.ts for the precedence rule these rows take part in.
+
+export const ROLE_CAPABILITY_DECISIONS = ["ADMIN_GRANTED", "ADMIN_REVOKED"] as const;
+export type RoleCapabilityDecision = (typeof ROLE_CAPABILITY_DECISIONS)[number];
+
+/** One append-only Administration decision about one (tenant, Role, capability) cell. */
+export interface RoleCapabilityDecisionRecord extends TenantOwned {
+  readonly id: string;
+  readonly roleKey: string;
+  readonly capabilityKey: string;
+  readonly decision: RoleCapabilityDecision;
+  /** ADMIN_GRANTED only: the grant is valid only while an ACTIVE condition narrows it. */
+  readonly requiresCondition: boolean;
+  readonly reason: string;
+  readonly actorPrincipalId: string;
+  readonly auditEventId: string;
+  readonly decidedAt: string;
+  /** null while this is the CURRENT decision for its cell. */
+  readonly supersededAt: string | null;
+  readonly supersededBy: string | null;
+}
+
+/** One row of eos_policy.capability_grant_conditions, as Administration reads and writes it. */
+export interface GrantConditionRecord extends TenantOwned {
+  readonly id: string;
+  readonly grantScope: "ROLE" | "PRINCIPAL";
+  readonly grantorKey: string;
+  readonly capabilityKey: string;
+  readonly condition: unknown;
+  readonly status: "ACTIVE" | "RETIRED";
+  readonly establishedBy: string;
+  readonly establishedAt: string;
+  readonly updatedBy: string;
+  readonly updatedAt: string;
+}

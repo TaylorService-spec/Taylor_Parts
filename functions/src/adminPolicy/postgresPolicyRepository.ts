@@ -54,6 +54,8 @@ import type {
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
+  GrantConditionRecord,
+  RoleCapabilityDecisionRecord,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
@@ -202,6 +204,35 @@ const toCapability = (r: Record<string, unknown>): CapabilityRecord => ({
   actionKey: String(r.action_key),
   actionKind: String(r.action_kind) as CapabilityRecord["actionKind"],
   displayLabel: String(r.display_label),
+});
+
+const toDecision = (r: Record<string, unknown>): RoleCapabilityDecisionRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  roleKey: String(r.role_key),
+  capabilityKey: String(r.capability_key),
+  decision: String(r.decision) as RoleCapabilityDecisionRecord["decision"],
+  requiresCondition: r.requires_condition === true,
+  reason: String(r.reason),
+  actorPrincipalId: String(r.actor_principal_id),
+  auditEventId: String(r.audit_event_id),
+  decidedAt: iso(r.decided_at),
+  supersededAt: isoOrNull(r.superseded_at),
+  supersededBy: r.superseded_by === null || r.superseded_by === undefined ? null : String(r.superseded_by),
+});
+
+const toGrantCondition = (r: Record<string, unknown>): GrantConditionRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  grantScope: String(r.grant_scope) as GrantConditionRecord["grantScope"],
+  grantorKey: String(r.grantor_key),
+  capabilityKey: String(r.capability_key),
+  condition: r.condition,
+  status: String(r.status) as GrantConditionRecord["status"],
+  establishedBy: String(r.established_by),
+  establishedAt: iso(r.established_at),
+  updatedBy: String(r.updated_by),
+  updatedAt: iso(r.updated_at),
 });
 
 const toRoleCapability = (r: Record<string, unknown>): RoleCapabilityRecord => ({
@@ -595,6 +626,26 @@ export class PostgresPolicyRepository implements PolicyRepository {
        ) recent ORDER BY occurred_at ASC, id ASC`,
       [tenantId, limit],
       toAudit,
+    );
+  }
+
+  listRoleCapabilityDecisions(tenantId: TenantId, options: { readonly currentOnly?: boolean } = {}) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.role_capability_decisions
+        WHERE tenant_id = $1 AND ($2::boolean = false OR superseded_at IS NULL)
+        ORDER BY role_key, capability_key, decided_at, id`,
+      [tenantId, options.currentOnly !== false],
+      toDecision,
+    );
+  }
+
+  listGrantConditions(tenantId: TenantId, options: { readonly activeOnly?: boolean } = {}) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.capability_grant_conditions
+        WHERE tenant_id = $1 AND ($2::boolean = false OR status = 'ACTIVE')
+        ORDER BY grant_scope, grantor_key, capability_key`,
+      [tenantId, options.activeOnly !== false],
+      toGrantCondition,
     );
   }
 }
@@ -1133,16 +1184,70 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       );
     },
 
+    // ── Administration decisions and grant conditions (migration 1762646400000) ──
+    async recordRoleCapabilityDecision(input) {
+      const id = newId();
+      // Supersede FIRST: the partial unique index admits one current decision per cell, and the
+      // append-only trigger admits exactly this one-time stamp and nothing else.
+      await q.query(
+        `UPDATE ${SCHEMA}.role_capability_decisions SET superseded_at = now(), superseded_by = $4
+          WHERE tenant_id = $1 AND role_key = $2 AND capability_key = $3 AND superseded_at IS NULL`,
+        [tenantId, input.roleKey, input.capabilityKey, id]);
+      // `superseded_by` names the row inserted next; its FK is DEFERRABLE INITIALLY DEFERRED, so it
+      // is checked at COMMIT, when both rows exist.
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.role_capability_decisions
+           (id, tenant_id, role_key, capability_key, decision, requires_condition, reason,
+            actor_principal_id, audit_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [id, tenantId, input.roleKey, input.capabilityKey, input.decision, input.requiresCondition,
+          input.reason, input.actorPrincipalId, input.auditEventId]);
+      return toDecision(rows[0]);
+    },
+
+    async upsertGrantCondition(input) {
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.capability_grant_conditions
+           (id, tenant_id, grant_scope, grantor_key, capability_key, condition, status, established_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'ACTIVE',$7,$7)
+         ON CONFLICT (tenant_id, grant_scope, grantor_key, capability_key)
+         DO UPDATE SET condition = EXCLUDED.condition, status = 'ACTIVE',
+                       updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [newId(), tenantId, input.grantScope, input.grantorKey, input.capabilityKey,
+          JSON.stringify(input.condition), actor.uid]);
+      return toGrantCondition(rows[0]);
+    },
+
+    async retireGrantCondition(grantScope, grantorKey, capabilityKey) {
+      try {
+        const { rows } = await q.query(
+          `UPDATE ${SCHEMA}.capability_grant_conditions
+              SET status = 'RETIRED', updated_by = $5, updated_at = now()
+            WHERE tenant_id = $1 AND grant_scope = $2 AND grantor_key = $3 AND capability_key = $4
+              AND status = 'ACTIVE'
+            RETURNING *`,
+          [tenantId, grantScope, grantorKey, capabilityKey, actor.uid]);
+        return rows.length > 0 ? toGrantCondition(rows[0]) : null;
+      } catch (err) {
+        const message = (err as Error)?.message ?? "";
+        if (message.includes("CONDITION_RETIREMENT_WOULD_WIDEN")) throw new PolicyStoreError(message);
+        throw err;
+      }
+    },
+
     async appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">) {
+      const id = newId();
       await q.query(
         `INSERT INTO ${SCHEMA}.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id,
            before, after, occurred_at, reason)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [newId(), tenantId, input.action, input.actorUid, input.targetKind, input.targetId,
+        [id, tenantId, input.action, input.actorUid, input.targetKind, input.targetId,
           input.before === null || input.before === undefined ? null : JSON.stringify(input.before),
           input.after === null || input.after === undefined ? null : JSON.stringify(input.after),
           input.occurredAt, input.reason],
       );
+      return id;
     },
   };
 }

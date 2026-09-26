@@ -51,9 +51,13 @@ import {
   revokeObjectActionFromRole,
   grantObjectActionToPrincipal,
   revokeObjectActionFromPrincipal,
+  setGrantCondition,
+  retireGrantCondition,
   publishWorkflowVersion,
   PolicyValidationError,
+  AdministrationRefusal,
 } from "./policyCommands";
+import { forbiddenPair } from "./roleCapabilityAdministration";
 import {
   createWorkflowDraft,
   createWorkflowVersion,
@@ -110,6 +114,14 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listWorkflows",
   "readWorkflowVersion",
   "readPolicyAuditHistory",
+  // ── the Administration control plane (2026-09-26) ──
+  // Security Role detail: holders + every Object action with its grant SOURCE and condition.
+  "getSecurityRoleDetail",
+  // Object x action x grantee, each cell with its source (ADMIN_GRANTED / SYSTEM_DEFAULT /
+  // ADMIN_REVOKED / SYSTEM_INVARIANT / DIRECT_EXCEPTION) and its condition.
+  "getObjectActionGrantMatrix",
+  // The append-only Administration decision history, superseded decisions included.
+  "listRoleCapabilityDecisionHistory",
 ] as const);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -131,6 +143,9 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "revokeObjectActionFromRole",
   "grantObjectActionToPrincipal",
   "revokeObjectActionFromPrincipal",
+  // Grant conditions. Fail closed: a condition is never lifted while its grant is held.
+  "setGrantCondition",
+  "retireGrantCondition",
   "createWorkflowDraft",
   "createWorkflowVersion",
   "updateWorkflowDefinition",
@@ -192,6 +207,9 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   listWorkflows: "workflows",
   readWorkflowVersion: "workflows",
   readPolicyAuditHistory: "auditLogs",
+  getSecurityRoleDetail: "rolesPermissions",
+  getObjectActionGrantMatrix: "objects",
+  listRoleCapabilityDecisionHistory: "rolesPermissions",
 });
 
 /** The one capability each Administration read requires. Derived, never restated. */
@@ -602,6 +620,20 @@ async function dispatch(
       return events;
     }
 
+    case "getSecurityRoleDetail":
+      return describeSecurityRole(repo, actor.tenantId, requireString(input.roleKey, "roleKey"));
+
+    case "getObjectActionGrantMatrix":
+      return objectActionGrantMatrix(repo, actor.tenantId, requireString(input.objectKey, "objectKey"));
+
+    case "listRoleCapabilityDecisionHistory": {
+      const roleKey = optionalString(input.roleKey);
+      const capabilityKey = optionalString(input.capabilityKey);
+      const all = await repo.listRoleCapabilityDecisions(actor.tenantId, { currentOnly: false });
+      return all.filter((d) => (!roleKey || d.roleKey === roleKey) && (!capabilityKey || d.capabilityKey === capabilityKey))
+        .slice(-clampLimit(input.limit));
+    }
+
     // ──────────── mutations ────────────
     //
     // Each delegates to the governed command, which re-checks authority itself. The check is not
@@ -699,11 +731,14 @@ async function dispatch(
       });
 
     case "grantObjectActionToRole":
+      // The reason must be STATED by the administrator; the request id alone is not a reason.
       return grantObjectActionToRole(repo, actor, {
         objectKey: requireString(input.objectKey, "objectKey"),
         actionKey: requireString(input.actionKey, "actionKey"),
         roleKey: requireString(input.roleKey, "roleKey"),
-        reason: optionalString(input.reason),
+        reason: optionalString(input.reason) ? reason : null,
+        condition: input.condition ?? undefined,
+        requiresCondition: input.requiresCondition === true,
       });
 
     case "revokeObjectActionFromRole":
@@ -711,7 +746,24 @@ async function dispatch(
         objectKey: requireString(input.objectKey, "objectKey"),
         actionKey: requireString(input.actionKey, "actionKey"),
         roleKey: requireString(input.roleKey, "roleKey"),
-        reason: optionalString(input.reason),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "setGrantCondition":
+      return setGrantCondition(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        condition: input.condition,
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
+    case "retireGrantCondition":
+      return retireGrantCondition(repo, actor, {
+        objectKey: requireString(input.objectKey, "objectKey"),
+        actionKey: requireString(input.actionKey, "actionKey"),
+        roleKey: requireString(input.roleKey, "roleKey"),
+        reason: optionalString(input.reason) ? reason : null,
       });
 
     case "grantObjectActionToPrincipal":
@@ -881,6 +933,95 @@ async function updateRoleMetadata(
   });
 }
 
+// ════════════════════ control-plane reads ════════════════════
+//
+// SOURCE vocabulary, per (Role, capability) cell -- the precedence rule made visible:
+//   SYSTEM_INVARIANT   the pair may never be held (Owner ruling); shown so the UI can disable it
+//   ADMIN_GRANTED      held because an administrator granted it (current decision)
+//   ADMIN_REVOKED      absent because an administrator revoked it (current decision)
+//   SYSTEM_DEFAULT     held with no Administration decision: a migration, catalog or activation
+//                      default. `grantedBy` carries the stored provenance stamp.
+//   null               not held and never decided.
+
+export type GrantCellSource = "SYSTEM_INVARIANT" | "ADMIN_GRANTED" | "ADMIN_REVOKED" | "SYSTEM_DEFAULT" | null;
+
+function cellSource(held: boolean, decision: string | null, forbidden: boolean): GrantCellSource {
+  if (forbidden) return "SYSTEM_INVARIANT";
+  if (decision === "ADMIN_GRANTED" && held) return "ADMIN_GRANTED";
+  if (decision === "ADMIN_REVOKED" && !held) return "ADMIN_REVOKED";
+  return held ? "SYSTEM_DEFAULT" : null;
+}
+
+async function describeSecurityRole(repo: PolicyRepository, tenantId: string, roleKey: string) {
+  const role = await repo.getRoleByKey(tenantId, roleKey);
+  if (!role) throw new NotFound("role not found");
+  const [capabilities, grants, decisions, conditions, principalIds] = await Promise.all([
+    repo.listCapabilities(), repo.listRoleCapabilities(tenantId, [role.id]),
+    repo.listRoleCapabilityDecisions(tenantId), repo.listGrantConditions(tenantId),
+    repo.listTenantPrincipalIds(tenantId),
+  ]);
+  const holders = [];
+  for (const principalId of principalIds) {
+    for (const a of await repo.listAssignmentsForPrincipal(tenantId, principalId)) {
+      if (a.roleId !== role.id || a.status !== "active") continue;
+      const principal = await repo.getPrincipal(principalId);
+      holders.push({
+        principalId, displayName: principal?.displayName ?? null, assignmentId: a.id,
+        scopeType: a.scopeType, scopeValue: a.scopeValue, grantedAt: a.grantedAt,
+      });
+    }
+  }
+  const grantByCapability = new Map(grants.map((g) => [g.capabilityId, g]));
+  const actions = capabilities
+    .map((c) => {
+      const grant = grantByCapability.get(c.id) ?? null;
+      const decision = decisions.find((d) => d.roleKey === role.key && d.capabilityKey === c.key) ?? null;
+      const condition = conditions.find((x) => x.grantScope === "ROLE" && x.grantorKey === role.key && x.capabilityKey === c.key) ?? null;
+      const forbidden = forbiddenPair(role.key, c.key);
+      return {
+        objectKey: c.objectKey, actionKey: c.actionKey, actionKind: c.actionKind, displayLabel: c.displayLabel,
+        capabilityKey: c.key, held: Boolean(grant), grantedBy: grant?.grantedBy ?? null,
+        source: cellSource(Boolean(grant), decision?.decision ?? null, Boolean(forbidden)),
+        forbiddenBy: forbidden?.ruling ?? null,
+        decision: decision ? { decision: decision.decision, reason: decision.reason, actorPrincipalId: decision.actorPrincipalId,
+          decidedAt: decision.decidedAt, requiresCondition: decision.requiresCondition, auditEventId: decision.auditEventId } : null,
+        condition: condition ? { condition: condition.condition, status: condition.status, updatedAt: condition.updatedAt } : null,
+      };
+    })
+    .sort((a, b) => a.objectKey === b.objectKey ? a.actionKey.localeCompare(b.actionKey) : a.objectKey.localeCompare(b.objectKey));
+  return { roleKey: role.key, name: role.name, description: role.description, protected: role.protected, holders, actions };
+}
+
+async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string, objectKey: string) {
+  const object = await repo.getObjectByKey(tenantId, objectKey);
+  if (!object) throw new NotFound("object not found");
+  const [capabilities, roles, roleGrants, principalGrants, decisions, conditions] = await Promise.all([
+    repo.listCapabilities(), repo.listRoles(tenantId), repo.listRoleCapabilities(tenantId),
+    repo.listPrincipalCapabilities(tenantId), repo.listRoleCapabilityDecisions(tenantId), repo.listGrantConditions(tenantId),
+  ]);
+  const actions = actionsForObject(capabilities, object.key).map((c) => ({
+    actionKey: c.actionKey, actionKind: c.actionKind, displayLabel: c.displayLabel, capabilityKey: c.key,
+    roles: roles.map((r) => {
+      const grant = roleGrants.find((g) => g.roleId === r.id && g.capabilityId === c.id) ?? null;
+      const decision = decisions.find((d) => d.roleKey === r.key && d.capabilityKey === c.key) ?? null;
+      const condition = conditions.find((x) => x.grantScope === "ROLE" && x.grantorKey === r.key && x.capabilityKey === c.key) ?? null;
+      const forbidden = forbiddenPair(r.key, c.key);
+      return {
+        roleKey: r.key, held: Boolean(grant),
+        source: cellSource(Boolean(grant), decision?.decision ?? null, Boolean(forbidden)),
+        condition: condition?.condition ?? null,
+      };
+    }).filter((cell) => cell.held || cell.source !== null || cell.condition !== null)
+      .sort((a, b) => a.roleKey.localeCompare(b.roleKey)),
+    // A direct Principal grant is a governed EXCEPTION and is labelled so. The main operational
+    // gates resolve capabilities from Roles only; only the Workforce path honours direct grants.
+    principals: principalGrants.filter((g) => g.capabilityId === c.id)
+      .map((g) => ({ principalId: g.principalId, source: "DIRECT_EXCEPTION" as const, grantedBy: g.grantedBy }))
+      .sort((a, b) => a.principalId.localeCompare(b.principalId)),
+  }));
+  return { objectKey: object.key, label: object.label, actions };
+}
+
 // ════════════════════ input handling ════════════════════
 
 class NotFound extends Error {}
@@ -924,6 +1065,13 @@ function classify(err: unknown): AdminApiFailureCode {
   // -- never a 404 and never a 500, so a caller cannot tell "you may not" from "it is not there".
   if (err instanceof AdminReadDeniedError) return "FORBIDDEN";
   if (err instanceof NotFound) return "NOT_FOUND";
+  // A governed refusal about the STATE the change would produce -- a system invariant, a condition
+  // that would widen, the last administration path -- is a CONFLICT with what is there, not a
+  // malformed request. A missing reason or an unloadable condition stays INVALID_INPUT.
+  if (err instanceof AdministrationRefusal) {
+    return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
+      || err.code === "CONDITION_NOT_EVALUABLE" ? "INVALID_INPUT" : "CONFLICT";
+  }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;
   // A store refusal is a conflict with what is already there -- a duplicate key, an immutable

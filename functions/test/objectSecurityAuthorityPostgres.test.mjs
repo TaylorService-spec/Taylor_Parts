@@ -109,36 +109,36 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
 
     // Idempotent: the same grant again returns the SAME row, never a duplicate.
     const again = await commands.grantObjectActionToRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher" });
+      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" });
     assert.equal(again.id, grant.id);
 
     const removed = await commands.revokeObjectActionFromRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher" });
+      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" });
     assert.equal(removed.id, grant.id);
     // Revoking something not granted is null, not a throw: it is a legitimate answer.
     assert.equal(await commands.revokeObjectActionFromRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher" }), null);
+      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" }), null);
   });
 
   await t.test("unknown Object, unknown action and unknown Role each refuse distinctly", async () => {
     await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
-      { objectKey: "nosuchObject", actionKey: "dispatch", roleKey: "dispatcher" }), /no governed Object/);
+      { objectKey: "nosuchObject", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" }), /no governed Object/);
     await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "frobnicate", roleKey: "dispatcher" }), /no governed action/);
+      { objectKey: "workOrder", actionKey: "frobnicate", roleKey: "dispatcher", reason: "governed fixture decision" }), /no governed action/);
     await assert.rejects(() => commands.grantObjectActionToRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "nosuchRole" }), /role not found/);
+      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "nosuchRole", reason: "governed fixture decision" }), /role not found/);
   });
 
   await t.test("an unauthorized caller cannot grant, whatever else they hold", async () => {
     await assert.rejects(() => commands.grantObjectActionToRole(repo, nobody,
-      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher" }), /not authorized/);
+      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" }), /not authorized/);
   });
 
   await t.test("a grant touches only the capability it names", async () => {
     const role = await repo.getRoleByKey(tenant.id, "technician");
     const before = (await repo.listRoleCapabilities(tenant.id, [role.id])).map((g) => g.capabilityId).sort();
     await commands.grantObjectActionToRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "complete", roleKey: "technician" });
+      { objectKey: "workOrder", actionKey: "complete", roleKey: "technician", reason: "governed fixture decision" });
     const after = (await repo.listRoleCapabilities(tenant.id, [role.id])).map((g) => g.capabilityId).sort();
     const added = after.filter((c) => !before.includes(c));
     assert.equal(added.length, 1, "exactly one capability changed");
@@ -160,12 +160,15 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     assert.ok(granted.occurredAt, "server-authored timestamp");
 
     await commands.revokeObjectActionFromRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "cancel", roleKey: "dispatcher" });
+      { objectKey: "workOrder", actionKey: "cancel", roleKey: "dispatcher", reason: "governed fixture decision" });
     const after = await repo.listAuditEvents(tenant.id, 50);
     const revoked = after.find((e) => e.action === "revokeObjectActionFromRole");
     assert.ok(revoked, "the revoke was audited");
     assert.equal(revoked.before.granteeKey, "dispatcher");
-    assert.equal(revoked.after, null);
+    // The Administration control plane records the resulting STATE, not null: the pair is no longer
+    // held, BECAUSE an administrator revoked it -- the decision that keeps a default from re-adding it.
+    assert.equal(revoked.after.held, false);
+    assert.equal(revoked.after.decision, "ADMIN_REVOKED");
   });
 
   // ════════════════════ §26 DIRECT PRINCIPAL GRANTS ════════════════════
@@ -236,7 +239,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
 
   await t.test("the Object view and the Role view are the same rows, grouped differently", async () => {
     await commands.grantObjectActionToRole(repo, admin,
-      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher" });
+      { objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "governed fixture decision" });
     await commands.grantObjectActionToPrincipal(repo, admin,
       { objectKey: "workOrder", actionKey: "dispatch", principalId: plainId });
 
@@ -247,7 +250,7 @@ test("object-owned security authority, in PostgreSQL", { skip: SKIP, concurrency
     assert.ok(dispatchCell.principalIds.includes(plainId), "and the direct Principal");
 
     const roleView = await executeAdminOperation(
-      { repo }, { caller: { externalSubject: ADMIN_SUBJECT }, operation: "getRoleSecurity", input: { roleKey: "dispatcher" } });
+      { repo }, { caller: { externalSubject: ADMIN_SUBJECT }, operation: "getRoleSecurity", input: { roleKey: "dispatcher", reason: "governed fixture decision" } });
     assert.ok(roleView.data.objects.workOrder.includes("dispatch"),
       "the SAME grant appears in the Role view");
 

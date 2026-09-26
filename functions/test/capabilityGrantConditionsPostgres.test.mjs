@@ -383,7 +383,18 @@ test("the conditional entitlement relation, in PostgreSQL", { skip: SKIP, concur
   });
 
   await t.test("a RETIRED row is evidence, not a condition", async () => {
-    await q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='cgc-ae-1'`);
+    // FAIL CLOSED (Administration control plane, migration 1762646400000): retiring a condition while
+    // its grant is still HELD would widen that grant to every record, so the database refuses it.
+    await assert.rejects(() => q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='cgc-ae-1'`),
+      /CONDITION_RETIREMENT_WOULD_WIDEN/);
+    // The READER's semantics are unchanged and still proved: with the guard lifted for this one
+    // fixture statement, a RETIRED row is evidence, not a condition.
+    await q(`ALTER TABLE eos_policy.capability_grant_conditions DISABLE TRIGGER capability_grant_conditions_never_widen`);
+    try {
+      await q(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='cgc-ae-1'`);
+    } finally {
+      await q(`ALTER TABLE eos_policy.capability_grant_conditions ENABLE TRIGGER capability_grant_conditions_never_widen`);
+    }
     const both = await entitlementsFor([ROLE_A, ROLE_B], PO_READ);
     assert.deepEqual(both.map((e) => e.condition === null), [true, true],
       "withdrawing a condition is a status change; the row survives as evidence");

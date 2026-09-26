@@ -94,13 +94,20 @@ const MIG = "migration:1762300800000";
 const pairId = (p) => `${p.roleKey}\u0000${p.capabilityKey}`;
 
 /** What a Role holds in the canonical authority. */
+// What a Role holds AFTER this activation. The later Administration control plane's one row (admin ->
+// admin.securityPolicy.write, 1762646400000) is outside this activation and set aside on both sides.
 const capabilitiesOf = (roleKey) =>
-  new Set(AUTHORITY_BASELINE_GRANTS.filter((g) => g.roleKey === roleKey).map((g) => g.capabilityKey));
+  new Set(AUTHORITY_BASELINE_GRANTS
+    .filter((g) => g.roleKey === roleKey && g.evidence !== "migration:1762646400000")
+    .map((g) => g.capabilityKey));
 
 /** What a Role held BEFORE this activation -- the baseline minus the rows this migration wrote. */
+// The Administration control plane (1762646400000) is a LATER migration than this activation; its one
+// grant (admin -> admin.securityPolicy.write) is neither "before" nor part of this activation.
+const CONTROL_PLANE = "migration:1762646400000";
 const capabilitiesBeforeOf = (roleKey) =>
   new Set(AUTHORITY_BASELINE_GRANTS
-    .filter((g) => g.roleKey === roleKey && g.evidence !== MIG)
+    .filter((g) => g.roleKey === roleKey && g.evidence !== MIG && g.evidence !== CONTROL_PLANE)
     .map((g) => g.capabilityKey));
 
 const holdersOf = (capabilityKey) =>
@@ -109,16 +116,16 @@ const holdersOf = (capabilityKey) =>
 // ════════════════════ THE MEASUREMENT, AND THE TWO QUESTIONS IT KEEPS SEPARATE ════════════════════
 
 test("the baseline declares the ACTIVATED authority, and still says what nonprod holds today", () => {
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 413, "387 measured + 26 activated");
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 414, "387 measured + 26 activated + 1 control plane (1762646400000)");
   assert.deepEqual(countsBySource(), {
-    MIGRATION_BACKED: 355, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 356, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
-  assert.equal(globalAuthorityGrants().length, 408);
-  assert.equal(nonprodAuthorityGrants().length, 413);
+  assert.equal(globalAuthorityGrants().length, 409);
+  assert.equal(nonprodAuthorityGrants().length, 414);
   // ...and the OTHER question is still answerable without arithmetic in somebody's head.
   assert.equal(AUTHORITY_BASELINE_NONPROD_MEASURED_TOTAL, 387);
-  assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG],
-    "exactly one grant-bearing migration is authored and not yet run against the environment");
+  assert.deepEqual([...AUTHORITY_BASELINE_NOT_YET_APPLIED_MIGRATIONS], [MIG, CONTROL_PLANE],
+    "the activation vehicle and the Administration control plane are authored and not yet run against the environment");
 });
 
 test("the manifest declares itself ACTIVATED and applied to NO environment", () => {
@@ -423,7 +430,9 @@ test("PROOF 6/6: Owner does not become Admin", () => {
   assert.equal([...adminBefore].filter((c) => !ownerBefore.has(c)).length, 19);
 
   // AFTER: admin STILL holds 19 authorities owner does not. Nothing was copied across.
-  const adminOnly = [...admin].filter((c) => !owner.has(c)).sort();
+  // admin.securityPolicy.write (1762646400000) is admin-only by PARITY with the Role-name gate it
+  // replaced, not by this activation; it is set aside so the 19 stay the 19 this proof is about.
+  const adminOnly = [...admin].filter((c) => !owner.has(c) && c !== "admin.securityPolicy.write").sort();
   assert.equal(adminOnly.length, 19, "Owner must not absorb Admin's administration authority");
   for (const k of ["admin.dataImport.execute", "inventory.stock.receive", "inventory.placement.record",
     "inventory.stock.relocate", "workOrder.lifecycle.dispatch", "workOrder.lifecycle.cancel",
@@ -548,7 +557,7 @@ test("the rebuild reproduces the ACTIVATED authority exactly, and every activate
     try {
       const rebuilt = await rebuild(pool);
       assertAuthorityRebuildMatches(nonprodAuthorityGrants(), rebuilt);
-      assert.equal(rebuilt.length, 413);
+      assert.equal(rebuilt.length, 414);
 
       const stamped = new Map(rebuilt.map((r) => [pairId(r), r.grantedBy]));
       for (const p of activatedGrantPairs()) {

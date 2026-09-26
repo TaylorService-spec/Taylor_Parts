@@ -105,12 +105,14 @@ test("CRED convergence, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (t
       assert.notEqual(row.display_label, row.key, "a friendly label, not the key");
     }
     const total = (await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities")).rows[0].n;
-    assert.equal(total, 79,
+    assert.equal(total, 80,
       "49 + 8 + 13 + 3 + 1 + 1 (the re-homed coordinated-visit read) + 1 (admin.securityPolicy.read, " +
       "the Administration read authority -- rolesPermissions had two ADMIN_ACTION writes and no read) " +
       "+ 3 from migration 1762300800000, the authority activation vehicle: receivingOrder.record.read " +
       "and workOrder.record.read, which close the measured EDIT-WITHOUT-READ defect on two Objects " +
-      "that had NO registered READ at all, and reportDefinition.read, Reporting Slice 1");
+      "that had NO registered READ at all, and reportDefinition.read, Reporting Slice 1 " +
+      "+ 1 from migration 1762646400000, the Administration control plane: admin.securityPolicy.write, the " +
+      "capability that replaces the Role-name gate on security-policy mutations");
   });
 
   await t.test("every preserved grant is backed by an actual stored CRED row", async () => {

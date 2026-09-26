@@ -151,12 +151,12 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
     "audit_events", "capabilities", "capability_grant_conditions", "employee_principal_links",
     "object_fields", "objects",
     "principal_access_versions", "principal_capabilities", "principals",
-    "role_capabilities", "role_field_permission_overrides", "role_object_permissions", "roles",
+    "role_capabilities", "role_capability_decisions", "role_field_permission_overrides", "role_object_permissions", "roles",
     "tenant_admin_bootstraps", "tenant_memberships", "tenant_operating_companies",
     "tenant_operating_company_keys", "tenants",
     "user_role_assignments", "workflow_actions", "workflow_instance_events", "workflow_instances",
     "workflow_role_bindings", "workflow_steps", "workflow_versions", "workflows",
-  ], "twenty-six tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
+  ], "twenty-seven tables -- sixteen from migration 001, three from 002 (identity), two from 004 " +
      "(operational capabilities), one from 008 (the Employee <-> Principal linkage), one from EMP-RT-W2 " +
      "(tenant <-> operating company authority), one from migration 038 (the company -> eos_ops KEY " +
      "binding: which PARTITION an authorized company operates under, which the company row does not say), " +
@@ -166,6 +166,8 @@ test("clean database -> migrate -> the expected schema", { skip: SKIP }, async (
      "Migration 1762300800000 (the authority activation vehicle) adds NONE: it registers three " +
      "capabilities, writes 26 Role grants and reconciles role_object_permissions, all into relations " +
      "that already exist, which is what an authority activation should need. " +
+     "Migration 1762646400000 (the Administration control plane) adds ONE: role_capability_decisions, " +
+     "the append-only record of WHY a Role holds a capability or does not (ADMIN_GRANTED / ADMIN_REVOKED). " +
      "Migration 005 (eos_ops) is a SEPARATE schema and adds none of these.");
 
   const enums = await query(
@@ -231,7 +233,7 @@ test("the DOWN migrations remove the schema, and UP restores it", { skip: SKIP }
 
   migrateFromClean();
   const back = await query("SELECT count(*)::int n FROM information_schema.tables WHERE table_schema = 'eos_policy'");
-  assert.equal(back.rows[0].n, 26, "and up restores all twenty-six");
+  assert.equal(back.rows[0].n, 27, "and up restores all twenty-seven");
 });
 
 test("a migration reverses alone, leaving its predecessors intact", { skip: SKIP }, async () => {

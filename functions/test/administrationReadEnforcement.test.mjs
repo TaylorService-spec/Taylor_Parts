@@ -81,6 +81,11 @@ const CANONICAL_MAP = Object.freeze({
   listWorkflows: WORKFLOW_READ,
   readWorkflowVersion: WORKFLOW_READ,
   readPolicyAuditHistory: AUDIT_READ,
+  // The Administration control plane (2026-09-26): two more projections of the SAME security policy,
+  // and its decision history -- all under the ONE security-policy read, no new read key.
+  getSecurityRoleDetail: SECURITY_POLICY_READ,
+  getObjectActionGrantMatrix: SECURITY_POLICY_READ,
+  listRoleCapabilityDecisionHistory: SECURITY_POLICY_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -92,12 +97,15 @@ const INPUT_FOR = Object.freeze({
   getObjectSecurityMatrix: { objectKey: "workOrder" },
   getRoleSecurity: { roleKey: "dispatcher" },
   readPolicyAuditHistory: { limit: 5 },
+  getSecurityRoleDetail: { roleKey: "dispatcher" },
+  getObjectActionGrantMatrix: { objectKey: "workOrder" },
+  listRoleCapabilityDecisionHistory: { limit: 5 },
 });
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: thirteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 13, "the read list changed size without this map changing");
+test("A: sixteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 16, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -160,9 +168,13 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // The pin stays an exact equality so that a migration added or removed by the read enforcement --
   // which still adds none -- fails here; only the integrated total moved.
   const migrations = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"));
-  assert.equal(migrations.length, 51, "a migration was added or removed by the read enforcement");
+  // 51 -> 52: the Administration control plane (1762646400000) -- schema, one WRITE capability and
+  // its parity grants. It registers no READ key, which is what the rest of this test proves.
+  assert.equal(migrations.length, 52, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
-    "the one migration beyond this lane's 50 must be the authority activation vehicle and nothing else");
+    "the authority activation vehicle must be present exactly once");
+  assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,
+    "the Administration control plane migration must be present exactly once");
 
   // Every capability the gate can require was ALREADY registered by a migration. The gate requires
   // keys; it does not create them, and a key it required that nothing registers would be a surface
@@ -324,7 +336,8 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   await t.test("B: the security policy reads answer a HOLDER and refuse everybody else", async () => {
     const governed = operationsRequiring(SECURITY_POLICY_READ);
     assert.deepEqual(governed, [
-      "getObjectSecurityMatrix", "getRoleSecurity", "listObjects", "listObjectsWithActions",
+      "getObjectActionGrantMatrix", "getObjectSecurityMatrix", "getRoleSecurity", "getSecurityRoleDetail",
+      "listObjects", "listObjectsWithActions", "listRoleCapabilityDecisionHistory",
       "listRoles", "readObjectWithFields", "readRolePolicy",
     ], "the population of security-policy reads changed");
 

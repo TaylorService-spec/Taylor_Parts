@@ -199,9 +199,15 @@ check("the SUPERSEDED reorder queue key is not declared on Owner", () => {
 // ═══════════════ 3. The exclusions are real ═══════════════
 
 check("OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES is exactly the 19 admin-only keys measured in nonprod", () => {
-  const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id)).sort();
+  // admin.securityPolicy.write (migration 1762646400000) is admin-only by PARITY with the Role-name
+  // invariant it replaced -- "what a Role may do is admin only" -- NOT by Owner ruling A. It is
+  // deliberately NOT added to the ruling-A exclusion list: that would make it a SYSTEM INVARIANT
+  // that no administrator could ever grant to Owner, which no ruling decided.
+  const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
+  const measuredAdminOnly = [...LIVE_ADMIN].filter((id) => !LIVE_OWNER.has(id) && !PARITY_ADMIN_ONLY.includes(id)).sort();
   assert.equal(measuredAdminOnly.length, 19);
   assert.deepEqual([...OWNER_EXCLUDED_ADMIN_ONLY_CAPABILITIES].sort(), measuredAdminOnly);
+  for (const id of PARITY_ADMIN_ONLY) assert.ok(LIVE_ADMIN.has(id) && !LIVE_OWNER.has(id), id);
 });
 
 check("Owner declares NONE of the 19 admin-only capabilities", () => {
@@ -289,7 +295,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // assert that ruling B never happened.
   //
   // RE-PINNED 2026-09-24 at Phase 3 integration: 76 -> 79, the three ids registered by 9fa82e94.
-  assert.equal(VOCABULARY.size, 79);
+  // RE-PINNED 2026-09-26: 79 -> 80, admin.securityPolicy.write (migration 1762646400000).
+  assert.equal(VOCABULARY.size, 80);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

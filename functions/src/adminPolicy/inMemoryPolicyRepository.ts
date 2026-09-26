@@ -37,6 +37,8 @@ import type {
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
+  GrantConditionRecord,
+  RoleCapabilityDecisionRecord,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
@@ -80,6 +82,8 @@ interface Tables {
   workflowInstances: WorkflowInstanceRecord[];
   workflowInstanceEvents: WorkflowInstanceEventRecord[];
   audit: PolicyAuditEventRecord[];
+  decisions: RoleCapabilityDecisionRecord[];
+  grantConditions: GrantConditionRecord[];
 }
 
 const emptyTables = (): Tables => ({
@@ -105,6 +109,8 @@ const emptyTables = (): Tables => ({
   workflowInstances: [],
   workflowInstanceEvents: [],
   audit: [],
+  decisions: [],
+  grantConditions: [],
 });
 
 export interface InMemoryOptions {
@@ -506,8 +512,69 @@ export class InMemoryPolicyRepository implements PolicyRepository {
         t.workflowInstanceEvents.push({ ...input, id: this.nextId(), tenantId });
       },
 
+      // ── Administration decisions and grant conditions ──
+      // Mirrors migration 1762646400000: one CURRENT decision per cell, history superseded not
+      // deleted; a condition is never retired while the grant it narrows is held.
+      recordRoleCapabilityDecision: async (input) => {
+        requireOwned(t.roles, t.roles.find((r) => r.tenantId === tenantId && r.key === input.roleKey)?.id ?? "", "role");
+        if (!input.reason || input.reason.trim() === "") throw new PolicyStoreError("a decision requires a reason");
+        if (input.decision === "ADMIN_REVOKED" && input.requiresCondition) {
+          throw new PolicyStoreError("a revocation cannot require a condition");
+        }
+        if (!t.audit.some((a) => a.id === input.auditEventId && a.tenantId === tenantId)) {
+          throw new PolicyStoreError("a decision must name its audit event");
+        }
+        const at = this.now();
+        const id = this.nextId();
+        const current = t.decisions.findIndex((d) => d.tenantId === tenantId && d.roleKey === input.roleKey
+          && d.capabilityKey === input.capabilityKey && d.supersededAt === null);
+        if (current >= 0) t.decisions[current] = { ...t.decisions[current], supersededAt: at, supersededBy: id };
+        const row: RoleCapabilityDecisionRecord = {
+          id, tenantId, roleKey: input.roleKey, capabilityKey: input.capabilityKey, decision: input.decision,
+          requiresCondition: input.requiresCondition, reason: input.reason, actorPrincipalId: input.actorPrincipalId,
+          auditEventId: input.auditEventId, decidedAt: at, supersededAt: null, supersededBy: null,
+        };
+        t.decisions.push(row);
+        return row;
+      },
+      upsertGrantCondition: async (input) => {
+        const at = this.now();
+        const i = t.grantConditions.findIndex((c) => c.tenantId === tenantId && c.grantScope === input.grantScope
+          && c.grantorKey === input.grantorKey && c.capabilityKey === input.capabilityKey);
+        const condition = JSON.parse(JSON.stringify(input.condition)) as unknown;
+        if (i >= 0) {
+          t.grantConditions[i] = { ...t.grantConditions[i], condition, status: "ACTIVE", updatedBy: actor.uid, updatedAt: at };
+          return t.grantConditions[i];
+        }
+        const row: GrantConditionRecord = {
+          id: this.nextId(), tenantId, grantScope: input.grantScope, grantorKey: input.grantorKey,
+          capabilityKey: input.capabilityKey, condition, status: "ACTIVE",
+          establishedBy: actor.uid, establishedAt: at, updatedBy: actor.uid, updatedAt: at,
+        };
+        t.grantConditions.push(row);
+        return row;
+      },
+      retireGrantCondition: async (grantScope, grantorKey, capabilityKey) => {
+        const i = t.grantConditions.findIndex((c) => c.tenantId === tenantId && c.grantScope === grantScope
+          && c.grantorKey === grantorKey && c.capabilityKey === capabilityKey && c.status === "ACTIVE");
+        if (i < 0) return null;
+        const capabilityId = t.capabilities.find((c) => c.key === capabilityKey)?.id;
+        const held = grantScope === "ROLE"
+          ? t.roleCapabilities.some((g) => g.tenantId === tenantId && g.capabilityId === capabilityId
+            && t.roles.some((r) => r.id === g.roleId && r.key === grantorKey))
+          : t.principalCapabilities.some((g) => g.tenantId === tenantId && g.capabilityId === capabilityId
+            && g.principalId === grantorKey);
+        if (held) {
+          throw new PolicyStoreError(`CONDITION_RETIREMENT_WOULD_WIDEN: ${grantScope} ${grantorKey}/${capabilityKey} is still granted`);
+        }
+        t.grantConditions[i] = { ...t.grantConditions[i], status: "RETIRED", updatedBy: actor.uid, updatedAt: this.now() };
+        return t.grantConditions[i];
+      },
+
       appendAudit: async (input) => {
-        t.audit.push({ ...input, id: this.nextId(), tenantId });
+        const id = this.nextId();
+        t.audit.push({ ...input, id, tenantId });
+        return id;
       },
     };
   }
@@ -622,6 +689,14 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   }
   async listAuditEvents(tenantId: TenantId, limit: number) {
     return this.mine(this.tables.audit, tenantId).slice(-limit);
+  }
+  async listRoleCapabilityDecisions(tenantId: TenantId, options: { readonly currentOnly?: boolean } = {}) {
+    const mine = this.mine(this.tables.decisions, tenantId);
+    return options.currentOnly === false ? mine : mine.filter((d) => d.supersededAt === null);
+  }
+  async listGrantConditions(tenantId: TenantId, options: { readonly activeOnly?: boolean } = {}) {
+    const mine = this.mine(this.tables.grantConditions, tenantId);
+    return options.activeOnly === false ? mine : mine.filter((c) => c.status === "ACTIVE");
   }
 }
 

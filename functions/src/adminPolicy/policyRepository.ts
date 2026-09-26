@@ -44,6 +44,9 @@ import type {
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
+  GrantConditionRecord,
+  RoleCapabilityDecisionRecord,
+  RoleCapabilityDecision,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
@@ -119,6 +122,28 @@ export interface PrincipalIdentityBindingInput {
   readonly identityProvider: string;
   readonly externalSubject: string;
   readonly displayName?: string | null;
+}
+
+/**
+ * One Administration decision about a Role -> capability cell. The store supersedes the cell's
+ * current decision (if any) and appends this one, atomically, inside the caller's transaction.
+ */
+export interface NewRoleCapabilityDecisionInput {
+  readonly roleKey: string;
+  readonly capabilityKey: string;
+  readonly decision: RoleCapabilityDecision;
+  readonly requiresCondition: boolean;
+  readonly reason: string;
+  readonly actorPrincipalId: string;
+  readonly auditEventId: string;
+}
+
+/** Establish (or replace) the ACTIVE condition on one grant cell. */
+export interface GrantConditionInput {
+  readonly grantScope: "ROLE" | "PRINCIPAL";
+  readonly grantorKey: string;
+  readonly capabilityKey: string;
+  readonly condition: unknown;
 }
 
 export interface NewAdminBootstrapInput {
@@ -230,9 +255,25 @@ export interface PolicyTransaction {
   advanceWorkflowInstance(instanceId: string, toStepKey: string): Promise<WorkflowInstanceRecord>;
   appendWorkflowInstanceEvent(input: Omit<WorkflowInstanceEventRecord, "id" | "tenantId">): Promise<void>;
 
+  // ── Administration decisions and grant conditions ──
+  //
+  // A decision is APPEND-ONLY: recording one supersedes the cell's current decision (a one-time
+  // stamp) and inserts the new row. There is no update and no delete on this port.
+  recordRoleCapabilityDecision(input: NewRoleCapabilityDecisionInput): Promise<RoleCapabilityDecisionRecord>;
+  /** Insert or re-activate the cell's condition row; returns the stored row. */
+  upsertGrantCondition(input: GrantConditionInput): Promise<GrantConditionRecord>;
+  /**
+   * RETIRE the cell's ACTIVE condition (status change, never a delete) and return it, or null when
+   * there was none. The store REFUSES while the grant is held (it would widen the grant to ALL).
+   */
+  retireGrantCondition(grantScope: "ROLE" | "PRINCIPAL", grantorKey: string, capabilityKey: string): Promise<GrantConditionRecord | null>;
+
   // ── audit ──
-  /** Not optional and not configurable. Every mutation in this subsystem writes one. */
-  appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">): Promise<void>;
+  /**
+   * Not optional and not configurable. Every mutation in this subsystem writes one. Returns the
+   * stored event id, so a decision row can name the event that records it.
+   */
+  appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">): Promise<string>;
 }
 
 /**
@@ -303,6 +344,12 @@ export interface PolicyReader {
   listWorkflowRoleBindings(tenantId: TenantId, versionId: string): Promise<readonly WorkflowRoleBindingRecord[]>;
   getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string): Promise<WorkflowInstanceRecord | null>;
   listAuditEvents(tenantId: TenantId, limit: number): Promise<readonly PolicyAuditEventRecord[]>;
+
+  // ── Administration decisions and grant conditions ──
+  /** Decisions in this tenant. `currentOnly` (default true) omits superseded history. */
+  listRoleCapabilityDecisions(tenantId: TenantId, options?: { readonly currentOnly?: boolean }): Promise<readonly RoleCapabilityDecisionRecord[]>;
+  /** Grant conditions in this tenant. `activeOnly` (default true) omits RETIRED rows. */
+  listGrantConditions(tenantId: TenantId, options?: { readonly activeOnly?: boolean }): Promise<readonly GrantConditionRecord[]>;
 }
 
 /** The whole port. An adapter implements this and nothing above it knows which one is installed. */

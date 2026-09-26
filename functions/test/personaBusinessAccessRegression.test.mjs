@@ -253,7 +253,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 51: the 50 this lane measured alone, plus the AUTHORITY ACTIVATION VEHICLE (1762300800000)
   // integrated from lane BO. The tripwire is kept, and kept exact: it fired on that very change and
   // everything below WAS re-measured against the integrated chain before this number was moved.
-  assert.equal(files.length, 51, "the migration chain moved; re-measure before trusting anything below");
+  // 52: + the Administration control plane (1762646400000): one capability (admin.securityPolicy.write)
+  // granted to admin only. Re-measured below: admin's set grows by exactly that key; no other persona moves.
+  assert.equal(files.length, 52, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -333,21 +335,25 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // above is the proof that it is the inverse: ZERO unexplained extras and ZERO missing declarations.
     // The baseline records both numbers for the same reason, and they are asserted together here so
     // neither can move without the other being re-read.
-    assert.equal(rebuilt.length, 413, "the repository rebuild total");
-    assert.equal(baselineDeployment.rebuildTotal, 413);
+    // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
+    assert.equal(rebuilt.length, 414, "the repository rebuild total");
+    assert.equal(baselineDeployment.rebuildTotal, 414);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
-    assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 26);
-    const stamped = (await pool.query(
+    assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 27);
+    const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
-        WHERE tenant_id = $1 AND granted_by = 'migration:1762300800000'`, [TENANT])).rows[0].n;
-    assert.equal(stamped, 26, "the whole 413-vs-387 difference must carry the pending migration's provenance");
+        WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
+    assert.equal(await stampedBy("migration:1762300800000"), 26);
+    assert.equal(await stampedBy("migration:1762646400000"), 1);
+    // The whole 414-vs-387 difference carries the two pending migrations' provenance.
+    assert.equal(26 + 1, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 79);
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 80); // + admin.securityPolicy.write (1762646400000)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -459,10 +465,15 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // smaller count.
     const admin = await resolve(["admin"], NO_DIMENSIONS);
     const owner = await resolve(["owner"], NO_DIMENSIONS);
-    assert.equal(admin.capabilities.size, 69);
+    // 69 -> 70: admin.securityPolicy.write (migration 1762646400000) -- the capability that replaces
+    // the Role-name gate on security-policy mutations. Admin-only by PARITY with that gate, not by
+    // Owner ruling A, so it is listed separately from BN's exclusion contract below.
+    assert.equal(admin.capabilities.size, 70);
     assert.equal(owner.capabilities.size, 50);
     const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k)).sort();
-    const adminOnly = [...admin.capabilities].filter((k) => !owner.capabilities.has(k)).sort();
+    const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
+    for (const k of PARITY_ADMIN_ONLY) assert.equal(admin.capabilities.has(k) && !owner.capabilities.has(k), true, k);
+    const adminOnly = [...admin.capabilities].filter((k) => !owner.capabilities.has(k) && !PARITY_ADMIN_ONLY.includes(k)).sort();
     assert.deepEqual(ownerOnly, [], "owner has gained an authority admin lacks -- re-read the gap report");
     assert.deepEqual(adminOnly, [
       "admin.dataImport.execute", "customer.governedField.write", "equipment.install",
@@ -530,9 +541,10 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     }
     assert.deepEqual(dispatcher.surfaces.filter((s) => s.startsWith("administration.")), []);
     assert.deepEqual(dispatcher.destinations.filter((d) => d.startsWith("administration/")), []);
-    // NON-VACUOUS: the same projection DOES hand admin 8 admin actions and 8 Administration surfaces.
+    // NON-VACUOUS: the same projection DOES hand admin 9 admin actions and 8 Administration surfaces
+    // (9 since 1762646400000: admin.securityPolicy.write, rolesPermissions/editSecurityPolicy).
     const admin = await resolve(["admin"], NO_DIMENSIONS);
-    assert.equal(objectAccessOf(admin.capabilities).kinds.ADMIN_ACTION, 8);
+    assert.equal(objectAccessOf(admin.capabilities).kinds.ADMIN_ACTION, 9);
     assert.equal(admin.surfaces.filter((s) => s.startsWith("administration.")).length, 8);
     // What the dispatcher IS for, so the denial is not mistaken for having no authority: Dispatch.
     assert.equal(dispatcher.surfaces.includes("service.dispatch"), true);

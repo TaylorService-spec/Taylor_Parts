@@ -214,7 +214,11 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "listObjects", "listObjectsWithActions", "listPrincipalRoleAssignments", "listRoles",
     "listTenantPrincipals", "listWorkflows",
     "readObjectWithFields", "readPolicyAuditHistory", "readRolePolicy", "readWorkflowVersion",
-  ], "the Owner's eight, plus listTenantPrincipals and the four Object-owned security projections");
+    // THREE ADDED for the Administration control plane (2026-09-26): the Security Role detail with
+    // holders and grant sources, the Object x action x grantee matrix with sources and conditions,
+    // and the append-only decision history.
+    "getObjectActionGrantMatrix", "getSecurityRoleDetail", "listRoleCapabilityDecisionHistory",
+  ].sort(), "the Owner's eight, listTenantPrincipals, the four Object-owned projections and the three control-plane reads");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",
     // FOUR ADDED: Object-owned grants. The contract is (objectKey, actionKey, grantee), never a raw
@@ -225,13 +229,15 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "publishWorkflowVersion", "removeFieldPermissionOverride",
     "revokeObjectActionFromPrincipal", "revokeObjectActionFromRole",
     "revokeRole", "setFieldPermissionOverride",
+    // TWO ADDED: grant conditions, fail closed (never retired while the grant is held).
+    "retireGrantCondition", "setGrantCondition",
     "setObjectPermission", "setWorkflowRoleBinding", "updateCustomFieldMetadata",
     // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added because
     // "Object definition editing is Admin-only" was a contract with no operation behind it.
     "updateObjectMetadata",
     "updateRole",
     "updateWorkflowDefinition",
-  ]);
+  ].sort());
 });
 
 test("an unknown operation is refused before any identity is resolved", async () => {

@@ -23,6 +23,7 @@ import {
 import {
   hasAdministrationAuthority,
   PROTECTED_ROLE_KEYS,
+  ADMINISTRATION_BOOTSTRAP_GRANTS,
   ROLE_ASSIGNMENT_ROLE_KEYS,
 } from "../lib/adminPolicy/administrationAuthority.js";
 import {
@@ -67,6 +68,14 @@ const plainActor = (uid = "uid-plain") => ({ tenantId: TENANT, uid, heldRoleKeys
 
 async function seedRoles(repo, keys, tenantId = TENANT) {
   const made = {};
+  // The governing Administration capabilities, as the migration chain registers them, granted as a
+  // BOOTSTRAPPED tenant holds them (ADMINISTRATION_BOOTSTRAP_GRANTS): assignRole/revokeRole are
+  // authorized by admin.roleAssignment.write, never by the Role name.
+  const catalog = repo.registerCapabilities([
+    { key: "admin.securityPolicy.write", description: "", objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", actionKind: "ADMIN_ACTION", displayLabel: "Edit Security Policy" },
+    { key: "admin.roleAssignment.write", description: "", objectKey: "rolesPermissions", actionKey: "assignRole", actionKind: "ADMIN_ACTION", displayLabel: "Assign Role" },
+  ]);
+  const capabilityId = Object.fromEntries(catalog.map((c) => [c.key, c.id]));
   await repo.transact({ tenantId, uid: SYS }, async (tx) => {
     for (const key of keys) {
       made[key] = await tx.createRole({
@@ -74,6 +83,11 @@ async function seedRoles(repo, keys, tenantId = TENANT) {
         origin: PROTECTED_ROLE_KEYS.includes(key) ? "SYSTEM" : "CUSTOM",
         protected: PROTECTED_ROLE_KEYS.includes(key),
       });
+    }
+    for (const g of ADMINISTRATION_BOOTSTRAP_GRANTS) {
+      if (!made[g.roleKey]) continue;
+      await tx.grantRoleCapability({ roleId: made[g.roleKey].id, capabilityId: capabilityId[g.capabilityKey],
+        grantedBy: SYS, grantedAt: new Date().toISOString() });
     }
   });
   return made;
@@ -403,23 +417,33 @@ test("a NON-ADMIN cannot edit Objects, Role definitions or Workflows", async () 
   }
 });
 
-test("Owner, General Manager and Admin may each assign ANY Role, including Admin", async () => {
+test("Owner and Admin may each assign ANY Role, including Admin; General Manager only when GRANTED the capability", async () => {
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin", "owner", "generalManager"]);
 
-  for (const [i, actor] of [adminActor(), gmActor(), { tenantId: TENANT, uid: "uid-owner", heldRoleKeys: ["owner"] }].entries()) {
+  for (const [i, actor] of [adminActor(), { tenantId: TENANT, uid: "uid-owner", heldRoleKeys: ["owner"] }].entries()) {
     const assignment = await grantRole(repo, actor, `uid-target-${i}`, roles.admin.id);
     assert.equal(assignment.roleId, roles.admin.id, "the Admin Role itself was assignable");
     assert.equal(assignment.status, "active");
   }
+  // Assignment is authorized by admin.roleAssignment.write, never by the Role name. generalManager
+  // does not hold it by default (Owner ruling 2026-08-21 vs the former Role-name invariant: reported
+  // for the Owner); granting it is an Administration decision, and then GM may assign.
+  await assert.rejects(() => grantRole(repo, gmActor(), "uid-target-gm", roles.admin.id), /"admin\.roleAssignment\.write" is required/);
+  const [assign] = (await repo.listCapabilities()).filter((c) => c.key === "admin.roleAssignment.write");
+  await repo.transact({ tenantId: TENANT, uid: SYS }, (tx) => tx.grantRoleCapability({
+    roleId: roles.generalManager.id, capabilityId: assign.id, grantedBy: SYS, grantedAt: new Date().toISOString() }));
+  const byGm = await grantRole(repo, gmActor(), "uid-target-gm", roles.admin.id);
+  assert.equal(byGm.status, "active");
 });
 
 test("an unauthorized user cannot assign Roles", async () => {
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin"]);
+  // Refused because the actor holds no admin.roleAssignment.write -- the capability, not a Role name.
   await assert.rejects(
     () => grantRole(repo, plainActor(), "uid-target", roles.admin.id),
-    /not authorized to perform "assignRole"/,
+    /"admin\.roleAssignment\.write" is required/,
   );
 });
 

@@ -26,6 +26,8 @@ const READS = [
   // list that omits an operation makes it unreachable just as surely as a typo makes it a 404.
   "listObjectsWithActions", "getObjectSecurityMatrix", "getRoleSecurity", "getPrincipalEffectiveAccess",
   "listWorkflows", "readWorkflowVersion", "readPolicyAuditHistory",
+  // The Administration control plane reads (server lane CP-S, 2026-09-26).
+  "getSecurityRoleDetail", "getObjectActionGrantMatrix", "listRoleCapabilityDecisionHistory",
 ];
 const MUTATIONS = [
   // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the
@@ -38,6 +40,8 @@ const MUTATIONS = [
   // closed list stays the server's; no screen sends one yet.
   "grantObjectActionToRole", "revokeObjectActionFromRole",
   "grantObjectActionToPrincipal", "revokeObjectActionFromPrincipal",
+  // Grant conditions (server lane CP-S): fail closed.
+  "setGrantCondition", "retireGrantCondition",
   "createWorkflowDraft", "createWorkflowVersion", "updateWorkflowDefinition", "setWorkflowRoleBinding",
   "publishWorkflowVersion",
 ];

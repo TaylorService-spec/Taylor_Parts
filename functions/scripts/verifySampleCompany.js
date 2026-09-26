@@ -310,12 +310,24 @@ async function verifySampleCompany(client, options, manifest = MANIFEST, authPro
       status: "GRANT_RECONCILIATION_WITHHELD",
     });
   }
+  // THE PRECEDENCE RULE (adminPolicy/roleCapabilityAdministration.ts), the same one the reconcile applies:
+  // a catalog-declared pair is NOT expected when a SYSTEM INVARIANT forbids it or an administrator's CURRENT
+  // decision revoked it through EOS Administration. Those are reported as evidence, never as MISSING_GRANT.
+  const { decisionIndex, defaultWriterMayInsert } = require("../lib/adminPolicy/roleCapabilityAdministration.js");
+  const decisions = decisionIndex((await client.query(
+    `SELECT role_key, capability_key, decision FROM eos_policy.role_capability_decisions
+      WHERE tenant_id = $1 AND superseded_at IS NULL`, [tenantId])).rows
+    .map((r) => ({ roleKey: r.role_key, capabilityKey: r.capability_key, decision: r.decision })));
   for (const roleKey of usedRoleKeys.filter((k) => !withheldRoles.has(k))) {
     const expected = (roleCatalog[roleKey]?.permissions ?? []).filter((k) => capabilityKeys.has(k)).sort();
     const held = liveByRole.get(roleKey) ?? new Set();
     for (const capability of expected) {
       const granted = held.has(capability);
-      grantRows.push({ role: roleKey, expectedCapability: capability, liveGrant: granted, status: granted ? "GRANTED" : "MISSING_GRANT" });
+      const precedence = defaultWriterMayInsert(decisions, roleKey, capability);
+      const status = granted ? "GRANTED"
+        : !precedence.allowed ? (precedence.source === "ADMIN_REVOKED" ? "ADMIN_REVOKED" : "SYSTEM_INVARIANT")
+        : "MISSING_GRANT";
+      grantRows.push({ role: roleKey, expectedCapability: capability, liveGrant: granted, status });
     }
   }
   const missingGrants = grantRows.filter((g) => g.status === "MISSING_GRANT");

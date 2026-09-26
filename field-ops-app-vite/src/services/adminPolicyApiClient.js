@@ -56,6 +56,12 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "listWorkflows",
   "readWorkflowVersion",
   "readPolicyAuditHistory",
+  // The Administration control plane (server lane CP-S, 2026-09-26). NAMED SO THE CLOSED LIST KEEPS
+  // MIRRORING THE SERVER; the client lane builds the screens. Contract:
+  // docs/architecture/administration-control-plane-2026-09-26.md section 8.
+  "getSecurityRoleDetail",
+  "getObjectActionGrantMatrix",
+  "listRoleCapabilityDecisionHistory",
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -76,6 +82,9 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "revokeObjectActionFromRole",
   "grantObjectActionToPrincipal",
   "revokeObjectActionFromPrincipal",
+  // Grant conditions (server lane CP-S): fail closed -- never retired while the grant is held.
+  "setGrantCondition",
+  "retireGrantCondition",
   "createWorkflowDraft",
   "createWorkflowVersion",
   "updateWorkflowDefinition",

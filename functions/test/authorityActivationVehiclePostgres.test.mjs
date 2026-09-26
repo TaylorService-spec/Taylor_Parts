@@ -91,8 +91,11 @@ async function standUp(name, { includeActivationMigration = true } = {}) {
   await seedTenantPolicy(new PostgresPolicyRepository(pool), TENANT, ACTOR);
   // `up N` runs N MORE migrations, so the remainder is counted from the boundary rather than from
   // zero. Stopping one short is how "before the activation" is measured through the same pipeline.
+  // "Stopping one short" means stopping just BEFORE the activation migration -- counted by name, since
+  // the Administration control plane (1762646400000) is now appended after it.
   const remaining = files.length - beforeSeed;
-  runMigrate(url, "up", includeActivationMigration ? remaining : remaining - 1);
+  const beforeActivation = files.filter((f) => f >= SEED_BOUNDARY_MIGRATION && f < `${MIGRATION}.sql`).length;
+  runMigrate(url, "up", includeActivationMigration ? remaining : beforeActivation);
 
   for (const [pairs, by] of [[GLOBAL_CATALOG_ACTIVATED_GRANTS, `canonical-catalog:${ACTOR}`],
     [NONPROD_ACTIVATED_CAPABILITY_GRANTS, `nonprod-activation:${ACTOR}`]]) {
@@ -147,11 +150,14 @@ const governedEditWithoutRead = async (pool, objectKeys) => (await pool.query(
 
 // ════════════════════ 1. THE MIGRATION IS IN THE CHAIN, AT THE END ════════════════════
 
-test("the activation migration is the LAST file in the chain, and its id is above every other", () => {
+test("the activation migration was APPENDED: only the later Administration control plane follows it", () => {
   const files = migrationFiles();
-  assert.equal(files[files.length - 1], `${MIGRATION}.sql`);
-  const ids = files.map((f) => Number(f.split("_")[0]));
-  assert.equal(Math.max(...ids), 1762300800000, "an activation must be appended, never back-dated into history");
+  const at = files.indexOf(`${MIGRATION}.sql`);
+  assert.ok(at >= 0);
+  assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql"],
+    "an activation must be appended, never back-dated into history");
+  const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
+  assert.ok(Math.max(...ids) < 1762300800000);
 });
 
 test("the migration's UP is guarded: a census that RAISES, then registrations, then grants", () => {
@@ -366,6 +372,10 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
               (SELECT count(*)::int FROM eos_policy.role_capabilities WHERE granted_by = $2) AS mine`,
       [TENANT, STAMP])).rows[0];
 
+    // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
+    // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
+    assert.deepEqual(await counts(), { caps: 80, grants: 414, mine: 26 });
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 79, grants: 413, mine: 26 });
 
     runMigrate(url, "down", 1);
@@ -385,6 +395,7 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
+    runMigrate(url, "down", 1); // peel the later Administration control plane (1762646400000) first
 
     // An administrator grants the new read through the governed command AFTER the migration. Its
     // granted_by is not the migration's stamp, so it is recorded authority a reversal may not destroy.
