@@ -180,7 +180,8 @@ test("caller filters still only narrow under consolidated reach", async () => {
     { id: "i1", data: { companyId: "taylor", accountId: "a1", currency: "USD", totalMinor: 100, lines: [{ businessUnitId: "PARTS" }], attribution: { creditedSalespersonId: "e1" } } },
     { id: "i2", data: { companyId: "ventana", accountId: "a2", currency: "USD", totalMinor: 200, lines: [{ businessUnitId: "SERVICE" }], attribution: { creditedSalespersonId: "e2" } } },
   ];
-  const make = (r) => ({ _r: r, where(f, _o, v) { return make(r.filter((x) => x.data[f] === v)); }, limit(n) { return make(r.slice(0, n)); }, async get() { return { size: r.length, docs: r.map((x) => ({ id: x.id, data: () => x.data })) }; } });
+  // Models the reporting read's document-id cursor paging (orderBy __name__ + startAfter).
+  const make = (r) => ({ _r: r, where(f, _o, v) { return make(r.filter((x) => x.data[f] === v)); }, orderBy() { return make([...r].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))); }, startAfter(id) { return make(r.filter((x) => x.id > id)); }, limit(n) { return make(r.slice(0, n)); }, async get() { return { size: r.length, docs: r.map((x) => ({ id: x.id, data: () => x.data })) }; } });
   const db = { collection: (n) => make(n === "invoices" ? rows : []) };
   const auth = authority([{ scope: "CONSOLIDATED" }]);
   const all = await readFinancialFacts(db, auth, {}, 50);

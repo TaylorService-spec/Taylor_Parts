@@ -20,6 +20,9 @@ import {
   rollupRow,
   unattributedNote,
   scopeSentence,
+  financialFactsCompleteness,
+  incompleteReadNote,
+  FACTS_DETAIL,
 } from "../src/domain/financialFactsView.js";
 
 const READY = {
@@ -602,4 +605,75 @@ test("the Account AR section shows a company column only when the read says it s
   assert.ok(/row\.companyLabel/.test(src), "rows must render the shared words, never a raw governed id");
   // The section still totals nothing — the disclosure must not have smuggled in a total.
   assert.ok(!/reduce\(/.test(src));
+});
+
+// ─── Completeness contract (complete governed reporting read) ───
+//
+// The server now reads to exhaustion with a document-id cursor and states COMPLETE | PARTIAL |
+// NOT_READ with a named reason and counts. A non-COMPLETE read carries no rows and no figures; the
+// client must render it as UNAVAILABLE with its reason — never as empty, never as $0.00.
+
+const PARTIAL = {
+  status: "unavailable",
+  completeness: {
+    status: "PARTIAL",
+    reason: "SCAN_CEILING_REACHED",
+    pageSize: 500,
+    scanCeiling: 5000,
+    scans: [{ collection: "invoices", documentsRead: 5001, pages: 11, exhausted: false }],
+  },
+  invoices: [],
+  payments: [],
+  applications: [],
+  summary: { outstandingByCurrency: {}, billedByCurrency: {}, collectedByCurrency: {} },
+  agingByCurrency: {},
+};
+
+test("a PARTIAL read is UNAVAILABLE with its named reason — not EMPTY, not a figure", () => {
+  const s = financialFactsState({ loading: false, result: PARTIAL });
+  assert.equal(s.state, FACTS_STATE.UNAVAILABLE);
+  assert.equal(s.completeness.status, "PARTIAL");
+  assert.equal(s.completeness.reason, "SCAN_CEILING_REACHED");
+  const slots = lifecycleScorecard(s.state, PARTIAL);
+  for (const k of ["billed", "collected", "arOutstanding"]) {
+    assert.equal(slots[k].valueText, null, `${k} must show no figure for a partial read`);
+    assert.equal(slots[k].absence, "Unavailable");
+  }
+  assert.equal(agingSlots(s.state, PARTIAL).supplied, false);
+  assert.ok(FACTS_DETAIL[s.state], "the page has an honest sentence for the state");
+});
+
+test("the incomplete-read note names the reason and the server's counts, and estimates nothing", () => {
+  const note = incompleteReadNote(financialFactsCompleteness(PARTIAL));
+  assert.match(note, /More than 5000 invoices/);
+  assert.match(note, /Nothing is shown/);
+  assert.ok(!/\$/.test(note), "no money figure in an incomplete-read sentence");
+  assert.match(incompleteReadNote({ status: "NOT_READ", reason: "INDEX_MISSING", scans: [] }), /index is not deployed/);
+  assert.match(
+    incompleteReadNote({ status: "PARTIAL", reason: "READ_FAILED", scans: [{ collection: "payment_applications", documentsRead: 500, exhausted: false }] }),
+    /after 500 payment applications/,
+  );
+  assert.equal(incompleteReadNote({ status: "COMPLETE", reason: null, scans: [] }), null);
+});
+
+test("a 'ready' status beside a non-COMPLETE contract is still UNAVAILABLE (defence in depth)", () => {
+  const contradictory = { ...READY, completeness: { status: "PARTIAL", reason: "SCAN_CEILING_REACHED", scans: [] } };
+  assert.equal(financialFactsState({ loading: false, result: contradictory }).state, FACTS_STATE.UNAVAILABLE);
+});
+
+test("a COMPLETE read is READY; a legacy server's 'ready' (it refused truncation) is COMPLETE, labelled legacy", () => {
+  const complete = { ...READY, completeness: { status: "COMPLETE", reason: null, scanCeiling: 5000, scans: [] } };
+  assert.equal(financialFactsState({ loading: false, result: complete }).state, FACTS_STATE.READY);
+  assert.deepEqual(
+    { status: financialFactsCompleteness(READY).status, legacy: financialFactsCompleteness(READY).legacy },
+    { status: "COMPLETE", legacy: true },
+  );
+  assert.equal(financialFactsCompleteness({ status: "unavailable" }).status, "UNKNOWN");
+});
+
+test("the hook surfaces the server's completeness verbatim and requests the maximum page", () => {
+  const src = readFileSync(new URL("../src/hooks/useFinancialFacts.js", import.meta.url), "utf8");
+  assert.match(src, /limit = 500/);
+  assert.match(src, /completeness: state\.result \? financialFactsCompleteness\(state\.result\) : null/);
+  assert.ok(!/Minor/.test(src), "the hook touches no money field");
 });

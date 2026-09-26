@@ -38,7 +38,12 @@ export function financialFactsState({ loading, errorStatus, result }) {
   if (loading) return { state: FACTS_STATE.LOADING };
   if (errorStatus === "denied") return { state: FACTS_STATE.DENIED };
   if (errorStatus === "unavailable" || result == null) return { state: FACTS_STATE.UNAVAILABLE };
-  if (result.status !== "ready") return { state: FACTS_STATE.UNAVAILABLE };
+  // An incomplete read is UNAVAILABLE, and it carries the server's named reason and counts so a
+  // page can say WHY — never rendered as empty, never as a total.
+  if (result.status !== "ready") return { state: FACTS_STATE.UNAVAILABLE, completeness: financialFactsCompleteness(result) };
+  // Defence in depth: a "ready" status beside a non-COMPLETE contract is treated as incomplete.
+  const completeness = financialFactsCompleteness(result);
+  if (completeness.status !== "COMPLETE") return { state: FACTS_STATE.UNAVAILABLE, completeness };
   // EMPTINESS IS ABOUT THE WHOLE ANSWER, NOT ABOUT INVOICES.
   //
   // This used to test `result.invoices` alone, which quietly broke Payments: that page requests
@@ -49,6 +54,61 @@ export function financialFactsState({ loading, errorStatus, result }) {
     (result.invoices?.length ?? 0) + (result.payments?.length ?? 0) + (result.applications?.length ?? 0);
   if (returned === 0) return { state: FACTS_STATE.EMPTY, result };
   return { state: FACTS_STATE.READY, result };
+}
+
+/**
+ * THE COMPLETENESS CONTRACT, read — never inferred beyond what the server said.
+ *
+ * The server returns `completeness: { status: COMPLETE | PARTIAL | NOT_READ, reason, pageSize,
+ * scanCeiling, scans: [{ collection, documentsRead, pages, exhausted }] }`. Rows and figures are
+ * only ever present when it is COMPLETE. A deployed function older than this bundle sends no
+ * `completeness`; its `status: "ready"` already meant "not truncated" (it refused truncated pages),
+ * so that — and only that — maps to COMPLETE, labelled as the legacy contract. Anything else with
+ * no contract is UNKNOWN, which is not complete.
+ */
+export function financialFactsCompleteness(result) {
+  const c = result?.completeness;
+  if (c && typeof c === "object" && typeof c.status === "string") {
+    return {
+      status: c.status,
+      reason: c.reason ?? null,
+      scanCeiling: typeof c.scanCeiling === "number" ? c.scanCeiling : null,
+      scans: Array.isArray(c.scans) ? c.scans : [],
+      legacy: false,
+    };
+  }
+  if (result?.status === "ready") return { status: "COMPLETE", reason: null, scanCeiling: null, scans: [], legacy: true };
+  return { status: "UNKNOWN", reason: null, scanCeiling: null, scans: [], legacy: true };
+}
+
+const COLLECTION_WORDS = Object.freeze({
+  invoices: "invoices",
+  payment_applications: "payment applications",
+  payments: "payment receipts",
+});
+
+/**
+ * The sentence for an incomplete read, or null when the read was complete. States the reason and
+ * the counts the server reported; never estimates what the unread remainder would have added.
+ */
+export function incompleteReadNote(completeness) {
+  if (!completeness || completeness.status === "COMPLETE") return null;
+  const over = (completeness.scans ?? []).find((s) => s && s.exhausted === false);
+  const what = over ? COLLECTION_WORDS[over.collection] ?? over.collection : "records";
+  switch (completeness.reason) {
+    case "SCAN_CEILING_REACHED":
+      return `More than ${completeness.scanCeiling ?? "the maximum number of"} ${what} fall under this read, which is more than one request may read completely. Nothing is shown: a total over part of the records would read as a total over all of them. Narrow the request (a single account or company) to see a complete answer.`;
+    case "INDEX_MISSING":
+      return "The governed read could not run because a required database index is not deployed. Nothing is shown; this is a deployment fact, not an absence of records.";
+    case "READ_FAILED":
+      return completeness.status === "PARTIAL"
+        ? `The governed read failed part-way (after ${over?.documentsRead ?? "some"} ${what}). Nothing is shown, because the records already read are not the whole answer.`
+        : "The governed read failed before any record was read. Nothing is shown; this is not an absence of records.";
+    case "NO_REACH":
+      return "No financial visibility scope confers reach for your principal, so nothing was read.";
+    default:
+      return null;
+  }
 }
 
 /** The honest-state detail sentence for each non-ready state. Contract copy — states the fact, only. */

@@ -222,13 +222,26 @@ const invoiceDoc = (id, over = {}) => ({
   },
 });
 
+// The reporting read pages by document id (orderBy __name__ + startAfter) and fetches receipts by
+// id (getAll), so the fake models exactly those query shapes.
 function fakeDb(collections) {
-  const make = (rows) => ({
-    where: (field, _op, value) => make(rows.filter((r) => r.data[field] === value)),
-    limit: (n) => make(rows.slice(0, n)),
-    get: async () => ({ size: rows.length, docs: rows.map((r) => ({ id: r.id, data: () => r.data })) }),
+  const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const make = (name, rows) => ({
+    where: (field, _op, value) => make(name, rows.filter((r) => r.data[field] === value)),
+    orderBy: () => make(name, [...rows].sort(byId)),
+    startAfter: (id) => make(name, rows.filter((r) => r.id > id)),
+    limit: (n) => make(name, rows.slice(0, n)),
+    doc: (id) => ({ id, collectionName: name }),
+    get: async () => ({ size: rows.length, docs: rows.map((r) => ({ id: r.id, exists: true, data: () => r.data })) }),
   });
-  return { collection: (name) => make(collections[name] ?? []) };
+  return {
+    collection: (name) => make(name, collections[name] ?? []),
+    getAll: async (...refs) =>
+      refs.map((ref) => {
+        const row = (collections[ref.collectionName] ?? []).find((r) => r.id === ref.id);
+        return row ? { id: row.id, exists: true, data: () => row.data } : { id: ref.id, exists: false, data: () => undefined };
+      }),
+  };
 }
 
 const db = fakeDb({
