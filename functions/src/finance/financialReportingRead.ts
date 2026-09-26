@@ -36,9 +36,20 @@
 // 7.11). A read-only transaction takes no locks and reads every document at the same consistent
 // read time, so a COMPLETE answer cannot pair an invoice balance from before a payment with the
 // application recorded after it. Bounds: Firestore expires a transaction after 270 s (60 s idle);
-// at the ceiling (3 × 5,000 docs, 500 per page, ~30 sequential round trips) the call is well inside
-// that and inside the callable's own 60 s timeout. A transaction that expires surfaces as
+// at the ceiling (up to 3 × 5,000 docs, 500 per page: 11 invoice pages, up to 30 application
+// `in`-chunks or 11 tenant-wide pages, up to 10 receipt batches — roughly 30 to 60 sequential round
+// trips) the call is expected to stay inside that and inside the callable's default 60 s timeout.
+// That expectation is NOT measured against live Firestore. A transaction that expires surfaces as
 // READ_FAILED — never as a ready answer.
+//
+// ════════════════════ TEMPORARY FIREBASE-ERA READ ════════════════════
+//
+// This callable is a narrow accuracy repair to a live Firestore read ahead of the Firebase
+// retirement. It is NOT the scale solution: EOS/PostgreSQL (eos_finance, behind Render) must own
+// finance facts and aggregates, with FIN-004 reach applied server-side. The page size and the
+// REPORTING_SCAN_CEILING below are temporary Firebase-era bounds. Thresholds, failure behaviour,
+// the PostgreSQL path and the delete condition for this file:
+// docs/financials/financial-facts-read-temporary-firebase-limit-2026-09-25.md
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import {
   FieldPath,
@@ -81,7 +92,12 @@ export const DEFAULT_REPORTING_LIMIT = MAX_REPORTING_LIMIT;
 /**
  * HARD CEILING on documents read per fact collection in ONE call. Past it the read does not guess:
  * it stops, returns NO rows and NO figures, and says PARTIAL with the counts. Bounded so one call
- * stays inside the callable's memory, time and 10 MB response budget.
+ * stays inside the callable's memory, time and response-size budget (unmeasured at the ceiling).
+ *
+ * TEMPORARY FIREBASE-ERA BOUND, not a scale target. It is counted per collection, per call, BEFORE
+ * FIN-004 visibility filtering for the invoice scan — so past it every persona's unnarrowed pages
+ * go dark regardless of scope. The replacement is a PostgreSQL aggregate read; see
+ * docs/financials/financial-facts-read-temporary-firebase-limit-2026-09-25.md.
  */
 export const REPORTING_SCAN_CEILING = 5_000;
 
