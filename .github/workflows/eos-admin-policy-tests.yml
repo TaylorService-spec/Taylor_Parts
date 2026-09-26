@@ -451,6 +451,10 @@ on:
       - "functions/migrations/1762214400000_capability-grant-conditions.sql"
       - "functions/test/conditionalEntitlementPostgres.test.mjs"
       - "functions/test/contextualActionAuthorityPostgres.test.mjs"
+      # LANE TC: technician workOrder.record.read by RECORD_ASSIGNMENT, proven against PostgreSQL
+      # (AUTHORIZATION_PENDING_OWNER_APPROVAL -- a proposal fixture, nothing activated). Runs in
+      # test:adminPolicyPostgres.
+      - "functions/test/technicianWorkOrderRecordAssignmentPostgres.test.mjs"
       - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       # WAVE 14 / LANE BA: the persona AUTHORITY manifest suite and the persona E2E HARNESS
@@ -781,6 +785,9 @@ on:
       # change. It was named in the pull_request filter above and NOT here, so a commit landing on main that
       # touched only this suite could not trigger the job that runs it.
       - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
+      # LANE TC: named in BOTH trigger blocks so a push touching only this suite still runs it
+      # (test:adminPolicyPostgres).
+      - "functions/test/technicianWorkOrderRecordAssignmentPostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"
