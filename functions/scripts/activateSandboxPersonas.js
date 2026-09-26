@@ -68,6 +68,19 @@ function parseArgs(argv) {
   return out;
 }
 
+/**
+ * THE ONE PASSWORD GENERATOR IN THIS REPOSITORY.
+ *
+ * Exported so the RESET_EXISTING_SANDBOX_PASSWORD path uses this exact function rather than growing a
+ * second generator. Two generators are two things to keep honest about entropy and shape, and the
+ * first time they drift nobody can tell which one produced a given credential.
+ *
+ * Returns a value. It is never logged here and must never be logged by a caller.
+ */
+function generateSandboxPassword() {
+  return `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
+}
+
 function assertNonProductionTarget(projectId) {
   if (!projectId || projectId === "true") throw new Error("--projectId is required. No default target.");
   if (projectId === "taylor-parts") throw new Error("REFUSING: taylor-parts is the customer production project.");
@@ -134,7 +147,7 @@ async function activateMissingSandboxPasswords({ auth, personas, outPath, emailA
 
   const activated = [];
   for (const u of needingPassword) {
-    const password = `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
+    const password = generateSandboxPassword();
     await auth.updateUser(u.uid, { password, emailVerified: true });
     existing[u.email] = password;
     activated.push(u.email);
@@ -214,7 +227,7 @@ async function main() {
   console.log("--rotate given: every previously saved credential is about to become invalid.");
   const creds = {};
   for (const u of personas) {
-    const password = `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
+    const password = generateSandboxPassword();
     await auth.updateUser(u.uid, { password, emailVerified: true });
     creds[u.email] = password;
   }
@@ -225,7 +238,7 @@ async function main() {
   console.log("This file is gitignored and must never be committed or shared outside the sandbox.");
 }
 
-module.exports = { activateMissingSandboxPasswords, assertNonProductionTarget, SANDBOX_EMAIL_SUFFIX };
+module.exports = { activateMissingSandboxPasswords, generateSandboxPassword, assertNonProductionTarget, SANDBOX_EMAIL_SUFFIX };
 
 // STANDALONE CLI BEHAVIOUR IS UNCHANGED, and only runs when this file is the entry point -- so the Sample
 // Company can require() the activation function without the CLI executing.

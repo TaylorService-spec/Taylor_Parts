@@ -297,6 +297,84 @@ function createFirebaseSandboxAuthDirectory(projectId, { env = process.env, sdk 
       const user = await auth.createUser({ email, displayName, emailVerified: true, disabled: false });
       return { uid: user.uid, email: user.email, disabled: false, hasPassword: false };
     },
+    /**
+     * RESET_EXISTING_SANDBOX_PASSWORD -- authorized by Owner ruling 2026-09-25.
+     *
+     * This is NOT "activate a missing password", and the distinction is the whole point. The ten
+     * accounts this serves ALREADY HAVE passwords; those passwords are simply in no canonical source,
+     * so nothing can sign in as them. `activateMissingSandboxPasswords` acts only where there is no
+     * password and would therefore have acted on ZERO of them while a plan claimed ten -- which is
+     * exactly how a wrong expectation survived contact with reality. So this is a different Admin SDK
+     * call with a different name: it UPDATES an existing user.
+     *
+     * IT LIVES HERE, BEHIND THE FENCE. The caller never touches firebase-admin: this module already
+     * refuses production by name and by registry role, refuses the frozen Certification world, and
+     * refuses any address that is not @sandbox.invalid. Reaching for the SDK directly would put a
+     * password write outside every one of those.
+     *
+     * THE UID IS ASSERTED ON BOTH SIDES. A reset must change a secret and NOTHING else. Firebase will
+     * happily let you hold an email while the account behind it is not the one you measured, so the
+     * expected uid is checked BEFORE the write (refusing if it disagrees) and re-read AFTER it. A
+     * reset that migrated an identity would silently repoint a persona at another account, which is
+     * the defect class this whole registry exists to end.
+     *
+     * NOTHING HERE READS, RETURNS OR LOGS THE PASSWORD. It is a write-only argument; the result
+     * carries the uid, the address and a boolean.
+     */
+    async resetExistingSandboxPassword({ email, expectedUid, password }) {
+      assertSandboxEmail(email);
+      if (typeof expectedUid !== "string" || expectedUid.trim() === "") {
+        throw new SandboxAuthError("EXPECTED_UID_REQUIRED", `a reset of ${email} must state the uid it expects; an unguarded reset can migrate an identity`);
+      }
+      if (typeof password !== "string" || password.length < 16) {
+        throw new SandboxAuthError("WEAK_PASSWORD_REFUSED", `the password supplied for ${email} is too short to be a generated secret`);
+      }
+
+      let before;
+      try {
+        before = await auth.getUserByEmail(email);
+      } catch (err) {
+        if (err && err.code === "auth/user-not-found") {
+          // A reset may never create. An absent account is CREATE_AUTH_ACCOUNT, a different disposition.
+          throw new SandboxAuthError("RESET_TARGET_NOT_FOUND", `${email} has no Auth account; a reset never creates one`);
+        }
+        throw err;
+      }
+      if (before.uid !== expectedUid) {
+        throw new SandboxAuthError(
+          "RESET_UID_MISMATCH",
+          `${email} resolves to a different account than expected; refusing to reset. Nothing was written.`,
+        );
+      }
+      if (before.disabled === true) {
+        throw new SandboxAuthError("RESET_TARGET_DISABLED", `${email} is disabled; enabling it is a separate, unauthorized decision`);
+      }
+
+      await auth.updateUser(before.uid, { password, emailVerified: true });
+
+      // Re-read, so identity stability is MEASURED rather than assumed. A uid that no longer resolves
+      // is the same finding as one that moved: the account we wrote to is not the account that is
+      // there now, and that must stop everything rather than be reported as a successful reset.
+      let after;
+      try {
+        after = await auth.getUser(before.uid);
+      } catch (err) {
+        if (err && err.code === "auth/user-not-found") {
+          throw new SandboxAuthError(
+            "RESET_IDENTITY_MIGRATED",
+            `${email} no longer resolves to the uid that was just written. This must be investigated before any further persona work.`,
+          );
+        }
+        throw err;
+      }
+      if (after.uid !== expectedUid || after.email !== before.email) {
+        throw new SandboxAuthError(
+          "RESET_IDENTITY_MIGRATED",
+          `${email} changed identity during the reset (uid or address moved). This must be investigated before any further persona work.`,
+        );
+      }
+      return { uid: after.uid, email: after.email, reset: true, uidStable: true };
+    },
   };
 }
 

@@ -936,7 +936,8 @@ test("(4) a Firebase uid is never an Employee id, and is never written into the 
 });
 
 test("(5)(6)(7) the credential layer cannot create, rotate or touch a secret from here", () => {
-  for (const file of ["scripts/sampleCompany/sandboxAuthDirectory.js", "scripts/sampleCompany/loginActivation.js",
+  // THE SAMPLE COMPANY LAYER STILL SETS NOTHING. Unchanged and absolute for these three.
+  for (const file of ["scripts/sampleCompany/loginActivation.js",
     "scripts/sampleCompany/credentialActivation.js", "scripts/seedSampleCompany.js"]) {
     const source = stripComments(readFileSync(resolve(FUNCTIONS_DIR, file), "utf8"));
     // `hasPassword` READS whether an account can sign in; a bare `password` would SET one. Only the second
@@ -944,6 +945,31 @@ test("(5)(6)(7) the credential layer cannot create, rotate or touch a secret fro
     assert.ok(!/(?<![A-Za-z])password\s*[:=]/.test(source), `${file} sets a password value; the Sample Company sets none`);
     assert.ok(!/randomBytes|updateUser\(/.test(source), `${file} can generate or set a credential`);
   }
+
+  // THE AUTH DIRECTORY HAS ONE AUTHORIZED PASSWORD WRITE, AND ONLY ONE.
+  //
+  // Owner ruling 2026-09-25 authorized RESET_EXISTING_SANDBOX_PASSWORD for ten sandbox accounts that
+  // exist and already hold a password nobody knows. That write lives HERE because this module is the
+  // fence -- it refuses production by name and by registry role, refuses the frozen Certification
+  // world, and refuses any address that is not @sandbox.invalid. The alternative was a caller
+  // reaching for firebase-admin directly, outside every one of those.
+  //
+  // So the prohibition is narrowed, not dropped: everything OUTSIDE resetExistingSandboxPassword must
+  // still be incapable of setting or generating a credential.
+  const directory = stripComments(readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/sandboxAuthDirectory.js"), "utf8"));
+  const resetStart = directory.indexOf("async resetExistingSandboxPassword(");
+  assert.ok(resetStart > 0, "the authorized reset must exist and be named for what it does");
+  const outsideReset = directory.slice(0, resetStart) + directory.slice(directory.indexOf("\n  };", resetStart));
+  assert.ok(!/(?<![A-Za-z])password\s*[:=]/.test(outsideReset), "sandboxAuthDirectory sets a password outside the authorized reset");
+  assert.ok(!/updateUser\(/.test(outsideReset), "sandboxAuthDirectory can set a credential outside the authorized reset");
+  // It never GENERATES one anywhere: the password is an argument, from the single shared generator.
+  assert.ok(!/randomBytes/.test(directory), "sandboxAuthDirectory must not generate a password");
+  // And the write is guarded on both sides, so a reset can never migrate an identity.
+  const resetBody = directory.slice(resetStart, directory.indexOf("\n  };", resetStart));
+  assert.match(resetBody, /RESET_UID_MISMATCH/, "the reset must assert the expected uid BEFORE writing");
+  assert.match(resetBody, /RESET_IDENTITY_MIGRATED/, "the reset must re-read and assert the uid AFTER writing");
+  assert.match(resetBody, /RESET_TARGET_NOT_FOUND/, "a reset must refuse an absent account rather than create one");
+  assert.ok(!/createUser\(/.test(resetBody), "a reset must never create an account");
   // (5) an existing account is REUSED, never deleted and never recreated.
   const activation = readFileSync(resolve(FUNCTIONS_DIR, "scripts/sampleCompany/loginActivation.js"), "utf8");
   assert.match(activation, /record\.authAccount = "REUSED"/);
