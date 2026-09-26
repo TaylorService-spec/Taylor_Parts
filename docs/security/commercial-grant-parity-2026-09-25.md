@@ -1,6 +1,16 @@
 # Commercial Grant Parity — 2026-09-25
 
-**Classification: PROPOSAL — protected: capability grant decision. Nothing here grants, revokes or applies anything.**
+**Classification: PARITY_CORRECTION_AWAITING_AUTHORIZATION** (controller reclassification, 2026-09-26).
+The salesManager finding is a **GOVERNED_AUTHORITY_PARITY_GAP**, not a speculative policy proposal. `salesAgreement.accept`
+and `opportunity.createSalesOrder` are required by the governed catalog (`governedBusinessRoles.ts:608,610`),
+DECISIONS #121, the Object matrix (`role-capability-contract.json:1549`) and the workflow bindings
+(`workflowSeeds.ts:231,254`). Only the PostgreSQL grant projection left them out. Applying the correction is still a
+protected grant action, so **nothing here grants, revokes or applies anything** until authorized.
+
+**Owner clarification (2026-09-26).** `salesManager` is a valid Security Role whether or not a canonical Sales Manager
+Job Role exists (Job Role ≠ Security Role). How sales management is organised for employees — one Sales Manager over
+Retail and National Accounts, or separate Retail and National Accounts Sales Managers — is a separate, future Employee
+Operating Model decision. It does not block this parity correction.
 No migration, seed, Role catalog, `role_capabilities` row or environment was changed to produce it.
 
 - Lane: S5 (builder, proposal only) · base `09d63c4e`
