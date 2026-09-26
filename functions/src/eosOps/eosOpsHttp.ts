@@ -18,6 +18,7 @@
 // There is deliberately no `POST /sql`, no `mutate(table, id, patch)`, no Firestore proxy, and no
 // route that takes a table name.
 import { resolveOperationalContext } from "./capabilityAuthority";
+import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { resolveExperienceContext } from "./experienceAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
@@ -97,11 +98,13 @@ export async function executeOperation(
   try {
     switch (request.operation) {
       case "resolveMyCapabilities": {
+        // Conditions from PostgreSQL -- the source Administration writes. Lazy: this read never asks
+        // for entitlements, so composing the provider costs no query.
         const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
           identityProvider: request.caller.identityProvider,
           externalSubject: request.caller.externalSubject,
           requestedTenantId: request.caller.requestedTenantId,
-        });
+        }, postgresGrantConditionProvider(deps.pool));
         return {
           ok: true,
           operation: "resolveMyCapabilities",

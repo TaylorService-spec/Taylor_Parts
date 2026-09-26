@@ -193,6 +193,35 @@ export async function resolveOperationalContext(
 }
 
 /**
+ * THE FLAT SET FOR A GATE THAT CANNOT EVALUATE CONDITIONS -- fail closed, never wider.
+ *
+ * The Commercial and CRM kernels decide on `capabilities.has(key)` alone; they have no record
+ * context to answer a per-grant condition with. Handing them the full flat set would let a
+ * CONDITIONED grant (e.g. "only records assigned to me") act as an UNCONDITIONAL one there -- a
+ * widening an administrator never made. So such a transport receives the flat set MINUS every key
+ * this principal reaches ONLY through conditioned entitlements. A key reached by at least one
+ * unconditional grant is kept.
+ *
+ * ZERO-CONDITION PARITY. With no ACTIVE condition row for the tenant (the state of every tenant
+ * until an administrator sets one) the catalog is empty and the set is returned UNCHANGED, after
+ * exactly one indexed read of the condition relation -- byte-identical to the previous behaviour.
+ * An unreadable condition store throws: "could not read the conditions" is never "there are none".
+ */
+export async function capabilitiesWithoutUnevaluatedConditions(
+  pool: Pool,
+  principalContext: PrincipalContext,
+  capabilities: ReadonlySet<string>,
+  conditions: GrantConditionProvider,
+): Promise<ReadonlySet<string>> {
+  const catalog = await conditions(principalContext.tenantId);
+  if (catalog.size === 0) return capabilities;
+  const grants: CapabilityGrant[] = (await roleCapabilityGrants(pool, principalContext.tenantId, principalContext.heldRoleKeys))
+    .map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
+  const unconditional = new Set(entitlementsFrom(grants, catalog).filter((e) => e.condition === null).map((e) => e.capabilityKey));
+  return new Set([...capabilities].filter((key) => unconditional.has(key)));
+}
+
+/**
  * The role_capabilities join, resolved by Role KEY (what `resolvePrincipalContext` already computed)
  * rather than by Role id -- so this file needs no second identity lookup and cannot disagree with
  * the Administration API about which Roles are held.

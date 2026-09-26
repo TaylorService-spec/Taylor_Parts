@@ -62,6 +62,8 @@ function fakeWorld({ capabilities = ALL_CAPS, clientQuery } = {}) {
   const pool = {
     async query(text) {
       if (/role_capabilities/.test(text)) return { rows: capabilities.map((key) => ({ key })) };
+      // The per-grant condition store (Administration-written). None here: zero-condition parity.
+      if (/capability_grant_conditions/.test(text)) return { rows: [] };
       throw new Error(`unexpected pool query ${text}`);
     },
     async connect() {
@@ -232,10 +234,13 @@ test("(19)(20) the transport imports no Firebase or Firestore, contains no SQL, 
   const code = strip(readFileSync(HTTP_SOURCE, "utf8"));
   for (const forbidden of [/firebase/i, /firestore/i, /getFirestore/, /verifyIdToken/, /customClaims|claims\./]) assert.doesNotMatch(code, forbidden);
   for (const sql of [/\bSELECT\b/, /\bINSERT\b/, /\bUPDATE\b/, /\bDELETE\b/, /\.query\(/, /eos_(policy|commercial|crm|workforce)/, /role_capabilities/]) assert.doesNotMatch(code, sql);
-  assert.match(code, /import \{ resolveOperationalContext \} from "\.\.\/eosOps\/capabilityAuthority"/);
+  assert.match(code, /import \{ capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext \} from "\.\.\/eosOps\/capabilityAuthority"/);
   assert.match(code, /principalId: ctx\.principalContext\.uid/);
   assert.match(code, /tenantId: ctx\.principalContext\.tenantId/);
-  assert.match(code, /capabilities: ctx\.capabilities/);
+  // Conditions come from PostgreSQL, and a capability reached ONLY through a conditioned grant is
+  // withheld from this flat-set kernel -- fail closed (2026-09-26 Administration control plane).
+  assert.match(code, /const conditions = postgresGrantConditionProvider\(deps\.pool\)/);
+  assert.match(code, /capabilitiesWithoutUnevaluatedConditions\(\s*deps\.pool, ctx\.principalContext, ctx\.capabilities, conditions\)/);
   assert.doesNotMatch(code, /principalId:\s*(identity|request\.caller)\./, "the domain actor is built from the external identity");
   assert.doesNotMatch(code, /resolvePrincipalContext|capabilitiesForRoleKeys/, "the transport grew its own resolver");
 });

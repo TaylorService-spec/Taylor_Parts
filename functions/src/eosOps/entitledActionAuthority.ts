@@ -8,17 +8,17 @@
 //                               how a decision is reached. No database, testable on its own.
 //   THIS FILE                   The composition, and the ONLY production entry point.
 //
-// ════════════════════ THE PRODUCTION PATH IS THE WITHHOLDING ════════════════════
+// ════════════════════ THE PRODUCTION PATH READS CONDITIONS FROM POSTGRESQL ════════════════════
 //
-// `authorizeEntitledResolvedAction` takes NO condition catalog. It uses SHIPPED_GRANT_CONDITIONS,
-// which is empty and frozen, and asserts that catalog names no WITHHELD cell before it decides
-// anything. There is therefore no argument a caller can pass, and no row a database can hold, that
-// activates `reorder.purchaseOrder.read` or `.create` through this function. Activating a grant
-// condition is an edit to the shipped catalog — a reviewed code change — exactly as activating an
-// action policy is an edit to ACTION_CONTEXT_POLICIES.
+// Since the Administration control plane (2026-09-26) every deployed composition reads per-grant
+// conditions from eos_policy.capability_grant_conditions -- the relation Administration writes with
+// setGrantCondition / retireGrantCondition -- through `postgresGrantConditionProvider`, which asserts
+// the Owner's WITHHELD cells on every load. No caller can pass a catalog into a deployed decision.
+// With zero ACTIVE rows the provider returns the same empty catalog SHIPPED_GRANT_CONDITIONS is, so
+// behaviour is unchanged until an administrator conditions a grant.
 //
 // A test may build its own catalog and call the PURE decision directly. That is expressing the
-// model, which is this lane's deliverable; it reaches no deployed command.
+// model; it reaches no deployed command.
 import type { Pool, PoolClient } from "pg";
 import {
   grantConditionRows,
@@ -131,9 +131,16 @@ export async function authorizeEntitledResolvedAction(
   // has admitted the caller, and it need not do so twice. `authorizeEntitledAction` invokes this at
   // most once, and only after step 1 of the Owner's order has passed. A failure to read propagates
   // into the decision as CONTEXT_AUTHORITY_UNAVAILABLE, exactly as it did when it was caught here.
+  //
+  // CONDITIONS FROM POSTGRESQL (2026-09-26). This entry point used to apply SHIPPED_GRANT_CONDITIONS
+  // (empty) whatever the relation held -- once Administration can write conditions, ignoring them
+  // here would let a conditioned grant decide as an unconditional one. It now reads the SAME stored
+  // conditions every transport composes, asserting the withheld cells where they are read.
   let pending: Promise<EntitlementSet> | undefined;
-  const entitlements: EntitlementResolver = () => (pending ??= resolveRoleEntitlements(
-    pool, tenantId, resolved.principalContext.heldRoleKeys, SHIPPED_GRANT_CONDITIONS));
+  const entitlements: EntitlementResolver = () => (pending ??= (async () => {
+    const conditions = await postgresGrantConditionProvider(pool)(tenantId);
+    return resolveRoleEntitlements(pool, tenantId, resolved.principalContext.heldRoleKeys, conditions);
+  })());
   const actor: EntitledActor = Object.freeze({
     tenantId,
     principalId: resolved.principalContext.uid,
