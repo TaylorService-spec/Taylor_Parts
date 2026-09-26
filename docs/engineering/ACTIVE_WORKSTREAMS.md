@@ -27,6 +27,28 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Phase C (narrow) — EOS-navigation route guard for `/service/work-orders/new` and `/service/work-orders/:workOrderId` (emitted for NOBODY under the EOS navigation source, App.jsx ~1128-1140)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder (tests + pure guard); integration applies the `App.jsx` edit on this branch
+- Branch / worktree:   `lane/pc-eos-workorder-routes` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-wo`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f`
+- Owned paths:         new pure guard module under `field-ops-app-vite/src/navigation/` or `src/access/` · new `field-ops-app-vite/test/eosWorkOrderRouteGuard*.test.*`
+- Shared paths req'd:  `field-ops-app-vite/src/App.jsx` (route emission only — INTEGRATION edits) · workflow paths (integration)
+- Dependencies:        none for code; exposing the routes to personas still needs the Work Order data path to serve them (Firebase today — PG Work Order authority is the replacement)
+- Expected outcome:    routes emitted under EOS navigation exactly for personas whose EOS experience grants the governing surface/capability; nobody else; no permission broadened; legacy source byte-for-byte unchanged
+- Protected boundaries:NO nav authority redesign, NO grant change, NO deploy, NO merge (held)
+- Lifecycle stage:     DESIGNED
+
+- Capability:          S1-S — Receiving serial-identity conflict reaches the caller as `internal`; map it to its specific error (narrow repair to a live Firebase path before cutover)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s1s-receiving-serial-conflict-mapping` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s1s` — STACKED on `lane/s1r-receiving-replay` (#1977 `8ecefda2`, itself on #1974)
+- Base commit:         `8ecefda259f96641398d04dfdd5daa6f350285ee`
+- Owned paths:         `mapReceiveError` in `functions/src/inventoryReceiving/receivingCallables.ts` · the receiving replay/canonical test files' serial-conflict assertions · client error mapping in `field-ops-app-vite/src/domain/receivingTransport.js` only if needed
+- Shared paths req'd:  none expected
+- Dependencies:        #1974 → #1977 merge first; replacement = PG Receiving (#1961, HELD); Firebase path deleted when Receiving cuts over to Render/PG and `receiveInventoryStock` is retired
+- Expected outcome:    caller receives a specific, stable serial-conflict error; no new Firebase feature, callable, rule or authorization dependency
+- Protected boundaries:NO deploy, NO merge (held)
+- Lifecycle stage:     DESIGNED
+
 - Capability:          S1-R — Receiving exact-retry (idempotent replay) defect in the Firestore receiving command: a committed receipt's exact retry is refused `failed-precondition` instead of replayed (quantities/expectedVersion measured against post-commit state before the receipt id is resolved)
 - Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
 - Branch / worktree:   `lane/s1r-receiving-replay` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s1r` — STACKED on `lane/s1-receiving-multiline-po` (PR #1974 head `f3afa588`)
