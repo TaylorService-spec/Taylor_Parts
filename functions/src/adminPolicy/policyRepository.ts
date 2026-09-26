@@ -276,6 +276,18 @@ export interface PolicyTransaction {
   createWorkflowInstance(input: NewRecord<WorkflowInstanceRecord>): Promise<WorkflowInstanceRecord>;
   advanceWorkflowInstance(instanceId: string, toStepKey: string): Promise<WorkflowInstanceRecord>;
   appendWorkflowInstanceEvent(input: Omit<WorkflowInstanceEventRecord, "id" | "tenantId">): Promise<void>;
+  /**
+   * Point the workflow at its ACTIVE version (PUBLISHED only, same workflow -- the store refuses
+   * anything else), or clear it with null. Returns the updated workflow.
+   */
+  setWorkflowActiveVersion(workflowId: string, versionId: string | null): Promise<WorkflowRecord>;
+  /**
+   * DRAFT|PUBLISHED -> RETIRED. The store REFUSES the active version and a version any instance
+   * still pins, independently of the command layer.
+   */
+  retireWorkflowVersion(versionId: string): Promise<WorkflowVersionRecord>;
+  /** Move one instance to another PUBLISHED version at a mapped step (governed MIGRATE only). */
+  repinWorkflowInstance(instanceId: string, versionId: string, stepKey: string): Promise<WorkflowInstanceRecord>;
 
   // ── Administration decisions and grant conditions ──
   //
@@ -393,6 +405,11 @@ export interface PolicyReader {
   listWorkflowActions(tenantId: TenantId, versionId: string): Promise<readonly WorkflowActionRecord[]>;
   listWorkflowRoleBindings(tenantId: TenantId, versionId: string): Promise<readonly WorkflowRoleBindingRecord[]>;
   getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string): Promise<WorkflowInstanceRecord | null>;
+  getWorkflowInstanceById(tenantId: TenantId, instanceId: string): Promise<WorkflowInstanceRecord | null>;
+  /** Instances pinned to one version. */
+  listWorkflowInstances(tenantId: TenantId, versionId: string): Promise<readonly WorkflowInstanceRecord[]>;
+  /** One instance's events, oldest first. */
+  listWorkflowInstanceEvents(tenantId: TenantId, instanceId: string): Promise<readonly WorkflowInstanceEventRecord[]>;
   listAuditEvents(tenantId: TenantId, limit: number): Promise<readonly PolicyAuditEventRecord[]>;
   /**
    * Tenant-scoped, FILTERED audit history, oldest first, bounded by `limit`. Every filter is optional

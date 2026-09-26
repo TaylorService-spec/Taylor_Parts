@@ -30,12 +30,13 @@ import {
   assignRole,
   createCustomField,
   createRole,
-  publishWorkflowVersion,
   revokeRole,
   setObjectPermission,
   updateFieldDefinition,
 } from "../lib/adminPolicy/policyCommands.js";
 import { applyWorkflowSeed } from "../lib/adminPolicy/applyWorkflowSeed.js";
+import { publishWorkflowVersion } from "../lib/adminPolicy/workflowLifecycle.js";
+import { grantSeedBindings, grantWorkflowAdministration } from "./fixtures/workflowControlPlaneFixtures.mjs";
 import { SEED_WORKFLOWS, WORK_ORDER_WORKFLOW } from "../lib/adminPolicy/workflowSeeds.js";
 import { loadPrincipalPolicy, resolveFieldAccess } from "../lib/adminPolicy/effectiveObjectAccess.js";
 
@@ -90,12 +91,17 @@ async function seedRoles(repo, keys, tenantId = TENANT) {
         grantedBy: SYS, grantedAt: new Date().toISOString() });
     }
   });
+  // Workflow administration is a CAPABILITY (workflowDefinition.*), granted through Administration
+  // after bootstrap -- never by the Role name and never by a migration.
+  if (made.admin) await grantWorkflowAdministration(repo, tenantId, made.admin.id);
   return made;
 }
 
 /** A published Work Order workflow with its Roles, ready to run instances against. */
 async function publishedWorkOrder(repo) {
   const roles = await seedRoles(repo, ["admin", "dispatcher", "technician"]);
+  // Publishable: the Object exists and every bound Role holds the action's capability.
+  await grantSeedBindings(repo, TENANT, roles, WORK_ORDER_WORKFLOW);
   const applied = await applyWorkflowSeed(repo, adminActor(), WORK_ORDER_WORKFLOW);
   await publishWorkflowVersion(repo, adminActor(), { versionId: applied.version.id });
   const definition = await loadWorkflowVersionDefinition(repo, TENANT, applied.version.id);
@@ -284,10 +290,8 @@ test("WORKFLOW authority does not expose forbidden fields", async () => {
   assert.equal(decideWorkflowAction(definition, instance, "Dispatch", attempt).allowed, true);
 
   const world = await repo.transact({ tenantId: TENANT, uid: SYS }, async (tx) => {
-    const obj = await tx.createObject({
-      key: "workOrder", label: "Work Order", labelPlural: null, description: null,
-      origin: "SYSTEM", lifecycle: "ACTIVE", supportsDelete: false,
-    });
+    // The published Work Order workflow's Object already exists (publish validation requires it).
+    const obj = await repo.getObjectByKey(TENANT, "workOrder");
     const f = await tx.createField({
       objectId: obj.id, key: "internalNotes", label: "Internal notes", description: null,
       dataType: "TEXT", required: false, allowedValues: [], defaultValue: null, searchable: false,
@@ -317,10 +321,8 @@ test("DATA authority alone does not permit a workflow action", async () => {
   // A Role with full CRED on Work Orders, bound to no workflow action.
   const reader = await createRole(repo, adminActor(), { key: "workOrderReader", name: "WO Reader" });
   await repo.transact({ tenantId: TENANT, uid: SYS }, async (tx) => {
-    const obj = await tx.createObject({
-      key: "workOrder", label: "Work Order", labelPlural: null, description: null,
-      origin: "SYSTEM", lifecycle: "ACTIVE", supportsDelete: false,
-    });
+    // The published Work Order workflow's Object already exists (publish validation requires it).
+    const obj = await repo.getObjectByKey(TENANT, "workOrder");
     await tx.setObjectPermission(reader.id, obj.id, { C: true, R: true, E: true, D: false });
   });
 
@@ -414,7 +416,7 @@ test("a NON-ADMIN cannot edit Objects, Role definitions or Workflows", async () 
     );
     await assert.rejects(
       () => publishWorkflowVersion(repo, actor, { versionId: "whatever" }),
-      /not authorized to perform "editWorkflowDefinition"/,
+      /not authorized: "workflowDefinition\.publish" is required/,
     );
   }
 });

@@ -222,6 +222,10 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "explainEffectiveAccess",
     // The condition vocabulary the server enforces (Pass 8).
     "listSupportedConditionKinds",
+    // FOUR ADDED for the workflow control plane (2026-09-26): validation, pinned instances, one
+    // workflow's history, and an Employee's derived workflow responsibilities.
+    "validateWorkflowVersion", "listWorkflowInstances", "readWorkflowHistory",
+    "listPrincipalWorkflowResponsibilities",
   ].sort(), "the Owner's eight, listTenantPrincipals, the four Object-owned projections and the three control-plane reads");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",
@@ -241,6 +245,10 @@ test("every operation is either a read or a mutation, and none is both", () => {
     "updateObjectMetadata",
     "updateRole",
     "updateWorkflowDefinition",
+    // FIVE ADDED for the workflow control plane (2026-09-26): the active-version pointer,
+    // retirement, and in-flight instance governance -- each capability-gated and audited.
+    "activateWorkflowVersion", "retireWorkflowVersion", "startWorkflowInstance",
+    "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances",
   ].sort());
 });
 

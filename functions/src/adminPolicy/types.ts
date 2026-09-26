@@ -334,6 +334,11 @@ export interface WorkflowRecord extends TenantOwned, Provenance {
   /** The Object key this workflow governs, when it governs one. */
   readonly objectKey: string | null;
   readonly origin: DefinitionOrigin;
+  /**
+   * The ONE version new instances start on (migration 1762732800000). PUBLISHED only, enforced by
+   * the store. Null until a version is published. Absent on a record written before the column.
+   */
+  readonly activeVersionId?: string | null;
 }
 
 /**
@@ -377,13 +382,43 @@ export interface WorkflowActionRecord extends TenantOwned, Provenance {
    * abstraction this design is trying not to build.
    */
   readonly requiresOwnAssignment: boolean;
+  /**
+   * The capability this action IS (migration 1762732800000). A binding never grants: the runtime
+   * decision is WORKFLOW_BINDING AND EFFECTIVE_AUTHORITY(capabilityKey). Null only on a draft that
+   * has not been bound yet -- such a version cannot be published (ACTION_WITHOUT_CAPABILITY).
+   */
+  readonly capabilityKey?: string | null;
+  /**
+   * A guard from the CLOSED list of existing evaluator primitives. `requiresOwnAssignment` is its
+   * legacy spelling and the store keeps the two in agreement.
+   */
+  readonly guardKind?: WorkflowGuardKind | null;
 }
+
+/**
+ * The closed guard vocabulary. Each is an EXISTING evaluator primitive -- never authorable logic:
+ *   RECORD_ASSIGNMENT  contextualAuthorization's ASSIGNED_EMPLOYEE relation (Employee against
+ *                      Employee, through the ACTIVE principal link and the open assignment).
+ */
+export const WORKFLOW_GUARD_KINDS = Object.freeze(["RECORD_ASSIGNMENT"] as const);
+export type WorkflowGuardKind = (typeof WORKFLOW_GUARD_KINDS)[number];
+
+/**
+ * Who a binding names. SECURITY_ROLE is the only evaluable kind. FUNCTIONAL_ROLE is the documented
+ * extension point (pass8 census): when an evaluator exists it NARROWS -- the action is allowed only
+ * if the capability comes from a qualifying Security Role AND, when the action has any
+ * FUNCTIONAL_ROLE binding, the linked Employee holds one of them. Until then it is refused.
+ */
+export const WORKFLOW_BINDING_KINDS = Object.freeze(["SECURITY_ROLE", "FUNCTIONAL_ROLE"] as const);
+export type WorkflowBindingKind = (typeof WORKFLOW_BINDING_KINDS)[number];
 
 /** Which Role may perform which action. THE workflow authority, and it grants no data access. */
 export interface WorkflowRoleBindingRecord extends TenantOwned, Provenance {
   readonly workflowVersionId: string;
   readonly actionKey: string;
   readonly roleId: string;
+  /** Absent on a record written before the column; read as SECURITY_ROLE. */
+  readonly bindingKind?: WorkflowBindingKind;
 }
 
 /** A running instance of a workflow over one business record, pinned to its version. */
@@ -404,7 +439,17 @@ export interface WorkflowInstanceEventRecord extends TenantOwned {
   readonly actorUid: string;
   readonly occurredAt: string;
   readonly reason: string | null;
+  /** START / TRANSITION / ADOPT / MIGRATE (migration 1762732800000). Absent = TRANSITION. */
+  readonly eventKind?: WorkflowInstanceEventKind;
+  /** The acting EOS Principal. */
+  readonly actorPrincipalId?: string | null;
+  readonly fromVersionId?: string | null;
+  readonly toVersionId?: string | null;
+  /** The policy audit event recording an ADMINISTRATIVE act (ADOPT, MIGRATE, START). */
+  readonly auditEventId?: string | null;
 }
+
+export type WorkflowInstanceEventKind = "START" | "TRANSITION" | "ADOPT" | "MIGRATE";
 
 // ════════════════════ AUDIT ════════════════════
 

@@ -22,7 +22,14 @@ import {
   decideWorkflowAction,
   loadWorkflowVersionDefinition,
 } from "../lib/adminPolicy/workflowEngine.js";
-import { createRole, publishWorkflowVersion } from "../lib/adminPolicy/policyCommands.js";
+import { createRole } from "../lib/adminPolicy/policyCommands.js";
+import { publishWorkflowVersion } from "../lib/adminPolicy/workflowLifecycle.js";
+import {
+  createObjects,
+  grantCapabilities,
+  grantWorkflowAdministration,
+  registerWorkflowCatalog,
+} from "./fixtures/workflowControlPlaneFixtures.mjs";
 import { applyWorkflowSeed } from "../lib/adminPolicy/applyWorkflowSeed.js";
 import {
   loadPrincipalPolicy,
@@ -45,7 +52,16 @@ async function seedRoles(repo, keys) {
       });
     }
   });
+  // Workflow administration is the workflowDefinition.* capability, granted after bootstrap.
+  if (made.admin) await grantWorkflowAdministration(repo, TENANT, made.admin.id);
   return made;
+}
+
+/** Publishable: the governed Objects exist and each bound Role holds its action's capability. */
+async function makePublishable(repo, grants) {
+  registerWorkflowCatalog(repo);
+  await createObjects(repo, TENANT, ["reorderRequest", "purchaseOrder"]);
+  await grantCapabilities(repo, TENANT, grants);
 }
 
 /**
@@ -57,6 +73,10 @@ async function seedRoles(repo, keys) {
  */
 async function reorderWorld(repo) {
   const roles = await seedRoles(repo, ["admin", "partsManager", "partsAssociate"]);
+  await makePublishable(repo, [
+    { roleId: roles.partsManager.id, capabilityKey: "reorder.request.approve" },
+    { roleId: roles.partsManager.id, capabilityKey: "reorder.request.markReceived" },
+  ]);
   const applied = await applyWorkflowSeed(repo, adminActor(), {
     key: "partsPurchasing",
     name: "Parts / Purchasing",
@@ -68,19 +88,16 @@ async function reorderWorld(repo) {
       { key: "DONE", label: "Done", terminal: true },
     ],
     actions: [
-      { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", roleKeys: ["partsManager"] },
-      { key: "finish", label: "Finish", from: "READY_FOR_PARTS_MANAGER", to: "DONE", roleKeys: ["partsManager"] },
+      { key: "approve", label: "Approve", from: "PENDING_REVIEW", to: "READY_FOR_PARTS_MANAGER", capabilityId: "reorder.request.approve", roleKeys: ["partsManager"] },
+      { key: "finish", label: "Finish", from: "READY_FOR_PARTS_MANAGER", to: "DONE", capabilityId: "reorder.request.markReceived", roleKeys: ["partsManager"] },
     ],
   });
   await publishWorkflowVersion(repo, adminActor(), { versionId: applied.version.id });
   const definition = await loadWorkflowVersionDefinition(repo, TENANT, applied.version.id);
 
   const world = await repo.transact({ tenantId: TENANT, uid: SYS }, async (tx) => {
-    const object = async (key, label) =>
-      tx.createObject({
-        key, label, labelPlural: null, description: null,
-        origin: "SYSTEM", lifecycle: "ACTIVE", supportsDelete: false,
-      });
+    // The Objects exist already: publish validation required the governed one (INVALID_OBJECT).
+    const object = async (key) => repo.getObjectByKey(TENANT, key);
     const field = async (objectId, key) =>
       tx.createField({
         objectId, key, label: key, description: null, dataType: "STRING", required: false,
@@ -280,6 +297,10 @@ test("a self-transition is a runnable definition and is authorized like any othe
   // A self-loop must not trip the structural validator, and must still require a Role binding.
   const repo = new InMemoryPolicyRepository();
   const roles = await seedRoles(repo, ["admin", "partsAssociate", "outsider"]);
+  await makePublishable(repo, [
+    { roleId: roles.partsAssociate.id, capabilityKey: "reorder.request.postPurchasingUpdate" },
+    { roleId: roles.partsAssociate.id, capabilityKey: "reorder.request.markReceived" },
+  ]);
   const applied = await applyWorkflowSeed(repo, adminActor(), {
     key: "selfLoop", name: "Self loop", description: "d", objectKey: "reorderRequest",
     steps: [
@@ -287,8 +308,8 @@ test("a self-transition is a runnable definition and is authorized like any othe
       { key: "DONE", label: "Done", terminal: true },
     ],
     actions: [
-      { key: "postUpdate", label: "Post update", from: "IN_PROGRESS", to: "IN_PROGRESS", roleKeys: ["partsAssociate"] },
-      { key: "finish", label: "Finish", from: "IN_PROGRESS", to: "DONE", roleKeys: ["partsAssociate"] },
+      { key: "postUpdate", label: "Post update", from: "IN_PROGRESS", to: "IN_PROGRESS", capabilityId: "reorder.request.postPurchasingUpdate", roleKeys: ["partsAssociate"] },
+      { key: "finish", label: "Finish", from: "IN_PROGRESS", to: "DONE", capabilityId: "reorder.request.markReceived", roleKeys: ["partsAssociate"] },
     ],
   });
   await publishWorkflowVersion(repo, adminActor(), { versionId: applied.version.id });

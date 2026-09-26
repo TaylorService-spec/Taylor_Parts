@@ -25,12 +25,15 @@
 // from that code. Publishing one does not reroute execution either — that is a later, separately
 // authorized step, and until it is taken a published version is a statement about intent rather
 // than a live process.
-import { requireAdministrationAuthority } from "./administrationAuthority";
 import { PolicyValidationError } from "./policyCommands";
+import { requireWorkflowAdministrationCapability, findWorkflowVersion } from "./workflowAdministration";
+import { isSupersededCapabilityDescription } from "./workflowValidation";
+import { WORKFLOW_GUARD_KINDS } from "./types";
 import { loadWorkflowVersionDefinition, validateWorkflowVersion } from "./workflowEngine";
 import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
 import type {
+  WorkflowGuardKind,
   WorkflowRecord,
   WorkflowRoleBindingRecord,
   WorkflowVersionRecord,
@@ -74,8 +77,17 @@ export interface WorkflowActionInput {
   readonly requiresOwnAssignment?: boolean;
   /** Role KEYS. Resolved to ids here; a key this tenant does not have is REPORTED, never invented. */
   readonly roleKeys?: readonly string[];
-  /** The capability this action is measured to require. Recorded, never turned into a CRED cell. */
+  /**
+   * The capability this action IS (workflow_actions.capability_key). A binding never grants: the
+   * runtime decision is binding AND effective authority over this key. A key the catalog does not
+   * have is REPORTED (`unknownCapabilityKeys`) and stored as none, never invented; such a version
+   * cannot be published (ACTION_WITHOUT_CAPABILITY).
+   */
+  readonly capabilityKey?: string | null;
+  /** Legacy spelling of `capabilityKey` (the seed's field name). `capabilityKey` wins when both are given. */
   readonly capabilityId?: string | null;
+  /** A guard from the closed list (RECORD_ASSIGNMENT). `requiresOwnAssignment` is its legacy spelling. */
+  readonly guardKind?: WorkflowGuardKind | null;
 }
 
 export interface WorkflowDefinitionInput {
@@ -91,6 +103,8 @@ export interface WorkflowDraftResult {
   readonly bindingCount: number;
   /** Role keys the definition binds that this tenant does not have. Named, never created. */
   readonly missingRoleKeys: readonly string[];
+  /** Capability keys the definition names that the catalog does not have (or marks SUPERSEDED). */
+  readonly unknownCapabilityKeys: readonly string[];
 }
 
 export interface CreateWorkflowDraftInput {
@@ -114,7 +128,7 @@ export async function createWorkflowDraft(
   actor: AdminActor,
   input: CreateWorkflowDraftInput,
 ): Promise<WorkflowDraftResult> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editWorkflowDefinition");
+  await requireWorkflowAdministrationCapability(repo, actor, "createWorkflowDraft");
   const key = validKey(input.key, "workflow key");
   const name = nonEmpty(input.name, "name");
   const objectKey = nonEmpty(input.objectKey, "objectKey");
@@ -128,7 +142,7 @@ export async function createWorkflowDraft(
   if (!object) throw new PolicyValidationError(`no object "${objectKey}"`);
 
   const definition = validateDefinitionShape(input.definition);
-  const { roleIdByKey, missingRoleKeys } = await resolveRoles(repo, actor, definition);
+  const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const workflow = await tx.createWorkflow({
@@ -145,13 +159,13 @@ export async function createWorkflowDraft(
       publishedAt: null,
       publishedBy: null,
     });
-    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey);
+    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys);
     await tx.appendAudit({
       ...auditBase(actor, "createWorkflowDraft", version.id, input.reason ?? null),
       before: null,
-      after: { workflowKey: key, version: 1, objectKey, ...counts, missingRoleKeys },
+      after: { workflowKey: key, version: 1, objectKey, ...counts, missingRoleKeys, unknownCapabilityKeys },
     });
-    return { workflow, version, ...counts, missingRoleKeys };
+    return { workflow, version, ...counts, missingRoleKeys, unknownCapabilityKeys };
   });
 
   await requireRunnable(repo, actor, result.version.id, "draft");
@@ -177,7 +191,7 @@ export async function createWorkflowVersion(
   actor: AdminActor,
   input: CreateWorkflowVersionInput,
 ): Promise<WorkflowDraftResult> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editWorkflowDefinition");
+  await requireWorkflowAdministrationCapability(repo, actor, "createWorkflowVersion");
   const workflowId = nonEmpty(input.workflowId, "workflowId");
 
   const workflow = (await repo.listWorkflows(actor.tenantId)).find((w) => w.id === workflowId);
@@ -194,7 +208,7 @@ export async function createWorkflowVersion(
     definition = await readDefinition(repo, actor, sourceId);
   }
 
-  const { roleIdByKey, missingRoleKeys } = await resolveRoles(repo, actor, definition);
+  const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     const version = await tx.createWorkflowVersion({
@@ -204,13 +218,13 @@ export async function createWorkflowVersion(
       publishedAt: null,
       publishedBy: null,
     });
-    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey);
+    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys);
     await tx.appendAudit({
       ...auditBase(actor, "createWorkflowVersion", version.id, input.reason ?? null),
       before: null,
-      after: { workflowKey: workflow.key, version: nextVersion, ...counts, missingRoleKeys },
+      after: { workflowKey: workflow.key, version: nextVersion, ...counts, missingRoleKeys, unknownCapabilityKeys },
     });
-    return { workflow, version, ...counts, missingRoleKeys };
+    return { workflow, version, ...counts, missingRoleKeys, unknownCapabilityKeys };
   });
 
   await requireRunnable(repo, actor, result.version.id, "draft");
@@ -238,7 +252,7 @@ export async function updateWorkflowDefinition(
   actor: AdminActor,
   input: UpdateWorkflowDefinitionInput,
 ): Promise<WorkflowDraftResult> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editWorkflowDefinition");
+  await requireWorkflowAdministrationCapability(repo, actor, "updateWorkflowDefinition");
   const versionId = nonEmpty(input.versionId, "versionId");
   const definition = validateDefinitionShape(input.definition);
 
@@ -251,7 +265,7 @@ export async function updateWorkflowDefinition(
   const workflow = found.workflow;
   const before = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
 
-  const { roleIdByKey, missingRoleKeys } = await resolveRoles(repo, actor, definition);
+  const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   // A new version rather than a destructive rewrite of the same rows: the store has no delete for
   // steps or actions, deliberately, so "replace the definition" is expressed as the next draft and
@@ -266,7 +280,7 @@ export async function updateWorkflowDefinition(
       publishedAt: null,
       publishedBy: null,
     });
-    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey);
+    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys);
     await tx.appendAudit({
       ...auditBase(actor, "updateWorkflowDefinition", version.id, input.reason ?? null),
       before: {
@@ -274,9 +288,9 @@ export async function updateWorkflowDefinition(
         steps: before.steps.map((s) => s.key),
         actions: before.actions.map((a) => a.key),
       },
-      after: { workflowKey: workflow.key, version: nextVersion, ...counts, missingRoleKeys },
+      after: { workflowKey: workflow.key, version: nextVersion, ...counts, missingRoleKeys, unknownCapabilityKeys },
     });
-    return { workflow, version, ...counts, missingRoleKeys };
+    return { workflow, version, ...counts, missingRoleKeys, unknownCapabilityKeys };
   });
 
   await requireRunnable(repo, actor, result.version.id, "draft");
@@ -301,7 +315,7 @@ export async function setWorkflowRoleBinding(
   actor: AdminActor,
   input: SetWorkflowRoleBindingInput,
 ): Promise<WorkflowRoleBindingRecord> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editWorkflowDefinition");
+  await requireWorkflowAdministrationCapability(repo, actor, "setWorkflowRoleBinding");
   const versionId = nonEmpty(input.versionId, "versionId");
   const actionKey = nonEmpty(input.actionKey, "actionKey");
   const roleId = nonEmpty(input.roleId, "roleId");
@@ -332,26 +346,9 @@ export async function setWorkflowRoleBinding(
 
 // ════════════════════ helpers ════════════════════
 
-/**
- * The version ROW behind a version id, with its workflow.
- *
- * `loadWorkflowVersionDefinition` returns a version's steps, actions and bindings but not the
- * version record itself, and status is what decides whether an edit is allowed. The port lists
- * versions per workflow rather than fetching one by id, so this walks -- correct and bounded at
- * administration scale, where a tenant has five workflows and not five thousand.
- */
-async function findVersion(
-  repo: PolicyRepository,
-  actor: AdminActor,
-  versionId: string,
-): Promise<{ workflow: WorkflowRecord; version: WorkflowVersionRecord }> {
-  for (const workflow of await repo.listWorkflows(actor.tenantId)) {
-    for (const version of await repo.listWorkflowVersions(actor.tenantId, workflow.id)) {
-      if (version.id === versionId) return { workflow, version };
-    }
-  }
-  throw new PolicyValidationError("workflow version not found");
-}
+/** The version row behind a version id, with its workflow (shared, tenant-scoped). */
+const findVersion = (repo: PolicyRepository, actor: AdminActor, versionId: string) =>
+  findWorkflowVersion(repo, actor, versionId);
 
 function validateDefinitionShape(definition: WorkflowDefinitionInput | undefined): WorkflowDefinitionInput {
   if (!definition || typeof definition !== "object") throw new PolicyValidationError("a definition is required");
@@ -376,6 +373,18 @@ function validateDefinitionShape(definition: WorkflowDefinitionInput | undefined
     nonEmpty(a?.label, `label for action "${key}"`);
     nonEmpty(a?.from, `"from" for action "${key}"`);
     nonEmpty(a?.to, `"to" for action "${key}"`);
+    if (a.guardKind !== undefined && a.guardKind !== null
+        && !(WORKFLOW_GUARD_KINDS as readonly string[]).includes(a.guardKind)) {
+      throw new PolicyValidationError(`INVALID_GUARD: action "${key}" declares guard "${String(a.guardKind)}"; the closed list is ${WORKFLOW_GUARD_KINDS.join(", ")}`);
+    }
+    if (a.guardKind === null && a.requiresOwnAssignment === true) {
+      throw new PolicyValidationError(`INVALID_GUARD: action "${key}" requires own assignment but declares no guard`);
+    }
+    for (const roleKey of a.roleKeys ?? []) {
+      if (typeof roleKey !== "string" || roleKey.trim().length === 0) {
+        throw new PolicyValidationError(`action "${key}" names an empty Role key`);
+      }
+    }
   }
 
   return { steps, actions };
@@ -385,15 +394,37 @@ async function resolveRoles(
   repo: PolicyRepository,
   actor: AdminActor,
   definition: WorkflowDefinitionInput,
-): Promise<{ roleIdByKey: Map<string, string>; missingRoleKeys: readonly string[] }> {
-  const roles = await repo.listRoles(actor.tenantId);
+): Promise<{
+  roleIdByKey: Map<string, string>;
+  missingRoleKeys: readonly string[];
+  knownCapabilityKeys: ReadonlySet<string>;
+  unknownCapabilityKeys: readonly string[];
+}> {
+  const [roles, catalog] = await Promise.all([repo.listRoles(actor.tenantId), repo.listCapabilities()]);
   const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
   const missingRoleKeys = [
     ...new Set(
       definition.actions.flatMap((a) => a.roleKeys ?? []).filter((k) => !roleIdByKey.has(k)),
     ),
   ];
-  return { roleIdByKey, missingRoleKeys };
+  const knownCapabilityKeys = new Set(
+    catalog.filter((c) => !isSupersededCapabilityDescription(c.description)).map((c) => c.key));
+  const unknownCapabilityKeys = [
+    ...new Set(definition.actions.map(actionCapabilityKey).filter((k): k is string => k !== null && !knownCapabilityKeys.has(k))),
+  ];
+  return { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys };
+}
+
+/** The capability an action input names, under either spelling. */
+export function actionCapabilityKey(a: WorkflowActionInput): string | null {
+  const key = a.capabilityKey ?? a.capabilityId ?? null;
+  return typeof key === "string" && key.trim().length > 0 ? key.trim() : null;
+}
+
+/** The guard an action input declares: `guardKind`, else the legacy own-assignment flag. */
+export function actionGuardKind(a: WorkflowActionInput): WorkflowGuardKind | null {
+  if (a.guardKind !== undefined && a.guardKind !== null) return a.guardKind;
+  return a.requiresOwnAssignment === true ? "RECORD_ASSIGNMENT" : null;
 }
 
 type Tx = Parameters<Parameters<PolicyRepository["transact"]>[1]>[0];
@@ -403,6 +434,7 @@ async function writeDefinition(
   versionId: string,
   definition: WorkflowDefinitionInput,
   roleIdByKey: ReadonlyMap<string, string>,
+  knownCapabilityKeys: ReadonlySet<string>,
 ): Promise<{ stepCount: number; actionCount: number; bindingCount: number }> {
   for (const s of definition.steps) {
     await tx.createWorkflowStep({
@@ -421,7 +453,10 @@ async function writeDefinition(
       label: a.label,
       fromStepKey: a.from,
       toStepKey: a.to,
-      requiresOwnAssignment: a.requiresOwnAssignment === true,
+      requiresOwnAssignment: actionGuardKind(a) === "RECORD_ASSIGNMENT",
+      guardKind: actionGuardKind(a),
+      // An unknown key is reported (unknownCapabilityKeys) and stored as none -- never invented.
+      capabilityKey: knownCapabilityKeys.has(actionCapabilityKey(a) ?? "") ? actionCapabilityKey(a) : null,
     });
     for (const key of a.roleKeys ?? []) {
       const roleId = roleIdByKey.get(key);
@@ -449,6 +484,8 @@ async function readDefinition(
       from: a.fromStepKey,
       to: a.toStepKey,
       requiresOwnAssignment: a.requiresOwnAssignment,
+      capabilityKey: a.capabilityKey ?? null,
+      guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
       roleKeys: loaded.bindings
         .filter((b) => b.actionKey === a.key)
         .map((b) => keyById.get(b.roleId))

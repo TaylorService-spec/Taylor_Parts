@@ -220,8 +220,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // Administration decision relation, immutable audit, the never-widen guard on grant conditions, and
 // ONE capability, admin.securityPolicy.write (vocabulary 79 -> 80, reconciled in the manifest). Its
 // one Role grant writes nothing here, for the same reason as every grant above.
-const PINNED_LAST_MIGRATION = "1762646400000_administration-control-plane";
-const PINNED_MIGRATION_COUNT = 52;
+// 1762732800000 (the workflow control plane): workflow schema and triggers only -- no capability,
+// no grant, no vocabulary move.
+const PINNED_LAST_MIGRATION = "1762732800000_workflow-control-plane";
+const PINNED_MIGRATION_COUNT = 53;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

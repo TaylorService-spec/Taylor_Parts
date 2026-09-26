@@ -33,6 +33,7 @@
 import type { PolicyReader } from "./policyRepository";
 import type {
   TenantId,
+  WorkflowGuardKind,
   WorkflowActionRecord,
   WorkflowInstanceRecord,
   WorkflowRoleBindingRecord,
@@ -132,6 +133,113 @@ export function decideWorkflowAction(
   }
 
   return { allowed: true, action, toStepKey: action.toStepKey };
+}
+
+// ════════════════════ THE RUNTIME RULE: BINDING AND EFFECTIVE AUTHORITY ════════════════════
+//
+// Owner, 2026-09-26: Administration is the control plane for workflows too, and A BINDING NEVER
+// GRANTS. A workflow action is performed only when BOTH hold:
+//
+//   WORKFLOW_BINDING       a Security Role the principal holds is bound to the action, in the
+//                          version the instance is PINNED to
+//   EFFECTIVE_AUTHORITY    the SAME runtime evaluator every PostgreSQL command path uses
+//                          (capabilitiesForRoleKeys -> authorizeOperationalAction, conditions from
+//                          capability_grant_conditions) allows the action's capability_key, and the
+//                          action's guard (RECORD_ASSIGNMENT) holds for this record
+//
+// A Role bound to an action whose capability it does not hold performs NOTHING -- the stale
+// operationsManager Sales Order binding is the measured example, and publish validation refuses it
+// (BINDING_WITHOUT_CAPABILITY) before it can even be live. The evaluator is INJECTED
+// (`WorkflowEffectiveAuthority`) so this module never touches `pg`; workflowAuthority.ts composes
+// the real one, and there is no fallback that decides on the binding alone.
+
+/** The runtime evaluator, as the engine sees it. Composed by workflowAuthority.ts. */
+export interface WorkflowEffectiveAuthority {
+  authorize(request: {
+    readonly capabilityKey: string;
+    readonly recordId: string;
+    readonly guardKind: WorkflowGuardKind | null;
+  }): Promise<{ readonly allowed: boolean; readonly outcome: string }>;
+}
+
+export type WorkflowAuthorizationRefusal =
+  | WorkflowRefusal
+  /** A FUNCTIONAL_ROLE binding exists on the action and no evaluator for it does. Fails closed. */
+  | "unsupportedBindingKind"
+  /** The action names no capability: nothing could authorize it, so nothing does. */
+  | "actionWithoutCapability"
+  /** Bound, but the runtime evaluator refused the capability or the guard. */
+  | "effectiveAuthorityDenied";
+
+export type WorkflowAuthorizationDecision =
+  | {
+    readonly allowed: true;
+    readonly action: WorkflowActionRecord;
+    readonly toStepKey: string;
+    readonly capabilityKey: string;
+    readonly outcome: "ALLOWED";
+  }
+  | { readonly allowed: false; readonly refusal: WorkflowAuthorizationRefusal; readonly outcome?: string };
+
+/** Facts the SERVER derived for a runtime attempt. Nothing here comes from a request body. */
+export interface WorkflowRuntimeAttempt {
+  readonly tenantId: TenantId;
+  readonly principalId: string;
+  /** Role ids of the principal's QUALIFYING Security Roles, from the access resolver. */
+  readonly roleIds: readonly string[];
+  readonly recordId: string;
+  readonly authority: WorkflowEffectiveAuthority;
+}
+
+/**
+ * The runtime decision: WORKFLOW_BINDING AND EFFECTIVE_AUTHORITY, against the PINNED version.
+ *
+ * Structure first (instance/version, terminal, action exists, from-state), in the same order as
+ * `decideWorkflowAction`; then the binding; then the capability through the injected evaluator.
+ * The legacy uid-shaped own-assignment check is NOT used here -- the RECORD_ASSIGNMENT guard is
+ * decided Employee-against-Employee by the evaluator.
+ */
+export async function authorizeWorkflowAction(
+  definition: WorkflowVersionDefinition,
+  instance: WorkflowInstanceRecord | null | undefined,
+  actionKey: string,
+  attempt: WorkflowRuntimeAttempt,
+): Promise<WorkflowAuthorizationDecision> {
+  if (!instance || instance.workflowVersionId !== definition.versionId) {
+    return { allowed: false, refusal: "unknownInstance" };
+  }
+  const currentStep = definition.steps.find((s) => s.key === instance.currentStepKey);
+  if (currentStep?.terminal === true) return { allowed: false, refusal: "terminalState" };
+  const action = definition.actions.find((a) => a.key === actionKey);
+  if (!action) return { allowed: false, refusal: "unknownAction" };
+  if (action.fromStepKey !== instance.currentStepKey) return { allowed: false, refusal: "invalidFromState" };
+
+  const bindings = definition.bindings.filter((b) => b.actionKey === actionKey);
+  if (bindings.some((b) => (b.bindingKind ?? "SECURITY_ROLE") !== "SECURITY_ROLE")) {
+    return { allowed: false, refusal: "unsupportedBindingKind" };
+  }
+  const roleIds = Array.isArray(attempt.roleIds) ? attempt.roleIds : [];
+  if (!bindings.some((b) => roleIds.includes(b.roleId))) return { allowed: false, refusal: "notBoundToRole" };
+
+  const capabilityKey = typeof action.capabilityKey === "string" && action.capabilityKey.length > 0
+    ? action.capabilityKey : null;
+  if (!capabilityKey) return { allowed: false, refusal: "actionWithoutCapability" };
+  if (!attempt.authority || typeof attempt.authority.authorize !== "function") {
+    return { allowed: false, refusal: "effectiveAuthorityDenied", outcome: "CONTEXT_AUTHORITY_UNAVAILABLE" };
+  }
+  let decision: { readonly allowed: boolean; readonly outcome: string };
+  try {
+    decision = await attempt.authority.authorize({
+      capabilityKey, recordId: attempt.recordId, guardKind: action.guardKind ?? null,
+    });
+  } catch {
+    // An evaluator that cannot answer is an outage, never an allow.
+    return { allowed: false, refusal: "effectiveAuthorityDenied", outcome: "CONTEXT_AUTHORITY_UNAVAILABLE" };
+  }
+  if (decision?.allowed !== true) {
+    return { allowed: false, refusal: "effectiveAuthorityDenied", outcome: decision?.outcome ?? "DENIED" };
+  }
+  return { allowed: true, action, toStepKey: action.toStepKey, capabilityKey, outcome: "ALLOWED" };
 }
 
 /**

@@ -38,7 +38,6 @@ import type {
   PrincipalRecord,
   RoleObjectPermissionRecord,
   TenantId,
-  WorkflowVersionRecord,
 } from "./types";
 import type { PolicyRepository, PolicyTransaction } from "./policyRepository";
 import { actorCapabilities, capabilityKeysFor, requireSecurityAdministrationCapability } from "./administrationCapabilityGate";
@@ -58,7 +57,6 @@ import {
   grantConditionCatalogFromRows,
 } from "../eosOps/conditionalEntitlement";
 import type { GrantConditionRecord, RoleCapabilityDecisionRecord } from "./types";
-import { loadWorkflowVersionDefinition, validateWorkflowVersion } from "./workflowEngine";
 import { resolveObjectAction } from "./objectSecurityAuthority";
 
 export class PolicyValidationError extends Error {}
@@ -844,46 +842,12 @@ export async function revokeRole(
   });
 }
 
-// ════════════════════ WORKFLOWS — ADMIN ONLY ════════════════════
-
-export interface PublishWorkflowVersionInput {
-  readonly versionId: string;
-  readonly reason?: string | null;
-}
-
-/**
- * Publish a workflow version.
- *
- * VALIDATED STRUCTURALLY FIRST. A definition that cannot describe a runnable process -- no initial
- * step, two initial steps, an action from a step that does not exist, an action leaving a terminal
- * step -- is refused here rather than discovered by the first record that gets stuck in it.
- *
- * After publication the version is IMMUTABLE, enforced by the store as well as here.
- */
-export async function publishWorkflowVersion(
-  repo: PolicyRepository,
-  actor: AdminActor,
-  input: PublishWorkflowVersionInput,
-): Promise<WorkflowVersionRecord> {
-  requireAdministrationAuthority(actor.heldRoleKeys, "editWorkflowDefinition");
-  const versionId = nonEmpty(input.versionId, "versionId");
-
-  const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
-  const problems = validateWorkflowVersion(definition);
-  if (problems.length > 0) {
-    throw new PolicyValidationError(`workflow version cannot be published: ${problems.join("; ")}`);
-  }
-
-  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
-    const published = await tx.publishWorkflowVersion(versionId);
-    await tx.appendAudit({
-      ...auditBase(actor, "publishWorkflowVersion", "workflowVersion", versionId, input.reason ?? null),
-      before: { status: "DRAFT" },
-      after: published,
-    });
-    return published;
-  });
-}
+// ════════════════════ WORKFLOWS ════════════════════
+//
+// publishWorkflowVersion moved to workflowLifecycle.ts (2026-09-26, workflow control plane): it is
+// now capability-gated (workflowDefinition.publish), validated fail-closed with stable codes, and
+// moves the workflow's ACTIVE version pointer in the same transaction. It is not re-exported from
+// here because workflowLifecycle imports this module (PolicyValidationError).
 
 // ════════════════════ helpers ════════════════════
 

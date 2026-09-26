@@ -155,11 +155,14 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // measurement of what nonprod has RUN, and nonprod has not run this one.
 // 51 -> 52 runnable: migration 1762646400000, the Administration control plane -- APPENDED after the
 // activation vehicle, so it is a second EXPLAINED pending migration; the ledger model is not extended.
-const RUNNABLE_MIGRATION_COUNT = 52;
-const TRACKED_MIGRATION_COUNT = 53; // the 52 runnable + the one deferred file
+// 52 -> 53 runnable: migration 1762732800000, the workflow control plane -- APPENDED after the
+// Administration control plane, a third EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 53;
+const TRACKED_MIGRATION_COUNT = 54; // the 53 runnable + the one deferred file
 const PENDING_AT_MEASUREMENT = Object.freeze([
   "1762300800000_authority-activation-and-reporting-read",
   "1762646400000_administration-control-plane",
+  "1762732800000_workflow-control-plane",
 ]);
 
 const repoMigrations = () =>
@@ -332,9 +335,9 @@ test("a BACK-DATED pending migration is REPORTED -- the hazard --no-check-order 
 });
 
 test("a properly APPENDED pending migration is explained, and is not reported", () => {
-  const repo = [...repoMigrations(), "1762732800000_a-migration-appended-after-the-chain"].sort();
+  const repo = [...repoMigrations(), "1762819200000_a-migration-appended-after-the-chain"].sort();
   const { pending, unexplainedPending } = analyseLedger(repo, NONPROD_LEDGER);
-  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1762732800000_a-migration-appended-after-the-chain"]);
+  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1762819200000_a-migration-appended-after-the-chain"]);
   assert.deepEqual(unexplainedPending, [], "new work at the end of the chain is normal and must not fire the guard");
 });
 

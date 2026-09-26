@@ -150,11 +150,11 @@ const governedEditWithoutRead = async (pool, objectKeys) => (await pool.query(
 
 // ════════════════════ 1. THE MIGRATION IS IN THE CHAIN, AT THE END ════════════════════
 
-test("the activation migration was APPENDED: only the later Administration control plane follows it", () => {
+test("the activation migration was APPENDED: only the later Administration and workflow control planes follow it", () => {
   const files = migrationFiles();
   const at = files.indexOf(`${MIGRATION}.sql`);
   assert.ok(at >= 0);
-  assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql"],
+  assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql", "1762732800000_workflow-control-plane.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -375,6 +375,9 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
     assert.deepEqual(await counts(), { caps: 80, grants: 414, mine: 26 });
+    // The workflow control plane (1762732800000) is peeled first: schema only, the counts do not move.
+    runMigrate(url, "down", 1);
+    assert.deepEqual(await counts(), { caps: 80, grants: 414, mine: 26 });
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 79, grants: 413, mine: 26 });
 
@@ -395,7 +398,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the later Administration control plane (1762646400000) first
+    runMigrate(url, "down", 1); // peel the later workflow control plane (1762732800000) first
+    runMigrate(url, "down", 1); // then the Administration control plane (1762646400000)
 
     // An administrator grants the new read through the governed command AFTER the migration. Its
     // granted_by is not the migration's stamp, so it is recorded authority a reversal may not destroy.
