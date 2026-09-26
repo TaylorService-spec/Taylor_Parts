@@ -500,6 +500,9 @@ on:
       # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
       # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
       - "functions/test/workflowDomainReadinessPostgres.test.mjs"
+      - "functions/test/adminAdministrabilityProofPostgres.test.mjs"
+      - "field-ops-app-vite/src/domain/workflowResponsibilityLinks.js"
+      - "field-ops-app-vite/test/employeeWorkflowResponsibilityLinks.test.jsx"
       - "functions/test/fixtures/workflowControlPlaneFixtures.mjs"
       # LANE FR (2026-09-26): the Functional Role authority -- catalog, assignments, FUNCTIONAL_ROLE workflow
       # bindings (narrowing only) and Employee facts in effective access. Suites: test:adminPolicy /
@@ -890,6 +893,9 @@ on:
       # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
       # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
       - "functions/test/workflowDomainReadinessPostgres.test.mjs"
+      - "functions/test/adminAdministrabilityProofPostgres.test.mjs"
+      - "field-ops-app-vite/src/domain/workflowResponsibilityLinks.js"
+      - "field-ops-app-vite/test/employeeWorkflowResponsibilityLinks.test.jsx"
       - "functions/test/fixtures/workflowControlPlaneFixtures.mjs"
       # LANE FR (2026-09-26): the Functional Role authority -- catalog, assignments, FUNCTIONAL_ROLE workflow
       # bindings (narrowing only) and Employee facts in effective access. Suites: test:adminPolicy /
@@ -1118,6 +1124,12 @@ jobs:
       # and the Employee page draws the server-derived workflow responsibilities.
       - name: Administration workflows -- client (vitest + jsdom)
         run: npx vitest run test/adminWorkflows.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE WR: Employee > Workflow responsibilities names each entry's admin location (Security Role / Functional Role
+      # assignment, workflow binding, Role grant) as links to the governing screen; Workflows honours the deep link.
+      - name: Workflow responsibility provenance -- client (vitest + jsdom)
+        run: npx vitest run test/employeeWorkflowResponsibilityLinks.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE FR -- Functional Roles: the catalog screen, the Employee section, FUNCTIONAL_ROLE workflow bindings,

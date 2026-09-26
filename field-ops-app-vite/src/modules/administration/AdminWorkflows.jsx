@@ -6,6 +6,7 @@ import { groupWorkflowsByArea, lifecycleLabel, summarizeWorkflow } from "../../d
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import WorkflowVersionPanel from "./WorkflowVersionPanel.jsx";
+import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 
 // ADMINISTRATION > WORKFLOWS -- the workflow control plane.
 //
@@ -37,7 +38,15 @@ export default function AdminWorkflows({ api = workflowAdminClient }) {
   );
   const [selectedId, setSelectedId] = useState(null);
   const [versionId, setVersionId] = useState(null);
-  const selected = summaries.find((w) => w.id === selectedId) ?? null;
+  // DEEP LINK (Employee > Workflow responsibilities -> "Change it in"): ?workflow=<key>&version=<id> pre-selects that
+  // workflow and version until the administrator chooses another. Selection only; nothing is decided from the URL.
+  const [linked] = useState(() => ({ workflow: readAdminQueryParam("workflow"), version: readAdminQueryParam("version") }));
+  const linkedWorkflow = selectedId === null && linked.workflow ? summaries.find((w) => w.key === linked.workflow || w.id === linked.workflow) ?? null : null;
+  const effectiveSelectedId = selectedId ?? linkedWorkflow?.id ?? null;
+  const effectiveVersionId = versionId
+    ?? (linkedWorkflow ? (linkedWorkflow.versions.some((v) => v.id === linked.version) ? linked.version
+      : linkedWorkflow.activeVersionId ?? linkedWorkflow.versions[linkedWorkflow.versions.length - 1]?.id ?? null) : null);
+  const selected = summaries.find((w) => w.id === effectiveSelectedId) ?? null;
   const groups = groupWorkflowsByArea(summaries);
 
   const choose = (workflow) => {
@@ -75,9 +84,9 @@ export default function AdminWorkflows({ api = workflowAdminClient }) {
               <thead><tr><th>Workflow</th><th>Governs</th><th>Active version</th><th>Versions</th></tr></thead>
               <tbody>
                 {group.workflows.map((w) => (
-                  <tr key={w.id} data-workflow={w.key} aria-selected={w.id === selectedId}>
+                  <tr key={w.id} data-workflow={w.key} aria-selected={w.id === effectiveSelectedId}>
                     <td>
-                      <Button type="button" variant={w.id === selectedId ? "primary" : "secondary"} onClick={() => choose(w)}>
+                      <Button type="button" variant={w.id === effectiveSelectedId ? "primary" : "secondary"} onClick={() => choose(w)}>
                         {w.name}
                       </Button>
                     </td>
@@ -103,9 +112,9 @@ export default function AdminWorkflows({ api = workflowAdminClient }) {
               <Button
                 key={v.id}
                 type="button"
-                variant={v.id === versionId ? "primary" : "secondary"}
-                onClick={() => setVersionId(v.id)}
-                aria-pressed={v.id === versionId}
+                variant={v.id === effectiveVersionId ? "primary" : "secondary"}
+                onClick={() => { setSelectedId(selected.id); setVersionId(v.id); }}
+                aria-pressed={v.id === effectiveVersionId}
                 data-version-status={v.status}
               >
                 v{v.version} · {lifecycleLabel(v)}
@@ -115,13 +124,13 @@ export default function AdminWorkflows({ api = workflowAdminClient }) {
         </section>
       ) : null}
 
-      {selected && versionId ? (
+      {selected && effectiveVersionId ? (
         <WorkflowVersionPanel
-          key={versionId}
+          key={effectiveVersionId}
           api={api}
           workflow={selected}
-          versionId={versionId}
-          onVersionCreated={(id) => { list.reload(); setVersionId(id); }}
+          versionId={effectiveVersionId}
+          onVersionCreated={(id) => { list.reload(); setSelectedId(selected.id); setVersionId(id); }}
           onChanged={() => list.reload()}
         />
       ) : null}

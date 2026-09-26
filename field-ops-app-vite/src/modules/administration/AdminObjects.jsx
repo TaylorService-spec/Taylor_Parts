@@ -6,6 +6,7 @@ import { OBJECT_PERMISSIONS, VERBS, VERB_LABEL, cellState, cellCapabilities } fr
 import { matrixObjectKey } from "../../access/policyObjectRegistry.js";
 import ObjectAdministrationPanel from "./ObjectAdministrationPanel.jsx";
 import ObjectActionSecurityPanel from "./ObjectActionSecurity.jsx";
+import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 import { objectAccessAll, objectDiagnostics } from "../../access/roleAccessModel.js";
 import WorkspaceShell from "../../shared/ui/WorkspaceShell.jsx";
 import { Button } from "../../shared/ui/primitives/index.js";
@@ -317,7 +318,7 @@ export default function AdminObjects() {
           <>
             {/* The ENFORCED per-Object grant surface (lane CP-C): each Object's real action
                 vocabulary, who holds each action, and the governed grant/condition controls. */}
-            <ObjectActionSecurityPanel />
+            <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
             <ObjectsSurface />
             <SourceReference>
               <ByObject roles={rosterRoles} />
@@ -344,7 +345,7 @@ export default function AdminObjects() {
     // grid answers a different question and is available underneath, named as reference.
     return (
       <WorkspaceShell title="Objects" context={viewToggle}>
-        <ObjectActionSecurityPanel />
+        <ObjectActionSecurityPanel initialObjectKey={readAdminQueryParam("object")} />
         <ObjectsSurface />
         <SourceReference>
           <RolePolicyGrid role={role} label={selected.label} />

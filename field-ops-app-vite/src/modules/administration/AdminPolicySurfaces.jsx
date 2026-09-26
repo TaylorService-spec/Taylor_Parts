@@ -59,6 +59,7 @@ import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 // keeping it here would have made it reachable only through a rendered grid.
 import { effectiveFieldAnswer, verbAvailable } from "./fieldPermissionState.js";
 import SecurityRoleDetail from "./SecurityRoleDetail.jsx";
+import { readAdminQueryParam } from "../../domain/workflowResponsibilityLinks.js";
 
 const VERBS = ["C", "R", "E", "D"];
 const VERB_LABEL = { C: "Create", R: "Read", E: "Edit", D: "Delete" };
@@ -125,10 +126,13 @@ export function RolesPermissionsSurface() {
   const [roleId, setRoleId] = useState(null);
   const [creating, setCreating] = useState(false);
   const [editingRole, setEditingRole] = useState(false);
+  // DEEP LINK (?role=<key>, from Employee > Workflow responsibilities): pre-selects a Security Role until one is chosen.
+  const [linkedRoleKey] = useState(() => readAdminQueryParam("role"));
 
   if (!isPolicyApiConfigured()) return null;
 
-  const selected = (roles.data ?? []).find((r) => r.id === roleId) ?? null;
+  const selected = (roles.data ?? []).find((r) => r.id === roleId)
+    ?? (roleId === null && linkedRoleKey ? (roles.data ?? []).find((r) => r.key === linkedRoleKey) ?? null : null);
 
   return (
     <section className="fo-panel" aria-label="Role permissions">
@@ -142,9 +146,9 @@ export function RolesPermissionsSurface() {
             {roles.data.map((role) => (
               <Button
                 key={role.id}
-                variant={role.id === roleId ? "primary" : "secondary"}
-                onClick={() => { setRoleId(role.id === roleId ? null : role.id); setEditingRole(false); }}
-                aria-pressed={role.id === roleId}
+                variant={role.id === selected?.id ? "primary" : "secondary"}
+                onClick={() => { setRoleId(role.id === selected?.id ? "" : role.id); setEditingRole(false); }}
+                aria-pressed={role.id === selected?.id}
               >
                 {role.name}{role.protected ? " · protected" : ""}
               </Button>

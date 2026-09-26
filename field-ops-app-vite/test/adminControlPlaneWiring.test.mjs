@@ -39,7 +39,8 @@ test("Effective Access consumes explainEffectiveAccess only -- never the older p
 
 test("the enforced surfaces are MOUNTED: Object Security Actions on Objects, Security Role detail on Roles", () => {
   const objects = code(read("src/modules/administration/AdminObjects.jsx"));
-  assert.match(objects, /<ObjectActionSecurityPanel \/>/);
+  // The deep link (?object=, lane WR) only pre-selects the Object; the panel is still mounted unconditionally.
+  assert.match(objects, /<ObjectActionSecurityPanel(?: initialObjectKey=\{readAdminQueryParam\("object"\)\})? \/>/);
   const view = code(read("src/modules/administration/ObjectActionSecurity.jsx"));
   assert.match(view, /import \{ ObjectSecurityActionList \} from "\.\/ObjectSecurityActionList\.jsx";/, "reuses the existing action list");
   assert.match(view, /api\.getObjectActionGrantMatrix\(objectKey\)/);

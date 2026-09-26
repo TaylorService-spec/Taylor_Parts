@@ -8872,3 +8872,13 @@ dl.ns-emp-disclosure__body dd { margin: 0; }
 /* An email address, a tenant id or a provider message id has no spaces to break at, and one long cell
    would otherwise widen the whole table until the page scrolled sideways. */
 .fo-sales-pipeline td { overflow-wrap: anywhere; }
+
+/* Employee > Workflow responsibilities -- "Change it in": each admin location on its own line, no bullets. */
+.fo-admin-locations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  overflow-wrap: anywhere;
+}
