@@ -144,14 +144,22 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
       `${key}: experience context`);
     // Every row's result is the runtime evaluator's own decision over the runtime context.
     const actor = { tenantId: TENANT, principalId: prnOf(key), capabilities: runtime.capabilities,
-      conditionallyHeld: runtime.conditionallyHeld, entitlements: runtime.entitlements };
+      conditionallyHeld: runtime.conditionallyHeld, scopedHeld: runtime.scopedHeld, entitlements: runtime.entitlements };
     const snapshot = evaluator.snapshotContextualReader({
       employeeId: experience.employeeId, workEligibility: experience.workEligibility, operationalScopes: experience.operationalScopes });
     for (const row of explained.actions) {
       const d = await composition.authorizeOperationalAction(snapshot, actor, { capabilityKey: row.capabilityKey });
       if (d.allowed) assert.equal(row.result, "ALLOWED", `${key} ${row.capabilityKey}`);
       else if (row.result === "CONDITIONAL") assert.ok(d.denials.some((x) => x.detail === "no record supplied"));
+      else if (row.result === "SCOPED") assert.equal(d.outcome, "SCOPE_CONTEXT_REQUIRED", `${key} ${row.capabilityKey}`);
       else assert.deepEqual([row.result, row.reasonCode], ["DENIED", d.outcome], `${key} ${row.capabilityKey}`);
+      // Lane SC: every scoped source is the runtime's decision for a record INSIDE that scope.
+      for (const src of row.scopedSources) {
+        const inside = await composition.authorizeOperationalAction(snapshot, actor, { capabilityKey: row.capabilityKey,
+          businessContext: { operatingCompanyId: src.scopeValue } });
+        assert.equal(inside.allowed, src.result === "ALLOWED", `${key} ${row.capabilityKey} @ ${src.scopeValue}`);
+      }
+      assert.deepEqual(row.scopedSources.map((x) => x.roleKey), runtime.scopedHeld.filter((h) => h.capabilityKey === row.capabilityKey).map((h) => h.sourceRole));
       const held = runtime.capabilities.has(row.capabilityKey) || runtime.conditionallyHeld.has(row.capabilityKey);
       assert.equal(held, row.sourceRoles.length > 0, `${key} ${row.capabilityKey}: sources`);
     }
@@ -183,6 +191,8 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
     [TENANT, prnOf("service-technician-a")]);
     await assign(prnOf("service-technician-a"), "dispatcher", { stale: true });
     await assign(prnOf("service-technician-a"), "warehouseManager", { scopeType: "WAREHOUSE", scopeValue: "SC-WH-MAIN" });
+    // Lane SC: a SUPPORTED scoped assignment -- generalManager @ operatingCompany -- becomes scope-qualified holdings.
+    await assign(prnOf("service-technician-a"), "generalManager", { scopeType: "operatingCompany", scopeValue: COMPANY });
 
     for (const key of Object.keys(PERSONAS)) await assertParity(key);
     const tech = await assertParity("service-technician-a");
@@ -195,8 +205,16 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
       expiresAt: null, notEnforcedOnRoleOnlyRuntimePaths: true });
     assert.equal(tech.actions.find((a) => a.capabilityKey === "opportunity.write").directGrant, null, "an EXPIRED exception is not shown as held");
     assert.deepEqual(tech.assignments.excluded.map((e) => [e.roleKey, e.reason]).sort(),
-      [["dispatcher", "STALE"], ["warehouseManager", "SCOPED"]]);
+      [["dispatcher", "STALE"], ["warehouseManager", "SCOPE_UNSUPPORTED"]]);
     assert.equal(tech.securityRoleKeys.includes("warehouseManager"), false, "a scoped assignment grants nothing unscoped");
+    assert.equal(tech.securityRoleKeys.includes("generalManager"), false, "a supported scope is still not a global Role");
+    assert.deepEqual(tech.assignments.scoped.map((a) => [a.roleKey, a.scopeType, a.scopeValue, a.capabilities]),
+      [["generalManager", "operatingCompany", COMPANY, ["employee.record.read"]]]);
+    assert.ok(tech.assignments.scoped[0].inertCapabilities.includes("salesAgreement.accept"), "the rest of the Role is inert at a scope");
+    const employeeRead = tech.actions.find((a) => a.capabilityKey === "employee.record.read");
+    assert.deepEqual([employeeRead.result, employeeRead.reasonCode, employeeRead.scopedSources.map((x) => [x.roleKey, x.scopeValue, x.result])],
+      ["SCOPED", "SCOPE_CONTEXT_REQUIRED", [["generalManager", COMPANY, "ALLOWED"]]]);
+    assert.equal(tech.capabilities.includes("employee.record.read"), false, "never in the flat set");
     // Unconditioned holders are unaffected.
     assert.equal((await assertParity("dispatcher")).actions.find((a) => a.capabilityKey === "workOrder.record.read").result, "ALLOWED");
   });

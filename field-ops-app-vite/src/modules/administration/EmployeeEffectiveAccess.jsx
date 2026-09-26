@@ -10,7 +10,10 @@
 // This panel draws the result, reason code, source Security Roles with their conditions, a DIRECT
 // EXCEPTION (labelled, with its reason, expiry and "not enforced on Role-only runtime paths"), the
 // flat-set withholding, surfaces and workflow source -- and computes none of them. An unknown result
-// is shown raw. Excluded assignments (STALE / INACTIVE / SCOPED) are listed with their reason.
+// is shown raw. Excluded assignments (STALE / INACTIVE / SCOPE_UNSUPPORTED) are listed with their reason.
+// Lane SC: a SUPPORTED scoped assignment is not an exclusion -- it is listed with what it grants within its scope,
+// and each action shows its scope-qualified sources (Security Role, scope, condition, the evaluator's result for a
+// record inside that scope).
 //
 // A missing operation (UNKNOWN_OPERATION) renders UNAVAILABLE; it never falls back to the older
 // getPrincipalEffectiveAccess preview, which is not the runtime evaluator (pass-7 G.1).
@@ -22,6 +25,7 @@ import { explanationModel, groupByObject } from "./controlPlaneModel.js";
 const RESULT_TAG = Object.freeze({
   ALLOWED: "fo-cp-tag fo-cp-tag--allowed",
   CONDITIONAL: "fo-cp-tag fo-cp-tag--conditional",
+  SCOPED: "fo-cp-tag fo-cp-tag--conditional",
   DENIED: "fo-cp-tag fo-cp-tag--denied",
 });
 
@@ -75,6 +79,22 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
         <dt>Surfaces</dt><dd>{list(model.surfaces)}</dd>
       </dl>
 
+      {model.scopedAssignments.length > 0 ? (
+        <table className="fo-table" aria-label="Scoped assignments">
+          <thead><tr><th>Scoped assignment</th><th>Scope</th><th>Grants within the scope</th><th>Not granted at this scope</th></tr></thead>
+          <tbody>
+            {model.scopedAssignments.map((a) => (
+              <tr key={a.assignmentId ?? `${a.roleKey}-${a.scope}`} data-scoped-assignment={a.roleKey}>
+                <td>Security Role <code>{a.roleKey}</code></td>
+                <td>{a.scope}</td>
+                <td>{list(a.capabilities)}</td>
+                <td className="fo-muted">{list(a.inertCapabilities)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+
       {model.excluded.length > 0 ? (
         <table className="fo-table" aria-label="Excluded assignments">
           <thead><tr><th>Excluded assignment</th><th>Reason</th><th>Scope</th></tr></thead>
@@ -113,10 +133,20 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
                   {row.withheldFromFlatSetKernels ? <div className="fo-muted">Withheld from flat-set kernels (Commercial, CRM): held only through a conditioned grant.</div> : null}
                 </td>
                 <td>
-                  {row.sourceRoles.length === 0 ? <span className="fo-muted">No Security Role</span> : row.sourceRoles.map((r) => (
+                  {row.sourceRoles.length === 0 && row.scopedSources.length === 0 ? <span className="fo-muted">No Security Role</span> : null}
+                  {row.sourceRoles.map((r) => (
                     <div key={r.roleKey}>
                       {`Security Role ${r.roleKey}`}
                       {r.condition ? <span className="fo-muted">{` · Condition: ${r.condition}`}</span> : null}
+                      <span className="fo-muted">{" · Scope: all (global)"}</span>
+                    </div>
+                  ))}
+                  {row.scopedSources.map((r) => (
+                    <div key={`${r.roleKey}-${r.scope}`} data-scoped-source={r.scope}>
+                      {`Security Role ${r.roleKey}`}
+                      {r.condition ? <span className="fo-muted">{` · Condition: ${r.condition}`}</span> : null}
+                      {` · Scope: ${r.scope}`}
+                      <span className="fo-muted">{` · Inside the scope: ${r.resultWords} (${r.reasonCode ?? "—"})`}</span>
                     </div>
                   ))}
                 </td>

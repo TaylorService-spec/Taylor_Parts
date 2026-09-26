@@ -423,6 +423,21 @@ export interface PolicyReader {
   listRoleCapabilityDecisions(tenantId: TenantId, options?: { readonly currentOnly?: boolean }): Promise<readonly RoleCapabilityDecisionRecord[]>;
   /** Grant conditions in this tenant. `activeOnly` (default true) omits RETIRED rows. */
   listGrantConditions(tenantId: TenantId, options?: { readonly activeOnly?: boolean }): Promise<readonly GrantConditionRecord[]>;
+
+  // ── Security Role assignment scope (lane SC) ──
+  /**
+   * The governed values a Security Role assignment of this scope type may take IN THIS TENANT, from the scope
+   * type's governed source (operatingCompany: ACTIVE tenant_operating_companies; location: this tenant's
+   * warehouses). `null` means this store has no governed source for the type -- a scoped assignment of it is then
+   * refused, never accepted unvalidated. Optional so an adapter without it fails closed.
+   */
+  listAssignmentScopeValues?(tenantId: TenantId, scopeType: string): Promise<readonly AssignmentScopeValue[] | null>;
+}
+
+/** One governed assignment-scope value, with the label Administration shows for it. */
+export interface AssignmentScopeValue {
+  readonly value: string;
+  readonly label: string;
 }
 
 /** The whole port. An adapter implements this and nothing above it knows which one is installed. */

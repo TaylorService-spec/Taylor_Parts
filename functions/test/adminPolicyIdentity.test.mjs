@@ -226,6 +226,8 @@ test("every operation is either a read or a mutation, and none is both", () => {
     // workflow's history, and an Employee's derived workflow responsibilities.
     "validateWorkflowVersion", "listWorkflowInstances", "readWorkflowHistory",
     "listPrincipalWorkflowResponsibilities",
+    // Lane SC: the Security Role assignment-scope vocabulary the runtime decides.
+    "listSupportedAssignmentScopes",
   ].sort(), "the Owner's eight, listTenantPrincipals, the four Object-owned projections and the three control-plane reads");
   assert.deepEqual([...mutations].sort(), [
     "assignRole", "createCustomField", "createRole", "createWorkflowDraft", "createWorkflowVersion",

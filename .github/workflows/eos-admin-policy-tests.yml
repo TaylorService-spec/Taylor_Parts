@@ -471,6 +471,13 @@ on:
       - "functions/src/eosOps/effectiveAccessExplanation.ts"
       - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
       - "functions/test/administrationControlPlaneSecurityPostgres.test.mjs"
+      # LANE SC (2026-09-26): Security Role ASSIGNMENT SCOPE runtime -- scope-qualified holdings, business-context
+      # admission, assignRole scope validation, listSupportedAssignmentScopes, the scoped Employee directory reads.
+      - "functions/src/adminPolicy/assignmentScope*.ts"
+      - "functions/test/assignmentScopeRuntime.test.mjs"
+      - "functions/test/assignmentScopeRuntimePostgres.test.mjs"
+      - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
+      - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
       # LANE WF (2026-09-26): the workflow control plane -- lifecycle + active version, action capability
       # and guard, publish validation, pinning / ADOPT / MIGRATE, capability-gated workflow administration.
       - "functions/migrations/1762732800000_workflow-control-plane.sql"
@@ -824,6 +831,13 @@ on:
       - "functions/src/eosOps/effectiveAccessExplanation.ts"
       - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
       - "functions/test/administrationControlPlaneSecurityPostgres.test.mjs"
+      # LANE SC (2026-09-26): Security Role ASSIGNMENT SCOPE runtime -- scope-qualified holdings, business-context
+      # admission, assignRole scope validation, listSupportedAssignmentScopes, the scoped Employee directory reads.
+      - "functions/src/adminPolicy/assignmentScope*.ts"
+      - "functions/test/assignmentScopeRuntime.test.mjs"
+      - "functions/test/assignmentScopeRuntimePostgres.test.mjs"
+      - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
+      - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
       # LANE WF (2026-09-26): the workflow control plane -- lifecycle + active version, action capability
       # and guard, publish validation, pinning / ADOPT / MIGRATE, capability-gated workflow administration.
       - "functions/migrations/1762732800000_workflow-control-plane.sql"
@@ -1024,6 +1038,13 @@ jobs:
       # (UNAVAILABLE until explainEffectiveAccess is served).
       - name: Administration control plane -- client (vitest + jsdom)
         run: npx vitest run test/adminControlPlane.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE SC: Employee > Security Roles assignment SCOPE -- the picker offers only what the server's
+      # listSupportedAssignmentScopes says the runtime decides, sends scope only when chosen, degrades to global-only
+      # without the vocabulary; Effective Access renders each scope-qualified source.
+      - name: Security Role assignment scope -- client (vitest + jsdom)
+        run: npx vitest run test/employeeSecurityRolesScope.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE WF: Administration > Workflows reads every definition from the server (no client copy),

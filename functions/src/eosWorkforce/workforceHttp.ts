@@ -237,6 +237,9 @@ export async function executeWorkforceOperation(
       principalId: ctx.principalContext.uid,
       capabilities: ctx.capabilities,
       conditionallyHeld: ctx.conditionallyHeld,
+      // Scope-qualified holdings (lane SC): honoured ONLY by a read that decides each Employee by its operating
+      // company; every other gate site ignores them and refuses a scoped-only caller exactly as before.
+      scopedHeld: ctx.scopedHeld,
       // The conditional-entitlement obligation, as the REQUIRED request-scoped resolver
       // resolveOperationalContext built for this request. The same actor serves the read kernel and
       // the command kernel, and the resolver memoizes, so both gate sites -- and a read requiring

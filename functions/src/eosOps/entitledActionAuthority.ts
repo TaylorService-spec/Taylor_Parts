@@ -33,6 +33,7 @@ import {
 // `resolveOperationalContext`, which resolved it a second time. The condition PROVIDER takes the
 // resolved tenant as an argument instead, so there is exactly one principal resolution per request.
 import type { ResolveContextInput } from "../adminPolicy/principalContext";
+import type { BusinessContext, ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { postgresContextualReader, type ContextualReader } from "./contextualAuthorization";
 import {
@@ -47,6 +48,7 @@ import {
   type EntitledActor,
   type EntitlementResolver,
   type EntitlementSet,
+  type GrantCondition,
   type GrantConditionCatalog,
 } from "./conditionalEntitlement";
 
@@ -118,7 +120,7 @@ export async function postgresGrantConditions(pool: Pool, tenantId: string): Pro
 export async function authorizeEntitledResolvedAction(
   pool: Pool,
   resolved: ResolvedOperationalContext,
-  request: { readonly capabilityKey: string; readonly recordId?: string },
+  request: { readonly capabilityKey: string; readonly recordId?: string; readonly businessContext?: BusinessContext },
   reader?: ContextualReader,
 ): Promise<EntitledActionDecision> {
   // The Owner's withheld cells can never enter a deployed decision, whatever the shipped catalog
@@ -148,10 +150,11 @@ export async function authorizeEntitledResolvedAction(
     // takes the intersection, which is the stricter answer.
     capabilities: resolved.capabilities,
     conditionallyHeld: (resolved as { conditionallyHeld?: ReadonlySet<string> }).conditionallyHeld,
+    scopedHeld: (resolved as { scopedHeld?: readonly ScopedHolding<GrantCondition>[] }).scopedHeld,
     entitlements,
   });
   return authorizeEntitledAction(reader ?? postgresContextualReader(pool as unknown as Pick<PoolClient, "query">), {
-    actor, capabilityKey: request.capabilityKey, recordId: request.recordId,
+    actor, capabilityKey: request.capabilityKey, recordId: request.recordId, businessContext: request.businessContext,
   });
 }
 
@@ -176,6 +179,8 @@ export interface OperationalActor {
   readonly capabilities: ReadonlySet<string>;
   /** Keys held only through conditioned grants; evaluated by the entitled decision, never flat. */
   readonly conditionallyHeld?: ReadonlySet<string>;
+  /** Capabilities held only within an assignment scope; decided only with the record's business context. */
+  readonly scopedHeld?: readonly ScopedHolding<GrantCondition>[];
   /** The REQUIRED, request-scoped entitlement provider. Never an optional field, never a value. */
   readonly entitlements: EntitlementResolver;
 }
@@ -198,7 +203,7 @@ export { hasResolvedEntitlements } from "./conditionalEntitlement";
 export function authorizeOperationalAction(
   reader: ContextualReader,
   actor: OperationalActor,
-  request: { readonly capabilityKey: string; readonly recordId?: string },
+  request: { readonly capabilityKey: string; readonly recordId?: string; readonly businessContext?: BusinessContext },
 ): Promise<EntitledActionDecision> {
   return authorizeEntitledAction(reader, {
     actor: {
@@ -206,10 +211,12 @@ export function authorizeOperationalAction(
       principalId: actor.principalId,
       capabilities: actor.capabilities,
       conditionallyHeld: actor.conditionallyHeld,
+      scopedHeld: actor.scopedHeld,
       entitlements: actor.entitlements,
     },
     capabilityKey: request.capabilityKey,
     recordId: request.recordId,
+    businessContext: request.businessContext,
   });
 }
 
@@ -217,13 +224,14 @@ export function authorizeOperationalAction(
 export function authorizeResolvedOperationalAction(
   reader: ContextualReader,
   resolved: ResolvedOperationalContext,
-  request: { readonly capabilityKey: string; readonly recordId?: string },
+  request: { readonly capabilityKey: string; readonly recordId?: string; readonly businessContext?: BusinessContext },
 ): Promise<EntitledActionDecision> {
   return authorizeOperationalAction(reader, {
     tenantId: resolved.principalContext.tenantId,
     principalId: resolved.principalContext.uid,
     capabilities: resolved.capabilities,
     conditionallyHeld: resolved.conditionallyHeld,
+    scopedHeld: resolved.scopedHeld,
     entitlements: resolved.entitlements,
   }, request);
 }

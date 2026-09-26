@@ -325,6 +325,10 @@ test("updateEmployeeProfile over the real Workforce and policy authorities", { s
       // in eosOps. Copy it too, unmutated: the mutant must differ from the real kernel in exactly the
       // one guard under test and in nothing else.
       cpSync(join(FUNCTIONS_DIR, "lib", "eosOps"), join(dir, "eosOps"), { recursive: true });
+      // Lane SC: the decision imports the PURE assignment-scope model (and its value-match rules) from adminPolicy.
+      for (const f of ["assignmentScopeRuntime.js", "assignmentScope.js"]) {
+        cpSync(join(FUNCTIONS_DIR, "lib", "adminPolicy", f), join(dir, "adminPolicy", f));
+      }
       let mutated = kernelSrc;
       for (const [f, t] of Array.isArray(from) ? from.map((x, i) => [x, to[i]]) : [[from, to]]) {
         assert.ok(mutated.includes(f), `${label}: mutation anchor not found -- the kernel changed, update the control`);

@@ -35,7 +35,14 @@ import { resolvePrincipalContext, resolvePrincipalContextById } from "../adminPo
 import type { PrincipalContext, ResolveContextInput } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import {
+  scopedHoldingsFrom,
+  type InertScopedCapability,
+  type ScopedHolding,
+} from "../adminPolicy/assignmentScopeRuntime";
+import {
   entitlementsFrom,
+  grantCellKey,
+  type GrantCondition,
   SHIPPED_GRANT_CONDITIONS,
   type CapabilityGrant,
   type EntitlementResolver,
@@ -99,6 +106,16 @@ export interface ResolvedOperationalContext {
    * (authorizeEntitledAction, via the actor's `conditionallyHeld`) may evaluate them, per record.
    */
   readonly conditionallyHeld: ReadonlySet<string>;
+  /**
+   * SCOPE-QUALIFIED HOLDINGS (lane SC): capabilities held ONLY through a qualifying NON-GLOBAL assignment, each with
+   * its scope type, value, source Role and grant condition. NEVER in `capabilities` and never in `conditionallyHeld`:
+   * only the entitled seam decides them, and only when the decision supplies the record's business context for that
+   * scope type (authorizeEntitledAction `businessContext`). Empty for every principal without a scoped assignment --
+   * which costs ZERO extra reads.
+   */
+  readonly scopedHeld: readonly ScopedHolding<GrantCondition>[];
+  /** Capabilities of scoped assignments the runtime cannot decide at that scope. Reported; grant nothing. */
+  readonly inertScoped: readonly InertScopedCapability[];
   /**
    * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- behind a REQUIRED, REQUEST-SCOPED,
    * MEMOIZING resolver.
@@ -240,10 +257,24 @@ async function operationalContextFor(
     capabilities = new Set([...held].filter((k) => unconditional.has(k)));
     conditionallyHeld = new Set([...held].filter((k) => !unconditional.has(k)));
   }
+  // SCOPED ASSIGNMENTS (lane SC). Resolved only when the principal HAS one, so a global-only principal pays nothing
+  // and every existing decision is untouched. Only a runtime-supported scope type with an exact value can produce a
+  // holding, and only for a capability a gate site decides at that scope; everything else is reported inert.
+  const scoped = principalContext.scopedAssignments ?? [];
+  let scopedHeld: readonly ScopedHolding<GrantCondition>[] = Object.freeze([]);
+  let inertScoped: readonly InertScopedCapability[] = Object.freeze([]);
+  if (scoped.length > 0) {
+    const scopedRoleKeys = [...new Set(scoped.map((a) => a.roleKey))];
+    const rows = await roleCapabilityGrants(pool, principalContext.tenantId, scopedRoleKeys);
+    const resolved = scopedHoldingsFrom<GrantCondition>(scoped, rows,
+      (roleKey, capabilityKey) => catalog.get(grantCellKey({ kind: "ROLE", roleKey }, capabilityKey)) ?? null);
+    scopedHeld = resolved.held;
+    inertScoped = resolved.inert;
+  }
   const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
   const entitlements = requestScopedEntitlementResolver(
     pool, principalContext.tenantId, roleKeys, () => catalog, counters);
-  return Object.freeze({ principalContext, capabilities, conditionallyHeld, entitlements, lookups: counters });
+  return Object.freeze({ principalContext, capabilities, conditionallyHeld, scopedHeld, inertScoped, entitlements, lookups: counters });
 }
 
 /**

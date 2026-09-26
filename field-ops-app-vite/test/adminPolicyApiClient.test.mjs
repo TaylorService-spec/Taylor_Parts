@@ -32,6 +32,8 @@ const READS = [
   "explainEffectiveAccess", "listSupportedConditionKinds",
   // The workflow control plane (2026-09-26).
   "validateWorkflowVersion", "listWorkflowInstances", "readWorkflowHistory", "listPrincipalWorkflowResponsibilities",
+  // Lane SC: the Security Role assignment-scope vocabulary.
+  "listSupportedAssignmentScopes",
 ];
 const MUTATIONS = [
   // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added with the

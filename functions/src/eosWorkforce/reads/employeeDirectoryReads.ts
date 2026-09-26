@@ -34,7 +34,7 @@ export interface EmployeeRecordRead extends EmployeeRecordProjection {
 
 export function readEmployee(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<EmployeeRecordRead> {
   return runEmployeeRead(deps, actor, () => { acceptOnly(input, ["employeeId"]); return requireEmployeeId(input?.employeeId); }, () => [EMPLOYEE_RECORD_READ],
-    async (db, tenantId, _principalId, employeeId) => {
+    async (db, tenantId, _principalId, employeeId, reach) => {
       const { rows } = await db.query(
         `SELECT ${EMPLOYEE_RECORD_COLUMNS},
                 EXISTS (SELECT 1 FROM eos_policy.employee_principal_links l
@@ -45,9 +45,17 @@ export function readEmployee(deps: EmployeeReadDeps, actor: EmployeeReadActor, i
         [tenantId, employeeId],
       );
       if (rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
+      // ASSIGNMENT SCOPE: decided on THIS row's governed operating company, read in this snapshot. A no-op for a
+      // caller who holds employee.record.read globally.
+      await reach.authorizeEmployee(rows[0].operating_company_id ?? null);
       return { ...employeeRecordOf(rows[0]), userAccess: rows[0].linked ? "LINKED" : "UNLINKED" };
-    });
+    }, SCOPED_BY_OPERATING_COMPANY);
 }
+
+/** The directory reads decide a scoped employee.record.read holding by the Employee's own operating company. */
+const SCOPED_BY_OPERATING_COMPANY = Object.freeze({ recordScope: "operatingCompany" as const });
+// A cursor is NOT bound to the reach: it only repositions (`e.id > cursor`) inside an ordering the reach filter
+// already confines, so a cursor carried from a wider reach can never widen a narrower one.
 
 export interface EmployeePage<Item> {
   readonly items: Item[];
@@ -88,19 +96,21 @@ function prepareDirectory(input: Record<string, unknown> | undefined): Directory
 /** EMP-RT-01: every Employee of the tenant, any lifecycle status unless filtered, by id, bounded. */
 export function listEmployees(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<EmployeePage<EmployeeDirectoryItem>> {
   return runEmployeeRead(deps, actor, () => prepareDirectory(input), () => [EMPLOYEE_RECORD_READ],
-    async (db, tenantId, _principalId, o) => {
+    async (db, tenantId, _principalId, o, reach) => {
+      // A scoped reach filters to the admitted operating companies; a global reach passes NULL and reads as before.
       const { rows } = await db.query(
         `SELECT ${EMPLOYEE_DIRECTORY_COLUMNS}
            FROM eos_workforce.employees e
           WHERE e.tenant_id = $1
             AND ($2::text[] IS NULL OR e.employment_status::text = ANY($2::text[]))
             AND ($3::text IS NULL OR e.id > $3::text)
+            AND ($5::text[] IS NULL OR e.operating_company_id = ANY($5::text[]))
           ORDER BY e.id ASC
           LIMIT $4`,
-        [tenantId, o.statuses, o.cursor?.id ?? null, o.limit + 1],
+        [tenantId, o.statuses, o.cursor?.id ?? null, o.limit + 1, reach.global ? null : [...reach.operatingCompanyIds]],
       );
       return pageOf(o.scope, rows, o.limit, directoryItemOf);
-    });
+    }, SCOPED_BY_OPERATING_COMPANY);
 }
 
 export interface ManagedEmployeeItem extends EmployeeDirectoryItem {
@@ -117,19 +127,22 @@ export function listManagedEmployees(deps: EmployeeReadDeps, actor: EmployeeRead
       return { managerEmployeeId, limit: requirePageSize(input?.limit), cursor: decodeEmployeeCursor(scope, input?.cursor), scope };
     },
     () => [EMPLOYEE_RECORD_READ],
-    async (db, tenantId, _principalId, o) => {
-      const manager = await db.query(`SELECT 1 FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [tenantId, o.managerEmployeeId]);
+    async (db, tenantId, _principalId, o, reach) => {
+      const manager = await db.query(`SELECT operating_company_id FROM eos_workforce.employees WHERE tenant_id = $1 AND id = $2`, [tenantId, o.managerEmployeeId]);
       if (manager.rows.length === 0) refuse("EMPLOYEE_NOT_FOUND", "NOT_FOUND", "the Employee does not exist in this tenant");
+      // A scoped reach must reach the MANAGER too, and sees only the reports in its admitted companies.
+      await reach.authorizeEmployee(manager.rows[0].operating_company_id ?? null);
       const { rows } = await db.query(
         `SELECT ${EMPLOYEE_DIRECTORY_COLUMNS}, rr.effective_from
            FROM eos_workforce.employee_reporting_relationships rr
            JOIN eos_workforce.employees e ON e.tenant_id = rr.tenant_id AND e.id = rr.employee_id
           WHERE rr.tenant_id = $1 AND rr.manager_employee_id = $2 AND rr.effective_to IS NULL
             AND ($3::text IS NULL OR e.id > $3::text)
+            AND ($5::text[] IS NULL OR e.operating_company_id = ANY($5::text[]))
           ORDER BY e.id ASC
           LIMIT $4`,
-        [tenantId, o.managerEmployeeId, o.cursor?.id ?? null, o.limit + 1],
+        [tenantId, o.managerEmployeeId, o.cursor?.id ?? null, o.limit + 1, reach.global ? null : [...reach.operatingCompanyIds]],
       );
       return { managerEmployeeId: o.managerEmployeeId, ...pageOf(o.scope, rows, o.limit, (r) => ({ ...directoryItemOf(r), reportingSince: isoOf(r.effective_from)! })) };
-    });
+    }, SCOPED_BY_OPERATING_COMPANY);
 }

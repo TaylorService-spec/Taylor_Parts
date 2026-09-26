@@ -22,6 +22,9 @@ import type { Pool, PoolClient } from "pg";
 // runtime `pg`, so adopting the conditional seam does not widen this kernel's module boundary.
 import { authorizeEntitledAction, hasResolvedEntitlements, type EntitlementResolver } from "../../eosOps/conditionalEntitlement";
 import { postgresContextualReader } from "../../eosOps/contextualAuthorization";
+import type { GrantCondition } from "../../eosOps/conditionalEntitlement";
+// Assignment scope (lane SC): the PURE scope model -- no SQL, no pool.
+import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -56,6 +59,35 @@ export interface EmployeeReadActor {
   readonly entitlements: EntitlementResolver;
   /** Keys held only through conditioned grants: evaluated by the entitled decision, never by a flat check. */
   readonly conditionallyHeld?: ReadonlySet<string>;
+  /**
+   * Capabilities held ONLY within an assignment scope (e.g. employee.record.read @ operatingCompany=taylor). Never in
+   * `capabilities`. Honoured only by a read that opts in (`recordScope: "operatingCompany"`) and decides each record
+   * against the Employee's governed operating company, inside its own snapshot.
+   */
+  readonly scopedHeld?: readonly ScopedHolding<GrantCondition>[];
+}
+
+/**
+ * The REACH a read runs with. `global` -- every required capability was decided without a scope, exactly as before
+ * assignment scope existed; the body applies no filter. Otherwise the read is admitted ONLY through scoped holdings:
+ * a list filters to `operatingCompanyIds`, a single-record read calls `authorizeEmployee` with that record's own
+ * governed operating company, which refuses OUTSIDE_ASSIGNMENT_SCOPE.
+ */
+export interface EmployeeRecordReach {
+  readonly global: boolean;
+  readonly operatingCompanyIds: readonly string[];
+  authorizeEmployee(operatingCompanyId: string | null): Promise<void>;
+}
+
+const GLOBAL_REACH: EmployeeRecordReach = Object.freeze({
+  global: true,
+  operatingCompanyIds: Object.freeze([]) as readonly string[],
+  authorizeEmployee: async () => undefined,
+});
+
+export interface EmployeeReadOptions {
+  /** Opt in to scope-qualified admission, deciding each Employee by its operating company. Absent = global only. */
+  readonly recordScope?: "operatingCompany";
 }
 
 export interface EmployeeReadDeps {
@@ -82,21 +114,45 @@ export async function runEmployeeRead<P, R>(
   actor: EmployeeReadActor,
   prepare: () => P,
   requiredCapabilities: (prepared: P) => readonly string[],
-  body: (client: PoolClient, tenantId: string, principalId: string, prepared: P) => Promise<R>,
+  body: (client: PoolClient, tenantId: string, principalId: string, prepared: P, reach: EmployeeRecordReach) => Promise<R>,
+  options: EmployeeReadOptions = {},
 ): Promise<R> {
   let client: PoolClient | undefined;
   try {
     requireActorContext(actor);
     const prepared = prepare();
     const required = requiredCapabilities(prepared);
-    const missing = required.filter((c) => !actor.capabilities.has(c));
+    // A key absent from the flat set may still be held WITHIN AN ASSIGNMENT SCOPE -- but only a read that opted in
+    // and can decide it per record honours that. Every other read refuses exactly as it always did.
+    const scoped = options.recordScope === "operatingCompany" && Array.isArray(actor.scopedHeld) ? actor.scopedHeld : [];
+    const deferred = required.filter((c) => !actor.capabilities.has(c) && scoped.some((h) => h.capabilityKey === c));
+    const missing = required.filter((c) => !actor.capabilities.has(c) && !deferred.includes(c));
     if (missing.length > 0) refuse("CAPABILITY_REQUIRED", "FORBIDDEN", `this read requires ${missing.join(", ")}`);
     // THE CONDITIONAL DECISION. LAZY, and MEMOIZED FOR THIS READ: the loop below may require several
     // capabilities, and the actor's resolver answers all of them from ONE resolution of the grant and
     // condition stores. With no condition on any entitlement this allows every required key through
     // the unconditional path, consults no context authority and performs no context read.
     const reader = postgresContextualReader(deps.pool);
-    for (const capabilityKey of required) {
+    const reach: EmployeeRecordReach = deferred.length === 0 ? GLOBAL_REACH : Object.freeze({
+      global: false,
+      // The companies EVERY deferred key is held in, unconditionally. A list is filtered to exactly these.
+      operatingCompanyIds: Object.freeze(deferred
+        .map((c) => admittedScopeValues(scoped, c, "operatingCompany"))
+        .reduce((acc, ids) => acc.filter((id) => ids.includes(id)))),
+      async authorizeEmployee(operatingCompanyId: string | null): Promise<void> {
+        for (const capabilityKey of deferred) {
+          const decision = await authorizeEntitledAction(reader, {
+            actor, capabilityKey,
+            businessContext: typeof operatingCompanyId === "string" ? { operatingCompanyId } : {},
+          });
+          if (!decision.allowed) {
+            refuse(decision.outcome === "CONTEXT_AUTHORITY_UNAVAILABLE" ? "CAPABILITY_CONDITION_UNSATISFIED" : "OUTSIDE_ASSIGNMENT_SCOPE",
+              "FORBIDDEN", `this read requires ${capabilityKey} for this Employee: ${decision.outcome}`);
+          }
+        }
+      },
+    });
+    for (const capabilityKey of required.filter((c) => !deferred.includes(c))) {
       const decision = await authorizeEntitledAction(reader, { actor, capabilityKey });
       if (!decision.allowed) {
         refuse("CAPABILITY_CONDITION_UNSATISFIED", "FORBIDDEN",
@@ -111,7 +167,7 @@ export async function runEmployeeRead<P, R>(
       [actor.tenantId, actor.principalId],
     );
     if (member.rows.length === 0) refuse("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
-    const result = await body(client, actor.tenantId, actor.principalId, prepared);
+    const result = await body(client, actor.tenantId, actor.principalId, prepared, reach);
     await client.query("COMMIT");
     return result;
   } catch (err) {

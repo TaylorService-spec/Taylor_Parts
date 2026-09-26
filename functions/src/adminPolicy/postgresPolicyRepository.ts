@@ -731,6 +731,27 @@ export class PostgresPolicyRepository implements PolicyRepository {
       toGrantCondition,
     );
   }
+
+  // Lane SC: governed assignment-scope values, tenant-scoped. Read-only; each type names its one governed source.
+  async listAssignmentScopeValues(tenantId: TenantId, scopeType: string) {
+    const q = this.pool as unknown as Queryable;
+    if (scopeType === "operatingCompany") {
+      const { rows } = await q.query(
+        `SELECT operating_company_id FROM ${SCHEMA}.tenant_operating_companies
+          WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY operating_company_id`,
+        [tenantId],
+      );
+      return rows.map((r) => ({ value: String(r.operating_company_id), label: String(r.operating_company_id) }));
+    }
+    if (scopeType === "location") {
+      const { rows } = await q.query(
+        `SELECT id, name FROM eos_ops.warehouses WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY id`,
+        [tenantId],
+      );
+      return rows.map((r) => ({ value: String(r.id), label: String(r.name ?? r.id) }));
+    }
+    return null;
+  }
 }
 
 // ════════════════════ the transaction ════════════════════
@@ -1472,7 +1493,8 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       const { rows } = await q.query(
         `SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments a
            JOIN ${SCHEMA}.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
-          WHERE a.tenant_id = $1 AND r.protected AND a.status = 'active' AND a.id IS DISTINCT FROM $2`,
+          WHERE a.tenant_id = $1 AND r.protected AND a.status = 'active' AND a.scope_type = 'global'
+            AND a.id IS DISTINCT FROM $2`,
         [tenantId, excludeAssignmentId]);
       return Number(rows[0]?.n ?? 0);
     },

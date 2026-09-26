@@ -31,6 +31,7 @@
 // A client that sends a tenantId therefore cannot manufacture authority with it, and cannot switch
 // tenants with it either.
 import { loadPrincipalPolicy } from "./effectiveObjectAccess";
+import type { ScopedAssignment } from "./assignmentScopeRuntime";
 import type { PolicyReader } from "./policyRepository";
 import type { PrincipalRecord, TenantId, TenantRecord } from "./types";
 
@@ -65,8 +66,14 @@ export interface PrincipalContext {
   readonly tenantId: TenantId;
   /** The EOS principal id. Every downstream record identifies the actor by this. */
   readonly uid: string;
-  /** Role KEYS from QUALIFYING assignments — active, and not from the future. */
+  /** Role KEYS from QUALIFYING GLOBAL assignments — active, and not from the future. */
   readonly heldRoleKeys: readonly string[];
+  /**
+   * QUALIFYING NON-GLOBAL assignments, with their scope. NEVER folded into `heldRoleKeys`: a scoped assignment
+   * confers nothing on an unscoped decision. The operational context turns the supported ones into scope-qualified
+   * holdings (capabilityAuthority.scopedHeld); unsupported ones stay inert. Absent on hand-built contexts = none.
+   */
+  readonly scopedAssignments?: readonly ScopedAssignment[];
   readonly accessVersion: number;
   /** True when an assignment was excluded as stale. Reported, never silently swallowed. */
   readonly hadStaleAssignment: boolean;
@@ -165,6 +172,14 @@ async function contextForPrincipal(
     policy.qualifyingRoleIds.map((id) => keyById.get(id)).filter((k): k is string => typeof k === "string"),
   )].sort();
 
+  const scopedAssignments = policy.qualifyingAssignments
+    .filter((a) => a.scopeType !== "global" && keyById.has(a.roleId))
+    .map((a) => Object.freeze({
+      assignmentId: a.assignmentId ?? null, roleKey: keyById.get(a.roleId) as string,
+      scopeType: a.scopeType, scopeValue: a.scopeValue,
+    }))
+    .sort((x, y) => `${x.roleKey}|${x.scopeType}|${x.scopeValue}`.localeCompare(`${y.roleKey}|${y.scopeType}|${y.scopeValue}`));
+
   const versionRow = await reader.getAccessVersion(tenantId, principal.id);
 
   return Object.freeze({
@@ -173,6 +188,7 @@ async function contextForPrincipal(
     tenantId,
     uid: principal.id,
     heldRoleKeys: Object.freeze(heldRoleKeys),
+    scopedAssignments: Object.freeze(scopedAssignments),
     accessVersion: typeof versionRow?.accessVersion === "number" ? versionRow.accessVersion : 0,
     hadStaleAssignment: policy.hadStaleAssignment,
   });
