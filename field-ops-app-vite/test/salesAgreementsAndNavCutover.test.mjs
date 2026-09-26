@@ -424,8 +424,10 @@ test("App.jsx supplies navigation NO legacy inputs under the EOS source", async 
   assert.equal(/[^v]role === "admin"/.test(code), false, "a route decision still reads the raw role literal");
   assert.match(code, /navRole === "admin" \|\| navRole === "dispatcher"/,
     "the inventory-role redirect is no longer behind the containment");
-  assert.match(code, /previewHasPermission\("workOrder\.create", navRole/,
-    "the work-order route preview is no longer behind the containment");
+  assert.match(code, /workOrderRouteAccess\(\{\s*operationalContext,\s*role:\s*navRole,\s*previewHasPermission\s*\}\)/,
+    "the work-order route guard is no longer fed the contained navRole");
+  assert.equal(/previewHasPermission\("workOrder\.create"/.test(code), false,
+    "a raw work-order preview survives outside the route guard");
 });
 
 test("PLACEHOLDER_DEFAULT_ROLES is unchanged -- the rows left, the mechanism did not", () => {

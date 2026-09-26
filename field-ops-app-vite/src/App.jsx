@@ -172,6 +172,7 @@ import MyDashboard from "./modules/dashboard/MyDashboard.jsx";
 // WAVE 9 / LANE AL -- the dashboard-surface rule, stated beside the composition it pairs with.
 import { DASHBOARD_SURFACE, dashboardSurfaceFor } from "./domain/dashboardComposition.js";
 import { NAV_DOMAINS, isDomainVisible, isEosNavigationSource, isNavItemVisible } from "./navigation/navConfig";
+import { workOrderRouteAccess } from "./navigation/workOrderRouteAccess.js";
 import {
   EXPERIENCE_STATE,
   EXPERIENCE_UNAVAILABLE_REASON,
@@ -1121,24 +1122,21 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               two routes simply don't exist for that role, same
               "route doesn't exist, falls through to the catch-all"
               behavior as the /customers/:accountId gate. */}
-          {/* Issue #226 Row 16 -- presentation-only permission preview
-              (Spec sec8/sec12: never authoritative, UI visibility stays
-              convenience only). Legacy admin/dispatcher check retained as
-              the `fallback` -- see navPermissionPreview.js's own doc
-              comment. workOrder.create is the representative permission
-              for this combined Wizard+Detail gate; today only admin/
-              dispatcher hold it, matching the original check exactly. */}
+          {/* PC-WO -- the two Work Order record routes are decided by ONE pure guard,
+              navigation/workOrderRouteAccess.js, fed the CONTAINED navRole. Under the EOS
+              source it reads only the experience authority's surfaces (BOTH routes <-
+              service.workOrders AND service.dispatch: the legacy admin/dispatcher reach,
+              never broader) and never the role. Under the legacy
+              source both answers are exactly the previous previewHasPermission("workOrder.create",
+              role, { fallback: admin/dispatcher }) expression. Detail is no longer gated on a
+              CREATE permission. History of this gate: that module's header. */}
           {domain.key === "service" &&
-            previewHasPermission("workOrder.create", navRole, {
-              // `navRole` is null under the EOS source, so both the preview and this fallback are
-              // false there and neither route is emitted from a role literal. Under the legacy
-              // source it is byte-for-byte the previous check.
-              fallback: navRole === "admin" || navRole === "dispatcher",
-            }) && (
-              <>
-                <Route path="work-orders/new" element={<WorkOrderWizard />} />
-                <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
-              </>
+            workOrderRouteAccess({ operationalContext, role: navRole, previewHasPermission }).create && (
+              <Route path="work-orders/new" element={<WorkOrderWizard />} />
+            )}
+          {domain.key === "service" &&
+            workOrderRouteAccess({ operationalContext, role: navRole, previewHasPermission }).detail && (
+              <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
             )}
           {/* Platform Task 3 -- the retired /service/control-tower URL redirects
               to the new top-level /service-operations. A STATIC path segment, so
