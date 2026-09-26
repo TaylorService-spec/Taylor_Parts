@@ -179,7 +179,12 @@ test("MECHANISM: why salesManager was missed -- no migration grants the two keys
   assert.match(cred, /salesAgreement\.E/);
   const grantingMigration = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).filter((f) => {
     const sql = fs.readFileSync(path.join(MIGRATIONS, f), "utf8");
-    return /INSERT INTO\s+(eos_policy\.)?role_capabilities/i.test(sql) && /cap_salesAgreement_accept|cap_opportunity_createSalesOrder/.test(sql);
+    if (!/INSERT INTO\s+(eos_policy\.)?role_capabilities/i.test(sql)) return false;
+    // Both grant forms: capability-id literals (cap_...) and key literals joined by key
+    // (`JOIN capabilities c ON c.key = ...`, the 1762300800000 form Proposal A recommends).
+    const idForm = /cap_salesAgreement_accept|cap_opportunity_createSalesOrder/.test(sql);
+    const keyForm = /'(salesAgreement\.accept|opportunity\.createSalesOrder)'/.test(sql) && /c\.key\s*=|capabilities\s+\w+\s+ON\s+\w+\.key/i.test(sql);
+    return idForm || keyForm;
   });
   assert.deepEqual(grantingMigration, [], "no migration grants accept/createSalesOrder to anyone");
   // (b) the only reconcile that applied them was the Sample Company seed, scoped to its manifest Roles.

@@ -12,7 +12,7 @@ No migration, seed, Role catalog, `role_capabilities` row or environment was cha
 | Source | What it is | File |
 |---|---|---|
 | **CATALOG** | Compiled legacy Role catalog, read through `deriveLegacyRoleGrants` (the derivation the governed reconcile applies) | `functions/src/access/compatibilityRoles.ts`, `functions/src/access/governedBusinessRoles.ts` |
-| **BASELINE** | Deterministic rebuild of the PostgreSQL authority (migrations → seed → catalog reconcile). Proven equal to nonprod (413, applied 2026-09-25, merge `11668e53`) | `functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json` |
+| **BASELINE** | Deterministic rebuild of the PostgreSQL authority (migrations → seed → catalog reconcile). `rebuildTotal` 413. Its `deployment` block still records `measuredInNonprodTotal: 387` / `notYetAppliedToNonprod: ["migration:1762300800000"]`. That block has been stale since the Phase 3 apply (operator record, 2026-09-25, merge `11668e53`, nonprod measured 413 afterwards); the file itself does not claim nonprod = 413 | `functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json` |
 | **MATRIX** | Governed business-intent Object matrix (workbook v2, generated from `docs/assessments/detailed-crud.json`) | `docs/governance/role-capability-contract.json`, `docs/governance/workbook-v2/4-role-to-capability.csv` |
 
 The commercial PostgreSQL vocabulary is exactly nine keys (migration `1759536000000`). `coverage.read/.write` and
@@ -124,7 +124,7 @@ which takes it from 30 − 2 − 17 to 11. Also add a guard that every `catalogD
 
 | # | File | Pin | From → to |
 |---|---|---|---|
-| 1 | `functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json` | `totalGrants`, `grants[]`, `countsBySource.MIGRATION_BACKED`, `grantBearingMigrations`, `deployment.{rebuildTotal,measuredInNonprodTotal,notYetAppliedToNonprod}`, `catalogDeclaredNotActivated` | 413→415; 355→357; +`migration:1762387200000`; 413/413/[]→415/413/[`migration:1762387200000`]; 30→28 (→11 with B) |
+| 1 | `functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json` | `totalGrants`, `grants[]`, `countsBySource.MIGRATION_BACKED`, `grantBearingMigrations`, `deployment.{rebuildTotal,measuredInNonprodTotal,notYetAppliedToNonprod}`, `catalogDeclaredNotActivated` | 413→415; 355→357; +`migration:1762387200000`; `deployment` 413/387/[`migration:1762300800000`] (as committed; stale since the Phase 3 apply, operator record 2026-09-25) → 415/413/[`migration:1762387200000`]. The stale block is corrected in the same change, and `personaBusinessAccessRegression.test.mjs` L338–339 moves with it (row 4); 30→28 (→11 with B) |
 | 2 | `functions/test/roleCapabilityAuthorityBaselinePostgres.test.mjs` | L142 total, L144 counts, L243 CDNA length | 413→415, 355→357, 30→28 |
 | 3 | `functions/test/pendingAuthorityCorrectionsPostgres.test.mjs` | L112, L117, L551 totals; L114 counts; L198 CDNA; L209–210 assert owner rows remain in CDNA (breaks under B) | 413→415, 355→357, 30→28 |
 | 4 | `functions/test/personaBusinessAccessRegression.test.mjs` | L256 migration files; L336–337 rebuild total; L339 `notYetAppliedToNonprod`; L344 stamped count | 51→52, 413→415, re-measure |
