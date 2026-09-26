@@ -12,6 +12,8 @@
 //         (b) assigns / ends a Functional Role
 //         (c) edits a binding in a NEW draft version, publishes, activates (old pinned instances keep the old version)
 //         (d) grants / conditions / revokes the capability
+//         (e) assigns a SALES_CHANNEL-scoped Security Role: the responsibility names the channel, and the engine decides
+//             by the channel read from the STORED Opportunity (lane GA's scope)
 //   P3  THREE-WAY AUTHORITY: getSecurityRoleDetail (Role -> Object -> action -> condition/scope), getObjectActionGrantMatrix
 //       (Object -> action -> Roles) and explainEffectiveAccess (Employee -> Roles -> effective access) are ONE governed
 //       PostgreSQL authority, table-driven over every persona fixture.
@@ -53,6 +55,7 @@ const { reconcileInventoryCapabilityGrants } = require("../lib/eosOps/migration/
 const { activateWorkOrderLifecycleGrants } = require("../lib/adminPolicy/workOrderLifecycleGrantActivation.js");
 const { sampleCompanyCapabilityKeys, sampleCompanyRoleKeys } = require("../scripts/seedSampleCompany.js");
 const frCommands = require("../lib/eosWorkforce/commands/employeeFunctionalRoleCommands.js");
+const opportunityCommands = require("../lib/eosCommercial/commands/opportunityCommandService.js");
 
 const MANIFEST = JSON.parse(readFileSync(join(FUNCTIONS_DIR, "scripts", "fixtures", "personaAuthorityDimensions.v1.json"), "utf8"));
 const TENANT = "t-wr-admin-proof";
@@ -429,6 +432,58 @@ test("administrability: workflow responsibility is changed by Administration alo
         assert.ok(["SECURITY_ROLE_ASSIGNMENT", "FUNCTIONAL_ROLE_ASSIGNMENT", "WORKFLOW_BINDING", "ROLE_CAPABILITY_GRANT"].includes(loc.kind), loc.kind);
       }
     }
+  });
+
+  // ════════════════════ P2 (e) ════════════════════
+  await t.test("P2(e) a SALES_CHANNEL-scoped Security Role: the responsibility names the channel; the record's channel decides", async () => {
+    // Governed channel values (lane GA): activated through Administration, never by migration.
+    for (const salesChannel of ["RETAIL", "NATIONAL_ACCOUNTS"]) {
+      ok(await sec("setTenantSalesChannelStatus", { salesChannel, status: "ACTIVE", reason: "we sell through this channel" }));
+    }
+    ok(await sec("createRole", { key: "channelReviewer", name: "Channel reviewer", reason: REASON }));
+    ok(await sec("grantObjectActionToRole", { objectKey: "opportunity", actionKey: "read", roleKey: "channelReviewer", reason: REASON }));
+    const draft = ok(await call("createWorkflowDraft", { key: "oppChannelReview", name: "Opportunity review", objectKey: "opportunity", reason: REASON, definition: {
+      steps: [{ key: "OPEN", label: "Open", initial: true }, { key: "REVIEWED", label: "Reviewed", terminal: true }],
+      actions: [{ key: "review", label: "Review", from: "OPEN", to: "REVIEWED", capabilityKey: "opportunity.read", roleKeys: ["channelReviewer"] }],
+    } }));
+    ok(await call("publishWorkflowVersion", { versionId: draft.version.id, reason: REASON }));
+    // Two stored Opportunities, one per channel, written by the Commercial command (the fact the transport reads).
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by)
+             VALUES ('acct-wr',$1,'WR Customer','ACTIVE','emp-other','x','x')`, [TENANT]);
+    await q(`INSERT INTO eos_policy.principals (id, external_subject, identity_provider, status) VALUES ('p-wr-writer','p-wr-writer','proof','active')`);
+    await q(`INSERT INTO eos_policy.tenant_memberships (id, tenant_id, principal_id) VALUES ('m-wr-writer',$1,'p-wr-writer')`, [TENANT]);
+    const writer = { tenantId: TENANT, principalId: "p-wr-writer", capabilities: new Set(["opportunity.write"]) };
+    const catalog = { async verifyReferences(_db, _t, refs) { return refs.map(() => "FOUND"); } };
+    const newOpp = async (salesChannel) => (await opportunityCommands.createOpportunity({ pool, catalog }, writer, {
+      idempotencyKey: `k-${randomUUID()}`, accountId: "acct-wr", salesChannel, operatingCompanyId: "taylor", need: `${salesChannel} need`,
+      lines: [{ kind: "SERVICE", ref: "svc", qty: 1 }] })).opportunityId;
+    const retail = await newOpp("RETAIL");
+    const national = await newOpp("NATIONAL_ACCOUNTS");
+    for (const recordId of [retail, national]) ok(await call("startWorkflowInstance", { workflowKey: "oppChannelReview", recordId, reason: REASON }));
+    const storedChannel = async (id) => ({ salesChannel: (await q(`SELECT sales_channel::text AS c FROM eos_commercial.opportunities WHERE tenant_id=$1 AND id=$2`, [TENANT, id])).rows[0].c });
+
+    const assignment = ok(await sec("assignRole", { principalId: subject.principalId, roleId: await roleId("channelReviewer"),
+      scopeType: "salesChannel", scopeValue: "RETAIL", reason: "reviews Retail Opportunities" }));
+    const review = find((await responsibilitiesOf(subject)).responsibilities, "oppChannelReview", "review");
+    assert.ok(review);
+    assert.deepEqual([review.authority, review.reasonCode], ["SCOPED", "SCOPE_CONTEXT_REQUIRED"]);
+    assert.deepEqual(review.securityRoleSources.map((x) => [x.roleKey, x.scopeType, x.scopeValue, x.assignmentId]),
+      [["channelReviewer", "salesChannel", "RETAIL", assignment.id]]);
+    assert.deepEqual(locationOf(review, "SECURITY_ROLE_ASSIGNMENT").map((l) => [l.scopeType, l.scopeValue]), [["salesChannel", "RETAIL"]]);
+    // The subject also holds dispatcher (P2c), which grants opportunity.read GLOBALLY -- listed too, but it is bound to
+    // nothing here, so the binding is still satisfied only inside the channel: the entry stays SCOPED.
+    assert.deepEqual(review.capabilityGrants.map((g) => [g.roleKey, g.scopeType, g.scopeValue]).sort(),
+      [["channelReviewer", "salesChannel", "RETAIL"], ["dispatcher", "global", null]]);
+    // ENGINE: the NATIONAL_ACCOUNTS record is refused at the binding, no context is refused, the RETAIL record moves.
+    await assert.rejects(() => act(subject, national, "review", { objectKey: "opportunity", businessContext: undefined }), /notBoundToRole/);
+    const nationalCtx = await storedChannel(national);
+    assert.deepEqual(nationalCtx, { salesChannel: "NATIONAL_ACCOUNTS" });
+    await assert.rejects(() => act(subject, national, "review", { objectKey: "opportunity", businessContext: nationalCtx }), /review refused: notBoundToRole/);
+    const moved = await act(subject, retail, "review", { objectKey: "opportunity", businessContext: await storedChannel(retail) });
+    assert.equal(moved.instance.currentStepKey, "REVIEWED");
+    // Revoking the scoped assignment removes the responsibility.
+    ok(await sec("revokeRole", { assignmentId: assignment.id, reason: "leaves Retail review" }));
+    assert.equal(find((await responsibilitiesOf(subject)).responsibilities, "oppChannelReview", "review"), undefined);
   });
 
   // ════════════════════ P3 ════════════════════
