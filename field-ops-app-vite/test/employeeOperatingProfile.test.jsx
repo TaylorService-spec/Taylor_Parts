@@ -597,7 +597,7 @@ describe("Employee business data no longer depends on Firestore", () => {
     });
   }
 
-  it("the record page's data seams are exactly: Workforce, the Principal credential lookup, and the legacy User Access callables", () => {
+  it("the record page's data seams are exactly: Workforce, the Principal credential lookup, the PostgreSQL control plane, and the legacy User Access callables", () => {
     const src = code(read("src/modules/administration/UserDetail.jsx"));
     const seams = [...src.matchAll(/from\s+["']([^"']*(hooks|access|services)\/[^"']*)["']/g)].map((m) => m[1]).sort();
     expect(seams).toEqual([
@@ -605,9 +605,12 @@ describe("Employee business data no longer depends on Firestore", () => {
       "../../hooks/usePrincipalCredential.js",
       "../../hooks/useWorkforceCapabilities.js",
       "../../hooks/useWorkforceRead.js",
+      "../../services/adminControlPlaneClient.js",
       "../../services/adminPolicyApiClient.js",
       "../../services/workforceApiClient.js",
     ]);
+    // Security Roles go through the PostgreSQL control-plane seam (lane CP-C), never the Firebase role callables.
+    expect(src).not.toMatch(/assignApprovedRole/);
     // The legacy callables it may still use are User Access / history only -- never the profile writer.
     expect(src).not.toMatch(/updateEmployeeProfile\s*\(/);
     expect(src).not.toMatch(/UserEditPanel/);

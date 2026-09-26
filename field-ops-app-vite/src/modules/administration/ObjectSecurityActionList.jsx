@@ -15,10 +15,10 @@
 //
 // ════════════════════ WHAT THIS DOES NOT DO ════════════════════
 //
-// It renders. It holds no state, fetches nothing, and offers no control that would grant or revoke:
-// the grant contract is objectKey + actionKey on the SERVER, and an affordance drawn here would be
-// a client that looks able to decide access. No Administration screen or route mounts this in this
-// tranche -- it is the assembly the later Object security slice is made of, proved renderable now.
+// It renders. It holds no state, fetches nothing, and draws no grant control of its own. MOUNTED by
+// the Object Security Actions view (ObjectActionSecurity.jsx, lane CP-C): that parent passes a
+// `renderDetail(action)` slot, and the controls it draws there send the governed control-plane
+// mutations -- objectKey + actionKey + roleKey on the SERVER. This list still decides nothing.
 import { UNLABELLED_ACTION } from "./objectSecurityReadModel.js";
 
 /** "2 Roles · 1 Principal", or the fact an administrator came to find: nobody holds this at all. */
@@ -41,7 +41,7 @@ function granteeSummary(action) {
  * substitute the identifier, and not to invent a name by humanising the action key, which would be
  * a second label vocabulary competing with the catalog's.
  */
-export function ObjectSecurityActionRow({ action }) {
+export function ObjectSecurityActionRow({ action, children = null }) {
   const grantees = granteeSummary(action);
   return (
     <li className={`fo-security-action${action.granted === false ? " fo-security-action--ungranted" : ""}`}>
@@ -58,6 +58,7 @@ export function ObjectSecurityActionRow({ action }) {
         <span className="fo-sr-only">Capability key: </span>
         {action.capabilityKey ?? "—"}
       </code>
+      {children ? <div className="fo-cp-action-detail">{children}</div> : null}
     </li>
   );
 }
@@ -69,13 +70,15 @@ export function ObjectSecurityActionRow({ action }) {
  * `actions` that is not an array renders NOTHING rather than an empty list: a refused or unread
  * security read must never reach a surface that looks like "there is nothing here".
  */
-export function ObjectSecurityActionList({ actions, emptyMessage = "This Object governs no actions yet." }) {
+export function ObjectSecurityActionList({ actions, emptyMessage = "This Object governs no actions yet.", renderDetail = null }) {
   if (!Array.isArray(actions)) return null;
   if (actions.length === 0) return <p className="fo-muted fo-security-actions__empty">{emptyMessage}</p>;
   return (
     <ul className="fo-security-actions">
       {actions.map((action) => (
-        <ObjectSecurityActionRow key={action.capabilityKey ?? action.actionKey} action={action} />
+        <ObjectSecurityActionRow key={action.capabilityKey ?? action.actionKey} action={action}>
+          {renderDetail ? renderDetail(action) : null}
+        </ObjectSecurityActionRow>
       ))}
     </ul>
   );

@@ -121,10 +121,29 @@ test("the ROLE grid expands an object into its fields", () => {
   );
 });
 
-test("field rows offer Inherit / Allow / Deny, not a checkbox", () => {
-  assert.match(SURFACES, /<option value=\{INHERIT\}>Inherit<\/option>/);
-  assert.match(SURFACES, /<option value=\{ALLOW\}>Allow<\/option>/);
-  assert.match(SURFACES, /<option value=\{DENY\}>Deny<\/option>/);
+// ============================ RETIRED: the C/R/E/D grid as a control (lane CP-C) ============================
+
+test("NO C/R/E/D MUTATION CONTROL REMAINS: the legacy matrix is read-only and says it is not enforced", () => {
+  // setObjectPermission and the field overrides write tables NO runtime evaluator reads. A checkbox or
+  // select that wrote them was a false control -- it looked like granting access and granted nothing.
+  for (const retired of ["setObjectPermission", "setFieldPermissionOverride", "removeFieldPermissionOverride"]) {
+    assert.equal(SURFACES.includes(`mutate("${retired}"`), false, `${retired} is not sent from Administration`);
+    assert.equal(SURFACES.includes(`"${retired}"`), false, `${retired} is not named as an operation here`);
+  }
+  const rolesSection = SURFACES.slice(SURFACES.indexOf("// ════════════════════ ROLES & PERMISSIONS"), SURFACES.indexOf("// ════════════════════ OBJECTS"));
+  assert.equal(/type="checkbox"/.test(rolesSection), false, "no CRED checkbox on the Roles screen");
+  const legacy = SURFACES.slice(SURFACES.indexOf("function LegacyRoleMatrix"), SURFACES.indexOf("// ════════════════════ OBJECTS"));
+  assert.equal(/<select/.test(legacy), false, "no field-override select in the legacy matrix");
+  assert.equal(/onChange=/.test(legacy), false, "nothing in the legacy matrix edits anything");
+  assert.match(SURFACES, /Legacy matrix — not enforced/);
+  assert.match(SURFACES, /No runtime evaluator reads it/);
+});
+
+test("the ENFORCED Security Role detail leads the Roles screen", () => {
+  assert.match(SURFACES, /import SecurityRoleDetail from "\.\/SecurityRoleDetail\.jsx";/);
+  assert.match(SURFACES, /<SecurityRoleDetail roleKey=\{selected\.key\} \/>/);
+  // The legacy matrix comes AFTER the enforced detail, and collapsed.
+  assert.ok(SURFACES.indexOf("<SecurityRoleDetail") < SURFACES.indexOf("<LegacyRoleMatrix"));
 });
 
 // ============================ roles are managed here ============================
