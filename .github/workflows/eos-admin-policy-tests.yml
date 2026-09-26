@@ -476,6 +476,9 @@ on:
       - "functions/src/adminPolicy/assignmentScope*.ts"
       - "functions/test/assignmentScopeRuntime.test.mjs"
       - "functions/test/assignmentScopeRuntimePostgres.test.mjs"
+      # PASS 9 S1/S2/S3/S7: the layer-4 assignment scope hardening regressions (test:adminPolicyPostgres).
+      - "functions/test/assignmentScopeHardeningPostgres.test.mjs"
+      - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
       # LANE WF (2026-09-26): the workflow control plane -- lifecycle + active version, action capability
@@ -836,6 +839,9 @@ on:
       - "functions/src/adminPolicy/assignmentScope*.ts"
       - "functions/test/assignmentScopeRuntime.test.mjs"
       - "functions/test/assignmentScopeRuntimePostgres.test.mjs"
+      # PASS 9 S1/S2/S3/S7: the layer-4 assignment scope hardening regressions (test:adminPolicyPostgres).
+      - "functions/test/assignmentScopeHardeningPostgres.test.mjs"
+      - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
       # LANE WF (2026-09-26): the workflow control plane -- lifecycle + active version, action capability
