@@ -146,8 +146,10 @@ test("governed Job Role assignment through the operator wrapper", { skip: SKIP, 
 
   // ════════════════════ the wrapper, wired EXACTLY as scripts/administerEmployeeCli.js main() wires it ════════════════════
 
+  const jobRoleReads = require("../lib/eosWorkforce/reads/jobRoleReads.js");
   const cliDeps = {
     resolveEmployeeAdministrationActor: actorAuthority.resolveEmployeeAdministrationActor,
+    reads: jobRoleReads,
     commands: {
       createEmployee: creation.createEmployee,
       updateEmployeeProfile: profileCmd.updateEmployeeProfile,
@@ -293,12 +295,16 @@ test("governed Job Role assignment through the operator wrapper", { skip: SKIP, 
 
     // NON-VACUOUS, id by id: the position the ruling named as the REPLACEMENT assigns cleanly through the
     // same invocation. The refusal is about the retired VOCABULARY, not about this Employee or this run.
-    for (const jobRoleId of retired) {
+    // Each replacement gets its OWN Employee, because since the #1969 ruling a second, different
+    // position through this wrapper is a JOB_ROLE_RECONCILIATION_CONFLICT rather than a CHANGED -- so
+    // reusing one Employee would have measured the new refusal instead of the replacement.
+    for (const [i, jobRoleId] of retired.entries()) {
       const replacement = SUPERSEDED_JOB_ROLE_IDS[jobRoleId].replacedBy[0];
       assert.ok(CANONICAL_JOB_ROLE_BY_ID[replacement], `${jobRoleId} -> ${replacement} is not canonical`);
-      const report = await runCli({ employeeId: "emp-retired", jobRoleId: replacement });
-      assert.ok(["ASSIGNED", "CHANGED"].includes(report.outcome), `${replacement}: ${report.outcome}`);
-      assert.deepEqual(await currentRole("emp-retired"), [replacement]);
+      const employeeId = `emp-replaced-${i}`;
+      await creation.createEmployee(deps, adminActor, { employeeId, employmentStatus: "ACTIVE", operatingCompanyId: "taylor", reason: `fixture for the ${jobRoleId} replacement case` });
+      assert.equal((await runCli({ employeeId, jobRoleId: replacement })).outcome, "ASSIGNED", replacement);
+      assert.deepEqual(await currentRole(employeeId), [replacement]);
     }
   });
 
@@ -332,12 +338,23 @@ test("governed Job Role assignment through the operator wrapper", { skip: SKIP, 
 
   // ════════════════════ 7 ════════════════════
 
-  await t.test("7 -- REPLACING a position follows the governed rule: the prior row is ENDED, one current row remains, and there is NO expected-current protection to honour", async () => {
+  await t.test("7 -- REPLACING a position: the GOVERNED RULE (CHANGED, prior row ended, history kept) is intact at the command, and the OPERATOR path refuses to reach it", async () => {
+    // Through the wrapper, the first assignment converges normally...
     const first = await runCli({ employeeId: "emp-swap", jobRoleId: "retail-sales" });
     assert.equal(first.outcome, "ASSIGNED");
-    const second = await runCli({ employeeId: "emp-swap", jobRoleId: "national-accounts-sales", reason: "moved to national accounts, per the approved position change" });
+    // ...and a DIFFERENT position does NOT. See the dedicated reconciliation block below for the full
+    // proof that the command is never called; here the point is only that the operator path stops.
+    await assert.rejects(runCli({ employeeId: "emp-swap", jobRoleId: "national-accounts-sales", reason: "moved to national accounts, per the approved position change" }),
+      (e) => e.code === "JOB_ROLE_RECONCILIATION_CONFLICT");
+    assert.deepEqual(await currentRole("emp-swap"), ["retail-sales"], "the refused run moved the position anyway");
+
+    // THE GOVERNED COMMAND'S OWN BEHAVIOUR IS UNCHANGED AND STILL CORRECT (EMP-RT-08). Called directly --
+    // which is what the explicit business-role-change path does -- it ends the prior row and creates the
+    // new current one, exactly as it always has. The ruling constrained the RECONCILIATION path, not the
+    // command, and this asserts the command did not quietly lose the behaviour it is supposed to have.
+    const second = await jobRoleCmd.assignEmployeeJobRole(deps, adminActor, { employeeId: "emp-swap", jobRoleId: "national-accounts-sales", reason: "moved to national accounts, per the approved position change" });
     assert.equal(second.outcome, "CHANGED");
-    assert.equal(second.result.endedAssignmentId, first.result.assignmentId);
+    assert.equal(second.endedAssignmentId, first.result.assignmentId);
 
     const rows = await assignmentRows("emp-swap");
     assert.equal(rows.length, 2, "history was overwritten rather than kept");
@@ -346,7 +363,8 @@ test("governed Job Role assignment through the operator wrapper", { skip: SKIP, 
     assert.deepEqual(await currentRole("emp-swap"), ["national-accounts-sales"]);
     // Retail Sales and National Accounts Sales are DISTINCT canonical positions; nothing collapsed them.
     assert.ok(CANONICAL_JOB_ROLE_BY_ID["retail-sales"] && CANONICAL_JOB_ROLE_BY_ID["national-accounts-sales"]);
-    // Two real mutations, two audit events -- the replacement is one event, not an end plus an assign.
+    // Two real mutations, two audit events -- the replacement is one event, not an end plus an assign,
+    // and the REFUSED attempt in between added none.
     assert.equal((await jobRoleAudits("emp-swap")).length, 2);
     const [, change] = await jobRoleAudits("emp-swap");
     assert.deepEqual([change.before.jobRoleId, change.after.jobRoleId], ["retail-sales", "national-accounts-sales"]);
@@ -462,6 +480,182 @@ test("governed Job Role assignment through the operator wrapper", { skip: SKIP, 
     assert.deepEqual([row.tenant_id, row.job_role_id, row.assigned_by], ["t2", "service-technician", t2Admin.principalId]);
     // And t1's catalog and assignments were not touched by any of it.
     assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.employee_job_role_assignments WHERE tenant_id = 't2'`)).rows[0].n, 1);
+  });
+
+  // ════════════════════ the RECONCILIATION precondition (Owner ruling on #1969) ════════════════════
+
+  await t.test("R -- the reconciliation precondition: absent ASSIGNS, identical NO_CHANGES, DIFFERENT refuses JOB_ROLE_RECONCILIATION_CONFLICT and the governed command is NEVER CALLED", async () => {
+    for (const id of ["emp-rec-a", "emp-rec-b"]) {
+      await creation.createEmployee(deps, adminActor, { employeeId: id, employmentStatus: "ACTIVE", operatingCompanyId: "taylor", reason: "fixture Employee for the reconciliation precondition" });
+    }
+
+    /**
+     * THE INJECTION. The commands map is the wrapper's ONLY way to reach a governed write, so a spy in
+     * that slot answers the question directly: was the command entered at all? Row counts and audit
+     * counts can only ever show that it did not *finish* -- this shows it was never *started*, which is
+     * the property the ruling actually asks for. The spy still delegates, so the ASSIGN and NO_CHANGE
+     * cases are real writes against the real command and not a mock's idea of one.
+     */
+    const calls = [];
+    const spyDeps = {
+      ...cliDeps,
+      commands: {
+        ...cliDeps.commands,
+        assignEmployeeJobRole: (...args) => { calls.push(args[2]); return jobRoleCmd.assignEmployeeJobRole(...args); },
+      },
+    };
+    const options = (employeeId, jobRoleId, apply) => ({
+      ...cli.assertInvocation({
+        environment: "platform-sandbox", databaseUrlEnv: "DB", tenantKey: "t1", performedBy: "lane-bt-operator",
+        adminPrincipalId: admin.principalId, command: "assignEmployeeJobRole", employeeId, jobRoleId,
+        reason: REASON, ...(apply ? { apply: "true" } : {}),
+      }, { DB: "postgres://unused", EOS_ENVIRONMENT: "nonprod" }), tenantKey: "t1",
+    });
+    const runSpy = (employeeId, jobRoleId) => cli.administerEmployeeRun(pool, options(employeeId, jobRoleId, true), spyDeps);
+
+    // R1 -- NO CURRENT ASSIGNMENT -> the command runs -> ASSIGNED.
+    const assigned = await runSpy("emp-rec-a", "service-manager");
+    assert.deepEqual([assigned.outcome, calls.length], ["ASSIGNED", 1]);
+    assert.deepEqual(assigned.jobRolePrecondition, { employeeId: "emp-rec-a", currentJobRoleId: null, requestedJobRoleId: "service-manager", disposition: "ASSIGN" });
+    assert.deepEqual(await currentRole("emp-rec-a"), ["service-manager"]);
+
+    // R2 -- THE SAME ASSIGNMENT -> the command runs -> NO_CHANGE, no duplicate row, NO SECOND AUDIT EVENT.
+    const beforeRows = await assignmentRows("emp-rec-a");
+    const noChange = await runSpy("emp-rec-a", "service-manager");
+    assert.deepEqual([noChange.outcome, calls.length], ["NO_CHANGE", 2], "an idempotent rerun did not reach the command");
+    assert.equal(noChange.jobRolePrecondition.disposition, "NO_CHANGE");
+    assert.deepEqual(await assignmentRows("emp-rec-a"), beforeRows, "an idempotent rerun wrote a row");
+    assert.equal((await jobRoleAudits("emp-rec-a")).length, 1, "an idempotent rerun wrote a second audit event");
+
+    // R3 -- A DIFFERENT ASSIGNMENT -> REFUSED, AND THE COMMAND IS NEVER ENTERED.
+    const auditsBefore = await jobRoleAudits("emp-rec-a");
+    const callsBefore = calls.length;
+    await assert.rejects(runSpy("emp-rec-a", "service-technician"), (e) => {
+      assert.equal(e.code, "JOB_ROLE_RECONCILIATION_CONFLICT");
+      // The refusal carries the three NON-SECRET facts a person needs to decide, and nothing more.
+      assert.deepEqual(e.details, { employeeId: "emp-rec-a", currentJobRoleId: "service-manager", requestedJobRoleId: "service-technician" });
+      // and it leaks no authority: no Principal id, no capability, no connection string.
+      const printed = `${e.message} ${JSON.stringify(e.details)}`;
+      assert.doesNotMatch(printed, new RegExp(admin.principalId));
+      assert.doesNotMatch(printed, /admin\.employee|postgres:|password/);
+      return true;
+    });
+    // THE PROOF: the spy never fired. The command was not called -- not called and rolled back, NOT CALLED.
+    assert.equal(calls.length, callsBefore, "the governed command was entered on a refused reconciliation");
+    // and, independently of the spy, nothing moved: prior assignment unchanged, requested one never created.
+    assert.deepEqual(await assignmentRows("emp-rec-a"), beforeRows, "the refused run mutated an assignment");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.employee_job_role_assignments WHERE employee_id = 'emp-rec-a' AND job_role_id = 'service-technician'`)).rows[0].n, 0);
+    // NO AUDIT EVENT FOR THE REFUSAL -- the existing convention, which records applied mutations only.
+    assert.deepEqual(await jobRoleAudits("emp-rec-a"), auditsBefore, "the refused reconciliation wrote an audit event");
+
+    // NON-VACUOUS: the SAME call, against an Employee whose current position MATCHES, succeeds. The only
+    // difference is the conflict itself -- not the position, not the actor, not the reason.
+    // `service-technician` is a real, ACTIVE, canonical position and is assignable right now.
+    assert.equal((await runSpy("emp-rec-b", "service-technician")).outcome, "ASSIGNED");
+    assert.equal((await runSpy("emp-rec-b", "service-technician")).outcome, "NO_CHANGE");
+    assert.deepEqual(await currentRole("emp-rec-b"), ["service-technician"]);
+
+    // A DRY RUN REFUSES TOO. A plan that promised a convergence the apply would refuse is the worse of
+    // the two failures, so the precondition runs before the dry-run return -- and still writes nothing.
+    const planned = await cli.administerEmployeeRun(pool, options("emp-rec-b", "service-technician", false), spyDeps);
+    assert.deepEqual([planned.outcome, planned.result, planned.jobRolePrecondition.disposition], ["PLANNED", null, "NO_CHANGE"]);
+    await assert.rejects(cli.administerEmployeeRun(pool, options("emp-rec-b", "service-manager", false), spyDeps),
+      (e) => e.code === "JOB_ROLE_RECONCILIATION_CONFLICT");
+    assert.deepEqual(await currentRole("emp-rec-b"), ["service-technician"]);
+  });
+
+  await t.test("R4 -- A PARTIAL 2C RERUN IS SAFE over mixed state: the unassigned converge, the correct no-op, the conflicting one refuses, and nothing is left half-written", async () => {
+    // The state a real re-run meets: some Employees were never assigned, some already hold exactly what
+    // the manifest says, and one holds something else because a human changed it after the first pass.
+    for (const id of ["emp-2c-new-1", "emp-2c-new-2", "emp-2c-same", "emp-2c-conflict"]) {
+      await creation.createEmployee(deps, adminActor, { employeeId: id, employmentStatus: "ACTIVE", operatingCompanyId: "taylor", reason: "fixture Employee for the partial 2C rerun" });
+    }
+    const manifest = [
+      ["emp-2c-new-1", "parts-manager"],
+      ["emp-2c-new-2", "warehouse-manager"],
+      ["emp-2c-same", "office-manager"],
+      ["emp-2c-conflict", "reporting-analyst"],
+    ];
+    // The first pass got one of the four done before it stopped...
+    await runCli({ employeeId: "emp-2c-same", jobRoleId: "office-manager" });
+    // ...and somebody then deliberately moved the fourth person, through the explicit change path.
+    await jobRoleCmd.assignEmployeeJobRole(deps, adminActor, { employeeId: "emp-2c-conflict", jobRoleId: "general-manager", reason: "a deliberate business position change after the first pass" });
+
+    const auditCount = async () => (await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE action = $1`, [jobRoleCmd.JOB_ROLE_ASSIGN_ACTION])).rows[0].n;
+    const auditsBefore = await auditCount();
+    const rerun = async () => {
+      const outcomes = [];
+      for (const [employeeId, jobRoleId] of manifest) {
+        try {
+          outcomes.push([employeeId, (await runCli({ employeeId, jobRoleId })).outcome]);
+        } catch (err) {
+          outcomes.push([employeeId, err.code]);
+          // The refusal names the person and both positions, so the rerun's report is actionable.
+          assert.deepEqual(err.details, { employeeId, currentJobRoleId: "general-manager", requestedJobRoleId: "reporting-analyst" });
+        }
+      }
+      return outcomes;
+    };
+    assert.deepEqual(await rerun(), [
+      ["emp-2c-new-1", "ASSIGNED"],
+      ["emp-2c-new-2", "ASSIGNED"],
+      ["emp-2c-same", "NO_CHANGE"],
+      ["emp-2c-conflict", "JOB_ROLE_RECONCILIATION_CONFLICT"],
+    ]);
+    // THE RERUN DID NOT STOP AT THE CONFLICT and did not skip past it either: the two missing positions
+    // converged, the correct one was left alone, and the disputed person was NOT moved.
+    assert.deepEqual(await currentRole("emp-2c-new-1"), ["parts-manager"]);
+    assert.deepEqual(await currentRole("emp-2c-new-2"), ["warehouse-manager"]);
+    assert.deepEqual(await currentRole("emp-2c-same"), ["office-manager"]);
+    assert.deepEqual(await currentRole("emp-2c-conflict"), ["general-manager"], "a rerun changed a person's position to match a manifest");
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_workforce.employee_job_role_assignments WHERE employee_id = 'emp-2c-conflict'`)).rows[0].n, 1, "the refused Employee was left with half a history");
+    // NOTHING HALF-WRITTEN: exactly two new audit events for the two real convergences, none for the
+    // no-op and none for the refusal, and no Employee anywhere has two current positions.
+    assert.equal(await auditCount(), auditsBefore + 2);
+    assert.deepEqual((await q(
+      `SELECT employee_id FROM eos_workforce.employee_job_role_assignments WHERE effective_to IS NULL
+        GROUP BY employee_id HAVING count(*) > 1`)).rows, [], "an Employee ended up with two current positions");
+    // AND THE RERUN IS ITSELF RE-RUNNABLE: a third pass converges nothing new and refuses the same one.
+    assert.deepEqual((await rerun()).map(([, o]) => o), ["NO_CHANGE", "NO_CHANGE", "NO_CHANGE", "JOB_ROLE_RECONCILIATION_CONFLICT"]);
+    assert.equal(await auditCount(), auditsBefore + 2);
+  });
+
+  await t.test("R5 -- the precondition is FAIL-CLOSED: a Principal that may WRITE the Job Role but may not READ the Employee is refused, not waved through", async () => {
+    // A Principal with NO Role at all and ONE direct grant: admin.employeeJobRole.write. It can satisfy
+    // the command's gate and cannot satisfy the precondition's, which is the only combination where
+    // "what do we do when the check cannot be evaluated" has a wrong answer available.
+    const writeOnly = await repo.transact(fixture("t1"), async (tx) => {
+      const p = await tx.createPrincipal({ externalSubject: "uid-write-only", identityProvider: "firebase" });
+      await tx.createTenantMembership(p.id);
+      return p.id;
+    });
+    await q(
+      `INSERT INTO eos_policy.principal_capabilities (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+       SELECT 'pc-write-only', 't1', $1, c.id, 'fixture', now(), 'fixture', now(), 'fixture', now()
+         FROM eos_policy.capabilities c WHERE c.key = 'admin.employeeJobRole.write'`, [writeOnly]);
+    const resolved = await actorAuthority.resolveEmployeeAdministrationActor(pool, { tenantId: "t1", principalId: writeOnly });
+    assert.deepEqual([[...resolved.heldRoleKeys], [...resolved.directCapabilityKeys]], [[], ["admin.employeeJobRole.write"]]);
+    assert.ok(resolved.capabilities.has("admin.employeeJobRole.write") && !resolved.capabilities.has("employee.record.read"));
+
+    // IT IS REFUSED, AND BY THE READ -- the precondition stops the run rather than being skipped because
+    // it could not be evaluated. A check that silently turns itself off under a narrower caller is worse
+    // than no check, because the report still says the run was governed.
+    await assert.rejects(runCli({ adminPrincipalId: writeOnly, employeeId: "emp-rec-a", jobRoleId: "service-manager" }),
+      (e) => e.code === "CAPABILITY_REQUIRED" && /employee\.record\.read/.test(e.message));
+    assert.deepEqual(await currentRole("emp-rec-a"), ["service-manager"], "the fail-closed refusal still wrote");
+
+    // AND THIS IS A NARROWING, NOT A WIDENING: every governed Role that holds the WRITE also holds the
+    // READ, so no Role that could run this operation before the precondition existed lost it. Measured
+    // against the tenant's own reconciled grants, not asserted from the catalog source.
+    const holders = async (key) => (await q(
+      `SELECT DISTINCT r.key FROM eos_policy.role_capabilities rc
+         JOIN eos_policy.roles r ON r.id = rc.role_id
+         JOIN eos_policy.capabilities c ON c.id = rc.capability_id
+        WHERE r.tenant_id = 't1' AND c.key = $1 ORDER BY r.key`, [key])).rows.map((x) => x.key);
+    const writers = await holders("admin.employeeJobRole.write");
+    const readers = await holders("employee.record.read");
+    assert.ok(writers.length > 0, "no Role holds the Job Role write capability, so the comparison proves nothing");
+    assert.deepEqual(writers.filter((k) => !readers.includes(k)), [], "a Role holds the Job Role write but not employee.record.read");
   });
 
   // ════════════════════ the standing invariants ════════════════════

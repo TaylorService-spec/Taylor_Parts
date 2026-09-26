@@ -337,6 +337,18 @@ test("the operator wrapper has NO raw SQL escape hatch: its only statement is th
   assert.deepEqual(statements, [], "the operator wrapper contains a write statement of its own");
   assert.deepEqual([...src.matchAll(/pool\.query\(/g)].length, 1, "the wrapper makes a query other than the tenant lookup");
   assert.match(src, /SELECT id FROM eos_policy\.tenants WHERE key = \$1/);
+  // TIGHTENED, NOT LOOSENED, when the Job Role reconciliation precondition added a READ (Owner ruling on
+  // #1969). The precondition needs the Employee's CURRENT position, and the temptation was a second
+  // SELECT here. It goes through the EXISTING governed read instead, so the original guarantee -- one
+  // query, and it is the tenant lookup -- survives unweakened, and this adds the half that would
+  // otherwise have gone unstated: NO OTHER CURSOR IS OPENED BY ANY NAME, and the read is the governed one.
+  assert.deepEqual([...src.matchAll(/\.query\(/g)].length, 1, "the wrapper opened a second cursor under another name");
+  assert.deepEqual([...src.matchAll(/\bSELECT\b/g)].length, 1, "the wrapper contains a SELECT other than the tenant lookup");
+  assert.match(src, /require\("\.\.\/lib\/eosWorkforce\/reads\/jobRoleReads\.js"\)/);
+  assert.match(src, /reads\.listEmployeeJobRoleHistory\(/);
+  // And the precondition REFUSES rather than converging: the conflict code is named in the source, so a
+  // future edit that turned the refusal into a silent change would have to delete this line to pass.
+  assert.match(src, /JOB_ROLE_RECONCILIATION_CONFLICT/);
   // Every write goes through one of the six governed commands, by module path.
   for (const mod of ["employeeCreationCommand", "employeeProfileCommand", "employeePrincipalLinkCommands",
     "employeeJobRoleCommands", "employeeAdministrationAuthority"]) {

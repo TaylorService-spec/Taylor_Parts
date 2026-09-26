@@ -45,10 +45,59 @@
 //   assignEmployeeJobRole and by NOTHING ELSE; on any other command it is refused
 //   (ARGUMENT_NOT_ACCEPTED) exactly as --employmentStatus is refused on a link.
 //
-//   THE ASSIGNMENT IS ONE BOUNDED OPERATION. It sets the Employee's one current primary Job Role and
-//   ends the prior one. It creates no Employee, links no Principal, grants no Security Role, and writes
-//   no Work Eligibility and no Operational Scope -- there is no flag here that could ask for any of
-//   those, and the suite snapshots every one of those relations across a real assignment.
+//   THE ASSIGNMENT IS ONE BOUNDED OPERATION. It sets the Employee's one current primary Job Role. It
+//   creates no Employee, links no Principal, grants no Security Role, and writes no Work Eligibility and
+//   no Operational Scope -- there is no flag here that could ask for any of those, and the suite
+//   snapshots every one of those relations across a real assignment.
+// ---------------------------------------------------------------------------------------------------
+//
+// ---------------------------------------------------------------------------------------------------
+// A RECONCILIATION NEVER CHANGES A PERSON'S POSITION AS A SIDE EFFECT (Owner ruling on #1969).
+//
+// THE GOVERNED COMMAND IS UNCHANGED, AND ITS BEHAVIOUR IS CORRECT. EMP-RT-08 stands: one current Job
+// Role, history retained, and a DIFFERENT current role -> CHANGED -> end the prior row -> insert the
+// new current row. That is the right thing for a business position change, it is still what
+// employeeJobRoleCommands.assignEmployeeJobRole does, and nothing here alters it. A caller that wants a
+// position CHANGE calls that command through the explicit business-role-change path.
+//
+// WHAT THIS TOOL IS BEING USED FOR IS DIFFERENT. It is driven as a RECONCILIATION path -- Phase 2C
+// re-runs a target manifest against live data and converges what is missing. Convergence must be
+// fail-closed on a disagreement: if the manifest says `parts-manager` and the person currently holds
+// `service-manager`, that is not drift to be smoothed over, it is a question for a human. A
+// reconciliation that silently demoted or promoted somebody because two lists differed would be the
+// worst kind of correct-looking write.
+//
+// SO THE OPERATOR PATH REFUSES THE THIRD CASE, BEFORE THE COMMAND IS CALLED:
+//
+//   no current assignment         -> the command runs           -> ASSIGNED
+//   current assignment == request -> the command runs           -> NO_CHANGE (idempotent, re-runnable)
+//   current assignment != request -> JOB_ROLE_RECONCILIATION_CONFLICT, the command is NEVER called
+//
+// The refusal names the Employee, the CURRENT Job Role id and the REQUESTED one -- the three non-secret
+// facts a person needs to decide, and nothing else. No Principal id, no capability, no credential.
+//
+// NEITHER ASSIGNMENT IS MUTATED, AND NO AUDIT EVENT IS WRITTEN FOR THE REFUSAL. That follows the
+// EXISTING convention rather than inventing one: eos_policy.audit_events records APPLIED MUTATIONS
+// only. Every appendEmployeeAudit call in src/eosWorkforce/commands sits on a success path inside the
+// command's transaction, the kernel rolls the audit row back with everything else on any failure, and
+// adminPolicyNoOpAudit's ruling is that a change that changes nothing is not a mutation and writes no
+// event. A refused attempt is REPORTED -- the operator gets the JSON refusal and exit 2 -- not audited.
+//
+// THE PRECONDITION IS A GOVERNED READ, NOT A QUERY OF ITS OWN. It calls the EXISTING
+// reads/jobRoleReads.listEmployeeJobRoleHistory, which serves `current` directly, runs in its own
+// READ ONLY snapshot, is tenant-scoped to the resolved actor and gates on the EXISTING
+// employee.record.read. So this file still contains no write statement AND still makes exactly one
+// query of its own (the tenant lookup) -- the guard that says so did not have to be weakened.
+//
+// IT IS EVALUATED ON A DRY RUN TOO, and reported. "Would this converge, no-op, or collide" is most of
+// what a dry run of a reconciliation is for, and a read writes nothing.
+//
+// THE READ'S CAPABILITY IS AN ADDITIONAL REQUIREMENT, AND THAT IS A NARROWING, NEVER A WIDENING. The
+// operation now needs admin.employeeJobRole.write (the command's gate) AND employee.record.read (the
+// precondition's). Both governed Roles that hold the write -- admin and owner -- already hold the read,
+// so no governed Role loses the operation; a Principal holding only a DIRECT grant of the write is
+// refused by the read, which is the FAIL-CLOSED answer: a precondition that cannot be evaluated must
+// stop the run, never be skipped.
 // ---------------------------------------------------------------------------------------------------
 //
 // ============================ THE AUTHORITY IS READ, NEVER ARGUED ============================
@@ -163,14 +212,21 @@ const MIN_REASON_LENGTH = 10;
 const MAX_REASON_LENGTH = 500;
 
 class EmployeeAdministrationCliError extends Error {
-  constructor(code, message) {
+  /**
+   * `details` carries the NON-SECRET identifiers a person needs to diagnose the refusal -- an Employee
+   * id, a Job Role id. It never carries a Principal id, a capability, a connection string or a
+   * credential: a refusal is read by whoever is watching the run, and a diagnostic is not a licence to
+   * print authority.
+   */
+  constructor(code, message, details) {
     super(`${code}: ${message}`);
     this.name = "EmployeeAdministrationCliError";
     this.code = code;
+    if (details !== undefined) this.details = details;
   }
 }
-const refuse = (code, message) => {
-  throw new EmployeeAdministrationCliError(code, message);
+const refuse = (code, message, details) => {
+  throw new EmployeeAdministrationCliError(code, message, details);
 };
 
 const given = (args, flag) => typeof args[flag] === "string" && args[flag] !== "true" && args[flag].trim() !== "";
@@ -274,14 +330,20 @@ function assertInvocation(args, env) {
      * command accepts (employeeJobRoleCommands.assignEmployeeJobRole -> acceptOnly(["employeeId",
      * "jobRoleId", "reason"])); this wrapper composes no fourth.
      *
-     * NO EXPECTED-CURRENT PROTECTION, BECAUSE THE COMMAND HAS NONE. The link commands' revoke and move
-     * take a MANDATORY --expectedCurrentPrincipalId because unlinkEmployeePrincipal and
-     * relinkEmployeePrincipal require one. assignEmployeeJobRole does not: it locks the Employee, locks
-     * the current assignment row FOR UPDATE and ends it inside the same transaction, and a concurrent
-     * change is caught by employee_job_role_one_current_per_employee as JOB_ROLE_CONCURRENT_CHANGE.
-     * Inventing --expectedCurrentJobRoleId here would be a compare-and-swap the command cannot honour --
-     * the wrapper would have to read the current row itself, outside the command's transaction, which is
-     * a check that is worth less than nothing because it looks like a guarantee.
+     * NO --expectedCurrentJobRoleId FLAG, BECAUSE THE COMMAND HAS NO COMPARE-AND-SWAP. The link commands'
+     * revoke and move take a MANDATORY --expectedCurrentPrincipalId because unlinkEmployeePrincipal and
+     * relinkEmployeePrincipal require one and enforce it INSIDE their transaction. assignEmployeeJobRole
+     * has no such parameter: it locks the Employee, locks the current assignment row, and a concurrent
+     * change is caught by employee_job_role_one_current_per_employee as JOB_ROLE_CONCURRENT_CHANGE. An
+     * operator flag here would be a compare-and-swap the command cannot honour, so none is offered.
+     *
+     * THAT IS NOT THE SAME THING AS THE RECONCILIATION PRECONDITION BELOW, and the difference matters.
+     * The precondition reads the current position OUTSIDE the command's transaction and REFUSES on a
+     * disagreement. It is honest about what that buys: it is a fail-closed stop, NOT an atomicity
+     * guarantee. If the position changes between the read and the command, the command still runs under
+     * its own lock and the unique constraint is still the authority on what happened -- the precondition
+     * never becomes the thing enforcing correctness. A caller-supplied expected value would have claimed
+     * exactly that guarantee while providing no more than this, which is why it is a flag and not a read.
      *
      * REASON IS MANDATORY HERE AND OPTIONAL THERE. The command takes optionalReason; this tool requires
      * --reason of every operation it drives (10-500 characters, checked above) and passes it through, so
@@ -312,11 +374,38 @@ function assertInvocation(args, env) {
 }
 
 /**
- * Run (or plan) ONE governed command. `deps` carries the commands and the authority resolver so this is
- * provable against a real database without a process boundary.
+ * THE RECONCILIATION PRECONDITION for --command assignEmployeeJobRole. Fail-closed on a disagreement.
+ *
+ * Returns the disposition the run will take (ASSIGN or NO_CHANGE) so the report -- including a DRY RUN
+ * report -- says which, or REFUSES with JOB_ROLE_RECONCILIATION_CONFLICT and lets nothing further
+ * happen. It is a READ: it mutates neither assignment, writes no audit event, and on the refusing path
+ * the governed command is never entered at all, so there is no transaction to roll back.
+ *
+ * `listEmployeeJobRoleHistory` is the EXISTING governed read and carries its own refusals: a
+ * nonexistent Employee is EMPLOYEE_NOT_FOUND here exactly as it would have been inside the command,
+ * and a caller without employee.record.read is refused rather than allowed to skip the check.
+ */
+async function assertJobRoleReconcilable(reads, pool, actor, input) {
+  const history = await reads.listEmployeeJobRoleHistory({ pool }, actor, { employeeId: input.employeeId });
+  const currentJobRoleId = history.current === null ? null : history.current.jobRoleId;
+  if (currentJobRoleId !== null && currentJobRoleId !== input.jobRoleId) {
+    refuse("JOB_ROLE_RECONCILIATION_CONFLICT",
+      `Employee '${input.employeeId}' currently holds the Job Role '${currentJobRoleId}', and this run asked for `
+      + `'${input.jobRoleId}'. A RECONCILIATION DOES NOT CHANGE A PERSON'S BUSINESS POSITION. The governed command `
+      + "would have ended the current assignment and created a new one, which is correct for a deliberate position "
+      + "change and wrong for a convergence run, so it was NOT called and neither assignment was touched. Decide "
+      + "which position is right and make the change through the explicit business-role-change path.",
+      { employeeId: input.employeeId, currentJobRoleId, requestedJobRoleId: input.jobRoleId });
+  }
+  return { employeeId: input.employeeId, currentJobRoleId, requestedJobRoleId: input.jobRoleId, disposition: currentJobRoleId === null ? "ASSIGN" : "NO_CHANGE" };
+}
+
+/**
+ * Run (or plan) ONE governed command. `deps` carries the commands, the authority resolver and the
+ * governed reads, so this is provable against a real database without a process boundary.
  */
 async function administerEmployeeRun(pool, options, deps) {
-  const { commands, resolveEmployeeAdministrationActor } = deps;
+  const { commands, resolveEmployeeAdministrationActor, reads } = deps;
   const tenant = await pool.query("SELECT id FROM eos_policy.tenants WHERE key = $1", [options.tenantKey]);
   if (tenant.rows.length !== 1) {
     refuse("TENANT_NOT_FOUND", `no tenant with key '${options.tenantKey}'; this run never creates one`);
@@ -340,6 +429,14 @@ async function administerEmployeeRun(pool, options, deps) {
     input: options.input,
     apply: options.apply,
   };
+
+  // THE PRECONDITION, BEFORE THE COMMAND AND BEFORE THE DRY-RUN RETURN. A conflict refuses here, so the
+  // governed command is not called on a dry run either -- a plan that said "would assign" and an apply
+  // that refused would be the worse of the two failures.
+  if (options.command === "assignEmployeeJobRole") {
+    report.jobRolePrecondition = await assertJobRoleReconcilable(reads, pool, actor, options.input);
+  }
+
   if (!options.apply) {
     // A DRY RUN WRITES NOTHING. Not a row, not an audit event.
     return { ...report, outcome: "PLANNED", result: null };
@@ -359,6 +456,9 @@ async function main() {
   // The EXISTING governed Job Role writer, under the EXISTING admin.employeeJobRole.write. Imported, not
   // reimplemented: there is no Job Role SQL in this file and no second gate in front of the command's.
   const jobRoles = require("../lib/eosWorkforce/commands/employeeJobRoleCommands.js");
+  // The EXISTING governed Job Role READS, for the reconciliation precondition. A read module, not a
+  // query: this file still opens no cursor of its own beyond the tenant lookup.
+  const reads = require("../lib/eosWorkforce/reads/jobRoleReads.js");
   const commands = {
     createEmployee: creation.createEmployee,
     updateEmployeeProfile: profile.updateEmployeeProfile,
@@ -369,7 +469,7 @@ async function main() {
   };
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: options.connectionString }));
   try {
-    const report = await administerEmployeeRun(pool, options, { commands, resolveEmployeeAdministrationActor });
+    const report = await administerEmployeeRun(pool, options, { commands, resolveEmployeeAdministrationActor, reads });
     console.log(JSON.stringify(report, null, 2));
     process.exitCode = 0;
   } finally {
@@ -378,7 +478,7 @@ async function main() {
 }
 
 module.exports = {
-  assertInvocation, administerEmployeeRun, COMMANDS, PROFILE_FLAGS, KNOWN_FLAGS,
+  assertInvocation, administerEmployeeRun, assertJobRoleReconcilable, COMMANDS, PROFILE_FLAGS, KNOWN_FLAGS,
   AUTHORITY_BEARING_FLAGS, CREDENTIAL_BEARING_FLAGS,
 };
 
@@ -389,6 +489,9 @@ if (require.main === module) {
       outcome: "REFUSED_OR_FAILED",
       code: err && typeof err.code === "string" ? err.code : null,
       message: governed ? (err instanceof Error ? err.message : String(err)) : "the run could not be completed",
+      // The non-secret identifiers, when the refusal carried any. A refusal an operator cannot diagnose
+      // sends them looking in the database by hand, which is the habit this tool exists to remove.
+      ...(err && err.details !== undefined ? { details: err.details } : {}),
     }, null, 2));
     process.exitCode = 2;
   });
