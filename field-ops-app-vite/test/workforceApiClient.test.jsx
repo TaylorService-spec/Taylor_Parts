@@ -37,7 +37,12 @@ describe("the closed operation list", () => {
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /jobRole/i.test(n)).sort()).toEqual(["listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listJobRoles"]);
     // EMP-RT-H1: the governed Employee change history is served, and it is the only history read.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /history/i.test(n)).sort()).toEqual([
-      "listEmployeeChangeHistory", "listEmployeeJobRoleHistory", "listEmployeeOperationalScopeHistory", "listEmployeeWorkEligibilityHistory"]);
+      "listEmployeeChangeHistory", "listEmployeeJobRoleHistory", "listEmployeeOperationalScopeHistory", "listEmployeeWorkEligibilityHistory",
+      // Functional Role: the catalog's audit history (catalog + assignment events for ONE Functional Role).
+      "listFunctionalRoleHistory"]);
+    // Functional Role (migration 1762819200000): four reads under employee.record.read; none grants anything.
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /functionalRole/i.test(n)).sort()).toEqual([
+      "listEmployeeFunctionalRoles", "listFunctionalRoleHistory", "listFunctionalRoleHolders", "listFunctionalRoles"]);
     // Step C: qualification and warehouse scope are served as SEPARATE reads -- neither is folded into the other.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /eligibility/i.test(n)).sort()).toEqual(["listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory"]);
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /scope/i.test(n)).sort()).toEqual(["listEmployeeOperationalScopeHistory", "listEmployeeOperationalScopes"]);
@@ -56,7 +61,10 @@ describe("the closed operation list", () => {
       // Lane BT -- governed PostgreSQL Employee administration. The mirror stays an EQUALITY: a served
       // command the browser does not name would be a 404 waiting to happen, and a name the server does
       // not serve would be a lie. Job Role assignment is deliberately NOT among them.
-      "createEmployee", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal"]);
+      "createEmployee", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal",
+      // Functional Role: catalog create / metadata / status, assign / end (admin.employeeFunctionalRole.write).
+      "createFunctionalRole", "updateFunctionalRoleMetadata", "setFunctionalRoleStatus", "assignEmployeeFunctionalRole",
+      "endEmployeeFunctionalRoleAssignment"]);
     expect([...WORKFORCE_COMMAND_OPERATIONS]).toEqual(names);
     for (const name of [...WORKFORCE_READ_OPERATIONS, ...WORKFORCE_COMMAND_OPERATIONS]) expect(isWorkforceOperation(name), name).toBe(true);
     // No Security Role, generic patch or unserved writer is a name the browser can send.

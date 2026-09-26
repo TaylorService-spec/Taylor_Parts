@@ -28,6 +28,7 @@ import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
+import EmployeeFunctionalRoles, { FUNCTIONAL_ROLE_WRITE_CAPABILITY } from "./EmployeeFunctionalRoles.jsx";
 import {
   OPERATIONAL_SCOPE_WRITE_CAPABILITY,
   OperationalScopeSection,
@@ -152,6 +153,8 @@ export default function UserDetail({
   // Offer-only, from the SAME Workforce capability read; the Workforce command re-checks each.
   const canWriteEligibility = workforceCapabilities.has(WORK_ELIGIBILITY_WRITE_CAPABILITY);
   const canWriteScope = workforceCapabilities.has(OPERATIONAL_SCOPE_WRITE_CAPABILITY);
+  // Functional Role: its OWN capability (admin.employeeFunctionalRole.write); offer only, the command re-checks.
+  const canWriteFunctionalRoles = workforceCapabilities.has(FUNCTIONAL_ROLE_WRITE_CAPABILITY);
   // `?edit=1` opens the form once the capability is known; Cancel or a save closes it and it stays closed.
   const [editOpen, setEditOpen] = useState(false);
   const [editClosed, setEditClosed] = useState(false);
@@ -384,6 +387,7 @@ export default function UserDetail({
 
           <WorkEligibilitySection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteEligibility} onChanged={rereadGovernedHistory} />
           <OperationalScopeSection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteScope} onChanged={rereadGovernedHistory} />
+          <EmployeeFunctionalRoles employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteFunctionalRoles} onChanged={rereadGovernedHistory} />
 
           {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
               (EMP-RT-02, server-gated), and the account actions on the credential behind that Principal. */}

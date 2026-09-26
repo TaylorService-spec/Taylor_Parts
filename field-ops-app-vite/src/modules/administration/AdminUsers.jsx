@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import MetadataListGrid from "../../metadata/MetadataListGrid.jsx";
 import WorkspaceIdentity from "../../shared/ui/WorkspaceIdentity.jsx";
 import { workforceApiClient } from "../../services/workforceApiClient.js";
@@ -126,6 +126,11 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
       {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count, never a directory column and never
           inferred from a title or a Security Role. Silent when the count is 0; a refused or failed read is stated. */}
       <JobRoleRemediation workforce={workforce} />
+      {/* FUNCTIONAL ROLES (lane FR): the catalog of business responsibilities -- not Security Roles, not Job Roles. */}
+      <p className="fo-muted">
+        <Link to="/administration/users/functional-roles">Functional Roles</Link> — the catalog of business
+        responsibilities an Employee may hold. They grant nothing.
+      </p>
       {/* THE DIRECTORY IS MEASURED AGAINST ITSELF, NOT THE WINDOW. This wrapper exists only to
           be a containment context: `.fo-users-directory` in index.css asks how much width the
           directory actually has once the application rail has taken its share, and recomposes

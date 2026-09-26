@@ -489,11 +489,21 @@ on:
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
       - "functions/test/fixtures/workflowControlPlaneFixtures.mjs"
+      # LANE FR (2026-09-26): the Functional Role authority -- catalog, assignments, FUNCTIONAL_ROLE workflow
+      # bindings (narrowing only) and Employee facts in effective access. Suites: test:adminPolicy /
+      # test:adminPolicyPostgres.
+      - "functions/migrations/1762819200000_employee-functional-role-authority.sql"
+      - "functions/src/eosOps/functionalRoleFacts.ts"
+      - "functions/test/functionalRoleWorkflow.test.mjs"
+      - "functions/test/functionalRolePostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
       - "field-ops-app-vite/test/adminWorkflows.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminFunctionalRoles.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeFunctionalRoles.jsx"
+      - "field-ops-app-vite/test/adminFunctionalRoles.test.jsx"
       - "functions/test/contextualActionAuthorityPostgres.test.mjs"
       - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
@@ -852,11 +862,21 @@ on:
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
       - "functions/test/fixtures/workflowControlPlaneFixtures.mjs"
+      # LANE FR (2026-09-26): the Functional Role authority -- catalog, assignments, FUNCTIONAL_ROLE workflow
+      # bindings (narrowing only) and Employee facts in effective access. Suites: test:adminPolicy /
+      # test:adminPolicyPostgres.
+      - "functions/migrations/1762819200000_employee-functional-role-authority.sql"
+      - "functions/src/eosOps/functionalRoleFacts.ts"
+      - "functions/test/functionalRoleWorkflow.test.mjs"
+      - "functions/test/functionalRolePostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
       - "field-ops-app-vite/src/services/workflowAdminClient.js"
       - "field-ops-app-vite/test/adminWorkflows.test.jsx"
+      - "field-ops-app-vite/src/modules/administration/AdminFunctionalRoles.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeFunctionalRoles.jsx"
+      - "field-ops-app-vite/test/adminFunctionalRoles.test.jsx"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"
@@ -1058,6 +1078,12 @@ jobs:
       # and the Employee page draws the server-derived workflow responsibilities.
       - name: Administration workflows -- client (vitest + jsdom)
         run: npx vitest run test/adminWorkflows.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE FR -- Functional Roles: the catalog screen, the Employee section, FUNCTIONAL_ROLE workflow bindings,
+      # and Effective Access drawing Functional Roles as Employee FACTS (never a permission source).
+      - name: Administration Functional Roles -- client (vitest + jsdom)
+        run: npx vitest run test/adminFunctionalRoles.test.jsx
         working-directory: field-ops-app-vite
 
       # WAVE 6 / LANE V -- THE BROWSER'S ROUTE TO THE EOS PRINCIPAL EXPERIENCE CONTEXT, and the hook

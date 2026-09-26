@@ -94,6 +94,19 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
           </tbody>
         </table>
       ) : null}
+      <div className="fo-cp-facts" data-employee-facts={model.functionalRoles.length}>
+        <p className="fo-cp-facts__title">Employee facts — not a permission source</p>
+        <p className="fo-muted">
+          Business facts about the linked Employee. No capability, surface or action above comes from them;
+          a Functional Role can only narrow a workflow action a Security Role already authorizes.
+        </p>
+        <dl className="fo-detail-list">
+          <dt>Functional Roles</dt>
+          <dd>{model.functionalRoles.length === 0 ? "none" : model.functionalRoles.map((f) => (
+            <span key={f.functionalRoleId ?? f.key} className="fo-cp-tag" data-functional-role-fact={f.key}>{f.name ? `${f.name} (${f.key})` : f.key}</span>
+          ))}</dd>
+        </dl>
+      </div>
 
       {model.excluded.length > 0 ? (
         <table className="fo-table" aria-label="Excluded assignments">

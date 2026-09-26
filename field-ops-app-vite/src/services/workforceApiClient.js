@@ -59,6 +59,11 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listEmployeeOperationalScopes",
   "listEmployeeOperationalScopeHistory",
   "listAssignableEmployees",
+  // Functional Role (migration 1762819200000; employee.record.read). A business responsibility: grants nothing.
+  "listFunctionalRoles",
+  "listFunctionalRoleHolders",
+  "listEmployeeFunctionalRoles",
+  "listFunctionalRoleHistory",
 ]);
 
 export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
@@ -84,6 +89,12 @@ export const WORKFORCE_COMMAND_OPERATIONS = Object.freeze([
   "linkEmployeePrincipal",
   "unlinkEmployeePrincipal",
   "relinkEmployeePrincipal",
+  // Functional Role (admin.employeeFunctionalRole.write, re-checked by the SERVER).
+  "createFunctionalRole",
+  "updateFunctionalRoleMetadata",
+  "setFunctionalRoleStatus",
+  "assignEmployeeFunctionalRole",
+  "endEmployeeFunctionalRoleAssignment",
 ]);
 
 /** Operations whose input may be omitted (the server's WORKFORCE_OPTIONAL_INPUT_OPERATIONS). */

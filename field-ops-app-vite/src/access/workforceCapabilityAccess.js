@@ -18,6 +18,8 @@ export const WORKFORCE_CAPABILITY_REQUEST = Object.freeze([
   "admin.employeeJobRole.write",
   "admin.employeeWorkEligibility.write",
   "admin.employeeOperationalScope.write",
+  // Functional Role (migration 1762819200000). Offerable, never authority: every command re-checks it.
+  "admin.employeeFunctionalRole.write",
 ]);
 
 const KNOWN = new Set(WORKFORCE_CAPABILITY_REQUEST);

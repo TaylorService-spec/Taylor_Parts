@@ -2448,6 +2448,13 @@ button.fo-op-card:focus-visible { outline: 2px solid var(--color-brand-secondary
 .fo-cp-tag--allowed { background: var(--color-success-surface); color: var(--color-success); }
 .fo-cp-tag--conditional { background: var(--color-warning-surface); color: var(--color-warning); }
 .fo-cp-tag--denied { color: var(--color-danger); }
+/* Functional Roles (lane FR): the catalog page, one Functional Role's panel, its audit list, and the Effective
+   Access "Employee facts -- not a permission source" block. */
+.fo-cp-page { display: grid; gap: 12px; }
+.fo-cp-panel { display: grid; gap: 8px; }
+.fo-cp-history { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.fo-cp-facts { border: 1px dashed var(--color-border); border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
+.fo-cp-facts__title { margin: 0; font-weight: 600; }
 
 /* Object inspector detail row (Administration > Objects, by-object view). Four verbs side by
    side at width, stacked on narrow -- the comparison across verbs IS the information, so they

@@ -160,7 +160,7 @@ describe("Administration > Workflows", () => {
     expect(objectKey).toBe("salesOrder");
     expect(definition.actions[0]).toEqual({
       key: "close", label: "Close", from: "CONFIRMED", to: "CLOSED", capabilityKey: "salesOrder.write",
-      guardKind: "RECORD_ASSIGNMENT", requiresOwnAssignment: true, roleKeys: ["admin", "salesManager"],
+      guardKind: "RECORD_ASSIGNMENT", requiresOwnAssignment: true, roleKeys: ["admin", "salesManager"], functionalRoleKeys: [],
     });
     fireEvent.change(screen.getByLabelText("Reason for saving the draft"), { target: { value: "remove stale binding" } });
     fireEvent.click(screen.getByRole("button", { name: "Save as new draft" }));

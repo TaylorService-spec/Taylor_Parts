@@ -77,6 +77,10 @@ const AdminFinancialPolicy = lazy(() => import("./modules/administration/AdminFi
 const AdminDataImport = lazy(() => import("./modules/administration/AdminDataImport"));
 const AdminObjects = lazy(() => import("./modules/administration/AdminObjects.jsx"));
 const AdminWorkflows = lazy(() => import("./modules/administration/AdminWorkflows.jsx"));
+// Administration -> Users -> Functional Roles (lane FR): the tenant catalog of business responsibilities. It has no
+// navigation item of its own (no server Administration surface declares it yet); it is reached from the Users page
+// and gated exactly like the Employee record route beside it.
+const AdminFunctionalRoles = lazy(() => import("./modules/administration/AdminFunctionalRoles.jsx"));
 const UserDetail = lazy(() => import("./modules/administration/UserDetail.jsx"));
 // The Employee self view (Employee design v4.1): who EOS says the signed-in person is. Reads only the
 // session AuthContext already resolved at sign-in -- no new data path.
@@ -1102,10 +1106,13 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
             </>
           )}
           {domain.key === "administration" && isDomainVisible(domain, navRole, navAllowedLegacyKeys, operationalContext) && (
-            <Route
-              path="users/:employeeId"
-              element={<UserDetail hasCapability={operationalContext?.hasCapability} />}
-            />
+            <>
+              <Route path="users/functional-roles" element={<AdminFunctionalRoles />} />
+              <Route
+                path="users/:employeeId"
+                element={<UserDetail hasCapability={operationalContext?.hasCapability} />}
+              />
+            </>
           )}
           {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
               NOT isDomainVisible(service domain) -- a technician

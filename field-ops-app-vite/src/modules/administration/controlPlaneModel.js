@@ -247,6 +247,11 @@ export function explanationModel(payload) {
     capabilities: strings(payload.capabilities),
     surfaces: strings(payload.surfaces),
     workEligibility: strings(payload.workEligibility),
+    // EMPLOYEE FACTS (never a permission source): the linked Employee's CURRENT Functional Roles. Drawn as
+    // facts only; nothing on the client derives access from them, and the server states grantsCapabilities:false.
+    functionalRoles: Array.isArray(payload.employeeFacts?.functionalRoles)
+      ? payload.employeeFacts.functionalRoles.filter((f) => f && typeof f === "object" && typeof f.key === "string")
+      : [],
     operationalScopes: Array.isArray(payload.operationalScopes) ? payload.operationalScopes.filter((s) => s && typeof s === "object") : [],
     // Lane SC: supported scoped assignments -- what each grants WITHIN its scope and what stays not granted.
     scopedAssignments: (Array.isArray(payload.assignments?.scoped) ? payload.assignments.scoped : [])
