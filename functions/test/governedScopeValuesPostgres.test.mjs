@@ -12,6 +12,9 @@
 //      holding never reaches the flat set or any write
 //   D  Employee Operational Scope: governed targets per type (WAREHOUSE, REORDER_QUEUE), tenant-scoped; the command
 //      refuses unknown / foreign / inactive targets and unknown types
+//   E  Pass 10 P10-1: no SELF Operational Scope / Work Eligibility -- an administrator cannot scope or qualify the
+//      Employee its own Principal is linked to (REORDER_QUEUE made this reachable), and cannot link to itself an
+//      Employee that already holds a current scope or qualification (the S4 rule extended to these facts)
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -36,6 +39,7 @@ const sa = require("../lib/eosCommercial/commands/salesAgreementCommandService.j
 const so = require("../lib/eosCommercial/commands/salesOrderCommandService.js");
 const { createCommercialRecord } = require("../lib/eosCommercial/commercialOwnershipRepository.js");
 const workforce = require("../lib/eosWorkforce/workforceHttp.js");
+const { resolveExperienceContext } = require("../lib/eosOps/experienceAuthority.js");
 
 const OP = "operator-ga";
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
@@ -360,5 +364,65 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     const after = (await wf("admin-a", "listOperationalScopeTargets", {})).result.scopeTypes.find((s) => s.scopeType === "REORDER_QUEUE");
     assert.deepEqual([after.available, after.values], [false, []]);
     assert.match(after.reason, /no ACTIVE governed value/);
+  });
+
+  // ════════════════════ E. Pass 10 P10-1: no self-scope, no self-qualification, no self-link onto either ════════════════════
+  await t.test("E: an administrator cannot give its OWN linked Employee an Operational Scope or Work Eligibility, nor link one to itself", async () => {
+    await q(`UPDATE eos_policy.tenant_operating_company_keys SET status='ACTIVE' WHERE tenant_id=$1`, [T.a]);
+    for (const id of ["e-self", "e-self2", "e-self3"]) {
+      await q(`INSERT INTO eos_workforce.employees (id, tenant_id, employment_status, operating_company_id) VALUES ($1,$2,'ACTIVE','taylor')`, [id, T.a]);
+    }
+    const caps = new Map((await repo.listCapabilities()).map((c) => [c.key, c]));
+    const defineByCaps = async (roleKey, keys) => defineRole("a", roleKey, keys.map((k) => [caps.get(k).objectKey, caps.get(k).actionKey]));
+    // The actor: may scope, qualify and link Employees, and reads the Reorder queue (the surface REORDER_QUEUE narrows).
+    await defineByCaps("scopeSteward", ["employee.record.read", "admin.employeeOperationalScope.write", "admin.employeeWorkEligibility.write",
+      "admin.employeeProfile.write", "reorder.request.read"]);
+    const steward = await person(T.a, "steward-a");
+    ok(await assign("admin-a", steward, await roleIdOf(T.a, "scopeSteward")));
+    // ANOTHER administrator with the same authority -- the rule is "not yourself", not "not at all".
+    const peer = await person(T.a, "steward-peer-a");
+    ok(await assign("admin-a", peer, await roleIdOf(T.a, "scopeSteward")));
+    const other = await person(T.a, "other-a");
+    const as = (subject, operation, input) => wf(subject, operation, { reason: "governed change", ...input });
+    const scopeRows = async (employeeId) => (await q(`SELECT scope_type, scope_id FROM eos_workforce.employee_operational_scopes
+      WHERE tenant_id=$1 AND employee_id=$2 AND effective_to IS NULL ORDER BY 1,2`, [T.a, employeeId])).rows;
+
+    // (1) The PROVED path (probe X9): a peer links e-self to the steward, then the steward scopes its own Employee.
+    assert.equal((await as("steward-peer-a", "linkEmployeePrincipal", { employeeId: "e-self", linkedPrincipalId: steward })).ok, true);
+    const before = await resolveExperienceContext(repo, pool, { externalSubject: "steward-a", identityProvider: "firebase", requestedTenantId: null });
+    for (const [scopeType, scopeId] of [["REORDER_QUEUE", "taylor-a"], ["WAREHOUSE", "wh-a1"]]) {
+      const self = await as("steward-a", "assignEmployeeOperationalScope", { employeeId: "e-self", scopeType, scopeId });
+      assert.deepEqual([self.ok, self.status, self.code], [false, 403, "OPERATIONAL_SCOPE_SELF"], JSON.stringify(self));
+    }
+    const selfQ = await as("steward-a", "assignEmployeeWorkEligibility", { employeeId: "e-self", qualificationCode: "PARTS_OPERATIONS" });
+    assert.deepEqual([selfQ.ok, selfQ.status, selfQ.code], [false, 403, "WORK_ELIGIBILITY_SELF"], JSON.stringify(selfQ));
+    assert.deepEqual(await scopeRows("e-self"), [], "nothing was written");
+    const after = await resolveExperienceContext(repo, pool, { externalSubject: "steward-a", identityProvider: "firebase", requestedTenantId: null });
+    assert.deepEqual([[...before.surfaces].includes("inventory.reorderQueue"), [...after.surfaces].includes("inventory.reorderQueue")], [false, false],
+      "the actor did not open the Reorder queue surface for itself");
+    // The peer may do it; the steward may END its own (ending only narrows).
+    assert.equal((await as("steward-peer-a", "assignEmployeeOperationalScope", { employeeId: "e-self", scopeType: "REORDER_QUEUE", scopeId: "taylor-a" })).ok, true);
+    assert.equal((await as("steward-peer-a", "assignEmployeeWorkEligibility", { employeeId: "e-self", qualificationCode: "PARTS_OPERATIONS" })).ok, true);
+    const ended = await as("steward-a", "endEmployeeOperationalScope", { employeeId: "e-self", scopeType: "REORDER_QUEUE", scopeId: "taylor-a" });
+    assert.deepEqual([ended.ok, ended.result?.outcome], [true, "ENDED"], JSON.stringify(ended));
+    assert.equal((await as("steward-a", "endEmployeeWorkEligibility", { employeeId: "e-self", qualificationCode: "PARTS_OPERATIONS" })).ok, true);
+
+    // (2) The mirror image: an Employee already holding a current scope / qualification cannot be linked to oneself.
+    assert.equal((await as("steward-peer-a", "assignEmployeeOperationalScope", { employeeId: "e-self2", scopeType: "WAREHOUSE", scopeId: "wh-a1" })).ok, true);
+    assert.equal((await as("steward-peer-a", "assignEmployeeWorkEligibility", { employeeId: "e-self3", qualificationCode: "SERVICE_TECHNICIAN" })).ok, true);
+    // e-self is still linked to the steward; move that link away first so the steward may hold another.
+    assert.equal((await as("steward-peer-a", "unlinkEmployeePrincipal", { employeeId: "e-self", expectedCurrentPrincipalId: steward })).ok, true);
+    const link2 = await as("steward-a", "linkEmployeePrincipal", { employeeId: "e-self2", linkedPrincipalId: steward });
+    assert.deepEqual([link2.ok, link2.status, link2.code], [false, 403, "OPERATIONAL_SCOPE_SELF_LINK"], JSON.stringify(link2));
+    const link3 = await as("steward-a", "linkEmployeePrincipal", { employeeId: "e-self3", linkedPrincipalId: steward });
+    assert.deepEqual([link3.ok, link3.status, link3.code], [false, 403, "WORK_ELIGIBILITY_SELF_LINK"], JSON.stringify(link3));
+    // Through relink as well: e-self3 linked to someone else, then moved onto the actor.
+    assert.equal((await as("steward-peer-a", "linkEmployeePrincipal", { employeeId: "e-self3", linkedPrincipalId: other })).ok, true);
+    const move = await as("steward-a", "relinkEmployeePrincipal", { employeeId: "e-self3", expectedCurrentPrincipalId: other, newPrincipalId: steward });
+    assert.deepEqual([move.ok, move.code], [false, "WORK_ELIGIBILITY_SELF_LINK"], JSON.stringify(move));
+    // Another administrator may make the link: the rule is "not yourself".
+    assert.equal((await as("steward-peer-a", "linkEmployeePrincipal", { employeeId: "e-self2", linkedPrincipalId: steward })).ok, true);
+    assert.equal((await q(`SELECT count(*)::int n FROM eos_policy.employee_principal_links WHERE tenant_id=$1 AND employee_id='e-self2' AND principal_id=$2 AND status='active'`,
+      [T.a, steward])).rows[0].n, 1);
   });
 });

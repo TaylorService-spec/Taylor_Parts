@@ -23,6 +23,7 @@
 //
 // ONE transaction per command: lock the Employee (actor tenant) -> lock the current row for that code -> decide ->
 // write -> ONE audit event -> commit. Any failure -- including the audit insert -- rolls back every effect.
+import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import {
   EmployeeCommandError, acceptOnly, appendEmployeeAudit, lockEmployee, optionalReason, refuse, requireId,
@@ -44,6 +45,29 @@ function requireQualificationCode(value: unknown): WorkEligibilityCode {
  * The partial unique index is the last line of defence against two concurrent assignments of the SAME code. The
  * command pre-empts it by locking the current row, so reaching here means a genuine race, not a duplicate request.
  */
+/** The tenant governance lock (postgresPolicyRepository.beginAdministrationCommand's key), as the link commands take it. */
+async function takeGovernanceLock(db: PoolClient, tenantId: string): Promise<void> {
+  await db.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+}
+
+/**
+ * NO SELF-ASSIGNMENT (Pass 10 P10-1; the Pass 9 S4 / Functional Role rule applied to this fact). A Work Eligibility
+ * qualification is a narrowing conjunct (the WORK_ELIGIBILITY grant-condition kind, assignability), so granting one to
+ * the ACTOR's own linked Employee would let an administrator satisfy it for themselves. Refused under the governance
+ * lock the link commands take; ending one's own is allowed (it only narrows). The link commands refuse the mirror
+ * image (WORK_ELIGIBILITY_SELF_LINK).
+ */
+async function refuseSelfEligibility(db: PoolClient, actor: EmployeeCommandActor, employeeId: string): Promise<void> {
+  const linked = await db.query(
+    `SELECT 1 FROM eos_policy.employee_principal_links
+      WHERE tenant_id = $1 AND principal_id = $2 AND employee_id = $3 AND status = 'active'`,
+    [actor.tenantId, actor.principalId, employeeId],
+  );
+  if (linked.rows.length > 0) {
+    refuse("WORK_ELIGIBILITY_SELF", "FORBIDDEN", "a Work Eligibility qualification cannot be assigned to your own Employee record; another administrator must do it");
+  }
+}
+
 const eligibilityConflict = (_err: { constraint?: string }) =>
   new EmployeeCommandError("WORK_ELIGIBILITY_CONCURRENT_CHANGE", "CONFLICT", "the Employee's qualifications changed concurrently; retry");
 
@@ -67,7 +91,9 @@ export function assignEmployeeWorkEligibility(
       return { employeeId: requireId(i.employeeId, "employeeId"), code: requireQualificationCode(i.qualificationCode), reason: optionalReason(i.reason) };
     },
     async (db, p, at) => {
+      await takeGovernanceLock(db, actor.tenantId);
       await lockEmployee(db, actor.tenantId, p.employeeId);
+      await refuseSelfEligibility(db, actor, p.employeeId);
       const { rows } = await db.query(
         `SELECT id FROM eos_workforce.employee_work_eligibility
           WHERE tenant_id = $1 AND employee_id = $2 AND qualification_code = $3 AND effective_to IS NULL FOR UPDATE`,

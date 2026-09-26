@@ -32,8 +32,16 @@
 // NO_CHANGE. Nothing is inferred -- not from WAREHOUSE_ASSOCIATE, Job Role, title, manager, Security Role or
 // operating company. `assignedWarehouseIds` is migration EVIDENCE for step D/E, never an input to this command.
 //
-// ONE transaction per command: lock the Employee -> resolve + status-check the warehouse -> lock the current scope
-// row -> decide -> write -> ONE audit event -> commit. Any failure rolls back every effect, the audit row included.
+// NO SELF-ASSIGNMENT (Pass 10 P10-1; the Pass 9 S4 / Functional Role rule applied to this fact). An Operational Scope
+// is a narrowing conjunct -- experience surfaces and the OPERATIONAL_SCOPE grant-condition kind read it -- so assigning
+// one to the ACTOR's own linked Employee would let an administrator satisfy that conjunct for themselves. Refused
+// (OPERATIONAL_SCOPE_SELF), under the tenant governance lock the link commands take, so "link to myself" and "assign
+// to that Employee" never interleave. Ending one's own is allowed: it only narrows. The link commands refuse the
+// mirror image (OPERATIONAL_SCOPE_SELF_LINK: linking an Employee that holds a current scope to one's own Principal).
+//
+// ONE transaction per command: governance lock (assign) -> lock the Employee -> refuse self -> resolve + status-check
+// the target -> lock the current scope row -> decide -> write -> ONE audit event -> commit. Any failure rolls back
+// every effect, the audit row included.
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import {
@@ -50,6 +58,23 @@ function requireScopeType(value: unknown): OperationalScopeType {
     refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", `scopeType must be one of ${OPERATIONAL_SCOPE_TYPES.join(", ")}`);
   }
   return value as OperationalScopeType;
+}
+
+/** The tenant governance lock (postgresPolicyRepository.beginAdministrationCommand's key), as the link commands take it. */
+async function takeGovernanceLock(db: PoolClient, tenantId: string): Promise<void> {
+  await db.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+}
+
+/** Pass 10 P10-1: the actor may not scope the Employee its own Principal is actively linked to. */
+async function refuseSelfScope(db: PoolClient, actor: EmployeeCommandActor, employeeId: string): Promise<void> {
+  const linked = await db.query(
+    `SELECT 1 FROM eos_policy.employee_principal_links
+      WHERE tenant_id = $1 AND principal_id = $2 AND employee_id = $3 AND status = 'active'`,
+    [actor.tenantId, actor.principalId, employeeId],
+  );
+  if (linked.rows.length > 0) {
+    refuse("OPERATIONAL_SCOPE_SELF", "FORBIDDEN", "an Operational Scope cannot be assigned to your own Employee record; another administrator must do it");
+  }
 }
 
 const scopeConflict = (_err: { constraint?: string }) =>
@@ -107,7 +132,9 @@ export function assignEmployeeOperationalScope(
       };
     },
     async (db, p, at) => {
+      await takeGovernanceLock(db, actor.tenantId);
       await lockEmployee(db, actor.tenantId, p.employeeId);
+      await refuseSelfScope(db, actor, p.employeeId);
       await requireActiveScopeTarget(db, actor.tenantId, p.scopeType, p.scopeId);
       const { rows } = await db.query(
         `SELECT id FROM eos_workforce.employee_operational_scopes

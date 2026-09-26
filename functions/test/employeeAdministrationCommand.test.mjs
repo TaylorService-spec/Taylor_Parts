@@ -100,7 +100,16 @@ test("the link commands touch the link relation only: they never write an Employ
     ["INSERT INTO eos_policy.employee_principal_links", "UPDATE eos_policy.employee_principal_links"]);
   // NOTHING IS DELETED. A revoked link is history the partial unique indexes deliberately allow to stay.
   assert.doesNotMatch(src, /\bDELETE\b/);
-  for (const relation of AUTHORITY_RELATIONS.filter((r) => r !== "eos_policy.principals" && r !== "eos_policy.tenant_memberships")) {
+  // Pass 10 P10-1: the self-link refusal READS the Employee's current Operational Scopes and Work Eligibility (a
+  // precondition, like the principals / memberships read below) -- the write list above proves it never writes them.
+  const READ_ONLY_PRECONDITIONS = ["eos_workforce.employee_work_eligibility", "eos_workforce.employee_operational_scopes"];
+  for (const relation of READ_ONLY_PRECONDITIONS) {
+    const named = src.split(relation).length - 1;
+    const read = src.split(`FROM ${relation} WHERE`).length - 1;
+    assert.deepEqual([named, read], [1, 1], `the link commands name ${relation} outside its one read-side precondition`);
+  }
+  for (const relation of AUTHORITY_RELATIONS.filter((r) => r !== "eos_policy.principals" && r !== "eos_policy.tenant_memberships"
+    && !READ_ONLY_PRECONDITIONS.includes(r))) {
     assert.ok(!src.includes(relation), `the link commands name ${relation}`);
   }
   // principals / tenant_memberships appear ONLY in the target Principal's read-side precondition.
