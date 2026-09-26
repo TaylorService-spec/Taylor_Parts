@@ -27,6 +27,28 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          S1-R — Receiving exact-retry (idempotent replay) defect in the Firestore receiving command: a committed receipt's exact retry is refused `failed-precondition` instead of replayed (quantities/expectedVersion measured against post-commit state before the receipt id is resolved)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s1r-receiving-replay` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s1r` — STACKED on `lane/s1-receiving-multiline-po` (PR #1974 head `f3afa588`)
+- Base commit:         `f3afa588dd9bef411c920026f47213d279be9e13` (#1974 head; origin/main `09d63c4e` unmoved)
+- Owned paths:         `functions/src/inventoryReceiving/receiveInventoryStockCommand.ts` (replay ordering only) · new `functions/test/receivingExactRetryReplay*.test.mjs`
+- Shared paths req'd:  `functions/package.json` test script + `.github/workflows/receiving-*.yml` paths (integration applies)
+- Dependencies:        #1974 must merge first (this branch contains its commits); Parts/Inventory parity fence (semantics-preserving bug fix only)
+- Expected outcome:    an exact retry of a committed receipt returns `replayed` with zero new effects; a different payload under the same key and any genuine over-receipt still refuse; no duplicate receipt is possible
+- Protected boundaries:NO deploy, NO live data, NO grant change, NO merge (held by integration)
+- Lifecycle stage:     DESIGNED
+
+- Capability:          Phase C PREPARATION ONLY — persona workspace composition inventory (16 Job Roles → existing screens/routes/capabilities/server paths/nav visibility), repo-derived, no UI change
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/pc-persona-workspace-inventory` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-pc`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f`
+- Owned paths:         new `docs/engineering/persona-workspace-composition-inventory-2026-09-25.md`
+- Shared paths req'd:  none (App.jsx / navConfig / AppShell are read, never edited)
+- Dependencies:        none for the inventory; any workspace build waits on the Phase A live evidence and the Phase B freeze
+- Expected outcome:    a per-persona map of what already exists and what is unreachable, so Phase C assembles rather than rebuilds
+- Protected boundaries:docs only; NO navigation or UI change; NO merge until Phase A/B gates
+- Lifecycle stage:     DESIGNED
+
 - Capability:          P0 coordination + integration — the Owner's multi-lane execution directive (Issued 2026-09-25 22:08 -0700). Sole writer of this registry and of every shared high-collision file below
 - Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: integration
 - Branch / worktree:   `coord/p0-workstream-declaration` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-coord`
