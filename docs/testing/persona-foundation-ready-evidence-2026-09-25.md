@@ -38,6 +38,22 @@ registry, or for reporting, from the OP-RECORD.
   - The facts that would make it true exist only as PRIOR-LIVE or OP-RECORD. Examples: 16 current Job Role assignments, reporting Auth UID `Wv5msonPZyXtiy8ZOdJPxlnAboK2`, 16/16 sign-ins, 33 Principals, 43 active assignments.
   - The operator must run the read-only commands in §4 to promote them to current evidence.
 
+### How "READY 0 is intended" relates to the 16/16 READY milestone
+
+These are two different statements. They do not conflict, and neither one proves the other.
+
+| Statement | What it measures | What it can prove |
+|---|---|---|
+| Local bootstrap prints `READY 0` | One process that holds only the LOCAL trust domain: Firebase Auth, the credential file and the registry. It has no `DATABASE_URL`, so every PostgreSQL-side check reads NOT OBSERVED. | Only the Auth/credential half: accounts present, credentials present, and UIDs matching the registry. `READY 0` is the correct output of a half-view. It is **not** a failure, and **not** evidence of readiness. |
+| Phase A milestone "16/16 READY" | The full chain for every persona: Credential → Auth UID → Principal → Employee → exactly one current Job Role → the ruled Security Role(s), with Work Eligibility and Operational Scope kept separate. | It is proven only when **both** halves are current evidence for the same 16 personas: (1) the local `--live` dry run shows 16 present, 0 to create, and 0 UID mismatches; (2) the Render read-only Q1–Q7 show the PostgreSQL chain; (3) the two halves are joined through the registry. |
+
+Consequences:
+
+- **The milestone is never shown by one process's READY count.** It is shown by the joined evidence of the two runs above. The Owner ruled out a single process that holds both trust domains.
+- **Account presence does not make Phase A complete.** Neither does a green repo suite. Both are necessary; neither is sufficient.
+- **Today's status is "repo checks passed; live READY unproven."** That stays true until an operator runs both reads and the results match the expected values in §4.
+- **The reporting persona stays blocked until the registry records its UID.** Until then its UID is not compared (`sandboxPersonaBootstrap.js:366`), so the Auth half cannot show a UID match for it. Recording the UID is a protected registry change (Owner decision D6). It must follow the `--live` read, never precede it.
+
 What is still unproven, exactly:
 
 1. **Job Role assignment per Employee (16 rows).** The only source is OP-RECORD ("2C 13 ASSIGNED + 2D–2F 3"). The repo contains no live measurement of `employee_job_role_assignments`.
