@@ -15,7 +15,7 @@ import { dirname, join } from "node:path";
 import {
   workOrderRouteAccess,
   WORK_ORDER_DETAIL_SURFACE,
-  WORK_ORDER_CREATE_SURFACE,
+  WORK_ORDER_DISPATCH_SURFACE,
 } from "../src/navigation/workOrderRouteAccess.js";
 import { NAV_SURFACE_ACCESS, isEosNavigationSource } from "../src/navigation/navConfig.js";
 import {
@@ -82,18 +82,30 @@ test("RED PROOF -- the previous App.jsx gate emits neither route for an authoriz
 
 test("authorized (Work Orders + Dispatch surfaces): detail AND create", () => {
   assert.deepEqual({ ...access(DISPATCHER) }, { detail: true, create: true });
-  assert.deepEqual({ ...access([WORK_ORDER_DETAIL_SURFACE, WORK_ORDER_CREATE_SURFACE]) }, { detail: true, create: true });
+  assert.deepEqual({ ...access([WORK_ORDER_DETAIL_SURFACE, WORK_ORDER_DISPATCH_SURFACE]) }, { detail: true, create: true });
 });
 
-test("read-level only (service technician): detail, NOT create", () => {
-  assert.deepEqual({ ...access(SERVICE_TECHNICIAN) }, { detail: true, create: false });
-  assert.deepEqual({ ...access([WORK_ORDER_DETAIL_SURFACE]) }, { detail: true, create: false });
+test("read-level only (service technician): NEITHER route -- no broadening past the legacy reach", () => {
+  assert.deepEqual({ ...access(SERVICE_TECHNICIAN) }, { detail: false, create: false });
+  assert.deepEqual({ ...access([WORK_ORDER_DETAIL_SURFACE]) }, { detail: false, create: false });
+});
+
+test("technician-shaped authority (as the server resolves service-technician-a) gets neither route", () => {
+  // personaBusinessAccessRegression.test.mjs:555 pins exactly this surface set for the technician.
+  const technician = ["field.myWorkOrders", "service.workOrders"];
+  for (const role of [null, "technician", "admin", "dispatcher"]) {
+    const r = workOrderRouteAccess({ operationalContext: eosContext(technician), role, previewHasPermission });
+    assert.deepEqual({ ...r }, { detail: false, create: false }, `technician surfaces + role ${role} opened a route`);
+  }
+  // Parts / shop associates / office manager resolve service.workOrders without service.dispatch too.
+  assert.deepEqual({ ...access(["inventory.catalog", "inventory.balances", "receiving.checkIn", "service.workOrders"]) },
+    { detail: false, create: false });
 });
 
 test("no Work Orders surface: neither route -- the Dispatch surface alone opens nothing", () => {
   assert.deepEqual({ ...access(ACCOUNTING) }, { detail: false, create: false });
-  // create is never wider than detail: holding only service.dispatch does not open the wizard.
-  assert.deepEqual({ ...access([WORK_ORDER_CREATE_SURFACE]) }, { detail: false, create: false });
+  // The Dispatch surface without the Work Orders surface opens nothing either.
+  assert.deepEqual({ ...access([WORK_ORDER_DISPATCH_SURFACE]) }, { detail: false, create: false });
   // field.myWorkOrders is the technician's own queue, not the record routes.
   assert.deepEqual({ ...access(["field.myWorkOrders"]) }, { detail: false, create: false });
 });
@@ -162,7 +174,7 @@ test("legacy source: the previewer receives exactly the previous call -- id, rol
 
 test("both surface keys are real EOS surfaces, and detail is the Work Orders list's own surface", () => {
   assert.ok(EXPERIENCE_SURFACE_KEYS.includes(WORK_ORDER_DETAIL_SURFACE));
-  assert.ok(EXPERIENCE_SURFACE_KEYS.includes(WORK_ORDER_CREATE_SURFACE));
+  assert.ok(EXPERIENCE_SURFACE_KEYS.includes(WORK_ORDER_DISPATCH_SURFACE));
   assert.deepEqual(NAV_SURFACE_ACCESS["service/workOrders"], [WORK_ORDER_DETAIL_SURFACE]);
 });
 
@@ -173,23 +185,26 @@ test("the server catalog still earns the two surfaces the way the guard assumes"
     assert.ok(m, `experienceAuthority.ts no longer declares ${key}`);
     return [...m[1].matchAll(/capabilityKey:\s*"([^"]+)"/g)].map((x) => x[1]).sort();
   };
-  assert.deepEqual(pathsOf(WORK_ORDER_CREATE_SURFACE), ["workOrder.lifecycle.dispatch"],
+  assert.deepEqual(pathsOf(WORK_ORDER_DISPATCH_SURFACE), ["workOrder.lifecycle.dispatch"],
     "service.dispatch gained a grant path -- re-check that every path implies workOrder.create");
   assert.deepEqual(pathsOf(WORK_ORDER_DETAIL_SURFACE),
     ["workOrder.create", "workOrder.lifecycle.dispatch", "workOrder.transition"]);
 });
 
-test("INVARIANT: every Role that earns the create gate holds workOrder.create (the gate never over-grants)", () => {
+test("INVARIANT: every Role that earns service.dispatch holds workOrder.create AND workOrder.record.read (never over-grants)", () => {
   const baseline = JSON.parse(readFileSync(join(here, "..", "..", "functions", "src", "adminPolicy", "seed",
     "roleCapabilityAuthorityBaseline.json"), "utf8"));
   const holders = (cap) => new Set(baseline.grants.filter((g) => g.capabilityKey === cap).map((g) => g.roleKey));
   const dispatchHolders = holders("workOrder.lifecycle.dispatch");
   const createHolders = holders("workOrder.create");
-  assert.ok(dispatchHolders.size > 0, "no Role holds workOrder.lifecycle.dispatch -- the baseline shape changed");
+  const readHolders = holders("workOrder.record.read");
+  assert.deepEqual([...dispatchHolders].sort(), ["admin", "dispatcher", "fieldManager"],
+    "the dispatch-authority population moved -- re-check the route reach against the legacy admin/dispatcher gate");
   for (const role of dispatchHolders) {
-    assert.ok(createHolders.has(role), `${role} earns service.dispatch without workOrder.create -- the wizard gate would over-grant`);
+    assert.ok(createHolders.has(role), `${role} earns service.dispatch without workOrder.create -- the wizard would over-grant`);
+    assert.ok(readHolders.has(role), `${role} earns service.dispatch without workOrder.record.read -- detail would over-grant`);
   }
-  // And the technician -- read-level surface, no create -- is exactly why create is not service.workOrders.
+  // And the technician -- Work Orders surface via transition, no dispatch -- is exactly who stays out.
   assert.equal(holders("workOrder.transition").has("technician"), true);
-  assert.equal(createHolders.has("technician"), false);
+  assert.equal(dispatchHolders.has("technician"), false);
 });
