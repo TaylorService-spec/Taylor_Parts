@@ -23,8 +23,9 @@
 // ASSIGNMENT TIME ONLY. An existing scope whose warehouse LATER goes INACTIVE is a remediation finding for the step
 // D/E tooling, never a silent revocation here: this command never ends a scope it was not asked to end.
 //
-// WAREHOUSE IS THE ONLY SCOPE TYPE, and `scopeType` is still required explicitly -- a caller must say what kind of
-// scope it means, so adding a second type later cannot silently reinterpret existing calls. Operating Company is NOT
+// TWO SCOPE TYPES: WAREHOUSE and REORDER_QUEUE (migration 1761696000000; assignable here since lane GA, each value
+// checked against its own governed source). `scopeType` is required explicitly -- a caller must say what kind of
+// scope it means, so adding a type cannot silently reinterpret existing calls. Operating Company is NOT
 // a scope type: that authority already exists as eos_workforce.employees.operating_company_id and is not duplicated.
 //
 // MULTIPLE CONCURRENT WAREHOUSE SCOPES ARE NORMAL. Re-assigning a warehouse the Employee already covers currently is
@@ -58,13 +59,24 @@ const scopeConflict = (_err: { constraint?: string }) =>
  * Resolve the scope target in the ACTOR's tenant and require it to be governed and ACTIVE.
  *
  * An unknown id and another tenant's id are the SAME refusal on purpose: confirming that a foreign warehouse exists
- * would leak across the tenant boundary. Valid only while WAREHOUSE is the sole scope type -- a second type must
- * bring its own resolver here and revisit the table's warehouse foreign key.
+ * would leak across the tenant boundary. Each scope type has its ONE governed source (lane GA; the same source
+ * listOperationalScopeTargets offers, and the same one migration 1761696000000's trigger checks):
+ *   WAREHOUSE       eos_ops.warehouses
+ *   REORDER_QUEUE   eos_policy.tenant_operating_company_keys (the queue is a company's queue, keyed by its eos_ops key)
  */
 async function requireActiveScopeTarget(
   db: PoolClient, tenantId: string, scopeType: OperationalScopeType, scopeId: string,
 ): Promise<void> {
-  if (scopeType !== "WAREHOUSE") refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", "WAREHOUSE is the only supported scope type");
+  if (scopeType === "REORDER_QUEUE") {
+    const { rows } = await db.query(
+      `SELECT status FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1 AND operating_company_key = $2 FOR SHARE`,
+      [tenantId, scopeId],
+    );
+    if (rows.length === 0) refuse("REORDER_QUEUE_NOT_FOUND", "NOT_FOUND", "no governed operating company key names this queue in this tenant");
+    if (rows[0].status !== "ACTIVE") refuse("REORDER_QUEUE_INACTIVE", "PRECONDITION_FAILED", "an inactive operating company key cannot receive a new queue scope");
+    return;
+  }
+  if (scopeType !== "WAREHOUSE") refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", `scopeType must be one of ${OPERATIONAL_SCOPE_TYPES.join(", ")}`);
   const { rows } = await db.query(
     `SELECT status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [tenantId, scopeId],
   );

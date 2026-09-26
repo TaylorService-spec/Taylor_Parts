@@ -53,6 +53,8 @@ const MUTATIONS = [
   // The workflow control plane (2026-09-26).
   "activateWorkflowVersion", "retireWorkflowVersion", "startWorkflowInstance",
   "adoptRecordsIntoWorkflowVersion", "migrateWorkflowInstances",
+  // Lane GA: the tenant's activated sales channels (the salesChannel scope's governed values).
+  "setTenantSalesChannelStatus",
 ];
 
 // ============================ the client mirrors the server ============================

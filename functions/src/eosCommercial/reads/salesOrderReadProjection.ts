@@ -9,9 +9,9 @@
 import { SALES_ORDER_STATES } from "../../salesOrder/salesOrderLifecycle";
 import { fail } from "../commands/commercialCommandKernel";
 import {
-  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, requireEnumFilter,
-  requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor, type CommercialReadDeps,
-  type Queryable,
+  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED,
+  requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
+  type CommercialReadDeps, type Queryable,
 } from "./commercialReadKernel";
 import type { CommercialLineageReference, CommercialPage } from "./opportunityReadProjection";
 
@@ -118,7 +118,7 @@ function summaryOf(r: Row, lines: readonly SalesOrderLineProjection[]): SalesOrd
 
 export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialReadActor, input: Record<string, unknown>): Promise<SalesOrderDetailProjection> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ], () => requireRecordId(input?.salesOrderId, "salesOrderId"),
-    async (db, tenantId, salesOrderId) => {
+    async (db, tenantId, salesOrderId, reach) => {
       const { rows } = await db.query(
         `SELECT ${SUMMARY_COLUMNS}, (${SALES_ORDER_IS_COMPLETE}) AS complete,
                 s.location_id, loc.name AS location_name, s.customer_po, s.notes,
@@ -134,6 +134,8 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Order does not exist in this tenant");
       const r = rows[0] as Row;
+      // Decided on the Sales Order's OWN stored channel, before anything else about the row is disclosed.
+      if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Order");
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Order was not created through a governed command and carries no lifecycle");
       const lines = await linesByOrder(db, tenantId, [r.id]);
       return {
@@ -145,7 +147,7 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
         sourceAgreement: r.sales_agreement_id === null || r.agreement_number === null ? null
           : { id: r.sales_agreement_id, number: r.agreement_number, state: r.agreement_state },
       };
-    });
+    }, SALES_CHANNEL_SCOPED);
 }
 
 export interface SalesOrderListOptions {
@@ -153,6 +155,8 @@ export interface SalesOrderListOptions {
   readonly accountId: string | null;
   readonly state: string[] | null;
   readonly cursor: { number: string; id: string } | null;
+  /** Lane GA: null/absent = every channel; otherwise ONLY these stored channels. */
+  readonly salesChannels?: readonly string[] | null;
 }
 
 export function prepareSalesOrderList(input: Record<string, unknown> | undefined): SalesOrderListOptions {
@@ -173,9 +177,10 @@ export async function readSalesOrderPage(db: Queryable, tenantId: string, o: Sal
         AND ($2::text IS NULL OR s.account_id = $2)
         AND ($3::text[] IS NULL OR s.state::text = ANY($3::text[]))
         AND ($4::text IS NULL OR (s.sales_order_number, s.id) < ($4::text, $5::text))
+        AND ($7::text[] IS NULL OR s.sales_channel::text = ANY($7::text[]))
       ORDER BY s.sales_order_number DESC, s.id DESC
       LIMIT $6`,
-    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1],
+    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
   const lines = await linesByOrder(db, tenantId, kept.map((r) => r.id));
@@ -184,5 +189,7 @@ export async function readSalesOrderPage(db: Queryable, tenantId: string, o: Sal
 
 export function listSalesOrders(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<CommercialPage<SalesOrderSummaryProjection>> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ], () => prepareSalesOrderList(input),
-    (db, tenantId, options) => readSalesOrderPage(db, tenantId, options));
+    (db, tenantId, options, reach) => readSalesOrderPage(db, tenantId,
+      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ) }),
+    SALES_CHANNEL_SCOPED);
 }

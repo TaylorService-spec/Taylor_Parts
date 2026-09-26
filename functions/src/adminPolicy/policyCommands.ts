@@ -68,7 +68,7 @@ import {
   SCOPE_EVALUABLE_GRANTS,
   UNSUPPORTED_SCOPE_REASONS,
 } from "./assignmentScopeRuntime";
-import { BUSINESS_UNITS } from "../finance/financialAttribution";
+import { SALES_CHANNELS } from "../opportunity/opportunityLifecycle";
 import type { PolicyReader, AssignmentScopeValue } from "./policyRepository";
 
 export class PolicyValidationError extends Error {}
@@ -111,7 +111,11 @@ export class AdministrationRefusal extends PolicyValidationError {
     | "SCOPE_TYPE_UNSUPPORTED"
     | "SCOPE_VALUE_INVALID"
     | "SCOPE_NOT_EVALUABLE_FOR_ROLE"
-    | "SCOPE_AMBIGUOUS_ADMINISTRATION", message: string) {
+    | "SCOPE_AMBIGUOUS_ADMINISTRATION"
+    // Tenant sales channels (lane GA): a channel is never deactivated under an assignment still scoped to it.
+    | "SALES_CHANNEL_INVALID"
+    | "SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS"
+    | "SALES_CHANNEL_STORE_UNAVAILABLE", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -814,11 +818,18 @@ export async function assignRole(
 
 // ════════════════════ SECURITY ROLE ASSIGNMENT SCOPE (lane SC) ════════════════════
 
-/** The governed values this scope type may take in this tenant, or null when there is no governed source. */
+/**
+ * The governed values this scope type may take in this tenant, or null when there is no governed source.
+ *
+ * Only a TENANT-SCOPED governed source counts (lane GA): operatingCompany -> ACTIVE tenant_operating_companies;
+ * location -> ACTIVE eos_ops.warehouses; salesChannel -> ACTIVE tenant_sales_channels. businessUnit has none (FIN-002
+ * BUSINESS_UNITS is a platform constant, not this tenant's Administration data), so it is null -- never a hard-coded
+ * list offered as though it were governed.
+ */
 export async function governedAssignmentScopeValues(
   repo: PolicyReader, tenantId: string, scopeType: string,
 ): Promise<readonly AssignmentScopeValue[] | null> {
-  if (scopeType === "businessUnit") return BUSINESS_UNITS.map((v) => ({ value: v, label: v }));
+  if (scopeType === "businessUnit") return null;
   if (typeof repo.listAssignmentScopeValues !== "function") return null;
   return repo.listAssignmentScopeValues(tenantId, scopeType);
 }
@@ -945,6 +956,68 @@ export async function listSupportedAssignmentScopes(
     out.push(Object.freeze({ roleKey: role.key, roleId: role.id, assignableScopes: Object.freeze(assignableScopes) }));
   }
   return Object.freeze({ scopeTypes: Object.freeze(scopeTypes), roles: Object.freeze(out) });
+}
+
+// ════════════════════ TENANT SALES CHANNELS (lane GA, migration 1762905600000) ════════════════════
+
+export interface SetTenantSalesChannelStatusInput {
+  readonly salesChannel: string;
+  readonly status: string;
+  readonly reason: string | null;
+}
+
+export interface TenantSalesChannelChange {
+  readonly outcome: "ACTIVATED" | "DEACTIVATED" | "NO_CHANGE";
+  readonly salesChannel: string;
+  readonly status: "ACTIVE" | "INACTIVE";
+}
+
+/**
+ * Activate or deactivate ONE sales channel for this tenant -- the governed value source of the salesChannel
+ * assignment scope. Gate: admin.securityPolicy.write (it defines which scope values exist; it assigns nothing).
+ *
+ * Under the tenant governance lock, so it serializes with assignRole's scope-value check: a channel cannot be
+ * deactivated between that check and the assignment's insert. Deactivation FAILS CLOSED while any ACTIVE assignment
+ * is scoped to the channel -- nothing is revoked implicitly. Exactly one audit event per change; NO_CHANGE writes none.
+ * The vocabulary is the Commercial record enum (SALES_CHANNELS = eos_commercial.commercial_sales_channel).
+ */
+export async function setTenantSalesChannelStatus(
+  repo: PolicyRepository, actor: AdminActor, input: SetTenantSalesChannelStatusInput,
+): Promise<TenantSalesChannelChange> {
+  await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
+  const salesChannel = nonEmpty(input.salesChannel, "salesChannel");
+  if (!(SALES_CHANNELS as readonly string[]).includes(salesChannel)) {
+    throw new AdministrationRefusal("SALES_CHANNEL_INVALID", `salesChannel must be one of ${SALES_CHANNELS.join(", ")}`);
+  }
+  const status = input.status;
+  if (status !== "ACTIVE" && status !== "INACTIVE") {
+    throw new AdministrationRefusal("SALES_CHANNEL_INVALID", "status must be ACTIVE or INACTIVE");
+  }
+  if (!input.reason) throw new AdministrationRefusal("REASON_REQUIRED", "a stated reason is required to change a tenant sales channel");
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    await tx.beginAdministrationCommand();
+    if (typeof tx.readTenantSalesChannel !== "function" || typeof tx.writeTenantSalesChannel !== "function"
+        || typeof tx.activeScopedAssignmentCount !== "function") {
+      throw new AdministrationRefusal("SALES_CHANNEL_STORE_UNAVAILABLE", "this policy store has no tenant sales channel authority");
+    }
+    const before = await tx.readTenantSalesChannel(salesChannel);
+    const current = before?.status ?? "INACTIVE";
+    if (current === status) return Object.freeze({ outcome: "NO_CHANGE" as const, salesChannel, status });
+    if (status === "INACTIVE") {
+      const held = await tx.activeScopedAssignmentCount("salesChannel", salesChannel);
+      if (held > 0) {
+        throw new AdministrationRefusal("SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS",
+          `${held} active Security Role assignment(s) are scoped to ${salesChannel}; revoke them first -- deactivation never revokes implicitly`);
+      }
+    }
+    const after = await tx.writeTenantSalesChannel(salesChannel, status, "administration");
+    await tx.appendAudit({
+      ...auditBase(actor, "setTenantSalesChannelStatus", "tenantSalesChannel", salesChannel, input.reason),
+      before: before ?? null,
+      after,
+    });
+    return Object.freeze({ outcome: status === "ACTIVE" ? "ACTIVATED" as const : "DEACTIVATED" as const, salesChannel, status });
+  });
 }
 
 export interface RevokeRoleInput {

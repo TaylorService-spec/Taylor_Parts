@@ -16,11 +16,23 @@
 //
 // VISIBILITY. Every existing governed Commercial reader (listOpportunityContext, getSalesAgreementContext,
 // listSalesOrderIndex, ...) is capability-scoped over the whole tenant: no owner, assignee or territory predicate
-// exists anywhere in them. These projections preserve exactly that and invent no narrower or wider scope.
+// exists anywhere in them. These projections preserve exactly that for a GLOBAL holder, byte-identically.
+//
+// SALES CHANNEL SCOPE (lane GA, 2026-09-26). A read key held ONLY through a Security Role assignment scoped to a sales
+// channel (e.g. salesManager @ salesChannel=RETAIL) is never in `capabilities`; it arrives as a scope-qualified holding
+// in `scopedHeld`. A read that opts in (`recordScope: "salesChannel"`) honours it against the record's STORED channel,
+// read in this same snapshot -- never a channel the caller states:
+//   * a list is filtered IN SQL to the admitted channels (a record with no channel is never among them);
+//   * a single record outside the admitted channels, or carrying no channel, is refused EXACTLY like a missing one
+//     (RECORD_NOT_FOUND) -- no existence oracle (the Pass 9 S7 rule);
+//   * a conditioned scoped holding is not honoured: this kernel cannot evaluate a grant condition (the same fail-closed
+//     posture as capabilitiesWithoutUnevaluatedConditions for a global conditioned grant).
+// The global path runs first and is unchanged: a key in the flat set reads the whole tenant exactly as before.
 //
 // WIRED ONLY THROUGH the C4 Commercial transport (commercialHttp.ts). No Firebase callable or client imports it.
 import type { Pool, PoolClient } from "pg";
 import { CommercialCommandError, fail } from "../commands/commercialCommandKernel";
+import { admittedScopeValues, type ScopedHolding } from "../../adminPolicy/assignmentScopeRuntime";
 
 export type Queryable = Pick<PoolClient, "query">;
 
@@ -36,6 +48,41 @@ export interface CommercialReadActor {
   readonly tenantId: string;
   readonly principalId: string;
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * Capabilities held ONLY within an assignment scope, from resolveOperationalContext(...).scopedHeld. Never in
+   * `capabilities`. Honoured only by a read that opts in (`recordScope: "salesChannel"`). Absent = none.
+   */
+  readonly scopedHeld?: readonly ScopedHolding[];
+}
+
+/**
+ * The REACH a read runs with, per required capability. `channelsFor(key)` is null when the key is held globally (no
+ * filter), otherwise the sales channels it is held in (a list filters to exactly these). `admits(key, channel)` decides
+ * one record by its stored channel; a null channel is admitted only for a global holder.
+ */
+export interface CommercialRecordReach {
+  readonly global: boolean;
+  channelsFor(capabilityKey: string): readonly string[] | null;
+  admits(capabilityKey: string, salesChannel: string | null): boolean;
+}
+
+const GLOBAL_REACH: CommercialRecordReach = Object.freeze({
+  global: true,
+  channelsFor: () => null,
+  admits: () => true,
+});
+
+export interface CommercialReadOptions {
+  /** Opt in to sales-channel-scoped admission, deciding each record by its stored channel. Absent = global only. */
+  readonly recordScope?: "salesChannel";
+}
+
+/** Lane GA: the Commercial reads honour a salesChannel-scoped holding against the record's stored channel. */
+export const SALES_CHANNEL_SCOPED: CommercialReadOptions = Object.freeze({ recordScope: "salesChannel" as const });
+
+/** The refusal a scoped holder gets for a record outside its channels: the SAME words a missing record gets. */
+export function refuseOutsideReach(family: "Opportunity" | "Sales Agreement" | "Sales Order"): never {
+  return fail("RECORD_NOT_FOUND", "NOT_FOUND", `the ${family} does not exist in this tenant`);
 }
 
 export interface CommercialReadDeps {
@@ -48,15 +95,34 @@ export function translateCommercialReadError(err: unknown): CommercialCommandErr
   return new CommercialCommandError("READ_FAILED", "FAILED", "the read could not be completed");
 }
 
-function requireActor(actor: CommercialReadActor, requiredCapabilities: readonly string[]): void {
+function requireActor(actor: CommercialReadActor, requiredCapabilities: readonly string[], options: CommercialReadOptions): CommercialRecordReach {
   if (!actor || typeof actor.tenantId !== "string" || actor.tenantId.trim() === "" || typeof actor.principalId !== "string" || actor.principalId.trim() === "") {
     fail("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved tenant and principal are required");
   }
   if (!(actor.capabilities instanceof Set)) {
     fail("ACTOR_CONTEXT_REQUIRED", "FORBIDDEN", "a resolved capability set is required");
   }
-  const missing = requiredCapabilities.filter((c) => !actor.capabilities.has(c));
+  // GLOBAL FIRST, unchanged. A key absent from the flat set may still be held within sales-channel scopes -- but only
+  // a read that opted in, and only through UNCONDITIONED holdings (admittedScopeValues excludes conditioned ones).
+  const scoped = options.recordScope === "salesChannel" && Array.isArray(actor.scopedHeld) ? actor.scopedHeld : [];
+  const channels = new Map<string, readonly string[]>();
+  for (const c of requiredCapabilities) {
+    if (actor.capabilities.has(c)) continue;
+    const admitted = admittedScopeValues(scoped, c, "salesChannel");
+    if (admitted.length > 0) channels.set(c, Object.freeze([...admitted]));
+  }
+  const missing = requiredCapabilities.filter((c) => !actor.capabilities.has(c) && !channels.has(c));
   if (missing.length > 0) fail("CAPABILITY_REQUIRED", "FORBIDDEN", `this read requires ${missing.join(", ")}`);
+  if (channels.size === 0) return GLOBAL_REACH;
+  return Object.freeze({
+    global: false,
+    channelsFor: (c: string) => channels.get(c) ?? (actor.capabilities.has(c) ? null : Object.freeze([])),
+    admits: (c: string, salesChannel: string | null) => {
+      if (actor.capabilities.has(c)) return true;
+      const held = channels.get(c);
+      return !!held && typeof salesChannel === "string" && salesChannel !== "" && held.includes(salesChannel);
+    },
+  });
 }
 
 /**
@@ -70,11 +136,12 @@ export async function runCommercialRead<P, R>(
   actor: CommercialReadActor,
   requiredCapabilities: readonly string[],
   prepare: () => P,
-  body: (client: PoolClient, tenantId: string, prepared: P) => Promise<R>,
+  body: (client: PoolClient, tenantId: string, prepared: P, reach: CommercialRecordReach) => Promise<R>,
+  options: CommercialReadOptions = {},
 ): Promise<R> {
   let client: PoolClient | undefined;
   try {
-    requireActor(actor, requiredCapabilities);
+    const reach = requireActor(actor, requiredCapabilities, options);
     const prepared = prepare();
     client = await deps.pool.connect();
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -84,7 +151,7 @@ export async function runCommercialRead<P, R>(
       [actor.tenantId, actor.principalId],
     );
     if (member.rows.length === 0) fail("ACTOR_NOT_TENANT_MEMBER", "FORBIDDEN", "the principal is not an active member of this tenant");
-    const result = await body(client, actor.tenantId, prepared);
+    const result = await body(client, actor.tenantId, prepared, reach);
     await client.query("COMMIT");
     return result;
   } catch (err) {

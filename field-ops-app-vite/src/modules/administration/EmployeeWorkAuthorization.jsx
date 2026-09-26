@@ -4,6 +4,10 @@
 //                      assignEmployeeWorkEligibility / endEmployeeWorkEligibility (admin.employeeWorkEligibility.write)
 //   Operational Scope  "WHERE does this Employee operationally work?"        listEmployeeOperationalScopes,
 //                      assignEmployeeOperationalScope / endEmployeeOperationalScope (admin.employeeOperationalScope.write)
+//                      Targets: listOperationalScopeTargets -- per scope type, this tenant's GOVERNED values (ACTIVE
+//                      warehouses; ACTIVE operating company keys for a Reorder Queue). The picker offers ONLY those;
+//                      there is no typed scope id, and a type with no governed value is shown unavailable with the
+//                      server's reason (lane GA).
 //
 // Both are governed PostgreSQL commands on the Workforce transport, audited server-side. NEITHER IS A
 // SECURITY GRANT: they are facts a grant CONDITION may test (WORK_ELIGIBILITY / OPERATIONAL_SCOPE), never
@@ -25,7 +29,11 @@ export const OPERATIONAL_SCOPE_WRITE_CAPABILITY = "admin.employeeOperationalScop
 // operationalScopeVocabulary.ts, both CHECK-constrained; the command re-validates). These are Employee
 // facts, not the grant-condition vocabulary -- that one is the server's listSupportedConditionKinds.
 const WORK_ELIGIBILITY_CODES = Object.freeze(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"]);
-const OPERATIONAL_SCOPE_TYPES = Object.freeze(["WAREHOUSE", "REORDER_QUEUE"]);
+
+/** The server's scope-target vocabulary, or null. Nothing is invented when it is absent or unreadable. */
+function scopeTargetsFrom(data) {
+  return data && Array.isArray(data.scopeTypes) ? data.scopeTypes.filter((t) => t && typeof t.scopeType === "string") : null;
+}
 
 /** A Workforce refusal in the server's words: its category, its specific reason code, its message. */
 export function workforceRefusal(outcome) {
@@ -114,6 +122,7 @@ export function WorkEligibilitySection({ employeeId, workforce, canWrite, onChan
 
 export function OperationalScopeSection({ employeeId, workforce, canWrite, onChanged }) {
   const read = useWorkforceRead("listEmployeeOperationalScopes", employeeId ? { employeeId } : null, { client: workforce });
+  const targetsRead = useWorkforceRead("listOperationalScopeTargets", employeeId && canWrite ? {} : null, { client: workforce });
   const [scopeType, setScopeType] = useState("");
   const [scopeId, setScopeId] = useState("");
   const [ending, setEnding] = useState(null);
@@ -121,7 +130,12 @@ export function OperationalScopeSection({ employeeId, workforce, canWrite, onCha
   const [outcome, setOutcome] = useState(null);
   const items = read.status === WORKFORCE_READ_STATE.READY && Array.isArray(read.data?.items) ? read.data.items : null;
   const reasonText = statedReason(reason);
-  const target = scopeId.trim();
+  const targets = targetsRead.status === WORKFORCE_READ_STATE.READY ? scopeTargetsFrom(targetsRead.data) : null;
+  const chosenType = targets?.find((t) => t.scopeType === scopeType) ?? null;
+  const held = new Set((items ?? []).map((i) => `${i.scopeType}:${i.scopeId}`));
+  const offered = (chosenType?.values ?? []).filter((v) => !held.has(`${scopeType}:${v.value}`));
+  // Only a value the server offered for the chosen type can be submitted.
+  const target = chosenType?.available && offered.some((v) => v.value === scopeId) ? scopeId : "";
 
   const run = async (operation, input) => {
     const result = await Promise.resolve(workforce.call(operation, input)).catch(() => ({ ok: false, code: "UNREACHABLE", message: "the Workforce service could not be reached" }));
@@ -159,19 +173,10 @@ export function OperationalScopeSection({ employeeId, workforce, canWrite, onCha
           }}
         >
           {ending ? <p>{`End ${ending.scopeTypeLabel ?? ending.scopeType} ${ending.scopeName ?? ending.scopeId}?`}</p> : (
-            <>
-              <label className="fo-form-field">
-                <span>Scope type</span>
-                <select aria-label="Scope type to assign" value={scopeType} onChange={(e) => setScopeType(e.target.value)}>
-                  <option value="">Choose…</option>
-                  {OPERATIONAL_SCOPE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </label>
-              <label className="fo-form-field">
-                <span>Scope target id (warehouse id, or operating company key for a Reorder Queue)</span>
-                <input aria-label="Scope target id" value={scopeId} onChange={(e) => setScopeId(e.target.value)} />
-              </label>
-            </>
+            <ScopeTargetPicker
+              targetsRead={targetsRead} targets={targets} scopeType={scopeType} scopeId={scopeId} chosenType={chosenType} offered={offered}
+              onScopeType={(t) => { setScopeType(t); setScopeId(""); }} onScopeId={setScopeId}
+            />
           )}
           <ReasonField value={reason} onChange={setReason} />
           <div className="fo-btn-row">
@@ -183,5 +188,51 @@ export function OperationalScopeSection({ employeeId, workforce, canWrite, onCha
       {items && !canWrite ? <p className="fo-muted">Changing Operational Scope is offered to holders of {OPERATIONAL_SCOPE_WRITE_CAPABILITY}; the Workforce service re-checks it.</p> : null}
       <WorkforceOutcome outcome={outcome} />
     </RuledSection>
+  );
+}
+
+/**
+ * The Operational Scope target choice, drawn ONLY from the server's listOperationalScopeTargets answer. A scope type
+ * with no governed value is shown disabled with the server's reason; without the server's answer nothing is offered.
+ */
+function ScopeTargetPicker({ targetsRead, targets, scopeType, scopeId, chosenType, offered, onScopeType, onScopeId }) {
+  if (!targets) {
+    return (
+      <p className="fo-muted" data-operational-scope-picker={targetsRead.status === WORKFORCE_READ_STATE.FAILED ? "UNAVAILABLE" : targetsRead.status.toUpperCase()}>
+        {targetsRead.status === WORKFORCE_READ_STATE.FAILED
+          ? `No scope target can be offered: the governed target list could not be read (${workforceRefusal(targetsRead.error)}).`
+          : "Reading the governed scope targets…"}
+      </p>
+    );
+  }
+  const unavailable = targets.filter((t) => !t.available);
+  return (
+    <div data-operational-scope-picker="READY">
+      <label className="fo-form-field">
+        <span>Scope type</span>
+        <select aria-label="Scope type to assign" value={scopeType} onChange={(e) => onScopeType(e.target.value)}>
+          <option value="">Choose…</option>
+          {targets.map((t) => (
+            <option key={t.scopeType} value={t.scopeType} disabled={!t.available}>
+              {t.available ? (t.label ?? t.scopeType) : `${t.label ?? t.scopeType} — unavailable`}
+            </option>
+          ))}
+        </select>
+      </label>
+      {chosenType?.available ? (
+        <label className="fo-form-field">
+          <span>{chosenType.label ?? chosenType.scopeType}</span>
+          <select aria-label="Scope target" value={scopeId} onChange={(e) => onScopeId(e.target.value)}>
+            <option value="">{offered.length === 0 ? "Every governed target is already held" : "Choose…"}</option>
+            {offered.map((v) => <option key={v.value} value={v.value}>{v.label ?? v.value}</option>)}
+          </select>
+        </label>
+      ) : null}
+      {unavailable.length > 0 ? (
+        <p className="fo-muted" data-unavailable-scope-types>
+          {`Unavailable: ${unavailable.map((t) => `${t.label ?? t.scopeType} (${t.reason ?? "no governed value"})`).join("; ")}.`}
+        </p>
+      ) : null}
+    </div>
   );
 }

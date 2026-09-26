@@ -32,7 +32,7 @@
 //                     Admitting it here would answer a record question without a record.
 //   tenant            admits NOTHING. Spec 5.4 reserves it as inert "until Issue #140 defines it; it must never
 //                     widen access". Inert therefore means refuse, not "behave like global".
-//   domain / location / operatingCompany / businessUnit
+//   domain / location / operatingCompany / businessUnit / salesChannel
 //                     admit only a decision that states a scope of the SAME type whose value matches EXACTLY.
 //
 // An unknown scope type, a scoped assignment with no value, and a decision that states no scope at all are all
@@ -58,7 +58,7 @@ export interface DecisionScope {
 }
 
 /** Scope types matched by exact value. Everything else is admitted globally, refused, or answered elsewhere. */
-export const VALUE_MATCHED_SCOPE_TYPES = Object.freeze(["domain", "location", "operatingCompany", "businessUnit"] as const);
+export const VALUE_MATCHED_SCOPE_TYPES = Object.freeze(["domain", "location", "operatingCompany", "businessUnit", "salesChannel"] as const);
 
 const VALUE_MATCHED = new Set<string>(VALUE_MATCHED_SCOPE_TYPES);
 

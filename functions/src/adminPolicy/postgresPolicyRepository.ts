@@ -44,6 +44,7 @@ import type {
   PolicyTransaction,
   PrincipalIdentityBindingInput,
   AuditEventFilter,
+  TenantSalesChannelRecord,
 } from "./policyRepository";
 import type {
   CredOverride,
@@ -764,6 +765,15 @@ export class PostgresPolicyRepository implements PolicyRepository {
         [tenantId],
       );
       return rows.map((r) => ({ value: String(r.id), label: String(r.name ?? r.id) }));
+    }
+    if (scopeType === "salesChannel") {
+      // Lane GA: the channels THIS tenant has activated, over the Commercial record vocabulary.
+      const { rows } = await q.query(
+        `SELECT sales_channel::text AS sales_channel FROM ${SCHEMA}.tenant_sales_channels
+          WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY sales_channel::text`,
+        [tenantId],
+      );
+      return rows.map((r) => ({ value: String(r.sales_channel), label: salesChannelLabel(String(r.sales_channel)) }));
     }
     return null;
   }
@@ -1530,6 +1540,32 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       return Number(rows[0]?.n ?? 0);
     },
 
+    async readTenantSalesChannel(salesChannel: string) {
+      const { rows } = await q.query(
+        `SELECT * FROM ${SCHEMA}.tenant_sales_channels WHERE tenant_id = $1 AND sales_channel::text = $2 FOR UPDATE`,
+        [tenantId, salesChannel]);
+      return rows[0] ? toTenantSalesChannel(rows[0]) : null;
+    },
+
+    async writeTenantSalesChannel(salesChannel: string, status, source: string) {
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.tenant_sales_channels (tenant_id, sales_channel, status, source, established_by, updated_by)
+         VALUES ($1, $2::eos_commercial.commercial_sales_channel, $3, $4, $5, $5)
+         ON CONFLICT (tenant_id, sales_channel)
+         DO UPDATE SET status = EXCLUDED.status, source = EXCLUDED.source, updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [tenantId, salesChannel, status, source, actor.uid]);
+      return toTenantSalesChannel(rows[0]);
+    },
+
+    async activeScopedAssignmentCount(scopeType: string, scopeValue: string) {
+      const { rows } = await q.query(
+        `SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments
+          WHERE tenant_id = $1 AND status = 'active' AND scope_type = $2 AND scope_value = $3`,
+        [tenantId, scopeType, scopeValue]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
     async upsertGrantCondition(input) {
       const { rows } = await q.query(
         `INSERT INTO ${SCHEMA}.capability_grant_conditions
@@ -1575,4 +1611,20 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       return id;
     },
   };
+}
+
+// ════════════════════ tenant sales channels (lane GA) ════════════════════
+
+/** Display words for a channel. Presentation only; the value is the enum literal. */
+export function salesChannelLabel(value: string): string {
+  return value.toLowerCase().split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+function toTenantSalesChannel(r: Record<string, unknown>): TenantSalesChannelRecord {
+  const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
+  return Object.freeze({
+    tenantId: String(r.tenant_id), salesChannel: String(r.sales_channel), status: String(r.status) as TenantSalesChannelRecord["status"],
+    source: String(r.source), establishedBy: String(r.established_by), establishedAt: iso(r.established_at),
+    updatedBy: String(r.updated_by), updatedAt: iso(r.updated_at),
+  });
 }

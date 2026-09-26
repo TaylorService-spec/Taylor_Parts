@@ -289,22 +289,20 @@ test("Reorder persona acceptance: Parts personas positive, Technician negative, 
     });
 
     // ──────────────── the queue scope row, and why a command could not write it ────────────────
-    await t.test("MEASURED GAP: no governed command can write a REORDER_QUEUE scope", async () => {
+    await t.test("GAP CLOSED (lane GA): the governed command writes a REORDER_QUEUE scope against the governed key", async () => {
+      // Formerly MEASURED GAP: the writer resolved WAREHOUSE targets only, so this fixture row was a raw INSERT.
+      // The writer now resolves REORDER_QUEUE against eos_policy.tenant_operating_company_keys (ACTIVE, this tenant),
+      // the same source migration 1761696000000's trigger checks -- one governed path, audited.
+      const assigned = await scopeCommands.assignEmployeeOperationalScope({ pool }, workforceAdmin, {
+        employeeId: PARTS_MANAGER, scopeType: "REORDER_QUEUE", scopeId: OPERATING_COMPANY_KEY,
+        reason: "PERSONA FIXTURE: parts-manager OPERATIONAL_SCOPE REORDER_QUEUE:taylor -- oversight persona queue visibility",
+      });
+      assert.equal(assigned.outcome, "ASSIGNED");
       await assert.rejects(
         () => scopeCommands.assignEmployeeOperationalScope({ pool }, workforceAdmin, {
-          employeeId: PARTS_MANAGER, scopeType: "REORDER_QUEUE", scopeId: OPERATING_COMPANY_KEY,
-          reason: "PERSONA FIXTURE: parts-manager OPERATIONAL_SCOPE REORDER_QUEUE:taylor -- oversight persona queue visibility",
+          employeeId: PARTS_MANAGER, scopeType: "REORDER_QUEUE", scopeId: "no-such-key", reason: "PERSONA FIXTURE: unknown key",
         }),
-        (err) => err.code === "OPERATIONAL_SCOPE_TYPE_INVALID",
-        "assignEmployeeOperationalScope resolves WAREHOUSE targets only; REORDER_QUEUE is in the vocabulary and in the DB trigger, but has no resolver in the writer");
-      // So the nonprod REORDER_QUEUE rows came from migration 1761696000000, and this fixture row is
-      // written the same way. Reported, not repaired: extending the writer is the workforce
-      // authority's change, not this lane's, and inventing a second writer here would be worse.
-      await q(`INSERT INTO eos_workforce.employee_operational_scopes
-                 (id,tenant_id,employee_id,scope_type,scope_id,effective_from,assigned_by,reason)
-               VALUES ($1,$2,$3,'REORDER_QUEUE',$4,now(),'fixture',$5)`,
-      [`eos_${randomUUID()}`, T, PARTS_MANAGER, OPERATING_COMPANY_KEY,
-        "preserved from the legacy reorder.request.read.queue capability held by this Employee's Principal"]);
+        (err) => err.code === "REORDER_QUEUE_NOT_FOUND");
     });
 
     const reader = ctx.postgresContextualReader(pool);

@@ -80,7 +80,9 @@ export default function EmployeeSecurityRoles({ api = adminControlPlaneClient, p
   const roleScopes = vocabulary?.roles.find((r) => r.roleId === roleId)?.assignableScopes ?? [];
   const chosenScope = scopeType === GLOBAL ? null : roleScopes.find((s) => s.scopeType === scopeType) ?? null;
   const chosenValues = scopeType === GLOBAL ? [] : scopeTypeEntry(scopeType)?.values ?? [];
-  const scopeReady = scopeType === GLOBAL || (chosenScope?.assignable === true && scopeValue !== "");
+  // Only a value the server listed for the chosen scope type can be submitted.
+  const scopeReady = scopeType === GLOBAL
+    || (chosenScope?.assignable === true && chosenValues.some((v) => v.value === scopeValue));
 
   const chooseRole = (id) => { setRoleId(id); setScopeType(GLOBAL); setScopeValue(""); };
   const chooseScope = (type) => { setScopeType(type); setScopeValue(""); };
@@ -190,17 +192,25 @@ function ScopePicker({ scopes, vocabulary, roleScopes, scopeType, scopeValue, ch
     );
   }
   const unsupported = vocabulary.scopeTypes.filter((s) => !s.supported);
+  const valueCount = (type) => (vocabulary.scopeTypes.find((s) => s.scopeType === type)?.values ?? []).length;
   return (
     <div data-assignment-scope-picker="READY">
       <label className="fo-form-field">
         <span>Scope</span>
         <select aria-label="Assignment scope" value={scopeType} onChange={(e) => onScopeType(e.target.value)}>
           <option value={GLOBAL}>All (global)</option>
-          {roleScopes.map((s) => (
-            <option key={s.scopeType} value={s.scopeType} disabled={!s.assignable}>
-              {s.assignable ? scopeLabel(s.scopeType) : `${scopeLabel(s.scopeType)} — not available for this Role (${s.refusal})`}
-            </option>
-          ))}
+          {roleScopes.map((s) => {
+            // A scope the runtime decides but for which this tenant has NO governed value yet (e.g. no Sales Channel
+            // activated) is shown unavailable, never offered with an empty or free-text value.
+            const noValues = s.assignable && valueCount(s.scopeType) === 0;
+            return (
+              <option key={s.scopeType} value={s.scopeType} disabled={!s.assignable || noValues}>
+                {!s.assignable ? `${scopeLabel(s.scopeType)} — not available for this Role (${s.refusal})`
+                  : noValues ? `${scopeLabel(s.scopeType)} — unavailable: no governed value in this tenant`
+                    : scopeLabel(s.scopeType)}
+              </option>
+            );
+          })}
         </select>
       </label>
       {chosenScope ? (

@@ -32,6 +32,7 @@ import {
 import { closeOpportunityAsWon, createOpportunity, transitionOpportunity, updateOpportunity } from "./commands/opportunityCommandService";
 import { acceptSalesAgreement, createSalesAgreement, updateSalesAgreementDraft } from "./commands/salesAgreementCommandService";
 import { createSalesOrder, createSalesOrderFromOpportunity, transitionSalesOrder } from "./commands/salesOrderCommandService";
+import type { CommercialReadActor } from "./reads/commercialReadKernel";
 import { getAccountCommercialProjection } from "./reads/accountCommercialProjection";
 import { getOpportunityDetail, listOpportunities } from "./reads/opportunityReadProjection";
 import { getSalesAgreementDetail, listSalesAgreements } from "./reads/salesAgreementReadProjection";
@@ -55,10 +56,14 @@ export interface CommercialApiDeps {
 }
 
 type Input = Record<string, unknown>;
-type Runner = (deps: CommercialApiDeps, actor: CommercialActorContext, input: Input) => Promise<unknown>;
+// The resolved actor. `scopedHeld` (lane GA) is read ONLY by the C3 reads that opt in to sales-channel scope; the C2
+// commands take the flat set alone, so a scope-qualified holding can never authorize a write.
+type ResolvedActor = CommercialActorContext & Pick<CommercialReadActor, "scopedHeld">;
+type Runner = (deps: CommercialApiDeps, actor: ResolvedActor, input: Input) => Promise<unknown>;
 const command = (fn: (d: { pool: Pool; catalog?: CommercialCatalogAuthority; now?: () => Date }, a: CommercialActorContext, i: Input) => Promise<unknown>): Runner =>
-  (deps, actor, input) => fn({ pool: deps.pool, catalog: deps.catalog, now: deps.now }, actor, input);
-const read = (fn: (d: { pool: Pool }, a: CommercialActorContext, i: Input) => Promise<unknown>): Runner =>
+  (deps, actor, input) => fn({ pool: deps.pool, catalog: deps.catalog, now: deps.now },
+    Object.freeze({ tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities }), input);
+const read = (fn: (d: { pool: Pool }, a: CommercialReadActor, i: Input) => Promise<unknown>): Runner =>
   (deps, actor, input) => fn({ pool: deps.pool }, actor, input);
 
 // ════════════════════ the closed operation lists ════════════════════
@@ -154,10 +159,12 @@ export async function executeCommercialOperation(
     }, conditions);
     const capabilities = await capabilitiesWithoutUnevaluatedConditions(
       deps.pool, ctx.principalContext, ctx.capabilities, conditions);
-    const actor: CommercialActorContext = Object.freeze({
+    const actor: ResolvedActor = Object.freeze({
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
       capabilities,
+      // Scope-qualified holdings (e.g. opportunity.read @ salesChannel=RETAIL): never in `capabilities`.
+      scopedHeld: ctx.scopedHeld,
     });
     return { ok: true, operation, result: await RUNNERS[operation](deps, actor, request.input) };
   } catch (err) {

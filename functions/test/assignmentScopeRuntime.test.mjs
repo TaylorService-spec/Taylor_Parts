@@ -20,21 +20,42 @@ import { snapshotContextualReader } from "../lib/eosOps/contextualAuthorization.
 
 // ════════════════════ 1. the model ════════════════════
 
-test("the runtime decides operatingCompany only today; businessUnit and location are known but unconsumed; no sales channel", () => {
-  assert.deepEqual([...scope.ASSIGNMENT_SCOPE_RUNTIME_TYPES], ["operatingCompany", "businessUnit", "location"]);
+test("the runtime decides operatingCompany and salesChannel; businessUnit and location are known but unconsumed", () => {
+  assert.deepEqual([...scope.ASSIGNMENT_SCOPE_RUNTIME_TYPES], ["operatingCompany", "businessUnit", "location", "salesChannel"]);
   assert.ok(scope.ASSIGNMENT_SCOPE_RUNTIME_TYPES.every((t) => VALUE_MATCHED_SCOPE_TYPES.includes(t)), "a subset of the value-matched vocabulary");
-  assert.deepEqual([...scope.runtimeSupportedScopeTypes()], ["operatingCompany"]);
-  assert.deepEqual(scope.SCOPE_EVALUABLE_GRANTS.map((g) => [g.scopeType, g.capabilityKey]), [["operatingCompany", "employee.record.read"]]);
+  assert.deepEqual([...scope.runtimeSupportedScopeTypes()], ["operatingCompany", "salesChannel"]);
+  // Lane GA: sales channel scopes the three Commercial READ keys only -- no write key is evaluable at a channel.
+  assert.deepEqual(scope.SCOPE_EVALUABLE_GRANTS.map((g) => [g.scopeType, g.capabilityKey]), [
+    ["operatingCompany", "employee.record.read"],
+    ["salesChannel", "opportunity.read"], ["salesChannel", "salesAgreement.read"], ["salesChannel", "salesOrder.read"]]);
+  for (const g of scope.SCOPE_EVALUABLE_GRANTS.filter((x) => x.scopeType === "salesChannel")) {
+    assert.ok(g.consumers.length > 0 && g.consumers.every((c) => c.startsWith("commercial.")), g.capabilityKey);
+  }
   assert.deepEqual(Object.fromEntries(Object.entries(scope.ASSIGNMENT_SCOPE_DIMENSIONS).map(([k, d]) => [k, [d.label, d.contextKey]])),
-    { operatingCompany: ["Company", "operatingCompanyId"], businessUnit: ["Business Unit", "businessUnit"], location: ["Warehouse", "warehouseId"] });
+    { operatingCompany: ["Company", "operatingCompanyId"], businessUnit: ["Business Unit", "businessUnit"], location: ["Warehouse", "warehouseId"],
+      salesChannel: ["Sales Channel", "salesChannel"] });
   for (const t of ["businessUnit", "location", "domain", "tenant", "ownAssignment", "global"]) {
     assert.equal(scope.isRuntimeSupportedScopeType(t), false, t);
     assert.ok(scope.UNSUPPORTED_SCOPE_REASONS[t], `${t} has a stated reason`);
   }
   const src = readFileSync(new URL("../src/adminPolicy/assignmentScopeRuntime.ts", import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-  assert.doesNotMatch(src, /salesChannel|sales_channel|NATIONAL_ACCOUNTS|RETAIL/, "sales channel is not a scope");
+  // A channel is a governed VALUE, never code: no channel literal and no per-channel Role anywhere in the model.
+  assert.doesNotMatch(src, /NATIONAL_ACCOUNTS|RETAIL|STRATEGIC_ACCOUNTS|RetailSalesManager|NationalAccountsSalesManager/);
   assert.doesNotMatch(src, /\.query\s*\(|from "pg"|firebase/i, "the scope model is pure");
+});
+
+test("holdingAdmits: a sales-channel holding admits only the record's exact stored channel", () => {
+  const h = { capabilityKey: "opportunity.read", scopeType: "salesChannel", scopeValue: "RETAIL" };
+  assert.equal(scope.holdingAdmits(h, { salesChannel: "RETAIL" }), "ADMITTED");
+  assert.equal(scope.holdingAdmits(h, { salesChannel: "NATIONAL_ACCOUNTS" }), "OUTSIDE_ASSIGNMENT_SCOPE");
+  for (const ctx of [undefined, {}, { salesChannel: "" }, { operatingCompanyId: "RETAIL" }]) {
+    assert.equal(scope.holdingAdmits(h, ctx), "SCOPE_CONTEXT_REQUIRED", JSON.stringify(ctx));
+  }
+  assert.equal(scope.holdingAdmits({ ...h, capabilityKey: "opportunity.create" }, { salesChannel: "RETAIL" }), "SCOPE_NOT_EVALUABLE");
+  assert.deepEqual([...scope.admittedScopeValues([h, { ...h, scopeValue: "NATIONAL_ACCOUNTS" }, { ...h, scopeValue: "STRATEGIC_ACCOUNTS", condition: {} }]
+    .map((x) => ({ condition: null, sourceRole: "salesManager", assignmentId: null, ...x })), "opportunity.read", "salesChannel")],
+    ["NATIONAL_ACCOUNTS", "RETAIL"], "both channels of one manager; a conditioned holding never widens a list");
 });
 
 test("holdingAdmits: exact same-type value only; everything else fails closed", () => {
@@ -151,6 +172,7 @@ const CAPABILITIES = [
   { key: "admin.principalAccess.read", description: "", objectKey: "users", actionKey: "read", actionKind: "READ", displayLabel: "View" },
   { key: "employee.record.read", description: "", objectKey: "employee", actionKey: "read", actionKind: "READ", displayLabel: "View Employees" },
   { key: "customer.record.read", description: "", objectKey: "account", actionKey: "read", actionKind: "READ", displayLabel: "View Customers" },
+  { key: "opportunity.read", description: "", objectKey: "opportunity", actionKey: "read", actionKind: "READ", displayLabel: "View Opportunities" },
 ];
 
 let CAP_IDS;
@@ -162,6 +184,7 @@ async function world() {
   await bootstrapAdministrator(repo, { tenantId: tenant.id, externalSubject: "uid-admin", performedBy: "op", reason: "boot" });
   repo.setAssignmentScopeValues(tenant.id, "operatingCompany", [{ value: "taylor", label: "Taylor" }, { value: "ventana", label: "Ventana" }]);
   repo.setAssignmentScopeValues(other.id, "operatingCompany", [{ value: "northco", label: "North" }]);
+  repo.setAssignmentScopeValues(tenant.id, "salesChannel", [{ value: "NATIONAL_ACCOUNTS", label: "National Accounts" }, { value: "RETAIL", label: "Retail" }]);
   const call = (operation, input) => executeAdminOperation({ repo }, { caller: { externalSubject: "uid-admin" }, operation, input, requestId: "r" });
   const target = await ensureTenantPrincipal(repo, { tenantId: tenant.id, externalSubject: "uid-target", actorUid: "op", actorRoleKeys: ["admin"] });
   const targetId = target.principal?.id ?? target.id ?? target.principalId;
@@ -173,7 +196,8 @@ async function world() {
       roleId: role.id, capabilityId: capId(capabilityKey), grantedBy: "fixture", grantedAt: new Date().toISOString() }));
   };
   await grant("admin", "admin.principalAccess.read");
-  for (const [key, caps] of [["companyReader", ["employee.record.read", "customer.record.read"]], ["customerOnly", ["customer.record.read"]]]) {
+  for (const [key, caps] of [["companyReader", ["employee.record.read", "customer.record.read"]], ["customerOnly", ["customer.record.read"]],
+    ["channelLead", ["opportunity.read", "customer.record.read"]]]) {
     const made = await call("createRole", { key, name: key, reason: "fixture" });
     assert.equal(made.ok, true, JSON.stringify(made));
     for (const c of caps) await grant(key, c);
@@ -195,7 +219,15 @@ test("assignRole: only a consumed scope, a governed value of THIS tenant, an eva
   };
   await refused({ roleId: reader, scopeType: "businessUnit", scopeValue: "SERVICE" }, "SCOPE_TYPE_UNSUPPORTED");
   await refused({ roleId: reader, scopeType: "location", scopeValue: "WH-1" }, "SCOPE_TYPE_UNSUPPORTED");
-  await refused({ roleId: reader, scopeType: "salesChannel", scopeValue: "RETAIL" }, "SCOPE_TYPE_UNSUPPORTED");
+  // Lane GA: salesChannel is decided, against THIS tenant's activated channels, for a Role carrying a Commercial read.
+  await refused({ roleId: reader, scopeType: "salesChannel", scopeValue: "RETAIL" }, "SCOPE_NOT_EVALUABLE_FOR_ROLE");
+  await refused({ roleId: await w.roleId("channelLead"), scopeType: "salesChannel", scopeValue: "STRATEGIC_ACCOUNTS" }, "SCOPE_VALUE_INVALID");
+  await refused({ roleId: await w.roleId("channelLead"), scopeType: "salesChannel", scopeValue: "retail" }, "SCOPE_VALUE_INVALID");
+  for (const channel of ["RETAIL", "NATIONAL_ACCOUNTS"]) {
+    const both = await assign({ roleId: await w.roleId("channelLead"), scopeType: "salesChannel", scopeValue: channel });
+    assert.equal(both.ok, true, JSON.stringify(both));
+  }
+  // businessUnit has no tenant-governed value source, and is not decided: refused before any value is consulted.
   await refused({ roleId: reader, scopeType: "operatingCompany", scopeValue: "northco" }, "SCOPE_VALUE_INVALID");
   await refused({ roleId: reader, scopeType: "operatingCompany" }, "SCOPE_VALUE_INVALID");
   await refused({ roleId: reader, scopeType: "global", scopeValue: "taylor" }, "SCOPE_VALUE_INVALID");
@@ -217,9 +249,13 @@ test("listSupportedAssignmentScopes: every type listed, unsupported with its rea
   const r = await w.call("listSupportedAssignmentScopes", {});
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.deepEqual(r.data.scopeTypes.map((s) => [s.scopeType, s.supported]), [
-    ["global", true], ["operatingCompany", true], ["businessUnit", false], ["location", false],
+    ["global", true], ["operatingCompany", true], ["businessUnit", false], ["location", false], ["salesChannel", true],
     ["domain", false], ["tenant", false], ["ownAssignment", false]]);
   assert.deepEqual(r.data.scopeTypes[1].values.map((v) => v.value), ["taylor", "ventana"]);
+  assert.deepEqual(r.data.scopeTypes[4].values.map((v) => v.value), ["NATIONAL_ACCOUNTS", "RETAIL"]);
+  assert.deepEqual(r.data.scopeTypes[2].values, [], "businessUnit offers no value: no tenant-governed source");
+  const sm = r.data.roles.find((x) => x.roleKey === "channelLead").assignableScopes.find((a) => a.scopeType === "salesChannel");
+  assert.deepEqual([sm.assignable, sm.scopedCapabilities, sm.inertCapabilities], [true, ["opportunity.read"], ["customer.record.read"]]);
   const reader = r.data.roles.find((x) => x.roleKey === "companyReader").assignableScopes[0];
   assert.deepEqual([reader.scopeType, reader.assignable, reader.scopedCapabilities, reader.inertCapabilities],
     ["operatingCompany", true, ["employee.record.read"], ["customer.record.read"]]);

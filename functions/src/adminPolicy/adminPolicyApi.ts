@@ -56,6 +56,7 @@ import {
   PolicyValidationError,
   AdministrationRefusal,
   listSupportedAssignmentScopes,
+  setTenantSalesChannelStatus,
 } from "./policyCommands";
 import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair } from "./roleCapabilityAdministration";
 import type { AuditEventFilter } from "./policyRepository";
@@ -180,6 +181,9 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "startWorkflowInstance",
   "adoptRecordsIntoWorkflowVersion",
   "migrateWorkflowInstances",
+  // Lane GA: which Commercial sales channels THIS tenant operates -- the governed value source of the salesChannel
+  // assignment scope (admin.securityPolicy.write; deactivation refused while an assignment is scoped to it).
+  "setTenantSalesChannelStatus",
 ] as const);
 
 export type AdminReadOperation = (typeof ADMIN_READ_OPERATIONS)[number];
@@ -853,6 +857,13 @@ async function dispatch(
         reason: optionalString(input.reason) ? reason : null,
       });
 
+    case "setTenantSalesChannelStatus":
+      return setTenantSalesChannelStatus(repo, actor, {
+        salesChannel: requireString(input.salesChannel, "salesChannel"),
+        status: requireString(input.status, "status"),
+        reason: optionalString(input.reason) ? reason : null,
+      });
+
     case "assignRole":
       // MEMBERSHIP, and IDEMPOTENCE, are enforced in the COMMAND -- next to the transaction, so a
       // caller that bypasses this dispatcher gets the same answer. They were briefly checked here
@@ -1139,7 +1150,8 @@ function classify(err: unknown): AdminApiFailureCode {
   if (err instanceof AdministrationRefusal) {
     if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
-      || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") ? "INVALID_INPUT" : "CONFLICT";
+      || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") || err.code === "SALES_CHANNEL_INVALID"
+      ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;

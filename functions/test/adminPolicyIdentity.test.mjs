@@ -242,6 +242,8 @@ test("every operation is either a read or a mutation, and none is both", () => {
     // TWO ADDED: grant conditions, fail closed (never retired while the grant is held).
     "retireGrantCondition", "setGrantCondition",
     "setObjectPermission", "setWorkflowRoleBinding", "updateCustomFieldMetadata",
+    // Lane GA: the tenant's activated sales channels -- the governed value source of the salesChannel scope.
+    "setTenantSalesChannelStatus",
     // Object DISPLAY metadata only -- no key edit, no delete, no generic patch. Added because
     // "Object definition editing is Admin-only" was a contract with no operation behind it.
     "updateObjectMetadata",

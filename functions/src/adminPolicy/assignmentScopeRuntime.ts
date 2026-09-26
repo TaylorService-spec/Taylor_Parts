@@ -27,16 +27,20 @@
 // statement of what scoped Security Role authority means today; adding a consumer is a reviewed edit here plus the
 // gate site that supplies the context.
 //
-// Sales channel is NOT a scope type (pass 8 §9.1: no ruling, no consumer). It is not invented here.
+// SALES CHANNEL (lane GA, 2026-09-26) IS a scope type now, because it has what pass 8 §9.1 said it lacked: governed
+// values (eos_policy.tenant_sales_channels over the Commercial record vocabulary eos_commercial.commercial_sales_channel)
+// and real consumers -- the PostgreSQL Commercial reads, which supply the record's STORED sales_channel as business
+// context and filter lists in SQL. A channel is a scope VALUE, never a Role: one Security Role (e.g. salesManager) is
+// assigned once per channel, and nothing derives a channel from a Job Role, a Functional Role or a Role definition.
 import { VALUE_MATCHED_SCOPE_TYPES } from "./assignmentScope";
 import { ADMINISTRATION_READ_CAPABILITY_KEYS } from "./administrationSurfaceAuthority";
 
 /** The value-matched assignment scope types this runtime knows how to decide. `domain` has no record fact. */
-export const ASSIGNMENT_SCOPE_RUNTIME_TYPES = Object.freeze(["operatingCompany", "businessUnit", "location"] as const);
+export const ASSIGNMENT_SCOPE_RUNTIME_TYPES = Object.freeze(["operatingCompany", "businessUnit", "location", "salesChannel"] as const);
 export type AssignmentScopeRuntimeType = (typeof ASSIGNMENT_SCOPE_RUNTIME_TYPES)[number];
 
 /** The record fact a gate site supplies for each scope type. Resolved server-side from the governed record. */
-export type BusinessContextKey = "operatingCompanyId" | "businessUnit" | "warehouseId";
+export type BusinessContextKey = "operatingCompanyId" | "businessUnit" | "warehouseId" | "salesChannel";
 export type BusinessContext = Readonly<Partial<Record<BusinessContextKey, string>>>;
 
 export interface AssignmentScopeDimension {
@@ -56,12 +60,18 @@ export const ASSIGNMENT_SCOPE_DIMENSIONS: Readonly<Record<AssignmentScopeRuntime
   }),
   businessUnit: Object.freeze({
     scopeType: "businessUnit", label: "Business Unit", contextKey: "businessUnit",
-    valueSource: "FIN-002 BUSINESS_UNITS (finance/financialAttribution.ts)",
+    valueSource: "none governed per tenant (FIN-002 BUSINESS_UNITS is a platform constant, not tenant Administration data)",
   }),
   // R-29 (#150): `location` IS the warehouse-scope authority; its value is a governed warehouse id.
   location: Object.freeze({
     scopeType: "location", label: "Warehouse", contextKey: "warehouseId",
-    valueSource: "eos_ops.warehouses (this tenant)",
+    valueSource: "eos_ops.warehouses (ACTIVE, this tenant)",
+  }),
+  // Lane GA: the record's STORED channel (opportunities.sales_channel; an Agreement's is its Opportunity's;
+  // sales_orders.sales_channel). Values: the channels THIS tenant has activated.
+  salesChannel: Object.freeze({
+    scopeType: "salesChannel", label: "Sales Channel", contextKey: "salesChannel",
+    valueSource: "eos_policy.tenant_sales_channels (ACTIVE, this tenant; vocabulary eos_commercial.commercial_sales_channel)",
   }),
 });
 
@@ -78,6 +88,14 @@ export interface ScopeEvaluableGrant {
  *
  *   operatingCompany x employee.record.read  -- the Employee's governed eos_workforce.employees.operating_company_id,
  *                                               read inside the read's own snapshot.
+ *   salesChannel x opportunity.read / salesAgreement.read / salesOrder.read
+ *                                            -- the record's STORED sales channel, read in the Commercial read's own
+ *                                               snapshot (an Agreement's is its source Opportunity's, joined in the
+ *                                               same statement). A record with NO channel admits no scoped holder.
+ *                                               READS ONLY: the Commercial commands decide on the flat set and cannot
+ *                                               derive a channel for a create (the caller supplies it), so no write
+ *                                               capability is evaluable at this scope -- and the writes are fenced
+ *                                               INACTIVE regardless.
  *
  * businessUnit and location have NO PostgreSQL consumer today: FIN-004 company/BU reach is still bound through
  * Firestore roleAssignments (finance/financeReadCallables.ts), Commercial carries a business unit per LINE and its
@@ -90,6 +108,21 @@ export const SCOPE_EVALUABLE_GRANTS: readonly ScopeEvaluableGrant[] = Object.fre
     capabilityKey: "employee.record.read",
     consumers: Object.freeze(["workforce.readEmployee", "workforce.listEmployees", "workforce.listManagedEmployees"]),
   }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "opportunity.read",
+    consumers: Object.freeze(["commercial.getOpportunityDetail", "commercial.listOpportunities", "commercial.getAccountCommercialProjection"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "salesAgreement.read",
+    consumers: Object.freeze(["commercial.getSalesAgreementDetail", "commercial.listSalesAgreements", "commercial.getAccountCommercialProjection"]),
+  }),
+  Object.freeze({
+    scopeType: "salesChannel" as const,
+    capabilityKey: "salesOrder.read",
+    consumers: Object.freeze(["commercial.getSalesOrderDetail", "commercial.listSalesOrders", "commercial.getAccountCommercialProjection"]),
+  }),
 ]);
 
 /** Why a scope type is not assignable, when it is not. */
@@ -98,7 +131,7 @@ export const UNSUPPORTED_SCOPE_REASONS: Readonly<Record<string, string>> = Objec
   tenant: "reserved and inert (spec 5.4, Issue #140); it must never widen access",
   domain: "no governed record carries a domain fact, so no gate can decide it",
   ownAssignment: "a per-record relationship, not a scope: use a RECORD_ASSIGNMENT grant condition",
-  businessUnit: "no PostgreSQL gate supplies a record's business unit (FIN-004 reach is Firestore-bound; Commercial carries BU per line)",
+  businessUnit: "no PostgreSQL gate supplies a record's business unit (FIN-004 reach is Firestore-bound; Commercial carries BU per line), and no tenant-governed value source exists",
   location: "no PostgreSQL gate supplies a record's warehouse (R-32 location bindings are on the legacy path; Reorder cutover held)",
 });
 

@@ -223,7 +223,8 @@ test("B: Security Role assignment scope is NOT Employee Operational Scope, and t
   const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   // It never reads the Employee scope authority, and WAREHOUSE is not one of its scope types.
   assert.doesNotMatch(code, /employee_operational_scopes|eos_workforce|operationalScopeVocabulary|WAREHOUSE/);
-  assert.deepEqual([...scope.VALUE_MATCHED_SCOPE_TYPES], ["domain", "location", "operatingCompany", "businessUnit"]);
+  // Lane GA: + salesChannel (the Commercial record's stored channel) -- a security scope, not an Employee scope.
+  assert.deepEqual([...scope.VALUE_MATCHED_SCOPE_TYPES], ["domain", "location", "operatingCompany", "businessUnit", "salesChannel"]);
   // A warehouse-shaped scope is simply an unknown type here: it cannot be smuggled in as a security scope.
   assert.equal(scope.assignmentAdmitsDecision({ roleId: "r", scopeType: "WAREHOUSE", scopeValue: "wh-main" },
     { scopeType: "WAREHOUSE", scopeValue: "wh-main" }), false);

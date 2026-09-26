@@ -58,6 +58,8 @@ export const WORKFORCE_READ_OPERATIONS = Object.freeze([
   "listEmployeeWorkEligibilityHistory",
   "listEmployeeOperationalScopes",
   "listEmployeeOperationalScopeHistory",
+  // Lane GA: the governed values the Operational Scope picker offers (no typed scope id).
+  "listOperationalScopeTargets",
   "listAssignableEmployees",
   // Functional Role (migration 1762819200000; employee.record.read). A business responsibility: grants nothing.
   "listFunctionalRoles",

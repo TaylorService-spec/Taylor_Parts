@@ -224,8 +224,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // no grant, no vocabulary move.
 // 1762819200000 (the Functional Role authority): ONE capability, admin.employeeFunctionalRole.write
 // (vocabulary 80 -> 81, reconciled in the manifest), granted to NO Role -- so no persona moves.
-const PINNED_LAST_MIGRATION = "1762819200000_employee-functional-role-authority";
-const PINNED_MIGRATION_COUNT = 54;
+// 1762905600000 (the tenant sales channel activation, lane GA): one eos_policy table, EMPTY -- no capability, no
+// grant, no vocabulary move.
+const PINNED_LAST_MIGRATION = "1762905600000_tenant-sales-channel-scope";
+const PINNED_MIGRATION_COUNT = 55;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {

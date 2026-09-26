@@ -91,6 +91,8 @@ const parsed = (res) => JSON.parse(res.body);
 const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "readEmployee", "listEmployees", "readEmployeePrincipalLink", "listManagedEmployees", "listRecordsOwnedByEmployee", "listAccountabilitiesForEmployee", "listJobRoles", "listEmployeeJobRoleHistory", "listEmployeesWithoutJobRole", "listEmployeeChangeHistory",
   // Step C (operationalRoles decomposition): the qualification and warehouse-scope reads.
   "listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory", "listEmployeeOperationalScopes", "listEmployeeOperationalScopeHistory",
+  // Lane GA: the governed Operational Scope targets (employee.record.read).
+  "listOperationalScopeTargets",
   // Step G: the governed assignable-Employee read.
   "listAssignableEmployees",
   // Functional Role (migration 1762819200000): the catalog, its holders, an Employee's assignments, the audit history.
