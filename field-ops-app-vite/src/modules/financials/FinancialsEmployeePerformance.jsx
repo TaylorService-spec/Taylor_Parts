@@ -32,7 +32,6 @@ import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory.js";
 import { resolveEmployeeIdentity } from "../../domain/actorDisplayName.js";
 import {
   FACTS_STATE,
-  FACTS_DETAIL,
   financialFactsState,
   rollupRow,
   unattributedNote,
@@ -57,7 +56,7 @@ export default function FinancialsEmployeePerformance() {
     { factTypes: ["INVOICE"], ...period.requestFields },
     { enabled: !period.blocked },
   );
-  const { state, result } = financialFactsState(read);
+  const { state, result, detail } = financialFactsState(read);
   const ready = state === FACTS_STATE.READY;
 
   // A PERSON'S NAME, NOT THEIR KEY. The rollup is keyed by creditedSalespersonId because that is
@@ -80,7 +79,7 @@ export default function FinancialsEmployeePerformance() {
           }
         : ready
           ? { state: null }
-          : { state, detail: FACTS_DETAIL[state] ?? null };
+          : { state, detail: detail ?? null };
 
   return (
     <FinancialsPageFrame

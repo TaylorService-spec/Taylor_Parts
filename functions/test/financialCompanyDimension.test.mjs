@@ -228,7 +228,8 @@ function fakeDb(collections) {
     limit: (n) => make(rows.slice(0, n)),
     get: async () => ({ size: rows.length, docs: rows.map((r) => ({ id: r.id, data: () => r.data })) }),
   });
-  return { collection: (name) => make(collections[name] ?? []) };
+  // The reporting read runs every read inside ONE read-only transaction.
+  return { collection: (name) => make(collections[name] ?? []), runTransaction: async (fn) => fn({ get: (q) => q.get() }) };
 }
 
 const db = fakeDb({

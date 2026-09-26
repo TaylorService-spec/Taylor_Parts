@@ -20,6 +20,9 @@ import {
   rollupRow,
   unattributedNote,
   scopeSentence,
+  financialFactsCompleteness,
+  incompleteReadNote,
+  FACTS_DETAIL,
 } from "../src/domain/financialFactsView.js";
 
 const READY = {
@@ -602,4 +605,116 @@ test("the Account AR section shows a company column only when the read says it s
   assert.ok(/row\.companyLabel/.test(src), "rows must render the shared words, never a raw governed id");
   // The section still totals nothing — the disclosure must not have smuggled in a total.
   assert.ok(!/reduce\(/.test(src));
+});
+
+// ─── Completeness contract (variant A′: accuracy-only repair of the bounded reporting read) ───
+//
+// The server states COMPLETE | PARTIAL | NOT_READ with a named reason and per-collection counts,
+// inside the bounds it already had. A non-COMPLETE read carries no rows and no figures; the client
+// renders it as UNAVAILABLE with its reason — never as empty, never as $0.00, never with advice to
+// narrow (a filter cannot fix this temporary reader's bound).
+
+const PARTIAL = {
+  status: "unavailable",
+  completeness: {
+    status: "PARTIAL",
+    reason: "READ_LIMIT_REACHED",
+    consistency: "SINGLE_SNAPSHOT",
+    reads: [{ collection: "invoices", documentsRead: 501, bound: 500, exhausted: false, tenantWide: true, danglingIds: 0 }],
+  },
+  invoices: [],
+  payments: [],
+  applications: [],
+  summary: { outstandingByCurrency: {}, billedByCurrency: {}, collectedByCurrency: {} },
+  agingByCurrency: {},
+};
+
+test("A′: a PARTIAL read is UNAVAILABLE with its named reason — not EMPTY, not a figure", () => {
+  const s = financialFactsState({ loading: false, result: PARTIAL });
+  assert.equal(s.state, FACTS_STATE.UNAVAILABLE);
+  assert.equal(s.completeness.status, "PARTIAL");
+  assert.equal(s.completeness.reason, "READ_LIMIT_REACHED");
+  const slots = lifecycleScorecard(s.state, PARTIAL);
+  for (const k of ["billed", "collected", "arOutstanding"]) {
+    assert.equal(slots[k].valueText, null, `${k} must show no figure for a partial read`);
+    assert.equal(slots[k].absence, "Unavailable");
+  }
+  assert.equal(agingSlots(s.state, PARTIAL).supplied, false);
+});
+
+test("A′: the limit note says the tenant has more records than this temporary reader can read completely — and advises no narrowing", () => {
+  const note = incompleteReadNote(financialFactsCompleteness(PARTIAL));
+  assert.match(note, /^This tenant has more invoices than this temporary reader can read completely \(500\)\./);
+  assert.match(note, /Nothing is shown/);
+  assert.ok(!/company|narrow|select|filter/i.test(note), "no narrowing advice: a filter cannot fix this bound");
+  assert.ok(!/\$/.test(note), "no money figure in an incomplete-read sentence");
+  const accountRead = { ...PARTIAL.completeness, reads: [{ ...PARTIAL.completeness.reads[0], tenantWide: false }] };
+  assert.match(incompleteReadNote(accountRead), /^This account has more invoices than this temporary reader can read completely/);
+  const apps = { ...PARTIAL.completeness, reads: [{ collection: "invoices", documentsRead: 3, bound: 500, exhausted: true, tenantWide: true }, { collection: "payment_applications", documentsRead: 501, bound: 500, exhausted: false, tenantWide: true }] };
+  assert.match(incompleteReadNote(apps), /^This tenant has more payment applications than/);
+  assert.match(incompleteReadNote({ status: "PARTIAL", reason: "READ_FAILED", reads: [{ collection: "payments", exhausted: false }] }), /failed part-way \(reading payment receipts\)/);
+  assert.match(incompleteReadNote({ status: "NOT_READ", reason: "READ_FAILED", reads: [] }), /before any record was read/);
+  assert.match(incompleteReadNote({ status: "NOT_READ", reason: "NO_REACH", reads: [] }), /nothing was read/);
+  assert.equal(incompleteReadNote({ status: "COMPLETE", reason: null, reads: [] }), null);
+});
+
+test("A′: a 'ready' status beside a non-COMPLETE contract is still UNAVAILABLE (defence in depth)", () => {
+  const contradictory = { ...READY, completeness: { status: "PARTIAL", reason: "READ_LIMIT_REACHED", reads: [] } };
+  assert.equal(financialFactsState({ loading: false, result: contradictory }).state, FACTS_STATE.UNAVAILABLE);
+});
+
+test("A′: a COMPLETE read is READY; a legacy server's 'ready' (it refused truncation) is COMPLETE, labelled legacy", () => {
+  const complete = { ...READY, completeness: { status: "COMPLETE", reason: null, reads: [] } };
+  assert.equal(financialFactsState({ loading: false, result: complete }).state, FACTS_STATE.READY);
+  assert.deepEqual(
+    { status: financialFactsCompleteness(READY).status, legacy: financialFactsCompleteness(READY).legacy },
+    { status: "COMPLETE", legacy: true },
+  );
+  assert.equal(financialFactsCompleteness({ status: "unavailable" }).status, "UNKNOWN");
+});
+
+test("A′: the hook and service send the server's EXISTING maximum (500) and surface completeness verbatim", () => {
+  const hook = readFileSync(new URL("../src/hooks/useFinancialFacts.js", import.meta.url), "utf8");
+  assert.match(hook, /limit = 500/);
+  assert.match(hook, /completeness: state\.result \? financialFactsCompleteness\(state\.result\) : null/);
+  assert.ok(!/Minor/.test(hook), "the hook touches no money field");
+  const svc = readFileSync(new URL("../src/services/financeReadCallableClient.js", import.meta.url), "utf8");
+  assert.match(svc, /fetchFinancialFacts\(filters = \{\}, limit = 500\)/);
+});
+
+test("A′: a PARTIAL read RENDERS its reason as the page detail, and no figure", () => {
+  const s = financialFactsState({ loading: false, result: PARTIAL });
+  assert.match(s.detail, /more invoices than this temporary reader can read completely/);
+  assert.notEqual(s.detail, FACTS_DETAIL[FACTS_STATE.UNAVAILABLE], "the generic sentence is replaced by the named reason");
+  const slots = lifecycleScorecard(s.state, undefined, s.detail);
+  for (const slot of Object.values(slots)) {
+    assert.equal(slot.valueText, null);
+    assert.equal(slot.detail, s.detail);
+  }
+  assert.ok(!/\$\d/.test(s.detail), "no money figure in the detail");
+});
+
+test("A′: a DANGLING_REFERENCE read names the missing-receipt count", () => {
+  const dangling = {
+    status: "unavailable",
+    completeness: { status: "PARTIAL", reason: "DANGLING_REFERENCE", reads: [{ collection: "payments", documentsRead: 1, bound: 500, exhausted: true, danglingIds: 2 }] },
+  };
+  assert.match(financialFactsState({ loading: false, result: dangling }).detail, /^2 payment receipts named by a payment application could not be found/);
+});
+
+test("A′: the generic sentence remains for a failure with no named reason", () => {
+  assert.equal(financialFactsState({ loading: false, errorStatus: "unavailable" }).detail, FACTS_DETAIL[FACTS_STATE.UNAVAILABLE]);
+});
+
+test("A′: every Financials page renders the state's own detail — none indexes the generic FACTS_DETAIL directly", () => {
+  const pages = [
+    "FinancialsInvoiceDetail", "FinancialsInvoices", "FinancialsAccountsReceivable", "FinancialsPayments",
+    "FinancialsPaymentDetail", "FinancialsEmployeePerformance", "FinancialsCompanyPerformance",
+    "FinancialsCustomerFinancials", "FinancialsOverview",
+  ];
+  for (const page of pages) {
+    const src = readFileSync(new URL(`../src/modules/financials/${page}.jsx`, import.meta.url), "utf8");
+    assert.ok(!/FACTS_DETAIL\[/.test(src), `${page} must render financialFactsState's detail`);
+    assert.ok(!/accountSelector/.test(src), `${page} carries no narrowing advice`);
+  }
 });

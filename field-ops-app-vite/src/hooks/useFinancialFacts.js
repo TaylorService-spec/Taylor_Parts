@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchFinancialFacts } from "../services/financeReadCallableClient.js";
+import { financialFactsCompleteness } from "../domain/financialFactsView.js";
 
 // One-shot read of the governed financial facts within the caller's requested filters.
 //
@@ -11,7 +12,13 @@ import { fetchFinancialFacts } from "../services/financeReadCallableClient.js";
 //
 // The filters are serialized into the effect key so a page can pass an object literal without
 // re-reading on every render.
-export function useFinancialFacts(filters, { limit = 200, enabled = true } = {}) {
+//
+// `limit` defaults to the server's EXISTING maximum (MAX_REPORTING_LIMIT = 500), so the invoice
+// read has the same bound the server already applies to payment applications and receipts. This
+// is a temporary Firebase-era bound, not a capacity increase: past it the server answers PARTIAL /
+// READ_LIMIT_REACHED with no rows and no figures. The returned `completeness` is the server's own
+// contract (COMPLETE | PARTIAL | NOT_READ, with a named reason and counts), surfaced verbatim.
+export function useFinancialFacts(filters, { limit = 500, enabled = true } = {}) {
   const key = JSON.stringify(filters ?? {});
   const [state, setState] = useState({ loading: enabled, errorStatus: null, result: null });
 
@@ -31,5 +38,8 @@ export function useFinancialFacts(filters, { limit = 200, enabled = true } = {})
     };
   }, [key, limit, enabled]);
 
-  return useMemo(() => state, [state]);
+  return useMemo(
+    () => ({ ...state, completeness: state.result ? financialFactsCompleteness(state.result) : null }),
+    [state],
+  );
 }

@@ -25,7 +25,6 @@ import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
 import { useAccountNames } from "../../hooks/useAccountNames.js";
 import {
   FACTS_STATE,
-  FACTS_DETAIL,
   financialFactsState,
   formatByCurrency,
   paymentIdentity,
@@ -42,7 +41,7 @@ export default function FinancialsPaymentDetail() {
   // single-payment read. Correct at this collection's size; the seam for growth is a paymentId
   // filter on the request, not a second read here.
   const read = useFinancialFacts({});
-  const { state, result } = financialFactsState(read);
+  const { state, result, detail } = financialFactsState(read);
   const answered = state === FACTS_STATE.READY || state === FACTS_STATE.EMPTY;
 
   const payment = useMemo(
@@ -65,7 +64,7 @@ export default function FinancialsPaymentDetail() {
   const context = payment ? paymentContext(payment, applications) : null;
 
   const honest = !answered
-    ? { state, detail: FACTS_DETAIL[state] ?? null }
+    ? { state, detail: detail ?? null }
     : payment
       ? { state: null }
       : {
