@@ -27,6 +27,39 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Finance variant A′ — accuracy-only repair of the live Firebase `listFinancialFacts` reader (sibling of #1976 for Owner comparison)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s4a-finance-accuracy-only` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s4a`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f`
+- Owned paths:         `functions/src/finance/financialReportingRead.ts` · `functions/test/financialReportingRead*.test.mjs` · `field-ops-app-vite/src/domain/financialFactsView.js` · `field-ops-app-vite/src/hooks/useFinancialFacts.js` · the Financials pages' honest-state detail line only
+- Shared paths req'd:  none
+- Dependencies:        none; alternative to #1976 (Owner picks one)
+- Expected outcome:    missing-receipt detection, one read-only snapshot, completeness states, named reasons; NO availability extension
+- Protected boundaries:Firebase repair only until the PG finance read is active; NO merge
+- Lifecycle stage:     DESIGNED
+
+- Capability:          Finance PostgreSQL replacement design (docs only)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/fpg-finance-postgres-design` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-fpg`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f`
+- Owned paths:         new `docs/financials/finance-postgres-replacement-design-2026-09-25.md`
+- Shared paths req'd:  none
+- Dependencies:        none
+- Expected outcome:    bounded design: inputs, object-level visibility, SQL aggregate contract, Render transport, copy/verify, activation, client switch, Firebase reader removal
+- Protected boundaries:docs only; NO copy, NO cutover, NO grant
+- Lifecycle stage:     DESIGNED
+
+- Capability:          Work Order backend readiness for #1980 (held) — can an authorized canonical persona load the screens; EOS dependency map; keep routes unexposed until usable
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/pc-wo-backend-readiness` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-wo2`
+- Base commit:         `a3be4a52` (#1980 head)
+- Owned paths:         `field-ops-app-vite/src/navigation/workOrderRouteAccess.js` + its test · new `docs/engineering/work-order-eos-route-dependency-map-2026-09-25.md`
+- Shared paths req'd:  `App.jsx` (integration only)
+- Dependencies:        #1980
+- Expected outcome:    exact refusal evidence; dependency map; detail-read vs create kept separate; no unusable route exposed
+- Protected boundaries:NO grant change, NO merge, NO deploy
+- Lifecycle stage:     DESIGNED
+
 - Capability:          Phase C (narrow) — EOS-navigation route guard for `/service/work-orders/new` and `/service/work-orders/:workOrderId` (emitted for NOBODY under the EOS navigation source, App.jsx ~1128-1140)
 - Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder (tests + pure guard); integration applies the `App.jsx` edit on this branch
 - Branch / worktree:   `lane/pc-eos-workorder-routes` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-wo`
