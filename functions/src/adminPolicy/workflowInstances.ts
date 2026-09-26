@@ -91,6 +91,9 @@ export async function startWorkflowInstance(
   if (!initial) throw new WorkflowRefusal("WORKFLOW_VALIDATION_FAILED", "CONFLICT", "the active version has no initial step");
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const instance = await tx.createWorkflowInstance({
       workflowVersionId: version.id, objectKey: workflow.objectKey as string, recordId, currentStepKey: initial.key,
     });
@@ -233,6 +236,9 @@ export async function adoptRecordsIntoWorkflowVersion(
   }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const auditEventId = await tx.appendAudit({
       action: "adoptRecordsIntoWorkflowVersion",
       actorUid: actor.uid,
@@ -335,6 +341,9 @@ export async function migrateWorkflowInstances(
     instanceId: i.id, recordId: i.recordId, fromStepKey: i.currentStepKey, toStepKey: stepMap[i.currentStepKey],
   }));
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const auditEventId = await tx.appendAudit({
       action: "migrateWorkflowInstances",
       actorUid: actor.uid,

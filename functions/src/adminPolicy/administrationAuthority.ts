@@ -175,9 +175,12 @@ export class AdministrationCapabilityDeniedError extends AdministrationDeniedErr
 // is unauthorized -- telling it "that would remove the last administrator" reports the shape of the
 // tenant's access configuration to someone with no authority over it.
 //
-// NOT WIRED IN THIS SLICE. This is the metadata/vocabulary slice; `requireAdministrationAuthority`
-// above remains the live decision, so no runtime authorization changes here. The keys below are
-// registered in eos_policy.capabilities by migration 1761350400000 and are granted to NO Role yet.
+// WIRED (workflow control plane, 2026-09-26). decideWorkflowAdministration below IS the live decision
+// for every workflow mutation, through workflowAdministration.requireWorkflowAdministrationCapability;
+// no workflow path consults `requireAdministrationAuthority` or a Role name. The keys are registered by
+// migration 1761350400000. No migration grants any of them except the ruled workflowDefinition.read
+// (admin, owner -- migrationChainSafety); the write keys are granted through Administration after
+// bootstrap (grantObjectActionToRole on the workflowDefinition Object), one audited decision each.
 
 export type WorkflowAdministrationAction =
   | "create" | "read" | "edit" | "version" | "publish" | "bindRole";

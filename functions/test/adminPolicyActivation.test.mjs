@@ -119,18 +119,23 @@ async function standUpTaylor() {
  * in nonprod, it adds no capability, and it touches no migration.
  */
 /**
- * WORKFLOW AUTHORING is a capability (workflowDefinition.*), granted through Administration after
- * bootstrap -- never by the Role name and never by a migration (migrationChainSafety holds every
- * workflowDefinition.* write at zero in the chain). This is that Administration act, performed
- * through the trusted API by the bootstrapped administrator, who holds admin.securityPolicy.write.
+ * WORKFLOW AUTHORING is a capability (workflowDefinition.*), never the Role name and never a
+ * migration grant (migrationChainSafety). In a real tenant it arrives through Administration -- and,
+ * since Pass 8, never from a principal to a Role it holds (workflowControlPlane*.test.mjs prove that
+ * path). This fixture writes the grants the way grantAdministrationReads does, so these proofs stay
+ * about definition editing and immutability.
  */
 async function grantWorkflowAuthoring() {
-  for (const actionKey of ["create", "edit", "version", "bindRole", "publish"]) {
-    const res = await executeAdminOperation({ repo: repo() }, asAdmin("grantObjectActionToRole", {
-      objectKey: "workflowDefinition", actionKey, roleKey: "admin", reason: "workflow authoring for the proof",
-    }));
-    assert.equal(res.ok, true, res.ok ? "" : res.message);
-  }
+  const r = repo();
+  const tenantId = (await resolvePrincipalContext(r, { externalSubject: ADMIN_SUBJECT })).tenantId;
+  const capabilities = await r.listCapabilities();
+  const adminRole = (await r.listRoles(tenantId)).find((x) => x.key === "admin");
+  await r.transact({ tenantId, uid: OPERATOR }, async (tx) => {
+    for (const actionKey of ["create", "edit", "version", "bindRole", "publish"]) {
+      const capability = capabilities.find((c) => c.key === `workflowDefinition.${actionKey}`);
+      await tx.grantRoleCapability({ roleId: adminRole.id, capabilityId: capability.id, grantedBy: OPERATOR, grantedAt: new Date().toISOString() });
+    }
+  });
 }
 
 /**

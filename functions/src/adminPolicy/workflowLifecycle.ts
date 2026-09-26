@@ -85,6 +85,15 @@ export async function publishWorkflowVersion(
   }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Under the tenant governance lock, RE-VALIDATE: a Role grant revoked between the first check and
+    // this transaction would otherwise let a binding the runtime now refuses be published.
+    await tx.beginAdministrationCommand();
+    const locked = await validateStoredWorkflowVersion(repo, actor, versionId);
+    if (locked.version.status !== "DRAFT" || !locked.valid) {
+      throw new WorkflowRefusal("WORKFLOW_VALIDATION_FAILED", "INVALID_INPUT",
+        `workflow version cannot be published: ${locked.errors.map((e) => `${e.code} ${e.message}`).join("; ") || `it is ${locked.version.status}`}`,
+        locked.errors);
+    }
     const published = await tx.publishWorkflowVersion(versionId);
     const activated = await tx.setWorkflowActiveVersion(workflow.id, published.id);
     await tx.appendAudit({
@@ -125,6 +134,9 @@ export async function activateWorkflowVersion(
   if (workflow.activeVersionId === versionId) return workflow;
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    await tx.beginAdministrationCommand();
+    const current = (await repo.listWorkflows(actor.tenantId)).find((w) => w.id === workflow.id);
+    if (current?.activeVersionId === versionId) return current; // a concurrent identical request won
     const updated = await tx.setWorkflowActiveVersion(workflow.id, versionId);
     await tx.appendAudit({
       ...audit(actor, "activateWorkflowVersion", versionId, reason),
@@ -162,6 +174,8 @@ export async function retireWorkflowVersion(
   }
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // The active and pinned checks are ALSO the store's and the database trigger's, inside this transaction.
+    await tx.beginAdministrationCommand();
     const retired = await tx.retireWorkflowVersion(versionId);
     await tx.appendAudit({
       ...audit(actor, "retireWorkflowVersion", versionId, reason),

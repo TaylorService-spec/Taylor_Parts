@@ -60,6 +60,9 @@ export async function applyWorkflowSeed(
   const nextVersion = priorVersions.reduce((max, v) => Math.max(max, v.version), 0) + 1;
 
   const applied = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const workflow = existing ?? (await tx.createWorkflow({
       key: seed.key,
       name: seed.name,

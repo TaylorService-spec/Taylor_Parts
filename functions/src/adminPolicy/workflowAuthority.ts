@@ -6,8 +6,10 @@
 // apply to the same capability:
 //
 //   capability     authorizeOperationalAction(reader, actor, {capabilityKey, recordId})
-//                  -- the flat set from capabilitiesForRoleKeys first, then the provenance-
-//                  preserving entitlements with conditions from capability_grant_conditions
+//                  -- authorizeEntitledAction: the unconditional flat set OR the actor's
+//                  `conditionallyHeld` keys (Pass 8), evaluated per record through the
+//                  provenance-preserving entitlements with conditions from capability_grant_conditions.
+//                  A conditioned-only key is never decided from the flat set.
 //   guard          RECORD_ASSIGNMENT -> authorizeObjectAction with the ASSIGNED_EMPLOYEE relation
 //                  over the SAME contextual reader: Employee against Employee, through the ACTIVE
 //                  principal link and the open assignment interval. Never a uid comparison.
@@ -52,8 +54,11 @@ export function operationalWorkflowAuthority(
       if (guardKind !== "RECORD_ASSIGNMENT" || !isAssignmentRecordKind(objectKey)) {
         return { allowed: false, outcome: "GUARD_NOT_EVALUABLE" };
       }
+      // The capability was just ADMITTED by the entitled decision -- possibly through a conditioned
+      // grant, which the flat set withholds by design (Pass 8: conditionallyHeld). The guard asks only
+      // the record relation, so it is evaluated over the admitted key, never a flat-set re-check.
       const guard = await authorizeObjectAction(reader, {
-        actor: { tenantId: actor.tenantId, principalId: actor.principalId, capabilities: actor.capabilities },
+        actor: { tenantId: actor.tenantId, principalId: actor.principalId, capabilities: new Set([capabilityKey]) },
         capabilityKey,
         predicates: [{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }],
         record: { recordKind: objectKey, recordId },

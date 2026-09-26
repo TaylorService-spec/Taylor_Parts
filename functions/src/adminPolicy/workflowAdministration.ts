@@ -34,6 +34,11 @@
 //      ADMIN_GRANTED decision per cell:
 //        grantObjectActionToRole {objectKey: "workflowDefinition", actionKey: "publish", roleKey, reason}
 //      (and create / edit / version / bindRole as the tenant decides).
+//   3. Pass 8 separation of duties applies: no principal grants a capability to a Role it HOLDS, and
+//      none assigns itself. So the grant goes to a Role the administrator does not hold (e.g. a
+//      "Workflow Administrator" Role made with createRole) and that Role is assigned to ANOTHER
+//      principal. A lone first administrator therefore cannot give THEMSELVES workflow authority --
+//      a second principal is required (reported for an Owner decision).
 //
 // Lockout is recoverable by construction: the holder of admin.securityPolicy.write -- whom the
 // anti-lockout guard keeps at >= 1 -- can always re-grant a workflow capability.

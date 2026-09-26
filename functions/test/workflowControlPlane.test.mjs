@@ -66,18 +66,36 @@ async function world({ key = "wf-offline", repo = new InMemoryPolicyRepository()
     tenantId: tenant.id, externalSubject: subject, performedBy: OPERATOR, reason: "initial administrator",
   });
   const admin = { tenantId: tenant.id, uid: boot.principal.id, heldRoleKeys: ["admin"] };
-  const call = (operation, input = {}, callerSubject = subject, deps = {}) =>
-    executeAdminOperation({ repo, ...deps }, { caller: { externalSubject: callerSubject }, operation, input, requestId: "req-wf" });
   const roles = Object.fromEntries((await repo.listRoles(tenant.id)).map((r) => [r.key, r]));
-  return { repo, tenantId: tenant.id, admin, call, roles, subject };
+  // `admin`/`subject` are the SECURITY administrator until workflow authority is granted, when they
+  // become the workflow administrator; `secAdmin`/`secSubject` stay the security administrator.
+  const w = { repo, tenantId: tenant.id, admin, secAdmin: admin, roles, subject, secSubject: subject };
+  w.call = (operation, input = {}, callerSubject = w.subject, deps = {}) =>
+    executeAdminOperation({ repo, ...deps }, { caller: { externalSubject: callerSubject }, operation, input, requestId: "req-wf" });
+  return w;
 }
 
-/** THE POST-BOOTSTRAP ADMINISTRATION ACT: admin grants itself workflow authority, audited. */
-async function grantWorkflowAuthorityThroughAdministration(w, roleKey = "admin") {
+/**
+ * THE POST-BOOTSTRAP ADMINISTRATION ACTS, under the Pass 8 separation of duties (no principal grants a
+ * capability to a Role it holds, and none assigns itself): the security administrator creates a
+ * Workflow Administrator Role, grants it the workflowDefinition.* keys and assigns it to ANOTHER
+ * principal -- each one audited decision. The Role name `admin` never administers workflows.
+ */
+async function grantWorkflowAuthorityThroughAdministration(w, roleKey = "workflowAdministrator") {
+  const call = (op, input) => w.call(op, input, w.secSubject);
+  if (!w.roles[roleKey]) {
+    const made = await call("createRole", { key: roleKey, name: "Workflow Administrator", reason: REASON });
+    assert.equal(made.ok, true, `createRole: ${made.message}`);
+    w.roles[roleKey] = made.data;
+  }
   for (const actionKey of ["read", "create", "edit", "version", "bindRole", "publish"]) {
-    const r = await w.call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey, roleKey, reason: REASON });
+    const r = await call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey, roleKey, reason: REASON });
     assert.equal(r.ok, true, `grant workflowDefinition.${actionKey}: ${r.message}`);
   }
+  const subject = `${w.secSubject}-workflow`;
+  const holder = await person(w, subject, [roleKey]);
+  w.admin = { tenantId: w.tenantId, uid: holder.principalId, heldRoleKeys: [roleKey] };
+  w.subject = subject;
 }
 
 async function grantBaseline(w) {
@@ -94,7 +112,7 @@ async function person(w, subject, roleKeys) {
     tenantId: w.tenantId, externalSubject: subject, actorUid: OPERATOR, actorRoleKeys: ["admin"],
   });
   const principalId = made.principal?.id ?? made.id ?? made.principalId;
-  for (const k of roleKeys) await assignRole(w.repo, w.admin, { principalId, roleId: w.roles[k].id });
+  for (const k of roleKeys) await assignRole(w.repo, w.secAdmin, { principalId, roleId: w.roles[k].id, reason: REASON });
   return { principalId, subject, roleKeys };
 }
 
@@ -137,7 +155,10 @@ test("bootstrap: the first administrator gets workflow authority through Adminis
   await grantWorkflowAuthorityThroughAdministration(w);
   const decisions = (await w.repo.listRoleCapabilityDecisions(w.tenantId)).filter((d) => d.capabilityKey.startsWith("workflowDefinition."));
   assert.equal(decisions.length, 6, "one audited ADMIN_GRANTED decision per workflow capability");
-  assert.ok(decisions.every((d) => d.decision === "ADMIN_GRANTED" && d.roleKey === "admin"));
+  assert.ok(decisions.every((d) => d.decision === "ADMIN_GRANTED" && d.roleKey === "workflowAdministrator"));
+  // Pass 8 separation: the security administrator may NOT grant workflow authority to its own Role.
+  const self = await w.call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey: "publish", roleKey: "admin", reason: REASON }, w.secSubject);
+  assert.match(self.message, /SELF_ADMINISTRATION/);
   const list = await w.call("listWorkflows");
   assert.equal(list.ok, true);
   assert.deepEqual(list.data.map((x) => x.workflow.key).sort(),
@@ -353,6 +374,25 @@ test("runtime: the composed evaluator is authorizeOperationalAction plus the REC
   assert.equal((await lacking.authorize({ capabilityKey: "workOrder.lifecycle.complete", recordId: "wo-mine", guardKind: null })).outcome, "CAPABILITY_MISSING");
   const salesGuard = operationalWorkflowAuthority(reader, actor(["salesOrder.write"]), "salesOrder");
   assert.equal((await salesGuard.authorize({ capabilityKey: "salesOrder.write", recordId: "so-1", guardKind: "RECORD_ASSIGNMENT" })).outcome, "GUARD_NOT_EVALUABLE");
+});
+
+test("runtime (Pass 8): a CONDITIONED-ONLY capability is decided by the entitled path, never the flat set", async () => {
+  const assigned = new Set(["wo-mine"]);
+  const reader = { ...snapshotContextualReader({ employeeId: "emp-1", workEligibility: [], operationalScopes: [] }),
+    async isAssignedEmployee(_t, kind, recordId, employeeId) { return kind === "workOrder" && assigned.has(recordId) && employeeId === "emp-1"; } };
+  const condition = { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: "workOrder" };
+  // The flat set does NOT carry the key (the resolver withholds conditioned-only keys); conditionallyHeld does.
+  const actor = { tenantId: "t", principalId: "p", capabilities: new Set(), conditionallyHeld: new Set(["workOrder.record.read"]),
+    entitlements: () => [{ capabilityKey: "workOrder.record.read", grantor: { kind: "ROLE", roleKey: "technician" }, condition }] };
+  const authority = operationalWorkflowAuthority(reader, actor, "workOrder");
+  assert.deepEqual(await authority.authorize({ capabilityKey: "workOrder.record.read", recordId: "wo-mine", guardKind: null }), { allowed: true, outcome: "ALLOWED" });
+  assert.deepEqual(await authority.authorize({ capabilityKey: "workOrder.record.read", recordId: "wo-mine", guardKind: "RECORD_ASSIGNMENT" }), { allowed: true, outcome: "ALLOWED" },
+    "the guard is evaluated over the ADMITTED key, not re-checked against the flat set");
+  assert.equal((await authority.authorize({ capabilityKey: "workOrder.record.read", recordId: "wo-other", guardKind: null })).allowed, false,
+    "the condition narrows: another record is refused");
+  const flatOnly = operationalWorkflowAuthority(reader, { ...actor, conditionallyHeld: undefined }, "workOrder");
+  assert.equal((await flatOnly.authorize({ capabilityKey: "workOrder.record.read", recordId: "wo-mine", guardKind: null })).outcome, "CAPABILITY_MISSING",
+    "without the conditioned path nothing reaches the key -- the flat set never admits it");
 });
 
 // ════════════════════ 5. the stale operationsManager Sales Order binding ════════════════════
@@ -687,12 +727,12 @@ test("RESPONSIBILITIES: bindings on held Roles INTERSECTED with effective author
     securityRoleKeys: principalId === d.principalId ? ["dispatcher"] : [],
     actions: [{ capabilityKey: "workOrder.transition", result: principalId === d.principalId ? "ALLOWED" : "DENIED", reasonCode: "ALLOWED" }],
   });
-  const r = await w.call("listPrincipalWorkflowResponsibilities", { principalId: d.principalId }, w.subject, { explainEffectiveAccess: explain });
+  const r = await w.call("listPrincipalWorkflowResponsibilities", { principalId: d.principalId }, w.secSubject, { explainEffectiveAccess: explain });
   assert.equal(r.ok, true, r.message);
   assert.deepEqual(r.data.responsibilities.map((x) => `${x.workflowKey}/${x.actionKey}/${x.viaRoles.join("+")}/${x.authority}`),
     ["tiny/start/dispatcher/ALLOWED", "tiny/finish/dispatcher/ALLOWED"]);
   assert.ok(r.data.responsibilities.every((x) => x.source === "WORKFLOW_BINDING_AND_EFFECTIVE_AUTHORITY"));
-  const uncomposed = await w.call("listPrincipalWorkflowResponsibilities", { principalId: d.principalId });
+  const uncomposed = await w.call("listPrincipalWorkflowResponsibilities", { principalId: d.principalId }, w.secSubject);
   assert.equal(uncomposed.code, "INTERNAL", "no evaluator composed: refuse, never guess");
 
   // Pure: bound but DENIED is listed as conferring nothing; ALLOWED but unbound is not a responsibility.

@@ -145,6 +145,9 @@ export async function createWorkflowDraft(
   const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const workflow = await tx.createWorkflow({
       key,
       name,
@@ -211,6 +214,9 @@ export async function createWorkflowVersion(
   const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const version = await tx.createWorkflowVersion({
       workflowId,
       version: nextVersion,
@@ -271,6 +277,9 @@ export async function updateWorkflowDefinition(
   // steps or actions, deliberately, so "replace the definition" is expressed as the next draft and
   // the superseded one stays readable. An administrator who wants the old shape back has it.
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const versions = await repo.listWorkflowVersions(actor.tenantId, workflow.id);
     const nextVersion = versions.reduce((max, v) => Math.max(max, v.version), 0) + 1;
     const version = await tx.createWorkflowVersion({
@@ -334,6 +343,9 @@ export async function setWorkflowRoleBinding(
   if (already) return already;
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
+    // revoke and assignment command takes -- so a workflow change and an authority change never interleave.
+    await tx.beginAdministrationCommand();
     const binding = await tx.createWorkflowRoleBinding({ workflowVersionId: versionId, actionKey, roleId });
     await tx.appendAudit({
       ...auditBase(actor, "setWorkflowRoleBinding", versionId, input.reason ?? null),

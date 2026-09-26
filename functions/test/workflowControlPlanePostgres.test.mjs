@@ -48,6 +48,8 @@ const OTHER = "t-wf-other";
 const OPERATOR = "operator-wf";
 const ADMIN_SUBJECT = "uid-wf-admin";
 const OTHER_ADMIN = "uid-wf-other-admin";
+const WF_SUBJECT = "uid-wf-workflow-admin";
+const OTHER_WF_SUBJECT = "uid-wf-other-workflow-admin";
 const REASON = "workflow control plane proof";
 
 const dbUrlFor = (n) => { const u = new URL(URL_BASE); u.pathname = `/${n}`; return u.toString(); };
@@ -101,15 +103,37 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     Number((await q(`SELECT count(*)::int n FROM eos_policy.role_capabilities WHERE tenant_id=$1`, [TENANT])).rows[0].n);
   const boot = await bootstrapAdministrator(repo, { tenantId: TENANT, externalSubject: ADMIN_SUBJECT, performedBy: OPERATOR, reason: "initial administrator" });
   await bootstrapAdministrator(repo, { tenantId: OTHER, externalSubject: OTHER_ADMIN, performedBy: OPERATOR, reason: "initial administrator" });
-  const adminActor = { tenantId: TENANT, uid: boot.principal.id, heldRoleKeys: ["admin"] };
-  const call = (operation, input = {}, subject = ADMIN_SUBJECT, deps = {}) => executeAdminOperation({ repo, ...deps },
+  // The workflow administrator (appointed in the bootstrap subtest); until then workflow calls go
+  // as the security administrator and are refused.
+  let adminActor = null;
+  let defaultSubject = ADMIN_SUBJECT;
+  const call = (operation, input = {}, subject = defaultSubject, deps = {}) => executeAdminOperation({ repo, ...deps },
     { caller: { externalSubject: subject, identityProvider: "firebase" }, operation, input, requestId: `r-${operation}` });
+  /**
+   * The Pass 8 bootstrap path: the security administrator creates a Workflow Administrator Role, grants
+   * it workflowDefinition.* (a Role the administrator does NOT hold -- self-administration is refused)
+   * and assigns it to ANOTHER principal. Each is one audited Administration act; no migration grants.
+   */
+  const appointWorkflowAdministrator = async (tenant, secSubject, wfSubject, actions = ["create", "edit", "version", "bindRole", "publish"]) => {
+    const as = (op, input) => call(op, input, secSubject);
+    const made = await as("createRole", { key: "workflowAdministrator", name: "Workflow Administrator", reason: REASON });
+    assert.equal(made.ok, true, made.message);
+    for (const actionKey of [...actions, "read"]) {
+      const r = await as("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey, roleKey: "workflowAdministrator", reason: REASON });
+      assert.equal(r.ok, true, r.message);
+    }
+    const holder = await ensureTenantPrincipal(repo, { tenantId: tenant, externalSubject: wfSubject, actorUid: OPERATOR, actorRoleKeys: ["admin"] });
+    const principalId = holder.principal?.id ?? holder.id ?? holder.principalId;
+    const assigned = await as("assignRole", { principalId, roleId: made.data.id, reason: "appoint the workflow administrator" });
+    assert.equal(assigned.ok, true, assigned.message);
+    return { tenantId: tenant, uid: principalId, heldRoleKeys: ["workflowAdministrator"] };
+  };
   const roleId = async (key) => (await repo.getRoleByKey(TENANT, key)).id;
   const person = async (subject, roleKeys) => {
     const made = await ensureTenantPrincipal(repo, { tenantId: TENANT, externalSubject: subject, actorUid: OPERATOR, actorRoleKeys: ["admin"] });
     const principalId = made.principal?.id ?? made.id ?? made.principalId;
     for (const key of roleKeys) {
-      const res = await call("assignRole", { principalId, roleId: await roleId(key), reason: "fixture staffing" });
+      const res = await call("assignRole", { principalId, roleId: await roleId(key), reason: "fixture staffing" }, ADMIN_SUBJECT);
       assert.equal(res.ok, true, `assignRole ${key}: ${JSON.stringify(res)}`);
     }
     return { subject, principalId, roleKeys };
@@ -127,7 +151,8 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
       ctx,
       actor: { tenantId: TENANT, principalId: ctx.principalContext.uid, heldRoleKeys: ctx.principalContext.heldRoleKeys },
       authority: operationalWorkflowAuthority(evaluator.postgresContextualReader(pool), {
-        tenantId: TENANT, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements,
+        tenantId: TENANT, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities,
+        conditionallyHeld: ctx.conditionallyHeld, entitlements: ctx.entitlements,
       }, "workOrder"),
     };
   };
@@ -155,14 +180,19 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     const draft = (await repo.listWorkflowVersions(TENANT, await workflowId("salesOrder")))[0];
     const refused = await call("publishWorkflowVersion", { versionId: draft.id, reason: REASON });
     assert.deepEqual([refused.code, refused.message], ["FORBIDDEN", 'not authorized: "workflowDefinition.publish" is required']);
+    // Pass 8: the administrator may not grant workflow authority to a Role it holds.
+    const self = await call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey: "publish", roleKey: "admin", reason: REASON });
+    assert.match(self.message, /SELF_ADMINISTRATION/);
     const before = await auditCount();
-    for (const actionKey of ["create", "edit", "version", "bindRole", "publish"]) {
-      const r = await call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey, roleKey: "admin", reason: REASON });
-      assert.equal(r.ok, true, r.message);
-    }
-    assert.equal(await auditCount(), before + 5, "one audited decision per capability");
+    adminActor = await appointWorkflowAdministrator(TENANT, ADMIN_SUBJECT, WF_SUBJECT);
+    assert.equal(await auditCount(), before + 1 + 6 + 1 + 1,
+      "createRole + one audited decision per capability + provisioning the principal + the assignment");
+    const decisions = (await repo.listRoleCapabilityDecisions(TENANT)).filter((d) => d.capabilityKey.startsWith("workflowDefinition."));
+    assert.deepEqual([...new Set(decisions.map((d) => `${d.roleKey}/${d.decision}`))], ["workflowAdministrator/ADMIN_GRANTED"]);
+    assert.equal(decisions.length, 6);
+    defaultSubject = WF_SUBJECT;
     const readOk = await call("listWorkflows");
-    assert.equal(readOk.ok, true, "workflowDefinition.read is the migration-granted read (admin, owner)");
+    assert.equal(readOk.ok, true, readOk.message);
   });
 
   await t.test("the database refuses what the commands refuse", async () => {
@@ -232,12 +262,12 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     await assert.rejects(() => transitionWorkflowInstance(repo, o.actor, { objectKey: "workOrder", recordId: "wo-rt-1", actionKey: "Schedule" }, o.authority),
       /notBoundToRole/);
     // A REVOKE through Administration takes effect on a still-bound action: the binding never granted.
-    const revoked = await call("revokeObjectActionFromRole", { objectKey: "workOrder", actionKey: "transition", roleKey: "dispatcher", reason: REASON });
+    const revoked = await call("revokeObjectActionFromRole", { objectKey: "workOrder", actionKey: "transition", roleKey: "dispatcher", reason: REASON }, ADMIN_SUBJECT);
     assert.equal(revoked.ok, true, revoked.message);
     const d2 = await runtimeFor(dispatcher);
     await assert.rejects(() => transitionWorkflowInstance(repo, d2.actor, { objectKey: "workOrder", recordId: "wo-rt-1", actionKey: "Schedule" }, d2.authority),
       /effectiveAuthorityDenied \(CAPABILITY_MISSING\)/);
-    const regrant = await call("grantObjectActionToRole", { objectKey: "workOrder", actionKey: "transition", roleKey: "dispatcher", reason: REASON });
+    const regrant = await call("grantObjectActionToRole", { objectKey: "workOrder", actionKey: "transition", roleKey: "dispatcher", reason: REASON }, ADMIN_SUBJECT);
     assert.equal(regrant.ok, true, regrant.message);
     const d3 = await runtimeFor(dispatcher);
     const scheduled = await transitionWorkflowInstance(repo, d3.actor, { objectKey: "workOrder", recordId: "wo-rt-1", actionKey: "Schedule" }, d3.authority);
@@ -284,7 +314,7 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     assert.equal(await auditCount(), migrateBefore + 1, "ONE audit event for the whole migration");
     const auditRow = (await q(`SELECT action, actor_uid, target_id, reason, before, after FROM eos_policy.audit_events WHERE id=$1`,
       [migrated.data.auditEventId])).rows[0];
-    assert.deepEqual([auditRow.action, auditRow.actor_uid, auditRow.target_id], ["migrateWorkflowInstances", boot.principal.id, v2.data.version.id]);
+    assert.deepEqual([auditRow.action, auditRow.actor_uid, auditRow.target_id], ["migrateWorkflowInstances", adminActor.uid, v2.data.version.id]);
     assert.equal(auditRow.before.versionId, v1);
     assert.equal(auditRow.after.versionId, v2.data.version.id);
     assert.match(auditRow.reason, /^move to v2 \[request r-migrateWorkflowInstances\]$/);
@@ -303,10 +333,8 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
     assert.equal(r.message, 'not authorized: "workflowDefinition.publish" is required');
     assert.equal(await auditCount(), before);
     // Another tenant's administrator (who holds workflow authority in ITS tenant) finds nothing here.
-    for (const actionKey of ["publish", "edit"]) {
-      const g = await call("grantObjectActionToRole", { objectKey: "workflowDefinition", actionKey, roleKey: "admin", reason: REASON }, OTHER_ADMIN);
-      assert.equal(g.ok, true, g.message);
-    }
+    await appointWorkflowAdministrator(OTHER, OTHER_ADMIN, OTHER_WF_SUBJECT, ["publish", "edit"]);
+    const beforeIsolation = await auditCount();
     const wo = (await repo.listWorkflows(TENANT)).find((w) => w.key === "workOrder").activeVersionId;
     for (const [operation, input] of [
       ["readWorkflowVersion", { versionId: wo }],
@@ -314,10 +342,10 @@ test("the workflow control plane, end to end, against PostgreSQL", { skip: SKIP,
       ["publishWorkflowVersion", { versionId: salesOrderDraft.id, reason: REASON }],
       ["adoptRecordsIntoWorkflowVersion", { versionId: wo, records: [{ recordId: "x", stepKey: "CREATED" }], reason: REASON }],
     ]) {
-      const res = await call(operation, input, OTHER_ADMIN);
+      const res = await call(operation, input, OTHER_WF_SUBJECT);
       assert.equal(res.code, "NOT_FOUND", `${operation}: ${res.code} ${res.message}`);
     }
-    assert.equal(await auditCount(), before, "tenant A untouched");
+    assert.equal(await auditCount(), beforeIsolation, "tenant A untouched");
   });
 
   await t.test("RESPONSIBILITIES: bindings on held Roles INTERSECTED with the runtime evaluator's answer", async () => {
