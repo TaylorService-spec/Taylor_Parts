@@ -40,7 +40,9 @@ const source = (i, over = {}) => ({
   data: {
     woNumber: `WO-2026-0000${String(i).padStart(2, "0")}`,
     status: "SCHEDULED", type: "SERVICE_CALL", priority: 2,
-    customerId: "acct-1", locationId: "loc-1", ...over,
+    customerId: "acct-1", locationId: "loc-1",
+    // THE HISTORICAL INSTANTS the contract requires. A record without them is refused, never stamped now().
+    createdAt: "2026-04-01T09:00:00.000Z", updatedAt: "2026-04-02T09:00:00.000Z", ...over,
   },
 });
 
@@ -238,8 +240,9 @@ test("COPY ONCE and VERIFY", { skip: SKIP, concurrency: 1 }, async (t) => {
   });
 
   await t.test("ONE record failing rolls ALL THIRTEEN back", async () => {
-    const broken = THIRTEEN.map((s) => (s.id === "wo-07" ? source(7, { type: undefined, status: "CANCELLED", locationId: "" }) : s));
-    const { plan } = planFor(broken);
+    // The contract now refuses a blank location BEFORE the database sees it, so the plan is corrupted
+    // after planning to prove the database-level half: one failing INSERT rolls every record back.
+    const plan = planFor(THIRTEEN).plan.map((p) => (p.workOrderId === "wo-07" ? { ...p, locationId: "" } : p));
     // An empty location violates work_orders_location_is_stated. The whole transaction must roll back.
     await assert.rejects(() => copy.copyOnce(pool, { tenantId: TENANT, runId: "run-fail", plan, decisionId: "OWNER-TEST", apply: true }));
     const { rows } = await q(`SELECT count(*)::int AS n FROM eos_ops.work_orders`);

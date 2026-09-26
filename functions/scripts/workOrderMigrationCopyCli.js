@@ -147,7 +147,11 @@ async function main() {
       const bound = await copy.resolveOperatingCompanyKey(pool, tenantId, companyId);
       keyByCompanyId.set(companyId, bound.operatingCompanyKey);
     }
-    const plan = copy.buildCopyPlan({ report, records, manifest, operatingCompanyKeyByCompanyId: keyByCompanyId });
+    // The contract's per-record refusals are REPORTED on a dry run; on apply buildCopyPlan refuses outright.
+    const planInput = { report, records, manifest, operatingCompanyKeyByCompanyId: keyByCompanyId };
+    const planReport = copy.buildCopyPlanReport(planInput);
+    const plan = options.apply ? copy.buildCopyPlan(planInput) : planReport.planned;
+    const identities = await copy.resolvePlanIdentities(pool, tenantId, plan);
     const collisions = await copy.recheckTargetCollisions(pool, tenantId, plan);
     const tally = (value) => [...collisions.values()].filter((v) => v === value).length;
 
@@ -164,6 +168,11 @@ async function main() {
       operatingCompanyIds: [...new Set(plan.map((p) => p.operatingCompanyId))].sort(),
       operatingCompanyKeys: [...new Set(plan.map((p) => p.operatingCompanyKey))].sort(),
       planSize: plan.length,
+      planDigest: copy.planDigest(plan),
+      refusedByContract: planReport.refused.length,
+      refusals: planReport.refused,
+      unresolvedAssignees: identities.unresolvedAssignees,
+      unresolvedActors: identities.unresolvedActors,
     };
 
     if (!options.apply) {
@@ -176,11 +185,14 @@ async function main() {
     if (preflight.blocked !== 0 || preflight.targetConflict !== 0) {
       throw new Error(`WORK_ORDER_COPY_PREFLIGHT_DRIFT: blocked=${preflight.blocked}, targetConflict=${preflight.targetConflict}`);
     }
+    if (preflight.refusedByContract !== 0 || preflight.unresolvedAssignees.length !== 0) {
+      throw new Error(`WORK_ORDER_COPY_CONTRACT_REFUSED: refused=${preflight.refusedByContract}, unresolvedAssignees=${preflight.unresolvedAssignees.length}`);
+    }
     const runId = `wo-copy-${new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14)}`;
     const outcome = await copy.copyOnce(pool, {
-      tenantId, runId, plan, decisionId: manifest.decisionId, apply: true,
+      tenantId, runId, plan, decisionId: manifest.decisionId, apply: true, performedBy: options.performedBy,
     });
-    const verification = await copy.verifyCopy(pool, tenantId, plan);
+    const verification = await copy.verifyCopy(pool, tenantId, plan, { refused: planReport.refused });
     const after = await pool.query("SELECT count(*)::int AS n FROM eos_ops.work_orders WHERE tenant_id = $1", [tenantId]);
     const partsPlanAfter = await pool.query("SELECT count(*)::int AS n FROM eos_ops.work_order_parts_plan WHERE tenant_id = $1", [tenantId]);
 
@@ -191,10 +203,16 @@ async function main() {
       copy: {
         attempted: plan.length, inserted: outcome.inserted,
         alreadyPresentEquivalent: outcome.alreadyPresentEquivalent, conflicts: outcome.conflicts,
+        assignmentsInserted: outcome.assignmentsInserted, scheduleHistoryInserted: outcome.scheduleHistoryInserted,
+        transitionsInserted: outcome.transitionsInserted,
         partsPlanRowsInserted: outcome.partsPlanRowsInserted, committed: outcome.applied,
+        copiedAt: outcome.copiedAt, planDigest: outcome.planDigest,
+        provenanceAuditEventId: outcome.provenanceAuditEventId, unresolvedActors: outcome.unresolvedActors,
       },
       verify: {
         checked: verification.checked, ok: verification.ok,
+        byClassification: verification.byClassification, counts: verification.counts,
+        unexpectedTargetIds: verification.unexpectedTargetIds,
         missing: verification.missing, mismatches: verification.mismatches,
       },
       target: { workOrders: after.rows[0].n, workOrderPartsPlan: partsPlanAfter.rows[0].n },
