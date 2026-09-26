@@ -149,6 +149,19 @@ export function validateEmptyRequest(data: unknown): void {
 export function mapReceiveError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err; // the structural invalid-argument we threw
   if (err instanceof ReceiveCommandError) {
+    // A serial already registered to another asset/receipt is a PERMANENT business refusal, not a
+    // transient failure. It must not surface as "internal": the client maps that to UNAVAILABLE and
+    // queues the receipt for an offline retry that can never succeed. failed-precondition is this
+    // callable's conflict code (the client maps it to CONFLICT), matching acquireSerializedAsset's
+    // ALREADY_EXISTS_CONFLICT. details carry ONLY the stable reason -- no serial, asset or receipt id.
+    // Firebase repair (S1-S); deleted with the callable when Receiving cuts over to Render/PG (#1961).
+    if (err.code === "SERIAL_IDENTITY_CONFLICT") {
+      return new HttpsError(
+        "failed-precondition",
+        "A serial number in this receipt is already registered to another unit.",
+        { reason: "SERIAL_IDENTITY_CONFLICT" },
+      );
+    }
     const code: FunctionsErrorCode =
       err.code === "PERMISSION_DENIED" ? "permission-denied"
       : err.code === "SOURCE_NOT_FOUND" ? "not-found"

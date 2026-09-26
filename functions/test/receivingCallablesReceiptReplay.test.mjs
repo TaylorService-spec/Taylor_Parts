@@ -238,6 +238,21 @@ async function expectCode(promise, code, label) {
   });
 }
 
+// A serial identity conflict is a PERMANENT refusal: failed-precondition with a stable machine
+// reason, and nothing identifying the other asset/receipt in the message or details.
+async function expectSerialConflict(promise, label) {
+  await assert.rejects(promise, (e) => {
+    assert.ok(e instanceof HttpsError, `${label}: HttpsError, got ${e && e.name}: ${e && e.message}`);
+    assert.equal(e.code, "failed-precondition", `${label}: code`);
+    assert.deepEqual(e.details, { reason: "SERIAL_IDENTITY_CONFLICT" }, `${label}: details carry only the stable reason`);
+    assert.ok(!/sa_|rcv|receiv(ing)?Id|SN-|po-|wh-|receiver-/i.test(e.message), `${label}: no identifiers in "${e.message}"`);
+    // The client's own error mapper must classify it as a CONFLICT (operator-facing), never
+    // UNAVAILABLE (which MultiScanReceiving turns into queued offline work that would loop forever).
+    assert.equal(client.mapCallableErrorToStatus({ code: `functions/${e.code}` }), client.RECEIVING_OUTCOME.CONFLICT, `${label}: client status`);
+    return true;
+  });
+}
+
 // Deep snapshot of every document, so "zero new writes" means byte-identical state, not equal counts.
 const snapshot = (fake) => new Map([...fake.store].map(([k, v]) => [k, JSON.stringify(v)]));
 function assertUnchanged(fake, before, label) {
@@ -441,14 +456,30 @@ test("NEGATIVE: a serial already received cannot be reused under a NEW key", asy
     lines: [PROGRESS_0.lines[0], { ...PROGRESS_0.lines[1], receivedQuantity: 1, remainingQuantity: 1, state: "PARTIALLY_RECEIVED" }],
   };
   const before = snapshot(fake);
-  // Refused. The public code is "internal" because mapReceiveError has no SERIAL_IDENTITY_CONFLICT arm
-  // -- a pre-existing mapping, pinned here as-is and NOT changed by this lane.
-  await expectCode(call(fake, clientPayload({ scans: [{ partId: PART_SERIAL, serialNo: "SN-1" }], idempotencyKey: "key-s2", progress })), "internal", "serial reuse");
+  // Refused as a PERMANENT conflict (failed-precondition, details.reason SERIAL_IDENTITY_CONFLICT).
+  // Pre-fix (lane S1-S) this surfaced as "internal", which the client maps to UNAVAILABLE and would
+  // queue for an offline retry that can never succeed.
+  await expectSerialConflict(call(fake, clientPayload({ scans: [{ partId: PART_SERIAL, serialNo: "SN-1" }], idempotencyKey: "key-s2", progress })), "serial reuse");
   assertUnchanged(fake, before, "serial reuse");
   // ...while the ORIGINAL receipt's exact retry still replays.
   const again = await call(fake, clientPayload({ scans: [{ partId: PART_SERIAL, serialNo: "SN-1" }], idempotencyKey: "key-s1" }));
   assert.equal(again.outcome, "replayed");
   assertUnchanged(fake, before, "serial replay");
+});
+
+test("NEGATIVE: a serial held by a NON-receipt asset (e.g. acquired) refuses a NEW-key receipt as a conflict, zero writes", async () => {
+  // The unit already exists in serialized_assets, registered by something other than any receipt
+  // (no activatedByReceivingId) -- the "held by another asset" case, independent of a prior receipt.
+  const { serializedAssetDocId } = await import("../lib/serializedAsset/serializedAssetRegistration.js");
+  const fake = makeFakeDb({
+    ...baseSeed(),
+    [`serialized_assets/${serializedAssetDocId(PART_SERIAL, "SN-7")}`]: { partId: PART_SERIAL, serialNo: "SN-7", status: "AVAILABLE", origin: "ACQUISITION" },
+  });
+  const before = snapshot(fake);
+  const writesBefore = fake.writes();
+  await expectSerialConflict(call(fake, clientPayload({ scans: [{ partId: PART_SERIAL, serialNo: "SN-7" }], idempotencyKey: "key-held" })), "held serial");
+  assertUnchanged(fake, before, "held serial");
+  assert.equal(fake.writes(), writesBefore, "held serial: zero committed writes");
 });
 
 // ===================================================================== offline replay after a lost response

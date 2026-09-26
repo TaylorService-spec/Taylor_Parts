@@ -12,7 +12,7 @@ import {
 import { HttpsError } from "firebase-functions/v2/https";
 import {
   UnauthorizedReceivingError, SourceNotFoundError, SourceNotReceivableError,
-  DestinationInvalidError, PartInvalidError, ReceivingIntegrityError,
+  DestinationInvalidError, PartInvalidError, ReceivingIntegrityError, SerialIdentityConflictError,
 } from "../lib/inventoryReceiving/receiveInventoryStockCommand.js";
 import { IdempotencyConflictError, MalformedStoredRecordError, InvalidReceivingError } from "../lib/inventoryReceiving/receivingTypes.js";
 import { ReceivingLocationOptionsError } from "../lib/warehouseGovernance/receivingLocationOptionsService.js";
@@ -120,6 +120,7 @@ check("mapReceiveError: exact governed -> public code matrix, no raw leak", () =
     [new DestinationInvalidError("inactive"), "failed-precondition"],
     [new PartInvalidError("inactive part"), "failed-precondition"],
     [new ReceivingIntegrityError("ledger disagreed"), "internal"],
+    [new SerialIdentityConflictError(), "failed-precondition"],
     [new IdempotencyConflictError("conflict"), "failed-precondition"],
     [new MalformedStoredRecordError("bad stored"), "failed-precondition"],
     [new InvalidReceivingError("bad input"), "invalid-argument"],
