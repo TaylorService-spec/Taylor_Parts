@@ -6,6 +6,13 @@
 
 **Rules (summary — full text = the 8 numbered rules in the Operating Model §8):** declare the assignment here before writing; (1) one active writer per owned path; (2) no silent edits to a reserved shared file; (3) a shared-file collision does not stop a whole capability; (4) finish non-conflicting work and record the integration delta; (5) an Integration Agent owns high-collision files when practical; (6) a builder is not the sole approver of its own material change; (7) reviewers use repository evidence, not another agent's chat memory; (8) production promotion is serialized.
 
+## Current operating model (2026-09-25, Owner)
+
+- **Participants:** Rudy is the Owner (business decisions). ChatGPT is architecture, controller and roadmap. Claude is the execution agent. **ChatGPT Work (Codex `/root`) is no longer part of the workflow.** Entries below that name Codex / ChatGPT Work are historical records of those lanes, not live writers. A lane they declared is re-assigned only by a new declaration here.
+- **Evidence is local-first:** git, worktrees, source, tests, migrations and local test databases. GitHub is used only for targeted questions (remote head, CI result, merge or review state), and is never polled.
+- **Change control:** no merge, deploy, migration apply, live-data change, grant change, credential change, persona-registry write or production change without explicit per-item authorization. There are no blanket merge requests.
+- **Firebase is transitional:** the target is zero Firebase, including authentication. A repair to an existing Firebase path must name its EOS/PostgreSQL replacement and its deletion condition.
+
 ## How to use
 
 When you begin a capability, add a row to **Active** with every declared field. Move it to **Recently completed** at capability completion (§6). Keep it short — this is a coordination surface, not a history log; `DECISIONS.md` is the durable record.
@@ -33,7 +40,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f`
 - Owned paths:         `functions/src/finance/financialReportingRead.ts` · `functions/test/financialReportingRead*.test.mjs` · `field-ops-app-vite/src/domain/financialFactsView.js` · `field-ops-app-vite/src/hooks/useFinancialFacts.js` · the Financials pages' honest-state detail line only
 - Shared paths req'd:  none
-- Dependencies:        none; alternative to #1976 (Owner picks one)
+- Dependencies:        none. Controller ruling O11 (2026-09-26) chose this variant A′; #1976 becomes SUPERSEDED_CLOSE once #1981 is accepted
 - Expected outcome:    missing-receipt detection, one read-only snapshot, completeness states, named reasons; NO availability extension
 - Protected boundaries:Firebase repair only until the PG finance read is active; NO merge
 - Lifecycle stage:     DESIGNED
