@@ -51,6 +51,20 @@ export function assertConvertibleAgreement(agreement: AgreementRow | null, oppor
 }
 
 /**
+ * ONE CHAIN, ONE CHANNEL (Pass 10 P10-4). A Sales Order sourced from an Opportunity carries that Opportunity's stored
+ * sales channel: an omitted channel is inherited, and a different one is refused -- a caller could otherwise file a
+ * NATIONAL chain's Order under RETAIL and expose its lineage to a RETAIL-scoped reader. An Opportunity with no stored
+ * channel (an identity-only record) imposes nothing: the caller's channel is validated as before.
+ */
+export function salesChannelFromSource(opportunity: OpportunityRow, requested: unknown): unknown {
+  if (opportunity.salesChannel === null) return requested;
+  if (requested !== undefined && requested !== null && requested !== opportunity.salesChannel) {
+    fail("SALES_CHANNEL_MISMATCH", "PRECONDITION_FAILED", "a Sales Order carries its source Opportunity's sales channel");
+  }
+  return opportunity.salesChannel;
+}
+
+/**
  * Stage a Sales Order derived from an ACCEPTED Agreement, on the caller's transaction. Shared by WON close and
  * create-from-Opportunity.
  *
@@ -69,7 +83,7 @@ export async function stageSalesOrderFromAgreement(
     inheritedOwner: deriveEmployeeRefOwner({ ownerEmployeeId: opportunity.ownerEmployeeId }),
     inheritedOperatingCompanyId: agreement.operatingCompanyId ?? opportunity.operatingCompanyId,
     inheritedCreditedSalespersonId: agreement.creditedSalespersonId ?? opportunity.creditedSalespersonId,
-    salesChannel: input.salesChannel as never,
+    salesChannel: salesChannelFromSource(opportunity, input.salesChannel) as never,
     locationId: typeof input.locationId === "string" ? input.locationId : agreement.locationId ?? undefined,
     sourceOpportunityId: opportunity.id,
     customerPO: typeof input.customerPO === "string" ? input.customerPO : agreement.customerPO ?? undefined,
@@ -119,6 +133,7 @@ export function createSalesOrder(deps: CommercialCommandDeps, actor: CommercialA
       if (!opportunity) fail("SOURCE_OPPORTUNITY_NOT_FOUND", "NOT_FOUND", "the source Opportunity does not exist in this tenant");
       if (opportunity!.outcome !== "WON") fail("OPPORTUNITY_NOT_WON", "PRECONDITION_FAILED", "the source Opportunity is not WON");
       if (opportunity!.accountId !== built.accountId) fail("SOURCE_ACCOUNT_MISMATCH", "PRECONDITION_FAILED", "the source Opportunity is for a different Account");
+      salesChannelFromSource(opportunity!, built.salesChannel);
       const expected = opportunity!.lines.map(lineKey);
       const actual = built.lines.map((l) => lineKey({ kind: l.kind, ref: l.ref, qty: l.orderedQty }));
       if (!sameMultiset(expected, actual)) fail("SOURCE_LINES_MISMATCH", "PRECONDITION_FAILED", "the Order lines do not match the source Opportunity");

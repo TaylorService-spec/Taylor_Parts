@@ -8,6 +8,11 @@
 // The Account must exist in eos_crm for this tenant. That reads the target PostgreSQL relationship the Commercial
 // schema already references; it does NOT declare CRM runtime cutover (D1) complete. Only the Account's name is
 // emitted -- no commercial profile, terms or contacts.
+//
+// NO ACCOUNT ORACLE FOR A SCOPED READER (Pass 10 P10-3). A sales-channel-scoped holder has no Account read of its own
+// (customer.record.read is inert at a channel), so the projection may disclose an Account's name -- or its existence --
+// only through a record the reader is admitted to. With a non-global reach, an Account with no admitted record in any
+// family answers ACCOUNT_NOT_FOUND, exactly like a missing id. A global holder is unchanged.
 import { fail } from "../commands/commercialCommandKernel";
 import { COMMERCIAL_READ_CAPABILITIES, requirePageSize, requireRecordId, runCommercialRead, SALES_CHANNEL_SCOPED, type CommercialReadActor, type CommercialReadDeps } from "./commercialReadKernel";
 import { readOpportunityPage, type OpportunitySummaryProjection } from "./opportunityReadProjection";
@@ -45,6 +50,9 @@ export function getAccountCommercialProjection(
       const opportunities = await readOpportunityPage(db, tenantId, { ...scope, stage: null, salesChannels: reach.channelsFor(C.OPPORTUNITY_READ) });
       const salesAgreements = await readSalesAgreementPage(db, tenantId, { ...scope, state: null, salesChannels: reach.channelsFor(C.SALES_AGREEMENT_READ) });
       const salesOrders = await readSalesOrderPage(db, tenantId, { ...scope, state: null, salesChannels: reach.channelsFor(C.SALES_ORDER_READ) });
+      if (!reach.global && opportunities.items.length === 0 && salesAgreements.items.length === 0 && salesOrders.items.length === 0) {
+        return fail("ACCOUNT_NOT_FOUND", "NOT_FOUND", "the Account does not exist in this tenant");
+      }
       return {
         account: { accountId: account.rows[0].id, name: account.rows[0].name },
         opportunities: { items: opportunities.items, truncated: opportunities.truncated },

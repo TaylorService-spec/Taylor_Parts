@@ -75,10 +75,20 @@ const GLOBAL_REACH: CommercialRecordReach = Object.freeze({
 export interface CommercialReadOptions {
   /** Opt in to sales-channel-scoped admission, deciding each record by its stored channel. Absent = global only. */
   readonly recordScope?: "salesChannel";
+  /**
+   * Pass 10 P10-4: read keys of the LINEAGE a detail read discloses (a Sales Order's source Agreement, an Opportunity's
+   * Order, ...). Not required -- a missing one never refuses the read -- but `admits(key, channel)` answers for them too,
+   * so a scoped reader sees a linked record's reference only where it could read that record itself.
+   */
+  readonly lineageCapabilities?: readonly string[];
 }
 
 /** Lane GA: the Commercial reads honour a salesChannel-scoped holding against the record's stored channel. */
 export const SALES_CHANNEL_SCOPED: CommercialReadOptions = Object.freeze({ recordScope: "salesChannel" as const });
+
+/** SALES_CHANNEL_SCOPED, plus the lineage keys a detail read discloses (Pass 10 P10-4). */
+export const salesChannelScopedWithLineage = (lineageCapabilities: readonly string[]): CommercialReadOptions =>
+  Object.freeze({ recordScope: "salesChannel" as const, lineageCapabilities: Object.freeze([...lineageCapabilities]) });
 
 /** The refusal a scoped holder gets for a record outside its channels: the SAME words a missing record gets. */
 export function refuseOutsideReach(family: "Opportunity" | "Sales Agreement" | "Sales Order"): never {
@@ -106,7 +116,8 @@ function requireActor(actor: CommercialReadActor, requiredCapabilities: readonly
   // a read that opted in, and only through UNCONDITIONED holdings (admittedScopeValues excludes conditioned ones).
   const scoped = options.recordScope === "salesChannel" && Array.isArray(actor.scopedHeld) ? actor.scopedHeld : [];
   const channels = new Map<string, readonly string[]>();
-  for (const c of requiredCapabilities) {
+  const lineage = (options.lineageCapabilities ?? []).filter((c) => !requiredCapabilities.includes(c));
+  for (const c of [...requiredCapabilities, ...lineage]) {
     if (actor.capabilities.has(c)) continue;
     const admitted = admittedScopeValues(scoped, c, "salesChannel");
     if (admitted.length > 0) channels.set(c, Object.freeze([...admitted]));

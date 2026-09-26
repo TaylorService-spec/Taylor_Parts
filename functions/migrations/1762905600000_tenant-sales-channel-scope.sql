@@ -78,6 +78,63 @@ CREATE TRIGGER tenant_sales_channels_no_truncate
     BEFORE TRUNCATE ON tenant_sales_channels
     FOR EACH STATEMENT EXECUTE FUNCTION tenant_sales_channels_no_truncate();
 
+-- ════════════════════ THE DATABASE ENFORCES THE PAIRING, NOT ONLY THE COMMAND (Pass 10 P10-5) ════════════════════
+--
+-- Administration refuses to deactivate a channel an ACTIVE assignment is scoped to, and refuses to scope an
+-- assignment to a channel that is not ACTIVE. A raw writer bypassed both: an INACTIVE channel kept its scoped holders,
+-- and an assignment could name a channel this tenant never activated -- the runtime would still honour either. Both
+-- directions are now refused by the database itself, and they serialize on the channel ROW: the assignment side reads
+-- it FOR SHARE, the deactivation holds its row lock, so neither can commit past the other. The deactivation count is
+-- snapshot-dependent, so (as for the grant-cell triggers, Pass 10 P10-2) it refuses outside READ COMMITTED.
+CREATE FUNCTION tenant_sales_channels_no_stranded_scope() RETURNS trigger
+LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+DECLARE
+    v_held INT;
+BEGIN
+    IF OLD.status = 'ACTIVE' AND NEW.status <> 'ACTIVE' THEN
+        IF current_setting('transaction_isolation') <> 'read committed' THEN
+            RAISE EXCEPTION 'TENANT_SALES_CHANNEL_REQUIRES_READ_COMMITTED: deactivating % at isolation level % could miss a concurrently committed scoped assignment',
+                NEW.sales_channel, current_setting('transaction_isolation');
+        END IF;
+        SELECT count(*) INTO v_held FROM eos_policy.user_role_assignments
+         WHERE tenant_id = NEW.tenant_id AND status = 'active' AND scope_type = 'salesChannel' AND scope_value = NEW.sales_channel::text;
+        IF v_held > 0 THEN
+            RAISE EXCEPTION 'SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS: % active Security Role assignment(s) are scoped to %; revoke them first',
+                v_held, NEW.sales_channel;
+        END IF;
+    END IF;
+    RETURN NEW;
+END
+$fn$;
+
+CREATE TRIGGER tenant_sales_channels_no_stranded_scope
+    BEFORE UPDATE ON tenant_sales_channels
+    FOR EACH ROW EXECUTE FUNCTION tenant_sales_channels_no_stranded_scope();
+
+CREATE FUNCTION user_role_assignments_sales_channel_active() RETURNS trigger
+LANGUAGE plpgsql SET search_path = eos_policy, pg_catalog AS $fn$
+DECLARE
+    v_status TEXT;
+BEGIN
+    IF NEW.scope_type IS DISTINCT FROM 'salesChannel' OR NEW.status IS DISTINCT FROM 'active' THEN RETURN NEW; END IF;
+    IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND OLD.scope_type IS NOT DISTINCT FROM NEW.scope_type
+       AND OLD.scope_value IS NOT DISTINCT FROM NEW.scope_value AND OLD.tenant_id = NEW.tenant_id THEN
+        RETURN NEW; -- an unchanged active holding (e.g. an access-version touch) is not a new scope
+    END IF;
+    SELECT status INTO v_status FROM eos_policy.tenant_sales_channels
+     WHERE tenant_id = NEW.tenant_id AND sales_channel::text = NEW.scope_value FOR SHARE;
+    IF v_status IS DISTINCT FROM 'ACTIVE' THEN
+        RAISE EXCEPTION 'SALES_CHANNEL_NOT_ACTIVE: % is not an ACTIVE sales channel of this tenant; an assignment may be scoped only to one',
+            coalesce(NEW.scope_value, '(null)');
+    END IF;
+    RETURN NEW;
+END
+$fn$;
+
+CREATE TRIGGER user_role_assignments_sales_channel_active
+    BEFORE INSERT OR UPDATE ON user_role_assignments
+    FOR EACH ROW EXECUTE FUNCTION user_role_assignments_sales_channel_active();
+
 -- Down Migration
 -- REFUSE, NEVER DESTROY: a tenant's sales channels are the values its scoped Security Role assignments name.
 DO $$
@@ -95,6 +152,10 @@ BEGIN
 END
 $$;
 
+DROP TRIGGER IF EXISTS user_role_assignments_sales_channel_active ON eos_policy.user_role_assignments;
+DROP FUNCTION IF EXISTS eos_policy.user_role_assignments_sales_channel_active();
+DROP TRIGGER IF EXISTS tenant_sales_channels_no_stranded_scope ON eos_policy.tenant_sales_channels;
+DROP FUNCTION IF EXISTS eos_policy.tenant_sales_channels_no_stranded_scope();
 DROP TRIGGER IF EXISTS tenant_sales_channels_no_truncate ON eos_policy.tenant_sales_channels;
 DROP TABLE IF EXISTS eos_policy.tenant_sales_channels;
 DROP FUNCTION IF EXISTS eos_policy.tenant_sales_channels_no_truncate();

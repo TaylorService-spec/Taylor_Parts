@@ -15,6 +15,10 @@
 //   E  Pass 10 P10-1: no SELF Operational Scope / Work Eligibility -- an administrator cannot scope or qualify the
 //      Employee its own Principal is linked to (REORDER_QUEUE made this reachable), and cannot link to itself an
 //      Employee that already holds a current scope or qualification (the S4 rule extended to these facts)
+//   F  Pass 10 P10-3 / P10-4 / P10-5: no Account name/existence oracle for a scoped reader; a Sales Order carries its
+//      source Opportunity's channel (commands) and lineage is disclosed only where the reader could read the linked
+//      record (reads); the database refuses deactivating a channel under an active scoped assignment and refuses an
+//      assignment scoped to a channel that is not ACTIVE
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -364,6 +368,109 @@ test("governed scope values and the SALES_CHANNEL scope, end to end", { skip: SK
     const after = (await wf("admin-a", "listOperationalScopeTargets", {})).result.scopeTypes.find((s) => s.scopeType === "REORDER_QUEUE");
     assert.deepEqual([after.available, after.values], [false, []]);
     assert.match(after.reason, /no ACTIVE governed value/);
+  });
+
+  // ════════════════════ F. Pass 10 P10-3 / P10-4 / P10-5 ════════════════════
+  await t.test("F (P10-3): a channel-scoped reader cannot read an Account's name, nor tell it from a missing one, without an admitted record", async () => {
+    await q(`INSERT INTO eos_crm.accounts (id, tenant_id, name, status, owner_employee_id, created_by, updated_by) VALUES
+      ('acct-n',$1,'NATIONAL ONLY SECRET CO','ACTIVE','e-1','x','x'), ('acct-empty',$1,'NO RECORDS CO','ACTIVE','e-1','x','x')`, [T.a]);
+    await newOpp(WA, "NATIONAL_ACCOUNTS", "acct-n");
+    const shape = (r) => [r.ok, r.status, r.code, r.message];
+    const missing = await sales("retail-mgr", "getAccountCommercialProjection", { accountId: "acct-nope" });
+    assert.deepEqual(shape(missing).slice(0, 3), [false, 404, "ACCOUNT_NOT_FOUND"], JSON.stringify(missing));
+    for (const accountId of ["acct-n", "acct-empty"]) {
+      const r = await sales("retail-mgr", "getAccountCommercialProjection", { accountId });
+      assert.deepEqual(shape(r), shape(missing), `${accountId}: ${JSON.stringify(r)}`);
+      assert.equal(JSON.stringify(r).includes("SECRET"), false);
+    }
+    // An Account with an admitted record still answers, name included (section C proves the families).
+    assert.equal((await sales("retail-mgr", "getAccountCommercialProjection", { accountId: "acct-1" })).result.account.name, "Shared Customer");
+    // A GLOBAL holder is unchanged: an Account with no records answers with its name.
+    const global = await sales("global-reader", "getAccountCommercialProjection", { accountId: "acct-empty" });
+    assert.deepEqual([global.ok, global.result?.account?.name], [true, "NO RECORDS CO"], JSON.stringify(global));
+  });
+
+  await t.test("F (P10-4): a Sales Order carries its source Opportunity's channel -- inherited when omitted, a different one refused", async () => {
+    const STAGES = ["IDENTIFIED", "QUALIFYING", "SOLUTION", "QUOTING", "CUSTOMER_REVIEW", "DECISION"];
+    const won = await newOpp(WA, "NATIONAL_ACCOUNTS");
+    for (const toStage of STAGES.slice(1)) await opp.transitionOpportunity(writeDeps, WA, { idempotencyKey: key(), opportunityId: won.opportunityId, toStage });
+    const agreement = await newAgreement(WA, won.opportunityId);
+    await sa.acceptSalesAgreement(writeDeps, WA, { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId });
+    await opp.transitionOpportunity(writeDeps, WA, { idempotencyKey: key(), opportunityId: won.opportunityId, outcome: "WON" });
+    const mismatch = (e) => e?.code === "SALES_CHANNEL_MISMATCH";
+    await assert.rejects(so.createSalesOrderFromOpportunity(writeDeps, WA, { idempotencyKey: key(), opportunityId: won.opportunityId, salesChannel: "RETAIL" }), mismatch);
+    await assert.rejects(so.createSalesOrder(writeDeps, WA, { idempotencyKey: key(), accountId: "acct-1", ownerEmployeeId: "e-1", operatingCompanyId: "taylor",
+      salesChannel: "RETAIL", sourceOpportunityId: won.opportunityId, lines: [{ kind: "SERVICE", ref: "svc", orderedQty: 1, unitPrice: 100, businessUnitId: "SERVICE" }] }), mismatch);
+    const order = await so.createSalesOrderFromOpportunity(writeDeps, WA, { idempotencyKey: key(), opportunityId: won.opportunityId });
+    const row = (await q(`SELECT sales_channel::text AS c FROM eos_commercial.sales_orders WHERE id=$1`, [order.salesOrderId])).rows[0];
+    assert.equal(row.c, "NATIONAL_ACCOUNTS", "the channel is inherited from the source Opportunity");
+    // The RETAIL reader cannot see that Order at all.
+    notFound(await detail("retail-mgr", "getSalesOrderDetail", "salesOrderId", order.salesOrderId), "Sales Order");
+  });
+
+  await t.test("F (P10-4): lineage references are disclosed only where the reader could read the linked record", async () => {
+    // A cross-channel chain as a raw writer (or an older build) could leave it: the RETAIL Order points at the NATIONAL
+    // Opportunity / Agreement, and the NATIONAL Order points at the RETAIL Opportunity / Agreement.
+    await q(`UPDATE eos_commercial.sales_orders SET opportunity_id=$1, sales_agreement_id=$2 WHERE id=$3`,
+      [N.opp.opportunityId, N.agreement.salesAgreementId, R.order.salesOrderId]);
+    await q(`UPDATE eos_commercial.sales_orders SET opportunity_id=$1, sales_agreement_id=$2 WHERE id=$3`,
+      [R.opp.opportunityId, R.agreement.salesAgreementId, N.order.salesOrderId]);
+    const order = await detail("retail-mgr", "getSalesOrderDetail", "salesOrderId", R.order.salesOrderId);
+    assert.equal(order.ok, true, JSON.stringify(order));
+    assert.deepEqual([order.result.sourceOpportunity, order.result.sourceAgreement], [null, null], "NATIONAL lineage leaked to a RETAIL reader");
+    const o = await detail("retail-mgr", "getOpportunityDetail", "opportunityId", R.opp.opportunityId);
+    assert.deepEqual([o.ok, o.result.salesAgreement?.id, o.result.salesOrder], [true, R.agreement.salesAgreementId, null], JSON.stringify(o));
+    const a = await detail("retail-mgr", "getSalesAgreementDetail", "salesAgreementId", R.agreement.salesAgreementId);
+    assert.deepEqual([a.ok, a.result.sourceOpportunity?.id, a.result.salesOrder], [true, R.opp.opportunityId, null], JSON.stringify(a));
+    // A GLOBAL holder is unchanged: every reference is there.
+    const g = await detail("global-reader", "getSalesOrderDetail", "salesOrderId", R.order.salesOrderId);
+    assert.deepEqual([g.result.sourceOpportunity?.id, g.result.sourceAgreement?.id], [N.opp.opportunityId, N.agreement.salesAgreementId]);
+    const go = await detail("global-reader", "getOpportunityDetail", "opportunityId", R.opp.opportunityId);
+    assert.equal(go.result.salesOrder?.id, N.order.salesOrderId);
+  });
+
+  await t.test("F (P10-5): the database refuses a stranded scope in both directions, and serializes with the command", async () => {
+    // RETAIL is ACTIVE and retail-mgr holds an ACTIVE assignment scoped to it: a raw deactivation is refused.
+    await assert.rejects(q(`UPDATE eos_policy.tenant_sales_channels SET status='INACTIVE', updated_by='raw' WHERE tenant_id=$1 AND sales_channel='RETAIL'`, [T.a]),
+      /SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS/);
+    assert.equal((await sales("retail-mgr", "listOpportunities", {})).ok, true, "the scoped holder is intact");
+    // A raw assignment naming a channel this tenant never activated (STRATEGIC_ACCOUNTS), or an INACTIVE one
+    // (NATIONAL_ACCOUNTS, deactivated in C), is refused -- the runtime would otherwise honour it.
+    for (const channel of ["STRATEGIC_ACCOUNTS", "NATIONAL_ACCOUNTS", "WHOLESALE"]) {
+      await assert.rejects(q(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,granted_at,access_version_at_grant,created_by,updated_by)
+        VALUES ($1,$2,$3,$4,'salesChannel',$5,'active','raw',now(),0,'raw','raw')`, [`ura-${randomUUID()}`, T.a, bystander, lead, channel]), /SALES_CHANNEL_NOT_ACTIVE/, channel);
+    }
+    // Re-activating a revoked assignment onto an INACTIVE channel is refused the same way.
+    const revoked = (await q(`SELECT id FROM eos_policy.user_role_assignments WHERE tenant_id=$1 AND scope_type='salesChannel' AND scope_value='NATIONAL_ACCOUNTS' AND status<>'active' LIMIT 1`, [T.a])).rows[0];
+    assert.ok(revoked, "section C revoked the NATIONAL_ACCOUNTS assignments");
+    await assert.rejects(q(`UPDATE eos_policy.user_role_assignments SET status='active' WHERE id=$1`, [revoked.id]), /SALES_CHANNEL_NOT_ACTIVE/);
+    // An unheld channel may still be deactivated raw (the guard is exactly "no stranded scope").
+    ok(await call("admin-a", "setTenantSalesChannelStatus", { salesChannel: "STRATEGIC_ACCOUNTS", status: "ACTIVE", reason: "try it" }));
+    await q(`UPDATE eos_policy.tenant_sales_channels SET status='INACTIVE', updated_by='raw' WHERE tenant_id=$1 AND sales_channel='STRATEGIC_ACCOUNTS'`, [T.a]);
+    // The count is snapshot-dependent: a deactivation outside READ COMMITTED is refused.
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+      const msg = await c.query(`UPDATE eos_policy.tenant_sales_channels SET status='INACTIVE', updated_by='raw' WHERE tenant_id=$1 AND sales_channel='RETAIL'`, [T.a])
+        .then(() => "DEACTIVATED", (e) => e.message);
+      assert.match(msg, /TENANT_SALES_CHANNEL_REQUIRES_READ_COMMITTED/);
+    } finally { await c.query("ROLLBACK").catch(() => {}); c.release(); }
+    // A raw scoped assignment racing a raw deactivation: they serialize on the channel row, never both commit.
+    const racer = await person(T.a, "racer-a");
+    ok(await call("admin-a", "setTenantSalesChannelStatus", { salesChannel: "STRATEGIC_ACCOUNTS", status: "ACTIVE", reason: "race" }));
+    const c1 = await pool.connect();
+    const c2 = await pool.connect();
+    try {
+      await c1.query("BEGIN");
+      await c1.query(`INSERT INTO eos_policy.user_role_assignments (id,tenant_id,principal_id,role_id,scope_type,scope_value,status,granted_by,granted_at,access_version_at_grant,created_by,updated_by)
+        VALUES ($1,$2,$3,$4,'salesChannel','STRATEGIC_ACCOUNTS','active','raw',now(),0,'raw','raw')`, [`ura-${randomUUID()}`, T.a, racer, lead]);
+      const deactivate = c2.query(`UPDATE eos_policy.tenant_sales_channels SET status='INACTIVE', updated_by='raw' WHERE tenant_id=$1 AND sales_channel='STRATEGIC_ACCOUNTS'`, [T.a])
+        .then(() => "DEACTIVATED", (e) => e.message);
+      await new Promise((r) => setTimeout(r, 300));
+      await c1.query("COMMIT");
+      assert.match(await deactivate, /SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS/);
+    } finally { c1.release(); c2.release(); }
+    assert.equal((await q(`SELECT status FROM eos_policy.tenant_sales_channels WHERE tenant_id=$1 AND sales_channel='STRATEGIC_ACCOUNTS'`, [T.a])).rows[0].status, "ACTIVE");
   });
 
   // ════════════════════ E. Pass 10 P10-1: no self-scope, no self-qualification, no self-link onto either ════════════════════

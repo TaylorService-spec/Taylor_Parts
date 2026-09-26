@@ -279,10 +279,14 @@ test("governed PostgreSQL Commercial command layer, in PostgreSQL", { skip: SKIP
     const agreement = await agreementFor(o.opportunityId);
     await sa.acceptSalesAgreement(deps, ACTOR, { idempotencyKey: key(), salesAgreementId: agreement.salesAgreementId });
     await opp.transitionOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, outcome: "WON" });
-    const order = await so.createSalesOrderFromOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, salesChannel: "NATIONAL_ACCOUNTS", ownerEmployeeId: "e-gm" });
+    // Pass 10 P10-4: the Order carries its source Opportunity's channel (RETAIL here); a different one is refused and
+    // an omitted one is inherited.
+    await assert.rejects(so.createSalesOrderFromOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, salesChannel: "NATIONAL_ACCOUNTS", ownerEmployeeId: "e-gm" }),
+      code("SALES_CHANNEL_MISMATCH"));
+    const order = await so.createSalesOrderFromOpportunity(deps, ACTOR, { idempotencyKey: key(), opportunityId: o.opportunityId, ownerEmployeeId: "e-gm" });
     assert.equal(order.opportunityId, o.opportunityId);
     const row = (await q(`SELECT owner_employee_id, sales_agreement_id, sales_channel::text FROM eos_commercial.sales_orders WHERE id=$1`, [order.salesOrderId])).rows[0];
-    assert.deepEqual(row, { owner_employee_id: "e-gm", sales_agreement_id: agreement.salesAgreementId, sales_channel: "NATIONAL_ACCOUNTS" });
+    assert.deepEqual(row, { owner_employee_id: "e-gm", sales_agreement_id: agreement.salesAgreementId, sales_channel: "RETAIL" });
   });
 
   let direct;

@@ -9,7 +9,7 @@
 import { SALES_ORDER_STATES } from "../../salesOrder/salesOrderLifecycle";
 import { fail } from "../commands/commercialCommandKernel";
 import {
-  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED,
+  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
   requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
   type CommercialReadDeps, type Queryable,
 } from "./commercialReadKernel";
@@ -122,13 +122,14 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
       const { rows } = await db.query(
         `SELECT ${SUMMARY_COLUMNS}, (${SALES_ORDER_IS_COMPLETE}) AS complete,
                 s.location_id, loc.name AS location_name, s.customer_po, s.notes,
-                o.opportunity_number, o.stage::text AS opportunity_stage,
-                a.sales_agreement_number AS agreement_number, a.state::text AS agreement_state
+                o.opportunity_number, o.stage::text AS opportunity_stage, o.sales_channel::text AS opportunity_channel,
+                a.sales_agreement_number AS agreement_number, a.state::text AS agreement_state, ao.sales_channel::text AS agreement_channel
            FROM eos_commercial.sales_orders s
            LEFT JOIN eos_crm.accounts acc ON acc.tenant_id = s.tenant_id AND acc.id = s.account_id
            LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = s.tenant_id AND loc.account_id = s.account_id AND loc.id = s.location_id
            LEFT JOIN eos_commercial.opportunities o ON o.tenant_id = s.tenant_id AND o.id = s.opportunity_id
            LEFT JOIN eos_commercial.sales_agreements a ON a.tenant_id = s.tenant_id AND a.id = s.sales_agreement_id
+           LEFT JOIN eos_commercial.opportunities ao ON ao.tenant_id = a.tenant_id AND ao.id = a.opportunity_id
           WHERE s.tenant_id = $1 AND s.id = $2`,
         [tenantId, salesOrderId],
       );
@@ -142,12 +143,16 @@ export function getSalesOrderDetail(deps: CommercialReadDeps, actor: CommercialR
         ...summaryOf(r, lines.get(r.id)!),
         location: r.location_id === null ? null : { locationId: r.location_id, name: r.location_name ?? null },
         customerPO: r.customer_po, notes: r.notes,
-        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null ? null
+        // Pass 10 P10-4: lineage is disclosed only where the reader could read the linked record itself (an
+        // Agreement's channel is its source Opportunity's). A global holder is unchanged.
+        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null
+          || !reach.admits(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, r.opportunity_channel ?? null) ? null
           : { id: r.opportunity_id, number: r.opportunity_number, state: r.opportunity_stage },
-        sourceAgreement: r.sales_agreement_id === null || r.agreement_number === null ? null
+        sourceAgreement: r.sales_agreement_id === null || r.agreement_number === null
+          || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.agreement_channel ?? null) ? null
           : { id: r.sales_agreement_id, number: r.agreement_number, state: r.agreement_state },
       };
-    }, SALES_CHANNEL_SCOPED);
+    }, salesChannelScopedWithLineage([COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ]));
 }
 
 export interface SalesOrderListOptions {
