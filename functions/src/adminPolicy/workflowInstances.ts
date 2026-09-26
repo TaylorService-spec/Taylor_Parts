@@ -41,7 +41,7 @@ import {
   type WorkflowEffectiveAuthority,
   type WorkflowFunctionalRoleFactsProvider,
 } from "./workflowEngine";
-import type { BusinessContext } from "./assignmentScopeRuntime";
+import { holdingAdmits, type BusinessContext } from "./assignmentScopeRuntime";
 import type { PolicyReader, PolicyRepository } from "./policyRepository";
 import type { TenantId, WorkflowInstanceRecord, WorkflowRecord } from "./types";
 
@@ -127,11 +127,12 @@ export interface WorkflowRuntimeActor {
   /** QUALIFYING Security Role keys from the access resolver. */
   readonly heldRoleKeys: readonly string[];
   /**
-   * Security Role keys held ONLY through a scoped assignment (lane SC: the sourceRole of each scopedHeld holding).
-   * They satisfy the SECURITY_ROLE binding rule, which never grants; the capability is still decided by the evaluator
-   * against the record's business context, so a scoped Role binding confers nothing outside its scope.
+   * Security Roles held ONLY through a scoped assignment, WITH their scope (lane SC: the sourceRole, scopeType and
+   * scopeValue of each scopedHeld holding). A scoped Role satisfies the SECURITY_ROLE binding rule ONLY for a record
+   * whose server-derived business context admits its scope (Pass 9 S5); outside its scope it does not count, even
+   * when the capability itself is held globally through some other, unbound Role.
    */
-  readonly scopedRoleKeys?: readonly string[];
+  readonly scopedRoles?: readonly { readonly roleKey: string; readonly scopeType: string; readonly scopeValue: string }[];
 }
 
 export interface TransitionWorkflowInstanceInput {
@@ -174,7 +175,11 @@ export async function transitionWorkflowInstance(
   // THE PINNED VERSION, never the active one.
   const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, instance.workflowVersionId);
   const roles = await repo.listRoles(actor.tenantId);
-  const held = new Set([...(actor.heldRoleKeys ?? []), ...(actor.scopedRoleKeys ?? [])]);
+  const actionCapability = definition.actions.find((a) => a.key === actionKey)?.capabilityKey ?? "";
+  const admittedScoped = (actor.scopedRoles ?? [])
+    .filter((s) => holdingAdmits({ scopeType: s.scopeType as never, scopeValue: s.scopeValue, capabilityKey: actionCapability }, businessContext) === "ADMITTED")
+    .map((s) => s.roleKey);
+  const held = new Set([...(actor.heldRoleKeys ?? []), ...admittedScoped]);
   const roleIds = roles.filter((r) => held.has(r.key)).map((r) => r.id);
   const decision = await authorizeWorkflowAction(definition, instance, actionKey, {
     tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority, functionalRoles, businessContext,

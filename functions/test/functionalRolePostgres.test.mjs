@@ -509,17 +509,18 @@ test("Functional Role authority: schema, governed commands, reads, effective acc
     for (const recordId of ["emp-1", "emp-2"]) await startWorkflowInstance(repo, wfActor, { workflowKey: "empReview", recordId, reason: REASON });
     const runtime = {
       actor: { tenantId: "t1", principalId: scoped.principalId, heldRoleKeys: ctx.principalContext.heldRoleKeys,
-        scopedRoleKeys: [...new Set(ctx.scopedHeld.map((h) => h.sourceRole))] },
+        scopedRoles: ctx.scopedHeld.map((h) => ({ roleKey: h.sourceRole, scopeType: h.scopeType, scopeValue: h.scopeValue })) },
       authority: operationalWorkflowAuthority(postgresContextualReader(pool), { tenantId: "t1", principalId: scoped.principalId,
         capabilities: ctx.capabilities, conditionallyHeld: ctx.conditionallyHeld, scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements }, "employee"),
       facts: postgresWorkflowFunctionalRoleFacts(pool, "t1", scoped.principalId),
     };
     const run = (recordId, businessContext) => refused(() => transitionWorkflowInstance(repo, runtime.actor,
       { objectKey: "employee", recordId, actionKey: "review", reason: REASON }, runtime.authority, runtime.facts, businessContext));
-    // Scope first: no context, or another company, refuses on the CAPABILITY -- the Functional Role is never consulted.
+    // Scope first: no context, or another company -- the scoped Role does not even satisfy the binding outside its
+    // scope (Pass 9 S5), and the Functional Role is never consulted.
     await commands.assignEmployeeFunctionalRole(deps, adminActor, { employeeId: "e-scoped", functionalRoleId: scopedDuty.functionalRoleId, reason: REASON });
-    assert.match((await run("emp-1", undefined)).message, /effectiveAuthorityDenied \(SCOPE_CONTEXT_REQUIRED\)/);
-    assert.match((await run("emp-1", { operatingCompanyId: "ventana" })).message, /effectiveAuthorityDenied \(OUTSIDE_ASSIGNMENT_SCOPE\)/);
+    assert.match((await run("emp-1", undefined)).message, /notBoundToRole/);
+    assert.match((await run("emp-1", { operatingCompanyId: "ventana" })).message, /notBoundToRole/);
     // In scope AND holding the Functional Role: allowed.
     assert.equal(await run("emp-1", { operatingCompanyId: "taylor" }), null);
     // In scope WITHOUT the Functional Role: the narrowing refuses.
