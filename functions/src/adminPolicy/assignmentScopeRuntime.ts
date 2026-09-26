@@ -29,6 +29,7 @@
 //
 // Sales channel is NOT a scope type (pass 8 §9.1: no ruling, no consumer). It is not invented here.
 import { VALUE_MATCHED_SCOPE_TYPES } from "./assignmentScope";
+import { ADMINISTRATION_READ_CAPABILITY_KEYS } from "./administrationSurfaceAuthority";
 
 /** The value-matched assignment scope types this runtime knows how to decide. `domain` has no record fact. */
 export const ASSIGNMENT_SCOPE_RUNTIME_TYPES = Object.freeze(["operatingCompany", "businessUnit", "location"] as const);
@@ -228,8 +229,13 @@ export function admittedScopeValues(
 }
 
 /**
- * The Security-administration capabilities. A Role carrying ANY `admin.*` capability is refused a scope: every
- * Administration gate reads the tenant-wide flat set, so "Administrator @ Company X" would look narrower than it is
- * (or would silently grant nothing). Anti-lockout keeps counting GLOBAL holders only.
+ * THE ADMINISTRATION CAPABILITIES -- defined ONCE (Pass 9 S2). Every key that gates an Administration surface or
+ * mutation: `admin.*`, every Administration surface READ key (ADMINISTRATION_READ_CAPABILITY_KEYS, e.g.
+ * audit.event.read, workflowDefinition.read) and every `workflowDefinition.*` administration key. Every such gate reads
+ * the tenant-wide flat set, so a Role carrying one is refused a scope ("Auditor @ Company X" would read the whole
+ * tenant's audit trail), and one may never be granted to a Role that already has scoped holders. Anti-lockout keeps
+ * counting GLOBAL holders only.
  */
-export const isAdministrationCapability = (key: string): boolean => typeof key === "string" && key.startsWith("admin.");
+export const ADMINISTRATION_CAPABILITY_PREFIXES: readonly string[] = Object.freeze(["admin.", "workflowDefinition."]);
+export const isAdministrationCapability = (key: string): boolean => typeof key === "string"
+  && (ADMINISTRATION_CAPABILITY_PREFIXES.some((p) => key.startsWith(p)) || ADMINISTRATION_READ_CAPABILITY_KEYS.includes(key));
