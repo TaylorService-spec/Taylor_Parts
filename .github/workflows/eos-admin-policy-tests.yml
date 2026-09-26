@@ -61,6 +61,8 @@ on:
       # listed too, because a change to governedBusinessRoles.ts alone (exactly
       # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
       - "functions/test/ownerCapabilityContract.test.mjs"
+      # Commercial grant parity (lane S5 proposal): current-state pins + skipped proposed-state expectations.
+      - "functions/test/commercialGrantParity.test.mjs"
       - "functions/src/access/governedBusinessRoles.ts"
       # THE ONE CANONICAL JOB ROLE VOCABULARY (Owner ruling 2026-09-25). The guard AND every subject it
       # guards: the canonical module, the two former catalogs that now project from it, the seed that
@@ -500,6 +502,8 @@ on:
       # listed too, because a change to governedBusinessRoles.ts alone (exactly
       # what narrowing compiled Owner 151 -> 110 was) could not trigger this job.
       - "functions/test/ownerCapabilityContract.test.mjs"
+      # Commercial grant parity (lane S5 proposal): current-state pins + skipped proposed-state expectations.
+      - "functions/test/commercialGrantParity.test.mjs"
       - "functions/src/access/governedBusinessRoles.ts"
       # THE ONE CANONICAL JOB ROLE VOCABULARY (Owner ruling 2026-09-25). The guard AND every subject it
       # guards: the canonical module, the two former catalogs that now project from it, the seed that
