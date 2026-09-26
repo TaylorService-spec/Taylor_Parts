@@ -14,12 +14,11 @@
 // touches Firebase: Security Role assignment is PostgreSQL `assignRole` / `revokeRole`, never the
 // retired `assignApprovedRole` callable.
 //
-// explainEffectiveAccess IS SPECIFIED, NOT YET SERVED (contract section 8, "Specified, not
-// implemented"). Its name is NOT added to the closed operation list in adminPolicyApiClient.js here,
-// because that list mirrors the server's exactly and the server does not serve it on this base. Until
-// it does, `callPolicyApi` answers UNKNOWN_OPERATION locally and the Effective Access panel renders its
-// honest UNAVAILABLE state. The day the server lane adds the name to both lists, this wrapper starts
-// reaching the server with no change here.
+// explainEffectiveAccess IS SERVED (server lane CP-S, contract section 8). It is decided by the same
+// runtime evaluator (resolveOperationalContextForPrincipal + authorizeOperationalAction), and is on the
+// closed operation list in adminPolicyApiClient.js. If a server that predates it answers
+// UNKNOWN_OPERATION, the Effective Access panel renders its honest UNAVAILABLE state and never falls
+// back to a client-side interpretation.
 import { callPolicyApi } from "./adminPolicyApiClient.js";
 
 /** Build the seam over any `call(operation, input)` with callPolicyApi's envelope -- injectable for tests. */
