@@ -26,7 +26,8 @@ import { adminControlPlaneClient, refusalText } from "../../services/adminContro
 import { ObjectSecurityActionList } from "./ObjectSecurityActionList.jsx";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { ConditionFields, GrantCellControls, GrantCellFacts, Outcome, ReasonField } from "./GrantControls.jsx";
-import { buildCondition, conditionKindsFor, matrixActionRows, statedReason } from "./controlPlaneModel.js";
+import { buildCondition, matrixActionRows, statedReason } from "./controlPlaneModel.js";
+import { useConditionVocabulary } from "./useConditionVocabulary.js";
 
 export function ReadState({ read, what }) {
   if (read.status === "loading") return <p className="fo-muted">{`Reading ${what}…`}</p>;
@@ -74,7 +75,7 @@ export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey })
   const matrix = useControlPlaneRead(() => api.getObjectActionGrantMatrix(objectKey), `matrix:${objectKey}`);
   const roles = useControlPlaneRead(() => api.listRoles(), "roles");
   const rows = useMemo(() => (matrix.data ? matrixActionRows(matrix.data) : null), [matrix.data]);
-  const kinds = conditionKindsFor(matrix.data?.supportedConditionKinds);
+  const vocabulary = useConditionVocabulary(api);
 
   if (!matrix.data) return <ReadState read={matrix} what="this Object's actions" />;
   if (!rows) {
@@ -93,7 +94,7 @@ export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey })
             api={api}
             objectKey={objectKey}
             action={action}
-            kinds={kinds}
+            vocabulary={vocabulary}
             roles={Array.isArray(roles.data) ? roles.data : []}
             onChanged={matrix.reload}
           />
@@ -103,7 +104,7 @@ export function ObjectActionMatrix({ api = adminControlPlaneClient, objectKey })
   );
 }
 
-function ActionGrantees({ api, objectKey, action, kinds, roles, onChanged }) {
+function ActionGrantees({ api, objectKey, action, vocabulary, roles, onChanged }) {
   const shown = new Set(action.roles.map((r) => r.roleKey));
   const others = roles.filter((r) => !shown.has(r.key));
   return (
@@ -121,8 +122,9 @@ function ActionGrantees({ api, objectKey, action, kinds, roles, onChanged }) {
                   objectKey={objectKey}
                   actionKey={action.actionKey}
                   roleKey={cell.roleKey}
+                  capabilityKey={action.capabilityKey}
                   cell={cell}
-                  kinds={kinds}
+                  vocabulary={vocabulary}
                   onChanged={onChanged}
                 />
               </td>
@@ -143,20 +145,21 @@ function ActionGrantees({ api, objectKey, action, kinds, roles, onChanged }) {
           ) : null}
         </tbody>
       </table>
-      <GrantToRoleForm api={api} objectKey={objectKey} actionKey={action.actionKey} roles={others} kinds={kinds} onChanged={onChanged} />
+      <GrantToRoleForm api={api} objectKey={objectKey} actionKey={action.actionKey} capabilityKey={action.capabilityKey} roles={others} vocabulary={vocabulary} onChanged={onChanged} />
     </>
   );
 }
 
 /** Grant this action to a Security Role the matrix lists no cell for. */
-export function GrantToRoleForm({ api, objectKey, actionKey, roles, kinds, onChanged }) {
+export function GrantToRoleForm({ api, objectKey, actionKey, capabilityKey, roles, vocabulary, onChanged }) {
   const [open, setOpen] = useState(false);
   const [roleKey, setRoleKey] = useState("");
   const [reason, setReason] = useState("");
   const [condition, setCondition] = useState({ kind: "" });
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
-  const built = condition.kind ? buildCondition(condition.kind, condition) : null;
+  const spec = vocabulary?.kinds?.find((k) => k.kind === condition.kind) ?? null;
+  const built = condition.kind ? buildCondition(spec, condition) : null;
   const ready = Boolean(roleKey) && Boolean(statedReason(reason)) && (!condition.kind || Boolean(built));
 
   const submit = async (event) => {
@@ -186,7 +189,7 @@ export function GrantToRoleForm({ api, objectKey, actionKey, roles, kinds, onCha
               {roles.map((r) => <option key={r.key} value={r.key}>{r.name ?? r.key}</option>)}
             </select>
           </label>
-          <ConditionFields value={condition} onChange={setCondition} kinds={kinds} allowNone idPrefix={`new-${actionKey}`} />
+          <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={capabilityKey} allowNone idPrefix={`new-${actionKey}`} />
           <ReasonField value={reason} onChange={setReason} />
           <Button type="submit" variant="primary" disabled={!ready || busy}>Confirm grant</Button>
         </form>

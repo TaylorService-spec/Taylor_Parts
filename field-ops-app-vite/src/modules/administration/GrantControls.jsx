@@ -8,27 +8,43 @@
 // NO CLIENT PERMISSION LOGIC. Whether the caller may administer security is the SERVER's
 // admin.securityPolicy.write gate; the controls are offered and a FORBIDDEN comes back as itself. The
 // only things this screen withholds are the ones the server has said are not grantable: a
-// SYSTEM_INVARIANT cell (refused on write) and a condition kind the evaluator does not support.
+// SYSTEM_INVARIANT cell (refused on write) and a condition kind the server's own vocabulary
+// (listSupportedConditionKinds) marks unsupported or inapplicable. With no vocabulary, no condition.
 import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
 import {
-  OPERATIONAL_SCOPE_TYPES,
-  RECORD_KINDS,
-  WORK_ELIGIBILITY_CODES,
   buildCondition,
-  conditionKindsFor,
   describeCondition,
   describeGrantSource,
+  initialConditionValues,
   isSystemInvariant,
+  kindApplies,
   statedReason,
 } from "./controlPlaneModel.js";
 
 const NO_CONDITION = "";
 
-/** The condition kind picker plus the one parameter each supported kind needs. Unsupported kinds are disabled. */
-export function ConditionFields({ value, onChange, kinds = conditionKindsFor(), allowNone = false, idPrefix }) {
-  const set = (patch) => onChange({ ...value, ...patch });
+/** Why the picker is disabled, in words, from the vocabulary read's state. */
+export function vocabularyUnavailableWords(vocabulary) {
+  if (!vocabulary || vocabulary.status === "loading" || vocabulary.status === "idle") return "Reading the server's condition vocabulary…";
+  if (vocabulary.status === "unavailable") {
+    return `Conditions cannot be set here yet: this EOS API does not serve its condition vocabulary (listSupportedConditionKinds). No local list is substituted. (${refusalText(vocabulary.error)})`;
+  }
+  if (vocabulary.status === "failed") return `Conditions cannot be set: the condition vocabulary could not be read. (${refusalText(vocabulary.error)})`;
+  return null;
+}
+
+/**
+ * The condition kind picker plus the parameters the SERVER says each kind needs. Kinds the server
+ * marks unsupported, or scopes to other capabilities, are disabled. With no vocabulary the picker is
+ * disabled and says why -- there is no local fallback.
+ */
+export function ConditionFields({ value, onChange, vocabulary, capabilityKey, allowNone = false, idPrefix }) {
+  const kinds = vocabulary?.status === "ready" ? vocabulary.kinds : null;
+  const spec = kinds?.find((k) => k.kind === value.kind) ?? null;
+  const set = (name, v) => onChange({ ...value, [name]: v });
+  const unavailable = kinds ? null : vocabularyUnavailableWords(vocabulary);
   return (
     <>
       <label className="fo-form-field">
@@ -37,49 +53,38 @@ export function ConditionFields({ value, onChange, kinds = conditionKindsFor(), 
           id={`${idPrefix}-kind`}
           aria-label="Condition kind"
           value={value.kind}
-          onChange={(e) => onChange({ kind: e.target.value })}
+          disabled={!kinds}
+          onChange={(e) => {
+            const next = kinds?.find((k) => k.kind === e.target.value) ?? null;
+            onChange({ kind: e.target.value, ...initialConditionValues(next) });
+          }}
         >
           {allowNone ? <option value={NO_CONDITION}>No condition — unconditioned grant</option> : <option value={NO_CONDITION}>Choose a condition kind…</option>}
-          {kinds.map((k) => (
-            <option key={k.kind} value={k.kind} disabled={!k.supported}>
-              {k.supported ? k.label : `${k.label} — not supported (${k.why ?? "no evaluator"})`}
-            </option>
-          ))}
+          {(kinds ?? []).map((k) => {
+            const applies = kindApplies(k, capabilityKey);
+            const why = !k.supported ? (k.why ?? "not supported") : "not applicable to this capability";
+            return (
+              <option key={k.kind} value={k.kind} disabled={!applies}>
+                {applies ? k.label : `${k.label} — ${why}`}
+              </option>
+            );
+          })}
         </select>
       </label>
-      {value.kind === "RECORD_ASSIGNMENT" ? (
-        <label className="fo-form-field">
-          <span>Record kind</span>
-          <select aria-label="Record kind" value={value.recordKind ?? ""} onChange={(e) => set({ recordKind: e.target.value })}>
-            <option value="">Choose…</option>
-            {RECORD_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-        </label>
-      ) : null}
-      {value.kind === "WORK_ELIGIBILITY" ? (
-        <label className="fo-form-field">
-          <span>Qualification</span>
-          <select aria-label="Qualification" value={value.qualificationCode ?? ""} onChange={(e) => set({ qualificationCode: e.target.value })}>
-            <option value="">Choose…</option>
-            {WORK_ELIGIBILITY_CODES.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-        </label>
-      ) : null}
-      {value.kind === "OPERATIONAL_SCOPE" ? (
-        <>
-          <label className="fo-form-field">
-            <span>Scope type</span>
-            <select aria-label="Scope type" value={value.scopeType ?? ""} onChange={(e) => set({ scopeType: e.target.value })}>
+      {unavailable ? <p className="fo-muted" data-condition-vocabulary={vocabulary?.status ?? "none"}>{unavailable}</p> : null}
+      {(spec?.parameters ?? []).map((p) => (
+        <label className="fo-form-field" key={p.name}>
+          <span>{p.required ? p.label : `${p.label} (optional)`}</span>
+          {p.values ? (
+            <select aria-label={p.label} value={value[p.name] ?? ""} onChange={(e) => set(p.name, e.target.value)}>
               <option value="">Choose…</option>
-              {OPERATIONAL_SCOPE_TYPES.map((k) => <option key={k} value={k}>{k}</option>)}
+              {p.values.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
-          </label>
-          <label className="fo-form-field">
-            <span>Scope id (optional)</span>
-            <input aria-label="Scope id" value={value.scopeId ?? ""} onChange={(e) => set({ scopeId: e.target.value })} />
-          </label>
-        </>
-      ) : null}
+          ) : (
+            <input aria-label={p.label} value={value[p.name] ?? ""} onChange={(e) => set(p.name, e.target.value)} />
+          )}
+        </label>
+      ))}
     </>
   );
 }
@@ -112,7 +117,7 @@ function cellCondition(cell) {
  * The controls for ONE Role x action cell: grant (optionally conditioned, atomically) or revoke, and
  * set or retire the grant's condition. Each asks for a reason; each re-reads on success.
  */
-export function GrantCellControls({ api, objectKey, actionKey, roleKey, cell, kinds, onChanged }) {
+export function GrantCellControls({ api, objectKey, actionKey, roleKey, capabilityKey, cell, vocabulary, onChanged }) {
   const [mode, setMode] = useState(null);
   const [reason, setReason] = useState("");
   const [condition, setCondition] = useState({ kind: NO_CONDITION });
@@ -126,7 +131,8 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, cell, ki
   const held = cell?.held === true;
   const active = cellCondition(cell);
   const open = (next) => { setMode(next); setReason(""); setCondition({ kind: NO_CONDITION }); setResult(null); };
-  const built = condition.kind ? buildCondition(condition.kind, condition) : null;
+  const spec = vocabulary?.kinds?.find((k) => k.kind === condition.kind) ?? null;
+  const built = condition.kind ? buildCondition(spec, condition) : null;
   const reasonText = statedReason(reason);
   const ready = Boolean(reasonText) && (mode === "setCondition" ? Boolean(built) : mode === "grant" ? (!condition.kind || Boolean(built)) : true);
 
@@ -164,8 +170,8 @@ export function GrantCellControls({ api, objectKey, actionKey, roleKey, cell, ki
       </div>
       {mode ? (
         <form className="fo-cp-form" onSubmit={submit} aria-label={`${verb} ${actionKey} for ${roleKey}`}>
-          {mode === "grant" ? <ConditionFields value={condition} onChange={setCondition} kinds={kinds} allowNone idPrefix={`${roleKey}-${actionKey}-grant`} /> : null}
-          {mode === "setCondition" ? <ConditionFields value={condition} onChange={setCondition} kinds={kinds} idPrefix={`${roleKey}-${actionKey}-cond`} /> : null}
+          {mode === "grant" ? <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={capabilityKey} allowNone idPrefix={`${roleKey}-${actionKey}-grant`} /> : null}
+          {mode === "setCondition" ? <ConditionFields value={condition} onChange={setCondition} vocabulary={vocabulary} capabilityKey={capabilityKey} idPrefix={`${roleKey}-${actionKey}-cond`} /> : null}
           {mode === "retireCondition" ? (
             <p className="fo-muted">
               Retiring a condition while the grant is held would WIDEN it, so the server refuses that. Revoke the grant first.

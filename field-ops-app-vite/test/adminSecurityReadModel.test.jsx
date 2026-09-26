@@ -406,10 +406,14 @@ describe("the composed hooks ask the same server, and assemble what comes back",
   });
 });
 
-// ════════════════════ STILL WIRED TO NOTHING ════════════════════
+// ════════════════════ WHERE THE READ MODEL IS (AND IS NOT) WIRED ════════════════════
+//
+// ObjectSecurityActionList IS mounted now -- by the Object Security Actions view
+// (ObjectActionSecurity.jsx, lane CP-C), which is deliberately not in the list below. What this still
+// pins: the older screens named here do not import the read model, its hooks or the list directly.
 
-describe("this tranche changes no source of truth", () => {
-  it("no Administration screen imports the read model, the hooks or the list component", () => {
+describe("the read model is consumed only through the control-plane view, and no source of truth moved", () => {
+  it("none of the older Administration screens imports the read model, the hooks or the list component directly", () => {
     for (const screenFile of [
       "AdminObjects.jsx", "AdminRolesPermissions.jsx", "AdminPolicySurfaces.jsx", "UserDetail.jsx",
       "UserAccessActions.jsx", "AdministrationOverview.jsx", "ObjectAdministrationPanel.jsx",

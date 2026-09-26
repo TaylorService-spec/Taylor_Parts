@@ -4,7 +4,7 @@
 //
 // ════════════════════ WHAT THIS MODULE MAY DO ════════════════════
 //
-//   * name a server enum in words (a grant `source`, an Effective Access `runtime` verdict)
+//   * name a server enum in words (a grant `source`, an Effective Access `result`)
 //   * turn a condition form into the stored condition shape, and a stored condition into words
 //   * regroup the server's rows for drawing (by Object), preserving every value it sent
 //
@@ -13,7 +13,8 @@
 // Decide access. There is no "can this Role..." helper here and there must never be one: the server's
 // shared evaluator is the ONLY answer to "may this Role / Principal do this", and a client helper that
 // looked like one would be a second authorization model. An Effective Access verdict is rendered as
-// the server's word for it; an unknown verdict is shown RAW rather than guessed at.
+// the server's word for it; an unknown result is shown RAW rather than guessed at. The condition
+// vocabulary is the SERVER's (listSupportedConditionKinds); there is no local copy.
 
 /** Where a Role x action cell's state came from (contract section 3 precedence, section 8 `source`). */
 export const GRANT_SOURCE_LABEL = Object.freeze({
@@ -33,64 +34,83 @@ export function describeGrantSource(source) {
 /** A SYSTEM_INVARIANT cell is refused on write by the server; the UI draws it as not grantable. */
 export const isSystemInvariant = (cell) => cell?.source === "SYSTEM_INVARIANT";
 
-// ════════════════════ CONDITION KINDS (contract section 5) ════════════════════
+// ════════════════════ CONDITION VOCABULARY -- THE SERVER'S, NEVER A LOCAL COPY ════════════════════
 //
-// A MIRROR of the contract's storable-kind table, used only to lay out the form. The server re-validates
-// every condition with the builder the runtime uses; a kind marked supported here that the server
-// refuses comes back as CONDITION_INVALID and is shown verbatim. When a payload carries the server's
-// own `supportedConditionKinds`, that list wins (see `conditionKindsFor`).
-export const CONDITION_KINDS = Object.freeze([
-  Object.freeze({ kind: "RECORD_ASSIGNMENT", label: "Record assignment — the assigned Employee only", supported: true }),
-  Object.freeze({ kind: "WORK_ELIGIBILITY", label: "Work Eligibility — holds a qualification", supported: true }),
-  Object.freeze({ kind: "OPERATIONAL_SCOPE", label: "Operational Scope — scoped to a warehouse or queue", supported: true }),
-  Object.freeze({ kind: "SELF", label: "Self", supported: false, why: "no evaluator" }),
-  Object.freeze({ kind: "TEAM", label: "Team", supported: false, why: "no reportsTo edge is bindable" }),
-  Object.freeze({ kind: "BUSINESS_UNIT", label: "Business unit", supported: false, why: "no evaluator" }),
-  Object.freeze({ kind: "COMPANY", label: "Company", supported: false, why: "no evaluator" }),
-]);
+// The condition kinds, their parameters, the record kinds and the capabilities each kind may attach to
+// come from the server's `listSupportedConditionKinds` read -- the same catalog its condition builder
+// validates against. There is NO client mirror: when the read is not served (UNKNOWN_OPERATION) or
+// fails, the picker is DISABLED and says why. A grant without a condition stays available.
+//
+// Accepted shape (either a bare array or `{ kinds: [...] }`), each kind:
+//   { kind, label?, supported?, reason?, parameters?: [{ name, label?, required?, values? }],
+//     recordKinds?: [...], capabilities?: [...] }
+// `recordKinds` is folded in as a required `recordKind` parameter; `capabilities`, when present, limits
+// the kind to those capability keys. A parameter named `recordKind` is stored on the condition, every
+// other parameter on the predicate. A parameter with exactly one allowed value is filled automatically.
 
-/** Governed record kinds a RECORD_ASSIGNMENT condition may name (grantConditionPolicy RECORD_KINDS). */
-export const RECORD_KINDS = Object.freeze(["workOrder", "reorderRequest"]);
-/** Work Eligibility codes (workEligibilityVocabulary.ts, CHECK-constrained). */
-export const WORK_ELIGIBILITY_CODES = Object.freeze(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"]);
-/** Operational Scope types (operationalScopeVocabulary.ts, CHECK-constrained). */
-export const OPERATIONAL_SCOPE_TYPES = Object.freeze(["WAREHOUSE", "REORDER_QUEUE"]);
+/** Normalise the server's kind catalog. Returns null for an unreadable payload (fail closed). */
+export function conditionVocabularyFrom(payload) {
+  const list = Array.isArray(payload) ? payload : Array.isArray(payload?.kinds) ? payload.kinds : null;
+  if (!list) return null;
+  if (list.some((k) => !k || typeof k !== "object" || typeof k.kind !== "string")) return null;
+  return list.map((k) => {
+    const parameters = Array.isArray(k.parameters)
+      ? k.parameters.filter((p) => p && typeof p.name === "string").map((p) => ({
+        name: p.name,
+        label: typeof p.label === "string" ? p.label : p.name,
+        required: p.required !== false,
+        values: Array.isArray(p.values) ? p.values : null,
+      }))
+      : [];
+    if (Array.isArray(k.recordKinds) && !parameters.some((p) => p.name === "recordKind")) {
+      parameters.push({ name: "recordKind", label: "Record kind", required: true, values: k.recordKinds });
+    }
+    return {
+      kind: k.kind,
+      label: typeof k.label === "string" ? k.label : k.kind,
+      supported: k.supported !== false,
+      why: typeof k.reason === "string" ? k.reason : k.supported === false ? "not supported by the server evaluator" : undefined,
+      parameters,
+      capabilities: Array.isArray(k.capabilities) ? k.capabilities : null,
+    };
+  });
+}
 
-/**
- * The condition kinds to offer, each with `supported`. When the server reports its own list
- * (`supportedConditionKinds` on a payload) that list decides; otherwise the contract mirror does.
- */
-export function conditionKindsFor(serverReported) {
-  if (!Array.isArray(serverReported)) return CONDITION_KINDS;
-  const reported = new Set(serverReported);
-  const known = CONDITION_KINDS.map((k) => ({ ...k, supported: reported.has(k.kind), why: reported.has(k.kind) ? undefined : "not supported by the server" }));
-  const extra = serverReported
-    .filter((kind) => !CONDITION_KINDS.some((k) => k.kind === kind))
-    .map((kind) => ({ kind, label: kind, supported: false, why: "this screen has no form for it yet" }));
-  return [...known, ...extra];
+/** The kind is offerable for this capability: supported, and (when the server scopes it) applicable. */
+export function kindApplies(kindSpec, capabilityKey) {
+  if (!kindSpec?.supported) return false;
+  if (!kindSpec.capabilities || !capabilityKey) return true;
+  return kindSpec.capabilities.includes(capabilityKey);
+}
+
+/** Single-value parameters, pre-filled; the form starts from these. */
+export function initialConditionValues(kindSpec) {
+  const values = {};
+  for (const p of kindSpec?.parameters ?? []) if (p.values && p.values.length === 1) values[p.name] = p.values[0];
+  return values;
 }
 
 /**
- * Build the stored condition shape `{ paths: [[predicate]], recordKind? }` from one form's values.
- * Returns null for an incomplete form (a missing required parameter) -- the submit stays disabled.
- * It does not judge whether the server will accept it.
+ * Build the stored condition shape `{ paths: [[predicate]], recordKind? }` from a server kind and the
+ * form's values. Null while a required parameter is missing -- the submit stays disabled. It does not
+ * judge whether the server will accept it.
  */
-export function buildCondition(kind, params = {}) {
-  switch (kind) {
-    case "RECORD_ASSIGNMENT":
-      if (!params.recordKind) return null;
-      return { paths: [[{ kind: "RECORD_ASSIGNMENT", relation: "ASSIGNED_EMPLOYEE" }]], recordKind: params.recordKind };
-    case "WORK_ELIGIBILITY":
-      if (!params.qualificationCode) return null;
-      return { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: params.qualificationCode }]] };
-    case "OPERATIONAL_SCOPE": {
-      if (!params.scopeType) return null;
-      const scopeId = typeof params.scopeId === "string" ? params.scopeId.trim() : "";
-      return { paths: [[{ kind: "OPERATIONAL_SCOPE", scopeType: params.scopeType, ...(scopeId ? { scopeId } : {}) }]] };
+export function buildCondition(kindSpec, values = {}) {
+  if (!kindSpec || !kindSpec.supported) return null;
+  const merged = { ...initialConditionValues(kindSpec), ...values };
+  const predicate = { kind: kindSpec.kind };
+  let recordKind = null;
+  for (const p of kindSpec.parameters) {
+    const raw = merged[p.name];
+    const value = typeof raw === "string" ? raw.trim() : raw;
+    if (value === undefined || value === null || value === "") {
+      if (p.required) return null;
+      continue;
     }
-    default:
-      return null;
+    if (p.name === "recordKind") recordKind = value;
+    else predicate[p.name] = value;
   }
+  return { paths: [[predicate]], ...(recordKind ? { recordKind } : {}) };
 }
 
 function describePredicate(p, recordKind) {
@@ -102,8 +122,10 @@ function describePredicate(p, recordKind) {
       return `Work Eligibility ${p.qualificationCode ?? "?"}`;
     case "OPERATIONAL_SCOPE":
       return `Operational Scope ${p.scopeType ?? "?"}${p.scopeId ? ` ${p.scopeId}` : ""}`;
-    default:
-      return String(p.kind ?? "unknown predicate");
+    default: {
+      const detail = Object.entries(p).filter(([k]) => k !== "kind").map(([k, v]) => `${k}=${v}`).join(", ");
+      return `${String(p.kind ?? "unknown predicate")}${detail ? ` (${detail})` : ""}`;
+    }
   }
 }
 
@@ -169,64 +191,89 @@ export function roleActionsByObject(detail) {
   }));
 }
 
-// ════════════════════ EFFECTIVE ACCESS (explainEffectiveAccess) ════════════════════
+// ════════════════════ EFFECTIVE ACCESS (explainEffectiveAccess, contract section 8) ════════════════════
+//
+// The served shape, rendered as-is:
+//   { tenantId, principalId, securityRoleKeys, accessVersion,
+//     assignments: { excluded: [{ assignmentId, roleKey, reason: STALE|INACTIVE|SCOPED, scopeType?, scopeValue? }] },
+//     employeeId, workEligibility: [code], operationalScopes: [{ scopeType, scopeId }],
+//     capabilities: [capabilityKey], surfaces: [surfaceKey],
+//     actions: [{ objectKey, actionKey, actionKind, capabilityKey, result: ALLOWED|CONDITIONAL|DENIED, reasonCode,
+//                 sourceRoles: [{ roleKey, condition|null }],
+//                 directGrant: { label: "DIRECT_EXCEPTION", exceptionReason, expiresAt, notEnforcedOnRoleOnlyRuntimePaths } | null,
+//                 withheldFromFlatSetKernels, surfaces: [...], workflowSource: [{ workflowKey, version, actionKey, roleKey }] | null }] }
 
-/** The server's runtime verdicts (contract section 8), in words. Unknown verdicts are shown raw. */
-export const RUNTIME_VERDICT_LABEL = Object.freeze({
+/** The evaluator's results in words. An unknown result is shown RAW, never mapped to a friendlier one. */
+export const RESULT_LABEL = Object.freeze({
   ALLOWED: "Allowed",
-  DENIED: "Denied",
   CONDITIONAL: "Conditional",
-  WITHHELD_FROM_FLAT_KERNELS: "Withheld — held only through a conditioned grant",
-  NOT_ENFORCED_DIRECT: "DIRECT EXCEPTION — not enforced by the main operational gates",
+  DENIED: "Denied",
 });
 
-export function describeVerdict(verdict) {
-  if (verdict === null || verdict === undefined) return "No verdict returned";
-  return RUNTIME_VERDICT_LABEL[verdict] ?? String(verdict);
+export function describeResult(result) {
+  if (result === null || result === undefined) return "No result returned";
+  return RESULT_LABEL[result] ?? String(result);
 }
 
-function grantorWords(grantor) {
-  if (!grantor || typeof grantor !== "object") return "unknown grantor";
-  if (grantor.kind === "ROLE") return `Security Role ${grantor.roleKey ?? "?"}`;
-  if (grantor.kind === "PRINCIPAL") return `DIRECT EXCEPTION (${grantor.principalId ?? "principal"})`;
-  return String(grantor.kind ?? "unknown grantor");
-}
+/** Why an assignment grants nothing, in words (the reason code is shown beside it). */
+export const EXCLUSION_LABEL = Object.freeze({
+  STALE: "Stale — granted before the current access version",
+  INACTIVE: "Inactive assignment",
+  SCOPED: "Scoped — a scoped assignment grants nothing unscoped",
+});
+
+const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
 
 /**
- * Normalise the explain payload into rows for drawing -- WITHOUT re-deciding anything.
- *
- * Accepts `{ capabilities: [...] }`, `{ entries: [...] }` or a bare array. Each row keeps the server's
- * verdict (`runtime`, or `decision` per the pass-7 design) and its reason. Returns null for a payload
- * that is not the contract's shape.
+ * Normalise the explanation WITHOUT re-deciding anything. Returns null for a payload that is not the
+ * contract's shape (fail closed): `actions` must be an array of objects each carrying a capabilityKey.
  */
-export function effectiveAccessRows(payload) {
-  const list = Array.isArray(payload) ? payload : Array.isArray(payload?.capabilities) ? payload.capabilities : Array.isArray(payload?.entries) ? payload.entries : null;
-  if (!list) return null;
-  if (list.some((row) => !row || typeof row !== "object" || typeof row.capabilityKey !== "string")) return null;
-  return list.map((row) => {
-    const via = Array.isArray(row.via) ? row.via : [];
-    const sources = via.map((v) => ({
-      words: grantorWords(v.grantor),
-      direct: v.grantor?.kind === "PRINCIPAL",
-      condition: v.condition ? describeCondition(v.condition) : null,
-    }));
-    const verdict = row.runtime ?? row.decision ?? null;
-    return {
-      capabilityKey: row.capabilityKey,
-      objectKey: row.objectKey ?? null,
-      actionKey: row.actionKey ?? null,
-      displayLabel: row.displayLabel ?? null,
-      verdict,
-      verdictWords: describeVerdict(verdict),
-      direct: verdict === "NOT_ENFORCED_DIRECT" || sources.some((s) => s.direct) || Boolean(row.directException),
-      sources,
-      scope: row.scope ?? null,
-      why: row.why ?? row.reason ?? row.reasonCode ?? null,
-    };
-  });
+export function explanationModel(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || !Array.isArray(payload.actions)) return null;
+  if (payload.actions.some((a) => !a || typeof a !== "object" || typeof a.capabilityKey !== "string")) return null;
+  const excluded = Array.isArray(payload.assignments?.excluded) ? payload.assignments.excluded : [];
+  return {
+    principalId: payload.principalId ?? null,
+    employeeId: payload.employeeId ?? null,
+    accessVersion: payload.accessVersion ?? null,
+    securityRoleKeys: strings(payload.securityRoleKeys),
+    capabilities: strings(payload.capabilities),
+    surfaces: strings(payload.surfaces),
+    workEligibility: strings(payload.workEligibility),
+    operationalScopes: Array.isArray(payload.operationalScopes) ? payload.operationalScopes.filter((s) => s && typeof s === "object") : [],
+    excluded: excluded.filter((e) => e && typeof e === "object").map((e) => ({
+      assignmentId: e.assignmentId ?? null,
+      roleKey: e.roleKey ?? null,
+      reason: e.reason ?? null,
+      reasonWords: EXCLUSION_LABEL[e.reason] ?? String(e.reason ?? "unknown"),
+      scope: e.scopeType ? `${e.scopeType}${e.scopeValue ? ` · ${e.scopeValue}` : ""}` : null,
+    })),
+    actions: payload.actions.map((a) => ({
+      objectKey: a.objectKey ?? null,
+      actionKey: a.actionKey ?? null,
+      actionKind: a.actionKind ?? null,
+      capabilityKey: a.capabilityKey,
+      result: a.result ?? null,
+      resultWords: describeResult(a.result),
+      reasonCode: a.reasonCode ?? null,
+      sourceRoles: (Array.isArray(a.sourceRoles) ? a.sourceRoles : []).map((r) => ({
+        roleKey: r?.roleKey ?? null,
+        condition: r?.condition ? describeCondition(r.condition) : null,
+      })),
+      directGrant: a.directGrant && typeof a.directGrant === "object" ? {
+        label: a.directGrant.label ?? "DIRECT_EXCEPTION",
+        exceptionReason: a.directGrant.exceptionReason ?? null,
+        expiresAt: a.directGrant.expiresAt ?? null,
+        notEnforced: a.directGrant.notEnforcedOnRoleOnlyRuntimePaths === true,
+      } : null,
+      withheldFromFlatSetKernels: a.withheldFromFlatSetKernels === true,
+      surfaces: strings(a.surfaces),
+      workflowSource: Array.isArray(a.workflowSource) ? a.workflowSource : null,
+    })),
+  };
 }
 
-/** Group effective-access rows by Object for drawing. */
+/** Group explained actions by Object for drawing, in the server's order. */
 export function groupByObject(rows) {
   const groups = new Map();
   for (const row of rows ?? []) {

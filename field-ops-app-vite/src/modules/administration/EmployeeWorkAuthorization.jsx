@@ -15,11 +15,17 @@ import { useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import RuledSection from "../../shared/ui/RuledSection.jsx";
 import { WORKFORCE_READ_STATE, useWorkforceRead } from "../../hooks/useWorkforceRead.js";
-import { OPERATIONAL_SCOPE_TYPES, WORK_ELIGIBILITY_CODES, statedReason } from "./controlPlaneModel.js";
+import { statedReason } from "./controlPlaneModel.js";
 import { ReasonField } from "./GrantControls.jsx";
 
 export const WORK_ELIGIBILITY_WRITE_CAPABILITY = "admin.employeeWorkEligibility.write";
 export const OPERATIONAL_SCOPE_WRITE_CAPABILITY = "admin.employeeOperationalScope.write";
+
+// The WORKFORCE vocabularies these two commands accept (workEligibilityVocabulary.ts and
+// operationalScopeVocabulary.ts, both CHECK-constrained; the command re-validates). These are Employee
+// facts, not the grant-condition vocabulary -- that one is the server's listSupportedConditionKinds.
+const WORK_ELIGIBILITY_CODES = Object.freeze(["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"]);
+const OPERATIONAL_SCOPE_TYPES = Object.freeze(["WAREHOUSE", "REORDER_QUEUE"]);
 
 /** A Workforce refusal in the server's words: its category, its specific reason code, its message. */
 export function workforceRefusal(outcome) {

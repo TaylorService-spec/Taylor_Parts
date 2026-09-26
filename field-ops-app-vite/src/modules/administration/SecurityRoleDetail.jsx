@@ -17,14 +17,15 @@ import { adminControlPlaneClient } from "../../services/adminControlPlaneClient.
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { GrantCellControls, GrantCellFacts } from "./GrantControls.jsx";
 import { ReadState } from "./ObjectActionSecurity.jsx";
-import { conditionKindsFor, roleActionsByObject } from "./controlPlaneModel.js";
+import { roleActionsByObject } from "./controlPlaneModel.js";
+import { useConditionVocabulary } from "./useConditionVocabulary.js";
 
 export default function SecurityRoleDetail({ api = adminControlPlaneClient, roleKey }) {
   const detail = useControlPlaneRead(roleKey ? () => api.getSecurityRoleDetail(roleKey) : null, `role:${roleKey}`);
   const history = useControlPlaneRead(roleKey ? () => api.listRoleCapabilityDecisionHistory({ roleKey, limit: 200 }) : null, `history:${roleKey}`);
   const groups = useMemo(() => (detail.data ? roleActionsByObject(detail.data) : null), [detail.data]);
   const [openObject, setOpenObject] = useState(null);
-  const kinds = conditionKindsFor(detail.data?.supportedConditionKinds);
+  const vocabulary = useConditionVocabulary(api);
 
   if (!roleKey) return null;
   if (!detail.data) return <ReadState read={detail} what="this Security Role" />;
@@ -77,7 +78,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, role
                 onToggle={() => setOpenObject(open ? null : group.objectKey)}
                 api={api}
                 roleKey={roleKey}
-                kinds={kinds}
+                vocabulary={vocabulary}
                 onChanged={onChanged}
               />
             );
@@ -90,7 +91,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, role
   );
 }
 
-function ObjectGroupRows({ group, open, onToggle, api, roleKey, kinds, onChanged }) {
+function ObjectGroupRows({ group, open, onToggle, api, roleKey, vocabulary, onChanged }) {
   return (
     <>
       <tr>
@@ -115,8 +116,9 @@ function ObjectGroupRows({ group, open, onToggle, api, roleKey, kinds, onChanged
               objectKey={action.objectKey}
               actionKey={action.actionKey}
               roleKey={roleKey}
+              capabilityKey={action.capabilityKey}
               cell={action}
-              kinds={kinds}
+              vocabulary={vocabulary}
               onChanged={onChanged}
             />
           </td>

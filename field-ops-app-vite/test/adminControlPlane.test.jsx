@@ -17,9 +17,9 @@ import EmployeeEffectiveAccess from "../src/modules/administration/EmployeeEffec
 import { principalAuditEvents } from "../src/modules/administration/EmployeeAccessAudit.jsx";
 import {
   buildCondition,
-  conditionKindsFor,
+  conditionVocabularyFrom,
   describeCondition,
-  effectiveAccessRows,
+  explanationModel,
   matrixActionRows,
 } from "../src/modules/administration/controlPlaneModel.js";
 import { createAdminControlPlaneClient, refusalText } from "../src/services/adminControlPlaneClient.js";
@@ -66,6 +66,20 @@ const ROLES = [
   { id: "r6", key: "salesManager", name: "Sales Manager" },
 ];
 
+// listSupportedConditionKinds -- the SERVER's condition vocabulary (the only source the picker uses).
+const CONDITION_VOCABULARY = {
+  kinds: [
+    { kind: "RECORD_ASSIGNMENT", label: "Record assignment", supported: true,
+      parameters: [{ name: "relation", values: ["ASSIGNED_EMPLOYEE"] }], recordKinds: ["workOrder", "reorderRequest"],
+      capabilities: ["workOrder.record.read"] },
+    { kind: "WORK_ELIGIBILITY", label: "Work Eligibility", supported: true,
+      parameters: [{ name: "qualificationCode", label: "Qualification", values: ["SERVICE_TECHNICIAN", "WAREHOUSE_OPERATIONS", "PARTS_OPERATIONS"] }] },
+    { kind: "OPERATIONAL_SCOPE", label: "Operational Scope", supported: true,
+      parameters: [{ name: "scopeType", label: "Scope type", values: ["WAREHOUSE", "REORDER_QUEUE"] }, { name: "scopeId", label: "Scope id", required: false }] },
+    { kind: "TEAM", label: "Team", supported: false, reason: "no reportsTo edge is bindable" },
+  ],
+};
+
 function makeApi(over = {}) {
   return {
     listObjectsWithActions: vi.fn(async () => ({ ok: true, data: [{ key: "workOrder", label: "Work Order", actions: [] }] })),
@@ -78,6 +92,7 @@ function makeApi(over = {}) {
     setGrantCondition: vi.fn(async () => ({ ok: true, data: { status: "ACTIVE" } })),
     retireGrantCondition: vi.fn(async () => ({ ok: true, data: { status: "RETIRED" } })),
     explainEffectiveAccess: vi.fn(async () => ({ ok: true, data: EXPLAIN })),
+    listSupportedConditionKinds: vi.fn(async () => ({ ok: true, data: CONDITION_VOCABULARY })),
     ...over,
   };
 }
@@ -155,7 +170,9 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     const api = await renderMatrix();
     fireEvent.click(screen.getByRole("button", { name: "Grant read to officeManager" }));
     const form = screen.getByRole("form", { name: "Grant read for officeManager" });
+    await waitFor(() => expect(within(form).getByLabelText("Condition kind").disabled).toBe(false));
     fireEvent.change(within(form).getByLabelText("Condition kind"), { target: { value: "RECORD_ASSIGNMENT" } });
+    // Record kinds come from the SERVER's vocabulary; the single-value relation is filled automatically.
     fireEvent.change(within(form).getByLabelText("Record kind"), { target: { value: "workOrder" } });
     typeReason(form, "Office managers read their assigned work orders");
     await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm grant" })); });
@@ -167,14 +184,20 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
     expect(api.setGrantCondition).not.toHaveBeenCalled();
   });
 
-  it("Set condition offers only the kinds the evaluator supports; SELF / TEAM / BUSINESS_UNIT / COMPANY are disabled", async () => {
+  it("the condition picker offers the SERVER's kinds: unsupported and inapplicable kinds are disabled", async () => {
     const api = await renderMatrix();
+    expect(api.listSupportedConditionKinds).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Set condition on dispatch for dispatcher" }));
     const form = screen.getByRole("form", { name: "Set condition dispatch for dispatcher" });
+    await waitFor(() => expect(within(form).getByLabelText("Condition kind").disabled).toBe(false));
     const kind = within(form).getByLabelText("Condition kind");
     const option = (value) => within(kind).getAllByRole("option").find((o) => o.value === value);
-    for (const unsupported of ["SELF", "TEAM", "BUSINESS_UNIT", "COMPANY"]) expect(option(unsupported).disabled, unsupported).toBe(true);
-    for (const supported of ["RECORD_ASSIGNMENT", "WORK_ELIGIBILITY", "OPERATIONAL_SCOPE"]) expect(option(supported).disabled, supported).toBe(false);
+    expect(option("TEAM").disabled).toBe(true);
+    expect(option("TEAM").textContent).toMatch(/no reportsTo edge is bindable/);
+    // RECORD_ASSIGNMENT is scoped by the server to workOrder.record.read -- not applicable to dispatch.
+    expect(option("RECORD_ASSIGNMENT").disabled).toBe(true);
+    expect(option("WORK_ELIGIBILITY").disabled).toBe(false);
+    expect(option("SELF")).toBeUndefined();
 
     fireEvent.change(kind, { target: { value: "WORK_ELIGIBILITY" } });
     fireEvent.change(within(form).getByLabelText("Qualification"), { target: { value: "SERVICE_TECHNICIAN" } });
@@ -184,6 +207,27 @@ describe("Object Security Actions: the Object's real vocabulary, not a C/R/E/D g
       objectKey: "workOrder", actionKey: "dispatch", roleKey: "dispatcher", reason: "Only qualified technicians dispatch",
       condition: { paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "SERVICE_TECHNICIAN" }]] },
     });
+  });
+
+  it("WITHOUT the server's vocabulary the picker is DISABLED with an honest message -- no local copy", async () => {
+    const api = await renderMatrix(makeApi({
+      listSupportedConditionKinds: vi.fn(async () => ({ ok: false, code: "UNKNOWN_OPERATION", message: '"listSupportedConditionKinds" is not an Administration operation' })),
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Set condition on dispatch for dispatcher" }));
+    const form = screen.getByRole("form", { name: "Set condition dispatch for dispatcher" });
+    const kind = await within(form).findByLabelText("Condition kind");
+    await waitFor(() => expect(form.querySelector('[data-condition-vocabulary="unavailable"]')).toBeTruthy());
+    expect(kind.disabled).toBe(true);
+    expect(within(kind).getAllByRole("option")).toHaveLength(1);
+    expect(form.textContent).toMatch(/does not serve its condition vocabulary \(listSupportedConditionKinds\)/);
+    typeReason(form, "anything");
+    expect(within(form).getByRole("button", { name: "Confirm set condition" }).disabled).toBe(true);
+    // An unconditioned grant is still possible.
+    fireEvent.click(screen.getByRole("button", { name: "Grant read to officeManager" }));
+    const grant = screen.getByRole("form", { name: "Grant read for officeManager" });
+    typeReason(grant, "plain grant");
+    await act(async () => { fireEvent.click(within(grant).getByRole("button", { name: "Confirm grant" })); });
+    expect(api.grantObjectActionToRole).toHaveBeenCalledWith({ objectKey: "workOrder", actionKey: "read", roleKey: "officeManager", reason: "plain grant" });
   });
 
   it("retiring a condition on a HELD grant shows the server's 409 refusal verbatim", async () => {
@@ -267,35 +311,93 @@ describe("Security Role detail", () => {
 
 // ════════════════════ E. EFFECTIVE ACCESS ════════════════════
 
+// explainEffectiveAccess -- the SERVED shape (eosOps/effectiveAccessExplanation.ts), built from the
+// server's own acceptance fixture (functions/test/effectiveAccessExplanationPostgres.test.mjs, "CONDITIONAL,
+// DIRECT_EXCEPTION and excluded assignments"): a conditioned technician read, a direct exception with a
+// reason that the Role-only runtime does not enforce, an expired exception not shown, and a stale and a
+// scoped assignment excluded.
 const EXPLAIN = {
+  tenantId: "t-1",
   principalId: "pr-1",
-  capabilities: [
-    { capabilityKey: "workOrder.record.read", objectKey: "workOrder", actionKey: "read", displayLabel: "Read Work Orders",
-      via: [{ grantor: { kind: "ROLE", roleKey: "technician" }, condition: RA_WO }], runtime: "CONDITIONAL", why: "RECORD_REQUIRED" },
-    { capabilityKey: "workOrder.lifecycle.dispatch", objectKey: "workOrder", actionKey: "dispatch",
-      via: [{ grantor: { kind: "ROLE", roleKey: "dispatcher" }, condition: null }], runtime: "ALLOWED" },
-    { capabilityKey: "employee.link.assert", objectKey: "employee", actionKey: "linkPrincipal",
-      via: [{ grantor: { kind: "PRINCIPAL", principalId: "pr-1" }, condition: null }], runtime: "NOT_ENFORCED_DIRECT" },
-    { capabilityKey: "opportunity.write", objectKey: "opportunity", actionKey: "edit", via: [], runtime: "SOMETHING_NEW" },
+  securityRoleKeys: ["technician"],
+  accessVersion: 4,
+  assignments: {
+    excluded: [
+      { assignmentId: "asg-stale", roleKey: "dispatcher", reason: "STALE" },
+      { assignmentId: "asg-scoped", roleKey: "warehouseManager", reason: "SCOPED", scopeType: "WAREHOUSE", scopeValue: "SC-WH-MAIN" },
+    ],
+  },
+  employeeId: "emp-1",
+  workEligibility: ["SERVICE_TECHNICIAN"],
+  operationalScopes: [{ scopeType: "WAREHOUSE", scopeId: "SC-WH-MAIN" }],
+  capabilities: ["workOrder.record.read", "workOrder.lifecycle.complete"],
+  surfaces: ["operations.workOrders"],
+  actions: [
+    { objectKey: "workOrder", actionKey: "read", actionKind: "READ", capabilityKey: "workOrder.record.read",
+      result: "CONDITIONAL", reasonCode: "RECORD_ASSIGNMENT_REQUIRED",
+      sourceRoles: [{ roleKey: "technician", condition: RA_WO }], directGrant: null,
+      withheldFromFlatSetKernels: true, surfaces: ["operations.workOrders"], workflowSource: null },
+    { objectKey: "workOrder", actionKey: "dispatch", actionKind: "BUSINESS_ACTION", capabilityKey: "workOrder.lifecycle.dispatch",
+      result: "DENIED", reasonCode: "CAPABILITY_MISSING", sourceRoles: [],
+      directGrant: { label: "DIRECT_EXCEPTION", exceptionReason: "covering the parts desk this week", expiresAt: null, notEnforcedOnRoleOnlyRuntimePaths: true },
+      withheldFromFlatSetKernels: false, surfaces: [], workflowSource: null },
+    { objectKey: "workOrder", actionKey: "complete", actionKind: "BUSINESS_ACTION", capabilityKey: "workOrder.lifecycle.complete",
+      result: "ALLOWED", reasonCode: "ALLOWED", sourceRoles: [{ roleKey: "technician", condition: null }], directGrant: null,
+      withheldFromFlatSetKernels: false, surfaces: [], workflowSource: [{ workflowKey: "workOrderLifecycle", version: 2, actionKey: "complete", roleKey: "technician" }] },
+    { objectKey: "opportunity", actionKey: "edit", actionKind: "EDIT", capabilityKey: "opportunity.write",
+      result: "DENIED", reasonCode: "CAPABILITY_MISSING", sourceRoles: [], directGrant: null,
+      withheldFromFlatSetKernels: false, surfaces: [], workflowSource: null },
+    { objectKey: "invoice", actionKey: "issue", actionKind: "BUSINESS_ACTION", capabilityKey: "invoice.issue",
+      result: "SOMETHING_NEW", reasonCode: "X", sourceRoles: [], directGrant: null,
+      withheldFromFlatSetKernels: false, surfaces: [], workflowSource: null },
   ],
 };
 
 describe("Effective Access: the server evaluator's answer, rendered", () => {
-  it("renders verdict, source Role, condition and DIRECT EXCEPTION per Object x action", async () => {
+  it("renders result, reason code, source Role with condition, and flat-set withholding per Object x action", async () => {
     const api = makeApi();
     render(<EmployeeEffectiveAccess api={api} principalId="pr-1" />);
     await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).toBeTruthy());
     expect(api.explainEffectiveAccess).toHaveBeenCalledWith("pr-1");
     const read = document.querySelector('[data-capability="workOrder.record.read"]');
+    expect(read.getAttribute("data-result")).toBe("CONDITIONAL");
     expect(read.textContent).toMatch(/Conditional/);
-    expect(read.textContent).toMatch(/Security Role technician/);
-    expect(read.textContent).toMatch(/assigned Employee on the workOrder/);
-    expect(read.textContent).toMatch(/RECORD_REQUIRED/);
-    expect(document.querySelector('[data-capability="workOrder.lifecycle.dispatch"]').textContent).toMatch(/Allowed/);
-    const direct = document.querySelector('[data-capability="employee.link.assert"]');
+    expect(read.textContent).toMatch(/RECORD_ASSIGNMENT_REQUIRED/);
+    expect(read.textContent).toMatch(/Security Role technician · Condition: assigned Employee on the workOrder/);
+    expect(read.textContent).toMatch(/Withheld from flat-set kernels/);
+    const complete = document.querySelector('[data-capability="workOrder.lifecycle.complete"]');
+    expect(complete.textContent).toMatch(/Allowed/);
+    expect(complete.textContent).toMatch(/Workflow workOrderLifecycle v2 · complete via technician/);
+    expect(document.querySelector('[data-capability="opportunity.write"]').textContent).toMatch(/Denied.*CAPABILITY_MISSING/);
+    // An unknown result is shown RAW.
+    expect(document.querySelector('[data-capability="invoice.issue"]').textContent).toMatch(/SOMETHING_NEW/);
+  });
+
+  it("labels a direct grant DIRECT EXCEPTION with its reason, expiry and non-enforcement -- beside the DENIED result", async () => {
+    render(<EmployeeEffectiveAccess api={makeApi()} principalId="pr-1" />);
+    await waitFor(() => expect(document.querySelector('[data-effective-access="READY"]')).toBeTruthy());
+    const dispatch = document.querySelector('[data-capability="workOrder.lifecycle.dispatch"]');
+    expect(dispatch.getAttribute("data-result")).toBe("DENIED");
+    const direct = dispatch.querySelector('[data-direct-grant="DIRECT_EXCEPTION"]');
     expect(direct.textContent).toMatch(/DIRECT EXCEPTION/);
-    // An unknown verdict is shown RAW, never mapped to a friendlier one.
-    expect(document.querySelector('[data-capability="opportunity.write"]').textContent).toMatch(/SOMETHING_NEW/);
+    expect(direct.textContent).toMatch(/Reason: covering the parts desk this week/);
+    expect(direct.textContent).toMatch(/Expires: never/);
+    expect(direct.textContent).toMatch(/Not enforced on Role-only runtime paths/);
+  });
+
+  it("lists excluded assignments with their reason, and the principal's context", async () => {
+    render(<EmployeeEffectiveAccess api={makeApi()} principalId="pr-1" />);
+    const table = await screen.findByRole("table", { name: "Excluded assignments" });
+    const stale = table.querySelector('[data-excluded-assignment="dispatcher"]');
+    expect(stale.textContent).toMatch(/STALE/);
+    const scoped = table.querySelector('[data-excluded-assignment="warehouseManager"]');
+    expect(scoped.textContent).toMatch(/SCOPED/);
+    expect(scoped.textContent).toMatch(/WAREHOUSE · SC-WH-MAIN/);
+    const context = document.querySelector("[data-effective-access-context]");
+    expect(context.textContent).toMatch(/technician/);
+    expect(context.textContent).toMatch(/SERVICE_TECHNICIAN/);
+    expect(context.textContent).toMatch(/WAREHOUSE SC-WH-MAIN/);
+    expect(context.textContent).toMatch(/operations\.workOrders/);
   });
 
   it("renders an honest UNAVAILABLE state when the server does not serve explainEffectiveAccess", async () => {
@@ -310,48 +412,57 @@ describe("Effective Access: the server evaluator's answer, rendered", () => {
     expect(document.querySelector("[data-capability]")).toBeNull();
   });
 
-  it("the production seam reaches the local UNKNOWN_OPERATION today -- the name is not in the closed list yet", async () => {
-    // No fetch happens: callPolicyApi refuses an unlisted name before the network. When the server
-    // lane adds explainEffectiveAccess to both lists, this wrapper reaches the server unchanged.
-    const call = vi.fn(async (operation) => ({ ok: false, code: "UNKNOWN_OPERATION", message: `"${operation}" is not an Administration operation` }));
+  it("the production seam sends explainEffectiveAccess { principalId } on the one endpoint", async () => {
+    const call = vi.fn(async () => ({ ok: true, data: EXPLAIN }));
     const client = createAdminControlPlaneClient(call);
     const result = await client.explainEffectiveAccess("pr-1");
     expect(call).toHaveBeenCalledWith("explainEffectiveAccess", { principalId: "pr-1" });
-    expect(result.code).toBe("UNKNOWN_OPERATION");
+    expect(result.data).toBe(EXPLAIN);
   });
 
-  it("a payload that is not the contract's shape fails closed", async () => {
-    const api = makeApi({ explainEffectiveAccess: vi.fn(async () => ({ ok: true, data: [{ id: "pr-1" }] })) });
-    render(<EmployeeEffectiveAccess api={api} principalId="pr-1" />);
-    await waitFor(() => expect(document.querySelector('[data-effective-access="UNREADABLE"]')).toBeTruthy());
+  it("a payload that is not the contract's shape fails closed -- including the retired pre-contract shape", async () => {
+    for (const data of [[{ id: "pr-1" }], { capabilities: [{ capabilityKey: "x", runtime: "ALLOWED", via: [] }] }]) {
+      cleanup();
+      const api = makeApi({ explainEffectiveAccess: vi.fn(async () => ({ ok: true, data })) });
+      render(<EmployeeEffectiveAccess api={api} principalId="pr-1" />);
+      await waitFor(() => expect(document.querySelector('[data-effective-access="UNREADABLE"]')).toBeTruthy());
+    }
   });
 });
 
 // ════════════════════ the pure model and the seam ════════════════════
 
 describe("control-plane model and seam", () => {
-  it("builds exactly the stored condition shapes the server's builder validates", () => {
-    expect(buildCondition("RECORD_ASSIGNMENT", { recordKind: "workOrder" })).toEqual(RA_WO);
-    expect(buildCondition("OPERATIONAL_SCOPE", { scopeType: "WAREHOUSE", scopeId: " wh-1 " })).toEqual({ paths: [[{ kind: "OPERATIONAL_SCOPE", scopeType: "WAREHOUSE", scopeId: "wh-1" }]] });
-    expect(buildCondition("OPERATIONAL_SCOPE", { scopeType: "REORDER_QUEUE" })).toEqual({ paths: [[{ kind: "OPERATIONAL_SCOPE", scopeType: "REORDER_QUEUE" }]] });
-    expect(buildCondition("RECORD_ASSIGNMENT", {})).toBeNull();
-    expect(buildCondition("SELF", {})).toBeNull();
+  it("builds the stored condition shape from the SERVER's kind specification", () => {
+    const vocab = conditionVocabularyFrom(CONDITION_VOCABULARY);
+    const spec = (k) => vocab.find((x) => x.kind === k);
+    expect(buildCondition(spec("RECORD_ASSIGNMENT"), { recordKind: "workOrder" })).toEqual(RA_WO);
+    expect(buildCondition(spec("OPERATIONAL_SCOPE"), { scopeType: "WAREHOUSE", scopeId: " wh-1 " })).toEqual({ paths: [[{ kind: "OPERATIONAL_SCOPE", scopeType: "WAREHOUSE", scopeId: "wh-1" }]] });
+    expect(buildCondition(spec("OPERATIONAL_SCOPE"), { scopeType: "REORDER_QUEUE" })).toEqual({ paths: [[{ kind: "OPERATIONAL_SCOPE", scopeType: "REORDER_QUEUE" }]] });
+    expect(buildCondition(spec("RECORD_ASSIGNMENT"), {})).toBeNull();
+    expect(buildCondition(spec("TEAM"), {})).toBeNull();
+    expect(buildCondition(null, {})).toBeNull();
     expect(describeCondition({ paths: [[{ kind: "WORK_ELIGIBILITY", qualificationCode: "A" }, { kind: "OPERATIONAL_SCOPE", scopeType: "WAREHOUSE" }], [{ kind: "WORK_ELIGIBILITY", qualificationCode: "B" }]] }))
       .toBe("Work Eligibility A AND Operational Scope WAREHOUSE OR Work Eligibility B");
   });
 
-  it("a server-reported kind list overrides the contract mirror", () => {
-    const kinds = conditionKindsFor(["RECORD_ASSIGNMENT"]);
-    expect(kinds.find((k) => k.kind === "RECORD_ASSIGNMENT").supported).toBe(true);
-    expect(kinds.find((k) => k.kind === "WORK_ELIGIBILITY").supported).toBe(false);
+  it("the vocabulary is read from the server, and an unreadable one is null -- never a local default", () => {
+    expect(conditionVocabularyFrom({ kinds: [{ kind: "X", supported: true }] })).toEqual([
+      { kind: "X", label: "X", supported: true, why: undefined, parameters: [], capabilities: null },
+    ]);
+    expect(conditionVocabularyFrom(null)).toBeNull();
+    expect(conditionVocabularyFrom({ kinds: [{ nope: 1 }] })).toBeNull();
+    const model = readFileSync("src/modules/administration/controlPlaneModel.js", "utf8");
+    for (const retired of ["CONDITION_KINDS", "RECORD_KINDS", "WORK_ELIGIBILITY_CODES", "OPERATIONAL_SCOPE_TYPES", "conditionKindsFor"]) {
+      expect(model.includes(`export const ${retired}`) || model.includes(`export function ${retired}`), retired).toBe(false);
+    }
   });
 
   it("unreadable payloads are null, never empty", () => {
     expect(matrixActionRows({ objectKey: "x" })).toBeNull();
-    expect(effectiveAccessRows({})).toBeNull();
-    expect(effectiveAccessRows({ capabilities: [] })).toEqual([]);
+    expect(explanationModel({})).toBeNull();
+    expect(explanationModel({ actions: [] }).actions).toEqual([]);
   });
-
   it("refusalText is the server's code and message, verbatim", () => {
     expect(refusalText({ ok: false, code: "CONFLICT", message: "CONDITION_RETIREMENT_WOULD_WIDEN" })).toBe("CONFLICT: CONDITION_RETIREMENT_WOULD_WIDEN");
     expect(refusalText({ ok: true })).toBeNull();

@@ -39,6 +39,12 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
     listPrincipalRoleAssignments: (principalId) => send("listPrincipalRoleAssignments", { principalId }),
     readPolicyAuditHistory: ({ limit } = {}) => send("readPolicyAuditHistory", limit ? { limit } : {}),
     explainEffectiveAccess: (principalId) => send("explainEffectiveAccess", { principalId }),
+    // The server's condition vocabulary (kinds, parameters, record kinds, applicable capabilities).
+    // NOT YET in the server's closed operation list on this base, so it is deliberately absent from
+    // the client's mirror too: callPolicyApi answers UNKNOWN_OPERATION locally and the condition
+    // picker renders DISABLED -- never a local copy. When the server lane adds the name to both lists,
+    // this wrapper reaches it with no change here.
+    listSupportedConditionKinds: () => send("listSupportedConditionKinds", {}),
 
     // ── mutations (gate: admin.securityPolicy.write; assignRole/revokeRole: admin.roleAssignment.write)
     grantObjectActionToRole: ({ objectKey, actionKey, roleKey, reason, condition, requiresCondition }) =>
