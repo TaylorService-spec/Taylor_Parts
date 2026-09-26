@@ -568,11 +568,14 @@ test("administrability: workflow responsibility is changed by Administration alo
           grants.map((g) => [g.roleKey, activeCondition(g.a)]).sort(), `${key}: ${action.capabilityKey} sources`);
         const direct = matrix.get(action.objectKey)?.actions.find((x) => x.capabilityKey === action.capabilityKey)?.principals.some((p) => p.principalId === principalId) ?? false;
         assert.equal(action.directGrant !== null, direct, `${key}: ${action.capabilityKey} direct exception`);
-        const unconditioned = grants.some((g) => activeCondition(g.a) === null);
+        // Lane DX: an UNCONDITIONED direct exception is a capability source exactly like an unconditioned Role grant.
+        const directCell = matrix.get(action.objectKey)?.actions.find((x) => x.capabilityKey === action.capabilityKey)
+          ?.principals.find((p) => p.principalId === principalId) ?? null;
+        const unconditioned = grants.some((g) => activeCondition(g.a) === null) || (directCell !== null && directCell.condition === null);
         if (unconditioned) {
           assert.ok(c.capabilities.includes(action.capabilityKey), `${key}: ${action.capabilityKey} in the flat set`);
           assert.notEqual(action.reasonCode, "CAPABILITY_MISSING", `${key}: ${action.capabilityKey}`);
-        } else if (grants.length > 0) {
+        } else if (grants.length > 0 || directCell !== null) {
           assert.ok(c.conditionallyHeld.includes(action.capabilityKey) && !c.capabilities.includes(action.capabilityKey), `${key}: ${action.capabilityKey} conditioned-only`);
           assert.equal(action.withheldFromFlatSetKernels, true);
         } else if (action.scopedSources.length === 0) {

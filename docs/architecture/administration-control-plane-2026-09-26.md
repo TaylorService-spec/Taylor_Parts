@@ -515,3 +515,9 @@ Nothing is assigned or activated live; the migration is applied to local test da
 - anti-lockout, both counted and end to end;
 - tenant isolation;
 - audit exactly once.
+
+**Cell lock at the database (migration 1762992000000).** The trigger `principal_capabilities_cell_lock` runs BEFORE INSERT OR UPDATE on `principal_capabilities`. It takes the same `grant_cell_lock(tenant, 'PRINCIPAL', principal, capability)` as `capability_grant_conditions_never_widen`, and it refuses any change to a row's identity. A raw direct-grant insert that races a condition retire therefore serializes, and the retire is refused (Pass 8 D3 parity). The lock only orders the two writers: the retire's count is sound only at READ COMMITTED, so the retire trigger refuses REPEATABLE READ and SERIALIZABLE (Pass 10 P10-2); this trigger counts nothing and has no snapshot dependency.
+
+**Composition with SALES_CHANNEL (§14).** A direct exception is never scoped, and a `salesChannel` scope is refused by name. For a channel-scoped Role combined with a global direct grant, the result is the union of the two:
+- the direct key is decided globally, through the PRINCIPAL grantor;
+- the Role's scoped keys stay scoped: RETAIL only, OUTSIDE_ASSIGNMENT_SCOPE elsewhere, SCOPE_CONTEXT_REQUIRED with no context.

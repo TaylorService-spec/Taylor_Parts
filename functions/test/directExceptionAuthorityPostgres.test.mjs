@@ -422,6 +422,83 @@ test("lane DX: direct Principal exceptions are enforced by every runtime gate, e
     assert.deepEqual([explainB.ok, explainB.code], [false, "NOT_FOUND"]);
   });
 
+  await t.test("CELL LOCK (migration 1762992000000): a raw direct-grant INSERT racing a condition retire can never leave the grant held unconditioned", async () => {
+    const racer = await person("racer");
+    const capId = catalog.get(CONDITIONED).id;
+    // An ACTIVE PRINCIPAL-cell condition on an UN-held cell: retiring it is legal -- unless a grant commits first.
+    await q(`INSERT INTO eos_policy.capability_grant_conditions (id,tenant_id,grant_scope,grantor_key,capability_key,condition,status,established_by,updated_by)
+             VALUES ('gc-dx-race',$1,'PRINCIPAL',$2,$3,$4::jsonb,'ACTIVE','fixture','fixture')`, [T, racer, CONDITIONED, JSON.stringify(RA_WO)]);
+    const trigger = (await q(`SELECT tgname FROM pg_trigger WHERE tgrelid='eos_policy.principal_capabilities'::regclass AND NOT tgisinternal`)).rows.map((r) => r.tgname);
+    assert.ok(trigger.includes("principal_capabilities_cell_lock"), "the cell-lock trigger is installed");
+    const c1 = new pg.Client({ connectionString: dbUrlFor(name) });
+    const c2 = new pg.Client({ connectionString: dbUrlFor(name) });
+    await c1.connect(); await c2.connect();
+    try {
+      await c1.query("BEGIN");
+      await c1.query(`INSERT INTO eos_policy.principal_capabilities (id,tenant_id,principal_id,capability_id,granted_by,created_by,updated_by,exception_reason)
+                      VALUES ('pc-dx-race',$1,$2,$3,'raw','raw','raw','raw race')`, [T, racer, capId]);
+      // Client 2 retires the condition. It must WAIT on the cell lock the insert took, then see the committed grant.
+      let settled = false;
+      const retire = c2.query(`UPDATE eos_policy.capability_grant_conditions SET status='RETIRED' WHERE id='gc-dx-race'`)
+        .then(() => "RETIRED", (err) => err.message).finally(() => { settled = true; });
+      await new Promise((r) => setImmediate(r));
+      await c1.query("SELECT pg_sleep(0.3)");
+      assert.equal(settled, false, "the retire did not wait for the uncommitted direct grant");
+      await c1.query("COMMIT");
+      assert.match(await retire, /CONDITION_RETIREMENT_WOULD_WIDEN/);
+    } finally { await c1.end(); await c2.end(); }
+    const state = (await q(`SELECT status FROM eos_policy.capability_grant_conditions WHERE id='gc-dx-race'`)).rows[0].status;
+    assert.equal(state, "ACTIVE", "the held direct grant keeps its condition");
+    const ctx = await context("racer");
+    assert.deepEqual([ctx.capabilities.has(CONDITIONED), ctx.conditionallyHeld.has(CONDITIONED)], [false, true]);
+    // A direct exception's cell is its identity: re-pointing a row is refused.
+    await assert.rejects(() => q(`UPDATE eos_policy.principal_capabilities SET principal_id=$1 WHERE id='pc-dx-race'`, [third]),
+      /identity and never changes/);
+  });
+
+  await t.test("SALES_CHANNEL composes: a direct grant is never scoped; a channel-scoped Role + a global direct grant is the union, the scoped part never widens", async () => {
+    ok(await call("admin-a", "setTenantSalesChannelStatus", { salesChannel: "RETAIL", status: "ACTIVE", reason: R }));
+    ok(await call("admin-a", "setTenantSalesChannelStatus", { salesChannel: "NATIONAL_ACCOUNTS", status: "ACTIVE", reason: R }));
+    ok(await call("admin-a", "createRole", { key: "dxChannelReader", name: "DX channel reader", reason: R }));
+    for (const key of ["opportunity.read", "salesOrder.read"]) {
+      ok(await call("admin-a", "grantObjectActionToRole", { ...target(key), roleKey: "dxChannelReader", reason: R }));
+    }
+    const mixed = await person("channel-plus-direct");
+    ok(await call("admin-a", "assignRole", { principalId: mixed, roleId: await roleIdOf("dxChannelReader"), reason: R,
+      scopeType: "salesChannel", scopeValue: "RETAIL" }));
+    // (1) a direct grant can never carry the channel scope.
+    const scopedDirect = await call("admin-a", "grantObjectActionToPrincipal", { ...target("opportunity.read"), principalId: mixed, reason: R,
+      scopeType: "salesChannel", scopeValue: "RETAIL" });
+    assert.deepEqual([scopedDirect.ok, scopedDirect.code], [false, "INVALID_INPUT"]);
+    assert.match(scopedDirect.message, /DIRECT_GRANT_SCOPE_UNSUPPORTED/);
+    // (2) a GLOBAL direct grant of ONE of the scoped keys.
+    ok(await call("admin-a", "grantObjectActionToPrincipal", { ...target("salesOrder.read"), principalId: mixed, reason: R }));
+    const ctx = await context("channel-plus-direct");
+    assert.equal(ctx.capabilities.has("salesOrder.read"), true, "the direct grant is global");
+    assert.equal(ctx.capabilities.has("opportunity.read"), false, "the channel-scoped key never becomes flat");
+    assert.deepEqual(ctx.scopedHeld.map((h) => [h.capabilityKey, h.scopeValue, h.sourceRole]).sort(),
+      [["opportunity.read", "RETAIL", "dxChannelReader"], ["salesOrder.read", "RETAIL", "dxChannelReader"]],
+      "the direct grant adds no scoped holding and removes none");
+    const decide = async (capabilityKey, salesChannel) => {
+      const d = await composition.authorizeResolvedOperationalAction(reader, ctx,
+        { capabilityKey, ...(salesChannel ? { businessContext: { salesChannel } } : {}) });
+      return [d.allowed, d.outcome, d.viaGrantor?.kind ?? null, d.viaScope?.scopeValue ?? null];
+    };
+    // The scoped part: RETAIL only; NATIONAL and "no context" refused -- the direct grant of ANOTHER key widens nothing.
+    assert.deepEqual(await decide("opportunity.read", "RETAIL"), [true, "ALLOWED", "ROLE", "RETAIL"]);
+    assert.deepEqual((await decide("opportunity.read", "NATIONAL_ACCOUNTS")).slice(0, 2), [false, "OUTSIDE_ASSIGNMENT_SCOPE"]);
+    assert.deepEqual((await decide("opportunity.read", null)).slice(0, 2), [false, "SCOPE_CONTEXT_REQUIRED"]);
+    // The union: salesOrder.read is global through the direct grant, in every channel.
+    assert.deepEqual(await decide("salesOrder.read", "NATIONAL_ACCOUNTS"), [true, "ALLOWED", "PRINCIPAL", null]);
+    assert.deepEqual(await decide("salesOrder.read", "RETAIL"), [true, "ALLOWED", "PRINCIPAL", null]);
+    // The Commercial transport hands the SAME composition to its reads: flat keys include the direct grant, scoped
+    // holdings stay scoped.
+    const list = await executeCommercialOperation({ reader: repo, pool }, { caller: caller("channel-plus-direct"), operation: "listSalesOrders", input: {} });
+    assert.equal(list.ok, true, JSON.stringify(list));
+    const opp = await executeCommercialOperation({ reader: repo, pool }, { caller: caller("channel-plus-direct"), operation: "listOpportunities", input: {} });
+    assert.equal(opp.ok, true, "the Retail-scoped holder still lists (channel-filtered) opportunities");
+  });
+
   await t.test("AUDIT exactly once: grant, revoke and condition changes each write ONE event naming the direct exception; no-ops write none", async () => {
     const who = await person("audited");
     const before = await auditCount();

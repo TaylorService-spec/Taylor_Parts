@@ -521,6 +521,8 @@ on:
       - "functions/test/credConvergencePostgres.test.mjs"
       # LANE DX: direct Principal exceptions enforced on every gate -- table-driven parity (test:adminPolicyPostgres).
       - "functions/test/directExceptionAuthorityPostgres.test.mjs"
+      # LANE DX: the direct-exception cell lock trigger (the CRED convergence proof is registered by lane FR above).
+      - "functions/migrations/1762992000000_direct-exception-cell-lock.sql"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -916,6 +918,8 @@ on:
       - "functions/test/credConvergencePostgres.test.mjs"
       # LANE DX: direct Principal exceptions enforced on every gate -- table-driven parity (test:adminPolicyPostgres).
       - "functions/test/directExceptionAuthorityPostgres.test.mjs"
+      # LANE DX: the direct-exception cell lock trigger (the CRED convergence proof is registered by lane FR above).
+      - "functions/migrations/1762992000000_direct-exception-cell-lock.sql"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"

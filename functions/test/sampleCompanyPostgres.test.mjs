@@ -226,8 +226,9 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // (vocabulary 80 -> 81, reconciled in the manifest), granted to NO Role -- so no persona moves.
 // 1762905600000 (the tenant sales channel activation, lane GA): one eos_policy table, EMPTY -- no capability, no
 // grant, no vocabulary move.
-const PINNED_LAST_MIGRATION = "1762905600000_tenant-sales-channel-scope";
-const PINNED_MIGRATION_COUNT = 55;
+// 1762992000000 (the direct-exception cell lock, lane DX): one trigger -- no capability, no grant, no vocabulary move.
+const PINNED_LAST_MIGRATION = "1762992000000_direct-exception-cell-lock";
+const PINNED_MIGRATION_COUNT = 56;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
