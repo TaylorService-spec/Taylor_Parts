@@ -498,6 +498,9 @@ on:
       - "functions/test/functionalRolePostgres.test.mjs"
       # PASS 9: Functional Role x assignment scope security regressions S4/S5/S6 (test:adminPolicyPostgres).
       - "functions/test/administrationScopeSecurityPostgres.test.mjs"
+      # LANE FR: the CRED convergence proof pins the capability vocabulary (80 -> 81, admin.employeeFunctionalRole.write);
+      # its pin had silently rotted because nothing ran it (registered in test:adminPolicyPostgres).
+      - "functions/test/credConvergencePostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -873,6 +876,9 @@ on:
       - "functions/test/functionalRolePostgres.test.mjs"
       # PASS 9: Functional Role x assignment scope security regressions S4/S5/S6 (test:adminPolicyPostgres).
       - "functions/test/administrationScopeSecurityPostgres.test.mjs"
+      # LANE FR: the CRED convergence proof pins the capability vocabulary (80 -> 81, admin.employeeFunctionalRole.write);
+      # its pin had silently rotted because nothing ran it (registered in test:adminPolicyPostgres).
+      - "functions/test/credConvergencePostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
