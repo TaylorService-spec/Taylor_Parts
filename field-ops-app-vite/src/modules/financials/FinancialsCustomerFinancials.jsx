@@ -18,7 +18,7 @@ import AccountArSection from "../accounts/AccountArSection.jsx";
 import { FinancialsPageFrame, FinAnnotation, FinancialFigure } from "./FinancialsPrimitives.jsx";
 import { LIFECYCLE_SCORECARD_SLOTS } from "../../domain/financialsSurface.js";
 import { useFinancialFacts } from "../../hooks/useFinancialFacts.js";
-import { FACTS_STATE, FACTS_DETAIL, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
+import { FACTS_STATE, financialFactsState, formatByCurrency } from "../../domain/financialFactsView.js";
 import { companyAttribution } from "../../domain/companyAttribution.js";
 
 // THE FIVE SUMMARY FIGURES the approved handoff specifies: Booked / Billed / Collected /
@@ -46,7 +46,7 @@ export default function FinancialsCustomerFinancials() {
   // returns nothing rather than their figures. The read is issued only once a customer is chosen —
   // an unfiltered account read on an empty search would be a whole-book query nobody asked for.
   const facts = useFinancialFacts({ accountId: selected?.id ?? null }, { enabled: Boolean(selected) });
-  const { state: factsState, result: factsResult } = financialFactsState(facts);
+  const { state: factsState, result: factsResult, detail: factsDetail } = financialFactsState(facts, { accountSelector: true });
   const factsAnswered = factsState === FACTS_STATE.READY || factsState === FACTS_STATE.EMPTY;
   const summary = factsAnswered ? (factsResult?.summary ?? {}) : {};
 
@@ -141,7 +141,7 @@ export default function FinancialsCustomerFinancials() {
                     factClass={slot.factClass}
                     valueText={slotFigure(slot.key)}
                     absence={slotAbsence(slot)}
-                    detail={slot.key === "booked" ? "Booked value is established on the Sales Order, not the invoice. This read exposes invoice facts, so Billed is never substituted for it." : slot.key === "credits" ? "No governed read exposes correction events for a customer yet. The adjustment commands are merged; their read surface is not built, and a figure is not inferred from invoice credits." : FACTS_DETAIL[factsState] ?? null}
+                    detail={slot.key === "booked" ? "Booked value is established on the Sales Order, not the invoice. This read exposes invoice facts, so Billed is never substituted for it." : slot.key === "credits" ? "No governed read exposes correction events for a customer yet. The adjustment commands are merged; their read surface is not built, and a figure is not inferred from invoice credits." : factsDetail ?? null}
                   />
                 </div>
               ))}

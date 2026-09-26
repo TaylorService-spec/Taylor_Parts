@@ -23,7 +23,6 @@ import { useAccountNames } from "../../hooks/useAccountNames.js";
 import { useFinancialsPeriod } from "../../hooks/useFinancialsPeriod.js";
 import {
   FACTS_STATE,
-  FACTS_DETAIL,
   financialFactsState,
   invoiceRow,
 } from "../../domain/financialFactsView.js";
@@ -63,7 +62,7 @@ export default function FinancialsInvoices() {
     // An invalid custom range issues NO read at all — see useFinancialsPeriod.
     { enabled: !period.blocked },
   );
-  const { state, result } = financialFactsState(read);
+  const { state, result, detail } = financialFactsState(read);
 
   // READY and EMPTY both mean the server ANSWERED; EMPTY simply means the answer held no
   // records. Keying the filtered-empty wording on READY alone let a period-filtered zero fall
@@ -96,7 +95,7 @@ export default function FinancialsInvoices() {
         }
       : answered
         ? { state: null }
-        : { state, detail: FACTS_DETAIL[state] ?? null };
+        : { state, detail: detail ?? null };
 
   return (
     <FinancialsPageFrame
