@@ -146,10 +146,20 @@ test("the Sales Agreements index appears ONLY for a caller the governed source g
 // transport failure or a body this bundle cannot parse must each produce their OWN state.
 
 test("an EMPTY governed answer is EMPTY -- an answer, distinct from every failure", () => {
-  const view = salesAgreementIndexView({ ok: true, operation: "listSalesAgreements", result: { items: [], truncated: false, nextCursor: null } });
+  // Once the writer is PostgreSQL (C6), empty means none exist.
+  const answer = { ok: true, operation: "listSalesAgreements", result: { items: [], truncated: false, nextCursor: null } };
+  const view = salesAgreementIndexView(answer, { writeAuthority: "POSTGRES" });
   assert.equal(view.state, SALES_AGREEMENT_INDEX_STATE.EMPTY);
   assert.deepEqual(view.rows, []);
   assert.match(view.reason, /No Sales Agreements exist/);
+  // Lane S3: while Agreement commands write Firestore, the same answer is NOT_CUT_OVER -- never an
+  // empty-portfolio claim -- and that is the default, because that is where the writer is today.
+  for (const split of [salesAgreementIndexView(answer), salesAgreementIndexView(answer, { writeAuthority: "FIRESTORE" }),
+    salesAgreementIndexView(answer, { writeAuthority: "something-unrecognised" })]) {
+    assert.equal(split.state, SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER);
+    assert.doesNotMatch(split.reason, /No Sales Agreements exist/);
+    assert.deepEqual(split.rows, []);
+  }
 });
 
 test("a REFUSAL is never rendered as an empty list, and a FAILURE is never rendered as either", () => {
@@ -192,7 +202,11 @@ test("rows are projected, unidentifiable rows are dropped, and the record href i
   assert.equal(salesAgreementHref("sa-1"), "/customers/opportunities/sales-agreement/sa-1");
   assert.equal(salesAgreementHref("a/b"), "/customers/opportunities/sales-agreement/a%2Fb");
   // A page of nothing but unreadable rows is EMPTY, not an error: the read succeeded.
-  assert.equal(salesAgreementIndexView({ ok: true, result: { items: [{}] } }).state, SALES_AGREEMENT_INDEX_STATE.EMPTY);
+  assert.equal(salesAgreementIndexView({ ok: true, result: { items: [{}] } }, { writeAuthority: "POSTGRES" }).state, SALES_AGREEMENT_INDEX_STATE.EMPTY);
+  assert.equal(salesAgreementIndexView({ ok: true, result: { items: [{}] } }).state, SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER);
+  // Rows from a store Agreements are not written to are shown, but never claimed complete.
+  assert.equal(view.complete, false);
+  assert.match(view.reason, /not the complete list/);
   // Nothing asked yet is LOADING, and is never confused with a settled answer.
   assert.equal(salesAgreementIndexView(null).state, SALES_AGREEMENT_INDEX_STATE.LOADING);
 });

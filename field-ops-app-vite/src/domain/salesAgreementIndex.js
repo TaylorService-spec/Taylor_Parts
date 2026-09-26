@@ -22,6 +22,38 @@
 //   this environment" while all four capabilities were live).
 //
 // An UNPARSEABLE success body is UNAVAILABLE, never EMPTY, for that same reason.
+//
+// ════════════════════ THE AUTHORITY SPLIT (lane S3) ════════════════════
+//
+// EMPTY is only an answer about the BUSINESS when the store this list reads is the store Agreements
+// are WRITTEN to. Today it is not:
+//
+//   READ   this index -> POST /commercial/sales { listSalesAgreements } -> PostgreSQL
+//          eos_commercial.sales_agreements (functions/src/eosCommercial/reads/salesAgreementReadProjection.ts)
+//   WRITE  createSalesAgreement / updateSalesAgreementDraft / acceptSalesAgreement -> Firebase
+//          callables (functions/src/salesAgreement/salesAgreementCallables.ts) -> Firestore
+//          `sales_agreements`; the record page reads back through getSalesAgreementContext.
+//
+// Nothing copies one into the other (C5 not run, no dual write by ruling), so an Agreement created
+// this morning exists and this list cannot see it. While that holds, an empty PostgreSQL page is
+// NOT_CUT_OVER -- a statement about an un-migrated table -- and a non-empty one is shown but marked
+// incomplete. Flip SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT to POSTGRES in the same change that moves
+// the writer (C6), and EMPTY means "none exist" again with no other edit.
+
+export const SALES_AGREEMENT_AUTHORITY = Object.freeze({
+  FIRESTORE: "FIRESTORE",
+  POSTGRES: "POSTGRES",
+});
+
+/** Where this index reads from. Fixed by the transport it calls. */
+export const SALES_AGREEMENT_INDEX_READ_AUTHORITY = SALES_AGREEMENT_AUTHORITY.POSTGRES;
+
+/** Where Agreement commands write TODAY. Firestore until the C6 writer cutover. */
+export const SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT = SALES_AGREEMENT_AUTHORITY.FIRESTORE;
+
+/** True only when the list reads the store Agreements are written to. Anything unrecognised is a split. */
+export const salesAgreementIndexIsAuthoritative = (writeAuthority = SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT) =>
+  writeAuthority === SALES_AGREEMENT_INDEX_READ_AUTHORITY;
 
 export const SALES_AGREEMENT_INDEX_STATE = Object.freeze({
   LOADING: "LOADING",
@@ -29,6 +61,7 @@ export const SALES_AGREEMENT_INDEX_STATE = Object.freeze({
   EMPTY: "EMPTY",
   REFUSED: "REFUSED",
   UNAVAILABLE: "UNAVAILABLE",
+  NOT_CUT_OVER: "NOT_CUT_OVER",
 });
 
 /** The transport failure codes that mean "you may not", as opposed to "it did not work". */
@@ -43,6 +76,12 @@ export const SALES_AGREEMENT_INDEX_UNAVAILABLE_REASON =
 export const SALES_AGREEMENT_INDEX_EMPTY_REASON =
   "No Sales Agreements exist for this company yet. An Agreement is created from an Opportunity, on the Opportunity's own record page — this list shows them once they are.";
 
+export const SALES_AGREEMENT_INDEX_NOT_CUT_OVER_REASON =
+  "Sales Agreements are not yet listed here. Agreements are still created and kept on each Opportunity — open the Opportunity to see its Agreement. This list reads the new Commercial store, which does not receive Agreements until the Commercial cutover; an empty list here does not mean none exist.";
+
+export const SALES_AGREEMENT_INDEX_INCOMPLETE_NOTICE =
+  "This is not the complete list. Agreements are still created and kept on each Opportunity, and ones created there do not appear here until the Commercial cutover.";
+
 const isRow = (row) =>
   !!row && typeof row === "object"
   && typeof row.id === "string" && row.id.length > 0
@@ -52,13 +91,18 @@ const isRow = (row) =>
  * Turn one `listSalesAgreements` envelope into what the screen renders.
  *
  * `result` is the value `services/commercialApiClient.js` returns, or null while nothing has been
- * asked yet. Returns `{ state, rows, truncated, reason }`; `rows` is always an array, so no caller
- * can accidentally render a refusal as a list.
+ * asked yet. Returns `{ state, rows, truncated, reason, complete }`; `rows` is always an array, so no
+ * caller can accidentally render a refusal as a list. `complete` is false whenever the list does not
+ * read the store Agreements are written to (see THE AUTHORITY SPLIT above).
+ *
+ * @param {object|null} result
+ * @param {{writeAuthority?: string}} [options] where Agreement commands write; defaults to today's
  */
-export function salesAgreementIndexView(result) {
+export function salesAgreementIndexView(result, { writeAuthority = SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT } = {}) {
+  const authoritative = salesAgreementIndexIsAuthoritative(writeAuthority);
   const empty = Object.freeze([]);
   if (result === null || result === undefined) {
-    return Object.freeze({ state: SALES_AGREEMENT_INDEX_STATE.LOADING, rows: empty, truncated: false, reason: null });
+    return Object.freeze({ state: SALES_AGREEMENT_INDEX_STATE.LOADING, rows: empty, truncated: false, reason: null, complete: false });
   }
   if (result.ok !== true) {
     const refused = REFUSAL_CODES.has(result.code);
@@ -67,6 +111,7 @@ export function salesAgreementIndexView(result) {
       rows: empty,
       truncated: false,
       reason: refused ? SALES_AGREEMENT_INDEX_REFUSED_REASON : SALES_AGREEMENT_INDEX_UNAVAILABLE_REASON,
+      complete: false,
     });
   }
   const page = result.result;
@@ -79,6 +124,7 @@ export function salesAgreementIndexView(result) {
       rows: empty,
       truncated: false,
       reason: SALES_AGREEMENT_INDEX_UNAVAILABLE_REASON,
+      complete: false,
     });
   }
   // A row this bundle cannot identify is DROPPED rather than rendered half-blank: without an id and
@@ -86,11 +132,22 @@ export function salesAgreementIndexView(result) {
   // is still EMPTY rather than an error -- the read succeeded, and the honest statement is that this
   // build has nothing it can show.
   const rows = Object.freeze(page.items.filter(isRow).map((row) => Object.freeze({ ...row })));
+  if (rows.length === 0) {
+    // An empty page from a store Agreements are not written to says nothing about the business.
+    return Object.freeze({
+      state: authoritative ? SALES_AGREEMENT_INDEX_STATE.EMPTY : SALES_AGREEMENT_INDEX_STATE.NOT_CUT_OVER,
+      rows,
+      truncated: page.truncated === true,
+      reason: authoritative ? SALES_AGREEMENT_INDEX_EMPTY_REASON : SALES_AGREEMENT_INDEX_NOT_CUT_OVER_REASON,
+      complete: false,
+    });
+  }
   return Object.freeze({
-    state: rows.length === 0 ? SALES_AGREEMENT_INDEX_STATE.EMPTY : SALES_AGREEMENT_INDEX_STATE.READY,
+    state: SALES_AGREEMENT_INDEX_STATE.READY,
     rows,
     truncated: page.truncated === true,
-    reason: rows.length === 0 ? SALES_AGREEMENT_INDEX_EMPTY_REASON : null,
+    reason: authoritative ? null : SALES_AGREEMENT_INDEX_INCOMPLETE_NOTICE,
+    complete: authoritative && page.truncated !== true,
   });
 }
 

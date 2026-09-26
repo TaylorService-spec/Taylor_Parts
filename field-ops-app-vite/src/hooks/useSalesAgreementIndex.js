@@ -10,7 +10,10 @@
 // softened into an empty list, and never allowed to mean "assume the legacy role".
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { commercialApiClient } from "../services/commercialApiClient.js";
-import { salesAgreementIndexView } from "../domain/salesAgreementIndex.js";
+import {
+  SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT,
+  salesAgreementIndexView,
+} from "../domain/salesAgreementIndex.js";
 
 export const SALES_AGREEMENT_INDEX_OPERATION = "listSalesAgreements";
 
@@ -18,9 +21,15 @@ export const SALES_AGREEMENT_INDEX_OPERATION = "listSalesAgreements";
  * @param {object} options
  * @param {{call: Function}} [options.client] injectable transport seam
  * @param {number} [options.limit]            page size; the server caps it and refuses anything larger
+ * @param {string} [options.writeAuthority]   where Agreement commands write; defaults to today's
+ *                                            (Firestore), which makes an empty page NOT_CUT_OVER
  * @returns {{view: object, reload: Function}}
  */
-export function useSalesAgreementIndex({ client = commercialApiClient, limit = 50 } = {}) {
+export function useSalesAgreementIndex({
+  client = commercialApiClient,
+  limit = 50,
+  writeAuthority = SALES_AGREEMENT_WRITE_AUTHORITY_CURRENT,
+} = {}) {
   const [result, setResult] = useState(null);
   const [generation, setGeneration] = useState(0);
 
@@ -37,7 +46,7 @@ export function useSalesAgreementIndex({ client = commercialApiClient, limit = 5
     return () => { cancelled = true; };
   }, [client, limit, generation]);
 
-  const view = useMemo(() => salesAgreementIndexView(result), [result]);
+  const view = useMemo(() => salesAgreementIndexView(result, { writeAuthority }), [result, writeAuthority]);
   const reload = useCallback(() => setGeneration((n) => n + 1), []);
 
   return { view, reload };
