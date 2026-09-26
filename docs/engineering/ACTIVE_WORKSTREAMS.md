@@ -27,6 +27,83 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          P0 coordination + integration — the Owner's multi-lane execution directive (Issued 2026-09-25 22:08 -0700). Sole writer of this registry and of every shared high-collision file below
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: integration
+- Branch / worktree:   `coord/p0-workstream-declaration` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-coord`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         `docs/engineering/ACTIVE_WORKSTREAMS.md` · `docs/architecture/capability-graph.json` (regenerated only) · generated `field-ops-app-vite/src/access/*` (syncAccessContracts only) · `field-ops-app-vite/src/App.jsx` · `field-ops-app-vite/src/navigation/navConfig.js` · `field-ops-app-vite/src/navigation/AppShell.jsx` · `functions/src/index.ts` · `.github/workflows/**` · `config/environments.json` · `functions/src/adminPolicy/seed/**` · `docs/roadmaps/CURRENT.md` · `docs/architecture/SYSTEM_AUTHORITIES.md` · `docs/DECISIONS.md`
+- Shared paths req'd:  —
+- Dependencies:        all P0 lanes and Phase A
+- Expected outcome:    each P0 lane lands as one reviewed capability; roadmap/authority docs updated at integration
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed.
+- Lifecycle stage:     DESIGNED
+
+- Capability:          S1 — Receiving: canonical multi-line PURCHASE_ORDER from MultiScanReceiving through the exported `receiveInventoryStock` callable (boundary appears to accept only one REORDER_PURCHASE_ORDER line)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s1-receiving-multiline-po` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s1`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         `functions/src/inventoryReceiving/receivingCallables.ts` · `functions/src/inventoryReceiving/receivingCallableWiring.ts` · new `functions/test/receivingCallableMultiLinePurchaseOrder*.test.mjs` · `field-ops-app-vite/src/modules/receiving/MultiScanReceiving.jsx` and its client service (only if the defect is client-side)
+- Shared paths req'd:  `functions/src/index.ts`, workflow paths filters (request via integration)
+- Dependencies:        none; Parts/Inventory parity fence applies (semantics-preserving)
+- Expected outcome:    a connected regression proving the canonical multi-line PO request is accepted end-to-end, with idempotency, serial/partial validation and authority unchanged; the existing command is not rewritten
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. Also: parts/inventory/truck parity fence
+- Lifecycle stage:     DESIGNED
+
+- Capability:          S2 — Commercial one-writer activation fence for Render `/commercial/sales` (fail-closed, consistent with CRM `crmWriterState`)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s2-commercial-writer-fence` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s2`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         `functions/src/eosCommercial/commercialHttp.ts` · new `functions/src/eosCommercial/commercialWriterState.ts` · new `functions/test/commercialWriterFence*.test.mjs`
+- Shared paths req'd:  `functions/src/eosApi/server.ts` (only if composition must change; request via integration)
+- Dependencies:        none
+- Expected outcome:    mutations through `/commercial/sales` refuse while Firestore Commercial is the writer; reads per ruling; allowed/denied/no-fallback tests; the fence is NOT flipped and NO grant changes
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. merging may auto-deploy Render nonprod — held
+- Lifecycle stage:     DESIGNED
+
+- Capability:          S3 — Sales Agreements index truthfulness (PG list vs Firebase-era writer)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s3-sales-agreements-index-truth` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s3`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         `field-ops-app-vite/src/modules/sales/SalesAgreementsList.jsx` · `field-ops-app-vite/src/hooks/useSalesAgreementIndex.js` · `field-ops-app-vite/src/services/commercialApiClient.js` (index read only) · their tests
+- Shared paths req'd:  `navConfig.js` / `App.jsx` (integration only)
+- Dependencies:        none; Owner choice if more than one valid product resolution
+- Expected outcome:    the index never presents a misleading empty portfolio; existing Agreement commands untouched
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. Owner product choice
+- Lifecycle stage:     DESIGNED
+
+- Capability:          S4 — Finance: complete governed `listFinancialFacts` query path (no silent empty above the 500-document bound)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s4-financial-facts-complete-read` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s4`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         `functions/src/finance/financialReportingRead.ts` · `functions/test/financialReportingRead*.test.mjs` · `field-ops-app-vite/src/hooks/useFinancialFacts.js` (outcome states only)
+- Shared paths req'd:  Firestore indexes (`firestore.indexes.json`) — request via integration; deploy is operator-gated
+- Dependencies:        none
+- Expected outcome:    reproduced unavailable state; design + tests for a complete, paged/aggregated governed read that never reports a partial total as complete
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed.
+- Lifecycle stage:     DESIGNED
+
+- Capability:          S5 — Commercial grant parity measurement (salesperson / salesManager / owner vs governed Object security matrix) — PROPOSAL ONLY
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/s5-commercial-grant-parity` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-s5`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         new `docs/security/commercial-grant-parity-2026-09-25.md` · new `functions/test/commercialGrantParity*.test.mjs` (measurement, may be skipped/pending until ruling)
+- Shared paths req'd:  `functions/src/adminPolicy/seed/**`, migrations — NOT touched; any grant/revoke is a protected Owner decision
+- Dependencies:        none
+- Expected outcome:    measured matrix, correction proposal, prepared tests; NO grant/revoke applied or merged
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. capability grant/revoke — Owner
+- Lifecycle stage:     DESIGNED
+
+- Capability:          Phase A — Persona Foundation 16/16 READY evidence (Credential → Principal → Employee → Job Role; Security Role, Work Eligibility, Operational Scope distinct)
+- Agent/session:       Claude (Claude Code, 2026-09-25, session da75de6a) · Role: builder
+- Branch / worktree:   `lane/pa-persona-foundation-evidence` · `/home/rudy2/work/Taylor_Parts/.claude/worktrees/p0-pa`
+- Base commit:         `09d63c4e83a13a0df0639276689d7b3750f44b2f` (origin/main at start, unmoved when taken)
+- Owned paths:         new `docs/testing/persona-foundation-ready-evidence-2026-09-25.md`
+- Shared paths req'd:  `config/sandboxRoleIdentityRegistry.json` (stale reporting row — correction proposed, integration applies)
+- Dependencies:        #1969 merged; persona/credential infrastructure FROZEN by Owner ruling
+- Expected outcome:    evidence package; any live apply is prepared as dry-run + exact operator command + expected before/after, and stopped at
+- Protected boundaries:NO live data copy, NO capability grant/revoke, NO credential action, NO Firebase/Render/Vercel deploy, NO production operation, NO irreversible migration. Runtime-affecting PRs are opened and reviewed; merge is held by the integration lane until the deploy consequence of merging (Render/Vercel auto-deploy) is confirmed. live reads/applies with credentials — operator
+- Lifecycle stage:     DESIGNED
+
 - Capability:          Email Connections phase 2 — REAL Microsoft 365 / Google Workspace delivery and attachment byte custody, on top of the phase 1 intake capability (PR #1811)
 - Agent/session:       Claude (Claude Code, 2026-09-05) · Role: builder
 - Branch / worktree:   `feature/email-provider-delivery` · `D:/Taylor_Parts-eos` — STACKED on `feature/email-connections-inbound-work` (PR #1811, open at `d6e4b1de`)
