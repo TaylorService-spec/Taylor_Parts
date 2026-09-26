@@ -31,6 +31,19 @@ test("the Employee page's Security Role control is PostgreSQL assignRole / revok
   assert.match(detail, /<EmployeeAccessAudit api=\{controlPlane\} principalId=\{principalId\}/);
 });
 
+test("Direct Exceptions (lane DX) are MOUNTED on the Employee page and administer only through the governed direct-grant operations", () => {
+  const detail = code(read("src/modules/administration/UserDetail.jsx"));
+  assert.match(detail, /<EmployeeDirectExceptions api=\{controlPlane\} principalId=\{principalId\}/);
+  const panel = code(read("src/modules/administration/EmployeeDirectExceptions.jsx"));
+  assert.match(panel, /api\.explainEffectiveAccess\(principalId\)/);
+  assert.match(panel, /api\.grantObjectActionToPrincipal\(/);
+  assert.match(panel, /api\.revokeObjectActionFromPrincipal\(/);
+  assert.match(panel, /api\.setGrantCondition\(/);
+  assert.match(panel, /api\.retireGrantCondition\(/);
+  // No client permission logic, no Firebase, no scope field on a direct exception.
+  assert.equal(/firebase|assignApprovedRole|administrationUsersClient|scopeType|scopeValue|hasCapability/.test(panel), false);
+});
+
 test("Effective Access consumes explainEffectiveAccess only -- never the older preview read", () => {
   const panel = code(read("src/modules/administration/EmployeeEffectiveAccess.jsx"));
   assert.match(panel, /api\.explainEffectiveAccess\(principalId\)/);

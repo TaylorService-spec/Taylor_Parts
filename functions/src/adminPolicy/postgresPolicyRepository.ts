@@ -1466,8 +1466,26 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       await q.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
     },
 
-    async lockGrantCell(roleKey: string, capabilityKey: string) {
-      await q.query(`SELECT ${SCHEMA}.grant_cell_lock($1, 'ROLE', $2, $3)`, [tenantId, roleKey, capabilityKey]);
+    async lockGrantCell(grantorKey: string, capabilityKey: string, grantScope: "ROLE" | "PRINCIPAL" = "ROLE") {
+      if (grantScope !== "ROLE" && grantScope !== "PRINCIPAL") throw new PolicyStoreError("unknown grant scope");
+      await q.query(`SELECT ${SCHEMA}.grant_cell_lock($1, $2, $3, $4)`, [tenantId, grantScope, grantorKey, capabilityKey]);
+    },
+
+    async readPrincipalGrantCell(principalId: string, capabilityKey: string) {
+      const grant = await q.query(
+        `SELECT pc.*, (pc.expires_at IS NOT NULL AND pc.expires_at <= now()) AS dx_expired
+           FROM ${SCHEMA}.principal_capabilities pc
+           JOIN ${SCHEMA}.capabilities c ON c.id = pc.capability_id
+          WHERE pc.tenant_id = $1 AND pc.principal_id = $2 AND c.key = $3`, [tenantId, principalId, capabilityKey]);
+      const condition = await q.query(
+        `SELECT * FROM ${SCHEMA}.capability_grant_conditions
+          WHERE tenant_id = $1 AND grant_scope = 'PRINCIPAL' AND grantor_key = $2 AND capability_key = $3 AND status = 'ACTIVE'`,
+        [tenantId, principalId, capabilityKey]);
+      return {
+        grant: grant.rows[0] ? toPrincipalCapability(grant.rows[0]) : null,
+        expired: grant.rows[0]?.dx_expired === true,
+        condition: condition.rows[0] ? toGrantCondition(condition.rows[0]) : null,
+      };
     },
 
     async readGrantCell(roleKey: string, capabilityKey: string) {
@@ -1521,7 +1539,11 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
               via_direct AS (
                 SELECT pc.principal_id FROM ${SCHEMA}.principal_capabilities pc JOIN cap ON cap.id = pc.capability_id
                  WHERE pc.tenant_id = $1 AND pc.principal_id IS DISTINCT FROM $5
-                   AND (to_jsonb(pc) ->> 'expires_at') IS NULL)
+                   AND (to_jsonb(pc) ->> 'expires_at') IS NULL
+                   -- UNCONDITIONED only (lane DX): a conditioned direct grant is not a flat holding the gate admits.
+                   AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.capability_grant_conditions g
+                                    WHERE g.tenant_id = pc.tenant_id AND g.grant_scope = 'PRINCIPAL' AND g.grantor_key = pc.principal_id
+                                      AND g.capability_key = cap.key AND g.status = 'ACTIVE'))
          SELECT count(DISTINCT p.id)::int AS n
            FROM (SELECT principal_id FROM via_role UNION SELECT principal_id FROM via_direct) h
            JOIN ${SCHEMA}.principals p ON p.id = h.principal_id AND p.status = 'active'

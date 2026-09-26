@@ -385,6 +385,9 @@ on:
       - "field-ops-app-vite/src/modules/administration/ObjectActionSecurity.jsx"
       - "field-ops-app-vite/src/modules/administration/SecurityRoleDetail.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeEffectiveAccess.jsx"
+      # LANE DX: Employee > Direct Exceptions (grant / revoke / condition a direct Principal exception).
+      - "field-ops-app-vite/src/modules/administration/EmployeeDirectExceptions.jsx"
+      - "field-ops-app-vite/test/employeeDirectExceptions.test.jsx"
       - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
@@ -516,6 +519,8 @@ on:
       # LANE FR: the CRED convergence proof pins the capability vocabulary (80 -> 81, admin.employeeFunctionalRole.write);
       # its pin had silently rotted because nothing ran it (registered in test:adminPolicyPostgres).
       - "functions/test/credConvergencePostgres.test.mjs"
+      # LANE DX: direct Principal exceptions enforced on every gate -- table-driven parity (test:adminPolicyPostgres).
+      - "functions/test/directExceptionAuthorityPostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -909,6 +914,8 @@ on:
       # LANE FR: the CRED convergence proof pins the capability vocabulary (80 -> 81, admin.employeeFunctionalRole.write);
       # its pin had silently rotted because nothing ran it (registered in test:adminPolicyPostgres).
       - "functions/test/credConvergencePostgres.test.mjs"
+      # LANE DX: direct Principal exceptions enforced on every gate -- table-driven parity (test:adminPolicyPostgres).
+      - "functions/test/directExceptionAuthorityPostgres.test.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -1104,6 +1111,13 @@ jobs:
       # (UNAVAILABLE until explainEffectiveAccess is served).
       - name: Administration control plane -- client (vitest + jsdom)
         run: npx vitest run test/adminControlPlane.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE DX: Employee > Direct Exceptions -- each direct exception labelled DIRECT EXCEPTION with its source,
+      # reason, actor, creation, expiry, condition and evaluator result; grant / revoke / condition sent with a
+      # reason, re-read on success, refusals verbatim.
+      - name: Administration direct exceptions -- client (vitest + jsdom)
+        run: npx vitest run test/employeeDirectExceptions.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE SC: Employee > Security Roles assignment SCOPE -- the picker offers only what the server's

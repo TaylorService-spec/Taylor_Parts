@@ -8,7 +8,7 @@
 // ONE EVALUATOR. The server resolves the Principal with the runtime's own rules, decides every Object
 // action with authorizeOperationalAction over the same PostgreSQL condition provider, and reports why.
 // This panel draws the result, reason code, source Security Roles with their conditions, a DIRECT
-// EXCEPTION (labelled, with its reason, expiry and "not enforced on Role-only runtime paths"), the
+// EXCEPTION (labelled, with its reason, expiry, condition and whether the server says it is enforced), the
 // flat-set withholding, surfaces and workflow source -- and computes none of them. An unknown result
 // is shown raw. Excluded assignments (STALE / INACTIVE / SCOPE_UNSUPPORTED) are listed with their reason.
 // Lane SC: a SUPPORTED scoped assignment is not an exclusion -- it is listed with what it grants within its scope,
@@ -169,6 +169,8 @@ export default function EmployeeEffectiveAccess({ api = adminControlPlaneClient,
                       <span className="fo-cp-tag fo-cp-tag--direct">DIRECT EXCEPTION</span>
                       <div className="fo-muted">{`Reason: ${row.directGrant.exceptionReason ?? "none recorded"}`}</div>
                       <div className="fo-muted">{`Expires: ${row.directGrant.expiresAt ?? "never"}`}</div>
+                      {row.directGrant.condition ? <div className="fo-muted">{`Condition: ${row.directGrant.condition}`}</div> : null}
+                      {row.directGrant.enforced ? <div className="fo-muted">Enforced by every runtime gate.</div> : null}
                       {row.directGrant.notEnforced ? <div className="fo-muted">Not enforced on Role-only runtime paths.</div> : null}
                     </div>
                   ) : <span className="fo-muted">—</span>}

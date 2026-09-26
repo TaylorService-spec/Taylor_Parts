@@ -311,8 +311,20 @@ export interface PolicyTransaction {
    * taken against a state no concurrent writer is changing.
    */
   beginAdministrationCommand(): Promise<void>;
-  /** The (tenant, ROLE, role, capability) cell lock the database triggers also take. */
-  lockGrantCell(roleKey: string, capabilityKey: string): Promise<void>;
+  /**
+   * The (tenant, scope, grantor, capability) cell lock the database triggers also take. `grantScope` defaults to
+   * ROLE (the grantor is a Role key); PRINCIPAL locks a direct-exception cell (the grantor is a Principal id).
+   */
+  lockGrantCell(grantorKey: string, capabilityKey: string, grantScope?: "ROLE" | "PRINCIPAL"): Promise<void>;
+  /**
+   * A DIRECT-EXCEPTION cell as it stands NOW, inside this transaction: the grant row (EXPIRED rows included, flagged,
+   * because a re-grant refreshes one) and the ACTIVE PRINCIPAL-scoped condition.
+   */
+  readPrincipalGrantCell(principalId: string, capabilityKey: string): Promise<{
+    readonly grant: PrincipalCapabilityRecord | null;
+    readonly expired: boolean;
+    readonly condition: GrantConditionRecord | null;
+  }>;
   /** The cell as it stands NOW, inside this transaction: the grant row, the current decision, the ACTIVE condition. */
   readGrantCell(roleKey: string, capabilityKey: string): Promise<{
     readonly grant: RoleCapabilityRecord | null;

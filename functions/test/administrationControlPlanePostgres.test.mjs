@@ -401,7 +401,7 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
     assert.deepEqual([gmGrant.ok, gmGrant.code], [false, "FORBIDDEN"]);
   });
 
-  await t.test("a direct Principal grant stays distinguishable -- DIRECT, and not in the Role-only runtime set", async () => {
+  await t.test("a direct Principal grant stays distinguishable -- DIRECT -- and is ENFORCED by the runtime resolution (lane DX)", async () => {
     const res = await admin("grantObjectActionToPrincipal", { objectKey: "workOrder", actionKey: "dispatch", principalId: plain.principalId, reason: "exception" });
     assert.equal(res.ok, true);
     // Administration grants itself the security-policy read to look (it is not granted by default here).
@@ -413,7 +413,10 @@ test("the Administration control plane, end to end, against PostgreSQL", { skip:
     const direct = await composition.resolveDirectEntitlements(pool, TENANT, plain.principalId);
     assert.deepEqual(direct.map((e) => e.grantor), [{ kind: "PRINCIPAL", principalId: plain.principalId }]);
     const ctx = await ctxFor(plain);
-    assert.equal(ctx.capabilities.has("workOrder.lifecycle.dispatch"), false, "the operational runtime resolves Roles only");
+    assert.equal(ctx.capabilities.has("workOrder.lifecycle.dispatch"), true, "the operational runtime counts the direct exception");
+    assert.deepEqual(ctx.directGrants.map((g) => g.capabilityKey), ["workOrder.lifecycle.dispatch"]);
+    assert.equal((await capabilityAuthority.capabilitiesForRoleKeys(pool, TENANT, ctx.principalContext.heldRoleKeys)).has("workOrder.lifecycle.dispatch"),
+      false, "the Role join alone still answers the Role question");
   });
 
   await t.test("audit and decisions are immutable; decisions reference their audit event", async () => {

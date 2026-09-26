@@ -72,12 +72,10 @@ export async function resolveRoleEntitlements(
 }
 
 /**
- * Entitlements from DIRECT Principal grants (AB3), resolved only when a caller asks.
+ * Entitlements from DIRECT Principal grants (AB3), the PRINCIPAL grantor kept, unexpired rows only.
  *
- * The operational runtime resolves capabilities from Roles alone today; folding these into the
- * effective set implicitly would widen access. Kept separate so a future direct-grant activation is
- * a deliberate composition, and so a direct grant can carry a condition the day one is needed
- * without any change here.
+ * Since lane DX the runtime resolution (`resolveOperationalCapabilities`) composes these beside the Role grants on
+ * every gate; this helper is the same composition for a caller holding only a principal id.
  */
 export async function resolveDirectEntitlements(
   pool: Pool,
@@ -138,10 +136,18 @@ export async function authorizeEntitledResolvedAction(
   // (empty) whatever the relation held -- once Administration can write conditions, ignoring them
   // here would let a conditioned grant decide as an unconditional one. It now reads the SAME stored
   // conditions every transport composes, asserting the withheld cells where they are read.
+  //
+  // BOTH GRANT SOURCES (lane DX): the Role grants AND the Principal's unexpired direct exceptions, each with its
+  // own condition -- the same sources `resolveOperationalContext` resolved the flat set from. Re-resolving Roles
+  // alone would report a direct-only key as "held, but nobody granted it" and refuse it (CAPABILITY_MISSING).
   let pending: Promise<EntitlementSet> | undefined;
   const entitlements: EntitlementResolver = () => (pending ??= (async () => {
     const conditions = await postgresGrantConditionProvider(pool)(tenantId);
-    return resolveRoleEntitlements(pool, tenantId, resolved.principalContext.heldRoleKeys, conditions);
+    const [roles, direct] = await Promise.all([
+      resolveRoleEntitlements(pool, tenantId, resolved.principalContext.heldRoleKeys, conditions),
+      resolveDirectEntitlements(pool, tenantId, resolved.principalContext.uid, conditions),
+    ]);
+    return Object.freeze([...roles, ...direct]);
   })());
   const actor: EntitledActor = Object.freeze({
     tenantId,

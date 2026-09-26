@@ -195,8 +195,8 @@ Transport: `POST` to the Admin policy endpoint (`adminPolicyHttp`).
 - Errors: CONFLICT (CONDITION_RETIREMENT_WOULD_WIDEN while the grant is held), FORBIDDEN.
 
 **`grantObjectActionToPrincipal` / `revokeObjectActionFromPrincipal`**
-- Input: `{objectKey, actionKey, principalId, reason?}`
-- These are governed DIRECT exceptions. The main operational gates do NOT honour direct grants; only the Workforce path does.
+- Input: `{objectKey, actionKey, principalId, reason, expiresAt?, condition?}` (grant); `{objectKey, actionKey, principalId, reason}` (revoke).
+- These are governed DIRECT exceptions. Since lane DX (section 15) every runtime gate honours them exactly as it honours a Role grant.
 
 **`assignRole` / `revokeRole`**
 - Inputs are unchanged. The gate is now `admin.roleAssignment.write`.
@@ -259,7 +259,8 @@ Transport: `POST` to the Admin policy endpoint (`adminPolicyHttp`).
  actions:[{objectKey, actionKey, actionKind, capabilityKey,
            result:"ALLOWED"|"CONDITIONAL"|"DENIED", reasonCode,
            sourceRoles:[{roleKey, condition|null}],
-           directGrant:{label:"DIRECT_EXCEPTION", exceptionReason, expiresAt, notEnforcedOnRoleOnlyRuntimePaths:true}|null,
+           directGrant:{label:"DIRECT_EXCEPTION", source:"DIRECT_EXCEPTION", exceptionReason, expiresAt, grantedBy, grantedAt,
+                        condition|null, enforced:true}|null,
            withheldFromFlatSetKernels, surfaces:[...],
            workflowSource:[{workflowKey, version, actionKey, roleKey}]|null}]}
 ```
@@ -466,3 +467,51 @@ No scope picker takes a typed id. Every scope value Administration stores is che
 - The legacy Firestore resolver and `types/access.ts ScopeType` do not know `salesChannel`; it is a PostgreSQL-only scope.
 
 Nothing is assigned or activated live; the migration is applied to local test databases only.
+
+## 15. Direct Principal exceptions: complete support (lane DX)
+
+**Decision: Option A.** The common engine could consume direct grants with no second evaluator. `resolveOperationalContext` (and `resolveOperationalContextForPrincipal`) now call `capabilityAuthority.resolveOperationalCapabilities`, which treats unexpired `principal_capabilities` rows as a capability SOURCE beside the qualifying global Role grants:
+
+- **One read.** The flat-set statement is one `UNION ALL` over `role_capabilities` (the qualifying Roles) and `principal_capabilities` (this Principal, `expires_at` unset or in the future). A request costs the same number of queries as before.
+- **Conditions.** One catalog covers ROLE and PRINCIPAL cells. A key reached only through conditioned grants of either kind is `conditionallyHeld` and is never in the flat set. Entitlements keep the PRINCIPAL grantor.
+- **Scope.** A direct grant has no scope model. It never produces a scoped holding, and a scoped direct grant is refused (`DIRECT_GRANT_SCOPE_UNSUPPORTED`).
+- **Expiry.** An expired row is not read, so it confers nothing on any gate and is not shown.
+
+**Gates unified.** Each of these sees the direct grant through that one resolution:
+- eosOps (`resolveMyCapabilities`, `authorizeOperationalAction` and `authorizeResolvedOperationalAction`);
+- `authorizeEntitledResolvedAction`, which re-resolves Role AND direct entitlements;
+- the Commercial and CRM kernels (`capabilitiesWithoutUnevaluatedConditions` counts both sources);
+- Workforce: the transport; the operator actor, which now uses the same resolution with PostgreSQL conditions; and `withDirectCapabilityGrants`, which never promotes a conditioned key;
+- experience surfaces (now PostgreSQL conditions, so a conditioned-only key earns no surface);
+- the Administration read gate (`resolvePrincipalEffectiveAccess` also withholds a conditioned direct grant) and the mutation gate (`capabilityKeysFor`, unchanged);
+- the workflow effective-authority half, which is capability-only. A direct grant never satisfies a SECURITY_ROLE binding.
+
+**Administration.**
+- `grantObjectActionToPrincipal` takes an optional `condition`. It is validated against the CONDITIONABLE_GRANTS allow-list, so no `admin.*` key can carry one, and it is written in the same transaction as the grant.
+- `setGrantCondition` and `retireGrantCondition` take `principalId` in place of `roleKey`. Exactly one grantee must be named.
+- Every command runs under the governance lock and the `(PRINCIPAL, principal, capability)` cell lock that the never-widen trigger also takes.
+- Refusals:
+  - no self-grant, self-condition or self-retire (`SELF_ADMINISTRATION`);
+  - Owner ruling A at the Principal, now counting conditioned holdings too, checked inside the lock;
+  - retire while held (`CONDITION_RETIREMENT_WOULD_WIDEN`);
+  - anti-lockout, where a holder counts only if unexpired, UNCONDITIONED and global.
+- Each command writes exactly one audit event per effective change and none for a no-op. An expired grant is refreshed and audited once.
+
+**Reads.**
+- `explainEffectiveAccess.directGrant` is `{label, source, exceptionReason, expiresAt, grantedBy, grantedAt, condition, enforced:true}`. The `notEnforcedOnRoleOnlyRuntimePaths` flag is gone, because it is no longer true.
+- `getObjectActionGrantMatrix.principals[]` adds `grantedAt`, `exceptionReason`, `expiresAt`, `condition` and `enforced`.
+
+**Client.** The Employee page has a **Direct Exceptions** section (`EmployeeDirectExceptions.jsx`). It lists each exception labelled DIRECT EXCEPTION with its source, reason, actor, creation time, expiry, condition and the evaluator's result. From it an administrator can grant (choose an Object action, an optional condition from the server vocabulary, an optional expiry, and a required reason), revoke, and attach, replace or retire a condition. Every mutation re-reads, and every refusal is shown verbatim.
+
+**Behaviour change to note.** `resolveExperienceContext` now composes the PostgreSQL condition provider. Before, a conditioned-only Role grant still earned its surface. It now earns none, which matches the explanation and every other flat gate.
+
+**Proof.** `directExceptionAuthorityPostgres` covers:
+- table-driven parity against an equivalent Role grant across 13 gates, with a non-vacuity holder-of-nothing row on each;
+- a conditioned grant is never flat;
+- an expired grant yields nothing;
+- no self-grant;
+- no scope;
+- Owner ruling A in both orders;
+- anti-lockout, both counted and end to end;
+- tenant isolation;
+- audit exactly once.

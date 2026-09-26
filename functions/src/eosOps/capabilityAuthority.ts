@@ -7,6 +7,8 @@
 //        -> ACTIVE tenant membership          (resolvePrincipalContext, unchanged)
 //        -> QUALIFYING Role assignments       (resolvePrincipalContext.heldRoleKeys, unchanged)
 //        -> Role capability grants            (THIS FILE: eos_policy.role_capabilities)
+//         + DIRECT EXCEPTIONS (unexpired)     (THIS FILE: eos_policy.principal_capabilities, lane DX)
+//        -> grant conditions (ROLE | PRINCIPAL cells) narrow either kind; conditioned-only keys are never flat
 //        -> one held capability key
 //
 // This reuses `resolvePrincipalContext` exactly as the Administration API does -- the same tenant
@@ -117,6 +119,14 @@ export interface ResolvedOperationalContext {
   /** Capabilities of scoped assignments the runtime cannot decide at that scope. Reported; grant nothing. */
   readonly inertScoped: readonly InertScopedCapability[];
   /**
+   * DIRECT EXCEPTIONS (lane DX): this Principal's UNEXPIRED `principal_capabilities` rows, read on the request path.
+   * They are a capability SOURCE with exactly the semantics of a Role grant: an unconditioned one is in `capabilities`,
+   * one narrowed by an ACTIVE PRINCIPAL-scoped condition is in `conditionallyHeld` only, and each is an entitlement
+   * with the PRINCIPAL grantor kept. A direct grant carries NO scope (the relation has no scope column), so it never
+   * produces a scoped holding. Reported here for the explanation; no gate reads this field to decide.
+   */
+  readonly directGrants: readonly PrincipalCapabilityGrantRow[];
+  /**
    * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- behind a REQUIRED, REQUEST-SCOPED,
    * MEMOIZING resolver.
    *
@@ -154,6 +164,7 @@ function requestScopedEntitlementResolver(
   pool: Pool,
   tenantId: string,
   heldRoleKeys: readonly string[],
+  direct: readonly PrincipalCapabilityGrantRow[],
   conditions: GrantConditionProvider,
   counters: MutableLookupCounters,
 ): EntitlementResolver {
@@ -165,17 +176,86 @@ function requestScopedEntitlementResolver(
     pending = (async () => {
       // The provenance read and the condition catalog, together, and only now. `capabilitiesForRoleKeys`
       // already answered "what may this Principal do"; this answers "and WHO granted it, under what".
+      // The direct grants were read ONCE, on the request path, and are reused here -- so the flat set and the
+      // entitlement list are built from the same rows and cannot disagree about a direct exception.
       const [grantRows, catalog] = await Promise.all([
         roleCapabilityGrants(pool, tenantId, heldRoleKeys),
         Promise.resolve(conditions(tenantId)),
       ]);
-      const grants: CapabilityGrant[] = grantRows.map((r) => ({
-        grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey,
-      }));
-      return entitlementsFrom(grants, catalog);
+      return entitlementsFrom([...roleGrantsOf(grantRows), ...directGrantsOf(direct)], catalog);
     })();
     return pending;
   };
+}
+
+const roleGrantsOf = (rows: readonly RoleCapabilityGrantRow[]): CapabilityGrant[] =>
+  rows.map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
+const directGrantsOf = (rows: readonly PrincipalCapabilityGrantRow[]): CapabilityGrant[] =>
+  rows.map((r) => ({ grantor: { kind: "PRINCIPAL", principalId: r.principalId }, capabilityKey: r.capabilityKey }));
+
+/** What the ONE capability resolution produces for a Principal, before any scoped assignment is considered. */
+export interface OperationalCapabilityResolution {
+  /** Keys held UNCONDITIONALLY through a qualifying global Role grant OR an unexpired direct grant. */
+  readonly capabilities: ReadonlySet<string>;
+  /** Keys reachable ONLY through conditioned grants (Role or direct). Decided per record, never flat. */
+  readonly conditionallyHeld: ReadonlySet<string>;
+  /** The unexpired direct grants read for this resolution. */
+  readonly directGrants: readonly PrincipalCapabilityGrantRow[];
+  /** The condition catalog this resolution applied (for a caller that must build scoped holdings from it). */
+  readonly catalog: GrantConditionCatalog;
+  readonly entitlements: EntitlementResolver;
+  readonly lookups: EntitlementLookupCounters;
+}
+
+/**
+ * THE capability resolution -- Roles AND direct exceptions, one set of semantics. Every runtime entry point
+ * (`resolveOperationalContext`, `resolveOperationalContextForPrincipal`) and the operator actor resolution
+ * (employeeAdministrationAuthority) call this, so a direct grant is decided the same way on every gate:
+ *
+ *   capability sources   role_capabilities of the QUALIFYING GLOBAL Roles  +  UNEXPIRED principal_capabilities
+ *   conditions           ONE catalog (ROLE and PRINCIPAL cells) from the composed provider
+ *   flat set             a key with at least one UNCONDITIONED grant, of either kind
+ *   conditionallyHeld    a key reached only through conditioned grants, of either kind -- never flat
+ *   entitlements         every grant, with its grantor (ROLE or PRINCIPAL) and its condition
+ *
+ * An expired direct grant is not read at all (the SQL filters on `now()`), so it confers nothing on any gate. An
+ * unreadable grant or condition store throws: "could not read" is never "holds nothing extra" nor "unconditioned".
+ */
+export async function resolveOperationalCapabilities(
+  pool: Pool,
+  tenantId: string,
+  principalId: string,
+  heldRoleKeys: readonly string[],
+  conditions: GrantConditionProvider,
+): Promise<OperationalCapabilityResolution> {
+  if (typeof conditions !== "function") {
+    throw new Error("resolveOperationalCapabilities: the condition source must be a GrantConditionProvider");
+  }
+  const [granted, catalog] = await Promise.all([
+    grantedCapabilityKeys(pool, tenantId, heldRoleKeys, principalId),
+    Promise.resolve(conditions(tenantId)),
+  ]);
+  const direct: readonly PrincipalCapabilityGrantRow[] = Object.freeze(granted.direct.map((capabilityKey) =>
+    Object.freeze({ principalId, capabilityKey })));
+  const held = new Set<string>([...granted.viaRoles, ...granted.direct]);
+  // A CONDITIONED-ONLY CAPABILITY IS NEVER IN THE FLAT SET (Pass 8 D1, PLATFORM_SAFETY) -- for a direct grant
+  // exactly as for a Role grant. The provenance read happens only when a condition names one of this
+  // Principal's grantors (a held Role, or the Principal itself), so an unconditioned tenant pays nothing extra.
+  const principalPrefix = `PRINCIPAL:${principalId}|`;
+  const touches = [...catalog.keys()].some((k) =>
+    k.startsWith(principalPrefix) || heldRoleKeys.some((r) => k.startsWith(`ROLE:${r}|`)));
+  let capabilities: ReadonlySet<string> = held;
+  let conditionallyHeld: ReadonlySet<string> = new Set<string>();
+  if (touches) {
+    const roleRows = heldRoleKeys.length > 0 ? await roleCapabilityGrants(pool, tenantId, heldRoleKeys) : [];
+    const unconditional = new Set(entitlementsFrom([...roleGrantsOf(roleRows), ...directGrantsOf(direct)], catalog)
+      .filter((e) => e.condition === null).map((e) => e.capabilityKey));
+    capabilities = new Set([...held].filter((k) => unconditional.has(k)));
+    conditionallyHeld = new Set([...held].filter((k) => !unconditional.has(k)));
+  }
+  const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
+  const entitlements = requestScopedEntitlementResolver(pool, tenantId, heldRoleKeys, direct, () => catalog, counters);
+  return Object.freeze({ capabilities, conditionallyHeld, directGrants: direct, catalog, entitlements, lookups: counters });
 }
 
 /**
@@ -228,53 +308,38 @@ async function operationalContextFor(
   principalContext: PrincipalContext,
   conditions: GrantConditionProvider,
 ): Promise<ResolvedOperationalContext> {
-  // TWO RESOLVERS, DELIBERATELY. `capabilitiesForRoleKeys` is untouched and stays the authority for
-  // "what may this Principal do"; `roleCapabilityGrants` answers "and WHO granted it" over the same
-  // rows. They are proved equal by test rather than derived from one another, because a single
-  // resolver silently changing shape is how a policy answer drifts without anyone noticing.
-  //
-  // ONLY THE FIRST IS EAGER. The flat set is what every one of the thirteen gate sites reads, so it
-  // is resolved on the request path as it always was. The provenance read and the condition catalog
-  // are deferred behind the required resolver below, because eleven of those gate sites never look
-  // at them -- and a request that does not ask a question should not pay for its answer.
-  const held = await capabilitiesForRoleKeys(
-    pool, principalContext.tenantId, principalContext.heldRoleKeys);
-  // A CONDITIONED-ONLY CAPABILITY IS NEVER IN THE FLAT SET (Pass 8 D1, PLATFORM_SAFETY). Every flat
-  // gate -- `capabilities.has(key)` -- cannot evaluate a condition, so a key this principal reaches
-  // ONLY through conditioned grants is withheld from `capabilities` and reported in
-  // `conditionallyHeld`, which only the entitled seam (authorizeEntitledAction) consults. The
-  // condition catalog is therefore read EAGERLY (one indexed read; zero for the SHIPPED provider), and
-  // the provenance read happens only when a condition names one of this principal's Roles.
-  const catalog = await Promise.resolve(conditions(principalContext.tenantId));
-  const roleKeys = principalContext.heldRoleKeys;
-  const touchesHeldRole = [...catalog.keys()].some((k) => roleKeys.some((r) => k.startsWith(`ROLE:${r}|`)));
-  let capabilities: ReadonlySet<string> = held;
-  let conditionallyHeld: ReadonlySet<string> = new Set<string>();
-  if (touchesHeldRole) {
-    const grants: CapabilityGrant[] = (await roleCapabilityGrants(pool, principalContext.tenantId, roleKeys))
-      .map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
-    const unconditional = new Set(entitlementsFrom(grants, catalog).filter((e) => e.condition === null).map((e) => e.capabilityKey));
-    capabilities = new Set([...held].filter((k) => unconditional.has(k)));
-    conditionallyHeld = new Set([...held].filter((k) => !unconditional.has(k)));
-  }
+  // ONE RESOLUTION, TWO GRANT SOURCES (lane DX). Qualifying GLOBAL Role grants and unexpired DIRECT exceptions are
+  // both capability sources, decided by `resolveOperationalCapabilities` with one set of rules: an unconditioned
+  // grant of either kind is flat; a key reached only through conditioned grants of either kind is
+  // `conditionallyHeld`, which only the entitled seam (authorizeEntitledAction) may evaluate, per record.
+  const resolved = await resolveOperationalCapabilities(
+    pool, principalContext.tenantId, principalContext.uid, principalContext.heldRoleKeys, conditions);
+  const catalog = resolved.catalog;
   // SCOPED ASSIGNMENTS (lane SC). Resolved only when the principal HAS one, so a global-only principal pays nothing
   // and every existing decision is untouched. Only a runtime-supported scope type with an exact value can produce a
   // holding, and only for a capability a gate site decides at that scope; everything else is reported inert.
+  // A direct grant has no scope and never appears here.
   const scoped = principalContext.scopedAssignments ?? [];
   let scopedHeld: readonly ScopedHolding<GrantCondition>[] = Object.freeze([]);
   let inertScoped: readonly InertScopedCapability[] = Object.freeze([]);
   if (scoped.length > 0) {
     const scopedRoleKeys = [...new Set(scoped.map((a) => a.roleKey))];
     const rows = await roleCapabilityGrants(pool, principalContext.tenantId, scopedRoleKeys);
-    const resolved = scopedHoldingsFrom<GrantCondition>(scoped, rows,
+    const result = scopedHoldingsFrom<GrantCondition>(scoped, rows,
       (roleKey, capabilityKey) => catalog.get(grantCellKey({ kind: "ROLE", roleKey }, capabilityKey)) ?? null);
-    scopedHeld = resolved.held;
-    inertScoped = resolved.inert;
+    scopedHeld = result.held;
+    inertScoped = result.inert;
   }
-  const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
-  const entitlements = requestScopedEntitlementResolver(
-    pool, principalContext.tenantId, roleKeys, () => catalog, counters);
-  return Object.freeze({ principalContext, capabilities, conditionallyHeld, scopedHeld, inertScoped, entitlements, lookups: counters });
+  return Object.freeze({
+    principalContext,
+    capabilities: resolved.capabilities,
+    conditionallyHeld: resolved.conditionallyHeld,
+    scopedHeld,
+    inertScoped,
+    directGrants: resolved.directGrants,
+    entitlements: resolved.entitlements,
+    lookups: resolved.lookups,
+  });
 }
 
 /**
@@ -300,9 +365,14 @@ export async function capabilitiesWithoutUnevaluatedConditions(
 ): Promise<ReadonlySet<string>> {
   const catalog = await conditions(principalContext.tenantId);
   if (catalog.size === 0) return capabilities;
-  const grants: CapabilityGrant[] = (await roleCapabilityGrants(pool, principalContext.tenantId, principalContext.heldRoleKeys))
-    .map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
-  const unconditional = new Set(entitlementsFrom(grants, catalog).filter((e) => e.condition === null).map((e) => e.capabilityKey));
+  // BOTH grant sources (lane DX): a key held through an UNCONDITIONED direct exception is kept, exactly as one held
+  // through an unconditioned Role grant is; a key reached only through conditioned grants of either kind is withheld.
+  const [roleRows, direct] = await Promise.all([
+    roleCapabilityGrants(pool, principalContext.tenantId, principalContext.heldRoleKeys),
+    principalCapabilityGrants(pool, principalContext.tenantId, principalContext.uid),
+  ]);
+  const unconditional = new Set(entitlementsFrom([...roleGrantsOf(roleRows), ...directGrantsOf(direct)], catalog)
+    .filter((e) => e.condition === null).map((e) => e.capabilityKey));
   return new Set([...capabilities].filter((key) => unconditional.has(key)));
 }
 
@@ -328,6 +398,40 @@ export async function capabilitiesForRoleKeys(
     [tenantId, roleKeys],
   );
   return new Set(rows.map((r) => r.key));
+}
+
+/**
+ * The flat-set read, BOTH grant sources in ONE statement (lane DX): the Role join `capabilitiesForRoleKeys` performs,
+ * UNION ALL the Principal's UNEXPIRED direct grants (`principalCapabilityGrants`' filter). One round trip, so counting
+ * direct exceptions costs a request nothing extra; each row says which source it came from.
+ */
+async function grantedCapabilityKeys(
+  pool: Pool,
+  tenantId: string,
+  roleKeys: readonly string[],
+  principalId: string,
+): Promise<{ readonly viaRoles: readonly string[]; readonly direct: readonly string[] }> {
+  const { rows } = await pool.query<{ key: string; source: "ROLE" | "PRINCIPAL" }>(
+    `SELECT DISTINCT c.key AS key, 'ROLE' AS source
+       FROM ${SCHEMA}.role_capabilities rc
+       JOIN ${SCHEMA}.capabilities c ON c.id = rc.capability_id
+       JOIN ${SCHEMA}.roles r        ON r.id = rc.role_id
+      WHERE rc.tenant_id = $1
+        AND r.tenant_id  = $1
+        AND r.key = ANY($2::text[])
+     UNION ALL
+     SELECT DISTINCT c.key AS key, 'PRINCIPAL' AS source
+       FROM ${SCHEMA}.principal_capabilities pc
+       JOIN ${SCHEMA}.capabilities c ON c.id = pc.capability_id
+      WHERE pc.tenant_id = $1 AND pc.principal_id = $3
+        AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`,
+    [tenantId, [...roleKeys], principalId],
+  );
+  // Only a row the statement tagged PRINCIPAL is a direct exception; every other row is the Role join's.
+  return {
+    viaRoles: rows.filter((r) => r.source !== "PRINCIPAL").map((r) => r.key),
+    direct: rows.filter((r) => r.source === "PRINCIPAL").map((r) => r.key).sort(),
+  };
 }
 
 /** Convenience for a command that needs the pool this module already knows how to build. */
@@ -396,12 +500,12 @@ export interface PrincipalCapabilityGrantRow {
 }
 
 /**
- * Direct grants for one Principal (AB3).
+ * Direct grants for one Principal (AB3) -- UNEXPIRED rows only, decided against the database clock.
  *
- * DELIBERATELY SEPARATE from `roleCapabilityGrants`, and NOT folded into
- * `resolveOperationalContext`: the operational runtime resolves capabilities from Roles ONLY today,
- * and quietly adding direct grants to that set here would WIDEN effective access under the cover of
- * a refactor. A caller that wants direct grants asks for them explicitly.
+ * A capability SOURCE of `resolveOperationalCapabilities` since lane DX (Owner: "complete support for direct
+ * exceptions"): every runtime gate sees a direct grant through that one resolution, with a Role grant's semantics
+ * (conditions narrow it; it has no scope). It stays a separate reader so the Role join above keeps answering the
+ * Role question alone, which the baseline and the Role-only equality proofs pin.
  */
 export async function principalCapabilityGrants(
   pool: Pool,

@@ -40,6 +40,7 @@
 // generic landing destination here and none should be added.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "./capabilityAuthority";
+import { postgresGrantConditionProvider } from "./entitledActionAuthority";
 import {
   authorizeObjectAction,
   postgresPrincipalDimensionReader,
@@ -584,7 +585,11 @@ export async function resolveExperienceContext(
   input: ResolveContextInput,
   options: { readonly dimensionReader?: PrincipalDimensionReader } = {},
 ): Promise<PrincipalExperienceContext> {
-  const ctx = await resolveOperationalContext(reader, pool, input);
+  // Conditions from PostgreSQL -- the source Administration writes and the effective-access explanation reads
+  // (lane DX). A surface is a flat projection, so a capability reached ONLY through a conditioned grant (Role or
+  // direct exception) is withheld from it exactly as every other flat gate withholds it; with no condition row
+  // the set is unchanged.
+  const ctx = await resolveOperationalContext(reader, pool, input, postgresGrantConditionProvider(pool));
   const dimensionReader = options.dimensionReader ?? postgresPrincipalDimensionReader(pool);
   const tenantId = ctx.principalContext.tenantId;
   const principalId = ctx.principalContext.uid;

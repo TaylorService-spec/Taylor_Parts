@@ -477,10 +477,14 @@ async function resolvePrincipalEffectiveAccess(
   const capabilityKeyOf = new Map(capabilities.map((c) => [c.id, c.key]));
   const conditioned = new Set(conditions.filter((c) => c.grantScope === "ROLE").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
   const roleGrants = allRoleGrants.filter((g) => !conditioned.has(`${roleKeyOf.get(g.roleId)}|${capabilityKeyOf.get(g.capabilityId)}`));
+  // The SAME rule for a direct exception (lane DX): a direct grant narrowed by an ACTIVE PRINCIPAL-cell condition is
+  // not flat here either -- the runtime resolution places it in conditionallyHeld, and this gate must agree.
+  const conditionedDirect = new Set(conditions.filter((c) => c.grantScope === "PRINCIPAL").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
+  const flatDirect = directGrants.filter((g) => !conditionedDirect.has(`${g.principalId}|${capabilityKeyOf.get(g.capabilityId)}`));
   const effective = effectiveCapabilities({
     tenantId, principalId,
     roleDerivedCapabilityIds: roleGrants.map((g) => g.capabilityId),
-    directCapabilityIds: directGrants.map((g) => g.capabilityId),
+    directCapabilityIds: flatDirect.map((g) => g.capabilityId),
     capabilities,
   });
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
@@ -530,6 +534,16 @@ async function explain(deps: AdminApiDeps, actor: AdminActor, input: Record<stri
     if (err instanceof PrincipalContextError) throw new NotFound(`principal has no effective access: ${err.refusal}`);
     throw err;
   }
+}
+
+/** The grantee of a condition command: a Role key OR a direct-exception Principal, never both, never neither. */
+function conditionGrantee(input: Record<string, unknown>): { roleKey: string } | { principalId: string } {
+  const roleKey = optionalString(input.roleKey);
+  const principalId = optionalString(input.principalId);
+  if ((roleKey === null) === (principalId === null)) {
+    throw new PolicyValidationError("name exactly one grantee: roleKey (a Role grant) or principalId (a direct exception)");
+  }
+  return roleKey !== null ? { roleKey } : { principalId: principalId as string };
 }
 
 async function dispatch(
@@ -824,10 +838,11 @@ async function dispatch(
       });
 
     case "setGrantCondition":
+      // A condition cell is (Role, capability) OR (direct exception, capability): exactly one grantee is named.
       return setGrantCondition(repo, actor, {
         objectKey: requireString(input.objectKey, "objectKey"),
         actionKey: requireString(input.actionKey, "actionKey"),
-        roleKey: requireString(input.roleKey, "roleKey"),
+        ...conditionGrantee(input),
         condition: input.condition,
         reason: optionalString(input.reason) ? reason : null,
       });
@@ -836,7 +851,7 @@ async function dispatch(
       return retireGrantCondition(repo, actor, {
         objectKey: requireString(input.objectKey, "objectKey"),
         actionKey: requireString(input.actionKey, "actionKey"),
-        roleKey: requireString(input.roleKey, "roleKey"),
+        ...conditionGrantee(input),
         reason: optionalString(input.reason) ? reason : null,
       });
 
@@ -847,6 +862,10 @@ async function dispatch(
         principalId: requireString(input.principalId, "principalId"),
         reason: optionalString(input.reason) ? reason : null,
         expiresAt: optionalString(input.expiresAt),
+        condition: input.condition ?? undefined,
+        // Passed through so the COMMAND refuses it by name: a direct exception has no scope model.
+        scopeType: input.scopeType ?? undefined,
+        scopeValue: input.scopeValue ?? undefined,
       });
 
     case "revokeObjectActionFromPrincipal":
@@ -1031,10 +1050,19 @@ async function objectActionGrantMatrix(repo: PolicyRepository, tenantId: string,
       };
     }).filter((cell) => cell.held || cell.source !== null || cell.condition !== null)
       .sort((a, b) => a.roleKey.localeCompare(b.roleKey)),
-    // A direct Principal grant is a governed EXCEPTION and is labelled so. The main operational
-    // gates resolve capabilities from Roles only; only the Workforce path honours direct grants.
+    // A direct Principal grant is a governed EXCEPTION and is labelled so. Since lane DX every runtime gate
+    // honours it through the one capability resolution (resolveOperationalCapabilities), narrowed by its
+    // PRINCIPAL-cell condition when one is ACTIVE. Expired exceptions are not listed: they confer nothing.
     principals: principalGrants.filter((g) => g.capabilityId === c.id)
-      .map((g) => ({ principalId: g.principalId, source: "DIRECT_EXCEPTION" as const, grantedBy: g.grantedBy }))
+      .map((g) => {
+        const condition = conditions.find((x) => x.grantScope === "PRINCIPAL" && x.grantorKey === g.principalId
+          && x.capabilityKey === c.key && x.status === "ACTIVE") ?? null;
+        return {
+          principalId: g.principalId, source: "DIRECT_EXCEPTION" as const, grantedBy: g.grantedBy,
+          grantedAt: g.grantedAt, exceptionReason: g.exceptionReason ?? null, expiresAt: g.expiresAt ?? null,
+          condition: condition?.condition ?? null, enforced: true as const,
+        };
+      })
       .sort((a, b) => a.principalId.localeCompare(b.principalId)),
   }));
   return { objectKey: object.key, label: object.label, actions };
@@ -1151,6 +1179,7 @@ function classify(err: unknown): AdminApiFailureCode {
     if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
       || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") || err.code === "SALES_CHANNEL_INVALID"
+      || err.code === "DIRECT_GRANT_SCOPE_UNSUPPORTED"
       ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
