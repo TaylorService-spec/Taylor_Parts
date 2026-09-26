@@ -277,16 +277,16 @@ function ScanSession({ purchaseOrderId, deps, onDone }) {
             ? { ok: false, error: { code: "unavailable" } }
             : { ok: false, error: { code: "failed-precondition", details: res.status } };
         },
-        // SERIALS INDIVIDUALLY. One serial is one physical unit; collapsing them into a count would
-        // lose the identities the server needs to refuse a duplicate.
+        // THE EXACT REQUEST, queued. Every line keeps its own lineId, partId, quantity and serials
+        // (one serial is one physical unit), and the SAME idempotency key and expectedVersion the
+        // online attempt carried -- so if that attempt committed and only its response was lost, the
+        // replay is recognised as the same receipt instead of becoming a second one.
         (wasOffline) => captureReceive({
           principalUid: deps?.offline?.principalUid ?? "self",
           sourceId: purchaseOrderId,
-          partId: lines[0]?.partId ?? lines[0]?.sku ?? null,
-          quantity: lines.reduce((n, l) => n + (typeof l.quantity === "number" ? l.quantity : 0), 0) || null,
-          serialNumbers: lines.flatMap((l) => (Array.isArray(l.serialNumbers) ? l.serialNumbers : [])),
           destinationId: locationId,
-          captureKey: idempotencyKeyRef.current,
+          captureKey: request.idempotencyKey,
+          request,
           at: Date.now(),
           offline: wasOffline,
         }),

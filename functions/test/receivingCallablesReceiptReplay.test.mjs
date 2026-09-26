@@ -450,3 +450,53 @@ test("NEGATIVE: a serial already received cannot be reused under a NEW key", asy
   assert.equal(again.outcome, "replayed");
   assertUnchanged(fake, before, "serial replay");
 });
+
+// ===================================================================== offline replay after a lost response
+
+// The offline queue stores the request the screen sent online and replays it (field-ops-app-vite
+// MultiScanReceiving -> captureReceive({ request }) -> warehouseCommandBindings -> submitCanonicalReceive).
+// What reaches the server is that request after a JSON round trip through the device store.
+const throughDeviceStore = (req) => JSON.parse(JSON.stringify(req));
+
+test("OFFLINE REPLAY: online commit whose response was lost, then the queued SAME request -> replayed, zero writes", async () => {
+  const fake = makeFakeDb(baseSeed());
+  const online = clientPayload({ scans: PARTIAL_SCANS, idempotencyKey: "rcv-online-key" });
+  const committed = await call(fake, online); // the response never reaches the phone
+  assert.equal(committed.outcome, "applied");
+  const before = snapshot(fake);
+  const writesBefore = fake.writes();
+
+  const replay = await call(fake, throughDeviceStore(online), LATER);
+  assertSameReceipt(replay, committed);
+  assert.ok(client.validateCanonicalReceiveResponse(replay) !== null);
+  assert.equal(fake.writes(), writesBefore, "zero new writes");
+  assertUnchanged(fake, before, "offline replay");
+});
+
+test("WHY THE KEY MATTERS: the same receipt replayed under a DIFFERENT key is a second receipt (or a refusal), never a replay", async () => {
+  // (i) Without expectedVersion -- the pre-fix offline capture carried none -- a different key applies
+  //     AGAIN: the same physical delivery is double-posted.
+  const fake = makeFakeDb(baseSeed());
+  const online = clientPayload({ scans: [{ partId: PART_NONE }, { partId: PART_NONE }], idempotencyKey: "rcv-online-key" });
+  delete online.expectedVersion;
+  const first = await call(fake, online);
+  const second = await call(fake, { ...throughDeviceStore(online), idempotencyKey: "int_derived_offline_key" });
+  assert.equal(first.outcome, "applied");
+  assert.equal(second.outcome, "applied", "a different key is a different receipt");
+  assert.notEqual(second.receivingId, first.receivingId);
+  assert.equal(fake.count("receiving_orders"), 2, "DOUBLE-POSTED: 2 receipts for one delivery");
+  assert.deepEqual(second.lines.map((l) => [l.lineId, l.previouslyReceived, l.receivedNow]), [["L1", 2, 2], ["L2", 0, 0]]);
+
+  // (ii) WITH the original expectedVersion, a different key is refused version_conflict rather than
+  //      double-applied -- the version is a backstop, but it reports a FAILURE for a receipt that did
+  //      commit. Only the SAME key turns the retry into the truthful `replayed`.
+  const fake2 = makeFakeDb(baseSeed());
+  const withVersion = clientPayload({ scans: [{ partId: PART_NONE }, { partId: PART_NONE }], idempotencyKey: "rcv-online-key" });
+  await call(fake2, withVersion);
+  const before = snapshot(fake2);
+  await expectCode(call(fake2, { ...throughDeviceStore(withVersion), idempotencyKey: "int_derived_offline_key" }), "failed-precondition", "different key, stale version");
+  assertUnchanged(fake2, before, "version backstop");
+  const same = await call(fake2, throughDeviceStore(withVersion));
+  assert.equal(same.outcome, "replayed", "same key + same (now stale) expectedVersion replays");
+  assertUnchanged(fake2, before, "same-key replay");
+});

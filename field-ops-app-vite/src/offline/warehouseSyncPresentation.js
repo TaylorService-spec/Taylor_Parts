@@ -65,6 +65,10 @@ const REASON_BY_DETAIL = Object.freeze({
     happened: "You are not authorized to do this.",
     next: "Your work is kept here. Ask your manager to record it.",
   },
+  RECEIPT_CAPTURE_INCOMPLETE: {
+    happened: "This receipt was saved offline by an older version of the app, without its separate lines, so it cannot be sent.",
+    next: "Nothing was received. Re-scan the delivery on the receiving screen, then clear this entry.",
+  },
   RECEIVE_FAILED: {
     happened: "The platform would not accept this receipt.",
     next: "Your scan is kept here. Report it if it keeps happening.",

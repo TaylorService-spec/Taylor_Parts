@@ -68,15 +68,22 @@ export function createWarehouseBindings(deps = {}) {
     async [WAREHOUSE_INTENT.INVENTORY_RECEIVE](intent) {
       try {
         const result = await receive(intent.payload);
-        if (result?.status === "APPLIED" || result?.status === "REPLAYED") {
+        // submitCanonicalReceive reports RECEIVING_OUTCOME values, which are LOWER case ("applied",
+        // "replayed", "unavailable"). Comparing against upper-case literals only matched stubs: a real
+        // committed or replayed receipt fell through to failed-precondition (a false conflict), and a
+        // real "unavailable" was burned as a refusal instead of staying retryable. Case-folded so both
+        // the transport's values and any existing caller's upper-case stub are read the same way.
+        const status = typeof result?.status === "string" ? result.status.toUpperCase() : null;
+        if (status === "APPLIED" || status === "REPLAYED") {
           return {
             ok: true,
-            replayed: result.status === "REPLAYED",
-            serverIds: { receiptId: result.receipt?.receivingOrderId ?? null },
+            replayed: status === "REPLAYED",
+            // The canonical receipt names its id `receivingId`; `receivingOrderId` never existed on it.
+            serverIds: { receiptId: result.receipt?.receivingId ?? result.receipt?.receivingOrderId ?? null },
           };
         }
         // A transport that is not ready is not a refusal by anybody, and must stay retryable.
-        return result?.status === "UNAVAILABLE"
+        return status === "UNAVAILABLE"
           ? { ok: false, code: "unavailable", details: null, offline: true }
           : { ok: false, code: "failed-precondition", details: result?.status ?? "RECEIVE_FAILED" };
       } catch (err) { return failureFrom(err); }
@@ -157,6 +164,22 @@ export function createWarehouseBindings(deps = {}) {
   };
 
   const prechecks = {
+    /**
+     * A receipt queued in the OLD summarised shape ({sourceId, partId, quantity|serialNumbers}).
+     *
+     * Earlier builds captured a multi-line receipt as one part and a total. That can never be turned
+     * back into the lines the operator scanned, so it is NOT sent and NOT reconstructed -- guessing
+     * lines would receive stock nobody counted. It is refused exactly as the server path refused it
+     * before (failed-precondition, so it lands as a conflict a person resolves), now with a reason
+     * that says what happened, and the entry stays on the phone with its references for the operator.
+     */
+    async [WAREHOUSE_INTENT.INVENTORY_RECEIVE](intent) {
+      const p = intent?.payload;
+      const canonical = p && typeof p === "object" && p.source && typeof p.source === "object" && Array.isArray(p.lines);
+      if (!canonical) return { proceed: false, code: "failed-precondition", details: "RECEIPT_CAPTURE_INCOMPLETE" };
+      return { proceed: true };
+    },
+
     /**
      * A dispatch against a transfer the world may have moved.
      *
