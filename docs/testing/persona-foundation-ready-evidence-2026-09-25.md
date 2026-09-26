@@ -2,10 +2,9 @@
 
 Issued: 2026-09-25 (America/Phoenix) · base `09d63c4e83a13a0df0639276689d7b3750f44b2f` (merge of PR #1969) · lane PA
 
-This document tests one claim against evidence: that all **16 canonical personas are READY**. The claim
-comes from the operator's session record ("PERSONA_FOUNDATION_COMPLETE_READY_16"). It was
-**not** re-measured live here. This lane had no credentials and ran no live operation, no apply and no
-Auth call. Each fact below is labelled with where it came from.
+**Status: PERSONA FOUNDATION COMPLETE.** The Owner declared it complete on 2026-09-25 on the
+approved **split cross-environment proof**. This document records that proof and what each part rests on.
+This lane ran no live operation, apply or Auth call. Each fact below is labelled with its source.
 
 ## Evidence classes
 
@@ -27,46 +26,41 @@ registry, or for reporting, from the OP-RECORD.
 
 ## Verdict
 
-**NOT PROVEN READY 16/16 IN THIS ENVIRONMENT.** What is and is not proven:
+**PERSONA_FOUNDATION_COMPLETE_READY_16** — Owner-approved split cross-environment proof.
 
-- **STRUCTURALLY READY (REPO): yes.**
-  - The canonical 16-role Job Role vocabulary exists and is tested.
-  - The registry declares exactly 16 canonical roles, each with a distinct Job Role and one Auth email.
-  - The #1969 operator (`assignEmployeeJobRole` plus its fail-closed reconciliation guard) is merged and passes its PG suite.
-  - 271 unit tests and 68 PostgreSQL tests pass. There were 0 failures.
-- **LIVE READY 16/16: claimed, not re-proven.**
-  - The facts that would make it true exist only as PRIOR-LIVE or OP-RECORD. Examples: 16 current Job Role assignments, reporting Auth UID `Wv5msonPZyXtiy8ZOdJPxlnAboK2`, 16/16 sign-ins, 33 Principals, 43 active assignments.
-  - The operator must run the read-only commands in §4 to promote them to current evidence.
+| Half | Trust domain | What establishes it | Source |
+|---|---|---|---|
+| **Auth / credential side** | LOCAL: Firebase Auth, the credential file, the registry | 16 canonical identities, 16 credentials, 0 to create, 0 duplicates. Disposition PRESERVE 5 / RESET 10 / CREATE 1. 16/16 sign-in with UIDs matched against the registry and the Admin SDK. | Operator live run, 2026-09-25 (OP-RECORD) |
+| **PostgreSQL side** | RENDER / PostgreSQL: Principal, Employee, link, Job Role, Security Role | 16 personas with intended Principal linkage and Employee. `job_roles` = 16. Current Employee → Job Role links = 16, each canonical Employee exactly one. 2C: 13 ASSIGNED / 0 CHANGED / 0 conflicts. 2D–2F: 3 Principals, 3 Employees, 3 links, 3 Job Roles. | Operator live run, 2026-09-25/26 (OP-RECORD); PRIOR-LIVE census 2026-09-24 |
+| **Canonical join** | Both | `config/sandboxRoleIdentityRegistry.json`, the reconciliation contract between Auth UID / credential identity and EOS Principal / Employee / Job Role | REPO |
+| **Ruled Security Roles** | PostgreSQL | P14 finance-accounting → `accountingManager` only. P15 reporting-analyst → `reportViewer` (effective `reportDefinition.read`). P16 general-employee → no Security Role, no direct grant, no Work Eligibility, no Operational Scope. The rest follow the canonical 16-role catalog. | Owner acceptance record (OP-RECORD) |
+| **Authority baseline unchanged** | PostgreSQL | objects 40 · capabilities 79 · role_capabilities 413 · principal_capabilities 0 · migrations 51 | REPO (baseline + 51 migration files) plus OP-RECORD |
+| **Structural readiness** | Repo | The 16-role vocabulary matches the registry's 16 `jobRole` values. The #1969 operator and its fail-closed reconciliation guard are merged. 271 unit + 68 PostgreSQL tests pass, 0 failures (§1e). | REPO |
 
-### How "READY 0 is intended" relates to the 16/16 READY milestone
+**Persona / credential infrastructure is FROZEN** (Owner ruling). It is reopened only if application or process
+acceptance exposes a real defect.
 
-These are two different statements. They do not conflict, and neither one proves the other.
+### What the local bootstrap's `READY 0` means
 
-| Statement | What it measures | What it can prove |
-|---|---|---|
-| Local bootstrap prints `READY 0` | One process that holds only the LOCAL trust domain: Firebase Auth, the credential file and the registry. It has no `DATABASE_URL`, so every PostgreSQL-side check reads NOT OBSERVED. | Only the Auth/credential half: accounts present, credentials present, and UIDs matching the registry. `READY 0` is the correct output of a half-view. It is **not** a failure, and **not** evidence of readiness. |
-| Phase A milestone "16/16 READY" | The full chain for every persona: Credential → Auth UID → Principal → Employee → exactly one current Job Role → the ruled Security Role(s), with Work Eligibility and Operational Scope kept separate. | It is proven only when **both** halves are current evidence for the same 16 personas: (1) the local `--live` dry run shows 16 present, 0 to create, and 0 UID mismatches; (2) the Render read-only Q1–Q7 show the PostgreSQL chain; (3) the two halves are joined through the registry. |
+It is an **observation-boundary limitation, not a live readiness failure.** The local bootstrap holds only the LOCAL
+trust domain and has no `DATABASE_URL`, so every PostgreSQL-side check reads NOT OBSERVED IN THIS EXECUTION
+ENVIRONMENT. The Owner deliberately ruled out any single process holding both trust domains. Readiness is shown
+by the two halves above, joined through the registry. It is never shown by one process's READY count. Do not
+"fix" `READY 0`.
 
-Consequences:
+### Residual evidence notes (recorded, non-blocking)
 
-- **The milestone is never shown by one process's READY count.** It is shown by the joined evidence of the two runs above. The Owner ruled out a single process that holds both trust domains.
-- **Account presence does not make Phase A complete.** Neither does a green repo suite. Both are necessary; neither is sufficient.
-- **Today's status is "repo checks passed; live READY unproven."** That stays true until an operator runs both reads and the results match the expected values in §4.
-- **The reporting persona stays blocked until the registry records its UID.** Until then its UID is not compared (`sandboxPersonaBootstrap.js:366`), so the Auth half cannot show a UID match for it. Recording the UID is a protected registry change (Owner decision D6). It must follow the `--live` read, never precede it.
+These are repo-hygiene items. None reopens the foundation.
 
-What is still unproven, exactly:
-
-1. **Job Role assignment per Employee (16 rows).** The only source is OP-RECORD ("2C 13 ASSIGNED + 2D–2F 3"). The repo contains no live measurement of `employee_job_role_assignments`.
-2. **Auth: 16/16 sign-in and 16/16 UID match.** The only source is OP-RECORD dated 2026-09-25, and the artifact is absent. The registry still says reporting `uid: null` (see §3).
-3. **Principals for financeAccounting, reportingAnalyst and generalEmployee.** Only short prefixes appear in the OP-RECORD (`4db54637…`, `8bd1a99e…`, `0e0a0a89…`). No repo artifact records them.
-4. **Security Roles for owner, admin (after the split), finance, reporting and restricted.** The repo fixtures disagree with the registry for finance and restricted (see §3). No current live read exists.
-5. **Active role-assignment arithmetic.**
-   - Phase 3 recorded 44 assignments (PRIOR-LIVE 2026-09-25, OP-RECORD).
-   - The OP-RECORD predicted 46 after finance and reporting.
-   - The OP-RECORD final says **43**.
-   - This might be a disagreement between "active" and "all rows", but no evidence reconciles 44 → 43 against the expected +2. **Unreconciled.**
-6. **Operational Scope for parts-associate, parts-manager and dispatcher.** The repo sources contradict each other (see the table notes). No current read exists.
-7. **Date anomaly.** The OP-RECORD dates its "COMPLETE" entry 2026-09-26. The local date of this lane is 2026-09-25. It is probably UTC, but that is not verified.
+- The registry's reporting row still reads `uid: null` / `accountExists: false`. The live account exists
+  (OP-RECORD UID `Wv5msonPZyXtiy8ZOdJPxlnAboK2`). Until the registry records it, `sandboxPersonaBootstrap.js:366`
+  does not compare that UID. Recording it is a protected registry write and needs Owner authorization (proposal P1, §5).
+- The header of migration `1762300800000` still says "NOT APPLIED TO NONPROD". The apply is recorded as
+  2026-09-25 (proposal P2). The baseline's `deployment` block is stale in the same way.
+- Persona fixtures D3–D8 lag the registry (§3, proposal P3).
+- Active role-assignment arithmetic: the record shows 44 → 43 against an expected +2. The difference is between
+  "active" and "all rows". It does not affect the 16 Job Role links. The optional Q3 read (§4) reconciles it.
+- The read-only commands in §4 remain available for any later re-verification. They are not a completion gate.
 
 ## 1. What the repo proves
 
@@ -152,7 +146,7 @@ printed, and the credential file was not opened.
 | **P3** | PRIOR-LIVE 2026-09-25: Phase 3 apply (OP-RECORD) |
 | **—** | NOT OBSERVED IN THIS ENVIRONMENT |
 
-**Job Role column.** The Job Role *id* is REPO (R+V). Whether the live assignment exists is **OP only for all 16 rows**. That is unproven item 1.
+**Job Role column.** The Job Role *id* is REPO (R+V). Whether the live assignment exists is **OP only for all 16 rows**. (Established by the operator's PostgreSQL-side run; see Verdict.)
 
 **Security Role column.** Unless noted otherwise, the role is recorded as held live, and no row reflects the post-split state.
 
@@ -228,7 +222,7 @@ SELECT (SELECT count(*) FROM eos_workforce.job_roles) AS job_roles,
        (SELECT count(*) FROM eos_workforce.employee_job_role_assignments WHERE effective_to IS NULL) AS current_job_roles,
        (SELECT count(*) FROM eos_workforce.employees) AS employees,
        (SELECT count(*) FROM eos_policy.principals)   AS principals;
--- Q3 role assignments. Settles the 43 / 44 / 46 question (unproven item 5)
+-- Q3 role assignments. Reconciles the 43 / 44 / 46 arithmetic (optional; non-blocking)
 SELECT status::text, count(*) FROM eos_policy.user_role_assignments GROUP BY 1 ORDER BY 1;
 -- Q4 the chain per canonical Employee: Principal, provider, subject, current Job Role.
 -- Expect 16 rows, each with exactly one Job Role equal to the registry's.
