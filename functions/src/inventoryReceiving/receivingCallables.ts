@@ -15,7 +15,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { receiveInventoryStockProduction } from "./receiveInventoryStockComposition.js";
 import { ReceiveCommandError, type ResolvedPart, type ReceiveAuditInput } from "./receiveInventoryStockCommand.js";
-import { IdempotencyConflictError, MalformedStoredRecordError, InvalidReceivingError } from "./receivingTypes.js";
+import { IdempotencyConflictError, MalformedStoredRecordError, InvalidReceivingError, LEGACY_SOURCE_TYPE, CANONICAL_SOURCE_TYPE } from "./receivingTypes.js";
 import { listEligibleReceivingLocationOptions, ReceivingLocationOptionsError } from "../warehouseGovernance/receivingLocationOptionsService.js";
 import { resolveReceivePermissionThroughTxn, resolveReceivePartThroughTxn, resolveReceivePartOutsideTxn, stageReceiveAuditEvent } from "./receivingCallableWiring.js";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed.js";
@@ -62,39 +62,66 @@ export function requireAuth(request: { auth?: { uid?: unknown } | null }): strin
 }
 
 // -------- exact request contracts (structural -> invalid-argument) --------
-const RECEIVE_TOP_KEYS: ReadonlySet<string> = new Set(["source", "receivingLocation", "lines", "idempotencyKey"]);
-const SOURCE_KEYS: ReadonlySet<string> = new Set(["type", "reorderRequestId", "purchaseOrderId"]);
+//
+// TWO SOURCE AUTHORITIES, ONE CALLABLE, ONE COMMAND. The request states its authority in
+// `source.type` (receivingTypes.ts RECEIVING_SOURCE_TYPES) and this boundary checks the exact shape
+// for THAT authority, then hands the unchanged payload to the one receiving command. Everything
+// semantic -- line membership, part match, remaining/over-receipt, serial count/duplication, the
+// optimistic version, idempotency -- stays the command's decision; this layer only rejects payloads
+// that are structurally not a receipt.
+//
+// REORDER_PURCHASE_ORDER (legacy, deployed callers): UNCHANGED -- source {type, reorderRequestId,
+//   purchaseOrderId}, exactly one line, expectedQuantity required, no expectedVersion.
+// PURCHASE_ORDER (canonical multi-line, MultiScanReceiving): source {type, purchaseOrderId} and NO
+//   reorderRequestId; one or more lines; a line carries NO expectedQuantity (what remains is a server
+//   fact); optional top-level expectedVersion. This is exactly the shape
+//   field-ops-app-vite/src/domain/receivingTransport.js buildCanonicalReceiveRequest sends. Before this
+//   branch existed the boundary rejected every canonical request as invalid-argument, so the command's
+//   canonical path was unreachable from the deployed callable.
+const LEGACY_TOP_KEYS: ReadonlySet<string> = new Set(["source", "receivingLocation", "lines", "idempotencyKey"]);
+const CANONICAL_TOP_KEYS: ReadonlySet<string> = new Set(["source", "receivingLocation", "lines", "idempotencyKey", "expectedVersion"]);
+const LEGACY_SOURCE_KEYS: ReadonlySet<string> = new Set(["type", "reorderRequestId", "purchaseOrderId"]);
+const CANONICAL_SOURCE_KEYS: ReadonlySet<string> = new Set(["type", "purchaseOrderId"]);
 const LOCATION_KEYS: ReadonlySet<string> = new Set(["type", "locationId"]);
 // `serialNumbers` is permitted STRUCTURALLY here (SERIAL receipts, Wave 7). This layer only checks
 // shape; whether serials are required, forbidden, correctly counted or duplicated is decided by the
 // command's own validator against the AUTHORITATIVE Part tracking mode and PO ordered quantity, which
 // this boundary cannot see. Omitting the key here silently broke SERIAL receiving end to end: this
 // check runs BEFORE the command, so a well-formed serial payload was rejected as an unknown field.
-const LINE_KEYS: ReadonlySet<string> = new Set(["lineId", "partId", "expectedQuantity", "receivedQuantity", "serialNumbers"]);
+const LEGACY_LINE_KEYS: ReadonlySet<string> = new Set(["lineId", "partId", "expectedQuantity", "receivedQuantity", "serialNumbers"]);
+const CANONICAL_LINE_KEYS: ReadonlySet<string> = new Set(["lineId", "partId", "receivedQuantity", "serialNumbers"]);
 
 // Validate the exact receive payload; any unknown/server-owned/actor field or wrong type is invalid-argument.
 export function validateReceiveRequest(data: unknown): Record<string, unknown> {
   if (!isPlainObject(data)) throw invalidArg("Request data must be an object.");
-  if (!noUnknownKeys(data, RECEIVE_TOP_KEYS)) throw invalidArg("The request has unknown fields.");
   const source = data.source;
-  if (!isPlainObject(source) || !noUnknownKeys(source, SOURCE_KEYS)) throw invalidArg("source is missing or has unknown fields.");
-  if (source.type !== "REORDER_PURCHASE_ORDER") throw invalidArg("source.type is invalid.");
-  if (!isNonBlankString(source.reorderRequestId)) throw invalidArg("source.reorderRequestId is invalid.");
+  if (!isPlainObject(source)) throw invalidArg("source is missing or has unknown fields.");
+  const isCanonical = source.type === CANONICAL_SOURCE_TYPE;
+  if (!isCanonical && source.type !== LEGACY_SOURCE_TYPE) throw invalidArg("source.type is invalid.");
+  if (!noUnknownKeys(data, isCanonical ? CANONICAL_TOP_KEYS : LEGACY_TOP_KEYS)) throw invalidArg("The request has unknown fields.");
+  if (!noUnknownKeys(source, isCanonical ? CANONICAL_SOURCE_KEYS : LEGACY_SOURCE_KEYS)) throw invalidArg("source is missing or has unknown fields.");
+  if (!isCanonical && !isNonBlankString(source.reorderRequestId)) throw invalidArg("source.reorderRequestId is invalid.");
   if (!isNonBlankString(source.purchaseOrderId)) throw invalidArg("source.purchaseOrderId is invalid.");
   const loc = data.receivingLocation;
   if (!isPlainObject(loc) || !noUnknownKeys(loc, LOCATION_KEYS)) throw invalidArg("receivingLocation is missing or has unknown fields.");
   if (loc.type !== "WAREHOUSE") throw invalidArg("receivingLocation.type is invalid.");
   if (!isNonBlankString(loc.locationId)) throw invalidArg("receivingLocation.locationId is invalid.");
   const lines = data.lines;
-  // First slice: exactly one line. Empty or multiple lines are an invalid payload (invalid-argument),
-  // rejected at the callable boundary before authorization or any Firestore read.
-  if (!Array.isArray(lines) || lines.length !== 1) throw invalidArg("lines must contain exactly one line.");
+  // Legacy: exactly one line (a legacy PO is one part by construction). Canonical: one or more.
+  // Empty/non-array is invalid-argument for both, rejected before authorization or any Firestore read.
+  if (!Array.isArray(lines) || lines.length === 0) throw invalidArg("lines must contain at least one line.");
+  if (!isCanonical && lines.length !== 1) throw invalidArg("lines must contain exactly one line.");
+  const lineKeys = isCanonical ? CANONICAL_LINE_KEYS : LEGACY_LINE_KEYS;
   for (const line of lines) {
-    if (!isPlainObject(line) || !noUnknownKeys(line, LINE_KEYS)) throw invalidArg("a line is missing or has unknown fields.");
+    if (!isPlainObject(line) || !noUnknownKeys(line, lineKeys)) throw invalidArg("a line is missing or has unknown fields.");
     if (!isNonBlankString(line.lineId)) throw invalidArg("line.lineId is invalid.");
     if (!isNonBlankString(line.partId)) throw invalidArg("line.partId is invalid.");
-    if (!isFiniteNumber(line.expectedQuantity)) throw invalidArg("line.expectedQuantity is invalid.");
+    if (!isCanonical && !isFiniteNumber(line.expectedQuantity)) throw invalidArg("line.expectedQuantity is invalid.");
     if (!isFiniteNumber(line.receivedQuantity)) throw invalidArg("line.receivedQuantity is invalid.");
+    // Canonical only: a fractional quantity is structurally not a receipt, so it is invalid-argument
+    // here rather than a later failed-precondition. Positivity stays the command's rule. The legacy
+    // branch is deliberately untouched so deployed callers see exactly the error codes they always did.
+    if (isCanonical && !Number.isInteger(line.receivedQuantity)) throw invalidArg("line.receivedQuantity is invalid.");
     // Shape only: when present it must be an array of non-blank strings. Count, duplication and
     // whether serials are required at all are the command's decisions, made against the authoritative
     // Part tracking mode -- this boundary must not second-guess them or it would fork the rule.
@@ -102,6 +129,11 @@ export function validateReceiveRequest(data: unknown): Record<string, unknown> {
       if (!Array.isArray(line.serialNumbers)) throw invalidArg("line.serialNumbers is invalid.");
       if (!line.serialNumbers.every((s) => isNonBlankString(s))) throw invalidArg("line.serialNumbers is invalid.");
     }
+  }
+  // Canonical only (legacy rejects the key above). Shape only; whether it matches the PO's current
+  // version is the command's optimistic-concurrency check.
+  if (data.expectedVersion !== undefined && (!isFiniteNumber(data.expectedVersion) || !Number.isInteger(data.expectedVersion) || data.expectedVersion < 0)) {
+    throw invalidArg("expectedVersion is invalid.");
   }
   if (!isNonBlankString(data.idempotencyKey)) throw invalidArg("idempotencyKey is invalid.");
   return data;
@@ -174,11 +206,37 @@ export async function runReceiveInventoryStock(request: CallableRequest<unknown>
       stageAudit: wiring.stageAudit,
       now: wiring.now,
     });
-    // The callable's PUBLIC response stays exactly these three fields. The command's own outcome also
+    // The callable's LEGACY public response stays exactly these three fields. The command's own outcome also
     // carries `ledgerEventIds` (and `serializedAssetIds` for a SERIAL receipt), but those are internal
     // detail: widening a deployed callable's response is a contract change in its own right, and a
     // client has no use for per-serial ids it cannot read anyway (serialized_assets is client-denied).
     // receivingCallablesEmulator.test.mjs pins this key set deliberately.
+    //
+    // A CANONICAL (PURCHASE_ORDER) receipt additionally returns the per-line progress the Multi-Scan
+    // screen needs -- exactly the allow-list field-ops-app-vite/src/domain/receivingTransport.js
+    // validateCanonicalReceiveResponse requires (purchaseOrderId, derivedState, storedStatus, lines).
+    // Without them that validator rejects a COMMITTED receipt as a malformed response and the screen
+    // reports the transport unavailable. Still no ledgerEventIds / serializedAssetIds /
+    // acquisitionCostIds. The legacy response is unchanged (three keys).
+    if (outcome.sourceType === CANONICAL_SOURCE_TYPE) {
+      return {
+        outcome: outcome.outcome,
+        receivingId: outcome.receivingId,
+        ledgerEventId: outcome.ledgerEventId,
+        purchaseOrderId: outcome.purchaseOrderId,
+        derivedState: outcome.derivedState,
+        storedStatus: outcome.storedStatus,
+        lines: outcome.lines.map((l) => ({
+          lineId: l.lineId,
+          partId: l.partId,
+          orderedQuantity: l.orderedQuantity,
+          previouslyReceived: l.previouslyReceived,
+          receivedNow: l.receivedNow,
+          remainingQuantity: l.remainingQuantity,
+          state: l.state,
+        })),
+      };
+    }
     return { outcome: outcome.outcome, receivingId: outcome.receivingId, ledgerEventId: outcome.ledgerEventId };
   } catch (err) {
     throw mapReceiveError(err);
