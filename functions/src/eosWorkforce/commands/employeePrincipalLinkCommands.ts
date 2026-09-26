@@ -203,6 +203,36 @@ const linkSide = (principalId: string | null, linkId: string | null) =>
     ? { userAccess: "UNLINKED", linkedPrincipalId: null, linkId: null }
     : { userAccess: "LINKED", linkedPrincipalId: principalId, linkId };
 
+/**
+ * THE TENANT GOVERNANCE LOCK (Pass 9 S4) -- the advisory lock every Administration grant, assignment, workflow
+ * publish and Functional Role command takes. A link change moves which Principal an Employee's Functional Roles
+ * (and Work Eligibility, and record assignments) speak for, so it serializes with them.
+ */
+async function takeGovernanceLock(db: PoolClient, tenantId: string): Promise<void> {
+  await db.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+}
+
+/**
+ * NO SELF-LINK ONTO A FUNCTIONAL ROLE (Pass 9 S4). The Functional Role self-assignment ban reads the actor's CURRENT
+ * link, so "unlink, assign, relink to myself" would make the actor the holder of a Functional Role they assigned --
+ * satisfying a workflow FUNCTIONAL_ROLE requirement for themselves. Linking an Employee that holds a current or
+ * scheduled Functional Role to the ACTOR's own Principal is therefore refused; another administrator must do it.
+ */
+async function refuseSelfLinkOntoFunctionalRole(db: PoolClient, actor: EmployeeCommandActor, employeeId: string, targetPrincipalId: string): Promise<void> {
+  if (targetPrincipalId !== actor.principalId) return;
+  const present = await db.query(`SELECT to_regclass('eos_workforce.employee_functional_role_assignments') IS NOT NULL AS present`);
+  if (present.rows[0]?.present !== true) return;
+  const held = await db.query(
+    `SELECT count(*)::int AS n FROM eos_workforce.employee_functional_role_assignments
+      WHERE tenant_id = $1 AND employee_id = $2
+        AND (effective_to IS NULL OR (effective_to > now() AND effective_to > effective_from))`,
+    [actor.tenantId, employeeId]);
+  if (Number(held.rows[0]?.n ?? 0) > 0) {
+    refuse("FUNCTIONAL_ROLE_SELF_LINK", "FORBIDDEN",
+      "this Employee holds a current or scheduled Functional Role; you may not link it to your own Principal -- another administrator must");
+  }
+}
+
 /** Establish the Employee's FIRST active Principal link. An Employee that already has one refuses. */
 export async function linkEmployeePrincipal(
   deps: EmployeeCommandDeps, actor: EmployeeCommandActor, input: Record<string, unknown>,
@@ -218,6 +248,7 @@ export async function linkEmployeePrincipal(
       };
     },
     async (db, p, at) => {
+      await takeGovernanceLock(db, effective.tenantId);
       await lockEmployee(db, effective.tenantId, p.employeeId);
       const current = await lockActiveLinkForEmployee(db, effective.tenantId, p.employeeId);
       if (current && current.principal_id === p.linkedPrincipalId) {
@@ -232,6 +263,7 @@ export async function linkEmployeePrincipal(
           + "which requires expectedCurrentPrincipalId, rather than establishing a second one");
       }
       await assertTargetPrincipalAvailable(db, effective.tenantId, p.employeeId, p.linkedPrincipalId);
+      await refuseSelfLinkOntoFunctionalRole(db, effective, p.employeeId, p.linkedPrincipalId);
       const linkId = await insertLink(db, effective, p.employeeId, p.linkedPrincipalId, p.reason, at);
       const auditEventId = await appendEmployeeAudit(db, effective.tenantId, effective.principalId, PRINCIPAL_LINK_ESTABLISH_ACTION,
         p.employeeId, linkSide(null, null), linkSide(p.linkedPrincipalId, linkId), p.reason, at);
@@ -261,6 +293,7 @@ export async function unlinkEmployeePrincipal(
       };
     },
     async (db, p, at) => {
+      await takeGovernanceLock(db, effective.tenantId);
       await lockEmployee(db, effective.tenantId, p.employeeId);
       const current = await lockActiveLinkForEmployee(db, effective.tenantId, p.employeeId);
       assertExpectedCurrent(current, p.expected);
@@ -294,6 +327,7 @@ export async function relinkEmployeePrincipal(
       };
     },
     async (db, p, at) => {
+      await takeGovernanceLock(db, effective.tenantId);
       await lockEmployee(db, effective.tenantId, p.employeeId);
       const current = await lockActiveLinkForEmployee(db, effective.tenantId, p.employeeId);
       // THE GUARD FIRST, even when the move is a no-op. A caller whose expected value is stale is
@@ -303,6 +337,7 @@ export async function relinkEmployeePrincipal(
         return { outcome: "NO_CHANGE" as const, employeeId: p.employeeId, linkedPrincipalId: current!.principal_id, linkId: current!.id, revokedLinkId: null, auditEventId: null };
       }
       await assertTargetPrincipalAvailable(db, effective.tenantId, p.employeeId, p.next);
+      await refuseSelfLinkOntoFunctionalRole(db, effective, p.employeeId, p.next);
       await revokeLink(db, effective.tenantId, current!.id, at);
       const linkId = await insertLink(db, effective, p.employeeId, p.next, p.reason, at);
       const auditEventId = await appendEmployeeAudit(db, effective.tenantId, effective.principalId, PRINCIPAL_LINK_RELINK_ACTION,
