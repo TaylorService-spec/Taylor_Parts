@@ -243,16 +243,20 @@ test("idempotency: a retry never creates a second effect; a still-valid retry re
   assert.deepEqual([...fake.store.keys()].sort(), [...snapshot.keys()].sort());
   assert.equal(fake.store.get(`purchase_orders/${PO}`).version, 1);
 
-  // (B) KNOWN COMMAND LIMIT, pinned so it is visible (NOT changed here -- the command is out of this
-  // boundary fix's scope): the command validates quantities and expectedVersion against the
-  // post-commit state BEFORE it looks up the receipt id, so a retry of the screen's exact request
-  // (which carries expectedVersion, and here also fills L2) is REFUSED failed-precondition instead of
-  // replayed. It is still never a second effect.
+  // (B) The screen's EXACT retry -- which always carries expectedVersion, and here also fills L2 --
+  // REPLAYS too. Previously pinned here as a known command limit (refused failed-precondition,
+  // because the command validated quantities and expectedVersion against the post-commit state
+  // before looking up the receipt id); fixed by lane S1-R, which resolves replay FIRST. Full proofs:
+  // test/receivingCallablesReceiptReplay.test.mjs.
   const fake2 = makeFakeDb(baseSeed());
   const screen = clientPayload({ scans: PARTIAL_SCANS });
-  await call(fake2, screen);
+  const first = await call(fake2, screen);
   const before = new Map(fake2.store);
-  await expectCode(call(fake2, screen), "failed-precondition", "retry of a committed, stale-version receipt");
+  const retry = await call(fake2, screen);
+  assert.equal(retry.outcome, "replayed");
+  assert.equal(retry.receivingId, first.receivingId);
+  assert.deepEqual(retry.lines, first.lines, "replay reports the original progress");
+  assert.ok(client.validateCanonicalReceiveResponse(retry) !== null, "the client accepts the replay");
   assert.deepEqual([...fake2.store.keys()].sort(), [...before.keys()].sort());
   assert.equal(fake2.count("inventory_transactions"), 3);
   assert.equal(fake2.store.get(`purchase_orders/${PO}`).version, 1);
