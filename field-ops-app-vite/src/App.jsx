@@ -1126,7 +1126,8 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               navigation/workOrderRouteAccess.js, fed the CONTAINED navRole. Under the EOS
               source it reads only the experience authority's surfaces (BOTH routes <-
               service.workOrders AND service.dispatch: the legacy admin/dispatcher reach,
-              never broader) and never the role. Under the legacy
+              never broader) AND the committed per-route EOS backend readiness (both not-ready
+              today), and never the role. Under the legacy
               source both answers are exactly the previous previewHasPermission("workOrder.create",
               role, { fallback: admin/dispatcher }) expression. Detail is no longer gated on a
               CREATE permission. History of this gate: that module's header. */}
