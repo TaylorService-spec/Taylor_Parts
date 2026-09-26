@@ -1,480 +1,501 @@
 ---
 artifact_type: inventory
-unit: Phase C PREPARATION -- persona workspace composition inventory (16 canonical Job Roles)
+unit: Phase C PREPARATION -- persona WORKSPACE COMPOSITION MAP (16 canonical Job Roles, 11 groupings)
 status: HOLD -- preparation only; Phase C is not open (waits on Phase A live evidence and the Phase B freeze)
-base: main 09d63c4e
+base: main 09d63c4e (open PRs referenced: #1972, #1980, #1981 -- all HELD, none merged)
 evidence_class: REPO-DERIVED throughout. Nothing in this document was observed live.
 authorizes: nothing -- no UI, navigation, grant, role, route or data change
 ---
 
-# Persona workspace composition inventory (2026-09-25)
+# Persona workspace composition map (2026-09-25)
 
-**Every claim here is REPO-DERIVED.** Surfaces are computed from source and the recorded grant baseline,
-not read from a running system. Where a claim depends on live state the repo cannot show (Firebase
-`users/{uid}` documents, for example), it is marked **UNVERIFIED**.
+**Every claim is REPO-DERIVED.** Where a claim depends on live state the repo cannot show (Firebase
+`users/{uid}` documents, for example) it is marked **UNVERIFIED**. Persona Foundation is COMPLETE and is
+not reopened here (baseline 40 objects / 79 capabilities / 413 grants / 0 drift / 51).
 
-Owner direction for Phase C (quoted for scope): *"Assemble existing screens into the 16 employee
-experiences. Keep Retail Sales and National Accounts Sales distinct Job Roles. One integration writer
-owns App.jsx/navConfig/AppShell. Do not invent business figures or expose actions the server refuses."*
+Owner direction for Phase C (scope): *"Assemble existing screens into the 16 employee experiences. Keep
+Retail Sales and National Accounts Sales distinct Job Roles. One integration writer owns
+App.jsx/navConfig/AppShell. Do not invent business figures or expose actions the server refuses."*
+Archaeology baseline: nothing here proposes rebuilding an existing capability; BUILD_NEW is not a class.
 
-This inventory exists so Phase C **assembles** screens instead of rebuilding them. It changes no code.
-
----
-
-## 0. Method and inputs
+## 0. Method, classes and standing facts
 
 | Input | Used for |
 |---|---|
 | `functions/src/eosWorkforce/jobRoleVocabulary.ts` `CANONICAL_JOB_ROLES` | the 16 Job Roles |
-| `config/sandboxRoleIdentityRegistry.json` | canonical login per Job Role, ruled `expectedSecurityRoles` (finance: `accountingManager`, reporting: `reportViewer`, general-employee: none) |
-| `docs/testing/persona-business-connection-census.md` + `functions/scripts/fixtures/personaAuthorityDimensions.v1.json` | Security Roles, Work Eligibility and Operational Scope held by each persona |
-| `functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json` (413 grants, rebuild total, recorded nonprod 2026-09-24) | Role -> capability |
-| `functions/src/eosOps/experienceAuthority.ts` `EXPERIENCE_SURFACES` / `grantedSurfaceKeys` | capability (+ WE/scope predicate) -> surface |
-| `field-ops-app-vite/src/navigation/navConfig.js` `NAV_SURFACE_ACCESS`, `NAV_SURFACE_GAPS`, `NAV_CONTAINERS` | surface -> destination |
-| `field-ops-app-vite/src/App.jsx` `renderSubnavItem` + `<Routes>` | destination -> component, plus detail routes |
-| `config/environments.json` | `EOS_NAVIGATION_AUTHORITY_READY` is `true` **only** in `platform-sandbox` |
-| `firestore.rules`, `functions/src/**` callables | whether a screen's backend honors a PG-only persona |
-| client import-graph scan (static, depth 4, tests excluded) | each screen's transport: Render PG / Firebase callable / direct Firestore |
+| `config/sandboxRoleIdentityRegistry.json`; `docs/testing/persona-business-connection-census.md`; `functions/scripts/fixtures/personaAuthorityDimensions.v1.json` | login, Security Roles, Work Eligibility (WE), Operational Scope per persona |
+| `functions/src/adminPolicy/seed/roleCapabilityAuthorityBaseline.json` (413 grants) | Role -> PG capability |
+| `functions/src/eosOps/experienceAuthority.ts` (`EXPERIENCE_SURFACES`, `EXPERIENCE_SURFACE_GAPS`) | capability -> surface |
+| `field-ops-app-vite/src/navigation/navConfig.js` (`NAV_SURFACE_ACCESS`, `NAV_SURFACE_GAPS`), `App.jsx` | surface -> destination -> component |
+| `field-ops-app-vite/src/domain/dashboardComposition.js` | dashboard modules and their gates |
+| `field-ops-app-vite/src/modules/scan/*Scan.jsx` (all `shared/ui/ScanInput` consumers) | scanners |
+| `functions/src/eosApi/server.ts` | Render domains: Administration, `/crm/`, `/commercial/`, `/workforce/`, `/operations/` only |
+| client import-graph scan (static, depth 4) | transport per screen |
 
-**How the surfaces were derived.** `grantedSurfaceKeys` was re-implemented over the baseline grants and
-each persona's Work Eligibility and Scope. The result was then checked against the per-persona counts
-pinned in `functions/test/personaBusinessAccessRegression.test.mjs` (`EXPECTED_SURFACE_COUNTS`), and it
-matches for every persona the test covers. The two deltas below are explained by live state the test
-manifest does not carry:
+Surfaces were re-derived from the baseline and match `personaBusinessAccessRegression.test.mjs`
+`EXPECTED_SURFACE_COUNTS` except owner-executive (22 vs 21: `REORDER_QUEUE:taylor` scope survives the
+Owner/Admin relink, UNVERIFIED) and warehouse-associate (8 vs 7: Phase 3 `inventoryPutAwayOperator`
+postdates the manifest).
 
-| Persona | Pinned (manifest) | Derived (live dimensions) | Why they differ |
-|---|---|---|---|
-| owner-executive | 21 | **22** | The census shows the Owner/Executive **Employee** holds `REORDER_QUEUE:taylor`. After the Owner/Admin split that Employee links to the `owner` Principal, so `inventory.reorderQueue` resolves. This depends on that scope row surviving the relink (UNVERIFIED). |
-| warehouse-associate | 7 | **8** | Phase 3 assigned `inventoryPutAwayOperator` (`inventory.placement.record`) to this Principal. The test manifest predates that assignment, so it still pins `warehouse.picking` as earnable by nobody. |
+**Transport key.** **R-PG** Render over PostgreSQL (honors every persona by PG capability) · **FB-CALL**
+Firebase callable authorized by `resolveEffectiveAccess` (`functions/src/access/effectiveAccessFeed.ts`,
+Firestore) or a Firestore loader · **FB-DOC** direct Firestore read under Rules (`users/{uid}.role`,
+`isOwnTechnician`, `employees/{id}.operationalRoles`) · **NONE** no backend.
 
-Other manifest-vs-registry divergences, none of which change a count: finance is `controller` in the
-manifest and `accountingManager` in the registry (their capability sets are identical); parts-associate
-has `REORDER_QUEUE` in the manifest and no scope live (it holds no `reorder.request.read`, so there is no
-effect); general-employee is `generalEmployee` in the manifest and holds no Role in the registry (0
-capabilities either way).
+**Classes.**
 
----
+| Class | Meaning |
+|---|---|
+| KEEP | Exists and its backend honors this persona today, or the current behavior is correct by design. |
+| INTEGRATE | Screen/backend exist; only composition is missing (orphaned component, unmapped door onto an existing read, landing, grouping). |
+| VERIFY | Outcome depends on live state, a HELD PR, or an Owner decision the repo cannot settle. |
+| REPAIR | Exists but is refused or unusable for this persona under EOS (data path is Firebase, vocabulary not registered, gate wrong). |
+| TRUE_GAP | Repo evidence that the business capability does not exist (no domain, no backend). |
 
-## 1. Headline -- reachability per Job Role (DERIVED, platform-sandbox, EOS navigation source)
+**Standing facts carried into every row.**
 
-**Why the navigation and the data disagree.** Under the EOS source, navigation is earned from
-**PostgreSQL** capabilities. Almost every screen behind those doors reads **Firebase**:
-
-- **Firestore Rules** gate on `users/{uid}.role in {admin, dispatcher}`, `isTechnician()`, or
-  `employees/{id}.operationalRoles`. Examples: `fieldops_wos` read, `accounts` read, `parts` read,
-  `equipment` read.
-- **Callables** gate on the Firestore effective-access feed (`resolveEffectiveAccess`), for example
-  `listOpportunityContext`, or on the FIN-004 Firestore loader (`listFinancialFacts`).
-
-The registry states that the canonical chain creates **no Firebase business authority**. Census D-25 /
-`personaE2EScenarios.v1.json` record `GOVERNED_PERSONA_HAS_NO_CLIENT_ROLE`. So a PG-only persona is
-**shown doors whose data the server refuses**.
-
-| # | Job Role | Login (registry) | Security Roles (PG) | Firebase-side authority | Surfaces | Destinations (incl. `dashboard/my`) | Screens whose backend honors this persona | Verdict |
-|---|---|---|---|---|---|---|---|---|
-| 1 | owner-executive | `eos-owner@` | `owner` (50) | none (registry: no Firebase Role doc) | 22 | 26 | Administration suite (Users, Roles & Permissions, Objects, Workflows, Permission Preview) on Render; Sales Agreements list (PG, 0 rows); `/my-profile` | **PARTIAL** -- administration only |
-| 2 | office-administration | `admin@` | `admin` (69) | legacy sbx account; `users.role = admin` expected, **UNVERIFIED** | 24 | 31 | all, **if** the legacy Firebase role holds | **USABLE (conditional)** |
-| 3 | general-manager | `bailey.fixture@` | `generalManager` (32) | none | 15 | 19 | Users (Render workforce); Sales Agreements (PG, empty); `/my-profile` | **PARTIAL** |
-| 4 | office-manager | `casey.fixture@` | `officeManager` (4) | none | 2 | 5 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 5 | service-manager | `devon.fixture@` | `fieldManager` (16) | none | 12 | 17 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 6 | service-coordinator-dispatcher | `dispatcher@` | `dispatcher` (31) + `REORDER_QUEUE:taylor` | legacy sbx account; `users.role = dispatcher` expected, **UNVERIFIED** | 13 | 20 | all, **if** the legacy Firebase role holds | **USABLE (conditional)** |
-| 7 | service-technician | `finley.fixture@` | `technician` (4) + WE `SERVICE_TECHNICIAN` | none (no `users.technicianId`) | 2 | 7 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 8 | parts-associate | `logan.fixture@` | `partsAssociate` + `inventoryReceivingClerk` (13) + WE `PARTS_OPERATIONS` | none | 8 | 14 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 9 | parts-manager | `kai.fixture@` | `partsManager` + `purchasingManager` (22) + `PARTS_OPERATIONS` + `REORDER_QUEUE:taylor` | none | 13 | 17 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 10 | warehouse-associate | `noor.fixture@` | `warehouseAssociate` + `inventoryCycleCountCounter` + `inventoryPutAwayOperator` (13) + `WAREHOUSE_OPERATIONS` + `WAREHOUSE:SC-WH-MAIN` | none | 8 | 11 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 11 | warehouse-manager | `morgan.fixture@` | `warehouseManager` + `inventoryCycleCountReconciler` + `inventoryBinAdministrator` (15) + `WAREHOUSE_OPERATIONS` + 2 warehouses | none | 11 | 13 | `/my-profile` only | **DOORS, DATA REFUSED** |
-| 12 | retail-sales | `harper.fixture@` | `salesperson` (17) | none | 8 | 10 | Sales Agreements list (PG, 0 rows); `/my-profile` | **DOORS, DATA REFUSED** (one empty PG list) |
-| 13 | national-accounts-sales | `jules.fixture@` | `salesperson` (17) | none | 8 | 10 | same as retail-sales | **DOORS, DATA REFUSED** (identical to #12) |
-| 14 | finance-accounting | `acctmgr@` | `accountingManager` (17) | legacy `sbx-acctmgr` users doc + Firebase `financeManager` assignment (2026-08-19 manifest); FIN-004 reach **UNVERIFIED** | 11 | 13 | `/my-profile`; Financials Invoices/Payments **only if** FIN-004 reach resolves in Firestore | **UNVERIFIED**, likely refused |
-| 15 | reporting-analyst | `reporting@` | `reportViewer` (1: `reportDefinition.read`) | none | **0** | 0 | none -- the "No access" page, and `/my-profile` is unreachable behind it | **NO ACCESS** (unintended) |
-| 16 | general-employee | `restricted@` | none | legacy account, no business role | **0** | 0 | none -- "No access" | **NO ACCESS** (by design, negative control) |
-
-Capability counts are distinct capabilities across the persona's Roles, taken from the baseline.
-
-**Summary (DERIVED):**
-
-- **2 of 16** have a usable workspace end to end: office-administration and the dispatcher. Both are
-  conditional, and both rely on a **legacy sbx-era Firebase role** rather than the governed chain.
-- **2** are partial through Render-backed screens: owner-executive (administration) and general-manager
-  (Users).
-- **10** are shown a navigation whose screens the Firebase backends would refuse (finance is unverified).
-- **2** get "No access": reporting-analyst (a gap) and general-employee (correct).
+| # | Fact | Evidence |
+|---|---|---|
+| F1 | **Menu earned from PG, data read from Firebase.** Navigation under EOS is earned from PG capabilities; almost every screen behind a door is FB-DOC/FB-CALL, and the canonical chain grants no Firebase business authority (`GOVERNED_PERSONA_HAS_NO_CLIENT_ROLE`). Result: doors shown, data refused. | §2; census D-25 |
+| F2 | **#1980 (HELD):** Work Order detail + wizard routes held behind a pure guard (`navigation/workOrderRouteAccess.js`): EOS requires `service.workOrders` AND `service.dispatch` = {admin, dispatcher, fieldManager}. Owner decisions open: (a) detail for `workOrder.record.read` holders (technician); (b) create-only door for officeManager/parts/GM/owner. Data still `fieldops_wos` + `createWorkOrder`. | PR #1980 |
+| F3 | **#1972 (HELD):** Commercial writes fenced. `COMMERCIAL_WRITER_AUTHORITY = { firestore: OPEN, postgres: INACTIVE }`; all 10 `/commercial/sales` mutations -> 503 `COMMERCIAL_WRITER_INACTIVE`; 3 list reads stay open (`listOpportunities`, `listSalesOrders`, `listSalesAgreements`). | PR #1972 |
+| F4 | **Sales Agreements index = PARTIAL_AUTHORITY.** List is R-PG (`listSalesAgreements`, 0 rows in `eos_commercial`); detail + writes are FB-CALL. | `SalesAgreementsList.jsx` / `SalesAgreementDetail.jsx` |
+| F5 | **Finance reader is temporary (#1981, HELD).** `listFinancialFacts` is a Firestore FIN-004 reader; A' is accuracy-only; replacement is an `eos_finance` aggregate via Render (delete conditions in PR). `eos_finance` has no Render route. | PR #1981; `server.ts` |
+| F6 | **Reporting is reachable by nobody under EOS.** `reportViewer` holds `reportDefinition.read`; no surface is declared on it; Report Builder / Saved Reports are gated by Firebase `report.*` ids. | `navConfig.js` `NAV_SURFACE_GAPS["reporting/*"]` |
+| F7 | **PG server modules exist but have no Render route**: `eosOps/workOrderLifecycle.ts`, `workOrderCreateCommand.ts`, `workOrderAssignmentAuthority.ts`, `coordinatedVisitPostgresRead.ts`, `cycleCountRepository.ts`, `warehouseBinRepository.ts`, `purchasingRepository.ts`, `supplierCatalogRepository.ts`, `truckFleetRepository.ts`, `reorderAssignmentAuthority.ts`, `invoiceAuthority.ts`, `cashApplicationAuthority.ts`, `manufacturerAuthority.ts`. These are the "PostgreSQL-ready" dependencies below; exposing them is migration work, not composition. | `functions/src/eosOps/`; `server.ts` domains |
+| F8 | In-screen affordances read the fail-closed Firebase feed (`operationalContext.hasCapability`), so PG-only personas see actions **hidden**, not shown-then-refused. Nav visibility is never action authority. | `useOpportunityCapabilities`; `dashboardComposition.js` |
 
 ---
 
-## 2. Screen catalog -- the components Phase C assembles (REPO-DERIVED)
+## 1. Job Role -> primary grouping, and reachability (DERIVED, platform-sandbox)
 
-Transport key:
+| Grouping | Job Role(s) | Login | Security Roles (PG caps) | Surf / Dest | Backend honors | Grouping status |
+|---|---|---|---|---|---|---|
+| SERVICE OPERATIONS | service-manager | `devon.fixture@` | `fieldManager` (16) | 12 / 17 | `/my-profile` only | Doors refused; PG dispatch/cancel unusable |
+| | service-coordinator-dispatcher | `dispatcher@` | `dispatcher` (31) + `REORDER_QUEUE:taylor` | 13 / 20 | all, if legacy `users.role=dispatcher` holds (UNVERIFIED) | Usable (conditional) |
+| TECHNICIAN | service-technician | `finley.fixture@` | `technician` (4) + WE `SERVICE_TECHNICIAN` | 2 / 7 | `/my-profile` only | Doors refused (no `users.technicianId`) |
+| WAREHOUSE / INVENTORY | warehouse-associate | `noor.fixture@` | `warehouseAssociate` + counter + put-away (13) + `WAREHOUSE:SC-WH-MAIN` | 8 / 11 | `/my-profile` only | Doors refused |
+| | warehouse-manager | `morgan.fixture@` | `warehouseManager` + reconciler + bin admin (15) + 2 warehouses | 11 / 13 | `/my-profile` only | Doors refused |
+| PARTS | parts-associate | `logan.fixture@` | `partsAssociate` + `inventoryReceivingClerk` (13) + WE `PARTS_OPERATIONS` | 8 / 14 | `/my-profile` only | Doors refused |
+| | parts-manager | `kai.fixture@` | `partsManager` + `purchasingManager` (22) + `REORDER_QUEUE:taylor` | 13 / 17 | `/my-profile` only | Doors refused |
+| RETAIL SALES | retail-sales | `harper.fixture@` | `salesperson` (17) | 8 / 10 | Agreements list (R-PG, empty) | One empty PG list; writes fenced |
+| NATIONAL ACCOUNTS SALES | national-accounts-sales | `jules.fixture@` | `salesperson` (17) | 8 / 10 | same as retail | Identical authority to retail |
+| FINANCE / ACCOUNTING | finance-accounting | `acctmgr@` | `accountingManager` (17) | 11 / 13 | Invoices/Payments only if FIN-004 reach resolves (UNVERIFIED) | Temporary reader; likely refused |
+| REPORTING | reporting-analyst | `reporting@` | `reportViewer` (1) | **0 / 0** | none ("No access") | Reachable by nobody |
+| MANAGEMENT / OWNER | owner-executive | `eos-owner@` | `owner` (50) | 22 / 26 | Administration suite (R-PG), Agreements list | Partial -- administration only |
+| | general-manager | `bailey.fixture@` | `generalManager` (32) | 15 / 19 | Users (R-PG), Agreements list | Partial |
+| OFFICE / ADMINISTRATION | office-administration | `admin@` | `admin` (69) | 24 / 31 | all, if legacy `users.role=admin` holds (UNVERIFIED) | Usable (conditional) |
+| | office-manager | `casey.fixture@` | `officeManager` (4) | 2 / 5 | `/my-profile` only | Doors refused |
+| GENERAL EMPLOYEE | general-employee | `restricted@` | none | 0 / 0 | none ("No access") | Correct (P16 negative control) |
 
-- **R-PG**: Render API over PostgreSQL. Authorized by the PG capability, so it honors every persona.
-- **FB-CALL**: Firebase callable, authorized by the Firestore effective-access feed or a Firestore loader.
-- **FB-DOC**: direct Firestore read, authorized by Rules on `users/{uid}.role` or `operationalRoles`.
-- **NONE**: no backend.
+Summary: **2/16** usable end to end (both on a legacy sbx Firebase role), **2** partial via R-PG,
+**10** doors-refused (finance unverified), **2** "No access" (reporting = gap; general-employee = correct).
 
-### 2a. Destinations with a surface (36 mapped + the `dashboard/my` container)
+---
 
-| Destination | Route | Component (file under `field-ops-app-vite/src/`) | Transport | Surface(s) that open it |
+## 2. Screen catalog (destination key -> route -> component -> transport)
+
+| Destination | Route | Component (`field-ops-app-vite/src/modules/`) | Transport | Surface(s) |
 |---|---|---|---|---|
-| dashboard/my | `/dashboard` | `modules/dashboard/MyDashboard.jsx`, or `modules/technicianDashboard/TechnicianDashboard.jsx` when FIELD_WORK (`domain/dashboardComposition.js`) | FB-CALL + FB-DOC per module | container: any visible child |
-| dashboard/operationsDashboard | `/dashboard/operations` | `modules/operations/Operations.jsx` | FB-DOC | inventory.balances, inventory.catalog |
-| customers/customers | `/customers` | `modules/accounts/AccountsList.jsx` (detail `/customers/:accountId` `AccountDetail.jsx`) | FB-CALL + FB-DOC (`accounts`: `isAdminOrDispatcher`) | crm.accounts |
-| customers/opportunities | `/customers/opportunities` | `modules/sales/OpportunityList.jsx` (detail `OpportunityDetail.jsx`) | FB-CALL (`listOpportunityContext` -> `resolveEffectiveAccess`) | commercial.opportunities |
-| customers/salesOrders | `/customers/sales-orders` | `modules/sales/SalesOrdersList.jsx` (detail `SalesOrderDetail.jsx`) | FB-CALL + FB-DOC | commercial.salesOrders |
-| customers/salesAgreements | `/customers/sales-agreements` | `modules/sales/SalesAgreementsList.jsx` | **R-PG** (`commercialApiClient` `listSalesAgreements`); **detail** `SalesAgreementDetail.jsx` is FB-CALL | commercial.agreements |
-| serviceOperations/serviceOperations | `/service-operations` | `modules/controlTower/ControlTower.jsx` | FB-DOC (`fieldops_wos`) + FB-CALL | service.workOrders |
-| service/workOrders | `/service` | `modules/workOrders/WorkOrdersList.jsx` | FB-DOC (`fieldops_wos`: admin/dispatcher/own-tech) | service.workOrders |
-| service/jobAssignments | `/service/job-assignments` | `modules/jobs/Jobs.jsx` | FB-DOC + FB-CALL | service.workOrders |
-| service/dispatch | `/service/dispatch` | `modules/dispatch/Dispatch.jsx` | FB-DOC + FB-CALL | service.dispatch |
-| service/dispatcherBoard | `/service/dispatcher-board` | `modules/dispatcherBoard/DispatcherBoard.jsx` | FB-DOC + FB-CALL (scheduling commands) | service.dispatch |
-| service/coordinatedVisits | `/service/coordinated-visits` | `modules/service/CoordinatedVisitsWorkspace.jsx` | FB-CALL (`listCoordinatedOperations`) | service.coordinatedVisits |
-| service/technicianWorkspace | `/service/technician-workspace` | phone `modules/technician/TechnicianShell.jsx` / desktop `modules/mobile/FieldMode.jsx` | FB-CALL + FB-DOC (`users.technicianId`) | field.myWorkOrders |
-| service/coordinatedMission | `/service/coordinated-mission` | `modules/mobile/CoordinatedMissionView.jsx` | FB-CALL | field.myWorkOrders |
-| service/scan | `/service/scan` | `modules/scan/ScanWorkspace.jsx` | FB-CALL + FB-DOC | receiving.checkIn, warehouse.picking, field.myWorkOrders |
-| equipment/equipment | `/equipment` | `modules/equipment/EquipmentWorkspace.jsx` (detail `EquipmentDetail.jsx`) | FB-CALL + FB-DOC (`equipment`: `isAdminOrDispatcher`) | equipment.register |
-| inventory/parts | `/inventory` | `modules/inventory/PartsList.jsx` (detail `/inventory/:partId` `PartDetail.jsx`) | FB-DOC (`parts`: admin/dispatcher/PARTS_MANAGER/WAREHOUSE_MANAGER opRole) + FB-CALL | inventory.catalog |
-| inventory/partMaster | `/inventory/part-master` | `modules/inventory/PartMasterList.jsx` | FB-CALL + FB-DOC | inventory.catalogAdmin |
-| inventory/warehouseWorkspace | `/inventory/warehouse-workspace` | phone `modules/warehouse/WarehouseShell.jsx` / desktop `ScanWorkspace.jsx` | FB-CALL + FB-DOC | warehouse.picking |
-| inventory/warehouses | `/inventory/warehouses` | `modules/inventory/Warehouses.jsx` | FB-CALL + FB-DOC | warehouse.management |
-| inventory/truckInventory | `/inventory/truck-inventory` | `modules/inventory/TruckInventory.jsx` (management gated on the Firebase `role`) | FB-DOC | inventory.balances |
-| inventory/transfers | `/inventory/transfers` | `modules/inventory/Transfers.jsx` | FB-CALL + FB-DOC | inventory.transfers |
-| inventory/receiving | `/inventory/receiving` | `modules/inventory/Receiving.jsx` | FB-CALL + FB-DOC | receiving.checkIn |
-| inventory/reorderQueue | `/inventory/reorder-queue` | `modules/inventoryRole/PartsManagerHome.jsx` (`title="Reorder Queue"`) | FB-DOC (`reorder_requests`) + FB-CALL | inventory.reorderQueue |
-| inventory/cycleCounts | `/inventory/cycle-counts` | `modules/inventory/CycleCounts.jsx` | FB-CALL + FB-DOC | inventory.cycleCount.count / .review |
-| purchasing/purchaseOrders | `/purchasing` | `modules/purchasing/PurchaseOrders.jsx` | FB-DOC | purchasing.purchaseOrders |
-| purchasing/receipts | `/purchasing/receipts` | `modules/purchasing/Receipts.jsx` | FB-DOC | receiving.checkIn |
-| financials/invoices | `/financials/invoices` | `modules/financials/FinancialsInvoices.jsx` (detail `FinancialsInvoiceDetail.jsx`) | FB-CALL (`financeReadCallableClient`, FIN-004 Firestore loader) | financials.invoices |
-| financials/payments | `/financials/payments` | `modules/financials/FinancialsPayments.jsx` (detail `FinancialsPaymentDetail.jsx`) | FB-CALL | financials.payments |
-| administration/overview | `/administration/overview` | `modules/administration/AdministrationOverview.jsx` | NONE (menu) | container over 6 admin children |
-| administration/users | `/administration/users` | `modules/administration/AdminUsers.jsx` (detail `UserDetail.jsx`) | **R-PG** (workforce + adminPolicy) | administration.users |
-| administration/rolesPermissions | `/administration/roles-permissions` | `modules/administration/AdminRolesPermissions.jsx` | **R-PG** (+ one FB-CALL `privilegedApprovalClient`) | administration.rolesPermissions |
-| administration/objects | `/administration/objects` | `modules/administration/AdminObjects.jsx` | **R-PG** | administration.objects |
-| administration/workflows | `/administration/workflows` | `modules/administration/AdminWorkflows.jsx` | **R-PG** | administration.workflows |
-| administration/permissionPreview | `/administration/permission-preview` | `modules/administration/AdminPermissionPreview.jsx` | **R-PG** (`getPrincipalEffectiveAccess`) | administration.permissionPreview |
-| administration/dataImport | `/administration/data-import` | `modules/administration/AdminDataImport.jsx` (gated on the Firebase id `admin.dataImport.stage`) | FB-CALL | administration.dataImport |
-| administration/auditLogs | `/administration/audit-logs` | **`AdministrationUnavailable`** -- no screen | NONE | administration.auditLogs |
-| (outside nav) | `/my-profile` | `modules/employees/MyEmployeeProfile.jsx` | **R-PG** (workforce) | any persona past "No access" |
+| dashboard/my | `/dashboard` | `dashboard/MyDashboard.jsx` or `technicianDashboard/TechnicianDashboard.jsx` (FIELD_WORK) | FB per module | container |
+| dashboard/operationsDashboard | `/dashboard/operations` | `operations/Operations.jsx` | FB-DOC | inventory.balances, inventory.catalog |
+| customers/customers | `/customers` (+`/:accountId`) | `accounts/AccountsList.jsx`, `AccountDetail.jsx` | FB-CALL + FB-DOC (`isAdminOrDispatcher`) | crm.accounts |
+| customers/opportunities | `/customers/opportunities` | `sales/OpportunityList.jsx`, `OpportunityDetail.jsx`, `NewOpportunityForm.jsx` | FB-CALL (`listOpportunityContext`) | commercial.opportunities |
+| customers/salesOrders | `/customers/sales-orders` | `sales/SalesOrdersList.jsx`, `SalesOrderDetail.jsx` | FB-CALL + FB-DOC | commercial.salesOrders |
+| customers/salesAgreements | `/customers/sales-agreements` | `sales/SalesAgreementsList.jsx` (detail `SalesAgreementDetail.jsx`) | **R-PG** list / FB-CALL detail | commercial.agreements |
+| serviceOperations | `/service-operations` | `controlTower/ControlTower.jsx` (+`panels/AtRiskPanel`, `WorkOrderAttentionPanel`) | FB-DOC + FB-CALL | service.workOrders |
+| service/workOrders | `/service` | `workOrders/WorkOrdersList.jsx` | FB-DOC (`fieldops_wos`) | service.workOrders |
+| service/jobAssignments | `/service/job-assignments` | `jobs/Jobs.jsx` | FB-DOC + FB-CALL | service.workOrders |
+| service/dispatch | `/service/dispatch` | `dispatch/Dispatch.jsx` | FB-DOC + FB-CALL | service.dispatch |
+| service/dispatcherBoard | `/service/dispatcher-board` | `dispatcherBoard/DispatcherBoard.jsx` | FB-DOC + FB-CALL (`schedulingCommandClient`) | service.dispatch |
+| service/coordinatedVisits | `/service/coordinated-visits` | `service/CoordinatedVisitsWorkspace.jsx` | FB-CALL (`listCoordinatedOperations`) | service.coordinatedVisits |
+| service/technicianWorkspace | `/service/technician-workspace` | `technician/TechnicianShell.jsx` / `mobile/FieldMode.jsx` | FB-CALL + FB-DOC (`users.technicianId`) | field.myWorkOrders |
+| service/coordinatedMission | `/service/coordinated-mission` | `mobile/CoordinatedMissionView.jsx` | FB-CALL | field.myWorkOrders |
+| service/scan | `/service/scan` | `scan/ScanWorkspace.jsx` | FB-CALL + FB-DOC | receiving.checkIn, warehouse.picking, field.myWorkOrders |
+| equipment/equipment | `/equipment` | `equipment/EquipmentWorkspace.jsx`, `EquipmentDetail.jsx` | FB-CALL + FB-DOC | equipment.register |
+| inventory/parts | `/inventory` (+`/:partId`) | `inventory/PartsList.jsx`, `PartDetail.jsx` | FB-DOC (`parts`: opRole) + FB-CALL | inventory.catalog |
+| inventory/partMaster | `/inventory/part-master` | `inventory/PartMasterList.jsx` | FB-CALL + FB-DOC | inventory.catalogAdmin |
+| inventory/warehouseWorkspace | `/inventory/warehouse-workspace` | `warehouse/WarehouseShell.jsx` / `ScanWorkspace.jsx` | FB-CALL + FB-DOC | warehouse.picking |
+| inventory/warehouses | `/inventory/warehouses` | `inventory/Warehouses.jsx` | FB-CALL + FB-DOC | warehouse.management |
+| inventory/truckInventory | `/inventory/truck-inventory` | `inventory/TruckInventory.jsx` (`canManage` on Firebase `role`) | FB-DOC | inventory.balances |
+| inventory/transfers | `/inventory/transfers` | `inventory/Transfers.jsx` | FB-CALL + FB-DOC | inventory.transfers |
+| inventory/receiving | `/inventory/receiving` | `inventory/Receiving.jsx` | FB-CALL (`receivingCallableClient`) | receiving.checkIn |
+| inventory/reorderQueue | `/inventory/reorder-queue` | `inventoryRole/PartsManagerHome.jsx` | FB-DOC (`reorder_requests`) + FB-CALL | inventory.reorderQueue |
+| inventory/cycleCounts | `/inventory/cycle-counts` | `inventory/CycleCounts.jsx` | FB-CALL (`cycleCountCommandClient`) | inventory.cycleCount.count/.review |
+| purchasing/purchaseOrders | `/purchasing` | `purchasing/PurchaseOrders.jsx` | FB-DOC | purchasing.purchaseOrders |
+| purchasing/receipts | `/purchasing/receipts` | `purchasing/Receipts.jsx` | FB-DOC | receiving.checkIn |
+| financials/invoices | `/financials/invoices` | `financials/FinancialsInvoices.jsx` (+detail) | FB-CALL (FIN-004) | financials.invoices |
+| financials/payments | `/financials/payments` | `financials/FinancialsPayments.jsx` (+detail) | FB-CALL | financials.payments |
+| administration/overview | `/administration/overview` | `administration/AdministrationOverview.jsx` | NONE (menu) | container |
+| administration/users | `/administration/users` | `AdminUsers.jsx`, `UserDetail.jsx`, `EmployeeJobRoleControl.jsx` | **R-PG** | administration.users |
+| administration/rolesPermissions | `/administration/roles-permissions` | `AdminRolesPermissions.jsx` | **R-PG** (+1 FB-CALL) | administration.rolesPermissions |
+| administration/objects, /workflows, /permissionPreview | `/administration/...` | `AdminObjects.jsx`, `AdminWorkflows.jsx`, `AdminPermissionPreview.jsx` | **R-PG** | administration.* |
+| administration/dataImport | `/administration/data-import` | `AdminDataImport.jsx` (Firebase id `admin.dataImport.stage`) | FB-CALL | administration.dataImport |
+| administration/auditLogs | `/administration/audit-logs` | **`AdministrationUnavailable`** | NONE | administration.auditLogs |
+| (outside nav) | `/my-profile` | `employees/MyEmployeeProfile.jsx` | **R-PG** | any persona past "No access" |
+| (dark under EOS) | `/service/work-orders/new`, `/:workOrderId` | `workOrders/WorkOrderWizard.jsx`, `WorkOrderDetailPage.jsx` | FB | F2 (#1980) |
 
-**Render PG consumers in the whole client:** `SalesAgreementsList` (commercial), the Administration
-screens and `MyEmployeeProfile` (adminPolicy / workforce), and `useExperienceContext` (operations). No
-Work Order, Inventory, Reorder, Catalog, Purchasing or Finance screen reads PG.
+**Scanners** (every `ScanInput` consumer is a mode of `scan/ScanWorkspace.jsx`): `LookupScan`,
+`TransferScan`, `CycleCountScan`, `PutAwayScan`, `MoveStockScan`, `PickScan`, `ReturnIntakeScan`. All
+call Firebase callables (`binCommandClient` -> `recordPutAway`/`resolveBinToken`/`listBins`,
+`transferCommandClient`, `cycleCountCommandClient`, `stockMovementClient`, `returnCommandClient`,
+`partAliasCallableClient`); `binCallables.ts` authorizes via `resolveEffectiveAccess`.
 
-### 2b. Detail routes that are NOT emitted under the EOS source
+---
 
-| Route | Component | Why it is dark (App.jsx `AppRoutes`) |
+## 3. Workspace composition map, by grouping
+
+Cells name destination keys from §2. "Dash" = `dashboardComposition.js` module keys. IDs in the last row
+point to the register in §4. `/my-profile` (R-PG) is in every workspace with >=1 surface and is omitted.
+
+### 3.1 SERVICE OPERATIONS
+
+| Dimension | service-manager (`fieldManager`) | service-coordinator-dispatcher (`dispatcher`) |
 |---|---|---|
-| `/service/work-orders/new` | `modules/workOrders/WorkOrderWizard.jsx` | Emitted only when `previewHasPermission("workOrder.create", navRole, {fallback: navRole in admin/dispatcher})`. Under EOS, `navRole === null`, so the route is emitted for **nobody**, admin included. |
-| `/service/work-orders/:workOrderId` | `modules/workOrders/WorkOrderDetailPage.jsx` | same gate |
+| Screens | serviceOperations, service/workOrders, jobAssignments, dispatch, dispatcherBoard, coordinatedVisits; customers, salesOrders; inventory/parts, partMaster, truckInventory; financials/invoices, payments; admin/auditLogs | serviceOperations, workOrders, jobAssignments, dispatch, dispatcherBoard, coordinatedVisits, service/scan; customers, opportunities, salesOrders, salesAgreements; parts, truckInventory, transfers, receiving, reorderQueue; purchaseOrders, receipts |
+| Commands | dispatch/assign/schedule via `schedulingCommandClient`; `transitionWorkOrder`; WO create (wizard, dark) | same + receiving, transfer, reorder callables |
+| Reads | `fieldops_wos`, `listCoordinatedOperations`, `accounts` | same + `reorder_requests`, POs |
+| Dashboards | Dash `serviceAttention`, `workOrdersByStatus`, `technicianAvailability`, `technicianComparison`, `teamGoals` | same + `reorderQueue`, `receivingQueue` |
+| Scanners | none | ScanWorkspace (receiving/lookup) |
+| Queues | Dispatch queue, Dispatcher Board unassigned lane | same + Reorder Queue, receiving queue |
+| Exceptions | ControlTower `AtRiskPanel`, `WorkOrderAttentionPanel` | same |
+| Actions (PG-granted) | `workOrder.lifecycle.dispatch`, `.cancel`, `workOrder.create` | full WO lifecycle + commercial sell-side spine (census D-18) |
+| Authority deps | surfaces service.workOrders/.dispatch/.coordinatedVisits | same + receiving.checkIn, inventory.reorderQueue |
+| Firebase-era deps | Rules `isAdminOrDispatcher` on `fieldops_wos`; callables via `resolveEffectiveAccess` | legacy `users.role=dispatcher` (UNVERIFIED) |
+| PG-ready deps | `workOrderLifecycle.ts`, `workOrderAssignmentAuthority.ts`, `coordinatedVisitPostgresRead.ts` (no Render route) | same + `reorderAssignmentAuthority.ts` |
+| Missing composition | WO detail door (F2); Scheduling + Inbound Work unmapped; Job-Role landing | WO detail door (F2, held); Scheduling, Inbound Work |
+| TRUE missing | Warranty claims (SV-11) | same |
+| Register | SV-01..SV-11 | SV-01..SV-11 |
+
+### 3.2 TECHNICIAN
+
+| Dimension | service-technician (`technician` + WE `SERVICE_TECHNICIAN`) |
+|---|---|
+| Screens | dashboard/my = TechnicianDashboard; service/technicianWorkspace, coordinatedMission, scan; service/workOrders, jobAssignments, serviceOperations (earned by `workOrder.transition`) |
+| Commands | `transitionWorkOrder`; `workOrderLaborCallableClient`, `workOrderInstallCallableClient`, `completionService`, `equipmentInstallCallableClient` |
+| Reads | own `fieldops_wos` (`isOwnTechnician`), `workOrderReadinessContextClient`, truck stock |
+| Dashboards | Dash `myAssignedWork`, `unverifiedSubmissions`, `myGoals`, `myPerformanceAllTime`, `technicianQualityMetrics` |
+| Scanners | `LookupScan`, `ReturnIntakeScan` (via ScanWorkspace) |
+| Queues | My assigned work |
+| Exceptions | `unverifiedSubmissions` |
+| Actions (PG-granted) | `workOrder.transition`, `workOrder.record.read` (own) |
+| Authority deps | surface field.myWorkOrders (WE predicate) |
+| Firebase-era deps | `users/{uid}.role` + `technicianId` -- absent for `finley.fixture@` |
+| PG-ready deps | `workOrderLifecycle.ts` (transition), `truckFleetRepository.ts` (no Render route) |
+| Missing composition | technician landing = Technician Workspace; trim team WO list from rail (presentation only) |
+| TRUE missing | none proven (time entry has 0 repo hits -- need not established, §4.12) |
+| Register | TC-01..TC-07 |
+
+### 3.3 WAREHOUSE / INVENTORY
+
+| Dimension | warehouse-associate | warehouse-manager |
+|---|---|---|
+| Screens | inventory/warehouseWorkspace, warehouses, cycleCounts (count), service/scan, transfers, parts, truckInventory, operationsDashboard, purchaseOrders, salesOrders | warehouses, cycleCounts (review), transfers, parts, partMaster, truckInventory, purchaseOrders, customers, salesOrders, admin/auditLogs |
+| Commands | `recordPutAway`, pick, transfer, cycle-count line submit, `stockMovementClient` (relocate not held) | cycle-count review/reconcile, bin create/rename/deactivate (`binCommandClient`), transfers |
+| Reads | `listBins`, `resolveBinToken`, `inventoryBalanceCallableClient`, `locationDisplayReadCallableClient` | same + count sheets |
+| Dashboards | Dash `governedStockPosition`, `stockForecast` | same |
+| Scanners | `PutAwayScan`, `PickScan`, `CycleCountScan`, `TransferScan`, `MoveStockScan`, `LookupScan` | `CycleCountScan`, `LookupScan` |
+| Queues | pending-work (ScanWorkspace `onPendingWorkChange`), transfer list | cycle-count review queue |
+| Exceptions | count variances | variance review; `inventory.cycleCount.close` 0 holders (D-17) |
+| Actions (PG-granted) | `inventory.placement.record`, `inventory.cycleCount.count` | `inventory.cycleCount.review`/reconcile; bin admin = 0 caps |
+| Firebase-era deps | callables via `resolveEffectiveAccess`; Rules opRole | same; `WarehouseManagerHome` (`operationalRoles`) |
+| PG-ready deps | `warehouseBinRepository.ts`, `cycleCountRepository.ts`, `inventoryCommitmentRepository.ts` | same |
+| Missing composition | orphaned `inventory/mobile/*Section.jsx` (6) | Warehouse Racking unmapped; `WarehouseManagerHome` content via governed doors |
+| TRUE missing | none | none (Back Orders: projection exists, WH-10) |
+| Register | WH-01..WH-11 | WH-01..WH-11 |
+
+### 3.4 PARTS
+
+| Dimension | parts-associate | parts-manager |
+|---|---|---|
+| Screens | inventory/parts, truckInventory, operationsDashboard, receiving, purchasing/receipts, service/scan; customers, salesOrders; workOrders; financials/invoices, payments | reorderQueue, purchaseOrders; parts, partMaster, truckInventory, transfers; customers, salesOrders; workOrders; invoices, payments; admin/auditLogs |
+| Commands | receive stock (`receivingCallableClient`), `serializedAssetAcquireCallableClient` | reorder decide/convert (`reorderCallableClient`), PO create, `partMasterCommandClient` |
+| Reads | `parts`, receipts | `reorder_requests`, POs, part master |
+| Dashboards | Dash `receivingQueue` | Dash `reorderQueue`, `stockForecast` |
+| Scanners | ScanWorkspace (receiving/lookup) | none |
+| Queues | Receiving queue | Reorder Queue (`reorder.request.read.queue`/`.assign` 0 holders, D-07) |
+| Exceptions | `Receiving.jsx` receipt exceptions | `PurchaseOrders.jsx` exceptions |
+| Actions (PG-granted) | `inventory.receive`, receiving-clerk set | `reorder.*`, `purchaseOrder.*` (purchasingManager) |
+| Firebase-era deps | Rules `parts` opRole; `PartsAssociateHome` (`operationalRoles`) | Rules `isActiveOperationalRole("PARTS_MANAGER")` on `reorder_requests` |
+| PG-ready deps | Catalog alias authority BUILT/INERT; `eos_ops.parts` = 0 until COPY | `purchasingRepository.ts`, `supplierCatalogRepository.ts`, `reorderAssignmentAuthority.ts` (Reorder cutover #1961 HELD) |
+| Missing composition | "My Purchasing" content via governed doors | Suppliers screen unmapped (vocabulary) |
+| TRUE missing | none | Purchasing Quotes, Demand Planning (PT-09, PT-10) |
+| Register | PT-01..PT-11 | PT-01..PT-11 |
+
+### 3.5 RETAIL SALES (distinct Job Role; same Security Role as 3.6 by design)
+
+| Dimension | retail-sales (`salesperson`) |
+|---|---|
+| Screens | customers, opportunities, salesOrders, salesAgreements; financials/invoices, payments; parts, truckInventory |
+| Commands | opportunity create/transition, create SO, accept agreement (`opportunityCommandClient`, `salesOrderCommandClient`, `salesAgreementCommandClient` -- FB); PG mutations fenced (F3) |
+| Reads | `listOpportunityContext` (FB), `listSalesAgreements` (R-PG), accounts (FB) |
+| Dashboards | Dash `myOpportunities`, `ordersRequiringAction`, `myBooked`, `accountPortfolio`, `myGoals` |
+| Scanners / Queues | none / orders requiring action |
+| Exceptions | none dedicated |
+| Actions (PG-granted) | `opportunity.write`, `salesAgreement.accept`, `opportunity.createSalesOrder` -- hidden (F8), fenced (F3) |
+| Firebase-era deps | `resolveEffectiveAccess`; Rules `isAdminOrDispatcher` on `accounts` |
+| PG-ready deps | Render `/commercial/` reads: `listOpportunities`, `listSalesOrders`, `listSalesAgreements` (0 rows) |
+| Missing composition | default `salesChannel = RETAIL` filter; wire orphaned `SalesWorkspace.jsx` (Channel column) |
+| TRUE missing | none proven (counter/POS sale: 0 repo hits, need unconfirmed, §4.12) |
+| Register | CS-01..CS-09, RS-01..RS-02 |
+
+### 3.6 NATIONAL ACCOUNTS SALES (distinct Job Role)
+
+| Dimension | national-accounts-sales (`salesperson`) |
+|---|---|
+| Screens / Commands / Reads / Actions / Firebase / PG deps | identical to 3.5 (same Role, 8 surfaces / 10 destinations) |
+| Dashboards | same modules; `accountPortfolio` is the natural lead |
+| Missing composition | agreements-led landing (`SalesAgreementsList` first); default `salesChannel = NATIONAL_ACCOUNTS` filter; coverage view from `domain/commercialCoverage.js` (no consumer UI) over `coverage/coverageReadCallables.ts` |
+| TRUE missing | none proven (contract pricing: 0 repo hits; account hierarchy only in `domain/commercialProfile.js`; need unconfirmed, §4.12) |
+| Must not build | a per-channel Security Role or channel-scoped visibility without an Owner coverage ruling |
+| Register | CS-01..CS-09, NA-01..NA-03 |
+
+### 3.7 FINANCE / ACCOUNTING
+
+| Dimension | finance-accounting (`accountingManager`) |
+|---|---|
+| Screens | financials/invoices, payments (+details); customers, opportunities, salesOrders; parts, truckInventory, transfers; purchaseOrders; admin/auditLogs |
+| Commands | none exposed (read-side) |
+| Reads | `listFinancialFacts` / `financeReadCallableClient` (FIN-004 Firestore, temporary, F5) |
+| Dashboards | Dash `firmBilled`, `firmCollected`, `firmBooked`, `costImpact` -- GATED (no `finance.visibility.*` surface) |
+| Queues / Exceptions | `FinancialsBillingQueue.jsx`, `FinancialsReconciliation.jsx`, `FinancialsAccountsReceivable.jsx` -- built, unmapped |
+| Actions (PG-granted) | `finance.invoice.read`, payment read |
+| Firebase-era deps | FIN-004 loader; `acctmgr@` Firebase `financeManager` assignment (UNVERIFIED) |
+| PG-ready deps | `invoiceAuthority.ts`, `cashApplicationAuthority.ts`, `invoiceTotals.ts`; `eos_finance` 0 rows, no Render route |
+| Missing composition | 18 built `Financials*.jsx` stay hidden until authority (do not invent figures) |
+| TRUE missing | none (screens and domain exist; authority missing) |
+| Register | FN-01..FN-06 |
+
+### 3.8 REPORTING
+
+| Dimension | reporting-analyst (`reportViewer`, 1 cap `reportDefinition.read`) |
+|---|---|
+| Screens | none reachable -- "No access"; `reporting/ReportBuilder.jsx`, `SavedReports.jsx` exist, unmapped |
+| Commands / Reads | report execution + saved reports via Firebase (`functions/src/reporting/reportCatalog.ts`) |
+| Dashboards / Scanners / Queues / Exceptions | none |
+| Authority deps | needs a server surface on `reportDefinition.read` + `NAV_SURFACE_ACCESS` row + removal of `reporting/*` gaps |
+| Firebase-era deps | Firebase capability feed over `report.*` ids not in `eos_policy.capabilities` |
+| PG-ready deps | none (no PG report read) |
+| Missing composition | the door itself; `/my-profile` unreachable behind "No access" |
+| TRUE missing | none proven for Builder/Saved; 8 domain report pages are placeholders (RP-03 VERIFY) |
+| Register | RP-01..RP-04 |
+
+### 3.9 MANAGEMENT / OWNER
+
+| Dimension | owner-executive (`owner`) | general-manager (`generalManager`) |
+|---|---|---|
+| Screens | Administration suite (overview, users, rolesPermissions, objects, workflows, permissionPreview, auditLogs); customers, opportunities, salesOrders, salesAgreements; serviceOperations, workOrders, jobAssignments, coordinatedVisits; equipment; parts, partMaster, truckInventory, transfers, reorderQueue; purchaseOrders; invoices, payments; operationsDashboard | admin overview, users, auditLogs; sales set; serviceOperations, workOrders, jobAssignments; parts, partMaster, truckInventory, transfers; purchaseOrders; invoices, payments |
+| Commands | policy/role/grant administration (R-PG); Job Role assignment (`EmployeeJobRoleControl`) | employee administration (R-PG) |
+| Reads | `adminPolicyApiClient`, `workforceApiClient` (R-PG); rest FB | same subset |
+| Dashboards | Dash `adminDecisions` (GATED), `firm*` (GATED), `teamGoals`, `workOrdersByStatus` | same |
+| Queues / Exceptions | role-request decisions (`adminDecisions`, GATED); ControlTower `AtRiskPanel` | same |
+| Actions (PG-granted) | 50 caps; owner-exclusion contract withholds dispatch, receiving, dataImport | 32 caps |
+| Firebase-era deps | no Firebase Role doc: every non-admin screen refused | same |
+| PG-ready deps | Render admin + workforce + commercial reads; `listEmployees` (EMP-RT-01) | same |
+| Missing composition | Audit Logs screen over existing `readPolicyAuditHistory`; employee directory door; WO create-only door (F2 b) | same |
+| TRUE missing | none | none |
+| Register | MO-01..MO-09 | MO-01..MO-09 |
+
+### 3.10 OFFICE / ADMINISTRATION
+
+| Dimension | office-administration (`admin`) | office-manager (`officeManager`) |
+|---|---|---|
+| Screens | everything the Owner earns except reorderQueue, plus dispatch, dispatcherBoard, receiving, receipts, scan, dataImport | customers; workOrders, jobAssignments, serviceOperations (via `workOrder.create`) |
+| Commands | all admin (R-PG); Data Import staging (FB-CALL) | WO create (wizard dark, F2 b) |
+| Reads | R-PG admin; FB elsewhere | `accounts`, `fieldops_wos` (FB, refused) |
+| Dashboards | Dash `adminDecisions` (on Firebase `role`) | Dash none earned beyond container |
+| Queues / Exceptions | as owner + dispatch | none |
+| Firebase-era deps | legacy `users.role=admin` (UNVERIFIED) | none held |
+| PG-ready deps | Render admin + workforce; `workOrderCreateCommand.ts` | `workOrderCreateCommand.ts` (no Render route) |
+| Missing composition | 8 unmapped admin destinations (below); Vehicles over truck registry | contacts (vocabulary) |
+| TRUE missing | Regions, Company Settings, Integrations, Notification history (OA-08..OA-10) | none |
+| Register | OA-01..OA-10 | OA-01..OA-10 |
+
+### 3.11 GENERAL EMPLOYEE
+
+| Dimension | general-employee (no Security Role) |
+|---|---|
+| Screens | none -- "No access" (correct: holds nothing) |
+| Everything else | none; `/my-profile` unreachable because the "No access" branch returns before routes render |
+| TRUE missing | none proven (time entry: 0 repo hits, need unconfirmed, §4.12) |
+| Register | GE-01..GE-02 |
 
 ---
 
-## 3. Per-Job-Role workspace (DERIVED)
+## 4. Classification register (every proposed workspace item)
 
-`/my-profile` (R-PG) is available to every persona with at least one surface, and is not repeated below.
-"Refused" means the screen's Firebase backend would refuse this persona given no Firebase business
-authority. That is a DERIVED expectation, not something observed.
-
-### 3.1 owner-executive -- `owner`, 22 surfaces
-
-- **Earns:** Customers, Opportunities, Sales Orders, Sales Agreements; Service Operations, Work Orders,
-  Job Assignments, Coordinated Visits; Equipment; Parts, Catalog Admin, Stock/Truck, Transfers, Reorder
-  Queue; Purchase Orders; Invoices, Payments; Administration (Overview, Users, Roles & Permissions,
-  Objects, Workflows, Permission Preview, Audit Logs); Inventory & Supply Overview.
-- **Honored:** the Administration suite (R-PG) and Sales Agreements (R-PG, empty).
-- **Refused:** every Service, Inventory, Purchasing, CRM, Opportunity, Sales Order, Equipment and Finance
-  screen. The only Firebase-side identity is an authenticated uid with no Role doc.
-- **Gaps:** Audit Logs is a door with no screen. `employees.directory` (North Star) is not a catalog
-  surface. The Work Order detail and wizard are dark (§2b).
-- **Withheld by design:** Owner does not earn `service.dispatch`, `receiving.checkIn` or
-  `administration.dataImport` (the owner-exclusion contract).
-
-### 3.2 office-administration -- `admin`, 24 surfaces
-
-- **Earns:** everything the Owner earns except Reorder Queue, plus Dispatch and Dispatcher Board,
-  Receiving and Receipts, Scan, and Data Import.
-- **Honored:** all screens, **conditional** on `admin@` still carrying the legacy `users.role = admin`
-  (UNVERIFIED). PG-only capabilities that admin holds (for example `workOrder.lifecycle.dispatch`) are
-  still exercised through Firebase screens that never ask PG.
-- **Gaps:** Audit Logs (no screen), the Work Order detail and wizard (dark under EOS), and the 49
-  unmapped destinations (§4).
-
-### 3.3 general-manager -- `generalManager`, 15 surfaces
-
-- **Earns:** Customers, Opportunities, Sales Orders, Sales Agreements; Service Operations, Work Orders,
-  Job Assignments; Parts, Catalog Admin, Stock/Truck, Transfers; Purchase Orders; Invoices, Payments;
-  Administration Overview, Users, Audit Logs.
-- **Honored:** Users (R-PG) and Sales Agreements (R-PG, empty).
-- **Refused:** all the others.
-- **Gaps:** `employees.directory` (North Star) has no surface. Audit Logs has no screen.
-
-### 3.4 office-manager -- `officeManager`, 2 surfaces
-
-- **Earns:** Customers, plus Work Orders / Job Assignments / Service Operations (through
-  `workOrder.create`).
-- **Refused:** all of them (`accounts` and `fieldops_wos` Rules).
-- **Gaps:** `crm.contacts` (North Star) is a VOCABULARY gap -- no `contact.*` capability exists. The
-  CRM PG writer is FROZEN (`/crm/customer` returns 503).
-
-### 3.5 service-manager -- `fieldManager`, 12 surfaces
-
-- **Earns:** Service Operations, Work Orders, Job Assignments, Dispatch, Dispatcher Board, Coordinated
-  Visits; Customers, Sales Orders; Parts, Catalog Admin, Stock/Truck; Invoices, Payments; Audit Logs.
-- **Refused:** all of them.
-- **Action mismatch:** PG grants `fieldManager` `workOrder.lifecycle.dispatch` / `.cancel` (activation
-  slice S6), but Dispatch and the Dispatcher Board read `fieldops_wos` under `isAdminOrDispatcher()`, so
-  the dispatch authority PG granted cannot be used from any existing screen.
-- **Gaps:** `service.scheduling` is a VOCABULARY gap. The Scheduling and Dispatch-Scheduling screens exist
-  but are unmapped.
-
-### 3.6 service-coordinator-dispatcher -- `dispatcher`, 13 surfaces
-
-- **Earns:** Service Operations, Work Orders, Job Assignments, Dispatch, Dispatcher Board, Coordinated
-  Visits, Scan; Customers, Opportunities, Sales Orders, Sales Agreements; Parts, Stock/Truck, Transfers,
-  Receiving, Reorder Queue; Purchase Orders, Receipts.
-- **Honored:** all screens, **conditional** on legacy `users.role = dispatcher` on `dispatcher@`
-  (UNVERIFIED).
-- **Gaps:** Work Order detail and wizard (dark under EOS), Inbound Work (unmapped), Scheduling.
-- **Note:** census D-18 -- the dispatcher holds the full commercial sell-side spine, which is a
-  separation-of-duties question outside this inventory.
-
-### 3.7 service-technician -- `technician` + `SERVICE_TECHNICIAN`, 2 surfaces
-
-- **Earns:** Technician Workspace, Coordinated Mission, Scan (`field.myWorkOrders`), plus Work Orders /
-  Job Assignments / Service Operations (through `workOrder.transition`). The dashboard is
-  `TechnicianDashboard`, because FIELD_WORK applies and no operations surface is held.
-- **Refused:** all of them. `fieldops_wos` needs `isTechnician() && isOwnTechnician()`, which reads
-  `users/{uid}.role/technicianId`, and neither exists for `finley.fixture@`.
-- **Gaps:** the team-level Work Orders list is shown to a technician because `service.workOrders` is
-  earned by `workOrder.transition` (the regression test records this as intended). Phase C may prefer to
-  keep the technician's workspace to the field surfaces. That is presentation, not access.
-
-### 3.8 parts-associate -- `partsAssociate` + `inventoryReceivingClerk`, 8 surfaces
-
-- **Earns:** Parts, Stock/Truck, Inventory & Supply Overview, Receiving, Receipts, Scan; Customers, Sales
-  Orders; Work Orders / Job Assignments / Service Operations; Invoices, Payments.
-- **Refused:** all of them.
-- **Gaps:** `inventoryRole/mine` (`PartsAssociateHome.jsx`, "My Purchasing") has **no governed door**:
-  it is the legacy `operationalRoles` domain, and a NAV_SURFACE_GAP by design. There is no scope, so no
-  Reorder Queue (correct: the role holds no `reorder.request.read`).
-
-### 3.9 parts-manager -- `partsManager` + `purchasingManager`, 13 surfaces
-
-- **Earns:** Reorder Queue (through the REORDER_QUEUE scope; `reorder.request.read.queue` has 0 holders,
-  per census D-07), Purchase Orders; Parts, Catalog Admin, Stock/Truck, Transfers; Customers, Sales
-  Orders; Work Orders; Invoices, Payments; Administration Overview and Audit Logs.
-- **Refused:** all of them. `reorder_requests` Rules need `isActiveOperationalRole("PARTS_MANAGER")`.
-- **Gaps:** Suppliers is a VOCABULARY gap (Firestore-authoritative). `inventoryRole/manager`
-  (`PartsManagerHome`) is the same component that Reorder Queue already reuses. Assignment has no
-  holder (`reorder.request.assign` = 0 holders).
-
-### 3.10 warehouse-associate -- `warehouseAssociate` + counter + put-away, 8 surfaces
-
-- **Earns:** Warehouse Workspace (picking, via put-away), Warehouses, Cycle Counts (count), Scan,
-  Transfers, Parts, Stock/Truck, Inventory & Supply Overview, Purchase Orders, Sales Orders.
-- **Refused:** all of them.
-- **Gaps:** relocate is not held (`inventoryStockRelocationOperator` is unassigned, as ruled). The test
-  manifest is stale about picking (§0).
-
-### 3.11 warehouse-manager -- `warehouseManager` + reconciler + bin admin, 11 surfaces
-
-- **Earns:** Warehouses, Cycle Counts (review), Transfers, Parts, Catalog Admin, Stock/Truck, Purchase
-  Orders, Customers, Sales Orders; Administration Overview and Audit Logs.
-- **Refused:** all of them.
-- **Gaps:** `inventoryBinAdministrator` holds 0 capabilities, so Warehouse Racking
-  (`AdminWarehouseRacking.jsx`) stays unmapped (`inventory.location.bin.*` is not registered).
-  `inventoryRole/warehouse` (`WarehouseManagerHome.jsx`) has no governed door. `inventory.cycleCount.close`
-  has 0 holders (census D-17).
-
-### 3.12 retail-sales -- `salesperson`, 8 surfaces (see §5)
-
-- **Earns:** Customers, Opportunities, Sales Orders, Sales Agreements, Invoices, Payments, Parts,
-  Stock/Truck (plus the Overview).
-- **Honored:** only the Sales Agreements list (R-PG), and `eos_commercial.sales_agreements` holds 0 rows,
-  so it is empty. Its detail page writes through a Firebase callable.
-- **Refused:** Opportunities (`listOpportunityContext`), Customers, Sales Orders and Finance.
-- **Action mismatch:** PG grants `opportunity.write`, `salesAgreement.accept` and
-  `opportunity.createSalesOrder`, but the create/transition affordances are gated by the Firebase feed
-  (`useOpportunityCapabilities`). They are therefore hidden, not shown-then-refused -- they are simply
-  unusable.
-- **Gaps:** `dashboard.myPipeline` (North Star) is NOT_A_DESTINATION: it is composed in `MyDashboard`
-  from modules whose data is Firebase.
-
-### 3.13 national-accounts-sales -- `salesperson`, 8 surfaces
-
-Identical to 3.12 in every column. See §5.
-
-### 3.14 finance-accounting -- `accountingManager`, 11 surfaces
-
-- **Earns:** Invoices, Payments; Customers, Opportunities, Sales Orders; Parts, Stock/Truck, Transfers;
-  Purchase Orders; Administration Overview and Audit Logs.
-- **Invoices and Payments:** these call `listFinancialFacts` / the finance read callables, whose reach
-  is loaded from Firestore (FIN-004). Whether `acctmgr@`'s Firebase `financeManager` assignment yields
-  reach is UNVERIFIED.
-- **Other screens:** refused by Rules (`isAdminOrDispatcher`).
-- **Gaps:** 18 built Financials screens (Overview, Billing Queue, AR, ...) are unmapped -- "Frame-0 IA
-  with no authority". `eos_finance` holds 0 rows and has no Render route. `finance.visibility.*` is not in
-  PG.
-
-### 3.15 reporting-analyst -- `reportViewer`, 0 surfaces
-
-- Holds `reportDefinition.read`, but **no surface is declared on it**. Report Builder and Saved Reports
-  are NAV_SURFACE_GAPS, gated by the Firebase feed over `report.*` ids that PG does not declare.
-- **Result:** the "No access" page. This is a gap, not a ruling. Closing it needs a server surface **and**
-  a PG-backed report screen. Report execution and saved reports are Firebase-only today.
-
-### 3.16 general-employee -- no Security Role, 0 surfaces
-
-"No access" by design: this is the P16 negative control. Note that this persona also cannot reach
-`/my-profile`, because the "No access" branch returns before the routes render. Whether an Employee with
-no authority should see their own profile is an Owner product question.
-
----
-
-## 4. Cross-cutting
-
-### 4.1 Destinations with no surfaceAccess (invisible to every persona under the EOS source)
-
-There are 86 destinations: **36 are mapped**, **1 is a container** (`dashboard/my`), and **49 are
-unmapped** (all listed in `NAV_SURFACE_GAPS`).
-
-| Group | Destinations | Existing component? | Blocker kind |
+### 4.1 SERVICE OPERATIONS
+| ID | Item | Class | Evidence / condition |
 |---|---|---|---|
-| Service | inboundWork, scheduling\*, dispatchScheduling\*, warranty\* | `InboundWorkWorkspace`, `SchedulingWorkspace`, `DispatchSchedulingWorkspace`; warranty = placeholder | Firebase-only ids / VOCABULARY (`service.scheduling`) |
-| Inventory | manufacturers\*, backOrders\* | `Manufacturers` (Rules-closed to all); back orders = stub | no usable backend |
-| My Inventory Role | manager, warehouse, mine | `PartsManagerHome`, `WarehouseManagerHome`, `PartsAssociateHome` | **legacy `operationalRoles` construct -- must not get a surface** |
-| Purchasing | suppliers, quotes\*, demandPlanning\* | `Suppliers`; the others are placeholders | VOCABULARY (`supplier.*`) |
-| Financials | 18 of 20 (all except invoices, payments) | 18 built `Financials*.jsx` | no authority (FIN-001/FIN-004) |
-| Reporting | builder, savedReports, 8 domain pages\* | `ReportBuilder`, `SavedReports`; domain pages are placeholders | `report.*` not in PG |
-| Administration | duplicateRules, warehouseRacking, financialPolicy, emailCommunications, integrations, vehicles\*, regions\*, companySettings\* | `AdminDuplicateRules`, `AdminWarehouseRacking`, `AdminFinancialPolicy`, `AdminEmailCommunications`, `IntegrationsFaq` | no registered capability |
-| Dashboard | notifications\* | placeholder (the bell is the live surface) | not a destination |
+| SV-01 | ControlTower + AtRisk/Attention panels | REPAIR | FB-DOC `fieldops_wos` under `isAdminOrDispatcher`; PG-only fieldManager refused |
+| SV-02 | Work Orders list, Job Assignments | REPAIR | same Rules; `workOrderLifecycle.ts` has no Render route (F7) |
+| SV-03 | WO detail + wizard routes | VERIFY | #1980 HELD; guard admits {admin, dispatcher, fieldManager}; data still FB |
+| SV-04 | Dispatch + Dispatcher Board | REPAIR | fieldManager's PG `workOrder.lifecycle.dispatch`/`.cancel` unusable from FB screens |
+| SV-05 | Coordinated Visits | REPAIR | FB-CALL; PG seam `coordinatedVisitPostgresRead.ts` exists, unexposed |
+| SV-06 | Scheduling / Dispatch Scheduling workspaces | REPAIR | screens exist; `NAV_SURFACE_GAPS`: `dispatchSchedule` retired, no distinct surface |
+| SV-07 | Inbound Work workspace | REPAIR | `service.inboundWork.read` is Firebase-only, not in `eos_policy` |
+| SV-08 | Service dashboard modules (serviceAttention, workOrdersByStatus, technicianAvailability/Comparison, teamGoals) | VERIFY | composition EOS-aware; data FB |
+| SV-09 | Dispatcher workspace end to end | VERIFY | depends on legacy `users.role=dispatcher` on `dispatcher@` |
+| SV-10 | Job-Role landing (service-manager -> ControlTower) | INTEGRATE | needs Job Role in `resolveExperienceContext` (returns none today); presentation only |
+| SV-11 | Warranty claims | TRUE_GAP | `NAV_SURFACE_GAPS["service/warranty"]`: "No warranty domain, no capability, no backend" (warranty fields exist on equipment/WO only) |
 
-\* = `navHidden`.
+### 4.2 TECHNICIAN
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| TC-01 | TechnicianDashboard | REPAIR | FB-DOC keyed on `users.technicianId` (absent) |
+| TC-02 | TechnicianShell / FieldMode | REPAIR | same |
+| TC-03 | Coordinated Mission | REPAIR | FB-CALL |
+| TC-04 | Scan: Lookup, ReturnIntake | REPAIR | callables via `resolveEffectiveAccess` |
+| TC-05 | Labor / install / completion commands | REPAIR | `workOrderLabor`/`Install` callables, FB |
+| TC-06 | Team WO list + WO detail on technician rail | VERIFY | #1980 Owner decision (a); regression test records list as intended |
+| TC-07 | Technician landing = Technician Workspace | INTEGRATE | `dashboardComposition` already selects TechnicianDashboard; rail trim is presentation |
 
-### 4.2 Screens no persona can reach (DERIVED)
+### 4.3 WAREHOUSE / INVENTORY
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| WH-01 | WarehouseShell + Put-away / Pick scan | VERIFY | Phase 3 granted `inventory.placement.record` in nonprod, but `binCommandClient` header says bin/placement capabilities `active:false`; callable path is FB feed |
+| WH-02 | Transfer / MoveStock scan, Transfers screen | REPAIR | FB callables; relocate unassigned by ruling |
+| WH-03 | Cycle Counts (count/review) + CycleCountScan | REPAIR | FB callables; `cycleCountRepository.ts` unexposed |
+| WH-04 | `inventory.cycleCount.close` | VERIFY | 0 holders (D-17) -- Owner grant decision |
+| WH-05 | Warehouses | REPAIR | FB-CALL + FB-DOC |
+| WH-06 | Warehouse Racking (`AdminWarehouseRacking.jsx`) | REPAIR | `inventory.location.bin.*` not registered; bin admin holds 0 caps |
+| WH-07 | `WarehouseManagerHome` content | INTEGRATE | legacy `operationalRoles` domain must get no surface; route content through governed doors (as Reorder Queue did) |
+| WH-08 | Operations dashboard + stock dashboard modules | VERIFY | FB-DOC; `stockForecast` is derived info (Decision #161) |
+| WH-09 | orphaned `inventory/mobile/*Section.jsx`, `TruckManagementPreview.jsx` | INTEGRATE | built; no route imports them |
+| WH-10 | Back Orders | VERIFY | nav says "no backend", but `fulfillment/allocationProjection.ts` projects back-orders |
+| WH-11 | Manufacturers | REPAIR | "Rules-closed for every persona"; `manufacturerAuthority.ts` exists |
 
-1. All 49 destinations in 4.1.
-2. `WorkOrderWizard` and `WorkOrderDetailPage` under EOS (§2b).
-3. Built components that no route imports (static import graph from `main.jsx`):
-   - `modules/sales/SalesWorkspace.jsx` -- the pipeline workspace with a Channel column
-   - `modules/sales/SalesAgreementPanel.jsx`
-   - `modules/accounts/AccountOpportunitiesSection.jsx`
-   - `modules/accounts/AccountSalesOrdersSection.jsx`
-   - `modules/controlTower/WorkOrderDetail.jsx`
-   - `modules/controlTower/panels/PartsOverviewPanel.jsx`
-   - `modules/inventory/mobile/*Section.jsx` (6 files)
-   - `modules/inventory/truckManagement/TruckManagementPreview.jsx`
-   - `modules/jobs/NewJobModal.jsx`
-   - `modules/administration/ObjectSecurityActionList.jsx`
-4. `warehouse.picking` was earnable by nobody in the test manifest. Live, it is warehouse-associate's
-   (§0).
+### 4.4 PARTS
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| PT-01 | Parts list/detail | REPAIR | Rules `parts` on opRole/admin/dispatcher |
+| PT-02 | Part Master (catalog admin) | VERIFY | alias authority BUILT/INERT; `eos_ops.parts` = 0 until coordinated COPY |
+| PT-03 | Receiving + Receipts + receiving queue | REPAIR | FB callable/FB-DOC |
+| PT-04 | Reorder Queue (`PartsManagerHome`) | REPAIR | Rules `isActiveOperationalRole`; Reorder cutover #1961 HELD |
+| PT-05 | `reorder.request.read.queue` / `.assign` holders | VERIFY | 0 holders (D-07) -- Owner grant decision |
+| PT-06 | Purchase Orders (+exceptions) | REPAIR | FB-DOC; canonical PO empty in nonprod; `purchasingRepository.ts` unexposed |
+| PT-07 | Suppliers | REPAIR | screen exists; no `supplier.*` capability; `supplierCatalogRepository.ts` exists |
+| PT-08 | `PartsAssociateHome` ("My Purchasing") | INTEGRATE | legacy construct; compose via governed doors |
+| PT-09 | Purchasing Quotes | TRUE_GAP | `NAV_SURFACE_GAPS`: "No quote domain exists"; 0 hits for supplierQuote/rfq |
+| PT-10 | Demand Planning | TRUE_GAP | "No demand-planning domain exists"; only `navConfig.js` matches (`stockForecast` is adjacent, not planning) |
+| PT-11 | Parts dashboard modules (`reorderQueue`, `receivingQueue`) | VERIFY | FB data |
 
-### 4.3 Doors shown with nothing honorable behind them (the Phase C risk)
+### 4.5 COMMERCIAL (shared by RETAIL SALES and NATIONAL ACCOUNTS SALES)
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| CS-01 | Sales Agreements index | VERIFY | PARTIAL_AUTHORITY (F4): R-PG list, 0 rows; detail FB |
+| CS-02 | Opportunities list/detail/new | REPAIR | `listOpportunityContext` via `resolveEffectiveAccess`; Render `listOpportunities` exists |
+| CS-03 | Sales Orders | REPAIR | FB; Render `listSalesOrders` exists |
+| CS-04 | Customers / AccountDetail | REPAIR | Rules `isAdminOrDispatcher` on `accounts`; CRM PG writer FROZEN |
+| CS-05 | Commercial writes (create/transition/accept) | VERIFY | #1972 fence HELD: PG INACTIVE, Firestore OPEN; one-writer cutover pending |
+| CS-06 | Sales dashboard modules | VERIFY | FB data |
+| CS-07 | orphaned `AccountOpportunitiesSection` / `AccountSalesOrdersSection` / `SalesAgreementPanel` | INTEGRATE | built, unrouted |
+| CS-08 | orphaned `SalesWorkspace.jsx` pipeline | INTEGRATE | built, unrouted; wire, don't rewrite |
+| CS-09 | Contacts | REPAIR | `EXPERIENCE_SURFACE_GAPS["crm.contacts"]` VOCABULARY; `eosCrm/contactAuthority.ts` command exists |
 
-| Pattern | Who | Evidence |
+### 4.6 RETAIL SALES / 4.7 NATIONAL ACCOUNTS SALES (kept distinct)
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| RS-01 | Default `salesChannel = RETAIL` filter/sort | INTEGRATE | `salesChannel` on Opportunity/SO; no list filters it today |
+| RS-02 | Retail landing (pipeline-led: `myOpportunities`) | INTEGRATE | needs Job Role in experience context (SV-10) |
+| NA-01 | Agreements-led landing | INTEGRATE | depends on CS-01 |
+| NA-02 | Default `salesChannel = NATIONAL_ACCOUNTS` filter | INTEGRATE | same field as RS-01 |
+| NA-03 | Coverage view (`domain/commercialCoverage.js`) | VERIFY | pure domain, no UI; Owner coverage-model ruling required before any scoping |
+
+### 4.8 FINANCE / ACCOUNTING
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| FN-01 | Invoices / Payments (+details) | VERIFY | temporary Firestore reader (F5, #1981 HELD); `acctmgr@` reach UNVERIFIED |
+| FN-02 | 18 other `Financials*.jsx` (Billing Queue, AR, Reconciliation, ...) | REPAIR | `NAV_SURFACE_GAPS["financials/*"]`: no authority (FIN-001/FIN-004); keep hidden |
+| FN-03 | `firm*` / `costImpact` dashboard modules | REPAIR | GATED: no `finance.visibility.*` surface |
+| FN-04 | Financial Policy admin | REPAIR | no registered capability |
+| FN-05 | PG finance read (`eos_finance` via Render) | REPAIR | `invoiceAuthority.ts` exists; 0 rows, no Render route |
+| FN-06 | Finance landing (Invoices first) | INTEGRATE | presentation only |
+
+### 4.9 REPORTING
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| RP-01 | Reporting door for `reportDefinition.read` | REPAIR | holds the cap; no surface declared (F6) |
+| RP-02 | Report Builder / Saved Reports | REPAIR | built; Firebase `report.*` ids not in PG |
+| RP-03 | 8 domain report pages | VERIFY | navHidden placeholders; `reporting/reportCatalog.ts` may define them |
+| RP-04 | `/my-profile` behind "No access" | VERIFY | Owner product question (shared with GE-02) |
+
+### 4.10 MANAGEMENT / OWNER
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| MO-01 | Administration suite (Overview, Roles & Permissions, Objects, Workflows) | KEEP | R-PG |
+| MO-02 | Permission Preview | KEEP | R-PG `getPrincipalEffectiveAccess` |
+| MO-03 | Users + `EmployeeJobRoleControl` | KEEP | R-PG workforce |
+| MO-04 | Audit Logs screen | INTEGRATE | `readPolicyAuditHistory` exists in `adminPolicyApi.ts` and client allow-list; door renders `AdministrationUnavailable` |
+| MO-05 | Employee directory door | INTEGRATE | `listEmployees` (EMP-RT-01, `employeeDirectoryReads.ts`) R-PG; `employees.directory` not a surface |
+| MO-06 | Cross-domain Service/Inventory/Finance screens | REPAIR | no Firebase Role doc (F1) |
+| MO-07 | WO create-only door (owner, GM) | VERIFY | #1980 Owner decision (b) |
+| MO-08 | `adminDecisions` dashboard | REPAIR | gated on Firebase `role`; `admin.roleAssignment.write` earns no surface |
+| MO-09 | Owner/GM landing (ControlTower + admin) | INTEGRATE | presentation only |
+
+### 4.11 OFFICE / ADMINISTRATION and GENERAL EMPLOYEE
+| ID | Item | Class | Evidence / condition |
+|---|---|---|---|
+| OA-01 | Administration suite for `admin@` | KEEP | R-PG |
+| OA-02 | All FB screens for `admin@` | VERIFY | legacy `users.role=admin` UNVERIFIED |
+| OA-03 | Data Import | VERIFY | Firebase id `admin.dataImport.stage`; ruled nonprod tooling |
+| OA-04 | office-manager Customers | REPAIR | Rules `isAdminOrDispatcher` |
+| OA-05 | office-manager WO create | VERIFY | #1980 decision (b) |
+| OA-06 | Duplicate Rules, Email Communications | REPAIR | screens exist; no registered capability / Firebase-only id |
+| OA-07 | Vehicles | INTEGRATE | `truckRegistry/*` commands + callables and `truckFleetRepository.ts` exist; destination is a hidden placeholder |
+| OA-08 | Regions, Company Settings | TRUE_GAP | "Hidden placeholder, no backend"; `companySettings` matches only `navConfig.js` |
+| OA-09 | Integrations | TRUE_GAP | "No integrations domain exists" (`IntegrationsFaq.jsx` is static FAQ) |
+| OA-10 | Notification history | TRUE_GAP | "for the full notification history, which is not built yet"; 0 hits for a history read |
+| GE-01 | "No access" for general-employee | KEEP | P16 negative control |
+| GE-02 | `/my-profile` for a no-authority Employee | VERIFY | Owner product question |
+
+### 4.12 Evidence-of-absence, need NOT established (not classified, not counted)
+
+| Candidate | Grouping | Repo evidence |
 |---|---|---|
-| Surface earned from PG; screen reads Firebase and refuses | the 10 personas marked DOORS, DATA REFUSED or UNVERIFIED in §1, plus the non-admin screens of the owner (#1) and GM (#3) | §1; Rules `isAdminOrDispatcher` / `isOwnTechnician` / `isActiveOperationalRole`; callables via `resolveEffectiveAccess` |
-| Door renders `AdministrationUnavailable` | everyone earning `administration.auditLogs`: owner, admin, GM, service-manager, parts-manager, warehouse-manager, finance | App.jsx `auditLogs` branch |
-| Administration Overview earned only through Audit Logs | service-manager, parts-manager, warehouse-manager, finance | the container over one child that has no screen |
-| PG list, Firebase detail and writes | Sales Agreements, for every holder of `salesAgreement.read` | `SalesAgreementsList` = R-PG; `SalesAgreementDetail` = FB-CALL |
-| PG grants an action no screen can use | fieldManager dispatch/cancel; salesperson accept/createSalesOrder | §3.5, §3.12 |
-| In-screen affordances gated on the Firebase `role` | TruckInventory `canManage`, MyDashboard `adminDecisions`, Scan `deps.role` | App.jsx `TruckInventoryConnected`; `dashboardComposition.js:483` |
+| Retail counter / POS sale | RETAIL SALES | 0 hits for counterSale / pointOfSale |
+| Contract pricing / price lists | NATIONAL ACCOUNTS | 0 hits for priceList / contractPricing |
+| Time entry / timesheets | TECHNICIAN, GENERAL EMPLOYEE | 0 hits for timesheet / timeClock / clockIn |
 
-**"Actions shown that the server refuses" is mostly avoided structurally.** In-screen affordances read
-the fail-closed Firebase feed, so a PG-only persona sees them *hidden*. The live defect is the inverse: a
-**door shown, then its data refused**. Phase C must not treat nav visibility as action authority.
-`operationalContext.hasCapability` is still the Firebase `resolveEffectiveAccess` feed, even under the
-EOS source.
+These become TRUE_GAP only on an Owner statement that the business needs them.
 
-### 4.4 Minimal integration-owned nav edits Phase C will need (DESCRIBED, NOT MADE)
+### 4.13 Counts
 
-These belong to the single integration writer for `App.jsx` / `navConfig.js` / `AppShell`.
-
-1. **Work Order detail and wizard under EOS.** Re-gate `/service/work-orders/new` and `/:workOrderId` on
-   the EOS surface (`service.workOrders`) when `isEosNavigationSource`, instead of
-   `previewHasPermission(..., navRole=null)`. Without this, no persona can open a Work Order in
-   platform-sandbox. This is navigation only: the backend still decides.
-2. **Audit Logs door.** Either stop offering `administration/auditLogs` until a screen exists, or build
-   the screen. Removing the `NAV_SURFACE_ACCESS` row alone violates the tested invariant that every
-   server surface is reachable, so this needs a paired server-catalog decision. **Owner decision.**
-3. **Per-Job-Role landing.** Today every persona lands on `dashboard/my`. A Job-Role landing (for
-   example technician -> Technician Workspace) needs `jobRole` in the experience context:
-   `resolveExperienceContext` returns `securityRoleKeys`, `employeeId`, WE, scopes and surfaces, and **no
-   Job Role**. The server addition would be presentation only, and must never gate.
-4. **Workspace grouping, presentation only.** Group or trim destinations per Job Role inside `AppShell`
-   (for example hide the team Work Orders list from the technician rail). Grouping must stay a subset of
-   granted surfaces and grant nothing new. `SERVICE_NAV_GROUPS` / `buildNavGroups` are the existing
-   mechanism.
-5. **Reporting.** No nav edit can close this alone. It needs a server surface on `reportDefinition.read`,
-   a `NAV_SURFACE_ACCESS` row, removal of the `reporting/*` gap entries, and a PG-backed report screen.
-   Record it as blocked.
-6. **Leave alone:** `inventoryRole/*` (legacy -- surface its content through existing governed doors,
-   as Reorder Queue already does with `PartsManagerHome`), the 18 Financials pages (no authority; do
-   not invent figures), and Contacts, Scheduling and Suppliers (VOCABULARY gaps).
-7. **Precondition that is not a nav edit.** For 10 of the 16 personas the assembled workspace will be
-   refused unless the screens' **data paths** move to Render PG, or the personas receive Firebase-side
-   authority. The registry forbids the second option for the canonical chain. That is migration work,
-   not assembly, and it is the real gate on Phase C. **Owner decision.**
+| Class | Count | IDs |
+|---|---|---|
+| KEEP | 5 | MO-01, MO-02, MO-03, OA-01, GE-01 |
+| INTEGRATE | 16 | SV-10, TC-07, WH-07, WH-09, PT-08, CS-07, CS-08, RS-01, RS-02, NA-01, NA-02, FN-06, MO-04, MO-05, MO-09, OA-07 |
+| VERIFY | 23 | SV-03, SV-08, SV-09, TC-06, WH-01, WH-04, WH-08, WH-10, PT-02, PT-05, PT-11, CS-01, CS-05, CS-06, NA-03, FN-01, RP-03, RP-04, MO-07, OA-02, OA-03, OA-05, GE-02 |
+| REPAIR | 35 | SV-01, SV-02, SV-04..07, TC-01..05, WH-02, WH-03, WH-05, WH-06, WH-11, PT-01, PT-03, PT-04, PT-06, PT-07, CS-02..04, CS-09, FN-02..05, RP-01, RP-02, MO-06, MO-08, OA-04, OA-06 |
+| TRUE_GAP | 6 | SV-11, PT-09, PT-10, OA-08, OA-09, OA-10 |
+| **Total** | **85** | |
 
 ---
 
-## 5. Retail Sales vs National Accounts Sales
+## 5. Integration-owned edits Phase C will need (DESCRIBED, NOT MADE)
 
-| Dimension | Today (REPO-DERIVED) |
-|---|---|
-| Job Role | **Distinct:** `retail-sales` vs `national-accounts-sales` (canonical vocabulary; one current assignment each) |
-| Security Role | **Identical:** `salesperson`, by design (`roleHierarchy.PLACEMENT_GAPS`: "which market a deal belongs to is a property of the DEAL") |
-| Surfaces / destinations | **Identical:** 8 / 10 |
-| Distinguishing record data | `salesChannel` on Opportunity and Sales Order (`NATIONAL_ACCOUNTS`, `RETAIL`, `STRATEGIC_ACCOUNTS`). Shown as a badge in `OpportunityList` and a field in `SalesOrderDetail`; selectable in `NewOpportunityForm`. `eos_commercial` holds 0 rows, so nothing carries it in PG. |
-| Channel filtering | **None.** No list filters by channel. `domain/commercialCoverage.js` models channel coverage and is a pure domain module with no consumer UI (the "deferred coverage model"). |
-| Where the Job Role is displayed | `modules/employees/EmployeeProfileSections.jsx` (`/my-profile`) and `EmployeeJobRoleControl.jsx` (Admin > Users > detail) |
+Single integration writer for `App.jsx` / `navConfig.js` / `AppShell`. Grouping stays a subset of granted
+surfaces and grants nothing (`SERVICE_NAV_GROUPS`, `FINANCIALS_NAV_GROUPS`, `buildNavGroups`).
 
-**Existing content Phase C can reuse to make the two feel distinct, with no new authority:**
+1. **WO routes** -- land #1980 after Owner decisions (a)/(b) (SV-03, TC-06, MO-07, OA-05).
+2. **Audit Logs** -- compose a screen over `readPolicyAuditHistory` (MO-04) rather than remove the door.
+3. **Job-Role landing / grouping** -- needs `jobRole` in `resolveExperienceContext` (presentation only,
+   never a gate) (SV-10, TC-07, RS-02, NA-01, FN-06, MO-09).
+4. **Reporting** -- server surface on `reportDefinition.read` + nav row + gap removal + a PG report read
+   (RP-01, RP-02). No nav edit alone closes it.
+5. **Leave alone** -- `inventoryRole/*` as destinations (compose content via governed doors), the 18
+   Financials pages (no authority), Contacts / Scheduling / Suppliers (vocabulary).
+6. **The real gate (not a nav edit)** -- for 10 of 16 personas the composed workspace is refused until the
+   screens' data paths move to Render PG (F7 modules exposed, one-writer cutovers), or the personas gain
+   Firebase authority, which the registry forbids. **Owner decision.**
 
-- `OpportunityList` (it already receives `viewerUid`, for "my opportunities").
-- The orphaned `SalesWorkspace.jsx` pipeline, which has a Channel column.
-- The `MyDashboard` modules `myOpportunities` / `myBooked` / `accountPortfolio`.
-- `SalesAgreementsList` and `SalesAgreementDetail` -- National Accounts is the agreement-heavy persona.
+## 6. Open items for the Owner (surfaced, not decided)
 
-**Would be new:**
-
-- A default channel filter or sort keyed off the viewer's Job Role (presentation only; the records stay
-  readable either way).
-- An account segment / "my accounts" view.
-- A National Accounts landing that leads with agreements.
-
-**Must not be built:** a per-channel Security Role (for example a `nationalAccountsSalesperson` Role), or
-channel-scoped *visibility*, without an Owner ruling on the coverage model. Either one would change
-authority, not presentation.
-
----
-
-## 6. Do-not-rebuild list (reuse these components)
-
-| Workspace | Reuse (file under `field-ops-app-vite/src/modules/`) |
-|---|---|
-| All | `dashboard/MyDashboard.jsx` + `domain/dashboardComposition.js` (already EOS-aware); `employees/MyEmployeeProfile.jsx`; `navigation/AppShell` grouping (`SERVICE_NAV_GROUPS`, `FINANCIALS_NAV_GROUPS`, `buildNavGroups`) |
-| Owner / Admin | `administration/AdministrationOverview.jsx`, `AdminUsers.jsx`, `UserDetail.jsx`, `EmployeeJobRoleControl.jsx`, `AdminRolesPermissions.jsx`, `AdminObjects.jsx`, `AdminWorkflows.jsx`, `AdminPermissionPreview.jsx`, `AdminDataImport.jsx` |
-| General Manager | the above Users screens + the Sales/CRM set + `operations/Operations.jsx` |
-| Office Manager / Office Admin | `accounts/AccountsList.jsx`, `accounts/AccountDetail.jsx`, `workOrders/WorkOrdersList.jsx` |
-| Service Manager / Dispatcher | `controlTower/ControlTower.jsx`, `dispatch/Dispatch.jsx`, `dispatcherBoard/DispatcherBoard.jsx`, `jobs/Jobs.jsx`, `service/CoordinatedVisitsWorkspace.jsx`, `workOrders/WorkOrderDetailPage.jsx`, `workOrders/WorkOrderWizard.jsx`, `scheduling/SchedulingWorkspace.jsx` (unmapped), `service/InboundWorkWorkspace.jsx` (unmapped) |
-| Service Technician | `technicianDashboard/TechnicianDashboard.jsx`, `technician/TechnicianShell.jsx`, `mobile/FieldMode.jsx`, `mobile/CoordinatedMissionView.jsx`, `scan/ScanWorkspace.jsx` |
-| Parts Associate / Manager | `inventory/PartsList.jsx`, `inventory/PartDetail.jsx`, `inventory/Receiving.jsx`, `inventoryRole/PartsManagerHome.jsx` (already reused as Reorder Queue), `inventoryRole/PartsAssociateHome.jsx`, `inventory/PartMasterList.jsx`, `purchasing/PurchaseOrders.jsx`, `purchasing/Receipts.jsx`, `purchasing/Suppliers.jsx` |
-| Warehouse Associate / Manager | `warehouse/WarehouseShell.jsx`, `scan/ScanWorkspace.jsx`, `inventory/CycleCounts.jsx`, `inventory/Transfers.jsx`, `inventory/Warehouses.jsx`, `inventory/TruckInventory.jsx`, `inventoryRole/WarehouseManagerHome.jsx`, `administration/AdminWarehouseRacking.jsx` (unmapped) |
-| Retail / National Accounts Sales | `sales/OpportunityList.jsx`, `sales/OpportunityDetail.jsx`, `sales/NewOpportunityForm.jsx`, `sales/SalesOrdersList.jsx`, `sales/SalesOrderDetail.jsx`, `sales/SalesAgreementsList.jsx`, `sales/SalesAgreementDetail.jsx`, `sales/SalesWorkspace.jsx` (orphaned -- wire, don't rewrite), `accounts/AccountOpportunitiesSection.jsx` / `AccountSalesOrdersSection.jsx` (orphaned) |
-| Finance / Accounting | `financials/FinancialsInvoices.jsx`, `FinancialsPayments.jsx`, and the detail pages; the other 18 `Financials*.jsx` exist but have no authority -- keep hidden |
-| Reporting Analyst | `reporting/ReportBuilder.jsx`, `reporting/SavedReports.jsx` (Firebase-backed; blocked, §3.15) |
-| General Employee | none. "No access" is the correct experience; `/my-profile` reachability is an open question (§3.16) |
-
----
-
-## 7. Open items for the Owner (surfaced, not decided)
-
-1. **Data-path precondition (§4.4 item 7).** Move screen reads to Render PG, or accept that 10 persona
-   workspaces are doors whose data is refused until then.
-2. **Audit Logs:** a door with no screen, reached by 7 personas.
-3. **Reporting Analyst:** holds `reportDefinition.read` and earns nothing.
-4. **General Employee and `/my-profile`.**
-5. **Whether the technician rail should show the team Work Orders list** that `workOrder.transition`
-   earns.
-6. **Stale repo facts noted in passing.** The registry still says `reporting@` `accountExists: false`,
-   while the Persona Foundation session record says it was created 2026-09-25. That record is not a
-   repo artifact, so this document does not rely on it.
+1. Data-path precondition (§5.6) -- accept doors-refused until PG reads, or sequence the F7 exposures.
+2. #1980 decisions (a) technician detail and (b) create-only door.
+3. Reporting-analyst holds `reportDefinition.read` and earns nothing.
+4. General employee (and reporting) and `/my-profile`.
+5. Grants with 0 holders: `inventory.cycleCount.close`, `reorder.request.read.queue`, `reorder.request.assign`.
+6. Whether §4.12 candidates are business needs.
+7. Stale repo fact: the registry still says `reporting@` `accountExists: false`; Persona Foundation
+   records it as created 2026-09-25 (not a repo artifact; not relied on here).
