@@ -73,6 +73,7 @@ import type {
   WorkflowInstanceRecord,
   WorkflowRecord,
   WorkflowRoleBindingRecord,
+  FunctionalRoleRecord,
   WorkflowStepRecord,
   WorkflowVersionRecord,
 } from "./types";
@@ -357,7 +358,8 @@ const toBinding = (r: Record<string, unknown>): WorkflowRoleBindingRecord => ({
   tenantId: String(r.tenant_id),
   workflowVersionId: String(r.workflow_version_id),
   actionKey: String(r.action_key),
-  roleId: String(r.role_id),
+  roleId: r.role_id === null || r.role_id === undefined ? null : String(r.role_id),
+  functionalRoleId: r.functional_role_id === null || r.functional_role_id === undefined ? null : String(r.functional_role_id),
   bindingKind: (r.binding_kind as WorkflowRoleBindingRecord["bindingKind"] | undefined) ?? "SECURITY_ROLE",
   ...provenance(r),
 });
@@ -634,6 +636,19 @@ export class PostgresPolicyRepository implements PolicyRepository {
       `SELECT * FROM ${SCHEMA}.workflow_role_bindings WHERE tenant_id = $1 AND workflow_version_id = $2`,
       [tenantId, versionId],
       toBinding,
+    );
+  }
+
+  // The Functional Role catalog lives in eos_workforce (migration 1762819200000). A database migrated to a boundary
+  // before that (the seed-boundary replay) has no catalog, and therefore no Functional Role -- never an error.
+  async listFunctionalRoles(tenantId: TenantId): Promise<readonly FunctionalRoleRecord[]> {
+    const present = await this.pool.query(`SELECT to_regclass('eos_workforce.functional_roles') IS NOT NULL AS present`);
+    if (present.rows[0]?.present !== true) return [];
+    return this.many(
+      `SELECT tenant_id, id, key, name, status FROM eos_workforce.functional_roles WHERE tenant_id = $1 ORDER BY key`,
+      [tenantId],
+      (r) => ({ tenantId: String(r.tenant_id), id: String(r.id), key: String(r.key), name: String(r.name),
+        status: String(r.status) as FunctionalRoleRecord["status"] }),
     );
   }
 
@@ -1297,6 +1312,22 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
 
     async createWorkflowRoleBinding(input: NewRecord<WorkflowRoleBindingRecord>) {
       await assertDraftVersion(input.workflowVersionId);
+      if (input.bindingKind === "FUNCTIONAL_ROLE") {
+        // The FUNCTIONAL_ROLE target is a Functional Role of THIS tenant (the composite FK refuses anything else);
+        // role_id stays NULL (workflow_role_bindings_target_matches_kind).
+        if (input.roleId || !input.functionalRoleId) throw new PolicyStoreError("a FUNCTIONAL_ROLE binding names a Functional Role only");
+        const found = await q.query(
+          `SELECT 1 FROM eos_workforce.functional_roles WHERE tenant_id = $1 AND id = $2`, [tenantId, input.functionalRoleId]);
+        if (found.rows.length === 0) throw new PolicyStoreError("functional role not found");
+        const { rows } = await q.query(
+          `INSERT INTO ${SCHEMA}.workflow_role_bindings (id, tenant_id, workflow_version_id, action_key,
+             role_id, created_by, created_at, updated_by, updated_at, binding_kind, functional_role_id)
+           VALUES ($1,$2,$3,$4,NULL,$5,$6,$7,$8,'FUNCTIONAL_ROLE',$9) RETURNING *`,
+          [newId(), tenantId, input.workflowVersionId, input.actionKey, ...stamp(), input.functionalRoleId],
+        );
+        return toBinding(rows[0]);
+      }
+      if (!input.roleId || input.functionalRoleId) throw new PolicyStoreError("a SECURITY_ROLE binding names a Security Role only");
       await requireOwned("roles", input.roleId, "role");
       const { rows } = await q.query(
         // binding_kind is written only when it is not the column default, so the seed-boundary replay

@@ -84,8 +84,14 @@ export function buildWorkflowVersionView(view) {
     capabilityKey: a.capabilityKey ?? null,
     guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
     roleKeys: Object.freeze([...(a.roleKeys ?? [])]),
+    // FUNCTIONAL_ROLE bindings (lane FR): they only NARROW -- the linked Employee must also hold one.
+    functionalRoleKeys: Object.freeze([...(a.functionalRoleKeys ?? [])]),
     bindings: Object.freeze((a.bindings ?? (a.roleKeys ?? []).map((roleKey) => ({ roleKey, bindingKind: "SECURITY_ROLE" })))
-      .map((b) => Object.freeze({ roleKey: b.roleKey, bindingKind: b.bindingKind ?? "SECURITY_ROLE" }))),
+      .map((b) => Object.freeze({
+        roleKey: b.roleKey ?? null,
+        functionalRoleKey: b.functionalRoleKey ?? null,
+        bindingKind: b.bindingKind ?? "SECURITY_ROLE",
+      }))),
   }));
   return Object.freeze({
     workflow: view.workflow ?? null,
@@ -118,6 +124,7 @@ export function editableDefinition(view) {
       capabilityKey: a.capabilityKey ?? "",
       guardKind: a.guardKind ?? "",
       roleKeys: (a.roleKeys ?? []).join(", "),
+      functionalRoleKeys: (a.functionalRoleKeys ?? []).join(", "),
     })),
   };
 }
@@ -148,13 +155,15 @@ export function definitionForServer(editable) {
         guardKind: guardKind.length > 0 ? guardKind : null,
         requiresOwnAssignment: guardKind === "RECORD_ASSIGNMENT",
         roleKeys: splitKeys(a.roleKeys),
+        // Sent as the server names them; an unknown key is refused by the server (UNKNOWN_FUNCTIONAL_ROLE).
+        functionalRoleKeys: splitKeys(a.functionalRoleKeys),
       };
     }),
   };
 }
 
 export const blankStep = () => ({ key: "", label: "", initial: false, terminal: false });
-export const blankAction = () => ({ key: "", label: "", from: "", to: "", capabilityKey: "", guardKind: "", roleKeys: "" });
+export const blankAction = () => ({ key: "", label: "", from: "", to: "", capabilityKey: "", guardKind: "", roleKeys: "", functionalRoleKeys: "" });
 
 /** validateWorkflowVersion's result, grouped for display. Unknown shapes yield null. */
 export function validationSummary(result) {

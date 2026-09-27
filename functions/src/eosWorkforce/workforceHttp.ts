@@ -36,6 +36,10 @@
 //   EMP-RT-08 createJobRole / updateJobRole / assignEmployeeJobRole                      admin.employeeJobRole.write.
 //   step C   listEmployeeWorkEligibility / ...History                                    employee.record.read.
 //   step C   assignEmployeeWorkEligibility / endEmployeeWorkEligibility                  admin.employeeWorkEligibility.write.
+//   FR       listFunctionalRoles / listFunctionalRoleHolders / listEmployeeFunctionalRoles /
+//            listFunctionalRoleHistory                                                  employee.record.read.
+//   FR       createFunctionalRole / updateFunctionalRoleMetadata / setFunctionalRoleStatus /
+//            assignEmployeeFunctionalRole / endEmployeeFunctionalRoleAssignment        admin.employeeFunctionalRole.write.
 //   step C   listEmployeeOperationalScopes / ...History                                  employee.record.read.
 //   step C   assignEmployeeOperationalScope / endEmployeeOperationalScope                admin.employeeOperationalScope.write.
 //   step G   listAssignableEmployees                                                      employee.record.read.
@@ -92,6 +96,13 @@ import { assignEmployeeWorkEligibility, endEmployeeWorkEligibility } from "./com
 import { assignEmployeeOperationalScope, endEmployeeOperationalScope } from "./commands/employeeOperationalScopeCommands";
 import { listEmployeeWorkEligibility, listEmployeeWorkEligibilityHistory } from "./reads/workEligibilityReads";
 import { listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory } from "./reads/operationalScopeReads";
+import {
+  assignEmployeeFunctionalRole, createFunctionalRole, endEmployeeFunctionalRoleAssignment, setFunctionalRoleStatus,
+  updateFunctionalRoleMetadata,
+} from "./commands/employeeFunctionalRoleCommands";
+import {
+  listEmployeeFunctionalRoles, listFunctionalRoleHistory, listFunctionalRoleHolders, listFunctionalRoles,
+} from "./reads/functionalRoleReads";
 import { listAssignableEmployees } from "./reads/assignableEmployeeReads";
 
 export interface VerifiedIdentity {
@@ -148,6 +159,11 @@ const READ_RUNNERS = Object.freeze({
   listEmployeeOperationalScopes: read(listEmployeeOperationalScopes),
   listEmployeeOperationalScopeHistory: read(listEmployeeOperationalScopeHistory),
   listAssignableEmployees: read(listAssignableEmployees),
+  // Functional Role (migration 1762819200000): employee.record.read, like the Job Role and Work Eligibility reads.
+  listFunctionalRoles: read(listFunctionalRoles),
+  listFunctionalRoleHolders: read(listFunctionalRoleHolders),
+  listEmployeeFunctionalRoles: read(listEmployeeFunctionalRoles),
+  listFunctionalRoleHistory: read(listFunctionalRoleHistory),
 } as const);
 
 // ════════════════════ the closed operation list (commands) ════════════════════
@@ -170,6 +186,12 @@ const COMMAND_RUNNERS = Object.freeze({
   linkEmployeePrincipal: command(linkEmployeePrincipal),
   unlinkEmployeePrincipal: command(unlinkEmployeePrincipal),
   relinkEmployeePrincipal: command(relinkEmployeePrincipal),
+  // Functional Role: admin.employeeFunctionalRole.write, each under the tenant governance lock.
+  createFunctionalRole: command(createFunctionalRole),
+  updateFunctionalRoleMetadata: command(updateFunctionalRoleMetadata),
+  setFunctionalRoleStatus: command(setFunctionalRoleStatus),
+  assignEmployeeFunctionalRole: command(assignEmployeeFunctionalRole),
+  endEmployeeFunctionalRoleAssignment: command(endEmployeeFunctionalRoleAssignment),
 } as const);
 
 const RUNNERS: Readonly<Record<string, Runner>> = Object.freeze({ ...READ_RUNNERS, ...COMMAND_RUNNERS });

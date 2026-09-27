@@ -92,14 +92,19 @@ const OPERATIONS = ["readMyEmployeeProfile", "readMyWorkforceCapabilities", "rea
   // Step C (operationalRoles decomposition): the qualification and warehouse-scope reads.
   "listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory", "listEmployeeOperationalScopes", "listEmployeeOperationalScopeHistory",
   // Step G: the governed assignable-Employee read.
-  "listAssignableEmployees"];
+  "listAssignableEmployees",
+  // Functional Role (migration 1762819200000): the catalog, its holders, an Employee's assignments, the audit history.
+  "listFunctionalRoles", "listFunctionalRoleHolders", "listEmployeeFunctionalRoles", "listFunctionalRoleHistory"];
 
 const COMMANDS = ["updateEmployeeProfile", "establishReportingRelationship", "endReportingRelationship", "saveEmployeeEdit", "changeEmploymentStatus", "changeOperatingCompany", "createJobRole", "updateJobRole", "assignEmployeeJobRole",
   // Step C: each authority gets an assign and an end -- never a generic patch, and never one command for both.
   "assignEmployeeWorkEligibility", "endEmployeeWorkEligibility", "assignEmployeeOperationalScope", "endEmployeeOperationalScope",
   // Lane BT: the governed Employee BIRTH, and the Employee <-> Principal link. The link's move and revoke take a
   // mandatory expectedCurrentPrincipalId; there is deliberately no single "setEmployeePrincipal" that would not.
-  "createEmployee", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal"];
+  "createEmployee", "linkEmployeePrincipal", "unlinkEmployeePrincipal", "relinkEmployeePrincipal",
+  // Functional Role: catalog create / metadata / status, and assign / end -- never a generic patch.
+  "createFunctionalRole", "updateFunctionalRoleMetadata", "setFunctionalRoleStatus", "assignEmployeeFunctionalRole",
+  "endEmployeeFunctionalRoleAssignment"];
 
 test("the operation list is closed: reads EMP-RT-01, 02, 03, 04, 06, 07, 08, H1 and exactly the governed Employee commands", () => {
   assert.deepEqual([...http.WORKFORCE_READ_OPERATIONS], OPERATIONS);
@@ -286,13 +291,19 @@ test("capabilities: only existing read ids, each registered in the catalog AND t
   // Step C adds the two decomposition capabilities. They reach this set through the CLOSED offerable list in
   // myWorkforceCapabilities.ts; the commands themselves import their capability id from the shared vocabulary module,
   // so there is still exactly one place each id is spelled.
-  assert.deepEqual([...used].sort(), ["admin.employeeJobRole.write", "admin.employeeOperationalScope.write", "admin.employeeProfile.write",
+  assert.deepEqual([...used].sort(), ["admin.employeeFunctionalRole.write", "admin.employeeJobRole.write", "admin.employeeOperationalScope.write", "admin.employeeProfile.write",
     "admin.employeeWorkEligibility.write", "admin.principalAccess.read", "customer.record.read", "employee.record.read",
     "opportunity.read", "salesAgreement.read", "salesOrder.read"]);
   const catalog = readFileSync(join(SRC, "access", "permissionCatalog.ts"), "utf8");
   const migrations = readdirSync(join(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql")).map((f) => readFileSync(join(FUNCTIONS_DIR, "migrations", f), "utf8")).join("\n");
+  // POSTGRESQL-NATIVE, deliberately NOT in the legacy permission catalog (the admin.securityPolicy.write precedent):
+  // the legacy admin Role composes the WHOLE catalog (compatibilityRoles ADMIN_ALL_PERMISSIONS), so listing the key
+  // there would silently declare a grant. It is registered by migration 1762819200000 and held by nobody until an
+  // administrator grants it through Administration.
+  const POSTGRES_NATIVE = new Set(["admin.employeeFunctionalRole.write"]);
+  for (const id of POSTGRES_NATIVE) assert.ok(!catalog.includes(`id: "${id}"`), `${id} must stay out of the legacy catalog`);
   for (const id of used) {
-    assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
+    if (!POSTGRES_NATIVE.has(id)) assert.ok(catalog.includes(`id: "${id}"`), `${id} is not in the permission catalog`);
     assert.ok(migrations.includes(`'${id}'`), `${id} is not in the PostgreSQL capability vocabulary`);
   }
   assert.deepEqual([...new Set([...migrations.matchAll(/'((?:workforce|employee)\.[a-zA-Z.]+)'/g)].map((m) => m[1]))], ["employee.record.read"], "an Employee/Workforce capability other than employee.record.read was registered");
@@ -346,6 +357,7 @@ test("nothing but the transport imports the read layer; no Functions, Rules or c
 // ════════════════════ EMP-RT-H1: governed Employee change history ════════════════════
 
 const history = require("../lib/eosWorkforce/reads/employeeChangeHistoryRead.js");
+const frVocab = require("../lib/eosWorkforce/functionalRoleVocabulary.js");
 
 test("EMP-RT-H1 history: the closed action list is exactly the governed commands' Employee audit actions", () => {
   const profileCmd = require("../lib/eosWorkforce/commands/employeeProfileCommand.js");
@@ -366,9 +378,14 @@ test("EMP-RT-H1 history: the closed action list is exactly the governed commands
     linkCmd.PRINCIPAL_LINK_ESTABLISH_ACTION,
     linkCmd.PRINCIPAL_LINK_REVOKE_ACTION,
     linkCmd.PRINCIPAL_LINK_RELINK_ACTION,
+    // Functional Role assignment changes: the Functional Role id/key and the period, never the assignment row id.
+    frVocab.FUNCTIONAL_ROLE_ASSIGN_ACTION,
+    frVocab.FUNCTIONAL_ROLE_END_ACTION,
   ]);
   // Every action a Workforce command audits against an Employee is in the list, and nothing else is.
-  const commandSources = walk(join(WORKFORCE, "commands"), [".ts"]).map(code).join("\n");
+  // The Functional Role commands spell their audit actions in their vocabulary module (one spelling per action), so
+  // it is scanned with the commands.
+  const commandSources = [...walk(join(WORKFORCE, "commands"), [".ts"]), join(WORKFORCE, "functionalRoleVocabulary.ts")].map(code).join("\n");
   const audited = new Set([...commandSources.matchAll(/"(employee\.[a-zA-Z]+\.[a-zA-Z]+)"/g)].map((m) => m[1]));
   assert.deepEqual([...audited].sort(), [...history.EMPLOYEE_CHANGE_HISTORY_ACTIONS].sort());
 });
@@ -416,13 +433,13 @@ test("RETIRED: the legacy updateEmployeeProfile Firebase callable is not exporte
 
 const selfCapabilities = require("../lib/eosWorkforce/reads/myWorkforceCapabilities.js");
 const WORKFORCE_IDS = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write",
-  "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"];
+  "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write", "admin.employeeFunctionalRole.write"];
 
 test("#17 readMyWorkforceCapabilities: the resolved capabilities intersected with the closed Workforce list, nothing else", async () => {
   assert.deepEqual([...selfCapabilities.WORKFORCE_CAPABILITY_IDS], WORKFORCE_IDS);
   assert.ok(Object.isFrozen(selfCapabilities.WORKFORCE_CAPABILITY_IDS));
   for (const [held, expected] of [
-    [["opportunity.read", "admin.employeeJobRole.write", "inventory.cycleCount.create", "admin.employeeProfile.write", "employee.record.read", "admin.principalAccess.read", "admin.userStatus.write", "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"], WORKFORCE_IDS],
+    [["opportunity.read", "admin.employeeJobRole.write", "inventory.cycleCount.create", "admin.employeeProfile.write", "employee.record.read", "admin.principalAccess.read", "admin.userStatus.write", "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write", "admin.employeeFunctionalRole.write"], WORKFORCE_IDS],
     [["employee.record.read", "opportunity.read"], ["employee.record.read"]],
     [["opportunity.read", "customer.record.read"], []],
     [[], []],

@@ -20,7 +20,7 @@ import { WORKFORCE_OPTIONAL_INPUT_OPERATIONS, WORKFORCE_READ_OPERATIONS } from "
 afterEach(cleanup);
 
 const ALL = ["employee.record.read", "admin.principalAccess.read", "admin.employeeProfile.write", "admin.employeeJobRole.write",
-  "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write"];
+  "admin.employeeWorkEligibility.write", "admin.employeeOperationalScope.write", "admin.employeeFunctionalRole.write"];
 const clientAnswering = (answer) => ({ call: vi.fn(async () => (typeof answer === "function" ? answer() : answer)) });
 
 describe("the closed list and the operation", () => {

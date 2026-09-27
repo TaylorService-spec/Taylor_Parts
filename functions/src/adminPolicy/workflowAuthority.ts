@@ -47,8 +47,11 @@ export function operationalWorkflowAuthority(
   objectKey: string | null,
 ): WorkflowEffectiveAuthority {
   return {
-    async authorize({ capabilityKey, recordId, guardKind }) {
-      const capability = await authorizeOperationalAction(reader, actor, { capabilityKey, recordId });
+    async authorize({ capabilityKey, recordId, guardKind, businessContext }) {
+      // ORDER: the capability -- global, or a scoped holding decided against the record's business context (lane
+      // SC) -- then its condition, inside the ONE entitled decision; the guard next; the FUNCTIONAL_ROLE narrowing
+      // last, in the engine, only after this has allowed.
+      const capability = await authorizeOperationalAction(reader, actor, { capabilityKey, recordId, businessContext });
       if (!capability.allowed) return { allowed: false, outcome: capability.outcome };
       if (guardKind === null) return { allowed: true, outcome: "ALLOWED" };
       if (guardKind !== "RECORD_ASSIGNMENT" || !isAssignmentRecordKind(objectKey)) {

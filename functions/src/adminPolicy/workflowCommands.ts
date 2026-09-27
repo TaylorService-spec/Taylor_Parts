@@ -78,6 +78,14 @@ export interface WorkflowActionInput {
   /** Role KEYS. Resolved to ids here; a key this tenant does not have is REPORTED, never invented. */
   readonly roleKeys?: readonly string[];
   /**
+   * Functional Role KEYS (FUNCTIONAL_ROLE bindings, migration 1762819200000). They only NARROW the action: the
+   * linked Employee must hold one of them, on top of the Security Role binding and the capability. Unlike a missing
+   * Security Role -- whose binding, dropped, narrows -- a missing Functional Role dropped would WIDEN the action, so a
+   * key this tenant does not have REFUSES the save (UNKNOWN_FUNCTIONAL_ROLE). An INACTIVE one is stored and refused
+   * at publish (INACTIVE_FUNCTIONAL_ROLE).
+   */
+  readonly functionalRoleKeys?: readonly string[];
+  /**
    * The capability this action IS (workflow_actions.capability_key). A binding never grants: the
    * runtime decision is binding AND effective authority over this key. A key the catalog does not
    * have is REPORTED (`unknownCapabilityKeys`) and stored as none, never invented; such a version
@@ -101,6 +109,8 @@ export interface WorkflowDraftResult {
   readonly stepCount: number;
   readonly actionCount: number;
   readonly bindingCount: number;
+  /** FUNCTIONAL_ROLE bindings written (each only narrows its action). */
+  readonly functionalBindingCount?: number;
   /** Role keys the definition binds that this tenant does not have. Named, never created. */
   readonly missingRoleKeys: readonly string[];
   /** Capability keys the definition names that the catalog does not have (or marks SUPERSEDED). */
@@ -142,7 +152,7 @@ export async function createWorkflowDraft(
   if (!object) throw new PolicyValidationError(`no object "${objectKey}"`);
 
   const definition = validateDefinitionShape(input.definition);
-  const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
+  const { roleIdByKey, functionalRoleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
@@ -162,7 +172,7 @@ export async function createWorkflowDraft(
       publishedAt: null,
       publishedBy: null,
     });
-    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys);
+    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys, functionalRoleIdByKey);
     await tx.appendAudit({
       ...auditBase(actor, "createWorkflowDraft", version.id, input.reason ?? null),
       before: null,
@@ -211,7 +221,7 @@ export async function createWorkflowVersion(
     definition = await readDefinition(repo, actor, sourceId);
   }
 
-  const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
+  const { roleIdByKey, functionalRoleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   const result = await repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     // Pass 8 serialization: the tenant's governance lock, the same one every Administration grant,
@@ -224,7 +234,7 @@ export async function createWorkflowVersion(
       publishedAt: null,
       publishedBy: null,
     });
-    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys);
+    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys, functionalRoleIdByKey);
     await tx.appendAudit({
       ...auditBase(actor, "createWorkflowVersion", version.id, input.reason ?? null),
       before: null,
@@ -271,7 +281,7 @@ export async function updateWorkflowDefinition(
   const workflow = found.workflow;
   const before = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
 
-  const { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
+  const { roleIdByKey, functionalRoleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys } = await resolveRoles(repo, actor, definition);
 
   // A new version rather than a destructive rewrite of the same rows: the store has no delete for
   // steps or actions, deliberately, so "replace the definition" is expressed as the next draft and
@@ -289,7 +299,7 @@ export async function updateWorkflowDefinition(
       publishedAt: null,
       publishedBy: null,
     });
-    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys);
+    const counts = await writeDefinition(tx, version.id, definition, roleIdByKey, knownCapabilityKeys, functionalRoleIdByKey);
     await tx.appendAudit({
       ...auditBase(actor, "updateWorkflowDefinition", version.id, input.reason ?? null),
       before: {
@@ -397,6 +407,14 @@ function validateDefinitionShape(definition: WorkflowDefinitionInput | undefined
         throw new PolicyValidationError(`action "${key}" names an empty Role key`);
       }
     }
+    if (a.functionalRoleKeys !== undefined && a.functionalRoleKeys !== null && !Array.isArray(a.functionalRoleKeys)) {
+      throw new PolicyValidationError(`action "${key}" functionalRoleKeys must be a list`);
+    }
+    for (const functionalRoleKey of a.functionalRoleKeys ?? []) {
+      if (typeof functionalRoleKey !== "string" || functionalRoleKey.trim().length === 0) {
+        throw new PolicyValidationError(`action "${key}" names an empty Functional Role key`);
+      }
+    }
   }
 
   return { steps, actions };
@@ -408,12 +426,24 @@ async function resolveRoles(
   definition: WorkflowDefinitionInput,
 ): Promise<{
   roleIdByKey: Map<string, string>;
+  functionalRoleIdByKey: Map<string, string>;
   missingRoleKeys: readonly string[];
   knownCapabilityKeys: ReadonlySet<string>;
   unknownCapabilityKeys: readonly string[];
 }> {
-  const [roles, catalog] = await Promise.all([repo.listRoles(actor.tenantId), repo.listCapabilities()]);
+  const [roles, catalog, functionalRoles] = await Promise.all([
+    repo.listRoles(actor.tenantId), repo.listCapabilities(), repo.listFunctionalRoles(actor.tenantId),
+  ]);
   const roleIdByKey = new Map(roles.map((r) => [r.key, r.id]));
+  const functionalRoleIdByKey = new Map(functionalRoles.map((f) => [f.key, f.id]));
+  const missingFunctionalRoleKeys = [
+    ...new Set(definition.actions.flatMap((a) => a.functionalRoleKeys ?? []).filter((k) => !functionalRoleIdByKey.has(k))),
+  ];
+  if (missingFunctionalRoleKeys.length > 0) {
+    // FAIL CLOSED: dropping a narrowing binding would widen the action, so the save is refused instead.
+    throw new PolicyValidationError(
+      `UNKNOWN_FUNCTIONAL_ROLE: ${missingFunctionalRoleKeys.join(", ")} ${missingFunctionalRoleKeys.length === 1 ? "is" : "are"} not a Functional Role of this tenant`);
+  }
   const missingRoleKeys = [
     ...new Set(
       definition.actions.flatMap((a) => a.roleKeys ?? []).filter((k) => !roleIdByKey.has(k)),
@@ -424,7 +454,7 @@ async function resolveRoles(
   const unknownCapabilityKeys = [
     ...new Set(definition.actions.map(actionCapabilityKey).filter((k): k is string => k !== null && !knownCapabilityKeys.has(k))),
   ];
-  return { roleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys };
+  return { roleIdByKey, functionalRoleIdByKey, missingRoleKeys, knownCapabilityKeys, unknownCapabilityKeys };
 }
 
 /** The capability an action input names, under either spelling. */
@@ -447,7 +477,8 @@ async function writeDefinition(
   definition: WorkflowDefinitionInput,
   roleIdByKey: ReadonlyMap<string, string>,
   knownCapabilityKeys: ReadonlySet<string>,
-): Promise<{ stepCount: number; actionCount: number; bindingCount: number }> {
+  functionalRoleIdByKey: ReadonlyMap<string, string> = new Map(),
+): Promise<{ stepCount: number; actionCount: number; bindingCount: number; functionalBindingCount: number }> {
   for (const s of definition.steps) {
     await tx.createWorkflowStep({
       workflowVersionId: versionId,
@@ -458,6 +489,7 @@ async function writeDefinition(
     });
   }
   let bindingCount = 0;
+  let functionalBindingCount = 0;
   for (const a of definition.actions) {
     await tx.createWorkflowAction({
       workflowVersionId: versionId,
@@ -476,8 +508,17 @@ async function writeDefinition(
       await tx.createWorkflowRoleBinding({ workflowVersionId: versionId, actionKey: a.key, roleId });
       bindingCount += 1;
     }
+    for (const key of new Set(a.functionalRoleKeys ?? [])) {
+      const functionalRoleId = functionalRoleIdByKey.get(key);
+      // Unreachable after resolveRoles, which refuses an unknown key; never silently dropped.
+      if (!functionalRoleId) throw new PolicyValidationError(`UNKNOWN_FUNCTIONAL_ROLE: ${key} is not a Functional Role of this tenant`);
+      await tx.createWorkflowRoleBinding({
+        workflowVersionId: versionId, actionKey: a.key, roleId: null, functionalRoleId, bindingKind: "FUNCTIONAL_ROLE",
+      });
+      functionalBindingCount += 1;
+    }
   }
-  return { stepCount: definition.steps.length, actionCount: definition.actions.length, bindingCount };
+  return { stepCount: definition.steps.length, actionCount: definition.actions.length, bindingCount, functionalBindingCount };
 }
 
 async function readDefinition(
@@ -486,8 +527,9 @@ async function readDefinition(
   versionId: string,
 ): Promise<WorkflowDefinitionInput> {
   const loaded = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
-  const roles = await repo.listRoles(actor.tenantId);
+  const [roles, functionalRoles] = await Promise.all([repo.listRoles(actor.tenantId), repo.listFunctionalRoles(actor.tenantId)]);
   const keyById = new Map(roles.map((r) => [r.id, r.key]));
+  const functionalKeyById = new Map(functionalRoles.map((f) => [f.id, f.key]));
   return {
     steps: loaded.steps.map((s) => ({ key: s.key, label: s.label, initial: s.initial, terminal: s.terminal })),
     actions: loaded.actions.map((a) => ({
@@ -499,8 +541,12 @@ async function readDefinition(
       capabilityKey: a.capabilityKey ?? null,
       guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
       roleKeys: loaded.bindings
-        .filter((b) => b.actionKey === a.key)
-        .map((b) => keyById.get(b.roleId))
+        .filter((b) => b.actionKey === a.key && (b.bindingKind ?? "SECURITY_ROLE") === "SECURITY_ROLE")
+        .map((b) => keyById.get(b.roleId ?? ""))
+        .filter((k): k is string => typeof k === "string"),
+      functionalRoleKeys: loaded.bindings
+        .filter((b) => b.actionKey === a.key && b.bindingKind === "FUNCTIONAL_ROLE")
+        .map((b) => functionalKeyById.get(b.functionalRoleId ?? ""))
         .filter((k): k is string => typeof k === "string"),
     })),
   };

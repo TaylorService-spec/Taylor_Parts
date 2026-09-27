@@ -20,7 +20,10 @@
 //                               hold. A binding never grants, so the binding is stale; publishing it
 //                               would present an authority the runtime will refuse
 //   UNKNOWN_ROLE                a binding names a Role this tenant does not have
-//   UNSUPPORTED_BINDING_KIND    a FUNCTIONAL_ROLE binding (documented extension point; no evaluator)
+//   UNSUPPORTED_BINDING_KIND    a binding kind outside SECURITY_ROLE / FUNCTIONAL_ROLE
+//   UNKNOWN_FUNCTIONAL_ROLE     a FUNCTIONAL_ROLE binding names a Functional Role this tenant does not have
+//   INACTIVE_FUNCTIONAL_ROLE    a FUNCTIONAL_ROLE binding names an INACTIVE Functional Role: nobody can hold it,
+//                               so the action would be inert for everyone (a FUNCTIONAL_ROLE binding only narrows)
 //   BINDING_UNKNOWN_ACTION      a binding names an action the version does not have
 //   INVALID_GUARD               a guard outside the closed list, or RECORD_ASSIGNMENT on an Object
 //                               the evaluator has no assignment relation for
@@ -52,6 +55,8 @@ export const WORKFLOW_VALIDATION_ERROR_CODES = Object.freeze([
   "BINDING_WITHOUT_CAPABILITY",
   "UNKNOWN_ROLE",
   "UNSUPPORTED_BINDING_KIND",
+  "UNKNOWN_FUNCTIONAL_ROLE",
+  "INACTIVE_FUNCTIONAL_ROLE",
   "BINDING_UNKNOWN_ACTION",
   "INVALID_GUARD",
   "MISSING_REQUIRED_GUARD",
@@ -74,6 +79,7 @@ export interface WorkflowValidationIssue {
   readonly actionKey?: string;
   readonly roleKey?: string;
   readonly roleKeys?: readonly string[];
+  readonly functionalRoleKey?: string;
   readonly capabilityKey?: string;
 }
 
@@ -96,7 +102,11 @@ export const REQUIRED_GUARD_BY_CAPABILITY: Readonly<Record<string, "RECORD_ASSIG
   ),
 );
 
-/** A definition in validation form: Role KEYS (null = a binding whose Role id this tenant lacks). */
+/**
+ * A definition in validation form: Role KEYS (null = a binding whose Role id this tenant lacks). A FUNCTIONAL_ROLE
+ * binding carries `roleKey: null` (it names no Security Role) and its Functional Role in `functionalRoleKey` (null =
+ * one this tenant lacks); `roleRef` is then the Functional Role reference, for the message.
+ */
 export interface WorkflowDefinitionView {
   readonly objectKey: string | null;
   readonly steps: readonly { readonly key: string; readonly initial: boolean; readonly terminal: boolean }[];
@@ -112,6 +122,7 @@ export interface WorkflowDefinitionView {
     readonly roleKey: string | null;
     readonly roleRef: string;
     readonly bindingKind: string;
+    readonly functionalRoleKey?: string | null;
   }[];
 }
 
@@ -123,6 +134,8 @@ export interface WorkflowValidationContext {
   readonly roleKeys: ReadonlySet<string>;
   /** Role key -> the capability keys that Role holds in this tenant (role_capabilities). */
   readonly roleCapabilities: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Functional Role key -> its catalog status. Absent = the tenant has no Functional Role. */
+  readonly functionalRoles?: ReadonlyMap<string, { readonly status: string }>;
 }
 
 const issue = (code: WorkflowValidationCode, message: string, extra: Partial<WorkflowValidationIssue> = {}): WorkflowValidationIssue =>
@@ -220,8 +233,21 @@ export function validateWorkflowDefinition(
       out.push(issue("BINDING_UNKNOWN_ACTION", `a binding names action "${b.actionKey}", which this version does not have`, { actionKey: b.actionKey }));
       continue;
     }
+    if (b.bindingKind === "FUNCTIONAL_ROLE") {
+      // A FUNCTIONAL_ROLE binding NARROWS and never grants, so there is no capability to check against it: the
+      // Security Role bindings and the capability decide who may act, and this one only adds "and holds X".
+      const functionalRole = b.functionalRoleKey ? context.functionalRoles?.get(b.functionalRoleKey) : undefined;
+      if (!functionalRole) {
+        out.push(issue("UNKNOWN_FUNCTIONAL_ROLE", `action "${b.actionKey}" is bound to Functional Role "${b.functionalRoleKey ?? b.roleRef}", which this tenant does not have`,
+          { actionKey: b.actionKey, functionalRoleKey: b.functionalRoleKey ?? b.roleRef }));
+      } else if (functionalRole.status !== "ACTIVE") {
+        out.push(issue("INACTIVE_FUNCTIONAL_ROLE", `action "${b.actionKey}" is bound to Functional Role "${b.functionalRoleKey}", which is ${functionalRole.status}; nobody can hold it`,
+          { actionKey: b.actionKey, functionalRoleKey: b.functionalRoleKey as string }));
+      }
+      continue;
+    }
     if (b.bindingKind !== "SECURITY_ROLE") {
-      out.push(issue("UNSUPPORTED_BINDING_KIND", `action "${b.actionKey}" has a ${b.bindingKind} binding; only SECURITY_ROLE is evaluable today`, { actionKey: b.actionKey }));
+      out.push(issue("UNSUPPORTED_BINDING_KIND", `action "${b.actionKey}" has a ${b.bindingKind} binding; only SECURITY_ROLE and FUNCTIONAL_ROLE are evaluable`, { actionKey: b.actionKey }));
       continue;
     }
     if (b.roleKey === null || !context.roleKeys.has(b.roleKey)) {
@@ -269,8 +295,9 @@ export async function loadWorkflowValidationContext(
   reader: PolicyReader,
   tenantId: TenantId,
 ): Promise<WorkflowValidationContext> {
-  const [objects, catalog, roles, grants] = await Promise.all([
+  const [objects, catalog, roles, grants, functionalRoles] = await Promise.all([
     reader.listObjects(tenantId), reader.listCapabilities(), reader.listRoles(tenantId), reader.listRoleCapabilities(tenantId),
+    reader.listFunctionalRoles(tenantId),
   ]);
   const keyByCapabilityId = new Map(catalog.map((c) => [c.id, c.key]));
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
@@ -286,6 +313,7 @@ export async function loadWorkflowValidationContext(
     capabilities: new Map(catalog.map((c) => [c.key, { superseded: isSupersededCapabilityDescription(c.description) }])),
     roleKeys: new Set(roles.map((r) => r.key)),
     roleCapabilities,
+    functionalRoles: new Map(functionalRoles.map((f) => [f.key, { status: f.status }])),
   };
 }
 
@@ -296,8 +324,9 @@ export async function storedDefinitionView(
   objectKey: string | null,
   definition: WorkflowVersionDefinition,
 ): Promise<WorkflowDefinitionView> {
-  const roles = await reader.listRoles(tenantId);
+  const [roles, functionalRoles] = await Promise.all([reader.listRoles(tenantId), reader.listFunctionalRoles(tenantId)]);
   const keyById = new Map(roles.map((r) => [r.id, r.key]));
+  const functionalKeyById = new Map(functionalRoles.map((f) => [f.id, f.key]));
   return {
     objectKey,
     steps: definition.steps.map((s) => ({ key: s.key, initial: s.initial, terminal: s.terminal })),
@@ -306,9 +335,14 @@ export async function storedDefinitionView(
       capabilityKey: a.capabilityKey ?? null,
       guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
     })),
-    bindings: definition.bindings.map((b) => ({
-      actionKey: b.actionKey, roleKey: keyById.get(b.roleId) ?? null, roleRef: b.roleId,
-      bindingKind: b.bindingKind ?? "SECURITY_ROLE",
-    })),
+    bindings: definition.bindings.map((b) => (b.bindingKind ?? "SECURITY_ROLE") === "FUNCTIONAL_ROLE"
+      ? {
+        actionKey: b.actionKey, roleKey: null, roleRef: b.functionalRoleId ?? "(none)", bindingKind: "FUNCTIONAL_ROLE",
+        functionalRoleKey: functionalKeyById.get(b.functionalRoleId ?? "") ?? null,
+      }
+      : {
+        actionKey: b.actionKey, roleKey: keyById.get(b.roleId ?? "") ?? null, roleRef: b.roleId ?? "(none)",
+        bindingKind: b.bindingKind ?? "SECURITY_ROLE",
+      }),
   };
 }

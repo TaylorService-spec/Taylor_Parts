@@ -39,7 +39,9 @@ import {
   loadWorkflowVersionDefinition,
   type WorkflowAuthorizationDecision,
   type WorkflowEffectiveAuthority,
+  type WorkflowFunctionalRoleFactsProvider,
 } from "./workflowEngine";
+import { holdingAdmits, type BusinessContext } from "./assignmentScopeRuntime";
 import type { PolicyReader, PolicyRepository } from "./policyRepository";
 import type { TenantId, WorkflowInstanceRecord, WorkflowRecord } from "./types";
 
@@ -124,6 +126,13 @@ export interface WorkflowRuntimeActor {
   readonly principalId: string;
   /** QUALIFYING Security Role keys from the access resolver. */
   readonly heldRoleKeys: readonly string[];
+  /**
+   * Security Roles held ONLY through a scoped assignment, WITH their scope (lane SC: the sourceRole, scopeType and
+   * scopeValue of each scopedHeld holding). A scoped Role satisfies the SECURITY_ROLE binding rule ONLY for a record
+   * whose server-derived business context admits its scope (Pass 9 S5); outside its scope it does not count, even
+   * when the capability itself is held globally through some other, unbound Role.
+   */
+  readonly scopedRoles?: readonly { readonly roleKey: string; readonly scopeType: string; readonly scopeValue: string }[];
 }
 
 export interface TransitionWorkflowInstanceInput {
@@ -148,6 +157,14 @@ export async function transitionWorkflowInstance(
   actor: WorkflowRuntimeActor,
   input: TransitionWorkflowInstanceInput,
   authority: WorkflowEffectiveAuthority,
+  /**
+   * The acting Principal's Functional Role facts (eosOps/functionalRoleFacts.postgresWorkflowFunctionalRoleFacts),
+   * composed by the transport. Consulted only for an action with a FUNCTIONAL_ROLE binding, which is REFUSED when
+   * this is absent -- never decided without it.
+   */
+  functionalRoles?: WorkflowFunctionalRoleFactsProvider,
+  /** The record's business context, resolved server-side by the transport from the governed record. */
+  businessContext?: BusinessContext,
 ): Promise<WorkflowTransitionResult> {
   const objectKey = nonEmpty(input.objectKey, "objectKey");
   const recordId = nonEmpty(input.recordId, "recordId");
@@ -158,10 +175,14 @@ export async function transitionWorkflowInstance(
   // THE PINNED VERSION, never the active one.
   const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, instance.workflowVersionId);
   const roles = await repo.listRoles(actor.tenantId);
-  const held = new Set(actor.heldRoleKeys ?? []);
+  const actionCapability = definition.actions.find((a) => a.key === actionKey)?.capabilityKey ?? "";
+  const admittedScoped = (actor.scopedRoles ?? [])
+    .filter((s) => holdingAdmits({ scopeType: s.scopeType as never, scopeValue: s.scopeValue, capabilityKey: actionCapability }, businessContext) === "ADMITTED")
+    .map((s) => s.roleKey);
+  const held = new Set([...(actor.heldRoleKeys ?? []), ...admittedScoped]);
   const roleIds = roles.filter((r) => held.has(r.key)).map((r) => r.id);
   const decision = await authorizeWorkflowAction(definition, instance, actionKey, {
-    tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority,
+    tenantId: actor.tenantId, principalId: actor.principalId, roleIds, recordId, authority, functionalRoles, businessContext,
   });
   if (!decision.allowed) {
     throw new WorkflowRefusal("WORKFLOW_ACTION_REFUSED",

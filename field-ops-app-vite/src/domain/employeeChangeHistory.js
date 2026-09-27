@@ -33,6 +33,9 @@ export const GOVERNED_EMPLOYEE_HISTORY_ACTION = Object.freeze({
   PRINCIPAL_LINK_ESTABLISH: "employee.principalLink.establish",
   PRINCIPAL_LINK_REVOKE: "employee.principalLink.revoke",
   PRINCIPAL_LINK_RELINK: "employee.principalLink.relink",
+  // Functional Role assignment changes (lane FR). A business responsibility, never access.
+  FUNCTIONAL_ROLE_ASSIGN: "employee.functionalRole.assign",
+  FUNCTIONAL_ROLE_END: "employee.functionalRole.end",
 });
 
 /** Action -> words, for the Field / Event column when an event changed no single field. */
@@ -50,7 +53,12 @@ export const GOVERNED_EMPLOYEE_HISTORY_EVENT_LABELS = Object.freeze({
   [GOVERNED_EMPLOYEE_HISTORY_ACTION.PRINCIPAL_LINK_ESTABLISH]: "User access linked",
   [GOVERNED_EMPLOYEE_HISTORY_ACTION.PRINCIPAL_LINK_REVOKE]: "User access removed",
   [GOVERNED_EMPLOYEE_HISTORY_ACTION.PRINCIPAL_LINK_RELINK]: "User access changed",
+  [GOVERNED_EMPLOYEE_HISTORY_ACTION.FUNCTIONAL_ROLE_ASSIGN]: "Functional Role assigned",
+  [GOVERNED_EMPLOYEE_HISTORY_ACTION.FUNCTIONAL_ROLE_END]: "Functional Role ended",
 });
+
+/** The field key a Functional Role change is filed under: its own authority, not a profile key. */
+export const FUNCTIONAL_ROLE_HISTORY_FIELD_KEY = "functionalRole";
 
 /** The field key a Job Role change is filed under. Not an Employee profile key: the Job Role is its own authority. */
 export const JOB_ROLE_HISTORY_FIELD_KEY = "jobRole";
@@ -59,6 +67,7 @@ export const JOB_ROLE_HISTORY_FIELD_KEY = "jobRole";
 export const GOVERNED_EMPLOYEE_HISTORY_FIELD_LABELS = Object.freeze({
   ...EMPLOYEE_FIELD_LABELS,
   [JOB_ROLE_HISTORY_FIELD_KEY]: "Job Role",
+  [FUNCTIONAL_ROLE_HISTORY_FIELD_KEY]: "Functional Role",
 });
 
 const PROFILE_ORDER = PROFILE_FIELDS.map((f) => f.key);
@@ -124,6 +133,11 @@ export function governedHistoryRowsForItem(item) {
       return [row("operatingCompanyId", companyWords(before), companyWords(after))];
     case GOVERNED_EMPLOYEE_HISTORY_ACTION.JOB_ROLE_ASSIGN:
       return [row(JOB_ROLE_HISTORY_FIELD_KEY, jobRoleWords(before), jobRoleWords(after))];
+    // The server projects the Functional Role's KEY (a stable readable identifier) and the period.
+    case GOVERNED_EMPLOYEE_HISTORY_ACTION.FUNCTIONAL_ROLE_ASSIGN:
+      return [row(FUNCTIONAL_ROLE_HISTORY_FIELD_KEY, null, after?.functionalRoleKey ?? after?.functionalRoleId ?? null)];
+    case GOVERNED_EMPLOYEE_HISTORY_ACTION.FUNCTIONAL_ROLE_END:
+      return [row(FUNCTIONAL_ROLE_HISTORY_FIELD_KEY, before?.functionalRoleKey ?? before?.functionalRoleId ?? null, null)];
     default:
       return [];
   }

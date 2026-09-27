@@ -296,7 +296,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   //
   // RE-PINNED 2026-09-24 at Phase 3 integration: 76 -> 79, the three ids registered by 9fa82e94.
   // RE-PINNED 2026-09-26: 79 -> 80, admin.securityPolicy.write (migration 1762646400000).
-  assert.equal(VOCABULARY.size, 80);
+  // RE-PINNED 2026-09-26: 80 -> 81, admin.employeeFunctionalRole.write (migration 1762819200000; granted to nobody).
+  assert.equal(VOCABULARY.size, 81);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

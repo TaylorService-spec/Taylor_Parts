@@ -128,7 +128,9 @@ export default function WorkflowVersionPanel({ api, workflow, versionId, onVersi
                 <td className="fo-muted">{a.guardKind ?? "—"}</td>
                 <td className="fo-muted">
                   {a.bindings.length === 0 ? "no Role bound" : a.bindings.map((b) => (
-                    b.bindingKind === "SECURITY_ROLE" ? b.roleKey : `${b.roleKey} (${b.bindingKind})`
+                    b.bindingKind === "SECURITY_ROLE" ? b.roleKey
+                      : b.bindingKind === "FUNCTIONAL_ROLE" ? `Functional Role ${b.functionalRoleKey} (narrows)`
+                        : `${b.roleKey ?? b.functionalRoleKey} (${b.bindingKind})`
                   )).join(", ")}
                 </td>
               </tr>

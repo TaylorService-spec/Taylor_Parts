@@ -84,7 +84,9 @@ export interface WorkflowVersionView {
     capabilityKey: string | null;
     guardKind: string | null;
     roleKeys: readonly string[];
-    bindings: readonly { roleKey: string; bindingKind: string }[];
+    /** FUNCTIONAL_ROLE bindings, by Functional Role key. They narrow the action; they never grant it. */
+    functionalRoleKeys: readonly string[];
+    bindings: readonly { roleKey: string | null; functionalRoleKey: string | null; bindingKind: string }[];
   }[];
 }
 
@@ -205,8 +207,9 @@ export async function readWorkflowVersionView(
 ): Promise<WorkflowVersionView> {
   const { workflow, version } = await findWorkflowVersion(repo, actor, versionId);
   const definition = await loadWorkflowVersionDefinition(repo, actor.tenantId, versionId);
-  const roles = await repo.listRoles(actor.tenantId);
+  const [roles, functionalRoles] = await Promise.all([repo.listRoles(actor.tenantId), repo.listFunctionalRoles(actor.tenantId)]);
   const keyById = new Map(roles.map((r) => [r.id, r.key]));
+  const functionalKeyById = new Map(functionalRoles.map((f) => [f.id, f.key]));
   return {
     workflow,
     version,
@@ -215,8 +218,10 @@ export async function readWorkflowVersionView(
     actions: definition.actions.map((a) => {
       const bindings = definition.bindings
         .filter((b) => b.actionKey === a.key)
-        .map((b) => ({ roleKey: keyById.get(b.roleId) ?? b.roleId, bindingKind: b.bindingKind ?? "SECURITY_ROLE" }))
-        .sort((x, y) => x.roleKey.localeCompare(y.roleKey));
+        .map((b) => (b.bindingKind ?? "SECURITY_ROLE") === "FUNCTIONAL_ROLE"
+          ? { roleKey: null, functionalRoleKey: functionalKeyById.get(b.functionalRoleId ?? "") ?? b.functionalRoleId ?? null, bindingKind: "FUNCTIONAL_ROLE" }
+          : { roleKey: keyById.get(b.roleId ?? "") ?? b.roleId, functionalRoleKey: null, bindingKind: b.bindingKind ?? "SECURITY_ROLE" })
+        .sort((x, y) => `${x.bindingKind}|${x.roleKey ?? x.functionalRoleKey ?? ""}`.localeCompare(`${y.bindingKind}|${y.roleKey ?? y.functionalRoleKey ?? ""}`));
       return {
         key: a.key,
         label: a.label,
@@ -225,7 +230,8 @@ export async function readWorkflowVersionView(
         requiresOwnAssignment: a.requiresOwnAssignment,
         capabilityKey: a.capabilityKey ?? null,
         guardKind: a.guardKind ?? (a.requiresOwnAssignment ? "RECORD_ASSIGNMENT" : null),
-        roleKeys: bindings.filter((b) => b.bindingKind === "SECURITY_ROLE").map((b) => b.roleKey),
+        roleKeys: bindings.filter((b) => b.bindingKind === "SECURITY_ROLE").map((b) => b.roleKey as string),
+        functionalRoleKeys: bindings.filter((b) => b.bindingKind === "FUNCTIONAL_ROLE").map((b) => b.functionalRoleKey as string),
         bindings,
       };
     }),
@@ -246,12 +252,21 @@ async function validateUnsavedDefinition(repo: PolicyRepository, actor: AdminAct
       key: String(a?.key ?? ""), from: String(a?.from ?? ""), to: String(a?.to ?? ""),
       capabilityKey: actionCapabilityKey(a), guardKind: actionGuardKind(a),
     })),
-    bindings: definition.actions.flatMap((a) => (a?.roleKeys ?? []).map((roleKey: string) => ({
-      actionKey: String(a?.key ?? ""),
-      roleKey: context.roleKeys.has(roleKey) ? roleKey : null,
-      roleRef: roleKey,
-      bindingKind: "SECURITY_ROLE",
-    }))),
+    bindings: definition.actions.flatMap((a) => [
+      ...(a?.roleKeys ?? []).map((roleKey: string) => ({
+        actionKey: String(a?.key ?? ""),
+        roleKey: context.roleKeys.has(roleKey) ? roleKey : null,
+        roleRef: roleKey,
+        bindingKind: "SECURITY_ROLE",
+      })),
+      ...(Array.isArray(a?.functionalRoleKeys) ? a.functionalRoleKeys : []).map((functionalRoleKey: string) => ({
+        actionKey: String(a?.key ?? ""),
+        roleKey: null,
+        roleRef: String(functionalRoleKey),
+        bindingKind: "FUNCTIONAL_ROLE",
+        functionalRoleKey: context.functionalRoles?.has(functionalRoleKey) ? functionalRoleKey : null,
+      })),
+    ]),
   }, context);
 }
 

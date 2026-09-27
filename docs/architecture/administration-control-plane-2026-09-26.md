@@ -387,3 +387,55 @@ Effective authority is now Principal → Security Role assignment → capability
 
 ### Effective access
 `explainEffectiveAccess` adds `scopedHeld`, `assignments.scoped` (per supported scoped assignment: capabilities granted within the scope, inert ones), per action `scopedSources: [{roleKey, scopeType, scopeValue, condition, result, reasonCode}]` (the evaluator's decision for a record inside that scope), and result `SCOPED` (`SCOPE_CONTEXT_REQUIRED`). `assignments.excluded` now reports only `STALE`, `INACTIVE` and `SCOPE_UNSUPPORTED`.
+
+## 13. Functional Role (lane FR, migration 1762819200000)
+
+Owner: Job Role ≠ Security Role ≠ Functional Role. A **Functional Role** is an Employee's business responsibility. It **grants nothing**. The capability-granting Security Roles that older prose calls "functional Roles" (cycle-count counter/reconciler, bin administrator, put-away operator, …) are untouched and stay Security Roles; terminology ruling R3 is pending.
+
+**Schema** (`eos_workforce`, the `job_roles` / `employee_work_eligibility` shapes):
+- `functional_roles (tenant_id, id 'fr_…', key, name, description, status ACTIVE|INACTIVE, created/updated_by/at)`. The key is immutable and unique per tenant, compared case- and punctuation-insensitively. A key may not collide with a Security Role key of the tenant or with a Work Eligibility code; the database enforces this in both directions (`functional_roles_guard`, `roles_key_not_functional_role`). Rows are never deleted. The catalog starts empty.
+- `employee_functional_role_assignments (…, effective_from, effective_to, assignment_source 'ADMINISTRATION', assigned_by/at, reason NOT NULL, ended_by/at, end_reason)`. The Employee and Functional Role FKs are tenant-composite. An Employee may hold many current Functional Roles, but at most one open row per (Employee, Functional Role), with no overlapping periods. The table is append-only: the only permitted update ends a row, once. An INACTIVE Functional Role is refused.
+- `workflow_role_bindings.functional_role_id` (tenant-composite FK). `role_id` is now nullable. `workflow_role_bindings_target_matches_kind` requires exactly one target, the one the binding kind names.
+- `admin.employeeFunctionalRole.write` (object `employee`, action `setFunctionalRole`, ADMIN_ACTION):
+  - It is registered but **granted to no Role**.
+  - It is not a bootstrap grant; the comparable Employee keys are not bootstrap grants either.
+  - It is not in the legacy `PERMISSION_CATALOG`, because the legacy admin Role composes the whole catalog.
+  - Holders are configured through Administration (`grantObjectActionToRole employee/setFunctionalRole`). Pass 8 applies: the grant goes to a Role the granting administrator does not hold, and that Role is assigned to another principal.
+
+**Workforce API** (`/workforce/employees`; each command takes the tenant governance lock and writes exactly one audit event, and a NO_CHANGE writes none):
+
+| Operation | Gate | Notes |
+|---|---|---|
+| `listFunctionalRoles {status?}` | employee.record.read | Includes `currentHolderCount`. |
+| `listFunctionalRoleHolders {functionalRoleId}` | employee.record.read | Current and scheduled holders. |
+| `listEmployeeFunctionalRoles {employeeId}` | employee.record.read | `current`, `scheduled`, history. |
+| `listFunctionalRoleHistory {functionalRoleId, limit?}` | employee.record.read | Catalog events and assignment events. |
+| `createFunctionalRole {key, name, description?, reason?}` | admin.employeeFunctionalRole.write | `FUNCTIONAL_ROLE_KEY_COLLISION`, `…_KEY_TAKEN`, `…_NAME_TAKEN`. |
+| `updateFunctionalRoleMetadata {functionalRoleId, name?, description?, reason?}` | same | The key never changes. |
+| `setFunctionalRoleStatus {functionalRoleId, status, reason}` | same | Deactivation **fails closed**: `FUNCTIONAL_ROLE_HAS_CURRENT_HOLDERS` while any current or scheduled holder exists, and `FUNCTIONAL_ROLE_BOUND_TO_ACTIVE_WORKFLOW` while an ACTIVE version binds the role. Nothing is ended implicitly. |
+| `assignEmployeeFunctionalRole {employeeId, functionalRoleId, reason, effectiveFrom?}` | same | `FUNCTIONAL_ROLE_INACTIVE`, `FUNCTIONAL_ROLE_SELF_ASSIGNMENT` (refused for your own linked Employee), `…_ASSIGNMENT_OVERLAP`. `effectiveFrom` cannot be in the past and can be at most 366 days ahead. |
+| `endEmployeeFunctionalRoleAssignment {employeeId, assignmentId, reason, effectiveTo?}` | same | Ending an assignment that has not started cancels it: the period becomes zero-length. |
+
+The Employee change history adds `employee.functionalRole.assign` and `employee.functionalRole.end`. `readMyWorkforceCapabilities` may now return the new key.
+
+**Workflow binding.** `binding_kind = FUNCTIONAL_ROLE` is now SUPPORTED. The runtime rule (`workflowEngine.authorizeWorkflowAction`) is:
+
+> **SECURITY_ROLE binding** (unchanged) **AND effective authority** over the action's capability (the same evaluator) **AND**, if the action has any FUNCTIONAL_ROLE binding, **the linked Employee currently holds one of them**.
+
+- The Functional Role facts come from `eosOps/functionalRoleFacts.postgresWorkflowFunctionalRoleFacts`.
+- Missing facts refuse the action (`functionalRoleFactsUnavailable`), and so does a Principal with no linked Employee (`employeeLinkRequired`).
+- A FUNCTIONAL_ROLE-only binding never widens: with no Security Role bound, the action is still refused with `notBoundToRole`.
+- An action with no FUNCTIONAL_ROLE binding is decided exactly as before.
+
+Drafts take `functionalRoleKeys` per action:
+- An unknown key **refuses the save** (`UNKNOWN_FUNCTIONAL_ROLE`), because dropping a narrowing binding would widen the action.
+- Publish validation adds the codes `UNKNOWN_FUNCTIONAL_ROLE` and `INACTIVE_FUNCTIONAL_ROLE`.
+
+`listPrincipalWorkflowResponsibilities` entries carry `requiredFunctionalRoles`, `viaFunctionalRoles` and a `source`:
+- `WORKFLOW_BINDING_AND_EFFECTIVE_AUTHORITY`;
+- `WORKFLOW_BINDING_FUNCTIONAL_ROLE_AND_EFFECTIVE_AUTHORITY`;
+- `FUNCTIONAL_ROLE_BINDING_ONLY`, meaning the principal holds a bound Functional Role but has no Security Role binding. These entries always appear under `boundWithoutAuthority`.
+
+**Effective access.** `explainEffectiveAccess` adds `employeeFacts: {functionalRoles:[…], grantsCapabilities:false}`. These facts are read after every decision. The PostgreSQL suite proves that assigning a Functional Role leaves every capability, surface and action decision unchanged.
+
+**Not in scope:** seeding the catalog; any Security Role reclassification; assignee pickers; applying the migration anywhere but local test databases.

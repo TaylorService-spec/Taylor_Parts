@@ -82,7 +82,8 @@ test("this change adds no migration: the applied set is the one the base commit 
   // Raised 2026-09-26 for the Administration control plane (1762646400000) -- an unrelated lane's
   // migration; the Manufacturer assertion above is what this test is about.
   // Raised again for the workflow control plane (1762732800000), likewise unrelated.
-  assert.ok(Number(newest.split("_")[0]) <= 1762732800000, `an unexpected newest migration ${newest}`);
+  // Raised again for the Functional Role authority (1762819200000), likewise unrelated.
+  assert.ok(Number(newest.split("_")[0]) <= 1762819200000, `an unexpected newest migration ${newest}`);
 });
 
 // ════════════════════ no Firebase, no delete, not wired ════════════════════
