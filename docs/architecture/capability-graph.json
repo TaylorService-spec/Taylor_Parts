@@ -3173,11 +3173,10 @@
           "field-ops-app-vite/src/access/compatibilityRoles.ts",
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
           "field-ops-app-vite/src/access/governedSurfaceCapabilities.js",
-          "field-ops-app-vite/src/access/objectPermissionMap.js",
-          "field-ops-app-vite/src/modules/administration/UserAccessActions.jsx"
+          "field-ops-app-vite/src/access/objectPermissionMap.js"
         ],
         "serverReferenceCount": 6,
-        "clientReferenceCount": 5,
+        "clientReferenceCount": 4,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3325,10 +3324,11 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
+          "field-ops-app-vite/src/modules/administration/EmployeeWorkAuthorization.jsx"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
@@ -3353,10 +3353,11 @@
         ],
         "clientReferences": [
           "field-ops-app-vite/src/access/governedBusinessRoles.ts",
-          "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
+          "field-ops-app-vite/src/access/workforceCapabilityAccess.js",
+          "field-ops-app-vite/src/modules/administration/EmployeeWorkAuthorization.jsx"
         ],
         "serverReferenceCount": 5,
-        "clientReferenceCount": 2,
+        "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },
       "environmentActivation": {
