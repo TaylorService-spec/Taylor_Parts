@@ -1,11 +1,13 @@
 // Pass 10 Administration UI truthfulness repair (D1-D4): the explanatory text on the deployed
 // Administration screens must describe the deployed model, not the Firebase-era or pre-policy-store one.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { readFileSync, existsSync } from "node:fs";
 import AdminAuditLogs from "../src/modules/administration/AdminAuditLogs.jsx";
 import { principalLabel } from "../src/modules/administration/AdminPermissionPreview.jsx";
+import { principalLabel as sharedPrincipalLabel, UNNAMED_PRINCIPAL } from "../src/modules/administration/principalDisplay.js";
+import SecurityRoleDetail from "../src/modules/administration/SecurityRoleDetail.jsx";
 
 afterEach(cleanup);
 const read = (p) => readFileSync(p, "utf8");
@@ -70,6 +72,49 @@ describe("D4 Permission Preview: human-facing Principal label never exposes the 
   });
   it("a named Principal still shows its trimmed name", () => {
     expect(principalLabel({ id: "z", displayName: "  Avery Admin " })).toBe("Avery Admin");
+  });
+});
+
+describe("D5 Security Role holders: human-facing label never exposes the internal id", () => {
+  const detail = {
+    roleKey: "dispatcher", name: "Dispatcher", description: null, protected: false,
+    holders: [
+      { principalId: "11111111-2222-4333-8444-555555555555", displayName: null, assignmentId: "a-1", scopeType: "global", scopeValue: null, grantedAt: "2026-09-14T00:00:00Z", externalSubject: "login-subject-must-not-render" },
+      { principalId: "99999999-8888-4777-8666-555555555555", displayName: "Emerson Fixture", assignmentId: "a-2", scopeType: "global", scopeValue: null, grantedAt: "2026-09-16T00:00:00Z" },
+    ],
+    actions: [],
+  };
+  const api = {
+    getSecurityRoleDetail: vi.fn(async () => ({ ok: true, data: detail })),
+    listRoleCapabilityDecisionHistory: vi.fn(async () => ({ ok: true, data: [] })),
+    listSupportedConditionKinds: vi.fn(async () => ({ ok: true, data: { kinds: [] } })),
+  };
+  it("an unnamed holder reads 'Unnamed Principal'; a named holder keeps its name; the id is only a labelled diagnostic", async () => {
+    render(<SecurityRoleDetail api={api} roleKey="dispatcher" />);
+    const table = await screen.findByRole("table", { name: "Holders" });
+    const [unnamed, named] = [...table.querySelectorAll("tbody tr")].map((tr) => tr.querySelector("td"));
+    // The human-facing label: the cell's own text, before the diagnostic span.
+    expect(unnamed.firstChild.textContent.trim()).toBe("Unnamed Principal");
+    expect(named.firstChild.textContent.trim()).toBe("Emerson Fixture");
+    expect(unnamed.firstChild.textContent).not.toMatch(/11111111/);
+    // The internal id appears only inside the explicitly labelled diagnostic, and the login subject never.
+    expect(unnamed.querySelector("span").textContent).toMatch(/^ID 11111111-2222-4333-8444-555555555555$/);
+    expect(table.textContent).not.toMatch(/login-subject-must-not-render/);
+  });
+  it("Permission Preview and Security Role detail share ONE label convention", () => {
+    expect(principalLabel).toBe(sharedPrincipalLabel);
+    expect(UNNAMED_PRINCIPAL).toBe("Unnamed Principal");
+    expect(read("src/modules/administration/SecurityRoleDetail.jsx")).not.toMatch(/displayName \?\? h\.principalId/);
+  });
+});
+
+describe("D6 Administration Overview: the Users card uses the deployed Employee model", () => {
+  const src = read("src/modules/administration/AdministrationOverview.jsx");
+  it("no longer says 'operational roles'", () => {
+    expect(src).not.toMatch(/operational roles?/i);
+  });
+  it("names Job Roles, Work Eligibility, Operational Scope and Security Roles", () => {
+    expect(src).toMatch(/Job Roles, Work Eligibility, Operational Scope, Security Roles/);
   });
 });
 

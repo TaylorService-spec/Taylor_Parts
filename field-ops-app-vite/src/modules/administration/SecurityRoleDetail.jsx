@@ -18,6 +18,7 @@ import { useControlPlaneRead } from "./useControlPlaneRead.js";
 import { GrantCellControls, GrantCellFacts } from "./GrantControls.jsx";
 import { ReadState } from "./ObjectActionSecurity.jsx";
 import { roleActionsByObject } from "./controlPlaneModel.js";
+import { principalLabel } from "./principalDisplay.js";
 import { useConditionVocabulary } from "./useConditionVocabulary.js";
 
 export default function SecurityRoleDetail({ api = adminControlPlaneClient, roleKey }) {
@@ -52,7 +53,7 @@ export default function SecurityRoleDetail({ api = adminControlPlaneClient, role
           <tbody>
             {holders.map((h) => (
               <tr key={h.assignmentId}>
-                <td>{h.displayName ?? h.principalId} <span className="fo-muted"><code>{h.principalId}</code></span></td>
+                <td>{principalLabel(h)} <span className="fo-muted">ID <code>{h.principalId}</code></span></td>
                 <td className="fo-muted">{h.scopeType}{h.scopeValue ? ` · ${h.scopeValue}` : ""}</td>
                 <td className="fo-muted">{h.grantedAt ?? "—"}</td>
               </tr>

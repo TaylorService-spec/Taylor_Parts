@@ -22,7 +22,7 @@ const MVP_SURFACES = [
     path: "users",
     title: "Users",
     description:
-      "Manage employee profiles, operational roles, EOS access, security roles, and account status.",
+      "Manage employee profiles, Job Roles, Work Eligibility, Operational Scope, Security Roles, EOS access and account status.",
   },
   {
     key: "rolesPermissions",
