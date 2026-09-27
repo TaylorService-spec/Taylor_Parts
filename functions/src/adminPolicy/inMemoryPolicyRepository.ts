@@ -675,8 +675,10 @@ export class InMemoryPolicyRepository implements PolicyRepository {
           return (!p || p.status === "active") && m?.status === "active";
         }).length;
       },
+      // GLOBAL only (lane SC): a scoped assignment of a protected Role administers nothing, so it keeps nobody in.
       protectedRoleAssignmentCount: async (excludeAssignmentId) => t.assignments.filter((a) => a.tenantId === tenantId
-        && a.status === "active" && a.id !== excludeAssignmentId && t.roles.some((r) => r.id === a.roleId && r.protected)).length,
+        && a.status === "active" && (a.scopeType ?? "global") === "global" && a.id !== excludeAssignmentId
+        && t.roles.some((r) => r.id === a.roleId && r.protected)).length,
 
       appendAudit: async (input) => {
         const id = this.nextId();
@@ -835,6 +837,16 @@ export class InMemoryPolicyRepository implements PolicyRepository {
   async listGrantConditions(tenantId: TenantId, options: { readonly activeOnly?: boolean } = {}) {
     const mine = this.mine(this.tables.grantConditions, tenantId);
     return options.activeOnly === false ? mine : mine.filter((c) => c.status === "ACTIVE");
+  }
+
+  // Lane SC: governed assignment-scope values. In memory there is no operating-company or warehouse relation, so a
+  // test states them; an unstated type has no governed source (null) and a scoped assignment of it is refused.
+  private readonly scopeValues = new Map<string, readonly { value: string; label: string }[]>();
+  setAssignmentScopeValues(tenantId: TenantId, scopeType: string, values: readonly { value: string; label: string }[]): void {
+    this.scopeValues.set(`${tenantId}|${scopeType}`, Object.freeze(values.map((v) => Object.freeze({ ...v }))));
+  }
+  async listAssignmentScopeValues(tenantId: TenantId, scopeType: string) {
+    return this.scopeValues.get(`${tenantId}|${scopeType}`) ?? null;
   }
 }
 

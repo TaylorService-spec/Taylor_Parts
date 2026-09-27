@@ -55,6 +55,7 @@ import {
   retireGrantCondition,
   PolicyValidationError,
   AdministrationRefusal,
+  listSupportedAssignmentScopes,
 } from "./policyCommands";
 import { CONDITIONABLE_GRANTS, CONDITION_OPERATIONAL_SCOPE_TYPES, forbiddenPair } from "./roleCapabilityAdministration";
 import type { AuditEventFilter } from "./policyRepository";
@@ -139,6 +140,9 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   // What a grant condition may be: the evaluator's kinds, their parameters, and the capability x
   // recordKind allow-list. Unsupported kinds are listed with the reason, never silently absent.
   "listSupportedConditionKinds",
+  // Lane SC: the Security Role ASSIGNMENT SCOPES the runtime decides -- per scope type its consumers and this
+  // tenant's governed values; per Role which scopes it may be assigned at and what each would confer or leave inert.
+  "listSupportedAssignmentScopes",
 ] as const);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
@@ -245,6 +249,8 @@ const READ_OPERATION_SURFACE: Readonly<Record<AdminReadOperation, Administration
   // The same authority as getPrincipalEffectiveAccess: admin.principalAccess.read.
   explainEffectiveAccess: "users",
   listSupportedConditionKinds: "rolesPermissions",
+  // The Employee > Security Roles picker's vocabulary: the same authority as listPrincipalRoleAssignments.
+  listSupportedAssignmentScopes: "users",
 });
 
 /** The one capability each Administration read requires. Derived, never restated. */
@@ -671,6 +677,9 @@ async function dispatch(
 
     case "listSupportedConditionKinds":
       return supportedConditionKinds(await repo.listCapabilities());
+
+    case "listSupportedAssignmentScopes":
+      return listSupportedAssignmentScopes(repo, actor.tenantId, { roleKey: optionalString(input.roleKey) });
 
     case "getSecurityRoleDetail":
       return describeSecurityRole(repo, actor.tenantId, requireString(input.roleKey, "roleKey"));
@@ -1125,7 +1134,7 @@ function classify(err: unknown): AdminApiFailureCode {
   if (err instanceof AdministrationRefusal) {
     if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
-      || err.code === "CONDITION_NOT_SUPPORTED" ? "INVALID_INPUT" : "CONFLICT";
+      || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") ? "INVALID_INPUT" : "CONFLICT";
   }
   if (err instanceof PolicyValidationError) return "INVALID_INPUT";
   const name = (err as { constructor?: { name?: string } })?.constructor?.name;

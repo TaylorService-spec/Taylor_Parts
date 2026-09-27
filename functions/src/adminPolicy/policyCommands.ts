@@ -58,6 +58,18 @@ import {
 } from "../eosOps/conditionalEntitlement";
 import type { GrantConditionRecord, RoleCapabilityDecisionRecord } from "./types";
 import { resolveObjectAction } from "./objectSecurityAuthority";
+import {
+  ASSIGNMENT_SCOPE_DIMENSIONS,
+  ASSIGNMENT_SCOPE_RUNTIME_TYPES,
+  isAdministrationCapability,
+  isAssignmentScopeRuntimeType,
+  isRuntimeSupportedScopeType,
+  scopeEvaluableCapabilities,
+  SCOPE_EVALUABLE_GRANTS,
+  UNSUPPORTED_SCOPE_REASONS,
+} from "./assignmentScopeRuntime";
+import { BUSINESS_UNITS } from "../finance/financialAttribution";
+import type { PolicyReader, AssignmentScopeValue } from "./policyRepository";
 
 export class PolicyValidationError extends Error {}
 
@@ -94,7 +106,12 @@ export class AdministrationRefusal extends PolicyValidationError {
     | "CONDITION_RETIREMENT_WOULD_WIDEN"
     | "SELF_ADMINISTRATION"
     | "PRIVILEGE_ESCALATION"
-    | "WOULD_REMOVE_LAST_ADMINISTRATION_PATH", message: string) {
+    | "WOULD_REMOVE_LAST_ADMINISTRATION_PATH"
+    // Assignment scope (lane SC): Administration never stores a scope the runtime would ignore.
+    | "SCOPE_TYPE_UNSUPPORTED"
+    | "SCOPE_VALUE_INVALID"
+    | "SCOPE_NOT_EVALUABLE_FOR_ROLE"
+    | "SCOPE_AMBIGUOUS_ADMINISTRATION", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -735,6 +752,11 @@ export async function assignRole(
     throw new PolicyValidationError("that principal is not an active member of this tenant");
   }
 
+  // NO CONFIGURATION THE RUNTIME IGNORES (lane SC). A scoped assignment is stored only when the runtime decides it:
+  // a consumed scope type, a governed value in THIS tenant, a Role carrying at least one capability evaluable at
+  // that scope, and no Administration capability (whose gates are tenant-wide).
+  await refuseUnsupportedAssignmentScope(repo, actor.tenantId, role, scopeType, scopeValue);
+
   // (a) NOBODY STAFFS THEMSELVES. A Role assignment to the actor's own Principal is refused whatever
   // the Role, so the assignment authority can never be turned into a self-escalation path.
   if (principalId === actor.uid) {
@@ -751,7 +773,8 @@ export async function assignRole(
   }
   // (c) OWNER GOVERNANCE AT THE PRINCIPAL: an owner holder may not reach an excluded capability by
   // any Role (ruling A).
-  if (scopeType === "global") await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [role.key], []);
+  // Checked for a scoped assignment too (lane SC): stricter, never wider.
+  await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [role.key], []);
 
   const held = await repo.listAssignmentsForPrincipal(actor.tenantId, principalId);
   const already = held.find(
@@ -787,6 +810,141 @@ export async function assignRole(
     });
     return assignment;
   });
+}
+
+// ════════════════════ SECURITY ROLE ASSIGNMENT SCOPE (lane SC) ════════════════════
+
+/** The governed values this scope type may take in this tenant, or null when there is no governed source. */
+export async function governedAssignmentScopeValues(
+  repo: PolicyReader, tenantId: string, scopeType: string,
+): Promise<readonly AssignmentScopeValue[] | null> {
+  if (scopeType === "businessUnit") return BUSINESS_UNITS.map((v) => ({ value: v, label: v }));
+  if (typeof repo.listAssignmentScopeValues !== "function") return null;
+  return repo.listAssignmentScopeValues(tenantId, scopeType);
+}
+
+/** Every capability a Role's grants reach, conditioned ones included (a scoped holding carries its condition). */
+async function roleGrantCapabilityKeys(repo: PolicyReader, tenantId: string, roleId: string): Promise<ReadonlySet<string>> {
+  const [catalog, grants] = await Promise.all([repo.listCapabilities(), repo.listRoleCapabilities(tenantId, [roleId])]);
+  const keyById = new Map(catalog.map((c) => [c.id, c.key]));
+  return new Set(grants.filter((g) => g.roleId === roleId).map((g) => keyById.get(g.capabilityId)).filter((k): k is string => !!k));
+}
+
+/**
+ * Refuse any scope the runtime would ignore. `global` must carry no value. A non-global scope must be a scope type
+ * with a runtime consumer, name a governed value of THIS tenant, and target a Role that carries at least one
+ * capability evaluable at that scope (R-32 "some-binding" rule) and no `admin.*` capability.
+ */
+export async function refuseUnsupportedAssignmentScope(
+  repo: PolicyReader, tenantId: string, role: Pick<PolicyRoleRecord, "id" | "key" | "protected">,
+  scopeType: string, scopeValue: string | null,
+): Promise<void> {
+  if (scopeType === "global") {
+    if (scopeValue !== null && scopeValue !== "") {
+      throw new AdministrationRefusal("SCOPE_VALUE_INVALID", "a global assignment carries no scope value");
+    }
+    return;
+  }
+  if (!isRuntimeSupportedScopeType(scopeType)) {
+    throw new AdministrationRefusal("SCOPE_TYPE_UNSUPPORTED",
+      `scope type '${scopeType}' is not decided by the runtime: ${UNSUPPORTED_SCOPE_REASONS[scopeType] ?? "unknown scope type"}`);
+  }
+  if (typeof scopeValue !== "string" || scopeValue === "" || scopeValue.trim() !== scopeValue) {
+    throw new AdministrationRefusal("SCOPE_VALUE_INVALID", `a ${scopeType} assignment names exactly one governed value`);
+  }
+  const values = await governedAssignmentScopeValues(repo, tenantId, scopeType);
+  if (!values || !values.some((v) => v.value === scopeValue)) {
+    throw new AdministrationRefusal("SCOPE_VALUE_INVALID",
+      `'${scopeValue}' is not a governed ${ASSIGNMENT_SCOPE_DIMENSIONS[scopeType].label} of this tenant (${ASSIGNMENT_SCOPE_DIMENSIONS[scopeType].valueSource})`);
+  }
+  const carried = await roleGrantCapabilityKeys(repo, tenantId, role.id);
+  const admin = [...carried].filter(isAdministrationCapability).sort();
+  if (role.protected || admin.length > 0) {
+    throw new AdministrationRefusal("SCOPE_AMBIGUOUS_ADMINISTRATION",
+      `${role.key} carries Administration authority${admin.length ? ` (${admin.join(", ")})` : ""}, which every gate decides tenant-wide; it may only be assigned globally`);
+  }
+  const evaluable = [...carried].filter((k) => scopeEvaluableCapabilities(scopeType).has(k)).sort();
+  if (evaluable.length === 0) {
+    throw new AdministrationRefusal("SCOPE_NOT_EVALUABLE_FOR_ROLE",
+      `${role.key} carries no capability the runtime decides at ${scopeType} scope `
+      + `(evaluable: ${[...scopeEvaluableCapabilities(scopeType)].sort().join(", ")}); the assignment would grant nothing`);
+  }
+}
+
+export interface SupportedAssignmentScopes {
+  readonly scopeTypes: readonly {
+    readonly scopeType: string;
+    readonly label: string;
+    readonly supported: boolean;
+    readonly reason: string | null;
+    readonly contextKey: string | null;
+    readonly valueSource: string | null;
+    readonly values: readonly AssignmentScopeValue[];
+    readonly capabilities: readonly { readonly capabilityKey: string; readonly consumers: readonly string[] }[];
+  }[];
+  /** Per Role (all, or the one asked for): the scope types it may be assigned at and what each would confer. */
+  readonly roles: readonly {
+    readonly roleKey: string;
+    readonly roleId: string;
+    readonly assignableScopes: readonly {
+      readonly scopeType: string;
+      readonly assignable: boolean;
+      readonly refusal: string | null;
+      /** Capabilities the scoped assignment would confer (scope-qualified). */
+      readonly scopedCapabilities: readonly string[];
+      /** The Role's other capabilities: INERT at this scope, never granted by it. */
+      readonly inertCapabilities: readonly string[];
+    }[];
+  }[];
+}
+
+/**
+ * THE SCOPE VOCABULARY THE RUNTIME ENFORCES, served so the Security Roles picker offers nothing else. Every scope
+ * type is listed -- unsupported ones with their reason, never silently absent -- and each Role says which scopes it
+ * may be assigned at, what that would confer, and what would stay inert. Values are this tenant's governed values.
+ */
+export async function listSupportedAssignmentScopes(
+  repo: PolicyReader, tenantId: string, input: { readonly roleKey?: string | null } = {},
+): Promise<SupportedAssignmentScopes> {
+  const types = ["global", ...ASSIGNMENT_SCOPE_RUNTIME_TYPES, "domain", "tenant", "ownAssignment"];
+  const scopeTypes = [];
+  for (const scopeType of types) {
+    const supported = scopeType === "global" || isRuntimeSupportedScopeType(scopeType);
+    const dim = isAssignmentScopeRuntimeType(scopeType) ? ASSIGNMENT_SCOPE_DIMENSIONS[scopeType] : null;
+    scopeTypes.push(Object.freeze({
+      scopeType,
+      label: scopeType === "global" ? "All (global)" : dim?.label ?? scopeType,
+      supported,
+      reason: supported ? null : UNSUPPORTED_SCOPE_REASONS[scopeType] ?? "unknown scope type",
+      contextKey: dim?.contextKey ?? null,
+      valueSource: dim?.valueSource ?? null,
+      values: supported && scopeType !== "global" ? (await governedAssignmentScopeValues(repo, tenantId, scopeType)) ?? [] : [],
+      capabilities: SCOPE_EVALUABLE_GRANTS.filter((g) => g.scopeType === scopeType)
+        .map((g) => Object.freeze({ capabilityKey: g.capabilityKey, consumers: g.consumers })),
+    }));
+  }
+  const wanted = typeof input.roleKey === "string" && input.roleKey !== "" ? input.roleKey : null;
+  const roles = (await repo.listRoles(tenantId)).filter((r) => !wanted || r.key === wanted);
+  if (wanted && roles.length === 0) throw new PolicyValidationError("role not found");
+  const out = [];
+  for (const role of [...roles].sort((a, b) => a.key.localeCompare(b.key))) {
+    const carried = [...(await roleGrantCapabilityKeys(repo, tenantId, role.id))].sort();
+    const assignableScopes = [];
+    for (const scopeType of ASSIGNMENT_SCOPE_RUNTIME_TYPES.filter((t) => isRuntimeSupportedScopeType(t))) {
+      const evaluable = scopeEvaluableCapabilities(scopeType);
+      const admin = carried.filter(isAdministrationCapability);
+      const scopedCapabilities = carried.filter((k) => evaluable.has(k));
+      const refusal = role.protected || admin.length > 0 ? "SCOPE_AMBIGUOUS_ADMINISTRATION"
+        : scopedCapabilities.length === 0 ? "SCOPE_NOT_EVALUABLE_FOR_ROLE" : null;
+      assignableScopes.push(Object.freeze({
+        scopeType, assignable: refusal === null, refusal,
+        scopedCapabilities: Object.freeze(refusal ? [] : scopedCapabilities),
+        inertCapabilities: Object.freeze(carried.filter((k) => !evaluable.has(k))),
+      }));
+    }
+    out.push(Object.freeze({ roleKey: role.key, roleId: role.id, assignableScopes: Object.freeze(assignableScopes) }));
+  }
+  return Object.freeze({ scopeTypes: Object.freeze(scopeTypes), roles: Object.freeze(out) });
 }
 
 export interface RevokeRoleInput {

@@ -45,6 +45,9 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
     // picker renders DISABLED -- never a local copy. When the server lane adds the name to both lists,
     // this wrapper reaches it with no change here.
     listSupportedConditionKinds: () => send("listSupportedConditionKinds", {}),
+    // Lane SC: the assignment scopes the runtime decides -- per scope type its label and THIS tenant's governed
+    // values; per Role which scopes it may be assigned at and what each confers or leaves inert.
+    listSupportedAssignmentScopes: (roleKey) => send("listSupportedAssignmentScopes", roleKey ? { roleKey } : {}),
 
     // ── mutations (gate: admin.securityPolicy.write; assignRole/revokeRole: admin.roleAssignment.write)
     grantObjectActionToRole: ({ objectKey, actionKey, roleKey, reason, condition, requiresCondition }) =>
@@ -59,7 +62,11 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
       send("setGrantCondition", { objectKey, actionKey, roleKey, condition, reason }),
     retireGrantCondition: ({ objectKey, actionKey, roleKey, reason }) =>
       send("retireGrantCondition", { objectKey, actionKey, roleKey, reason }),
-    assignRole: ({ principalId, roleId, reason }) => send("assignRole", { principalId, roleId, reason }),
+    // A scope is sent only when one was chosen; a global assignment sends exactly what it always did.
+    assignRole: ({ principalId, roleId, reason, scopeType, scopeValue }) => send("assignRole", {
+      principalId, roleId, reason,
+      ...(scopeType && scopeType !== "global" ? { scopeType, scopeValue } : {}),
+    }),
     revokeRole: ({ assignmentId, reason }) => send("revokeRole", { assignmentId, reason }),
   });
 }

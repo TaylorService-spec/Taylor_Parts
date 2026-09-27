@@ -3255,6 +3255,7 @@
         "exportedCallables": [],
         "serverReferences": [
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/migration/employeeCapabilityGrants.ts",
           "functions/src/eosWorkforce/reads/employeeDirectoryReads.ts",
@@ -3265,7 +3266,7 @@
           "field-ops-app-vite/src/access/objectPermissionMap.js",
           "field-ops-app-vite/src/access/workforceCapabilityAccess.js"
         ],
-        "serverReferenceCount": 5,
+        "serverReferenceCount": 6,
         "clientReferenceCount": 3,
         "evidence": "SERVER_REFERENCED"
       },

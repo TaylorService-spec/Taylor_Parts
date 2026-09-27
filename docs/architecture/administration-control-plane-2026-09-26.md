@@ -266,7 +266,7 @@ Transport: `POST` to the Admin policy endpoint (`adminPolicyHttp`).
 
 **Result semantics.**
 - `reasonCode` is ALLOWED, RECORD_ASSIGNMENT_REQUIRED (the CONDITIONAL result), or the evaluator's refusal outcome.
-- Only GLOBAL, non-stale, active assignments grant. A scoped assignment is reported as excluded and grants nothing.
+- Only GLOBAL, non-stale, active assignments grant unscoped. A scoped assignment of a runtime-supported scope grants scope-qualified holdings only (section 12); any other scoped assignment is excluded (`SCOPE_UNSUPPORTED`) and grants nothing.
 
 **Direct grants.** `principal_capabilities` gains `exception_reason` and `expires_at` (migration 1762646400000). `grantObjectActionToPrincipal` requires a reason and accepts an optional future `expiresAt`. Every reader ignores expired rows.
 
@@ -357,3 +357,33 @@ Returns `{kinds:[{kind, supported, reason, parameters, recordKinds, capabilities
 - Moving definition, Object and Workflow mutations off the Role-name invariant (§6).
 - Principal-scope conditions: the relation supports them, but the API is ROLE-only.
 - Applying migration 1762646400000 anywhere but local test databases.
+
+## 12. Security Role assignment scope: the runtime (lane SC)
+
+Effective authority is now Principal → Security Role assignment → capability → **assignment scope** → record business context → record relationship (grant condition) → domain preconditions. Before this lane a scoped `user_role_assignments` row granted nothing (fail closed) while `assignRole` stored any scope type unvalidated — configuration the runtime ignored.
+
+### Classification
+
+| Scope | Model | Runtime (PostgreSQL) | Verdict |
+|---|---|---|---|
+| OPERATING_COMPANY | `ScopeType.operatingCompany` (types/access.ts:33); `user_role_assignments.scope_type/scope_value` (1757462400000:183); value-matched in `assignmentScope.ts:61/73` and legacy `scopeMatches` (resolveEffectivePermission.ts:173); governed values `tenant_operating_companies` | Consumer: Workforce `employee.record.read` (the Employee's `operating_company_id`) | MODEL_EXISTS_RUNTIME_MISSING → **implemented here** |
+| BUSINESS_UNIT | `ScopeType.businessUnit`; FIN-002 `BUSINESS_UNITS`; FIN-004 reach bound in Firestore `roleAssignments` (financeReadCallables.ts:50-66,120-128) | No PG gate carries a record business unit (Commercial: per line; flat-set kernels) | MODEL_EXISTS_RUNTIME_MISSING — evaluator decides it; `assignRole` refuses it (`SCOPE_TYPE_UNSUPPORTED`) |
+| LOCATION (warehouse) | R-29/R-32 (DECISIONS #150/#152): `location` = warehouse id; `bindingScopePolicy.ts` (legacy) | R-32 location-bound reorder/inventory bindings are on the legacy path; Reorder cutover #1961 HELD | MODEL_EXISTS_RUNTIME_MISSING — refused until a PG consumer lands |
+| WAREHOUSE (Employee Operational Scope) | `OPERATIONAL_SCOPE_TYPES` (operationalScopeVocabulary.ts:41) | `OPERATIONAL_SCOPE` grant-condition predicate; put-away / cycle-count surfaces (experienceAuthority.ts:188,194) | DOMAIN_SPECIFIC — MODEL_EXISTS_RUNTIME_WORKS (S1, not a Security Role scope) |
+| REORDER_QUEUE (Employee Operational Scope) | 1761696000000:43 | Condition predicate; queue consumer waits on Reorder cutover | DOMAIN_SPECIFIC |
+| Sales channel | none | none | NOT_CURRENTLY_REQUIRED — not invented |
+
+### Runtime
+- `assignmentScopeRuntime.ts` (pure): the decidable scope types and their record fact (`operatingCompanyId`, `businessUnit`, `warehouseId`), and `SCOPE_EVALUABLE_GRANTS`, the only (scope type, capability) pairs a scoped assignment can confer — today `operatingCompany × employee.record.read` (readEmployee, listEmployees, listManagedEmployees).
+- `PrincipalContext.scopedAssignments` carries qualifying non-global assignments; `heldRoleKeys` stays GLOBAL only.
+- `ResolvedOperationalContext.scopedHeld: [{capabilityKey, scopeType, scopeValue, sourceRole, assignmentId, condition}]` — never in `capabilities` or `conditionallyHeld`; `inertScoped` reports the rest. Zero extra reads for a principal with no scoped assignment.
+- `authorizeEntitledAction` takes `businessContext` (resolved server-side from the governed record). Global path first and byte-identical; a scoped holding admits only an exact same-type value, then its grant condition still narrows. Refusals: `OUTSIDE_ASSIGNMENT_SCOPE`, `SCOPE_CONTEXT_REQUIRED`, `SCOPE_NOT_EVALUABLE`.
+- Workforce reads opt in (`recordScope: "operatingCompany"`): a single record is decided on its own company inside the read snapshot; lists filter to admitted companies. Every other gate refuses a scoped-only holder exactly as before.
+
+### Administration
+- `assignRole` refuses: an unconsumed/unknown scope type (`SCOPE_TYPE_UNSUPPORTED`), a missing value, a value not governed in THIS tenant, a value on a global assignment (`SCOPE_VALUE_INVALID`), a Role with nothing evaluable at that scope (`SCOPE_NOT_EVALUABLE_FOR_ROLE`), and any protected Role or Role carrying an `admin.*` capability (`SCOPE_AMBIGUOUS_ADMINISTRATION`). All INVALID_INPUT. The owner principal rule is checked for scoped assignments too.
+- `listSupportedAssignmentScopes {roleKey?}` (gate `admin.principalAccess.read`): every scope type with `supported`, `reason`, `contextKey`, `valueSource`, this tenant's `values`, and consumers; per Role, `assignableScopes: [{scopeType, assignable, refusal, scopedCapabilities, inertCapabilities}]`.
+- Anti-lockout and the protected-Role count consider GLOBAL assignments only.
+
+### Effective access
+`explainEffectiveAccess` adds `scopedHeld`, `assignments.scoped` (per supported scoped assignment: capabilities granted within the scope, inert ones), per action `scopedSources: [{roleKey, scopeType, scopeValue, condition, result, reasonCode}]` (the evaluator's decision for a record inside that scope), and result `SCOPED` (`SCOPE_CONTEXT_REQUIRED`). `assignments.excluded` now reports only `STALE`, `INACTIVE` and `SCOPE_UNSUPPORTED`.

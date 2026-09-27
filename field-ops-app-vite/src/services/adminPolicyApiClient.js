@@ -72,6 +72,8 @@ export const ADMIN_READ_OPERATIONS = Object.freeze([
   "explainEffectiveAccess",
   // The condition vocabulary the server enforces (server lane CP-S), returned as an object with a kinds list.
   "listSupportedConditionKinds",
+  // Lane SC: the Security Role ASSIGNMENT SCOPES the runtime decides (types, this tenant's values, per-Role assignability).
+  "listSupportedAssignmentScopes",
 ]);
 
 export const ADMIN_MUTATION_OPERATIONS = Object.freeze([

@@ -19,6 +19,9 @@
 // RESULT VOCABULARY, per Object action:
 //   ALLOWED      an entitlement allows with no record (unconditional, or a condition the snapshot proves)
 //   CONDITIONAL  every allowing path needs a RECORD (RECORD_ASSIGNMENT) -- decided per record at runtime
+//   SCOPED       held only through a scoped Security Role assignment: admitted only for a record whose business
+//                context (operating company, ...) matches; each scope is listed in `scopedSources` with the
+//                evaluator's own decision for a record inside it (lane SC)
 //   DENIED       with the evaluator's reason code (CAPABILITY_MISSING, WORK_ELIGIBILITY_MISSING, ...)
 // A direct Principal grant is shown as DIRECT_EXCEPTION. The operational runtime resolves capabilities
 // from Roles only, so a direct grant is flagged NOT enforced on those paths (it is honoured by the
@@ -33,6 +36,7 @@ import {
 } from "./capabilityAuthority";
 import { authorizeOperationalAction, postgresGrantConditionProvider } from "./entitledActionAuthority";
 import { entitlementsFor, type GrantCondition } from "./conditionalEntitlement";
+import { ASSIGNMENT_SCOPE_DIMENSIONS } from "../adminPolicy/assignmentScopeRuntime";
 import {
   postgresPrincipalDimensionReader,
   snapshotContextualReader,
@@ -40,7 +44,11 @@ import {
 } from "./contextualAuthorization";
 import { EXPERIENCE_SURFACES, grantedSurfaceKeys, type PrincipalDimensions } from "./experienceAuthority";
 
-export type ExplainedResult = "ALLOWED" | "CONDITIONAL" | "DENIED";
+/**
+ * SCOPED (lane SC): not held globally, held ONLY within an assignment scope -- the runtime admits it only for a record
+ * whose business context names one of `scopes` (reasonCode SCOPE_CONTEXT_REQUIRED, the evaluator's own outcome).
+ */
+export type ExplainedResult = "ALLOWED" | "CONDITIONAL" | "SCOPED" | "DENIED";
 
 export interface ExplainedAction {
   readonly objectKey: string;
@@ -50,8 +58,17 @@ export interface ExplainedAction {
   readonly result: ExplainedResult;
   /** ALLOWED, RECORD_ASSIGNMENT_REQUIRED, or the evaluator's refusal outcome. */
   readonly reasonCode: string;
-  /** Security Roles that grant it, each with the condition on that grant (null = unconditional). */
+  /** Security Roles that grant it GLOBALLY, each with the condition on that grant (null = unconditional). */
   readonly sourceRoles: readonly { readonly roleKey: string; readonly condition: GrantCondition | null }[];
+  /**
+   * Scope-qualified sources (lane SC): each scoped assignment that confers this capability, with its scope, its
+   * condition, and the evaluator's decision FOR A RECORD IN THAT SCOPE (authorizeOperationalAction with the scope
+   * value as business context). Empty for every globally-assigned principal.
+   */
+  readonly scopedSources: readonly {
+    readonly roleKey: string; readonly scopeType: string; readonly scopeValue: string;
+    readonly condition: GrantCondition | null; readonly result: ExplainedResult; readonly reasonCode: string;
+  }[];
   readonly directGrant: {
     readonly label: "DIRECT_EXCEPTION";
     readonly exceptionReason: string | null;
@@ -73,8 +90,15 @@ export interface EffectiveAccessExplanation {
   readonly securityRoleKeys: readonly string[];
   readonly accessVersion: number;
   readonly assignments: {
+    /**
+     * Assignments that confer nothing: STALE, INACTIVE, or SCOPE_UNSUPPORTED (a non-global scope the runtime cannot
+     * decide -- an unconsumed type or no value). A SUPPORTED scoped assignment is NOT here: it is in `scoped`.
+     */
     readonly excluded: readonly { readonly assignmentId: string; readonly roleKey: string;
-      readonly reason: "STALE" | "INACTIVE" | "SCOPED"; readonly scopeType?: string; readonly scopeValue?: string | null }[];
+      readonly reason: "STALE" | "INACTIVE" | "SCOPE_UNSUPPORTED"; readonly scopeType?: string; readonly scopeValue?: string | null }[];
+    /** Supported scoped assignments: what each confers WITHIN its scope, and what stays inert at that scope. */
+    readonly scoped: readonly { readonly assignmentId: string | null; readonly roleKey: string; readonly scopeType: string;
+      readonly scopeValue: string; readonly capabilities: readonly string[]; readonly inertCapabilities: readonly string[] }[];
   };
   readonly employeeId: string | null;
   readonly workEligibility: readonly string[];
@@ -83,6 +107,9 @@ export interface EffectiveAccessExplanation {
   readonly capabilities: readonly string[];
   /** EXACTLY resolveOperationalContext(...).conditionallyHeld: keys reachable only through conditions. */
   readonly conditionallyHeld: readonly string[];
+  /** EXACTLY resolveOperationalContext(...).scopedHeld, without conditions: capability @ scope via Role. */
+  readonly scopedHeld: readonly { readonly capabilityKey: string; readonly scopeType: string; readonly scopeValue: string;
+    readonly sourceRole: string; readonly conditioned: boolean }[];
   /** EXACTLY resolveExperienceContext(...).surfaces. */
   readonly surfaces: readonly string[];
   readonly actions: readonly ExplainedAction[];
@@ -141,7 +168,13 @@ export async function explainEffectiveAccess(
   }
 
   const snapshot = snapshotContextualReader(dimensions);
-  const actor = { ...actorBase, conditionallyHeld: ctx.conditionallyHeld, entitlements: ctx.entitlements };
+  const actor = { ...actorBase, conditionallyHeld: ctx.conditionallyHeld, scopedHeld: ctx.scopedHeld, entitlements: ctx.entitlements };
+  const resultOf = (decision: { allowed: boolean; outcome: string; denials: readonly { detail?: string }[] }): [ExplainedResult, string] => {
+    if (decision.allowed) return ["ALLOWED", "ALLOWED"];
+    if (decision.denials.some((d) => d.detail === "no record supplied")) return ["CONDITIONAL", "RECORD_ASSIGNMENT_REQUIRED"];
+    if (decision.outcome === "SCOPE_CONTEXT_REQUIRED") return ["SCOPED", "SCOPE_CONTEXT_REQUIRED"];
+    return ["DENIED", decision.outcome];
+  };
   const actions: ExplainedAction[] = [];
   for (const capability of [...catalog].sort((a, b) =>
     a.objectKey === b.objectKey ? a.actionKey.localeCompare(b.actionKey) : a.objectKey.localeCompare(b.objectKey))) {
@@ -153,19 +186,21 @@ export async function explainEffectiveAccess(
     const directRecord = directRecordByCapabilityId.get(capabilityIdByKey.get(capability.key) ?? "");
 
     const decision = await authorizeOperationalAction(snapshot, actor, { capabilityKey: capability.key });
-    let result: ExplainedResult;
-    let reasonCode: string;
-    if (decision.allowed) {
-      result = "ALLOWED"; reasonCode = "ALLOWED";
-    } else if (decision.denials.some((d) => d.detail === "no record supplied")) {
-      result = "CONDITIONAL"; reasonCode = "RECORD_ASSIGNMENT_REQUIRED";
-    } else {
-      result = "DENIED"; reasonCode = decision.outcome;
+    const [result, reasonCode] = resultOf(decision);
+    // Each scoped source, decided by the SAME evaluator for a record inside its own scope.
+    const scopedSources = [];
+    for (const h of ctx.scopedHeld.filter((x) => x.capabilityKey === capability.key)) {
+      const inScope = await authorizeOperationalAction(snapshot, actor, { capabilityKey: capability.key,
+        businessContext: { [ASSIGNMENT_SCOPE_DIMENSIONS[h.scopeType].contextKey]: h.scopeValue } });
+      const [r, code] = resultOf(inScope);
+      scopedSources.push(Object.freeze({ roleKey: h.sourceRole, scopeType: h.scopeType, scopeValue: h.scopeValue,
+        condition: h.condition, result: r, reasonCode: code }));
     }
     actions.push(Object.freeze({
       objectKey: capability.objectKey, actionKey: capability.actionKey, actionKind: capability.actionKind,
       capabilityKey: capability.key, result, reasonCode,
       sourceRoles: Object.freeze(sourceRoles),
+      scopedSources: Object.freeze(scopedSources),
       directGrant: direct ? Object.freeze({
         label: "DIRECT_EXCEPTION" as const,
         exceptionReason: directRecord?.exceptionReason ?? null,
@@ -180,21 +215,45 @@ export async function explainEffectiveAccess(
     }));
   }
 
+  // Supported scoped assignments: those that produced at least one holding OR only inert capabilities at a
+  // supported scope. An assignment of an unconsumed scope type stays in `excluded` as SCOPE_UNSUPPORTED.
+  const supportedScoped = (ctx.principalContext.scopedAssignments ?? [])
+    .filter((a) => typeof a.scopeValue === "string" && a.scopeValue !== ""
+      && !ctx.inertScoped.some((i) => i.sourceRole === a.roleKey && i.scopeType === a.scopeType
+        && i.scopeValue === a.scopeValue && i.reason === "SCOPE_TYPE_UNSUPPORTED")
+      && (ctx.scopedHeld.some((h) => h.sourceRole === a.roleKey && h.scopeType === a.scopeType && h.scopeValue === a.scopeValue)
+        || ctx.inertScoped.some((i) => i.sourceRole === a.roleKey && i.scopeType === a.scopeType && i.scopeValue === a.scopeValue)))
+    .map((a) => Object.freeze({
+      assignmentId: a.assignmentId, roleKey: a.roleKey, scopeType: a.scopeType, scopeValue: a.scopeValue as string,
+      capabilities: Object.freeze(ctx.scopedHeld.filter((h) => h.sourceRole === a.roleKey && h.scopeType === a.scopeType
+        && h.scopeValue === a.scopeValue).map((h) => h.capabilityKey)),
+      inertCapabilities: Object.freeze(ctx.inertScoped.filter((i) => i.sourceRole === a.roleKey && i.scopeType === a.scopeType
+        && i.scopeValue === a.scopeValue).map((i) => i.capabilityKey)),
+    }));
+  const scopedAssignmentIds = new Set(supportedScoped.map((a) => a.assignmentId).filter((id): id is string => !!id));
+
   return Object.freeze({
     tenantId,
     principalId,
     securityRoleKeys: Object.freeze([...heldRoleKeys]),
     accessVersion: ctx.principalContext.accessVersion,
     assignments: Object.freeze({
-      excluded: Object.freeze((policy.excludedAssignments ?? []).map((a) => Object.freeze({
-        ...a, roleKey: roleKeyById.get(a.roleId) ?? a.roleId,
-      }))),
+      // A SCOPED exclusion is reported only when the runtime could not turn it into holdings.
+      excluded: Object.freeze((policy.excludedAssignments ?? [])
+        .filter((a) => a.reason !== "SCOPED" || !scopedAssignmentIds.has(a.assignmentId))
+        .map((a) => Object.freeze({
+          ...a, reason: a.reason === "SCOPED" ? "SCOPE_UNSUPPORTED" as const : a.reason,
+          roleKey: roleKeyById.get(a.roleId) ?? a.roleId,
+        }))),
+      scoped: Object.freeze(supportedScoped),
     }),
     employeeId,
     workEligibility: Object.freeze([...workEligibility]),
     operationalScopes: Object.freeze(operationalScopes.map((s) => ({ scopeType: s.scopeType, scopeId: s.scopeId }))),
     capabilities: Object.freeze([...ctx.capabilities].sort()),
     conditionallyHeld: Object.freeze([...ctx.conditionallyHeld].sort()),
+    scopedHeld: Object.freeze(ctx.scopedHeld.map((h) => Object.freeze({ capabilityKey: h.capabilityKey, scopeType: h.scopeType,
+      scopeValue: h.scopeValue, sourceRole: h.sourceRole, conditioned: h.condition !== null }))),
     surfaces,
     actions: Object.freeze(actions),
   });

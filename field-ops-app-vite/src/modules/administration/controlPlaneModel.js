@@ -195,11 +195,14 @@ export function roleActionsByObject(detail) {
 //
 // The served shape, rendered as-is:
 //   { tenantId, principalId, securityRoleKeys, accessVersion,
-//     assignments: { excluded: [{ assignmentId, roleKey, reason: STALE|INACTIVE|SCOPED, scopeType?, scopeValue? }] },
+//     assignments: { excluded: [{ assignmentId, roleKey, reason: STALE|INACTIVE|SCOPE_UNSUPPORTED, scopeType?, scopeValue? }],
+//                    scoped: [{ assignmentId, roleKey, scopeType, scopeValue, capabilities, inertCapabilities }] },
+//     scopedHeld: [{ capabilityKey, scopeType, scopeValue, sourceRole, conditioned }],
 //     employeeId, workEligibility: [code], operationalScopes: [{ scopeType, scopeId }],
 //     capabilities: [capabilityKey], surfaces: [surfaceKey],
-//     actions: [{ objectKey, actionKey, actionKind, capabilityKey, result: ALLOWED|CONDITIONAL|DENIED, reasonCode,
+//     actions: [{ objectKey, actionKey, actionKind, capabilityKey, result: ALLOWED|CONDITIONAL|SCOPED|DENIED, reasonCode,
 //                 sourceRoles: [{ roleKey, condition|null }],
+//                 scopedSources: [{ roleKey, scopeType, scopeValue, condition|null, result, reasonCode }],
 //                 directGrant: { label: "DIRECT_EXCEPTION", exceptionReason, expiresAt, notEnforcedOnRoleOnlyRuntimePaths } | null,
 //                 withheldFromFlatSetKernels, surfaces: [...], workflowSource: [{ workflowKey, version, actionKey, roleKey }] | null }] }
 
@@ -207,6 +210,8 @@ export function roleActionsByObject(detail) {
 export const RESULT_LABEL = Object.freeze({
   ALLOWED: "Allowed",
   CONDITIONAL: "Conditional",
+  // Lane SC: held only through a scoped Security Role assignment -- allowed only for records inside the scope.
+  SCOPED: "Scoped",
   DENIED: "Denied",
 });
 
@@ -220,6 +225,8 @@ export const EXCLUSION_LABEL = Object.freeze({
   STALE: "Stale — granted before the current access version",
   INACTIVE: "Inactive assignment",
   SCOPED: "Scoped — a scoped assignment grants nothing unscoped",
+  // Lane SC: a scope the runtime does not decide (an unconsumed type, or no value) -- it grants nothing at all.
+  SCOPE_UNSUPPORTED: "Scope not enforced by the runtime — this assignment grants nothing",
 });
 
 const strings = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
@@ -241,6 +248,15 @@ export function explanationModel(payload) {
     surfaces: strings(payload.surfaces),
     workEligibility: strings(payload.workEligibility),
     operationalScopes: Array.isArray(payload.operationalScopes) ? payload.operationalScopes.filter((s) => s && typeof s === "object") : [],
+    // Lane SC: supported scoped assignments -- what each grants WITHIN its scope and what stays not granted.
+    scopedAssignments: (Array.isArray(payload.assignments?.scoped) ? payload.assignments.scoped : [])
+      .filter((a) => a && typeof a === "object").map((a) => ({
+        assignmentId: a.assignmentId ?? null,
+        roleKey: a.roleKey ?? null,
+        scope: describeScope(a.scopeType, a.scopeValue),
+        capabilities: strings(a.capabilities),
+        inertCapabilities: strings(a.inertCapabilities),
+      })),
     excluded: excluded.filter((e) => e && typeof e === "object").map((e) => ({
       assignmentId: e.assignmentId ?? null,
       roleKey: e.roleKey ?? null,
@@ -260,6 +276,14 @@ export function explanationModel(payload) {
         roleKey: r?.roleKey ?? null,
         condition: r?.condition ? describeCondition(r.condition) : null,
       })),
+      scopedSources: (Array.isArray(a.scopedSources) ? a.scopedSources : []).filter((r) => r && typeof r === "object").map((r) => ({
+        roleKey: r.roleKey ?? null,
+        scope: describeScope(r.scopeType, r.scopeValue),
+        condition: r.condition ? describeCondition(r.condition) : null,
+        result: r.result ?? null,
+        resultWords: describeResult(r.result),
+        reasonCode: r.reasonCode ?? null,
+      })),
       directGrant: a.directGrant && typeof a.directGrant === "object" ? {
         label: a.directGrant.label ?? "DIRECT_EXCEPTION",
         exceptionReason: a.directGrant.exceptionReason ?? null,
@@ -271,6 +295,12 @@ export function explanationModel(payload) {
       workflowSource: Array.isArray(a.workflowSource) ? a.workflowSource : null,
     })),
   };
+}
+
+/** A scope as the server states it: "<type> = <value>", never re-labelled or re-derived here. */
+export function describeScope(scopeType, scopeValue) {
+  if (!scopeType) return null;
+  return scopeValue ? `${scopeType} = ${scopeValue}` : String(scopeType);
 }
 
 /** Group explained actions by Object for drawing, in the server's order. */

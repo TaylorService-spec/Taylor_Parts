@@ -97,6 +97,9 @@ const CANONICAL_MAP = Object.freeze({
   listWorkflowInstances: WORKFLOW_READ,
   readWorkflowHistory: WORKFLOW_READ,
   listPrincipalWorkflowResponsibilities: PRINCIPAL_ACCESS_READ,
+  // Lane SC: the assignment-scope vocabulary the Employee > Security Roles picker reads -- the SAME principal-access
+  // read as listPrincipalRoleAssignments. No new key.
+  listSupportedAssignmentScopes: PRINCIPAL_ACCESS_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -116,8 +119,8 @@ const INPUT_FOR = Object.freeze({
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: twenty-two reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 22, "the read list changed size without this map changing");
+test("A: twenty-three reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 23, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -387,7 +390,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   await t.test("C: without admin.principalAccess.read, the three principal reads are refused", async () => {
     assert.deepEqual(operationsRequiring(PRINCIPAL_ACCESS_READ),
       ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listPrincipalRoleAssignments",
-        "listPrincipalWorkflowResponsibilities", "listTenantPrincipals"]);
+        "listPrincipalWorkflowResponsibilities", "listSupportedAssignmentScopes", "listTenantPrincipals"]);
     // THE READER HOLDS admin.securityPolicy.read AND IS STILL REFUSED. One Administration read is
     // not a key to the others; if it were, the four capabilities would be one capability.
     for (const subject of [reader.subject, bare.subject]) {
@@ -395,6 +398,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       await assertRefused(subject, "listPrincipalRoleAssignments", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "getPrincipalEffectiveAccess", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "explainEffectiveAccess", PRINCIPAL_ACCESS_READ);
+      await assertRefused(subject, "listSupportedAssignmentScopes", PRINCIPAL_ACCESS_READ);
     }
     // Including when the principal they ask about is THEMSELVES. "It is my own access" is not an
     // authority, and a self-exemption is how a read gate acquires its first bypass.

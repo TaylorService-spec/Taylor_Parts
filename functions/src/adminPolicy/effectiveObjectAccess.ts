@@ -65,6 +65,8 @@ export type AccessBasis =
 /** One qualifying assignment: its Role and the scope it was granted in. */
 export interface QualifyingAssignment extends AssignmentScope {
   readonly roleId: string;
+  /** The assignment row, when the policy was loaded from a store. Lets a scoped holding name its assignment. */
+  readonly assignmentId?: string;
 }
 
 export interface ObjectAccessDecision {
@@ -217,6 +219,7 @@ export async function loadPrincipalPolicy(
   // Reading absence as unknown would fail-closed on every such record and silently revoke access that exists today,
   // which is the opposite of what carrying scope is for. Genuinely unknown TYPES still refuse, in assignmentScope.ts.
   const qualifyingAssignments: QualifyingAssignment[] = qualifying.map((a) => ({
+    assignmentId: a.id,
     roleId: a.roleId,
     scopeType: typeof a.scopeType === "string" && a.scopeType !== "" ? a.scopeType : "global",
     scopeValue: typeof a.scopeValue === "string" ? a.scopeValue : null,

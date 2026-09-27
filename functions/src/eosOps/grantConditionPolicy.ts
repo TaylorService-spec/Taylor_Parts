@@ -40,8 +40,16 @@ import type { AuthorizationReason, RecordContext } from "./contextualAuthorizati
  */
 export const CONTEXT_AUTHORITY_UNAVAILABLE = "CONTEXT_AUTHORITY_UNAVAILABLE" as const;
 
-/** The evaluator's seven-reason vocabulary, plus "the authority could not answer". */
-export type ContextualActionOutcome = AuthorizationReason | typeof CONTEXT_AUTHORITY_UNAVAILABLE;
+/**
+ * SECURITY ROLE ASSIGNMENT SCOPE refusals (lane SC). Only a SCOPED holding can produce them:
+ *   OUTSIDE_ASSIGNMENT_SCOPE  the record's business context names a different company / unit / warehouse
+ *   SCOPE_CONTEXT_REQUIRED    the gate site supplied no business context for the holding's scope type
+ *   SCOPE_NOT_EVALUABLE       the holding's scope type or capability has no consumer (defensive; never resolved)
+ */
+export type AssignmentScopeOutcome = "OUTSIDE_ASSIGNMENT_SCOPE" | "SCOPE_CONTEXT_REQUIRED" | "SCOPE_NOT_EVALUABLE";
+
+/** The evaluator's seven-reason vocabulary, the assignment-scope refusals, plus "the authority could not answer". */
+export type ContextualActionOutcome = AuthorizationReason | AssignmentScopeOutcome | typeof CONTEXT_AUTHORITY_UNAVAILABLE;
 
 // ════════════════════ THE WITHHELD CELLS ════════════════════
 

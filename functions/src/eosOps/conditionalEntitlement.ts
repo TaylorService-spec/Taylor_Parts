@@ -71,6 +71,8 @@ import {
   isWithheldConditionedCell,
   type ContextualActionOutcome,
 } from "./grantConditionPolicy";
+// Assignment scope (lane SC): the pure scope model. No SQL, no pool, no Firebase.
+import { holdingAdmits, type BusinessContext, type ScopedHolding } from "../adminPolicy/assignmentScopeRuntime";
 
 // ════════════════════ THE GRANTOR ════════════════════
 
@@ -309,6 +311,12 @@ export interface EntitledActor extends ContextualActor {
    */
   readonly conditionallyHeld?: ReadonlySet<string>;
   /**
+   * SCOPE-QUALIFIED holdings (ResolvedOperationalContext.scopedHeld): capabilities held only within one assignment
+   * scope. Absent from the flat set by design; the entitled decision admits one ONLY when the request's
+   * `businessContext` names the same scope value. Absent or empty = no scoped authority (every global principal).
+   */
+  readonly scopedHeld?: readonly ScopedHolding<GrantCondition>[];
+  /**
    * Provenance-preserving entitlements for this actor, in the resolved tenant only, behind a
    * REQUIRED resolver. Required, never optional, and never a plain value -- see EntitlementResolver.
    */
@@ -335,6 +343,8 @@ export interface EntitledActionDecision {
   readonly viaCondition: boolean;
   /** Every conditional entitlement that refused, so nothing is lost behind the reported outcome. */
   readonly denials: readonly EntitlementDenial[];
+  /** Present ONLY on an ALLOW decided through a scoped holding: the assignment scope that admitted it. */
+  readonly viaScope?: { readonly scopeType: string; readonly scopeValue: string };
 }
 
 /**
@@ -350,6 +360,11 @@ export interface EntitledActionDecision {
 const DENIAL_SPECIFICITY: Readonly<Record<string, number>> = Object.freeze({
   NOT_ASSIGNED: 5,
   OUTSIDE_OPERATIONAL_SCOPE: 4,
+  // Assignment scope (lane SC): "your Role applies, but to a different company/unit/warehouse" is as specific as
+  // operational scope; "the gate gave me no record context" is not a statement about the caller.
+  OUTSIDE_ASSIGNMENT_SCOPE: 4,
+  SCOPE_CONTEXT_REQUIRED: 1,
+  SCOPE_NOT_EVALUABLE: 0.5,
   WORK_ELIGIBILITY_MISSING: 3,
   EMPLOYEE_LINK_REQUIRED: 2,
   WORK_ELIGIBILITY_UNMAPPED: 1,
@@ -361,6 +376,12 @@ export interface EntitledActionRequest {
   readonly capabilityKey: string;
   /** The governed record id, when a condition asks about one. The KIND comes from the condition. */
   readonly recordId?: string;
+  /**
+   * The RECORD's business context (operating company, business unit, warehouse), resolved SERVER-SIDE by the gate
+   * site from the governed record -- never taken from a client. Consulted ONLY for scoped holdings; a global grant
+   * ignores it, so supplying it can never narrow or widen a global holder.
+   */
+  readonly businessContext?: BusinessContext;
 }
 
 const decide = (d: Omit<EntitledActionDecision, "denials"> & { denials?: readonly EntitlementDenial[] }): EntitledActionDecision =>
@@ -389,6 +410,107 @@ const decide = (d: Omit<EntitledActionDecision, "denials"> & { denials?: readonl
  *      be reported as a business denial, and must never be treated as a decision either.
  */
 export async function authorizeEntitledAction(
+  reader: ContextualReader,
+  request: EntitledActionRequest,
+): Promise<EntitledActionDecision> {
+  const { actor, capabilityKey } = request;
+  const scoped = scopedHoldingsFor(actor, capabilityKey);
+  const globallyHeld = actor?.capabilities instanceof Set
+    && (actor.capabilities.has(capabilityKey) || (actor.conditionallyHeld instanceof Set && actor.conditionallyHeld.has(capabilityKey)));
+  // A key held ONLY through scoped holdings never enters the global path below: that path would read it as missing.
+  if (!globallyHeld && scoped.length > 0 && actor?.capabilities instanceof Set) {
+    if (typeof actor.entitlements !== "function") {
+      return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE",
+        detail: "a resolved entitlement provider is required", contextEvaluated: false,
+        viaGrantor: null, viaCondition: false });
+    }
+    return decideScoped(reader, request, scoped, null);
+  }
+  const global = await decideGlobal(reader, request);
+  // GLOBAL BEHAVIOUR UNCHANGED: with no scoped holding for this key the global decision IS the decision.
+  if (global.allowed || scoped.length === 0) return global;
+  return decideScoped(reader, request, scoped, global);
+}
+
+/** The scoped holdings this actor carries for this key. Tolerates an actor built before the field existed. */
+function scopedHoldingsFor(actor: EntitledActor | undefined, capabilityKey: string): readonly ScopedHolding<GrantCondition>[] {
+  const held = actor?.scopedHeld;
+  return Array.isArray(held) ? held.filter((h) => h && h.capabilityKey === capabilityKey) : [];
+}
+
+/**
+ * Decide a key through its SCOPED holdings. Each holding is admitted only when the record's business context names
+ * its exact scope value (assignmentScopeRuntime.holdingAdmits); then its grant condition, if any, is evaluated
+ * exactly as a global conditional entitlement is. Missing context, another value, or an unconsumed scope type is a
+ * refusal. `prior` is the global decision when the key is ALSO held globally and that decision refused.
+ */
+async function decideScoped(
+  reader: ContextualReader,
+  request: EntitledActionRequest,
+  holdings: readonly ScopedHolding<GrantCondition>[],
+  prior: EntitledActionDecision | null,
+): Promise<EntitledActionDecision> {
+  const { actor, capabilityKey } = request;
+  // A global path that could not even be CONSULTED (outage, resolver disagreement) is not overridden by a scope.
+  if (prior && prior.denials.length === 0) return prior;
+  const denials: EntitlementDenial[] = [...(prior?.denials ?? [])];
+  let unavailable: EntitlementDenial | undefined;
+  let contextEvaluated = prior?.contextEvaluated ?? false;
+  for (const holding of holdings) {
+    const grantor: EntitlementGrantor = { kind: "ROLE", roleKey: holding.sourceRole };
+    const admission = holdingAdmits(holding, request.businessContext);
+    if (admission !== "ADMITTED") {
+      denials.push({ grantor, outcome: admission, detail: `${holding.scopeType}:${holding.scopeValue}` });
+      continue;
+    }
+    const viaScope = Object.freeze({ scopeType: holding.scopeType, scopeValue: holding.scopeValue });
+    if (holding.condition === null) {
+      return Object.freeze({ ...decide({ allowed: true, outcome: "ALLOWED", contextEvaluated,
+        viaGrantor: grantor, viaCondition: false, denials }), viaScope });
+    }
+    const condition = holding.condition;
+    let record: RecordContext | undefined;
+    if (conditionNeedsRecord(condition)) {
+      if (!condition.recordKind || typeof request.recordId !== "string" || request.recordId.trim() === "") {
+        denials.push({ grantor, outcome: "NOT_ASSIGNED", predicate: "RECORD_ASSIGNMENT",
+          detail: condition.recordKind ? "no record supplied" : "condition declares no record kind" });
+        continue;
+      }
+      record = { recordKind: condition.recordKind, recordId: request.recordId };
+    }
+    let decision: AuthorizationDecision;
+    try {
+      contextEvaluated = true;
+      // The key is absent from the flat set by design (it is scoped); the evaluator is handed it for THIS
+      // evaluation only, exactly as a conditionally-held key is.
+      decision = await authorizeAnyPath(reader, {
+        actor: { ...actor, capabilities: new Set([...actor.capabilities, capabilityKey]) },
+        capabilityKey, paths: condition.paths, record,
+      });
+    } catch {
+      unavailable ??= { grantor, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE", detail: "the contextual authority could not be consulted" };
+      continue;
+    }
+    if (decision.allowed) {
+      return Object.freeze({ ...decide({ allowed: true, outcome: "ALLOWED", contextEvaluated: true,
+        viaGrantor: grantor, viaCondition: true, denials }), viaScope });
+    }
+    denials.push({ grantor, outcome: decision.reason, predicate: decision.predicate, detail: decision.detail });
+  }
+  if (unavailable || prior?.outcome === "CONTEXT_AUTHORITY_UNAVAILABLE") {
+    const u = unavailable ?? { grantor: denials[0]?.grantor ?? { kind: "ROLE", roleKey: holdings[0].sourceRole },
+      outcome: "CONTEXT_AUTHORITY_UNAVAILABLE" as const, detail: prior?.detail };
+    return decide({ allowed: false, outcome: "CONTEXT_AUTHORITY_UNAVAILABLE", detail: u.detail,
+      contextEvaluated, viaGrantor: null, viaCondition: false, denials: unavailable ? [...denials, unavailable] : denials });
+  }
+  const worst = denials.reduce((best, d) =>
+    (DENIAL_SPECIFICITY[d.outcome] ?? 0) > (DENIAL_SPECIFICITY[best.outcome] ?? 0) ? d : best, denials[0]);
+  return decide({ allowed: false, outcome: worst.outcome, predicate: worst.predicate, detail: worst.detail,
+    contextEvaluated, viaGrantor: null, viaCondition: false, denials });
+}
+
+/** Steps 0-4 for the GLOBAL holdings: byte-for-byte the decision this seam made before assignment scope existed. */
+async function decideGlobal(
   reader: ContextualReader,
   request: EntitledActionRequest,
 ): Promise<EntitledActionDecision> {
@@ -522,7 +644,8 @@ export function hasResolvedEntitlements(
 export const ENTITLED_ACTION_OUTCOMES: readonly ContextualActionOutcome[] = Object.freeze([
   "ALLOWED", "CAPABILITY_MISSING", "EMPLOYEE_LINK_REQUIRED", "WORK_ELIGIBILITY_MISSING",
   "OUTSIDE_OPERATIONAL_SCOPE", "NOT_ASSIGNED", "WORK_ELIGIBILITY_UNMAPPED", "CONTEXT_AUTHORITY_UNAVAILABLE",
-] as const satisfies readonly (AuthorizationReason | "CONTEXT_AUTHORITY_UNAVAILABLE")[]);
+  "OUTSIDE_ASSIGNMENT_SCOPE", "SCOPE_CONTEXT_REQUIRED", "SCOPE_NOT_EVALUABLE",
+] as const satisfies readonly ContextualActionOutcome[]);
 
 // ════════════════════ PERSISTENCE — DESIGNED, NOT MIGRATED ════════════════════
 
