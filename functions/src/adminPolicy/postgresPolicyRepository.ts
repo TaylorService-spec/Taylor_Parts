@@ -1562,6 +1562,15 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       return Number(rows[0]?.n ?? 0);
     },
 
+    async activeGlobalAssignmentCountForRole(roleId: string, excludeAssignmentId: string | null) {
+      const { rows } = await q.query(
+        `SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments a
+          WHERE a.tenant_id = $1 AND a.role_id = $2 AND a.status = 'active' AND a.scope_type = 'global'
+            AND a.id IS DISTINCT FROM $3`,
+        [tenantId, roleId, excludeAssignmentId]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
     async readTenantSalesChannel(salesChannel: string) {
       const { rows } = await q.query(
         `SELECT * FROM ${SCHEMA}.tenant_sales_channels WHERE tenant_id = $1 AND sales_channel::text = $2 FOR UPDATE`,

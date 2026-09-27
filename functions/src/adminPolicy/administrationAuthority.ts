@@ -146,8 +146,10 @@ export function hasSecurityAdministrationCapability(
 //
 // It confers NOTHING else: not admin.securityPolicy.write, not the ability to change what the
 // Administrator Role may do, not a direct grant, not a scoped Administrator assignment. It is not a
-// governing Administration capability (anti-lockout never counts it) and, being admin.*, it can be
-// neither conditioned nor held at a scope. Enforced in policyCommands.authorizeSecurityPolicyStaffing.
+// governing Administration capability (it authorizes no policy edit), but it DOES take part in the
+// anti-lockout model (ANTI_LOCKOUT_CAPABILITIES, Controller ruling 2026-09-27): no mutation may strand
+// the tenant without a holder able to recover Administrator staffing. Being admin.*, it can be neither
+// conditioned nor held at a scope. Enforced in policyCommands.authorizeSecurityPolicyStaffing.
 
 /** The R1 staffing capability. Its holder may staff the designated Administrator Role for another Principal. */
 export const ADMINISTRATOR_STAFFING_CAPABILITY = "admin.administratorRole.assign";
@@ -159,6 +161,22 @@ export const ADMINISTRATOR_STAFFING_CAPABILITY = "admin.administratorRole.assign
  */
 export const isDesignatedAdministratorRole = (role: { readonly key: string; readonly protected?: boolean | null }): boolean =>
   role.protected === true && role.key === ADMIN_ROLE_KEY;
+
+// ════════════════════ PROTECTED OWNER (Controller ruling 2026-09-27) ════════════════════
+//
+// The protected Owner is NOT an ordinary Security Role assignment. Ordinary role administration --
+// admin.roleAssignment.write, admin.securityPolicy.write, and R1 -- may neither appoint nor remove it,
+// for anyone, including the Owner themselves; and no ordinary role-assignment command may leave a
+// tenant with zero active protected Owners (a per-role invariant: Administrator assignments are never a
+// substitute). Owner succession / transfer is a separate governed lifecycle operation, not built here.
+// Found by the Pass 10 nonprod incident: an Owner revoked their own owner assignment through revokeRole.
+
+/** The immutable key of the protected Owner Security Role. */
+export const PROTECTED_OWNER_ROLE_KEY = "owner";
+
+/** THE protected Owner Role: key AND the stored protected flag, never the display name (as for Administrator). */
+export const isProtectedOwnerRole = (role: { readonly key: string; readonly protected?: boolean | null } | null | undefined): boolean =>
+  role != null && role.protected === true && role.key === PROTECTED_OWNER_ROLE_KEY;
 
 /**
  * The governing grants a tenant's FIRST administrator is bootstrapped with -- the capability form of

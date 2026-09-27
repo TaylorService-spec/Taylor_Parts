@@ -187,17 +187,18 @@ test("the governed nonprod Owner persona, in PostgreSQL", { skip: SKIP, concurre
     const rows = (await q(`SELECT action, reason FROM eos_policy.audit_events
        WHERE reason LIKE 'OWNER PERSONA:%' ORDER BY action`)).rows;
     assert.equal(rows.length, 2, "the two persona mutations did not each write their own reason");
-    assert.deepEqual(rows.map((r) => r.action), ["assignRole", "tenant.addPrincipal"]);
+    // The Owner step is the governed FIRST-OWNER BOOTSTRAP (Controller ruling 2026-09-27), never ordinary assignRole.
+    assert.deepEqual(rows.map((r) => r.action), ["tenant.addPrincipal", "tenant.bootstrapFirstOwner"]);
 
     const byAction = Object.fromEntries(rows.map((r) => [r.action, r.reason]));
     assert.equal(byAction["tenant.addPrincipal"], PRINCIPAL_STEP_REASON);
-    assert.equal(byAction.assignRole, ROLE_STEP_REASON);
+    assert.equal(byAction["tenant.bootstrapFirstOwner"], ROLE_STEP_REASON);
 
     // THE RULING'S ACTUAL SUBJECT: not that a reason exists, but that it is SPECIFIC to its step.
-    assert.notEqual(byAction["tenant.addPrincipal"], byAction.assignRole,
+    assert.notEqual(byAction["tenant.addPrincipal"], byAction["tenant.bootstrapFirstOwner"],
       "both steps recorded the same sentence -- that is a run-level reason");
     assert.match(byAction["tenant.addPrincipal"], /TENANT_MEMBERSHIP/);
-    assert.match(byAction.assignRole, new RegExp(`SECURITY_ROLE ${OWNER_ROLE_KEY}`));
+    assert.match(byAction["tenant.bootstrapFirstOwner"], new RegExp(`SECURITY_ROLE ${OWNER_ROLE_KEY}`));
     for (const reason of Object.values(byAction)) {
       assert.match(reason, new RegExp(OWNER_EXTERNAL_SUBJECT));
       assert.ok(reason.length <= 500, "the reason exceeds the audit column");

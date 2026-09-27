@@ -342,6 +342,11 @@ export interface PolicyTransaction {
   }): Promise<number>;
   /** Active assignments to protected Roles, excluding one. */
   protectedRoleAssignmentCount(excludeAssignmentId: string | null): Promise<number>;
+  /**
+   * Active GLOBAL assignments of ONE Role, excluding one -- the per-role protected Owner invariant
+   * (Controller ruling 2026-09-27): assignments of any other protected Role never count.
+   */
+  activeGlobalAssignmentCountForRole(roleId: string, excludeAssignmentId: string | null): Promise<number>;
 
   // ── Tenant sales channels (lane GA, migration 1762905600000) ──
   // Optional so an adapter without the table fails closed: setTenantSalesChannelStatus refuses when absent.

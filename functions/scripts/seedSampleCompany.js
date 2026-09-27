@@ -805,7 +805,8 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
   const apply = options.apply === true;
 
   const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
-  const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
+  const { ensureTenantPrincipal, bootstrapFirstOwner } = require("../lib/adminPolicy/tenantBootstrap.js");
+  const { isProtectedOwnerRole } = require("../lib/adminPolicy/administrationAuthority.js");
   const { assignRole } = require("../lib/adminPolicy/policyCommands.js");
   const { hasAdministrationAuthority } = require("../lib/adminPolicy/administrationAuthority.js");
   const { establishLink } = require("../lib/employeeIdentity/employeePrincipalLinkRepository.js");
@@ -1022,7 +1023,15 @@ async function seedSampleCompany(pool, options, manifest = MANIFEST) {
       const role = roleByKey.get(key);
       const already = held.some((a) => a.status === "active" && a.roleId === role.id && (a.scopeType ?? "global") === "global");
       ledger.record("roleAssignments", already ? "ALREADY_PRESENT" : "CREATE", `${p.employee}:${key}`);
-      if (apply && !already) await assignRole(repo, actor, { principalId: principal.id, roleId: role.id, reason: ROLE_REASON });
+      if (apply && !already) {
+        // The protected Owner is never appointed through ordinary role administration (Controller ruling 2026-09-27):
+        // its FIRST holder is established by the governed first-Owner bootstrap, which refuses if any Owner exists.
+        if (isProtectedOwnerRole(role)) {
+          await bootstrapFirstOwner(repo, { tenantId, principalId: principal.id, performedBy: actorUid, reason: ROLE_REASON });
+        } else {
+          await assignRole(repo, actor, { principalId: principal.id, roleId: role.id, reason: ROLE_REASON });
+        }
+      }
     }
   }
 

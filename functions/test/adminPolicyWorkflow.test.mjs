@@ -440,12 +440,17 @@ test("Admin assigns ANY Role; Owner assigns Roles but NOT one conferring securit
 
   // generalManager holds no admin.roleAssignment.write by default (Owner ruling 2026-08-21 vs the former
   // Role-name invariant: reported); granting it is an Administration decision, and then GM may assign.
-  await assert.rejects(() => grantRole(repo, gmActor(), "uid-target-gm", roles.owner.id), /"admin\.roleAssignment\.write" is required/);
+  await assert.rejects(() => grantRole(repo, gmActor(), "uid-target-gm", roles.generalManager.id), /"admin\.roleAssignment\.write" is required/);
   const [assign] = (await repo.listCapabilities()).filter((c) => c.key === "admin.roleAssignment.write");
   await repo.transact({ tenantId: TENANT, uid: SYS }, (tx) => tx.grantRoleCapability({
     roleId: roles.generalManager.id, capabilityId: assign.id, grantedBy: SYS, grantedAt: new Date().toISOString() }));
-  const byGm = await grantRole(repo, gmActor(), "uid-target-gm", roles.owner.id);
+  const byGm = await grantRole(repo, gmActor(), "uid-target-gm", roles.generalManager.id);
   assert.equal(byGm.status, "active");
+  // PROTECTED OWNER (Controller ruling 2026-09-27): ordinary role administration never appoints the Owner --
+  // not the Admin (admin.securityPolicy.write), not GM (admin.roleAssignment.write), not the Owner.
+  for (const actor of [adminActor(), gmActor(), ownerActor]) {
+    await assert.rejects(() => grantRole(repo, actor, "uid-target-owner", roles.owner.id), /PROTECTED_OWNER_MEMBERSHIP/);
+  }
 });
 
 test("an unauthorized user cannot assign Roles", async () => {

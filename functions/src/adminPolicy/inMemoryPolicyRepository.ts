@@ -705,6 +705,8 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       protectedRoleAssignmentCount: async (excludeAssignmentId) => t.assignments.filter((a) => a.tenantId === tenantId
         && a.status === "active" && (a.scopeType ?? "global") === "global" && a.id !== excludeAssignmentId
         && t.roles.some((r) => r.id === a.roleId && r.protected)).length,
+      activeGlobalAssignmentCountForRole: async (roleId, excludeAssignmentId) => t.assignments.filter((a) => a.tenantId === tenantId
+        && a.status === "active" && (a.scopeType ?? "global") === "global" && a.roleId === roleId && a.id !== excludeAssignmentId).length,
 
       appendAudit: async (input) => {
         const id = this.nextId();

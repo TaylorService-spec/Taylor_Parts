@@ -330,8 +330,7 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     // link -- exactly the shape measured in nonprod on 2026-09-24, where it had 47 granted capabilities and
     // no link at all, so every contextual predicate refused it EMPLOYEE_LINK_REQUIRED. The Sample Company
     // ADOPTS it; it never creates it, which is why the world it is seeded into has to already contain one.
-    const { ensureTenantPrincipal } = require("../lib/adminPolicy/tenantBootstrap.js");
-    const { assignRole } = require("../lib/adminPolicy/policyCommands.js");
+    const { ensureTenantPrincipal, bootstrapFirstOwner } = require("../lib/adminPolicy/tenantBootstrap.js");
     const ownerPrincipal = await ensureTenantPrincipal(repo, {
       tenantId: tenant.id, externalSubject: "real-owner-subject", identityProvider: "firebase",
       displayName: "Sample Company proof owner", actorUid: "proof", actorRoleKeys: ["admin"],
@@ -339,8 +338,10 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     ownerPrincipalId = ownerPrincipal.id;
     const ownerRole = (await repo.listRoles(tenant.id)).find((r) => r.key === "owner");
     assert.ok(ownerRole, "the tenant bootstrap must seed the governed `owner` Role");
-    await assignRole(repo, { tenantId: tenant.id, uid: "proof", heldRoleKeys: ["admin"] },
-      { principalId: ownerPrincipal.id, roleId: ownerRole.id, reason: "Sample Company v2 proof: the pre-existing owner Principal" });
+    // Established by the governed FIRST-OWNER BOOTSTRAP: ordinary role administration can no longer appoint the
+    // protected Owner (Controller ruling 2026-09-27).
+    await bootstrapFirstOwner(repo, { tenantId: tenant.id, principalId: ownerPrincipal.id, performedBy: "proof",
+      reason: "Sample Company v2 proof: the pre-existing owner Principal" });
     assert.notEqual(ownerPrincipalId, adminPrincipalId);
   } finally {
     await pool.end();

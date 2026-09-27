@@ -20,6 +20,7 @@ import {
   ADMINISTRATOR_STAFFING_CAPABILITY,
   AdministrationDeniedError,
   isDesignatedAdministratorRole,
+  isProtectedOwnerRole,
   PROTECTED_ROLE_KEYS,
   requireAdministrationAuthority,
 } from "./administrationAuthority";
@@ -119,7 +120,11 @@ export class AdministrationRefusal extends PolicyValidationError {
     | "SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS"
     | "SALES_CHANNEL_STORE_UNAVAILABLE"
     // Direct exceptions (lane DX): principal_capabilities has no scope model.
-    | "DIRECT_GRANT_SCOPE_UNSUPPORTED", message: string) {
+    | "DIRECT_GRANT_SCOPE_UNSUPPORTED"
+    // Protected Owner (Controller ruling 2026-09-27): ordinary role administration never appoints or removes
+    // the protected Owner, and never leaves a tenant with zero active protected Owners.
+    | "PROTECTED_OWNER_MEMBERSHIP"
+    | "LAST_PROTECTED_OWNER", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -754,6 +759,10 @@ export async function assignRole(
 
   const role = (await repo.listRoles(actor.tenantId)).find((r) => r.id === roleId);
   if (!role) throw new PolicyValidationError("role not found");
+  // PROTECTED OWNER (Controller ruling 2026-09-27): never appointed through ordinary role administration --
+  // not by admin.roleAssignment.write, admin.securityPolicy.write or R1, whoever the target. Decided before
+  // anything else about the request, so no caller can learn more than the refusal.
+  refuseProtectedOwnerMembership(role, "assign");
 
   const membership = await repo.getMembership(actor.tenantId, principalId);
   if (!membership || membership.status !== "active") {
@@ -1117,8 +1126,17 @@ export async function revokeRole(
     const current = await tx.readAssignment(assignmentId);
     if (!current) throw new PolicyValidationError("assignment not found");
     let staffing: SecurityPolicyStaffingAuthority = "NOT_REQUIRED";
+    const assignmentRoles = await repo.listRoles(actor.tenantId);
+    const currentRole = assignmentRoles.find((r) => r.id === current.roleId);
+    if (isProtectedOwnerRole(currentRole)) {
+      // PROTECTED OWNER (Controller ruling 2026-09-27), under the governance lock. The per-role last-Owner
+      // invariant first (its own code, so the reason is exact), then the membership rule, which refuses every
+      // ordinary removal of a protected Owner -- the Owner's own included -- whatever authority the actor holds.
+      if (current.status === "active") await refuseIfLastProtectedOwner(tx, current.roleId, assignmentId);
+      refuseProtectedOwnerMembership(currentRole, "revoke");
+    }
     if (current.status === "active") {
-      const roles = await repo.listRoles(actor.tenantId);
+      const roles = assignmentRoles;
       // D5(b) for REMOVAL (Owner ruling R1): removing a Role that carries admin.securityPolicy.write needs that
       // capability, or -- for the designated Administrator Role only, from another Principal -- the R1 staffing
       // capability. Decided under the governance lock, against the store.
@@ -1394,15 +1412,51 @@ async function principalsHoldingRole(repo: PolicyRepository, tenantId: string, r
 }
 
 /**
+ * THE ANTI-LOCKOUT SET: the governing Administration capabilities PLUS the R1 staffing capability
+ * (Controller ruling 2026-09-27). R1 governs no policy, so it stays out of ADMINISTRATION_GOVERNING_CAPABILITIES,
+ * but losing its last holder strands the tenant's governed way to recover Administrator staffing -- so no
+ * mutation may remove it.
+ */
+export const ANTI_LOCKOUT_CAPABILITIES: readonly string[] = Object.freeze([
+  ...ADMINISTRATION_GOVERNING_CAPABILITIES,
+  ADMINISTRATOR_STAFFING_CAPABILITY,
+]);
+
+/**
+ * PROTECTED OWNER MEMBERSHIP (Controller ruling 2026-09-27): the protected Owner is not an ordinary Security Role
+ * assignment. Ordinary role administration may neither appoint nor remove it. Owner succession / transfer is a
+ * separate governed lifecycle operation that does not exist yet -- this refuses; it does not route anywhere.
+ */
+function refuseProtectedOwnerMembership(role: { readonly key: string; readonly protected?: boolean | null } | undefined, verb: "assign" | "revoke"): void {
+  if (!isProtectedOwnerRole(role)) return;
+  throw new AdministrationRefusal("PROTECTED_OWNER_MEMBERSHIP",
+    `the protected Owner is not ${verb === "assign" ? "appointed" : "removed"} through ordinary role administration `
+    + "(admin.roleAssignment.write, admin.securityPolicy.write and admin.administratorRole.assign are all insufficient); "
+    + "Owner succession is a separate governed lifecycle operation");
+}
+
+/**
+ * THE LAST-OWNER INVARIANT (per role), inside the transaction and under the governance lock: refuse a change
+ * after which the tenant has ZERO active global assignments of the protected Owner Role. Assignments of any
+ * other protected Role -- the Administrator included -- never substitute for an Owner.
+ */
+async function refuseIfLastProtectedOwner(tx: PolicyTransaction, ownerRoleId: string, excludeAssignmentId: string): Promise<void> {
+  if ((await tx.activeGlobalAssignmentCountForRole(ownerRoleId, excludeAssignmentId)) === 0) {
+    throw new AdministrationRefusal("LAST_PROTECTED_OWNER",
+      "this is the tenant's last active protected Owner assignment; no ordinary role-assignment command may leave a tenant without an Owner");
+  }
+}
+
+/**
  * ANTI-LOCKOUT (PLATFORM_SAFETY), inside the transaction and under the governance lock: refuse a
- * change after which NO principal the gate would admit holds a governing Administration capability.
+ * change after which NO principal the gate would admit holds a capability of ANTI_LOCKOUT_CAPABILITIES.
  */
 async function refuseIfLastAdministrationPath(
   tx: PolicyTransaction,
   exclude: { readonly assignmentId?: string; readonly roleId?: string; readonly principalId?: string },
   onlyCapability?: string,
 ): Promise<void> {
-  for (const key of ADMINISTRATION_GOVERNING_CAPABILITIES) {
+  for (const key of ANTI_LOCKOUT_CAPABILITIES) {
     if (onlyCapability !== undefined && onlyCapability !== key) continue;
     const before = await tx.administrationHolderCount(key, {});
     if (before === 0) continue; // nothing to lose; the tenant was not administered this way
@@ -1529,7 +1583,7 @@ export async function revokeObjectActionFromRole(
     await tx.lockGrantCell(role.key, capability.key);
     const cell = await tx.readGrantCell(role.key, capability.key);
     if (!cell.grant) return null; // nothing was granted; nothing happened; nothing to audit
-    if (ADMINISTRATION_GOVERNING_CAPABILITIES.includes(capability.key)) {
+    if (ANTI_LOCKOUT_CAPABILITIES.includes(capability.key)) {
       await refuseIfLastAdministrationPath(tx, { roleId: role.id }, capability.key);
     }
     const removed = await tx.revokeRoleCapability(role.id, capability.id);
@@ -1774,7 +1828,7 @@ export async function revokeObjectActionFromPrincipal(
     await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
     const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
     if (!cell.grant) return null; // nothing was granted; nothing happened; nothing to audit
-    if (ADMINISTRATION_GOVERNING_CAPABILITIES.includes(capability.key)) {
+    if (ANTI_LOCKOUT_CAPABILITIES.includes(capability.key)) {
       await refuseIfLastAdministrationPath(tx, { principalId }, capability.key);
     }
     const removed = await tx.revokePrincipalCapability(principalId, capability.id);

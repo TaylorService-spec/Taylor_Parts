@@ -23,7 +23,8 @@
 // configuration, which is the worst kind of "safe".
 import { AdministrationCapabilityDeniedError, hasSecurityAdministrationCapability } from "./administrationAuthority";
 import { capabilityKeysFor } from "./administrationCapabilityGate";
-import { ADMIN_ROLE_KEY, ADMINISTRATION_BOOTSTRAP_GRANTS } from "./administrationAuthority";
+import { ADMIN_ROLE_KEY, ADMINISTRATION_BOOTSTRAP_GRANTS, PROTECTED_OWNER_ROLE_KEY, isProtectedOwnerRole } from "./administrationAuthority";
+import { ownerPrincipalViolations } from "./roleCapabilityAdministration";
 import { seedTenantPolicy, SEED_VERSION } from "./seed/policySeed";
 import type { SeedResult } from "./seed/policySeed";
 import { PolicyStoreError } from "./policyRepository";
@@ -270,6 +271,131 @@ export async function bootstrapAdministrator(
  * and grants nothing -- the resulting context can read no policy and mutate nothing until an
  * administrator assigns a Role, which is the correct default for somebody who has merely signed in.
  */
+// ════════════════════ FIRST OWNER BOOTSTRAP (Controller/Owner ruling 2026-09-27, option A) ════════════════════
+
+/** The provenance stamped on the assignment a first-Owner bootstrap writes: `bootstrap:first-owner:<operator>`. */
+export const FIRST_OWNER_BOOTSTRAP_SOURCE = "bootstrap:first-owner";
+/** The audit action of a first-Owner bootstrap. Never an Administration action. */
+export const FIRST_OWNER_BOOTSTRAP_ACTION = "tenant.bootstrapFirstOwner";
+
+export interface BootstrapFirstOwnerInput {
+  readonly tenantId: TenantId;
+  /** An EXISTING Principal with an ACTIVE membership of this tenant. This primitive creates no identity. */
+  readonly principalId: string;
+  /** Who ran the bootstrap. An operator, recorded as the audit actor and in the assignment's provenance. */
+  readonly performedBy: string;
+  /** Required: a governed bootstrap carries its own reason. */
+  readonly reason: string;
+}
+
+export interface BootstrapFirstOwnerResult {
+  readonly principalId: string;
+  readonly assignmentId: string;
+  readonly roleId: string;
+  readonly accessVersion: number;
+}
+
+/**
+ * Establish a tenant's FIRST protected Owner -- once, and only while the tenant has NO active protected Owner.
+ *
+ * ════════════════════ WHAT THIS IS, AND IS NOT ════════════════════
+ *
+ * Ordinary role administration may never appoint or remove the protected Owner (Controller ruling 2026-09-27:
+ * assignRole refuses PROTECTED_OWNER_MEMBERSHIP). A new tenant therefore needs one place that establishes its first
+ * Owner -- exactly as bootstrapAdministrator establishes its first Administrator. That is this, and ONLY this:
+ *
+ *   NOT OWNER LIFECYCLE    it never adds a second Owner, never replaces, transfers or removes one. The moment ANY
+ *                          active protected Owner exists it refuses, whoever the target -- including the principal
+ *                          who already holds it (an exact replay is the CALLER's read-first NO_CHANGE, never this
+ *                          primitive's; see provisionOwnerPersona). Succession is a separate lifecycle, not built.
+ *   NOT ADMINISTRATION     no capability authorizes it and none is checked: no Administration endpoint, button,
+ *                          Security Role, direct exception or role-assignment command reaches it. Its only callers
+ *                          are operator-run scripts, which pass the operator as `performedBy`.
+ *   TENANT/PRINCIPAL-BOUND one tenant and one EXISTING principal with an ACTIVE membership of that tenant; the
+ *                          canonical `owner` Role must exist AND carry the stored protected flag.
+ *   OWNER RULING A         the target may not thereby reach an owner-excluded capability.
+ *   RACE-FREE              the zero-Owner count and the insert run inside ONE transaction under the tenant
+ *                          governance lock every Administration command takes, so two concurrent bootstraps
+ *                          serialize and the second sees the first's Owner and refuses.
+ *   AUDITED                one `tenant.bootstrapFirstOwner` event, actor = the operator, and the assignment's
+ *                          grantedBy = `bootstrap:first-owner:<operator>` -- distinguishable from Administration.
+ */
+export async function bootstrapFirstOwner(
+  repo: PolicyRepository,
+  input: BootstrapFirstOwnerInput,
+): Promise<BootstrapFirstOwnerResult> {
+  const tenantId = requireText(input.tenantId, "tenant id");
+  const principalId = requireText(input.principalId, "principal id");
+  const performedBy = requireText(input.performedBy, "performedBy");
+  const reason = requireText(input.reason, "reason");
+
+  const tenant = await repo.getTenant(tenantId);
+  if (!tenant) throw new TenantBootstrapError("FIRST_OWNER_TENANT_MISSING: tenant does not exist");
+
+  const ownerRole = await repo.getRoleByKey(tenantId, PROTECTED_OWNER_ROLE_KEY);
+  if (!ownerRole) throw new TenantBootstrapError("FIRST_OWNER_ROLE_MISSING: the tenant has no canonical owner Role -- seed it first");
+  if (!isProtectedOwnerRole(ownerRole)) {
+    throw new TenantBootstrapError("FIRST_OWNER_ROLE_NOT_PROTECTED: the tenant's owner Role is not the protected Owner Role");
+  }
+
+  const principal = await repo.getPrincipal(principalId);
+  if (!principal) throw new TenantBootstrapError("FIRST_OWNER_PRINCIPAL_MISSING: that principal does not exist");
+  const membership = await repo.getMembership(tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new TenantBootstrapError("FIRST_OWNER_NOT_A_MEMBER: that principal is not an active member of this tenant");
+  }
+
+  // Owner ruling A at the principal: holding owner may never bring an owner-excluded capability with it.
+  const roles = await repo.listRoles(tenantId);
+  const heldRoleKeys = (await repo.listAssignmentsForPrincipal(tenantId, principalId))
+    .filter((a) => a.status === "active")
+    .map((a) => roles.find((r) => r.id === a.roleId)?.key)
+    .filter((k): k is string => typeof k === "string");
+  const withOwner = [...new Set([...heldRoleKeys, PROTECTED_OWNER_ROLE_KEY])];
+  const violations = ownerPrincipalViolations(withOwner,
+    await capabilityKeysFor(repo, tenantId, withOwner, principalId, { includeConditioned: true }));
+  if (violations.length > 0) {
+    throw new TenantBootstrapError(`FIRST_OWNER_RULING_A: a principal holding the owner Role may never hold ${violations.join(", ")}`);
+  }
+
+  return repo.transact({ tenantId, uid: performedBy }, async (tx) => {
+    // THE ZERO-OWNER PRECONDITION, decided under the tenant governance lock (serializes concurrent bootstraps).
+    await tx.beginAdministrationCommand();
+    const owners = await tx.activeGlobalAssignmentCountForRole(ownerRole.id, null);
+    if (owners > 0) {
+      throw new TenantBootstrapError(
+        "FIRST_OWNER_ALREADY_ESTABLISHED: this tenant already has an active protected Owner; the first-Owner bootstrap "
+        + "never adds, replaces or transfers an Owner (Owner succession is a separate lifecycle)");
+    }
+    const accessVersion = await tx.bumpAccessVersion(principalId);
+    const grantedAt = new Date().toISOString();
+    const assignment = await tx.createAssignment({
+      principalId,
+      roleId: ownerRole.id,
+      scopeType: "global",
+      scopeValue: null,
+      status: "active",
+      grantedBy: `${FIRST_OWNER_BOOTSTRAP_SOURCE}:${performedBy}`,
+      grantedAt,
+      accessVersionAtGrant: accessVersion,
+    });
+    await tx.appendAudit({
+      action: FIRST_OWNER_BOOTSTRAP_ACTION,
+      actorUid: performedBy,
+      targetKind: "roleAssignment",
+      targetId: assignment.id,
+      before: null,
+      after: {
+        source: "FIRST_OWNER_BOOTSTRAP", tenantId, principalId, roleKey: PROTECTED_OWNER_ROLE_KEY, roleId: ownerRole.id,
+        assignmentId: assignment.id, scopeType: "global", performedBy, grantedAt, accessVersion,
+      },
+      reason,
+      occurredAt: grantedAt,
+    });
+    return { principalId, assignmentId: assignment.id, roleId: ownerRole.id, accessVersion };
+  });
+}
+
 export async function ensureTenantPrincipal(
   repo: PolicyRepository,
   input: {

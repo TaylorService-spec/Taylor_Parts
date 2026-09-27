@@ -158,9 +158,12 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
     // a Role with nothing evaluable at the scope would be a grant of nothing
     await refused({ roleId: await roleIdOf(T.a, "customerOnly"), scopeType: "operatingCompany", scopeValue: "taylor" }, "SCOPE_NOT_EVALUABLE_FOR_ROLE");
     // Administration authority is tenant-wide: a Role carrying admin.* can never be scoped
-    for (const key of ["admin", "owner"]) {
-      await refused({ roleId: await roleIdOf(T.a, key), scopeType: "operatingCompany", scopeValue: "taylor" }, "SCOPE_AMBIGUOUS_ADMINISTRATION");
-    }
+    await refused({ roleId: await roleIdOf(T.a, "admin"), scopeType: "operatingCompany", scopeValue: "taylor" }, "SCOPE_AMBIGUOUS_ADMINISTRATION");
+    // The protected Owner is refused before any scope question: ordinary administration never appoints it at all.
+    const ownerScoped = await call("admin-a", "assignRole", { principalId: bystander, reason: "should refuse",
+      roleId: await roleIdOf(T.a, "owner"), scopeType: "operatingCompany", scopeValue: "taylor" });
+    assert.deepEqual([ownerScoped.ok, ownerScoped.code], [false, "FORBIDDEN"], JSON.stringify(ownerScoped));
+    assert.match(ownerScoped.message, /PROTECTED_OWNER_MEMBERSHIP/);
     const rows = (await q(`SELECT count(*)::int n FROM eos_policy.user_role_assignments WHERE tenant_id=$1 AND principal_id=$2`, [T.a, bystander])).rows[0].n;
     assert.equal(rows, 0, "a refused scoped assignment left a row");
     // B's administrator assigns B's company; A's value is not B's.
