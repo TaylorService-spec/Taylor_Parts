@@ -530,6 +530,11 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
+      # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
+      - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
+      - "functions/scripts/provisionOwnerPersona.js"
+      - "functions/scripts/seedSampleCompany.js"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -934,6 +939,11 @@ on:
       # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
       - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
       - "functions/test/support/protectedOwnerFixture.mjs"
+      # FIRST-OWNER BOOTSTRAP (ruling 2026-09-27, option A): the bootstrap-only establishment of a tenant's first Owner,
+      # and the Owner-establishing scripts that now call it (test:adminPolicyPostgres).
+      - "functions/test/firstOwnerBootstrapPostgres.test.mjs"
+      - "functions/scripts/provisionOwnerPersona.js"
+      - "functions/scripts/seedSampleCompany.js"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"

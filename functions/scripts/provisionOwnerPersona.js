@@ -15,8 +15,11 @@
 //                            provider `eos-synthetic-nonprod`, which NO verifier recognizes, so this
 //                            persona can never authenticate. It is a governed authority fixture, not
 //                            an account.
-//   Security Role            assignRole (governed, audited, access-version bump, idempotent).
-//                            Exactly `owner`, global scope, and nothing else.
+//   Security Role            bootstrapFirstOwner (governed first-Owner bootstrap, audited, access-version
+//                            bump). Exactly `owner`, global scope, and nothing else. NOT assignRole: ordinary
+//                            role administration can no longer appoint the protected Owner (Controller ruling
+//                            2026-09-27), and the bootstrap refuses once ANY active Owner exists -- so a re-run
+//                            is this script's read-first NO_CHANGE and never a second call.
 //
 //   NO EMPLOYEE.             Deliberate, and it is the ruling read literally: "a synthetic/nonprod
 //                            Employee WHERE THE PERSONA MODEL REQUIRES ONE." It does not require
@@ -181,7 +184,7 @@ function assertNotTheAdministrator(principalId, adminPrincipalId) {
  */
 async function provisionOwnerPersona(pool, options, deps) {
   assertDistinctStepReasons();
-  const { PostgresPolicyRepository, ensureTenantPrincipal, assignRole, hasAdministrationAuthority } = deps;
+  const { PostgresPolicyRepository, ensureTenantPrincipal, bootstrapFirstOwner, hasAdministrationAuthority } = deps;
   const repo = new PostgresPolicyRepository(pool);
 
   const tenant = await repo.getTenantByKey(options.tenantKey);
@@ -247,9 +250,13 @@ async function provisionOwnerPersona(pool, options, deps) {
   if (!options.apply) {
     steps.push({ step: "roleAssignment", outcome: rolePresent ? "NO_CHANGE" : "PLANNED", reason: ROLE_STEP_REASON });
   } else {
-    await assignRole(repo, { tenantId, uid: options.performedBy, heldRoleKeys }, {
-      principalId: principal.id, roleId: ownerRole.id, reason: ROLE_STEP_REASON,
-    });
+    // FIRST-OWNER BOOTSTRAP, never assignRole. An exact replay (this persona already holds owner) is NO_CHANGE and
+    // makes no call; any OTHER active Owner makes the bootstrap refuse FIRST_OWNER_ALREADY_ESTABLISHED.
+    if (!rolePresent) {
+      await bootstrapFirstOwner(repo, {
+        tenantId, principalId: principal.id, performedBy: options.performedBy, reason: ROLE_STEP_REASON,
+      });
+    }
     steps.push({ step: "roleAssignment", outcome: rolePresent ? "NO_CHANGE" : "CREATED", reason: ROLE_STEP_REASON });
   }
 
@@ -297,7 +304,7 @@ async function main() {
   const deps = {
     PostgresPolicyRepository: require("../lib/adminPolicy/postgresPolicyRepository.js").PostgresPolicyRepository,
     ensureTenantPrincipal: require("../lib/adminPolicy/tenantBootstrap.js").ensureTenantPrincipal,
-    assignRole: require("../lib/adminPolicy/policyCommands.js").assignRole,
+    bootstrapFirstOwner: require("../lib/adminPolicy/tenantBootstrap.js").bootstrapFirstOwner,
     hasAdministrationAuthority: require("../lib/adminPolicy/administrationAuthority.js").hasAdministrationAuthority,
   };
   const pool = new pg.Pool(resolvePolicyDatabaseConfig({ connectionString: options.connectionString }));
