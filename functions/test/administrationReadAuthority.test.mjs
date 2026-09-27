@@ -197,7 +197,11 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
     performedBy: "operator", reason: "initial administrator",
   });
   const adminContext = await resolvePrincipalContext(repo, { externalSubject: "firebase-uid-admin" });
-  const admin = { tenantId: tenant.id, uid: adminContext.uid, heldRoleKeys: adminContext.heldRoleKeys };
+  // This database is held at 1762041600000 (before the Administration control plane), so the actor's
+  // capabilities are supplied as the trusted API resolves them rather than read from relations this
+  // schema does not have yet.
+  const admin = { tenantId: tenant.id, uid: adminContext.uid, heldRoleKeys: adminContext.heldRoleKeys,
+    capabilities: new Set(["admin.securityPolicy.write", "admin.roleAssignment.write"]) };
 
   await t.test("the read is registered UNDER the Object it governs", async () => {
     const caps = await repo.listCapabilities();
@@ -272,10 +276,16 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
       key: "securityPolicyReader", name: "Security Policy Reader",
       description: "Holds the Administration read and nothing else.", reason: "read/write separation proof",
     });
-    await commands.grantObjectActionToRole(repo, admin, {
-      roleKey: "securityPolicyReader", objectKey: "rolesPermissions", actionKey: "read",
-      reason: "read/write separation proof",
-    });
+    // THIS DATABASE IS HELD AT 1762041600000 on purpose (see above), i.e. BEFORE the Administration
+    // control plane (1762646400000) creates role_capability_decisions -- so the governed command,
+    // which records a decision, cannot run here. The administrator's grant is written as exactly the
+    // row that command writes: Role -> capability, stamped with the ADMINISTRATOR, not a migration.
+    const grantAsAdministrator = async (roleKey, capabilityKey) => pool.query(
+      `INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+       SELECT 'rc-admin-' || r.key || '-' || c.id, $1, r.id, c.id, $4, $4, $4
+         FROM eos_policy.roles r, eos_policy.capabilities c WHERE r.tenant_id = $1 AND r.key = $2 AND c.key = $3`,
+      [tenant.id, roleKey, capabilityKey, admin.uid]);
+    await grantAsAdministrator("securityPolicyReader", THE_READ);
 
     // THE REAL RESOLVER, not a hand-built set: this is the same call every governed command makes.
     const effective = await capabilitiesForRoleKeys(pool, tenant.id, ["securityPolicyReader"]);
@@ -299,9 +309,10 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
   });
 
   await t.test("a principal holding only the read is refused by the governed writes", async () => {
-    // The Role KEY, not the capability, is what the live commands still check -- so this proves the
-    // reader is refused on the path that actually runs today, not only in the capability model.
-    const reader = { tenantId: tenant.id, uid: "reader-principal", heldRoleKeys: ["securityPolicyReader"] };
+    // The grant command is now authorized by admin.securityPolicy.write (Administration control
+    // plane); createRole still by the Role key. The reader holds neither, and is refused by both.
+    const reader = { tenantId: tenant.id, uid: "reader-principal", heldRoleKeys: ["securityPolicyReader"],
+      capabilities: new Set([THE_READ]) };
     await assert.rejects(
       () => commands.grantObjectActionToRole(repo, reader, {
         roleKey: "securityPolicyReader", objectKey: "rolesPermissions", actionKey: "assignRole",
@@ -362,10 +373,10 @@ test("the Administration read authority, in PostgreSQL", { skip: SKIP, concurren
     assert.equal(still.rows[0].n, 1);
 
     // Withdraw the administrator's grant deliberately, and the reverse is then clean and exact.
-    await commands.revokeObjectActionFromRole(repo, admin, {
-      roleKey: "securityPolicyReader", objectKey: "rolesPermissions", actionKey: "read",
-      reason: "withdrawn before reversing",
-    });
+    // (Held at 1762041600000: the row the governed revoke would delete, deleted directly.)
+    await pool.query(
+      `DELETE FROM eos_policy.role_capabilities rc USING eos_policy.roles r
+        WHERE rc.role_id = r.id AND r.key = 'securityPolicyReader' AND rc.tenant_id = $1`, [tenant.id]);
     migrate(dbUrl, ["down", "1"]);
     assert.deepEqual(await holdersOf(THE_READ), [], "the migration's own grants went with it");
     const gone = await pool.query("SELECT count(*)::int n FROM eos_policy.capabilities WHERE key = $1", [THE_READ]);

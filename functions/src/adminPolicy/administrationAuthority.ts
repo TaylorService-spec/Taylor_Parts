@@ -90,6 +90,72 @@ export function requireAdministrationAuthority(
   if (!hasAdministrationAuthority(heldRoleKeys, action)) throw new AdministrationDeniedError(action);
 }
 
+// ════════════════════ CAPABILITY-GOVERNED SECURITY ADMINISTRATION (Owner, 2026-09-26) ════════════
+//
+// "Administration is the control plane" means the authority to CHANGE authority is itself a
+// governed capability, resolved from PostgreSQL like every other one -- not the Role name `admin`.
+// The operations below are authorized by the capability ONLY; holding a Role called `admin` without
+// the capability authorizes nothing, and holding the capability through any Role (or a direct
+// grant) authorizes it.
+//
+//   OPERATION                                             CAPABILITY                   HOLDERS BY DEFAULT
+//   grant/revoke Object action -> Role or Principal       admin.securityPolicy.write   admin (parity: editRoleDefinition)
+//   set/retire grant condition                            admin.securityPolicy.write   admin
+//   assignRole / revokeRole                               admin.roleAssignment.write   admin, owner (1761609600000)
+//
+// Migration 1762646400000 registers admin.securityPolicy.write -> admin. generalManager, which the
+// Role-name invariant below admitted to assignRole, does NOT hold admin.roleAssignment.write: the
+// 2026-08-21 Owner ruling (test/generalManagerNoAdmin.test.mjs) forbids General Manager security
+// administration, and that conflict is reported for the Owner rather than resolved by a migration.
+// The capability gate therefore NARROWS generalManager (fail closed); granting it back is an
+// Administration act, not code.
+//
+// THE RECOVERY PROPERTY IS KEPT AS A SAFETY GUARD, NOT AN AUTHORIZATION: a revoke that would leave
+// NO active principal holding one of these two capabilities is refused
+// (WOULD_REMOVE_LAST_ADMINISTRATION_PATH), and a tenant's first administrator is bootstrapped WITH
+// them (tenantBootstrap.ts). Authorization first, safety second, as decideWorkflowAdministration.
+
+export type SecurityAdministrationAction = "editSecurityPolicy" | "assignRole";
+
+export const SECURITY_ADMINISTRATION_CAPABILITY: Readonly<Record<SecurityAdministrationAction, string>> = Object.freeze({
+  editSecurityPolicy: "admin.securityPolicy.write",
+  assignRole: "admin.roleAssignment.write",
+});
+
+/**
+ * Does this EFFECTIVE capability set authorize this security-administration action?
+ * Fails closed: a missing or non-Set capability set is a refusal, never a fallback to Role keys.
+ */
+export function hasSecurityAdministrationCapability(
+  capabilities: ReadonlySet<string> | null | undefined,
+  action: SecurityAdministrationAction,
+): boolean {
+  return capabilities instanceof Set && capabilities.has(SECURITY_ADMINISTRATION_CAPABILITY[action]);
+}
+
+/**
+ * The governing grants a tenant's FIRST administrator is bootstrapped with -- the capability form of
+ * the recovery property: definition = admin, assignment = admin + owner. Written by
+ * `bootstrapAdministrator` in the same transaction that assigns the first Admin, for every pair
+ * whose Role and capability exist; identical to what migrations 1761609600000 and 1762646400000
+ * produce for a tenant whose Roles existed when they ran. generalManager is deliberately absent (see
+ * the conflict note above).
+ */
+export const ADMINISTRATION_BOOTSTRAP_GRANTS: readonly { readonly roleKey: string; readonly capabilityKey: string }[] =
+  Object.freeze([
+    { roleKey: ADMIN_ROLE_KEY, capabilityKey: "admin.securityPolicy.write" },
+    { roleKey: ADMIN_ROLE_KEY, capabilityKey: "admin.roleAssignment.write" },
+    { roleKey: "owner", capabilityKey: "admin.roleAssignment.write" },
+  ].map((g) => Object.freeze(g)));
+
+/** Refusal of a capability-governed administration mutation. Names the missing capability. */
+export class AdministrationCapabilityDeniedError extends AdministrationDeniedError {
+  constructor(readonly securityAction: SecurityAdministrationAction) {
+    super(securityAction === "assignRole" ? "assignRole" : "editRoleDefinition");
+    this.message = `not authorized: "${SECURITY_ADMINISTRATION_CAPABILITY[securityAction]}" is required`;
+  }
+}
+
 // ════════════════════ CAPABILITY-GOVERNED WORKFLOW ADMINISTRATION ════════════════════
 //
 // Owner ruling: Workflow Administration becomes capability-governed, and the invariant above stops

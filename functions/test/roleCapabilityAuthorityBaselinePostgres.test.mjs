@@ -139,9 +139,11 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // so this number moves when a migration lands, never afterwards and never separately. The 26 rows
   // are the ten Owner-approved corrections lane BK recorded as pending, the thirteen
   // edit-without-read reads ruling B reconciles, and Reporting Slice 1's three.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 413);
+  // 413 -> 414 (MIGRATION_BACKED 355 -> 356): migration 1762646400000, the Administration control
+  // plane -- admin -> admin.securityPolicy.write, the capability that replaced the Role-name gate.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 414);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 355, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 356, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

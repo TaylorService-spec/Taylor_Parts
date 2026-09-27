@@ -24,7 +24,9 @@ import {
 
 const TENANT = "tenant-def";
 const SYS = "uid-seed";
-const admin = { tenantId: TENANT, uid: "uid-admin", heldRoleKeys: ["admin"] };
+// The Administration actor as the trusted API resolves it: security-policy authority is the CAPABILITY
+// admin.securityPolicy.write (Pass 8 removed the Role-name gate), resolved server-side into `capabilities`.
+const admin = { tenantId: TENANT, uid: "uid-admin", heldRoleKeys: ["admin"], capabilities: new Set(["admin.securityPolicy.write"]) };
 const plain = { tenantId: TENANT, uid: "uid-plain", heldRoleKeys: ["technician"] };
 
 /** One object with one SYSTEM field, built through the store the way the seed would. */

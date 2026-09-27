@@ -17,7 +17,8 @@
 // imported: the verifier is injected. The tenant arrives only as the x-eos-tenant header, which the resolver checks
 // against membership and never adopts; authority fields in the body are refused (and refused again by the authority).
 import type { Pool } from "pg";
-import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
+import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "../eosOps/capabilityAuthority";
+import { postgresGrantConditionProvider } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { CrmAuthorityError, CALLER_AUTHORITY_FIELDS, type CrmActorContext, type CrmErrorCategory, type CrmRowFinding } from "./crmAuthorityKernel";
@@ -79,15 +80,21 @@ export async function executeCrmOperation(
   const { operation } = request;
   try {
     assertPostgresCrmWriterActive(`crm.transport.${operation}`, deps.writerAuthority ?? CRM_WRITER_AUTHORITY);
+    // GRANT CONDITIONS COME FROM POSTGRESQL (eos_policy.capability_grant_conditions), the source
+    // EOS Administration writes. This kernel decides on the flat set and cannot evaluate a condition,
+    // so a capability reached ONLY through a conditioned grant is withheld here -- fail closed.
+    const conditions = postgresGrantConditionProvider(deps.pool);
     const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
       requestedTenantId: request.caller.requestedTenantId,
-    });
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(
+      deps.pool, ctx.principalContext, ctx.capabilities, conditions);
     const actor: CrmActorContext = Object.freeze({
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
-      capabilities: ctx.capabilities,
+      capabilities,
     });
     const run = RUNNERS[operation] as Runner;
     return { ok: true, operation, result: await run({ pool: deps.pool }, actor, request.input) };

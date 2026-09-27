@@ -28,7 +28,9 @@ import { bootstrapAdministrator, bootstrapTenant } from "../lib/adminPolicy/tena
 
 const TENANT = "tenant-noop";
 const SYS = "uid-seed";
-const admin = { tenantId: TENANT, uid: "uid-admin", heldRoleKeys: ["admin"] };
+// The Administration actor as the trusted API resolves it: security-policy authority is the CAPABILITY
+// admin.securityPolicy.write (Pass 8 removed the Role-name gate), resolved server-side into `capabilities`.
+const admin = { tenantId: TENANT, uid: "uid-admin", heldRoleKeys: ["admin"], capabilities: new Set(["admin.securityPolicy.write"]) };
 
 /** One deletable-free object, one custom field, one Role held by one member principal. */
 async function world() {
@@ -98,6 +100,9 @@ test("an identical Role rename writes nothing and audits nothing — through the
   // updateRole's command lives in the dispatcher, so it is exercised there: a real bootstrapped
   // tenant, a real one-time administrator, and the same entry point the HTTP transport calls.
   const repo = new InMemoryPolicyRepository();
+  // The migration-registered governing capability, so the bootstrap grants it to the first administrator.
+  repo.registerCapabilities([{ key: "admin.securityPolicy.write", description: "", objectKey: "rolesPermissions",
+    actionKey: "editSecurityPolicy", actionKind: "ADMIN_ACTION", displayLabel: "Edit Security Policy" }]);
   const { tenant } = await bootstrapTenant(repo, { key: "noop-tenant", name: "No-op Tenant", actorUid: SYS });
   await bootstrapAdministrator(repo, { tenantId: tenant.id, externalSubject: "admin-subject", displayName: "Admin", performedBy: SYS, reason: "test" });
   const asAdmin = (operation, input) => ({ caller: { externalSubject: "admin-subject" }, operation, input });

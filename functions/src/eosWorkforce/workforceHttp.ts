@@ -69,7 +69,7 @@
 // An unserved name is an ordinary unknown operation (404); nothing is stubbed.
 import type { Pool } from "pg";
 import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
-import { resolveEntitledOperationalContext } from "../eosOps/entitledActionAuthority";
+import { postgresGrantConditionProvider, resolveEntitledOperationalContext } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { EmployeeReadError, type EmployeeReadActor, type EmployeeReadErrorCategory } from "./reads/employeeReadKernel";
@@ -108,15 +108,15 @@ export interface WorkforceApiDeps {
   /**
    * WHERE PER-GRANT CONDITIONS COME FROM. Server composition, never a request field.
    *
-   *   "SHIPPED"  (default) the in-code catalog, which is EMPTY and frozen. Every entitlement this
-   *              transport resolves is unconditional, and the kernels behave exactly as they always
-   *              did -- the deployed state.
-   *   "POSTGRES" eos_policy.capability_grant_conditions, ACTIVE rows only. The relation is live
-   *              (migration 1762214400000) and holds ZERO rows, so today the two sources produce the
-   *              same catalog; switching is how an ESTABLISHED condition would start binding, and it
-   *              is a reviewed change to whoever builds these deps, not something a caller can ask
-   *              for. A database that cannot answer refuses the request; it never degrades to
-   *              "unconditioned".
+   *   (unset)    DEFAULT since 2026-09-26: eos_policy.capability_grant_conditions, read LAZILY through
+   *              postgresGrantConditionProvider -- the same relation, the same withheld-cell guard.
+   *   "POSTGRES" eos_policy.capability_grant_conditions, ACTIVE rows only, resolved EAGERLY --
+   *              the relation EOS Administration writes (setGrantCondition / retireGrantCondition).
+   *              With zero rows it produces exactly the SHIPPED catalog, so behaviour is unchanged
+   *              until an administrator conditions a grant. A database that cannot answer refuses
+   *              the request; it never degrades to "unconditioned".
+   *   "SHIPPED"  the in-code catalog, EMPTY and frozen. Kept only as an explicit composition for
+   *              isolated tests; no deployed composition selects it.
    */
   readonly grantConditionSource?: "SHIPPED" | "POSTGRES";
 }
@@ -220,17 +220,23 @@ export async function executeWorkforceOperation(
 ): Promise<WorkforceApiResult> {
   const { operation } = request;
   try {
-    const resolve = deps.grantConditionSource === "POSTGRES"
-      ? resolveEntitledOperationalContext : resolveOperationalContext;
-    const ctx = await resolve(deps.reader, deps.pool, {
+    const input = {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
       requestedTenantId: request.caller.requestedTenantId,
-    });
+    };
+    // DEFAULT: conditions from PostgreSQL, resolved LAZILY -- a request whose kernel refuses on the
+    // flat capability set first reads no condition. "POSTGRES" keeps the eager composition
+    // (resolveEntitledOperationalContext); "SHIPPED" the empty in-code catalog.
+    const ctx = deps.grantConditionSource === undefined
+      ? await resolveOperationalContext(deps.reader, deps.pool, input, postgresGrantConditionProvider(deps.pool))
+      : await (deps.grantConditionSource === "POSTGRES"
+        ? resolveEntitledOperationalContext : resolveOperationalContext)(deps.reader, deps.pool, input);
     const actor: EmployeeReadActor = Object.freeze({
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
       capabilities: ctx.capabilities,
+      conditionallyHeld: ctx.conditionallyHeld,
       // The conditional-entitlement obligation, as the REQUIRED request-scoped resolver
       // resolveOperationalContext built for this request. The same actor serves the read kernel and
       // the command kernel, and the resolver memoizes, so both gate sites -- and a read requiring

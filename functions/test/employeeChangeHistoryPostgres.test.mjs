@@ -154,7 +154,11 @@ test("governed Employee change history over the real Workforce and policy author
   await t.test("paging: bounded keyset pages cover every row exactly once, even when events share a timestamp; cursor bound to the Employee", async () => {
     // Two audit events at the SAME instant from one real command pair would be luck; force the tie by sharing `at`.
     const tie = await q(`SELECT occurred_at FROM eos_policy.audit_events WHERE target_id = 'e-subject' ORDER BY occurred_at DESC LIMIT 1`);
+    // audit_events is APPEND-ONLY (migration 1762646400000). Forging a timestamp tie is a FIXTURE act on a disposable
+    // database, so the immutability trigger is lifted around exactly this one statement and restored at once.
+    await q(`ALTER TABLE eos_policy.audit_events DISABLE TRIGGER audit_events_append_only`);
     await q(`UPDATE eos_policy.audit_events SET occurred_at = $1 WHERE target_id = 'e-subject' AND action = 'employee.jobRole.assign'`, [tie.rows[0].occurred_at]);
+    await q(`ALTER TABLE eos_policy.audit_events ENABLE TRIGGER audit_events_append_only`);
     const all = await storedOrder("e-subject");
     const seen = [];
     let cursor;

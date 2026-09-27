@@ -33,6 +33,7 @@ import {
 import { createAdminPolicyHttpHandler } from "../adminPolicy/adminPolicyHttp";
 import type { TokenVerifier, VerifiedIdentity } from "../adminPolicy/adminPolicyHttp";
 import { createOperationsHttpHandler } from "../eosOps/eosOpsHttp";
+import { explainEffectiveAccess } from "../eosOps/effectiveAccessExplanation";
 import { createCommercialHttpHandler } from "../eosCommercial/commercialHttp";
 import { createWorkforceHttpHandler } from "../eosWorkforce/workforceHttp";
 import { createCrmHttpHandler } from "../eosCrm/crmHttp";
@@ -154,6 +155,8 @@ export async function startEosApi(
   const verifyToken = options.verifyToken ?? createFirebaseTokenVerifier(config.identityProvider);
   const handler = createAdminPolicyHttpHandler({
     repo,
+    // The runtime evaluator, over the one shared pool, for the explainEffectiveAccess read.
+    explainEffectiveAccess: (tenantId, principalId) => explainEffectiveAccess(repo, pool, { tenantId, principalId }),
     verifyToken,
     allowedOrigins: config.allowedOrigins,
     health: async () => {

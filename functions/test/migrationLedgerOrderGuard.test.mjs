@@ -153,9 +153,14 @@ const DEFERRED_MIGRATION = "1759190400000_employee-principal-link-employee-fk.sq
 // the end of the chain (its id is above every applied one), so it is an EXPLAINED pending migration
 // and the ledger model below is deliberately NOT extended to include it -- NONPROD_LEDGER is a
 // measurement of what nonprod has RUN, and nonprod has not run this one.
-const RUNNABLE_MIGRATION_COUNT = 51;
-const TRACKED_MIGRATION_COUNT = 52; // the 51 runnable + the one deferred file
-const PENDING_AT_MEASUREMENT = Object.freeze(["1762300800000_authority-activation-and-reporting-read"]);
+// 51 -> 52 runnable: migration 1762646400000, the Administration control plane -- APPENDED after the
+// activation vehicle, so it is a second EXPLAINED pending migration; the ledger model is not extended.
+const RUNNABLE_MIGRATION_COUNT = 52;
+const TRACKED_MIGRATION_COUNT = 53; // the 52 runnable + the one deferred file
+const PENDING_AT_MEASUREMENT = Object.freeze([
+  "1762300800000_authority-activation-and-reporting-read",
+  "1762646400000_administration-control-plane",
+]);
 
 const repoMigrations = () =>
   readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).map((f) => f.replace(/\.sql$/, "")).sort();
@@ -211,7 +216,7 @@ export function analyseLedger(repo, applied) {
 
 // ════════════════════ THE CHAIN ITSELF ════════════════════
 
-test("the migration chain is well formed: 51 runnable, 52 tracked, unique ids, filename order == id order", () => {
+test("the migration chain is well formed: 52 runnable, 53 tracked, unique ids, filename order == id order", () => {
   const repo = repoMigrations();
   assert.equal(repo.length, RUNNABLE_MIGRATION_COUNT,
     `expected ${RUNNABLE_MIGRATION_COUNT} runnable migrations, found ${repo.length}. ` +
@@ -327,9 +332,9 @@ test("a BACK-DATED pending migration is REPORTED -- the hazard --no-check-order 
 });
 
 test("a properly APPENDED pending migration is explained, and is not reported", () => {
-  const repo = [...repoMigrations(), "1762473600000_a-migration-appended-after-the-chain"].sort();
+  const repo = [...repoMigrations(), "1762732800000_a-migration-appended-after-the-chain"].sort();
   const { pending, unexplainedPending } = analyseLedger(repo, NONPROD_LEDGER);
-  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1762473600000_a-migration-appended-after-the-chain"]);
+  assert.deepEqual(pending, [...PENDING_AT_MEASUREMENT, "1762732800000_a-migration-appended-after-the-chain"]);
   assert.deepEqual(unexplainedPending, [], "new work at the end of the chain is normal and must not fire the guard");
 });
 

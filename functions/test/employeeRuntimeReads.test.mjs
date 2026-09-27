@@ -57,7 +57,9 @@ function fakeWorld({ capabilities = ["opportunity.read"], clientQuery, member = 
   let connects = 0;
   const pool = {
     async query(text) {
-      if (/role_capabilities/.test(text)) return { rows: capabilities.map((key) => ({ key })) };
+      if (/role_capabilities/.test(text)) return { rows: capabilities.map((key) => ({ key, role_key: "sales", capability_key: key })) };
+      // The per-grant condition store (Administration-written). None here: zero-condition parity.
+      if (/capability_grant_conditions/.test(text)) return { rows: [] };
       throw new Error(`unexpected pool query ${text}`);
     },
     async connect() {
@@ -218,8 +220,10 @@ test("the transport carries no SQL and resolves context only through resolveOper
   // `resolveEntitledOperationalContext` wrapper that reads per-grant conditions from PostgreSQL first
   // and then delegates to it. Which one is used is server composition (deps.grantConditionSource),
   // never a request field -- asserted here so a caller-chosen resolver would fail this test.
-  assert.match(src, /resolveEntitledOperationalContext : resolveOperationalContext/);
-  assert.match(src, /const ctx = await resolve\(deps\.reader, deps\.pool/);
+  // DEFAULT (2026-09-26): conditions from PostgreSQL through the lazy provider -- the relation EOS
+  // Administration writes. The explicit "POSTGRES" / "SHIPPED" compositions remain server-chosen.
+  assert.match(src, /deps\.grantConditionSource === undefined\s*\?\s*await resolveOperationalContext\(deps\.reader, deps\.pool, input, postgresGrantConditionProvider\(deps\.pool\)\)/);
+  assert.match(src, /resolveEntitledOperationalContext : resolveOperationalContext\)\(deps\.reader, deps\.pool, input\)/);
   assert.match(src, /deps\.grantConditionSource === "POSTGRES"/);
   assert.doesNotMatch(src, /request\.[A-Za-z.]*grantConditionSource|caller\.[A-Za-z.]*grantCondition/);
   assert.doesNotMatch(src, /resolvePrincipalContext|getPrincipalBySubject/);

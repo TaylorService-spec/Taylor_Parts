@@ -19,6 +19,8 @@ import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 import { GOVERNED_BUSINESS_ROLES } from "../../access/governedBusinessRoles";
 import type { Role } from "../../types/access";
 import { newCapabilityKeys } from "./inventoryWriterCapabilityCensus";
+import { decisionIndex, defaultWriterMayInsert } from "../../adminPolicy/roleCapabilityAdministration";
+import type { RoleCapabilityDecision } from "../../adminPolicy/types";
 
 const SCHEMA = "eos_policy";
 
@@ -69,7 +71,15 @@ export function deriveLegacyRoleGrants(
   return Object.freeze(grants);
 }
 
-export type ReconcileRowStatus = "PROPOSED" | "APPLIED" | "ALREADY_GRANTED" | "UNRESOLVED_ROLE" | "UNKNOWN_CAPABILITY";
+/**
+ * ADMIN_REVOKED: the catalog declares the pair, and an administrator REVOKED it through EOS
+ * Administration -- the current decision wins over the catalog default, so it is never re-inserted.
+ * SYSTEM_INVARIANT: the pair is forbidden by an Owner ruling whatever the catalog says.
+ * Neither is an unresolved mismatch: both are the precedence rule doing its job.
+ */
+export type ReconcileRowStatus =
+  | "PROPOSED" | "APPLIED" | "ALREADY_GRANTED" | "UNRESOLVED_ROLE" | "UNKNOWN_CAPABILITY"
+  | "ADMIN_REVOKED" | "SYSTEM_INVARIANT";
 
 export interface ReconcileRow {
   readonly roleKey: string;
@@ -123,6 +133,27 @@ class UnknownTenantError extends Error {
  * belonging to a different tenant is indistinguishable from a Role that does not exist at all.
  */
 export async function reconcileInventoryCapabilityGrants(pool: Pool, options: ReconcileOptions): Promise<ReconcileReport> {
+  if (options.apply !== true) return reconcileWith(pool, options);
+  // AN APPLY RUN IS ONE TRANSACTION UNDER THE TENANT GOVERNANCE LOCK (Pass 8 D8) -- the same lock every
+  // Administration grant/revoke takes -- and it reads the decisions INSIDE it. An Administration revoke
+  // therefore either commits before this run reads decisions (and is honoured) or waits for it; it can
+  // never be re-inserted by a run that read stale decisions.
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [options.tenantId]);
+    const report = await reconcileWith(client as unknown as Pool, options);
+    await client.query("COMMIT");
+    return report;
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch { /* the original error is rethrown */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function reconcileWith(pool: Pool, options: ReconcileOptions): Promise<ReconcileReport> {
   const apply = options.apply === true;
   const tenantId = options.tenantId;
 
@@ -147,6 +178,19 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
   const existingPairs = new Set(existingRows.rows.map((r) => `${r.role_id}|${r.capability_id}`));
   const beforeCount = existingPairs.size;
 
+  // THE PRECEDENCE RULE (adminPolicy/roleCapabilityAdministration.ts): this tool writes SYSTEM
+  // DEFAULTS, so it yields to a current Administration decision and to a system invariant. A tenant
+  // without the decision relation cannot say what an administrator revoked, so the read is not
+  // guarded: it throws, and the reconcile refuses rather than re-granting blind.
+  const decisionRows = await pool.query<{ role_key: string; capability_key: string; decision: RoleCapabilityDecision }>(
+    `SELECT role_key, capability_key, decision FROM ${SCHEMA}.role_capability_decisions
+      WHERE tenant_id = $1 AND superseded_at IS NULL`,
+    [tenantId],
+  );
+  const decisions = decisionIndex(decisionRows.rows.map((r) => ({
+    roleKey: r.role_key, capabilityKey: r.capability_key, decision: r.decision,
+  })));
+
   const rows: ReconcileRow[] = [];
   let proposedAdditions = 0;
   let appliedAdditions = 0;
@@ -164,6 +208,14 @@ export async function reconcileInventoryCapabilityGrants(pool: Pool, options: Re
     }
     if (existingPairs.has(`${roleId}|${capabilityId}`)) {
       rows.push({ roleKey: grant.roleKey, capabilityKey: grant.capabilityKey, status: "ALREADY_GRANTED" });
+      continue;
+    }
+    const precedence = defaultWriterMayInsert(decisions, grant.roleKey, grant.capabilityKey);
+    if (!precedence.allowed) {
+      rows.push({
+        roleKey: grant.roleKey, capabilityKey: grant.capabilityKey,
+        status: precedence.source === "ADMIN_REVOKED" ? "ADMIN_REVOKED" : "SYSTEM_INVARIANT",
+      });
       continue;
     }
 

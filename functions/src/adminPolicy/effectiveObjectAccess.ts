@@ -96,6 +96,13 @@ export interface PrincipalPolicy {
   readonly fieldOverrides: readonly RoleFieldPermissionOverrideRecord[];
   /** True when an assignment was excluded because the principal's access version moved past it. */
   readonly hadStaleAssignment: boolean;
+  /**
+   * Every assignment that confers NO unscoped authority, and why: STALE (granted above the current access
+   * version), INACTIVE, or SCOPED (qualifying, but not global -- reachable only by stating a scope). Reported so an
+   * explanation can say what was excluded; nothing authorizes from this list. Optional so hand-built policies stand.
+   */
+  readonly excludedAssignments?: readonly { readonly assignmentId: string; readonly roleId: string;
+    readonly reason: "STALE" | "INACTIVE" | "SCOPED"; readonly scopeType?: string; readonly scopeValue?: string | null }[];
 }
 
 const ALL_DENY: CredSet = EMPTY_CRED;
@@ -185,15 +192,20 @@ export async function loadPrincipalPolicy(
 
   let hadStaleAssignment = false;
   const qualifying: PolicyRoleAssignmentRecord[] = [];
+  const excluded: { assignmentId: string; roleId: string; reason: "STALE" | "INACTIVE" | "SCOPED"; scopeType?: string; scopeValue?: string | null }[] = [];
   for (const a of assignments) {
     if (!a || typeof a.roleId !== "string" || a.roleId.length === 0) continue;
-    if (a.status !== "active") continue;
+    if (a.status !== "active") { excluded.push({ assignmentId: a.id, roleId: a.roleId, reason: "INACTIVE" }); continue; }
     if (typeof a.accessVersionAtGrant !== "number") continue;
     if (a.accessVersionAtGrant > currentVersion) {
       hadStaleAssignment = true;
+      excluded.push({ assignmentId: a.id, roleId: a.roleId, reason: "STALE" });
       continue;
     }
     qualifying.push(a);
+    if (typeof a.scopeType === "string" && a.scopeType !== "" && a.scopeType !== "global") {
+      excluded.push({ assignmentId: a.id, roleId: a.roleId, reason: "SCOPED", scopeType: a.scopeType, scopeValue: a.scopeValue ?? null });
+    }
   }
 
   // Every qualifying assignment keeps its scope. `qualifyingRoleIds` narrows to the GLOBAL ones, so no existing
@@ -227,6 +239,7 @@ export async function loadPrincipalPolicy(
     objectPermissions,
     fieldOverrides,
     hadStaleAssignment,
+    excludedAssignments: excluded,
   };
 }
 

@@ -31,7 +31,7 @@
 import type { Pool } from "pg";
 export type { Pool } from "pg";
 import { getPolicyDatabasePool } from "../adminPolicy/policyDatabase";
-import { resolvePrincipalContext } from "../adminPolicy/principalContext";
+import { resolvePrincipalContext, resolvePrincipalContextById } from "../adminPolicy/principalContext";
 import type { PrincipalContext, ResolveContextInput } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import {
@@ -89,8 +89,16 @@ interface MutableLookupCounters { requests: number; resolutions: number }
 
 export interface ResolvedOperationalContext {
   readonly principalContext: PrincipalContext;
-  /** Capability KEYS held via active Role assignments, in the resolved tenant only. UNCHANGED. */
+  /**
+   * Capability KEYS held via active Role assignments UNCONDITIONALLY, in the resolved tenant only --
+   * the set every flat gate reads. A key reachable only through a conditioned grant is NOT here.
+   */
   readonly capabilities: ReadonlySet<string>;
+  /**
+   * Keys held ONLY through conditioned grants. Never a flat-gate answer: only the entitled seam
+   * (authorizeEntitledAction, via the actor's `conditionallyHeld`) may evaluate them, per record.
+   */
+  readonly conditionallyHeld: ReadonlySet<string>;
   /**
    * THE SAME GRANTS, WITH THE GRANTOR AND ITS CONDITION KEPT -- behind a REQUIRED, REQUEST-SCOPED,
    * MEMOIZING resolver.
@@ -175,6 +183,34 @@ export async function resolveOperationalContext(
     throw new Error("resolveOperationalContext: the condition source must be a GrantConditionProvider");
   }
   const principalContext = await resolvePrincipalContext(reader, input);
+  return operationalContextFor(pool, principalContext, conditions);
+}
+
+/**
+ * The SAME operational context for a Principal named by id -- for Administration's effective-access
+ * explanation only (never authentication). Principal resolution is `resolvePrincipalContextById`, which
+ * shares its whole tail with `resolvePrincipalContext`; everything after it is this module's own code.
+ */
+export async function resolveOperationalContextForPrincipal(
+  reader: PolicyReader,
+  pool: Pool,
+  principalId: string,
+  requestedTenantId: string | null,
+  conditions: GrantConditionProvider,
+): Promise<ResolvedOperationalContext> {
+  if (typeof conditions !== "function") {
+    throw new Error("resolveOperationalContextForPrincipal: the condition source must be a GrantConditionProvider");
+  }
+  const principalContext = await resolvePrincipalContextById(reader, principalId, requestedTenantId);
+  return operationalContextFor(pool, principalContext, conditions);
+}
+
+/** Principal context -> capabilities + the request-scoped entitlement resolver. Shared by both entry points. */
+async function operationalContextFor(
+  pool: Pool,
+  principalContext: PrincipalContext,
+  conditions: GrantConditionProvider,
+): Promise<ResolvedOperationalContext> {
   // TWO RESOLVERS, DELIBERATELY. `capabilitiesForRoleKeys` is untouched and stays the authority for
   // "what may this Principal do"; `roleCapabilityGrants` answers "and WHO granted it" over the same
   // rows. They are proved equal by test rather than derived from one another, because a single
@@ -184,12 +220,59 @@ export async function resolveOperationalContext(
   // is resolved on the request path as it always was. The provenance read and the condition catalog
   // are deferred behind the required resolver below, because eleven of those gate sites never look
   // at them -- and a request that does not ask a question should not pay for its answer.
-  const capabilities = await capabilitiesForRoleKeys(
+  const held = await capabilitiesForRoleKeys(
     pool, principalContext.tenantId, principalContext.heldRoleKeys);
+  // A CONDITIONED-ONLY CAPABILITY IS NEVER IN THE FLAT SET (Pass 8 D1, PLATFORM_SAFETY). Every flat
+  // gate -- `capabilities.has(key)` -- cannot evaluate a condition, so a key this principal reaches
+  // ONLY through conditioned grants is withheld from `capabilities` and reported in
+  // `conditionallyHeld`, which only the entitled seam (authorizeEntitledAction) consults. The
+  // condition catalog is therefore read EAGERLY (one indexed read; zero for the SHIPPED provider), and
+  // the provenance read happens only when a condition names one of this principal's Roles.
+  const catalog = await Promise.resolve(conditions(principalContext.tenantId));
+  const roleKeys = principalContext.heldRoleKeys;
+  const touchesHeldRole = [...catalog.keys()].some((k) => roleKeys.some((r) => k.startsWith(`ROLE:${r}|`)));
+  let capabilities: ReadonlySet<string> = held;
+  let conditionallyHeld: ReadonlySet<string> = new Set<string>();
+  if (touchesHeldRole) {
+    const grants: CapabilityGrant[] = (await roleCapabilityGrants(pool, principalContext.tenantId, roleKeys))
+      .map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
+    const unconditional = new Set(entitlementsFrom(grants, catalog).filter((e) => e.condition === null).map((e) => e.capabilityKey));
+    capabilities = new Set([...held].filter((k) => unconditional.has(k)));
+    conditionallyHeld = new Set([...held].filter((k) => !unconditional.has(k)));
+  }
   const counters: MutableLookupCounters = { requests: 0, resolutions: 0 };
   const entitlements = requestScopedEntitlementResolver(
-    pool, principalContext.tenantId, principalContext.heldRoleKeys, conditions, counters);
-  return Object.freeze({ principalContext, capabilities, entitlements, lookups: counters });
+    pool, principalContext.tenantId, roleKeys, () => catalog, counters);
+  return Object.freeze({ principalContext, capabilities, conditionallyHeld, entitlements, lookups: counters });
+}
+
+/**
+ * THE FLAT SET FOR A GATE THAT CANNOT EVALUATE CONDITIONS -- fail closed, never wider.
+ *
+ * The Commercial and CRM kernels decide on `capabilities.has(key)` alone; they have no record
+ * context to answer a per-grant condition with. Handing them the full flat set would let a
+ * CONDITIONED grant (e.g. "only records assigned to me") act as an UNCONDITIONAL one there -- a
+ * widening an administrator never made. So such a transport receives the flat set MINUS every key
+ * this principal reaches ONLY through conditioned entitlements. A key reached by at least one
+ * unconditional grant is kept.
+ *
+ * ZERO-CONDITION PARITY. With no ACTIVE condition row for the tenant (the state of every tenant
+ * until an administrator sets one) the catalog is empty and the set is returned UNCHANGED, after
+ * exactly one indexed read of the condition relation -- byte-identical to the previous behaviour.
+ * An unreadable condition store throws: "could not read the conditions" is never "there are none".
+ */
+export async function capabilitiesWithoutUnevaluatedConditions(
+  pool: Pool,
+  principalContext: PrincipalContext,
+  capabilities: ReadonlySet<string>,
+  conditions: GrantConditionProvider,
+): Promise<ReadonlySet<string>> {
+  const catalog = await conditions(principalContext.tenantId);
+  if (catalog.size === 0) return capabilities;
+  const grants: CapabilityGrant[] = (await roleCapabilityGrants(pool, principalContext.tenantId, principalContext.heldRoleKeys))
+    .map((r) => ({ grantor: { kind: "ROLE", roleKey: r.roleKey }, capabilityKey: r.capabilityKey }));
+  const unconditional = new Set(entitlementsFrom(grants, catalog).filter((e) => e.condition === null).map((e) => e.capabilityKey));
+  return new Set([...capabilities].filter((key) => unconditional.has(key)));
 }
 
 /**
@@ -299,6 +382,7 @@ export async function principalCapabilityGrants(
        FROM ${SCHEMA}.principal_capabilities pc
        JOIN ${SCHEMA}.capabilities c ON c.id = pc.capability_id
       WHERE pc.tenant_id = $1 AND pc.principal_id = $2
+        AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())
       ORDER BY c.key`,
     [tenantId, principalId],
   );

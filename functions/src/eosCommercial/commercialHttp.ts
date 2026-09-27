@@ -22,7 +22,8 @@
 // The deployed composition supplies no catalog authority, so any command that validates a PART or EQUIPMENT_MODEL
 // reference refuses CATALOG_AUTHORITY_UNAVAILABLE until a governed PostgreSQL catalog exists.
 import type { Pool } from "pg";
-import { resolveOperationalContext } from "../eosOps/capabilityAuthority";
+import { capabilitiesWithoutUnevaluatedConditions, resolveOperationalContext } from "../eosOps/capabilityAuthority";
+import { postgresGrantConditionProvider } from "../eosOps/entitledActionAuthority";
 import { PrincipalContextError } from "../adminPolicy/principalContext";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import {
@@ -142,15 +143,21 @@ export async function executeCommercialOperation(
 ): Promise<CommercialApiResult> {
   const { operation } = request;
   try {
+    // GRANT CONDITIONS COME FROM POSTGRESQL (eos_policy.capability_grant_conditions), the source
+    // EOS Administration writes. This kernel decides on the flat set and cannot evaluate a condition,
+    // so a capability reached ONLY through a conditioned grant is withheld here -- fail closed.
+    const conditions = postgresGrantConditionProvider(deps.pool);
     const ctx = await resolveOperationalContext(deps.reader, deps.pool, {
       identityProvider: request.caller.identityProvider,
       externalSubject: request.caller.externalSubject,
       requestedTenantId: request.caller.requestedTenantId,
-    });
+    }, conditions);
+    const capabilities = await capabilitiesWithoutUnevaluatedConditions(
+      deps.pool, ctx.principalContext, ctx.capabilities, conditions);
     const actor: CommercialActorContext = Object.freeze({
       tenantId: ctx.principalContext.tenantId,
       principalId: ctx.principalContext.uid,
-      capabilities: ctx.capabilities,
+      capabilities,
     });
     return { ok: true, operation, result: await RUNNERS[operation](deps, actor, request.input) };
   } catch (err) {

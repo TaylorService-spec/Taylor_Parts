@@ -450,6 +450,17 @@ on:
       - "functions/src/eosOps/grantConditionPolicy.ts"
       - "functions/migrations/1762214400000_capability-grant-conditions.sql"
       - "functions/test/conditionalEntitlementPostgres.test.mjs"
+      # LANE CP-S (2026-09-26): the Administration control plane -- governed Role -> capability
+      # decisions, fail-closed grant conditions, capability-gated security administration. Offline
+      # suite in test:adminPolicy, PostgreSQL acceptance (cases A-D) in test:adminPolicyPostgres.
+      - "functions/migrations/1762646400000_administration-control-plane.sql"
+      - "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+      - "functions/src/adminPolicy/administrationCapabilityGate.ts"
+      - "functions/test/administrationControlPlane.test.mjs"
+      - "functions/test/administrationControlPlanePostgres.test.mjs"
+      - "functions/src/eosOps/effectiveAccessExplanation.ts"
+      - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
+      - "functions/test/administrationControlPlaneSecurityPostgres.test.mjs"
       - "functions/test/contextualActionAuthorityPostgres.test.mjs"
       - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
@@ -781,6 +792,15 @@ on:
       # change. It was named in the pull_request filter above and NOT here, so a commit landing on main that
       # touched only this suite could not trigger the job that runs it.
       - "functions/test/reorderPersonaAcceptancePostgres.test.mjs"
+      # LANE CP-S: named in BOTH trigger blocks so a push touching only these still runs them.
+      - "functions/migrations/1762646400000_administration-control-plane.sql"
+      - "functions/src/adminPolicy/roleCapabilityAdministration.ts"
+      - "functions/src/adminPolicy/administrationCapabilityGate.ts"
+      - "functions/test/administrationControlPlane.test.mjs"
+      - "functions/test/administrationControlPlanePostgres.test.mjs"
+      - "functions/src/eosOps/effectiveAccessExplanation.ts"
+      - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
+      - "functions/test/administrationControlPlaneSecurityPostgres.test.mjs"
       - "functions/scripts/fixtures/personaAuthorityDimensions.v1.json"
       - "functions/scripts/fixtures/personaE2EScenarios.v1.json"
       - "functions/test/technicianIdentityTrap.test.mjs"

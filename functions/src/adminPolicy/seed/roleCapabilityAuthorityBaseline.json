@@ -13,9 +13,9 @@
   "environment": "nonprod",
   "tenantId": "tenant-6ce59be1-1979-45cd-9d17-a4969037fb25",
   "tenantKey": "taylor-nonprod",
-  "totalGrants": 413,
+  "totalGrants": 414,
   "countsBySource": {
-    "MIGRATION_BACKED": 355,
+    "MIGRATION_BACKED": 356,
     "CANONICAL_CATALOG": 53,
     "NONPROD_ACTIVATION": 5,
     "FIXTURE_ONLY": 0,
@@ -29,16 +29,18 @@
     "migration:1761955200000",
     "migration:1762041600000",
     "migration:1762128000000",
-    "migration:1762300800000"
+    "migration:1762300800000",
+    "migration:1762646400000"
   ],
   "seedBoundaryMigration": "1761523200000",
   "deployment": {
     "$comment": "WHAT THIS FILE MEASURES, AFTER RULING E. It is the authority a DETERMINISTIC REBUILD of this repository produces -- the five-phase pipeline above -- and the rebuild guard proves expected == actual with ZERO unexplained. Ruling E requires a grant-bearing migration and the baseline that explains it to land in ONE change, so the moment migration 1762300800000 entered migrations/ this number moved with it. It is therefore AHEAD of the live nonprod row count until that migration is deployed, and saying so here is the point: 'what the repository produces' and 'what nonprod holds right now' are two questions and both stay answerable. This is NOT blessed live drift (AN2). Drift is a row in the database that nothing in the repository explains; this is a row in the repository that the database has not run yet, and it is named, counted and attributable to one migration.",
-    "rebuildTotal": 413,
+    "rebuildTotal": 414,
     "measuredInNonprodAt": "2026-09-24",
     "measuredInNonprodTotal": 387,
     "notYetAppliedToNonprod": [
-      "migration:1762300800000"
+      "migration:1762300800000",
+      "migration:1762646400000"
     ],
     "appliedToNonprodBy": "the ordinary deploy (functions migrate:up); lane BO did not and may not apply it"
   },
@@ -353,6 +355,13 @@
       "source": "MIGRATION_BACKED",
       "evidence": "migration:1762041600000",
       "observedGrantedBy": "migration:1762041600000"
+    },
+    {
+      "roleKey": "admin",
+      "capabilityKey": "admin.securityPolicy.write",
+      "source": "MIGRATION_BACKED",
+      "evidence": "migration:1762646400000",
+      "observedGrantedBy": "migration:1762646400000"
     },
     {
       "roleKey": "admin",

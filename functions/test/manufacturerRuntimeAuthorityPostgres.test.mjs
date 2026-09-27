@@ -79,7 +79,9 @@ test("this change adds no migration: the applied set is the one the base commit 
     "the Manufacturer authority has exactly one migration and this lane adds none");
   // No file claims a slot after the last one the base commit carried.
   const newest = files[files.length - 1];
-  assert.ok(Number(newest.split("_")[0]) <= 1762560000000, `an unexpected newest migration ${newest}`);
+  // Raised 2026-09-26 for the Administration control plane (1762646400000) -- an unrelated lane's
+  // migration; the Manufacturer assertion above is what this test is about.
+  assert.ok(Number(newest.split("_")[0]) <= 1762646400000, `an unexpected newest migration ${newest}`);
 });
 
 // ════════════════════ no Firebase, no delete, not wired ════════════════════

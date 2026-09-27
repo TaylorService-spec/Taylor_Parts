@@ -81,6 +81,15 @@ const CANONICAL_MAP = Object.freeze({
   listWorkflows: WORKFLOW_READ,
   readWorkflowVersion: WORKFLOW_READ,
   readPolicyAuditHistory: AUDIT_READ,
+  // The Administration control plane (2026-09-26): two more projections of the SAME security policy,
+  // and its decision history -- all under the ONE security-policy read, no new read key.
+  getSecurityRoleDetail: SECURITY_POLICY_READ,
+  getObjectActionGrantMatrix: SECURITY_POLICY_READ,
+  listRoleCapabilityDecisionHistory: SECURITY_POLICY_READ,
+  // The runtime evaluator's explanation of one Principal's access -- the SAME principal-access read.
+  explainEffectiveAccess: PRINCIPAL_ACCESS_READ,
+  // The condition vocabulary the server enforces: part of the security policy model.
+  listSupportedConditionKinds: SECURITY_POLICY_READ,
 });
 
 const operationsRequiring = (capability) =>
@@ -92,12 +101,16 @@ const INPUT_FOR = Object.freeze({
   getObjectSecurityMatrix: { objectKey: "workOrder" },
   getRoleSecurity: { roleKey: "dispatcher" },
   readPolicyAuditHistory: { limit: 5 },
+  getSecurityRoleDetail: { roleKey: "dispatcher" },
+  getObjectActionGrantMatrix: { objectKey: "workOrder" },
+  listRoleCapabilityDecisionHistory: { limit: 5 },
+  explainEffectiveAccess: { principalId: "prn-none" },
 });
 
 // ════════════════════ A. THE MAP IS CLOSED — no database needed ════════════════════
 
-test("A: thirteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
-  assert.equal(ADMIN_READ_OPERATIONS.length, 13, "the read list changed size without this map changing");
+test("A: eighteen reads, each with EXACTLY ONE capability, and the map is the Owner's", () => {
+  assert.equal(ADMIN_READ_OPERATIONS.length, 18, "the read list changed size without this map changing");
   assert.deepEqual([...ADMIN_READ_OPERATIONS].sort(), Object.keys(CANONICAL_MAP).sort(),
     "a read exists that the canonical map does not name, or the other way round");
   for (const operation of ADMIN_READ_OPERATIONS) {
@@ -160,9 +173,13 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // The pin stays an exact equality so that a migration added or removed by the read enforcement --
   // which still adds none -- fails here; only the integrated total moved.
   const migrations = readdirSync(resolve(FUNCTIONS_DIR, "migrations")).filter((f) => f.endsWith(".sql"));
-  assert.equal(migrations.length, 51, "a migration was added or removed by the read enforcement");
+  // 51 -> 52: the Administration control plane (1762646400000) -- schema, one WRITE capability and
+  // its parity grants. It registers no READ key, which is what the rest of this test proves.
+  assert.equal(migrations.length, 52, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
-    "the one migration beyond this lane's 50 must be the authority activation vehicle and nothing else");
+    "the authority activation vehicle must be present exactly once");
+  assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,
+    "the Administration control plane migration must be present exactly once");
 
   // Every capability the gate can require was ALREADY registered by a migration. The gate requires
   // keys; it does not create them, and a key it required that nothing registers would be a surface
@@ -301,9 +318,13 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   await commands.grantObjectActionToRole(repo, admin,
     { roleKey: "shopFloor", objectKey: "workOrder", actionKey: "dispatch", reason: "an unrelated grant" });
 
-  // Everything, so the positive path and the transport have somebody to answer.
+  // Everything, so the positive path and the transport have somebody to answer. Written as SYSTEM
+  // DEFAULT rows (fixture): an administrator may not widen a Role it holds (Pass 8 D5a).
   for (const key of [SECURITY_POLICY_READ, PRINCIPAL_ACCESS_READ, WORKFLOW_READ, AUDIT_READ]) {
-    await grantToRole("admin", OBJECT_OF[key]);
+    await pool.query(`INSERT INTO eos_policy.role_capabilities (id,tenant_id,role_id,capability_id,granted_by,created_by,updated_by)
+      SELECT 'rc-fx-' || md5($1 || c.id), $1, r.id, c.id, 'fixture','fixture','fixture'
+        FROM eos_policy.roles r, eos_policy.capabilities c WHERE r.tenant_id=$1 AND r.key='admin' AND c.key=$2
+      ON CONFLICT DO NOTHING`, [tenant.id, key]);
   }
 
   await t.test("the fixture is honest: the bare principal really is authenticated and ACTIVE", async () => {
@@ -324,8 +345,9 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
   await t.test("B: the security policy reads answer a HOLDER and refuse everybody else", async () => {
     const governed = operationsRequiring(SECURITY_POLICY_READ);
     assert.deepEqual(governed, [
-      "getObjectSecurityMatrix", "getRoleSecurity", "listObjects", "listObjectsWithActions",
-      "listRoles", "readObjectWithFields", "readRolePolicy",
+      "getObjectActionGrantMatrix", "getObjectSecurityMatrix", "getRoleSecurity", "getSecurityRoleDetail",
+      "listObjects", "listObjectsWithActions", "listRoleCapabilityDecisionHistory", "listRoles",
+      "listSupportedConditionKinds", "readObjectWithFields", "readRolePolicy",
     ], "the population of security-policy reads changed");
 
     for (const operation of governed) {
@@ -355,13 +377,14 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
   await t.test("C: without admin.principalAccess.read, the three principal reads are refused", async () => {
     assert.deepEqual(operationsRequiring(PRINCIPAL_ACCESS_READ),
-      ["getPrincipalEffectiveAccess", "listPrincipalRoleAssignments", "listTenantPrincipals"]);
+      ["explainEffectiveAccess", "getPrincipalEffectiveAccess", "listPrincipalRoleAssignments", "listTenantPrincipals"]);
     // THE READER HOLDS admin.securityPolicy.read AND IS STILL REFUSED. One Administration read is
     // not a key to the others; if it were, the four capabilities would be one capability.
     for (const subject of [reader.subject, bare.subject]) {
       await assertRefused(subject, "listTenantPrincipals", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "listPrincipalRoleAssignments", PRINCIPAL_ACCESS_READ);
       await assertRefused(subject, "getPrincipalEffectiveAccess", PRINCIPAL_ACCESS_READ);
+      await assertRefused(subject, "explainEffectiveAccess", PRINCIPAL_ACCESS_READ);
     }
     // Including when the principal they ask about is THEMSELVES. "It is my own access" is not an
     // authority, and a self-exemption is how a read gate acquires its first bypass.
@@ -452,6 +475,10 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
       const result = await executeAdminOperation({ repo }, {
         caller: { externalSubject: direct.subject }, operation, input,
       });
+      // explainEffectiveAccess needs the server-composed evaluator, absent here: the GATE admitted the
+      // caller (not FORBIDDEN) and the read then refuses as uncomposed. Its answer is proved in
+      // effectiveAccessExplanationPostgres.
+      if (operation === "explainEffectiveAccess") { assert.notEqual(result.code, "FORBIDDEN", operation); continue; }
       assert.equal(result.ok, true,
         `${operation} ignored a direct principal_capabilities grant: ${result.ok ? "" : result.message}`);
     }
@@ -518,7 +545,7 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
 
     for (const operation of ADMIN_READ_OPERATIONS) {
       const input = operation === "readRolePolicy" ? { roleId: (await repo.listRoles(tenant.id))[0].id }
-        : operation === "listPrincipalRoleAssignments" || operation === "getPrincipalEffectiveAccess"
+        : operation === "listPrincipalRoleAssignments" || operation === "getPrincipalEffectiveAccess" || operation === "explainEffectiveAccess"
           ? { principalId: adminContext.uid }
           : operation === "readWorkflowVersion"
             ? { versionId: (await repo.listWorkflowVersions(tenant.id,
@@ -526,8 +553,14 @@ test("the Administration read gate, in PostgreSQL", { skip: SKIP, concurrency: 1
             : undefined;
 
       const allowed = await post(ADMIN_SUBJECT, operation, input);
-      assert.equal(allowed.status, 200, `${operation} as a holder: ${allowed.body}`);
-      assert.equal(JSON.parse(allowed.body).ok, true);
+      if (operation === "explainEffectiveAccess") {
+        // The gate admits the holder; the read then needs the server-composed evaluator, which this
+        // transport fixture does not compose (proved end to end in effectiveAccessExplanationPostgres).
+        assert.notEqual(allowed.status, 403, `${operation} as a holder: ${allowed.body}`);
+      } else {
+        assert.equal(allowed.status, 200, `${operation} as a holder: ${allowed.body}`);
+        assert.equal(JSON.parse(allowed.body).ok, true);
+      }
 
       const refused = await post(bare.subject, operation, input);
       assert.equal(refused.status, 403, `${operation} as a non-holder returned ${refused.status}`);

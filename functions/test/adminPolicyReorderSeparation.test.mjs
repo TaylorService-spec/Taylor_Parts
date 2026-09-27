@@ -32,7 +32,9 @@ import {
 
 const TENANT = "tenant-a";
 const SYS = "uid-system";
-const adminActor = () => ({ tenantId: TENANT, uid: "uid-admin", heldRoleKeys: ["admin"] });
+// The Administration actor as the trusted API resolves it: security-policy authority is the CAPABILITY
+// admin.securityPolicy.write (Pass 8 removed the Role-name gate), resolved server-side into `capabilities`.
+const adminActor = () => ({ tenantId: TENANT, uid: "uid-admin", heldRoleKeys: ["admin"], capabilities: new Set(["admin.securityPolicy.write"]) });
 
 async function seedRoles(repo, keys) {
   const made = {};

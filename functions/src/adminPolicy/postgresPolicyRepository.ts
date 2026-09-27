@@ -43,6 +43,7 @@ import type {
   PolicyRepository,
   PolicyTransaction,
   PrincipalIdentityBindingInput,
+  AuditEventFilter,
 } from "./policyRepository";
 import type {
   CredOverride,
@@ -54,6 +55,8 @@ import type {
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
+  GrantConditionRecord,
+  RoleCapabilityDecisionRecord,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
@@ -204,6 +207,35 @@ const toCapability = (r: Record<string, unknown>): CapabilityRecord => ({
   displayLabel: String(r.display_label),
 });
 
+const toDecision = (r: Record<string, unknown>): RoleCapabilityDecisionRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  roleKey: String(r.role_key),
+  capabilityKey: String(r.capability_key),
+  decision: String(r.decision) as RoleCapabilityDecisionRecord["decision"],
+  requiresCondition: r.requires_condition === true,
+  reason: String(r.reason),
+  actorPrincipalId: String(r.actor_principal_id),
+  auditEventId: String(r.audit_event_id),
+  decidedAt: iso(r.decided_at),
+  supersededAt: isoOrNull(r.superseded_at),
+  supersededBy: r.superseded_by === null || r.superseded_by === undefined ? null : String(r.superseded_by),
+});
+
+const toGrantCondition = (r: Record<string, unknown>): GrantConditionRecord => ({
+  id: String(r.id),
+  tenantId: String(r.tenant_id),
+  grantScope: String(r.grant_scope) as GrantConditionRecord["grantScope"],
+  grantorKey: String(r.grantor_key),
+  capabilityKey: String(r.capability_key),
+  condition: r.condition,
+  status: String(r.status) as GrantConditionRecord["status"],
+  establishedBy: String(r.established_by),
+  establishedAt: iso(r.established_at),
+  updatedBy: String(r.updated_by),
+  updatedAt: iso(r.updated_at),
+});
+
 const toRoleCapability = (r: Record<string, unknown>): RoleCapabilityRecord => ({
   id: String(r.id),
   tenantId: String(r.tenant_id),
@@ -221,8 +253,11 @@ const toPrincipalCapability = (r: Record<string, unknown>): PrincipalCapabilityR
   capabilityId: String(r.capability_id),
   grantedBy: String(r.granted_by),
   grantedAt: new Date(String(r.granted_at)).toISOString(),
+  exceptionReason: r.exception_reason === undefined || r.exception_reason === null ? null : String(r.exception_reason),
+  expiresAt: isoOrNull(r.expires_at),
   ...provenance(r),
 });
+
 
 const toObjectPermission = (r: Record<string, unknown>): RoleObjectPermissionRecord => ({
   id: String(r.id),
@@ -495,9 +530,13 @@ export class PostgresPolicyRepository implements PolicyRepository {
 
   listPrincipalCapabilities(tenantId: TenantId, principalId?: string) {
     return principalId
-      ? this.many(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2`,
+      // An EXPIRED direct grant confers nothing (migration 1762646400000). Read through to_jsonb so a database
+      // that predates the column still answers.
+      ? this.many(`SELECT pc.* FROM ${SCHEMA}.principal_capabilities pc WHERE pc.tenant_id = $1 AND pc.principal_id = $2
+                     AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`,
         [tenantId, principalId], toPrincipalCapability)
-      : this.many(`SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1`,
+      : this.many(`SELECT pc.* FROM ${SCHEMA}.principal_capabilities pc WHERE pc.tenant_id = $1
+                     AND ((to_jsonb(pc) ->> 'expires_at') IS NULL OR (to_jsonb(pc) ->> 'expires_at')::timestamptz > now())`,
         [tenantId], toPrincipalCapability);
   }
 
@@ -595,6 +634,56 @@ export class PostgresPolicyRepository implements PolicyRepository {
        ) recent ORDER BY occurred_at ASC, id ASC`,
       [tenantId, limit],
       toAudit,
+    );
+  }
+
+  queryAuditEvents(tenantId: TenantId, filter: AuditEventFilter) {
+    return this.many(
+      `SELECT * FROM (
+         SELECT * FROM ${SCHEMA}.audit_events
+          WHERE tenant_id = $1
+            AND ($2::text IS NULL OR actor_uid = $2 OR target_id = $2
+                 OR after @> jsonb_build_object('principalId', $2::text) OR before @> jsonb_build_object('principalId', $2::text)
+                 OR after @> jsonb_build_object('granteeKey', $2::text) OR before @> jsonb_build_object('granteeKey', $2::text))
+            AND ($3::text IS NULL OR target_id = $3
+                 OR after @> jsonb_build_object('employeeId', $3::text) OR before @> jsonb_build_object('employeeId', $3::text))
+            AND ($4::text IS NULL
+                 OR after @> jsonb_build_object('granteeKey', $4::text) OR before @> jsonb_build_object('granteeKey', $4::text)
+                 OR after @> jsonb_build_object('roleKey', $4::text) OR before @> jsonb_build_object('roleKey', $4::text)
+                 OR ($5::text IS NOT NULL AND (after @> jsonb_build_object('roleId', $5::text) OR before @> jsonb_build_object('roleId', $5::text))))
+            AND ($6::text IS NULL OR after @> jsonb_build_object('objectKey', $6::text) OR before @> jsonb_build_object('objectKey', $6::text))
+            AND ($7::text IS NULL OR after @> jsonb_build_object('capabilityKey', $7::text) OR before @> jsonb_build_object('capabilityKey', $7::text))
+            AND ($8::text IS NULL OR after @> jsonb_build_object('actionKey', $8::text) OR before @> jsonb_build_object('actionKey', $8::text))
+            AND ($9::text IS NULL OR after @> jsonb_build_object('workflowKey', $9::text) OR before @> jsonb_build_object('workflowKey', $9::text)
+                 OR (target_kind LIKE 'workflow%' AND (after @> jsonb_build_object('key', $9::text) OR before @> jsonb_build_object('key', $9::text))))
+            AND ($10::timestamptz IS NULL OR occurred_at >= $10::timestamptz)
+            AND ($11::timestamptz IS NULL OR occurred_at <  $11::timestamptz)
+          ORDER BY occurred_at DESC, id DESC LIMIT $12
+       ) recent ORDER BY occurred_at ASC, id ASC`,
+      [tenantId, filter.principalId ?? null, filter.employeeId ?? null, filter.roleKey ?? null, filter.roleId ?? null,
+        filter.objectKey ?? null, filter.capabilityKey ?? null, filter.actionKey ?? null, filter.workflowKey ?? null,
+        filter.from ?? null, filter.to ?? null, filter.limit],
+      toAudit,
+    );
+  }
+
+  listRoleCapabilityDecisions(tenantId: TenantId, options: { readonly currentOnly?: boolean } = {}) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.role_capability_decisions
+        WHERE tenant_id = $1 AND ($2::boolean = false OR superseded_at IS NULL)
+        ORDER BY role_key, capability_key, decided_at, id`,
+      [tenantId, options.currentOnly !== false],
+      toDecision,
+    );
+  }
+
+  listGrantConditions(tenantId: TenantId, options: { readonly activeOnly?: boolean } = {}) {
+    return this.many(
+      `SELECT * FROM ${SCHEMA}.capability_grant_conditions
+        WHERE tenant_id = $1 AND ($2::boolean = false OR status = 'ACTIVE')
+        ORDER BY grant_scope, grantor_key, capability_key`,
+      [tenantId, options.activeOnly !== false],
+      toGrantCondition,
     );
   }
 }
@@ -957,14 +1046,33 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
     },
 
     async grantPrincipalCapability(input: NewPrincipalCapabilityInput) {
-      const { rows } = await q.query(
-        `INSERT INTO ${SCHEMA}.principal_capabilities
-           (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
-         RETURNING *`,
-        [newId(), tenantId, input.principalId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()],
-      );
+      // exception_reason / expires_at (migration 1762646400000) are written only when supplied, so a writer on an
+      // older schema is unaffected.
+      const extra = input.exceptionReason != null || input.expiresAt != null;
+      const base = [newId(), tenantId, input.principalId, input.capabilityId, input.grantedBy, input.grantedAt, ...stamp()];
+      const { rows } = extra
+        ? await q.query(
+          `INSERT INTO ${SCHEMA}.principal_capabilities
+             (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at,
+              exception_reason, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (tenant_id, principal_id, capability_id) DO UPDATE
+             -- An EXPIRED exception is REFRESHED (new reason, new expiry), never left expired under a
+             -- "granted" audit event. An unexpired one is untouched (the command treats it as a no-op).
+             SET exception_reason = EXCLUDED.exception_reason, expires_at = EXCLUDED.expires_at,
+                 granted_by = EXCLUDED.granted_by, granted_at = EXCLUDED.granted_at,
+                 updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at
+             WHERE ${SCHEMA}.principal_capabilities.expires_at IS NOT NULL
+               AND ${SCHEMA}.principal_capabilities.expires_at <= now()
+           RETURNING *`,
+          [...base, input.exceptionReason ?? null, input.expiresAt ?? null])
+        : await q.query(
+          `INSERT INTO ${SCHEMA}.principal_capabilities
+             (id, tenant_id, principal_id, capability_id, granted_by, granted_at, created_by, created_at, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           ON CONFLICT (tenant_id, principal_id, capability_id) DO NOTHING
+           RETURNING *`,
+          base);
       if (rows.length > 0) return toPrincipalCapability(rows[0]);
       const existing = await q.query(
         `SELECT * FROM ${SCHEMA}.principal_capabilities WHERE tenant_id = $1 AND principal_id = $2 AND capability_id = $3`,
@@ -1133,16 +1241,151 @@ function makeTransaction(client: PoolClient, actor: PolicyActor): PolicyTransact
       );
     },
 
+    // ── Administration decisions and grant conditions (migration 1762646400000) ──
+    async recordRoleCapabilityDecision(input) {
+      const id = newId();
+      // INSERT the successor FIRST, then stamp the predecessor with it: the one-current-per-cell
+      // exclusion constraint is DEFERRED to COMMIT, and the append-only trigger verifies that the stamp
+      // names an EXISTING current decision for the same cell in the same tenant.
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.role_capability_decisions
+           (id, tenant_id, role_key, capability_key, decision, requires_condition, reason,
+            actor_principal_id, audit_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [id, tenantId, input.roleKey, input.capabilityKey, input.decision, input.requiresCondition,
+          input.reason, input.actorPrincipalId, input.auditEventId]);
+      await q.query(
+        `UPDATE ${SCHEMA}.role_capability_decisions SET superseded_at = now(), superseded_by = $4
+          WHERE tenant_id = $1 AND role_key = $2 AND capability_key = $3 AND superseded_at IS NULL AND id <> $4`,
+        [tenantId, input.roleKey, input.capabilityKey, id]);
+      return toDecision(rows[0]);
+    },
+
+    // ── serialization and in-transaction reads for the Administration commands ──
+    async beginAdministrationCommand() {
+      // One governance lock per tenant: every Administration grant/revoke/condition/assignment
+      // command, and the catalog reconcile, serialize on it -- so the anti-lockout count, the no-op
+      // check and the decision read are all taken against a state nobody else is changing.
+      await q.query(`SELECT set_config('eos_policy.administration_command', 'on', true)`);
+      await q.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+    },
+
+    async lockGrantCell(roleKey: string, capabilityKey: string) {
+      await q.query(`SELECT ${SCHEMA}.grant_cell_lock($1, 'ROLE', $2, $3)`, [tenantId, roleKey, capabilityKey]);
+    },
+
+    async readGrantCell(roleKey: string, capabilityKey: string) {
+      const grant = await q.query(
+        `SELECT rc.* FROM ${SCHEMA}.role_capabilities rc
+           JOIN ${SCHEMA}.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+           JOIN ${SCHEMA}.capabilities c ON c.id = rc.capability_id
+          WHERE rc.tenant_id = $1 AND r.key = $2 AND c.key = $3`, [tenantId, roleKey, capabilityKey]);
+      const decision = await q.query(
+        `SELECT * FROM ${SCHEMA}.role_capability_decisions
+          WHERE tenant_id = $1 AND role_key = $2 AND capability_key = $3 AND superseded_at IS NULL`,
+        [tenantId, roleKey, capabilityKey]);
+      const condition = await q.query(
+        `SELECT * FROM ${SCHEMA}.capability_grant_conditions
+          WHERE tenant_id = $1 AND grant_scope = 'ROLE' AND grantor_key = $2 AND capability_key = $3 AND status = 'ACTIVE'`,
+        [tenantId, roleKey, capabilityKey]);
+      return {
+        grant: grant.rows[0] ? toRoleCapability(grant.rows[0]) : null,
+        decision: decision.rows[0] ? toDecision(decision.rows[0]) : null,
+        condition: condition.rows[0] ? toGrantCondition(condition.rows[0]) : null,
+      };
+    },
+
+    async readAssignment(assignmentId: string) {
+      const { rows } = await q.query(
+        `SELECT * FROM ${SCHEMA}.user_role_assignments WHERE tenant_id = $1 AND id = $2`, [tenantId, assignmentId]);
+      return rows[0] ? toAssignment(rows[0]) : null;
+    },
+
+    async administrationHolderCount(capabilityKey: string, exclude) {
+      // Holders the GATE would actually admit: an ENABLED principal with an ACTIVE membership, holding
+      // the key through an ACTIVE, GLOBAL, non-stale assignment to a Role granting it UNCONDITIONED, or
+      // through a direct grant with NO expiry (an expiring grant is a lockout on a timer).
+      const { rows } = await q.query(
+        `WITH cap AS (SELECT id, key FROM ${SCHEMA}.capabilities WHERE key = $2),
+              holder_roles AS (
+                SELECT rc.role_id FROM ${SCHEMA}.role_capabilities rc
+                  JOIN cap ON cap.id = rc.capability_id
+                  JOIN ${SCHEMA}.roles r ON r.id = rc.role_id AND r.tenant_id = rc.tenant_id
+                 WHERE rc.tenant_id = $1 AND rc.role_id IS DISTINCT FROM $4
+                   AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.capability_grant_conditions g
+                                    WHERE g.tenant_id = rc.tenant_id AND g.grant_scope = 'ROLE' AND g.grantor_key = r.key
+                                      AND g.capability_key = cap.key AND g.status = 'ACTIVE')),
+              via_role AS (
+                SELECT a.principal_id FROM ${SCHEMA}.user_role_assignments a
+                  JOIN holder_roles hr ON hr.role_id = a.role_id
+                  LEFT JOIN ${SCHEMA}.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
+                 WHERE a.tenant_id = $1 AND a.status = 'active' AND a.scope_type = 'global'
+                   AND a.id IS DISTINCT FROM $3
+                   AND a.access_version_at_grant <= coalesce(v.access_version, 0)),
+              via_direct AS (
+                SELECT pc.principal_id FROM ${SCHEMA}.principal_capabilities pc JOIN cap ON cap.id = pc.capability_id
+                 WHERE pc.tenant_id = $1 AND pc.principal_id IS DISTINCT FROM $5
+                   AND (to_jsonb(pc) ->> 'expires_at') IS NULL)
+         SELECT count(DISTINCT p.id)::int AS n
+           FROM (SELECT principal_id FROM via_role UNION SELECT principal_id FROM via_direct) h
+           JOIN ${SCHEMA}.principals p ON p.id = h.principal_id AND p.status = 'active'
+           JOIN ${SCHEMA}.tenant_memberships m ON m.principal_id = p.id AND m.tenant_id = $1 AND m.status = 'active'`,
+        [tenantId, capabilityKey, exclude.assignmentId ?? null, exclude.roleId ?? null, exclude.principalId ?? null]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
+    async protectedRoleAssignmentCount(excludeAssignmentId: string | null) {
+      const { rows } = await q.query(
+        `SELECT count(*)::int AS n FROM ${SCHEMA}.user_role_assignments a
+           JOIN ${SCHEMA}.roles r ON r.id = a.role_id AND r.tenant_id = a.tenant_id
+          WHERE a.tenant_id = $1 AND r.protected AND a.status = 'active' AND a.id IS DISTINCT FROM $2`,
+        [tenantId, excludeAssignmentId]);
+      return Number(rows[0]?.n ?? 0);
+    },
+
+    async upsertGrantCondition(input) {
+      const { rows } = await q.query(
+        `INSERT INTO ${SCHEMA}.capability_grant_conditions
+           (id, tenant_id, grant_scope, grantor_key, capability_key, condition, status, established_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'ACTIVE',$7,$7)
+         ON CONFLICT (tenant_id, grant_scope, grantor_key, capability_key)
+         DO UPDATE SET condition = EXCLUDED.condition, status = 'ACTIVE',
+                       updated_by = EXCLUDED.updated_by, updated_at = now()
+         RETURNING *`,
+        [newId(), tenantId, input.grantScope, input.grantorKey, input.capabilityKey,
+          JSON.stringify(input.condition), actor.uid]);
+      return toGrantCondition(rows[0]);
+    },
+
+    async retireGrantCondition(grantScope, grantorKey, capabilityKey) {
+      try {
+        const { rows } = await q.query(
+          `UPDATE ${SCHEMA}.capability_grant_conditions
+              SET status = 'RETIRED', updated_by = $5, updated_at = now()
+            WHERE tenant_id = $1 AND grant_scope = $2 AND grantor_key = $3 AND capability_key = $4
+              AND status = 'ACTIVE'
+            RETURNING *`,
+          [tenantId, grantScope, grantorKey, capabilityKey, actor.uid]);
+        return rows.length > 0 ? toGrantCondition(rows[0]) : null;
+      } catch (err) {
+        const message = (err as Error)?.message ?? "";
+        if (message.includes("CONDITION_RETIREMENT_WOULD_WIDEN")) throw new PolicyStoreError(message);
+        throw err;
+      }
+    },
+
     async appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">) {
+      const id = newId();
       await q.query(
         `INSERT INTO ${SCHEMA}.audit_events (id, tenant_id, action, actor_uid, target_kind, target_id,
            before, after, occurred_at, reason)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [newId(), tenantId, input.action, input.actorUid, input.targetKind, input.targetId,
+        [id, tenantId, input.action, input.actorUid, input.targetKind, input.targetId,
           input.before === null || input.before === undefined ? null : JSON.stringify(input.before),
           input.after === null || input.after === undefined ? null : JSON.stringify(input.after),
           input.occurredAt, input.reason],
       );
+      return id;
     },
   };
 }

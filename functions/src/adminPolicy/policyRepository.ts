@@ -44,6 +44,9 @@ import type {
   ObjectRecord,
   PolicyAssignmentStatus,
   PolicyAuditEventRecord,
+  GrantConditionRecord,
+  RoleCapabilityDecisionRecord,
+  RoleCapabilityDecision,
   PolicyRoleAssignmentRecord,
   PolicyRoleRecord,
   PrincipalAccessVersionRecord,
@@ -84,6 +87,28 @@ export interface NewPrincipalCapabilityInput {
   readonly capabilityId: string;
   readonly grantedBy: string;
   readonly grantedAt: string;
+  readonly exceptionReason?: string | null;
+  readonly expiresAt?: string | null;
+}
+
+/** Filters for the Administration audit history read. All optional; combined with AND. */
+export interface AuditEventFilter {
+  /** Actor, target, or a payload principalId / granteeKey. */
+  readonly principalId?: string | null;
+  /** Target, or a payload employeeId. */
+  readonly employeeId?: string | null;
+  /** A payload granteeKey / roleKey, or (for assignments) the Role id. */
+  readonly roleKey?: string | null;
+  readonly roleId?: string | null;
+  readonly objectKey?: string | null;
+  readonly capabilityKey?: string | null;
+  readonly actionKey?: string | null;
+  /** A payload workflowKey, or the key of a workflow target. */
+  readonly workflowKey?: string | null;
+  /** occurred_at >= from (inclusive), occurred_at < to (exclusive). ISO instants. */
+  readonly from?: string | null;
+  readonly to?: string | null;
+  readonly limit: number;
 }
 
 /** A new tenant. The store assigns the id; the caller owns the key. */
@@ -119,6 +144,28 @@ export interface PrincipalIdentityBindingInput {
   readonly identityProvider: string;
   readonly externalSubject: string;
   readonly displayName?: string | null;
+}
+
+/**
+ * One Administration decision about a Role -> capability cell. The store supersedes the cell's
+ * current decision (if any) and appends this one, atomically, inside the caller's transaction.
+ */
+export interface NewRoleCapabilityDecisionInput {
+  readonly roleKey: string;
+  readonly capabilityKey: string;
+  readonly decision: RoleCapabilityDecision;
+  readonly requiresCondition: boolean;
+  readonly reason: string;
+  readonly actorPrincipalId: string;
+  readonly auditEventId: string;
+}
+
+/** Establish (or replace) the ACTIVE condition on one grant cell. */
+export interface GrantConditionInput {
+  readonly grantScope: "ROLE" | "PRINCIPAL";
+  readonly grantorKey: string;
+  readonly capabilityKey: string;
+  readonly condition: unknown;
 }
 
 export interface NewAdminBootstrapInput {
@@ -230,9 +277,53 @@ export interface PolicyTransaction {
   advanceWorkflowInstance(instanceId: string, toStepKey: string): Promise<WorkflowInstanceRecord>;
   appendWorkflowInstanceEvent(input: Omit<WorkflowInstanceEventRecord, "id" | "tenantId">): Promise<void>;
 
+  // ── Administration decisions and grant conditions ──
+  //
+  // A decision is APPEND-ONLY: recording one supersedes the cell's current decision (a one-time
+  // stamp) and inserts the new row. There is no update and no delete on this port.
+  recordRoleCapabilityDecision(input: NewRoleCapabilityDecisionInput): Promise<RoleCapabilityDecisionRecord>;
+  /** Insert or re-activate the cell's condition row; returns the stored row. */
+  upsertGrantCondition(input: GrantConditionInput): Promise<GrantConditionRecord>;
+  /**
+   * RETIRE the cell's ACTIVE condition (status change, never a delete) and return it, or null when
+   * there was none. The store REFUSES while the grant is held (it would widen the grant to ALL).
+   */
+  retireGrantCondition(grantScope: "ROLE" | "PRINCIPAL", grantorKey: string, capabilityKey: string): Promise<GrantConditionRecord | null>;
+
+  // ── serialization and in-transaction reads (Administration commands) ──
+  /**
+   * Mark this transaction as an Administration command and take the tenant's GOVERNANCE lock. Every
+   * grant/revoke/condition/assignment command and the catalog reconcile serialize on it, so the checks
+   * each makes INSIDE the transaction (anti-lockout counts, the no-op test, the current decision) are
+   * taken against a state no concurrent writer is changing.
+   */
+  beginAdministrationCommand(): Promise<void>;
+  /** The (tenant, ROLE, role, capability) cell lock the database triggers also take. */
+  lockGrantCell(roleKey: string, capabilityKey: string): Promise<void>;
+  /** The cell as it stands NOW, inside this transaction: the grant row, the current decision, the ACTIVE condition. */
+  readGrantCell(roleKey: string, capabilityKey: string): Promise<{
+    readonly grant: RoleCapabilityRecord | null;
+    readonly decision: RoleCapabilityDecisionRecord | null;
+    readonly condition: GrantConditionRecord | null;
+  }>;
+  readAssignment(assignmentId: string): Promise<PolicyRoleAssignmentRecord | null>;
+  /**
+   * How many principals the gate would ADMIT for this capability, excluding one assignment, one Role
+   * grant or one direct grant: enabled, active member, active GLOBAL non-stale assignment to a Role that
+   * grants it unconditioned, or a direct grant with no expiry.
+   */
+  administrationHolderCount(capabilityKey: string, exclude: {
+    readonly assignmentId?: string; readonly roleId?: string; readonly principalId?: string;
+  }): Promise<number>;
+  /** Active assignments to protected Roles, excluding one. */
+  protectedRoleAssignmentCount(excludeAssignmentId: string | null): Promise<number>;
+
   // ── audit ──
-  /** Not optional and not configurable. Every mutation in this subsystem writes one. */
-  appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">): Promise<void>;
+  /**
+   * Not optional and not configurable. Every mutation in this subsystem writes one. Returns the
+   * stored event id, so a decision row can name the event that records it.
+   */
+  appendAudit(input: Omit<PolicyAuditEventRecord, "id" | "tenantId">): Promise<string>;
 }
 
 /**
@@ -303,6 +394,18 @@ export interface PolicyReader {
   listWorkflowRoleBindings(tenantId: TenantId, versionId: string): Promise<readonly WorkflowRoleBindingRecord[]>;
   getWorkflowInstance(tenantId: TenantId, objectKey: string, recordId: string): Promise<WorkflowInstanceRecord | null>;
   listAuditEvents(tenantId: TenantId, limit: number): Promise<readonly PolicyAuditEventRecord[]>;
+  /**
+   * Tenant-scoped, FILTERED audit history, oldest first, bounded by `limit`. Every filter is optional
+   * and parameterized; payload filters match a top-level key of `before` OR `after` (JSONB containment,
+   * GIN-indexed by migration 1762646400000).
+   */
+  queryAuditEvents(tenantId: TenantId, filter: AuditEventFilter): Promise<readonly PolicyAuditEventRecord[]>;
+
+  // ── Administration decisions and grant conditions ──
+  /** Decisions in this tenant. `currentOnly` (default true) omits superseded history. */
+  listRoleCapabilityDecisions(tenantId: TenantId, options?: { readonly currentOnly?: boolean }): Promise<readonly RoleCapabilityDecisionRecord[]>;
+  /** Grant conditions in this tenant. `activeOnly` (default true) omits RETIRED rows. */
+  listGrantConditions(tenantId: TenantId, options?: { readonly activeOnly?: boolean }): Promise<readonly GrantConditionRecord[]>;
 }
 
 /** The whole port. An adapter implements this and nothing above it knows which one is installed. */
