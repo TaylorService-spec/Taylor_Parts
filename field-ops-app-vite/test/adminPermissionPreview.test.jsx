@@ -73,8 +73,19 @@ describe("Administration Permission Preview", () => {
   it("never falls back to displaying the external authentication subject", () => {
     render(<AdminPermissionPreview />);
 
-    expect(screen.getByRole("button", { name: "Principal 87654321" })).toBeTruthy();
     expect(screen.queryByText("firebase-subject-must-not-render")).toBeNull();
     expect(screen.queryByText("another-subject-must-not-render")).toBeNull();
+  });
+
+  it("an unnamed Principal is labelled 'Unnamed Principal', never by its internal id (Pass 10 D4)", () => {
+    render(<AdminPermissionPreview />);
+
+    expect(screen.getByRole("button", { name: "Unnamed Principal" })).toBeTruthy();
+    // No human-facing label carries the internal id, whole or truncated.
+    for (const button of screen.getAllByRole("button")) {
+      expect(button.textContent).not.toMatch(/87654321|principal-admin-12345678|Principal [0-9a-f]{8}/i);
+    }
+    // A named Principal still shows its name.
+    expect(screen.getByRole("button", { name: "Avery Admin" })).toBeTruthy();
   });
 });

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { usePolicyStore } from "./usePolicyStore.js";
 import { Button } from "../../shared/ui/primitives/index.js";
+import { principalLabel } from "./principalDisplay.js";
 
 /**
  * Administration > Permission Preview
@@ -19,12 +20,8 @@ import { Button } from "../../shared/ui/primitives/index.js";
  * Security Role grants.
  */
 
-function principalLabel(principal) {
-  const name = typeof principal?.displayName === "string" ? principal.displayName.trim() : "";
-  if (name) return name;
-  const id = typeof principal?.id === "string" ? principal.id : "";
-  return id ? `Principal ${id.slice(0, 8)}` : "Principal";
-}
+// The tenant Principal list carries only displayName, the login provider's subject, the provider and a
+// status -- no Employee name and no email -- so the label is principalDisplay's shared convention.
 
 function statusCopy(state, loadingText) {
   if (state.status === "loading") return loadingText;

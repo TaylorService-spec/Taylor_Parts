@@ -427,12 +427,12 @@ describe("the read model is consumed only through the control-plane view, and no
   });
 
   it("Permission Preview is on the path it was on, and the effectiveAccessFeed is untouched", () => {
-    // Permission Preview renders AdministrationUnavailable today (App.jsx, Issue #226 Row 11). This
-    // tranche does NOT give it the new Principal read: that switch is a source-of-truth change and
-    // is not in this lane.
+    // Permission Preview keeps its own route to the governed read (AdminPermissionPreview). The Firebase-era
+    // AdministrationUnavailable placeholder is gone (Pass 10 UI truthfulness repair, D2).
     const app = readFileSync("src/App.jsx", "utf8");
     expect(app.includes('item.key === "permissionPreview"')).toBe(true);
-    expect(app.includes("AdministrationUnavailable")).toBe(true);
+    expect(app.includes("<AdminPermissionPreview />")).toBe(true);
+    expect(app.includes("AdministrationUnavailable")).toBe(false);
     for (const banned of ["usePrincipalAccessReadModel", "useObjectSecurity", "objectSecurityReadModel"]) {
       expect(app.includes(banned), banned).toBe(false);
     }

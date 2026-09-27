@@ -67,7 +67,7 @@ const EquipmentDetail = lazy(() => import("./modules/equipment/EquipmentDetail")
 const AccountDetail = lazy(() => import("./modules/accounts/AccountDetail"));
 const PartsShadowParityDiagnostics = lazy(() => import("./modules/inventory/PartsShadowParityDiagnostics"));
 const AdministrationOverview = lazy(() => import("./modules/administration/AdministrationOverview"));
-const AdministrationUnavailable = lazy(() => import("./modules/administration/AdministrationUnavailable"));
+const AdminAuditLogs = lazy(() => import("./modules/administration/AdminAuditLogs.jsx"));
 const AdminPermissionPreview = lazy(() => import("./modules/administration/AdminPermissionPreview.jsx"));
 const AdminUsers = lazy(() => import("./modules/administration/AdminUsers"));
 const AdminRolesPermissions = lazy(() => import("./modules/administration/AdminRolesPermissions"));
@@ -735,10 +735,10 @@ function renderSubnavItem(domain, item, role, operationalContext, allowedLegacyK
   if (domain.key === "administration" && item.key === "permissionPreview") {
     return <AdminPermissionPreview />;
   }
-  // Audit Logs still has no wired client surface in this tranche. Keep its honest unavailable
-  // state separate from Permission Preview so one completed read path does not mask the other.
+  // Audit Logs: the governed audit is deployed and shown per Employee (Access Audit History) and per
+  // Security Role (Decision history); this page has no consolidated list yet and says where to look.
   if (domain.key === "administration" && item.key === "auditLogs") {
-    return <AdministrationUnavailable title={item.label} />;
+    return <AdminAuditLogs />;
   }
   // Purchasing > Purchase Orders (item C) -- the real cross-request Reorder
   // Purchase Order workspace, replacing the prior PlaceholderPage for this
