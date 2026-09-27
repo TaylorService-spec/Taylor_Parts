@@ -11,7 +11,7 @@
 //   every ALLOWED / DENIED row      ==  authorizeOperationalAction over the runtime context
 //
 // ...then again AFTER a condition, a direct exception, a stale and a scoped assignment are introduced, so
-// CONDITIONAL, DIRECT_EXCEPTION and the excluded-assignment report are proved and parity still holds.
+// CONDITIONAL, DIRECT_EXCEPTION (enforced since lane DX) and the excluded-assignment report are proved and parity still holds.
 // Also: the Admin read gate (admin.principalAccess.read), tenant confinement, and expired direct grants.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -161,7 +161,8 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
       }
       assert.deepEqual(row.scopedSources.map((x) => x.roleKey), runtime.scopedHeld.filter((h) => h.capabilityKey === row.capabilityKey).map((h) => h.sourceRole));
       const held = runtime.capabilities.has(row.capabilityKey) || runtime.conditionallyHeld.has(row.capabilityKey);
-      assert.equal(held, row.sourceRoles.length > 0, `${key} ${row.capabilityKey}: sources`);
+      // Held <=> a Security Role OR a direct exception grants it globally (lane DX: both are capability sources).
+      assert.equal(held, row.sourceRoles.length > 0 || row.directGrant !== null, `${key} ${row.capabilityKey}: sources`);
     }
     return explained;
   };
@@ -200,9 +201,14 @@ test("explainEffectiveAccess is the runtime's answer, for every persona", { skip
     assert.deepEqual([woRead.result, woRead.reasonCode, woRead.withheldFromFlatSetKernels], ["CONDITIONAL", "RECORD_ASSIGNMENT_REQUIRED", true]);
     assert.deepEqual(woRead.sourceRoles.map((r) => [r.roleKey, r.condition?.recordKind]), [["technician", "workOrder"]]);
     const dispatch = tech.actions.find((a) => a.capabilityKey === "workOrder.lifecycle.dispatch");
-    assert.deepEqual([dispatch.result, dispatch.reasonCode], ["DENIED", "CAPABILITY_MISSING"], "a direct grant is not enforced on the Role-only runtime");
-    assert.deepEqual(dispatch.directGrant, { label: "DIRECT_EXCEPTION", exceptionReason: "covering the parts desk this week",
-      expiresAt: null, notEnforcedOnRoleOnlyRuntimePaths: true });
+    // Lane DX: a direct exception is ENFORCED by the runtime -- the evaluator ALLOWS through the PRINCIPAL grantor.
+    assert.deepEqual([dispatch.result, dispatch.reasonCode], ["ALLOWED", "ALLOWED"], "a direct grant is enforced on the runtime");
+    assert.deepEqual(dispatch.sourceRoles, [], "no Security Role grants it");
+    const { grantedAt, ...directGrant } = dispatch.directGrant;
+    assert.ok(typeof grantedAt === "string" && grantedAt.length > 0);
+    assert.deepEqual(directGrant, { label: "DIRECT_EXCEPTION", source: "DIRECT_EXCEPTION", exceptionReason: "covering the parts desk this week",
+      expiresAt: null, grantedBy: "fixture", condition: null, enforced: true });
+    assert.ok(tech.capabilities.includes("workOrder.lifecycle.dispatch"), "an unconditioned direct exception is in the flat set");
     assert.equal(tech.actions.find((a) => a.capabilityKey === "opportunity.write").directGrant, null, "an EXPIRED exception is not shown as held");
     assert.deepEqual(tech.assignments.excluded.map((e) => [e.roleKey, e.reason]).sort(),
       [["dispatcher", "STALE"], ["warehouseManager", "SCOPE_UNSUPPORTED"]]);

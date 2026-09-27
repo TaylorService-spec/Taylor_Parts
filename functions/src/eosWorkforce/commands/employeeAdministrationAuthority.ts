@@ -34,23 +34,16 @@
 //
 // ════════════════════ DIRECT PRINCIPAL GRANTS COUNT (standing Owner ruling) ════════════════════
 //
-// `resolveOperationalContext` resolves capabilities from ROLES ONLY, and capabilityAuthority.ts says
-// why in so many words: folding `eos_policy.principal_capabilities` into that set would widen
-// effective access for all thirteen gate sites under cover of a refactor, so
-// `principalCapabilityGrants` is kept separate for "a future direct-grant activation [that] is a
-// deliberate composition".
+// Since lane DX (direct exceptions, complete support) `resolveOperationalContext` itself counts unexpired
+// `eos_policy.principal_capabilities` rows through `resolveOperationalCapabilities` -- the ONE resolution every gate
+// uses -- with a Role grant's semantics: conditions narrow a direct grant (conditioned-only keys are
+// `conditionallyHeld`, never flat) and a direct grant has no scope. The operator resolution below calls the same
+// function (it reads principalCapabilityGrants through it), so the transport and the operator cannot disagree.
 //
-// THIS IS THAT DELIBERATE COMPOSITION, and it is scoped to these commands and nothing else.
-// `withDirectCapabilityGrants` is applied by the Employee administration commands alone; no other
-// read, command or transport behaviour changes. It can only ever ADD the specific capability keys an
-// administrator already granted to that Principal through the governed Administration path, in the
-// actor's own tenant, and it adds them with the PRINCIPAL grantor kept, so a conditioned direct
-// grant would be evaluated as a conditioned grant rather than silently promoted to an unconditional
-// one.
-//
-// LAZY, in the Owner's order. The Role set is the first boundary and it is consulted first. The
-// direct-grant read happens ONLY when the Role set does not already carry the required capability --
-// a caller the Roles admit costs zero extra reads, and a caller nothing admits costs exactly one.
+// `withDirectCapabilityGrants` remains for an actor built outside that resolution (it is a no-op for a transport
+// actor that already holds the key). It can only ADD unconditioned direct keys; a conditioned direct grant is added
+// as an entitlement with its PRINCIPAL-cell condition, never as a flat key, and a key the resolution already placed
+// in `conditionallyHeld` is never promoted.
 //
 // ════════════════════ WHAT THIS FILE NEVER DOES ════════════════════
 //
@@ -59,12 +52,10 @@
 // a uid, token or custom claim as authority, and never narrows a refusal into an empty capability
 // set -- an unknown, disabled or non-member Principal is REFUSED.
 import type { Pool } from "pg";
+import { resolveOperationalCapabilities } from "../../eosOps/capabilityAuthority";
+import { postgresGrantConditionProvider, resolveDirectEntitlements } from "../../eosOps/entitledActionAuthority";
 import {
-  capabilitiesForRoleKeys, principalCapabilityGrants, type PrincipalCapabilityGrantRow,
-} from "../../eosOps/capabilityAuthority";
-import { resolveDirectEntitlements, resolveRoleEntitlements } from "../../eosOps/entitledActionAuthority";
-import {
-  entitlementsFrom, hasResolvedEntitlements, type EntitlementResolver, type EntitlementSet,
+  hasResolvedEntitlements, type EntitlementResolver, type EntitlementSet,
 } from "../../eosOps/conditionalEntitlement";
 import { EmployeeCommandError, ID_SHAPE, type EmployeeCommandActor } from "./employeeCommandKernel";
 
@@ -122,9 +113,17 @@ export async function withDirectCapabilityGrants(
   pool: Pool, actor: EmployeeCommandActor, requiredCapability: string,
 ): Promise<EmployeeCommandActor> {
   if (!isResolvedActor(actor) || actor.capabilities.has(requiredCapability)) return actor;
-  let direct: readonly PrincipalCapabilityGrantRow[];
+  // SINCE LANE DX the transport's resolution (capabilityAuthority.resolveOperationalCapabilities) already counts
+  // direct exceptions, WITH their conditions. A key it placed in `conditionallyHeld` is conditioned: it must never
+  // be promoted into the flat set here, so the actor is returned unchanged and the command refuses it flat.
+  const conditionallyHeld = (actor as { conditionallyHeld?: ReadonlySet<string> }).conditionallyHeld;
+  if (conditionallyHeld instanceof Set && conditionallyHeld.has(requiredCapability)) return actor;
+  let direct: EntitlementSet;
   try {
-    direct = await principalCapabilityGrants(pool, actor.tenantId, actor.principalId);
+    // The Principal's unexpired direct grants WITH the PRINCIPAL-cell conditions from PostgreSQL: a conditioned
+    // direct grant is an entitlement with its condition, never a flat key.
+    const conditions = await postgresGrantConditionProvider(pool)(actor.tenantId);
+    direct = await resolveDirectEntitlements(pool, actor.tenantId, actor.principalId, conditions);
   } catch {
     // FAIL CLOSED. An unreadable grant store is not "no direct grants": it is an authority that
     // could not be consulted, and the command must refuse rather than decide without it.
@@ -132,22 +131,26 @@ export async function withDirectCapabilityGrants(
       "the direct capability grants of the administering Principal could not be read");
   }
   if (direct.length === 0) return actor;
-  const capabilities: ReadonlySet<string> = new Set([...actor.capabilities, ...direct.map((g) => g.capabilityKey)]);
+  const unconditioned = direct.filter((e) => e.condition === null).map((e) => e.capabilityKey);
+  const capabilities: ReadonlySet<string> = new Set([...actor.capabilities, ...unconditioned]);
   const roleEntitlements = actor.entitlements;
   return Object.freeze({
     tenantId: actor.tenantId,
     principalId: actor.principalId,
     capabilities,
-    // The Role entitlements this request already resolved, plus the direct grants with the PRINCIPAL
-    // grantor kept. Provenance survives, so a conditioned direct grant stays conditioned.
-    entitlements: memoize(async () => Object.freeze([
-      ...(await roleEntitlements()),
-      ...entitlementsFrom(direct.map((g) => ({ grantor: { kind: "PRINCIPAL" as const, principalId: g.principalId }, capabilityKey: g.capabilityKey }))),
-    ])),
+    // The entitlements this request already resolved, plus the direct grants with the PRINCIPAL grantor and their
+    // condition kept -- de-duplicated, because the transport's resolver may already carry them.
+    entitlements: memoize(async () => {
+      const resolved = await roleEntitlements();
+      const seen = new Set(resolved.map((e) => `${e.grantor.kind}:${(e.grantor as { principalId?: string; roleKey?: string }).principalId ?? (e.grantor as { roleKey?: string }).roleKey}|${e.capabilityKey}`));
+      return Object.freeze([...resolved, ...direct.filter((e) => !seen.has(`PRINCIPAL:${(e.grantor as { principalId: string }).principalId}|${e.capabilityKey}`))]);
+    }),
   });
 }
 
 export interface EmployeeAdministrationActor extends EmployeeCommandActor {
+  /** Keys reachable only through conditioned grants (Role or direct). Never flat; the entitled seam decides them. */
+  readonly conditionallyHeld: ReadonlySet<string>;
   /** The ACTIVE Role keys the resolution read, for the operator report. Never an input. */
   readonly heldRoleKeys: readonly string[];
   /** The DIRECT capability keys the resolution read, for the operator report. Never an input. */
@@ -194,25 +197,18 @@ export async function resolveEmployeeAdministrationActor(
       ORDER BY r.key`,
     [tenantId, principalId],
   )).rows.map((r) => r.key);
-  // BOTH grant relations, because the Owner's standing ruling is that a direct Principal grant
-  // counts. The union is taken once, here, so the flat set and the entitlement list agree.
-  const [roleCapabilities, direct] = await Promise.all([
-    capabilitiesForRoleKeys(pool, tenantId, heldRoleKeys),
-    principalCapabilityGrants(pool, tenantId, principalId),
-  ]);
-  const directCapabilityKeys = Object.freeze(direct.map((g) => g.capabilityKey));
-  const capabilities: ReadonlySet<string> = new Set([...roleCapabilities, ...directCapabilityKeys]);
+  // BOTH grant relations, because the Owner's standing ruling is that a direct Principal grant counts -- resolved
+  // by THE runtime capability resolution (lane DX), with conditions from PostgreSQL, so a conditioned grant of
+  // either kind is never flat here and an expired direct exception confers nothing.
+  const resolved = await resolveOperationalCapabilities(pool, tenantId, principalId, heldRoleKeys,
+    postgresGrantConditionProvider(pool));
+  const directCapabilityKeys = Object.freeze(resolved.directGrants.map((g) => g.capabilityKey));
   return Object.freeze({
     tenantId,
     principalId,
-    capabilities,
-    entitlements: memoize(async () => {
-      const [roles, principals] = await Promise.all([
-        resolveRoleEntitlements(pool, tenantId, heldRoleKeys),
-        resolveDirectEntitlements(pool, tenantId, principalId),
-      ]);
-      return Object.freeze([...roles, ...principals]);
-    }),
+    capabilities: resolved.capabilities,
+    conditionallyHeld: resolved.conditionallyHeld,
+    entitlements: resolved.entitlements,
     heldRoleKeys: Object.freeze(heldRoleKeys),
     directCapabilityKeys,
   });

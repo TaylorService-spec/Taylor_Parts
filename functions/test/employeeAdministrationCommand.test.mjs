@@ -123,8 +123,10 @@ test("the administering actor resolver is SELECT-only and can only ADD grants eo
   // It reads the two grant relations and the membership, and nothing else about anything.
   assert.match(src, /eos_policy\.tenant_memberships/);
   assert.match(src, /eos_policy\.user_role_assignments/);
-  assert.match(src, /capabilitiesForRoleKeys/);
-  assert.match(src, /principalCapabilityGrants/);
+  // Both grant relations are read through THE runtime capability resolution (lane DX: Roles + direct exceptions,
+  // with conditions), never through a second evaluator of this file's own.
+  assert.match(src, /resolveOperationalCapabilities/);
+  assert.match(src, /postgresGrantConditionProvider/);
   // A caller can never state authority, and the refused names include the ones the brief calls out.
   for (const field of ["heldRoleKeys", "capabilities", "roles", "entitlements", "grants", "permissions", "securityRole"]) {
     assert.ok(authority.SUPPLIED_AUTHORITY_FIELDS.includes(field), field);

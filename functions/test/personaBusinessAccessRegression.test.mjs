@@ -261,7 +261,8 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // persona's set moves.
   // 55: + the tenant sales channel activation (1762905600000): one EMPTY table -- no capability, no grant, so no
   // persona's set moves.
-  assert.equal(files.length, 55, "the migration chain moved; re-measure before trusting anything below");
+  // 56: + the direct-exception cell lock (1762992000000): one trigger -- no capability, no grant, so no persona moves.
+  assert.equal(files.length, 56, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

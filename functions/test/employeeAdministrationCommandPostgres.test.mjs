@@ -37,7 +37,8 @@ const companies = require("../lib/eosWorkforce/migration/tenantOperatingCompanie
 const grants = require("../lib/eosWorkforce/migration/employeeCapabilityGrants.js");
 const http = require("../lib/eosWorkforce/workforceHttp.js");
 const cli = require("../scripts/administerEmployeeCli.js");
-const { resolveOperationalContext } = require("../lib/eosOps/capabilityAuthority.js");
+const capabilityAuthority = require("../lib/eosOps/capabilityAuthority.js");
+const { resolveOperationalContext } = capabilityAuthority;
 const { PostgresPolicyRepository } = require("../lib/adminPolicy/postgresPolicyRepository.js");
 
 const dbUrlFor = (name) => { const u = new URL(URL_BASE); u.pathname = `/${name}`; return u.toString(); };
@@ -89,7 +90,7 @@ test("createEmployee and the Employee <-> Principal link commands over the real 
     });
     return { principalId, subject };
   };
-  /** The transport's resolver: Roles only, exactly as every shipped operation resolves. */
+  /** The transport's resolver: Roles AND direct exceptions (lane DX), exactly as every shipped operation resolves. */
   const resolveActor = async (principal) => {
     const ctx = await resolveOperationalContext(repo, pool, { identityProvider: "firebase", externalSubject: principal.subject, requestedTenantId: null });
     return { tenantId: ctx.principalContext.tenantId, principalId: ctx.principalContext.uid, capabilities: ctx.capabilities, entitlements: ctx.entitlements };
@@ -204,8 +205,11 @@ test("createEmployee and the Employee <-> Principal link commands over the real 
   });
 
   await t.test("a DIRECT Principal grant COUNTS: the Role set alone refuses this Principal, the direct grant admits it", async () => {
-    // Non-vacuity: the transport's Role-only resolution does NOT carry the capability for this Principal.
-    assert.equal(directActor.capabilities.has("admin.employeeProfile.write"), false);
+    // Non-vacuity: this Principal's ROLES alone do not carry the capability...
+    const roleOnly = await capabilityAuthority.capabilitiesForRoleKeys(pool, "t1", ["generalManager"]);
+    assert.equal(roleOnly.has("admin.employeeProfile.write"), false);
+    // ...and since lane DX the TRANSPORT's resolution counts the direct exception itself (one resolution, every gate).
+    assert.equal(directActor.capabilities.has("admin.employeeProfile.write"), true);
     const resolved = await actorAuthority.resolveEmployeeAdministrationActor(pool, { tenantId: "t1", principalId: directGrantee.principalId });
     assert.deepEqual([[...resolved.heldRoleKeys], [...resolved.directCapabilityKeys]], [["generalManager"], ["admin.employeeProfile.write"]]);
     assert.equal(resolved.capabilities.has("admin.employeeProfile.write"), true);

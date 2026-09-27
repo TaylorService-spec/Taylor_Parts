@@ -84,7 +84,8 @@ test("this change adds no migration: the applied set is the one the base commit 
   // Raised again for the workflow control plane (1762732800000), likewise unrelated.
   // Raised again for the Functional Role authority (1762819200000), likewise unrelated.
   // Raised again for the tenant sales channel activation (1762905600000, lane GA), likewise unrelated.
-  assert.ok(Number(newest.split("_")[0]) <= 1762905600000, `an unexpected newest migration ${newest}`);
+  // Raised again for the direct-exception cell lock (1762992000000, lane DX), likewise unrelated.
+  assert.ok(Number(newest.split("_")[0]) <= 1762992000000, `an unexpected newest migration ${newest}`);
 });
 
 // ════════════════════ no Firebase, no delete, not wired ════════════════════

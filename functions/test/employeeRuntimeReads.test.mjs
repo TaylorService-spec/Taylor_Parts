@@ -60,6 +60,8 @@ function fakeWorld({ capabilities = ["opportunity.read"], clientQuery, member = 
       if (/role_capabilities/.test(text)) return { rows: capabilities.map((key) => ({ key, role_key: "sales", capability_key: key })) };
       // The per-grant condition store (Administration-written). None here: zero-condition parity.
       if (/capability_grant_conditions/.test(text)) return { rows: [] };
+      // Direct exceptions (lane DX): a capability source of the one runtime resolution. None here.
+      if (/principal_capabilities/.test(text)) return { rows: [] };
       throw new Error(`unexpected pool query ${text}`);
     },
     async connect() {

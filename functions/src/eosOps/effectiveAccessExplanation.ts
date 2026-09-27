@@ -5,7 +5,7 @@
 //
 //   Principal (by id)      resolvePrincipalContextById      -- shares its whole tail with the runtime's
 //                                                             resolvePrincipalContext
-//   capabilities           resolveOperationalContextForPrincipal -> capabilitiesForRoleKeys (Roles only)
+//   capabilities           resolveOperationalContextForPrincipal -> resolveOperationalCapabilities (Roles + direct)
 //   entitlements           the SAME request-scoped resolver, conditions from postgresGrantConditionProvider
 //                          -- the source every live transport composes
 //   eligibility / scope    postgresPrincipalDimensionReader -- the reader resolveExperienceContext uses
@@ -26,14 +26,14 @@
 //                context (operating company, ...) matches; each scope is listed in `scopedSources` with the
 //                evaluator's own decision for a record inside it (lane SC)
 //   DENIED       with the evaluator's reason code (CAPABILITY_MISSING, WORK_ELIGIBILITY_MISSING, ...)
-// A direct Principal grant is shown as DIRECT_EXCEPTION. The operational runtime resolves capabilities
-// from Roles only, so a direct grant is flagged NOT enforced on those paths (it is honoured by the
-// Administration read gate and by an explicit resolveDirectEntitlements caller only).
+// A direct Principal grant is shown as DIRECT_EXCEPTION with its reason, actor, creation time, expiry and condition.
+// Since lane DX it is ENFORCED on every runtime gate: resolveOperationalCapabilities -- the one resolution behind
+// resolveOperationalContext -- counts unexpired direct grants as a capability source with a Role grant's semantics,
+// so the decision below already includes it (`enforced: true`). An expired exception is not read and not shown.
 import type { Pool } from "pg";
 import type { PolicyReader } from "../adminPolicy/policyRepository";
 import { loadPrincipalPolicy } from "../adminPolicy/effectiveObjectAccess";
 import {
-  principalCapabilityGrants,
   resolveOperationalContextForPrincipal,
   type GrantConditionProvider,
 } from "./capabilityAuthority";
@@ -73,13 +73,22 @@ export interface ExplainedAction {
     readonly roleKey: string; readonly scopeType: string; readonly scopeValue: string;
     readonly condition: GrantCondition | null; readonly result: ExplainedResult; readonly reasonCode: string;
   }[];
+  /**
+   * The Principal's unexpired DIRECT EXCEPTION for this capability, or null. `enforced` is true: every runtime gate
+   * resolves it through the same capability resolution as a Role grant (lane DX). `condition` is its ACTIVE
+   * PRINCIPAL-cell condition (null = unconditioned); a conditioned direct grant is never in the flat set.
+   */
   readonly directGrant: {
     readonly label: "DIRECT_EXCEPTION";
+    readonly source: "DIRECT_EXCEPTION";
     readonly exceptionReason: string | null;
     readonly expiresAt: string | null;
-    readonly notEnforcedOnRoleOnlyRuntimePaths: true;
+    readonly grantedBy: string | null;
+    readonly grantedAt: string | null;
+    readonly condition: GrantCondition | null;
+    readonly enforced: true;
   } | null;
-  /** True when every Role path is conditioned: flat-set kernels (Commercial, CRM) withhold it. */
+  /** True when every path (Role and direct) is conditioned: flat-set kernels (Commercial, CRM) withhold it. */
   readonly withheldFromFlatSetKernels: boolean;
   /** Experience surfaces this capability earns for this Principal. */
   readonly surfaces: readonly string[];
@@ -157,9 +166,11 @@ export async function explainEffectiveAccess(
   const surfaces = await grantedSurfaceKeys(actorBase, dimensions);
   const surfaceSet = new Set(surfaces);
 
-  const [catalog, roles, policy, directRows, directRecords] = await Promise.all([
+  // The direct rows are the SAME rows the runtime resolution read (ctx.directGrants); the records add provenance.
+  const directRows = ctx.directGrants;
+  const [catalog, roles, policy, directRecords] = await Promise.all([
     reader.listCapabilities(), reader.listRoles(tenantId), loadPrincipalPolicy(reader, tenantId, principalId),
-    principalCapabilityGrants(pool, tenantId, principalId), reader.listPrincipalCapabilities(tenantId, principalId),
+    reader.listPrincipalCapabilities(tenantId, principalId),
   ]);
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
   const heldRoleIds = new Set(roles.filter((r) => heldRoleKeys.includes(r.key)).map((r) => r.id));
@@ -201,6 +212,7 @@ export async function explainEffectiveAccess(
       .map((e) => ({ roleKey: (e.grantor as { roleKey: string }).roleKey, condition: e.condition }));
     const direct = directByKey.get(capability.key);
     const directRecord = directRecordByCapabilityId.get(capabilityIdByKey.get(capability.key) ?? "");
+    const directEntitlement = reaching.find((e) => e.grantor.kind === "PRINCIPAL") ?? null;
 
     const decision = await authorizeOperationalAction(snapshot, actor, { capabilityKey: capability.key });
     const [result, reasonCode] = resultOf(decision);
@@ -220,11 +232,15 @@ export async function explainEffectiveAccess(
       scopedSources: Object.freeze(scopedSources),
       directGrant: direct ? Object.freeze({
         label: "DIRECT_EXCEPTION" as const,
+        source: "DIRECT_EXCEPTION" as const,
         exceptionReason: directRecord?.exceptionReason ?? null,
         expiresAt: directRecord?.expiresAt ?? null,
-        notEnforcedOnRoleOnlyRuntimePaths: true as const,
+        grantedBy: directRecord?.grantedBy ?? null,
+        grantedAt: directRecord?.grantedAt ?? null,
+        condition: directEntitlement?.condition ?? null,
+        enforced: true as const,
       }) : null,
-      withheldFromFlatSetKernels: sourceRoles.length > 0 && sourceRoles.every((r) => r.condition !== null),
+      withheldFromFlatSetKernels: reaching.length > 0 && reaching.every((e) => e.condition !== null),
       surfaces: Object.freeze(EXPERIENCE_SURFACES
         .filter((s) => surfaceSet.has(s.key) && s.grants.some((g) => g.capabilityKey === capability.key))
         .map((s) => s.key)),

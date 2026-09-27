@@ -58,10 +58,22 @@ export function createAdminControlPlaneClient(call = callPolicyApi) {
       }),
     revokeObjectActionFromRole: ({ objectKey, actionKey, roleKey, reason }) =>
       send("revokeObjectActionFromRole", { objectKey, actionKey, roleKey, reason }),
-    setGrantCondition: ({ objectKey, actionKey, roleKey, condition, reason }) =>
-      send("setGrantCondition", { objectKey, actionKey, roleKey, condition, reason }),
-    retireGrantCondition: ({ objectKey, actionKey, roleKey, reason }) =>
-      send("retireGrantCondition", { objectKey, actionKey, roleKey, reason }),
+    // A condition cell is a Role grant (roleKey) OR a direct exception (principalId) -- exactly one is sent.
+    setGrantCondition: ({ objectKey, actionKey, roleKey, principalId, condition, reason }) =>
+      send("setGrantCondition", { objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), condition, reason }),
+    retireGrantCondition: ({ objectKey, actionKey, roleKey, principalId, reason }) =>
+      send("retireGrantCondition", { objectKey, actionKey, ...(principalId ? { principalId } : { roleKey }), reason }),
+    // DIRECT EXCEPTIONS (lane DX): a governed capability grant to ONE Principal, enforced by every runtime gate
+    // exactly as a Role grant is. The reason is required by the server; expiry and condition are optional and sent
+    // only when chosen. There is no scope field: the server refuses a scoped direct grant.
+    grantObjectActionToPrincipal: ({ objectKey, actionKey, principalId, reason, expiresAt, condition }) =>
+      send("grantObjectActionToPrincipal", {
+        objectKey, actionKey, principalId, reason,
+        ...(expiresAt ? { expiresAt } : {}),
+        ...(condition ? { condition } : {}),
+      }),
+    revokeObjectActionFromPrincipal: ({ objectKey, actionKey, principalId, reason }) =>
+      send("revokeObjectActionFromPrincipal", { objectKey, actionKey, principalId, reason }),
     // A scope is sent only when one was chosen; a global assignment sends exactly what it always did.
     assignRole: ({ principalId, roleId, reason, scopeType, scopeValue }) => send("assignRole", {
       principalId, roleId, reason,

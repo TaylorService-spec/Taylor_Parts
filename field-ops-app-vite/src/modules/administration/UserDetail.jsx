@@ -26,6 +26,7 @@ import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
 import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
 import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
+import EmployeeDirectExceptions from "./EmployeeDirectExceptions.jsx";
 import EmployeeWorkflowResponsibilities from "./EmployeeWorkflowResponsibilities.jsx";
 import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
 import EmployeeFunctionalRoles, { FUNCTIONAL_ROLE_WRITE_CAPABILITY } from "./EmployeeFunctionalRoles.jsx";
@@ -174,6 +175,8 @@ export default function UserDetail({
   const principalId = principalLink.status === WORKFORCE_READ_STATE.READY ? principalLink.data?.link?.principalId ?? null : null;
   // The control-plane seam over the SAME Administration API call this page already injects.
   const controlPlane = useMemo(() => createAdminControlPlaneClient(policyCall), [policyCall]);
+  // Bumped after a direct-exception change so the Effective Access explanation re-reads the server's answer.
+  const [accessReadKey, setAccessReadKey] = useState(0);
   const credential = usePrincipalCredential(principalId, { policyCall });
 
   // ── GOVERNED CHANGE HISTORY (EMP-RT-H1): bumped after anything on this page writes the Employee.
@@ -407,10 +410,18 @@ export default function UserDetail({
             />
           </RuledSection>
 
+          {/* DIRECT EXCEPTIONS (lane DX): governed capability grants to this Principal alone, enforced by every runtime
+              gate like a Role grant; grant / revoke / condition through the server, each with a reason. */}
+          <RuledSection title="Direct Exceptions" meta="DIRECT EXCEPTION — governed grants to this Principal alone">
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeDirectExceptions api={controlPlane} principalId={principalId} onChanged={() => setAccessReadKey((k) => k + 1)} />
+            </PrincipalGate>
+          </RuledSection>
+
           {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. */}
           <RuledSection title="Effective Access" meta="The server evaluator's explanation">
             <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} />
+              <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} key={`access-${accessReadKey}`} />
             </PrincipalGate>
           </RuledSection>
 
@@ -455,7 +466,7 @@ export default function UserDetail({
               {
                 key: "securityRoles",
                 label: "Security Roles & Effective Access",
-                source: "The governed PostgreSQL policy store through the Administration API: assignRole / revokeRole (admin.roleAssignment.write), and the server evaluator's explainEffectiveAccess.",
+                source: "The governed PostgreSQL policy store through the Administration API: assignRole / revokeRole (admin.roleAssignment.write), direct exceptions through grantObjectActionToPrincipal / revokeObjectActionFromPrincipal and their conditions (admin.securityPolicy.write), and the server evaluator's explainEffectiveAccess.",
               },
               {
                 key: "eligibility",

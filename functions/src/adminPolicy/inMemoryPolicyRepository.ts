@@ -649,6 +649,17 @@ export class InMemoryPolicyRepository implements PolicyRepository {
       // are no-ops and the reads are the same rules the PostgreSQL adapter expresses in SQL.
       beginAdministrationCommand: async () => undefined,
       lockGrantCell: async () => undefined,
+      readPrincipalGrantCell: async (principalId, capabilityKey) => {
+        const cap = t.capabilities.find((c) => c.key === capabilityKey);
+        const grant = t.principalCapabilities.find((g) => g.tenantId === tenantId && g.principalId === principalId
+          && g.capabilityId === cap?.id) ?? null;
+        return {
+          grant,
+          expired: Boolean(grant?.expiresAt && grant.expiresAt <= this.now()),
+          condition: t.grantConditions.find((c) => c.tenantId === tenantId && c.grantScope === "PRINCIPAL" && c.grantorKey === principalId
+            && c.capabilityKey === capabilityKey && c.status === "ACTIVE") ?? null,
+        };
+      },
       readGrantCell: async (roleKey, capabilityKey) => {
         const role = t.roles.find((r) => r.tenantId === tenantId && r.key === roleKey);
         const cap = t.capabilities.find((c) => c.key === capabilityKey);
@@ -677,8 +688,11 @@ export class InMemoryPolicyRepository implements PolicyRepository {
           if (a.accessVersionAtGrant > version) continue;
           holders.add(a.principalId);
         }
+        const conditionedDirect = new Set(t.grantConditions.filter((c) => c.tenantId === tenantId && c.grantScope === "PRINCIPAL"
+          && c.capabilityKey === capabilityKey && c.status === "ACTIVE").map((c) => c.grantorKey));
         for (const g of t.principalCapabilities) {
-          if (g.tenantId === tenantId && g.capabilityId === cap.id && g.principalId !== exclude.principalId && !g.expiresAt) holders.add(g.principalId);
+          if (g.tenantId === tenantId && g.capabilityId === cap.id && g.principalId !== exclude.principalId && !g.expiresAt
+            && !conditionedDirect.has(g.principalId)) holders.add(g.principalId);
         }
         return [...holders].filter((id) => {
           const p = t.principals.find((x) => x.id === id);

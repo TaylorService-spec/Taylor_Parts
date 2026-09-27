@@ -203,7 +203,8 @@ export function roleActionsByObject(detail) {
 //     actions: [{ objectKey, actionKey, actionKind, capabilityKey, result: ALLOWED|CONDITIONAL|SCOPED|DENIED, reasonCode,
 //                 sourceRoles: [{ roleKey, condition|null }],
 //                 scopedSources: [{ roleKey, scopeType, scopeValue, condition|null, result, reasonCode }],
-//                 directGrant: { label: "DIRECT_EXCEPTION", exceptionReason, expiresAt, notEnforcedOnRoleOnlyRuntimePaths } | null,
+//                 directGrant: { label: "DIRECT_EXCEPTION", source, exceptionReason, expiresAt, grantedBy, grantedAt,
+//                                condition|null, enforced: true } | null,
 //                 withheldFromFlatSetKernels, surfaces: [...], workflowSource: [{ workflowKey, version, actionKey, roleKey }] | null }] }
 
 /** The evaluator's results in words. An unknown result is shown RAW, never mapped to a friendlier one. */
@@ -291,8 +292,17 @@ export function explanationModel(payload) {
       })),
       directGrant: a.directGrant && typeof a.directGrant === "object" ? {
         label: a.directGrant.label ?? "DIRECT_EXCEPTION",
+        source: a.directGrant.source ?? a.directGrant.label ?? "DIRECT_EXCEPTION",
         exceptionReason: a.directGrant.exceptionReason ?? null,
         expiresAt: a.directGrant.expiresAt ?? null,
+        grantedBy: a.directGrant.grantedBy ?? null,
+        grantedAt: a.directGrant.grantedAt ?? null,
+        // The stored condition (for the controls) and the same condition in words (for drawing).
+        conditionRaw: a.directGrant.condition ?? null,
+        condition: a.directGrant.condition ? describeCondition(a.directGrant.condition) : null,
+        // The server states whether every runtime gate enforces it. An older server's explicit "not enforced" flag
+        // is still honoured and shown; nothing here infers enforcement.
+        enforced: a.directGrant.enforced === true,
         notEnforced: a.directGrant.notEnforcedOnRoleOnlyRuntimePaths === true,
       } : null,
       withheldFromFlatSetKernels: a.withheldFromFlatSetKernels === true,
@@ -317,4 +327,21 @@ export function groupByObject(rows) {
     groups.get(key).push(row);
   }
   return [...groups.entries()].map(([objectKey, items]) => ({ objectKey, items }));
+}
+
+/**
+ * The Principal's DIRECT EXCEPTIONS, from the explanation: one row per action the server reports a directGrant on,
+ * with the evaluator's own result beside it. Pure regrouping of the served rows; nothing is decided here.
+ */
+export function directExceptionRows(model) {
+  if (!model || !Array.isArray(model.actions)) return [];
+  return model.actions.filter((a) => a.directGrant).map((a) => ({
+    objectKey: a.objectKey,
+    actionKey: a.actionKey,
+    capabilityKey: a.capabilityKey,
+    result: a.result,
+    resultWords: a.resultWords,
+    reasonCode: a.reasonCode,
+    ...a.directGrant,
+  }));
 }

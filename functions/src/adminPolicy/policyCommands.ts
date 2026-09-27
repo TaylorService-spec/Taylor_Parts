@@ -115,7 +115,9 @@ export class AdministrationRefusal extends PolicyValidationError {
     // Tenant sales channels (lane GA): a channel is never deactivated under an assignment still scoped to it.
     | "SALES_CHANNEL_INVALID"
     | "SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS"
-    | "SALES_CHANNEL_STORE_UNAVAILABLE", message: string) {
+    | "SALES_CHANNEL_STORE_UNAVAILABLE"
+    // Direct exceptions (lane DX): principal_capabilities has no scope model.
+    | "DIRECT_GRANT_SCOPE_UNSUPPORTED", message: string) {
     super(`${code}: ${message}`);
   }
 }
@@ -1191,6 +1193,14 @@ export interface ObjectActionPrincipalGrantInput {
   readonly reason?: string | null;
   /** Optional ISO instant the exception lapses. Must be in the future. */
   readonly expiresAt?: string | null;
+  /**
+   * Optional (grant only): the direct exception's condition, written IN THE SAME TRANSACTION as the grant so a
+   * conditioned exception never exists unconditioned. Same allow-list and validation as a Role grant's condition.
+   */
+  readonly condition?: unknown;
+  /** REFUSED when present: a direct exception has no scope model (principal_capabilities has no scope column). */
+  readonly scopeType?: unknown;
+  readonly scopeValue?: unknown;
 }
 
 const SECURITY_POLICY_WRITE = "admin.securityPolicy.write";
@@ -1223,6 +1233,11 @@ const requireReason = (reason: string | null | undefined, what: string): string 
  * consuming gate evaluates entitlements, only its listed record kinds, only governed parameters.
  */
 function validateRoleCondition(roleKey: string, capabilityKey: string, condition: unknown): void {
+  validateGrantCondition("ROLE", roleKey, capabilityKey, condition);
+}
+
+/** The same validation for either grant scope: a direct exception's condition obeys exactly the Role rules. */
+function validateGrantCondition(grantScope: "ROLE" | "PRINCIPAL", grantorKey: string, capabilityKey: string, condition: unknown): void {
   const allowed = CONDITIONABLE_GRANTS.find((g) => g.capabilityKey === capabilityKey);
   if (!allowed) {
     throw new AdministrationRefusal("CONDITION_NOT_SUPPORTED",
@@ -1230,7 +1245,7 @@ function validateRoleCondition(roleKey: string, capabilityKey: string, condition
   }
   let catalog;
   try {
-    catalog = grantConditionCatalogFromRows([{ grantScope: "ROLE", grantorKey: roleKey, capabilityKey, condition }]);
+    catalog = grantConditionCatalogFromRows([{ grantScope, grantorKey, capabilityKey, condition }]);
     assertNoWithheldGrantConditions(catalog);
   } catch (err) {
     throw new AdministrationRefusal("CONDITION_INVALID", (err as Error).message);
@@ -1275,7 +1290,10 @@ async function refuseOwnerPrincipalViolation(
 ): Promise<void> {
   const roleKeys = [...new Set([...(await qualifyingRoleKeys(repo, tenantId, principalId)), ...extraRoleKeys])];
   if (!roleKeys.includes("owner")) return;
-  const effective = new Set([...(await capabilityKeysFor(repo, tenantId, roleKeys, principalId)), ...extraDirect]);
+  // BY ANY PATH: a conditioned grant (Role or direct) still HOLDS the key, so it counts here -- unlike a gate, which
+  // must withhold it because it cannot evaluate the condition.
+  const effective = new Set([
+    ...(await capabilityKeysFor(repo, tenantId, roleKeys, principalId, { includeConditioned: true })), ...extraDirect]);
   const violations = ownerPrincipalViolations(roleKeys, effective);
   if (violations.length > 0) {
     throw new AdministrationRefusal("SYSTEM_INVARIANT",
@@ -1476,9 +1494,23 @@ export async function revokeObjectActionFromRole(
 export interface GrantConditionCommandInput {
   readonly objectKey: string;
   readonly actionKey: string;
-  readonly roleKey: string;
+  /** A Role grant cell. Exactly one of `roleKey` / `principalId` is named. */
+  readonly roleKey?: string;
+  /** A DIRECT-EXCEPTION cell (lane DX): the Principal holding the direct grant. */
+  readonly principalId?: string;
   readonly condition?: unknown;
   readonly reason?: string | null;
+}
+
+/** Which cell a condition command names. Exactly one grantee, or the command is refused. */
+function conditionCell(input: GrantConditionCommandInput): { readonly scope: "ROLE"; readonly roleKey: string } | { readonly scope: "PRINCIPAL"; readonly principalId: string } {
+  const hasRole = typeof input.roleKey === "string" && input.roleKey.trim() !== "";
+  const hasPrincipal = typeof input.principalId === "string" && input.principalId.trim() !== "";
+  if (hasRole === hasPrincipal) {
+    throw new PolicyValidationError("name exactly one grantee: roleKey (a Role grant) or principalId (a direct exception)");
+  }
+  return hasRole ? { scope: "ROLE", roleKey: nonEmpty(input.roleKey, "roleKey") }
+    : { scope: "PRINCIPAL", principalId: nonEmpty(input.principalId, "principalId") };
 }
 
 /**
@@ -1490,6 +1522,8 @@ export async function setGrantCondition(
 ): Promise<GrantConditionRecord> {
   await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
   const reason = requireReason(input.reason, "a grant condition");
+  const cellRef = conditionCell(input);
+  if (cellRef.scope === "PRINCIPAL") return setDirectExceptionCondition(repo, actor, input, cellRef.principalId, reason);
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
   if (!role) throw new PolicyValidationError("role not found");
@@ -1528,6 +1562,8 @@ export async function retireGrantCondition(
 ): Promise<GrantConditionRecord | null> {
   await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
   const reason = requireReason(input.reason, "retiring a grant condition");
+  const cellRef = conditionCell(input);
+  if (cellRef.scope === "PRINCIPAL") return retireDirectExceptionCondition(repo, actor, input, cellRef.principalId, reason);
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const role = await repo.getRoleByKey(actor.tenantId, nonEmpty(input.roleKey, "roleKey"));
   if (!role) throw new PolicyValidationError("role not found");
@@ -1554,12 +1590,58 @@ export async function retireGrantCondition(
 }
 
 // ════════════════════ DIRECT PRINCIPAL GRANTS (governed exceptions) ════════════════════
+//
+// COMPLETE SUPPORT (lane DX). A direct grant is a capability SOURCE of the one runtime resolution
+// (capabilityAuthority.resolveOperationalCapabilities), with a Role grant's semantics on every gate: unconditioned it
+// is flat; with an ACTIVE PRINCIPAL-cell condition it is conditionallyHeld, decided per record, never flat; it has NO
+// scope (a scope is refused by name); an EXPIRED one confers nothing and is not read. The commands below mirror the
+// Role commands: one transaction under the tenant governance lock AND the (PRINCIPAL, principal, capability) cell
+// lock the condition-retire trigger also takes; every state-dependent check inside it; exactly ONE audit event per
+// effective change and none for a no-op; a reason always.
+//
+// Pass 8/9 invariants, at the Principal:
+//   no self-grant                    a principal may not grant, condition or retire a condition on ITSELF
+//   Owner ruling A                   a holder of the owner Role may not reach an excluded key directly, conditioned
+//                                    or not (checked inside the lock)
+//   admin.* not conditionable        the CONDITIONABLE_GRANTS allow-list (no admin.* key is on it)
+//   anti-lockout                     a revoke is refused if it would leave no UNEXPIRED, UNCONDITIONED, global holder
+//   never widen on retire            retiring a direct exception's condition is refused while the grant is held
+//   no scope                         scopeType / scopeValue refused (DIRECT_GRANT_SCOPE_UNSUPPORTED)
+
+const refuseDirectScope = (input: { readonly scopeType?: unknown; readonly scopeValue?: unknown }): void => {
+  const named = (v: unknown) => v !== undefined && v !== null && !(typeof v === "string" && (v.trim() === "" || v.trim() === "global"));
+  if (named(input.scopeType) || named(input.scopeValue)) {
+    throw new AdministrationRefusal("DIRECT_GRANT_SCOPE_UNSUPPORTED",
+      "a direct exception carries no scope: principal_capabilities has no scope model, so a scoped direct grant would be read tenant-wide. Grant a scoped Security Role assignment instead");
+  }
+};
+
+/** The direct-exception grantee must be an ACTIVE member of this tenant and never the actor itself. */
+async function requireDirectGrantee(repo: PolicyRepository, actor: AdminActor, principalId: string, what: string): Promise<void> {
+  // A PRINCIPAL, NEVER AN EMPLOYEE, and a MEMBER of this tenant (tenant consistency).
+  const membership = await repo.getMembership(actor.tenantId, principalId);
+  if (!membership || membership.status !== "active") {
+    throw new PolicyValidationError("that principal is not an active member of this tenant");
+  }
+  if (principalId === actor.uid) {
+    throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not ${what} itself`);
+  }
+}
+
+const directAuditState = (capability: { key: string; objectKey: string; actionKey: string }, principalId: string,
+  grant: PrincipalCapabilityRecord | null, held: boolean, condition: unknown) => ({
+  objectKey: capability.objectKey, actionKey: capability.actionKey, capabilityKey: capability.key,
+  granteeType: "PRINCIPAL", granteeKey: principalId, source: "DIRECT_EXCEPTION", held,
+  ...(grant ? { grant, exceptionReason: grant.exceptionReason ?? null, expiresAt: grant.expiresAt ?? null } : {}),
+  condition: condition ?? null,
+});
 
 export async function grantObjectActionToPrincipal(
   repo: PolicyRepository, actor: AdminActor, input: ObjectActionPrincipalGrantInput,
 ): Promise<PrincipalCapabilityRecord> {
   await requireSecurityAdministrationCapability(repo, actor, "editSecurityPolicy");
   const reason = requireReason(input.reason, "a direct Principal grant (a governed exception)");
+  refuseDirectScope(input);
   let expiresAt: string | null = null;
   if (input.expiresAt !== undefined && input.expiresAt !== null) {
     const at = Date.parse(String(input.expiresAt));
@@ -1569,25 +1651,25 @@ export async function grantObjectActionToPrincipal(
   }
   const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
   const principalId = nonEmpty(input.principalId, "principalId");
-
-  // A PRINCIPAL, NEVER AN EMPLOYEE, and a MEMBER of this tenant (tenant consistency).
-  const membership = await repo.getMembership(actor.tenantId, principalId);
-  if (!membership || membership.status !== "active") {
-    throw new PolicyValidationError("that principal is not an active member of this tenant");
-  }
-  if (principalId === actor.uid) {
-    throw new AdministrationRefusal("SELF_ADMINISTRATION", "a principal may not grant a capability to itself");
-  }
-  await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [], [capability.key]);
+  await requireDirectGrantee(repo, actor, principalId, "grant a capability to");
+  const condition = input.condition === undefined || input.condition === null ? null : input.condition;
+  if (condition !== null) validateGrantCondition("PRINCIPAL", principalId, capability.key, condition);
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
-    // Unexpired -> an idempotent no-op. Expired -> REFRESHED (new reason and expiry), and audited as
-    // such; never "granted" while it stays expired (Pass 8 D9).
-    const all = await repo.listPrincipalCapabilities(actor.tenantId, principalId);
-    const existing = all.find((g) => g.capabilityId === capability.id);
-    if (existing) return existing;
-    const grant = await tx.grantPrincipalCapability({
+    await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+    // OWNER GOVERNANCE AT THE PRINCIPAL, under the governance lock (no assignment can slip in between).
+    await refuseOwnerPrincipalViolation(repo, actor.tenantId, principalId, [], [capability.key]);
+    const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
+    const conditionChanges = condition !== null && !sameJson(cell.condition?.condition, condition);
+    // Unexpired and no condition change -> an idempotent no-op, decided under the locks. Expired -> REFRESHED (new
+    // reason and expiry), audited as such; never "granted" while it stays expired (Pass 8 D9).
+    if (cell.grant && !cell.expired && !conditionChanges) return cell.grant;
+    // Condition FIRST, then the grant: the exception is never visible unconditioned.
+    const storedCondition = conditionChanges
+      ? await tx.upsertGrantCondition({ grantScope: "PRINCIPAL", grantorKey: principalId, capabilityKey: capability.key, condition })
+      : cell.condition;
+    const grant = cell.grant && !cell.expired ? cell.grant : await tx.grantPrincipalCapability({
       principalId,
       capabilityId: capability.id,
       grantedBy: actor.uid,
@@ -1600,12 +1682,9 @@ export async function grantObjectActionToPrincipal(
     }
     await tx.appendAudit({
       ...auditBase(actor, "grantObjectActionToPrincipal", "principalCapability", grant.id, reason),
-      before: null,
-      after: {
-        objectKey: capability.objectKey, actionKey: capability.actionKey,
-        capabilityKey: capability.key, granteeType: "PRINCIPAL", granteeKey: principalId, grant,
-        source: "DIRECT_EXCEPTION", exceptionReason: reason, expiresAt,
-      },
+      before: cell.grant ? directAuditState(capability, principalId, cell.grant, !cell.expired, cell.condition?.condition) : null,
+      after: { ...directAuditState(capability, principalId, grant, true, storedCondition?.condition), exceptionReason: grant.exceptionReason ?? reason,
+        expiresAt: grant.expiresAt ?? null },
     });
     return grant;
   });
@@ -1621,19 +1700,79 @@ export async function revokeObjectActionFromPrincipal(
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
+    await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+    const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
+    if (!cell.grant) return null; // nothing was granted; nothing happened; nothing to audit
     if (ADMINISTRATION_GOVERNING_CAPABILITIES.includes(capability.key)) {
       await refuseIfLastAdministrationPath(tx, { principalId }, capability.key);
     }
     const removed = await tx.revokePrincipalCapability(principalId, capability.id);
     if (!removed) return null;
+    // The condition row stays ACTIVE and inert (as for a Role revoke), so a re-grant is conditioned again.
     await tx.appendAudit({
       ...auditBase(actor, "revokeObjectActionFromPrincipal", "principalCapability", removed.id, reason),
-      before: {
-        objectKey: capability.objectKey, actionKey: capability.actionKey,
-        capabilityKey: capability.key, granteeType: "PRINCIPAL", granteeKey: principalId, grant: removed,
-      },
-      after: null,
+      before: directAuditState(capability, principalId, removed, !cell.expired, cell.condition?.condition),
+      after: { ...directAuditState(capability, principalId, null, false, cell.condition?.condition) },
     });
     return removed;
+  });
+}
+
+/** Establish or replace the condition on one DIRECT-EXCEPTION cell (setGrantCondition with `principalId`). */
+async function setDirectExceptionCondition(
+  repo: PolicyRepository, actor: AdminActor, input: GrantConditionCommandInput, principalId: string, reason: string,
+): Promise<GrantConditionRecord> {
+  const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+  await requireDirectGrantee(repo, actor, principalId, "change the condition on a direct exception held by");
+  if (input.condition === undefined || input.condition === null) {
+    throw new AdministrationRefusal("CONDITION_INVALID", "a condition is required; retire a condition with retireGrantCondition");
+  }
+  validateGrantCondition("PRINCIPAL", principalId, capability.key, input.condition);
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    await tx.beginAdministrationCommand();
+    await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+    const existing = (await tx.readPrincipalGrantCell(principalId, capability.key)).condition;
+    if (existing && sameJson(existing.condition, input.condition)) return existing;
+    const stored = await tx.upsertGrantCondition({
+      grantScope: "PRINCIPAL", grantorKey: principalId, capabilityKey: capability.key, condition: input.condition,
+    });
+    await tx.appendAudit({
+      ...auditBase(actor, "setGrantCondition", "grantCondition", stored.id, reason),
+      before: existing ? { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: existing.condition, status: "ACTIVE" } : null,
+      after: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: stored.condition, status: stored.status },
+    });
+    return stored;
+  });
+}
+
+/** Retire the condition on one DIRECT-EXCEPTION cell. REFUSED while the direct grant is held (it would widen). */
+async function retireDirectExceptionCondition(
+  repo: PolicyRepository, actor: AdminActor, input: GrantConditionCommandInput, principalId: string, reason: string,
+): Promise<GrantConditionRecord | null> {
+  const capability = await resolveGrantTarget(repo, actor.tenantId, input.objectKey, input.actionKey);
+  await requireDirectGrantee(repo, actor, principalId, "retire the condition on a direct exception held by");
+  return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
+    await tx.beginAdministrationCommand();
+    await tx.lockGrantCell(principalId, capability.key, "PRINCIPAL");
+    const cell = await tx.readPrincipalGrantCell(principalId, capability.key);
+    if (!cell.condition) return null;
+    // Held means the ROW exists (an expired row too: a refresh would re-activate it unconditioned) -- the same rule
+    // the capability_grant_conditions_never_widen trigger enforces.
+    if (cell.grant) {
+      throw new AdministrationRefusal("CONDITION_RETIREMENT_WOULD_WIDEN",
+        `${principalId} still holds the direct exception ${capability.key}; retiring its condition would widen it to every record -- revoke the direct grant first`);
+    }
+    const retired = await tx.retireGrantCondition("PRINCIPAL", principalId, capability.key);
+    if (!retired) return null;
+    await tx.appendAudit({
+      ...auditBase(actor, "retireGrantCondition", "grantCondition", retired.id, reason),
+      before: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: cell.condition.condition, status: "ACTIVE" },
+      after: { grantScope: "PRINCIPAL", granteeType: "PRINCIPAL", granteeKey: principalId, capabilityKey: capability.key,
+        objectKey: capability.objectKey, actionKey: capability.actionKey, condition: retired.condition, status: retired.status },
+    });
+    return retired;
   });
 }

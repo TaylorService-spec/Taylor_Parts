@@ -33,6 +33,13 @@ export async function capabilityKeysFor(
   tenantId: TenantId,
   roleKeys: readonly string[],
   principalId: string | null,
+  options: {
+    /**
+     * Also count keys held ONLY through conditioned grants. NEVER for a gate (a gate cannot evaluate a condition);
+     * only for an invariant that forbids HOLDING a key by any path at all (Owner ruling A at the principal).
+     */
+    readonly includeConditioned?: boolean;
+  } = {},
 ): Promise<ReadonlySet<string>> {
   const roles = await repo.listRoles(tenantId);
   const wanted = new Set(roleKeys);
@@ -48,8 +55,9 @@ export async function capabilityKeysFor(
   const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
   // FAIL CLOSED: a Role grant narrowed by an ACTIVE condition is NOT in a flat capability set -- this
   // gate cannot evaluate a condition, so a conditioned grant must not act as an unconditional one.
-  const conditioned = new Set(conditions.filter((c) => c.grantScope === "ROLE").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
-  const conditionedDirect = new Set(conditions.filter((c) => c.grantScope === "PRINCIPAL").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
+  const active = options.includeConditioned === true ? [] : conditions.filter((c) => c.status === undefined || c.status === "ACTIVE");
+  const conditioned = new Set(active.filter((c) => c.grantScope === "ROLE").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
+  const conditionedDirect = new Set(active.filter((c) => c.grantScope === "PRINCIPAL").map((c) => `${c.grantorKey}|${c.capabilityKey}`));
   const keys = new Set<string>();
   for (const g of roleGrants) {
     const key = keyById.get(g.capabilityId);
