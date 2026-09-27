@@ -23,16 +23,25 @@
 // ASSIGNMENT TIME ONLY. An existing scope whose warehouse LATER goes INACTIVE is a remediation finding for the step
 // D/E tooling, never a silent revocation here: this command never ends a scope it was not asked to end.
 //
-// WAREHOUSE IS THE ONLY SCOPE TYPE, and `scopeType` is still required explicitly -- a caller must say what kind of
-// scope it means, so adding a second type later cannot silently reinterpret existing calls. Operating Company is NOT
+// TWO SCOPE TYPES: WAREHOUSE and REORDER_QUEUE (migration 1761696000000; assignable here since lane GA, each value
+// checked against its own governed source). `scopeType` is required explicitly -- a caller must say what kind of
+// scope it means, so adding a type cannot silently reinterpret existing calls. Operating Company is NOT
 // a scope type: that authority already exists as eos_workforce.employees.operating_company_id and is not duplicated.
 //
 // MULTIPLE CONCURRENT WAREHOUSE SCOPES ARE NORMAL. Re-assigning a warehouse the Employee already covers currently is
 // NO_CHANGE. Nothing is inferred -- not from WAREHOUSE_ASSOCIATE, Job Role, title, manager, Security Role or
 // operating company. `assignedWarehouseIds` is migration EVIDENCE for step D/E, never an input to this command.
 //
-// ONE transaction per command: lock the Employee -> resolve + status-check the warehouse -> lock the current scope
-// row -> decide -> write -> ONE audit event -> commit. Any failure rolls back every effect, the audit row included.
+// NO SELF-ASSIGNMENT (Pass 10 P10-1; the Pass 9 S4 / Functional Role rule applied to this fact). An Operational Scope
+// is a narrowing conjunct -- experience surfaces and the OPERATIONAL_SCOPE grant-condition kind read it -- so assigning
+// one to the ACTOR's own linked Employee would let an administrator satisfy that conjunct for themselves. Refused
+// (OPERATIONAL_SCOPE_SELF), under the tenant governance lock the link commands take, so "link to myself" and "assign
+// to that Employee" never interleave. Ending one's own is allowed: it only narrows. The link commands refuse the
+// mirror image (OPERATIONAL_SCOPE_SELF_LINK: linking an Employee that holds a current scope to one's own Principal).
+//
+// ONE transaction per command: governance lock (assign) -> lock the Employee -> refuse self -> resolve + status-check
+// the target -> lock the current scope row -> decide -> write -> ONE audit event -> commit. Any failure rolls back
+// every effect, the audit row included.
 import type { PoolClient } from "pg";
 import { randomUUID } from "node:crypto";
 import {
@@ -51,6 +60,23 @@ function requireScopeType(value: unknown): OperationalScopeType {
   return value as OperationalScopeType;
 }
 
+/** The tenant governance lock (postgresPolicyRepository.beginAdministrationCommand's key), as the link commands take it. */
+async function takeGovernanceLock(db: PoolClient, tenantId: string): Promise<void> {
+  await db.query(`SELECT pg_advisory_xact_lock(hashtextextended('admin-governance|' || $1, 0))`, [tenantId]);
+}
+
+/** Pass 10 P10-1: the actor may not scope the Employee its own Principal is actively linked to. */
+async function refuseSelfScope(db: PoolClient, actor: EmployeeCommandActor, employeeId: string): Promise<void> {
+  const linked = await db.query(
+    `SELECT 1 FROM eos_policy.employee_principal_links
+      WHERE tenant_id = $1 AND principal_id = $2 AND employee_id = $3 AND status = 'active'`,
+    [actor.tenantId, actor.principalId, employeeId],
+  );
+  if (linked.rows.length > 0) {
+    refuse("OPERATIONAL_SCOPE_SELF", "FORBIDDEN", "an Operational Scope cannot be assigned to your own Employee record; another administrator must do it");
+  }
+}
+
 const scopeConflict = (_err: { constraint?: string }) =>
   new EmployeeCommandError("OPERATIONAL_SCOPE_CONCURRENT_CHANGE", "CONFLICT", "the Employee's operational scopes changed concurrently; retry");
 
@@ -58,13 +84,24 @@ const scopeConflict = (_err: { constraint?: string }) =>
  * Resolve the scope target in the ACTOR's tenant and require it to be governed and ACTIVE.
  *
  * An unknown id and another tenant's id are the SAME refusal on purpose: confirming that a foreign warehouse exists
- * would leak across the tenant boundary. Valid only while WAREHOUSE is the sole scope type -- a second type must
- * bring its own resolver here and revisit the table's warehouse foreign key.
+ * would leak across the tenant boundary. Each scope type has its ONE governed source (lane GA; the same source
+ * listOperationalScopeTargets offers, and the same one migration 1761696000000's trigger checks):
+ *   WAREHOUSE       eos_ops.warehouses
+ *   REORDER_QUEUE   eos_policy.tenant_operating_company_keys (the queue is a company's queue, keyed by its eos_ops key)
  */
 async function requireActiveScopeTarget(
   db: PoolClient, tenantId: string, scopeType: OperationalScopeType, scopeId: string,
 ): Promise<void> {
-  if (scopeType !== "WAREHOUSE") refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", "WAREHOUSE is the only supported scope type");
+  if (scopeType === "REORDER_QUEUE") {
+    const { rows } = await db.query(
+      `SELECT status FROM eos_policy.tenant_operating_company_keys WHERE tenant_id = $1 AND operating_company_key = $2 FOR SHARE`,
+      [tenantId, scopeId],
+    );
+    if (rows.length === 0) refuse("REORDER_QUEUE_NOT_FOUND", "NOT_FOUND", "no governed operating company key names this queue in this tenant");
+    if (rows[0].status !== "ACTIVE") refuse("REORDER_QUEUE_INACTIVE", "PRECONDITION_FAILED", "an inactive operating company key cannot receive a new queue scope");
+    return;
+  }
+  if (scopeType !== "WAREHOUSE") refuse("OPERATIONAL_SCOPE_TYPE_INVALID", "INVALID_INPUT", `scopeType must be one of ${OPERATIONAL_SCOPE_TYPES.join(", ")}`);
   const { rows } = await db.query(
     `SELECT status::text AS status FROM eos_ops.warehouses WHERE tenant_id = $1 AND id = $2 FOR SHARE`, [tenantId, scopeId],
   );
@@ -95,7 +132,9 @@ export function assignEmployeeOperationalScope(
       };
     },
     async (db, p, at) => {
+      await takeGovernanceLock(db, actor.tenantId);
       await lockEmployee(db, actor.tenantId, p.employeeId);
+      await refuseSelfScope(db, actor, p.employeeId);
       await requireActiveScopeTarget(db, actor.tenantId, p.scopeType, p.scopeId);
       const { rows } = await db.query(
         `SELECT id FROM eos_workforce.employee_operational_scopes

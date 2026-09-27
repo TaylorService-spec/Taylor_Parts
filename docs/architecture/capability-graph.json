@@ -750,6 +750,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/assistant/assistantStarters.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/eosOps/experienceAuthority.ts",
@@ -767,7 +768,7 @@
           "field-ops-app-vite/src/metadata/definitions/opportunity.js",
           "field-ops-app-vite/src/metadata/uxMigrationManifest.js"
         ],
-        "serverReferenceCount": 7,
+        "serverReferenceCount": 8,
         "clientReferenceCount": 9,
         "evidence": "EXPORTED"
       },
@@ -919,6 +920,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
@@ -932,7 +934,7 @@
           "field-ops-app-vite/src/metadata/definitions/salesAgreement.js",
           "field-ops-app-vite/src/navigation/navConfig.js"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 6,
         "evidence": "SERVER_REFERENCED"
       },
@@ -958,6 +960,7 @@
         "serverReferences": [
           "functions/src/access/compatibilityRoles.ts",
           "functions/src/access/governedBusinessRoles.ts",
+          "functions/src/adminPolicy/assignmentScopeRuntime.ts",
           "functions/src/eosCommercial/reads/commercialReadKernel.ts",
           "functions/src/eosOps/experienceAuthority.ts",
           "functions/src/eosWorkforce/reads/employeeResponsibilityReads.ts",
@@ -974,7 +977,7 @@
           "field-ops-app-vite/src/metadata/definitions/salesOrder.js",
           "field-ops-app-vite/src/modules/sales/SalesOrdersList.jsx"
         ],
-        "serverReferenceCount": 6,
+        "serverReferenceCount": 7,
         "clientReferenceCount": 9,
         "evidence": "EXPORTED"
       },

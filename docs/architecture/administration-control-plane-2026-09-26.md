@@ -371,7 +371,7 @@ Effective authority is now Principal → Security Role assignment → capability
 | LOCATION (warehouse) | R-29/R-32 (DECISIONS #150/#152): `location` = warehouse id; `bindingScopePolicy.ts` (legacy) | R-32 location-bound reorder/inventory bindings are on the legacy path; Reorder cutover #1961 HELD | MODEL_EXISTS_RUNTIME_MISSING — refused until a PG consumer lands |
 | WAREHOUSE (Employee Operational Scope) | `OPERATIONAL_SCOPE_TYPES` (operationalScopeVocabulary.ts:41) | `OPERATIONAL_SCOPE` grant-condition predicate; put-away / cycle-count surfaces (experienceAuthority.ts:188,194) | DOMAIN_SPECIFIC — MODEL_EXISTS_RUNTIME_WORKS (S1, not a Security Role scope) |
 | REORDER_QUEUE (Employee Operational Scope) | 1761696000000:43 | Condition predicate; queue consumer waits on Reorder cutover | DOMAIN_SPECIFIC |
-| Sales channel | none | none | NOT_CURRENTLY_REQUIRED — not invented |
+| SALES_CHANNEL (`salesChannel`) | lane GA: vocabulary `eos_commercial.commercial_sales_channel`; tenant activation `eos_policy.tenant_sales_channels` (1762905600000) | Consumers: the PostgreSQL Commercial reads (record's STORED channel) | **implemented (lane GA)** — see §14 |
 
 ### Runtime
 - `assignmentScopeRuntime.ts` (pure): the decidable scope types and their record fact (`operatingCompanyId`, `businessUnit`, `warehouseId`), and `SCOPE_EVALUABLE_GRANTS`, the only (scope type, capability) pairs a scoped assignment can confer — today `operatingCompany × employee.record.read` (readEmployee, listEmployees, listManagedEmployees).
@@ -439,3 +439,30 @@ Drafts take `functionalRoleKeys` per action:
 **Effective access.** `explainEffectiveAccess` adds `employeeFacts: {functionalRoles:[…], grantsCapabilities:false}`. These facts are read after every decision. The PostgreSQL suite proves that assigning a Functional Role leaves every capability, surface and action decision unchanged.
 
 **Not in scope:** seeding the catalog; any Security Role reclassification; assignee pickers; applying the migration anywhere but local test databases.
+
+## 14. Governed scope values and the SALES_CHANNEL scope (lane GA, migration 1762905600000)
+
+No scope picker takes a typed id. Every scope value Administration stores is checked, server-side and under the governance lock, against ONE tenant-scoped governed source; the pickers draw only what the server serves.
+
+| Scope | Governed value source (this tenant) | Availability |
+|---|---|---|
+| Security Role `operatingCompany` | `eos_policy.tenant_operating_companies` ACTIVE | supported |
+| Security Role `salesChannel` | `eos_policy.tenant_sales_channels` ACTIVE (enum `commercial_sales_channel`) | supported; no value until a channel is activated |
+| Security Role `location` | `eos_ops.warehouses` ACTIVE exists | unavailable: no PostgreSQL gate supplies a record's warehouse |
+| Security Role `businessUnit` | none (FIN-002 `BUSINESS_UNITS` is a platform constant, no longer offered as governed) | unavailable: no consumer, no tenant-governed source |
+| Operational Scope `WAREHOUSE` | `eos_ops.warehouses` ACTIVE | supported |
+| Operational Scope `REORDER_QUEUE` | `eos_policy.tenant_operating_company_keys` ACTIVE | supported; the writer now resolves it (formerly migration-only) |
+
+- **Reads.** `listSupportedAssignmentScopes` (Security Roles) and the new Workforce read `listOperationalScopeTargets` (employee.record.read; per type `available`, `reason`, `valueSource`, `values`).
+- **Writers refuse** every value not in the source: `SCOPE_VALUE_INVALID` (assignRole); `WAREHOUSE_NOT_FOUND` / `WAREHOUSE_INACTIVE` / `REORDER_QUEUE_NOT_FOUND` / `REORDER_QUEUE_INACTIVE` / `OPERATIONAL_SCOPE_TYPE_INVALID` (assignEmployeeOperationalScope). A foreign tenant's value is indistinguishable from an unknown one.
+
+**SALES_CHANNEL model.** A channel is a scope VALUE on a Security Role assignment, never a Role: `salesLead @ salesChannel=RETAIL`; one manager may hold two scoped rows of the same Role (RETAIL and NATIONAL_ACCOUNTS); nothing derives a channel from a Job Role, a Functional Role or a Role definition.
+- `eos_policy.tenant_sales_channels (tenant_id, sales_channel enum, status ACTIVE|INACTIVE, source, established/updated by/at)` starts EMPTY. DELETE, TRUNCATE and identity updates are refused by trigger.
+- `setTenantSalesChannelStatus {salesChannel, status, reason}` (admin.securityPolicy.write, governance lock, one audit event, NO_CHANGE writes none). Deactivation is refused (`SALES_CHANNEL_HAS_SCOPED_ASSIGNMENTS`) while any active assignment is scoped to the channel.
+
+**Runtime.** `SCOPE_EVALUABLE_GRANTS` adds `salesChannel × {opportunity.read, salesAgreement.read, salesOrder.read}`, consumed by `getOpportunityDetail / listOpportunities`, `getSalesAgreementDetail / listSalesAgreements`, `getSalesOrderDetail / listSalesOrders` and `getAccountCommercialProjection`.
+- The transport hands the reads `scopedHeld`; the commands still take the flat set only, so a scoped holding never authorizes a write. No write key is evaluable at a channel (a create's channel is caller-supplied; the writes are fenced INACTIVE anyway).
+- Global first and unchanged. A scoped-only key admits a record only when its STORED channel (an Agreement's is its source Opportunity's, joined in the same statement) is one of the holder's channels. Lists filter in SQL. A record outside the channels, or with no channel, answers `RECORD_NOT_FOUND` exactly like a missing id (Pass 9 S7). Conditioned scoped holdings are not honoured (the kernel cannot evaluate a condition).
+- The legacy Firestore resolver and `types/access.ts ScopeType` do not know `salesChannel`; it is a PostgreSQL-only scope.
+
+Nothing is assigned or activated live; the migration is applied to local test databases only.

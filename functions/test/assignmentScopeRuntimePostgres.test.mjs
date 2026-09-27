@@ -142,9 +142,11 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
       assert.match(r.message, new RegExp(code));
     };
     // (H) unsupported / unconsumed / unknown scope types
-    for (const scopeType of ["businessUnit", "location", "domain", "tenant", "ownAssignment", "salesChannel", "WAREHOUSE"]) {
+    for (const scopeType of ["businessUnit", "location", "domain", "tenant", "ownAssignment", "WAREHOUSE", "SALES_CHANNEL"]) {
       await refused({ roleId: reader, scopeType, scopeValue: "SERVICE" }, "SCOPE_TYPE_UNSUPPORTED");
     }
+    // salesChannel IS decided since lane GA -- but only against THIS tenant's activated channels (none here).
+    await refused({ roleId: reader, scopeType: "salesChannel", scopeValue: "RETAIL" }, "SCOPE_VALUE_INVALID");
     // missing / malformed value; a global assignment carrying a value
     await refused({ roleId: reader, scopeType: "operatingCompany" }, "SCOPE_VALUE_INVALID");
     await refused({ roleId: reader, scopeType: "operatingCompany", scopeValue: "Taylor" }, "SCOPE_VALUE_INVALID");

@@ -19,7 +19,7 @@ import {
   acceptOnly, isoOf, refuse, requireEmployeeId, runEmployeeRead, type EmployeeReadActor, type EmployeeReadDeps,
 } from "./employeeReadKernel";
 import { EMPLOYEE_RECORD_READ } from "./employeeDirectoryReads";
-import { OPERATIONAL_SCOPE_TYPE_LABEL, type OperationalScopeType } from "../operationalScopeVocabulary";
+import { OPERATIONAL_SCOPE_TYPES, OPERATIONAL_SCOPE_TYPE_LABEL, type OperationalScopeType } from "../operationalScopeVocabulary";
 
 const MAX_HISTORY = 100;
 
@@ -101,5 +101,62 @@ export function listEmployeeOperationalScopeHistory(deps: EmployeeReadDeps, acto
       );
       const items = rows.slice(0, MAX_HISTORY).map(itemOf);
       return { employeeId, current: items.filter((i) => i.current), items, truncated: rows.length > MAX_HISTORY };
+    });
+}
+
+// ════════════════════ GOVERNED SCOPE TARGETS (lane GA) ════════════════════
+//
+// The values Administration may OFFER for a new Operational Scope, per scope type, read from each type's ONE governed
+// source in THIS tenant -- so the picker never needs a typed id:
+//
+//   WAREHOUSE       eos_ops.warehouses, ACTIVE, this tenant (the same rows the command FOR-SHARE-checks)
+//   REORDER_QUEUE   eos_policy.tenant_operating_company_keys, ACTIVE, this tenant (the key the table's trigger checks)
+//
+// Every OPERATIONAL_SCOPE_TYPES entry is listed; a type with no governed source would be listed `available: false`
+// with its reason, never silently absent. The command re-validates every value; this read decides nothing.
+
+export interface OperationalScopeTargetType {
+  readonly scopeType: OperationalScopeType;
+  readonly label: string;
+  readonly available: boolean;
+  readonly reason: string | null;
+  readonly valueSource: string;
+  readonly values: readonly { readonly value: string; readonly label: string }[];
+}
+
+const TARGET_SOURCES: Readonly<Record<OperationalScopeType, { readonly valueSource: string; readonly sql: string }>> = Object.freeze({
+  WAREHOUSE: Object.freeze({
+    valueSource: "eos_ops.warehouses (ACTIVE, this tenant)",
+    sql: `SELECT id AS value, coalesce(name, id) AS label FROM eos_ops.warehouses
+           WHERE tenant_id = $1 AND status::text = 'ACTIVE' ORDER BY lower(coalesce(name, id)), id`,
+  }),
+  REORDER_QUEUE: Object.freeze({
+    valueSource: "eos_policy.tenant_operating_company_keys (ACTIVE, this tenant)",
+    sql: `SELECT operating_company_key AS value, operating_company_id || ' queue (' || operating_company_key || ')' AS label
+            FROM eos_policy.tenant_operating_company_keys
+           WHERE tenant_id = $1 AND status = 'ACTIVE' ORDER BY operating_company_id, operating_company_key`,
+  }),
+});
+
+/** The governed, tenant-scoped values each Operational Scope type may take. Gate: employee.record.read. */
+export function listOperationalScopeTargets(deps: EmployeeReadDeps, actor: EmployeeReadActor, input?: Record<string, unknown>): Promise<{
+  readonly scopeTypes: readonly OperationalScopeTargetType[];
+}> {
+  return runEmployeeRead(deps, actor,
+    () => { acceptOnly(input, []); return null; },
+    () => [EMPLOYEE_RECORD_READ],
+    async (db, tenantId) => {
+      const scopeTypes: OperationalScopeTargetType[] = [];
+      for (const scopeType of OPERATIONAL_SCOPE_TYPES) {
+        const source = TARGET_SOURCES[scopeType];
+        const { rows } = await db.query(source.sql, [tenantId]);
+        scopeTypes.push(Object.freeze({
+          scopeType, label: OPERATIONAL_SCOPE_TYPE_LABEL[scopeType], valueSource: source.valueSource,
+          available: rows.length > 0,
+          reason: rows.length > 0 ? null : `no ACTIVE governed value in this tenant (${source.valueSource})`,
+          values: Object.freeze(rows.map((r: Record<string, unknown>) => Object.freeze({ value: String(r.value), label: String(r.label) }))),
+        }));
+      }
+      return { scopeTypes: Object.freeze(scopeTypes) };
     });
 }

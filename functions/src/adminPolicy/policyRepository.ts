@@ -331,6 +331,15 @@ export interface PolicyTransaction {
   /** Active assignments to protected Roles, excluding one. */
   protectedRoleAssignmentCount(excludeAssignmentId: string | null): Promise<number>;
 
+  // ── Tenant sales channels (lane GA, migration 1762905600000) ──
+  // Optional so an adapter without the table fails closed: setTenantSalesChannelStatus refuses when absent.
+  /** This tenant's activation row for a channel, locked FOR UPDATE; null when never activated. */
+  readTenantSalesChannel?(salesChannel: string): Promise<TenantSalesChannelRecord | null>;
+  /** Insert or update the activation row; returns the row as stored. */
+  writeTenantSalesChannel?(salesChannel: string, status: TenantSalesChannelStatus, source: string): Promise<TenantSalesChannelRecord>;
+  /** ACTIVE assignments in this tenant scoped exactly (scopeType, scopeValue). */
+  activeScopedAssignmentCount?(scopeType: string, scopeValue: string): Promise<number>;
+
   // ── audit ──
   /**
    * Not optional and not configurable. Every mutation in this subsystem writes one. Returns the
@@ -438,6 +447,20 @@ export interface PolicyReader {
    * refused, never accepted unvalidated. Optional so an adapter without it fails closed.
    */
   listAssignmentScopeValues?(tenantId: TenantId, scopeType: string): Promise<readonly AssignmentScopeValue[] | null>;
+}
+
+export type TenantSalesChannelStatus = "ACTIVE" | "INACTIVE";
+
+/** One eos_policy.tenant_sales_channels row. */
+export interface TenantSalesChannelRecord {
+  readonly tenantId: string;
+  readonly salesChannel: string;
+  readonly status: TenantSalesChannelStatus;
+  readonly source: string;
+  readonly establishedBy: string;
+  readonly establishedAt: string;
+  readonly updatedBy: string;
+  readonly updatedAt: string;
 }
 
 /** One governed assignment-scope value, with the label Administration shows for it. */

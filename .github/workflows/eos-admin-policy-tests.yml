@@ -481,6 +481,15 @@ on:
       - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
+      # LANE GA (2026-09-26): governed scope values + the SALES_CHANNEL scope -- tenant sales channel activation, the
+      # Commercial reads deciding a record's stored channel, the governed Operational Scope targets, no free-text pickers.
+      - "functions/migrations/1762905600000_tenant-sales-channel-scope.sql"
+      - "functions/src/eosCommercial/reads/**"
+      - "functions/src/eosWorkforce/reads/operationalScopeReads.ts"
+      - "functions/src/eosWorkforce/commands/employeeOperationalScopeCommands.ts"
+      - "functions/test/governedScopeValuesPostgres.test.mjs"
+      - "field-ops-app-vite/src/modules/administration/EmployeeWorkAuthorization.jsx"
+      - "field-ops-app-vite/test/governedScopePickers.test.jsx"
       # LANE WF (2026-09-26): the workflow control plane -- lifecycle + active version, action capability
       # and guard, publish validation, pinning / ADOPT / MIGRATE, capability-gated workflow administration.
       - "functions/migrations/1762732800000_workflow-control-plane.sql"
@@ -862,6 +871,15 @@ on:
       - "functions/src/eosWorkforce/migration/partsAssignabilityExclusionReport.ts"
       - "field-ops-app-vite/src/modules/administration/EmployeeSecurityRoles.jsx"
       - "field-ops-app-vite/test/employeeSecurityRolesScope.test.jsx"
+      # LANE GA (2026-09-26): governed scope values + the SALES_CHANNEL scope -- tenant sales channel activation, the
+      # Commercial reads deciding a record's stored channel, the governed Operational Scope targets, no free-text pickers.
+      - "functions/migrations/1762905600000_tenant-sales-channel-scope.sql"
+      - "functions/src/eosCommercial/reads/**"
+      - "functions/src/eosWorkforce/reads/operationalScopeReads.ts"
+      - "functions/src/eosWorkforce/commands/employeeOperationalScopeCommands.ts"
+      - "functions/test/governedScopeValuesPostgres.test.mjs"
+      - "field-ops-app-vite/src/modules/administration/EmployeeWorkAuthorization.jsx"
+      - "field-ops-app-vite/test/governedScopePickers.test.jsx"
       # LANE WF (2026-09-26): the workflow control plane -- lifecycle + active version, action capability
       # and guard, publish validation, pinning / ADOPT / MIGRATE, capability-gated workflow administration.
       - "functions/migrations/1762732800000_workflow-control-plane.sql"
@@ -1087,6 +1105,12 @@ jobs:
       # without the vocabulary; Effective Access renders each scope-qualified source.
       - name: Security Role assignment scope -- client (vitest + jsdom)
         run: npx vitest run test/employeeSecurityRolesScope.test.jsx
+        working-directory: field-ops-app-vite
+
+      # LANE GA: governed scope pickers -- Operational Scope targets and Sales Channel values come ONLY from the server;
+      # no typed scope id; a type with no governed value is shown unavailable with the server's reason.
+      - name: Governed scope pickers -- client (vitest + jsdom)
+        run: npx vitest run test/governedScopePickers.test.jsx
         working-directory: field-ops-app-vite
 
       # LANE WF: Administration > Workflows reads every definition from the server (no client copy),

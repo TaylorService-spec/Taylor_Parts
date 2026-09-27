@@ -233,6 +233,27 @@ async function refuseSelfLinkOntoFunctionalRole(db: PoolClient, actor: EmployeeC
   }
 }
 
+/**
+ * NO SELF-LINK ONTO AN OPERATIONAL SCOPE OR WORK ELIGIBILITY (Pass 10 P10-1, extending S4 to the facts lane GA made
+ * assignable). Both are narrowing conjuncts the actor would satisfy for themselves: "unlink, assign, relink to myself"
+ * is refused exactly as for a Functional Role. Current (or future-ended) rows count; another administrator may link.
+ */
+async function refuseSelfLinkOntoNarrowingFacts(db: PoolClient, actor: EmployeeCommandActor, employeeId: string, targetPrincipalId: string): Promise<void> {
+  await refuseSelfLinkOntoFunctionalRole(db, actor, employeeId, targetPrincipalId);
+  if (targetPrincipalId !== actor.principalId) return;
+  const current = `tenant_id = $1 AND employee_id = $2 AND (effective_to IS NULL OR (effective_to > now() AND effective_to > effective_from))`;
+  const scopes = await db.query(`SELECT count(*)::int AS n FROM eos_workforce.employee_operational_scopes WHERE ${current}`, [actor.tenantId, employeeId]);
+  if (Number(scopes.rows[0]?.n ?? 0) > 0) {
+    refuse("OPERATIONAL_SCOPE_SELF_LINK", "FORBIDDEN",
+      "this Employee holds a current Operational Scope; you may not link it to your own Principal -- another administrator must");
+  }
+  const eligibility = await db.query(`SELECT count(*)::int AS n FROM eos_workforce.employee_work_eligibility WHERE ${current}`, [actor.tenantId, employeeId]);
+  if (Number(eligibility.rows[0]?.n ?? 0) > 0) {
+    refuse("WORK_ELIGIBILITY_SELF_LINK", "FORBIDDEN",
+      "this Employee holds a current Work Eligibility qualification; you may not link it to your own Principal -- another administrator must");
+  }
+}
+
 /** Establish the Employee's FIRST active Principal link. An Employee that already has one refuses. */
 export async function linkEmployeePrincipal(
   deps: EmployeeCommandDeps, actor: EmployeeCommandActor, input: Record<string, unknown>,
@@ -263,7 +284,7 @@ export async function linkEmployeePrincipal(
           + "which requires expectedCurrentPrincipalId, rather than establishing a second one");
       }
       await assertTargetPrincipalAvailable(db, effective.tenantId, p.employeeId, p.linkedPrincipalId);
-      await refuseSelfLinkOntoFunctionalRole(db, effective, p.employeeId, p.linkedPrincipalId);
+      await refuseSelfLinkOntoNarrowingFacts(db, effective, p.employeeId, p.linkedPrincipalId);
       const linkId = await insertLink(db, effective, p.employeeId, p.linkedPrincipalId, p.reason, at);
       const auditEventId = await appendEmployeeAudit(db, effective.tenantId, effective.principalId, PRINCIPAL_LINK_ESTABLISH_ACTION,
         p.employeeId, linkSide(null, null), linkSide(p.linkedPrincipalId, linkId), p.reason, at);
@@ -337,7 +358,7 @@ export async function relinkEmployeePrincipal(
         return { outcome: "NO_CHANGE" as const, employeeId: p.employeeId, linkedPrincipalId: current!.principal_id, linkId: current!.id, revokedLinkId: null, auditEventId: null };
       }
       await assertTargetPrincipalAvailable(db, effective.tenantId, p.employeeId, p.next);
-      await refuseSelfLinkOntoFunctionalRole(db, effective, p.employeeId, p.next);
+      await refuseSelfLinkOntoNarrowingFacts(db, effective, p.employeeId, p.next);
       await revokeLink(db, effective.tenantId, current!.id, at);
       const linkId = await insertLink(db, effective, p.employeeId, p.next, p.reason, at);
       const auditEventId = await appendEmployeeAudit(db, effective.tenantId, effective.principalId, PRINCIPAL_LINK_RELINK_ACTION,

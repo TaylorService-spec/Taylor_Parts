@@ -10,9 +10,9 @@ import { SALES_AGREEMENT_STATES } from "../../salesAgreement/salesAgreementLifec
 import { computeAgreementTotals } from "../../salesAgreement/salesAgreementCommands";
 import { fail } from "../commands/commercialCommandKernel";
 import {
-  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, requireEnumFilter,
-  requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor, type CommercialReadDeps,
-  type Queryable,
+  COMMERCIAL_READ_CAPABILITIES, decodeCommercialCursor, isoOf, minorOf, optionalAccountId, pageOf, personOf, refuseOutsideReach, SALES_CHANNEL_SCOPED, salesChannelScopedWithLineage,
+  requireEnumFilter, requirePageSize, requireRecordId, runCommercialRead, type CommercialPersonReference, type CommercialReadActor,
+  type CommercialReadDeps, type Queryable,
 } from "./commercialReadKernel";
 import type { CommercialLineageReference, CommercialPage } from "./opportunityReadProjection";
 
@@ -128,13 +128,13 @@ function summaryOf(r: Row, lines: readonly SalesAgreementLineProjection[]): Sale
 
 export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: CommercialReadActor, input: Record<string, unknown>): Promise<SalesAgreementDetailProjection> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ], () => requireRecordId(input?.salesAgreementId, "salesAgreementId"),
-    async (db, tenantId, salesAgreementId) => {
+    async (db, tenantId, salesAgreementId, reach) => {
       const { rows } = await db.query(
         `SELECT ${SUMMARY_COLUMNS}, (${SALES_AGREEMENT_IS_COMPLETE}) AS complete,
                 a.location_id, loc.name AS location_name, a.customer_po, a.is_lease, a.fulfillment_intent::text AS fulfillment_intent,
                 a.shipping_instructions, a.ship_via, a.special_instructions,
-                o.opportunity_number, o.stage::text AS opportunity_stage,
-                so.id AS order_id, so.sales_order_number AS order_number, so.state::text AS order_state
+                o.opportunity_number, o.stage::text AS opportunity_stage, o.sales_channel::text AS sales_channel,
+                so.id AS order_id, so.sales_order_number AS order_number, so.state::text AS order_state, so.sales_channel::text AS order_channel
            FROM eos_commercial.sales_agreements a
            LEFT JOIN eos_crm.accounts acc ON acc.tenant_id = a.tenant_id AND acc.id = a.account_id
            LEFT JOIN eos_crm.account_locations loc ON loc.tenant_id = a.tenant_id AND loc.account_id = a.account_id AND loc.id = a.location_id
@@ -145,6 +145,9 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
       );
       if (rows.length === 0) return fail("RECORD_NOT_FOUND", "NOT_FOUND", "the Sales Agreement does not exist in this tenant");
       const r = rows[0] as Row;
+      // An Agreement carries no channel of its own: its channel IS its source Opportunity's, joined in this statement.
+      // No source Opportunity (or one with no channel) admits no scoped holder.
+      if (!reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ, r.sales_channel ?? null)) refuseOutsideReach("Sales Agreement");
       if (!r.complete) fail("RECORD_INCOMPLETE", "PRECONDITION_FAILED", "the Sales Agreement was not created through a governed command and carries no lifecycle");
       const lines = await linesByAgreement(db, tenantId, [r.id]);
       return {
@@ -152,11 +155,14 @@ export function getSalesAgreementDetail(deps: CommercialReadDeps, actor: Commerc
         location: r.location_id === null ? null : { locationId: r.location_id, name: r.location_name ?? null },
         customerPO: r.customer_po, isLease: r.is_lease, fulfillmentIntent: r.fulfillment_intent,
         shippingInstructions: r.shipping_instructions, shipVia: r.ship_via, specialInstructions: r.special_instructions,
-        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null ? null
+        // Pass 10 P10-4: lineage only where the reader could read the linked record. A global holder is unchanged.
+        sourceOpportunity: r.opportunity_id === null || r.opportunity_number === null
+          || !reach.admits(COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, r.sales_channel ?? null) ? null
           : { id: r.opportunity_id, number: r.opportunity_number, state: r.opportunity_stage },
-        salesOrder: r.order_id === null ? null : { id: r.order_id, number: r.order_number, state: r.order_state },
+        salesOrder: r.order_id === null || !reach.admits(COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ, r.order_channel ?? null) ? null
+          : { id: r.order_id, number: r.order_number, state: r.order_state },
       };
-    });
+    }, salesChannelScopedWithLineage([COMMERCIAL_READ_CAPABILITIES.OPPORTUNITY_READ, COMMERCIAL_READ_CAPABILITIES.SALES_ORDER_READ]));
 }
 
 export interface SalesAgreementListOptions {
@@ -164,6 +170,8 @@ export interface SalesAgreementListOptions {
   readonly accountId: string | null;
   readonly state: string[] | null;
   readonly cursor: { number: string; id: string } | null;
+  /** Lane GA: null/absent = every channel; otherwise ONLY Agreements whose source Opportunity carries one of these. */
+  readonly salesChannels?: readonly string[] | null;
 }
 
 export function prepareSalesAgreementList(input: Record<string, unknown> | undefined): SalesAgreementListOptions {
@@ -180,13 +188,15 @@ export async function readSalesAgreementPage(db: Queryable, tenantId: string, o:
     `SELECT ${SUMMARY_COLUMNS}
        FROM eos_commercial.sales_agreements a
        LEFT JOIN eos_crm.accounts acc ON acc.tenant_id = a.tenant_id AND acc.id = a.account_id
+       LEFT JOIN eos_commercial.opportunities src ON src.tenant_id = a.tenant_id AND src.id = a.opportunity_id
       WHERE a.tenant_id = $1 AND ${SALES_AGREEMENT_IS_COMPLETE}
         AND ($2::text IS NULL OR a.account_id = $2)
         AND ($3::text[] IS NULL OR a.state::text = ANY($3::text[]))
         AND ($4::text IS NULL OR (a.sales_agreement_number, a.id) < ($4::text, $5::text))
+        AND ($7::text[] IS NULL OR src.sales_channel::text = ANY($7::text[]))
       ORDER BY a.sales_agreement_number DESC, a.id DESC
       LIMIT $6`,
-    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1],
+    [tenantId, o.accountId, o.state, o.cursor?.number ?? null, o.cursor?.id ?? null, o.limit + 1, o.salesChannels ?? null],
   );
   const kept = (rows as Row[]).slice(0, o.limit);
   const lines = await linesByAgreement(db, tenantId, kept.map((r) => r.id));
@@ -195,5 +205,7 @@ export async function readSalesAgreementPage(db: Queryable, tenantId: string, o:
 
 export function listSalesAgreements(deps: CommercialReadDeps, actor: CommercialReadActor, input?: Record<string, unknown>): Promise<CommercialPage<SalesAgreementSummaryProjection>> {
   return runCommercialRead(deps, actor, [COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ], () => prepareSalesAgreementList(input),
-    (db, tenantId, options) => readSalesAgreementPage(db, tenantId, options));
+    (db, tenantId, options, reach) => readSalesAgreementPage(db, tenantId,
+      { ...options, salesChannels: reach.channelsFor(COMMERCIAL_READ_CAPABILITIES.SALES_AGREEMENT_READ) }),
+    SALES_CHANNEL_SCOPED);
 }

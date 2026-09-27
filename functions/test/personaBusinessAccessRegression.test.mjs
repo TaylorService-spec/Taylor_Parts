@@ -259,7 +259,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // capability, no grant, so no persona's set moves.
   // 54: + the Functional Role authority (1762819200000): one capability granted to NO Role, so no
   // persona's set moves.
-  assert.equal(files.length, 54, "the migration chain moved; re-measure before trusting anything below");
+  // 55: + the tenant sales channel activation (1762905600000): one EMPTY table -- no capability, no grant, so no
+  // persona's set moves.
+  assert.equal(files.length, 55, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);

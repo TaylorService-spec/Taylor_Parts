@@ -45,7 +45,8 @@ describe("the closed operation list", () => {
       "listEmployeeFunctionalRoles", "listFunctionalRoleHistory", "listFunctionalRoleHolders", "listFunctionalRoles"]);
     // Step C: qualification and warehouse scope are served as SEPARATE reads -- neither is folded into the other.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /eligibility/i.test(n)).sort()).toEqual(["listEmployeeWorkEligibility", "listEmployeeWorkEligibilityHistory"]);
-    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /scope/i.test(n)).sort()).toEqual(["listEmployeeOperationalScopeHistory", "listEmployeeOperationalScopes"]);
+    // Lane GA: + the governed Operational Scope targets the picker offers (no typed scope id).
+    expect(WORKFORCE_READ_OPERATIONS.filter((n) => /scope/i.test(n)).sort()).toEqual(["listEmployeeOperationalScopeHistory", "listEmployeeOperationalScopes", "listOperationalScopeTargets"]);
     // Step G: exactly one assignable-Employee read, and it is a read.
     expect(WORKFORCE_READ_OPERATIONS.filter((n) => /assignable/i.test(n))).toEqual(["listAssignableEmployees"]);
   });

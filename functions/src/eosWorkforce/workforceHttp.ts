@@ -41,6 +41,7 @@
 //   FR       createFunctionalRole / updateFunctionalRoleMetadata / setFunctionalRoleStatus /
 //            assignEmployeeFunctionalRole / endEmployeeFunctionalRoleAssignment        admin.employeeFunctionalRole.write.
 //   step C   listEmployeeOperationalScopes / ...History                                  employee.record.read.
+//   lane GA  listOperationalScopeTargets (governed WAREHOUSE / REORDER_QUEUE values)     employee.record.read.
 //   step C   assignEmployeeOperationalScope / endEmployeeOperationalScope                admin.employeeOperationalScope.write.
 //   step G   listAssignableEmployees                                                      employee.record.read.
 //             A Job Role is a business function only: no Security Role, permission, ownership, assignment,
@@ -95,7 +96,7 @@ import { listEmployeeChangeHistory } from "./reads/employeeChangeHistoryRead";
 import { assignEmployeeWorkEligibility, endEmployeeWorkEligibility } from "./commands/employeeWorkEligibilityCommands";
 import { assignEmployeeOperationalScope, endEmployeeOperationalScope } from "./commands/employeeOperationalScopeCommands";
 import { listEmployeeWorkEligibility, listEmployeeWorkEligibilityHistory } from "./reads/workEligibilityReads";
-import { listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory } from "./reads/operationalScopeReads";
+import { listEmployeeOperationalScopes, listEmployeeOperationalScopeHistory, listOperationalScopeTargets } from "./reads/operationalScopeReads";
 import {
   assignEmployeeFunctionalRole, createFunctionalRole, endEmployeeFunctionalRoleAssignment, setFunctionalRoleStatus,
   updateFunctionalRoleMetadata,
@@ -158,6 +159,8 @@ const READ_RUNNERS = Object.freeze({
   listEmployeeWorkEligibilityHistory: read(listEmployeeWorkEligibilityHistory),
   listEmployeeOperationalScopes: read(listEmployeeOperationalScopes),
   listEmployeeOperationalScopeHistory: read(listEmployeeOperationalScopeHistory),
+  // Lane GA: the governed values the Operational Scope picker offers (warehouses; reorder-queue company keys).
+  listOperationalScopeTargets: read(listOperationalScopeTargets),
   listAssignableEmployees: read(listAssignableEmployees),
   // Functional Role (migration 1762819200000): employee.record.read, like the Job Role and Work Eligibility reads.
   listFunctionalRoles: read(listFunctionalRoles),

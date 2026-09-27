@@ -108,6 +108,8 @@ export const ADMIN_MUTATION_OPERATIONS = Object.freeze([
   "startWorkflowInstance",
   "adoptRecordsIntoWorkflowVersion",
   "migrateWorkflowInstances",
+  // Lane GA: which Commercial sales channels this tenant operates (the salesChannel scope's governed values).
+  "setTenantSalesChannelStatus",
 ]);
 
 const ALL_OPERATIONS = new Set([...ADMIN_READ_OPERATIONS, ...ADMIN_MUTATION_OPERATIONS]);
