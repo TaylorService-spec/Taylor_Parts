@@ -141,9 +141,11 @@ test("every grant carries exactly one canonical source and NOTHING is unexplaine
   // edit-without-read reads ruling B reconciles, and Reporting Slice 1's three.
   // 413 -> 414 (MIGRATION_BACKED 355 -> 356): migration 1762646400000, the Administration control
   // plane -- admin -> admin.securityPolicy.write, the capability that replaced the Role-name gate.
-  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 414);
+  // 414 -> 415 (MIGRATION_BACKED 356 -> 357): migration 1763078400000, Owner ruling R1 -- owner ->
+  // admin.administratorRole.assign, the bounded Administrator staffing capability.
+  assert.equal(AUTHORITY_BASELINE_GRANTS.length, 415);
   assert.deepEqual(counts, {
-    MIGRATION_BACKED: 356, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
+    MIGRATION_BACKED: 357, CANONICAL_CATALOG: 53, NONPROD_ACTIVATION: 5, FIXTURE_ONLY: 0, UNEXPLAINED: 0,
   });
   assert.equal(counts.MIGRATION_BACKED + counts.CANONICAL_CATALOG + counts.NONPROD_ACTIVATION
     + counts.FIXTURE_ONLY + counts.UNEXPLAINED, AUTHORITY_BASELINE_GRANTS.length);

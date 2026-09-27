@@ -156,7 +156,7 @@ test("the activation migration was APPENDED: only the later Administration and w
   assert.ok(at >= 0);
   assert.deepEqual(files.slice(at + 1), ["1762646400000_administration-control-plane.sql", "1762732800000_workflow-control-plane.sql",
     "1762819200000_employee-functional-role-authority.sql", "1762905600000_tenant-sales-channel-scope.sql",
-    "1762992000000_direct-exception-cell-lock.sql"],
+    "1762992000000_direct-exception-cell-lock.sql", "1763078400000_administrator-staffing-capability.sql"],
     "an activation must be appended, never back-dated into history");
   const ids = files.slice(0, at).map((f) => Number(f.split("_")[0]));
   assert.ok(Math.max(...ids) < 1762300800000);
@@ -376,8 +376,12 @@ test("UP then DOWN: the guarded reversal removes exactly what the migration wrot
 
     // The Administration control plane (1762646400000) sits after the activation: +1 capability, +1
     // grant. It is peeled first so the reversal below is THIS migration's and nothing else's.
+    assert.deepEqual(await counts(), { caps: 82, grants: 415, mine: 26 });
+    // The Administrator staffing capability (1763078400000, Owner ruling R1) is peeled first: -1 capability,
+    // -1 grant (owner -> admin.administratorRole.assign).
+    runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 81, grants: 414, mine: 26 });
-    // The direct-exception cell lock (1762992000000) is peeled first: a trigger, the counts do not move.
+    // The direct-exception cell lock (1762992000000) is peeled next: a trigger, the counts do not move.
     runMigrate(url, "down", 1);
     assert.deepEqual(await counts(), { caps: 81, grants: 414, mine: 26 });
     // The tenant sales channel activation (1762905600000) is peeled next: an empty table, the counts do not move.
@@ -409,7 +413,8 @@ test("the DOWN REFUSES when a grant it did not write still holds a capability it
     t.after(() => dropDatabase(pool, name));
     let url;
     ({ pool, url } = await standUp(name));
-    runMigrate(url, "down", 1); // peel the later direct-exception cell lock (1762992000000) first
+    runMigrate(url, "down", 1); // peel the later Administrator staffing capability (1763078400000) first
+    runMigrate(url, "down", 1); // then the direct-exception cell lock (1762992000000)
     runMigrate(url, "down", 1); // then the tenant sales channel activation (1762905600000)
     runMigrate(url, "down", 1); // then the Functional Role authority (1762819200000)
     runMigrate(url, "down", 1); // then the workflow control plane (1762732800000)

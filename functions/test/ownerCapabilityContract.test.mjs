@@ -271,7 +271,11 @@ check("RECONCILE PROOF: the nine live Owner grants this catalog lacks are a cata
   // owner-only is still 0.
   const catalog = new Set(PERMISSION_CATALOG.map((p) => p.id));
   const liveNotDeclared = [...LIVE_OWNER].filter((id) => !OWNER.has(id)).sort();
+  // + admin.administratorRole.assign (migration 1763078400000, Owner ruling R1, 2026-09-26): the bounded
+  // Administrator staffing capability -- PostgreSQL-native, absent from PERMISSION_CATALOG, a catalog gap by
+  // construction and NOT an admin-only key (admin holds admin.securityPolicy.write instead).
   assert.deepEqual(liveNotDeclared, [
+    "admin.administratorRole.assign",
     "admin.securityPolicy.read",
     "finance.invoice.read",
     "finance.payment.read",
@@ -297,7 +301,8 @@ check("the vocabulary this proof is measured against is the full 79-key register
   // RE-PINNED 2026-09-24 at Phase 3 integration: 76 -> 79, the three ids registered by 9fa82e94.
   // RE-PINNED 2026-09-26: 79 -> 80, admin.securityPolicy.write (migration 1762646400000).
   // RE-PINNED 2026-09-26: 80 -> 81, admin.employeeFunctionalRole.write (migration 1762819200000; granted to nobody).
-  assert.equal(VOCABULARY.size, 81);
+  // RE-PINNED 2026-09-26: 81 -> 82, admin.administratorRole.assign (migration 1763078400000; Owner ruling R1).
+  assert.equal(VOCABULARY.size, 82);
   for (const g of BASELINE.grants) {
     assert.ok(VOCABULARY.has(g.capabilityKey), `live grant ${g.capabilityKey} must be in the declared vocabulary`);
   }

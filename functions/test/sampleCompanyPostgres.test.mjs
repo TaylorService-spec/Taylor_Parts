@@ -227,8 +227,10 @@ async function verifyWith(authProbe, uidProbe = (uid) => authDirectory.findByUid
 // 1762905600000 (the tenant sales channel activation, lane GA): one eos_policy table, EMPTY -- no capability, no
 // grant, no vocabulary move.
 // 1762992000000 (the direct-exception cell lock, lane DX): one trigger -- no capability, no grant, no vocabulary move.
-const PINNED_LAST_MIGRATION = "1762992000000_direct-exception-cell-lock";
-const PINNED_MIGRATION_COUNT = 56;
+// 1763078400000 (the Administrator staffing capability, Owner ruling R1): ONE capability,
+// admin.administratorRole.assign (vocabulary 81 -> 82, reconciled in the manifest), granted to owner.
+const PINNED_LAST_MIGRATION = "1763078400000_administrator-staffing-capability";
+const PINNED_MIGRATION_COUNT = 57;
 
 const DB_NAME = `sample_company_v2_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 const dbUrl = () => {
@@ -463,15 +465,15 @@ test("Sample Company v2, in PostgreSQL", { skip: SKIP, concurrency: 1 }, async (
     // it would copy the Administrator's permissions onto the Owner: the one solution the Owner refused.
     assert.ok(MANIFEST.principals.some((p) => p.securityRoles.includes("owner")));
     assert.ok(!granted.includes("owner"), "the apply granted a capability to the withheld `owner` Role");
-    // The ONE owner row is the tenant bootstrap's governing Administration grant (owner ->
-    // admin.roleAssignment.write, ADMINISTRATION_BOOTSTRAP_GRANTS), written with the first administrator
-    // before this apply and stamped `bootstrap:` -- not a reconciliation grant.
+    // The owner rows are the tenant bootstrap's governing Administration grants (ADMINISTRATION_BOOTSTRAP_GRANTS:
+    // owner -> admin.roleAssignment.write and, since Owner ruling R1, owner -> admin.administratorRole.assign),
+    // written with the first administrator before this apply and stamped `bootstrap:` -- not reconciliation grants.
     const ownerGrants = (await q(`SELECT c.key, rc.granted_by FROM eos_policy.role_capabilities rc
       JOIN eos_policy.roles r ON r.id = rc.role_id JOIN eos_policy.capabilities c ON c.id = rc.capability_id
      WHERE r.key = 'owner' ORDER BY c.key`)).rows;
     assert.deepEqual(ownerGrants.filter((g) => !g.granted_by.startsWith("bootstrap:")), [],
       "`owner` is withheld from reconciliation and must hold no grant from this apply");
-    assert.deepEqual(ownerGrants.map((g) => g.key), ["admin.roleAssignment.write"]);
+    assert.deepEqual(ownerGrants.map((g) => g.key), ["admin.administratorRole.assign", "admin.roleAssignment.write"]);
     // ...while `admin` DID get its grants, so the withholding is a narrowing and not a broken reconciliation.
     assert.ok(granted.includes("admin"), "the reconciliation still runs for the Roles that are not withheld");
   });
