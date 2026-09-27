@@ -376,7 +376,7 @@ export default function UserDetail({
           />
 
           {/* SECURITY ROLES (PostgreSQL assignRole / revokeRole on the linked Principal). Access, not a Job Role. */}
-          <RuledSection title="Security Roles" meta="Access — governed PostgreSQL assignment">
+          <RuledSection id="security-roles" title="Security Roles" meta="Access — governed PostgreSQL assignment">
             <p className="fo-muted ns-emp-note">
               Security Roles are access. They are not Job Roles and are never used as one.
             </p>
@@ -387,7 +387,9 @@ export default function UserDetail({
 
           <WorkEligibilitySection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteEligibility} onChanged={rereadGovernedHistory} />
           <OperationalScopeSection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteScope} onChanged={rereadGovernedHistory} />
-          <EmployeeFunctionalRoles employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteFunctionalRoles} onChanged={rereadGovernedHistory} />
+          <div id="functional-roles">
+            <EmployeeFunctionalRoles employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteFunctionalRoles} onChanged={rereadGovernedHistory} />
+          </div>
 
           {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
               (EMP-RT-02, server-gated), and the account actions on the credential behind that Principal. */}
@@ -415,7 +417,7 @@ export default function UserDetail({
           {/* WORKFLOW RESPONSIBILITIES: bindings on held Security Roles INTERSECTED with effective authority, by the server. */}
           <RuledSection title="Workflow responsibilities" meta="Active workflow actions this Employee may perform">
             <PrincipalGate linked={linked} principalLink={principalLink}>
-              <EmployeeWorkflowResponsibilities principalId={principalId} />
+              <EmployeeWorkflowResponsibilities principalId={principalId} employeeId={employee.employeeId} />
             </PrincipalGate>
           </RuledSection>
         </div>

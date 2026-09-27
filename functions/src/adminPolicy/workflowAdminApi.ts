@@ -133,7 +133,15 @@ export async function dispatchWorkflowOperation(
         throw new Error("listPrincipalWorkflowResponsibilities needs the runtime evaluator, which is not composed on this server");
       }
       const explained = await deps.explainEffectiveAccess(actor.tenantId, principalId) as ExplainedAuthority;
-      return deriveWorkflowResponsibilities(principalId, await loadActiveWorkflowDefinitions(repo, actor.tenantId), explained);
+      // PROVENANCE ONLY: the ids of the Principal's ACTIVE GLOBAL assignments of the Roles the evaluator already counted
+      // (explained.securityRoleKeys), so each entry can link to the assignment that produced it. Decides nothing.
+      const [roles, assignments] = await Promise.all([repo.listRoles(actor.tenantId), repo.listAssignmentsForPrincipal(actor.tenantId, principalId)]);
+      const roleKeyById = new Map(roles.map((r) => [r.id, r.key]));
+      const counted = new Set(explained.securityRoleKeys);
+      const globalAssignments = assignments
+        .filter((a) => a.status === "active" && a.scopeType === "global" && counted.has(roleKeyById.get(a.roleId) ?? ""))
+        .map((a) => ({ assignmentId: a.id, roleKey: roleKeyById.get(a.roleId) as string }));
+      return deriveWorkflowResponsibilities(principalId, await loadActiveWorkflowDefinitions(repo, actor.tenantId), explained, { globalAssignments });
     }
 
     // ──────────── mutations ────────────

@@ -1,5 +1,8 @@
 // EMPLOYEE > WORKFLOW RESPONSIBILITIES -- derived by the server, never a second permission system.
 //
+//   Employee -> Security Role (global or scoped) -> [Functional Role narrows] -> workflow binding (ACTIVE version)
+//            -> Role capability grant (+ condition) -> effective responsibility
+//
 //   responsibility = an ACTIVE workflow action a Security Role this Principal holds is bound to
 //                    AND the runtime evaluator allows its capability
 //
@@ -7,12 +10,20 @@
 // Roles as well. Each row shows its SOURCE (which rule produced it) and the required / held Functional Roles; a
 // Functional Role held without a Security Role binding is listed with the inert bindings -- it confers nothing.
 //
+// WHERE TO CHANGE IT (lane WR). Each row carries the server's `adminLocations` -- the Security Role assignment, the
+// Functional Role assignment, the workflow binding and the Role capability grant that produced it -- rendered as links to
+// the Administration screen that governs each fact (domain/workflowResponsibilityLinks.js). There is no per-Employee
+// workflow grant, so nothing here edits a responsibility directly: the administrator changes the underlying fact and
+// this panel re-derives.
+//
 // The server (listPrincipalWorkflowResponsibilities) intersects the bindings with the SAME evaluator
 // explainEffectiveAccess uses. This panel draws its answer. Bindings that confer nothing -- bound,
 // but the capability is not held -- are listed separately so no administrator mistakes them for
 // authority.
+import { Link, useInRouterContext } from "react-router-dom";
 import { refusalText } from "../../services/adminControlPlaneClient.js";
 import { workflowAdminClient } from "../../services/workflowAdminClient.js";
+import { adminLocationLinks, ADMIN_LOCATION_KIND_WORDS } from "../../domain/workflowResponsibilityLinks.js";
 import { useControlPlaneRead } from "./useControlPlaneRead.js";
 
 const SOURCE_WORDS = Object.freeze({
@@ -27,8 +38,47 @@ const functionalText = (r) => {
   const held = Array.isArray(r.viaFunctionalRoles) ? r.viaFunctionalRoles : [];
   return `requires one of ${required.join(", ")}; holds ${held.length > 0 ? held.join(", ") : "none"}`;
 };
+/** Role keys, each with its scope when the binding is satisfied only through a scoped assignment. */
+const roleText = (r) => {
+  const sources = Array.isArray(r.securityRoleSources) ? r.securityRoleSources : null;
+  if (!sources || sources.length === 0) return (r.viaRoles ?? []).join(", ");
+  return [...new Set(sources.map((s) => (s.scopeType && s.scopeType !== "global" ? `${s.roleKey} @ ${s.scopeType}:${s.scopeValue}` : s.roleKey)))].join(", ");
+};
+const conditionText = (r) => {
+  const parts = [];
+  if (r.guardKind) parts.push(`guard ${r.guardKind}`);
+  const conditions = Array.isArray(r.grantConditions) ? r.grantConditions : [];
+  for (const c of conditions) {
+    const kinds = Array.isArray(c?.paths) ? [...new Set(c.paths.flat().map((p) => p?.kind).filter(Boolean))] : [];
+    parts.push(`grant condition ${kinds.length > 0 ? kinds.join(" / ") : "(conditioned)"}`);
+  }
+  return parts.length > 0 ? parts.join("; ") : "—";
+};
 
-export default function EmployeeWorkflowResponsibilities({ api = workflowAdminClient, principalId }) {
+function NavLink({ href, children }) {
+  // Inside the app the router navigates; rendered bare (tests, embeds) it is a plain anchor to the same address.
+  const inRouter = useInRouterContext();
+  return inRouter ? <Link to={href}>{children}</Link> : <a href={href}>{children}</a>;
+}
+
+function WhereToChange({ row, employeeId }) {
+  const locations = Array.isArray(row.adminLocations) ? row.adminLocations : [];
+  if (locations.length === 0) return <span className="fo-muted">—</span>;
+  return (
+    <ul className="fo-admin-locations" data-admin-locations={locations.length}>
+      {locations.map((loc, i) => (
+        <li key={`${loc.kind}/${loc.id ?? i}/${i}`} data-admin-location={loc.kind} data-admin-location-id={loc.id ?? ""}>
+          <span className="fo-muted">{ADMIN_LOCATION_KIND_WORDS[loc.kind] ?? loc.kind}: </span>
+          {adminLocationLinks(loc, { employeeId }).map((l, j) => (
+            <span key={l.href}>{j > 0 ? " · " : null}<NavLink href={l.href}>{l.label}</NavLink></span>
+          ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export default function EmployeeWorkflowResponsibilities({ api = workflowAdminClient, principalId, employeeId = null }) {
   const read = useControlPlaneRead(principalId ? () => api.listPrincipalWorkflowResponsibilities(principalId) : null, `wf-resp:${principalId}`);
   if (!principalId) return <p className="fo-muted" data-workflow-responsibilities="NO_PRINCIPAL">No governed Principal is linked, so there are no workflow responsibilities.</p>;
   if (read.status === "loading" || read.status === "idle") return <p className="fo-muted" data-workflow-responsibilities="LOADING">Asking the server…</p>;
@@ -44,25 +94,30 @@ export default function EmployeeWorkflowResponsibilities({ api = workflowAdminCl
     <div data-workflow-responsibilities="READY" data-workflow-responsibility-rows={rows.length}>
       <p className="fo-muted">
         Actions in ACTIVE workflow versions this Employee may perform: bound through a Security Role
-        they hold, and allowed by the server evaluator. A per-record guard is decided on the record.
+        they hold, and allowed by the server evaluator. A per-record guard or scope is decided on the record.
+        There is no per-Employee workflow grant — change the Security Role, Functional Role, workflow
+        binding or Role grant named in &ldquo;Change it in&rdquo;.
       </p>
       {rows.length === 0 ? <p className="fo-muted">No active workflow action is currently this Employee&rsquo;s responsibility.</p> : (
-        <table className="fo-table" aria-label="Workflow responsibilities">
-          <thead><tr><th>Workflow</th><th>Action</th><th>Via Security Role</th><th>Functional Role</th><th>Authority</th><th>Guard</th><th>Source</th></tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={`${r.workflowKey}/${r.actionKey}`} data-responsibility={`${r.workflowKey}/${r.actionKey}`}>
-                <td>{r.workflowName ?? r.workflowKey} <span className="fo-muted">v{r.version}</span></td>
-                <td>{r.actionLabel ?? r.actionKey} <span className="fo-muted">· {r.from} → {r.to}</span></td>
-                <td>{(r.viaRoles ?? []).join(", ")}</td>
-                <td className="fo-muted" data-functional-role-requirement>{functionalText(r)}</td>
-                <td>{r.authority}{r.capabilityKey ? <span className="fo-muted"> · <code>{r.capabilityKey}</code></span> : null}</td>
-                <td className="fo-muted">{r.guardKind ?? "—"}</td>
-                <td className="fo-muted" data-responsibility-source={r.source ?? "NONE"}>{sourceWords(r.source)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="fo-table-scroll">
+          <table className="fo-table" aria-label="Workflow responsibilities">
+            <thead><tr><th>Workflow</th><th>Action</th><th>Via Security Role</th><th>Functional Role</th><th>Authority</th><th>Condition / guard</th><th>Source</th><th>Change it in</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={`${r.workflowKey}/${r.actionKey}`} data-responsibility={`${r.workflowKey}/${r.actionKey}`} data-responsibility-authority={r.authority ?? ""}>
+                  <td>{r.workflowName ?? r.workflowKey} <span className="fo-muted">v{r.version}</span></td>
+                  <td>{r.actionLabel ?? r.actionKey} <span className="fo-muted">· {r.from} → {r.to}</span></td>
+                  <td data-via-roles>{roleText(r)}</td>
+                  <td className="fo-muted" data-functional-role-requirement>{functionalText(r)}</td>
+                  <td>{r.authority}{r.capabilityKey ? <span className="fo-muted"> · <code>{r.capabilityKey}</code></span> : null}</td>
+                  <td className="fo-muted" data-responsibility-condition>{conditionText(r)}</td>
+                  <td className="fo-muted" data-responsibility-source={r.source ?? "NONE"}>{sourceWords(r.source)}</td>
+                  <td><WhereToChange row={r} employeeId={employeeId} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {inert.length > 0 ? (
         <details>
@@ -71,6 +126,7 @@ export default function EmployeeWorkflowResponsibilities({ api = workflowAdminCl
             {inert.map((r) => (
               <li key={`${r.workflowKey}/${r.actionKey}`} data-inert-binding={`${r.workflowKey}/${r.actionKey}`}>
                 {r.workflowKey} / {r.actionKey} via {[...(r.viaRoles ?? []), ...(r.viaFunctionalRoles ?? []).map((k) => `Functional Role ${k}`)].join(", ") || "—"} — {r.reasonCode} <span className="fo-muted">({sourceWords(r.source)})</span>
+                <WhereToChange row={r} employeeId={employeeId} />
               </li>
             ))}
           </ul>
