@@ -1176,7 +1176,7 @@ function classify(err: unknown): AdminApiFailureCode {
   // that would widen, the last administration path -- is a CONFLICT with what is there, not a
   // malformed request. A missing reason or an unloadable condition stays INVALID_INPUT.
   if (err instanceof AdministrationRefusal) {
-    if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION") return "FORBIDDEN";
+    if (err.code === "SELF_ADMINISTRATION" || err.code === "PRIVILEGE_ESCALATION" || err.code === "PROTECTED_OWNER_MEMBERSHIP") return "FORBIDDEN";
     return err.code === "REASON_REQUIRED" || err.code === "CONDITION_INVALID" || err.code === "CONDITION_REQUIRED"
       || err.code === "CONDITION_NOT_SUPPORTED" || err.code.startsWith("SCOPE_") || err.code === "SALES_CHANNEL_INVALID"
       || err.code === "DIRECT_GRANT_SCOPE_UNSUPPORTED"

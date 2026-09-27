@@ -15,6 +15,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { InMemoryPolicyRepository } from "../lib/adminPolicy/inMemoryPolicyRepository.js";
+import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
 import { bootstrapTenant, bootstrapAdministrator, ensureTenantPrincipal } from "../lib/adminPolicy/tenantBootstrap.js";
 import {
   ADMINISTRATION_BOOTSTRAP_GRANTS,
@@ -422,15 +423,17 @@ test("D5 Owner escalation: no self-administration; Owner cannot confer security-
   const { repo, tenantId, admin, plainId } = await world();
   const ownerRole = await repo.getRoleByKey(tenantId, "owner");
   const adminRole = await repo.getRoleByKey(tenantId, "admin");
-  // An Owner principal, staffed by the administrator.
+  // An Owner principal. Ordinary role administration can no longer appoint the protected Owner (Controller
+  // ruling 2026-09-27), so the fixture seeds it the way bootstrap seeds the first Administrator.
   const ownerMade = await ensureTenantPrincipal(repo, { tenantId, externalSubject: "uid-cp-owner", actorUid: OPERATOR, actorRoleKeys: ["admin"] });
   const ownerId = ownerMade.principal?.id ?? ownerMade.id ?? ownerMade.principalId;
-  await commands.assignRole(repo, admin, { principalId: ownerId, roleId: ownerRole.id, reason: REASON });
+  await assert.rejects(() => commands.assignRole(repo, admin, { principalId: ownerId, roleId: ownerRole.id, reason: REASON }), /PROTECTED_OWNER_MEMBERSHIP/);
+  await seedProtectedOwner(repo, { tenantId, principalId: ownerId });
   const ownerActor = { tenantId, uid: ownerId, heldRoleKeys: ["owner"] };
 
   // (a) self-assignment of ANY Role, and a direct self-grant, are refused.
   await assert.rejects(() => commands.assignRole(repo, ownerActor, { principalId: ownerId, roleId: adminRole.id, reason: REASON }), /SELF_ADMINISTRATION/);
-  await assert.rejects(() => commands.assignRole(repo, admin, { principalId: admin.uid, roleId: ownerRole.id, reason: REASON }), /SELF_ADMINISTRATION/);
+  await assert.rejects(() => commands.assignRole(repo, admin, { principalId: admin.uid, roleId: adminRole.id, reason: REASON }), /SELF_ADMINISTRATION/);
   await assert.rejects(() => commands.grantObjectActionToPrincipal(repo, admin,
     { objectKey: "workOrder", actionKey: "read", principalId: admin.uid, reason: REASON }), /SELF_ADMINISTRATION/);
   // ...and so is widening a Role the actor holds.

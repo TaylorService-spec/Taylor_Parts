@@ -526,6 +526,10 @@ on:
       # OWNER RULING R1: the bounded Administrator staffing capability and its proof (test:adminPolicyPostgres).
       - "functions/migrations/1763078400000_administrator-staffing-capability.sql"
       - "functions/test/administratorStaffingPostgres.test.mjs"
+      # PROTECTED OWNER (Controller ruling 2026-09-27): ordinary role administration never appoints or removes the
+      # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
+      - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
+      - "functions/test/support/protectedOwnerFixture.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"
@@ -926,6 +930,10 @@ on:
       # OWNER RULING R1: the bounded Administrator staffing capability and its proof (test:adminPolicyPostgres).
       - "functions/migrations/1763078400000_administrator-staffing-capability.sql"
       - "functions/test/administratorStaffingPostgres.test.mjs"
+      # PROTECTED OWNER (Controller ruling 2026-09-27): ordinary role administration never appoints or removes the
+      # protected Owner; per-role last-Owner invariant; R1 in anti-lockout (test:adminPolicyPostgres).
+      - "functions/test/protectedOwnerInvariantPostgres.test.mjs"
+      - "functions/test/support/protectedOwnerFixture.mjs"
       - "field-ops-app-vite/src/modules/administration/AdminWorkflows.jsx"
       - "field-ops-app-vite/src/modules/administration/Workflow*.jsx"
       - "field-ops-app-vite/src/modules/administration/EmployeeWorkflowResponsibilities.jsx"

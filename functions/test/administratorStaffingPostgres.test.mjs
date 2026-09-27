@@ -24,6 +24,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -50,7 +51,9 @@ async function withClient(url, fn) {
 
 test("the capability is defined once, bounded, and is not a governing Administration capability", () => {
   assert.equal(authority.ADMINISTRATOR_STAFFING_CAPABILITY, R1);
-  assert.equal(ADMINISTRATION_GOVERNING_CAPABILITIES.includes(R1), false, "anti-lockout must never count the R1 capability");
+  assert.equal(ADMINISTRATION_GOVERNING_CAPABILITIES.includes(R1), false, "R1 governs no policy edit");
+  // Controller ruling 2026-09-27: R1 nevertheless takes part in ANTI-LOCKOUT -- its last holder cannot be stranded.
+  assert.equal(commands.ANTI_LOCKOUT_CAPABILITIES.includes(R1), true, "anti-lockout counts the R1 capability");
   assert.equal(isAdministrationCapability(R1), true, "an admin.* key: refused at any scope, like every Administration key");
   assert.deepEqual(authority.ADMINISTRATION_BOOTSTRAP_GRANTS.filter((g) => g.capabilityKey === R1).map((g) => g.roleKey), ["owner"]);
   assert.equal(authority.isDesignatedAdministratorRole({ key: "admin", protected: true }), true);
@@ -114,7 +117,11 @@ test("Owner ruling R1: Owner staffs the designated Administrator Role for anothe
   const person = async (tenant, subject, roleKeys = [], adminSubject = null) => {
     const made = await ensureTenantPrincipal(repo, { tenantId: tenant, externalSubject: subject, actorUid: OP, actorRoleKeys: ["admin"] });
     const principalId = made.principal?.id ?? made.id ?? made.principalId;
-    for (const key of roleKeys) ok(await call(adminSubject, "assignRole", { principalId, roleId: await roleId(tenant, key), reason: "fixture staffing" }));
+    for (const key of roleKeys) {
+      // The protected Owner is not appointed through ordinary administration (Controller ruling 2026-09-27).
+      if (key === "owner") { await seedProtectedOwner(repo, { tenantId: tenant, principalId }); continue; }
+      ok(await call(adminSubject, "assignRole", { principalId, roleId: await roleId(tenant, key), reason: "fixture staffing" }));
+    }
     return principalId;
   };
   const auditCount = async (tenant) => Number((await q(`SELECT count(*)::int n FROM eos_policy.audit_events WHERE tenant_id=$1`, [tenant])).rows[0].n);
@@ -256,11 +263,21 @@ test("Owner ruling R1: Owner staffs the designated Administrator Role for anothe
   });
 
   await t.test("the R1 grant is ordinary Administration: revoked from owner, Owner is refused; re-granted, allowed", async () => {
+    // Controller ruling 2026-09-27: R1 is in anti-lockout. While the Owner is its LAST holder, withdrawing it is refused.
+    // Premise: end the earlier fixture's staffer (R1-carrying) assignment, so the Owner IS the last holder.
+    const stf = await principalOf("stf-a");
+    const stfStaffer = await activeAssignment(T.a, stf, "staffer");
+    if (stfStaffer) ok(await call("admin-a1", "revokeRole", { assignmentId: stfStaffer.id, reason: "fixture: owner is the last R1 holder" }));
+    refused(await call("admin-a1", "revokeObjectActionFromRole", { objectKey: "rolesPermissions", actionKey: "assignAdministratorRole", roleKey: "owner", reason: "withdraw" }),
+      "CONFLICT", /WOULD_REMOVE_LAST_ADMINISTRATION_PATH/);
+    // With a second governed holder (the fixture staffer Role carries R1), it is ordinary Administration again.
+    const second = ok(await call("admin-a1", "assignRole", { principalId: techA, roleId: await roleId(T.a, "staffer"), reason: "second R1 holder" }));
     ok(await call("admin-a1", "revokeObjectActionFromRole", { objectKey: "rolesPermissions", actionKey: "assignAdministratorRole", roleKey: "owner", reason: "withdraw" }));
     refused(await call("owner-a", "assignRole", { principalId: dispA, roleId: adminRoleA, reason: "x" }), "FORBIDDEN", /PRIVILEGE_ESCALATION/);
     ok(await call("admin-a1", "grantObjectActionToRole", { objectKey: "rolesPermissions", actionKey: "assignAdministratorRole", roleKey: "owner", reason: "restore" }));
     const made = ok(await call("owner-a", "assignRole", { principalId: dispA, roleId: adminRoleA, reason: "x" }));
     ok(await call("owner-a", "revokeRole", { assignmentId: made.id, reason: "x" }));
+    ok(await call("admin-a1", "revokeRole", { assignmentId: second.id, reason: "fixture cleanup" }));
   });
 
   await t.test("the capability is neither conditionable nor scopable", async () => {

@@ -15,6 +15,7 @@ import { declaredSchemas } from "./support/migrationSchema.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import pg from "pg";
+import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
 import { PostgresPolicyRepository } from "../lib/adminPolicy/postgresPolicyRepository.js";
 import { resolvePolicyDatabaseConfig, checkPolicyDatabaseHealth } from "../lib/adminPolicy/policyDatabase.js";
 import { bootstrapAdministrator, bootstrapTenant, ensureTenantPrincipal } from "../lib/adminPolicy/tenantBootstrap.js";
@@ -548,7 +549,13 @@ test("USERS: Admin appoints Administrators; Owner staffs the Administrator (R1);
   const roles = await r.listRoles(tenant.id);
   const adminRole = roles.find((x) => x.key === "admin");
 
-  await grant(r, OWNER_SUBJECT, "owner");
+  // The protected Owner is not appointed through ordinary administration (Controller ruling 2026-09-27): seeded as
+  // bootstrap seeds the first Administrator, and the ordinary path is proven to refuse it.
+  const ownerPrincipal = await r.getPrincipalBySubject("firebase", OWNER_SUBJECT);
+  const ownerRole = roles.find((x) => x.key === "owner");
+  const ownerByAdmin = await executeAdminOperation({ repo: r }, asAdmin("assignRole", { principalId: ownerPrincipal.id, roleId: ownerRole.id }));
+  assert.deepEqual([ownerByAdmin.ok, ownerByAdmin.code], [false, "FORBIDDEN"], JSON.stringify(ownerByAdmin));
+  await seedProtectedOwner(r, { tenantId: tenant.id, principalId: ownerPrincipal.id });
   await grant(r, GM_SUBJECT, "generalManager");
 
   // ASSIGNMENT IS THE CAPABILITY admin.roleAssignment.write, never a Role name (Administration control

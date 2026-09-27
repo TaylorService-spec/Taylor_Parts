@@ -23,6 +23,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -82,6 +83,8 @@ test("the Administration control plane holds under attack and under concurrency"
     const made = await ensureTenantPrincipal(repo, { tenantId: tenant, externalSubject: subject, actorUid: OP, actorRoleKeys: ["admin"] });
     const principalId = made.principal?.id ?? made.id ?? made.principalId;
     for (const key of roleKeys) {
+      // The protected Owner is not appointed through ordinary administration (Controller ruling 2026-09-27).
+      if (key === "owner") { await seedProtectedOwner(repo, { tenantId: tenant, principalId }); continue; }
       const r = await call(adminSubject, "assignRole", { principalId, roleId: await roleId(tenant, key), reason: "fixture staffing" });
       assert.equal(r.ok, true, JSON.stringify(r));
     }

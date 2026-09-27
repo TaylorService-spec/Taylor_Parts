@@ -23,6 +23,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import pg from "pg";
+import { seedProtectedOwner } from "./support/protectedOwnerFixture.mjs";
 
 const URL_BASE = process.env.POLICY_TEST_DATABASE_URL;
 const SKIP = URL_BASE ? false : "POLICY_TEST_DATABASE_URL is not set -- no database to prove anything against";
@@ -343,7 +344,8 @@ test("lane DX: direct Principal exceptions are enforced by every runtime gate, e
 
   await t.test("OWNER RULING A at the principal: no excluded key by a direct grant, and no owner Role over one", async () => {
     const ownerP = await person("owner-p");
-    ok(await call("admin-a", "assignRole", { principalId: ownerP, roleId: await roleIdOf("owner"), reason: R }));
+    // The protected Owner is not appointed through ordinary administration (Controller ruling 2026-09-27).
+    await seedProtectedOwner(repo, { tenantId: T, principalId: ownerP });
     const before = await auditCount();
     for (const key of ["equipment.install", "inventory.stock.receive", "workOrder.lifecycle.dispatch"]) {
       const r = await call("admin-a", "grantObjectActionToPrincipal", { ...target(key), principalId: ownerP, reason: R });
@@ -354,8 +356,11 @@ test("lane DX: direct Principal exceptions are enforced by every runtime gate, e
     // The reverse order: a Principal holding an excluded key DIRECTLY may not then be given the owner Role.
     const holder = await person("excluded-holder");
     ok(await call("admin-a", "grantObjectActionToPrincipal", { ...target("equipment.install"), principalId: holder, reason: R }));
+    // Ordinary administration can no longer appoint the Owner at all (Controller ruling 2026-09-27), so this is now
+    // refused by the protected-Owner rule before Owner ruling A is even consulted -- still refused, still no row.
     const staff = await call("admin-a", "assignRole", { principalId: holder, roleId: await roleIdOf("owner"), reason: R });
-    assert.deepEqual([staff.ok, staff.code], [false, "CONFLICT"], JSON.stringify(staff));
+    assert.deepEqual([staff.ok, staff.code], [false, "FORBIDDEN"], JSON.stringify(staff));
+    assert.match(staff.message, /PROTECTED_OWNER_MEMBERSHIP/);
   });
 
   await t.test("ANTI-LOCKOUT: only an UNEXPIRED, UNCONDITIONED direct holder keeps the tenant administrable", async () => {
