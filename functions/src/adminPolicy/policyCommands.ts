@@ -752,11 +752,6 @@ export async function assignRole(
     throw new PolicyValidationError("that principal is not an active member of this tenant");
   }
 
-  // NO CONFIGURATION THE RUNTIME IGNORES (lane SC). A scoped assignment is stored only when the runtime decides it:
-  // a consumed scope type, a governed value in THIS tenant, a Role carrying at least one capability evaluable at
-  // that scope, and no Administration capability (whose gates are tenant-wide).
-  await refuseUnsupportedAssignmentScope(repo, actor.tenantId, role, scopeType, scopeValue);
-
   // (a) NOBODY STAFFS THEMSELVES. A Role assignment to the actor's own Principal is refused whatever
   // the Role, so the assignment authority can never be turned into a self-escalation path.
   if (principalId === actor.uid) {
@@ -784,6 +779,11 @@ export async function assignRole(
 
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
+    // NO CONFIGURATION THE RUNTIME IGNORES (lane SC), decided UNDER THE GOVERNANCE LOCK (Pass 9 S2): a scoped
+    // assignment is stored only when the runtime decides it -- a consumed scope type, a governed value in THIS tenant,
+    // a Role carrying at least one capability evaluable at that scope, and no Administration capability. Every
+    // grant takes the same lock, so an Administration grant cannot commit between this check and the insert.
+    await refuseUnsupportedAssignmentScope(repo, actor.tenantId, role, scopeType, scopeValue);
     // Re-check the idempotence under the governance lock: a concurrent identical assignment that
     // committed first is returned, never duplicated.
     const now = (await repo.listAssignmentsForPrincipal(actor.tenantId, principalId))
@@ -1211,6 +1211,17 @@ async function refuseOwnerPrincipalViolation(
 }
 
 /** Principals holding this Role through an ACTIVE assignment. */
+/** ACTIVE non-global assignments of this Role, across the tenant's principals. */
+async function scopedHoldersOfRole(repo: PolicyRepository, tenantId: string, roleId: string): Promise<number> {
+  let n = 0;
+  for (const principalId of await repo.listTenantPrincipalIds(tenantId)) {
+    for (const a of await repo.listAssignmentsForPrincipal(tenantId, principalId)) {
+      if (a.status === "active" && a.roleId === roleId && typeof a.scopeType === "string" && a.scopeType !== "" && a.scopeType !== "global") n += 1;
+    }
+  }
+  return n;
+}
+
 async function principalsHoldingRole(repo: PolicyRepository, tenantId: string, roleId: string): Promise<string[]> {
   const out: string[] = [];
   for (const principalId of await repo.listTenantPrincipalIds(tenantId)) {
@@ -1262,8 +1273,10 @@ export async function grantObjectActionToRole(
   if (invariant) {
     throw new AdministrationRefusal("SYSTEM_INVARIANT", `${role.key} may never hold ${capability.key} (${invariant.ruling})`);
   }
-  // NOBODY WIDENS A ROLE THEY HOLD (self-grant, Pass 8 D5a).
-  if ((Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : []).includes(role.key)) {
+  // NOBODY WIDENS A ROLE THEY HOLD (self-grant, Pass 8 D5a) -- globally OR through a scoped assignment (Pass 9 S2:
+  // heldRoleKeys is global-only, so a scoped holder would otherwise widen its own Role).
+  if ((Array.isArray(actor.heldRoleKeys) ? actor.heldRoleKeys : []).includes(role.key)
+      || (await repo.listAssignmentsForPrincipal(actor.tenantId, actor.uid)).some((a) => a.status === "active" && a.roleId === role.id)) {
     throw new AdministrationRefusal("SELF_ADMINISTRATION", `a principal may not grant a capability to a Role it holds (${role.key})`);
   }
   // OWNER GOVERNANCE AT THE PRINCIPAL: no holder of this Role who also holds owner may gain an excluded key.
@@ -1279,6 +1292,16 @@ export async function grantObjectActionToRole(
   return repo.transact({ tenantId: actor.tenantId, uid: actor.uid }, async (tx) => {
     await tx.beginAdministrationCommand();
     await tx.lockGrantCell(role.key, capability.key);
+    // NO ADMINISTRATION AUTHORITY FOR A SCOPED ROLE (Pass 9 S2), under the governance lock: every Administration
+    // gate is tenant-wide, so granting one of its keys to a Role that has an ACTIVE scoped holder would silently
+    // turn "Role @ Company X" into tenant-wide Administration. Refused; assignRole refuses the reverse order.
+    if (isAdministrationCapability(capability.key)) {
+      const scopedHolders = await scopedHoldersOfRole(repo, actor.tenantId, role.id);
+      if (scopedHolders > 0) {
+        throw new AdministrationRefusal("SCOPE_AMBIGUOUS_ADMINISTRATION",
+          `${role.key} has ${scopedHolders} scoped assignment(s); ${capability.key} is Administration authority, decided tenant-wide, and may not be granted to a scoped Role`);
+      }
+    }
     const cell = await tx.readGrantCell(role.key, capability.key);
     if (requiresCondition && condition === null && !cell.condition) {
       throw new AdministrationRefusal("CONDITION_REQUIRED",

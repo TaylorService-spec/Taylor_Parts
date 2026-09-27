@@ -182,11 +182,15 @@ export async function resolveEmployeeAdministrationActor(
     throw new EmployeeCommandError("ADMINISTRATOR_NOT_ACTIVE_MEMBER", "FORBIDDEN",
       "the administering Principal must be an ACTIVE Principal with an ACTIVE membership in this tenant");
   }
-  // ACTIVE assignments only, mapped assignment -> Role key through the tenant's own Role catalog.
+  // ACTIVE, GLOBAL, NON-STALE assignments only (Pass 9 S3) -- the runtime's rule (loadPrincipalPolicy
+  // .qualifyingRoleIds). A SCOPED assignment is decided only against a record's business context, which an operator
+  // command has none of, so it contributes nothing here; counting it would make "Role @ Company X" tenant-wide.
   const heldRoleKeys = (await pool.query<{ key: string }>(
     `SELECT DISTINCT r.key AS key FROM eos_policy.user_role_assignments a
        JOIN eos_policy.roles r ON r.id = a.role_id
+       LEFT JOIN eos_policy.principal_access_versions v ON v.tenant_id = a.tenant_id AND v.principal_id = a.principal_id
       WHERE a.tenant_id = $1 AND a.principal_id = $2 AND a.status = 'active' AND r.tenant_id = $1
+        AND a.scope_type = 'global' AND a.access_version_at_grant <= coalesce(v.access_version, 0)
       ORDER BY r.key`,
     [tenantId, principalId],
   )).rows.map((r) => r.key);

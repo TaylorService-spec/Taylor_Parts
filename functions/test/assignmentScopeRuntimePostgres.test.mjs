@@ -227,7 +227,10 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
     assert.equal(one.ok, true, JSON.stringify(one));
     assert.equal(one.result.operatingCompanyId, "taylor");
     const outside = await wf("scoped-a", "readEmployee", { employeeId: "e-v1" });
-    assert.deepEqual([outside.ok, outside.code, outside.status], [false, "OUTSIDE_ASSIGNMENT_SCOPE", 403]);
+    // Pass 9 S7: refused EXACTLY like a missing id -- no cross-company existence oracle.
+    assert.deepEqual([outside.ok, outside.code, outside.status], [false, "EMPLOYEE_NOT_FOUND", 404]);
+    const missing = await wf("scoped-a", "readEmployee", { employeeId: "e-does-not-exist" });
+    assert.deepEqual([missing.code, missing.status, missing.message], [outside.code, outside.status, outside.message]);
     const list = await wf("scoped-a", "listEmployees", {});
     assert.equal(list.ok, true, JSON.stringify(list));
     assert.deepEqual(list.result.items.map((i) => i.employeeId), ["e-t1", "e-t2"], "the list is filtered to taylor");
@@ -239,7 +242,7 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
     const managed = await wf("scoped-a", "listManagedEmployees", { managerEmployeeId: "e-t1" });
     assert.deepEqual(managed.result.items.map((i) => i.employeeId), ["e-t2"], "the ventana report is not visible");
     const foreignManager = await wf("scoped-a", "listManagedEmployees", { managerEmployeeId: "e-v1" });
-    assert.deepEqual([foreignManager.ok, foreignManager.code], [false, "OUTSIDE_ASSIGNMENT_SCOPE"]);
+    assert.deepEqual([foreignManager.ok, foreignManager.code], [false, "EMPLOYEE_NOT_FOUND"]);
     // Another tenant's Employee is simply not there.
     assert.equal((await wf("scoped-a", "readEmployee", { employeeId: "e-n1" })).code, "EMPLOYEE_NOT_FOUND");
     // B's scoped reader sees B's company only.
@@ -371,7 +374,7 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
       assert.ok(results[1].ok || results[1].code === "CAPABILITY_REQUIRED", JSON.stringify(results[1]));
       if (results[2].ok) assert.deepEqual(results[2].result.items.map((i) => i.employeeId), ["e-t1", "e-t2"]);
       else assert.equal(results[2].code, "CAPABILITY_REQUIRED");
-      assert.ok(["OUTSIDE_ASSIGNMENT_SCOPE", "CAPABILITY_REQUIRED"].includes(results[3].code), JSON.stringify(results[3]));
+      assert.ok(["EMPLOYEE_NOT_FOUND", "CAPABILITY_REQUIRED"].includes(results[3].code), JSON.stringify(results[3]));
       // After the revoke has committed, nothing is reachable.
       assert.equal((await wf("scoped-a", "readEmployee", { employeeId: "e-t1" })).code, "CAPABILITY_REQUIRED");
       // Two concurrent identical scoped assignments: exactly one active row.
@@ -397,7 +400,7 @@ test("Security Role assignment scope: governed runtime, fail closed, never globa
     await flipper;
     assert.equal(flips, 30);
     for (const r of results) {
-      if (!r.ok) { assert.equal(r.code, "OUTSIDE_ASSIGNMENT_SCOPE", JSON.stringify(r)); continue; }
+      if (!r.ok) { assert.equal(r.code, "EMPLOYEE_NOT_FOUND", JSON.stringify(r)); continue; }
       const items = Array.isArray(r.result.items) ? r.result.items : [r.result];
       for (const item of items) {
         assert.equal(item.operatingCompanyId, "taylor", `an out-of-scope row leaked: ${JSON.stringify(item)}`);

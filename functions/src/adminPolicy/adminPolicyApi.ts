@@ -80,6 +80,7 @@ import {
 } from "./objectSecurityAuthority";
 import type { EffectiveCapability } from "./objectSecurityAuthority";
 import { PrincipalContextError, resolvePrincipalContext } from "./principalContext";
+import { loadPrincipalPolicy } from "./effectiveObjectAccess";
 import type { AdminActor } from "./policyCommands";
 import type { PolicyRepository } from "./policyRepository";
 import type {
@@ -452,12 +453,16 @@ async function resolvePrincipalEffectiveAccess(
   readonly effective: readonly EffectiveCapability[];
   readonly objects: Readonly<Record<string, readonly string[]>>;
 }> {
-  const [capabilities, roles, assignments, directGrants] = await Promise.all([
+  const [capabilities, roles, policy, directGrants] = await Promise.all([
     repo.listCapabilities(), repo.listRoles(tenantId),
-    repo.listAssignmentsForPrincipal(tenantId, principalId),
+    loadPrincipalPolicy(repo, tenantId, principalId),
     repo.listPrincipalCapabilities(tenantId, principalId),
   ]);
-  const activeRoleIds = assignments.filter((a) => a.status === "active").map((a) => a.roleId);
+  // GLOBAL, ACTIVE, NON-STALE assignments only (Pass 9 S1) -- the rule the runtime and the mutation gate use
+  // (loadPrincipalPolicy.qualifyingRoleIds). A SCOPED assignment is decided only against a record's business
+  // context; no Administration read has one, so it contributes NOTHING here. Counting it would turn a company-scoped
+  // holder of audit.event.read or workflowDefinition.read into a tenant-wide Administration reader.
+  const activeRoleIds = [...policy.qualifyingRoleIds];
   const [allRoleGrants, conditions] = await Promise.all([
     activeRoleIds.length > 0 ? repo.listRoleCapabilities(tenantId, activeRoleIds) : Promise.resolve([]),
     repo.listGrantConditions(tenantId),
