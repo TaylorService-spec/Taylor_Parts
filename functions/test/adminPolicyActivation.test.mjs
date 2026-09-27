@@ -754,12 +754,22 @@ test("ADDITIVE STILL: a different Role, and the same Role at a different scope, 
     const b = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: salesperson.id,
     }));
+    // Lane SC: an assignment scope must be one the runtime decides, naming a governed value, on a Role that carries a
+    // capability evaluable at that scope ('location' is refused SCOPE_TYPE_UNSUPPORTED). operatingCompany + an
+    // employee.record.read Role is the one decided pair: the tenant must operate the company, and the Role is given
+    // that read through Administration first (the seeded technician carries none).
+    await pool.query(`INSERT INTO eos_policy.tenant_operating_companies (tenant_id,operating_company_id,status,source,established_by,updated_by)
+                      VALUES ($1,'taylor','ACTIVE','fixture','fixture','fixture') ON CONFLICT DO NOTHING`, [tenant.id]);
+    const read = await executeAdminOperation({ repo: r }, asAdmin("grantObjectActionToRole", {
+      objectKey: "employee", actionKey: "read", roleKey: "technician", reason: "make technician scopable at a company",
+    }));
+    assert.equal(read.ok, true, read.ok ? "" : read.message);
     const c = await executeAdminOperation({ repo: r }, asAdmin("assignRole", {
       principalId: others.plain.id, roleId: technician.id,
-      scopeType: "location", scopeValue: "wh-main",
+      scopeType: "operatingCompany", scopeValue: "taylor",
     }));
 
-    for (const [name, result] of [["technician", a], ["salesperson", b], ["technician@wh-main", c]]) {
+    for (const [name, result] of [["technician", a], ["salesperson", b], ["technician@taylor", c]]) {
       assert.equal(result.ok, true, `${name}: ${result.ok ? "" : result.message}`);
     }
     assert.equal(new Set([a.data.id, b.data.id, c.data.id]).size, 3, "three distinct assignments");
