@@ -469,6 +469,8 @@ on:
       - "functions/src/adminPolicy/roleCapabilityAdministration.ts"
       - "functions/src/adminPolicy/administrationCapabilityGate.ts"
       - "functions/test/administrationControlPlane.test.mjs"
+      # PASS 10: human assignRole / revokeRole require a STATED reason at the Administration API (test:adminPolicy).
+      - "functions/test/roleChangeReasonContract.test.mjs"
       - "functions/test/administrationControlPlanePostgres.test.mjs"
       - "functions/src/eosOps/effectiveAccessExplanation.ts"
       - "functions/test/effectiveAccessExplanationPostgres.test.mjs"
@@ -878,6 +880,8 @@ on:
       - "functions/src/adminPolicy/roleCapabilityAdministration.ts"
       - "functions/src/adminPolicy/administrationCapabilityGate.ts"
       - "functions/test/administrationControlPlane.test.mjs"
+      # PASS 10: human assignRole / revokeRole require a STATED reason at the Administration API (test:adminPolicy).
+      - "functions/test/roleChangeReasonContract.test.mjs"
       - "functions/test/administrationControlPlanePostgres.test.mjs"
       - "functions/src/eosOps/effectiveAccessExplanation.ts"
       - "functions/test/effectiveAccessExplanationPostgres.test.mjs"

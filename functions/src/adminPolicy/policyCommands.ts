@@ -705,6 +705,13 @@ export interface AssignRoleInput {
   readonly scopeType?: string;
   readonly scopeValue?: string | null;
   readonly reason?: string | null;
+  /**
+   * HUMAN ADMINISTRATION CONTRACT (Pass 10 ruling, 2026-09-27): the Administration API sets this so a human
+   * assignment must carry a STATED reason (REASON_REQUIRED otherwise), decided right after the capability gate
+   * exactly as every policy-editing command decides its reason. Operator scripts and bootstrap call this command
+   * directly and pass their own explicit reasons; the command's reason stays optional for them.
+   */
+  readonly requireStatedReason?: boolean;
 }
 
 /** Two assignments are the SAME EFFECTIVE ASSIGNMENT when these four agree. */
@@ -752,6 +759,7 @@ export async function assignRole(
   input: AssignRoleInput,
 ): Promise<PolicyRoleAssignmentRecord> {
   await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  if (input.requireStatedReason === true) requireReason(input.reason, "assigning a Security Role");
   const principalId = nonEmpty(input.principalId, "principalId");
   const roleId = nonEmpty(input.roleId, "roleId");
   const scopeType = input.scopeType ?? "global";
@@ -1096,6 +1104,8 @@ async function authorizeSecurityPolicyStaffing(
 export interface RevokeRoleInput {
   readonly assignmentId: string;
   readonly reason?: string | null;
+  /** HUMAN ADMINISTRATION CONTRACT: see AssignRoleInput.requireStatedReason. */
+  readonly requireStatedReason?: boolean;
 }
 
 /**
@@ -1116,6 +1126,7 @@ export async function revokeRole(
   input: RevokeRoleInput,
 ): Promise<PolicyRoleAssignmentRecord> {
   await requireSecurityAdministrationCapability(repo, actor, "assignRole");
+  if (input.requireStatedReason === true) requireReason(input.reason, "removing a Security Role");
   const assignmentId = nonEmpty(input.assignmentId, "assignmentId");
 
   const target = await findAssignment(repo, actor.tenantId, assignmentId);
