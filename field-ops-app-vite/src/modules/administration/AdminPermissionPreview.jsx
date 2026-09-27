@@ -19,11 +19,15 @@ import { Button } from "../../shared/ui/primitives/index.js";
  * Security Role grants.
  */
 
+/**
+ * The human-facing label for a Principal. The tenant Principal list carries only displayName, the
+ * login provider's subject, the provider and a status -- no Employee name and no email -- so the one
+ * human-readable identity is displayName. Without it the label is the existing "Unnamed Principal"
+ * convention (EmployeeProfileSections): never the internal id, and never the login subject.
+ */
 function principalLabel(principal) {
   const name = typeof principal?.displayName === "string" ? principal.displayName.trim() : "";
-  if (name) return name;
-  const id = typeof principal?.id === "string" ? principal.id : "";
-  return id ? `Principal ${id.slice(0, 8)}` : "Principal";
+  return name || "Unnamed Principal";
 }
 
 function statusCopy(state, loadingText) {

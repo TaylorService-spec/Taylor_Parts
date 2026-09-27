@@ -256,12 +256,12 @@ export default function AdminRolesPermissions({ activationOverrides = CAPABILITY
               cannot be granted to anyone.
             </p>
             <p className="fo-muted">
-              Expand an object to see its fields. A field INHERITS its object&rsquo;s permission
-              unless the role states otherwise — and no role states otherwise today, because
-              field-level policy lives in the EOS policy store and that store is not yet stood up.
-              Every field row below is therefore genuinely inherited rather than a placeholder. The
-              grid is read-only for the same reason the rest of this page is: role definitions live
-              in code, and editing them is a policy-store operation.
+              Expand an object to see its fields; each field row shows its object&rsquo;s
+              permission. This grid is a read-only reference drawn from the platform&rsquo;s
+              built-in access contracts, for comparison. It is not where permissions are configured
+              and it does not show changes made in Object Security. To change what a Security Role
+              may do, use Objects (Object Security). To give a person a Security Role, open their
+              Employee record under Users.
             </p>
             <RolePolicyGrid role={role} label={selected.label} />
           </section>

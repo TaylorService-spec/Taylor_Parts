@@ -28,7 +28,8 @@ const MVP_SURFACES = [
     key: "rolesPermissions",
     path: "roles-permissions",
     title: "Roles & Permissions",
-    description: "Review a user's assigned Role and assign an already-approved Role.",
+    description:
+      "Review each Security Role: its holders, the Object actions it holds and its decision history. Configure what a Role may do in Objects; assign Security Roles to people on their Employee record under Users.",
   },
   {
     key: "permissionPreview",
@@ -40,7 +41,8 @@ const MVP_SURFACES = [
     key: "auditLogs",
     path: "audit-logs",
     title: "Audit Logs",
-    description: "Read-only, immutable history of every access grant, revoke, assignment, and status change.",
+    description:
+      "Where to find the governed audit of access changes: each Employee's Access Audit History and each Security Role's Decision history.",
   },
 ];
 
