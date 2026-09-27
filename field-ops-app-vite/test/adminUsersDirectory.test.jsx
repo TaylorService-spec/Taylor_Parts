@@ -17,9 +17,6 @@ vi.mock("react-router-dom", async (orig) => {
 });
 // The Principal panel is the User Access authority beside this directory; it has its own suite and its own
 // service. Stubbed to a marker so this file proves the SEPARATION rather than re-testing the panel.
-vi.mock("../src/modules/administration/PolicyStorePanels.jsx", () => ({
-  UsersPolicyPanel: () => <div data-testid="users-policy-panel">Principal Roles</div>,
-}));
 
 import AdminUsers from "../src/modules/administration/AdminUsers.jsx";
 import { employeeDirectoryPresentation } from "../src/domain/employeeOperatingProfile.js";
@@ -211,12 +208,17 @@ describe("failures are stated, and nothing else is read", () => {
 // ════════════════════ EMPLOYEE != USER ACCESS ════════════════════
 
 describe("Employee and Principal stay separate on this page", () => {
-  it("the Principal panel is its own presentation beside the Employee directory", async () => {
+  it("the Users page is the Employee directory only; Security Roles are changed on the Employee record (Pass 10 F2/F3)", async () => {
     renderDirectory();
     await screen.findByText("John Smith");
-    const panel = screen.getByTestId("users-policy-panel");
-    expect(panel.closest("table")).toBeNull();
     expect(screen.getByText(/Whether a person can sign in is User Access, not an\s+Employee fact/)).toBeTruthy();
+    expect(screen.getByText(/open their Employee record and use\s+its Security Roles section/)).toBeTruthy();
+    // No second, reason-less assignment surface: the legacy policy-store panel and its controls are gone.
+    expect(screen.queryByText(/Stored role assignments/)).toBeNull();
+    expect(screen.queryByText(/in the panel below/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add role" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Add a role" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Select a principal" })).toBeNull();
   });
 });
 

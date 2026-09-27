@@ -10,7 +10,7 @@
 //   the operation list matches the server's, so a typo fails here rather than as a 404
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 
 // The client imports `../firebase/firebase.js` for the signed-in user's token, and that module
 // initializes Firebase at import time. So this suite tests the module's CONTRACT through the source
@@ -179,26 +179,11 @@ test("a refusal is RETURNED, never thrown", () => {
 
 test("NO PANEL UPDATES OPTIMISTICALLY — every mutation is followed by a re-read", () => {
   const hook = readFileSync("src/modules/administration/usePolicyStore.js", "utf8");
-  const panels = readFileSync("src/modules/administration/PolicyStorePanels.jsx", "utf8");
 
   // The hook's mutate reloads on success. That is the whole mechanism, and it is worth pinning:
   // without it a screen would show a change the server may have refused.
   assert.ok(/if \(result\.ok\) reload\(\);/.test(hook), "mutate reloads on success");
-
-  // And no panel keeps its own copy of server state to render instead.
-  assert.equal(
-    /setState\(\s*\{[^}]*data:/.test(panels), false,
-    "a panel that stored server data locally could render it after a refusal",
-  );
-  for (const call of panels.match(/\.mutate\(/g) ?? []) assert.ok(call, "mutations go through the hook");
-  assert.equal(panels.includes("callPolicyApi("), false, "no panel calls the API directly, bypassing the re-read");
-});
-
-test("a panel says NOT CONFIGURED rather than showing an empty table", () => {
-  const panels = readFileSync("src/modules/administration/PolicyStorePanels.jsx", "utf8");
-  assert.ok(panels.includes('state.status === "unconfigured"'), "the state is rendered");
-  assert.ok(
-    panels.includes("No EOS policy service is configured"),
-    "and it says so -- an empty table would be a lie about the tenant rather than about the connection",
-  );
+  // The legacy Users policy-store panel (PolicyStorePanels.jsx) was removed in Pass 10 F2: the Employee record is
+  // the one interactive Security Role assignment surface.
+  assert.equal(existsSync("src/modules/administration/PolicyStorePanels.jsx"), false);
 });

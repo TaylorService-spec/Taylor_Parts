@@ -14,7 +14,7 @@
 // database — a component test cannot tell you an override row was deleted.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import {
   effectiveFieldAnswer,
   fieldVerbState,
@@ -224,10 +224,9 @@ test("NO DUPLICATE UX: when configured, the measured grid is a collapsed REFEREN
 test("the superseded panels are DELETED, not left beside the new surfaces", () => {
   // A second implementation of the same two screens is how the two start disagreeing about what a
   // cell means.
-  const panels = readFileSync("src/modules/administration/PolicyStorePanels.jsx", "utf8");
-  assert.equal(panels.includes("export function ObjectsPolicyPanel"), false);
-  assert.equal(panels.includes("export function RolesPolicyPanel"), false);
-  assert.match(panels, /OBJECTS AND ROLES LIVE IN AdminPolicySurfaces/);
+  // Pass 10 F2: the last one (the Users "Stored role assignments" panel, a second, reason-less Security Role
+  // assignment surface) is gone too -- the whole file, not only its Objects and Roles panels.
+  assert.equal(existsSync("src/modules/administration/PolicyStorePanels.jsx"), false);
 });
 
 test("NOT CONFIGURED shows no control that implies policy can be saved", () => {
