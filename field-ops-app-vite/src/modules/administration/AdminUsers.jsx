@@ -8,7 +8,6 @@ import { employeeDirectoryPresentation } from "../../domain/employeeOperatingPro
 // THE STORED ASSIGNMENTS, beside the employee directory. A PRINCIPAL is the identity EOS
 // authorizes and it is not the same record as an employee -- the panel says so rather than
 // letting the proximity of the two tables imply they are one thing.
-import { UsersPolicyPanel } from "./PolicyStorePanels.jsx";
 // EMP-RT-08: Employees with no Job Role, counted by the governed read so an administrator can assign them explicitly.
 import JobRoleRemediation from "./JobRoleRemediation.jsx";
 
@@ -27,7 +26,8 @@ import JobRoleRemediation from "./JobRoleRemediation.jsx";
 //
 // THE CONSOLIDATION IS PRESENTATIONAL. Underneath, nothing collapsed: the Employee is the workforce
 // business record, the PRINCIPAL is the identity EOS authorizes, and the two are linked rather than
-// merged. UsersPolicyPanel below presents the Principal side and is deliberately a separate panel.
+// merged. A person's Security Roles are administered on their Employee record (Security Roles section),
+// the one interactive assignment surface (Pass 10 F2); Permission Preview shows every Principal's access.
 //
 // ════════════════════ THE DIRECTORY IS THE GOVERNED PostgreSQL READ ════════════════════
 //
@@ -120,8 +120,8 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
       <p className="fo-muted">
         Employee business records from the governed Employee authority: name, Employee ID, employment
         status, job title and operating company. Whether a person can sign in is User Access, not an
-        Employee fact — a person&apos;s linkage is on their record, and the Roles a Principal holds are
-        in the panel below.
+        Employee fact. To see or change a person&apos;s Security Roles, open their Employee record and use
+        its Security Roles section.
       </p>
       {/* EMPLOYEES WITHOUT A JOB ROLE (EMP-RT-08). Its own governed read and count, never a directory column and never
           inferred from a title or a Security Role. Silent when the count is 0; a refused or failed read is stated. */}
@@ -150,7 +150,6 @@ export default function AdminUsers({ workforce = workforceApiClient }) {
         />
       </div>
 
-      <UsersPolicyPanel />
     </WorkspaceIdentity>
   );
 }

@@ -417,7 +417,7 @@ describe("the read model is consumed only through the control-plane view, and no
     for (const screenFile of [
       "AdminObjects.jsx", "AdminRolesPermissions.jsx", "AdminPolicySurfaces.jsx", "UserDetail.jsx",
       "UserAccessActions.jsx", "AdministrationOverview.jsx", "ObjectAdministrationPanel.jsx",
-      "RolePolicyGrid.jsx", "PolicyStorePanels.jsx",
+      "RolePolicyGrid.jsx",
     ]) {
       const code = readFileSync(`src/modules/administration/${screenFile}`, "utf8");
       for (const banned of ["objectSecurityReadModel", "useObjectSecurity", "ObjectSecurityActionList"]) {

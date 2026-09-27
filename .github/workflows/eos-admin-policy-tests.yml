@@ -388,7 +388,6 @@ on:
       # LANE DX: Employee > Direct Exceptions (grant / revoke / condition a direct Principal exception).
       - "field-ops-app-vite/src/modules/administration/EmployeeDirectExceptions.jsx"
       - "field-ops-app-vite/test/employeeDirectExceptions.test.jsx"
-      - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
       - "field-ops-app-vite/test/administrationPortalNav.test.mjs"

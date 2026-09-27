@@ -118,6 +118,55 @@ describe("D6 Administration Overview: the Users card uses the deployed Employee 
   });
 });
 
+describe("F1 no Administration surface falls back to the login subject as a Principal label", () => {
+  it("no administration module labels a Principal with its externalSubject", async () => {
+    const { readdirSync } = await import("node:fs");
+    for (const f of readdirSync("src/modules/administration").filter((n) => /\.(jsx?|mjs)$/.test(n))) {
+      const code = read(`src/modules/administration/${f}`);
+      expect(code, f).not.toMatch(/displayName\s*(\|\||\?\?)\s*[\w.?]*externalSubject/);
+    }
+  });
+});
+
+describe("F2 the Users page is not a second interactive Security Role assignment surface", () => {
+  it("the legacy policy-store panel is removed and not imported", () => {
+    expect(existsSync("src/modules/administration/PolicyStorePanels.jsx")).toBe(false);
+    const users = read("src/modules/administration/AdminUsers.jsx");
+    expect(users).not.toMatch(/PolicyStorePanels|UsersPolicyPanel/);
+    expect(users).not.toMatch(/Add role|Stored role assignments/);
+  });
+  it("the canonical assignment surface -- Employee record > Security Roles -- is still there, with its required reason", () => {
+    expect(read("src/modules/administration/UserDetail.jsx")).toMatch(/title="Security Roles"[\s\S]*<EmployeeSecurityRoles/);
+    const roles = read("src/modules/administration/EmployeeSecurityRoles.jsx");
+    expect(roles).toMatch(/Assign Security Role/);
+    // The canonical surface requires a stated reason before it sends (ReasonField + statedReason gate).
+    expect(roles).toMatch(/<ReasonField/);
+    expect(roles).toMatch(/if \(!roleId \|\| !reasonText/);
+  });
+});
+
+describe("F3 Users guidance points to the Employee record's Security Roles", () => {
+  const users = read("src/modules/administration/AdminUsers.jsx");
+  it("no longer says the Roles are in the panel below", () => {
+    expect(users).not.toMatch(/in the panel below/);
+  });
+  it("names the Employee record and its Security Roles section", () => {
+    expect(users).toMatch(/open their Employee record and use\s+its Security Roles section/);
+  });
+});
+
+describe("Object Security, protected Owner and R1 are unchanged by F1-F3", () => {
+  it("Object Security keeps its grant/revoke/condition controls", () => {
+    const obj = read("src/modules/administration/ObjectActionSecurity.jsx");
+    expect(obj).toMatch(/Grant to another Security Role/);
+  });
+  it("the Administration client still sends assignRole / revokeRole with the reason, unchanged", () => {
+    const client = read("src/services/adminControlPlaneClient.js");
+    expect(client).toMatch(/assignRole: \(\{ principalId, roleId, reason, scopeType, scopeValue \}\) => send\("assignRole", \{\s*principalId, roleId, reason,/);
+    expect(client).toMatch(/revokeRole: \(\{ assignmentId, reason \}\) => send\("revokeRole", \{ assignmentId, reason \}\)/);
+  });
+});
+
 describe("no Administration authority behaviour changed", () => {
   it("the Administration client seams are untouched by this repair", () => {
     for (const f of ["src/services/adminPolicyApiClient.js", "src/services/adminControlPlaneClient.js"]) {
