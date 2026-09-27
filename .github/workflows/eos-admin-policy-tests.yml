@@ -488,6 +488,9 @@ on:
       - "functions/src/adminPolicy/applyWorkflowSeed.ts"
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
+      # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
+      # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
+      - "functions/test/workflowDomainReadinessPostgres.test.mjs"
       - "functions/test/fixtures/workflowControlPlaneFixtures.mjs"
       # LANE FR (2026-09-26): the Functional Role authority -- catalog, assignments, FUNCTIONAL_ROLE workflow
       # bindings (narrowing only) and Employee facts in effective access. Suites: test:adminPolicy /
@@ -866,6 +869,9 @@ on:
       - "functions/src/adminPolicy/applyWorkflowSeed.ts"
       - "functions/test/workflowControlPlane.test.mjs"
       - "functions/test/workflowControlPlanePostgres.test.mjs"
+      # LANE DR (2026-09-26): workflow DOMAIN READINESS -- a synthetic domain consumes the control plane end to end
+      # (pin, binding, capability, condition, scope, versioning, MIGRATE, negatives). Suite: test:adminPolicyPostgres.
+      - "functions/test/workflowDomainReadinessPostgres.test.mjs"
       - "functions/test/fixtures/workflowControlPlaneFixtures.mjs"
       # LANE FR (2026-09-26): the Functional Role authority -- catalog, assignments, FUNCTIONAL_ROLE workflow
       # bindings (narrowing only) and Employee facts in effective access. Suites: test:adminPolicy /
