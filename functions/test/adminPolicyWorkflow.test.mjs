@@ -75,6 +75,8 @@ async function seedRoles(repo, keys, tenantId = TENANT) {
   const catalog = repo.registerCapabilities([
     { key: "admin.securityPolicy.write", description: "", objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", actionKind: "ADMIN_ACTION", displayLabel: "Edit Security Policy" },
     { key: "admin.roleAssignment.write", description: "", objectKey: "rolesPermissions", actionKey: "assignRole", actionKind: "ADMIN_ACTION", displayLabel: "Assign Role" },
+    // Owner ruling R1 (migration 1763078400000): the bounded Administrator staffing capability.
+    { key: "admin.administratorRole.assign", description: "", objectKey: "rolesPermissions", actionKey: "assignAdministratorRole", actionKind: "ADMIN_ACTION", displayLabel: "Staff Administrator Role" },
   ]);
   const capabilityId = Object.fromEntries(catalog.map((c) => [c.key, c.id]));
   await repo.transact({ tenantId, uid: SYS }, async (tx) => {

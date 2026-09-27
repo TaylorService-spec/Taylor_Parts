@@ -192,7 +192,9 @@ test("G: this change mints no capability, writes no grant and adds no migration"
   // 54 -> 55: the tenant sales channel activation (1762905600000, lane GA) -- one eos_policy table, no capability,
   // no grant. It registers no READ key.
   // 55 -> 56: the direct-exception cell lock (1762992000000, lane DX) -- one trigger, no capability, no grant.
-  assert.equal(migrations.length, 56, "a migration was added or removed by the read enforcement");
+  // 56 -> 57: the Administrator staffing capability (1763078400000, Owner ruling R1) -- ONE WRITE capability
+  // (admin.administratorRole.assign) granted to owner. It registers no READ key.
+  assert.equal(migrations.length, 57, "a migration was added or removed by the read enforcement");
   assert.equal(migrations.filter((f) => f.startsWith("1762300800000")).length, 1,
     "the authority activation vehicle must be present exactly once");
   assert.equal(migrations.filter((f) => f.startsWith("1762646400000")).length, 1,

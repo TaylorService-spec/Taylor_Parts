@@ -133,6 +133,33 @@ export function hasSecurityAdministrationCapability(
   return capabilities instanceof Set && capabilities.has(SECURITY_ADMINISTRATION_CAPABILITY[action]);
 }
 
+// ════════════════════ ADMINISTRATOR STAFFING (Owner ruling R1, 2026-09-26) ════════════════════
+//
+// Pass 8 D5(b) says a Role carrying admin.securityPolicy.write may be assigned only by a holder of
+// admin.securityPolicy.write. Owner holds admin.roleAssignment.write only, so Owner could no longer staff
+// or recover the Administrator. Owner ruling R1 restores exactly that, through ONE narrowly bounded
+// capability, and nothing else:
+//
+//   admin.administratorRole.assign (rolesPermissions / assignAdministratorRole, migration 1763078400000)
+//     lets its holder assignRole / revokeRole THE DESIGNATED Administrator Security Role -- and no other
+//     Role -- for ANOTHER Principal, globally, through the normal Administration path.
+//
+// It confers NOTHING else: not admin.securityPolicy.write, not the ability to change what the
+// Administrator Role may do, not a direct grant, not a scoped Administrator assignment. It is not a
+// governing Administration capability (anti-lockout never counts it) and, being admin.*, it can be
+// neither conditioned nor held at a scope. Enforced in policyCommands.authorizeSecurityPolicyStaffing.
+
+/** The R1 staffing capability. Its holder may staff the designated Administrator Role for another Principal. */
+export const ADMINISTRATOR_STAFFING_CAPABILITY = "admin.administratorRole.assign";
+
+/**
+ * THE DESIGNATED Administrator Security Role: the protected Role whose key is ADMIN_ROLE_KEY. Identified by its
+ * immutable key AND the stored protected flag -- never by display name. A tenant-created Role can claim
+ * neither (createRole refuses a protected key and always writes protected=false).
+ */
+export const isDesignatedAdministratorRole = (role: { readonly key: string; readonly protected?: boolean | null }): boolean =>
+  role.protected === true && role.key === ADMIN_ROLE_KEY;
+
 /**
  * The governing grants a tenant's FIRST administrator is bootstrapped with -- the capability form of
  * the recovery property: definition = admin, assignment = admin + owner. Written by
@@ -146,6 +173,8 @@ export const ADMINISTRATION_BOOTSTRAP_GRANTS: readonly { readonly roleKey: strin
     { roleKey: ADMIN_ROLE_KEY, capabilityKey: "admin.securityPolicy.write" },
     { roleKey: ADMIN_ROLE_KEY, capabilityKey: "admin.roleAssignment.write" },
     { roleKey: "owner", capabilityKey: "admin.roleAssignment.write" },
+    // Owner ruling R1 (2026-09-26): Owner staffs and recovers the designated Administrator out of the box.
+    { roleKey: "owner", capabilityKey: ADMINISTRATOR_STAFFING_CAPABILITY },
   ].map((g) => Object.freeze(g)));
 
 /** Refusal of a capability-governed administration mutation. Names the missing capability. */

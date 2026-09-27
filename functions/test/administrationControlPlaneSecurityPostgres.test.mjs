@@ -190,12 +190,19 @@ test("the Administration control plane holds under attack and under concurrency"
   });
 
   // ════════════════════ D5 ════════════════════
-  await t.test("D5: Owner cannot self-assign admin, cannot appoint an Administrator, cannot reach ruling-A keys", async () => {
+  await t.test("D5: Owner cannot self-assign admin, cannot appoint any OTHER security administrator Role, cannot reach ruling-A keys", async () => {
     const adminRole = await roleId(T.a, "admin");
     const self = await call("owner-a", "assignRole", { principalId: ownerA, roleId: adminRole, reason: "self" });
     assert.deepEqual([self.ok, self.code], [false, "FORBIDDEN"]);
     assert.match(self.message, /SELF_ADMINISTRATION/);
-    const other = await call("owner-a", "assignRole", { principalId: dispA, roleId: adminRole, reason: "appoint" });
+    // Owner ruling R1 (2026-09-26): Owner MAY staff the DESIGNATED Administrator Role for another principal through
+    // admin.administratorRole.assign (administratorStaffingPostgres proves it in full). D5(b) still refuses every
+    // OTHER Role carrying admin.securityPolicy.write.
+    const made = await call("admin-a1", "createRole", { key: "d5SecurityClerk", name: "D5 security clerk", reason: "fixture" });
+    assert.equal(made.ok, true, JSON.stringify(made));
+    const g = await call("admin-a1", "grantObjectActionToRole", { objectKey: "rolesPermissions", actionKey: "editSecurityPolicy", roleKey: "d5SecurityClerk", reason: "fixture" });
+    assert.equal(g.ok, true, JSON.stringify(g));
+    const other = await call("owner-a", "assignRole", { principalId: dispA, roleId: await roleId(T.a, "d5SecurityClerk"), reason: "appoint" });
     assert.deepEqual([other.ok, other.code], [false, "FORBIDDEN"]);
     assert.match(other.message, /PRIVILEGE_ESCALATION/);
     const ctx = await capabilityAuthority.capabilitiesForRoleKeys(pool, T.a,

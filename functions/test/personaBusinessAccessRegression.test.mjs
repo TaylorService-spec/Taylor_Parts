@@ -262,7 +262,9 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
   // 55: + the tenant sales channel activation (1762905600000): one EMPTY table -- no capability, no grant, so no
   // persona's set moves.
   // 56: + the direct-exception cell lock (1762992000000): one trigger -- no capability, no grant, so no persona moves.
-  assert.equal(files.length, 56, "the migration chain moved; re-measure before trusting anything below");
+  // 57: + the Administrator staffing capability (1763078400000, Owner ruling R1): one capability granted to owner --
+  // owner's set grows by exactly admin.administratorRole.assign; no other persona moves.
+  assert.equal(files.length, 57, "the migration chain moved; re-measure before trusting anything below");
   assert.equal(beforeSeed, 41);
   migrate(dbUrl, beforeSeed);
   await pool.query("INSERT INTO eos_policy.tenants (id, key, name) VALUES ($1, $2, $2)", [TENANT, TENANT_KEY]);
@@ -343,24 +345,28 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // The baseline records both numbers for the same reason, and they are asserted together here so
     // neither can move without the other being re-read.
     // 413 -> 414: the Administration control plane (1762646400000) grants admin.securityPolicy.write.
-    assert.equal(rebuilt.length, 414, "the repository rebuild total");
-    assert.equal(baselineDeployment.rebuildTotal, 414);
+    // 414 -> 415: the Administrator staffing capability (1763078400000, Owner ruling R1) grants owner
+    // admin.administratorRole.assign.
+    assert.equal(rebuilt.length, 415, "the repository rebuild total");
+    assert.equal(baselineDeployment.rebuildTotal, 415);
     assert.equal(baselineDeployment.measuredInNonprodTotal, 387, "what nonprod held when last measured");
-    assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000"]);
-    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 27);
+    assert.deepEqual(baselineDeployment.notYetAppliedToNonprod, ["migration:1762300800000", "migration:1762646400000",
+      "migration:1763078400000"]);
+    assert.equal(rebuilt.length - baselineDeployment.measuredInNonprodTotal, 28);
     const stampedBy = async (stamp) => (await pool.query(
       `SELECT count(*)::int n FROM eos_policy.role_capabilities
         WHERE tenant_id = $1 AND granted_by = $2`, [TENANT, stamp])).rows[0].n;
     assert.equal(await stampedBy("migration:1762300800000"), 26);
     assert.equal(await stampedBy("migration:1762646400000"), 1);
-    // The whole 414-vs-387 difference carries the two pending migrations' provenance.
-    assert.equal(26 + 1, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
+    assert.equal(await stampedBy("migration:1763078400000"), 1);
+    // The whole 415-vs-387 difference carries the three pending migrations' provenance.
+    assert.equal(26 + 1 + 1, rebuilt.length - baselineDeployment.measuredInNonprodTotal);
 
     const one = async (sql, params = []) => (await pool.query(sql, params)).rows[0].n;
     // `capabilities` is the GLOBAL catalog and carries no tenant_id; roles and the direct grants do.
     // 79, not the 76 nonprod holds: the same migration registers receivingOrder.record.read,
     // workOrder.record.read and reportDefinition.read (Reporting Slice 1).
-    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 81); // + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000)
+    assert.equal(await one("SELECT count(*)::int n FROM eos_policy.capabilities"), 82); // + admin.securityPolicy.write (1762646400000), + admin.employeeFunctionalRole.write (1762819200000), + admin.administratorRole.assign (1763078400000)
     assert.equal(await one("SELECT count(*)::int n FROM eos_policy.roles WHERE tenant_id=$1", [TENANT]), 48);
     // ZERO direct Principal grants and ZERO conditions: every answer below is Role-derived, so
     // "yields the expected surfaces" is a statement about the ROLE COMPOSITION and nothing else.
@@ -476,8 +482,13 @@ test("persona business access, resolved by the product", { skip: SKIP, concurren
     // the Role-name gate on security-policy mutations. Admin-only by PARITY with that gate, not by
     // Owner ruling A, so it is listed separately from BN's exclusion contract below.
     assert.equal(admin.capabilities.size, 70);
-    assert.equal(owner.capabilities.size, 50);
-    const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k)).sort();
+    // 50 -> 51: admin.administratorRole.assign (migration 1763078400000, Owner ruling R1) -- the bounded
+    // Administrator STAFFING capability. Admin does not need it (it holds admin.securityPolicy.write, which is
+    // the stronger authority for the same act), so it is the ONE ruled owner-only key, named and not a drift.
+    assert.equal(owner.capabilities.size, 51);
+    const RULED_OWNER_ONLY = ["admin.administratorRole.assign"];
+    const ownerOnly = [...owner.capabilities].filter((k) => !admin.capabilities.has(k) && !RULED_OWNER_ONLY.includes(k)).sort();
+    for (const k of RULED_OWNER_ONLY) assert.equal(owner.capabilities.has(k) && !admin.capabilities.has(k), true, k);
     const PARITY_ADMIN_ONLY = ["admin.securityPolicy.write"];
     for (const k of PARITY_ADMIN_ONLY) assert.equal(admin.capabilities.has(k) && !owner.capabilities.has(k), true, k);
     const adminOnly = [...admin.capabilities].filter((k) => !owner.capabilities.has(k) && !PARITY_ADMIN_ONLY.includes(k)).sort();

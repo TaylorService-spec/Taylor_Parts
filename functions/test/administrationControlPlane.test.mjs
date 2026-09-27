@@ -179,6 +179,8 @@ test("the gate is the CAPABILITY, never the Role name, and it fails closed", asy
   // the conflict is reported, not resolved in code.
   assert.deepEqual(ADMINISTRATION_BOOTSTRAP_GRANTS.map((g) => `${g.roleKey}/${g.capabilityKey}`), [
     "admin/admin.securityPolicy.write", "admin/admin.roleAssignment.write", "owner/admin.roleAssignment.write",
+    // Owner ruling R1 (2026-09-26): Owner staffs the designated Administrator Role (administratorStaffingPostgres).
+    "owner/admin.administratorRole.assign",
   ]);
 
   const { repo, tenantId, admin, nobody } = await world();

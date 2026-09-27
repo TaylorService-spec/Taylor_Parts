@@ -543,7 +543,7 @@ test("D-5 SURVIVES ACTIVATION: reorder data is CRED, reorder transitions are wor
 
 // ============================ USERS ============================
 
-test("USERS: Admin appoints Administrators; Owner and (once granted) GM staff other Roles, never an Administrator", { skip: SKIP }, async () => {
+test("USERS: Admin appoints Administrators; Owner staffs the Administrator (R1); a staffing GM staffs other Roles, never an Administrator", { skip: SKIP }, async () => {
   const { repo: r, tenant } = await standUpTaylor();
   const roles = await r.listRoles(tenant.id);
   const adminRole = roles.find((x) => x.key === "admin");
@@ -569,14 +569,20 @@ test("USERS: Admin appoints Administrators; Owner and (once granted) GM staff ot
   // Pass 8 D5: nobody assigns a Role to themselves, and appointing an Administrator (a Role carrying
   // admin.securityPolicy.write) needs admin.securityPolicy.write -- which Owner and a staffing GM do not
   // hold. Owner and GM still staff every other Role; the Admin appoints the Administrator.
+  // Owner ruling R1 (2026-09-26): the ONE exception -- Owner holds admin.administratorRole.assign and may staff the
+  // DESIGNATED Administrator Role for another principal (administratorStaffingPostgres). A GM granted only
+  // admin.roleAssignment.write is still refused.
   const plain = await r.getPrincipalBySubject("firebase", PLAIN_SUBJECT);
   const gmPrincipal = await r.getPrincipalBySubject("firebase", GM_SUBJECT);
-  for (const subject of [OWNER_SUBJECT, GM_SUBJECT]) {
-    const appoint = await executeAdminOperation({ repo: r }, asSubject(subject, "assignRole", {
-      principalId: plain.id, roleId: adminRole.id, reason: `appointed by ${subject}`,
-    }));
-    assert.deepEqual([appoint.ok, appoint.code], [false, "FORBIDDEN"], `${subject} appointed an Administrator`);
-  }
+  const byGm = await executeAdminOperation({ repo: r }, asSubject(GM_SUBJECT, "assignRole", {
+    principalId: plain.id, roleId: adminRole.id, reason: `appointed by ${GM_SUBJECT}`,
+  }));
+  assert.deepEqual([byGm.ok, byGm.code], [false, "FORBIDDEN"], "a staffing GM appointed an Administrator");
+  assert.match(byGm.message, /PRIVILEGE_ESCALATION/);
+  const byOwnerAdmin = await executeAdminOperation({ repo: r }, asSubject(OWNER_SUBJECT, "assignRole", {
+    principalId: plain.id, roleId: adminRole.id, reason: "owner staffs the Administrator (R1)",
+  }));
+  assert.equal(byOwnerAdmin.ok, true, byOwnerAdmin.ok ? "" : byOwnerAdmin.message);
   const salesperson = roles.find((x) => x.key === "salesperson");
   const byOwner = await executeAdminOperation({ repo: r }, asSubject(OWNER_SUBJECT, "assignRole", {
     principalId: plain.id, roleId: salesperson.id, reason: "owner staffs",

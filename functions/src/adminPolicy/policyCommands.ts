@@ -17,7 +17,9 @@
 // authenticated principal. No command accepts a tenant in its input, so a caller cannot name one --
 // cross-tenant mutation is not expressible rather than merely refused.
 import {
+  ADMINISTRATOR_STAFFING_CAPABILITY,
   AdministrationDeniedError,
+  isDesignatedAdministratorRole,
   PROTECTED_ROLE_KEYS,
   requireAdministrationAuthority,
 } from "./administrationAuthority";
@@ -765,13 +767,10 @@ export async function assignRole(
   }
   // (b) ASSIGNING SECURITY-POLICY AUTHORITY NEEDS SECURITY-POLICY AUTHORITY. A Role carrying
   // admin.securityPolicy.write may be assigned only by an actor who holds it -- otherwise the
-  // assignment capability mints the definition capability (Pass 8 D5).
-  const roleCapabilities = await capabilityKeysFor(repo, actor.tenantId, [role.key], null);
-  if (roleCapabilities.has(SECURITY_POLICY_WRITE)
-      && !(await actorCapabilities(repo, actor)).has(SECURITY_POLICY_WRITE)) {
-    throw new AdministrationRefusal("PRIVILEGE_ESCALATION",
-      `assigning ${role.key} confers ${SECURITY_POLICY_WRITE}, which the assigning principal does not hold`);
-  }
+  // assignment capability mints the definition capability (Pass 8 D5) -- with ONE exception, Owner
+  // ruling R1: the designated Administrator Role, for another Principal, globally, by a holder of
+  // admin.administratorRole.assign. Decided here and again UNDER THE GOVERNANCE LOCK below.
+  await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign");
   // (c) OWNER GOVERNANCE AT THE PRINCIPAL: an owner holder may not reach an excluded capability by
   // any Role (ruling A).
   // Checked for a scoped assignment too (lane SC): stricter, never wider.
@@ -790,6 +789,9 @@ export async function assignRole(
     // a Role carrying at least one capability evaluable at that scope, and no Administration capability. Every
     // grant takes the same lock, so an Administration grant cannot commit between this check and the insert.
     await refuseUnsupportedAssignmentScope(repo, actor.tenantId, role, scopeType, scopeValue);
+    // D5(b) / R1 re-decided under the lock, against the STORE (a concurrent revoke of the actor's staffing
+    // capability, or a grant of admin.securityPolicy.write to this Role, has committed or waits for us).
+    const staffing = await authorizeSecurityPolicyStaffing(repo, actor, role, principalId, scopeType, "assign", { fresh: true });
     // Re-check the idempotence under the governance lock: a concurrent identical assignment that
     // committed first is returned, never duplicated.
     const now = (await repo.listAssignmentsForPrincipal(actor.tenantId, principalId))
@@ -812,7 +814,7 @@ export async function assignRole(
     await tx.appendAudit({
       ...auditBase(actor, "assignRole", "roleAssignment", assignment.id, input.reason ?? null),
       before: null,
-      after: assignment,
+      after: staffing === "ADMINISTRATOR_STAFFING" ? { ...assignment, ...ADMINISTRATOR_STAFFING_AUDIT } : assignment,
     });
     return assignment;
   });
@@ -1022,6 +1024,66 @@ export async function setTenantSalesChannelStatus(
   });
 }
 
+// ════════════════════ D5(b) AND THE R1 ADMINISTRATOR STAFFING EXCEPTION ════════════════════
+
+/** Which authority admitted a change to a Role carrying admin.securityPolicy.write. */
+type SecurityPolicyStaffingAuthority = "NOT_REQUIRED" | "SECURITY_POLICY_WRITE" | "ADMINISTRATOR_STAFFING";
+
+/** Recorded on the ONE audit event of a change the R1 staffing capability authorized. */
+const ADMINISTRATOR_STAFFING_AUDIT = Object.freeze({
+  authorizedBy: Object.freeze({ capabilityKey: ADMINISTRATOR_STAFFING_CAPABILITY, ownerRuling: "R1 (2026-09-26)" }),
+});
+
+/**
+ * Pass 8 D5(b), both directions, with the Owner ruling R1 exception.
+ *
+ * A Role that carries admin.securityPolicy.write (by any grant, conditioned included -- stricter, never wider) may be
+ * assigned or removed only by an actor holding admin.securityPolicy.write. The ONE exception (R1): the DESIGNATED
+ * Administrator Role (protected, key ADMIN_ROLE_KEY), GLOBAL, for a Principal OTHER than the actor, by an actor that
+ * holds admin.administratorRole.assign -- global, unconditioned, unexpired (the flat set). Nothing else widens: a
+ * custom Role carrying admin.securityPolicy.write, a scoped Administrator, a self-assignment or self-removal, a direct
+ * grant and every definition edit still require admin.securityPolicy.write.
+ *
+ * `fresh`: resolve the actor's capabilities from the STORE (qualifying global Roles + unexpired direct grants), not
+ * from the request-resolved set -- used under the governance lock so a concurrent revoke of the staffing capability
+ * is honoured. The admin.securityPolicy.write path keeps the request-resolved set (unchanged behaviour); the R1 path
+ * must hold in BOTH.
+ */
+async function authorizeSecurityPolicyStaffing(
+  repo: PolicyRepository,
+  actor: AdminActor,
+  role: Pick<PolicyRoleRecord, "id" | "key" | "protected">,
+  targetPrincipalId: string,
+  scopeType: string,
+  verb: "assign" | "revoke",
+  options: { readonly fresh?: boolean } = {},
+): Promise<SecurityPolicyStaffingAuthority> {
+  const carried = await capabilityKeysFor(repo, actor.tenantId, [role.key], null, { includeConditioned: true });
+  if (!carried.has(SECURITY_POLICY_WRITE)) return "NOT_REQUIRED";
+  const held = await actorCapabilities(repo, actor);
+  if (held.has(SECURITY_POLICY_WRITE)) return "SECURITY_POLICY_WRITE";
+  const act = verb === "assign" ? "assigning" : "removing";
+  const refuse = (): never => {
+    throw new AdministrationRefusal("PRIVILEGE_ESCALATION",
+      `${act} ${role.key} concerns ${SECURITY_POLICY_WRITE}, which the acting principal does not hold`
+      + (isDesignatedAdministratorRole(role)
+        ? ` (${ADMINISTRATOR_STAFFING_CAPABILITY} admits only the designated Administrator Role, globally, for another principal)`
+        : ""));
+  };
+  if (!isDesignatedAdministratorRole(role) || !held.has(ADMINISTRATOR_STAFFING_CAPABILITY)) refuse();
+  if (targetPrincipalId === actor.uid) {
+    throw new AdministrationRefusal("SELF_ADMINISTRATION",
+      `a principal may not ${verb === "assign" ? "assign the Administrator Role to" : "remove the Administrator Role from"} itself`);
+  }
+  if (scopeType !== "global") refuse();
+  if (options.fresh === true) {
+    const stored = await capabilityKeysFor(repo, actor.tenantId,
+      await qualifyingRoleKeys(repo, actor.tenantId, actor.uid), actor.uid);
+    if (!stored.has(ADMINISTRATOR_STAFFING_CAPABILITY)) refuse();
+  }
+  return "ADMINISTRATOR_STAFFING";
+}
+
 export interface RevokeRoleInput {
   readonly assignmentId: string;
   readonly reason?: string | null;
@@ -1054,8 +1116,17 @@ export async function revokeRole(
     await tx.beginAdministrationCommand();
     const current = await tx.readAssignment(assignmentId);
     if (!current) throw new PolicyValidationError("assignment not found");
+    let staffing: SecurityPolicyStaffingAuthority = "NOT_REQUIRED";
     if (current.status === "active") {
       const roles = await repo.listRoles(actor.tenantId);
+      // D5(b) for REMOVAL (Owner ruling R1): removing a Role that carries admin.securityPolicy.write needs that
+      // capability, or -- for the designated Administrator Role only, from another Principal -- the R1 staffing
+      // capability. Decided under the governance lock, against the store.
+      const assignedRole = roles.find((r) => r.id === current.roleId);
+      if (assignedRole) {
+        staffing = await authorizeSecurityPolicyStaffing(repo, actor, assignedRole, current.principalId,
+          current.scopeType ?? "global", "revoke", { fresh: true });
+      }
       if (roles.some((r) => r.protected && r.id === current.roleId)
           && (await tx.protectedRoleAssignmentCount(assignmentId)) === 0) {
         throw new PolicyValidationError(
@@ -1069,7 +1140,7 @@ export async function revokeRole(
     await tx.appendAudit({
       ...auditBase(actor, "revokeRole", "roleAssignment", assignmentId, input.reason ?? null),
       before: current,
-      after: updated,
+      after: staffing === "ADMINISTRATOR_STAFFING" ? { ...updated, ...ADMINISTRATOR_STAFFING_AUDIT } : updated,
     });
     return updated;
   });

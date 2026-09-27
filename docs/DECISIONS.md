@@ -6428,3 +6428,46 @@ predates #170. It is preserved and reconciled against current main on a new bran
    write, no Transfer authority, no bin management, no Cycle Count and no adjustment authority.
 6. **Production** remains unauthorized for activation, grants, deployment, Rules, Functions, Hosting,
    inventory conversion and Cycle Count migration.
+
+## #180 — OWNER RULINGS: Administration R1–R4 (2026-09-26)
+
+**Context.** Final Owner rulings on four open Administration questions raised by the control-plane lanes
+(`docs/architecture/administration-control-plane-2026-09-26.md` §11 "Owner question from D5(b)", §13 "terminology
+ruling R3 is pending", and the workflow control plane). This records rulings; it rewrites no earlier decision.
+
+1. **R1 — Owner staffs and recovers the designated Administrator through ONE bounded capability. APPROVED.**
+   Pass 8 D5(b) requires a holder of `admin.securityPolicy.write` to assign a Role that carries it, so Owner
+   (`admin.roleAssignment.write` only) could no longer appoint or recover an Administrator. Implemented as
+   `admin.administratorRole.assign` (`rolesPermissions / assignAdministratorRole`, ADMIN_ACTION), registered by
+   migration `1763078400000_administrator-staffing-capability.sql` and granted to `owner` there and in
+   `ADMINISTRATION_BOOTSTRAP_GRANTS` (baseline 414 → 415, Owner ruling E). Semantics
+   (`policyCommands.authorizeSecurityPolicyStaffing`, decided before and again under the governance lock):
+   - applies to `assignRole` and `revokeRole` of THE DESIGNATED Administrator Security Role only — the protected
+     Role keyed `admin`, never matched by display name — GLOBAL only, for a Principal OTHER than the actor;
+   - the actor must hold the capability global, unconditioned and unexpired (the flat set), re-resolved from the
+     store under the lock;
+   - no self-assignment and no self-removal; no scoped Administrator; every OTHER Role carrying
+     `admin.securityPolicy.write` (including a custom Role *named* "Administrator") and every direct grant still
+     require `admin.securityPolicy.write` — D5(b) now applies to removal as well as assignment;
+   - confers nothing else: no `admin.securityPolicy.write`, no grant/revoke/condition, no Role or Object
+     definition edit; it is not a governing Administration capability (anti-lockout never counts it), and as an
+     `admin.*` key it can be neither conditioned nor held at an assignment scope;
+   - anti-lockout, tenant isolation and Owner ruling A at the Principal still apply; each change writes exactly one
+     audit event whose `after.authorizedBy` names the capability and ruling R1. No Firebase authority.
+   Proof: `functions/test/administratorStaffingPostgres.test.mjs`.
+2. **R2 — Workflow Administrator is a normal assignable Security Role. APPROVED, no code.** There is no
+   self-bootstrap exception. Current machinery already expresses it: a security administrator creates the Role,
+   grants it `workflowDefinition.*` through Administration and assigns it to ANOTHER Principal; granting workflow
+   authority to a Role the administrator holds is refused (`SELF_ADMINISTRATION`). Existing proof:
+   `functions/test/workflowControlPlane.test.mjs` ("bootstrap: the first administrator gets workflow authority
+   through Administration…") and `functions/test/workflowControlPlanePostgres.test.mjs` (bootstrap subtest).
+3. **R3 — Terminology. APPROVED.** Security Role = authority; Functional Role = responsibility (grants nothing).
+   The existing capability-granting task Roles (`inventoryCycleCountCounter`, `inventoryCycleCountReconciler`,
+   `inventoryPutAwayOperator`, `inventoryStockRelocationOperator`, `inventoryCatalogAdministrator`, …) remain
+   Security Roles under their existing keys: no rename, no reclassification. Guard: the R3 test in
+   `administratorStaffingPostgres.test.mjs`.
+4. **R4 — Workflow draft editing. APPROVED, retained.** Editing a draft creates a NEW version; nothing is
+   rewritten in place or destroyed, and provenance and audit are preserved. Existing proof:
+   `functions/test/adminPolicyActivation.test.mjs` ("a NEW draft version, not a rewrite of the old one").
+5. **Not authorized by this entry:** applying migration `1763078400000` anywhere but local test databases, any
+   live grant or assignment, production.

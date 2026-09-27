@@ -323,7 +323,7 @@ The Owner rule is that only PLATFORM_SAFETY and OWNER_GOVERNANCE rules may be im
 - the principal is ENABLED, with an ACTIVE membership;
 - it holds the capability through an ACTIVE, GLOBAL, non-stale assignment to a Role that grants it UNCONDITIONED, or through a direct grant with NO expiry.
 
-**Owner question from D5(b).** Owner holds `admin.roleAssignment.write` but not `admin.securityPolicy.write`, so Owner can NO LONGER appoint an Administrator. Owner can still staff every Role that confers no security-policy authority. This is implemented fail-closed.
+**Owner question from D5(b).** Owner holds `admin.roleAssignment.write` but not `admin.securityPolicy.write`, so Owner can NO LONGER appoint an Administrator. Owner can still staff every Role that confers no security-policy authority. This is implemented fail-closed. **Answered by Owner ruling R1 (section 16):** Owner staffs the designated Administrator Role through `admin.administratorRole.assign`.
 
 ### Capability map after Pass 8
 | Operation | Capability |
@@ -521,3 +521,30 @@ Nothing is assigned or activated live; the migration is applied to local test da
 **Composition with SALES_CHANNEL (§14).** A direct exception is never scoped, and a `salesChannel` scope is refused by name. For a channel-scoped Role combined with a global direct grant, the result is the union of the two:
 - the direct key is decided globally, through the PRINCIPAL grantor;
 - the Role's scoped keys stay scoped: RETAIL only, OUTSIDE_ASSIGNMENT_SCOPE elsewhere, SCOPE_CONTEXT_REQUIRED with no context.
+
+## 16. Owner rulings R1–R4 (2026-09-26, DECISIONS #180)
+
+**R1: Owner staffs the designated Administrator (migration 1763078400000).** This answers the §11 "Owner question from D5(b)".
+- **Capability.** `admin.administratorRole.assign` (`rolesPermissions / assignAdministratorRole`, ADMIN_ACTION). The migration grants it to `owner`, and so does `ADMINISTRATION_BOOTSTRAP_GRANTS`. The baseline moves 414 → 415, and the vocabulary 81 → 82.
+- **Rule** (`policyCommands.authorizeSecurityPolicyStaffing`). It covers `assignRole` and `revokeRole` of a Role that carries `admin.securityPolicy.write` by any grant. Such a change needs `admin.securityPolicy.write`, with one exception. The exception applies only when all of these hold:
+  - the Role is the protected Role keyed `admin`;
+  - the assignment is GLOBAL;
+  - the target is a Principal other than the actor;
+  - the actor holds `admin.administratorRole.assign` unconditioned and unexpired.
+
+  The rule is decided before the transaction and again under the governance lock, where the actor's capability is re-read from the store.
+- **Refusals.**
+  - `PRIVILEGE_ESCALATION`: any other Role carrying `admin.securityPolicy.write`, including a custom Role named "Administrator"; a scoped Administrator; an actor without the capability. D5(b) now applies to removal as well as assignment.
+  - `SELF_ADMINISTRATION`: self-assignment and self-removal.
+  - `SYSTEM_INVARIANT`: ruling A at the Principal still applies.
+  - Anti-lockout: removing the last administrator is still refused.
+- **Confers nothing else.** The capability gives no `admin.securityPolicy.write`, no grant, revoke or condition, and no definition edit. It is not in `ADMINISTRATION_GOVERNING_CAPABILITIES`, and as an `admin.*` key it can be neither conditioned nor held at an assignment scope.
+- **Audit.** Each change writes exactly one audit event, whose `after.authorizedBy` is `{capabilityKey, ownerRuling:"R1 (2026-09-26)"}`.
+- **Client.** No client change. Employee → Security Roles already offers the Administrator Role and shows a server refusal verbatim.
+- **Proof.** `administratorStaffingPostgres.test.mjs`. The §11 D5 regression in `administrationControlPlaneSecurityPostgres` now uses a custom security-administrator Role.
+
+**R2: Workflow Administrator is an ordinary assignable Security Role.** There is no self-bootstrap exception, and no code was added. The proof is the bootstrap tests in `workflowControlPlane.test.mjs` and `workflowControlPlanePostgres.test.mjs`: create the Role, grant it `workflowDefinition.*`, and assign it to another Principal. A grant to a Role the actor holds is refused with `SELF_ADMINISTRATION`.
+
+**R3: terminology.** A Security Role is authority, and a Functional Role is responsibility (§13). The existing task Roles stay Security Roles under their keys. The R3 guard is in `administratorStaffingPostgres.test.mjs`.
+
+**R4: editing a draft creates a new version.** Nothing is rewritten in place, and provenance and audit are kept. The proof is `adminPolicyActivation.test.mjs` ("a NEW draft version, not a rewrite of the old one").
