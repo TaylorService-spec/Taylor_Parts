@@ -95,6 +95,7 @@ test("a draft round-trips into exactly the definition the server accepts", () =>
   assert.deepEqual(def.actions[0], {
     key: "close", label: "Close", from: "CONFIRMED", to: "CLOSED", capabilityKey: "salesOrder.write",
     guardKind: "RECORD_ASSIGNMENT", requiresOwnAssignment: true, roleKeys: ["admin", "salesManager", "technician"],
+    functionalRoleKeys: [],
   });
   assert.deepEqual([def.actions[1].capabilityKey, def.actions[1].guardKind, def.actions[1].roleKeys], [null, null, []],
     "blank is none -- the server reports ACTION_WITHOUT_CAPABILITY, the browser does not decide");
