@@ -375,6 +375,16 @@ on:
       - "field-ops-app-vite/src/modules/administration/objectSecurityReadModel.js"
       - "field-ops-app-vite/src/modules/administration/ObjectSecurityActionList.jsx"
       - "field-ops-app-vite/test/adminSecurityReadModel.test.jsx"
+      # The Administration control plane, client side (lane CP-C): Object Security Actions, Security
+      # Role detail, Employee Security Roles / Effective Access. Component + wiring proofs.
+      - "field-ops-app-vite/test/adminControlPlane.test.jsx"
+      - "field-ops-app-vite/test/adminControlPlaneWiring.test.mjs"
+      - "field-ops-app-vite/src/services/adminControlPlaneClient.js"
+      - "field-ops-app-vite/src/modules/administration/controlPlaneModel.js"
+      - "field-ops-app-vite/src/modules/administration/GrantControls.jsx"
+      - "field-ops-app-vite/src/modules/administration/ObjectActionSecurity.jsx"
+      - "field-ops-app-vite/src/modules/administration/SecurityRoleDetail.jsx"
+      - "field-ops-app-vite/src/modules/administration/EmployeeEffectiveAccess.jsx"
       - "field-ops-app-vite/src/modules/administration/PolicyStorePanels.jsx"
       - "field-ops-app-vite/src/modules/administration/usePolicyStore.js"
       - "field-ops-app-vite/src/access/objectPermissionMap.js"
@@ -980,6 +990,14 @@ jobs:
       # tranche switched no source of truth: no Administration screen imports any of it.
       - name: Canonical security read model and friendly labels (vitest + jsdom)
         run: npx vitest run test/adminSecurityReadModel.test.jsx
+        working-directory: field-ops-app-vite
+
+      # THE CONTROL PLANE, CLIENT SIDE (lane CP-C). Each Object's real action vocabulary with grant
+      # source / condition / DIRECT EXCEPTION, grant / revoke / condition mutations sent with a reason,
+      # the 409 retire refusal shown verbatim, and Effective Access rendered from the server evaluator
+      # (UNAVAILABLE until explainEffectiveAccess is served).
+      - name: Administration control plane -- client (vitest + jsdom)
+        run: npx vitest run test/adminControlPlane.test.jsx
         working-directory: field-ops-app-vite
 
       # WAVE 6 / LANE V -- THE BROWSER'S ROUTE TO THE EOS PRINCIPAL EXPERIENCE CONTEXT, and the hook

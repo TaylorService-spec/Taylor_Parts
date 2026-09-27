@@ -46,6 +46,10 @@
       "runner": "node"
     },
     {
+      "file": "test/adminControlPlaneWiring.test.mjs",
+      "runner": "node --test"
+    },
+    {
       "file": "test/adminMutationAssignableRoles.test.mjs",
       "runner": "node"
     },

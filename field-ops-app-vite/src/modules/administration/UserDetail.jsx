@@ -24,6 +24,16 @@ import UserAccessActions from "./UserAccessActions.jsx";
 import EmployeeEditPanel from "./EmployeeEditPanel.jsx";
 import EmployeeJobRoleControl from "./EmployeeJobRoleControl.jsx";
 import EmployeeChangeHistorySection from "./EmployeeChangeHistorySection.jsx";
+import EmployeeSecurityRoles from "./EmployeeSecurityRoles.jsx";
+import EmployeeEffectiveAccess from "./EmployeeEffectiveAccess.jsx";
+import EmployeeAccessAudit from "./EmployeeAccessAudit.jsx";
+import {
+  OPERATIONAL_SCOPE_WRITE_CAPABILITY,
+  OperationalScopeSection,
+  WORK_ELIGIBILITY_WRITE_CAPABILITY,
+  WorkEligibilitySection,
+} from "./EmployeeWorkAuthorization.jsx";
+import { createAdminControlPlaneClient } from "../../services/adminControlPlaneClient.js";
 import { EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY } from "../../domain/employeeJobRole.js";
 import {
   RUNTIME_DEPENDENCIES,
@@ -68,12 +78,21 @@ import {
 //
 // ════════════════════ WHAT REMAINS ON LEGACY CALLABLES, AND WHY ════════════════════
 //
-//   * Account status, governed Role add/remove and password reset (UserAccessActions): USER ACCESS / security
+//   * Account status and password reset (UserAccessActions): USER ACCESS / credential
 //     concerns keyed by the Firebase Auth uid -- the CREDENTIAL. The uid is reached along the governed chain
 //     Employee -> EMP-RT-02 link -> Principal -> (identity provider, external subject) from the Administration
 //     API's listTenantPrincipals. Never from an Employee document.
 //   * Legacy Change History (listRecordChangeHistory): the legacy audit trail -- pre-cutover profile changes and
 //     account/Role events. Kept visible and labelled as the pre-cutover legacy trail.
+//
+// ════════════════════ THE ACCESS CONTROL PLANE ON THIS PAGE (lane CP-C, 2026-09-26) ════════════════════
+//
+//   * Security Roles: PostgreSQL assignRole / revokeRole on the linked Principal (EmployeeSecurityRoles),
+//     gated on the server by admin.roleAssignment.write. The Firebase assignApprovedRole path is GONE.
+//   * Work Eligibility / Operational Scope: the governed Workforce commands, each its own section.
+//   * Effective Access: the server evaluator's explanation (explainEffectiveAccess), rendered, never
+//     re-derived; UNAVAILABLE when the server does not serve it.
+//   * Access Audit History: the principal-side lens on the governed policy audit (readPolicyAuditHistory).
 //
 // ════════════════════ TWO HISTORIES, NEVER MERGED ════════════════════
 //
@@ -129,6 +148,9 @@ export default function UserDetail({
   const canEdit = workforceCapabilities.has(EMPLOYEE_PROFILE_WRITE_CAPABILITY);
   // A SEPARATE authority (Owner ruling EMP-RT-08): admin.employeeProfile.write never offers the Job Role control.
   const canAssignJobRole = workforceCapabilities.has(EMPLOYEE_JOB_ROLE_WRITE_CAPABILITY);
+  // Offer-only, from the SAME Workforce capability read; the Workforce command re-checks each.
+  const canWriteEligibility = workforceCapabilities.has(WORK_ELIGIBILITY_WRITE_CAPABILITY);
+  const canWriteScope = workforceCapabilities.has(OPERATIONAL_SCOPE_WRITE_CAPABILITY);
   // `?edit=1` opens the form once the capability is known; Cancel or a save closes it and it stays closed.
   const [editOpen, setEditOpen] = useState(false);
   const [editClosed, setEditClosed] = useState(false);
@@ -146,6 +168,8 @@ export default function UserDetail({
     { client: workforce },
   );
   const principalId = principalLink.status === WORKFORCE_READ_STATE.READY ? principalLink.data?.link?.principalId ?? null : null;
+  // The control-plane seam over the SAME Administration API call this page already injects.
+  const controlPlane = useMemo(() => createAdminControlPlaneClient(policyCall), [policyCall]);
   const credential = usePrincipalCredential(principalId, { policyCall });
 
   // ── GOVERNED CHANGE HISTORY (EMP-RT-H1): bumped after anything on this page writes the Employee.
@@ -347,14 +371,24 @@ export default function UserDetail({
             )}
           />
 
-          {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
-              (EMP-RT-02, server-gated), and the account/Role actions on the credential behind that Principal. */}
-          <RuledSection title="User Access" meta="Access to EOS — separate from the Employee record">
-            <UserAccessRelationship userAccess={employee.userAccess} />
-            {linked ? <PrincipalLinkDetails read={principalLink} /> : null}
+          {/* SECURITY ROLES (PostgreSQL assignRole / revokeRole on the linked Principal). Access, not a Job Role. */}
+          <RuledSection title="Security Roles" meta="Access — governed PostgreSQL assignment">
             <p className="fo-muted ns-emp-note">
               Security Roles are access. They are not Job Roles and are never used as one.
             </p>
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeSecurityRoles api={controlPlane} principalId={principalId} employeeName={name} />
+            </PrincipalGate>
+          </RuledSection>
+
+          <WorkEligibilitySection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteEligibility} onChanged={rereadGovernedHistory} />
+          <OperationalScopeSection employeeId={employee.employeeId} workforce={workforce} canWrite={canWriteScope} onChanged={rereadGovernedHistory} />
+
+          {/* USER ACCESS, SEPARATE FROM THE EMPLOYEE: linkage (EMP-RT-01), the governed Principal link
+              (EMP-RT-02, server-gated), and the account actions on the credential behind that Principal. */}
+          <RuledSection title="User Access" meta="Access to EOS — separate from the Employee record">
+            <UserAccessRelationship userAccess={employee.userAccess} />
+            {linked ? <PrincipalLinkDetails read={principalLink} /> : null}
             <AccountActions
               linked={linked}
               principalLink={principalLink}
@@ -364,6 +398,13 @@ export default function UserDetail({
               hasCapability={hasCapability}
               client={client}
             />
+          </RuledSection>
+
+          {/* EFFECTIVE ACCESS: the server evaluator's answer for the linked Principal -- never computed here. */}
+          <RuledSection title="Effective Access" meta="The server evaluator's explanation">
+            <PrincipalGate linked={linked} principalLink={principalLink}>
+              <EmployeeEffectiveAccess api={controlPlane} principalId={principalId} />
+            </PrincipalGate>
           </RuledSection>
         </div>
 
@@ -394,8 +435,18 @@ export default function UserDetail({
               },
               {
                 key: "access",
-                label: "Account status & Roles",
+                label: "Account status",
                 source: `The legacy trusted account callables, on the credential of the Principal linked through ${WORKFORCE_READS.PRINCIPAL_LINK.id}.`,
+              },
+              {
+                key: "securityRoles",
+                label: "Security Roles & Effective Access",
+                source: "The governed PostgreSQL policy store through the Administration API: assignRole / revokeRole (admin.roleAssignment.write), and the server evaluator's explainEffectiveAccess.",
+              },
+              {
+                key: "eligibility",
+                label: "Work Eligibility & Operational Scope",
+                source: "The governed PostgreSQL Workforce authority: listEmployeeWorkEligibility / listEmployeeOperationalScopes, changed only through their governed assign / end commands.",
               },
               {
                 key: "history",
@@ -408,6 +459,12 @@ export default function UserDetail({
       </div>
 
       <EmployeeChangeHistorySection employeeId={employee.employeeId} workforce={workforce} reloadKey={governedHistoryKey} />
+
+      <RuledSection title="Access Audit History" meta="Governed policy audit — this Employee's Principal">
+        <PrincipalGate linked={linked} principalLink={principalLink}>
+          <EmployeeAccessAudit api={controlPlane} principalId={principalId} />
+        </PrincipalGate>
+      </RuledSection>
 
       <ChangeHistory
         title="Legacy Change History"
@@ -423,6 +480,19 @@ export default function UserDetail({
       />
     </div>
   );
+}
+
+/**
+ * The Principal-keyed sections render only once the link is KNOWN: while EMP-RT-02 is loading they wait,
+ * and a failed link read says so -- never "no Principal", which would be a claim the page cannot make.
+ */
+function PrincipalGate({ linked, principalLink, children }) {
+  if (!linked) return children;
+  if (principalLink.status === WORKFORCE_READ_STATE.FAILED) {
+    return <p className="fo-muted">{describeWorkforceFailure(principalLink.error, "The Principal link").words}</p>;
+  }
+  if (principalLink.status !== WORKFORCE_READ_STATE.READY) return <LoadingState>Reading the linked Principal…</LoadingState>;
+  return children;
 }
 
 /** What the last save did, in the domain's exact words (describeEmployeeEditResult). */

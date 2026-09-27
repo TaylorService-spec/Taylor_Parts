@@ -109,6 +109,9 @@ function makeWorkforce(commands = {}) {
           return { ok: true, result: { employeeId: input.employeeId, current: null, items: [], truncated: false } };
         case "listJobRoles":
           return { ok: true, result: { items: JOB_ROLE_CATALOG } };
+        case "listEmployeeWorkEligibility":
+        case "listEmployeeOperationalScopes":
+          return { ok: true, result: { employeeId: input.employeeId, items: [] } };
         case "listManagedEmployees":
         case "listRecordsOwnedByEmployee":
         case "listAccountabilitiesForEmployee":
@@ -126,11 +129,41 @@ function makeWorkforce(commands = {}) {
 /** Grant Workforce capabilities through the PostgreSQL capability read -- the ONLY source of the Workforce offer. */
 const grant = (workforce, ids) => Object.assign(workforce, { grants: [...ids] });
 
-/** The Administration API's listTenantPrincipals: the Principal -> credential mapping. */
-const policyCall = vi.fn(async () => ({
-  ok: true,
-  data: [{ id: "pr-emp-1", displayName: "John Smith", externalSubject: "uid-john", identityProvider: "firebase", status: "active" }],
-}));
+/**
+ * The Administration API (PostgreSQL policy store), operation-aware: listTenantPrincipals (the Principal ->
+ * credential mapping), the Security Role reads/writes the Employee page now uses (lane CP-C), and
+ * explainEffectiveAccess answering UNKNOWN_OPERATION -- the state before the server serves it.
+ */
+const PG_ROLES = [
+  { id: "role-dispatcher", key: "dispatcher", name: "Dispatcher", protected: false },
+  { id: "role-salesperson", key: "salesperson", name: "Salesperson", protected: false },
+  { id: "role-salesManager", key: "salesManager", name: "Sales Manager", protected: false },
+];
+let pgAssignments = [];
+let policyAnswers = {};
+const policyCall = vi.fn(async (operation, input) => {
+  if (Object.prototype.hasOwnProperty.call(policyAnswers, operation)) {
+    const answer = policyAnswers[operation];
+    return typeof answer === "function" ? answer(input) : answer;
+  }
+  switch (operation) {
+    case "listTenantPrincipals":
+      return { ok: true, data: [{ id: "pr-emp-1", displayName: "John Smith", externalSubject: "uid-john", identityProvider: "firebase", status: "active" }] };
+    case "listPrincipalRoleAssignments":
+      return { ok: true, data: { principalId: input.principalId, accessVersion: 3, assignments: pgAssignments } };
+    case "listRoles":
+      return { ok: true, data: PG_ROLES };
+    case "assignRole":
+      return { ok: true, data: { id: "asg-new", principalId: input.principalId, roleId: input.roleId, status: "active" } };
+    case "revokeRole":
+      return { ok: true, data: { id: input.assignmentId, status: "disabled" } };
+    case "readPolicyAuditHistory":
+      return { ok: true, data: [] };
+    default:
+      return { ok: false, code: "UNKNOWN_OPERATION", message: `"${operation}" is not an Administration operation` };
+  }
+});
+const policyCalls = (operation) => policyCall.mock.calls.filter(([op]) => op === operation);
 
 // The trusted principal-access read defaults to an ENABLED account holding no governed Role: the
 // commonest real state, and the one that makes "which button is offered" meaningful. Tests that
@@ -169,6 +202,9 @@ const renderDetail = (client, employeeId = "emp-1", search = "", hasCapability =
 beforeEach(() => {
   mockNavigate.mockClear();
   seedRecords();
+  pgAssignments = [];
+  policyAnswers = {};
+  policyCall.mockClear();
 });
 afterEach(cleanup);
 
@@ -193,7 +229,12 @@ describe("User Detail is read-only by default", () => {
       "Identity & contact",
       "Employment & business context",
       "Job Role",
+      "Security Roles",
+      "Work Eligibility",
+      "Operational Scope",
       "User Access",
+      "Effective Access",
+      "Access Audit History",
       "Responsibility",
     ]) {
       expect(screen.getByRole("heading", { name: title }), title).toBeTruthy();
@@ -314,131 +355,101 @@ describe("EOS access and security stay independent, and fail closed", () => {
     expect(within(dialog).getAllByText(/disabled/).length).toBeGreaterThan(0);
   });
 
-  it("Security Role is stated as access -- never a Job Role -- with no control over it", async () => {
+  it("Security Role is stated as access -- never a Job Role -- and its control lives in its OWN section", async () => {
     renderDetail(okHistory());
     await screen.findByRole("heading", { level: 1, name: "John Smith" });
     expect(screen.getByText(/Security Roles are access\. They are not Job Roles/)).toBeTruthy();
-    expect(screen.queryByRole("combobox", { name: /security role/i })).toBeNull();
+    const select = await screen.findByRole("combobox", { name: /Security Role to assign/i });
+    // Not inside the Job Role section: the two are different authorities with different commands.
+    const jobRoleSection = screen.getByRole("heading", { name: "Job Role" }).closest("section");
+    expect(jobRoleSection.contains(select)).toBe(false);
+    const securitySection = screen.getByRole("heading", { name: "Security Roles" }).closest("section");
+    expect(securitySection.contains(select)).toBe(true);
   });
 
-  // ── ASSIGN A ROLE ──
-  // The control an administrator uses to give somebody access, on the page where the person IS the
-  // target. Everything below is about what it says when it cannot act -- which is its state for
-  // every principal who does not hold admin.roleAssignment.write.
+  // ── SECURITY ROLES: POSTGRESQL assignRole / revokeRole (lane CP-C) ──
+  // The Firebase assignApprovedRole path is gone from this page. The Roles offered are the tenant's
+  // PostgreSQL Roles; whether the caller may assign is the SERVER's admin.roleAssignment.write gate.
 
-  it("Add Role is SHOWN and protected without the grant, never hidden", async () => {
-    // Hiding it would make "how do I give someone Sales access" unanswerable: the administrator
-    // would see no control and conclude the product cannot do it. Password reset hides because its
-    // availability is itself sensitive; who may hold a Role is not.
-    renderDetail(okHistory(), "emp-1", "", (id) => id === "admin.principalAccess.read");
-    const add = await screen.findByRole("button", { name: /Add Role/ });
-    expect(add.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("combobox", { name: /Role to assign/i }).disabled).toBe(true);
-  });
-
-  it("is called Add Role, because assignApprovedRole ADDS -- it never replaces", async () => {
-    // Measured from the command: assignApprovedRole is a txn.create on roleAssignments and never
-    // reads or revokes an existing one. A person holds zero or more Roles and their authority is
-    // the union. "Change Role" would name a replacement no command performs.
-    renderDetail(okHistory(), "emp-1", "", () => true);
-    await screen.findByRole("button", { name: /Add Role/ });
-    expect(screen.queryByRole("button", { name: /Change Role/i })).toBeNull();
-    expect(screen.getByText(/never replaces one/i)).toBeTruthy();
-  });
-
-  it("lists the governed Roles the trusted read returns, each with its own Remove", async () => {
-    renderDetail(
-      okHistory([], {
-        authExists: true,
-        accountStatus: "enabled",
-        assignments: [
-          { assignmentId: "asg-1", roleId: "dispatcher", scope: { type: "global" } },
-          { assignmentId: "asg-2", roleId: "salesperson", scope: { type: "global" } },
-        ],
-      }),
-      "emp-1",
-      "",
-      () => true,
-    );
-    // Awaited first: the list renders from an async trusted read, so querying the DOM directly
-    // before it settles would assert on the loading state.
-    expect((await screen.findAllByRole("button", { name: "Remove" })).length).toBe(2);
-    const held = document.querySelector("[data-user-governed-roles]");
-    expect(held.getAttribute("data-user-governed-roles")).toBe("2");
-    expect(held.textContent).toMatch(/Dispatcher/);
-    expect(held.textContent).toMatch(/Salesperson/);
-  });
-
-  it("does not offer a Role the person already holds at the same scope", async () => {
-    // assignApprovedRole does not dedupe: a second call would create a second active assignment
-    // conferring nothing extra and needing its own removal.
-    renderDetail(
-      okHistory([], {
-        authExists: true,
-        accountStatus: "enabled",
-        assignments: [{ assignmentId: "asg-1", roleId: "salesperson", scope: { type: "global" } }],
-      }),
-      "emp-1",
-      "",
-      () => true,
-    );
-    // The access state resolves asynchronously (Employee -> Principal link -> Administration access API -> held Roles).
-    // Wait for the HELD assignment itself to render -- its Remove control -- so the options below are inspected only
-    // after the held-Role lookup has actually answered, not while the picker still reflects an unloaded state.
-    await screen.findByRole("button", { name: "Remove" });
-    const select = await screen.findByRole("combobox", { name: /Role to assign/i });
+  it("offers the tenant's PostgreSQL Roles -- and no Firebase role path is touched", async () => {
+    const client = okHistory();
+    renderDetail(client);
+    const select = await screen.findByRole("combobox", { name: /Security Role to assign/i });
     const labels = within(select).getAllByRole("option").map((o) => o.textContent);
+    expect(labels).toEqual(expect.arrayContaining(["Dispatcher", "Salesperson", "Sales Manager"]));
+    expect(policyCalls("listPrincipalRoleAssignments")[0][1]).toEqual({ principalId: "pr-emp-1" });
+    expect(client.assignApprovedRole).not.toHaveBeenCalled();
+    expect(client.revokeRole).not.toHaveBeenCalled();
+  });
+
+  it("lists the PostgreSQL assignments, each with its own Remove, and does not offer a Role already held", async () => {
+    pgAssignments = [
+      { id: "asg-1", roleId: "role-dispatcher", roleKey: "dispatcher", scopeType: "global", scopeValue: null, status: "active" },
+      { id: "asg-2", roleId: "role-salesperson", roleKey: "salesperson", scopeType: "global", scopeValue: null, status: "active" },
+      { id: "asg-0", roleId: "role-salesManager", roleKey: "salesManager", scopeType: "global", scopeValue: null, status: "disabled" },
+    ];
+    renderDetail(okHistory());
+    expect((await screen.findAllByRole("button", { name: /^Remove / })).length).toBe(2);
+    const held = document.querySelector("[data-employee-security-roles]");
+    expect(held.getAttribute("data-employee-security-roles")).toBe("2");
+    expect(held.textContent).toMatch(/Dispatcher/);
+    const labels = within(screen.getByRole("combobox", { name: /Security Role to assign/i })).getAllByRole("option").map((o) => o.textContent);
+    expect(labels).not.toContain("Dispatcher");
     expect(labels).not.toContain("Salesperson");
     expect(labels).toContain("Sales Manager");
   });
 
-  it("Remove confirms first, calls revokeRole with the ASSIGNMENT id, then re-reads", async () => {
-    const client = okHistory([], {
-      authExists: true,
-      accountStatus: "enabled",
-      assignments: [{ assignmentId: "asg-7", roleId: "dispatcher", scope: { type: "global" } }],
-    });
-    renderDetail(client, "emp-1", "", () => true);
-    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
-
-    const dialog = screen.getByRole("dialog", { name: /remove a role/i });
-    expect(within(dialog).getByText(/John Smith/)).toBeTruthy();
-    // The canonical label, which for a compatibility Role says so: "Dispatcher (compatibility)",
-    // never the raw roleId.
-    expect(within(dialog).getByText("Dispatcher (compatibility)")).toBeTruthy();
-
-    await act(async () => {
-      fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
-    });
-    expect(client.revokeRole).toHaveBeenCalledWith(
-      expect.objectContaining({ assignmentId: "asg-7" }),
-    );
-    // Re-read rather than an optimistic local edit: the screen shows what came back.
-    expect(client.readPrincipalAccessState.mock.calls.length).toBeGreaterThan(1);
+  it("Assign requires a reason, then calls PG assignRole { principalId, roleId, reason } and re-reads", async () => {
+    const client = okHistory();
+    renderDetail(client);
+    const select = await screen.findByRole("combobox", { name: /Security Role to assign/i });
+    fireEvent.change(select, { target: { value: "role-salesperson" } });
+    const submit = screen.getByRole("button", { name: "Assign Security Role" });
+    expect(submit.disabled).toBe(true);
+    const form = screen.getByRole("form", { name: "Assign a Security Role" });
+    fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "Joins retail sales" } });
+    const before = policyCalls("listPrincipalRoleAssignments").length;
+    await act(async () => { fireEvent.click(submit); });
+    expect(policyCalls("assignRole")[0][1]).toEqual({ principalId: "pr-emp-1", roleId: "role-salesperson", reason: "Joins retail sales" });
+    await waitFor(() => expect(policyCalls("listPrincipalRoleAssignments").length).toBeGreaterThan(before));
+    expect(client.assignApprovedRole).not.toHaveBeenCalled();
   });
 
-  it("offers no privileged Role -- Owner and Administrator need the two-person route", async () => {
+  it("Remove asks for a reason, calls PG revokeRole with the ASSIGNMENT id, then re-reads", async () => {
+    pgAssignments = [{ id: "asg-7", roleId: "role-dispatcher", roleKey: "dispatcher", scopeType: "global", scopeValue: null, status: "active" }];
+    const client = okHistory();
+    renderDetail(client);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Dispatcher" }));
+    const form = screen.getByRole("form", { name: "Remove a Security Role" });
+    expect(within(form).getByText(/John Smith/)).toBeTruthy();
+    fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "Left dispatch" } });
+    await act(async () => { fireEvent.click(within(form).getByRole("button", { name: "Confirm removal" })); });
+    expect(policyCalls("revokeRole")[0][1]).toEqual({ assignmentId: "asg-7", reason: "Left dispatch" });
+    expect(client.revokeRole).not.toHaveBeenCalled();
+    expect(policyCalls("listPrincipalRoleAssignments").length).toBeGreaterThan(1);
+  });
+
+  it("a server refusal is shown VERBATIM -- the page never gates or rewords it", async () => {
+    policyAnswers.assignRole = { ok: false, code: "FORBIDDEN", message: "admin.roleAssignment.write is required" };
     renderDetail(okHistory());
-    const select = await screen.findByRole("combobox", { name: /Role to assign/i });
-    const labels = within(select).getAllByRole("option").map((o) => o.textContent);
-    expect(labels).not.toContain("Owner");
-    expect(labels).not.toContain("Administrator");
-    // The Roles this business actually asked about are offerable.
-    expect(labels).toContain("Salesperson");
-    expect(labels).toContain("Sales Manager");
+    const select = await screen.findByRole("combobox", { name: /Security Role to assign/i });
+    fireEvent.change(select, { target: { value: "role-dispatcher" } });
+    const form = screen.getByRole("form", { name: "Assign a Security Role" });
+    fireEvent.change(within(form).getByLabelText("Reason"), { target: { value: "cover" } });
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Assign Security Role" })); });
+    await waitFor(() => expect(document.querySelector('[data-control-plane-refusal="FORBIDDEN"]')).toBeTruthy());
+    expect(document.querySelector('[data-control-plane-refusal="FORBIDDEN"]').textContent).toBe("FORBIDDEN: admin.roleAssignment.write is required");
   });
 
-  it("with the grant, it confirms first and names the person AND the Role in words", async () => {
-    renderDetail(okHistory(), "emp-1", "", (id) => id === "admin.roleAssignment.write");
-    const select = await screen.findByRole("combobox", { name: /Role to assign/i });
-    expect(select.disabled).toBe(false);
-    fireEvent.change(select, { target: { value: "salesperson" } });
-    fireEvent.click(screen.getByRole("button", { name: /Add Role/ }));
-
-    const dialog = screen.getByRole("dialog", { name: /add a role/i });
-    expect(within(dialog).getByText(/John Smith/)).toBeTruthy();
-    // The WORDS, not the id -- "salesperson" in a confirmation is the machine's name for it.
-    expect(within(dialog).getByText("Salesperson")).toBeTruthy();
+  it("Effective Access renders the honest UNAVAILABLE state while the server does not serve explainEffectiveAccess", async () => {
+    renderDetail(okHistory());
+    const panel = await waitFor(() => {
+      const el = document.querySelector('[data-effective-access="UNAVAILABLE"]');
+      expect(el).toBeTruthy();
+      return el;
+    });
+    expect(panel.textContent).toMatch(/Effective Access is unavailable/);
+    expect(policyCalls("getPrincipalEffectiveAccess")).toHaveLength(0);
   });
 
   it("an Employee with no governed Principal link gets an explanation, not a dead control", async () => {
@@ -448,7 +459,8 @@ describe("EOS access and security stay independent, and fail closed", () => {
     const client = okHistory();
     renderDetail(client, "emp-3");
     await screen.findByRole("heading", { level: 1, name: "Pat Lee" });
-    expect(screen.queryByRole("button", { name: /Add Role/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add Role|Assign Security Role/ })).toBeNull();
+    expect(document.querySelector('[data-employee-security-roles="NO_PRINCIPAL"]')).toBeTruthy();
     const note = document.querySelector('[data-account-actions="UNAVAILABLE"]');
     expect(note?.textContent).toMatch(/no account to manage/i);
     expect(client.readPrincipalAccessState).not.toHaveBeenCalled();

@@ -1,5 +1,15 @@
 // ADMINISTRATION — the configuration surfaces themselves.
 //
+// ════════════════════ RETIRED 2026-09-26: THE C/R/E/D GRID AS A CONTROL (lane CP-C) ════════════════════
+//
+// The Role grid's checkboxes (setObjectPermission) and field selects (set/removeFieldPermissionOverride)
+// wrote `role_object_permissions` and field overrides -- tables NO runtime evaluator reads. They were
+// false controls and are removed. The stored values remain visible as a collapsed, read-only
+// "Legacy matrix — not enforced". Enforced access is administered on the Security Role detail
+// (SecurityRoleDetail.jsx) and the Object Security Actions view (ObjectActionSecurity.jsx), through
+// the governed control-plane operations the server evaluator reads. The field-fact notes below now
+// describe how the LEGACY values are displayed, not an editable control.
+//
 // ════════════════════ WHAT CHANGED, AND WHY IT HAD TO ════════════════════
 //
 // These used to be PANELS that appeared *in addition* to a measured, read-only grid: two grids on
@@ -41,21 +51,14 @@
 // and it deliberately does not disable the control. The server refuses the impossible grant whether
 // or not a button was greyed out, and a UI that hid the state would leave an administrator unable to
 // see why their override does nothing.
-import { Fragment, useCallback, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Button } from "../../shared/ui/primitives/index.js";
 import { usePolicyStore } from "./usePolicyStore.js";
 import { isPolicyApiConfigured } from "../../services/adminPolicyApiClient.js";
 // The four-fact logic lives in its own module: it is the part worth proving without a DOM, and
 // keeping it here would have made it reachable only through a rendered grid.
-import {
-  ALLOW,
-  DENY,
-  INHERIT,
-  effectiveFieldAnswer,
-  fieldVerbState,
-  nextOverride,
-  verbAvailable,
-} from "./fieldPermissionState.js";
+import { effectiveFieldAnswer, verbAvailable } from "./fieldPermissionState.js";
+import SecurityRoleDetail from "./SecurityRoleDetail.jsx";
 
 const VERBS = ["C", "R", "E", "D"];
 const VERB_LABEL = { C: "Create", R: "Read", E: "Edit", D: "Delete" };
@@ -108,16 +111,20 @@ function Refusal({ result }) {
 // ════════════════════ ROLES & PERMISSIONS ════════════════════
 
 /**
- * The stored CRED for one Role: every Object, expandable into every Field.
+ * The tenant's Security Roles, and for the chosen one its ENFORCED detail (SecurityRoleDetail: holders,
+ * Object actions with source and condition, grant/revoke/condition controls, decision history).
  *
- * Fields load PER EXPANDED OBJECT. 36 objects and 389 fields is small, but fetching every field of
- * every object to render a collapsed row would be a request storm for data nobody is looking at.
+ * The C/R/E/D grid this screen used to lead with wrote `role_object_permissions` through
+ * setObjectPermission -- a table NO runtime evaluator reads. Ticking Edit changed nothing the server
+ * enforces. It is RETIRED as a control: what remains is a collapsed, read-only LEGACY MATRIX, labelled
+ * "not enforced", so nothing on this screen implies enforcement it does not have.
  */
 export function RolesPermissionsSurface() {
   const roles = usePolicyStore("listRoles");
   const objects = usePolicyStore("listObjects");
   const [roleId, setRoleId] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [editingRole, setEditingRole] = useState(false);
 
   if (!isPolicyApiConfigured()) return null;
 
@@ -125,7 +132,7 @@ export function RolesPermissionsSurface() {
 
   return (
     <section className="fo-panel" aria-label="Role permissions">
-      <h3>Roles &amp; permissions <span className="fo-muted">· this tenant&rsquo;s stored policy</span></h3>
+      <h3>Security Roles <span className="fo-muted">· this tenant&rsquo;s governed policy</span></h3>
       {roles.status === "loading" && <p className="fo-muted">Reading roles…</p>}
       {roles.status === "failed" && <p className="fo-warning">{roles.error?.description}</p>}
 
@@ -136,7 +143,7 @@ export function RolesPermissionsSurface() {
               <Button
                 key={role.id}
                 variant={role.id === roleId ? "primary" : "secondary"}
-                onClick={() => setRoleId(role.id === roleId ? null : role.id)}
+                onClick={() => { setRoleId(role.id === roleId ? null : role.id); setEditingRole(false); }}
                 aria-pressed={role.id === roleId}
               >
                 {role.name}{role.protected ? " · protected" : ""}
@@ -150,13 +157,19 @@ export function RolesPermissionsSurface() {
           {creating && <CreateRoleForm onDone={() => { setCreating(false); roles.reload(); }} mutate={roles.mutate} />}
 
           {selected && (
-            <RoleGrid
-              role={selected}
-              objects={objects.data ?? []}
-              onRoleChanged={roles.reload}
-            />
+            <>
+              <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
+                {editingRole ? "Cancel" : "Edit role details"}
+              </Button>
+              {editingRole && (
+                <EditRoleForm role={selected} mutate={roles.mutate} onDone={() => setEditingRole(false)} />
+              )}
+              {/* PRIMARY: the enforced Security Role -- the rows the server evaluator reads. */}
+              <SecurityRoleDetail roleKey={selected.key} />
+              <LegacyRoleMatrix role={selected} objects={objects.data ?? []} />
+            </>
           )}
-          {!selected && <p className="fo-muted">Choose a role to configure what it may do.</p>}
+          {!selected && <p className="fo-muted">Choose a Security Role to see its holders, its Object actions and its decision history.</p>}
         </>
       )}
     </section>
@@ -217,87 +230,6 @@ function CreateRoleForm({ onDone, mutate }) {
   );
 }
 
-function RoleGrid({ role, objects, onRoleChanged }) {
-  const policy = usePolicyStore("readRolePolicy", { roleId: role.id });
-  const [openObjectKey, setOpenObjectKey] = useState(null);
-  const [result, setResult] = useState(null);
-  const [editingRole, setEditingRole] = useState(false);
-
-  const credByObjectId = useMemo(() => {
-    const map = new Map();
-    for (const p of policy.data?.objectPermissions ?? []) map.set(p.objectId, p.cred);
-    return map;
-  }, [policy.data]);
-
-  const overridesByFieldId = useMemo(() => {
-    const map = new Map();
-    for (const o of policy.data?.fieldOverrides ?? []) map.set(o.fieldId, o.override);
-    return map;
-  }, [policy.data]);
-
-  const toggleObjectVerb = useCallback(async (object, verb, current) => {
-    const cred = { C: false, R: false, E: false, D: false, ...(credByObjectId.get(object.id) ?? {}) };
-    setResult(await policy.mutate("setObjectPermission", {
-      roleId: role.id, objectKey: object.key, cred: { ...cred, [verb]: !current },
-    }));
-  }, [credByObjectId, policy, role.id]);
-
-  if (policy.status !== "ready") {
-    return <p className="fo-muted">{policy.status === "failed" ? policy.error?.description : "Reading the stored policy…"}</p>;
-  }
-
-  return (
-    <div className="fo-panel--nested">
-      <h4>{role.name} <span className="fo-muted">· <code>{role.key}</code></span></h4>
-      <Button variant="secondary" onClick={() => setEditingRole((v) => !v)} aria-expanded={editingRole}>
-        {editingRole ? "Cancel" : "Edit role details"}
-      </Button>
-      {editingRole && (
-        <EditRoleForm
-          role={role}
-          mutate={policy.mutate}
-          onDone={() => { setEditingRole(false); onRoleChanged?.(); }}
-        />
-      )}
-
-      <Refusal result={result} />
-      <p className="fo-muted">
-        A field with no override inherits its object&rsquo;s answer. Setting a field back to Inherit
-        removes the stored override entirely.
-      </p>
-
-      <table className="fo-table">
-        <thead>
-          <tr>
-            <th>Object / field</th>
-            {VERBS.map((v) => <th key={v}>{VERB_LABEL[v]}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {objects.map((object) => {
-            const cred = credByObjectId.get(object.id) ?? null;
-            const open = object.key === openObjectKey;
-            return (
-              <RoleObjectRows
-                key={object.id}
-                object={object}
-                cred={cred}
-                open={open}
-                onToggleOpen={() => setOpenObjectKey(open ? null : object.key)}
-                onToggleVerb={toggleObjectVerb}
-                overridesByFieldId={overridesByFieldId}
-                roleId={role.id}
-                mutate={policy.mutate}
-                onResult={setResult}
-              />
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 function EditRoleForm({ role, mutate, onDone }) {
   const [draft, setDraft] = useState({ name: role.name, description: role.description ?? "" });
   const [result, setResult] = useState(null);
@@ -334,8 +266,83 @@ function EditRoleForm({ role, mutate, onDone }) {
   );
 }
 
-/** One object row, plus its field rows when expanded. Returns a fragment of <tr>s. */
-function RoleObjectRows({ object, cred, open, onToggleOpen, onToggleVerb, overridesByFieldId, roleId, mutate, onResult }) {
+/**
+ * THE LEGACY C/R/E/D MATRIX -- READ-ONLY, NOT ENFORCED.
+ *
+ * `role_object_permissions` and the field overrides are stored, and no runtime evaluator reads them
+ * (pass-6 finding; pendingAuthorityCorrections.json). Every mutation control that wrote them
+ * (setObjectPermission, set/removeFieldPermissionOverride) is REMOVED from this screen: a checkbox
+ * that changes nothing the server enforces is a false control. The stored values stay visible,
+ * collapsed and labelled, because "what does the legacy table say" is still a question during the
+ * retirement -- never "what may this Role do". That answer is the Security Role detail above.
+ */
+function LegacyRoleMatrix({ role, objects }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="fo-panel" aria-label="Legacy matrix — not enforced">
+      <h4>Legacy matrix — not enforced <span className="fo-muted">· read-only</span></h4>
+      <p className="fo-muted">
+        The stored Create / Read / Edit / Delete matrix. No runtime evaluator reads it, so it grants
+        and denies nothing and cannot be edited here. Enforced access is the Security Role above.
+      </p>
+      <Button variant="secondary" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        {open ? "Hide" : "Show"} the legacy matrix
+      </Button>
+      {open && <LegacyRoleGrid role={role} objects={objects} />}
+    </section>
+  );
+}
+
+function LegacyRoleGrid({ role, objects }) {
+  const policy = usePolicyStore("readRolePolicy", { roleId: role.id });
+  const [openObjectKey, setOpenObjectKey] = useState(null);
+
+  const credByObjectId = useMemo(() => {
+    const map = new Map();
+    for (const p of policy.data?.objectPermissions ?? []) map.set(p.objectId, p.cred);
+    return map;
+  }, [policy.data]);
+
+  const overridesByFieldId = useMemo(() => {
+    const map = new Map();
+    for (const o of policy.data?.fieldOverrides ?? []) map.set(o.fieldId, o.override);
+    return map;
+  }, [policy.data]);
+
+  if (policy.status !== "ready") {
+    return <p className="fo-muted">{policy.status === "failed" ? policy.error?.description : "Reading the legacy matrix…"}</p>;
+  }
+
+  return (
+    <table className="fo-table" aria-label={`Legacy matrix for ${role.name}`}>
+      <thead>
+        <tr>
+          <th>Object / field</th>
+          {VERBS.map((v) => <th key={v}>{VERB_LABEL[v]}</th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {objects.map((object) => {
+          const cred = credByObjectId.get(object.id) ?? null;
+          const open = object.key === openObjectKey;
+          return (
+            <RoleObjectRows
+              key={object.id}
+              object={object}
+              cred={cred}
+              open={open}
+              onToggleOpen={() => setOpenObjectKey(open ? null : object.key)}
+              overridesByFieldId={overridesByFieldId}
+            />
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+/** One legacy object row, plus its field rows when expanded. READ-ONLY: no checkbox, no select. */
+function RoleObjectRows({ object, cred, open, onToggleOpen, overridesByFieldId }) {
   const detail = usePolicyStore("readObjectWithFields", open ? { objectKey: object.key } : null, { enabled: open });
 
   return (
@@ -347,26 +354,11 @@ function RoleObjectRows({ object, cred, open, onToggleOpen, onToggleVerb, overri
           </Button>
           <span className="fo-muted"> <code>{object.key}</code></span>
         </td>
-        {VERBS.map((verb) => {
-          const available = verbAvailable(object, verb);
-          const granted = cred?.[verb] === true;
-          return (
-            <td key={verb}>
-              {available ? (
-                <input
-                  type="checkbox"
-                  checked={granted}
-                  onChange={() => onToggleVerb(object, verb, granted)}
-                  aria-label={`${VERB_LABEL[verb]} on ${object.label}`}
-                />
-              ) : (
-                <span className="fo-muted" title="No capability governs this verb — it cannot be granted to anyone">
-                  —
-                </span>
-              )}
-            </td>
-          );
-        })}
+        {VERBS.map((verb) => (
+          <td key={verb} className="fo-muted">
+            {!verbAvailable(object, verb) ? "—" : cred?.[verb] === true ? "Stored: yes" : "Stored: no"}
+          </td>
+        ))}
       </tr>
 
       {open && detail.status !== "ready" && (
@@ -384,68 +376,24 @@ function RoleObjectRows({ object, cred, open, onToggleOpen, onToggleVerb, overri
           cred={cred}
           field={field}
           override={overridesByFieldId.get(field.id) ?? null}
-          roleId={roleId}
-          mutate={mutate}
-          onResult={onResult}
         />
       ))}
     </>
   );
 }
 
-function RoleFieldRow({ object, cred, field, override, roleId, mutate, onResult }) {
-  /**
-   * ONE VERB CHANGES; THE OTHERS SURVIVE.
-   *
-   * `setFieldPermissionOverride` replaces the whole override, so sending only the verb being
-   * changed would silently drop every other explicit verb on that field. The current override is
-   * read, the one verb is modified, and the result is sent whole. An empty result means "no
-   * opinion", which is `removeFieldPermissionOverride` — not an override of all-false.
-   */
-  const setVerb = async (verb, next) => {
-    const { override: updated, remove } = nextOverride(override, verb, next);
-    onResult(await mutate(
-      remove ? "removeFieldPermissionOverride" : "setFieldPermissionOverride",
-      remove
-        ? { roleId, fieldId: field.id }
-        : { roleId, fieldId: field.id, override: updated },
-    ));
-  };
-
+/** A legacy field row: the stored override in words. UNGOVERNED INHERITS DOWNWARD, as before. */
+function RoleFieldRow({ object, cred, field, override }) {
   return (
     <tr className="fo-row-nested">
       <td className="fo-nested-label">
         ↳ {field.label} <span className="fo-muted"><code>{field.key}</code> · {field.dataType}</span>
       </td>
-      {VERBS.map((verb) => {
-        // UNGOVERNED INHERITS DOWNWARD: a field of an object whose Delete nothing governs has no
-        // grantable Delete either.
-        if (!verbAvailable(object, verb)) {
-          return (
-            <td key={verb}>
-              <span className="fo-muted" title="No capability governs this verb">—</span>
-            </td>
-          );
-        }
-        const state = fieldVerbState(override, verb);
-        const objectGranted = cred?.[verb] === true;
-        return (
-          <td key={verb}>
-            <label className="fo-form-field">
-              <span className="fo-muted">{effectiveFieldAnswer(override, verb, objectGranted)}</span>
-              <select
-                value={state}
-                onChange={(e) => setVerb(verb, e.target.value)}
-                aria-label={`${VERB_LABEL[verb]} on field ${field.label} of ${object.label}`}
-              >
-                <option value={INHERIT}>Inherit</option>
-                <option value={ALLOW}>Allow</option>
-                <option value={DENY}>Deny</option>
-              </select>
-            </label>
-          </td>
-        );
-      })}
+      {VERBS.map((verb) => (
+        <td key={verb} className="fo-muted">
+          {verbAvailable(object, verb) ? effectiveFieldAnswer(override, verb, cred?.[verb] === true) : "—"}
+        </td>
+      ))}
     </tr>
   );
 }

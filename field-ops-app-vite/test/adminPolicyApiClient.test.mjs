@@ -28,6 +28,7 @@ const READS = [
   "listWorkflows", "readWorkflowVersion", "readPolicyAuditHistory",
   // The Administration control plane reads (server lane CP-S, 2026-09-26).
   "getSecurityRoleDetail", "getObjectActionGrantMatrix", "listRoleCapabilityDecisionHistory",
+  // Effective access explained by the runtime evaluator, and the governed condition vocabulary (server lane CP-S).
   "explainEffectiveAccess", "listSupportedConditionKinds",
 ];
 const MUTATIONS = [
